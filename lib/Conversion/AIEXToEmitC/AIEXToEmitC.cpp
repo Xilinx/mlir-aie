@@ -467,9 +467,6 @@ struct ConvertAIEXToEmitCPass
     moduleOp.walk([&](AIE::RuntimeSequenceOp seq) {
       sequences.push_back({seq, seq->getParentOfType<AIE::DeviceOp>()});
     });
-    if (sequences.empty())
-      return;
-
     if (emitDispatchShim && sequences.size() != 1) {
       moduleOp.emitOpError()
           << "emit-dispatch-shim needs exactly one aie.runtime_sequence to "
@@ -477,6 +474,8 @@ struct ConvertAIEXToEmitCPass
           << sequences.size();
       return signalPassFailure();
     }
+    if (sequences.empty())
+      return;
 
     OpBuilder builder(ctx);
     for (auto &[seqOp, deviceOp] : sequences) {
@@ -484,11 +483,12 @@ struct ConvertAIEXToEmitCPass
         seqOp.emitOpError("must be nested inside an aie.device");
         return signalPassFailure();
       }
-      auto gen = emitFunction(builder, moduleOp, seqOp, deviceOp);
-      if (failed(gen))
+      std::optional<emitc::FuncOp> gen =
+          emitFunction(builder, moduleOp, seqOp, deviceOp);
+      if (!gen)
         return signalPassFailure();
       if (emitDispatchShim) {
-        emitc::FuncOp generated = gen.value();
+        emitc::FuncOp generated = *gen;
         if (failed(emitDispatchShimFuncs(builder, moduleOp, generated)))
           return signalPassFailure();
       }

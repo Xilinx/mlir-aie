@@ -178,6 +178,15 @@ class HRXContext:
             lib.hrx_buffer_release(buf)
 
     # -- executables -------------------------------------------------------
+    @staticmethod
+    def _validate_executable_inputs(xclbin_bytes: bytes, insts_bytes: bytes):
+        if not xclbin_bytes:
+            raise HRXError("xclbin bytes are empty")
+        if not insts_bytes or len(insts_bytes) % 4 != 0:
+            raise HRXError(
+                "insts (XAie transaction) bytes are empty or not a multiple of 4"
+            )
+
     def create_executable(
         self, xclbin_bytes: bytes, insts_bytes: bytes, entry_name: str
     ):
@@ -202,12 +211,7 @@ class HRXContext:
                 or not a multiple of 4 bytes, or libhrx fails to create the
                 executable.
         """
-        if not xclbin_bytes:
-            raise HRXError("xclbin bytes are empty")
-        if not insts_bytes or len(insts_bytes) % 4 != 0:
-            raise HRXError(
-                "insts (XAie transaction) bytes are empty or not a multiple of 4"
-            )
+        self._validate_executable_inputs(xclbin_bytes, insts_bytes)
 
         # Keep every backing buffer alive for the duration of the call: libhrx
         # borrows all input storage and only reads it before returning.

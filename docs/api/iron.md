@@ -90,7 +90,7 @@ constants. These are re-exported into `iron` from `aie.utils`.
 | `iron.get_compile_arg` | function | Dynamically inject a compile-time argument (advanced). |
 | `iron.In` / `iron.Out` / `iron.InOut` | markers | Type-annotation markers for design inputs/outputs. |
 | `iron.CompileTime` | marker | Type-annotation marker for a compile-time constant argument. |
-| `iron.DispatchTime` | marker | Type-annotation marker for a runtime scalar argument. Unlike `iron.CompileTime`, changing its value does not recompile — the instruction stream is rebuilt per call. Not supported with `full_elf=True`. |
+| `iron.DispatchTime` | marker | Type-annotation marker for a runtime scalar argument. Unlike `iron.CompileTime`, changing its value does not recompile — the instruction stream is rebuilt per call. Requires cache-managed output paths (`xclbin_path=inst_path=None`); explicit output paths and `full_elf=True` are not supported. |
 
 See the [Programming Guide](../programming_guide/README.md) for worked
 examples of `@iron.jit`.

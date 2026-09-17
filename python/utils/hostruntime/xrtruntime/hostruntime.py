@@ -548,6 +548,9 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     def cleanup(self):
         """Clean up cached XRT resources in dependency order."""
+        with self._dispatch_lock:
+            self._dispatch_storage = None
+            self._dispatch_storage_group = None
         while self._insts_cache:
             self._evict_insts()
         while self._context_cache:

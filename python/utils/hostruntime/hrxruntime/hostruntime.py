@@ -214,6 +214,9 @@ class HRXHostRuntime(HostRuntime):
             )
         return xclbin_path, insts_path, kernel_name
 
+    def _create_executable(self, xclbin_bytes, insts_bytes, kernel_name):
+        return self._ctx.create_executable(xclbin_bytes, insts_bytes, kernel_name)
+
     def _create_executable_from_bytes(self, xclbin_bytes, insts_data, kernel_name):
         """Create + look up a fresh amdxdna executable from raw artifact bytes.
 
@@ -232,7 +235,8 @@ class HRXHostRuntime(HostRuntime):
         else:
             insts_bytes = insts_data
         try:
-            exe = self._ctx.create_executable(xclbin_bytes, insts_bytes, kernel_name)
+            HRXContext._validate_executable_inputs(xclbin_bytes, insts_bytes)
+            exe = self._create_executable(xclbin_bytes, insts_bytes, kernel_name)
             try:
                 ordv = self._ctx.lookup_export(exe, kernel_name)
             except BaseException:
@@ -553,15 +557,24 @@ class CachedHRXRuntime(HRXHostRuntime):
             )
         atexit.register(self.cleanup)
 
-    def _create_executable_from_bytes(self, xclbin_bytes, insts_data, kernel_name):
+    def _create_executable(self, xclbin_bytes, insts_bytes, kernel_name):
         # Both static loads and per-call dynamic executables need a free hardware
         # context *before* creation, not after the driver has rejected it.
         while self._exe_cache and len(self._exe_cache) >= max(1, self._cache_size):
             _, (old_exe, _) = self._exe_cache.popitem(last=False)
             self._release_executable(old_exe)
-        return super()._create_executable_from_bytes(
-            xclbin_bytes, insts_data, kernel_name
-        )
+        while True:
+            try:
+                return super()._create_executable(
+                    xclbin_bytes, insts_bytes, kernel_name
+                )
+            except HRXError:
+                # Eviction may leave a live handle's hardware context intact.
+                # Retry while there are cache references left to release.
+                if not self._exe_cache:
+                    raise
+                _, (old_exe, _) = self._exe_cache.popitem(last=False)
+                self._release_executable(old_exe)
 
     def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
         xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)

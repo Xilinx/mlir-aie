@@ -136,6 +136,15 @@ class HSAHostRuntime(HostRuntime):
         pdi_path = self._find_pdi(xclbin_path)
         return insts_path, pdi_path, kernel_name
 
+    def _copy_to_device(self, data):
+        ptr = self._ctx.alloc_dev(len(data))
+        try:
+            ctypes.memmove(ptr, data, len(data))
+        except BaseException:
+            self._ctx.free_dev(ptr)
+            raise
+        return ptr
+
     def _build_handle(self, insts_path, pdi_path) -> HSAKernelHandle:
         """Copy insts (if any) + PDI into fresh device-heap allocations.
 
@@ -145,19 +154,16 @@ class HSAHostRuntime(HostRuntime):
         """
         pdi_bytes = pdi_path.read_bytes()
         if insts_path is None:
-            pdi_ptr = self._ctx.alloc_dev(len(pdi_bytes))
-            ctypes.memmove(pdi_ptr, pdi_bytes, len(pdi_bytes))
+            pdi_ptr = self._copy_to_device(pdi_bytes)
             return HSAKernelHandle(pdi_ptr, None, 0)
 
         insts_bytes = insts_path.read_bytes()
         if len(insts_bytes) % 4 != 0:
             raise HostRuntimeError("insts.bin length is not a multiple of 4 bytes")
 
-        insts_ptr = self._ctx.alloc_dev(len(insts_bytes))
-        ctypes.memmove(insts_ptr, insts_bytes, len(insts_bytes))
+        insts_ptr = self._copy_to_device(insts_bytes)
         try:
-            pdi_ptr = self._ctx.alloc_dev(len(pdi_bytes))
-            ctypes.memmove(pdi_ptr, pdi_bytes, len(pdi_bytes))
+            pdi_ptr = self._copy_to_device(pdi_bytes)
         except BaseException:
             self._ctx.free_dev(insts_ptr)
             raise

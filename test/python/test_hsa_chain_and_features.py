@@ -245,6 +245,73 @@ def test_dynamic_instruction_lifetime(monkeypatch, failure):
     assert handle.insts_size == 0
 
 
+@pytest.mark.parametrize(
+    "dynamic,failure",
+    [
+        (True, None),
+        (True, "allocate_pdi"),
+        (True, "copy_pdi"),
+        (False, None),
+        (False, "allocate_insts"),
+        (False, "copy_insts"),
+        (False, "allocate_pdi"),
+        (False, "copy_pdi"),
+    ],
+)
+def test_load_allocation_cleanup(monkeypatch, tmp_path, dynamic, failure):
+    import ctypes
+
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    pdi = tmp_path / "test.pdi"
+    pdi.write_bytes(b"pdi")
+    insts = tmp_path / "insts.bin"
+    insts.write_bytes(b"\x01\x00\x00\x00")
+    allocations = {}
+    base = _make_fake_ctx_cls([])
+
+    class LoadCtx(base):
+        def alloc_dev(self, nbytes):
+            kind = "pdi" if nbytes == 3 else "insts"
+            if failure == "allocate_" + kind:
+                raise HSAErrorForTest(failure)
+            buf = ctypes.create_string_buffer(nbytes)
+            ptr = ctypes.addressof(buf)
+            allocations[ptr] = buf
+            return ptr
+
+        def free_dev(self, ptr):
+            del allocations[ptr]
+
+    ctx = LoadCtx(timeout_on_wait=False)
+    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: ctx))
+    original_memmove = ctypes.memmove
+
+    def copy(ptr, data, nbytes):
+        kind = "pdi" if nbytes == 3 else "insts"
+        if failure == "copy_" + kind:
+            raise HSAErrorForTest(failure)
+        return original_memmove(ptr, data, nbytes)
+
+    monkeypatch.setattr(hrt.ctypes, "memmove", copy)
+    rt = hrt.HSAHostRuntime()
+    if failure is not None:
+        with pytest.raises(HSAErrorForTest, match=failure):
+            rt._build_handle(None if dynamic else insts, pdi)
+    else:
+        handle = rt._build_handle(None if dynamic else insts, pdi)
+        assert ctypes.string_at(handle.pdi_ptr, 3) == pdi.read_bytes()
+        ctx.free_dev(handle.pdi_ptr)
+        if dynamic:
+            assert handle.insts_ptr is None
+            assert handle.insts_size == 0
+        else:
+            assert ctypes.string_at(handle.insts_ptr, 4) == insts.read_bytes()
+            assert handle.insts_size == 4
+            ctx.free_dev(handle.insts_ptr)
+    assert not allocations
+
+
 def test_pooled_run_allocates_and_frees_nothing(monkeypatch):
     """The steady-state dispatch path touches no allocator at all.
 

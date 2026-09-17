@@ -33,6 +33,7 @@ def fake_xrt(monkeypatch):
     monkeypatch.setattr(
         hrt.XRTHostRuntime, "check_device_consistency", lambda self: None
     )
+    monkeypatch.setattr(hrt.atexit, "register", lambda callback, *args, **kwargs: None)
     allocations = []
 
     def hook(phase, data):
@@ -197,6 +198,36 @@ def test_xrt_dynamic_reuse_growth_and_static_path(fake_xrt):
     assert len(allocations) == 3
 
 
+def test_xrt_cleanup_releases_dynamic_storage(fake_xrt):
+    hrt, allocations, make_kernel = fake_xrt
+    rt = hrt.CachedXRTRuntime()
+    handle = make_kernel(lambda phase, data: None)
+    words = np.array([1], dtype=np.uint32)
+    assert rt.run(handle, [], dispatch_insts=words).is_success()
+    assert rt._dispatch_storage is allocations[0]
+    assert rt._dispatch_storage_group == 1
+
+    real_lock = rt._dispatch_lock
+
+    class CheckedLock:
+        def __enter__(self):
+            real_lock.acquire()
+            assert rt._dispatch_storage is allocations[0]
+
+        def __exit__(self, *args):
+            assert rt._dispatch_storage is None
+            assert rt._dispatch_storage_group is None
+            real_lock.release()
+
+    rt._dispatch_lock = CheckedLock()
+    rt.cleanup()
+    rt._dispatch_lock = real_lock
+    rt.cleanup()
+    assert rt.run(handle, [], dispatch_insts=words).is_success()
+    assert len(allocations) == 2
+    rt.cleanup()
+
+
 @pytest.fixture
 def fake_hrx(monkeypatch):
     from aie.utils.hostruntime.hrxruntime import hostruntime as hrt
@@ -210,7 +241,8 @@ def fake_hrx(monkeypatch):
             self.fail = None
 
         def create_executable(self, image, insts, name):
-            assert len(self.refs) < self.limit, "driver hardware contexts exhausted"
+            if len(self.refs) >= self.limit:
+                raise hrt.HRXError("driver hardware contexts exhausted")
             if self.fail == "create":
                 raise hrt.HRXError("create")
             self.next_exe += 1
@@ -250,9 +282,7 @@ def fake_hrx(monkeypatch):
     monkeypatch.setattr(
         hrt.HRXHostRuntime, "check_device_consistency", lambda self: None
     )
-    monkeypatch.setattr(
-        hrt.atexit, "register", lambda callback, *args, **kwargs: None
-    )
+    monkeypatch.setattr(hrt.atexit, "register", lambda callback, *args, **kwargs: None)
     monkeypatch.setenv("HRX_EXE_CACHE_SIZE", "2")
     rt = hrt.CachedHRXRuntime()
     try:
@@ -295,6 +325,85 @@ def test_hrx_reclaims_before_creating_at_capacity(fake_hrx, tmp_path, dynamic, l
     assert ctx.events[1][0:2] == ("create", limit + 1)
     assert len(ctx.refs) == (limit - 1 if dynamic else limit)
     del handle
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+def test_hrx_capacity_skips_retained_lru_handle(fake_hrx, tmp_path, dynamic):
+    _, rt, ctx = fake_hrx
+    retained = rt.load(_kernel_files(tmp_path, "retained"))
+    disposable = rt.load(_kernel_files(tmp_path, "disposable"))
+    del disposable
+    ctx.events.clear()
+
+    handle = rt.load(_kernel_files(tmp_path, "next", dynamic=dynamic))
+    if dynamic:
+        assert rt.run(
+            handle, [], dispatch_insts=np.array([23], dtype=np.uint32)
+        ).is_success()
+    assert ctx.events[:2] == [("release", 1), ("release", 2)]
+    assert ctx.events[2][:2] == ("create", 3)
+    assert rt.run(retained, []).is_success()
+    del handle
+    rt.cleanup()
+    assert ctx.refs == {1: 1}
+    del retained
+    assert not ctx.refs
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+def test_hrx_capacity_all_handles_retained(fake_hrx, tmp_path, dynamic):
+    hrt, rt, ctx = fake_hrx
+    retained = [rt.load(_kernel_files(tmp_path, str(i))) for i in range(ctx.limit)]
+    kernel = _kernel_files(tmp_path, "next", dynamic=dynamic)
+    with pytest.raises(hrt.HostRuntimeError, match="hardware contexts exhausted"):
+        handle = rt.load(kernel)
+        if dynamic:
+            rt.run(handle, [], dispatch_insts=np.array([23], dtype=np.uint32))
+    assert not rt._exe_cache
+    assert ctx.refs == {1: 1, 2: 1}
+    assert all(rt.run(handle, []).is_success() for handle in retained)
+    retained.clear()
+    handle = rt.load(kernel)
+    if dynamic:
+        assert rt.run(
+            handle, [], dispatch_insts=np.array([23], dtype=np.uint32)
+        ).is_success()
+    del handle
+    rt.cleanup()
+    assert not ctx.refs
+
+
+@pytest.mark.parametrize("cached_count", [1, 2])
+@pytest.mark.parametrize(
+    "image,insts",
+    [(b"", b"\x01\x00\x00\x00"), (b"xclbin", b""), (b"xclbin", b"\x01")],
+)
+def test_hrx_invalid_artifacts_preserve_cache(
+    fake_hrx, tmp_path, cached_count, image, insts
+):
+    hrt, rt, ctx = fake_hrx
+    for i in range(cached_count):
+        handle = rt.load(_kernel_files(tmp_path, str(i)))
+        del handle
+    before = rt._exe_cache.copy()
+    refs = ctx.refs.copy()
+    ctx.events.clear()
+    with pytest.raises(hrt.HostRuntimeError, match="bytes are empty"):
+        rt._create_executable_from_bytes(image, insts, "MLIR_AIE")
+    assert rt._exe_cache == before
+    assert ctx.refs == refs
+    assert not ctx.events
+
+
+def test_hrx_lookup_failure_does_not_evict_cache(fake_hrx, tmp_path):
+    hrt, rt, ctx = fake_hrx
+    handle = rt.load(_kernel_files(tmp_path, "cached"))
+    del handle
+    ctx.fail = "lookup"
+    with pytest.raises(hrt.HostRuntimeError, match="lookup"):
+        rt.load(_kernel_files(tmp_path, "bad_export"))
+    assert ctx.refs == {1: 1}
+    assert len(rt._exe_cache) == 1
 
 
 def test_hrx_dynamic_image_cached_across_loads(fake_hrx, tmp_path, monkeypatch):

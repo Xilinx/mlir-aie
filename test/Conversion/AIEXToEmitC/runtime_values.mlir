@@ -20,8 +20,9 @@
 // CHECK:   aie_runtime::txn_append_write32(txn, {{v[0-9]+}}, [[P]]);
 // Runtime sync counts come from the parameter.
 // CHECK:   aie_runtime::txn_append_sync(txn, {{.*}}, [[P]], [[P]]);
-// Runtime address_patch arg_plus comes from the parameter.
-// CHECK:   aie_runtime::txn_append_arg_patch(txn, {{.*}}, [[P]], {{v[0-9]+}});
+// Runtime address_patch arg_plus preserves the parameter's unsigned bit pattern.
+// CHECK:   uint32_t [[ARG_PLUS:v[0-9]+]] = (uint32_t) [[P]];
+// CHECK:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{v[0-9]+}}, [[ARG_PLUS]], {{v[0-9]+}});
 module {
   aie.device(npu1_1col) {
     aie.runtime_sequence @seq(%arg0: memref<8xi32>, %param: i32) {
