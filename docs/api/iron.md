@@ -108,6 +108,9 @@ constants. These are re-exported into `iron` from `aie.utils`.
 
 For a generator with `M: iron.DispatchTime[np.int32]`, `iron.jit(generator)`
 keeps `M` dynamic, including when the signature supplies a default.
+If a call omits `M`, its signature default is used for that dispatch; without
+a default, the caller must supply `M`. An explicit call-time value overrides
+the default without recompiling. Using the default does not specialize `M`.
 `iron.jit(generator, M=256)` or `design.specialize(M=256)` instead fixes `M`
 for that specialization and includes the constant in its cache key. A call
 cannot override a specialized parameter; create another specialization instead.
@@ -128,9 +131,35 @@ def copy(a: iron.In, b: iron.Out, *,
          tile_size: iron.CompileTime[int] = 256):
     ...  # Build the design.
 
-copy(a, b, count=6)
-copy.specialize(count=3)(a, b)
+copy(a, b)                        # Dispatch with the default count=3.
+copy(a, b, count=6)               # Same compiled design; a different dispatch.
+copy.specialize(count=3)(a, b)    # Compile with count fixed to 3.
 ```
+
+### Generator-side binding limitations
+
+An unbound `DispatchTime[T]` parameter currently reaches the generator as the
+NumPy scalar **type** `T`, not an identity-bearing symbolic value. Forward
+each such parameter once to `Runtime(seq, fn_args=[...])`, in signature order
+relative to the other unbound dispatch parameters. The runtime-sequence body
+receives the corresponding SSA block arguments. Explicitly specialized
+parameters instead reach the generator as typed NumPy constants.
+
+!!! warning
+    Binding is currently positional, not tracked through Python variable
+    identity. With two `DispatchTime[np.int32]` parameters, forwarding them in
+    reverse order silently swaps their values. The ABI check detects argument
+    count and C-type mismatches, but cannot detect a same-type permutation or
+    replacement.
+
+    There is also no general check restricting an unbound parameter's use to
+    the runtime sequence. Using it as an integer may raise a Python type error,
+    but operations valid on a type object (such as a Python truth test or using
+    it as a dtype) can succeed at generation time. Do not use unbound dispatch
+    parameters for tensor shapes, worker configuration, or Python conditionals.
+    Use `CompileTime[T]` or explicit specialization for those purposes.
+
+### Compilation scope
 
 Dynamic designs accept `compile(xclbin_path=...)` and an optional `pdi_path`.
 Their dispatch library resides in the adjacent `<xclbin stem>.prj` directory;
@@ -138,6 +167,19 @@ use `CompilableDesign.get_dispatch_lib_path()` to locate it and retain it with
 the xclbin. There is no static instruction stream, so `inst_path`, `elf_path`,
 and `full_elf=True` are unsupported while any parameters remain dynamic.
 The default compilation mode manages these artifacts in the JIT cache.
+
+The JIT still invokes `aiecc` to build device artifacts. For the dispatch
+builder, it then reads `input_with_addresses.mlir`, runs the shared
+`aie-npu-dma-lowering` pipeline in-process, translates to C++, and compiles the
+host library. This pipeline is the DMA-lowering stage, not a replacement for
+`aiecc`'s runtime-sequence materialization, load-PDI expansion, PDI-ID assignment,
+or full-ELF packaging.
+
+The dynamic bridge requires exactly one runtime sequence. Dynamic
+multi-device/reconfiguration flows are not supported by this integration;
+the sequence-count check alone does not validate those flows. Ordinary static
+designs, including designs with every dispatch parameter explicitly
+specialized, use the existing `aiecc` path.
 
 See the [Programming Guide](../programming_guide/README.md) for worked
 examples of `@iron.jit`.

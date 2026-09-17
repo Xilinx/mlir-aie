@@ -81,8 +81,9 @@ createAIELowerScratchpadParametersPass(
     AIELowerScratchpadParametersOptions options);
 
 /// \brief DMA->NPU lowering. Expects runtime sequences to already be
-/// materialized (aiecc's getMaterializeRuntimeSeqPipeline). Registered as
-/// `aie-npu-dma-lowering` so out-of-process callers share this definition.
+/// materialized (aiecc's getMaterializeRuntimeSeqPipeline). This is only the
+/// DMA-lowering stage, not load-PDI expansion, PDI-ID assignment, or packaging.
+/// Registered as `aie-npu-dma-lowering` for in-process and CLI callers.
 void buildNpuDmaLoweringPipeline(mlir::OpPassManager &pm);
 
 /// Register buildNpuDmaLoweringPipeline as `-aie-npu-dma-lowering`.
