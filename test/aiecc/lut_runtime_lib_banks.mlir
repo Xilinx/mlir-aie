@@ -21,7 +21,7 @@
 // RUN: llvm-readelf -s %t.d/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s
 // RUN: sed 's/, data_size = 4096 : i32//' %s > %t.d/default.mlir
 // RUN: cd %t.d && aiecc --get-core-elfs --check-lut-banks default.mlir
-// RUN: cd %t.d && aiecc --get-core-elfs --no-unified --check-lut-banks default.mlir
+// RUN: cd %t.d && aiecc --get-core-elfs --unified --check-lut-banks default.mlir
 
 // Local memory starts at 0x70000 and a bank is 0x4000, so an _ab in 0x70000-
 // 0x73fff and its _cd in 0x74000-0x77fff are a bank apart.

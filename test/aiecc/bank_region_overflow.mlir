@@ -5,14 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// The same design with no data_size. The unpinned data region then takes the
-// largest free run on the tile, which is the bank the statics are pinned to, so
-// the pinned sections have nowhere to go. The linker names the region and aiecc
-// explains the remedy, which is not otherwise guessable from "region bank1".
+// A table larger than its bank must overflow rather than spill into a neighbor,
+// even when no explicit data reservation competes with it.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
-// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I%S/../../third_party/aie_api/include -ffunction-sections -fdata-sections -c %S/bank_section_placed_kernel.cc -o %t.d/bank_section_placed_kernel.o
+// RUN: sed 's/tbl_ab\[256\]/tbl_ab[8192]/' %S/bank_section_placed_kernel.cc > %t.d/oversized.cc
+// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I%S/../../third_party/aie_api/include -ffunction-sections -fdata-sections -c %t.d/oversized.cc -o %t.d/bank_section_placed_kernel.o
 // RUN: cd %t.d && not aiecc --get-core-elfs %s 2>&1 | FileCheck %s
 
 // CHECK: will not fit in region 'bank1'

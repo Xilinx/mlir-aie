@@ -127,12 +127,9 @@ struct LutPair {
 //
 // Unresolvable gather addresses produce Unknown operands, not an empty result.
 // Direct LLVM IR inputs (.ll or .bc) are also accepted.
-// When elfPath is supplied, pairs from functions defined in the native object
-// but removed from the linked ELF are omitted. Other functions and raw IR stay
-// conservative because inlining can remove a symbol without removing its LUT.
-// Returns nothing when the object carries no readable IR, which the caller
-// reports rather than mistaking for "no pairs found". Peano only: chess emits
-// IR from an LLVM old enough that this parser rejects it.
+// With elfPath, omit functions emitted in the object but removed by the linker.
+// Keep other functions: inlining or renaming can hide symbols, not their LUTs.
+// Returns nothing for unreadable IR. Peano only: Chess IR is too old to parse.
 std::optional<std::vector<LutPair>>
 readLutPairsFromObject(llvm::StringRef objectPath,
                        llvm::StringRef elfPath = {});
