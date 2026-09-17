@@ -19,6 +19,7 @@ Used together with [`Flow`][iron.Flow] / [`PacketFlow`][iron.PacketFlow]
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
@@ -41,6 +42,7 @@ from ...dialects.aie import (
     shim_mem,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...helpers.taplib import TensorAccessPattern
 from ...helpers.util import pack_pad_value
 from ..buffer import Buffer
 from ..device import Tile
@@ -110,6 +112,10 @@ class Bd:
     `next` is ignored on an out-of-order channel because those BDs are chained
     only for configuration and the hardware selects by header id (see
     [`DmaChannel.out_of_order`][iron.DmaChannel]).
+
+    `tap` says which part of the buffer to move as one access pattern -- what
+    slicing a buffer yields -- instead of spelling out `offset`, `length`,
+    `sizes` and `strides` separately.
     """
 
     buffer: Buffer
@@ -139,6 +145,36 @@ class Bd:
     # The out-of-order id stamped into the packet header. Names the slot a
     # receiving out-of-order S2MM channel places this BD's data into.
     out_of_order_id: int | None = None
+    # The part of the buffer to move, as an access pattern -- what slicing a
+    # buffer yields. Supplies offset, length, sizes and strides together, so it
+    # is mutually exclusive with stating them by hand.
+    tap: TensorAccessPattern | None = None
+
+    def __post_init__(self):
+        if self.tap is not None and (
+            self.offset or self.length is not None or self.sizes or self.strides
+        ):
+            raise ValueError(
+                "Bd.tap already says the offset, length, sizes and strides; "
+                "pass either it or those, not both."
+            )
+
+    def geometry(self) -> dict:
+        """Return the access-pattern arguments for this BD's ``aie.dma_bd``."""
+        if self.tap is None:
+            return dict(
+                offset=self.offset,
+                length=self.length,
+                sizes=self.sizes,
+                strides=self.strides,
+            )
+        sizes, strides = list(self.tap.sizes), list(self.tap.strides)
+        return dict(
+            offset=self.tap.offset,
+            length=math.prod(sizes),
+            sizes=sizes,
+            strides=strides,
+        )
 
 
 @dataclass
@@ -151,13 +187,20 @@ class DmaChannel:
         channel: hardware channel index.
         bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
             (in-order) or n-way merge (out-of-order).
-        loop: whether the last BD chains back to the first, making the chain
-            endless. An endless chain is one task that never completes, so it
-            runs for as long as its locks let it and `repeat_count` has nothing
-            to count -- set `loop=False` to end the chain after its last BD,
-            which is what lets `repeat_count` re-run it a fixed number of times.
         repeat_count: extra repeats of the task (0 = run once), where the task
-            is the BD chain (in-order) or a merge round (out-of-order).
+            is the BD chain (in-order) or a merge round (out-of-order). Only
+            meaningful on a chain that ends -- see `loop`.
+        loop: whether the last BD chains back to the first (the default),
+            making the chain endless. An endless chain is one task that never
+            completes: it runs for as long as its locks let it, which is how
+            [`ObjectFifo`][iron.ObjectFifo] expresses the same thing, and
+            `repeat_count` has nothing to count and is ignored. `loop=False`
+            ends the chain after its last BD, making it a task that completes
+            and can be re-run -- which is what gives `repeat_count` meaning,
+            and what a design reproducing a specific descriptor layout wants.
+            Note a chain that ends runs exactly `repeat_count + 1` times, so a
+            `loop=False` channel expected to move more than one buffer needs a
+            matching count; left at 0 it moves one and stops.
         out_of_order: put the channel into out-of-order mode (S2MM only).
             Each BD receives the packet with `bd.bd_id == pkt.out_of_order_id`,
             and the BD chain (next bd) is ignored. Each BD receives its own
@@ -172,10 +215,13 @@ class DmaChannel:
     direction: DMAChannelDir
     channel: int
     bds: list[Bd]
-    loop: bool = True
     pad_value: int = 0
     repeat_count: int = 0
     out_of_order: bool = False
+    # Appended rather than grouped with the chain fields above: inserting a
+    # field ahead of the existing optional ones would silently rebind any
+    # positional caller's argument.
+    loop: bool = True
 
 
 def _channel_pad_word(ch: "DmaChannel") -> int | None:
@@ -278,12 +324,11 @@ class TileDma(Resolvable):
     def _region_decorator(self):
         """Pick the right ``aie`` region-opening decorator for the tile type.
 
-        Read off the resolved tile rather than the Tile object, because a Tile
-        need not carry a type: the Device infers one from the coordinates when
-        it resolves. Taking the unset hint at face value here would quietly emit
-        an ``aie.mem`` for a shim tile.
+        Asks the tile what kind it effectively is rather than reading its
+        ``tile_type`` hint, which may be unset: taking that at face value
+        quietly emits an ``aie.mem`` for a shim tile.
         """
-        tt = self._tile.tile_type or AIETileType(int(self._tile.op.tile_type))
+        tt = self._tile.effective_tile_type
         if tt == AIETileType.MemTile:
             return memtile_dma(self._tile.op)
         if tt in (AIETileType.ShimNOCTile, AIETileType.ShimPLTile):
@@ -406,13 +451,14 @@ class TileDma(Resolvable):
                     with block[bd_block_idx[bd_pos]]:
                         for acq in bd.acquires:
                             acq.emit()
+                        geometry = bd.geometry()
                         bd_kwargs: dict[str, Any] = dict(
-                            sizes=bd.sizes, strides=bd.strides
+                            sizes=geometry["sizes"], strides=geometry["strides"]
                         )
-                        if bd.offset:
-                            bd_kwargs["offset"] = bd.offset
-                        if bd.length is not None:
-                            bd_kwargs["transfer_len"] = bd.length
+                        if geometry["offset"]:
+                            bd_kwargs["offset"] = geometry["offset"]
+                        if geometry["length"] is not None:
+                            bd_kwargs["transfer_len"] = geometry["length"]
                         if bd.pad_dimensions is not None:
                             bd_kwargs["pad_dimensions"] = bd.pad_dimensions
                         if bd.iteration is not None:

@@ -52,6 +52,12 @@ from .taskgroup import TaskGroup
 logger = logging.getLogger(__name__)
 
 
+def _shares_coordinates(a, b) -> bool:
+    """Whether two distinct Tiles name the one physical tile."""
+    placed = a.col is not None and a.row is not None
+    return a is not b and placed and (a.col, a.row) == (b.col, b.row)
+
+
 class IronRuntimeError(Exception):
     """Raised by the IRON Runtime when resolution encounters an unrecoverable state."""
 
@@ -274,12 +280,27 @@ class Runtime(Resolvable):
         already registered merges its channels into the first. Keeping both
         would emit two `aie.mem` regions for the one tile -- which is wrong, and
         wrong quietly, since nothing downstream rejects it.
+
+        Merging is by Tile identity. Two separate Tile objects at the same
+        coordinates hit the same problem -- `--aie-place-tiles` merges logical
+        tiles by coordinate -- but merging those would strand whatever else
+        refers to the discarded one, so they are rejected instead.
+
+        Raises:
+            IronRuntimeError: If a different Tile object names a tile already
+                registered.
         """
         for registered in self._tile_dmas:
             if registered.tile is tile_dma.tile:
                 for channel in tile_dma.channels:
                     registered.add_channel(channel)
                 return
+            if _shares_coordinates(registered.tile, tile_dma.tile):
+                raise IronRuntimeError(
+                    f"Two TileDma programs name {tile_dma.tile}, via different "
+                    "Tile objects. A tile has one DMA program: share one Tile "
+                    "object between them so their channels can be merged."
+                )
         self._tile_dmas.append(tile_dma)
 
     def add_external_buffer(self, external_buffer) -> None:

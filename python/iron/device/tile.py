@@ -93,6 +93,30 @@ class Tile:
         )
 
     @property
+    def effective_tile_type(self) -> AIETileType | None:
+        """What kind of tile this is, asking the resolved tile if need be.
+
+        A Tile need not carry a ``tile_type``: the Device infers one from the
+        coordinates when it resolves the tile (see ``Device.resolve_tile``), so
+        an unset hint means "not said yet", not "core tile". Anything that
+        chooses behaviour by tile kind should ask this rather than read the
+        attribute, which is only the hint.
+
+        Note ``AIETileType.CoreTile`` is 0, and so falsy -- an
+        ``x.tile_type or ...`` fallback misreads an explicitly-typed core tile
+        as unset. Hence the explicit ``is None`` below.
+
+        Returns:
+            AIETileType | None: The kind of tile, or None when it is neither
+            stated nor resolved yet.
+        """
+        if self.tile_type is not None:
+            return self.tile_type
+        if self._op is None:
+            return None
+        return AIETileType(int(self._op.tile_type))
+
+    @property
     def op(self) -> LogicalTileOp:
         if not self._op:
             raise ValueError("Cannot get op before it is set.")
