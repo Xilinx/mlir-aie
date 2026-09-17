@@ -5,7 +5,7 @@
 #
 """Tensor factories and NPU host-backend selection.
 
-Split out from :mod:`aie.utils` so that :mod:`aie.utils.hostruntime.hostruntime`
+Split out from `aie.utils` so that `aie.utils.hostruntime.hostruntime`
 (which needs the ``tensor()`` factory) can import it without importing back
 through ``aie.utils.__init__`` -- that reverse edge is what used to force
 ``aie.utils.__init__``'s own imports of ``HostRuntime`` etc. to be deferred
@@ -173,7 +173,7 @@ def tensor(*args, **kwargs):
     """Create a tensor using the default tensor class.
 
     Passing a typed ``ndarray`` together with a mismatched ``dtype=``
-    kwarg raises :class:`TypeError`.  Matching kwargs are passed through
+    kwarg raises `TypeError`.  Matching kwargs are passed through
     unchanged (the underlying tensor backend uses ``dtype`` for buffer
     allocation, so silently stripping it would surprise callers).
 

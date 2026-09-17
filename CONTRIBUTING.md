@@ -86,7 +86,7 @@ pre-commit run --all-files
 
 The hooks cover:
 
-- **C++** — [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html)
+- **C++ and TableGen (`*.td`)** — [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html)
   (LLVM style; config in `.clang-format`).
 - **Python and notebooks** — [`black`](https://black.readthedocs.io/) for
   formatting, plus `nbstripout` to scrub notebook output before it is

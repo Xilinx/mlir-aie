@@ -14,6 +14,7 @@ import aie.utils.compile.utils as compile_utils
 import pytest
 from aie.utils.compile.utils import (
     _copy_source,
+    _replace_staged_source,
     _write_source,
     compile_external_kernels,
 )
@@ -194,3 +195,38 @@ def test_failed_write_leaves_no_temp_files(tmp_path):
         _copy_source(str(dest), str(tmp_path / "missing.cc"))
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_windows_sharing_violation_tolerates_identical_staged_source(tmp_path):
+    dest = tmp_path / "kernel.cc"
+    dest.write_text(SOURCE)
+    tmp = tmp_path / "kernel.cc.same.tmp"
+    tmp.write_text(SOURCE)
+
+    def sharing_violation(*_args):
+        raise PermissionError("sharing violation")
+
+    _replace_staged_source(
+        str(tmp), str(dest), replace=sharing_violation, is_windows=True
+    )
+
+    assert dest.read_text() == SOURCE
+    assert not tmp.exists()
+
+
+def test_windows_sharing_violation_raises_for_mismatched_staged_source(tmp_path):
+    dest = tmp_path / "kernel.cc"
+    dest.write_text(SOURCE)
+    tmp = tmp_path / "kernel.cc.diff.tmp"
+    tmp.write_text("// different kernel\n")
+
+    def sharing_violation(*_args):
+        raise PermissionError("sharing violation")
+
+    with pytest.raises(PermissionError):
+        _replace_staged_source(
+            str(tmp), str(dest), replace=sharing_violation, is_windows=True
+        )
+
+    assert dest.read_text() == SOURCE
+    assert tmp.read_text() == "// different kernel\n"

@@ -7,6 +7,7 @@
 
 import concurrent.futures
 import contextlib
+import filecmp
 import logging
 import os
 import re
@@ -515,7 +516,7 @@ def compile_mlir_module(
             agreement and raises on a mixed peano/chess design.
         device: Optional IRON device (or ``AIEDevice`` enum) used to pick
             the target architecture (aie2 vs aie2p) for any
-            :class:`aie.iron.kernel.ExternalFunction` instances that have
+            `aie.iron.kernel.ExternalFunction` instances that have
             a ``source_file=`` and haven't been compiled yet.  When set
             and ``work_dir`` is provided, those externals are auto-built
             into ``work_dir`` before aiecc runs (matching the @iron.jit
@@ -646,11 +647,30 @@ def _staged(dest: str):
     os.close(fd)
     try:
         yield tmp
-        os.replace(tmp, dest)
+        _replace_staged_source(tmp, dest)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+
+
+def _replace_staged_source(
+    tmp: str, dest: str, *, replace=os.replace, is_windows: bool | None = None
+):
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    try:
+        replace(tmp, dest)
+    except PermissionError:
+        # Windows cannot replace a file another compile already has open.
+        # When both writers staged identical bytes, the open destination is
+        # already the source the later compile needs, so discard the temp
+        # and let that compile proceed instead of failing the whole batch.
+        if not is_windows:
+            raise
+        if not os.path.exists(dest) or not filecmp.cmp(tmp, dest, shallow=False):
+            raise
+        os.unlink(tmp)
 
 
 def _write_source(dest: str, text: str) -> None:

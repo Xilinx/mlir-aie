@@ -130,6 +130,22 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
     )
 
 
+def rope(tile_size: int = 1024, two_halves: bool = False) -> ExternalFunction:
+    """RoPE positional rotation over bf16 tiles; ``dims`` read at runtime.
+
+    Design passes ``(in, lut, out, dims)``.  ``two_halves`` selects the
+    HuggingFace-style ``rope_two_halves`` over the Llama-paper interleave
+    ``rope``.  Any ``tile_size`` is allowed.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    func = "rope_two_halves" if two_halves else "rope"
+    return _make_extern(
+        func,
+        _default_source_path("rope.cc"),
+        [tile_ty, tile_ty, tile_ty, np.int32],
+    )
+
+
 def transpose(dim_m: int = 32, dim_n: int = 32, subtile: int = 4) -> ExternalFunction:
     """Blocked bf16 transpose using AIE-API shuffle intrinsics.
 

@@ -176,7 +176,7 @@ def add_runtime_args(
 ) -> None:
     """Add the standard runtime / test-harness flags.
 
-    Pairs with :func:`add_compile_args`: ``add_compile_args`` covers the
+    Pairs with `add_compile_args`: ``add_compile_args`` covers the
     write-side flags (``--xclbin-path``, ``--insts-path``) used by JIT
     designs, while this helper covers the read-side flags (``--xclbin``,
     ``--instr``) used by ``test.py``-style host harnesses that load a
@@ -187,13 +187,13 @@ def add_runtime_args(
         with_io_sizes: When True, adds ``--in1-size`` / ``--in2-size`` /
             ``--out-size`` (bytes, ``int``) for designs whose Makefile
             drives buffer sizes from the test harness.
-        with_benchmark: When True, also calls :func:`add_benchmark_args`
+        with_benchmark: When True, also calls `add_benchmark_args`
             (adds ``-i/--iters`` and ``-w/--warmup``).  Off by default
             because most correctness-test harnesses do not benchmark.
 
     Adds (always): ``--xclbin``, ``--instr``, ``-k/--kernel``,
     ``-v/--verbosity``, ``--verify``/``--no-verify``, ``--trace-file``,
-    ``--ddr-id``, ``--enable-ctrl-pkts``; and via :func:`add_trace_arg`,
+    ``--ddr-id``, ``--enable-ctrl-pkts``; and via `add_trace_arg`,
     ``-t/--trace_size``.
     """
     parser.add_argument(
@@ -275,7 +275,7 @@ def device_from_args(
     dev_attr: str = "dev",
     n_cols: "int | None | str" = "auto",
 ):
-    """Resolve a parsed-argparse namespace to a :class:`aie.iron.device.Device`.
+    """Resolve a parsed-argparse namespace to a `aie.iron.device.Device`.
 
     Collapses the boilerplate variants the example suite used to repeat
     across ~30 sites::
