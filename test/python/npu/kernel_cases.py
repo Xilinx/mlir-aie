@@ -160,6 +160,22 @@ CASES: list[Case] = [
     # kernel with bf16 A and C; host encode/shuffle via aie.utils.bfp.
     Case("mm_bfp", _mm_bfp, calls=16, devices=("npu2",)),
     Case("mm_bfp_shuffle", calls=4, devices=("npu2",), smoke=True),
+    Case("q4nx_dequant", calls=4, devices=("npu2",), smoke=True),
+    Case(
+        "q4nx_dequant",
+        dict(m_tile=16, k_tile=32, group=8, ct_k=16),
+        calls=2,
+        devices=("npu2",),
+        perf=False,
+    ),
+    # Quantization groups need not divide the GEMM K slice.
+    Case(
+        "q4nx_dequant",
+        dict(m_tile=48, k_tile=48, group=24, ct_k=16),
+        calls=2,
+        devices=("npu2",),
+        perf=False,
+    ),
     Case(
         "mm_bfp",
         dict(**_mm_bfp, mixed=True),

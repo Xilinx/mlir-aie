@@ -23,6 +23,7 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | blas | [axpy.cc](./generic/axpy.cc) | AIE API | `z = a*x + y` (SAXPY) | `bfloat16` |
 | positional | [rope.cc](./generic/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
 | gemm | [mm_fused.cc](./generic/mm_fused.cc) | AIE API | Fused GEMM with in-L1 f32 accumulate and activation epilogue (`acc_init` / `k_step` / `epilogue_chunk`); tile geometry via `-DMM_FUSED_*` | `bfloat16` |
+| quantization | [q4nx_dequant.cc](./generic/q4nx_dequant.cc) | AIE API (AIE2P) | Dequantize packed q4nx scales, minima and 4-bit codes into GEMM-ordered BFP blocks; geometry via `-DQ4NX_*` | `uint8_t` → `bfp16ebs8` |
 
 ## AIE1
 | Name | Coding style | Purpose |

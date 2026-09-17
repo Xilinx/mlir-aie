@@ -1,5 +1,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# RUN: %pytest %s
 
 """Host-only publication regression tests; no compiled aie package required."""
 
@@ -131,6 +133,14 @@ def test_static_compiles_fused_sources_for_the_matrix_device():
     assert "-m extensive" in step["run"]
     assert step["run"].count("python -m pytest") == 1
     assert step["env"]["KERNEL_TEST_DEVICE"] == "${{ matrix.device }}"
+
+
+def test_static_checks_include_q4nx_reference_tests():
+    job = workflow("staticKernelChecks.yml")["jobs"]["static"]
+    assert any(
+        "test/python/test_q4nx_dequant.py" in step.get("run", "")
+        for step in job["steps"]
+    )
 
 
 def test_docs_cleanup_preserves_benchmark_history():

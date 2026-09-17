@@ -92,6 +92,9 @@ passthrough/4096x16/int16
 passthrough/4096x16/uint8
 passthrough/4096x4/int32
 passthrough/96x4/int32/edge-tiny
+q4nx_dequant/1536x2/uint8/ct_k=16/group=24/k_tile=48/m_tile=48
+q4nx_dequant/5120x4/uint8
+q4nx_dequant/512x2/uint8/ct_k=16/group=8/k_tile=32/m_tile=16
 reduce_add/1024x1/int32/edge-single
 reduce_add/1024x16/int32
 reduce_add/1024x256/int32

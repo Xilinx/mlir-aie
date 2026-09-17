@@ -110,7 +110,8 @@ jobs:
         # against its factory.
         run: |
           python -m pytest test/python/test_remarks.py \
-            test/python/test_kernel_contracts.py test/test_kernel_workflows.py -q
+            test/python/test_kernel_contracts.py test/python/test_q4nx_dequant.py \
+            test/test_kernel_workflows.py -q
       - name: Compile every distinct design through CDO
         # The same aiecc pipeline the device runs, minus xclbin packaging
         # (needs XRT). Catches tile sets that overflow core memory and DMA

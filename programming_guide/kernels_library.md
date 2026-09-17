@@ -117,6 +117,7 @@ on each submodule's `__doc__`:
 | [`kernels.reduce`](../python/iron/kernels/reduce.py)         | reductions: reduce_add, reduce_min, reduce_max, compute_max |
 | [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec |
 | [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: axpy, convert_copy, expand, transpose |
+| [`kernels.quant`](../python/iron/kernels/quant.py) | q4nx dequantization to GEMM-ordered bfp16ebs8 (AIE2P), with byte-exact verification |
 | [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.also.zero`, `.mac_dims`, `.stream_dims`), mv (int16 + `.also.zero`, bf16), cascade_mm (+ `.also.{get_only,put_only,put_get,zero}`, `.mac_dims`), mm_bfp (+ `.also.zero`), mm_bfp_shuffle, mha (+ the flash-attention siblings) |
 | [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
 | [`kernels.transformer`](../python/iron/kernels/transformer.py) | transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue |
@@ -466,6 +467,14 @@ input and blocked-BFP output codecs, comparing exactly the represented values.
 The default equal-sized buffers are supported; custom unequal buffer extents
 still require the enclosing design's runtime dimensions. Its direct-call ABI
 continues to accept either shuffle direction.
+
+`q4nx_dequant` validates one packed q4nx block on AIE2P. Its input contains
+bf16 scales and minima followed by unsigned four-bit codes; its output is
+the GEMM-ordered bfp16ebs8 byte stream. Both are exposed as byte buffers so
+the harness checks exponents, mantissas and ordering exactly, including the
+kernel's floor-rounded bf16 intermediate. The default block and two smaller
+geometries participate in the compile and extensive hardware sweeps; the
+default also runs as a hardware smoke test and benchmark.
 
 ## Related reading
 

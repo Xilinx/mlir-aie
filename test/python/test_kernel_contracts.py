@@ -25,10 +25,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 from aie.iron import In, InOut, Out, Scalar, kernels
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import ROLES, KernelContract
 from aie.utils import bfp
-from aie.iron.algorithms import kernel_design as kd
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
@@ -130,6 +130,11 @@ CASES = {
         dict(calls=2),
     ),
     "mm_bfp": (dict(dim_m=64, dim_k=64, dim_n=64), dict(calls=4)),
+    "q4nx_dequant": ({}, dict(calls=4)),
+    "q4nx_dequant/group_crosses_slice": (
+        dict(m_tile=48, k_tile=48, group=24, ct_k=16),
+        dict(calls=2),
+    ),
     "mm_bfp/mixed": (
         dict(dim_m=64, dim_k=64, dim_n=64, mixed=True),
         dict(calls=4),

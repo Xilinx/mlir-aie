@@ -19,6 +19,12 @@ kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
     options:
       show_root_heading: false
 
+## Quantization
+
+::: iron.kernels.quant
+    options:
+      show_root_heading: false
+
 ## Core state
 
 ::: iron.kernels.core
