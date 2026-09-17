@@ -1,7 +1,0 @@
-<map id="DMAStartBdChainForOpPattern" name="DMAStartBdChainForOpPattern">
-<area shape="rect" id="Node000001" title=" " alt="" coords="24,93,247,119"/>
-<area shape="rect" id="Node000002" href="$classRewritePattern.html" title=" " alt="" coords="5,5,124,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="85,39,128,91,123,94,81,43"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="148,5,267,31"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="191,43,147,95,143,91,187,39"/>
-</map>
