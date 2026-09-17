@@ -16,11 +16,14 @@
 // K separate base pointers, oldest first, so a depth-K ObjectFifo is itself the
 // rotation and none is hand-rolled here.
 //
-// Counterpart to dwconv1d.cc, which takes one channel per call with time
-// contiguous; see its header. Layout picks the vectorization axis, so neither
-// shape subsumes the other.
+// Counterpart to dwconv1d_channels_first.cc. Layout picks the vectorization
+// axis, so neither subsumes the other; see PICKING ONE below.
 
 using bf16 = bfloat16;
+
+// Denser per instruction than the channels-first form, but only worth it when
+// the data is already in this layout; the README's "Choosing a depthwise
+// conv1d" section has the measurement and the tradeoffs.
 
 /// K taps over C channels, accumulating in float and narrowing on store.
 template <int K, int C, bool CLAMP>

@@ -103,5 +103,46 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | |
 | ml | [conv2dk1_i8.cc](./aie2p/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
 | ml | [conv2dk14.cc](./aie2p/conv2dk14.cc) | AIE API | 1x14 / 14x1 Conv2D | `int8_t` |
-| ml | [dwconv1d.cc](./aie2p/dwconv1d.cc) | AIE API | Depthwise 1D convolution, channels-first (one channel per call; vectorizes along time) | `bfloat16` |
-| ml | [dwconv1d_channels_last.cc](./aie2p/dwconv1d_channels_last.cc) | AIE API | Depthwise 1D convolution, channels-last (one timestep per call; vectorizes across channels, per-channel taps, optional clamp) | `bfloat16` |
+| ml | [dwconv1d_channels_first.cc](./aie2p/dwconv1d_channels_first.cc) | AIE API | Depthwise 1D convolution, **channels-first** — one channel per call, vectorizes along time; runtime length, `'same'` padding, optional bias. The general-purpose one | `bfloat16` |
+| ml | [dwconv1d_channels_last.cc](./aie2p/dwconv1d_channels_last.cc) | AIE API | Depthwise 1D convolution, **channels-last** — one timestep per call, vectorizes across channels with per-channel taps and an optional clamp. ~2.9× the MACs/instruction of the above, but only when the data is already channels-last | `bfloat16` |
+
+### Choosing a depthwise conv1d
+
+The two `dwconv1d_*` kernels compute the same thing over transposed tensors. The
+layout dictates the vectorization axis, so neither is a drop-in replacement for
+the other.
+
+|  | [channels-first](./aie2p/dwconv1d_channels_first.cc) | [channels-last](./aie2p/dwconv1d_channels_last.cc) |
+|-|-|-|
+| One call covers | 1 channel × `T` timesteps | 1 timestep × `C` channels |
+| Vectorizes along | time, via `sliding_mul` | channels |
+| Taps | `K` scalars | `K` × `C` per-channel vectors |
+| Length | runtime `T` | `C` fixed at compile time |
+| Extras | `'same'` padding, optional bias | optional clamp |
+
+Counting AIE2P instruction slots against the scalar MACs each retires, on the
+`K=5` objects:
+
+| | slots | MACs | MACs/slot |
+|-|-|-|-|
+| channels-first | 19 (`zloop` body) | 80 | 4.2 |
+| channels-last | 105 (unrolled, `C=256`) | 1280 | **12.2** |
+
+The ~2.9× gap has two causes. Both forms issue the same `vmac.f` on 512-bit
+registers, but `sliding_mul` spends half its vector on the window halo and so
+retires 16 outputs where channels-last retires 32. And the sliding form has to
+rebuild each tap's operand with a `vshift`; with the dependency stalls that
+costs 7 of its 19 slots.
+
+That gap is **not** a reason to prefer channels-last by default. It only pays if
+the data is already in that layout — a transpose to reach it costs more than the
+difference. Channels-last also needs `C`×`K` weights resident instead of `K`,
+fixes `C` at compile time, and unrolls fully, so its program-memory footprint
+grows with `C`.
+
+Use channels-first for a general conv1d. Use channels-last when the dataflow is
+already channels-last — as it is when a depth-`K` ObjectFifo is serving as the
+sliding window.
+
+> These are static slot counts, not silicon. If the ratio matters to a decision,
+> time it by kernel-swap ablation rather than trusting the table.

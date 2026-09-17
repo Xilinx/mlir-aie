@@ -1,33 +1,32 @@
-//===- dwconv1d.cc ------------------------------------------*- C++ -*-===//
+//===- dwconv1d_channels_first.cc -------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// Depthwise conv1d over a channels-first layout, 'same' padding, stride 1,
-// bf16, one channel per call. Cross-correlation, no kernel flip, matching
-// torch.nn.Conv1d.
-//
-// Time is contiguous within a channel here, so this vectorizes along time with
-// sliding_mul and the K taps are scalars. See dwconv1d_channels_last.cc for the
-// transposed layout, which vectorizes across channels instead and takes
-// per-channel tap vectors; the two are complementary, not alternatives.
-//
-// The caller supplies the padded row [P zeros | T samples | P zeros | slack],
-// P = (K-1)/2, with a fixed 16 elements of slack whatever K is so the aligned
-// 16-wide loads never read past the buffer. in_pad must be 256-bit aligned and
-// T a multiple of 16; dwconv1d.py's `_pad_input` builds one.
 //
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
+// Depthwise conv1d over a channels-first tensor: one channel per call, time
+// contiguous, 'same' padding, stride 1, bf16. Cross-correlation with no kernel
+// flip, matching torch.nn.Conv1d. Taps are K scalars and the vectorization runs
+// along time, via sliding_mul.
+//
+// This is the general one: runtime T, 'same' padding, optional bias. See
+// dwconv1d_channels_last.cc for the transposed layout, and its header for the
+// throughput comparison and which to reach for.
+//
+// The caller supplies the padded row [P zeros | T samples | P zeros | slack],
+// P = (K-1)/2, with a fixed 16 elements of slack whatever K is so the aligned
+// 16-wide loads never read past the buffer. in_pad must be 256-bit aligned and
+// T a multiple of 16; dwconv1d.py's `_pad_input` builds one.
+
 template <int K, bool BIAS>
-static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
-                                           const bfloat16 *restrict w,
-                                           bfloat16 *restrict out, int32_t T) {
+static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,
+                                                const bfloat16 *restrict w,
+                                                bfloat16 *restrict out,
+                                                int32_t T) {
   static_assert(K >= 1 && K <= 17,
                 "K taps must fit one 32-lane window (16 + K - 1 <= 32)");
   event0();
@@ -61,20 +60,22 @@ static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
   event1();
 }
 
-#ifndef DWCONV_K
-#define DWCONV_K 9
+#ifndef DWCONV1D_CF_K
+#define DWCONV1D_CF_K 9
 #endif
-#ifndef DWCONV_BIAS
-#define DWCONV_BIAS 1
+#ifndef DWCONV1D_CF_BIAS
+#define DWCONV1D_CF_BIAS 1
 #endif
 
 extern "C" {
 
-// w holds taps [0 .. DWCONV_K-1] with the bias at [DWCONV_K]. A caller may pass
-// a wider row (dwconv1d.py pads for 4-byte aie.dma_bd alignment); anything past
-// the bias is never read.
-void dwconv1d_bf16(bfloat16 *in_pad, bfloat16 *w, bfloat16 *out, int32_t T) {
-  dwconv1d_same_bf16_impl<DWCONV_K, (bool)DWCONV_BIAS>(in_pad, w, out, T);
+// w holds taps [0 .. DWCONV1D_CF_K-1] with the bias at [DWCONV1D_CF_K]. A
+// caller may pass a wider row (dwconv1d.py pads for 4-byte aie.dma_bd
+// alignment); anything past the bias is never read.
+void dwconv1d_channels_first_bf16(bfloat16 *in_pad, bfloat16 *w, bfloat16 *out,
+                                  int32_t T) {
+  dwconv1d_channels_first_impl<DWCONV1D_CF_K, (bool)DWCONV1D_CF_BIAS>(in_pad, w,
+                                                                      out, T);
 }
 
 } // extern "C"
