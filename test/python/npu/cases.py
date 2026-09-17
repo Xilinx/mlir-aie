@@ -115,7 +115,9 @@ class Case:
         fn = self.fn()
         types = fn.arg_types()
         in_dt = bfp.dtype_name(kd.shape_dtype(types[fn.contract.roles.index(In)])[1])
-        out_dt = bfp.dtype_name(kd.shape_dtype(types[fn.contract.out_index])[1])
+        out_dt = "+".join(
+            bfp.dtype_name(kd.shape_dtype(types[i])[1]) for i in fn.contract.out_indices
+        )
         dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
         if getattr(fn, "dims", None):
             dims = "x".join(str(d) for d in (*fn.dims, self.calls))
@@ -144,7 +146,7 @@ class Case:
         fn = self.fn()
         per_call = fn.contract.ops_per_call
         if per_call is None:
-            per_call = kd.elems(fn.arg_types()[fn.contract.out_index])
+            per_call = sum(kd.elems(fn.arg_types()[i]) for i in fn.contract.out_indices)
         return per_call * self.kernel_calls()
 
     def supported_on(self, device_name: str) -> bool:
@@ -155,6 +157,7 @@ class Case:
 # --------------------------------------------------------------------------
 # Edge-case data
 # --------------------------------------------------------------------------
+
 
 # Data cases every kernel of a kind should survive. Random data finds nothing
 # a vectorised tail, a saturating add or a NaN path gets wrong. The policy

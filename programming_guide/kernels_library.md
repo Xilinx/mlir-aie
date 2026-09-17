@@ -184,6 +184,13 @@ each output before its call. The factory's dimensions size a tile; `calls`
 does not change its reduction length. Whole-problem `shape=` is rejected:
 algorithm integration tests own global iteration and accumulation.
 
+Cycle metrics require `contract.trace_cycles=True`: an audited event0/event1
+pair must bracket each complete invocation, with no extra initializer events.
+The harness rejects missing or extra intervals. Passthrough declares this
+protocol; other kernels retain wall-time and compilation metrics until their
+instrumentation is audited. In particular, zeroing and partial fused-GEMM
+steps must not be reported as whole-multiply cycle timings.
+
 `contract.layouts` declares a `TensorLayout` per argument: its logical tile
 shape and reversible host storage codec. The same builder handles row-major,
 blocked, transposed and block-floating-point tiles without recognizing a
@@ -199,8 +206,10 @@ describes the result from that initial state. Initialization occurs on every
 independent call, not only the first.
 
 Multiple outputs are ordered by `contract.out_indices`. Their reference,
-output sizes, device dtypes and verdicts are tuples; `upload` returns a tuple
-of output tensors, passed as `design(*inputs, *outputs)`. The builder supports
+output sizes and device dtypes are tuples; `output_dtype()` derives the latter
+from declarations. `judge` returns one aggregate verdict, false if any output
+fails, with per-output diagnostics. `upload` returns a tuple of output tensors,
+passed as `design(*inputs, *outputs)`. The builder supports
 up to the target's two output DMA channels.
 
 Tolerances are kernel-owned. Integer kernels and lossless copies are
@@ -218,7 +227,9 @@ A contract also declares the dtype facts an `arg_types` list leaves out:
   input that cannot overflow the accumulator, which is where the builder
   and the case table draw their data.
 - `setup`: a kernel to run once on the core first, when this one needs it;
-  see [Rounding mode](#rounding-mode) below.
+  see [Rounding mode](#rounding-mode) below. The rounding setter is compiled
+  as always-inline LLVM IR and merged into the core, avoiding an external
+  function call; the setter therefore uses Peano, not Chess.
 - `stack_bytes`: the core stack a Worker calling this kernel needs, when
   that is more than the target's default.
 - `unsupported`: why the generic builder cannot run this kernel, when it
@@ -422,21 +433,39 @@ workflow runs on a pull request.
 
 ### Kernels the generic builder cannot run
 
-Five factories carry a contract whose `unsupported` field says why the
-single-Worker builder cannot drive them; their references still say what
-they compute, and `design()` refuses them with that reason:
+The following contracts explain why an independent single-Worker invocation
+cannot validate their protocol. `design()` refuses them with that reason;
+a missing reference is not a claim of numerical coverage:
 
 | Factory | Why |
 | --- | --- |
 | `cascade_mm` | partial sums travel over the cascade stream, which is not an argument |
-| `mm_bfp_shuffle` | a bfp16ebs8 tile through a plain fifo, which the builder samples only as a matmul operand |
 | `mha` | a multi-core attention dataflow with a running softmax |
 | `bn_conv2dk1_relu_xy_pool_padded` | accumulates across calls through its output, one row per `y_index` |
+| `bn_conv2dk1_partial_put_i8`, `bn_conv2dk1_partial_get_relu_i8` | paired cascade PUT/GET; neither half has a separately observable result |
+| `bn_conv2dk1_input_split_partial_put_ui8`, `bn_conv2dk1_input_split_partial_skip_get` | paired input-split cascade PUT/GET with a residual |
 
-Five `bn_*` cascade halves have no contract at all: a PUT kernel has no
-output argument, so a contract would describe half a computation.
-`test_contract_coverage_is_explicit` pins that list, as it does
-`set_rounding`, which has no data arguments.
+The four bottleneck cascade halves declare their partner and argument roles,
+but no isolated numerical reference. They are composed in
+[`mobilenet/bottleneck/cascade.py`](../programming_examples/ml/mobilenet/bottleneck/cascade.py),
+which is exercised through the existing MobileNet
+[`test_e2e.py`](../programming_examples/ml/mobilenet/test_e2e.py) and
+[`test_mobilenet.py`](../programming_examples/ml/mobilenet/test_mobilenet.py)
+tests. `cascade_mm` is composed in the existing
+[`matrix_multiplication/cascade`](../programming_examples/basic/matrix_multiplication/cascade/cascade.py)
+example. These are whole-design checks, not isolated cascade-half checks;
+listing them here does not imply they ran during a particular change.
+
+`bn_conv2dk3_dw_out_split` is not a cascade half: it has two observable
+outputs and is supported by the generic builder, with a reference for each
+channel half. `set_rounding` also has a contract, but no data outputs: it is
+a setup operation rather than a standalone numerical test.
+
+`mm_bfp_shuffle` validates the forward permutation through declared plain-BFP
+input and blocked-BFP output codecs, comparing exactly the represented values.
+The default equal-sized buffers are supported; custom unequal buffer extents
+still require the enclosing design's runtime dimensions. Its direct-call ABI
+continues to accept either shuffle direction.
 
 ## Related reading
 

@@ -132,6 +132,9 @@ class KernelContract:
         initializers: ``(argument_index, factory)`` pairs for ``InOut``
             arguments; ``factory(fn)`` returns a one-buffer initialization
             kernel. The reference describes the result from that initial state.
+        trace_cycles: Whether exactly one event0/event1 pair brackets the full
+            invocation, with no additional pairs from setup or initializers.
+            False unless audited; partial internal regions are not call timings.
 
     What the kernel does when a result overflows, how it rounds a narrowing
     store, and what it does with NaN or subnormal inputs are not declared
@@ -155,6 +158,7 @@ class KernelContract:
     layouts: tuple[TensorLayout | None, ...] = ()
     scalar_bindings: tuple[tuple[int, int | float], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
+    trace_cycles: bool = False
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in ROLES]
@@ -458,6 +462,7 @@ def _make_extern(
     *,
     compile_flags: list[str] | None = None,
     use_chess: bool = False,
+    inline: bool = False,
     shared_object_file_name: str | None = None,
     contract: KernelContract | None = None,
 ) -> ExternalFunction:
@@ -466,6 +471,10 @@ def _make_extern(
     ``contract`` (a :class:`KernelContract`) is attached as ``extern.contract``
     so harnesses and tests can build, run and judge the kernel generically;
     factories without one leave it ``None``.
+
+    ``inline`` uses Peano's always-inline LLVM IR and merge linking. Inline
+    factories must use distinct C++ symbol names for distinct variants because
+    LLVM IR cannot use the object-file symbol-prefix mechanism.
 
     Memoized on (func_name, source_path, arg_types, compile_flags,
     use_chess) so repeated calls with identical parameters return the
@@ -497,6 +506,11 @@ def _make_extern(
     flags_tuple = tuple(compile_flags or [])
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
     cache_key = (func_name, str(source_path), arg_keys, flags_tuple, use_chess)
+    if inline:
+        if use_chess:
+            raise ValueError("inline kernels require Peano, not Chess")
+        # Keep existing object artifact identities unchanged.
+        cache_key += ("inline",)
     cached = _EXTERN_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -520,7 +534,7 @@ def _make_extern(
         # wide enough that the chance of two distinct cache_keys colliding
         # is vanishingly small (~2^-32).
         digest = hashlib.sha256(repr(cache_key).encode()).hexdigest()[:8]
-        object_file_name = f"{func_name}_{digest}.o"
+        object_file_name = f"{func_name}_{digest}{'.ll' if inline else '.o'}"
     else:
         digest = None
         object_file_name = None  # ExternalFunction default → ``<name>.o``
@@ -563,7 +577,7 @@ def _make_extern(
         for other_key in _EXTERN_CACHE:
             if (
                 other_key[0] == func_name
-                and other_key[-1] is True
+                and other_key[4] is True
                 and other_key != cache_key
             ):
                 raise ValueError(
@@ -576,7 +590,7 @@ def _make_extern(
                 )
         symbol_prefix = None
     else:
-        symbol_prefix = digest
+        symbol_prefix = None if inline else digest
 
     extern = ExternalFunction(
         func_name,
@@ -587,6 +601,7 @@ def _make_extern(
         compile_flags=list(flags_tuple),
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,
+        inline=inline,
     )
     extern.contract = contract
     _EXTERN_CACHE[cache_key] = extern

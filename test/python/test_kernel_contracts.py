@@ -346,6 +346,18 @@ def test_scalar_counts_are_bound_not_inferred_from_tensor_sizes():
     assert "128 : i32" in mlir
 
 
+def test_rounding_setup_is_merged_alwaysinline_ir():
+    setter = kernels.conv_even()
+    assert setter._inline
+    assert setter.object_file_name.endswith(".ll")
+    assert setter._symbol_prefix is None
+    assert setter is kernels.conv_even()
+    assert setter.name != kernels.set_rounding(kernels.RoundingMode.FLOOR).name
+    mlir = str(kd.design(kernels.gelu).as_mlir())
+    assert 'link_with_mode = "merge"' in mlir
+    assert setter.object_file_name in mlir
+
+
 def test_contract_validates_argument_bindings():
     from aie.iron import Count
 
@@ -381,8 +393,8 @@ def test_multi_output_contract_drives_design_and_reference():
     refs = fn.expected(inputs)
     assert len(refs) == 2
     assert np.array_equal(refs[0], -refs[1])
-    assert all(fn.judge(tuple(r.ravel() for r in refs), refs, calls=3))
-    assert not all(fn.judge((refs[0].ravel(), np.ones(192, np.int32)), refs, calls=3))
+    assert fn.judge(tuple(r.ravel() for r in refs), refs, calls=3)
+    assert not fn.judge((refs[0].ravel(), np.ones(192, np.int32)), refs, calls=3)
     assert kd.output_size(fn, calls=3) == (192, 192)
     assert [a.direction for a in kd.host_args(fn, calls=3)] == [In, Out, Out]
     assert "split_outputs" in str(kd.design(lambda: fn, calls=3).as_mlir())
@@ -397,8 +409,8 @@ def test_split_depthwise_contract_checks_both_channel_halves():
     refs = fn.expected(inputs, scalars=(1, 7))
     whole = kernels.bn_conv2dk3_dw_ref(*inputs, 7, 16, 16, 3, 3, 1, 7, 0)
     np.testing.assert_array_equal(np.concatenate(refs, axis=-1), whole)
-    assert all(fn.judge(refs, refs, calls=3))
-    assert not all(fn.judge((refs[0], refs[1] ^ 1), refs, calls=3))
+    assert fn.judge(refs, refs, calls=3)
+    assert not fn.judge((refs[0], refs[1] ^ 1), refs, calls=3)
     design = kd.design(
         kernels.bn_conv2dk3_dw_out_split,
         input_width=7,
@@ -1073,7 +1085,19 @@ def test_unsupported_contracts_are_refused_by_the_harness():
     assert fn.contract is not None and fn.contract.unsupported
     with pytest.raises(ValueError, match="cannot build"):
         kd.design(kernels.cascade_mm)
-    assert kernels.mm_bfp_shuffle().contract.unsupported
+    assert kernels.mm_bfp_shuffle(dim_n=32).contract.unsupported
+    assert kernels.mm_bfp_shuffle().contract.unsupported is None
+
+
+def test_bfp_shuffle_contract_uses_declared_storage_codecs():
+    fn = kernels.mm_bfp_shuffle()
+    inputs = kd.sample_inputs(fn, calls=3)
+    (encoded,) = kd.host_layout(fn, inputs)
+    ref = fn.expected(inputs)
+    got = np.stack([kernels.mm_bfp_shuffle_ref(row, 64, 64, 0) for row in encoded])
+    assert fn.judge(got, ref, calls=3)
+    assert not fn.judge(encoded, ref, calls=3)
+    assert "scalar_shuffle" in str(kd.design(kernels.mm_bfp_shuffle, calls=3).as_mlir())
 
 
 def test_conv2dk1_i8_and_skip_references():

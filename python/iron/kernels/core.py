@@ -34,7 +34,7 @@ class RoundingMode(StrEnum):
 
 
 def set_rounding(mode: RoundingMode = RoundingMode.CONV_EVEN) -> ExternalFunction:
-    """Kernel that sets the core's rounding mode to ``mode`` and returns.
+    """Set the core's rounding mode using always-inline, merge-linked LLVM IR.
 
     Args:
         mode: The [`RoundingMode`][iron.kernels.core.RoundingMode] to set.
@@ -48,6 +48,7 @@ def set_rounding(mode: RoundingMode = RoundingMode.CONV_EVEN) -> ExternalFunctio
         _default_source_path("set_rounding.cc", subdir="generic"),
         [],
         compile_flags=[f"-DROUNDING_MODE={mode}"],
+        inline=True,
         contract=KernelContract(roles=()),  # sets core state; no data arguments
     )
 

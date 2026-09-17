@@ -20,6 +20,22 @@ def device(request):
     set_current_device(None)
 
 
+def test_fused_variants_have_distinct_symbols_and_reuse_bindings(device):
+    plain = fused_mm()
+    activated = fused_mm(epilogue="silu")
+    assert fused_mm() is plain
+    assert fused_mm(epilogue="silu") is activated
+    assert plain.name != activated.name
+    assert plain.object_file_name != activated.object_file_name
+    assert plain._symbol_prefix and activated._symbol_prefix
+    for fn in (plain, activated):
+        fn.siblings(
+            init=("mm_fused_acc_init", [np.ndarray[(512,), np.dtype[np.float32]]])
+        )
+        assert fn.also.init.name == f"{fn._symbol_prefix}_mm_fused_acc_init"
+        assert fn.also.init.object_file is fn.object_file
+
+
 def test_fused_layouts_match_microblock_addressing(device):
     fn = fused_mm()
     assert fn.contract.stack_bytes == (

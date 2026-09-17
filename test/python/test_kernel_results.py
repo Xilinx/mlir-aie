@@ -79,11 +79,15 @@ def test_multiple_outputs_cast_and_judge_independently():
     refs = fn.expected([np.arange(8).reshape(2, 4)])
     assert tuple(r.dtype for r in refs) == (np.dtype(np.int16), np.dtype(np.float32))
     assert fn.output_dtype(tuple(r.dtype for r in refs)) == (np.int16, np.float32)
+    assert fn.output_dtype() == (np.int16, np.float32)
     actual = (refs[0].ravel(), refs[1][:, ::-1].ravel())
-    assert all(fn.judge(actual, refs, calls=2))
+    assert fn.judge(actual, refs, calls=2)
     actual[1][0] += 1
-    verdicts = fn.judge(actual, refs, calls=2)
-    assert verdicts[0] and not verdicts[1]
+    verdict = fn.judge(actual, refs, calls=2)
+    assert not verdict
+    assert verdict.n_checked == 16 and verdict.n_mismatch == 1
+    assert verdict.first_bad_index == 11
+    assert "output 1 (argument 2)" in verdict.detail
 
 
 def test_bfp_dtype_is_per_output_not_per_kernel():
@@ -94,6 +98,7 @@ def test_bfp_dtype_is_per_output_not_per_kernel():
     refs = fn.expected([np.arange(4)])
     assert tuple(r.dtype for r in refs) == (np.dtype(np.float32), np.dtype(np.int16))
     assert fn.output_dtype(tuple(r.dtype for r in refs)) == (np.uint8, np.int16)
+    assert fn.output_dtype() == (np.uint8, np.int16)
 
 
 def test_multioutput_arity_errors_are_explicit():

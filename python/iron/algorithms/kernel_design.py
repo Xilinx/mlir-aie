@@ -511,8 +511,13 @@ def upload(inputs, out_size, out_dtype, *, fn, poison=False):
     return ins, tuple(outs) if multiple else outs[0]
 
 
-def cycles_per_call(design_, inputs, out_size, out_dtype, *, fn, trace_size, workdir):
-    """Trace independent calls using the same design invocation as correctness tests."""
+def cycles_per_call(
+    design_, inputs, out_size, out_dtype, *, fn, trace_size, workdir, calls=1
+):
+    """Measure declared whole-call event pairs, never partial internal regions."""
+    if not _contract(fn).trace_cycles:
+        return []
+    calls = _calls(calls)
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     cfg = TraceConfig(trace_size=trace_size, trace_file=str(workdir / "trace.txt"))
@@ -522,7 +527,13 @@ def cycles_per_call(design_, inputs, out_size, out_dtype, *, fn, trace_size, wor
         raise RuntimeError("the traced run recorded no physical MLIR path")
     trace_json = workdir / "trace.json"
     cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
-    return [int(d) for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
+    durations = [int(d) for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
+    if len(durations) != calls:
+        raise RuntimeError(
+            f"{fn.name}: expected {calls} whole-call trace intervals, got "
+            f"{len(durations)}; incomplete trace or incorrect trace_cycles contract"
+        )
+    return durations
 
 
 __all__ = [

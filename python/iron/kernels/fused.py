@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Single-tile composition of the fused GEMM init, reduction and drain ABI."""
 
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    _EXTERN_CACHE,
     KernelContract,
     TensorLayout,
     _default_source_path,
@@ -172,6 +174,20 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c) {
           c + (outer * 2 + half) * MM_FUSED_OUT_CHUNK, acc, outer, half);
 }
 """
+    # Include the complete recipe, not just geometry: architecture, source
+    # location and runtime includes can change without changing the operands.
+    key = (
+        "fused_mm_tile",
+        source,
+        tuple(include_dirs),
+        tuple(compile_flags),
+        False,
+        arch,
+        device.default_core_stack_bytes,
+    )
+    if key in _EXTERN_CACHE:
+        return _EXTERN_CACHE[key]
+    prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
     fn = ExternalFunction(
         "fused_mm_tile",
         source_string=source,
@@ -182,6 +198,9 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c) {
         ],
         include_dirs=include_dirs,
         compile_flags=compile_flags,
+        # Object compilation renames every defined symbol, including the
+        # included init/k_step/epilogue, zero kernels and AIE2 LUT exports.
+        symbol_prefix=prefix,
     )
     fn.contract = KernelContract(
         roles=(In, In, Out),
@@ -205,4 +224,5 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c) {
         + device.default_core_stack_bytes,
     )
     fn.dims = (dim_m, dim_k, dim_n)
+    _EXTERN_CACHE[key] = fn
     return fn

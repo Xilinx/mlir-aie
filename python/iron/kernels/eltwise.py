@@ -125,6 +125,7 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
             scalar_bindings=((2, tile_size),),
             reference=lambda x: x,
             tolerance=Tolerance.exact(note="lossless copy"),
+            trace_cycles=True,
         ),
     )
 

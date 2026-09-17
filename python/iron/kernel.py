@@ -539,19 +539,23 @@ class ExternalFunction(Kernel):
             )
         return tuple(outputs) if multiple else outputs[0]
 
-    def output_dtype(self, ref_dtype):
+    def output_dtype(self, ref_dtype=None):
         """Host dtype(s) of the device output buffer(s).
 
-        A bfp16ebs8 output arrives as packed bytes; everything else arrives in
-        the reference's own dtype. Multiple outputs take and return tuples in
-        output argument order.
+        Defaults to the declared argument dtypes, with bfp16ebs8 represented
+        as packed bytes. The optional reference dtype override is retained
+        for compatibility. Multiple outputs return a tuple in argument order.
         """
         import numpy as np
         from aie.helpers.util import v8bfp16ebs8
 
         outputs = self._require_contract().out_indices
         multiple = len(outputs) > 1
-        dtypes = ref_dtype if multiple else (ref_dtype,)
+        dtypes = (
+            tuple(self.arg_dtype(i) for i in outputs)
+            if ref_dtype is None
+            else ref_dtype if multiple else (ref_dtype,)
+        )
         if multiple and (
             not isinstance(dtypes, (tuple, list)) or len(dtypes) != len(outputs)
         ):
@@ -566,10 +570,10 @@ class ExternalFunction(Kernel):
         """Compare a flat device output against a reference under the contract.
 
         Declared layouts decode each output into logical tiles. DMA padding
-        is trimmed per call. Multiple outputs return a tuple of verdicts;
-        callers must check all entries, not the truthiness of the tuple.
+        is trimmed per call. One Verdict summarizes all outputs and is false
+        if any output fails; its detail identifies the failing output.
         """
-        from aie.utils.verify import Tolerance, compare
+        from aie.utils.verify import Tolerance, Verdict, compare
 
         c = self._require_contract()
         multiple = len(c.out_indices) > 1
@@ -595,7 +599,26 @@ class ExternalFunction(Kernel):
                     tolerance or c.tolerance or Tolerance.default_for(ref.dtype),
                 )
             )
-        return tuple(verdicts) if multiple else verdicts[0]
+        if not multiple:
+            return verdicts[0]
+        first_bad, offset = None, 0
+        for result in verdicts:
+            if first_bad is None and result.first_bad_index is not None:
+                first_bad = offset + result.first_bad_index
+            offset += result.n_checked
+        ulps = [v.max_ulp_err for v in verdicts if v.max_ulp_err is not None]
+        return Verdict(
+            ok=all(verdicts),
+            n_checked=sum(v.n_checked for v in verdicts),
+            n_mismatch=sum(v.n_mismatch for v in verdicts),
+            max_abs_err=max(v.max_abs_err for v in verdicts),
+            max_ulp_err=max(ulps) if ulps else None,
+            first_bad_index=first_bad,
+            detail="; ".join(
+                f"output {i} (argument {arg}): {v.detail}"
+                for i, (arg, v) in enumerate(zip(c.out_indices, verdicts))
+            ),
+        )
 
     def siblings(self, **symbols: tuple) -> SimpleNamespace:
         """Bind other symbols exported by this kernel's own object file.

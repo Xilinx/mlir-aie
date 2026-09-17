@@ -798,22 +798,43 @@ def mm_bfp_shuffle(
     out_shape = tuple(out_shape) if out_shape else (dim_m * dim_n // 8,)
     in_ty = np.ndarray[in_shape, np.dtype[v8bfp16ebs8]]
     out_ty = np.ndarray[out_shape, np.dtype[v8bfp16ebs8]]
-    return _make_extern(
+    from aie.utils import bfp
+
+    logical_shape = (dim_m, dim_k)
+    plain = TensorLayout(
+        logical_shape,
+        pack=lambda x: bfp.encode(x).reshape(len(x), -1),
+        unpack=lambda x: bfp.decode(x).reshape(len(x), *logical_shape),
+    )
+    blocked = _block_layout(logical_shape)
+    extern = _make_extern(
         "scalar_shuffle",
         _default_source_path("mm_bfp.cc", subdir="aie2p"),
         [in_ty, out_ty, np.int16, np.int16, np.int16],
         compile_flags=flags + ["-DSHUFFLE_ONLY"],
         contract=KernelContract(
             roles=(In, Out, Scalar, Scalar, Scalar),
-            reference=mm_bfp_shuffle_ref,
-            tolerance=Tolerance.exact(note="a byte permutation"),
+            scalar_bindings=((2, dim_k), (3, dim_m), (4, 0)),
+            layouts=(
+                plain,
+                blocked,
+                None,
+                None,
+                None,
+            ),
+            reference=lambda x: bfp.quantize(x),
+            tolerance=Tolerance.exact(note="byte permutation preserves encoded values"),
             ops_per_call=0,
             unsupported=(
-                "streams bfp16ebs8 tiles through a plain fifo, which the "
-                "harness samples only for matmul operands"
+                None
+                if np.prod(in_shape) == np.prod(out_shape) == dim_m * dim_k // 8
+                else "independent shuffle validation requires both buffers to hold "
+                "exactly the dim_m by dim_k tile; custom unequal buffers need "
+                "their enclosing design's runtime dimensions"
             ),
         ),
     )
+    return extern
 
 
 def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:

@@ -42,6 +42,13 @@ IEEE_FLOAT = (
 )
 
 CASES: list[Case] = [
+    Case(
+        "bn_conv2dk3_dw_out_split",
+        dict(input_width=7, input_channels=16, output_split_channels=8),
+        calls=4,
+        scalars=(1, 7),
+        smoke=True,
+    ),
     # eltwise
     Case("passthrough", dict(tile_size=2048), calls=16),
     Case("passthrough", dict(tile_size=2048), calls=256),
@@ -152,6 +159,7 @@ CASES: list[Case] = [
     # block floating point (aie2p): bfp16ebs8 A, B and C, and the mixed
     # kernel with bf16 A and C; host encode/shuffle via aie.utils.bfp.
     Case("mm_bfp", _mm_bfp, calls=16, devices=("npu2",)),
+    Case("mm_bfp_shuffle", calls=4, devices=("npu2",), smoke=True),
     Case(
         "mm_bfp",
         dict(**_mm_bfp, mixed=True),

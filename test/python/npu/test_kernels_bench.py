@@ -77,9 +77,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
 
     ref = fn.expected(inputs, scalars=case.scalars)
     out_n = kd.output_size(fn, calls=case.calls, shape=case.shape)
-    out_dt = fn.output_dtype(
-        tuple(r.dtype for r in ref) if isinstance(ref, tuple) else ref.dtype
-    )
+    out_dt = fn.output_dtype()
     ins, out = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
     outputs = out if isinstance(out, tuple) else (out,)
 
@@ -107,7 +105,14 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
         per_call = kd.cycles_per_call(
-            design, inputs, out_n, out_dt, trace_size=TRACE_SIZE, workdir=workdir, fn=fn
+            design,
+            inputs,
+            out_n,
+            out_dt,
+            trace_size=TRACE_SIZE,
+            workdir=workdir,
+            fn=fn,
+            calls=case.calls,
         )
         if per_call:
             measured["cycles"] = int(np.median(per_call))
