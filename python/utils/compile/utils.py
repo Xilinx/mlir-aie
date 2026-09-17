@@ -7,6 +7,7 @@
 
 import concurrent.futures
 import contextlib
+import filecmp
 import logging
 import os
 import re
@@ -606,7 +607,18 @@ def _staged(dest: str):
     os.close(fd)
     try:
         yield tmp
-        os.replace(tmp, dest)
+        try:
+            os.replace(tmp, dest)
+        except PermissionError:
+            # Windows cannot replace a file another compile already has open.
+            # When both writers staged identical bytes, the open destination is
+            # already the source the later compile needs, so discard the temp
+            # and let that compile proceed instead of failing the whole batch.
+            if not os.name == "nt":
+                raise
+            if not os.path.exists(dest) or not filecmp.cmp(tmp, dest, shallow=False):
+                raise
+            os.unlink(tmp)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
