@@ -561,18 +561,23 @@ struct AIEObjectFifoAllocatePass
         if (index >= tilePools.size())
           continue;
         ObjectFifoPoolOp pool = tilePools[index];
-        if (!found || pool.getObjectSizeInBytes() > bestPool.getObjectSizeInBytes()) {
+        if (!found) {
           bestHome = home;
           bestPool = pool;
           found = true;
+          continue;
         }
-      }
-      assert(found && "expected pending MemTile pool");
-      memTileOrder.push_back(bestPool);
-      ++nextPool[bestHome];
-    }
-    for (auto [slot, pool] : llvm::zip(memTileSlots, memTileOrder)) {
-      pools[slot] = pool;
+        auto [bestInput, bestOutput] =
+            poolChannelDemand.lookup(bestPool.getOperation());
+        auto [input, output] = poolChannelDemand.lookup(pool.getOperation());
+        int bestDemand = std::max(bestInput, bestOutput);
+        int demand = std::max(input, output);
+        if (pool.getObjectSizeInBytes() > bestPool.getObjectSizeInBytes() ||
+            (pool.getObjectSizeInBytes() == bestPool.getObjectSizeInBytes() &&
+             demand > bestDemand)) {
+          bestHome = home;
+          bestPool = pool;
+        }
     }
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
