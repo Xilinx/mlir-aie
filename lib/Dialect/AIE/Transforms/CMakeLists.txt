@@ -29,12 +29,14 @@ add_mlir_dialect_library(
   AIEObjectFifoLowerDMAs.cpp
   AIEObjectFifoLowerCores.cpp
   AIEObjectFifoErasePools.cpp
+  AIEAutoPacketizeControlIngress.cpp
   AIEObjectFifoPipeline.cpp
   AIEObjectFifoSplit.cpp
   AIEObjectFifoVerify.cpp
   AIEObjectFifoUnroll.cpp
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp
+  AIEFreezeControlFabric.cpp
   AIETraceToConfig.cpp
   AIEInsertTraceFlows.cpp
   ADDITIONAL_HEADER_DIRS

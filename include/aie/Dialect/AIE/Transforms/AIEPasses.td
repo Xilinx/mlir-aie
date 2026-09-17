@@ -460,6 +460,20 @@ def AIEObjectFifoErasePools : Pass<"aie-objectfifo-erase-pools", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
+def AIEAutoPacketizeControlIngress
+    : Pass<"aie-auto-packetize-control-ingress", "mlir::ModuleOp"> {
+  let summary = "Packetize the minimal shim-ingress objectFifos so control fits";
+  let description = [{
+    When a column's circuit shim-ingress objectFifos would occupy every shim MM2S
+    channel, the in-band control overlay has no channel to ingress on. This pass
+    sets the `packet` attribute on the minimal set of those objectFifos so at least
+    one MM2S channel stays a shareable (packet) allocation control can time-share.
+    Opt-in; run before objectFifo lowering and only in the ctrl-pkt-overlay flow.
+  }];
+  let constructor = "xilinx::AIE::createAIEAutoPacketizeControlIngressPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   let summary = "Unroll scf.for loops that contain objectFifo operations";
   let description = [{
