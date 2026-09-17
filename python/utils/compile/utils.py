@@ -610,12 +610,12 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     ]
 
     objcopy = config.objcopy_path()
-    map_file = f"{object_path}.symbol_map"
-    with open(map_file, "w") as f:
-        for symbol in symbols:
-            f.write(f"{symbol} {prefix}{symbol}\n")
+    with tempfile.TemporaryDirectory(prefix="aie-symbol-map-") as tmpdir:
+        map_file = os.path.join(tmpdir, "symbols.map")
+        with open(map_file, "w") as f:
+            for symbol in symbols:
+                f.write(f"{symbol} {prefix}{symbol}\n")
 
-    try:
         result = subprocess.run(
             [objcopy, f"--redefine-syms={map_file}", str(object_path)],
             capture_output=True,
@@ -623,8 +623,6 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
         )
         if result.returncode != 0:
             raise RuntimeError(f"Symbol prefixing failed: {result.stderr.decode()}")
-    finally:
-        os.remove(map_file)
 
 
 def _symbol_prefix_stamp_path(object_path: str, prefix: str) -> str:
@@ -649,7 +647,7 @@ def _has_current_symbol_prefix_stamp(object_path: str, prefix: str) -> bool:
         with open(stamp_path) as f:
             state = json.load(f)
         object_sha256 = _sha256_file(object_path)
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return False
     return state == {
         "prefix": prefix,
@@ -670,14 +668,6 @@ def _write_symbol_prefix_stamp(object_path: str, prefix: str) -> None:
                 f,
             )
         os.chmod(tmp, _DEFAULT_FILE_MODE)
-
-
-def _ensure_symbol_prefix(object_path: str, prefix: str) -> None:
-    """Apply ``prefix`` once per distinct on-disk object and record that fact."""
-    if _has_current_symbol_prefix_stamp(object_path, prefix):
-        return
-    prefix_symbols_in_object(object_path, prefix)
-    _write_symbol_prefix_stamp(object_path, prefix)
 
 
 @contextlib.contextmanager
@@ -807,7 +797,9 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
-    If the object file already exists in ``kernel_dir``, compilation is skipped.
+    Existing objects are reused, except that prefixed objects require a matching
+    content stamp. Unstamped or modified prefixed objects are rebuilt from source:
+    their symbol names cannot establish whether prefixing has already happened.
 
     Args:
         func: ExternalFunction instance to compile.
@@ -836,14 +828,24 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
             "symbol_prefix, or drop inline for this kernel."
         )
 
-    # Skip if the object file already exists (cache hit).
+    # A missing/stale stamp can mean either a legacy cache entry or an interrupted
+    # prefix pass. Never rename those bytes again; rebuild from source instead.
     output_file = os.path.join(kernel_dir, func.object_file_name)
-    if os.path.exists(output_file):
-        if getattr(func, "_symbol_prefix", None):
-            _ensure_symbol_prefix(output_file, f"{func._symbol_prefix}_")
+    prefix = (
+        f"{func._symbol_prefix}_" if getattr(func, "_symbol_prefix", None) else None
+    )
+    if os.path.exists(output_file) and (
+        prefix is None or _has_current_symbol_prefix_stamp(output_file, prefix)
+    ):
         func._compiled = True
         func._compiled_dir = os.path.abspath(kernel_dir)
         return
+
+    # Invalidate before any writes, so a failed compile, rename, or stamp write
+    # cannot leave a cache entry that a later invocation trusts.
+    if prefix is not None:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(_symbol_prefix_stamp_path(output_file, prefix))
 
     if func._source_string is not None:
         original_name = getattr(func, "_original_name", func._name)
@@ -909,8 +911,9 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     # but any other extern "C" helper symbols the kernel source happens to define,
     # so multiple memoized instantiations of the same source can be linked
     # together without their helpers colliding too.
-    if getattr(func, "_symbol_prefix", None):
-        _ensure_symbol_prefix(output_file, f"{func._symbol_prefix}_")
+    if prefix is not None:
+        prefix_symbols_in_object(output_file, prefix)
+        _write_symbol_prefix_stamp(output_file, prefix)
 
     func._compiled = True
     func._compiled_dir = os.path.abspath(kernel_dir)

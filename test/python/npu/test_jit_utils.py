@@ -14,6 +14,7 @@
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 import pytest
 import numpy as np
 
@@ -23,7 +24,7 @@ from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
 from aie.iron import CompileTime, In, Out
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
-from aie.utils.compile.utils import compile_external_kernel
+from aie.utils.compile.utils import compile_external_kernel, _symbol_prefix_stamp_path
 from aie.utils.compile.cache.utils import _create_function_cache_key
 
 # ---------------------------------------------------------------------------
@@ -316,12 +317,13 @@ def test_compile_external_kernel_symbol_prefix_renames_every_defined_symbol(
         assert func._name == "op0_add_one"
 
 
+@pytest.mark.parametrize("stamp_state", ["valid", "missing", "corrupt", "stale"])
 def test_compile_external_kernel_symbol_prefix_cache_hit_is_idempotent(
-    npu_target_arch,
+    npu_target_arch, stamp_state
 ):
     """Re-running compile_external_kernel against an already-prefixed on-disk
     object (simulating a fresh process reusing a disk cache) must not
-    re-prefix the already-prefixed symbols once the prefix state is recorded."""
+    re-prefix the already-prefixed symbols, even with missing or invalid metadata."""
     func = ExternalFunction(
         "add_one",
         source_string='extern "C" void add_one(int* a, int* b, int n) {}',
@@ -331,6 +333,14 @@ def test_compile_external_kernel_symbol_prefix_cache_hit_is_idempotent(
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
         obj = os.path.join(kernel_dir, func.object_file_name)
         symbols_after_first_compile = _defined_extern_symbols(obj)
+        stamp = Path(_symbol_prefix_stamp_path(obj, "op0_"))
+        if stamp_state == "missing":
+            stamp.unlink()
+        elif stamp_state == "corrupt":
+            stamp.write_text("{")
+        elif stamp_state == "stale":
+            with open(obj, "ab") as f:
+                f.write(b"\0")
 
         # Simulate a fresh process: _compiled reset, object file already on disk.
         func._compiled = False
