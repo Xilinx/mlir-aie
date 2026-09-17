@@ -1,0 +1,5 @@
+<map id="LowerVectorReductionAddBfloat16OpAIE2P" name="LowerVectorReductionAddBfloat16OpAIE2P">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,93,252,133"/>
+<area shape="rect" id="Node000002" href="$classOpConversionPattern.html" title=" " alt="" coords="37,5,221,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="131,59,131,93,126,93,126,59"/>
+</map>
