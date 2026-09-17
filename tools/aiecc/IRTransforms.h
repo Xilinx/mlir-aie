@@ -482,7 +482,8 @@ inline mlir::LogicalResult checkLutBankSeparation(
                            .getOps<xilinx::AIE::BufferOp>()) {
       if (buffer.getTile() == coreOp.getTile() && !buffer.getCoreData() &&
           buffer.getAddress() && buffer.name()) {
-        bufferExtents.try_emplace(*buffer.name(), *buffer.getAddress(),
+        bufferExtents.try_emplace(buffer.name().getValue(),
+                                  *buffer.getAddress(),
                                   buffer.getAllocationSize());
       }
     }
