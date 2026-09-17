@@ -1,6 +1,6 @@
 //===- add.cc -------------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
@@ -15,6 +15,14 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// One vector register of bf16: 512-bit on AIE2P, 256-bit on AIE2. This was the
+// only difference between the two per-arch copies this file replaces.
+#if __AIE_ARCH__ >= 21
+constexpr int vec_factor = 32;
+#else
+constexpr int vec_factor = 16;
+#endif
+
 template <typename T_in, typename T_out, const int N>
 void eltwise_add(T_in *a, T_in *b, T_out *c) {
   for (int i = 0; i < N; i++) {
@@ -25,9 +33,6 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
 template <typename T_in, typename T_out, const int N>
 void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
 
-  // 32 bf16 = 512 bits = one AIE2P vector register (AIE2's is 256-bit and uses
-  // a 16-wide loop; see aie2/add.cc).
-  constexpr int vec_factor = 32;
   event0();
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;
@@ -50,7 +55,6 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
 // Runtime size with a scalar tail.
 template <typename T_in, typename T_out>
 void eltwise_vadd_size(T_in *a, T_in *b, T_out *c, int size) {
-  constexpr int vec_factor = 32;
   event0();
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;

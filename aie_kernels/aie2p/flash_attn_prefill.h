@@ -8,7 +8,7 @@
 #ifndef AIE_KERNELS_AIE2P_FLASH_ATTN_PREFILL_H
 #define AIE_KERNELS_AIE2P_FLASH_ATTN_PREFILL_H
 
-#include "zero.cc" // zero_vectorized
+#include "../generic/zero.cc" // zero_vectorized
 
 #include <aie_api/aie.hpp>
 

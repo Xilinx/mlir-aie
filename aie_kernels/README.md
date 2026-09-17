@@ -14,9 +14,18 @@ In some cases, the kernels are just generic C code, and will run on any family o
 > **NOTE:** this set of AIE kernels are meant for demonstration along with the programming examples. The goal is not to be 100% performant, there may be room for further improvement. The kernels are provided as-is with no guarantees of support of AMD or AMD Research and Advanced Development.
 
 ## Generic
+
+Kernels here build for every architecture. Where one differs only by an
+arch-derived constant such as the native vector width, it lives here behind
+`#if __AIE_ARCH__`, rather than as a near-duplicate copy per arch.
+
 | Class | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|-|
 | basic | [passThrough.cc](./generic/passThrough.cc) | AIE API | A simple memcpy operation | `uint8_t`, `int16_t`, `int32_t` |
+| basic | [zero.cc](./generic/zero.cc) | AIE API | Fill a tensor with zeroes; store width follows the arch (512-bit on AIE2P, 256-bit on AIE2) and is overridable | template |
+| basic | [add.cc](./generic/add.cc) | AIE API | Pointwise addition of 2 tensors | `bfloat16` |
+| basic | [mul.cc](./generic/mul.cc) | AIE API | Pointwise multiplication of 2 tensors | `bfloat16` |
+| ml | [conv2dk1_i8.cc](./generic/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
 | data movement | [transpose.cc](./generic/transpose.cc) | AIE API | Blocked matrix transpose (4×4 / 8×8 sub-tiles, VSHUFFLE) | `bfloat16` |
 | data movement | [expand.cc](./generic/expand.cc) | AIE API | uint4→bf16 dequant with per-group scale factors (zero-extended, no zero point) | `uint4`→`bfloat16` |
 | gemv | [mv.cc](./generic/mv.cc) | AIE API | Matrix/Vector multiply | `bfloat16` |
@@ -31,9 +40,6 @@ In some cases, the kernels are just generic C code, and will run on any family o
 ## AIE2
 | Class | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|-|
-| basic | [zero.cc](./aie2/zero.cc) | AIE API | Fill a tensor with zeroes | template |
-| basic | [add.cc](./aie2/add.cc) | AIE API | Pointwise addition of 2 tensors | `bfloat16` |
-| basic | [mul.cc](./aie2/mul.cc) | AIE API | Pointwise multiplication of 2 tensors | `bfloat16` |
 | basic | [scale.cc](./aie2/scale.cc) | AIE API | Scale all elements of a tensor with a scale factor | `int32_t` |
 | basic | [scale_shift.cc](./aie2/scale_shift.cc) | AIE API | Scale-and-shift | `int32_t` |
 | basic | [bitwiseOR.cc](./aie2/bitwiseOR.cc) | AIE API | Bitwise OR of fixed point tensors | `uint8_t`,`int16_t`,`int32_t`|
@@ -58,7 +64,6 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | activation | [bf16_exp.cc](./aie2/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | norm | [rms_norm.cc](./aie2/rms_norm.cc) | AIE API | RMS normalization — `rms_norm` (eps=1e-5) + `rms_norm_eps` (runtime eps) | `bfloat16` |
 | |
-| ml | [conv2dk1_i8.cc](./aie2/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
 | ml | [conv2dk1.cc](./aie2/conv2dk1.cc) | AIE API | 1x1 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
 | ml | [conv2dk3.cc](./aie2/conv2dk3.cc) | AIE API | 3x3 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
 | ml | [conv2dk1_skip.cc](./aie2/conv2dk1_skip.cc) | AIE API| 1x1 Conv2D with fused skip addition | `int8_t`, `uint8_t` |
@@ -75,9 +80,6 @@ In some cases, the kernels are just generic C code, and will run on any family o
 ## AIE2P
 | Class | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|-|
-| basic | [zero.cc](./aie2p/zero.cc) | AIE API | Fill a tensor with zeroes (512-bit stores) | template |
-| basic | [add.cc](./aie2p/add.cc) | AIE API | Pointwise addition of 2 tensors (512-bit vectors) | `bfloat16` |
-| basic | [mul.cc](./aie2p/mul.cc) | AIE API | Pointwise multiplication of 2 tensors (512-bit vectors) | `bfloat16` |
 | gemm | [mm.cc](./aie2p/mm.cc) | AIE API | Matrix/Matrix multiplication | `int8_t`,`int16_t`,`bfloat16` |
 | gemm | [mm_bfp.cc](./aie2p/mm_bfp.cc) | AIE API | Block-floating-point matmul | `bfp16` |
 | gemm | [mm_bfp_mixed.cc](./aie2p/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul | `bfp16` |
@@ -101,7 +103,6 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | attention | [mha.cc](./aie2p/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …); composes `softmax.cc` + `mm.cc` | `bfloat16` |
 | attention | [flash_attn_prefill.cc](./aie2p/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** (online softmax), split into per-step entry points for ObjectFifo designs; `attn_*` = global (head_dim 512), `swa_*` = sliding-window (head_dim 256) | `bfloat16` |
 | |
-| ml | [conv2dk1_i8.cc](./aie2p/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
 | ml | [conv2dk14.cc](./aie2p/conv2dk14.cc) | AIE API | 1x14 / 14x1 Conv2D | `int8_t` |
 | ml | [dwconv1d_channels_first.cc](./aie2p/dwconv1d_channels_first.cc) | AIE API | Depthwise 1D convolution, **channels-first** — one channel per call, vectorizes along time; runtime length, `'same'` padding, optional bias. The general-purpose one | `bfloat16` |
 | ml | [dwconv1d_channels_last.cc](./aie2p/dwconv1d_channels_last.cc) | AIE API | Depthwise 1D convolution, **channels-last** — one timestep per call, vectorizes across channels with per-channel taps and an optional clamp. ~2.9× the MACs/instruction of the above, but only when the data is already channels-last | `bfloat16` |

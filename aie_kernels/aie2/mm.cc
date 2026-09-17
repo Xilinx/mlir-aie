@@ -16,7 +16,7 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-#include "zero.cc"
+#include "../generic/zero.cc"
 
 template <typename T_in, typename T_out, int rowA, int colA, int colB,
           bool b_row_maj = true, bool c_row_maj = true>
@@ -978,18 +978,6 @@ extern "C" {
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
     matmul_scalar<ctype_in, ctype_out, DIM_M, DIM_K, DIM_N, is_b_row_maj,      \
                   is_c_row_maj>(a_in, b_in, c_out);                            \
-  }
-
-#define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
-                               mlir_type_out, r, s, t)                         \
-  void zero_##mlir_type_out(ctype_out *c_out) {                                \
-    zero_vectorized<ctype_out, DIM_M, DIM_N>(c_out);                           \
-  }
-
-#define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
-                           r, s, t)                                            \
-  void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
-    zero_scalar<ctype_out, DIM_M, DIM_N>(c_out);                               \
   }
 
 #ifndef SCALAR_ONLY
