@@ -150,14 +150,11 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
 Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
                                         StringAttr name) {
   if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
-      symbolTableOp->getNumRegions() != 1 ||
-      !symbolTableOp->getRegion(0).hasOneBlock()) {
+      symbolTableOp->getRegion(0).empty()) {
     return nullptr;
   }
-  if (Operation *symbol =
-          mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name)) {
-    return symbol;
-  }
+  // One walk finds both kinds: a symbol op's name is its `sym_name`, and
+  // `getAttr` reads it whether it is inherent or discardable.
   for (Operation &op : symbolTableOp->getRegion(0).front()) {
     if (op.getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()) ==
         name) {
