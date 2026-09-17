@@ -38,6 +38,27 @@ CHESSCCWRAP2P_FLAGS = aie2p -I ${AIETOOLS_DIR}/include
 PEANOWRAP2_FLAGS = -O2 -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS} -ffunction-sections -fdata-sections -fstack-size-section
 PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS} -ffunction-sections -fdata-sections -fstack-size-section
 
+# aiecc's --check-lut-banks recovers which two tables an aie::lut reads from the
+# kernel's LLVM IR, which only the kernel compile can preserve. -fembed-bitcode
+# cannot be combined with the -ffunction-sections/-fdata-sections above, so the
+# IR is emitted separately and attached. Opt in with AIE_CHECK_LUT_BANKS=1; it
+# costs a second compile per kernel, which is why it is not the default.
+#
+# Append $(call attach_bitcode,<PEANOWRAP*_FLAGS>) to a Peano kernel rule to use
+# it. Peano only: chess emits IR from an LLVM aiecc cannot parse.
+AIE_CHECK_LUT_BANKS ?= 0
+ifeq (${AIE_CHECK_LUT_BANKS},1)
+# Bundled in a wheel install, on PATH in a from-source build. GNU binutils
+# objcopy cannot parse an AIE object, so this has to be the LLVM one.
+AIE_OBJCOPY ?= $(firstword $(wildcard ${MLIR_AIE_DIR}/bin/llvm-objcopy) \
+	$(shell command -v llvm-objcopy 2>/dev/null))
+AIECC_FLAGS += --check-lut-banks
+attach_bitcode = && ${PEANO_INSTALL_DIR}/bin/clang $(1) -emit-llvm -c $(abspath $<) -o ${@F}.bc \
+	&& ${AIE_OBJCOPY} --add-section=.llvmbc=${@F}.bc ${@F}
+else
+attach_bitcode =
+endif
+
 TEST_POWERSHELL := $(shell command -v powershell.exe >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(TEST_POWERSHELL),yes)
 	powershell = powershell.exe

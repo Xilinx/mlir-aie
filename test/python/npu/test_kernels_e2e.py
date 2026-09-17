@@ -795,12 +795,9 @@ def test_check_lut_banks_is_one_switch(tmp_path):
     two are derived from one flag and cannot disagree. Preserving it is not
     free, which is why it stays off until asked for.
     """
-    from aie.utils import get_current_device
-    from aie.utils.compile.utils import resolve_target_arch
+    from aie.iron.kernels._common import _detect_arch
 
-    # Probing, not _detect_arch: that reads an explicitly-set device, and
-    # nothing here sets one, so it reports aie2 on an aie2p board.
-    if resolve_target_arch(get_current_device(probe_runtime=True)) != "aie2p":
+    if _detect_arch() != "aie2p":
         pytest.skip("the LUT gather this reads is aie2p")
     assert _carries_bitcode(_lut_pair_object(tmp_path, ["--check-lut-banks"]))
     assert not _carries_bitcode(_lut_pair_object(tmp_path, []))

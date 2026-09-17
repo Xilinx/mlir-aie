@@ -56,6 +56,7 @@ def test_compile_signature_preserves_positional_parameters():
         "use_chess",
         "inline",
         "symbol_name",
+        "embed_bitcode",
     ]
 
 
