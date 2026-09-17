@@ -159,6 +159,8 @@ int objectCountOn(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo) {
 /// released object too
 /// -- it merely has more pipeline slack hiding the race, not a real barrier.
 bool isCrossTileCoreShared(ObjectFifoCreateOp objFifo) {
+  if (objFifo.getConsumerTiles().empty())
+    return false;
   auto prodTile = cast<TileOp>(objFifo.getProducerTile().getDefiningOp());
   auto consTile = cast<TileOp>(objFifo.getConsumerTiles()[0].getDefiningOp());
   if (prodTile == consTile) {

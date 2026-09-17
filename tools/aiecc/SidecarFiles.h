@@ -337,7 +337,7 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
       return true;
     if (!n.starts_with("config_"))
       return false;
-    llvm::StringRef d = n.drop_front(8); // "config_"
+    llvm::StringRef d = n.drop_front(llvm::StringLiteral("config_").size());
     return !d.empty() && llvm::all_of(d, llvm::isDigit);
   };
   llvm::StringSet<> keptDevices;

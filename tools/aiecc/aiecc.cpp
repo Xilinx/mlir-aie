@@ -855,6 +855,11 @@ static std::string unionConfigDesigns(mlir::MLIRContext &context,
     }
   };
 
+  if (inputs.empty()) {
+    llvm::errs() << "aiecc: --reconfig-method: no input designs to fold\n";
+    return {};
+  }
+
   mlir::OwningOpRef<mlir::ModuleOp> base =
       mlir::parseSourceFile<mlir::ModuleOp>(inputs.front(), &context);
   if (!base) {

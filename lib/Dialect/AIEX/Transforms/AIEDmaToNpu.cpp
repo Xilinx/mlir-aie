@@ -187,8 +187,15 @@ public:
               shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id")) {
         pktId = controller_id_attr.getPktId();
       } else {
-        pktId = tm.getTileToControllerIdMap(/*columnWiseUniqueIDs=*/true)
-                    .lookup(AIE::TileID{(int)op.getColumn(), (int)op.getRow()});
+        auto ctrlIdMap =
+            tm.getTileToControllerIdMap(/*columnWiseUniqueIDs=*/true);
+        AIE::TileID tid{(int)op.getColumn(), (int)op.getRow()};
+        if (!ctrlIdMap.count(tid))
+          return op.emitOpError(
+              "no controller id for its tile; AIEAssignTileCtrlIDs must run "
+              "before ctrl-packet lowering (a silent controller-0 fallback "
+              "would wait on a token that never arrives)");
+        pktId = ctrlIdMap.lookup(tid);
       }
       uint32_t data = (uint32_t)pktId << 8;
       uint32_t mask = 0x00001F00;
