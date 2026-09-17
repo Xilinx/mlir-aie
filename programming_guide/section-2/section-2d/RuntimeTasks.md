@@ -110,7 +110,9 @@ To pin the Shim tile a handle's host-side DMA uses, pass `tile=` to `prod()`/`co
 rt = Runtime(sequence, [data_ty, of_in.prod(tile=Tile(0, 0))])
 ```
 
-The `fill()`/`drain()` methods return a `Task` handle. For the common case you can ignore it, but it enables software-pipelined data movement: pass a `Task` as a `range_` `iter_arg` to carry an in-flight transfer across loop iterations, and call `.free()` / `.await_()` on it to manage its lifetime by hand (see [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py)).
+The `fill()`/`drain()` methods return a `Task` handle. Prefer the default managed transfers and `TaskGroup` for ordinary data movement; the runtime handles their waits and frees.
+
+For software-pipelined data movement with manual lifetime control, issue the transfer with `managed=False` and do not pass `group=`. Use `range_` and `yield_` from `aie.iron.controlflow` to carry a `Task` through `iter_args` across loop iterations. Call `.await_()` only on transfers issued with `wait=True` (which requests a completion token), then call `.free()` when it is safe to reuse the descriptor. Awaiting alone does not free it. An unwaited transfer may be freed only after a dependent waited transfer proves it has completed. Do not manually free managed tasks: their task group already owns that responsibility. See [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py).
 
 #### **Setting Runtime Parameters in the Body**
 
@@ -180,8 +182,8 @@ It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of th
 
 To facilitate this reconfiguration step, IRON introduces `TaskGroup`s, created with the `TaskGroup()` constructor as defined in [taskgroup.py](../../../python/iron/runtime/taskgroup.py).
 
-A task is added to a group by passing `group=` to `fill`/`drain`. Tasks in the same group are appended to the runtime sequence and executed in order. The `finish()` method marks the end of a task group: it waits for tasks in the group annotated with `wait=True` to complete, then frees _all_ resources used by the group.
-If no group is specified for the DMA tasks in a body, a single default task group is used.
+A task is added to a group by passing `group=` to `fill`/`drain`. Transfers are submitted in sequence order and may overlap. The `finish()` method marks the end of a task group: it waits for tasks in the group annotated with `wait=True` to complete, then frees _all_ resources used by the group.
+If no group is specified for managed DMA tasks in a body, a single default task group is used and finished at the end of the sequence. By default, `Runtime` rejects mixing explicit groups with this default group; assign all managed transfers to explicit groups when using them.
 
 > **NOTE:**  A call to  `finish()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
 > 
@@ -191,16 +193,14 @@ If no group is specified for the DMA tasks in a body, a single default task grou
 >
 > If you suspect a race condition, the safest (but possibly slower) solution is to annotated _all_ tasks (including inputs) with `wait=True`.
 
-The body in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
+The body in the code snippet below has two task groups. Each group is finished before the next iteration submits its transfers.
 ```python
 def sequence(a_in, b, c_out, in_h, out_h):
-    tg = TaskGroup()  # start first task group
-    for _ in [0, 1]:
+    for _ in range(2):
+        tg = TaskGroup()
         in_h.fill(a_in, group=tg)
         out_h.drain(c_out, group=tg, wait=True)
         tg.finish()
-        tg = TaskGroup()  # start second task group
-    tg.finish()
 
 rt = Runtime(
     sequence,
