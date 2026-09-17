@@ -6,7 +6,7 @@
 # Whole-array dynamic i16 GEMM on real hardware, swept over n_aie_cols 1, 2, 4.
 # The runtime sequence keeps its scf.for rolled over a runtime trip count, which
 # only the dynamic BD free-list pool path supports. M/N remain DispatchTime, and
-# K is explicitly specialized to the fixed core reduction depth, so one
+# K is CompileTime for the fixed core reduction depth, so one
 # compiled artifact per column count serves every shape below.
 
 import aie.iron as iron
@@ -75,6 +75,8 @@ def test_shapes_share_one_compiled_artifact(n_aie_cols):
     alone does not show the runtime scalars reached the BDs -- the kernel-cache
     count is what distinguishes DispatchTime[T] from CompileTime[T] here.
     """
+    assert whole_array_dynamic.compilable.dispatch_params == ["M", "N"]
+    assert "K" in whole_array_dynamic.compilable.compile_params
     design = _design(n_aie_cols)
     after_first = None
     artifacts = None

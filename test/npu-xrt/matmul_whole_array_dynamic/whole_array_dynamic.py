@@ -15,7 +15,7 @@ One design, two lowerings, selected by explicit specialization:
 * **static** — call ``specialize(M=..., K=..., N=...)``. The bounds are constant, so
   ``aie-unroll-runtime-sequence-loops`` flattens the loops and everything folds
   to the same BDs the ``TensorTiler2D`` version emits (binary TXN path).
-* **dynamic** — specialize K only, and pass M/N at execution time. The ``scf.for`` loops
+* **dynamic** — bind compile-time K, and pass M/N at execution time. The ``scf.for`` loops
   survive to the EmitC path (``--aie-npu-to-cpp``), so one xclbin runs many
   shapes; the C++ builder assembles the TXN per call. K is fixed because the
   workers' reduction depth is compiled into their programs.
@@ -64,9 +64,9 @@ def whole_array_dynamic(
     B: In,
     C: Out,
     M: DispatchTime[np.int32],
-    K: DispatchTime[np.int32],
     N: DispatchTime[np.int32],
     *,
+    K: CompileTime[int],
     A_elements: CompileTime[int],
     B_elements: CompileTime[int],
     C_elements: CompileTime[int],
@@ -82,15 +82,11 @@ def whole_array_dynamic(
     A_elements/B_elements/C_elements describe physical host-buffer capacities,
     not additional problem dimensions. In/Out tensors are execution-time values,
     so their allocation sizes must be supplied separately for MLIR generation.
-    K must be specialized: the workers' reduction depth is fixed. M/N can vary
+    K is compile-time because the workers' reduction depth is fixed. M/N can vary
     within those capacities, using packed prefixes of the host buffers.
     """
     if any(size <= 0 for size in (A_elements, B_elements, C_elements)):
         raise ValueError("Host-buffer element capacities must be positive.")
-    if not isinstance(K, (int, np.integer)):
-        raise ValueError(
-            "Specialize K explicitly: the workers have a fixed reduction depth."
-        )
     if K <= 0 or K % k:
         raise ValueError("K must be positive and divisible by k.")
     if isinstance(M, (int, np.integer)) and not (
@@ -231,6 +227,7 @@ def whole_array_dynamic(
 
     # --- Runtime sequence: range_ + fill/drain, one body for both lowerings ---
     # The body's M/K/N are declared as inputs to Runtime(seq, [...]):
+    # K is always constant; only M/N can remain runtime inputs.
     #   unbound: passed as np.int32 types -> runtime i32 block args, so the
     #                  scf.for survives to the EmitC path; one xclbin, many shapes.
     #   specialized: passed as Python ints -> folded arith.constant, so
@@ -334,7 +331,7 @@ def whole_array_dynamic(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="Whole-array matmul (dynamic runtime seq)")
-    add_compile_args(p, short_dev=None)
+    add_compile_args(p, short_dev=None, with_emit_mlir=True)
     p.add_argument("-M", type=int, default=512)
     p.add_argument("-K", type=int, default=512)
     p.add_argument("-N", type=int, default=512)

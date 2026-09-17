@@ -1211,6 +1211,31 @@ module {
     assert sizes == [1024, 1024], f"Expected [1024, 1024], got {sizes}"
 
 
+@pytest.mark.parametrize(
+    "signature,expected",
+    [
+        (
+            "%n: i32, %a: memref<16x32xi16>, %offset: index, "
+            "%b: memref<1024xi32>, %flags: ui64",
+            [512, 1024],
+        ),
+        (
+            "%a: memref<512xi32>, %unsupported: f32, %b: memref<1024xi32>",
+            None,
+        ),
+        ("%n: i32, %offset: index, %flags: ui64", None),
+    ],
+    ids=["interleaved-dispatch-scalars", "unsupported-float", "scalar-only"],
+)
+def test_parse_dma_sizes_keeps_only_supported_host_tensor_capacities(
+    tmp_path, signature, expected
+):
+    (tmp_path / "input_with_addresses.mlir").write_text(
+        "module { aie.device(npu1) { aie.runtime_sequence(" + signature + ") { } } }"
+    )
+    assert parse_dma_sizes(tmp_path) == expected
+
+
 def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
     """matmul-style: the same host arg can carry several dma_bd ops (one per
     tile_row reload, or both an MM2S fill and S2MM drain on an InOut buffer).

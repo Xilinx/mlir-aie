@@ -34,6 +34,7 @@ import logging
 import operator
 import os
 import sys
+from collections import OrderedDict
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
@@ -198,6 +199,7 @@ class CompilableDesign:
                 declared = _dispatch_param_type(
                     self._hints.get(name, self._sig.parameters[name].annotation)
                 )
+                assert declared is not None
                 dispatch_scalar_c_type(declared)
                 if name in self.bound_dispatch_params:
                     try:
@@ -909,15 +911,12 @@ class CompilableDesign:
     def validate_tensor_args(self, tensor_args: list) -> None:
         """Validate that *tensor_args* element counts match the compiled kernel.
 
-        Compares each tensor's element count against the per-host-arg
-        addressable footprint extracted from the compiled
-        ``aiex.runtime_sequence``.  ``parse_dma_sizes`` returns
-        ``max(offset + len)`` so multi-column fan-outs, repeated transfers
-        (matmul B reloaded each tile_row), and InOut buffers (for_each
-        fill+drain on the same arg) all give the host-tensor size directly.
+        Compares each tensor's element count against the static memref capacity
+        in the compiled ``aie.runtime_sequence`` signature. Dispatch scalars
+        are skipped when parsing that signature; partial or repeated transfers
+        do not change the underlying host-buffer allocation contract.
 
-        Args with no associated DMA (entry == 0) are skipped — those are
-        runtime params not directly transferred by the design.
+        Zero-sized entries are skipped.
 
         No-op when expected sizes are unavailable (e.g. offline compilation
         or when ``input_with_addresses.mlir`` was not produced).
@@ -1197,6 +1196,7 @@ class CompilableDesign:
             declared = _dispatch_param_type(
                 self._hints.get(name, sig.parameters[name].annotation)
             )
+            assert declared is not None
             _gen_call_kwargs[name] = declared(self.compile_kwargs[name])
 
         # Re-register any ExternalFunction instances passed as CompileTime[T] params
@@ -1207,7 +1207,7 @@ class CompilableDesign:
 
         with compile_context(**self.compile_kwargs, _iron_full_elf=full_elf):
             with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
-                bound = inspect.BoundArguments(sig, _gen_call_kwargs)
+                bound = inspect.BoundArguments(sig, OrderedDict(_gen_call_kwargs))
                 bound.apply_defaults()
                 result = self.mlir_generator(*bound.args, **bound.kwargs)
                 module = ctx.module if result is None else result

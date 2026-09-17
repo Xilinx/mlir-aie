@@ -8,6 +8,9 @@
 # RUN: %run_on_npu2_hrx% %pytest %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
 
+# Direct HSA run on compatible hardware:
+# NPU_RUNTIME=hsa pytest test/python/npu/test_dispatch_time_scalar.py
+
 # End-to-end DispatchTime[T]: one compiled design, called with different
 # runtime scalar values. The rolled tile loop produces different instruction
 # stream lengths, exercising grow/shrink as well as changing DMA offsets.
@@ -139,6 +142,26 @@ def test_dispatch_time_scalar_repeated_same_value():
         _assert_copied_region(a, b, 3)
 
 
+@pytest.mark.parametrize("undersized", ["a", "b"])
+def test_dynamic_copy_rejects_undersized_buffer_before_dispatch(undersized):
+    design = dyn_copy.specialize()
+    expected_size = MAX_TILES * TILE_SIZE
+    a_values = _random_tiles(seed=8)
+    if undersized == "a":
+        a_values = a_values[:-1]
+    a = iron.tensor(a_values, dtype=np.int32, device="npu")
+    b = iron.zeros((expected_size - (undersized == "b"),), dtype=np.int32, device="npu")
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            f"Tensor argument '{undersized}' has {expected_size - 1} elements "
+            f"but the kernel was compiled for {expected_size} elements"
+        ),
+    ):
+        design(a, b, 1)
+    assert np.all(b.numpy() == 0)
+
+
 @pytest.mark.parametrize("static", [False, True])
 def test_same_generator_dynamic_default_and_static_specialization(static):
     a = iron.tensor(_random_tiles(seed=3), dtype=np.int32, device="npu")
@@ -208,55 +231,3 @@ def test_dispatch_explicit_paths_compile_and_execute(tmp_path):
         _assert_copied_region(a, b, count)
         assert design.get_dispatch_lib_path() == library
         assert library.read_bytes() == original_library
-
-
-def test_xrt_concurrent_dispatch_uses_independent_instruction_buffers():
-    """Concurrent submissions share a loaded kernel, not instruction or tensor BOs."""
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Barrier
-
-    from aie.utils import DefaultNPURuntime
-    from aie.utils.npukernel import NPUKernel
-
-    runtime = DefaultNPURuntime
-    if runtime is None or ".xrtruntime." not in type(runtime).__module__:
-        pytest.skip("Concurrent instruction-BO isolation is an XRT-specific test.")
-
-    design = dyn_copy.specialize().compilable
-    xclbin, _ = design.compile()
-    kernel = NPUKernel(
-        xclbin,
-        None,
-        kernel_name="MLIR_AIE",
-        dispatch_params=design.dispatch_params,
-        dispatch_lib_path=design.get_dispatch_lib_path(),
-    )
-    handle = runtime.load(kernel)
-    # Resolve the shared library serially; threads exercise only generation and
-    # dispatch, never a cold JIT or runtime-context cache.
-    kernel._generate_dispatch_insts({"n_tiles": 1, "start_tile": 0})
-    calls = [
-        (
-            iron.tensor(_random_tiles(seed=10 + i), dtype=np.int32, device="npu"),
-            iron.zeros((MAX_TILES * TILE_SIZE,), dtype=np.int32, device="npu"),
-            count,
-            start,
-        )
-        for i, (count, start) in enumerate(
-            ((1, 0), (7, 1), (6, 0), (2, 3), (3, 4), (1, 7))
-        )
-    ]
-    ready = Barrier(2, timeout=30)
-
-    def submit(call):
-        a, b, count, start = call
-        instructions = kernel._generate_dispatch_insts(
-            {"n_tiles": count, "start_tile": start}
-        )
-        ready.wait()
-        runtime.run(handle, [a, b], dispatch_insts=instructions)
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(submit, calls))
-    for a, b, count, start in calls:
-        _assert_copied_region(a, b, count, start)

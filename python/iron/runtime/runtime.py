@@ -376,11 +376,13 @@ class Runtime(Resolvable):
                         value -= 1 << 64
                     if (
                         isinstance(scalar_type, ir.IntegerType)
-                        and scalar_type.is_unsigned
+                        and ir.IntegerType(scalar_type).is_unsigned
                     ):
                         # arith.constant requires signless integers. EmitC's
                         # ConstantLike op preserves unsigned types and folds.
-                        from ...dialects.emitc import ConstantOp
+                        from ...dialects.emitc import (  # pyright: ignore[reportMissingImports]
+                            ConstantOp,
+                        )
 
                         body_args.append(
                             ConstantOp(

@@ -99,19 +99,13 @@ def jit(
     if callable(mlir_generator):
         from aie.utils.compile.jit._introspect import split_params
 
-        compile_params, _, dispatch_params, scalar_params = split_params(
-            mlir_generator
-        )
+        compile_params, _, dispatch_params, scalar_params = split_params(mlir_generator)
 
         # Guard 1-A: reject any compile kwarg that doesn't match a CompileTime[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)
         # before they silently run a kernel with no value bound.
         if compile_kwargs:
-            unknown = (
-                set(compile_kwargs)
-                - set(compile_params)
-                - set(dispatch_params)
-            )
+            unknown = set(compile_kwargs) - set(compile_params) - set(dispatch_params)
             if unknown:
                 raise TypeError(
                     f"@iron.jit received keyword argument(s) that do not match any "
