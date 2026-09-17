@@ -33,6 +33,10 @@ function(add_aie_runtime_libs arch)
       lut_based_ops.cpp
       lut_based_ops.h
       vec_math.h)
+  # AIE1's lut_based_ops.cpp is a stub, so it needs no bank placement header.
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${arch}/aie_bank_placement.h)
+    list(APPEND INSTALLS aie_bank_placement.h)
+  endif()
 
   foreach(file ${INSTALLS})
       add_custom_target(aie-copy-${arch}-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
