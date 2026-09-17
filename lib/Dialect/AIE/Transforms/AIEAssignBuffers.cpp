@@ -277,6 +277,13 @@ static bool basicAllocation(TileOp tile) {
     return false;
   }
 
+  if (auto core = tile.getCoreOp();
+      core && core.getStackBank() && !core.getStackAddress()) {
+    core.emitOpError("basic-sequential allocation cannot resolve stack_bank; "
+                     "use bank-aware allocation or specify stack_address");
+    return false;
+  }
+
   auto [maxDataMemorySize, tileAlignBitWidth, maxVecAlignBits] =
       tileMemoryLimits(tile, getTargetModel(tile));
 
@@ -352,8 +359,9 @@ static bool basicAllocation(TileOp tile) {
     while (current_alloc != allocated_buffers.end() &&
            address + buffer.getAllocationSize() >
                current_alloc->getAddress().value()) {
-      address = current_alloc->getAddress().value() +
-                current_alloc->getAllocationSize();
+      address =
+          std::max<int64_t>(address, current_alloc->getAddress().value() +
+                                         current_alloc->getAllocationSize());
       if (buffer.getAligned()) {
         address = getAlignedAddress(address, reqAlignBits);
       }
@@ -1003,13 +1011,26 @@ static BankAwareResult simpleBankAwareAllocation(TileOp tile) {
     stackRun = coreOp.getStackRun();
     if (!coreOp.getStackAddress() && coreOp.getStackBank()) {
       int bank = *coreOp.getStackBank();
-      int64_t align = std::max<int64_t>(tileAlignBitWidth / 8, 1);
-      std::optional<int64_t> at = occupancy.findLeastFragmentingGap(
+      int64_t align = targetModel.getCoreStackAlignment();
+      // Address-pinned buffers cannot move, whereas a bank-only stack can.
+      // Account for those pins before choosing the stack's address. The normal
+      // buffer placement below still validates each pin and records occupancy.
+      MemoryOccupancy stackOccupancy(maxDataMemorySize);
+      device.walk([&](BufferOp buffer) {
+        if (buffer.getTileOp() != tile || !buffer.getAddress())
+          return;
+        int64_t start = *buffer.getAddress();
+        int64_t end = start + buffer.getAllocationSize();
+        if (start >= 0 && end <= maxDataMemorySize)
+          stackOccupancy.markOccupied(start, end);
+      });
+      std::optional<int64_t> at = stackOccupancy.findLeastFragmentingGap(
           bankLimits[bank].start, bankLimits[bank].end(), stackRun.size, align);
       if (!at) {
         coreOp.emitOpError("requires a ")
-            << stackRun.size << "-byte stack in bank " << bank << ", but only "
-            << bankLimits[bank].size << " bytes exist there";
+            << stackRun.size << "-byte stack in bank " << bank
+            << ", but no contiguous aligned space remains after address-pinned "
+               "buffers";
         return BankAwareResult::ConstraintUnsatisfiable;
       }
       stackRun.start = *at;

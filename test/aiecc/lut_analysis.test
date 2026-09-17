@@ -1,0 +1,21 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Exercise the object/IR analysis directly without an AIE compiler or hardware.
+// REQUIRES: system-linux
+// RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -UNDEBUG -I%S/../../tools/aiecc %S/lut_analysis_test.cpp %S/../../tools/aiecc/StackSizeAnalysis.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags --libs object irreader core support --system-libs) %host_link_flags -o %t.exe'
+// RUN: %host_clang -c %S/bank_analysis_symbols.c -o %t.o
+// RUN: llvm-objcopy --add-section .llvmbc=%S/lut_analysis_pairs.ll %t.o %t.embedded.o
+// RUN: %LLVM_TOOLS_DIR/llvm-as %S/lut_analysis_pairs.ll -o %t.bc
+// RUN: touch %t.empty
+// RUN: echo corrupt > %t.corrupt
+// RUN: llvm-objcopy --add-section .llvmbc=%t.empty %t.o %t.empty.o
+// RUN: llvm-objcopy --add-section .llvmbc=%t.corrupt %t.o %t.corrupt.o
+// RUN: cat %t.bc %t.bc > %t.concat.bc
+// RUN: %host_clang -c %S/bank_analysis_duplicates.c -o %t.first.o
+// RUN: %host_clang -DSECOND -c %S/bank_analysis_duplicates.c -o %t.second.o
+// RUN: %host_clang -nostdlib -no-pie -Wl,-e,get_first %t.first.o %t.second.o -o %t.duplicates.elf
+// RUN: %t.exe %S/lut_analysis_pairs.ll %t.embedded.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf | FileCheck %s
+// RUN: llvm-objcopy --add-section .llvmbc=%t.bc %t.o %t.bitcode.o
+// RUN: %t.exe %S/lut_analysis_pairs.ll %t.bitcode.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf | FileCheck %s
+// CHECK: LUT analysis: all checks passed

@@ -168,7 +168,9 @@ inline cl::opt<bool> noCheckBankPlacement(
 inline cl::opt<bool> checkLutBanks(
     "check-lut-banks",
     cl::desc("Check that the two tables of each aie::lut<4> are in different "
-             "memory banks. Requires kernels built with -fembed-bitcode; off "
+             "memory banks. Requires embedded LLVM IR in object-linked "
+             "kernels; also checks merge-mode and generated core IR. Fails "
+             "when table placement cannot be verified. Off "
              "by default because preserving that IR costs compile time"));
 inline cl::opt<int> defaultStackSize(
     "default-stack-size",

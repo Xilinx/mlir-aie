@@ -108,6 +108,11 @@ bool applyJobsEnvironment() {
 using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
 using xilinx::AIE::DeviceOp;
 
+struct CoreCompilation {
+  EdgeWithTypedOutput<Directory> &object;
+  EdgeWithTypedOutput<File> &optimizedIR;
+};
+
 // Produce a per-key object (.o) -- these are the core program memories. Both
 // lowering strategies feed this per core; they differ only in how the modules
 // arriving here were produced. We define a chess path and a peano path; the
@@ -118,7 +123,7 @@ using xilinx::AIE::DeviceOp;
 // key's module before codegen. Keys with an empty list get the plain compile
 // flow. Only the peano path can merge them; the chess path consumes the same
 // edge solely to reject a non-empty list with a diagnostic.
-EdgeWithTypedOutput<Directory> &
+CoreCompilation
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
                     EdgeWithTypedOutput<std::vector<std::string>> &irLinkFiles,
@@ -136,12 +141,13 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       llvmIR.map<std::string>("chess-compat_{0}.ll", downgradeIRForChess)
           .threadSafe();
   auto &chessLinked =
-      bundle(chessCompat.out, arches.out, irLinkFiles.out)
+      bundle(chessCompat.out, arches.out, irLinkFiles.out, stackSpaces.out)
           .map<File>("chesslinked_{0}.ll",
                      [aietoolsRoot,
                       installDir](const Item<std::string> &ir,
                                   const Item<std::string> &archItem,
                                   const Item<std::vector<std::string>> &irLinks,
+                                  const Item<std::string> &,
                                   Item<File> &out) -> mlir::LogicalResult {
                        // The chess front-end cannot llvm-link, so merge-mode
                        // kernel artifacts have no route into the core on this
@@ -316,7 +322,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
           .map<Directory>(objName, llcCmd)
           .threadSafe();
 
-  return xchesscc ? chessObject : peanoObject;
+  return {xchesscc ? chessObject : peanoObject, opted};
 }
 
 // Host-compilation subgraph. Compiles the user's host sources against the
@@ -810,8 +816,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // leaves the stack where it has always been reports bank A, which is also
   // llc's default.
   auto &perCoreStackSpace = perCore.map<std::string>(
-      "perCoreStackSpace_{0}.txt", [](const OpInModule<CoreOp> &core) {
-        CoreOp op(core.op);
+      "perCoreStackSpace_{0}.txt",
+      [](const Item<OpInModule<CoreOp>> &core,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        CoreOp op(core.get().op);
         auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
         const auto &tm = getTargetModel(op);
         int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
@@ -821,7 +829,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           if (bankSize > 0)
             bank = static_cast<int>(op.getStackRun().start / bankSize);
         }
-        return std::to_string(5 + bank);
+        if (bank != 0) {
+          bool hasObjects = false;
+          if (auto files = op.getLinkFiles())
+            hasObjects = !files->empty();
+          else
+            hasObjects = op.getLinkWith().has_value();
+          if (xchesscc || xbridge || hasObjects) {
+            op.emitError()
+                << "a stack outside memory bank A requires Peano compilation "
+                   "with no separately compiled link_files: their stack bank "
+                   "assumptions cannot be verified. Use stack bank A, or "
+                   "compile kernels as LLVM IR with link_with_mode = \"merge\" "
+                   "and without --xchesscc/--xbridge";
+            return mlir::failure();
+          }
+        }
+        out.value = std::to_string(5 + bank);
+        return mlir::success();
       });
 
   // Per-core arch string (feeds link --target= and llc --march=).
@@ -876,16 +901,17 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [inputFile, workDirStr](const OpInModule<CoreOp> &core) {
         return collectCoreIRLinkFiles(CoreOp(core.op), inputFile, workDirStr);
       });
-  EdgeWithTypedOutput<Directory> &perCoreObjects =
+  auto perCoreCompilation =
       buildObjectSubgraph(perCoreLowered, perCoreArches, perCoreIRLinkFiles,
                           perCoreStackSpace, "objects_{0}.o");
 
-  EdgeWithTypedOutput<Directory> &unifiedObjects = buildObjectSubgraph(
+  auto unifiedCompilation = buildObjectSubgraph(
       unifiedPerCoreLowered, perCoreArches, perCoreIRLinkFiles,
       perCoreStackSpace, "objects_{0}.o");
 
-  EdgeWithTypedOutput<Directory> &objects =
-      doUnified ? unifiedObjects : perCoreObjects;
+  auto compilation = doUnified ? unifiedCompilation : perCoreCompilation;
+  auto &objects = compilation.object;
+  auto &optimizedIR = compilation.optimizedIR;
 
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts =
@@ -1129,14 +1155,17 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
   if (!noCheckBankPlacement.getValue()) {
     measured =
-        &bundle(compiledElfs.out, measured->out)
+        &bundle(compiledElfs.out, objects.out, measured->out)
              .join<ModRef>(
                  "checked_bank_placement.mlir",
-                 [elfLookup, inputFile, workDirStr](
-                     const Node<Directory> &elfs, const Node<ModRef> &physicalN,
-                     Item<ModRef> &out) -> mlir::LogicalResult {
+                 [elfLookup, inputFile,
+                  workDirStr](const Node<Directory> &elfs,
+                              const Node<Directory> &coreObjects,
+                              const Node<ModRef> &physicalN,
+                              Item<ModRef> &out) -> mlir::LogicalResult {
                    out.value = ModRef(physicalN.get().get().clone());
                    return checkBankPlacement(out.value->get(), elfLookup(elfs),
+                                             elfLookup(coreObjects),
                                              [&](llvm::StringRef p) {
                                                return resolveExternalPath(
                                                    p, inputFile, workDirStr);
@@ -1145,15 +1174,32 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
   if (checkLutBanks.getValue()) {
     measured =
-        &bundle(compiledElfs.out, measured->out)
+        &bundle(compiledElfs.out, optimizedIR.out, preBakedElfs.out,
+                measured->out)
              .join<ModRef>(
                  "checked_lut_banks.mlir",
                  [elfLookup, inputFile, workDirStr](
-                     const Node<Directory> &elfs, const Node<ModRef> &physicalN,
+                     const Node<Directory> &elfs, const Node<File> &coreIR,
+                     const Node<File> &preBaked, const Node<ModRef> &physicalN,
                      Item<ModRef> &out) -> mlir::LogicalResult {
                    out.value = ModRef(physicalN.get().get().clone());
+                   if (dryRun)
+                     return mlir::success();
+                   if (!preBaked.items.empty()) {
+                     llvm::errs()
+                         << "aiecc: --check-lut-banks cannot verify a prebuilt "
+                            "core elf_file without its compiler IR: "
+                         << preBaked.items.front().filePath << "\n";
+                     return mlir::failure();
+                   }
+                   llvm::StringMap<std::string> irByKey;
+                   for (const auto &item : coreIR.items)
+                     irByKey[item.key] = item.asFile();
                    return checkLutBankSeparation(
                        out.value->get(), elfLookup(elfs),
+                       [&](CoreOp core) {
+                         return irByKey.lookup(coreKey(core));
+                       },
                        [&](llvm::StringRef p) {
                          return resolveExternalPath(p, inputFile, workDirStr);
                        });
@@ -2041,6 +2087,12 @@ int main(int argc, char **argv) {
   // resolved-option globals (wantAiesim, doUnified, doCompileHost). See
   // CommandLineOptions.h.
   if (!cli::resolveOptions()) {
+    return 1;
+  }
+
+  if (checkLutBanks && (xchesscc || xbridge)) {
+    llvm::errs() << "aiecc: --check-lut-banks requires Peano compilation and "
+                    "linking; it cannot verify Chess LLVM IR\n";
     return 1;
   }
 

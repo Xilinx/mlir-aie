@@ -392,6 +392,7 @@ inline mlir::LogicalResult checkDataSizeRequirements(
 inline mlir::LogicalResult checkBankPlacement(
     mlir::ModuleOp module,
     llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> objectForCore,
     llvm::function_ref<std::string(llvm::StringRef)> resolvePath) {
   mlir::LogicalResult result = mlir::success();
   module.walk(
@@ -401,10 +402,15 @@ inline mlir::LogicalResult checkBankPlacement(
           return;
         }
         std::vector<std::string> objects;
+        std::string coreObject = objectForCore(coreOp);
+        if (!coreObject.empty())
+          objects.push_back(std::move(coreObject));
         if (auto filesAttr = coreOp.getLinkFiles()) {
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
             objects.push_back(resolvePath(f.getValue()));
           }
+        } else if (auto file = coreOp.getLinkWith()) {
+          objects.push_back(resolvePath(*file));
         }
 
         auto tile =
@@ -444,19 +450,18 @@ inline mlir::LogicalResult checkBankPlacement(
 // reads them at once, so one bank means one port and wrong data, with nothing
 // at run time to say so.
 //
-// The pairing comes from the IR `-fembed-bitcode` leaves in each object, so it
-// needs no annotation and no naming convention. An object built without that
-// flag carries no IR: that is an error rather than a skip, because the caller
-// asked for this check and a silent pass would read as "verified".
+// Inspect both the optimized core IR (including merge-mode kernels) and the
+// embedded IR in separately compiled objects. Missing IR or unresolved table
+// placement is an error, not a successful verification.
 inline mlir::LogicalResult checkLutBankSeparation(
     mlir::ModuleOp module,
     llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> irForCore,
     llvm::function_ref<std::string(llvm::StringRef)> resolvePath) {
   mlir::LogicalResult result = mlir::success();
   module.walk([&](xilinx::AIE::CoreOp coreOp) {
     std::string elf = elfForCore(coreOp);
-    auto filesAttr = coreOp.getLinkFiles();
-    if (elf.empty() || !filesAttr) {
+    if (elf.empty()) {
       return;
     }
     auto tile =
@@ -467,9 +472,11 @@ inline mlir::LogicalResult checkLutBankSeparation(
       return;
     }
     int64_t bankSize = targetModel.getLocalMemorySize() / numBanks;
+    llvm::StringMap<uint64_t> sizes;
     llvm::StringMap<int64_t> addrs = xilinx::aiecc::readDataSymbolAddresses(
         elf,
-        targetModel.getMemInternalBaseAddress({tile.getCol(), tile.getRow()}));
+        targetModel.getMemInternalBaseAddress({tile.getCol(), tile.getRow()}),
+        &sizes);
 
     auto describe = [&](const xilinx::aiecc::LutOperand &op) {
       switch (op.kind) {
@@ -479,38 +486,47 @@ inline mlir::LogicalResult checkLutBankSeparation(
         return "parameter " + std::to_string(op.paramIndex);
       case xilinx::aiecc::LutOperand::Kind::Stack:
         return std::string("a stack local");
+      case xilinx::aiecc::LutOperand::Kind::Unknown:
+        return std::string("an unresolved pointer");
       }
       return std::string("<unknown>");
     };
-    // -1 when the table's bank cannot be decided here: a parameter is bound at
-    // the call site, and a stack local has no bank of its own to report.
+    // Parameter bindings and stack-local offsets are not recoverable from
+    // separately compiled objects. Do not claim to have checked those banks.
     auto bankOf = [&](const xilinx::aiecc::LutOperand &op) -> int {
       if (op.kind != xilinx::aiecc::LutOperand::Kind::Symbol) {
         return -1;
       }
       auto it = addrs.find(op.symbol);
-      return it == addrs.end() ? -1 : static_cast<int>(it->second / bankSize);
+      if (it == addrs.end() || it->second < 0 ||
+          it->second >= bankSize * numBanks)
+        return -1;
+      uint64_t size = sizes.lookup(op.symbol);
+      if (size == 0 ||
+          size > static_cast<uint64_t>(bankSize - it->second % bankSize))
+        return -1;
+      return static_cast<int>(it->second / bankSize);
     };
 
-    for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
-      std::string object = resolvePath(f.getValue());
-      auto pairs = xilinx::aiecc::readLutPairsFromObject(object);
+    auto checkPairs = [&](llvm::StringRef input,
+                          const std::optional<std::vector<LutPair>> &pairs) {
       if (!pairs) {
         coreOp.emitError()
             << "core (" << tile.getCol() << ", " << tile.getRow() << "): '"
-            << f.getValue()
-            << "' carries no embedded LLVM IR, so its aie::lut tables cannot "
-               "be checked. Rebuild the kernel with -fembed-bitcode, or drop "
+            << input
+            << "' carries no readable LLVM IR, so its aie::lut tables cannot "
+               "be checked. Rebuild object-linked kernels with embedded LLVM "
+               "IR, or use link_with_mode = \"merge\", or drop "
                "--check-lut-banks";
         result = mlir::failure();
-        continue;
+        return;
       }
       for (const auto &pair : *pairs) {
         using Kind = xilinx::aiecc::LutOperand::Kind;
         bool onStack = pair.a.kind == Kind::Stack || pair.b.kind == Kind::Stack;
         int bankA = bankOf(pair.a);
         int bankB = bankOf(pair.b);
-        if (!onStack && (bankA < 0 || bankB < 0 || bankA != bankB)) {
+        if (!onStack && bankA >= 0 && bankB >= 0 && bankA != bankB) {
           continue;
         }
         auto diag = coreOp.emitError()
@@ -518,9 +534,12 @@ inline mlir::LogicalResult checkLutBankSeparation(
                     << "): the aie::lut tables in '" << pair.function << "' ("
                     << describe(pair.a) << " and " << describe(pair.b) << ") ";
         if (onStack) {
-          diag << "are on the stack, which is one contiguous run and so cannot "
-                  "give them separate memory banks. Make them static or pass "
-                  "them in as aie.buffers pinned to different banks";
+          diag << "are on the stack, so their bank separation cannot be "
+                  "verified. Use static tables pinned to different banks";
+        } else if (bankA < 0 || bankB < 0) {
+          diag << "have placement that cannot be verified. Use static tables "
+                  "pinned to different banks, or merge the kernel IR so table "
+                  "bindings can be optimized into the core";
         } else {
           diag << "are both in memory bank " << static_cast<char>('A' + bankA)
                << ". The gather reads them at once, so they must be in "
@@ -528,6 +547,18 @@ inline mlir::LogicalResult checkLutBankSeparation(
         }
         result = mlir::failure();
       }
+    };
+
+    std::string coreIR = irForCore(coreOp);
+    checkPairs(coreIR, xilinx::aiecc::readLutPairsFromIR(coreIR));
+    if (auto files = coreOp.getLinkFiles()) {
+      for (auto f : files->getAsRange<mlir::StringAttr>()) {
+        std::string object = resolvePath(f.getValue());
+        checkPairs(f.getValue(), xilinx::aiecc::readLutPairsFromObject(object));
+      }
+    } else if (auto file = coreOp.getLinkWith()) {
+      checkPairs(*file,
+                 xilinx::aiecc::readLutPairsFromObject(resolvePath(*file)));
     }
   });
   return result;

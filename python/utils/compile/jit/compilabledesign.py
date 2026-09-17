@@ -50,7 +50,10 @@ from aie.utils.compile import (
     compile_mlir_module,
 )
 from aie.utils.compile.cache.utils import file_lock
-from aie.utils.compile.utils import _cleanup_failed_compilation
+from aie.utils.compile.utils import (
+    _check_lut_banks_enabled,
+    _cleanup_failed_compilation,
+)
 
 from . import _manifest
 from ._dma_size_parser import parse_dma_sizes
@@ -398,7 +401,7 @@ class CompilableDesign:
                     # compile can preserve, so asking for the check is what
                     # turns it on. Deriving it here keeps the two from
                     # disagreeing, and aiecc_flags is already in the cache key.
-                    embed_bitcode="--check-lut-banks" in self.aiecc_flags,
+                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
                 )
 
                 compile_mlir_module(
@@ -525,7 +528,7 @@ class CompilableDesign:
                     # compile can preserve, so asking for the check is what
                     # turns it on. Deriving it here keeps the two from
                     # disagreeing, and aiecc_flags is already in the cache key.
-                    embed_bitcode="--check-lut-banks" in self.aiecc_flags,
+                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
                 )
 
                 compile_mlir_module(

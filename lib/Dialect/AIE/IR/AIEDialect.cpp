@@ -2599,28 +2599,35 @@ LogicalResult CoreOp::verify() {
   // constraint, so it is rejected here rather than at placement.
   const auto &targetModel = getTargetModel(*this);
   MemoryRun stackRun = getStackRun();
+  auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  int64_t numBanks =
+      tile ? targetModel.getNumBanks(tile.getCol(), tile.getRow()) : 0;
+  int64_t bankSize =
+      numBanks > 0 ? targetModel.getLocalMemorySize() / numBanks : 0;
   if (auto bank = getStackBank()) {
-    auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
-    int64_t numBanks =
-        tile ? targetModel.getNumBanks(tile.getCol(), tile.getRow()) : 0;
-    int64_t bankSize =
-        numBanks > 0 ? targetModel.getLocalMemorySize() / numBanks : 0;
     if (tile && *bank >= numBanks)
       return emitOpError("stack_bank ")
              << *bank << " does not exist; this tile has " << numBanks
              << " banks";
-    // A stack spilling out of its bank defeats the point of pinning it, and
-    // only stack_address can express one larger than a bank.
+    // Bank-specific stack accesses must stay inside the selected bank.
     if (bankSize > 0 && stackRun.size > bankSize)
       return emitOpError("stack_bank pins a ")
              << stackRun.size << "-byte stack to bank " << *bank
              << ", which holds " << bankSize
-             << " bytes; use stack_address for a stack this large";
+             << " bytes; omit stack_bank and stack_address for legacy "
+                "placement";
     if (getStackAddress() && bankSize > 0 && stackRun.start / bankSize != *bank)
       return emitOpError("stack_address 0x")
              << llvm::utohexstr(stackRun.start) << " lies in bank "
              << stackRun.start / bankSize << ", but stack_bank requests bank "
              << *bank;
+    if (getStackAddress() && bankSize > 0 &&
+        stackRun.end() > (*bank + 1) * bankSize)
+      return emitOpError("a ")
+             << stackRun.size << "-byte stack at 0x"
+             << llvm::utohexstr(stackRun.start) << " runs past stack_bank "
+             << *bank << " (ending at 0x"
+             << llvm::utohexstr((*bank + 1) * bankSize) << ")";
   }
   // Checked last so they do not pre-empt the diagnostics above on an op with
   // more than one defect. Size and placement are separate faults: a stack can
@@ -2636,6 +2643,19 @@ LogicalResult CoreOp::verify() {
                              << llvm::utohexstr(stackRun.start)
                              << " runs past this tile's local memory ("
                              << localMem << " bytes total)";
+  if (getStackAddress() && bankSize > 0 &&
+      stackRun.start / bankSize != (stackRun.end() - 1) / bankSize)
+    return emitOpError("a ")
+           << stackRun.size << "-byte stack at 0x"
+           << llvm::utohexstr(stackRun.start)
+           << " crosses memory banks; explicit stack placement requires the "
+              "entire stack in one bank. Omit stack_address and stack_bank for "
+              "legacy placement";
+  if (getStackAddress() &&
+      stackRun.start % targetModel.getCoreStackAlignment() != 0)
+    return emitOpError("stack_address must be aligned to ")
+           << targetModel.getCoreStackAlignment()
+           << " bytes for this target's stack ABI";
   return success();
 }
 

@@ -88,7 +88,25 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       // is one contiguous region, so its size bounds what the core can link,
       // and the total free memory on the tile does not.
       const auto &targetModel = getTargetModel(tile);
+      MemoryRun stackRun;
+      if (auto core = tile.getCoreOp()) {
+        if (core.getStackBank() && !core.getStackAddress())
+          return core.emitOpError(
+              "stack_bank has no assigned stack_address; run "
+              "--aie-assign-buffer-addresses with bank-aware allocation");
+        stackRun = core.getStackRun();
+      }
       MemoryRun dataRun = coreDataRegion(tile, buffers[tiles[srcCoord]]);
+      if (dataRun.start < 0 || dataRun.end() > targetModel.getLocalMemorySize())
+        return tile.emitOpError(
+            "data region runs past this tile's local memory; the buffer "
+            "allocator's placement is stale. Re-run "
+            "--aie-assign-buffer-addresses");
+      if (dataRun.size > 0 && stackRun.size > 0 &&
+          dataRun.start < stackRun.end() && stackRun.start < dataRun.end())
+        return tile.emitOpError(
+            "data region overlaps the stack; the buffer allocator's "
+            "placement is stale. Re-run --aie-assign-buffer-addresses");
 
       // A pass that adds or moves a buffer after the allocator ran leaves the
       // region aliasing it, and the core compiler and that buffer would then

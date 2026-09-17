@@ -8,8 +8,8 @@
 // An aie::lut<4> whose two tables are function locals.
 //
 // The gather reads the pair at once and so needs them in separate banks. The
-// stack is one contiguous run, so locals cannot be separated at all -- no
-// stack_size and no allocator choice can fix it. The pairing is recovered from
+// stack-local offsets are not recoverable here, so separation cannot be
+// verified. The pairing is recovered from
 // the kernel's own IR, so nothing here carries an annotation.
 
 // REQUIRES: peano
@@ -19,7 +19,7 @@
 
 // CHECK: error: core (0, 2): the aie::lut tables in 'classify'
 // CHECK-SAME: are on the stack
-// CHECK-SAME: Make them static or pass them in as aie.buffers pinned to different banks
+// CHECK-SAME: Use static tables pinned to different banks
 module {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)

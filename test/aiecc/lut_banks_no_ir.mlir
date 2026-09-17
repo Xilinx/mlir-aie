@@ -15,8 +15,8 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I%S/../../third_party/aie_api/include -c %S/lut_banks_same_bank_kernel.cc -o %t.d/lut_banks_same_bank_kernel.o
 // RUN: cd %t.d && not aiecc --get-core-elfs --check-lut-banks %s 2>&1 | FileCheck %s
 
-// CHECK: error: core (0, 2): 'lut_banks_same_bank_kernel.o' carries no embedded LLVM IR
-// CHECK-SAME: Rebuild the kernel with -fembed-bitcode
+// CHECK: error: core (0, 2): 'lut_banks_same_bank_kernel.o' carries no readable LLVM IR
+// CHECK-SAME: Rebuild object-linked kernels with embedded LLVM IR
 module {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)

@@ -94,17 +94,17 @@ struct BankViolation {
 
 // Reports the requests the linked ELF contradicts. A symbol the ELF does not
 // define is dropped: --gc-sections removes what the core never reaches.
+// Ambiguous duplicate names are also skipped, not reported as contradictions.
 std::vector<BankViolation>
 checkBankPlacements(llvm::StringRef elfPath,
                     llvm::ArrayRef<BankAssertion> assertions,
                     int64_t tileBaseAddress, int64_t bankSize, int numBanks);
 
-// One end of an `aie::lut<4>` table pair. A table on the stack is called out
-// separately: the stack is one contiguous run, so two locals cannot be given
-// separate banks at all.
+// One end of an `aie::lut<4>` table pair. Stack locals are called out separately:
+// their final offsets, and hence bank separation, cannot be verified here.
 struct LutOperand {
-  enum class Kind { Symbol, Param, Stack };
-  Kind kind = Kind::Symbol;
+  enum class Kind { Unknown, Symbol, Param, Stack };
+  Kind kind = Kind::Unknown;
   std::string symbol;  // Kind::Symbol
   int paramIndex = -1; // Kind::Param
 };
@@ -119,15 +119,26 @@ struct LutPair {
 // gather takes its addresses from a single vector-select of two broadcast
 // pointers, so the pair is whatever those two resolve to.
 //
-// Returns nothing when the object carries no IR, which the caller reports
-// rather than mistaking for "no pairs found". Peano only: chess emits IR from
-// an LLVM old enough that this parser rejects it.
+// Unresolvable gather addresses produce Unknown operands, not an empty result.
+// Direct LLVM IR inputs (.ll or .bc) are also accepted.
+// Returns nothing when the object carries no readable IR, which the caller
+// reports rather than mistaking for "no pairs found". Peano only: chess emits
+// IR from an LLVM old enough that this parser rejects it.
 std::optional<std::vector<LutPair>>
 readLutPairsFromObject(llvm::StringRef objectPath);
 
+// Inspects a textual or bitcode IR file, including optimized per-core IR.
+// Unknown operands and unresolved parameters remain in the result so the
+// caller can reject unverified gathers. Functions are not filtered by linked
+// symbol names: LTO may inline their gathers and remove the original symbol.
+std::optional<std::vector<LutPair>> readLutPairsFromIR(llvm::StringRef irPath);
+
 // Tile-relative addresses of the data symbols the linked core ELF defines.
-llvm::StringMap<int64_t> readDataSymbolAddresses(llvm::StringRef elfPath,
-                                                 int64_t tileBaseAddress);
+// Ambiguous names are omitted. If supplied, `sizes` receives ELF symbol sizes;
+// callers must check that a table's whole extent lies in one memory bank.
+llvm::StringMap<int64_t>
+readDataSymbolAddresses(llvm::StringRef elfPath, int64_t tileBaseAddress,
+                        llvm::StringMap<uint64_t> *sizes = nullptr);
 
 } // namespace xilinx::aiecc
 

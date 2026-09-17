@@ -66,8 +66,13 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
              << " // Don't put data in code memory\n";
 
       MemoryRun stackRun;
-      if (auto core = tile.getCoreOp())
+      if (auto core = tile.getCoreOp()) {
+        if (core.getStackBank() && !core.getStackAddress())
+          return core.emitOpError(
+              "stack_bank has no assigned stack_address; run "
+              "--aie-assign-buffer-addresses with bank-aware allocation");
         stackRun = core.getStackRun();
+      }
       output << "_stack DM_stack "
              << utohexstr(targetModel.getMemInternalBaseAddress(srcCoord) +
                           stackRun.start)

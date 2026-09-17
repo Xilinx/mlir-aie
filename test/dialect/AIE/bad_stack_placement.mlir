@@ -20,9 +20,20 @@ module {
 
 // -----
 
+// Starting in the requested bank is insufficient: the entire stack must fit.
+// CHECK: error{{.*}}'aie.core' op a 1024-byte stack at 0x7E00 runs past stack_bank 1 (ending at 0x8000)
+module {
+  aie.device(npu2) {
+    %t = aie.tile(0, 2)
+    %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_address = 32256 : i32, stack_bank = 1 : i32 }
+  }
+}
+
+// -----
+
 // A stack larger than a bank cannot sit in one, and pinning it to a bank is
 // then a contradiction rather than a placement problem.
-// CHECK: error{{.*}}'aie.core' op stack_bank pins a 32768-byte stack to bank 1, which holds 16384 bytes; use stack_address for a stack this large
+// CHECK: error{{.*}}'aie.core' op stack_bank pins a 32768-byte stack to bank 1, which holds 16384 bytes; omit stack_bank and stack_address for legacy placement
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
@@ -49,5 +60,27 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_address = 65024 : i32 }
+  }
+
+  // -----
+
+  // Without stack_bank, explicit placement still selects one stack address space.
+  // CHECK: error{{.*}}'aie.core' op a 1024-byte stack at 0x7E00 crosses memory banks; explicit stack placement requires the entire stack in one bank
+  module {
+    aie.device(npu2) {
+      %t = aie.tile(0, 2)
+      %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_address = 32256 : i32 }
+    }
+  }
+
+  // -----
+
+  // Explicit zero is also a placement hint, unlike an absent address.
+  // CHECK: error{{.*}}'aie.core' op a 32768-byte stack at 0x0 crosses memory banks
+  module {
+    aie.device(npu2) {
+      %t = aie.tile(0, 2)
+      %c = aie.core(%t) { aie.end } { stack_size = 32768 : i32, stack_address = 0 : i32 }
+    }
   }
 }

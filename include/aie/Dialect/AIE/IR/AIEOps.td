@@ -376,9 +376,12 @@ def AIE_CoreOp
           // Absent means "use this target's default"; read
           // getEffectiveStackSize().
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
-          // Where the stack starts, tile-relative. Absent means 0, the bottom
-          // of data memory. The stack grows up from here, so whatever follows
-          // it is what an overrun reaches first.
+          // Where the stack starts, tile-relative. Absent means 0 unless
+          // stack_bank requires the allocator to resolve it. The stack grows
+          // up from here, so whatever follows it is what an overrun reaches.
+          // An explicit run must fit one bank, because aiecc selects a single
+          // bank address space for stack accesses. Omit both placement hints
+          // to retain legacy placement of stacks larger than a bank.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_address,
           // Memory bank the stack must sit in. The bank-aware allocator picks
           // an address inside it and writes `stack_address`, the way it does
@@ -437,9 +440,26 @@ def AIE_CoreOp
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
-    The stack sits directly below the buffers with no clearance, so a `stack_size`
-    below the core's use overwrites those buffers. `aiecc` measures the stack this
-    core needs, writes it to the `measured_stack_size` attribute, and fails the build
+    Optional `stack_address` sets the tile-relative byte offset of the stack.
+    Optional `stack_bank` constrains its bank; bank-aware allocation resolves a
+    bank-only constraint into `stack_address`. Basic-sequential allocation
+    requires an address for a bank constraint. An explicitly placed stack must
+    fit entirely inside one bank, matching its bank-specific stack address space.
+    Its address must satisfy the stack ABI alignment: 32 bytes on AIE1/AIE2,
+    64 bytes on AIE2P/AIE2PS.
+    Omitting both attributes retains legacy placement at offset zero, including
+    stacks larger than one bank.
+
+    Stacks outside bank A are unsupported with Chess. For Peano, moving the stack
+    outside bank A requires recompiling the kernels with the matching stack
+    address space; `aiecc` rejects this with ordinary precompiled `link_files`
+    or deprecated core `link_with` inputs. LLVM IR merged through
+    `link_merge_files` can instead be compiled with the core's stack model.
+
+    By default the stack sits directly below the buffers with no clearance, so a
+    `stack_size` below the core's use overwrites those buffers. `aiecc` measures
+    the stack this core needs, writes it to the `measured_stack_size` attribute,
+    and fails the build
     when `stack_size` is smaller. `aiecc` measures the whole live call chain. That
     chain starts above the core body: the runtime enters at `__start` (crt0), which
     calls `_main_init` (crt1), which calls the core body, which calls its kernels.
@@ -521,8 +541,8 @@ def AIE_CoreOp
     uint32_t getEffectiveStackSize();
     /// Where the stack sits in this tile's data memory. Absent `stack_address`
     /// means offset 0, which is where every core put it before the attribute
-    /// existed. The allocator, both emitters and the data-region computation
-    /// read it here so they cannot disagree about it.
+    /// existed. A stack_bank-only pin must first be resolved by the allocator
+    /// before consumers use this run as its final placement.
     MemoryRun getStackRun();
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);

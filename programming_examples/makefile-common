@@ -41,8 +41,9 @@ PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLA
 # aiecc's --check-lut-banks recovers which two tables an aie::lut reads from the
 # kernel's LLVM IR, which only the kernel compile can preserve. -fembed-bitcode
 # cannot be combined with the -ffunction-sections/-fdata-sections above, so the
-# IR is emitted separately and attached. Opt in with AIE_CHECK_LUT_BANKS=1; it
-# costs a second compile per kernel, which is why it is not the default.
+# IR is emitted separately and attached. Opt in with AIE_CHECK_LUT_BANKS=1 on
+# a clean build (or use make -B: make does not track flag changes). It costs a
+# second compile per kernel, which is why it is not the default.
 #
 # Append $(call attach_bitcode,<PEANOWRAP*_FLAGS>) to a Peano kernel rule to use
 # it. Peano only: chess emits IR from an LLVM aiecc cannot parse.
@@ -52,9 +53,13 @@ ifeq (${AIE_CHECK_LUT_BANKS},1)
 # objcopy cannot parse an AIE object, so this has to be the LLVM one.
 AIE_OBJCOPY ?= $(firstword $(wildcard ${MLIR_AIE_DIR}/bin/llvm-objcopy) \
 	$(shell command -v llvm-objcopy 2>/dev/null))
-AIECC_FLAGS += --check-lut-banks
-attach_bitcode = && ${PEANO_INSTALL_DIR}/bin/clang $(1) -emit-llvm -c $(abspath $<) -o ${@F}.bc \
-	&& ${AIE_OBJCOPY} --add-section=.llvmbc=${@F}.bc ${@F}
+# Keep the opt-in authoritative even with command-line AIECC_FLAGS, without
+# passing the same LLVM option twice.
+override AIECC_FLAGS := $(filter-out --check-lut-banks -check-lut-banks --check-lut-banks=% -check-lut-banks=%,${AIECC_FLAGS}) --check-lut-banks
+attach_bitcode = $(if ${AIE_OBJCOPY},,$(error AIE_CHECK_LUT_BANKS=1 requires llvm-objcopy; set AIE_OBJCOPY)) \
+	&& ( ${PEANO_INSTALL_DIR}/bin/clang $(1) -emit-llvm -c $(abspath $<) -o ${@F}.bc \
+	&& ${AIE_OBJCOPY} --add-section=.llvmbc=${@F}.bc ${@F} \
+	|| { rm -f ${@F} ${@F}.bc; exit 1; } )
 else
 attach_bitcode =
 endif

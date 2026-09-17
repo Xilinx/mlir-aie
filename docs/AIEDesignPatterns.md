@@ -33,6 +33,42 @@ Perform some operations on the buffer in the core
 
 ```
 
+## LUT tables and memory banks
+
+The two tables used by an `aie::lut<4>` gather must occupy different memory
+banks. For AIE2/AIE2P C++ kernels, include `aie_bank_placement.h` from the
+runtime-library include directory and annotate static table definitions with
+`AIE_BANK_A`, `AIE_BANK_B`, `AIE_BANK_C`, or `AIE_BANK_D`. Peano uses
+`.aie.bank0` through `.aie.bank3` sections; Chess uses `chess_storage`.
+MLIR buffers can instead request a bank with `mem_bank`.
+
+For Peano, bank-pinned sections use the free space left in that bank after
+buffers, the stack, and the ordinary static-data region are reserved. Set
+`data_size` on the core (or `Worker(..., data_size=...)` in IRON) to bound the
+ordinary static-data reservation; otherwise it takes the largest available
+run and may leave no room for a pinned table. A bank overflow is a link error,
+not permission to place the table in another bank.
+
+Enable `--check-lut-banks` to check table separation against the linked ELF.
+IRON preserves kernel IR automatically when this aiecc flag is enabled.
+Makefile examples that use the bitcode-attachment recipes can opt in with
+`AIE_CHECK_LUT_BANKS=1`. Manually built object-linked kernels must retain
+readable LLVM IR in their `.llvmbc` section; merge-mode kernels are checked
+through the optimized core IR. The check is Peano-only and off by default.
+Prebuilt `elf_file` cores cannot be checked without their compiler IR.
+Unresolved pointers, parameter bindings, and stack-local placement produce an
+error rather than a successful verification. Prefer bank-pinned static tables
+when separately compiling a kernel.
+
+`stack_bank` requests a bank-aware stack allocation; `stack_address` specifies
+a tile-relative byte address. An explicit placement must fit the stack in one
+bank and must not overlap buffers. Basic-sequential allocation requires an
+explicit address rather than an unresolved bank request. Moving the stack out
+of bank A in aiecc requires Peano and merge-mode kernels: separately compiled
+objects and Chess compilation/linking are rejected because their stack-bank
+assumptions cannot be verified. With no placement attributes, the existing
+stack-at-zero behavior is unchanged.
+
 ## Single-buffered Communication
 [Single-buffer DMA example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/05_tiledma/aie.mlir)
 
