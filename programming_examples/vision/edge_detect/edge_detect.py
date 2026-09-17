@@ -239,7 +239,7 @@ def edge_detect(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Edge Detect")
-    add_compile_args(p)
+    add_compile_args(p, with_emit_mlir=True)
     p.add_argument("-W", "--width", type=int, default=1920)
     p.add_argument("-H", "--height", type=int, default=1080)
     return p

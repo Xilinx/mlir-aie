@@ -1,9 +1,9 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// RUN: python3 %S/edge_detect.py --dev npu --emit-mlir -W 64 -H 4 > %t.npu.mlir
+// RUN: %python %S/edge_detect.py --dev npu --emit-mlir -W 64 -H 4 > %t.npu.mlir
 // RUN: FileCheck %s --implicit-check-not=OF_local < %t.npu.mlir
-// RUN: python3 %S/edge_detect.py --dev npu2 --emit-mlir -W 64 -H 4 > %t.npu2.mlir
+// RUN: %python %S/edge_detect.py --dev npu2 --emit-mlir -W 64 -H 4 > %t.npu2.mlir
 // RUN: FileCheck %s --implicit-check-not=OF_local < %t.npu2.mlir
 //
 // The two kernels in the final Worker share one local scratch buffer.
