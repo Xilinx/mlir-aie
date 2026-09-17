@@ -19,7 +19,7 @@ module @shared_fixed_exact_capacity {
   }
 }
 // CHECK-LABEL: module @shared_fixed_exact_capacity
-// CHECK: aie.buffer({{.*}}) {address = 0 : i64, sym_name = "b"}
+// CHECK: aie.buffer({{.*}}) {address = 0 : i32, {{.*}}sym_name = "b"}
 // CHECK: @reader({{.*}}) drains @p {channelIndex = 0 : i32}
 // CHECK: @writer({{.*}}) fills @q {channelIndex = 0 : i32}
 
@@ -42,5 +42,5 @@ module @sub_byte_exact_capacity {
   }
 }
 // CHECK-LABEL: module @sub_byte_exact_capacity
-// CHECK: aie.buffer({{.*}}) {{.*}}sym_name = "large_buff_0"
-// CHECK: aie.buffer({{.*}}) {{.*}}sym_name = "small_buff_0"
+// CHECK: aie.buffer({{.*}}) {address = 524160 : i32, {{.*}}sym_name = "large_buff_0"
+// CHECK: aie.buffer({{.*}}) {address = 524256 : i32, {{.*}}sym_name = "small_buff_0"
