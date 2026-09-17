@@ -21,9 +21,12 @@ void zero_scalar(T *__restrict c) {
   }
 }
 
-template <typename T, int M, int N>
+// Width is the store width in bits. 512 is the AIE2P native store unit and the
+// right default; a narrower one lets a buffer whose element count is not a
+// multiple of the 512-bit lane count still be zeroed vectorized.
+template <typename T, int M, int N, int Width = 512>
 void zero_vectorized(T *__restrict c) {
-  constexpr int r = 512 / (sizeof(T) * 8); // 512 bit store units for AIE2P
+  constexpr int r = Width / (sizeof(T) * 8);
   static_assert((M * N) % r == 0);
   const aie::vector<T, r> zeros = aie::zeros<T, r>();
   const T *__restrict c_end = c + M * N;
