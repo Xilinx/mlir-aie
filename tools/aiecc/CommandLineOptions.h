@@ -323,7 +323,7 @@ inline cl::opt<std::string>
     fullElfName("full-elf-name", cl::desc("Output filename for combined ELF"),
                 cl::init("aie.elf"));
 
-// The reconfiguration delivery method (Plan B taxonomy). Selects how N folded
+// The reconfiguration delivery method. Selects how N folded
 // single-config `design*.mlir` modules are delivered from one combined ELF
 // (written to --full-elf-name): loadpdi = keep load_pdi, firmware reloads the
 // full PDI; write32 = expand to write32/blockwrite direct writes (no overlay,
@@ -379,7 +379,7 @@ inline cl::opt<bool> parallelColumns(
 // AIEFreezeControlFabric pass, which self-gates to a no-op without an
 // @ctrl_pkt_overlay device (plain builds byte-identical).
 //   adapt (default) -- pin control AROUND the ports config data uses (eager
-//                      avoidance; less disruptive, corpus parity with blind).
+//                      avoidance; less disruptive, parity with blind).
 //   blind           -- blind Layer-0 capture (pin all control routing).
 //   off             -- do not pin (reintroduces the multi-column co-tenancy
 //                      wedge; ablation / escape hatch only).

@@ -1264,7 +1264,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                             dyn = dynamicObjFifos.getValue(),
                             pkt = packetSwObjFifos.getValue(),
                             // --reconfig-method=write32 does not feed into
-                            // ctrl or ldpdi: arm2 is overlay-free (no
+                            // ctrl or ldpdi: write32 is overlay-free (no
                             // column-control-overlay pass, no
                             // @ctrl_pkt_overlay, no reserve-control-ids /
                             // auto-packetize). Only ctrlPktOverlay and
@@ -1569,8 +1569,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // getMaterializeRuntimeSeqPipeline rewrites `aiex.configure` into `aie.run`
   // (after which nothing is left to split). Gated on the --reconfig-method fold
   // (generateMultiConfigElf); the pass itself keys on the entrypoint marker and
-  // is a genuine no-op on already-split single-configure sequences (the rung
-  // ladder / conformed corpus inputs), so those fold inputs pass through
+  // is a genuine no-op on already-split single-configure sequences (conformed
+  // multi-config inputs), so those fold inputs pass through
   // unchanged.
   EdgeWithTypedOutput<ModRef> &npuConfigureSplit =
       generateMultiConfigElf
@@ -2481,7 +2481,7 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(parseArgc, effArgv,
                                     "aiecc declarative driver\n");
 
-  // --reconfig-method is the Plan B taxonomy selector: it folds N single-config
+  // --reconfig-method is the delivery-method selector: it folds N single-config
   // designs into one combined ELF (--full-elf-name) and drives the internal
   // lowering flags directly. Every method sets generateMultiConfigElf (the
   // fold + split); the delivery differs:

@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Tests that reset-free (arm2) is reset-free by default: with-reset
+// Tests that reset-free is reset-free by default: with-reset
 // defaults to false, so no @empty init preload load_pdi is emitted at all --
 // the firmware resets the partition on context teardown, so the preload is
-// redundant. with-reset=true restores the Plan A preload (load_pdi @empty).
+// redundant. with-reset=true restores the reset preload (load_pdi @empty).
 
 // RUN: aie-opt --aie-expand-load-pdi="reset-free=true self-clear=true" %s | FileCheck %s
 // RUN: aie-opt --aie-expand-load-pdi="reset-free=true with-reset=true self-clear=true" %s | FileCheck %s --check-prefix=WITHRESET

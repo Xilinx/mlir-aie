@@ -660,7 +660,7 @@ struct AIEGenerateColumnControlOverlayPass
     // chooseCtrlShimChan only reads column-wide circuit/data-alloc state.
     int trunkChan = -1;
     if (isShimMM2S) {
-      // CONSUME Stage-1's stamp when present (spec 5.5). Stage-1's
+      // CONSUME Stage-1's stamp when present. Stage-1's
       // AIEAutoPacketizeControlIngress stamps the union-chosen control trunk
       // channel K on this column's row-0 shim tile as `ctrl_pkt_trunk_chan`,
       // and conforms each config to pin control's leg to that K. Stage-1's

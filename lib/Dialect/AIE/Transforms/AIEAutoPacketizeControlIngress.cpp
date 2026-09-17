@@ -168,13 +168,13 @@ struct AIEAutoPacketizeControlIngressPass
   // memtile master port so the data leg takes NO arbiter grant past the shim --
   // no data-side packet deadlock is possible regardless of placement / column
   // count / arbiter assignment. This is the same boundary split multi-hop
-  // designs (rung 16, whole_array) already ride on device.
+  // two-input designs already ride on device.
   //
   // No-op (the caller's bare setPacket stands) when the trunk already
   // terminates at a memtile (boundary split already present), when the target
   // has no memtile row, or for the rare strided/per-consumer-depth legs whose
   // split would need dim/depth redistribution (kept on today's path rather than
-  // risk miscompiling them; none of the wedging corpus designs hit this).
+  // risk miscompiling them; no design that wedges here hits this).
   static void synthesizeMemtileRelay(DeviceOp device,
                                      ObjectFifoCreateOp trunk) {
     const auto &tm = device.getTargetModel();
@@ -191,7 +191,7 @@ struct AIEAutoPacketizeControlIngressPass
         return;
     // Per-consumer depths (array elemNumber) or consumer-side stream dims would
     // both need redistribution across the split; leave those legs on the bare
-    // packet path (unreached by the wedging corpus designs, all of which use a
+    // packet path (unreached by designs that wedge here, all of which use a
     // scalar depth and no objectFifo-level consumer dims -- their striding
     // lives in the host DMA BD, which rides the retained shim producer fifo).
     if (isa<ArrayAttr>(trunk.getElemNumber()))
@@ -329,7 +329,7 @@ struct AIEAutoPacketizeControlIngressPass
           return a.getSymName() < b.getSymName();
         });
 
-        // Conform this config to the union trunk K (spec 5.3). K carries at
+        // Conform this config to the union trunk K. K carries at
         // most one leg, and only a PACKET leg -- so control ingress can
         // co-tenant K in every config. Pick that leg (the "trunk"):
         //  - an existing packet leg (author's or a prior run's) is the trunk;

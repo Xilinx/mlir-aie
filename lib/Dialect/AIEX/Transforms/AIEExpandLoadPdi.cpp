@@ -147,7 +147,7 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
   // The reset-free policy without with-reset skips the init preload entirely:
   // the firmware resets the partition on context teardown, so there is no
   // @empty reset to (re-)establish at the start of a config. with-reset
-  // restores the Plan A behavior (preload @empty, like plain write32).
+  // restores the reset behavior (preload @empty, like plain write32).
   bool skipPreload = resetFree && !withReset;
 
   FlatSymbolRefAttr preloadRef;

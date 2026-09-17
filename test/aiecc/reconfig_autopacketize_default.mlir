@@ -20,7 +20,7 @@
 // DEFAULT: wrote edge 'input_with_addresses.mlir'
 
 // Case 2 (legacy opt-in flag, back-compat): the old --ctrlpkt-auto-packetize
-// flag is still accepted (e.g. the corpus sweep harness passes it explicitly)
+// flag is still accepted (e.g. a build may pass it explicitly)
 // and does not double-apply the pass -- exactly one flip warning, same as
 // the default.
 // RUN: aiecc --get-full-elf --reconfig-method=ctrlpkt --ctrlpkt-auto-packetize --get-input-with-addresses --tmpdir=%t_legacy --verbose %S/Inputs/reconfig_idiomatic_twochannel.mlir 2>&1 | FileCheck %s --check-prefix=LEGACY

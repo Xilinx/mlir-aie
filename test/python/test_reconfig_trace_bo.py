@@ -13,7 +13,7 @@ appends a dedicated N-byte trace-buffer arg at the tail of the design's own
 tensor args (before any control-packet buffer). ``Reconfiguration.compile()``
 surfaces N as ``FullElf.trace_buffer_bytes`` so a runlist host allocates + binds
 that BO at the design's arg tail, keeping the control BO at the following index
-(see ``FullElf`` docstring; consumed by ``corpus_sweep.py``'s runlist dispatch).
+(see the ``FullElf`` docstring).
 
 These exercise the pure text->size extraction directly, without running aiecc:
 no trace -> None, one trace design -> its byte count, and the >1-design guard

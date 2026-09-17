@@ -1152,8 +1152,8 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 // resident overlay (the overlay-free out-of-band arm); it rides write32
 // delivery and is ignored under `ctrlPkt`. `withReset` only matters under
 // `resetFree`: false (default) skips the @empty init preload entirely
-// (reset-free arm2, no load_pdi anywhere); true restores it (the Plan A
-// always-init behavior). A no-op under `ctrlPkt`/plain write32, which always
+// (reset-free, no load_pdi anywhere); true restores it (the always-init
+// behavior). A no-op under `ctrlPkt`/plain write32, which always
 // init. `parallelColumns` is only meaningful under `ctrlPkt`: it appends the
 // tile-sort pass (aie-sort-control-packets-by-tile) after control-packet
 // legalization, at this shared producer of the control-packet module so BOTH
@@ -1188,7 +1188,7 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false,
 // Explode IRON's fused multi-configure host sequence into one `aiex.configure`
 // per runtime sequence (module-level). Only the `aiex.entrypoint`-marked host
 // device is touched, and the pass is a genuine no-op on sequences that already
-// hold a single configure (the rung ladder / conformed corpus inputs). MUST run
+// hold a single configure (conformed multi-config inputs). MUST run
 // before getMaterializeRuntimeSeqPipeline, which rewrites `aiex.configure` into
 // `aie.run` and inlines the referenced sequences -- after that there is no
 // `aiex.configure` left to split.

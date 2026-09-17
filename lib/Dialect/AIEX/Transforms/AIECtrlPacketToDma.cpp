@@ -535,7 +535,7 @@ struct AIECtrlPacketToDmaPass
         // BDs per column is the physical tile count (<= 6, a shim + a memtile +
         // <= 4 cores), well under the clean per-column device depth; the former
         // bounded-wave cap is dead once the live-BD count is bounded by the
-        // chain length, so it is dropped (see spec sec.3.3). The allocator
+        // chain length, so it is dropped. The allocator
         // (AIEAssignRuntimeSequenceBDIDs) remains the authoritative fail-loud
         // on real over-budget, counting ALL co-resident live BDs on the shim.
         emitPhase(configGroups); // config first, fully drained

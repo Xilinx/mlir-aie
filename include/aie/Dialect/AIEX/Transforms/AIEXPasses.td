@@ -581,7 +581,7 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
               "For the reset-free arm: also emit the @empty whole-column reset "
               "preload (carried in the shared main:init slot). Default off = "
               "reset-free (the firmware resets the partition on context "
-              "teardown; see the arm2 reset-free spec).">,
+              "teardown).">,
        Option<"clSelfClear", "self-clear", "bool", /*default=*/"false",
               "If true, append the full per-config self-clear teardown "
               "protocol: disable the exclusively-data switch ports each "

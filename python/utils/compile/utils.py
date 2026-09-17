@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Matches the `aie.runtime_sequence @<name>(...)` that `design.as_mlir(...)`
-# emits (confirmed 2026-09-07: no visibility keyword precedes the symbol, e.g.
+# emits (no visibility keyword precedes the symbol, e.g.
 # `aie.runtime_sequence @add_a(%arg0: memref<64xi32>, ...)`). `\w+` stops at
 # the `(`, so this captures exactly the sym_name.
 _SEQ_RE = re.compile(r"aie\.runtime_sequence\s+@(\w+)")

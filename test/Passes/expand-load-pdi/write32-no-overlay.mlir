@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Tests that reset-free (arm2, out-of-band direct-write reconfiguration)
+// Tests that reset-free (out-of-band direct-write reconfiguration)
 // no longer depends on a resident @ctrl_pkt_overlay device: it now resets to
 // @empty (like plain write32) instead of preloading the overlay, self-clear
 // runs even though useOverlay is false, and the self-clear switch-teardown

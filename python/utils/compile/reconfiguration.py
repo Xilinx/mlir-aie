@@ -33,7 +33,7 @@ CWD is ``output_dir``, the flat ``.o`` staged there is found by the *first*
 lookup, before ``--tmpdir`` is ever consulted. ``--tmpdir={name}.prj`` is
 just aiecc's private scratch subdirectory (``output_dir/<name>.prj``) for
 its own intermediates -- it does not need to be, and is not, where the
-kernel ``.o`` files live. Probed 2026-09-07: staging kernels under
+kernel ``.o`` files live. Staging kernels under
 `out/<design>/` without setting ``cwd=output_dir`` fails to find them
 (`ld.lld: cannot open .../k.o`); flattening every `.o` into `output_dir`
 and running aiecc with `cwd=output_dir` fixes it.
