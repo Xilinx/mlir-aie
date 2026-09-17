@@ -6,7 +6,7 @@
 """Linear algebra kernel factories: mm, mv, cascade_mm."""
 
 import numpy as np
-from aie.iron.kernel import ExternalFunction, Kernel
+from aie.iron.kernel import ExternalFunction
 from ml_dtypes import bfloat16
 
 from ._common import _default_source_path, _detect_arch, _make_extern
@@ -103,23 +103,6 @@ _ZERO_SUFFIX = {
 }
 
 
-def _sibling_symbol(extern: ExternalFunction, name: str) -> str:
-    """Symbol name for a companion Kernel sharing ``extern``'s .o.
-
-    ``compile_external_kernel`` prefixes *every* defined symbol in the .o
-    (via ``prefix_symbols_in_object``) whenever ``extern`` carries a
-    ``symbol_prefix`` — e.g. the per-parameterization digest ``_make_extern``
-    assigns so that two differently-sized instantiations of the same source
-    don't collide when linked into one design. A companion symbol compiled
-    from the same source file (mm.cc's ``zero_*``, cascade_mm.cc's
-    ``put_only``/``put_get``) is renamed identically, so a sibling ``Kernel``
-    binding to one must apply the same prefix or reference a name the .o no
-    longer exports.
-    """
-    prefix = extern._symbol_prefix
-    return f"{prefix}_{name}" if prefix else name
-
-
 def mm(
     dim_m: int = 64,
     dim_k: int = 64,
@@ -207,13 +190,12 @@ def mm(
     else:
         extern.mac_dims = _MM_MAC_DIMS[arch][key]
     # mm.cc emits both matmul_* and zero_* symbols; expose the zero binding
-    # as a sibling Kernel pointing at the same .o so the design does
-    # `matmul = kernels.mm(...); zero = matmul.zero` instead of a separate
-    # kernels.mm_zero call (which would compile mm.cc a second time).
+    # as another symbol bound from the same object-file handle so the design
+    # does `matmul = kernels.mm(...); zero = matmul.zero` instead of a
+    # separate kernels.mm_zero call (which would compile mm.cc a second time).
     zero_prefix = "zero" if vectorized else "zero_scalar"
-    extern.zero = Kernel(
-        _sibling_symbol(extern, f"{zero_prefix}_{_ZERO_SUFFIX[output_dtype]}"),
-        extern.object_file_name,
+    extern.zero = extern.object_file.bind(
+        f"{zero_prefix}_{_ZERO_SUFFIX[output_dtype]}",
         [c_ty],
     )
     return extern
@@ -263,11 +245,9 @@ def mv(
         use_chess=use_chess,
     )
     # mv.cc emits both matvec_* and zero_* symbols; expose the zero binding
-    # as a sibling Kernel pointing at the same .o.
+    # as another symbol bound from the same object-file handle.
     zero_prefix = "zero_vectorized" if vectorized else "zero_scalar"
-    extern.zero = Kernel(
-        _sibling_symbol(extern, f"{zero_prefix}_i32"), extern.object_file_name, [c_ty]
-    )
+    extern.zero = extern.object_file.bind(f"{zero_prefix}_i32", [c_ty])
     return extern
 
 
@@ -328,19 +308,16 @@ def cascade_mm(
         use_chess=use_chess,
     )
     extern.get_only = extern
-    extern.put_only = Kernel(
-        _sibling_symbol(extern, f"matmul_scalar_cascade_put_only_{suffix}"),
-        extern.object_file_name,
+    extern.put_only = extern.object_file.bind(
+        f"matmul_scalar_cascade_put_only_{suffix}",
         [a_ty, b_ty, c_ty],
     )
-    extern.put_get = Kernel(
-        _sibling_symbol(extern, f"matmul_scalar_cascade_put_get_{suffix}"),
-        extern.object_file_name,
+    extern.put_get = extern.object_file.bind(
+        f"matmul_scalar_cascade_put_get_{suffix}",
         [a_ty, b_ty, c_ty],
     )
-    extern.zero = Kernel(
-        _sibling_symbol(extern, f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}"),
-        extern.object_file_name,
+    extern.zero = extern.object_file.bind(
+        f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}",
         [c_ty],
     )
     arch = _detect_arch()

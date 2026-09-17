@@ -181,6 +181,7 @@ def test_cascade_mm_exposes_all_modes_and_zero():
     # All four bindings reference the same .o.
     for sibling in (ef.put_only, ef.put_get, ef.zero):
         assert sibling.object_file_name == ef.object_file_name
+        assert sibling.object_file is ef.object_file
 
 
 def test_compute_hash_distinguishes_use_chess_literal():
