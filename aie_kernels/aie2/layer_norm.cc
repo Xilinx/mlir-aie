@@ -60,7 +60,9 @@ void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
   // N=16 bf16 = 256 bits = one AIE2 vector register (AIE2P's is 512-bit and
   // uses a 32-wide loop). conv_even rounding matches the reference math more
   // closely than the default floor mode for the normalize pass.
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
   layer_norm<bfloat16, 16>(input, output, cols);
+  ::aie::set_rounding(saved_rounding);
 }
 }

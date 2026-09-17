@@ -16,7 +16,12 @@ repos:
   rev: 34b241d706d24e4ccb69e38f9f0fa190b5f486ec  # frozen: v23.1.0
   hooks:
     - id: clang-format
-      types_or: [c, c++]
+      # Keep this extension list in sync with lintAndFormat.yml's clang-format
+      # job so contributors and CI format the same C/C++ and TableGen files.
+      files: \.(c|cc|cpp|cxx|h|hpp|td)$
+      # Override the mirror's built-in type filter so pre-commit doesn't drop
+      # TableGen files before the filename regex can match them.
+      types_or: [text]
       stages: [pre-push]
       # Exclude generated files and third-party / vendored code (matches black)
       exclude: |
