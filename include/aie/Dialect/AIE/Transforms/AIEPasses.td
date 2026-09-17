@@ -375,6 +375,20 @@ def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIEObjectFifoSplitPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options =
+      [Option<"clDmaFenceSharedMem", "dma-fence-shared-mem", "bool",
+              /*default=*/"false",
+              "Opt-in: carry every cross-tile core-to-core lock-only "
+              "shared-memory objectfifo on DMA (whose completion event supplies "
+              "the write-completion barrier the shared path lacks). Off by "
+              "default so shared memory stays the fast path.">,
+       Option<"clWarnUnfencedSharedOverlay", "warn-unfenced-shared-overlay",
+              "bool", /*default=*/"false",
+              "Warn when a cross-tile core-to-core shared-memory objectfifo is "
+              "left on the lock-only path (set under the resident ctrl-pkt "
+              "overlay, where that path may read stale data).">,
+  ];
 }
 
 def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {

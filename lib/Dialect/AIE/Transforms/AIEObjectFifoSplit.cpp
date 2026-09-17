@@ -145,6 +145,29 @@ int objectCountOn(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo) {
   return maxAcquire + 1;
 }
 
+/// True for a lock-only shared-memory fifo whose producer and consumer are two
+/// DISTINCT core tiles. This is the class that has no cross-tile
+/// write-completion barrier: AIE2P locks are bare counters (no memory
+/// ordering), and a producer's stores (to a memory-bank arbiter) can be
+/// observed by the neighbouring consumer AFTER its lock release lands (via a
+/// separate lock arbiter) but BEFORE the stores commit -- so the consumer can
+/// read stale data. The core exposes no store-completion fence, so the only
+/// architected barrier is the DMA completion event; carrying such a fifo via
+/// DMA supplies it. A self-loop (producer == consumer) reads its own memory and
+/// has no cross-tile hazard; a non-core endpoint is not on this shared path.
+/// Acquire count does NOT gate this: a single-acquire consumer reads a freshly
+/// released object too
+/// -- it merely has more pipeline slack hiding the race, not a real barrier.
+bool isCrossTileCoreShared(ObjectFifoCreateOp objFifo) {
+  auto prodTile = cast<TileOp>(objFifo.getProducerTile().getDefiningOp());
+  auto consTile = cast<TileOp>(objFifo.getConsumerTiles()[0].getDefiningOp());
+  if (prodTile == consTile) {
+    return false;
+  }
+  auto isCore = [](TileOp t) { return !t.isShimTile() && !t.isMemTile(); };
+  return isCore(prodTile) && isCore(consTile);
+}
+
 bool hasCoreAccess(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo,
                    ObjectFifoPort port) {
   for (auto coreOp : device.getOps<CoreOp>()) {
@@ -168,6 +191,7 @@ bool hasCoreAccess(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo,
 
 struct AIEObjectFifoSplitPass
     : public xilinx::AIE::impl::AIEObjectFifoSplitBase<AIEObjectFifoSplitPass> {
+  using Base::Base;
 
   DeviceOp device;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
@@ -585,6 +609,27 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     auto sharedModule = AIETargetModel::SharedMemory::None;
     bool shared = !requiresDMAs(fifo, sharedModule);
 
+    // A cross-tile core->core lock-only shared fifo has no write-completion
+    // barrier and can corrupt under the resident ctrl-pkt overlay (see
+    // isCrossTileCoreShared). Shared memory stays the fast default; correctness
+    // is opt-in via --dma-fence-shared-mem (or the per-fifo via_DMA attr),
+    // which carries the fifo on DMA whose completion event supplies the
+    // barrier. Without the opt-in, warn under the overlay so the hazard is a
+    // visible choice rather than a silent corruption.
+    if (shared && isCrossTileCoreShared(fifo)) {
+      if (clDmaFenceSharedMem) {
+        shared = false;
+      } else if (clWarnUnfencedSharedOverlay) {
+        fifo.emitWarning()
+            << "objectfifo '" << fifoName
+            << "' uses cross-tile shared memory under the ctrl-pkt overlay: "
+               "the "
+               "lock-only path has no write-completion barrier and may read "
+               "stale data. Pass --dma-fence-shared-mem or set via_DMA on "
+               "this fifo to carry it via DMA for correctness.";
+      }
+    }
+
     if (shared) {
       PoolRef ref;
       if (auto linked = linkedProducerEnd.find(fifo);
@@ -797,4 +842,13 @@ void AIEObjectFifoSplitPass::runOnOperation() {
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoSplitPass() {
   return std::make_unique<AIEObjectFifoSplitPass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+xilinx::AIE::createAIEObjectFifoSplitPass(bool dmaFenceSharedMem,
+                                          bool warnUnfencedSharedOverlay) {
+  AIEObjectFifoSplitOptions options;
+  options.clDmaFenceSharedMem = dmaFenceSharedMem;
+  options.clWarnUnfencedSharedOverlay = warnUnfencedSharedOverlay;
+  return std::make_unique<AIEObjectFifoSplitPass>(options);
 }

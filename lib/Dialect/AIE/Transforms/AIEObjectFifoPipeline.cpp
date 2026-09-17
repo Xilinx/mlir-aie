@@ -26,6 +26,23 @@ struct ObjectFifoLoweringOptions
       *this, "skip-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR."),
       llvm::cl::init(false)};
+  Option<bool> reserveControlIds{
+      *this, "reserve-control-ids",
+      llvm::cl::desc(
+          "Reserve ctrl-pkt controller ids during packet id assignment."),
+      llvm::cl::init(false)};
+  Option<bool> dmaFenceSharedMem{
+      *this, "dma-fence-shared-mem",
+      llvm::cl::desc("Opt-in: carry every cross-tile core-to-core lock-only "
+                     "shared-memory objectfifo on DMA (write-completion "
+                     "barrier). Off by default."),
+      llvm::cl::init(false)};
+  Option<bool> warnUnfencedSharedOverlay{
+      *this, "warn-unfenced-shared-overlay",
+      llvm::cl::desc("Warn when a cross-tile core-to-core shared-memory "
+                     "objectfifo is left on the lock-only path (no "
+                     "write-completion barrier under the ctrl-pkt overlay)."),
+      llvm::cl::init(false)};
 };
 } // namespace
 
@@ -34,11 +51,13 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
       "aie-objectFifo-stateful-transform",
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
-        pm.addPass(createAIEObjectFifoSplitPass());
+        pm.addPass(createAIEObjectFifoSplitPass(
+            options.dmaFenceSharedMem, options.warnUnfencedSharedOverlay));
         if (!options.skipVerify) {
           pm.addPass(createAIEObjectFifoVerifyPass());
         }
-        pm.addPass(createAIEObjectFifoAllocatePass(options.packetSwitched));
+        pm.addPass(createAIEObjectFifoAllocatePass(options.packetSwitched,
+                                                   options.reserveControlIds));
         pm.addPass(createAIEObjectFifoLowerDMAsPass());
         pm.addPass(createAIEObjectFifoLowerCoresPass());
         pm.addPass(createAIEObjectFifoErasePoolsPass());
