@@ -5,10 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-// --reconfig-method=write32 (out-of-band direct-write delivery) and
-// --load-pdi-to-ctrl-pkt (in-band control-packet delivery) are contradictory
-// transports for the same reconfiguration; the method-vs-primitive guard must
-// reject the combination before either flow runs.
+// The --reconfig-method selector validates its arguments up front, before any
+// flow runs:
+//   * an unrecognized method value is rejected;
+//   * the fold requires --get-full-elf;
+//   * write32 (out-of-band direct-write delivery) is mutually exclusive with
+//     --load-pdi-to-ctrl-pkt (in-band control-packet delivery) -- contradictory
+//     transports for the same reconfiguration.
+
+// RUN: not aiecc --get-full-elf --reconfig-method=bogus %s 2>&1 | FileCheck %s --check-prefix=BADMETHOD
+// BADMETHOD: --reconfig-method must be loadpdi|write32|ctrlpkt
+
+// RUN: not aiecc --reconfig-method=ctrlpkt %s 2>&1 | FileCheck %s --check-prefix=NOFULLELF
+// NOFULLELF: --reconfig-method requires --get-full-elf
 
 // RUN: not aiecc --get-full-elf --reconfig-method=write32 --load-pdi-to-ctrl-pkt %s 2>&1 | FileCheck %s
 

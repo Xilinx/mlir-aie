@@ -404,6 +404,9 @@ def test_companion_kernels_shared_object_allowed():
     elf = r.compile()
     assert Path(elf.path).exists(), f"no ELF at {elf.path}"
     assert (work / "companion.o").exists(), "companion.o not built"
+    # write32 descriptor shape: no dispatchable init entrypoint and no
+    # control-packet buffer (only ctrlpkt carries main:init + needs_ctrl_bo).
+    assert elf.init is None and elf.needs_ctrl_bo is False
     print("COMPANION-OK")  # CHECK: COMPANION-OK
 
 
