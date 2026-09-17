@@ -28,9 +28,13 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <tuple>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEEXPANDLOADPDI
@@ -102,11 +106,20 @@ static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
 }
 
 // Helper to transform a single load_pdi operation
-static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
-                                      unsigned index,
-                                      AIEX::ExpandMode defaultMode) {
+static LogicalResult
+transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
+                 AIEX::ExpandMode defaultMode, bool resetFree, bool selfClear,
+                 bool withReset, unsigned loadPdisInBlock) {
   static unsigned long i = 0;
   OpBuilder builder(loadPdiOp);
+  // The three self-clear teardowns (switch, circuit, DMA) are no longer
+  // independently selectable: self-clear (now unconditional for
+  // ctrlpkt/write32) emits the complete protocol. Each generator stays
+  // demand-scoped (empty when the config uses none of that resource class), so
+  // the unconditional behavior only widens WHICH teardowns are attempted, not
+  // whether an unused one fires.
+  bool selfClearCircuit = selfClear;
+  bool selfClearDma = selfClear;
 
   // Only process load_pdi ops that reference a device
   auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
@@ -119,6 +132,10 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   if (mode == AIEX::ExpandMode::none)
     return success();
   bool ctrlPkt = (mode == AIEX::ExpandMode::ctrlpkt);
+  // ctrlpkt keeps the resident @ctrl_pkt_overlay preload and skips the
+  // overlay's own switch writes. The reset-free policy rides write32 delivery
+  // (no resident overlay), so it never uses the overlay here.
+  bool useOverlay = ctrlPkt;
 
   auto referencedDevice = moduleOp.lookupSymbol<AIE::DeviceOp>(deviceRefAttr);
   if (!referencedDevice) {
@@ -127,8 +144,14 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
     return failure();
   }
 
+  // The reset-free policy without with-reset skips the init preload entirely:
+  // the firmware resets the partition on context teardown, so there is no
+  // @empty reset to (re-)establish at the start of a config. with-reset
+  // restores the Plan A behavior (preload @empty, like plain write32).
+  bool skipPreload = resetFree && !withReset;
+
   FlatSymbolRefAttr preloadRef;
-  if (ctrlPkt) {
+  if (useOverlay) {
     // Overlay device PDI
     // Alternate between the original overlay and a clone of it on every
     // other load. Loading the same PDI twice in a row gets cached by the
@@ -142,12 +165,12 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
       if (!copy)
         return failure();
     } else if (!moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName)) {
-      loadPdiOp.emitError("ctrl-pkt mode requires a `@")
+      loadPdiOp.emitError("overlay expand mode requires a `@")
           << kCtrlPktOverlayName << "` device in the module";
       return failure();
     }
     preloadRef = FlatSymbolRefAttr::get(builder.getContext(), overlayName);
-  } else {
+  } else if (!skipPreload) {
     // Empty device PDI (triggers firmware reset)
     AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
         moduleOp, referencedDevice.getDevice(), index % 2);
@@ -157,14 +180,14 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   builder.setInsertionPoint(loadPdiOp);
 
   // Emit the preload load_pdi (either empty-device reset or ctrl_pkt_overlay).
-  if (ctrlPkt) {
+  if (useOverlay) {
     NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
                          /*id=*/nullptr, /*size=*/nullptr,
                          /*address=*/nullptr,
                          /*expand_mode=*/
                          AIEX::ExpandModeAttr::get(builder.getContext(),
                                                    AIEX::ExpandMode::none));
-  } else {
+  } else if (!skipPreload) {
     NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
                          loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
                          loadPdiOp.getAddressAttr(),
@@ -173,16 +196,123 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
                                                    AIEX::ExpandMode::none));
   }
 
-  // Step 2: generate and insert configuration ops.
+  // Step 2: generate and insert configuration ops. Only ctrlpkt emits control
+  // packets; write32 delivery (plain and reset-free) emits direct
+  // write32/blockwrite ops. skipCtrlPktOverlay follows the resident-overlay
+  // preload (only ctrlpkt keeps it and skips the overlay's own switch writes;
+  // write32 resets to empty and must include them).
   auto outputType = ctrlPkt ? AIEToConfigurationOutputType::ControlPacket
                             : AIEToConfigurationOutputType::Transaction;
   std::string prefix = ctrlPkt ? ("loadpdi_ctrlpkt_" + std::to_string(i) + "_")
-                               : ("loadpdi_" + std::to_string(i));
+                       : resetFree
+                           ? ("loadpdi_write32_" + std::to_string(i) + "_")
+                           : ("loadpdi_" + std::to_string(i));
   if (failed(xilinx::AIE::generateAndInsertConfigOps(
           builder, referencedDevice, /*clElfDir=*/"", outputType, prefix,
-          /*skipCtrlPktOverlay=*/ctrlPkt))) {
+          /*skipCtrlPktOverlay=*/useOverlay))) {
     loadPdiOp.emitError("Failed to generate configuration operations");
     return failure();
+  }
+
+  // Self-clear epilogue: once this config's data completes, disable the ports
+  // it enabled that the overlay does not own (config ports minus overlay
+  // ports). Under ctrl-pkt this restores the control-plane-only state
+  // main:init left behind, since the resident overlay only ever holds
+  // control ports, and it stops the stream-switch arbiter bindings from
+  // accruing across reconfigurations. Under the reset-free policy there is no
+  // resident overlay to restore to (init leaves an @empty reset instead), so
+  // this is deadlock-avoidance rather than a pristine restore: it tears down
+  // the config's own data ports so the next config's direct writes do not
+  // wedge on state this config left enabled. The disables ride the same
+  // transport as the config: control packets on the resident control network
+  // under ctrl-pkt (fully in-band, no per-config load_pdi re-arm and no
+  // privileged reset), or write32/blockwrite direct writes under the reset-free
+  // policy (the out-of-band arm delivers config AND self-clear OOB). Empty (a
+  // no-op) for non-switch reconfigs, where the config enables no
+  // exclusively-data ports.
+  if ((useOverlay || resetFree) && selfClear) {
+    // Precondition: the epilogue below finds "the last NpuDmaWaitOp in this
+    // config's runtime-sequence block" and assumes that block holds exactly
+    // one load_pdi (this one). With >1 load_pdi sharing a block, "last wait
+    // in the block" would grab a wait belonging to a different config's data,
+    // silently misplacing the teardown. Fail loudly instead of guessing.
+    if (loadPdisInBlock > 1) {
+      loadPdiOp.emitError(
+          "ctrl-pkt self-clear requires exactly one load_pdi per "
+          "runtime-sequence block, found ")
+          << loadPdisInBlock;
+      return failure();
+    }
+
+    // Insert the teardown after the last dma_wait in this config's runtime
+    // sequence (the block also holds its dma_memcpy_nd and dma_wait), i.e. once
+    // the transfer completes, so each config only undoes its own state: O(1)
+    // per config and order-independent, with no cross-config union.
+    mlir::Block *seqBlock = loadPdiOp->getBlock();
+    AIEX::NpuDmaWaitOp lastWait;
+    for (auto waitOp : seqBlock->getOps<AIEX::NpuDmaWaitOp>())
+      lastWait = waitOp;
+
+    OpBuilder::InsertionGuard guard(builder);
+    if (lastWait)
+      builder.setInsertionPointAfter(lastWait);
+    else
+      builder.setInsertionPointToEnd(seqBlock);
+
+    // Route the teardown through the same transport as the config (outputType,
+    // computed above): control packets under ctrl-pkt (in-band), direct writes
+    // under the reset-free policy (OOB).
+
+    // Switch teardown: disable the exclusively-data ports the config enabled
+    // (config ports minus the overlay's), so the resident overlay does not
+    // accrue stream-switch bindings across reconfigurations. Under the
+    // reset-free policy there is no resident overlay device at all (the whole
+    // point of the no-overlay arm), so there is nothing to carve out of the
+    // exclude set:
+    // leave it empty and disable every packet-switch port this config's own
+    // connect enabled -- still a whole-array-safe teardown, scoped to exactly
+    // this config's used data ports.
+    if (selfClear) {
+      llvm::DenseSet<std::tuple<int, int, int, int, int>> excludePorts;
+      auto overlayDev =
+          moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName);
+      if (overlayDev) {
+        // Exclude every master/slave packet-switch port the overlay uses
+        // (both its control-only ports and the ports it shares with data),
+        // keyed by (col, row, bundle, index, isSlave), leaving the
+        // exclusively-data ports.
+        for (auto sb : overlayDev.getOps<AIE::SwitchboxOp>()) {
+          int col = sb.colIndex();
+          int row = sb.rowIndex();
+          mlir::Block &conns = sb.getConnections().front();
+          for (auto ms : conns.getOps<AIE::MasterSetOp>())
+            excludePorts.insert(
+                std::make_tuple(col, row, static_cast<int>(ms.getDestBundle()),
+                                ms.destIndex(), 0));
+          for (auto pr : conns.getOps<AIE::PacketRulesOp>())
+            excludePorts.insert(std::make_tuple(
+                col, row, static_cast<int>(pr.getSourceBundle()),
+                pr.sourceIndex(), 1));
+        }
+      }
+      if (failed(xilinx::AIE::generateAndInsertSwitchDisableOps(
+              builder, referencedDevice, excludePorts, outputType,
+              "selfclear_disable_" + std::to_string(i) + "_",
+              selfClearCircuit))) {
+        loadPdiOp.emitError("Failed to generate self-clear switch-disable ops");
+        return failure();
+      }
+    }
+
+    // DMA teardown: reset the config's active non-shim DMA channels so a
+    // busy/enqueued channel is drained before the next config reconfigures it.
+    if (selfClearDma &&
+        failed(xilinx::AIE::generateAndInsertDmaChannelResetOps(
+            builder, referencedDevice, outputType,
+            "selfclear_dma_reset_" + std::to_string(i) + "_"))) {
+      loadPdiOp.emitError("Failed to generate self-clear DMA reset ops");
+      return failure();
+    }
   }
 
   // Erase the original load_pdi operation
@@ -226,15 +356,26 @@ struct AIEExpandLoadPdiPass
       bool seen = false;
       AIE::AIEDevice device = {};
     };
+    // Map the pass bool options to the ExpandMode enum: ctrlpkt keeps the
+    // resident overlay, otherwise write32 delivery. The reset-free arm is a
+    // write32 variant selected by clResetFree (not a distinct mode); it resets
+    // to @empty only under with-reset and otherwise skips the preload entirely.
+    AIEX::ExpandMode defaultMode =
+        clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
+
+    // Classify which load_pdis are @empty-reset configs needing parity
+    // alternation. Plain write32 (--expand-load-pdis) preloads @empty per
+    // config and qualifies. The reset-free arm never resets to @empty per
+    // config (with-reset aside, it still gets no trailing append -- matching
+    // the pre-consolidation reset-free mode, which was likewise excluded here),
+    // so clResetFree drops out of this classification entirely.
     llvm::MapVector<AIE::RuntimeSequenceOp, ResetParity> resetsPerSequence;
     for (auto [index, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
       auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
       if (!deviceRefAttr)
         continue;
-      if (loadPdiOp.getExpandMode().value_or(clCtrlPkt
-                                                 ? AIEX::ExpandMode::ctrlpkt
-                                                 : AIEX::ExpandMode::write32) !=
-          AIEX::ExpandMode::write32)
+      if (clResetFree || loadPdiOp.getExpandMode().value_or(defaultMode) !=
+                             AIEX::ExpandMode::write32)
         continue;
       auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
       auto dev = module.lookupSymbol<AIE::DeviceOp>(deviceRefAttr);
@@ -249,14 +390,19 @@ struct AIEExpandLoadPdiPass
       entry.device = dev.getDevice();
     }
 
-    // Map the legacy bool option to the new ExpandMode enum.
-    AIEX::ExpandMode defaultMode =
-        clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
+    // Pre-count load_pdi ops per block (before any op is erased/inserted by
+    // the transform below) so the self-clear path can check its one-load_pdi-
+    // per-runtime-sequence-block assumption.
+    llvm::DenseMap<mlir::Block *, unsigned> loadPdisPerBlock;
+    for (auto loadPdiOp : loadPdiOps)
+      loadPdisPerBlock[loadPdiOp->getBlock()]++;
 
     // Transform load_pdi ops
     unsigned idx = 0;
     for (auto loadPdiOp : loadPdiOps) {
-      if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode))) {
+      if (failed(transformLoadPdi(loadPdiOp, module, idx, defaultMode,
+                                  clResetFree, clSelfClear, clWithReset,
+                                  loadPdisPerBlock[loadPdiOp->getBlock()]))) {
         signalPassFailure();
         return;
       }

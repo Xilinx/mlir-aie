@@ -23,6 +23,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIEDMATasksToNPU.cpp
   AIESubstituteShimDMAAllocations.cpp
   AIECtrlPacketToDma.cpp
+  AIESortControlPacketsByTile.cpp
   AIELowerSetLock.cpp
   AIELowerDmaChannelReset.cpp
   AIELowerCoreReset.cpp
@@ -31,6 +32,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIETransformBfpTypes.cpp
   AIETxnToControlPacket.cpp
   AIEExpandLoadPdi.cpp
+  AIESplitConfigureEntries.cpp
   AIEInlineTraceConfig.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include

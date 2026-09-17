@@ -361,6 +361,34 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
+  let options = [
+    Option<"clParallelColumns", "parallel-columns", "bool", /*default=*/"false",
+           "Schedule the leading-run per-tile control DMAs as two phases "
+           "(issue all config BDs, one join barrier, then the enable BDs) so "
+           "independent per-column shim channels overlap (requires the "
+           "ctrl-pkt overlay).">,
+  ];
+}
+
+def AIESortControlPacketsByTile
+    : Pass<"aie-sort-control-packets-by-tile", "AIE::DeviceOp"> {
+  let summary = "Group control packets by destination tile so each tile's "
+                "config packs into one linear shim DMA.";
+  let description = [{
+    Within each runtime sequence, partition the LEADING control-packet run at
+    the first core-enable write, stable-sort each region (config, enable) by
+    destination tile (column, then row), and concatenate
+    [sorted config | sorted enable]. Core-enables stay a trailing phase within
+    that leading run (preserving enable-last). Making each tile's packets
+    contiguous lets AIECtrlPacketToDma pack them into one linear shim DMA
+    (fewer, longer transfers) instead of many short BDs fragmented by the
+    interleaved arrival order, at the same per-tile delivery granularity. The
+    reorder is behavior-preserving (the control-packet writeset is delivery-
+    order-invariant across tiles). Runs at the shared control-packet producer
+    so both the emitted ctrlpkt payload and the DMA offsets see the new order.
+  }];
+  let constructor = "xilinx::AIEX::createAIESortControlPacketsByTilePass()";
+  let dependentDialects = ["xilinx::AIEX::AIEXDialect", "xilinx::AIE::AIEDialect"];
 }
 
 def AIECtrlPacketInferTiles : Pass<"aie-ctrl-packet-infer-tiles", "AIE::DeviceOp"> {
@@ -543,6 +571,71 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
               "If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi "
               "followed by aiex.npu.control_packet ops instead of write32/"
               "blockwrite ops with an empty-device reset.">,
+       Option<"clResetFree", "reset-free", "bool", /*default=*/"false",
+              "If true, deliver each write32-mode config as a reset-free "
+              "direct-write arm: skip the @empty init preload (unless "
+              "with-reset restores it) and run the per-config self-clear "
+              "teardown even without a resident overlay. Applies to write32 "
+              "delivery only; a no-op under ctrl-pkt.">,
+       Option<"clWithReset", "with-reset", "bool", /*default=*/"false",
+              "For the reset-free arm: also emit the @empty whole-column reset "
+              "preload (carried in the shared main:init slot). Default off = "
+              "reset-free (the firmware resets the partition on context "
+              "teardown; see the arm2 reset-free spec).">,
+       Option<"clSelfClear", "self-clear", "bool", /*default=*/"false",
+              "If true, append the full per-config self-clear teardown "
+              "protocol: disable the exclusively-data switch ports each "
+              "config enabled (config ports minus overlay ports), tear down "
+              "the config's circuit-switch connects (aie.connect), and reset "
+              "the config's active non-shim DMA channels (assert/deassert "
+              "Ctrl.Reset). Under ctrl-pkt this keeps the persistent resident "
+              "overlay from accruing stream-switch bindings across "
+              "reconfigurations; under reset-free (which is overlay-free) "
+              "this is deadlock-avoidance instead, clearing the config's own "
+              "data/DMA state so the next config does not wedge. Each of the "
+              "three teardowns is independently demand-scoped, so it is empty "
+              "(a no-op) for a config that does not use that class of "
+              "resource (e.g. a pure-DMA reconfig emits no switch/circuit "
+              "disables). Delivered in the same transport as the config "
+              "(control packets under ctrl-pkt, direct writes under "
+              "reset-free).">,
+  ];
+}
+
+def AIESplitConfigureEntries
+    : Pass<"aie-split-configure-entries", "mlir::ModuleOp"> {
+  let summary = "Explode a multi-configure runtime sequence into per-config "
+                "entries";
+  let description = [{
+    On the `aiex.entrypoint`-marked host device (the reconfiguration entry
+    device synthesized by the `--reconfig-method` fold), IRON's
+    `OperatorSequence` lowering emits a SINGLE `aie.runtime_sequence` whose body
+    holds MANY `aiex.configure @opK { ... aiex.run @sequence(subviews) }` ops in
+    schedule order (one per decode step; the same referenced device repeats).
+
+    This pass explodes that single sequence into N `aie.runtime_sequence`s, one
+    per top-level `aiex.configure`, preserving program (schedule) order. Each new
+    sequence:
+      * takes the SAME block-argument signature as the original (the subviews
+        inside each configure re-reference the new sequence's own arguments), and
+      * holds exactly ONE `aiex.configure`.
+
+    The new sequences are named `<referenced-device-symbol>_<block-order-index>`
+    so occurrences of a repeated device stay unique and the index records the
+    original schedule position. This restores the one-configure-per-sequence
+    shape the downstream union machinery (`splitMultiConfigEntry`,
+    `aie-expand-load-pdi` self-clear) assumes.
+
+    Only the marked device is touched; config-template devices and their
+    offset-agnostic bodies are left untouched. A no-op if no device carries the
+    marker.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIESplitConfigureEntriesPass()";
+  let dependentDialects = [
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
   ];
 }
 

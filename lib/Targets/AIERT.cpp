@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
 
 extern "C" {
 #include "xaiengine/xaie_core.h"
@@ -269,6 +270,9 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     break;
   case AIEArch::AIE2p:
     devGen = XAIE_DEV_GEN_AIE2P_STRIX_B0;
+    break;
+  case AIEArch::AIE2ps:
+    devGen = XAIE_DEV_GEN_AIE2PS;
     break;
   }
   aiert->configPtr = XAie_Config{
@@ -823,12 +827,32 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
-      if (skipCtrlPktOverlay && packetRulesOp->hasAttr("is_ctrl_pkt_overlay"))
+      Block &block = packetRulesOp.getRules().front();
+      // Per-rule (not per-op) control-overlay skip. A design's data rule can
+      // share a slave port with the control overlay, on a distinct pkt-id slot.
+      // When delivering a config over a resident overlay (skipCtrlPktOverlay),
+      // the overlay's control rules already occupy the low slots [0,
+      // numOverlay) on device (delivered once at overlay standup). Skip
+      // re-delivering them, but place any untagged (data) rule ABOVE them --
+      // otherwise a positional slot index would clobber a resident control slot
+      // and wedge control.
+      int total = 0, numOverlay = 0;
+      for (auto r : block.getOps<PacketRuleOp>()) {
+        total++;
+        if (r->hasAttr("is_ctrl_pkt_overlay"))
+          numOverlay++;
+      }
+      int numToEmit = skipCtrlPktOverlay ? (total - numOverlay) : total;
+      if (numToEmit == 0)
         continue;
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
-      int slot = 0;
-      Block &block = packetRulesOp.getRules().front();
+      int slot = 0; // running index among the rules this call emits
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
+        if (skipCtrlPktOverlay && slotOp->hasAttr("is_ctrl_pkt_overlay"))
+          continue; // resident from the overlay standup; do not re-deliver
+        // Reserve [0, numOverlay) for the resident control slots when skipping;
+        // otherwise (overlay standup / full reload) emit positionally from 0.
+        int slotIdx = (skipCtrlPktOverlay ? numOverlay : 0) + slot;
         AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
@@ -843,8 +867,8 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
                                 &aiert->devInst, tileLoc,
                                 WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
                                     packetRulesOp.getSourceBundle()),
-                                packetRulesOp.sourceIndex(), slot, packetInit,
-                                slotOp.maskInt(), msel, arbiter);
+                                packetRulesOp.sourceIndex(), slotIdx,
+                                packetInit, slotOp.maskInt(), msel, arbiter);
         slot++;
       }
     }
@@ -886,6 +910,196 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
   }
 
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::disableDataSwitches(
+    DeviceOp &targetOp,
+    const llvm::DenseSet<std::tuple<int, int, int, int, int>> &excludePorts,
+    bool disableCircuit) {
+
+  // Mirror configureSwitches' packet-switch master/slave enumeration, emitting
+  // the reset-to-0 disable of every untagged (data-plane) port not shared with
+  // the overlay. Circuit-switch connects, shim muxes, and cascade are left
+  // untouched: only the packet-switch arbiter bindings accrue across configs.
+  // This is deadlock-avoidance, not a pristine restore: it clears the
+  // config's active data ports so the next config does not wedge on state
+  // this config left enabled. Residual state elsewhere (stale locks, inert
+  // BDs, a core left running on a tile a later config drops) is
+  // intentionally left: a config that re-uses a resource applies its own
+  // reset protocol before use (core reset/unreset + ELF reload; DMA channel
+  // reset), and a config that does not use it is unaffected.
+  for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
+    int32_t col = switchboxOp.colIndex();
+    int32_t row = switchboxOp.rowIndex();
+    XAie_LocType tileLoc = XAie_TileLoc(col, row);
+    assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
+           "Only NPU currently supported");
+
+    Block &b = switchboxOp.getConnections().front();
+
+    for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      if (masterSetOp->hasAttr("is_ctrl_pkt_overlay"))
+        continue;
+      // isSlave = 0: master port key.
+      if (excludePorts.contains(std::make_tuple(
+              col, row, static_cast<int>(masterSetOp.getDestBundle()),
+              masterSetOp.destIndex(), 0)))
+        continue;
+      TxnLocBracket bracket(*this, masterSetOp.getLoc());
+      TRY_XAIE_API_EMIT_ERROR(
+          masterSetOp, XAie_StrmPktSwMstrPortDisable, &aiert->devInst, tileLoc,
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
+          masterSetOp.destIndex());
+    }
+
+    for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
+      Block &block = packetRulesOp.getRules().front();
+      int total = 0, numOverlay = 0;
+      for (auto r : block.getOps<PacketRuleOp>()) {
+        total++;
+        if (r->hasAttr("is_ctrl_pkt_overlay"))
+          numOverlay++;
+      }
+      // Pure control-overlay port: persistent, never torn down.
+      if (numOverlay == total)
+        continue;
+      // isSlave = 1: slave port key.
+      if (excludePorts.contains(std::make_tuple(
+              col, row, static_cast<int>(packetRulesOp.getSourceBundle()),
+              packetRulesOp.sourceIndex(), 1)))
+        continue;
+      TxnLocBracket bracket(*this, packetRulesOp.getLoc());
+      if (numOverlay == 0) {
+        // Pure data port: whole-port disable.
+        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortDisable,
+                                &aiert->devInst, tileLoc,
+                                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                    packetRulesOp.getSourceBundle()),
+                                packetRulesOp.sourceIndex());
+      } else {
+        // Mixed port shared with the control overlay: per-slot disable ONLY the
+        // data slots [numOverlay, ...), mirroring configureSwitches' placement.
+        // A whole-port disable here would tear down the resident control slots
+        // [0, numOverlay) and wedge control ingress for all later configs.
+        int slot = 0;
+        for (auto r : block.getOps<PacketRuleOp>()) {
+          if (r->hasAttr("is_ctrl_pkt_overlay"))
+            continue;
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotDisable,
+                                  &aiert->devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex(),
+                                  numOverlay + slot);
+          slot++;
+        }
+      }
+    }
+
+    // Circuit-switch connect teardown (part of self-clear, now unconditional
+    // for ctrlpkt/write32): also tear down the config's circuit-switch connects,
+    // mirroring configureSwitches' XAie_StrmConnCctEnable in reverse. objectFifo
+    // / circuit routes lower to these connects, which the packet-only disable
+    // above leaves untouched. The overlay's own (control) connects are tagged
+    // is_ctrl_pkt_overlay and skipped.
+    if (disableCircuit) {
+      for (auto connectOp : b.getOps<ConnectOp>()) {
+        if (connectOp->hasAttr("is_ctrl_pkt_overlay"))
+          continue;
+        TxnLocBracket bracket(*this, connectOp.getLoc());
+        TRY_XAIE_API_EMIT_ERROR(
+            connectOp, XAie_StrmConnCctDisable, &aiert->devInst, tileLoc,
+            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
+            connectOp.sourceIndex(),
+            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
+            connectOp.destIndex());
+      }
+    }
+  }
+
+  return success();
+}
+
+// Reset (drain queue + idle FSM) every non-shim DMA channel the config
+// actually uses, so a busy/enqueued channel can be safely reconfigured. Assert
+// then deassert the Ctrl.Reset bit per used (dir, channel index), mirroring
+// aie-rt's XAie_DmaChannelReset -- the authoritative unprivileged per-channel
+// reset -- rather than XAie_DmaChannelResetAll's whole-tile sweep, so unused
+// channels on a kept tile are left untouched. Shim tiles have no per-channel
+// reset (ShimDMAOp, not walked here). Lock values and the START re-arm are
+// intentionally NOT touched: the config re-establishes locks and re-pushes the
+// queue via addInitConfig. This is deadlock-avoidance, not a pristine
+// restore: it drains the config's own DMA channels so the next config does
+// not wedge; residual state on channels/tiles this config did not use is
+// intentionally left, since a config that re-uses a resource applies its own
+// reset protocol before use (core reset/unreset + ELF reload; DMA channel
+// reset) and a config that does not use it is unaffected. This conversion is
+// fold-exempt
+// (generateAndInsertDmaChannelResetOps passes foldMaskWrites=false to
+// convertTransactionOpsToMLIR): the assert/deassert pair are literal pulses on
+// the same address, and the default mask-write fold would otherwise collapse
+// them into a single write, dropping the in-band reset pulse.
+LogicalResult
+xilinx::AIE::AIERTControl::resetDataDmaChannels(DeviceOp &targetOp) {
+  auto resetChannel = [&](TileID t, int chNum, DMAChannelDir dir,
+                          Location loc) -> LogicalResult {
+    XAie_LocType tileLoc = XAie_TileLoc(t.col, t.row);
+    XAie_DmaDirection d = dir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
+    TxnLocBracket bracket(*this, loc);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelReset, &aiert->devInst, tileLoc,
+                                (u8)chNum, d,
+                                XAie_DmaChReset::DMA_CHANNEL_RESET);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelReset, &aiert->devInst, tileLoc,
+                                (u8)chNum, d,
+                                XAie_DmaChReset::DMA_CHANNEL_UNRESET);
+    return success();
+  };
+  auto skipCoreElf = [](TileElement te) -> bool {
+    // A compute tile whose core carries an elf_file is already reset per
+    // config by addAieElf's ELF bring-up bracket (same DeviceOp, same
+    // core+elf gate as addAieElfs). Resetting it here is redundant.
+    // MemTileDMAOp tiles have no core; core-less MemOp "lightweight reset
+    // device" tiles must be kept.
+    auto memOp = dyn_cast<MemOp>(te.getOperation());
+    if (!memOp)
+      return false; // MemTileDMAOp: always keep
+    TileOp tile = memOp.getTileOp();
+    if (auto core = tile.getCoreOp())
+      return core.getElfFile().has_value();
+    return false;
+  };
+  auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
+  llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
+  for (TileElement memOp : memOps) {
+    if (skipCoreElf(memOp))
+      continue;
+    TileID t = memOp.getTileID();
+    // Enumerate the config's used channels, de-duplicated, from BOTH DMA forms
+    // (a DMAStartOp-only walk misses channels expressed as aie.dma / DMAOp).
+    llvm::SmallSet<std::pair<int, int>, 4> seen; // (dir, index)
+    auto add = [&](int chNum, DMAChannelDir dir,
+                   Location loc) -> LogicalResult {
+      if (!seen.insert({(int)dir, chNum}).second)
+        return success();
+      return resetChannel(t, chNum, dir, loc);
+    };
+    auto dmaOps = llvm::to_vector_of<DMAOp>(
+        memOp.getOperation()->getRegion(0).getOps<DMAOp>());
+    if (!dmaOps.empty()) {
+      for (auto dmaOp : dmaOps)
+        if (failed(add(dmaOp.getChannelIndex(), dmaOp.getChannelDir(),
+                       dmaOp.getLoc())))
+          return failure();
+    } else {
+      for (Block *block :
+           getOrderedChainOfBlocks(&memOp.getOperation()->getRegion(0)))
+        for (auto op : block->getOps<DMAStartOp>())
+          if (failed(
+                  add(op.getChannelIndex(), op.getChannelDir(), op.getLoc())))
+            return failure();
+    }
+  }
   return success();
 }
 

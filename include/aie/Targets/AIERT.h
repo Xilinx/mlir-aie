@@ -13,11 +13,13 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include "mlir/IR/Location.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <map>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace xilinx::AIE {
@@ -61,6 +63,27 @@ struct AIERTControl {
   mlir::LogicalResult initBuffers(DeviceOp &targetOp);
   mlir::LogicalResult configureSwitches(DeviceOp &targetOp,
                                         bool skipCtrlPktOverlay = false);
+  // Emit XAie_StrmPktSwMstr/SlavePortDisable transactions (reset value 0 to the
+  // same RegOff the enable used) for every data-plane (untagged, i.e. not
+  // `is_ctrl_pkt_overlay`) master/slave packet-switch port of `targetOp` whose
+  // (col, row, bundle, index, isSlave) key is NOT in `excludePorts`. Mirrors
+  // the port enumeration of `configureSwitches`. The 5th key element
+  // discriminates a master port from a slave port at the same (col, row,
+  // bundle, index): they are physically distinct registers, so folding them
+  // would wrongly protect a data port that happens to share bundle/index with
+  // an overlay port of the other direction. Callers pass the resident overlay's
+  // ports as `excludePorts` so exclusively-data ports (config minus overlay,
+  // including shared control+data ports) are the only ones torn down. Must be
+  // called while a transaction is being recorded (see startTransaction).
+  mlir::LogicalResult disableDataSwitches(
+      DeviceOp &targetOp,
+      const llvm::DenseSet<std::tuple<int, int, int, int, int>> &excludePorts,
+      bool disableCircuit = false);
+  // Record a DMA channel reset (assert then deassert Ctrl.Reset, all channels)
+  // for every non-shim tile DMA (MemOp/MemTileDMAOp) in targetOp, so a
+  // busy/enqueued channel can be safely reconfigured. Must be called while a
+  // transaction is being recorded (see startTransaction).
+  mlir::LogicalResult resetDataDmaChannels(DeviceOp &targetOp);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
                                     bool skipCtrlPktOverlay = false);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
