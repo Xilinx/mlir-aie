@@ -43,10 +43,12 @@ runtime-library include directory and annotate static table definitions with
 MLIR buffers can instead request a bank with `mem_bank`.
 
 For Peano, bank-pinned sections use the free space left in that bank after
-buffers, the stack, and the ordinary static-data region are reserved. Set
+buffers, the stack, and any explicit static-data region are reserved. Set
 `data_size` on the core (or `Worker(..., data_size=...)` in IRON) to bound the
-ordinary static-data reservation; otherwise it takes the largest available
-run and may leave no room for a pinned table. A bank overflow is a link error,
+ordinary static-data reservation. Without it, ordinary data uses the largest
+available run, starting after any pinned sections that intersect that run.
+This can leave unused gaps before pinned tables; use an explicit reservation
+when the default contiguous region is too small. A bank overflow is a link error,
 not permission to place the table in another bank.
 
 Enable `--check-lut-banks` to check table separation against the linked ELF.
@@ -58,7 +60,8 @@ through the optimized core IR. The check is Peano-only and off by default.
 Prebuilt `elf_file` cores cannot be checked without their compiler IR.
 Unresolved pointers, parameter bindings, and stack-local placement produce an
 error rather than a successful verification. Prefer bank-pinned static tables
-when separately compiling a kernel.
+when separately compiling a kernel. Merged kernels can also use bank-pinned
+buffers on the core's own tile when optimization resolves the table arguments.
 
 `stack_bank` requests a bank-aware stack allocation; `stack_address` specifies
 a tile-relative byte address. An explicit placement must fit the stack in one

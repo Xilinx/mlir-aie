@@ -477,6 +477,15 @@ inline mlir::LogicalResult checkLutBankSeparation(
         elf,
         targetModel.getMemInternalBaseAddress({tile.getCol(), tile.getRow()}),
         &sizes);
+    llvm::StringMap<std::pair<int64_t, uint64_t>> bufferExtents;
+    for (auto buffer : coreOp->getParentOfType<xilinx::AIE::DeviceOp>()
+                           .getOps<xilinx::AIE::BufferOp>()) {
+      if (buffer.getTile() == coreOp.getTile() && !buffer.getCoreData() &&
+          buffer.getAddress() && buffer.name()) {
+        bufferExtents.try_emplace(*buffer.name(), *buffer.getAddress(),
+                                  buffer.getAllocationSize());
+      }
+    }
 
     auto describe = [&](const xilinx::aiecc::LutOperand &op) {
       switch (op.kind) {
@@ -493,9 +502,24 @@ inline mlir::LogicalResult checkLutBankSeparation(
     };
     // Parameter bindings and stack-local offsets are not recoverable from
     // separately compiled objects. Do not claim to have checked those banks.
-    auto bankOf = [&](const xilinx::aiecc::LutOperand &op) -> int {
+    auto bankOf = [&](const xilinx::aiecc::LutOperand &op,
+                      bool resolveBuffers) -> int {
       if (op.kind != xilinx::aiecc::LutOperand::Kind::Symbol) {
         return -1;
+      }
+      // Linker-script buffer symbols have no ELF size. Only core IR can bind
+      // them unambiguously; a native object's same-named local may be
+      // unrelated.
+      if (resolveBuffers) {
+        auto buffer = bufferExtents.find(op.symbol);
+        if (buffer != bufferExtents.end()) {
+          auto [address, size] = buffer->second;
+          if (address >= 0 && address < bankSize * numBanks && size > 0 &&
+              size <= static_cast<uint64_t>(bankSize - address % bankSize)) {
+            return static_cast<int>(address / bankSize);
+          }
+          return -1;
+        }
       }
       auto it = addrs.find(op.symbol);
       if (it == addrs.end() || it->second < 0 ||
@@ -509,7 +533,8 @@ inline mlir::LogicalResult checkLutBankSeparation(
     };
 
     auto checkPairs = [&](llvm::StringRef input,
-                          const std::optional<std::vector<LutPair>> &pairs) {
+                          const std::optional<std::vector<LutPair>> &pairs,
+                          bool resolveBuffers) {
       if (!pairs) {
         coreOp.emitError()
             << "core (" << tile.getCol() << ", " << tile.getRow() << "): '"
@@ -524,8 +549,8 @@ inline mlir::LogicalResult checkLutBankSeparation(
       for (const auto &pair : *pairs) {
         using Kind = xilinx::aiecc::LutOperand::Kind;
         bool onStack = pair.a.kind == Kind::Stack || pair.b.kind == Kind::Stack;
-        int bankA = bankOf(pair.a);
-        int bankB = bankOf(pair.b);
+        int bankA = bankOf(pair.a, resolveBuffers);
+        int bankB = bankOf(pair.b, resolveBuffers);
         if (!onStack && bankA >= 0 && bankB >= 0 && bankA != bankB) {
           continue;
         }
@@ -550,16 +575,17 @@ inline mlir::LogicalResult checkLutBankSeparation(
     };
 
     std::string coreIR = irForCore(coreOp);
-    checkPairs(coreIR, xilinx::aiecc::readLutPairsFromIR(coreIR));
+    checkPairs(coreIR, xilinx::aiecc::readLutPairsFromIR(coreIR), true);
     if (auto files = coreOp.getLinkFiles()) {
       for (auto f : files->getAsRange<mlir::StringAttr>()) {
         std::string object = resolvePath(f.getValue());
         checkPairs(f.getValue(),
-                   xilinx::aiecc::readLutPairsFromObject(object, elf));
+                   xilinx::aiecc::readLutPairsFromObject(object, elf), false);
       }
     } else if (auto file = coreOp.getLinkWith()) {
-      checkPairs(*file, xilinx::aiecc::readLutPairsFromObject(
-                            resolvePath(*file), elf));
+      checkPairs(*file,
+                 xilinx::aiecc::readLutPairsFromObject(resolvePath(*file), elf),
+                 false);
     }
   });
   return result;

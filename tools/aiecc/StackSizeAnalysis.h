@@ -127,8 +127,9 @@ struct LutPair {
 //
 // Unresolvable gather addresses produce Unknown operands, not an empty result.
 // Direct LLVM IR inputs (.ll or .bc) are also accepted.
-// When elfPath is supplied, native-object pairs are limited to functions still
-// defined in the linked ELF; raw IR stays conservative because of LTO inlining.
+// When elfPath is supplied, pairs from functions defined in the native object
+// but removed from the linked ELF are omitted. Other functions and raw IR stay
+// conservative because inlining can remove a symbol without removing its LUT.
 // Returns nothing when the object carries no readable IR, which the caller
 // reports rather than mistaking for "no pairs found". Peano only: chess emits
 // IR from an LLVM old enough that this parser rejects it.

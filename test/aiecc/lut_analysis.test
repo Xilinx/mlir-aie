@@ -5,7 +5,6 @@
 // REQUIRES: system-linux
 // RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -UNDEBUG -I%S/../../tools/aiecc %S/lut_analysis_test.cpp %S/../../tools/aiecc/StackSizeAnalysis.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags --libs object irreader core support --system-libs) %host_link_flags -o %t.exe'
 // RUN: %host_clang -c %S/bank_analysis_symbols.c -o %t.o
-// RUN: llvm-objcopy --add-section .llvmbc=%S/lut_analysis_pairs.ll %t.o %t.embedded.o
 // RUN: %LLVM_TOOLS_DIR/llvm-as %S/lut_analysis_pairs.ll -o %t.bc
 // RUN: touch %t.empty
 // RUN: echo corrupt > %t.corrupt
@@ -15,6 +14,8 @@
 // RUN: %host_clang -ffunction-sections -fdata-sections -c %S/bank_analysis_duplicates.c -o %t.first.o
 // RUN: %host_clang -ffunction-sections -fdata-sections -DSECOND -c %S/bank_analysis_duplicates.c -o %t.second.o
 // RUN: %host_clang -DSECOND -DUNPINNED -c %S/bank_analysis_duplicates.c -o %t.unpinned.o
+// RUN: %host_clang -nostdlib -r %t.first.o %t.second.o -o %t.native.o
+// RUN: llvm-objcopy --add-section .llvmbc=%S/lut_analysis_pairs.ll %t.native.o %t.embedded.o
 // RUN: %host_clang -nostdlib -no-pie -Wl,-e,get_first %t.first.o %t.second.o -o %t.duplicates.elf
 // RUN: %host_clang -nostdlib -no-pie -Wl,--gc-sections -Wl,-e,gather_with_unrelated_blend %t.first.o %t.second.o -o %t.gc.elf
 // RUN: rm -f %t.symbols.a %t.duplicates.a %t.thin.a
@@ -22,6 +23,9 @@
 // RUN: %LLVM_TOOLS_DIR/llvm-ar rc %t.duplicates.a %t.first.o %t.second.o
 // RUN: %LLVM_TOOLS_DIR/llvm-ar rcT %t.thin.a %t.first.o %t.second.o
 // RUN: %t.exe %S/lut_analysis_pairs.ll %t.embedded.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf %t.gc.elf %t.unpinned.o %t.symbols.a %t.duplicates.a %t.thin.a | FileCheck %s
-// RUN: llvm-objcopy --add-section .llvmbc=%t.bc %t.o %t.bitcode.o
+// RUN: llvm-objcopy --add-section .llvmbc=%t.bc %t.native.o %t.bitcode.o
 // RUN: %t.exe %S/lut_analysis_pairs.ll %t.bitcode.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf %t.gc.elf %t.unpinned.o %t.symbols.a %t.duplicates.a %t.thin.a | FileCheck %s
+// RUN: llvm-objcopy --redefine-sym=gather_with_unrelated_blend=prefixed_gather %t.bitcode.o %t.renamed.o
+// RUN: llvm-objcopy --redefine-sym=gather_with_unrelated_blend=prefixed_gather %t.gc.elf %t.renamed.elf
+// RUN: %t.exe %S/lut_analysis_pairs.ll %t.renamed.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf %t.renamed.elf %t.unpinned.o %t.symbols.a %t.duplicates.a %t.thin.a | FileCheck %s
 // CHECK: LUT analysis: all checks passed

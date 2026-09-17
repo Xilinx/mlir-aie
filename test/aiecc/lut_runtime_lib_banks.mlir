@@ -12,14 +12,16 @@
 // packed each pair adjacently, into one bank, and the gather read the wrong
 // port with nothing to report it. This is the case issue #3737 describes.
 //
-// data_size bounds the unpinned region, which would otherwise claim the run
-// the pinned tables need.
+// Both explicit and default data reservations must leave room for the tables.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I%S/../../third_party/aie_api/include -I%S/../../aie_runtime_lib/AIE2P -fembed-bitcode -c %S/lut_runtime_lib_banks_kernel.cc -o %t.d/lut_runtime_lib_banks_kernel.o
 // RUN: cd %t.d && aiecc --get-core-elfs --check-lut-banks %s
 // RUN: llvm-readelf -s %t.d/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s
+// RUN: sed 's/, data_size = 4096 : i32//' %s > %t.d/default.mlir
+// RUN: cd %t.d && aiecc --get-core-elfs --check-lut-banks default.mlir
+// RUN: cd %t.d && aiecc --get-core-elfs --no-unified --check-lut-banks default.mlir
 
 // Local memory starts at 0x70000 and a bank is 0x4000, so an _ab in 0x70000-
 // 0x73fff and its _cd in 0x74000-0x77fff are a bank apart.

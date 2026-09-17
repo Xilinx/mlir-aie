@@ -135,20 +135,46 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       int origin =
           targetModel.getMemInternalBaseAddress(srcCoord) + dataRun.start;
       int length = dataRun.size;
+      bool reservedData =
+          llvm::any_of(buffers[tiles[srcCoord]],
+                       [](BufferOp buf) { return buf.getCoreData(); });
+      llvm::SmallVector<MemoryRun> bankRuns = coreBankRegions(
+          tile, buffers[tiles[srcCoord]], reservedData ? dataRun : MemoryRun{});
+      std::string dataOrigin = "0x" + llvm::utohexstr(origin);
+      std::string dataEnd = "0x" + llvm::utohexstr(origin + length);
+      if (!reservedData) {
+        // Bank sections have fixed regions. LLD resolves their sizes before
+        // assigning ordinary data, including BSS-only cores and empty banks.
+        for (auto [bank, run] : llvm::enumerate(bankRuns)) {
+          int64_t bankStart =
+              targetModel.getMemInternalBaseAddress(srcCoord) + run.start;
+          if (run.size == 0 || bankStart >= origin + length ||
+              bankStart + run.size <= origin) {
+            continue;
+          }
+          std::string sec = bankSectionName(bank);
+          std::string end = "(ADDR(" + sec + ") + SIZEOF(" + sec + "))";
+          dataOrigin = "MAX(" + dataOrigin + ", (SIZEOF(" + sec +
+                       ") != 0 ? MIN(" + dataEnd + ", " + end + ") : 0))";
+        }
+      }
       output << R"THESCRIPT(
 MEMORY
 {
 )THESCRIPT";
       output << "   program (RX) : ORIGIN = 0, LENGTH = 0x"
              << llvm::utohexstr(targetModel.getProgramMemorySize()) << "\n";
-      output << "   data (!RX) : ORIGIN = 0x" << llvm::utohexstr(origin)
-             << ", LENGTH = 0x" << llvm::utohexstr(length) << "\n";
+      output << "   data (!RX) : ORIGIN = " << dataOrigin << ", LENGTH = ";
+      if (reservedData) {
+        output << "0x" << llvm::utohexstr(length);
+      } else {
+        output << dataEnd << " - " << dataOrigin;
+      }
+      output << "\n";
       // One region per bank, for statics a kernel pins with a bank attribute.
       // A bank with nothing spare gets a zero-length region rather than being
       // left out, so a section aimed at it overflows by name instead of
       // becoming an orphan.
-      llvm::SmallVector<MemoryRun> bankRuns =
-          coreBankRegions(tile, buffers[tiles[srcCoord]], dataRun);
       for (auto [bank, run] : llvm::enumerate(bankRuns)) {
         output << "   " << bankRegionName(bank) << " (!RX) : ORIGIN = 0x"
                << llvm::utohexstr(

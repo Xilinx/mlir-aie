@@ -17,7 +17,7 @@
 
 // CHECK: will not fit in region 'bank1'
 // CHECK: aiecc: core {{.*}}_core_0_2: a static pinned to bank1 does not fit there
-// CHECK-SAME: Set data_size on the core
+// CHECK-SAME: move buffers, the stack, or an explicit data_size reservation
 module {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)

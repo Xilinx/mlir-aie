@@ -17,7 +17,7 @@
 // RUN: cd %t.d && not aiecc --get-core-elfs %s 2>&1 | FileCheck %s
 
 // CHECK: will not fit in region 'data'
-// CHECK: aiecc: core {{.*}}_core_0_2 needs space for 40000 bytes of static data
+// CHECK: aiecc: core {{.*}}_core_0_2 needs space for up to 40000 bytes of static data
 // CHECK-SAME: Set data_size on the core
 // CHECK-SAME: data_size = 40000 : i32
 

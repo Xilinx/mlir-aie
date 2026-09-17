@@ -55,10 +55,15 @@ int main(int argc, char **argv) {
   assert(!readLutPairsFromObject(argv[6]));
   assert(!readLutPairsFromObject(argv[7]));
   auto livePairs = readLutPairsFromObject(argv[2], argv[10]);
-  assert(livePairs && livePairs->size() == 3);
+  assert(livePairs && livePairs->size() == 12);
   auto collectedPairs = readLutPairsFromObject(argv[2], argv[11]);
-  assert(collectedPairs && collectedPairs->size() == 1);
+  assert(collectedPairs && collectedPairs->size() == 10);
   assert((*collectedPairs)[0].function == "gather_with_unrelated_blend");
+  for (const auto &pair : *collectedPairs) {
+    assert(pair.function != "unresolved_gather");
+    assert(pair.function != "same_table");
+  }
+  assert((*collectedPairs)[1].function == "offset_gather");
   assert(!readLutPairsFromObject(argv[2], argv[7]));
   for (int i : {1, 3}) {
     auto irPairs = readLutPairsFromObject(argv[i], argv[11]);

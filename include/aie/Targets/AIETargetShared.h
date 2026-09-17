@@ -71,8 +71,8 @@ MemoryRun coreDataRegion(TileOp tile, llvm::ArrayRef<BufferOp> buffers);
 /// stack, the buffers and `dataRun` are accounted for, so a bank with nothing
 /// spare yields a zero-sized extent rather than dropping out.
 ///
-/// `dataRun` is passed in rather than recomputed so the unpinned region keeps
-/// exactly the extent it had before banks existed.
+/// Pass an empty `dataRun` when no data reservation exists; the linker then
+/// bounds ordinary data using the actual bank-section extents.
 llvm::SmallVector<MemoryRun> coreBankRegions(TileOp tile,
                                              llvm::ArrayRef<BufferOp> buffers,
                                              MemoryRun dataRun);

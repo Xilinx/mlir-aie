@@ -925,8 +925,23 @@ xilinx::aiecc::readLutPairsFromObject(llvm::StringRef objectPath,
   if (!obj) {
     return std::nullopt;
   }
-  llvm::StringSet<> liveFunctions;
+  llvm::StringSet<> objectFunctions, liveFunctions;
   if (!elfPath.empty()) {
+    for (const SymbolRef &sym : obj->symbols()) {
+      auto name = sym.getName();
+      auto type = sym.getType();
+      auto flags = sym.getFlags();
+      if (!name || !type || !flags) {
+        llvm::consumeError(name.takeError());
+        llvm::consumeError(type.takeError());
+        llvm::consumeError(flags.takeError());
+        return std::nullopt;
+      }
+      if (*type == SymbolRef::ST_Function &&
+          !(*flags & SymbolRef::SF_Undefined)) {
+        objectFunctions.insert(*name);
+      }
+    }
     auto linkedBinary = llvm::object::createBinary(elfPath);
     if (!linkedBinary) {
       llvm::consumeError(linkedBinary.takeError());
@@ -979,7 +994,10 @@ xilinx::aiecc::readLutPairsFromObject(llvm::StringRef objectPath,
   }
   if (pairs && !elfPath.empty()) {
     llvm::erase_if(*pairs, [&](const LutPair &pair) {
-      return !liveFunctions.contains(pair.function);
+      // Embedded IR can precede codegen inlining. Only a function emitted in
+      // the input object and absent from the ELF is known to have been removed.
+      return objectFunctions.contains(pair.function) &&
+             !liveFunctions.contains(pair.function);
     });
   }
   return pairs;

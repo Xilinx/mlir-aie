@@ -1027,9 +1027,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .output("-o")
                   .explainFailure([dataRegionBytes](llvm::StringRef log,
                                                     llvm::StringRef key) {
-                    // A failed link writes no ELF to measure, so the bytes the
-                    // core needs are the region the script granted plus the
-                    // shortfall the linker reports against it.
+                    // Bank sections can shrink the default data region at link
+                    // time, so the original region plus overflow is an upper
+                    // bound on the reservation needed, not an exact measure.
                     std::optional<int64_t> over = parseLinkOverflowBytes(log);
                     if (log.contains("will not fit in region 'data'") && over) {
                       int64_t granted = 0;
@@ -1043,7 +1043,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       }
                       int64_t need = granted + *over;
                       llvm::errs()
-                          << "aiecc: core " << key << " needs space for "
+                          << "aiecc: core " << key << " needs space for up to "
                           << need
                           << " bytes of static data (constant arrays such as "
                              "lookup tables and strings). That does not fit in "
@@ -1055,11 +1055,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                           << " : i32 }, or Worker(..., data_size=" << need
                           << ") in IRON.\n";
                     }
-                    // A bank region is whatever that bank has left once the
-                    // unpinned `data` region is placed, and `data` claims the
-                    // largest free run on the tile. Without a declared
-                    // data_size it can take the very bank a section was pinned
-                    // to, even when the tile is otherwise empty.
                     if (size_t at = log.find("will not fit in region 'bank");
                         at != llvm::StringRef::npos) {
                       llvm::StringRef bank =
@@ -1068,13 +1063,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       llvm::errs()
                           << "aiecc: core " << key << ": a static pinned to "
                           << bank
-                          << " does not fit there. Unless the core declares "
-                             "data_size, the region for its unpinned static "
-                             "data takes the largest free run on the tile, "
-                             "which can be the bank you pinned to. Set "
-                             "data_size on the core to bound it: "
-                             "aie.core(%tile) { ... } { data_size = N : i32 }, "
-                             "or Worker(..., data_size=N) in IRON.\n";
+                          << " does not fit there. Reduce the pinned data, "
+                             "or move buffers, the stack, or an explicit "
+                             "data_size reservation out of that bank.\n";
                     }
                     if (log.contains("will not fit in region 'program'")) {
                       llvm::errs()
