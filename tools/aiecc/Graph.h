@@ -298,13 +298,13 @@ struct NodeSerializer<OpInModule<KeyOp>> {
       std::error_code ec;
       llvm::raw_fd_ostream os(dest, ec);
       if (!ec)
-        printModuleWithDebugInfo(items.front().get().module.get(), os);
+        printModuleWithDebugInfo(items.front().get().mod(), os);
     }
     llvm::json::Array entries;
     for (const Item<OpInModule<KeyOp>> &it : items)
       entries.push_back(llvm::json::Object{
           {"key", it.key},
-          {"walkIdx", opWalkIndex<KeyOp>(it.get().module.get(), it.get().op)}});
+          {"walkIdx", opWalkIndex<KeyOp>(it.get().mod(), it.get().op)}});
     return llvm::json::Object{{"module", moduleName},
                               {"items", std::move(entries)}};
   }
@@ -329,6 +329,8 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
                    << "'\n";
       return mlir::failure();
     }
+    auto shared =
+        std::make_shared<mlir::OwningOpRef<mlir::ModuleOp>>(std::move(parsed));
     const llvm::json::Array *entries = o->getArray("items");
     std::vector<Item<OpInModule<KeyOp>>> items;
     if (!entries)
@@ -336,9 +338,8 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
     for (const llvm::json::Value &e : *entries) {
       const llvm::json::Object *eo = e.getAsObject();
       int64_t walkIdx = eo->getInteger("walkIdx").value_or(-1);
-      // Each item owns its own module (matching the split); clone per item.
-      mlir::OwningOpRef<mlir::ModuleOp> clone(parsed.get().clone());
-      KeyOp op = opAtWalkIndex<KeyOp>(clone.get(), walkIdx);
+      // All items share the one parsed module; bind each by walk index.
+      KeyOp op = opAtWalkIndex<KeyOp>(shared->get(), walkIdx);
       if (!op) {
         llvm::errs() << "aiecc: cannot resume: focus op index " << walkIdx
                      << " out of range\n";
@@ -346,7 +347,7 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
       }
       Item<OpInModule<KeyOp>> it;
       it.key = eo->getString("key").value_or("").str();
-      it.value = OpInModule<KeyOp>{std::move(clone), op};
+      it.value = OpInModule<KeyOp>{shared, op};
       items.push_back(std::move(it));
     }
     return items;

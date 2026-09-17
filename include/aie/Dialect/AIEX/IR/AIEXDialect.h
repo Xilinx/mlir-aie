@@ -73,6 +73,12 @@ std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
 mlir::Value createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
                               uint32_t value);
 
+// Marker attribute the aiecc --reconfig-method fold stamps on the entry
+// (dispatch host) device; readers (AIESplitConfigureEntries, aiecc's entry
+// select + host keep) match on `hasAttr(kEntrypointAttr)`. Defined on the
+// dialect so the pass and the driver share ONE source of truth.
+constexpr llvm::StringLiteral kEntrypointAttr = "aiex.entrypoint";
+
 } // namespace AIEX
 } // namespace xilinx
 

@@ -51,9 +51,11 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
@@ -377,7 +379,7 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
          Item<std::string> &out) -> mlir::LogicalResult {
         DeviceOp d = item.get().op;
         llvm::raw_string_ostream os(out.value.emplace());
-        return xilinx::AIE::AIETranslateGraphXPE(item.get().module.get(), os,
+        return xilinx::AIE::AIETranslateGraphXPE(item.get().mod(), os,
                                                  d.getSymName());
       });
   auto &shim = staticPerDevice.map<std::string>(
@@ -386,8 +388,8 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
          Item<std::string> &out) -> mlir::LogicalResult {
         DeviceOp d = item.get().op;
         llvm::raw_string_ostream os(out.value.emplace());
-        return xilinx::AIE::AIETranslateShimSolution(item.get().module.get(),
-                                                     os, d.getSymName());
+        return xilinx::AIE::AIETranslateShimSolution(item.get().mod(), os,
+                                                     d.getSymName());
       });
   auto &scsim = staticPerDevice.map<std::string>(
       "sim/config/scsim_config.json",
@@ -395,7 +397,7 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
          Item<std::string> &out) -> mlir::LogicalResult {
         DeviceOp d = item.get().op;
         llvm::raw_string_ostream os(out.value.emplace());
-        return xilinx::AIE::AIETranslateSCSimConfig(item.get().module.get(), os,
+        return xilinx::AIE::AIETranslateSCSimConfig(item.get().mod(), os,
                                                     d.getSymName());
       });
 
@@ -432,7 +434,7 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                              const Node<std::string> &incs,
                              Item<File> &out) -> mlir::LogicalResult {
                 assert(!devs.items.empty() && !incs.items.empty());
-                mlir::ModuleOp mod = devs.items.front().get().module.get();
+                mlir::ModuleOp mod = devs.items.front().get().mod();
                 DeviceOp d = devs.items.front().get().op;
                 std::string aieTarget = detectAIETarget(mod, d.getSymName());
                 std::string archUpper = llvm::StringRef(aieTarget).upper();
@@ -580,8 +582,8 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
         prog.deviceName = devOp.getSymName().str();
         std::vector<uint32_t> insts;
         if (mlir::failed(xilinx::AIE::AIETranslateNpuToBinary(
-                item.get().module.get(), insts, devOp.getSymName(),
-                seq.getSymName(), &prog.locmap, foldDDRAddrOffset)))
+                item.get().mod(), insts, devOp.getSymName(), seq.getSymName(),
+                &prog.locmap, foldDDRAddrOffset)))
           return mlir::failure();
         prog.insts = wordsToBytes(insts);
         out.value = std::move(prog);
@@ -589,6 +591,603 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
       });
   npuProgram.producesFiles = false;
   return npuProgram;
+}
+
+//===----------------------------------------------------------------------===//
+// --reconfig-method: fold N single-config designs, split into init/configs
+//===----------------------------------------------------------------------===//
+
+// A device is "tile-bearing" (a config, not a tile-less host) if it declares
+// any placed `aie.tile` (TileOp) OR unplaced `aie.logical_tile`
+// (LogicalTileOp) -- the shape real IRON `as_mlir()` output emits, before
+// AIEPlaceTiles assigns coordinates. Keying on TileOp alone misclassifies a
+// real (unplaced) idiomatic design as a tile-less host, silently bypassing
+// the fold below.
+// Reconfiguration delivery method, resolved once from the --reconfig-method
+// flag string instead of re-comparing the literal at each decision point.
+enum class ReconfigMethod { None, Loadpdi, Write32, Ctrlpkt };
+static ReconfigMethod parseReconfigMethod(llvm::StringRef m) {
+  if (m == "loadpdi")
+    return ReconfigMethod::Loadpdi;
+  if (m == "write32")
+    return ReconfigMethod::Write32;
+  if (m == "ctrlpkt")
+    return ReconfigMethod::Ctrlpkt;
+  return ReconfigMethod::None;
+}
+
+static bool deviceHasTiles(xilinx::AIE::DeviceOp d) {
+  return !d.getOps<xilinx::AIE::TileOp>().empty() ||
+         !d.getOps<xilinx::AIE::LogicalTileOp>().empty();
+}
+
+// Synthesize the persistent-host scaffolding for idiomatic single-device
+// inputs (no tile-less host), in-memory: one @main host device carrying one
+// entry sequence per design (name preserved from the design; each
+// `configure @config_i { run @<seq>(args) }`) plus the N config devices renamed
+// @config_1..@config_N. Writes the merged module; returns the path, or "" on
+// error (already diagnosed).
+
+// Write a union/merged module to <workDir>/config_union.mlir. Returns the path,
+// or "" on a filesystem error (diagnostic already emitted). Shared by the two
+// --reconfig-method fold paths (conformIdiomaticInputs,
+// unionConfigDesigns).
+static std::string writeMergedModule(mlir::ModuleOp mod,
+                                     llvm::StringRef workDir) {
+  if (auto ec = llvm::sys::fs::create_directories(workDir)) {
+    llvm::errs() << "aiecc: --reconfig-method: cannot create " << workDir
+                 << ": " << ec.message() << "\n";
+    return {};
+  }
+  std::string outPath = (workDir + "/config_union.mlir").str();
+  std::error_code ec;
+  llvm::raw_fd_ostream os(outPath, ec);
+  if (ec) {
+    llvm::errs() << "aiecc: --reconfig-method: cannot write " << outPath << ": "
+                 << ec.message() << "\n";
+    return {};
+  }
+  mod.print(os);
+  return outPath;
+}
+
+// Label the fold-synthesized entry (top-level host) device with the
+// aiex.entrypoint marker -- a dictionary carrying the reconfig_method. Its
+// presence is what downstream (splitMultiConfigEntry entry select, SidecarFiles
+// host-keep) uses to identify the entry device, robust to the sequence
+// sym_names. See kEntrypointAttr.
+static void markEntrypointDevice(xilinx::AIE::DeviceOp host,
+                                 llvm::StringRef reconfigMethod) {
+  mlir::MLIRContext *ctx = host.getContext();
+  mlir::NamedAttribute methodAttr(
+      mlir::StringAttr::get(ctx, xilinx::aiecc::kReconfigMethodKey),
+      mlir::StringAttr::get(ctx, reconfigMethod));
+  host->setAttr(xilinx::aiecc::kEntrypointAttr,
+                mlir::DictionaryAttr::get(ctx, {methodAttr}));
+}
+
+static std::string conformIdiomaticInputs(llvm::ArrayRef<std::string> inputs,
+                                          llvm::StringRef workDir,
+                                          mlir::MLIRContext &context,
+                                          llvm::StringRef reconfigMethod) {
+  using namespace mlir;
+  using xilinx::AIE::DeviceOp;
+  using xilinx::AIE::EndOp;
+  using xilinx::AIE::RuntimeSequenceOp;
+  using xilinx::AIEX::ConfigureOp;
+  using xilinx::AIEX::RunOp;
+
+  Location loc = UnknownLoc::get(&context);
+  OpBuilder b(&context);
+  OwningOpRef<ModuleOp> merged = ModuleOp::create(b, loc);
+  DeviceOp host;
+  Block *hostBody = nullptr;
+  std::optional<xilinx::AIE::AIEDevice> arch;
+  unsigned i = 0;
+
+  for (StringRef in : inputs) {
+    OwningOpRef<ModuleOp> mod = parseSourceFile<ModuleOp>(in, &context);
+    if (!mod) {
+      llvm::errs() << "aiecc: --reconfig-method: failed to parse " << in
+                   << "\n";
+      return {};
+    }
+
+    // Exactly one tile-bearing device, no tile-less host.
+    DeviceOp cfg = nullptr;
+    bool sawHost = false;
+    for (DeviceOp d : mod->getOps<DeviceOp>()) {
+      if (!deviceHasTiles(d))
+        sawHost = true;
+      else if (!cfg)
+        cfg = d;
+      else {
+        llvm::errs() << "aiecc: --reconfig-method: " << in
+                     << ": expected exactly one tile-bearing device\n";
+        return {};
+      }
+    }
+    if (sawHost || !cfg) {
+      llvm::errs() << "aiecc: --reconfig-method: " << in
+                   << ": expected an idiomatic single-device design\n";
+      return {};
+    }
+
+    // Arch consistency (ConfigureOp verifier requires host==config arch).
+    if (!arch) {
+      arch = cfg.getDevice();
+      b.setInsertionPointToStart(merged->getBody());
+      host = DeviceOp::create(b, loc, *arch); // model: AIEExpandLoadPdi.cpp:100
+      // @main matches the device name IRON's own full-ELF path uses
+      // (program.py resolve_program(device_name="main")), so jit derives the
+      // same <device>:<sequence> kernel name it dispatches by -- no override.
+      host.setSymName("main");
+      // Label the synthesized entry device so downstream identifies it by the
+      // marker's presence rather than the (migrating) sequence sym_names.
+      markEntrypointDevice(host, reconfigMethod);
+      hostBody = b.createBlock(&host.getRegion());
+      OpBuilder endBuilder(hostBody, hostBody->end());
+      EndOp::create(endBuilder, loc); // aie.end terminator
+    } else if (cfg.getDevice() != *arch) {
+      llvm::errs() << "aiecc: --reconfig-method: mixed device targets\n";
+      return {};
+    }
+
+    // Root runtime sequence (exactly one).
+    RuntimeSequenceOp seq = nullptr;
+    unsigned nseq = 0;
+    for (RuntimeSequenceOp s : cfg.getOps<RuntimeSequenceOp>()) {
+      seq = s;
+      ++nseq;
+    }
+    if (nseq != 1) {
+      llvm::errs() << "aiecc: --reconfig-method: " << in
+                   << ": expected exactly one runtime_sequence (found " << nseq
+                   << ")\n";
+      return {};
+    }
+    // The design's runtime_sequence name IS the user's entrypoint name (the jit
+    // name= key, or the default "sequence"). It labels the LIFTED entrypoint
+    // the fold synthesizes below and deduces the config device name; the
+    // design's own sequence -- now internal (referenced only by aiex.run) --
+    // reverts to the canonical "sequence". Only the entrypoint is ever
+    // dispatched (main:<entrypoint>), so the config device and its inner
+    // sequence are purely internal. Distinct designs must therefore carry
+    // distinct names (splitMultiConfigEntry loud-fails on a duplicate
+    // entrypoint name).
+    std::string entryName = seq.getSymName().str();
+
+    // Reject a pre-embedded load_pdi: the union fold and the downstream
+    // ctrl-pkt materialization own PDI sequencing, so a design that already
+    // carries its own aiex.npu.load_pdi would double up (or race) with that.
+    if (!seq.getBody().getOps<xilinx::AIEX::NpuLoadPdiOp>().empty()) {
+      llvm::errs() << "aiecc: --reconfig-method: " << in
+                   << ": idiomatic input must not carry a pre-embedded "
+                      "load_pdi (emit on the non-full-ELF path)\n";
+      return {};
+    }
+
+    // Config device is deduced as <entrypoint>_config, so its name follows the
+    // user's design name (never persists the input's own device name); the
+    // final verify() is the backstop against a collision.
+    std::string cfgName = entryName + "_config";
+
+    ++i;
+
+    // Clone the config device into the merged module, renamed <name>_config,
+    // and revert its internal runtime_sequence to the canonical "sequence" (it
+    // is referenced only by the entrypoint's aiex.run, never dispatched
+    // directly).
+    b.setInsertionPointToEnd(merged->getBody());
+    auto *clone = b.clone(*cfg.getOperation()); // model: aiecc.cpp:697
+    auto cfgDev = cast<DeviceOp>(clone);
+    cfgDev.setSymName(cfgName);
+    for (RuntimeSequenceOp s : cfgDev.getOps<RuntimeSequenceOp>())
+      s.setSymName("sequence");
+
+    // Append the LIFTED entrypoint before @main's aie.end, named with the
+    // user's entrypoint name so the dispatchable kernel is main:<entrypoint>.
+    // It issues `configure @<name>_config { run @sequence }`;
+    // splitMultiConfigEntry keeps this name (block order = chain order) and,
+    // for the init methods, synthesizes a shared main:init.
+    SmallVector<Type> argTys(seq.getBody().getArgumentTypes());
+    SmallVector<Location> argLocs(argTys.size(), loc);
+    OpBuilder hb(hostBody->getTerminator());
+    auto seqOp = RuntimeSequenceOp::create(
+        hb, loc, entryName, BoolAttr{}); // model: AIEToConfiguration.cpp:976
+    Block *seqEntry = hb.createBlock(&seqOp.getBody(), {}, argTys, argLocs);
+    OpBuilder sb(seqEntry, seqEntry->end());
+    auto conf =
+        ConfigureOp::create(sb, loc, FlatSymbolRefAttr::get(&context, cfgName),
+                            /*expand_mode=*/nullptr);
+    Block *confBody = sb.createBlock(
+        &conf.getBody()); // model: AIEMaterializeRuntimeSequences.cpp:131
+    OpBuilder cb(confBody, confBody->end());
+    RunOp::create(cb, loc, FlatSymbolRefAttr::get(&context, "sequence"),
+                  seqEntry->getArguments());
+  }
+  if (i == 0) {
+    llvm::errs() << "aiecc: --reconfig-method: no inputs\n";
+    return {};
+  }
+
+  if (failed(verify(*merged))) {
+    llvm::errs() << "aiecc: --reconfig-method: synthesized module failed "
+                    "verification\n";
+    return {};
+  }
+  return writeMergedModule(*merged, workDir);
+}
+
+// The baked --reconfig-method flow needs EACH config's control-packet
+// stream materialized side by side so every config gets its own baked
+// `.ctrldata` entry. It does this by folding the N designs into ONE module
+// whose host device carries N runtime sequences -- `seq_1..seq_N`, one per
+// config -- each still issuing that design's `aiex.configure @config_k`,
+// alongside the N (distinct) config devices. Routed through the normal
+// --load-pdi-to-ctrl-pkt overlay pipeline, this materializes each seq_k's full
+// control packets; every downstream artifact (per-seq run-seq DMA, per-seq
+// ctrlpkt bin, N-entry overlay ELF) regenerates from that merged module.
+//
+// Each design's config device symbol must be distinct (the reconfiguration
+// examples key them by the `--consts A` constant, e.g. @add_1..@add_N); a
+// collision is rejected. Writes the merged module under the work dir and
+// returns its path; returns "" on error (already diagnosed).
+static std::string unionConfigDesigns(mlir::MLIRContext &context,
+                                      llvm::ArrayRef<std::string> inputs,
+                                      llvm::StringRef workDir,
+                                      llvm::StringRef reconfigMethod) {
+  using xilinx::AIE::DeviceOp;
+  using xilinx::AIE::RuntimeSequenceOp;
+
+  // The host device declares no tiles and carries the runtime sequence(s); the
+  // config device declares the compute tiles (placed `aie.tile` or unplaced
+  // `aie.logical_tile`; see deviceHasTiles).
+  auto findDevices = [](mlir::ModuleOp m, DeviceOp &host, DeviceOp &config) {
+    host = nullptr;
+    config = nullptr;
+    for (DeviceOp d : m.getOps<DeviceOp>()) {
+      if (!deviceHasTiles(d)) {
+        if (!host)
+          host = d;
+      } else if (!config)
+        config = d;
+    }
+  };
+
+  mlir::OwningOpRef<mlir::ModuleOp> base =
+      mlir::parseSourceFile<mlir::ModuleOp>(inputs.front(), &context);
+  if (!base) {
+    llvm::errs() << "aiecc: --reconfig-method: failed to parse "
+                 << inputs.front() << "\n";
+    return {};
+  }
+  DeviceOp baseHost, baseConfig;
+  findDevices(base.get(), baseHost, baseConfig);
+  if (!baseHost) {
+    // No tile-less host device: if the base input is an idiomatic
+    // single-device design (tile-bearing config, own runtime_sequence, no
+    // host), synthesize the host scaffolding instead of erroring.
+    if (baseConfig)
+      return conformIdiomaticInputs(inputs, workDir, context, reconfigMethod);
+    llvm::errs() << "aiecc: --reconfig-method: no host (tile-less) or "
+                    "tile-bearing device in "
+                 << inputs.front() << "\n";
+    return {};
+  }
+
+  // Label the base host as the entry device (its presence, not the sequence
+  // names, is what identifies it downstream).
+  markEntrypointDevice(baseHost, reconfigMethod);
+
+  // Keep the base design's host runtime sequence name as-authored here: it is
+  // the entrypoint (dispatch) name the design chose (main:<name>). Entry names
+  // are kept VERBATIM; colliding ones are a hard error (see the collision check
+  // after the fold, below) -- the toolchain does not rename them. Require
+  // exactly one host runtime sequence.
+  unsigned nBaseSeq = 0;
+  for (RuntimeSequenceOp s : baseHost.getOps<RuntimeSequenceOp>()) {
+    (void)s;
+    ++nBaseSeq;
+  }
+  if (nBaseSeq != 1) {
+    llvm::errs() << "aiecc: --reconfig-method: " << inputs.front()
+                 << " must have exactly one host runtime sequence (found "
+                 << nBaseSeq << ")\n";
+    return {};
+  }
+
+  std::set<std::string> configNames;
+  if (baseConfig)
+    configNames.insert(baseConfig.getSymName().str());
+
+  mlir::OpBuilder modBuilder =
+      mlir::OpBuilder::atBlockEnd(base.get().getBody());
+  // The host DeviceOp body ends in an `aie.end` terminator; new sequences must
+  // go before it, not after.
+  mlir::OpBuilder seqBuilder(baseHost.getBody()->getTerminator());
+
+  for (llvm::StringRef extra : inputs.drop_front()) {
+    mlir::OwningOpRef<mlir::ModuleOp> mod =
+        mlir::parseSourceFile<mlir::ModuleOp>(extra, &context);
+    if (!mod) {
+      llvm::errs() << "aiecc: --reconfig-method: failed to parse " << extra
+                   << "\n";
+      return {};
+    }
+    DeviceOp host, config;
+    findDevices(mod.get(), host, config);
+    if (!host || !config) {
+      llvm::errs() << "aiecc: --reconfig-method: " << extra
+                   << " must have a host device and a config (tile-bearing) "
+                      "device\n";
+      return {};
+    }
+    if (!configNames.insert(config.getSymName().str()).second) {
+      llvm::errs() << "aiecc: --reconfig-method: duplicate config device '"
+                   << config.getSymName()
+                   << "' across designs; each config must be distinct\n";
+      return {};
+    }
+    // Fold in this design's config device verbatim and its host runtime
+    // sequence, KEEPING the design's chosen entrypoint name (retargeting
+    // nothing: the cloned sequence still references its own config symbol,
+    // which travels with the cloned device). Distinct designs must carry
+    // distinct entrypoint names -- splitMultiConfigEntry loud-fails on a
+    // duplicate.
+    modBuilder.clone(*config.getOperation());
+    unsigned added = 0;
+    for (RuntimeSequenceOp s : host.getOps<RuntimeSequenceOp>()) {
+      seqBuilder.clone(*s.getOperation());
+      ++added;
+    }
+    if (added != 1) {
+      llvm::errs() << "aiecc: --reconfig-method: " << extra
+                   << " must have exactly one host runtime sequence (found "
+                   << added << ")\n";
+      return {};
+    }
+  }
+
+  // Defense-in-depth: a base host device with no config (tile-bearing)
+  // device anywhere in the inputs. The idiomatic-ingest misclassification
+  // the sweep hit is caught upstream by deviceHasTiles; this guards the
+  // residual host-only-no-config shape.
+  if (configNames.empty()) {
+    llvm::errs() << "aiecc: --reconfig-method: no config (tile-bearing) "
+                    "device found in inputs\n";
+    return {};
+  }
+
+  // Reject colliding entrypoint names. Each folded design's host runtime
+  // sequence name IS its dispatch entrypoint (main:<name>), so two designs
+  // sharing a name would produce an ambiguous entrypoint and the verifier would
+  // reject the redefinition. The toolchain does NOT auto-rename: a design that
+  // emits N configs from one template must give each config a distinct sequence
+  // name (e.g. a distinct @iron.jit(name=) per design) so the entrypoints are
+  // unambiguous. (Previously colliding `sequence` entries were uniquified
+  // positionally to config_1..N; that fallback is removed.)
+  {
+    llvm::StringSet<> seen;
+    for (RuntimeSequenceOp s : baseHost.getOps<RuntimeSequenceOp>()) {
+      if (!seen.insert(s.getSymName()).second) {
+        llvm::errs()
+            << "aiecc: --reconfig-method: multiple designs share the host "
+               "runtime sequence name '"
+            << s.getSymName()
+            << "'; each design must name its runtime sequence uniquely (e.g. a "
+               "distinct @iron.jit(name=) per design) so its dispatch "
+               "entrypoint main:<name> is unambiguous. The toolchain no longer "
+               "auto-renames colliding entries to config_1..N.\n";
+        return {};
+      }
+    }
+  }
+
+  return writeMergedModule(base.get(), workDir);
+}
+
+// Prepare the entry device's N host runtime sequences (the ENTRYPOINTS) for
+// dispatch, and for the init methods synthesize one shared `init` entry. The
+// entrypoint device is the one carrying the aiex.entrypoint marker; every entry
+// is processed in BLOCK ORDER (= chain order) and its sym_name is KEPT VERBATIM
+// -- the dispatch name is the entrypoint's own name (main:<name>), chosen by
+// the design (single-design: its runtime_sequence; multi-design: each lifted
+// entrypoint). The toolchain never renames entries or special-cases any name
+// form (no seq_<n>/config_<n> magic): a design that names its sequences
+// config_1..N simply dispatches main:config_1..N.
+//
+// `expectInit` and `loadPdiNoInit` select which of three load_pdi shapes the
+// entries must already be in (passed in, never inferred):
+//   * expectInit == true (--reconfig-method=ctrlpkt or =write32): each
+//     entrypoint carries exactly one `aiex.npu.load_pdi` (after the
+//     --load-pdi-to-ctrl-pkt / reset-free expansion). Synthesizes a shared
+//     `init` whose dispatch stands up the resident overlay / resets to @empty
+//     and streams nothing. The `init` shape depends on `ctrlPkt`: for ctrlpkt
+//     (ctrlPkt == true) it is a fresh sequence taking only the uniform trailing
+//     ctrl-pkt-stream arg that AIECtrlPacketToDma appended to every entrypoint,
+//     with a body of just the overlay's own cloned load_pdi (design-
+//     independent); for write32 (ctrlPkt == false, no ctrl-pkt lowering ran, so
+//     no uniform arg exists) it is a clone of the first entrypoint truncated
+//     right after its first load_pdi.
+//     `stripRearm` (fed by selfClear, now unconditional for ctrlpkt/write32)
+//     then STRIPS every entrypoint's load_pdi -- the `init` keeps the sole
+//     real standup and the in-band self-clear supplies each per-config reset;
+//     otherwise each entrypoint keeps its own load_pdi re-arm so a separately-
+//     dispatched config re-establishes the reset.
+//   * expectInit == false, loadPdiNoInit == true (--reconfig-method=loadpdi):
+//     each entrypoint STILL carries exactly one un-expanded full-PDI-reload
+//     load_pdi (its own self reset). A load_pdi fully resets on every apply, so
+//     a shared `init` is redundant -- synthesize NONE; entrypoints keep their
+//     load_pdi.
+//   * expectInit == false, loadPdiNoInit == false: no current reconfig method
+//     selects this (write32 now always synthesizes the @empty init above). The
+//     branch synthesizes NO `init` and leaves each entrypoint as-is; kept for a
+//     load_pdi-free streamed-config caller that resets out of band.
+// An unexpected load_pdi count for the mode fails loud instead of silently mis-
+// splitting. Mutates `mod` in place; a no-op for a module with no marked entry
+// device.
+static mlir::LogicalResult
+splitMultiConfigEntry(mlir::ModuleOp mod, bool stripRearm, bool expectInit,
+                      bool loadPdiNoInit, bool ctrlPkt) {
+  using xilinx::AIE::DeviceOp;
+  using xilinx::AIE::RuntimeSequenceOp;
+  using xilinx::AIEX::NpuLoadPdiOp;
+
+  // The entry device carries the aiex.entrypoint marker (kEntrypointAttr) --
+  // the SOLE discriminator. Split only the marked device's entrypoint
+  // sequences; every other device is a config template. No marker -> nothing to
+  // split.
+  for (DeviceOp dev : mod.getOps<DeviceOp>()) {
+    if (!dev->hasAttr(xilinx::aiecc::kEntrypointAttr))
+      continue;
+
+    // Entrypoint sequences in block order (= chain order). An init method
+    // (expectInit: --reconfig-method=ctrlpkt or =write32) carries exactly one
+    // load_pdi per entrypoint post-expansion, so select the load_pdi-carrying
+    // config entrypoints; every other mode takes every non-empty entrypoint.
+    // The per-mode load_pdi count is validated below.
+    // Entrypoint NAMES ARE KEPT VERBATIM: the sym_name IS the dispatch name
+    // (main:<name>), chosen by the design (a design may name its sequences
+    // config_1..N itself); the toolchain never renames or format-special-cases
+    // them (no seq_<n>/config_<n> magic).
+    llvm::SmallVector<RuntimeSequenceOp> seqs;
+    for (RuntimeSequenceOp s : dev.getOps<RuntimeSequenceOp>()) {
+      if (s.getBody().empty())
+        continue;
+      if (expectInit) {
+        if (llvm::any_of(s.getBody().front(), [](mlir::Operation &op) {
+              return llvm::isa<NpuLoadPdiOp>(op);
+            }))
+          seqs.push_back(s);
+      } else {
+        seqs.push_back(s);
+      }
+    }
+    if (seqs.empty())
+      continue;
+
+    // Loud-fail on duplicate entrypoint names within the marked device -- the
+    // multi-design fold names each entrypoint with its design's name=, and two
+    // designs sharing a name would silently collide on one dispatch kernel.
+    {
+      llvm::StringSet<> seen;
+      for (RuntimeSequenceOp s : seqs)
+        if (!seen.insert(s.getSymName()).second) {
+          s.emitError() << "aiecc: --reconfig-method: duplicate entry sequence "
+                           "name '"
+                        << s.getSymName() << "' -- set name= per design";
+          return mlir::failure();
+        }
+    }
+
+    // Validate the per-mode load_pdi count on every selected entrypoint.
+    for (RuntimeSequenceOp s : seqs) {
+      unsigned nLoadPdi = 0;
+      for (mlir::Operation &op : s.getBody().front())
+        if (llvm::isa<NpuLoadPdiOp>(op))
+          ++nLoadPdi;
+      if (expectInit) {
+        if (nLoadPdi != 1) {
+          s.emitError() << "aiecc: --reconfig-method: expected exactly one "
+                           "load_pdi in runtime sequence '"
+                        << s.getSymName() << "', found " << nLoadPdi;
+          return mlir::failure();
+        }
+      } else if (loadPdiNoInit) {
+        if (nLoadPdi != 1) {
+          s.emitError() << "aiecc: --reconfig-method: expected exactly one "
+                           "load_pdi in runtime sequence '"
+                        << s.getSymName()
+                        << "' (no-init --reconfig-method=loadpdi), found "
+                        << nLoadPdi;
+          return mlir::failure();
+        }
+      } else if (nLoadPdi != 0) {
+        // expectInit == false && loadPdiNoInit == false: no current reconfig
+        // method routes here (see the load_pdi-shape table above) -- a
+        // defensive guard for a future no-load_pdi mode.
+        s.emitError() << "aiecc: --reconfig-method: expected zero "
+                         "load_pdi in runtime sequence '"
+                      << s.getSymName() << "', found " << nLoadPdi;
+        return mlir::failure();
+      }
+    }
+
+    if (expectInit) {
+      RuntimeSequenceOp first = seqs.front();
+      mlir::OpBuilder builder(first);
+      builder.setInsertionPoint(first);
+      if (ctrlPkt) {
+        // ctrlpkt: synthesize ONE shared `init` from the overlay, design-
+        // independent. Its signature is only the uniform trailing ctrl-pkt-
+        // stream buffer that AIECtrlPacketToDma appended as the LAST block arg
+        // of every entrypoint (read off the first entrypoint rather than
+        // hardcoded, in case the type ever varies); its body is nothing but
+        // that entrypoint's own load_pdi (validated exactly-one above), cloned
+        // so its device_ref/id/expand_mode come along verbatim.
+        mlir::Type ctrlArgType =
+            first.getBody().getArguments().back().getType();
+        NpuLoadPdiOp firstLoadPdi;
+        for (mlir::Operation &op : first.getBody().front())
+          if (auto loadPdi = llvm::dyn_cast<NpuLoadPdiOp>(op)) {
+            firstLoadPdi = loadPdi;
+            break;
+          }
+        assert(
+            firstLoadPdi &&
+            "expectInit validated exactly one load_pdi per entrypoint above");
+
+        auto initSeq = RuntimeSequenceOp::create(
+            builder, first.getLoc(), mlir::StringAttr{}, mlir::BoolAttr{});
+        initSeq.setSymName("init");
+        initSeq.getBody().push_back(new mlir::Block);
+        initSeq.getBody().addArgument(ctrlArgType, first.getLoc());
+        builder.setInsertionPointToStart(&initSeq.getBody().front());
+        builder.clone(*firstLoadPdi);
+      } else {
+        // write32: no ctrl-pkt lowering ran, so there is
+        // no uniform trailing arg to key off of. Clone the first entrypoint and
+        // truncate right after its first load_pdi -- the shared `init` keeps
+        // the sole @empty reset standup and streams nothing.
+        auto initSeq = mlir::cast<RuntimeSequenceOp>(builder.clone(*first));
+        initSeq.setSymName("init");
+        mlir::Block &b = initSeq.getBody().front();
+        bool afterLoadPdi = false;
+        llvm::SmallVector<mlir::Operation *> toErase;
+        for (mlir::Operation &op : b) {
+          if (afterLoadPdi)
+            toErase.push_back(&op);
+          else if (llvm::isa<NpuLoadPdiOp>(op))
+            afterLoadPdi = true;
+        }
+        for (mlir::Operation *op : llvm::reverse(toErase))
+          op->erase();
+      }
+    }
+    // expectInit == false: no shared standup entry is synthesized, whether or
+    // not the configs individually carry a load_pdi. Only loadpdi reaches here
+    // now (write32 is expectInit == true): its `loadPdiNoInit` configs keep
+    // their own self-reset load_pdi below. Either way, no shared `init`
+    // dispatches -- just config_1..config_N.
+
+    // `stripRearm` (fed by selfClear, now unconditional for ctrlpkt/write32)
+    // STRIPS every per-entrypoint load_pdi re-arm: the @init synthesized above
+    // keeps the sole real standup load_pdi and the entrypoints stay
+    // load_pdi-free (the in-band self-clear supplies each per-config reset).
+    // Otherwise (default load_pdi re-arm) each entrypoint keeps its own
+    // load_pdi so a separately-dispatched config re-arms via a PDI reload.
+    // Names are untouched
+    // -- the dispatch name is the entrypoint's own sym_name (main:<name>).
+    if (stripRearm)
+      for (RuntimeSequenceOp s : seqs) {
+        mlir::Block &b = s.getBody().front();
+        for (mlir::Operation &op : llvm::make_early_inc_range(b))
+          if (llvm::isa<NpuLoadPdiOp>(op))
+            op.erase();
+      }
+  }
+  return mlir::success();
 }
 
 } // namespace
@@ -660,20 +1259,31 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
           .map<ModRef>(
               "input_with_addresses.mlir",
-              PassPipeline{
-                  &context, [scheme = allocScheme.getValue(),
-                             dyn = dynamicObjFifos.getValue(),
-                             pkt = packetSwObjFifos.getValue(),
-                             ctrl = ctrlPktOverlay.getValue() ||
-                                    loadPdiToCtrlPkt.getValue(),
-                             ldpdi = loadPdiToCtrlPkt.getValue(),
-                             bf16 = bf16Emulation.getValue(),
-                             skipVerify = skipObjectFifoVerify.getValue()](
-                                mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                    return getInputWithAddressesPipeline(ctx, mod, scheme, dyn,
-                                                         pkt, ctrl, bf16, ldpdi,
-                                                         skipVerify);
-                  }});
+              PassPipeline{&context,
+                           [scheme = allocScheme.getValue(),
+                            dyn = dynamicObjFifos.getValue(),
+                            pkt = packetSwObjFifos.getValue(),
+                            // --reconfig-method=write32 does not feed into
+                            // ctrl or ldpdi: arm2 is overlay-free (no
+                            // column-control-overlay pass, no
+                            // @ctrl_pkt_overlay, no reserve-control-ids /
+                            // auto-packetize). Only ctrlPktOverlay and
+                            // loadPdiToCtrlPkt need the ctrl-overlay setup.
+                            ctrl = ctrlPktOverlay.getValue() ||
+                                   loadPdiToCtrlPkt.getValue(),
+                            ldpdi = loadPdiToCtrlPkt.getValue(),
+                            bf16 = bf16Emulation.getValue(),
+                            skipVerify = skipObjectFifoVerify.getValue(),
+                            // Resolved by resolveOptions() from the default-on
+                            // --ctrlpkt-auto-packetize bool (negated by
+                            // --ctrlpkt-auto-packetize=false).
+                            autoPkt = doAutoPacketizeControlIngress,
+                            xtileDma = dmaFenceSharedMem.getValue()](
+                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
+                             return getInputWithAddressesPipeline(
+                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi,
+                                 skipVerify, autoPkt, xtileDma);
+                           }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
@@ -685,7 +1295,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       });
 
   auto &physical = withAddresses.map<ModRef>(
-      "input_physical.mlir", PassPipeline{getRoutingPipeline(&context)});
+      "input_physical.mlir",
+      PassPipeline{getRoutingPipeline(&context, doReconfigFreezeControl,
+                                      doReconfigFreezeControlDesignAware)});
 
   // Split every core once, then filter into compile / pre-baked subviews.
   auto &allCores =
@@ -732,8 +1344,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &perCoreArches = perCore.map<std::string>(
       "perCoreArches_{0}.txt", [](const OpInModule<CoreOp> &core) {
         return detectAIETarget(
-            core.module.get(),
-            core.op->getParentOfType<DeviceOp>().getSymName());
+            core.mod(), core.op->getParentOfType<DeviceOp>().getSymName());
       });
 
   // Per-core .o node. Two strategies selectable, differing only in how many
@@ -749,7 +1360,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       physical, "perDeviceCompile_{0}.mlir", "perDeviceCompileMatching");
   auto &perDeviceArches = physicalPerDevice.map<std::string>(
       "perDeviceArches_{0}.txt", [](const OpInModule<DeviceOp> &dev) {
-        return detectAIETarget(dev.module.get(), DeviceOp(dev.op).getSymName());
+        return detectAIETarget(dev.mod(), DeviceOp(dev.op).getSymName());
       });
   // Lower once per device, then carve out one module per core. Keyed like
   // `perCore`, so the per-core arches and link files below apply unchanged --
@@ -770,7 +1381,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [](const Item<OpInModule<CoreOp>> &item, Item<ModRef> &out) {
         CoreOp core = item.get().op;
         auto tile = mlir::cast<TileOp>(core.getTile().getDefiningOp());
-        return loweringPipeline(item.get().module.get(),
+        return loweringPipeline(item.get().mod(),
                                 core->getParentOfType<DeviceOp>().getSymName(),
                                 tile.getCol(), tile.getRow(), out);
       });
@@ -833,8 +1444,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           }
         }
         auto rewritten =
-            absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
-                                tile.getRow(), inputFile, workDirStr);
+            absolutizeLinkFiles(item.get().mod(), tile.getCol(), tile.getRow(),
+                                inputFile, workDirStr);
         llvm::raw_string_ostream os(out.value.emplace());
         return xilinx::AIE::AIETranslateToLdScript(
             rewritten.get(), os, tile.getCol(), tile.getRow(),
@@ -853,7 +1464,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
         llvm::raw_string_ostream os(out.value.emplace());
         return xilinx::AIE::AIETranslateToBCF(
-            item.get().module.get(), os, tile.getCol(), tile.getRow(),
+            item.get().mod(), os, tile.getCol(), tile.getRow(),
             op->getParentOfType<DeviceOp>().getSymName());
       });
   auto &linkWithObjs = bcfScripts.map<std::vector<std::string>>(
@@ -938,58 +1549,130 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //   * --load-pdi-to-ctrl-pkt expands the configuration into control packets
   //     (via the same expand-load-pdi machinery), which likewise needs the
   //     compiled cores.
+  //   * --reconfig-method=write32 expands each config to direct writes (via the
+  //     same expand-load-pdi machinery, reset-free mode), which reads the
+  //     compiled cores just like --expand-load-pdis.
+  const ReconfigMethod method = parseReconfigMethod(reconfigMethod);
   bool npuTransactionsNeedCoresLowered =
-      expandLoadPdis.getValue() || generateTxn || loadPdiToCtrlPkt.getValue();
+      expandLoadPdis.getValue() || generateTxn || loadPdiToCtrlPkt.getValue() ||
+      method == ReconfigMethod::Write32;
   EdgeWithTypedOutput<ModRef> &npuLoweringInput =
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
+  // IRON's fused decode arrives as ONE `aie.runtime_sequence` holding N
+  // `aiex.configure` ops on the `aiex.entrypoint`-marked host (llama: 322
+  // configures over 19 config devices). splitMultiConfigEntry (below) and the
+  // aie-expand-load-pdi self-clear (getExpandLoadPdiPipeline) both require
+  // exactly one configure/load_pdi per runtime-sequence block, so explode the
+  // monolith into N one-configure sequences HERE -- before
+  // getMaterializeRuntimeSeqPipeline rewrites `aiex.configure` into `aie.run`
+  // (after which nothing is left to split). Gated on the --reconfig-method fold
+  // (generateMultiConfigElf); the pass itself keys on the entrypoint marker and
+  // is a genuine no-op on already-split single-configure sequences (the rung
+  // ladder / conformed corpus inputs), so those fold inputs pass through
+  // unchanged.
+  EdgeWithTypedOutput<ModRef> &npuConfigureSplit =
+      generateMultiConfigElf
+          ? static_cast<EdgeWithTypedOutput<ModRef> &>(
+                npuLoweringInput.map<ModRef>(
+                    "npu_split_configure.mlir",
+                    PassPipeline{getSplitConfigureEntriesPipeline(&context)}))
+          : npuLoweringInput;
   // NPU instruction sequence lowering. The default and --load-pdi-to-ctrl-pkt
   // flows share the materialize + expand prefix and diverge at DMA lowering.
   EdgeWithTypedOutput<ModRef> &npuMaterialized =
       noMaterialize.getValue()
-          ? npuLoweringInput
+          ? npuConfigureSplit
           : static_cast<EdgeWithTypedOutput<ModRef> &>(
-                npuLoweringInput.map<ModRef>(
+                npuConfigureSplit.map<ModRef>(
                     "npu_materialized.mlir",
                     PassPipeline{getMaterializeRuntimeSeqPipeline(&context)}));
 
   // For --load-pdi-to-ctrl-pkt this edge holds the control-packet ops before
   // DMA lowering: the extraction point for the control-packet binary.
+  // --reconfig-method=write32 instead expands to direct writes with no resident
+  // overlay (reset-free mode): it takes the expand branch but NOT the
+  // ctrl-packet DMA lowering below.
   bool ctrlPkt = loadPdiToCtrlPkt.getValue();
+  bool resetFree = method == ReconfigMethod::Write32;
+  // Self-clear teardown is mandatory for the resident-overlay methods; "off"
+  // is incorrect behavior (the overlay accrues switch/DMA state across
+  // configs), so it is applied unconditionally rather than gated behind a flag.
+  bool selfClear = (ctrlPkt || resetFree);
+  // write32 ALWAYS synthesizes the shared `main:init` (@empty reset); the host
+  // dispatches it or not (dispatch => explicit reset; skip => firmware
+  // teardown reset). So write32 is always "with reset" at emit time; ctrlpkt
+  // stands up its own init; loadpdi self-resets per config.
+  bool withReset = resetFree;
+  // Column-parallel delivery is on by default but only engages under ctrlpkt
+  // (the ctrl-packet-to-dma pass runs only there); a silent no-op otherwise.
+  bool parallelColumnsFlag =
+      parallelColumns.getValue() && method == ReconfigMethod::Ctrlpkt;
   EdgeWithTypedOutput<ModRef> &npuExpanded =
-      (expandLoadPdis.getValue() || ctrlPkt)
+      (expandLoadPdis.getValue() || ctrlPkt || resetFree)
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(
                 npuMaterialized.map<ModRef>(
                     "npu_expanded.mlir",
-                    PassPipeline{
-                        &context,
-                        [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                          return getExpandLoadPdiPipeline(ctx, ctrlPkt);
-                        }}))
+                    PassPipeline{&context,
+                                 [ctrlPkt, resetFree, selfClear, withReset,
+                                  parallelColumnsFlag](mlir::MLIRContext *ctx,
+                                                       mlir::ModuleOp) {
+                                   return getExpandLoadPdiPipeline(
+                                       ctx, ctrlPkt, resetFree, selfClear,
+                                       withReset, parallelColumnsFlag);
+                                 }}))
           : npuMaterialized;
 
   // The default tail unrolls runtime-sequence loops and pools dynamic BDs; the
   // ctrl-packet sequence is straight-line and only needs the per-device tail,
   // after its control packets are lowered to DMA.
   EdgeWithTypedOutput<ModRef> &npuDmaLowered =
-      ctrlPkt
-          ? npuExpanded
-                .map<ModRef>("ctrlpkt_to_dma.mlir",
-                             PassPipeline{getCtrlPktToDmaPipeline(&context)})
-                .map<ModRef>(
-                    "ctrlpkt_npu_lowered.mlir",
-                    PassPipeline{getPerDeviceDmaLoweringPipeline(&context)})
-          : npuExpanded.map<ModRef>(
-                "npu_dma_lowered.mlir",
-                PassPipeline{getNpuDmaLoweringPipeline(&context)});
+      ctrlPkt ? npuExpanded
+                    .map<ModRef>("ctrlpkt_to_dma.mlir",
+                                 PassPipeline{getCtrlPktToDmaPipeline(
+                                     &context, parallelColumnsFlag)})
+                    .map<ModRef>(
+                        "ctrlpkt_npu_lowered.mlir",
+                        PassPipeline{getPerDeviceDmaLoweringPipeline(&context)})
+              : npuExpanded.map<ModRef>(
+                    "npu_dma_lowered.mlir",
+                    PassPipeline{getNpuDmaLoweringPipeline(&context)});
 
+  // The --reconfig-method fold folds N per-config designs into
+  // seq_1..seq_N (unionConfigDesigns) and splits them here into
+  // init + config_1..config_N (or just config_1..config_N, for the
+  // no-init methods), so every downstream consumer of `npuLowered` sees the
+  // split uniformly. Non-fold flows leave `npuLowered` untouched. This call
+  // site is shared by every method (generateMultiConfigElf is true for
+  // loadpdi, write32, and ctrlpkt): expectInit is true for ctrlpkt (which
+  // stands up a resident overlay that must be shared) and for write32 (which
+  // always synthesizes the @empty-reset `main:init`; withReset == resetFree).
+  // It is false for loadpdi: a load_pdi is a full reset every time it is
+  // applied, so loadpdi's per-config self-reset load_pdi already makes a shared
+  // `init` standup redundant (see splitMultiConfigEntry's loadPdiNoInit case).
+  bool splitMultiConfig = generateMultiConfigElf;
+  bool expectInit = method == ReconfigMethod::Ctrlpkt || withReset;
+  bool loadPdiNoInit = method == ReconfigMethod::Loadpdi;
   auto &npuLowered = npuDmaLowered.map<ModRef>(
       "npu_lowered.mlir",
-      [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
+      [splitMultiConfig, selfClear, expectInit, loadPdiNoInit, ctrlPkt](
+          const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
         assignDevicePdiIds(*clone);
         assignLoadPdiIds(*clone);
+        // On the self-clear arms strip each config's load_pdi re-arm: the
+        // synthesized `init` keeps the sole standup load_pdi and the per-config
+        // switch self-clear epilogue supplies the reset instead of a PDI
+        // reload.
+        if (splitMultiConfig &&
+            mlir::failed(splitMultiConfigEntry(*clone,
+                                               /*stripRearm=*/selfClear,
+                                               /*expectInit=*/expectInit,
+                                               /*loadPdiNoInit=*/
+                                               loadPdiNoInit,
+                                               /*ctrlPkt=*/ctrlPkt)))
+          return mlir::failure();
         out.value = std::move(clone);
         return mlir::success();
       });
@@ -1005,8 +1688,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //     additionally materializes the reconfigure runtime sequence, so the
   //     control-packet flow (getControlPacketPipeline) sees a lowered module
   //     rather than un-materialized `aiex.configure`/`aiex.run` ops.
+  //   * --reconfig-method=write32 runs the same expansion (reset-free mode) and
+  //     splits into init + configs, so the static branch must root on
+  //     `npuLowered` to observe the synthesized/overlay devices too.
   EdgeWithTypedOutput<ModRef> &staticInput =
-      (expandLoadPdis.getValue() || loadPdiToCtrlPkt.getValue())
+      (expandLoadPdis.getValue() || loadPdiToCtrlPkt.getValue() ||
+       method == ReconfigMethod::Write32)
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(npuLowered)
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs);
   auto &staticPerDevice =
@@ -1038,8 +1725,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         if (llvm::sys::fs::create_directories(cdoDir))
           return mlir::failure();
         if (mlir::failed(xilinx::AIE::AIETranslateToCDODirect(
-                item.get().module.get(), cdoDir, d.getSymName(), false, false,
-                false, false, false, /*enableCores=*/true)))
+                item.get().mod(), cdoDir, d.getSymName(), false, false, false,
+                false, false, /*enableCores=*/true)))
           return mlir::failure();
         return mlir::success();
       });
@@ -1090,7 +1777,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [&context](const Item<OpInModule<DeviceOp>> &item,
                  Item<ModRef> &out) -> mlir::LogicalResult {
         DeviceOp d = item.get().op;
-        ModRef clone = item.get().module.get().clone();
+        ModRef clone = item.get().mod().clone();
         auto pm =
             getControlPacketPipeline(&context, /*elfDir=*/"", d.getSymName());
         if (!pm || mlir::failed(pm->run(*clone)))
@@ -1320,7 +2007,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [&context](const Item<OpInModule<DeviceOp>> &item,
                  Item<ModRef> &out) -> mlir::LogicalResult {
         DeviceOp d = item.get().op;
-        ModRef clone = item.get().module.get().clone();
+        ModRef clone = item.get().mod().clone();
         auto pm =
             getTransactionPipeline(&context, /*elfDir=*/"", d.getSymName());
         if (!pm || mlir::failed(pm->run(*clone)))
@@ -1464,7 +2151,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                     RuntimeSequenceOp seq = item.get().op;
                     DeviceOp d = seq->getParentOfType<DeviceOp>();
                     return xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-                        item.get().module.get(), words, d.getSymName(),
+                        item.get().mod(), words, d.getSymName(),
                         seq.getSymName());
                   }))
           .filter("fullElfCtrlpktNonEmpty",
@@ -1538,6 +2225,69 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                                           .output());
 
   //--------------------------------------------------------------------------//
+  // Control-packet overlay ELF (--reconfig-method)
+  //--------------------------------------------------------------------------//
+  // Reuses the full-ELF assembly machinery, but with an overlay-mode config
+  // (makeFullElfConfigJson `overlayOnly=true`) that keeps only the host-invoked
+  // runtime-sequence device + its partition/reset (@ctrl_pkt_overlay) PDIs and
+  // drops the streamed-config compute devices (and their PDIs). The overlay
+  // BAKES each config: it threads the SAME per-sequence control-packet and
+  // patch-info edges the embedded full-ELF branch uses (fullElfCtrlpkt /
+  // fullElfPatchInfo) into the overlay config, so each `config_k` instance
+  // gets its own `ctrl_packet_file` + `patch_info_file` (an internal
+  // `control-packet` `.ctrldata` relocation). Entrypoint names are kept
+  // VERBATIM through the split (`config_k` both as the edge key
+  // `<device>_config_k` and as the overlay device instance), so the two sides
+  // already line up. rekeyToConfigs is a compatibility no-op for that verbatim
+  // naming: it only rewrites a legacy `_seq_`-infixed key (no current path
+  // produces one, since the toolchain never renames entries), and is retained
+  // as a harmless bridge rather than removed.
+  auto rekeyToConfigs = [](llvm::StringRef key) -> std::string {
+    size_t p = key.find("_seq_");
+    if (p == llvm::StringRef::npos)
+      return key.str();
+    return (key.take_front(p) + "_config_" + key.drop_front(p + 5)).str();
+  };
+  auto &ctrlPktOverlayConfig =
+      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out,
+             fullElfCtrlpkt.out, fullElfPatchInfo.out)
+          .join<llvm::json::Value>(
+              "ctrl_pkt_overlay_config.json",
+              [rekeyToConfigs](
+                  const Node<OpInModule<DeviceOp>> &devices,
+                  const Node<File> &pdis,
+                  const Node<std::vector<char>> &instsBins,
+                  const Node<std::vector<char>> &ctrlPkts,
+                  const Node<llvm::json::Value> &patchInfos,
+                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+                llvm::StringMap<std::string> pdiPaths, instsPaths;
+                llvm::StringMap<std::string> ctrlPktPaths, patchInfoPaths;
+                for (const auto &item : pdis.items)
+                  pdiPaths[item.key] = absolutePath(item.asFile());
+                for (const auto &item : instsBins.items)
+                  instsPaths[item.key] = absolutePath(item.asFile());
+                for (const auto &item : ctrlPkts.items)
+                  ctrlPktPaths[rekeyToConfigs(item.key)] =
+                      absolutePath(item.asFile());
+                for (const auto &item : patchInfos.items)
+                  patchInfoPaths[rekeyToConfigs(item.key)] =
+                      absolutePath(item.asFile());
+                out.value = makeFullElfConfigJson(devices, pdiPaths, instsPaths,
+                                                  ctrlPktPaths, patchInfoPaths,
+                                                  /*overlayOnly=*/true);
+                return mlir::success();
+              });
+
+  auto &multiConfigElf = ctrlPktOverlayConfig.map<File>(
+      fullElfName.getValue(), ShellCommand{"aiebu-asm"}
+                                  .arg("-t")
+                                  .arg("aie2_config")
+                                  .arg("-j")
+                                  .input()
+                                  .arg("-o")
+                                  .output());
+
+  //--------------------------------------------------------------------------//
   // Host program
   //--------------------------------------------------------------------------//
   // Per-device libxaie array-configuration source (`aie_inc.cpp`). Shared by
@@ -1548,7 +2298,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
          Item<std::string> &out) -> mlir::LogicalResult {
         DeviceOp d = item.get().op;
         llvm::raw_string_ostream os(out.value.emplace());
-        return xilinx::AIE::AIETranslateToXAIEV2(item.get().module.get(), os,
+        return xilinx::AIE::AIETranslateToXAIEV2(item.get().mod(), os,
                                                  d.getSymName());
       });
 
@@ -1572,8 +2322,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       generateInputWithAddresses || generateScratchpadParams ||
       generateNpuInsts || keepLoc || generateElf || generateCdo ||
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
-      generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
-      !cutOutputs.empty();
+      generateFullElf || generateMultiConfigElf || wantAiesim ||
+      doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
   if (generateCoreElfs || !anySpecificOutput)
     outputs.push_back(&compiledElfs);
 
@@ -1604,8 +2354,18 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
   if (generateXclbin)
     outputs.push_back(&xclbin);
-  if (generateFullElf)
+  // --reconfig-method requires --get-full-elf and folds the N configs into ONE
+  // combined ELF (multiConfigElf, written to --full-elf-name). In that flow the
+  // plain single-config fullElf is redundant, so emit only the folded ELF: the
+  // combined artifact IS the full ELF.
+  if (generateFullElf && !generateMultiConfigElf)
     outputs.push_back(&fullElf);
+  // Folded multi-config ELF (--reconfig-method): the combined ELF written to
+  // --full-elf-name. For ctrlpkt the baked overlay writes each config's
+  // control-packet stream straight into the ELF's `.ctrldata`, so the host
+  // never binds a separate config buffer.
+  if (generateMultiConfigElf)
+    outputs.push_back(&multiConfigElf);
   // AIE simulator Work folder: only when explicitly requested. The aggregator
   // edge pulls in and materializes every sim/ artifact.
   if (wantAiesim)
@@ -1721,9 +2481,43 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(parseArgc, effArgv,
                                     "aiecc declarative driver\n");
 
+  // --reconfig-method is the Plan B taxonomy selector: it folds N single-config
+  // designs into one combined ELF (--full-elf-name) and drives the internal
+  // lowering flags directly. Every method sets generateMultiConfigElf (the
+  // fold + split); the delivery differs:
+  //   * write32 -- out-of-band direct writes, no resident overlay (reset-free
+  //     by default). Drives the expand-load-pdi machinery in reset-free mode
+  //     (see resetFree in buildMainGraph). Does NOT set loadPdiToCtrlPkt.
+  //   * ctrlpkt -- in-band control packets through a resident
+  //   @ctrl_pkt_overlay.
+  //     Sets loadPdiToCtrlPkt.
+  //   * loadpdi -- each split `config_k` keeps its own un-expanded
+  //     `load_pdi @config_k`; no expansion pipeline runs (a true
+  //     full-PDI-reload baseline). Sets neither.
+  // --reconfig-method REQUIRES --get-full-elf: the fold engages only in the
+  // full-ELF flow, and its output IS the full ELF (written to --full-elf-name).
+  if (!reconfigMethod.empty()) {
+    const ReconfigMethod method = parseReconfigMethod(reconfigMethod);
+    if (method == ReconfigMethod::None) {
+      llvm::errs()
+          << "aiecc: --reconfig-method must be loadpdi|write32|ctrlpkt\n";
+      return 1;
+    }
+    if (!generateFullElf) {
+      llvm::errs() << "aiecc: --reconfig-method requires --get-full-elf\n";
+      return 1;
+    }
+    generateMultiConfigElf = true;
+    if (method == ReconfigMethod::Ctrlpkt)
+      loadPdiToCtrlPkt = true;
+  }
+
   // Exactly one input MLIR file may appear before the `--` separator; host
-  // source files and host-compiler flags belong after it.
-  if (positionalArgs.size() > 1) {
+  // source files and host-compiler flags belong after it. The exception is
+  // --reconfig-method, which ingests several `design*.mlir` (folding them
+  // into an N-sequence overlay module); it emits an ELF only and never uses the
+  // `--` host-arg tail this guard disambiguates.
+  if (positionalArgs.size() > 1 && !generateMultiConfigElf) {
     llvm::errs() << "aiecc: only one input MLIR file is allowed before '--'; "
                     "pass host source files and host-compiler flags after "
                     "'--'\n";
@@ -1761,6 +2555,25 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  // --reconfig-method=write32 is its own config-delivery strategy
+  // (overlay-free, out-of-band direct writes via reset-free mode). It drives
+  // the expand-load-pdi machinery itself, so it cannot be combined with the
+  // other two expansion strategies.
+  if (parseReconfigMethod(reconfigMethod) == ReconfigMethod::Write32 &&
+      (expandLoadPdis || loadPdiToCtrlPkt)) {
+    llvm::errs()
+        << "aiecc: --reconfig-method=write32 is mutually exclusive with "
+           "--expand-load-pdis and --load-pdi-to-ctrl-pkt\n";
+    return 1;
+  }
+
+  // Reset is a runtime dispatch decision (write32 always emits main:init), so
+  // there is no --reconfig-with-reset to gate. --ctrlpkt-parallel-columns is
+  // on by default and guarded to the ctrlpkt method at its read (a silent
+  // no-op elsewhere). --ctrlpkt-pinned-overlay / --ctrlpkt-auto-packetize are
+  // resolved in resolveOptions() and self-gate to no-ops without an overlay,
+  // so none of them needs a method-mismatch guard here.
+
   // Disambiguate the full-ELF control packet flow and the standalone
   // artifact flows.
   if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
@@ -1787,6 +2600,25 @@ int main(int argc, char **argv) {
   registerLLVMIRTranslations(registry);
   mlir::MLIRContext context(registry);
   context.loadAllAvailableDialects();
+
+  // --reconfig-method may take several `design*.mlir` and route the whole
+  // build as one merged module (each design's entry sequence is kept as its
+  // own verbatim-named entrypoint so the multi-entry split can emit one config
+  // per design). Done here (not in buildMainGraph) so parse/merge failure can
+  // abort cleanly, and before the SourceMgr buffer below so diagnostics point
+  // at the merged input. Runs for any N (N=1 included).
+  if (generateMultiConfigElf) {
+    std::vector<std::string> inputs(positionalArgs.begin(),
+                                    positionalArgs.end());
+    std::string merged =
+        unionConfigDesigns(context, inputs, getWorkDir(), reconfigMethod);
+    if (merged.empty())
+      return 1;
+    cli::inputFilenameOverride = merged;
+    // The merged module is also written to <workDir>/config_union.mlir
+    // (see unionConfigDesigns), so lit can inspect the fold under
+    // --dump-intermediates --tmpdir without a bespoke emit-and-exit flag.
+  }
 
   llvm::SourceMgr sourceMgr;
   unsigned inputBufferId = 0;

@@ -33,6 +33,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -71,8 +72,15 @@ constexpr bool IsFileLikeV =
 // see the full surrounding context while `op` identifies the focus.
 template <typename KeyOp>
 struct OpInModule {
-  mlir::OwningOpRef<mlir::ModuleOp> module;
+  // Shared so a split emits N focus-ops over ONE module instead of N clones.
+  // INVARIANT: no shared_ptr copy may outlive the owning Graph; consumers must
+  // not mutate *module in place (clone first -- see Actions.h asModule).
+  // NOTE: OpInModule is now copyable (was move-only when it owned the
+  // OwningOpRef); copies share the module.
+  std::shared_ptr<mlir::OwningOpRef<mlir::ModuleOp>> module;
   KeyOp op;
+
+  mlir::ModuleOp mod() const { return module->get(); }
 };
 
 // One runtime sequence's NPU program: the transaction instruction binary and
@@ -114,7 +122,7 @@ struct Serializer<mlir::OwningOpRef<mlir::ModuleOp>> {
 template <typename KeyOp>
 struct Serializer<OpInModule<KeyOp>> {
   static void write(const OpInModule<KeyOp> &value, llvm::raw_ostream &os) {
-    printModuleWithDebugInfo(value.module.get(), os);
+    printModuleWithDebugInfo(value.mod(), os);
   }
 };
 

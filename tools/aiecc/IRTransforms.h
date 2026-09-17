@@ -71,6 +71,21 @@ inline void registerLLVMIRTranslations(mlir::DialectRegistry &registry) {
 // full-ELF config.json) consult this rather than re-deriving walk order.
 constexpr llvm::StringLiteral kPdiIdAttr = "aiecc.pdi_id";
 
+// Marker attribute the --reconfig-method fold sets on the entry (top-level
+// host) DeviceOp it synthesizes. Its PRESENCE identifies the reconfiguration
+// entry device robustly: config-order/name suffixes are fragile (and a config
+// can legitimately be tile-less, so tile-lessness is not a valid discriminator
+// either), whereas the fold KNOWS the intent and labels the device it creates.
+// A DictionaryAttr so it stays forward-looking -- more descriptors can become
+// keys; the `reconfig_method` key carries the delivery method
+// ("loadpdi"/"write32"/"ctrlpkt"). Readers (splitMultiConfigEntry entry select,
+// SidecarFiles host-keep) match on hasAttr(kEntrypointAttr) OR the legacy
+// `init`/`config_<n>` name during the Task-1..Task-5 migration window.
+// Single source of truth: xilinx::AIEX::kEntrypointAttr (AIEXDialect.h), so the
+// AIESplitConfigureEntries pass and this driver cannot drift apart.
+constexpr llvm::StringLiteral kEntrypointAttr = xilinx::AIEX::kEntrypointAttr;
+constexpr llvm::StringLiteral kReconfigMethodKey = "reconfig_method";
+
 //===----------------------------------------------------------------------===//
 // IR inspection
 //===----------------------------------------------------------------------===//
@@ -757,12 +772,12 @@ getTracePipeline(mlir::MLIRContext *ctx) {
 // Vector → AIEVec → buffer/lock/DMA setup → control-overlay → SCF lowering.
 // Operates on the whole module; the inner pipeline nests under DeviceOp.
 // Inspects `mod` for target arch (drives `convert-vector-to-aievec` opts).
-inline std::unique_ptr<mlir::PassManager>
-getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
-                              llvm::StringRef allocScheme, bool dynamicObjFifos,
-                              bool packetSwObjFifos, bool ctrlPktOverlay,
-                              bool bf16Emulation, bool loadPdiToCtrlPkt = false,
-                              bool skipObjectFifoVerify = false) {
+inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
+    mlir::MLIRContext *ctx, mlir::ModuleOp mod, llvm::StringRef allocScheme,
+    bool dynamicObjFifos, bool packetSwObjFifos, bool ctrlPktOverlay,
+    bool bf16Emulation, bool loadPdiToCtrlPkt = false,
+    bool skipObjectFifoVerify = false, bool autoPacketizeControlIngress = false,
+    bool dmaFenceSharedMem = false) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -782,33 +797,39 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   // edge, so no `outputParamsFile` is set here.
   pm->addPass(X::createAIELowerScratchpadParametersPass());
 
-  // The control-overlay pass is module-level (it may emit a standalone
-  // `@ctrl_pkt_overlay` device). With `ctrlPktOverlay` it must run BEFORE
-  // objectFIFO lowering so the overlay claims its shim DMA channels first and
-  // the objectFIFO transform (DMAChannelAnalysis) works around them. Otherwise
-  // it runs after objectFIFO + tile-ctrl-id assignment (below).
-  if (ctrlPktOverlay) {
-    if (mlir::failed(mlir::parsePassPipeline(
-            llvm::formatv(
-                "aie-generate-column-control-overlay{{route-shim-to-tile-ctrl="
-                "true emit-standalone-overlay={0}}",
-                loadPdiToCtrlPkt)
-                .str(),
-            *pm)))
-      return nullptr;
-  }
-
+  // Auto-packetize the minimal set of shim-ingress objectFifos so control
+  // ingress (routed after this, in the ctrlPktOverlay branch below) always
+  // has a shim MM2S channel to share, instead of hitting shim-MM2S
+  // exhaustion when every input design happens to be circuit-switched.
+  // Module-scoped (scans every DeviceOp) so it can reason about a
+  // shared/union control channel across configs. Must run before the
+  // stateful transform lowers the objectFifos it's retargeting.
+  // Overlay-gated: a no-op (and never added to the pipeline) outside the
+  // ctrl-pkt-overlay flow. `autoPacketizeControlIngress` (the parameter) is on
+  // by default within the overlay flow (see aiecc.cpp's
+  // doAutoPacketizeControlIngress, from the default-on --ctrlpkt-auto-packetize
+  // bool); this call site is the pipeline's single add point.
+  if (ctrlPktOverlay && autoPacketizeControlIngress)
+    pm->addPass(createAIEAutoPacketizeControlIngressPass());
+  // objectFIFO lowering runs first (device-nested). The stateful transform
+  // always emits the dynamic (runtime) buffer addressing and lock bookkeeping.
+  // When dynamic objectFifos are disabled, the aie-objectFifo-unroll pass below
+  // unrolls the loops that carry objectFifo accesses and folds the (now
+  // loop-invariant) runtime bookkeeping into a static, unrolled lowering.
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
-  // The stateful transform always emits the dynamic (runtime) buffer addressing
-  // and lock bookkeeping. When dynamic objectFifos are disabled, the
-  // aie-objectFifo-unroll pass below unrolls the loops that carry objectFifo
-  // accesses and folds the (now loop-invariant) runtime bookkeeping into a
-  // static, unrolled lowering.
+  // Reserve controller IDs for the overlay whenever the overlay flow is
+  // active (independent of the auto-packetize flag above), so the overlay's
+  // own control-packet IDs don't collide with the design's packet-switched
+  // objectFifo IDs.
   if (mlir::failed(mlir::parsePassPipeline(
           llvm::formatv(
               "aie-objectFifo-stateful-transform{{packet-sw-objFifos={0} "
-              "skip-verify={1}}",
-              packetSwObjFifos, skipObjectFifoVerify)
+              "skip-verify={1} reserve-control-ids={2} "
+              "dma-fence-shared-mem={3} "
+              "warn-unfenced-shared-overlay={4}}",
+              packetSwObjFifos, skipObjectFifoVerify,
+              ctrlPktOverlay || loadPdiToCtrlPkt, dmaFenceSharedMem,
+              ctrlPktOverlay || loadPdiToCtrlPkt)
               .str(),
           dpm)))
     return nullptr;
@@ -822,18 +843,38 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
               .str(),
           dpm)))
     return nullptr;
-  // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
-  // user locks without an ID).
-  dpm.addPass(createAIEAssignLockIDsPass());
-  dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
-  dpm.addPass(createAIELowerCascadeFlowsPass());
-  dpm.addPass(X::createAIEBroadcastPacketPass());
-  dpm.addPass(X::createAIELowerMulticastPass());
-  dpm.addPass(createAIEAssignTileCtrlIDsPass());
+
+  // The control-overlay pass is module-level (it may emit a standalone
+  // `@ctrl_pkt_overlay` device). With `ctrlPktOverlay` it runs AFTER objectFIFO
+  // lowering (so it reads the design's real shim DMA allocations and shares /
+  // relocates around them) but BEFORE tile-ctrl-id assignment (dpmb below), so
+  // AIEAssignTileCtrlIDs stamps the overlay-created pass-through tiles -- an
+  // unstamped control-route tile bakes stream pkt_id 0 and wedges in-band
+  // delivery. Break out of the device nest to run this module-level pass.
+  if (ctrlPktOverlay) {
+    if (mlir::failed(mlir::parsePassPipeline(
+            llvm::formatv(
+                "aie-generate-column-control-overlay{{route-shim-to-tile-ctrl="
+                "true emit-standalone-overlay={0}}",
+                loadPdiToCtrlPkt)
+                .str(),
+            *pm)))
+      return nullptr;
+  }
+
+  // Remaining per-device lowering (new nest, since the module-level overlay
+  // broke out of `dpm`). Assign IDs to the ID-less locks the objectFifo
+  // lowering creates (and to any user locks without an ID).
+  mlir::OpPassManager &dpmb = pm->nest<DeviceOp>();
+  dpmb.addPass(createAIEAssignLockIDsPass());
+  dpmb.addPass(createAIEAssignBufferDescriptorIDsPass());
+  dpmb.addPass(createAIELowerCascadeFlowsPass());
+  dpmb.addPass(X::createAIEBroadcastPacketPass());
+  dpmb.addPass(X::createAIELowerMulticastPass());
+  dpmb.addPass(createAIEAssignTileCtrlIDsPass());
 
   // Without `ctrlPktOverlay`, the (module-level) overlay pass runs here, after
-  // tile-ctrl-id assignment. Break out of the device nest to run it, then
-  // resume with a new device nest for the remaining per-device passes.
+  // tile-ctrl-id assignment, route-shim-to-tile-ctrl=false.
   if (!ctrlPktOverlay) {
     if (mlir::failed(
             mlir::parsePassPipeline("aie-generate-column-control-overlay{route-"
@@ -852,10 +893,24 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   return pm;
 }
 
-// Routing (`aie-create-pathfinder-flows`), nested under DeviceOp.
+// Routing (`aie-create-pathfinder-flows`), nested under DeviceOp. Both params
+// are fed from --ctrlpkt-pinned-overlay={adapt|blind|off}.
+// `freezeControlFabric` is set for adapt/blind (off => false, which lowers
+// byte-identically to before the freeze existed). `designAware` is set only for
+// adapt; it takes effect only when `freezeControlFabric` is set, and blind
+// (false) is byte-identical.
 inline std::unique_ptr<mlir::PassManager>
-getRoutingPipeline(mlir::MLIRContext *ctx) {
+getRoutingPipeline(mlir::MLIRContext *ctx, bool freezeControlFabric = false,
+                   bool designAware = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
+  // Module-level pass (whole module present, before the per-device split):
+  // captures @ctrl_pkt_overlay's data-free canonical control route and
+  // annotates each config's control packet_flow with it. The per-device
+  // pathfinder (below) unconditionally decodes that annotation and pins the
+  // flow so it replays the captured route instead of re-routing it; this
+  // flag's only live effect is gating whether the module pass runs at all.
+  if (freezeControlFabric)
+    pm->addPass(xilinx::AIE::createAIEFreezeControlFabricPass(designAware));
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIE::createAIEPathfinderPass());
   return pm;
@@ -995,8 +1050,8 @@ splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
   });
 
   Item<mlir::OwningOpRef<mlir::ModuleOp>> lowered;
-  if (mlir::failed(loweringPipeline(devItem.get().module.get(), devName, -1, -1,
-                                    lowered)))
+  if (mlir::failed(
+          loweringPipeline(devItem.get().mod(), devName, -1, -1, lowered)))
     return mlir::failure();
 
   // `core_<col>_<row>` is what AIECoreToStandardFunc emits. Match the shape
@@ -1092,17 +1147,56 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 // With `ctrlPkt=false` the referenced device's configuration is emitted as
 // `write32`/`blockwrite` ops; with `ctrlPkt=true` it is emitted as
 // `aiex.npu.control_packet` ops (which a later ctrl-packet-to-dma pass streams
-// in), preceded by a `load_pdi @ctrl_pkt_overlay`.
+// in), preceded by a `load_pdi @ctrl_pkt_overlay`. With `resetFree=true` the
+// referenced config is emitted as `write32`/`blockwrite` DIRECT WRITES with no
+// resident overlay (the overlay-free out-of-band arm); it rides write32
+// delivery and is ignored under `ctrlPkt`. `withReset` only matters under
+// `resetFree`: false (default) skips the @empty init preload entirely
+// (reset-free arm2, no load_pdi anywhere); true restores it (the Plan A
+// always-init behavior). A no-op under `ctrlPkt`/plain write32, which always
+// init. `parallelColumns` is only meaningful under `ctrlPkt`: it appends the
+// tile-sort pass (aie-sort-control-packets-by-tile) after control-packet
+// legalization, at this shared producer of the control-packet module so BOTH
+// the emitted ctrlpkt payload and the DMA offsets (getCtrlPktToDmaPipeline)
+// see the reordered packets. It groups each tile's packets contiguously so the
+// per-tile DMAs pack into fewer, longer linear transfers. A no-op outside
+// `ctrlPkt`.
 inline std::unique_ptr<mlir::PassManager>
-getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
+getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false,
+                         bool resetFree = false, bool selfClear = false,
+                         bool withReset = false, bool parallelColumns = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   std::string expandPipeline = std::string("aie-expand-load-pdi{ctrl-pkt=") +
-                               (ctrlPkt ? "true" : "false") + "}";
+                               (ctrlPkt ? "true" : "false") +
+                               " reset-free=" + (resetFree ? "true" : "false") +
+                               " self-clear=" + (selfClear ? "true" : "false") +
+                               " with-reset=" + (withReset ? "true" : "false") +
+                               "}";
   if (mlir::failed(mlir::parsePassPipeline(expandPipeline, *pm)))
     return nullptr;
-  if (ctrlPkt)
+  // Only the control-packet transport needs the control-packet legalization;
+  // the reset-free arm emits direct writes.
+  if (ctrlPkt && !resetFree)
     pm->nest<xilinx::AIE::DeviceOp>().addPass(
         xilinx::AIEX::createAIELegalizeControlPacketPass());
+  if (ctrlPkt && parallelColumns)
+    pm->nest<xilinx::AIE::DeviceOp>().addPass(
+        xilinx::AIEX::createAIESortControlPacketsByTilePass());
+  return pm;
+}
+
+// Explode IRON's fused multi-configure host sequence into one `aiex.configure`
+// per runtime sequence (module-level). Only the `aiex.entrypoint`-marked host
+// device is touched, and the pass is a genuine no-op on sequences that already
+// hold a single configure (the rung ladder / conformed corpus inputs). MUST run
+// before getMaterializeRuntimeSeqPipeline, which rewrites `aiex.configure` into
+// `aie.run` and inlines the referenced sequences -- after that there is no
+// `aiex.configure` left to split.
+inline std::unique_ptr<mlir::PassManager>
+getSplitConfigureEntriesPipeline(mlir::MLIRContext *ctx) {
+  namespace X = xilinx::AIEX;
+  auto pm = std::make_unique<mlir::PassManager>(ctx);
+  pm->addPass(X::createAIESplitConfigureEntriesPass());
   return pm;
 }
 
@@ -1134,11 +1228,20 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
 
 // Convert legalized control-packet ops into DMA task ops (device-nested). The
 // subsequent DMA→NPU lowering is done by getPerDeviceDmaLoweringPipeline.
+// `parallelColumns` threads --ctrlpkt-parallel-columns into the pass's
+// `parallel-columns` option: the pass itself re-gates on the device's
+// `has_ctrl_pkt_overlay` attribute, so passing true here is only ever
+// meaningful under --reconfig-method=ctrlpkt. Returns nullptr on parse
+// failure (mirrors getExpandLoadPdiPipeline's option-string idiom).
 inline std::unique_ptr<mlir::PassManager>
-getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
+getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx, bool parallelColumns = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIEX::createAIECtrlPacketToDmaPass());
+  std::string pipelineStr =
+      std::string("aie-ctrl-packet-to-dma{parallel-columns=") +
+      (parallelColumns ? "true" : "false") + "}";
+  auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  if (mlir::failed(mlir::parsePassPipeline(pipelineStr, dpm)))
+    return nullptr;
   return pm;
 }
 

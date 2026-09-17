@@ -75,7 +75,7 @@ asModule(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &in,
 template <typename KeyOp>
 inline mlir::OwningOpRef<mlir::ModuleOp>
 asModule(const Item<OpInModule<KeyOp>> &in, mlir::MLIRContext * /*ctx*/) {
-  return mlir::OwningOpRef<mlir::ModuleOp>(in.get().module.get().clone());
+  return mlir::OwningOpRef<mlir::ModuleOp>(in.get().mod().clone());
 }
 
 inline mlir::OwningOpRef<mlir::ModuleOp> asModule(const Item<File> &in,
@@ -133,7 +133,12 @@ struct PassPipeline {
 };
 
 // SplitIRAction — walks a ModuleOp for KeyOp instances; clones the module
-// once per match. Use `.filter` downstream to skip matches.
+// once for the whole split (all matches share that one clone). Use `.filter`
+// downstream to skip matches.
+// INVARIANT: all items of a split share ONE module (see OpInModule). Consumers
+// therefore must be read-only or clone-before-mutate, and NO edge that touches
+// a split module may be marked .threadSafe() -- concurrent reads of one module
+// + MLIRContext are a data race. The scheduler serializes non-threadSafe tasks.
 template <typename KeyOp>
 struct SplitIRAction {
   using KeyFn = std::function<std::string(KeyOp)>;
@@ -144,30 +149,12 @@ struct SplitIRAction {
   mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
   operator()(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item) const {
     auto srcModule = item.get().get();
-    std::vector<std::pair<std::string, size_t>> matches;
-    size_t idx = 0;
-    srcModule.walk([&](KeyOp op) {
-      matches.emplace_back(keyFn(op), idx);
-      ++idx;
-    });
-
+    auto shared =
+        std::make_shared<mlir::OwningOpRef<mlir::ModuleOp>>(srcModule.clone());
     std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
-    out.reserve(matches.size());
-    for (auto &match : matches) {
-      std::string &key = match.first;
-      size_t target = match.second;
-      mlir::OwningOpRef<mlir::ModuleOp> clone = srcModule.clone();
-      KeyOp clonedOp;
-      size_t cur = 0;
-      clone->walk([&](KeyOp op) -> mlir::WalkResult {
-        if (cur++ != target)
-          return mlir::WalkResult::advance();
-        clonedOp = op;
-        return mlir::WalkResult::interrupt();
-      });
-      out.emplace_back(std::move(key),
-                       OpInModule<KeyOp>{std::move(clone), clonedOp});
-    }
+    shared->get().walk([&](KeyOp op) {
+      out.emplace_back(keyFn(op), OpInModule<KeyOp>{shared, op});
+    });
     return out;
   }
 };

@@ -105,6 +105,14 @@ inline cl::opt<bool> skipObjectFifoVerify(
 inline cl::opt<bool>
     ctrlPktOverlay("generate-ctrl-pkt-overlay",
                    cl::desc("Route shim-to-tile control overlay"));
+inline cl::opt<bool> dmaFenceSharedMem(
+    "dma-fence-shared-mem",
+    cl::desc(
+        "Opt-in: carry every cross-tile core-to-core lock-only "
+        "shared-memory objectfifo on DMA. The lock-only shared path has no "
+        "write-completion barrier and can read stale data under the "
+        "resident ctrl-pkt overlay; DMA completion supplies the barrier. "
+        "Off by default so shared memory stays the fast path."));
 inline cl::opt<bool> bf16Emulation("bf16-emulation", cl::desc("Emulate bf16"));
 inline cl::opt<std::string> peanoInstallDir("peano",
                                             cl::desc("Peano install dir"));
@@ -315,6 +323,85 @@ inline cl::opt<std::string>
     fullElfName("full-elf-name", cl::desc("Output filename for combined ELF"),
                 cl::init("aie.elf"));
 
+// The reconfiguration delivery method (Plan B taxonomy). Selects how N folded
+// single-config `design*.mlir` modules are delivered from one combined ELF
+// (written to --full-elf-name): loadpdi = keep load_pdi, firmware reloads the
+// full PDI; write32 = expand to write32/blockwrite direct writes (no overlay,
+// reset-free); ctrlpkt = expand to control packets through a resident
+// @ctrl_pkt_overlay. Every method folds N configs into a shared `main:init`
+// (loadpdi/ctrlpkt/with-init) plus N `main:config_1..N` entries. Implies the
+// multi-config fold (generateMultiConfigElf) and REQUIRES --get-full-elf.
+// Empty = inactive (single-input --get-full-elf).
+inline bool generateMultiConfigElf = false;
+inline cl::opt<std::string> reconfigMethod(
+    "reconfig-method",
+    cl::desc("Reconfiguration delivery method: loadpdi | write32 | ctrlpkt"),
+    cl::init(""));
+
+// --reconfig-method=write32 always synthesizes a shared `main:init` carrying
+// the @empty whole-column reset; the host loads `main:init` or not, as it
+// needs (dispatch it => explicit reset; skip it => firmware resets the
+// partition on context teardown). Reset is therefore a runtime dispatch
+// decision, not a compile-time flag (there is no --reconfig-with-reset).
+
+// Column-parallel ctrlpkt delivery: collapses each column's control packets
+// into one shim DMA and runs columns in parallel. ON BY DEFAULT; disable with
+// --ctrlpkt-parallel-columns=false. Only engages under
+// --reconfig-method=ctrlpkt (a silent no-op otherwise).
+inline cl::opt<bool> parallelColumns(
+    "ctrlpkt-parallel-columns",
+    cl::desc("Collapse each column's control packets into one shim DMA and run "
+             "columns in parallel (ctrlpkt method only). On by default; "
+             "--ctrlpkt-parallel-columns=false for serial delivery."),
+    cl::init(true));
+
+// Self-clear reconfiguration mechanism for the resident-overlay methods
+// (--reconfig-method=ctrlpkt in-band and =write32 out-of-band).
+// Appends the full per-config teardown protocol -- a switch-disable epilogue
+// (config ports minus overlay ports), a circuit-switch-connect teardown
+// (aie.connect, for objectFifo / circuit-switched routes), and a DMA-channel
+// reset (assert/deassert Ctrl.Reset on each active non-shim channel) -- so the
+// persistent overlay does not accrue stream-switch/circuit bindings across
+// reconfigurations and a busy/enqueued DMA channel is drained before the next
+// config reconfigures it. Also strips the per-config load_pdi re-arm (the
+// self-clear supplies the reset instead of a PDI reload). The epilogue rides
+// the same transport as its arm (control packets in-band, direct writes OOB).
+// Each of the three teardowns is independently demand-scoped: a no-op for a
+// config that uses none of that resource class. Applied unconditionally
+// (aiecc.cpp: selfClear = ctrlPkt || resetFree) whenever one of those arms is
+// active -- there is no CLI flag to gate it; running a resident-overlay
+// method without teardown is incorrect behavior, not a supported mode.
+
+// Control-fabric pinning mode for the ctrl-pkt-overlay flow. Pins one canonical
+// control routing across all config devices so control-packet reconfiguration
+// is safe (a config's data route can no longer repoint a resident control
+// master mid-delivery). Threaded via getRoutingPipeline; gates the module-level
+// AIEFreezeControlFabric pass, which self-gates to a no-op without an
+// @ctrl_pkt_overlay device (plain builds byte-identical).
+//   adapt (default) -- pin control AROUND the ports config data uses (eager
+//                      avoidance; less disruptive, corpus parity with blind).
+//   blind           -- blind Layer-0 capture (pin all control routing).
+//   off             -- do not pin (reintroduces the multi-column co-tenancy
+//                      wedge; ablation / escape hatch only).
+inline cl::opt<std::string> ctrlpktPinnedOverlay(
+    "ctrlpkt-pinned-overlay",
+    cl::desc("Control-fabric pinning mode (ctrlpkt overlay): "
+             "adapt (default) | blind | off."),
+    cl::init("adapt"));
+
+// Auto-packetize the minimal set of shim-ingress objectFifos so control ingress
+// always has a shim MM2S channel to share, instead of hitting the
+// shim-MM2S-exhaustion wall when every input design is circuit-switched. ON BY
+// DEFAULT in the ctrl-pkt-overlay flow; --ctrlpkt-auto-packetize=false disables
+// it (the overlay flow then falls back to the exhaustion wall). A no-op outside
+// the overlay flow.
+inline cl::opt<bool> ctrlpktAutoPacketize(
+    "ctrlpkt-auto-packetize",
+    cl::desc("Auto-packetize the minimal shim-ingress objectFifos so control "
+             "ingress always has a shim MM2S channel (ctrlpkt overlay). On by "
+             "default; --ctrlpkt-auto-packetize=false to disable."),
+    cl::init(true));
+
 // General-purpose output selector: request one or more graph outputs by their
 // public edge name (repeatable, or comma-separated). Complements the named
 // artifact shorthands (`--get-<name>`, see outputSelectors()) for outputs that
@@ -481,6 +568,18 @@ inline bool wantAiesim = false;
 inline bool doUnified = false;
 // Compile the host program (selected by --get-host).
 inline bool doCompileHost = false;
+// Auto-packetize shim control ingress in the ctrl-pkt-overlay flow (on by
+// default via the --ctrlpkt-auto-packetize bool; negated by
+// --ctrlpkt-auto-packetize=false).
+inline bool doAutoPacketizeControlIngress = true;
+
+// Freeze the control fabric in the ctrl-pkt-overlay flow, selected by
+// --ctrlpkt-pinned-overlay={adapt|blind|off} (default adapt). Required for
+// multi-column co-tenancy correctness; the pass self-gates to a no-op without
+// an overlay, so plain builds are byte-identical. `adapt` engages design-aware
+// capture, `blind` engages blind capture, `off` disables the freeze.
+inline bool doReconfigFreezeControl = true;
+inline bool doReconfigFreezeControlDesignAware = true;
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
 //
@@ -503,6 +602,15 @@ inline bool resolveOptions() {
 
   doUnified = unified && !noUnified;
   doCompileHost = generateHost;
+  doAutoPacketizeControlIngress = ctrlpktAutoPacketize;
+  if (ctrlpktPinnedOverlay != "adapt" && ctrlpktPinnedOverlay != "blind" &&
+      ctrlpktPinnedOverlay != "off") {
+    llvm::errs() << "aiecc: --ctrlpkt-pinned-overlay must be one of "
+                    "adapt|blind|off\n";
+    return false;
+  }
+  doReconfigFreezeControl = ctrlpktPinnedOverlay != "off";
+  doReconfigFreezeControlDesignAware = ctrlpktPinnedOverlay == "adapt";
   return true;
 }
 
@@ -523,21 +631,35 @@ inline bool isHostSourceFile(llvm::StringRef name) {
          name.ends_with(".C");
 }
 
-// The MLIR input: the single positional argument (empty when none was given,
-// e.g. for --emit-dot).
+// Overrides getInputFilename() when set. Populated by the
+// --reconfig-method multi-design ingestion, which folds several
+// `design*.mlir` into one merged module (seq_1..seq_N) and points the whole
+// build at it (see unionConfigDesigns in aiecc.cpp). Empty for every other
+// flow.
+inline std::string inputFilenameOverride;
+
+// The MLIR input: the multi-design merge override when set, else the single
+// positional argument (empty when none was given, e.g. for --emit-dot).
 inline std::string getInputFilename() {
+  if (!inputFilenameOverride.empty())
+    return inputFilenameOverride;
   return positionalArgs.empty() ? std::string() : positionalArgs.front();
 }
 
 // The absolutized intermediate work directory (the `.prj` folder). Defaults to
 // `<input-basename>.prj` in the cwd when --tmpdir is unset. Absolutized so
 // paths baked into the IR are cwd-invariant, and computed here so every caller
-// (main and the graph builders) agrees on a single location.
+// (main and the graph builders) agrees on a single location. The basename comes
+// from the FIRST positional, not getInputFilename(), so the
+// --reconfig-method merge (which routes getInputFilename() at a generated
+// merged module) keeps the natural `<first-design>.prj` work dir rather than
+// spawning a second one.
 inline std::string getWorkDir() {
+  std::string primaryInput =
+      positionalArgs.empty() ? std::string() : positionalArgs.front();
   llvm::SmallString<256> absWork(
-      workDir.empty()
-          ? llvm::sys::path::filename(getInputFilename()).str() + ".prj"
-          : workDir.getValue());
+      workDir.empty() ? llvm::sys::path::filename(primaryInput).str() + ".prj"
+                      : workDir.getValue());
   llvm::sys::fs::make_absolute(absWork);
   return std::string(absWork);
 }

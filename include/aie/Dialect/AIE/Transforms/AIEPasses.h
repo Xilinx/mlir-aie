@@ -61,17 +61,24 @@ createAIEHoistVectorTransferPointersPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoUnrollPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoSplitPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoSplitPass(bool dmaFenceSharedMem,
+                             bool warnUnfencedSharedOverlay);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoVerifyPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass(bool packetSwitched);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoAllocatePass(bool packetSwitched, bool reserveControlIds);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerDMAsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerCoresPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoErasePoolsPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEAutoPacketizeControlIngressPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELowerCascadeFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferDescriptorIDsPass();
@@ -83,6 +90,10 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEGenerateColumnControlOverlayPass(
     const AIEGenerateColumnControlOverlayOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEFreezeControlFabricPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEFreezeControlFabricPass(bool designAware);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIETraceRegPackWritesPass();

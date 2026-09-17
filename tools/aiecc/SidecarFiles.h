@@ -19,8 +19,11 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/JSON.h"
 
@@ -287,28 +290,90 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
 // reconfigure flow; when present they are attached to the matching
 // runtime-sequence instance so each sequence streams its own control data into
 // its own argument slot.
+//
+// When `overlayOnly` is set, the config is restricted to a config-agnostic
+// control-packet OVERLAY: it keeps ONLY the host-invoked runtime-sequence
+// device(s) -- identified by `splitMultiConfigEntry`'s post-split naming
+// convention (a runtime sequence named `init` or `config_<n>`) -- plus the
+// PDIs any `load_pdi` on that device still references (the reset
+// `@ctrl_pkt_overlay`/`@empty` overlay). Every other config device is a
+// streamed-config device (a compute kernel whose `load_pdi` was rewritten to
+// control packets, or a direct-write template): it and its PDI are dropped,
+// because that config rides in the baked `.ctrldata` control-packet stream (or
+// the OOB direct-write patches) rather than in a resident core.
+//
+// The host device is identified by the `aiex.entrypoint` MARKER the fold sets
+// on it (kEntrypointAttr), OR -- for a still-legacy path that has not yet been
+// migrated to the marker -- by SEQUENCE NAME (`init`/`config_<n>`). It is NOT
+// identified by load_pdi presence: whether the host or a streamed-config
+// template carries a load_pdi is method-dependent (a load_pdi may be rewritten
+// to control packets, reset to the @empty overlay, or kept as a per-config
+// self-reset), so a load_pdi-presence check cannot reliably tell them apart --
+// it could find the host indistinguishable from a load_pdi-free streamed-config
+// template and drop it, producing an empty `xrt-kernels` list and a 0-byte
+// overlay ELF. A user-chosen runtime-sequence sym_name likewise breaks the name
+// check, so the marker is the durable discriminator.
 inline llvm::json::Value
 makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
                       const llvm::StringMap<std::string> &pdiPaths,
                       const llvm::StringMap<std::string> &instsPaths,
                       const llvm::StringMap<std::string> &ctrlPktPaths = {},
-                      const llvm::StringMap<std::string> &patchInfoPaths = {}) {
+                      const llvm::StringMap<std::string> &patchInfoPaths = {},
+                      bool overlayOnly = false) {
   using O = llvm::json::Object;
   auto devId = [](xilinx::AIE::DeviceOp d) {
     return static_cast<int>(
         d->getAttrOfType<mlir::IntegerAttr>(kPdiIdAttr).getInt());
   };
 
+  // Overlay mode: the kept device set is the host runtime-sequence device
+  // (named `init` / `config_<n>` post-split) union the devices any load_pdi
+  // on it references (the reset overlay PDIs, present only when an `init`
+  // sequence exists). All other devices are streamed-config devices and are
+  // excluded.
+  // matches the split's contract: "init" or "config_<digits>"
+  auto isSplitEntry = [](llvm::StringRef n) {
+    if (n == "init")
+      return true;
+    if (!n.starts_with("config_"))
+      return false;
+    llvm::StringRef d = n.drop_front(8); // "config_"
+    return !d.empty() && llvm::all_of(d, llvm::isDigit);
+  };
+  llvm::StringSet<> keptDevices;
+  if (overlayOnly)
+    for (const auto &item : devices.items) {
+      xilinx::AIE::DeviceOp devOp = item.get().op;
+      // Marker presence OR (migration window) the legacy split-entry name.
+      bool isHostDev = devOp->hasAttr(kEntrypointAttr);
+      devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
+        if (isSplitEntry(seq.getSymName()))
+          isHostDev = true;
+      });
+      devOp.walk([&](xilinx::AIEX::NpuLoadPdiOp ld) {
+        if (auto ref = ld.getDeviceRef())
+          keptDevices.insert(*ref);
+      });
+      if (isHostDev)
+        keptDevices.insert(item.key);
+    }
+  auto isKept = [&](llvm::StringRef name) {
+    return !overlayOnly || keptDevices.contains(name);
+  };
+
   llvm::json::Array allPdis;
   for (const auto &item : devices.items)
-    if (auto it = pdiPaths.find(item.key); it != pdiPaths.end())
-      allPdis.push_back(
-          O{{"id", devId(item.get().op)}, {"PDI_file", it->second}});
+    if (isKept(item.key))
+      if (auto it = pdiPaths.find(item.key); it != pdiPaths.end())
+        allPdis.push_back(
+            O{{"id", devId(item.get().op)}, {"PDI_file", it->second}});
 
   llvm::json::Array xrtKernels;
   for (const auto &item : devices.items) {
     const std::string &devName = item.key;
     xilinx::AIE::DeviceOp devOp = item.get().op;
+    if (!isKept(item.key))
+      continue;
 
     int argCount = 3;
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
