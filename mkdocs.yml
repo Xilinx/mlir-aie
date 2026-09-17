@@ -250,6 +250,7 @@ nav:
       - Compilation Stages: programming_guide/compilation_stages.md
       - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
       - Kernel Library: programming_guide/kernels_library.md
+      - Reconfiguration: Reconfiguration.md
   - Agentic Programming:
     - Introduction: skills/agentic_programming.md
     - Agent Skills Overview: skills/README.md

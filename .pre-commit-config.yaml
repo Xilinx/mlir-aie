@@ -72,6 +72,7 @@ repos:
   rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
   hooks:
     - id: check-yaml
+      args: [--unsafe]  # syntax-only: tolerate mkdocs-material !!python/name: tags
       exclude: &generated_exclude |
         (?x)^(
           third_party/.*|
