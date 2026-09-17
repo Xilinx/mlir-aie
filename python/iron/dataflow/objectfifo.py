@@ -933,6 +933,7 @@ class ObjectFifoHandle(Resolvable):
         repeat_counts: list[int | None] | None = None,
         pad_dimensions: list[PadDims | None] | None = None,
         pad_value: list[int] | None = None,
+        channels: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
 
@@ -950,6 +951,11 @@ class ObjectFifoHandle(Resolvable):
             repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
             pad_dimensions (list[PadDims | None] | None, optional): Per-sub-fifo (before, after) pad counts (see ObjectFifo.pad_dimensions). Defaults to None.
             pad_value (list[int] | None, optional): Per-sub-fifo per-element pad fill value (see ObjectFifo.pad_value). Defaults to None.
+
+            channels (list[int | None] | None, optional): Pin the hardware DMA
+                channel each output ObjectFifo produces on, one per output.
+                split() builds those producer handles itself, so this is the
+                only place to say it. Defaults to None (all compiler-assigned).
 
         Raises:
             ValueError: Arguments are validated.
@@ -1024,7 +1030,16 @@ class ObjectFifoHandle(Resolvable):
             )
 
         # Create link and set it as endpoints
-        subfifo_prods = [s.prod() for s in subfifos]
+        if channels is None:
+            channels = [None] * len(subfifos)
+        elif len(channels) != len(subfifos):
+            raise ValueError(
+                f"split() got {len(channels)} channels for {len(subfifos)} "
+                "outputs; give one per output or none at all."
+            )
+        # A subfifo's producer handle is built here, so a caller wanting its
+        # channel pinned has nowhere else to say it -- prod() refuses to re-pin.
+        subfifo_prods = [s.prod(channel=c) for s, c in zip(subfifos, channels)]
         _ = ObjectFifoLink(self, subfifo_prods, tile, [], offsets)
         return subfifos
 
@@ -1040,6 +1055,7 @@ class ObjectFifoHandle(Resolvable):
         repeat_count: int | None = None,
         pad_dimensions: PadDims | None = None,
         pad_value: int = 0,
+        channel: int | None = None,
     ) -> ObjectFifo:
         """Forward an ObjectFifoHandle of type consumer to a newly-constructed ObjectFifo.
 
@@ -1059,6 +1075,10 @@ class ObjectFifoHandle(Resolvable):
                 counts for the forwarded (memtile) ObjectFifo. Defaults to None.
             pad_value (int, optional): Per-element constant fill value for pad_dimensions (see
                 ObjectFifo.pad_value). Defaults to 0.
+            channel (int | None, optional): Pin the hardware DMA channel the
+                forwarded ObjectFifo produces on. forward() builds that
+                producer handle itself, so this is the only place to say it.
+                Defaults to None (assigned by the compiler).
 
         Raises:
             ValueError: Arguments are Validated
@@ -1086,6 +1106,7 @@ class ObjectFifoHandle(Resolvable):
             repeat_counts=[repeat_count] if repeat_count is not None else None,
             pad_dimensions=[pad_dimensions] if pad_dimensions is not None else None,
             pad_value=[pad_value] if pad_value else None,
+            channels=[channel] if channel is not None else None,
         )
         return forward_fifo[0]
 
@@ -1152,12 +1173,15 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         if tile is None:
             tile = AnyMemTile
         # A link normally lives on a mem tile, but forward() documents
-        # forwarding through a compute tile as a valid override, so preserve
-        # an explicitly-set tile_type and only default when unset.
-        default_type = (
-            tile.tile_type if tile.tile_type is not None else AIETileType.MemTile
-        )
-        ObjectFifoEndpoint.__init__(self, tile.with_type(default_type))
+        # forwarding through a compute tile as a valid override. Take an
+        # explicit tile_type as given; take a tile placed by coordinates as
+        # given too, since the Device infers the kind from those and stamping
+        # MemTile over them would contradict it. Only a tile that says neither
+        # gets the default.
+        placed = tile.col is not None and tile.row is not None
+        if tile.tile_type is None and not placed:
+            tile = tile.with_type(AIETileType.MemTile)
+        ObjectFifoEndpoint.__init__(self, tile)
 
     def resolve(
         self,

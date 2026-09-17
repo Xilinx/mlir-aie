@@ -107,10 +107,9 @@ class DMATask(RuntimeTask):
     ) -> None:
         # Reference the shim allocation by symbol name, not by a resolved op:
         # the DMA only needs the metadata symbol (shim_dma_single_bd_task
-        # reduces an op to its sym_name anyway), and a name is a legal MLIR
-        # forward reference. This lets the runtime sequence body emit before the
-        # fifos and flows that declare those allocations are resolved, so the
-        # body runs exactly once.
+        # reduces an op to its sym_name anyway). That keeps building the task
+        # independent of the op that declares the allocation, so this code does
+        # not have to hold or thread one.
         if self._tap is not None:
             self._task = shim_dma_single_bd_task(
                 self._alloc,
