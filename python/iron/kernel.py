@@ -487,19 +487,16 @@ class ExternalFunction(Kernel):
                     f"got {arg.shape}/{arg.dtype}"
                 )
 
-    def _content_digest(self) -> str:
-        """Return a 64-bit hex SHA-256 digest of this instance's content.
+    def _build_input_parts(self) -> list[str]:
+        """Return the digest parts that determine this kernel's compiled ``.o`` bytes.
 
-        Used by both ``__hash__`` and ``__eq__`` so the two are consistent.
-        Memoised on the instance: source-file reads and stat() calls would
-        otherwise run on every dict lookup and noticeably regress hot
-        compile-cache paths.  Instance state is treated as immutable after
-        construction; mutating ``_source_*`` / ``_include_dirs`` /
-        ``_compile_flags`` / ``_arg_types`` afterwards is not supported.
+        Shared by :meth:`_content_digest` (identity) and
+        :meth:`_object_content_digest` (object-file collision): include-dir
+        mtimes, compile flags, toolchain, inline mode, and the source text.
+        The symbol name and argument types are NOT here -- they are how the
+        MLIR references INTO the object, not what the compiler emits, so two
+        companion kernels from one source file produce a byte-identical ``.o``.
         """
-        if self._cached_digest is not None:
-            return self._cached_digest
-
         from pathlib import Path as _Path
 
         include_dir_mtimes = []
@@ -511,8 +508,6 @@ class ExternalFunction(Kernel):
             include_dir_mtimes.append(f"{d}:{mtime}")
 
         parts = [
-            self._name,
-            str(self._arg_types),
             str(include_dir_mtimes),
             str(sorted(self._compile_flags)),
             # Toolchain choice (peano vs chess) changes the resulting .o
@@ -529,8 +524,42 @@ class ExternalFunction(Kernel):
                     parts.append(f.read())
             except OSError:
                 parts.append(f"<unreadable:{self._source_file}>")
+        return parts
+
+    def _content_digest(self) -> str:
+        """Return a 64-bit hex SHA-256 digest of this instance's content.
+
+        Used by both ``__hash__`` and ``__eq__`` so the two are consistent.
+        Memoised on the instance: source-file reads and stat() calls would
+        otherwise run on every dict lookup and noticeably regress hot
+        compile-cache paths.  Instance state is treated as immutable after
+        construction; mutating ``_source_*`` / ``_include_dirs`` /
+        ``_compile_flags`` / ``_arg_types`` afterwards is not supported.
+        """
+        if self._cached_digest is not None:
+            return self._cached_digest
+
+        parts = [self._name, str(self._arg_types)] + self._build_input_parts()
         self._cached_digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
         return self._cached_digest
+
+    def _object_content_digest(self) -> str:
+        """Return the SHA-256 digest of the inputs that determine this kernel's object file.
+
+        Distinct from :meth:`_content_digest` (the ExternalFunction *identity*
+        used for hash/eq), which also folds in the symbol name and argument
+        types.  Two companion kernels compiled from the SAME source file with a
+        shared ``object_file_name`` (e.g. ``reduce_max_vector`` +
+        ``compute_max`` in ``reduce_max.cc``) differ in name/arg_types but
+        produce a byte-identical ``.o``; keying an overwrite guard on this
+        digest lets that legitimate share pass while still catching a genuine
+        same-name/different-source ``.o`` collision.  ``symbol_prefix`` IS
+        folded in: it triggers a post-compile ``llvm-objcopy --redefine-sym``
+        that rewrites the object, so two otherwise-identical builds with
+        different prefixes are genuinely different ``.o`` files.
+        """
+        parts = [f"symbol_prefix={self._symbol_prefix}"] + self._build_input_parts()
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
     def __hash__(self) -> int:
         """Content-based hash for use as a dict/set key and in cache signatures."""

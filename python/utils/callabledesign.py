@@ -40,6 +40,7 @@ from aie.utils.compile.jit.compilabledesign import CompilableDesign
 if TYPE_CHECKING:
     from aie.utils.npukernel import NPUKernel
 
+
 # NPUKernel and DefaultNPURuntime pull in the XRT runtime stack on import.
 # Defer to first call so importing CallableDesign on machines without an NPU
 # (e.g. CI nodes that only need as_mlir / generate_mlir for inspection) does
@@ -106,6 +107,7 @@ class CallableDesign:
         object_files: list[str | Path] | None = None,
         trace_config=None,
         full_elf: bool = False,
+        name: str | None = None,
     ):
         if isinstance(mlir_generator, CompilableDesign):
             self.compilable = mlir_generator
@@ -120,6 +122,7 @@ class CallableDesign:
                 include_paths=include_paths,
                 object_files=object_files,
                 full_elf=full_elf,
+                name=name,
             )
 
         self.trace_config = trace_config
@@ -199,6 +202,64 @@ class CallableDesign:
             return self.compilable.specialize(**call_compile_kwargs)
         return self.compilable
 
+    def _check_runtime_args(
+        self, runtime_args: tuple, scalar_runtime_kwargs: dict[str, Any]
+    ) -> None:
+        """Validate call args against the generator signature (no device).
+
+        Pure argument-shape guards shared by ``__call__`` and ``bind``. Raises
+        ``TypeError`` on a misuse; returns ``None`` otherwise.
+        """
+        # Guard 3-A: tensor params must not appear as runtime kwargs.
+        tensor_names = set(self.compilable.tensor_params)
+        confused_tensor_kwargs = set(scalar_runtime_kwargs.keys()) & tensor_names
+        if confused_tensor_kwargs:
+            raise TypeError(
+                f"{self.compilable.generator_name!r} received tensor "
+                f"param(s) as keyword arguments: {confused_tensor_kwargs}.\n"
+                f"  Params annotated In/Out/InOut must be passed positionally.\n"
+                f"  CompileTime[T] params (passed as kwargs): "
+                f"{self.compilable.compile_params}."
+            )
+
+        # Guard 3-C: too many positional args.
+        if callable(self.compilable.mlir_generator):
+            max_positional = len(self.compilable.tensor_params) + len(
+                self.compilable.scalar_params
+            )
+            if len(runtime_args) > max_positional:
+                raise TypeError(
+                    f"{self.compilable.generator_name!r} takes at most "
+                    f"{max_positional} positional argument(s) "
+                    f"(tensor: {len(self.compilable.tensor_params)}, "
+                    f"scalar: {len(self.compilable.scalar_params)}) "
+                    f"but {len(runtime_args)} were given.\n"
+                    f"  CompileTime[T] parameters {self.compilable.compile_params} "
+                    f"must be keyword arguments, not positional."
+                )
+
+    def _resolve_trace_config(
+        self,
+        effective_compile_kwargs: dict[str, Any],
+        call_compile_kwargs: dict[str, Any],
+    ):
+        """Resolve the effective trace_config (no device).
+
+        Mirrors the inline handling in ``__call__``: a wrapper ``trace_config``
+        injects ``trace_size`` into the compile kwargs (mutated in place, so the
+        cache key and generator see it); otherwise the value is read back from a
+        generator that declares ``trace_config`` as a ``CompileTime[T]`` param.
+        Shared by ``__call__`` and ``bind``.
+        """
+        trace_config = self.trace_config
+        if trace_config is not None:
+            if "trace_size" not in effective_compile_kwargs:
+                effective_compile_kwargs["trace_size"] = trace_config.trace_size
+                call_compile_kwargs["trace_size"] = trace_config.trace_size
+        else:
+            trace_config = effective_compile_kwargs.get("trace_config", None)
+        return trace_config
+
     def _compile_and_build_kernel(
         self,
         compilable: CompilableDesign,
@@ -275,41 +336,11 @@ class CallableDesign:
             self._extract_compile_kwargs(runtime_kwargs)
         )
 
-        # Guard 3-A: tensor params must not appear as runtime kwargs.
-        tensor_names = set(self.compilable.tensor_params)
-        confused_tensor_kwargs = set(scalar_runtime_kwargs.keys()) & tensor_names
-        if confused_tensor_kwargs:
-            raise TypeError(
-                f"{self.compilable.generator_name!r} received tensor "
-                f"param(s) as keyword arguments: {confused_tensor_kwargs}.\n"
-                f"  Params annotated In/Out/InOut must be passed positionally.\n"
-                f"  CompileTime[T] params (passed as kwargs): "
-                f"{self.compilable.compile_params}."
-            )
+        self._check_runtime_args(runtime_args, scalar_runtime_kwargs)
 
-        # Guard 3-C: too many positional args.
-        if callable(self.compilable.mlir_generator):
-            max_positional = len(self.compilable.tensor_params) + len(
-                self.compilable.scalar_params
-            )
-            if len(runtime_args) > max_positional:
-                raise TypeError(
-                    f"{self.compilable.generator_name!r} takes at most "
-                    f"{max_positional} positional argument(s) "
-                    f"(tensor: {len(self.compilable.tensor_params)}, "
-                    f"scalar: {len(self.compilable.scalar_params)}) "
-                    f"but {len(runtime_args)} were given.\n"
-                    f"  CompileTime[T] parameters {self.compilable.compile_params} "
-                    f"must be keyword arguments, not positional."
-                )
-
-        trace_config = self.trace_config
-        if trace_config is not None:
-            if "trace_size" not in effective_compile_kwargs:
-                effective_compile_kwargs["trace_size"] = trace_config.trace_size
-                call_compile_kwargs["trace_size"] = trace_config.trace_size
-        else:
-            trace_config = effective_compile_kwargs.get("trace_config", None)
+        trace_config = self._resolve_trace_config(
+            effective_compile_kwargs, call_compile_kwargs
+        )
 
         # Build a separate dict for the cache key that excludes trace_config:
         # trace_config is a per-call object whose identity should not drive cache
@@ -492,13 +523,18 @@ class CallableDesign:
         """
         return self.compilable.get_pdi_paths()
 
-    def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
+    def as_mlir(self, *runtime_args, reconfig: bool = False, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.
 
         Accepts the same arguments as ``__call__``.  Tensor args may be real
         tensors (shape and dtype are read from them) or ``None`` (in which case
         the generator body must use ``CompileTime[T]`` params for all shape/dtype
         info).
+
+        ``reconfig=True`` selects the config_union naming used when this MLIR is
+        folded by ``aiecc --reconfig-method``: a nameless design's entrypoint
+        runtime_sequence takes the generator function name (dispatch
+        ``main:<funcname>``) instead of the elided default ``sequence``.
 
         Returns:
             The MLIR module as a string (suitable for inspection, debugging,
@@ -508,7 +544,7 @@ class CallableDesign:
             runtime_kwargs
         )
         compilable = self._build_compilable(call_compile_kwargs)
-        return str(compilable.generate_mlir())
+        return str(compilable.generate_mlir(reconfig=reconfig))
 
     def __repr__(self) -> str:
         return f"CallableDesign({self.compilable!r})"

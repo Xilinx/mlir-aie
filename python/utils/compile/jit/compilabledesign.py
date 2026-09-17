@@ -137,10 +137,15 @@ class CompilableDesign:
         aiecc_flags: list[str] | None = None,
         object_files: list[str | Path] | None = None,
         full_elf: bool = False,
+        name: str | None = None,
     ):
         self.mlir_generator = mlir_generator
         self.use_cache = use_cache
         self.full_elf = full_elf
+        # Per-design runtime_sequence sym_name override (jit name= key). None
+        # preserves the default "sequence" (dispatch main:sequence). Distinct
+        # designs folded into one full-ELF must carry distinct names.
+        self.name = name
         # Freeze all inputs so callers can't mutate config after construction
         # (which would silently invalidate the cache hash). MappingProxyType +
         # tuples are read-only views; equality with plain dict/list still works.
@@ -378,20 +383,9 @@ class CompilableDesign:
             try:
                 mlir_module = self._generate_mlir(ExternalFunction)
 
-                from aie.utils import get_current_device
-                from aie.utils.compile import resolve_target_arch
-
-                device = get_current_device(probe_runtime=False)
-                target_arch = resolve_target_arch(device)
-
-                external_kernels = list(ExternalFunction._instances)
+                external_kernels = self._build_kernels(kernel_dir, full_elf=False)
                 ExternalFunction._instances.clear()
-
                 use_chess = self._resolve_use_chess(external_kernels)
-
-                for func in external_kernels:
-                    if not func._compiled:
-                        compile_external_kernel(func, kernel_dir, target_arch)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
@@ -498,19 +492,9 @@ class CompilableDesign:
             try:
                 mlir_module = self._generate_mlir(ExternalFunction, full_elf=True)
 
-                from aie.utils import get_current_device
-                from aie.utils.compile import resolve_target_arch
-
-                device = get_current_device(probe_runtime=False)
-                target_arch = resolve_target_arch(device)
-
-                external_kernels = list(ExternalFunction._instances)
+                external_kernels = self._build_kernels(kernel_dir, full_elf=True)
                 ExternalFunction._instances.clear()
-
                 use_chess = self._resolve_use_chess(external_kernels)
-                for func in external_kernels:
-                    if not func._compiled:
-                        compile_external_kernel(func, kernel_dir, target_arch)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
@@ -543,6 +527,45 @@ class CompilableDesign:
         self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
         return elf_path, None
 
+    def _build_kernels(
+        self, kernel_dir, *, full_elf: bool, reconfig: bool = False
+    ) -> list:
+        """Build this design's own external kernels into ``kernel_dir``; return them.
+
+        Uses the design's cached ``(mlir, external_kernels)`` from
+        :meth:`_generated_for` -- NOT the process-global
+        ``ExternalFunction._instances`` -- so it is correct per design (a later
+        caller folding several designs into one full ELF can invoke this once
+        per design without cross-design contamination).
+
+        ``reconfig`` must match the value the design was generated with (the
+        config_union fold stages with ``reconfig=True``); passing the wrong one
+        misses the generation cache and re-runs the generator, which reuses a
+        stale ``ExternalFunction`` op from the first (destroyed) MLIR context.
+        """
+        from aie.utils import get_current_device
+        from aie.utils.compile import resolve_target_arch
+
+        _mlir, external_kernels = self._generated_for(
+            full_elf=full_elf, reconfig=reconfig
+        )
+        target_arch = resolve_target_arch(get_current_device(probe_runtime=False))
+        for func in external_kernels:
+            # ExternalFunction._compiled is a session-global, directory-unaware
+            # flag: once a kernel is compiled anywhere in the process it stays
+            # True. A design reused across folds with distinct output_dirs (or
+            # folded after a normal call that already compiled it) would then be
+            # skipped here and its .o never staged into THIS kernel_dir, breaking
+            # aiecc's link_with resolution (run with cwd=output_dir). Reflect
+            # this dir's reality before delegating so the .o is (re)emitted when
+            # absent; compile_external_kernel is a no-op when it is already here.
+            if func._compiled and not os.path.exists(
+                os.path.join(kernel_dir, func.object_file_name)
+            ):
+                func._compiled = False
+            compile_external_kernel(func, kernel_dir, target_arch)
+        return external_kernels
+
     def _resolve_use_chess(self, external_kernels: list) -> bool:
         """Return whether to drive aiecc with the Chess front-end.
 
@@ -570,7 +593,15 @@ class CompilableDesign:
         generated module for the first ``aie.device`` and its first
         ``aie.runtime_sequence``.
         """
-        module = self._generate_mlir(ExternalFunction)
+        # Reuse the full-ELF generation the build already produced (line ~493
+        # generates + caches full_elf=True): parse the kernel name from that
+        # SAME variant. Passing full_elf=True makes this a generation-cache HIT
+        # on the build path -- no redundant second generator run -- and is the
+        # correct variant to read the name from (the ELF was built from it).
+        # The default full_elf=False missed the cache and re-ran the generator,
+        # which for an ExternalFunction captured as a CompileTime param reused a
+        # stale native op from the first (now destroyed) MLIR context -> SIGSEGV.
+        module = self._generate_mlir(ExternalFunction, full_elf=True)
         for op in module.body.operations:
             if op.operation.name != "aie.device":
                 continue
@@ -707,19 +738,24 @@ class CompilableDesign:
 
         return tensor_args, scalar_kwargs
 
-    def generate_mlir(self):
+    def generate_mlir(self, reconfig: bool = False):
         """Generate and return the MLIR module without compiling to xclbin.
 
         Useful for inspecting generated MLIR, debugging, or offline analysis.
         Binds an available runtime-detected device before generation so
         target-sensitive builders and the generation cache see the same device.
 
+        ``reconfig`` selects the config_union naming (a nameless design's
+        entrypoint sequence takes the generator function name).
+
         Returns:
             The generated ``mlir.ir.Module``.
         """
         from aie.iron.kernel import ExternalFunction
 
-        return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
+        return self._generate_mlir(
+            ExternalFunction, full_elf=self.full_elf, reconfig=reconfig
+        )
 
     def validate_tensor_args(self, tensor_args: list) -> None:
         """Validate that *tensor_args* element counts match the compiled kernel.
@@ -881,6 +917,10 @@ class CompilableDesign:
         )
 
     def _compute_cache_hash(self) -> str:
+        # name= folds into the disk-cache hash so two identical-body designs
+        # with different names get distinct ELFs (else the 2nd silently reuses
+        # the 1st with the wrong sym_name). Hashed only when set (see
+        # _compute_recipe_hash), so a nameless design keeps its pre-feature hash.
         return _compute_hash(
             self.mlir_generator,
             self.compile_kwargs,
@@ -890,6 +930,7 @@ class CompilableDesign:
             self.compile_flags,
             self.full_elf,
             self._resolve_fold_ddr_addr_offset(),
+            sequence_name=self.name,
         )
 
     def _bind_generation_device(self):
@@ -904,7 +945,9 @@ class CompilableDesign:
         except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
             return None
 
-    def _generation_cache_key(self, *, full_elf: bool = False) -> tuple:
+    def _generation_cache_key(
+        self, *, full_elf: bool = False, reconfig: bool = False
+    ) -> tuple:
         """Return the identity that affects cached MLIR generation.
 
         Static ``.mlir`` files key on their path. Python generators key on the
@@ -921,15 +964,22 @@ class CompilableDesign:
         except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
             device = None
 
-        return ("device", full_elf) + _device_identity_key(device)
+        # name= affects the emitted sym_name, so it discriminates cached MLIR.
+        # Omitted when None to keep the nameless key byte-identical. reconfig
+        # also affects the sym_name (nameless -> generator function name), so it
+        # discriminates too.
+        name_key = () if self.name is None else (self.name,)
+        return ("device", full_elf, reconfig) + name_key + _device_identity_key(device)
 
-    def _generated_for(self, *, full_elf: bool) -> tuple[str, list]:
+    def _generated_for(
+        self, *, full_elf: bool, reconfig: bool = False
+    ) -> tuple[str, list]:
         """Return cached ``(mlir_text, external_kernels)`` for the given mode."""
         self._bind_generation_device()
-        key = self._generation_cache_key(full_elf=full_elf)
+        key = self._generation_cache_key(full_elf=full_elf, reconfig=reconfig)
         generated = self._generated_cache.get(key)
         if generated is None:
-            generated = self._generate_uncached(full_elf=full_elf)
+            generated = self._generate_uncached(full_elf=full_elf, reconfig=reconfig)
             self._generated_cache[key] = generated
         return generated
 
@@ -938,7 +988,9 @@ class CompilableDesign:
         """Return cached ``(mlir_text, external_kernels)`` for the active device."""
         return self._generated_for(full_elf=self.full_elf)
 
-    def _generate_uncached(self, *, full_elf: bool = False) -> tuple[str, list]:
+    def _generate_uncached(
+        self, *, full_elf: bool = False, reconfig: bool = False
+    ) -> tuple[str, list]:
         """Run the generator and collect generated MLIR text and external kernels."""
         from aie.iron.kernel import ExternalFunction
 
@@ -1010,7 +1062,20 @@ class CompilableDesign:
             if isinstance(_v, ExternalFunction):
                 ExternalFunction._instances.add(_v)
 
-        with compile_context(**self.compile_kwargs, _iron_full_elf=full_elf):
+        # On the reconfig (config_union) path a nameless design's entrypoint
+        # sequence takes the generator function name instead of the elided
+        # default "sequence", so config_union prints an explicit, descriptive
+        # entrypoint (main:<funcname>) distinct from the internal @sequence.
+        # Off the reconfig path the default is unchanged (None -> "sequence").
+        effective_sequence_name = self.name
+        if effective_sequence_name is None and reconfig:
+            effective_sequence_name = self.generator_name
+
+        with compile_context(
+            **self.compile_kwargs,
+            _iron_full_elf=full_elf,
+            _iron_sequence_name=effective_sequence_name,
+        ):
             with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
                 result = self.mlir_generator(**_gen_call_kwargs)
                 module = ctx.module if result is None else result
@@ -1024,14 +1089,18 @@ class CompilableDesign:
         ExternalFunction._instances.clear()
         return mlir_text, external_kernels
 
-    def _generate_mlir(self, ExternalFunction, *, full_elf: bool = False):
+    def _generate_mlir(
+        self, ExternalFunction, *, full_elf: bool = False, reconfig: bool = False
+    ):
         """Return an MLIR ``Module`` bound to a fresh Context.
 
         Thin wrapper over :meth:`_generated_for`: parse the cached MLIR text
         into a new ``mlir_mod_ctx()`` and re-register the cached
         ``ExternalFunction`` instances so ``compile()`` can collect them.
         """
-        mlir_text, external_kernels = self._generated_for(full_elf=full_elf)
+        mlir_text, external_kernels = self._generated_for(
+            full_elf=full_elf, reconfig=reconfig
+        )
         ExternalFunction._instances.update(external_kernels)
         with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
             return _Module.parse(mlir_text)

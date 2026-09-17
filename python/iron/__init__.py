@@ -60,6 +60,8 @@ from aie.utils.compile.jit import (
     compileconfig,
     get_compile_arg,
 )
+from aie.utils.compile.reconfiguration import Reconfiguration
+from aie.utils.compile.utils import FullElf
 from aie.utils.jit import jit
 
 from . import algorithms, kernels
@@ -127,6 +129,8 @@ __all__ = [
     "jit",
     "compile_context",
     "get_compile_arg",
+    "FullElf",
+    "Reconfiguration",
     # Tensor factories
     "tensor",
     "ones",

@@ -275,11 +275,14 @@ class Program:
                 load_pdi_device_ref = (
                     device_name if get_compile_arg("_iron_full_elf") else None
                 )
+                # Per-design runtime_sequence name (jit name= key), injected into
+                # the compile context by CompilableDesign. None -> "sequence".
                 self._rt.resolve(
                     trace_size=self._trace_size,
                     reuse_output_buffer=self._reuse_output_buffer,
                     egress_shim_col=self._egress_shim_col,
                     load_pdi_device_ref=load_pdi_device_ref,
+                    sequence_name=get_compile_arg("_iron_sequence_name"),
                 )
 
             # Resolve parameters only discoverable once the sequence body has

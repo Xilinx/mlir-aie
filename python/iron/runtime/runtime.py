@@ -296,6 +296,7 @@ class Runtime(Resolvable):
         reuse_output_buffer: bool = False,
         egress_shim_col: int = 0,
         load_pdi_device_ref: str | None = None,
+        sequence_name: str | None = None,
     ) -> None:
         """Build the ``runtime_sequence`` op and run the sequence body inside it.
 
@@ -320,6 +321,10 @@ class Runtime(Resolvable):
             load_pdi_device_ref: On the full-ELF path (no xclbin configures the
                 device), the device symbol to load via ``npu_load_pdi`` as the
                 first op in the sequence. ``None`` on the xclbin path.
+            sequence_name: Per-design ``runtime_sequence`` sym_name override
+                (the jit ``name=`` key, threaded via the compile context).
+                ``None`` preserves the default ``"sequence"`` (dispatch
+                ``main:sequence``).
         """
         # A runtime_sequence block arg per runtime (type) input; folded-constant
         # inputs contribute no block arg.
@@ -330,7 +335,9 @@ class Runtime(Resolvable):
         ]
         active = ActiveSequence(self)
 
-        seq_op = RuntimeSequenceOp(sym_name="sequence")
+        # Default "sequence" (dispatch main:sequence) unless a per-design name=
+        # override was threaded in via the compile context (jit name= key).
+        seq_op = RuntimeSequenceOp(sym_name=sequence_name or "sequence")
         entry_block = seq_op.body.blocks.append(*rt_dtypes)
         with ir.InsertionPoint(entry_block):
             # Full-ELF designs configure the device themselves: no xclbin

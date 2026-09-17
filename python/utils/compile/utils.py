@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,31 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+# Matches the `aie.runtime_sequence @<name>(...)` that `design.as_mlir(...)`
+# emits (confirmed 2026-09-07: no visibility keyword precedes the symbol, e.g.
+# `aie.runtime_sequence @add_a(%arg0: memref<64xi32>, ...)`). `\w+` stops at
+# the `(`, so this captures exactly the sym_name.
+_SEQ_RE = re.compile(r"aie\.runtime_sequence\s+@(\w+)")
+
+
+def _mlir_text_and_name(item: "str | Path") -> "tuple[str, str]":
+    """Return (mlir_text, runtime_sequence sym_name) for a file path or MLIR text."""
+    p = Path(item)
+    try:
+        # A real `as_mlir()` payload is easily >255 bytes on one "name", which
+        # makes is_file() raise ENAMETOOLONG instead of returning False.
+        is_file = p.is_file()
+    except OSError:
+        is_file = False
+    text = p.read_text() if is_file else str(item)
+    m = _SEQ_RE.search(text)
+    if not m:
+        raise ValueError(
+            "Reconfiguration: input MLIR has no `aie.runtime_sequence @name` to "
+            "name its entrypoint"
+        )
+    return text, m.group(1)
 
 
 def resolve_target_arch(device=None) -> str:
@@ -395,11 +421,47 @@ def compile_cxx_core_function(
                 raise RuntimeError(f"[Peano] LLVM bitcode assembly failed{detail}")
 
 
-def _run_aiecc(mlir_file: str, args: list[str]):
+@dataclass(frozen=True)
+class FullElf:
+    """Descriptor for a reconfigurable full ELF folded from several designs.
+
+    Produced by :class:`aie.utils.compile.reconfiguration.Reconfiguration`
+    (``aie.iron.Reconfiguration``), which mirrors ``aiecc --get-full-elf
+    --reconfig-method=...`` over several designs' own MLIR + kernels.
+
+    ``entrypoints`` lists each ``main:<name>`` kernel name in dispatch order
+    (``main:init`` first when the fold used ``method="ctrlpkt"``); an
+    application runs them via ``pyxrt.ext.kernel(ctx, name)`` batched in a
+    ``pyxrt.runlist`` (see ``test/python/npu-xrt/test_reconfig_runlist.py``).
+
+    ``init``'s entrypoint (when non-``None``) has a fixed, overlay-defined
+    signature -- a single inert control-packet-stream buffer -- independent
+    of any added design's own tensor signature; dispatch it with just the
+    control-packet buffer object (no design buffers).
+
+    ``trace_buffer_bytes`` is set (non-``None``) when the single folded design
+    enables hardware trace (``aie.trace.host_config`` in its runtime_sequence):
+    the fold appends a dedicated trace-buffer argument at the tail of the
+    design's own tensor args (index ``len(tensor_args)``), BEFORE any
+    control-packet buffer. A runlist host must allocate a BO of this many bytes
+    and bind it at that index, keeping the control BO at the following index.
+    """
+
+    path: Path
+    entrypoints: list
+    init: "str | None"
+    needs_ctrl_bo: bool
+    trace_buffer_bytes: "int | None" = None
+
+
+def _run_aiecc(
+    mlir_files: "str | list[str]", args: list[str], cwd: "str | None" = None
+):
     aiecc_bin = config.aiecc_path()
-    cmd = [aiecc_bin, mlir_file] + args
+    files = [mlir_files] if isinstance(mlir_files, str) else list(mlir_files)
+    cmd = [aiecc_bin, *files] + args
     logger.debug("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     if result.stdout:
         logger.debug("%s", result.stdout)
     if result.stderr:

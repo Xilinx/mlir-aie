@@ -115,6 +115,7 @@ def _compute_recipe_hash(
     aiecc_flags: list[str] | tuple[str, ...],
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
+    sequence_name: str | None = None,
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
@@ -169,6 +170,12 @@ def _compute_recipe_hash(
     h.update(repr(sorted(aiecc_flags)).encode())
     h.update(repr(sorted(compile_flags)).encode())
     h.update(f"full_elf={full_elf}".encode())
+    # Per-design runtime_sequence name (jit name= key) is part of the recipe:
+    # two identical-body designs with different names emit different sym_names
+    # and must not share a cache entry. Hashed only when set, so a nameless
+    # design's recipe hash is byte-identical to the pre-name-feature hash.
+    if sequence_name is not None:
+        h.update(f"sequence_name={sequence_name}".encode())
 
     return h.hexdigest()
 
@@ -280,10 +287,16 @@ def _compute_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     fold_ddr_addr_offset: bool = True,
+    sequence_name: str | None = None,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
-        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf
+        generator,
+        compile_kwargs,
+        aiecc_flags,
+        compile_flags,
+        full_elf,
+        sequence_name,
     )
     artifact = _compute_artifact_hash(
         generator, source_files, object_files, fold_ddr_addr_offset

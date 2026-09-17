@@ -181,6 +181,15 @@ class HRXHostRuntime(HostRuntime):
     def _resolve_kernel(self, npu_kernel):
         """Resolve + validate an npu_kernel to (xclbin_path, insts_path, name)."""
         self.check_device_consistency()
+        # A full-ELF reconfiguration kernel carries elf_path and no xclbin; HRX
+        # has no full-ELF / load_pdi path, so guard with a clear error instead of
+        # letting Path(None) raise an opaque TypeError below.
+        if getattr(npu_kernel, "elf_path", None) and not npu_kernel.xclbin_path:
+            raise HostRuntimeError(
+                "NPU_RUNTIME=hrx does not support the full-ELF reconfiguration "
+                "path (elf_path set, no xclbin). Use the default XRT runtime for "
+                "full-ELF / --reconfig-method designs."
+            )
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name or "MLIR_AIE"

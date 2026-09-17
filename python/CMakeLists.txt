@@ -74,6 +74,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/hsaruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
+    utils/compile/reconfiguration.py
     utils/compile/cache/utils.py
     utils/compile/jit/__init__.py
     utils/compile/jit/compilabledesign.py
