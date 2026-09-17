@@ -529,7 +529,11 @@ void sortAssertions(std::vector<BankAssertion> &assertions) {
 std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
     llvm::ArrayRef<std::string> objectPaths) {
   std::vector<BankAssertion> assertions;
+  llvm::StringSet<> seenObjects, definitions, ambiguous;
   for (llvm::StringRef path : objectPaths) {
+    if (!seenObjects.insert(path).second) {
+      continue;
+    }
     auto binary = llvm::object::createBinary(path);
     if (!binary) {
       llvm::consumeError(binary.takeError());
@@ -542,10 +546,23 @@ std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
     for (const SymbolRef &sym : obj->symbols()) {
       auto name = sym.getName();
       auto section = sym.getSection();
-      if (!name || !section) {
+      auto type = sym.getType();
+      auto flags = sym.getFlags();
+      if (!name || !section || !type || !flags) {
         llvm::consumeError(name.takeError());
         llvm::consumeError(section.takeError());
+        llvm::consumeError(type.takeError());
+        llvm::consumeError(flags.takeError());
         continue;
+      }
+      if (name->empty() || *type != SymbolRef::ST_Data ||
+          (*flags & SymbolRef::SF_Undefined)) {
+        continue;
+      }
+      // Count unpinned definitions too. GC can leave only one same-named
+      // local in the ELF, without identifying which input request it owns.
+      if (!definitions.insert(*name).second) {
+        ambiguous.insert(*name);
       }
       if (*section == obj->section_end()) {
         continue;
@@ -556,12 +573,15 @@ std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
         continue;
       }
       auto banks = banksFromSectionName(*sectionName);
-      if (banks.empty() || name->empty()) {
+      if (banks.empty()) {
         continue;
       }
       assertions.push_back({name->str(), sectionName->str(), banks});
     }
   }
+  llvm::erase_if(assertions, [&](const BankAssertion &assertion) {
+    return ambiguous.contains(assertion.symbol);
+  });
   sortAssertions(assertions);
   return assertions;
 }

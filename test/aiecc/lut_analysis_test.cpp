@@ -8,7 +8,7 @@
 using namespace xilinx::aiecc;
 
 int main(int argc, char **argv) {
-  assert(argc == 11);
+  assert(argc == 13);
   using Kind = LutOperand::Kind;
   auto textPairs = readLutPairsFromIR(argv[1]);
   auto bitcodePairs = readLutPairsFromIR(argv[3]);
@@ -78,12 +78,29 @@ int main(int argc, char **argv) {
   int tableAssertions = 0;
   for (const auto &assertion : duplicateAssertions)
     tableAssertions += assertion.symbol == "table";
-  assert(tableAssertions == 2);
+  assert(tableAssertions == 0);
   assert(checkBankPlacements(argv[10], duplicateAssertions, base, 4096, 4)
              .empty());
   BankAssertion contradiction{"bank_analysis_anchor", ".aie.bank1", {1}};
   auto violations =
       checkBankPlacements(argv[10], {contradiction}, base, 4096, 4);
   assert(violations.size() == 1 && violations[0].actualBank == 0);
+  auto collected = readDataSymbolAddresses(argv[11], 0);
+  assert(collected.contains("table"));
+  int64_t collectedBase = collected.lookup("bank_analysis_anchor");
+  assert(collectedBase > 0);
+  assert(
+      checkBankPlacements(argv[11], duplicateAssertions, collectedBase, 4096, 4)
+          .empty());
+  auto unpinnedAssertions = readBankAssertionsFromObjects(
+      {std::string(argv[8]), std::string(argv[12])});
+  for (const auto &assertion : unpinnedAssertions)
+    assert(assertion.symbol != "table");
+  auto singleAssertions = readBankAssertionsFromObjects(
+      {std::string(argv[8]), std::string(argv[8])});
+  tableAssertions = 0;
+  for (const auto &assertion : singleAssertions)
+    tableAssertions += assertion.symbol == "table";
+  assert(tableAssertions == 1);
   llvm::outs() << "LUT analysis: all checks passed\n";
 }

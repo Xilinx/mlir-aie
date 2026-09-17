@@ -82,6 +82,8 @@ struct BankAssertion {
 // Bank requests carried by the objects a core links. Both toolchains put the
 // bank in the section name: chess from `chess_storage(DM_bankA)`, Peano from an
 // explicit `__attribute__((section))`.
+// Names defined by multiple input objects are omitted, even if only one
+// definition is pinned: linking/GC cannot reliably associate their requests.
 std::vector<BankAssertion>
 readBankAssertionsFromObjects(llvm::ArrayRef<std::string> objectPaths);
 
@@ -100,8 +102,9 @@ checkBankPlacements(llvm::StringRef elfPath,
                     llvm::ArrayRef<BankAssertion> assertions,
                     int64_t tileBaseAddress, int64_t bankSize, int numBanks);
 
-// One end of an `aie::lut<4>` table pair. Stack locals are called out separately:
-// their final offsets, and hence bank separation, cannot be verified here.
+// One end of an `aie::lut<4>` table pair. Stack locals are called out
+// separately: their final offsets, and hence bank separation, cannot be
+// verified here.
 struct LutOperand {
   enum class Kind { Unknown, Symbol, Param, Stack };
   Kind kind = Kind::Unknown;
