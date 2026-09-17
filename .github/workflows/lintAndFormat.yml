@@ -173,7 +173,7 @@ jobs:
           pyright
 
       - name: Lint Python (ruff)
-        run: ruff check
+        run: pre-commit run ruff-check --hook-stage pre-push --all-files --color never
 
       - name: Lint C/C++ (clang-tidy)
         run: |
@@ -348,9 +348,6 @@ jobs:
           cache: 'pip'
           cache-dependency-path: python/requirements_dev.lock
 
-      - name: Install clang-format
-        run: python -m pip install clang-format==20.1.0
-
       - name: Check Liquid Syntax
         run: python3 utils/check_liquid_syntax.py
 
@@ -374,16 +371,16 @@ jobs:
       - name: Lint workflow files (actionlint)
         run: pre-commit run actionlint --all-files --color never
 
-      - name: Run clang-format
-        id: clang-format
+      - name: Run clang-format via pre-commit
+        env:
+          CLANG_FORMAT_BASE_REF: ${{ github.base_ref || github.event.repository.default_branch || 'main' }}
         run: |
-          BASE="${{ github.base_ref || github.event.repository.default_branch }}"
           BASE_REF="refs/remotes/origin/_ci_base"
-          git fetch --depth=1 origin "refs/heads/$BASE:$BASE_REF"
+          git fetch --depth=1 origin "refs/heads/${CLANG_FORMAT_BASE_REF}:$BASE_REF"
           for depth in 10 50 200 1000; do
             git merge-base HEAD "$BASE_REF" >/dev/null 2>&1 && break
             git fetch --deepen="$depth" origin
-            git fetch --deepen="$depth" origin "refs/heads/$BASE:$BASE_REF"
+            git fetch --deepen="$depth" origin "refs/heads/${CLANG_FORMAT_BASE_REF}:$BASE_REF"
           done
           BASE_SHA="$(git merge-base HEAD "$BASE_REF")"
           pre-commit run clang-format \
@@ -456,6 +453,9 @@ jobs:
 
       - name: Run the comment-slop unit tests
         run: python utils/test_check_comment_slop.py -v
+
+      - name: Run the lint dependency sync unit tests
+        run: python utils/test_lint_dependency_sync.py -v
 
       - name: Install pre-commit
         run: python -m pip install --require-hashes -r python/requirements_dev.lock
