@@ -8598,25 +8598,25 @@ record of which agent currently holds each range of them, belong to the
 invariant is host/device coherence: the host and the device each hold a view
 of the same storage, and the two are reconciled only at the points this class
 defines. Everything else it offers (indexing, filling, the numpy and torch
-bridges, :meth:<code>subview</code>) exists to keep that reconciliation correct while
+bridges, <code>subview</code>) exists to keep that reconciliation correct while
 still letting callers treat the buffer as data.</p>
 <p>The invariant in full:</p>
 <ul>
-<li>Writes through the declared paths (:meth:<code>__setitem__</code>, :meth:<code>fill_</code>, and
+<li>Writes through the declared paths (<code>__setitem__</code>, <code>fill_</code>, and
   the factories) are reconciled: the factories transfer as they construct,
-  and the in-place writes record the region so the next :meth:<code>to</code> sends it.
+  and the in-place writes record the region so the next <code>to</code> sends it.
   A write through the raw <code>data</code> array does neither, and is the one way to
   leave host and device disagreeing.</li>
 <li>A method that spans regions in different states reconciles per region.
   Asking a whole tensor where it lives collapses a mixed extent to one
-  answer, which is the right answer for :meth:<code>to</code> and the wrong one to
+  answer, which is the right answer for <code>to</code> and the wrong one to
   transfer by.</li>
-<li>:meth:<code>to</code> moves residency and is a no-op when the buffer is already on the
+<li><code>to</code> moves residency and is a no-op when the buffer is already on the
   target device, so a caller that has written through a declared path never
   pays for a redundant transfer, and a caller that has bypassed one gets no
   transfer at all.</li>
 <li>Reconciliation is not byte-granular. It acts on whole cache lines, which is
-  why :meth:<code>subview</code> requires its regions to be granule-aligned.</li>
+  why <code>subview</code> requires its regions to be granule-aligned.</li>
 </ul>
 <p>Subclasses supply the storage and the two transfer primitives; the invariant
 itself lives here so every backend states it the same way.</p>
@@ -8816,7 +8816,7 @@ keeps a caller's reconcile from being skipped.</p>
     <div class="doc doc-contents ">
 
         <p>The buffer that owns this one's storage, or None if it owns it itself.</p>
-<p>Mirrors :attr:<code>numpy.ndarray.base</code>, including collapsing a chain of
+<p>Mirrors <code>numpy.ndarray.base</code>, including collapsing a chain of
 views: the base of a view of a view is the buffer that actually owns the
 storage, not the intermediate view. The intermediate is still referenced
 internally, so the whole chain stays alive for as long as any view of it
@@ -8868,10 +8868,10 @@ does.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Where this buffer starts within :attr:<code>base</code>'s storage, in bytes.</p>
+        <p>Where this buffer starts within <code>base</code>'s storage, in bytes.</p>
 <p>Zero for a buffer that owns its storage. Accumulated through nesting, so
 it is always measured from the owner rather than from the view this one
-was carved out of. Compare :meth:<code>torch.Tensor.storage_offset</code>, which is
+was carved out of. Compare <code>torch.Tensor.storage_offset</code>, which is
 in elements; this is in bytes because a view may reinterpret the dtype.</p>
 
     </div>
@@ -9246,12 +9246,12 @@ per window.</p>
     <div class="doc doc-contents ">
 
         <p>Borrow for a write that replaces every byte of this tensor.</p>
-<p>The same as :meth:<code>mutate</code> without the reconcile on entry, which nothing
+<p>The same as <code>mutate</code> without the reconcile on entry, which nothing
 can observe if all of it is about to be replaced. Filling a buffer this
 way costs one transfer rather than two.</p>
 <p>The caller is promising to write the whole region. Bytes left unwritten
 keep whatever the host last had there and are sent to the device with
-the rest, so use :meth:<code>mutate</code> for a partial update. This is the one
+the rest, so use <code>mutate</code> for a partial update. This is the one
 promise here that cannot be checked; it is still narrower than reaching
 for <code>data</code>, which makes the same promise and does not record the write.</p>
 
@@ -9274,13 +9274,13 @@ for <code>data</code>, which makes the same promise and does not record the writ
 <span class="normal"><a href="#__codelineno-0-514">514</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="k">def</span><span class="w"> </span><span class="nf">overwrite</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Borrow for a write that replaces every byte of this tensor.</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">    The same as :meth:`mutate` without the reconcile on entry, which nothing</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">    The same as `mutate` without the reconcile on entry, which nothing</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">    can observe if all of it is about to be replaced. Filling a buffer this</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="sd">    way costs one transfer rather than two.</span>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="sd">    The caller is promising to write the whole region. Bytes left unwritten</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a><span class="sd">    keep whatever the host last had there and are sent to the device with</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    the rest, so use :meth:`mutate` for a partial update. This is the one</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    the rest, so use `mutate` for a partial update. This is the one</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">    promise here that cannot be checked; it is still narrower than reaching</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">    for ``data``, which makes the same promise and does not record the write.</span>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">    &quot;&quot;&quot;</span>
@@ -9309,7 +9309,7 @@ for <code>data</code>, which makes the same promise and does not record the writ
 copy), holds a reference to this tensor so the storage outlives the view,
 and synchronizes its own slice. It is a plain tensor of the same backend
 class, not a distinct type.</p>
-<p>The region must be aligned to :data:<code>COHERENCE_GRANULE</code>, because host and
+<p>The region must be aligned to <code>COHERENCE_GRANULE</code>, because host and
 device are reconciled a cache line at a time, not a byte at a time. Two
 views sharing a line are not independent: synchronizing one acts on the
 other's bytes in that line, so a view whose host copy is stale can be
@@ -9339,7 +9339,7 @@ neither reconciles anything between two agents.</p>
 array's own dtype and torch reports <code>storage_offset</code> in elements.
 Bytes because that is the unit the thing being carved is measured in: a
 buffer has no dtype, the alignment rule below is in bytes, and
-:attr:<code>storage_offset</code> reports bytes, so the argument going in and the
+<code>storage_offset</code> reports bytes, so the argument going in and the
 value reported back are the same number. <code>shape</code> stays in elements of
 the view's dtype, since it describes the tensor rather than the region.</p>
 
@@ -9445,7 +9445,7 @@ Defaults to this tensor's dtype.</p>
             <td>
               <div class="doc-md-description">
                 <p>If the region falls outside this tensor's buffer, or is
-not aligned to :data:<code>COHERENCE_GRANULE</code>.</p>
+not aligned to <code>COHERENCE_GRANULE</code>.</p>
               </div>
             </td>
           </tr>
@@ -9563,7 +9563,7 @@ not aligned to :data:<code>COHERENCE_GRANULE</code>.</p>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a><span class="sd">    and synchronizes its own slice. It is a plain tensor of the same backend</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">    class, not a distinct type.</span>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">    The region must be aligned to :data:`COHERENCE_GRANULE`, because host and</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">    The region must be aligned to `COHERENCE_GRANULE`, because host and</span>
 <a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    device are reconciled a cache line at a time, not a byte at a time. Two</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a><span class="sd">    views sharing a line are not independent: synchronizing one acts on the</span>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="sd">    other&#39;s bytes in that line, so a view whose host copy is stale can be</span>
@@ -9599,7 +9599,7 @@ not aligned to :data:<code>COHERENCE_GRANULE</code>.</p>
 <a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">    array&#39;s own dtype and torch reports ``storage_offset`` in elements.</span>
 <a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">    Bytes because that is the unit the thing being carved is measured in: a</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a><span class="sd">    buffer has no dtype, the alignment rule below is in bytes, and</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a><span class="sd">    :attr:`storage_offset` reports bytes, so the argument going in and the</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a><span class="sd">    `storage_offset` reports bytes, so the argument going in and the</span>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">    value reported back are the same number. ``shape`` stays in elements of</span>
 <a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">    the view&#39;s dtype, since it describes the tensor rather than the region.</span>
 <a id="__codelineno-0-563" name="__codelineno-0-563"></a>
@@ -9615,7 +9615,7 @@ not aligned to :data:<code>COHERENCE_GRANULE</code>.</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">        ValueError: If the region falls outside this tensor&#39;s buffer, or is</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">            not aligned to :data:`COHERENCE_GRANULE`.</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">            not aligned to `COHERENCE_GRANULE`.</span>
 <a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">    &quot;&quot;&quot;</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">_subview</span> <span class="ow">is</span> <span class="n">NpuTensor</span><span class="o">.</span><span class="n">_subview</span><span class="p">:</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>        <span class="c1"># Answer the capability question before complaining about a region</span>
@@ -12158,7 +12158,7 @@ forwarded here directly.</p>
 
         <p>The host tensor: a shaped, typed view over a coherence-managed allocation.</p>
 <p>The allocation itself, its residency bookkeeping, and the torch bridge live in
-:mod:<code>buffer</code>, :mod:<code>coherence</code> and :mod:<code>torch_interop</code>. Each is re-exported
+<code>buffer</code>, <code>coherence</code> and <code>torch_interop</code>. Each is re-exported
 here, so <code>from .tensor_class import Storage</code> and friends keep resolving.</p>
 
 
@@ -12205,25 +12205,25 @@ here, so <code>from .tensor_class import Storage</code> and friends keep resolvi
 invariant is host/device coherence: the host and the device each hold a view
 of the same storage, and the two are reconciled only at the points this class
 defines. Everything else it offers (indexing, filling, the numpy and torch
-bridges, :meth:<code>subview</code>) exists to keep that reconciliation correct while
+bridges, <code>subview</code>) exists to keep that reconciliation correct while
 still letting callers treat the buffer as data.</p>
 <p>The invariant in full:</p>
 <ul>
-<li>Writes through the declared paths (:meth:<code>__setitem__</code>, :meth:<code>fill_</code>, and
+<li>Writes through the declared paths (<code>__setitem__</code>, <code>fill_</code>, and
   the factories) are reconciled: the factories transfer as they construct,
-  and the in-place writes record the region so the next :meth:<code>to</code> sends it.
+  and the in-place writes record the region so the next <code>to</code> sends it.
   A write through the raw <code>data</code> array does neither, and is the one way to
   leave host and device disagreeing.</li>
 <li>A method that spans regions in different states reconciles per region.
   Asking a whole tensor where it lives collapses a mixed extent to one
-  answer, which is the right answer for :meth:<code>to</code> and the wrong one to
+  answer, which is the right answer for <code>to</code> and the wrong one to
   transfer by.</li>
-<li>:meth:<code>to</code> moves residency and is a no-op when the buffer is already on the
+<li><code>to</code> moves residency and is a no-op when the buffer is already on the
   target device, so a caller that has written through a declared path never
   pays for a redundant transfer, and a caller that has bypassed one gets no
   transfer at all.</li>
 <li>Reconciliation is not byte-granular. It acts on whole cache lines, which is
-  why :meth:<code>subview</code> requires its regions to be granule-aligned.</li>
+  why <code>subview</code> requires its regions to be granule-aligned.</li>
 </ul>
 <p>Subclasses supply the storage and the two transfer primitives; the invariant
 itself lives here so every backend states it the same way.</p>
@@ -12423,7 +12423,7 @@ keeps a caller's reconcile from being skipped.</p>
     <div class="doc doc-contents ">
 
         <p>The buffer that owns this one's storage, or None if it owns it itself.</p>
-<p>Mirrors :attr:<code>numpy.ndarray.base</code>, including collapsing a chain of
+<p>Mirrors <code>numpy.ndarray.base</code>, including collapsing a chain of
 views: the base of a view of a view is the buffer that actually owns the
 storage, not the intermediate view. The intermediate is still referenced
 internally, so the whole chain stays alive for as long as any view of it
@@ -12475,10 +12475,10 @@ does.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Where this buffer starts within :attr:<code>base</code>'s storage, in bytes.</p>
+        <p>Where this buffer starts within <code>base</code>'s storage, in bytes.</p>
 <p>Zero for a buffer that owns its storage. Accumulated through nesting, so
 it is always measured from the owner rather than from the view this one
-was carved out of. Compare :meth:<code>torch.Tensor.storage_offset</code>, which is
+was carved out of. Compare <code>torch.Tensor.storage_offset</code>, which is
 in elements; this is in bytes because a view may reinterpret the dtype.</p>
 
     </div>
@@ -12853,12 +12853,12 @@ per window.</p>
     <div class="doc doc-contents ">
 
         <p>Borrow for a write that replaces every byte of this tensor.</p>
-<p>The same as :meth:<code>mutate</code> without the reconcile on entry, which nothing
+<p>The same as <code>mutate</code> without the reconcile on entry, which nothing
 can observe if all of it is about to be replaced. Filling a buffer this
 way costs one transfer rather than two.</p>
 <p>The caller is promising to write the whole region. Bytes left unwritten
 keep whatever the host last had there and are sent to the device with
-the rest, so use :meth:<code>mutate</code> for a partial update. This is the one
+the rest, so use <code>mutate</code> for a partial update. This is the one
 promise here that cannot be checked; it is still narrower than reaching
 for <code>data</code>, which makes the same promise and does not record the write.</p>
 
@@ -12881,13 +12881,13 @@ for <code>data</code>, which makes the same promise and does not record the writ
 <span class="normal"><a href="#__codelineno-0-514">514</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="k">def</span><span class="w"> </span><span class="nf">overwrite</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Borrow for a write that replaces every byte of this tensor.</span>
 <a id="__codelineno-0-503" name="__codelineno-0-503"></a>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">    The same as :meth:`mutate` without the reconcile on entry, which nothing</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a><span class="sd">    The same as `mutate` without the reconcile on entry, which nothing</span>
 <a id="__codelineno-0-505" name="__codelineno-0-505"></a><span class="sd">    can observe if all of it is about to be replaced. Filling a buffer this</span>
 <a id="__codelineno-0-506" name="__codelineno-0-506"></a><span class="sd">    way costs one transfer rather than two.</span>
 <a id="__codelineno-0-507" name="__codelineno-0-507"></a>
 <a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="sd">    The caller is promising to write the whole region. Bytes left unwritten</span>
 <a id="__codelineno-0-509" name="__codelineno-0-509"></a><span class="sd">    keep whatever the host last had there and are sent to the device with</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    the rest, so use :meth:`mutate` for a partial update. This is the one</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    the rest, so use `mutate` for a partial update. This is the one</span>
 <a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">    promise here that cannot be checked; it is still narrower than reaching</span>
 <a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">    for ``data``, which makes the same promise and does not record the write.</span>
 <a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">    &quot;&quot;&quot;</span>
@@ -12916,7 +12916,7 @@ for <code>data</code>, which makes the same promise and does not record the writ
 copy), holds a reference to this tensor so the storage outlives the view,
 and synchronizes its own slice. It is a plain tensor of the same backend
 class, not a distinct type.</p>
-<p>The region must be aligned to :data:<code>COHERENCE_GRANULE</code>, because host and
+<p>The region must be aligned to <code>COHERENCE_GRANULE</code>, because host and
 device are reconciled a cache line at a time, not a byte at a time. Two
 views sharing a line are not independent: synchronizing one acts on the
 other's bytes in that line, so a view whose host copy is stale can be
@@ -12946,7 +12946,7 @@ neither reconciles anything between two agents.</p>
 array's own dtype and torch reports <code>storage_offset</code> in elements.
 Bytes because that is the unit the thing being carved is measured in: a
 buffer has no dtype, the alignment rule below is in bytes, and
-:attr:<code>storage_offset</code> reports bytes, so the argument going in and the
+<code>storage_offset</code> reports bytes, so the argument going in and the
 value reported back are the same number. <code>shape</code> stays in elements of
 the view's dtype, since it describes the tensor rather than the region.</p>
 
@@ -13052,7 +13052,7 @@ Defaults to this tensor's dtype.</p>
             <td>
               <div class="doc-md-description">
                 <p>If the region falls outside this tensor's buffer, or is
-not aligned to :data:<code>COHERENCE_GRANULE</code>.</p>
+not aligned to <code>COHERENCE_GRANULE</code>.</p>
               </div>
             </td>
           </tr>
@@ -13170,7 +13170,7 @@ not aligned to :data:<code>COHERENCE_GRANULE</code>.</p>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a><span class="sd">    and synchronizes its own slice. It is a plain tensor of the same backend</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">    class, not a distinct type.</span>
 <a id="__codelineno-0-523" name="__codelineno-0-523"></a>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">    The region must be aligned to :data:`COHERENCE_GRANULE`, because host and</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">    The region must be aligned to `COHERENCE_GRANULE`, because host and</span>
 <a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">    device are reconciled a cache line at a time, not a byte at a time. Two</span>
 <a id="__codelineno-0-526" name="__codelineno-0-526"></a><span class="sd">    views sharing a line are not independent: synchronizing one acts on the</span>
 <a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="sd">    other&#39;s bytes in that line, so a view whose host copy is stale can be</span>
@@ -13206,7 +13206,7 @@ not aligned to :data:<code>COHERENCE_GRANULE</code>.</p>
 <a id="__codelineno-0-557" name="__codelineno-0-557"></a><span class="sd">    array&#39;s own dtype and torch reports ``storage_offset`` in elements.</span>
 <a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="sd">    Bytes because that is the unit the thing being carved is measured in: a</span>
 <a id="__codelineno-0-559" name="__codelineno-0-559"></a><span class="sd">    buffer has no dtype, the alignment rule below is in bytes, and</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a><span class="sd">    :attr:`storage_offset` reports bytes, so the argument going in and the</span>
+<a id="__codelineno-0-560" name="__codelineno-0-560"></a><span class="sd">    `storage_offset` reports bytes, so the argument going in and the</span>
 <a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="sd">    value reported back are the same number. ``shape`` stays in elements of</span>
 <a id="__codelineno-0-562" name="__codelineno-0-562"></a><span class="sd">    the view&#39;s dtype, since it describes the tensor rather than the region.</span>
 <a id="__codelineno-0-563" name="__codelineno-0-563"></a>
@@ -13222,7 +13222,7 @@ not aligned to :data:<code>COHERENCE_GRANULE</code>.</p>
 <a id="__codelineno-0-573" name="__codelineno-0-573"></a>
 <a id="__codelineno-0-574" name="__codelineno-0-574"></a><span class="sd">    Raises:</span>
 <a id="__codelineno-0-575" name="__codelineno-0-575"></a><span class="sd">        ValueError: If the region falls outside this tensor&#39;s buffer, or is</span>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">            not aligned to :data:`COHERENCE_GRANULE`.</span>
+<a id="__codelineno-0-576" name="__codelineno-0-576"></a><span class="sd">            not aligned to `COHERENCE_GRANULE`.</span>
 <a id="__codelineno-0-577" name="__codelineno-0-577"></a><span class="sd">    &quot;&quot;&quot;</span>
 <a id="__codelineno-0-578" name="__codelineno-0-578"></a>    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">_subview</span> <span class="ow">is</span> <span class="n">NpuTensor</span><span class="o">.</span><span class="n">_subview</span><span class="p">:</span>
 <a id="__codelineno-0-579" name="__codelineno-0-579"></a>        <span class="c1"># Answer the capability question before complaining about a region</span>
@@ -15551,7 +15551,7 @@ its name rather than accepting the arguments and ignoring them.</p>
         <p>An allocation, and how a backend reaches and reconciles the bytes in it.</p>
 <p>The allocation is one class. What differs between backends is not the allocation
 but the two things layered under it: where the host's bytes come from, and what
-reconciling a range actually does. Those are the :class:<code>Transport</code>.</p>
+reconciling a range actually does. Those are the <code>Transport</code>.</p>
 
 
 
@@ -15591,12 +15591,12 @@ reconciling a range actually does. Those are the :class:<code>Transport</code>.<
         <p>One allocation, and the coherence of the memory in it.</p>
 <p>Storage owns bytes and the record of which agent holds each range of them.
 It has no shape and no dtype: those are interpretations, and interpretations
-are what :class:<code>NpuTensor</code> is for. Many tensors may name one storage, which
+are what <code>NpuTensor</code> is for. Many tensors may name one storage, which
 is why the coherence state lives here. Kept per tensor, two names for the
 same bytes could disagree and nothing would reconcile them.</p>
 <p>This is the split torch draws between <code>UntypedStorage</code> and <code>Tensor</code>, and
 is where <code>storage_offset</code> comes from.</p>
-<p>Not subclassed. A backend supplies a :class:<code>Transport</code>, so the reconcile
+<p>Not subclassed. A backend supplies a <code>Transport</code>, so the reconcile
 mechanism is data this class holds rather than an identity a subclass
 carries. That is the same argument made one level up about coherence
 belonging to the memory rather than to whichever tensor names it, and it is
@@ -15776,7 +15776,7 @@ these three things: where the host's bytes come from, what moving a range in
 either direction does, and whether a region has a handle a runtime can bind.
 A backend is a transport, not a kind of allocation.</p>
 <p>Ranges are part of the contract rather than a hint. A transport that cannot
-honour them says so in its name (see :class:<code>WholeExtentTransport</code>) instead
+honour them says so in its name (see <code>WholeExtentTransport</code>) instead
 of taking the arguments and ignoring them, which is a promise the caller has
 no way to check, and is the reason this is a strategy rather than a subclass
 of the allocation.</p>
@@ -16743,7 +16743,7 @@ matmul).</p>
     <div class="doc doc-contents ">
 
         <p>Add the standard runtime / test-harness flags.</p>
-<p>Pairs with :func:<code>add_compile_args</code>: <code>add_compile_args</code> covers the
+<p>Pairs with <code>add_compile_args</code>: <code>add_compile_args</code> covers the
 write-side flags (<code>--xclbin-path</code>, <code>--insts-path</code>) used by JIT
 designs, while this helper covers the read-side flags (<code>--xclbin</code>,
 <code>--instr</code>) used by <code>test.py</code>-style host harnesses that load a
@@ -16804,7 +16804,7 @@ drives buffer sizes from the test harness.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>When True, also calls :func:<code>add_benchmark_args</code>
+                <p>When True, also calls <code>add_benchmark_args</code>
 (adds <code>-i/--iters</code> and <code>-w/--warmup</code>).  Off by default
 because most correctness-test harnesses do not benchmark.</p>
               </div>
@@ -16817,7 +16817,7 @@ because most correctness-test harnesses do not benchmark.</p>
     </table>
         <p>Adds (always): <code>--xclbin</code>, <code>--instr</code>, <code>-k/--kernel</code>,
 <code>-v/--verbosity</code>, <code>--verify</code>/<code>--no-verify</code>, <code>--trace-file</code>,
-<code>--ddr-id</code>, <code>--enable-ctrl-pkts</code>; and via :func:<code>add_trace_arg</code>,
+<code>--ddr-id</code>, <code>--enable-ctrl-pkts</code>; and via <code>add_trace_arg</code>,
 <code>-t/--trace_size</code>.</p>
 
 
@@ -16929,7 +16929,7 @@ because most correctness-test harnesses do not benchmark.</p>
 <a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Add the standard runtime / test-harness flags.</span>
 <a id="__codelineno-0-178" name="__codelineno-0-178"></a>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    Pairs with :func:`add_compile_args`: ``add_compile_args`` covers the</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    Pairs with `add_compile_args`: ``add_compile_args`` covers the</span>
 <a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">    write-side flags (``--xclbin-path``, ``--insts-path``) used by JIT</span>
 <a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">    designs, while this helper covers the read-side flags (``--xclbin``,</span>
 <a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    ``--instr``) used by ``test.py``-style host harnesses that load a</span>
@@ -16940,13 +16940,13 @@ because most correctness-test harnesses do not benchmark.</p>
 <a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">        with_io_sizes: When True, adds ``--in1-size`` / ``--in2-size`` /</span>
 <a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">            ``--out-size`` (bytes, ``int``) for designs whose Makefile</span>
 <a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">            drives buffer sizes from the test harness.</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        with_benchmark: When True, also calls :func:`add_benchmark_args`</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        with_benchmark: When True, also calls `add_benchmark_args`</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">            (adds ``-i/--iters`` and ``-w/--warmup``).  Off by default</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">            because most correctness-test harnesses do not benchmark.</span>
 <a id="__codelineno-0-193" name="__codelineno-0-193"></a>
 <a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">    Adds (always): ``--xclbin``, ``--instr``, ``-k/--kernel``,</span>
 <a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    ``-v/--verbosity``, ``--verify``/``--no-verify``, ``--trace-file``,</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    ``--ddr-id``, ``--enable-ctrl-pkts``; and via :func:`add_trace_arg`,</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    ``--ddr-id``, ``--enable-ctrl-pkts``; and via `add_trace_arg`,</span>
 <a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">    ``-t/--trace_size``.</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">    &quot;&quot;&quot;</span>
 <a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
@@ -17044,7 +17044,7 @@ because most correctness-test harnesses do not benchmark.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Resolve a parsed-argparse namespace to a :class:<code>aie.iron.device.Device</code>.</p>
+        <p>Resolve a parsed-argparse namespace to a <code>aie.iron.device.Device</code>.</p>
 <p>Collapses the boilerplate variants the example suite used to repeat
 across ~30 sites::</p>
 <div class="highlight"><pre><span></span><code>from_name(args.dev, n_cols=None)   # &quot;use all cols&quot;
@@ -17218,7 +17218,7 @@ flag) takes precedence over the default when
 <a id="__codelineno-0-275" name="__codelineno-0-275"></a>    <span class="n">dev_attr</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;dev&quot;</span><span class="p">,</span>
 <a id="__codelineno-0-276" name="__codelineno-0-276"></a>    <span class="n">n_cols</span><span class="p">:</span> <span class="s2">&quot;int | None | str&quot;</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
 <a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="p">):</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve a parsed-argparse namespace to a :class:`aie.iron.device.Device`.</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve a parsed-argparse namespace to a `aie.iron.device.Device`.</span>
 <a id="__codelineno-0-279" name="__codelineno-0-279"></a>
 <a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">    Collapses the boilerplate variants the example suite used to repeat</span>
 <a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    across ~30 sites::</span>
