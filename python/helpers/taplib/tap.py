@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import itertools
+import operator
 from copy import deepcopy
 from typing import Generator, Sequence
 
@@ -58,48 +59,93 @@ class TensorAccessPattern:
         -- instead of by hand-deriving the offset, wraps and steps that slice
         implies.
 
-        numpy composes slices, ellipses and integer indices; the slice is
-        applied to a stand-in array and the resulting view's geometry is read
-        back out. The stand-in owns no storage: ``as_strided`` describes
-        ``tensor_dims`` over a zero-byte base, and slicing only ever touches a
-        view's metadata, never its elements. So nothing is allocated to answer
-        a question about sizes and strides.
+        The key is read directly rather than applied to a stand-in array: an
+        ellipsis expands to the axes it covers, a slice contributes its start
+        to the offset and its step to the stride, an integer contributes to the
+        offset and drops its axis, and ``None`` adds a dimension nothing steps
+        along. That is the definition of a strided walk, so the arithmetic is
+        the answer rather than something read back off one.
 
-        No dtype is needed. An access pattern is element-granular, and a
-        one-byte stand-in makes numpy's byte offsets and strides read directly
-        as element counts, so the same slice yields the same pattern whatever
-        the tensor's real element type.
+        No dtype is needed. An access pattern is element-granular and every
+        term here is in elements, so the same key yields the same pattern
+        whatever the tensor's element type.
 
         Args:
             tensor_dims (Sequence[int]): Dimensions of the tensor being sliced.
             key: Any numpy basic-indexing key, e.g. ``np.s_[0::2, 1::2, ...]``.
 
         Returns:
-            TensorAccessPattern: The access pattern the slice describes.
+            TensorAccessPattern: The access pattern the key describes.
 
         Raises:
-            ValueError: If the slice implies a non-positive stride. Reverse and
-                zero strides are expressible in numpy but not in a buffer
-                descriptor, which only steps forward.
+            TypeError: If the key uses advanced (fancy or boolean) indexing,
+                which reaches elements a strided walk cannot.
+            IndexError: If the key has more entries than the tensor has
+                dimensions, more than one ellipsis, or an out-of-range integer.
+            ValueError: If the key implies a negative stride. Reverse steps are
+                expressible in numpy but not in a buffer descriptor, which only
+                steps forward.
         """
         dims = tuple(tensor_dims)
-        c_strides = np.multiply.accumulate((1, *dims[:0:-1]))[::-1]
-        stand_in = np.lib.stride_tricks.as_strided(
-            np.empty(0, np.int8), shape=dims, strides=c_strides
-        )
-        view = stand_in[key]
-        if any(stride <= 0 for stride in view.strides):
+        entries = key if isinstance(key, tuple) else (key,)
+
+        ellipses = [i for i, k in enumerate(entries) if k is Ellipsis]
+        if len(ellipses) > 1:
+            raise IndexError("an index can only have a single ellipsis ('...')")
+        # Every entry but an ellipsis or a None consumes one tensor dimension;
+        # the ellipsis stands for however many are left over.
+        covered = sum(k is not Ellipsis and k is not None for k in entries)
+        if covered > len(dims):
+            raise IndexError(f"too many indices for a tensor of {len(dims)} dimensions")
+        at = ellipses[0] if ellipses else len(entries)
+        fill = (slice(None),) * (len(dims) - covered)
+        entries = entries[:at] + fill + entries[at + 1 :]
+
+        c_strides = [1] * len(dims)
+        for axis in reversed(range(len(dims) - 1)):
+            c_strides[axis] = c_strides[axis + 1] * dims[axis + 1]
+
+        offset, sizes, strides, axis = 0, [], [], 0
+        for entry in entries:
+            if entry is None:
+                # np.newaxis: a dimension the tensor does not have, so nothing
+                # steps along it.
+                sizes.append(1)
+                strides.append(0)
+                continue
+            dim, c_stride = dims[axis], c_strides[axis]
+            axis += 1
+            if isinstance(entry, slice):
+                start, stop, step = entry.indices(dim)
+                offset += start * c_stride
+                sizes.append(len(range(start, stop, step)))
+                strides.append(step * c_stride)
+                continue
+            try:
+                # operator.index is the protocol numpy itself uses to decide
+                # whether something is an integer index. A bool is excluded
+                # because numpy reads it as a mask, which adds an axis.
+                if isinstance(entry, bool):
+                    raise TypeError
+                i = operator.index(entry)
+            except TypeError:
+                raise TypeError(
+                    f"index {entry!r} is advanced indexing; an access pattern "
+                    "is a strided walk, which only basic indexing -- integers, "
+                    "slices, Ellipsis and None -- describes."
+                ) from None
+            if not -dim <= i < dim:
+                raise IndexError(f"index {i} is out of bounds for a dimension of {dim}")
+            offset += (i + dim if i < 0 else i) * c_stride
+
+        if any(stride < 0 for stride in strides):
             raise ValueError(
-                f"slice {key!r} implies strides {view.strides}, but a buffer "
-                "descriptor only expresses positive (forward) steps."
+                f"slice {key!r} implies strides {strides}, but a buffer "
+                "descriptor only expresses forward steps."
             )
-        origin = stand_in.__array_interface__["data"][0]
-        return cls(
-            tensor_dims=dims,
-            offset=view.__array_interface__["data"][0] - origin,
-            sizes=list(view.shape),
-            strides=list(view.strides),
-        )
+        # An all-integer key names a single element, leaving no dimensions at
+        # all; say that as the one-element walk it is.
+        return cls(dims, offset, sizes or [1], strides or [1])
 
     @property
     def tensor_dims(self) -> Sequence[int]:
