@@ -240,7 +240,7 @@ struct AIEObjectFifoAllocatePass
       lastPlaced[placement] = BufferOp::create(
           builder, pool.getLoc(), pool.getElemType(), placement,
           builder.getStringAttr(name), /*address=*/nullptr, init,
-          /*mem_bank=*/nullptr, /*aligned=*/nullptr);
+          /*mem_bank=*/nullptr, /*core_data=*/nullptr);
       names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
     }
     pool.setBuffersAttr(builder.getArrayAttr(names));
@@ -272,8 +272,8 @@ struct AIEObjectFifoAllocatePass
     // refills this pool however often it is read, so the locks look like dead
     // weight either way; dropping the clause also frees every `init_values`
     // fifo of its locks, which wants looking at on its own.
-    return !(filled == depth && filled > 0 && !filledPools.contains(pool) &&
-             drainerIterations.lookup(pool) > 1);
+    return filled != depth || filled <= 0 || filledPools.contains(pool) ||
+           drainerIterations.lookup(pool) <= 1;
   }
 
   LogicalResult planLocks(ArrayRef<ObjectFifoPoolOp> pools) {
