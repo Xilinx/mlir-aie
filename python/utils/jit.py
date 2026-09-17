@@ -77,6 +77,7 @@ def jit(
     specializations of ``DispatchTime[T]`` parameters. A specialized dispatch
     parameter is removed from the runtime signature; call ``specialize()`` to
     change it. Unbound dispatch parameters, including defaults, remain dynamic.
+    ``DispatchTime[T]`` parameters must be keyword-only, even when prebound.
 
     Args:
         mlir_generator: The MLIR generator callable (supplied automatically

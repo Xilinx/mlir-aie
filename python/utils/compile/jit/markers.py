@@ -137,11 +137,14 @@ argument or an ``rt.inline_ops`` symbolic bind), not a buffer transfer.
 ``np.int32`` or ``np.int64``. Built-in ``int``/``bool`` and floating-point
 types are rejected. Scalars must appear in ``Runtime(seq, fn_args=[...])`` in
 signature order, using Runtime's existing NumPy-to-MLIR type mapping.
+Dispatch parameters must be keyword-only, including when defaulted or prebound.
+Prefer tensor operands first, then dispatch scalars, then compile-time
+configuration; the ordering of keyword-only groups is not enforced.
 
 Example::
 
     import numpy as np
 
-    def scaled_copy(a: In, b: Out, scale: DispatchTime[np.int32]):
+    def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
         ...
 """

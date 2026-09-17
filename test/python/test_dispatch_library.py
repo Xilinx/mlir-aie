@@ -27,13 +27,14 @@ def test_defaulted_compile_param_does_not_consume_dispatch_argument(compile_kwar
     def generator(
         a: In,
         bound: CompileTime[int] = 4,
+        *,
         scale: DispatchTime[np.int32] = 1,  # pyright: ignore[reportArgumentType]
     ):
         pass
 
     design = CompilableDesign(generator, compile_kwargs=compile_kwargs)
     tensor = object()
-    tensors, scalars = design.split_runtime_args((tensor, 7), {})
+    tensors, scalars = design.split_runtime_args((tensor,), {"scale": 7})
     assert tensors == [tensor]
     assert scalars == {"scale": 7}
 

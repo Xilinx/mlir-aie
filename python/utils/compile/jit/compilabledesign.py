@@ -185,6 +185,17 @@ class CompilableDesign:
             self._hints, self._sig, (cp, tp, dp, sp) = _introspect_generator(
                 mlir_generator
             )
+            non_keyword_dispatch = [
+                name
+                for name in dp
+                if self._sig.parameters[name].kind is not inspect.Parameter.KEYWORD_ONLY
+            ]
+            if non_keyword_dispatch:
+                raise TypeError(
+                    f"DispatchTime[T] parameter(s) {non_keyword_dispatch!r} "
+                    "must be keyword-only, including defaulted or prebound "
+                    "parameters. Place '*' before them in the generator signature."
+                )
             self.bound_dispatch_params = tuple(
                 name for name in dp if name in self.compile_kwargs
             )

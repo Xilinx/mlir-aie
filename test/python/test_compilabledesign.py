@@ -66,7 +66,7 @@ def _inout_gen():
 
 
 def _dispatch_gen():
-    def f(a: In, c: Out, scale: DispatchTime[np.int32], *, N: CompileTime[int]):
+    def f(a: In, c: Out, *, scale: DispatchTime[np.int32], N: CompileTime[int]):
         pass
 
     return f
@@ -370,35 +370,35 @@ def test_dispatch_specialization_rejects_overflow(value):
         CompilableDesign(_dispatch_gen()).specialize(scale=value)
 
 
-def test_dispatch_specialization_positional_and_keyword_only_binding():
+def test_dispatch_specialization_keyword_only_binding():
     def gen(
-        first: DispatchTime[np.int32],
         a: In,
-        second: DispatchTime[np.int32],
         *,
+        first: DispatchTime[np.int32],
+        second: DispatchTime[np.int32],
         last: DispatchTime[np.int32] = 7,
     ):
         pass
 
     design = CompilableDesign(gen).specialize(first=4)
-    assert design.split_runtime_args(("tensor", 6), {}) == (
+    assert design.split_runtime_args(("tensor",), {"second": 6}) == (
         ["tensor"],
         {"second": 6, "last": 7},
     )
-    assert design.split_runtime_args(("tensor", 6), {"last": 9}) == (
+    assert design.split_runtime_args(("tensor",), {"second": 6, "last": 9}) == (
         ["tensor"],
         {"last": 9, "second": 6},
     )
     with pytest.raises(TypeError, match="specialized"):
-        design.split_runtime_args(("tensor", 6), {"first": 5})
+        design.split_runtime_args(("tensor",), {"second": 6, "first": 5})
     with pytest.raises(TypeError, match="Multiple values"):
-        design.split_runtime_args(("tensor", 6), {"second": 8})
+        design.split_runtime_args(("tensor",), {"a": "another tensor"})
     with pytest.raises(TypeError, match="too many positional"):
-        design.split_runtime_args(("tensor", 6, 9), {})
+        design.split_runtime_args(("tensor", 6), {})
 
 
 def test_tensor_types_cannot_prebind_runtime_tensor_parameters():
-    def gen(a: In, count: DispatchTime[np.int32]):
+    def gen(a: In, *, count: DispatchTime[np.int32]):
         pass
 
     tensor_type = np.ndarray[(16, 32), np.dtype[np.int16]]
@@ -406,10 +406,10 @@ def test_tensor_types_cannot_prebind_runtime_tensor_parameters():
         CompilableDesign(gen, compile_kwargs={"a": tensor_type})
 
 
-def test_dispatch_positional_only_specialization_generates_constant():
+def test_dispatch_keyword_only_specialization_generates_constant():
     observed = []
 
-    def gen(count: DispatchTime[np.int32], /, a: In):
+    def gen(a: In, *, count: DispatchTime[np.int32]):
         observed.append(count)
 
     design = CompilableDesign(gen).specialize(count=4)
@@ -1077,7 +1077,7 @@ def test_generate_mlir_dispatch_param_receives_wrapped_type():
 
     observed = {}
 
-    def gen(scale: DispatchTime[np.int32], *, M: CompileTime[int]):
+    def gen(*, scale: DispatchTime[np.int32], M: CompileTime[int]):
         observed["scale"] = scale
         with mlir_mod_ctx() as ctx:
             pass
@@ -1110,7 +1110,7 @@ def test_specialized_dispatch_runtime_constant_preserves_dtype(
     observed = {}
     literal = int(getattr(np.iinfo(dtype), boundary))
 
-    def gen(value: DispatchTime[dtype]):
+    def gen(*, value: DispatchTime[dtype]):
         assert type(value) is dtype
 
         def sequence(scalar):
@@ -1135,7 +1135,7 @@ def test_specialized_dispatch_runtime_constant_preserves_dtype(
 def test_dispatch_default_remains_dynamic_during_generation():
     observed = []
 
-    def gen(scale: DispatchTime[np.int32] = 3):
+    def gen(*, scale: DispatchTime[np.int32] = 3):
         observed.append(scale)
 
     design = CompilableDesign(gen)
@@ -1656,7 +1656,7 @@ def test_get_dispatch_lib_path_none_for_non_dispatch_design():
 
 @pytest.mark.parametrize("dtype", [int, bool, float, str, np.float32, np.bool_])
 def test_dispatch_time_rejects_unsupported_types_at_construction(dtype):
-    def gen(scale: DispatchTime[dtype]):
+    def gen(*, scale: DispatchTime[dtype]):
         pass
 
     with pytest.raises(TypeError, match="Unsupported DispatchTime.*NumPy integer"):
@@ -1680,7 +1680,7 @@ def test_dispatch_time_rejects_unsupported_types_at_construction(dtype):
     ],
 )
 def test_dispatch_time_accepts_runtime_integer_types(dtype):
-    def gen(scale: DispatchTime[dtype]):
+    def gen(*, scale: DispatchTime[dtype]):
         pass
 
     assert CompilableDesign(gen).dispatch_param_types == [dtype]

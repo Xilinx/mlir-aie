@@ -100,6 +100,24 @@ cannot override a specialized parameter; create another specialization instead.
 This lets the same generator express static and dynamic runtime sequences.
 Tensor capacities and worker tiling remain compile-time configuration.
 
+`DispatchTime` parameters must be keyword-only, even when defaulted or
+explicitly specialized. Prefer tensors first, then dispatch scalars, then
+compile-time configuration; group ordering is a convention, not a restriction:
+
+```python
+import numpy as np
+import aie.iron as iron
+
+@iron.jit
+def copy(a: iron.In, b: iron.Out, *,
+         count: iron.DispatchTime[np.int32] = 3,
+         tile_size: iron.CompileTime[int] = 256):
+    ...  # Build the design.
+
+copy(a, b, count=6)
+copy.specialize(count=3)(a, b)
+```
+
 Dynamic designs accept `compile(xclbin_path=...)` and an optional `pdi_path`.
 Their dispatch library resides in the adjacent `<xclbin stem>.prj` directory;
 use `CompilableDesign.get_dispatch_lib_path()` to locate it and retain it with

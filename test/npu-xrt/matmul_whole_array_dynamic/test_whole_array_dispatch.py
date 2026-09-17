@@ -55,7 +55,7 @@ def _run_shape(design, M_rt, K_rt, N_rt, *, static=False):
     if static:
         design.specialize(M=M_rt, N=N_rt)(A, B, C)
     else:
-        design(A, B, C, M_rt, N_rt)
+        design(A, B, C, M=M_rt, N=N_rt)
 
     # int32 accumulate then narrow, matching the kernel's i16 output.
     expected = (

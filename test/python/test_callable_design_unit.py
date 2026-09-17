@@ -41,7 +41,7 @@ def test_repr_contains_callable_design():
 
 
 def test_jit_explicit_dispatch_specialization():
-    def gen(a: In, M: DispatchTime[np.int32] = 8):
+    def gen(a: In, *, M: DispatchTime[np.int32] = 8):
         pass
 
     dynamic = jit(gen)
@@ -56,6 +56,54 @@ def test_jit_explicit_dispatch_specialization():
         static._extract_compile_kwargs({"M": 7})
     with pytest.raises(TypeError, match="specialized.*specialize"):
         static.as_mlir(None, M=7)
+
+
+@pytest.mark.parametrize("factory", [CompilableDesign, CallableDesign, jit])
+@pytest.mark.parametrize("prebound", [False, True])
+@pytest.mark.parametrize(
+    "kind", ["positional", "positional-only", "defaulted", "args", "kwargs"]
+)
+def test_dispatch_requires_keyword_only(factory, prebound, kind):
+    def positional(a: In, count: DispatchTime[np.int32]):
+        pass
+
+    def positional_only(count: DispatchTime[np.int32], /, a: In):
+        pass
+
+    def defaulted(a: In, count: DispatchTime[np.int32] = 3):
+        pass
+
+    def args(a: In, *count: DispatchTime[np.int32]):
+        pass
+
+    def kwargs(a: In, **count: DispatchTime[np.int32]):
+        pass
+
+    gen = {
+        "positional": positional,
+        "positional-only": positional_only,
+        "defaulted": defaulted,
+        "args": args,
+        "kwargs": kwargs,
+    }[kind]
+    options = (
+        ({"count": 3} if factory is jit else {"compile_kwargs": {"count": 3}})
+        if prebound
+        else {}
+    )
+    with pytest.raises(TypeError, match=r"DispatchTime.*count.*keyword-only"):
+        factory(gen, **options)
+
+
+@pytest.mark.parametrize("factory", [CompilableDesign, CallableDesign, jit])
+def test_keyword_only_group_order_is_not_enforced(factory):
+    def gen(a: In, *, size: CompileTime[int] = 8, count: DispatchTime[np.int32] = 3):
+        pass
+
+    design = factory(gen)
+    compilable = design if isinstance(design, CompilableDesign) else design.compilable
+    assert compilable.dispatch_params == ["count"]
+    assert compilable.split_runtime_args(("tensor",), {}) == (["tensor"], {"count": 3})
 
 
 # ---------------------------------------------------------------------------

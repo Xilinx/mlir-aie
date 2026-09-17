@@ -41,8 +41,8 @@ MAX_TILES = 8
 def dyn_copy(
     a: In,
     b: Out,
-    n_tiles: DispatchTime[np.int32] = 3,
     *,
+    n_tiles: DispatchTime[np.int32] = 3,
     start_tile: DispatchTime[np.int32] = 0,
     tile_size: CompileTime[int] = TILE_SIZE,
     max_tiles: CompileTime[int] = MAX_TILES,
@@ -117,7 +117,7 @@ def test_dispatch_time_scalar_varies_without_recompile():
     for seed, count in enumerate((1, 6, 2, MAX_TILES, 3, 7, 1)):
         a = iron.tensor(_random_tiles(seed=seed), dtype=np.int32, device="npu")
         b = iron.zeros((MAX_TILES * TILE_SIZE,), dtype=np.int32, device="npu")
-        design(a, b, count)
+        design(a, b, n_tiles=count)
         _assert_copied_region(a, b, count)
         assert len(design._kernel_cache) == 1
         kernel = next(iter(design._kernel_cache.values()))
@@ -138,7 +138,7 @@ def test_dispatch_time_scalar_repeated_same_value():
     a = iron.tensor(_random_tiles(seed=4), dtype=np.int32, device="npu")
     for _ in range(5):
         b = iron.zeros((MAX_TILES * TILE_SIZE,), dtype=np.int32, device="npu")
-        dyn_copy(a, b, 3)
+        dyn_copy(a, b, n_tiles=3)
         _assert_copied_region(a, b, 3)
 
 
@@ -158,7 +158,7 @@ def test_dynamic_copy_rejects_undersized_buffer_before_dispatch(undersized):
             f"but the kernel was compiled for {expected_size} elements"
         ),
     ):
-        design(a, b, 1)
+        design(a, b, n_tiles=1)
     assert np.all(b.numpy() == 0)
 
 
