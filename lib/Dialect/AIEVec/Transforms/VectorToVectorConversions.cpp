@@ -825,12 +825,13 @@ static Value smartTruncF32ToBF16(PatternRewriter &rewriter, Location loc,
   return arith::TruncFOp::create(rewriter, loc, bf16Type, val);
 }
 
-/// Pattern to drop the `bf16 -> f32 -> bf16` round trips this pass introduces.
+/// Pattern to drop `bf16 -> f32 -> bf16` round trips.
 ///
-/// Arith no longer folds these -- widening a signaling NaN quiets it, so the
-/// original bit pattern cannot be recovered. That is the same trade
-/// `smartTruncF32ToBF16` already makes, so keep the fold, but only for the
-/// shape this pass emits.
+/// Arith used to fold these but no longer does: widening a signaling NaN quiets
+/// it, so the original bit pattern cannot be recovered. This pass has always
+/// made that trade anyway -- `smartTruncF32ToBF16` collapses the same pair on
+/// sight -- so fold here to keep the pipeline's pre-existing behavior rather
+/// than leaving the round trips for the backend.
 struct FoldBF16RoundTripPattern : public OpRewritePattern<arith::TruncFOp> {
   using OpRewritePattern::OpRewritePattern;
 
