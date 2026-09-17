@@ -374,10 +374,11 @@ jobs:
       - name: Run clang-format
         id: clang-format
         run: |
-          git fetch origin main:refs/remotes/origin/main
+          BASE="${{ github.base_ref || github.event.repository.default_branch }}"
+          git fetch origin "$BASE:refs/remotes/origin/$BASE"
           pre-commit run clang-format \
             --hook-stage pre-push \
-            --from-ref origin/main \
+            --from-ref "origin/$BASE" \
             --to-ref HEAD \
             --color never || true
           git diff > clang-format.diff
