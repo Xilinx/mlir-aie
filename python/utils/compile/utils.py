@@ -607,22 +607,30 @@ def _staged(dest: str):
     os.close(fd)
     try:
         yield tmp
-        try:
-            os.replace(tmp, dest)
-        except PermissionError:
-            # Windows cannot replace a file another compile already has open.
-            # When both writers staged identical bytes, the open destination is
-            # already the source the later compile needs, so discard the temp
-            # and let that compile proceed instead of failing the whole batch.
-            if os.name != "nt":
-                raise
-            if not os.path.exists(dest) or not filecmp.cmp(tmp, dest, shallow=False):
-                raise
-            os.unlink(tmp)
+        _replace_staged_source(tmp, dest)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+
+
+def _replace_staged_source(
+    tmp: str, dest: str, *, replace=os.replace, is_windows: bool | None = None
+):
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    try:
+        replace(tmp, dest)
+    except PermissionError:
+        # Windows cannot replace a file another compile already has open.
+        # When both writers staged identical bytes, the open destination is
+        # already the source the later compile needs, so discard the temp
+        # and let that compile proceed instead of failing the whole batch.
+        if not is_windows:
+            raise
+        if not os.path.exists(dest) or not filecmp.cmp(tmp, dest, shallow=False):
+            raise
+        os.unlink(tmp)
 
 
 def _write_source(dest: str, text: str) -> None:
