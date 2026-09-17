@@ -617,8 +617,8 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
       // foldMaskWrites=false opts out of read-modify-write reconstruction,
       // emitting a literal write of the masked value. No production caller uses
-      // it today (config, switch-disable and DMA-reset all fold), but it is kept
-      // for callers that deliberately want raw same-value pulses.
+      // it today (config, switch-disable and DMA-reset all fold), but it is
+      // kept for callers that deliberately want raw same-value pulses.
       int32_t value = op.cmd.Value;
       if (foldMaskWrites) {
         uint32_t mask = op.cmd.Mask;
@@ -718,11 +718,11 @@ static LogicalResult convertTransactionOpsToMLIR(
     // packets earlier in this same runtime-sequence block. Successive
     // conversions append to one block (config -> self-clear switch-disable ->
     // self-clear DMA reset), and on device they apply cumulatively; a later
-    // conversion's maskwrite (e.g. the DMA-reset's channel-CTRL reset-bit pulse)
-    // must fold onto the earlier conversion's writes (the channel's enable /
-    // controller-id fields) exactly as a live read-modify-write would, or it
-    // zeroes those fields. Every prior packet is a full-word write, so its
-    // payload reconstructs the register state directly.
+    // conversion's maskwrite (e.g. the DMA-reset's channel-CTRL reset-bit
+    // pulse) must fold onto the earlier conversion's writes (the channel's
+    // enable / controller-id fields) exactly as a live read-modify-write would,
+    // or it zeroes those fields. Every prior packet is a full-word write, so
+    // its payload reconstructs the register state directly.
     llvm::DenseMap<uint32_t, uint32_t> seedRegState;
     if (Block *blk = builder.getInsertionBlock()) {
       Block::iterator ip = builder.getInsertionPoint();
@@ -923,9 +923,8 @@ LogicalResult xilinx::AIE::generateAndInsertDmaChannelResetOps(
   // channel state the config left (seeded from prior in-block control packets),
   // reproducing the direct-write maskwrite32 semantics: the reset bit is pulsed
   // while the channel's other CTRL fields (enable, controller id) are preserved
-  // rather than zeroed. RMW folding keeps both the assert and deassert (unlike
-  // the former OR-merge, which collapsed the pulse -- the reason this call used
-  // to opt out), so foldMaskWrites stays on.
+  // rather than zeroed. RMW folding keeps both the assert and deassert, so
+  // foldMaskWrites stays on.
   return finalizeRecordedTransaction(builder, ctl, outputType,
                                      blockwrite_prefix,
                                      /*foldMaskWrites=*/true);

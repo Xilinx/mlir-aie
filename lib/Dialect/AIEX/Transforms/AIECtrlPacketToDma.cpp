@@ -533,11 +533,10 @@ struct AIECtrlPacketToDmaPass
         // column's next_bd chain, then defers all completion syncs so the
         // independent per-column shim MM2S channels overlap. Peak live control
         // BDs per column is the physical tile count (<= 6, a shim + a memtile +
-        // <= 4 cores), well under the clean per-column device depth; the former
-        // bounded-wave cap is dead once the live-BD count is bounded by the
-        // chain length, so it is dropped. The allocator
-        // (AIEAssignRuntimeSequenceBDIDs) remains the authoritative fail-loud
-        // on real over-budget, counting ALL co-resident live BDs on the shim.
+        // <= 4 cores), well under the clean per-column device depth. The
+        // allocator (AIEAssignRuntimeSequenceBDIDs) remains the authoritative
+        // fail-loud on real over-budget, counting ALL co-resident live BDs on
+        // the shim.
         emitPhase(configGroups); // config first, fully drained
         emitPhase(enableGroups); // then enable (enable-last barrier)
 

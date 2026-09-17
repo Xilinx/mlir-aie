@@ -393,9 +393,9 @@ struct AIEGenerateColumnControlOverlayPass
       // col0-only design whose vertical spine is full relays a flow out through
       // col1 and back). Those relays are reconfigured by control packets, so
       // they need a control route + a shim DMA allocation + a controller_id;
-      // covering only minOccupiedCol..maxOccupiedCol left the spill column
-      // bare, so its control ingress resolved to a dangling ctrlpkt_col<N>_...
-      // symbol at AICtrlPacketToDma. This is the column analogue of the
+      // so every physical column must be covered, not just the occupied
+      // bounding box (the pathfinder can spill a relay into an unoccupied
+      // column). This is the column analogue of the
       // whole-array ROW coverage below. A design that never routes into a
       // column simply leaves its overlay control routes idle. On npu2 every
       // column's row-0 tile is a ShimNOC tile, so each covered column can host
@@ -444,9 +444,8 @@ struct AIEGenerateColumnControlOverlayPass
         // their upper rows; those relays are reconfigured by control packets,
         // so they need control routes and controller_ids too. Covering only a
         // column's declared rows left a shim-input column (declared shim at row
-        // 0) at row 0, so its relay tiles were fabricated bare when
-        // control-packet headers were baked (no controller_id -> build
-        // failure).
+        // 0), so every physical row must be covered, not just a column's
+        // declared rows.
         //
         // The cap is the full physical height (rows()-1), not the tallest
         // occupied row: the router graph spans all physical rows, so a relay
@@ -454,9 +453,8 @@ struct AIEGenerateColumnControlOverlayPass
         // whole-array COLUMN coverage above), and control for a column now
         // rides a single consolidated packet channel (one shim MM2S trunk
         // per column, not one channel per covered row), so covering more
-        // rows no longer claims additional shim DMA channels. Broadening to
-        // full height was previously unsafe on the 2-channel shim before that
-        // consolidation; it is safe now.
+        // rows no longer claims additional shim DMA channels, so broadening
+        // to full height is safe.
         int maxRow = device.getTargetModel().rows() - 1;
         SmallVector<AIE::TileOp> tilesOnCol;
         for (int row = 0; row <= maxRow; row++) {

@@ -965,8 +965,7 @@ static std::string unionConfigDesigns(mlir::MLIRContext &context,
   // reject the redefinition. The toolchain does NOT auto-rename: a design that
   // emits N configs from one template must give each config a distinct sequence
   // name (e.g. a distinct @iron.jit(name=) per design) so the entrypoints are
-  // unambiguous. (Previously colliding `sequence` entries were uniquified
-  // positionally to config_1..N; that fallback is removed.)
+  // unambiguous.
   {
     llvm::StringSet<> seen;
     for (RuntimeSequenceOp s : baseHost.getOps<RuntimeSequenceOp>()) {

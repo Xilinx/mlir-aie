@@ -998,11 +998,11 @@ LogicalResult xilinx::AIE::AIERTControl::disableDataSwitches(
     }
 
     // Circuit-switch connect teardown (part of self-clear, now unconditional
-    // for ctrlpkt/write32): also tear down the config's circuit-switch connects,
-    // mirroring configureSwitches' XAie_StrmConnCctEnable in reverse. objectFifo
-    // / circuit routes lower to these connects, which the packet-only disable
-    // above leaves untouched. The overlay's own (control) connects are tagged
-    // is_ctrl_pkt_overlay and skipped.
+    // for ctrlpkt/write32): also tear down the config's circuit-switch
+    // connects, mirroring configureSwitches' XAie_StrmConnCctEnable in reverse.
+    // objectFifo / circuit routes lower to these connects, which the
+    // packet-only disable above leaves untouched. The overlay's own (control)
+    // connects are tagged is_ctrl_pkt_overlay and skipped.
     if (disableCircuit) {
       for (auto connectOp : b.getOps<ConnectOp>()) {
         if (connectOp->hasAttr("is_ctrl_pkt_overlay"))
@@ -1034,12 +1034,10 @@ LogicalResult xilinx::AIE::AIERTControl::disableDataSwitches(
 // not wedge; residual state on channels/tiles this config did not use is
 // intentionally left, since a config that re-uses a resource applies its own
 // reset protocol before use (core reset/unreset + ELF reload; DMA channel
-// reset) and a config that does not use it is unaffected. This conversion is
-// fold-exempt
-// (generateAndInsertDmaChannelResetOps passes foldMaskWrites=false to
-// convertTransactionOpsToMLIR): the assert/deassert pair are literal pulses on
-// the same address, and the default mask-write fold would otherwise collapse
-// them into a single write, dropping the in-band reset pulse.
+// reset) and a config that does not use it is unaffected. The assert/deassert
+// pair are distinct maskwrite ops on the same address; the control-packet
+// read-modify-write fold reconstructs each packet's register state rather
+// than OR-merging, so both pulses of the reset survive.
 LogicalResult
 xilinx::AIE::AIERTControl::resetDataDmaChannels(DeviceOp &targetOp) {
   auto resetChannel = [&](TileID t, int chNum, DMAChannelDir dir,

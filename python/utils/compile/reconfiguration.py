@@ -20,23 +20,12 @@ and kernel objects (retaining neither the design nor the call-time args), and
 :meth:`compile` runs ``aiecc --get-full-elf`` once and returns a
 :class:`~aie.utils.compile.utils.FullElf` descriptor. It never dispatches.
 
-Mirrors the proven non-jit **flat build** (e.g. the ``13-matmul`` programming
-example): every design's ``.mlir`` and every kernel's ``.o`` are staged
-directly into ``output_dir`` (no per-design subdirectory), and
-:func:`~aie.utils.compile.utils._run_aiecc` is invoked with
-``cwd=output_dir``, so aiecc's *process* current working directory is
-``output_dir``. aiecc resolves each ``link_with="foo.o"`` reference via
-``resolveExternalPath`` (``tools/aiecc/Utils.h``), which tries, in order: the
-process CWD, then ``--tmpdir``'s directory, then the input ``.mlir``'s own
-directory -- the first candidate that exists wins. Because aiecc's process
-CWD is ``output_dir``, the flat ``.o`` staged there is found by the *first*
-lookup, before ``--tmpdir`` is ever consulted. ``--tmpdir={name}.prj`` is
-just aiecc's private scratch subdirectory (``output_dir/<name>.prj``) for
-its own intermediates -- it does not need to be, and is not, where the
-kernel ``.o`` files live. Staging kernels under
-`out/<design>/` without setting ``cwd=output_dir`` fails to find them
-(`ld.lld: cannot open .../k.o`); flattening every `.o` into `output_dir`
-and running aiecc with `cwd=output_dir` fixes it.
+Every design's ``.mlir`` and every kernel's ``.o`` are staged flat into
+``output_dir`` (no per-design subdirectory), and aiecc is run with
+``cwd=output_dir``. aiecc resolves each ``link_with="foo.o"`` via
+``resolveExternalPath`` (``tools/aiecc/Utils.h``), which tries the process
+CWD first, so the flat ``.o`` is found there; ``--tmpdir={name}.prj`` is only
+aiecc's private scratch directory, not where the ``.o`` files live.
 """
 
 from __future__ import annotations
@@ -126,7 +115,7 @@ class Reconfiguration:
         argument at the tail of that design's own tensor args, before any
         control-packet buffer. Return N so a runlist host can allocate + bind
         that BO (see ``FullElf.trace_buffer_bytes``); None when no design enables
-        trace. Only a single-design fold is supported here (the reconfig sweep
+        trace. Only a single-design fold is supported here (the current path
         folds one design at a time); a multi-design fold with trace would need
         per-entrypoint arg accounting, so more than one raises rather than
         silently mis-binding.
@@ -240,8 +229,8 @@ class Reconfiguration:
             args.append(f"--reconfig-method={self._method}")
         # Opt-in passthrough of extra aiecc flags for the fold build (e.g.
         # `--ctrlpkt-parallel-columns`). Empty by default, so the ordinary
-        # dispatch path is unchanged; a sweep/harness sets it to exercise an
-        # optimization flag on the same on-device fold.
+        # dispatch path is unchanged; a caller may set it to pass an extra
+        # aiecc flag through to the same fold build.
         args += os.environ.get("IRON_RECONFIG_EXTRA_AIECC_ARGS", "").split()
         _run_aiecc(staged_names, args, cwd=str(self._out))
 

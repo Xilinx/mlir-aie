@@ -58,7 +58,7 @@ struct AIEAutoPacketizeControlIngressPass
       return 0;
     mlir::DataLayout dataLayout(ofo->getParentOfType<ModuleOp>());
     // Round bits up to whole bytes so sub-byte element types (i4, i1) don't
-    // truncate to a 0-byte proxy (Task 4 ranks legs on this size).
+    // truncate to a 0-byte proxy (leg ranking uses this size).
     uint64_t elemBits = dataLayout.getTypeSizeInBits(memref.getElementType());
     int64_t elemBytes =
         memref.getNumElements() * (int64_t)llvm::divideCeil(elemBits, 8);
@@ -145,7 +145,7 @@ struct AIEAutoPacketizeControlIngressPass
   // AIEGenerateColumnControlOverlay.cpp: prefer a fully-free channel (no manual
   // routing AND no pinned data leg in any config), else the lowest channel free
   // of manual routing (control may co-tenant a packet-flipped data leg there;
-  // Task 4 conforms each config to K). Returns -1 when manual shim_mux routing
+  // each config is conformed to K). Returns -1 when manual shim_mux routing
   // covers every channel in some config, leaving no shareable trunk.
   static int chooseUnionTrunkChan(const ColumnUnion &view) {
     for (int c = 0; c < view.numMM2S; c++)
@@ -161,7 +161,7 @@ struct AIEAutoPacketizeControlIngressPass
   // contested shim hop by synthesizing a local memtile relay. A single-hop shim
   // -> core packet leg rides the resident control fabric's switchbox arbiters
   // all the way to the core, which on a multi-column grid deadlocks the packet
-  // arbiters (the ctrlpkt wide-design wedge). Splitting it into a shim ->
+  // arbiters. Splitting it into a shim ->
   // memtile PACKET fifo (this op, symbol retained so the runtime_sequence DMA
   // task and the K/packet pin stay valid) plus a NEW memtile -> core CIRCUIT
   // relay fifo, joined by an aie.objectfifo.link, drops the header at the
@@ -253,7 +253,7 @@ struct AIEAutoPacketizeControlIngressPass
 
     // Module-level pre-pass: pick one control trunk channel K per column that
     // is consistent across every config, and stamp it on each covered column's
-    // row-0 shim tile so the overlay pass can assert against it (Task 5). This
+    // row-0 shim tile so the overlay pass can assert against it. This
     // runs BEFORE the per-config flip loop; the flip is unchanged, so
     // single-config behavior is preserved.
     llvm::MapVector<int, ColumnUnion> unionByCol;
@@ -323,8 +323,7 @@ struct AIEAutoPacketizeControlIngressPass
                     // reports numMM2S == 2).
 
         // Deterministic order by symbol name; the least-disruptive tie-break
-        // below relies on it to reproduce the historical single-leg flip
-        // target.
+        // below relies on it to pick the same leg across configs.
         llvm::sort(fifos, [](ObjectFifoCreateOp a, ObjectFifoCreateOp b) {
           return a.getSymName() < b.getSymName();
         });
