@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import CodeType
+from types import CodeType, SimpleNamespace
 
 import pytest
 
@@ -240,6 +240,32 @@ def test_hash_differs_for_different_compile_flags():
     gen = _gemm_gen()
     d1 = CompilableDesign(gen, compile_flags=[])
     d2 = CompilableDesign(gen, compile_flags=["-O3"])
+    assert hash(d1) != hash(d2)
+
+
+def test_hash_differs_for_different_sequence_name():
+    """name= (the jit name key) folds into the cache hash: two identical-body
+    designs with different names get distinct ELFs, not a silent collision that
+    would reuse one design's ELF under the other's dispatch name."""
+    gen = _gemm_gen()
+    d1 = CompilableDesign(gen, name="a")
+    d2 = CompilableDesign(gen, name="b")
+    assert hash(d1) != hash(d2)
+
+
+def test_hash_unchanged_by_default_sequence_name():
+    """name=None (the default) contributes nothing to the hash, so a nameless
+    design's cache identity is byte-identical to one built without the param."""
+    gen = _gemm_gen()
+    d1 = CompilableDesign(gen)
+    d2 = CompilableDesign(gen, name=None)
+    assert hash(d1) == hash(d2)
+
+
+def test_hash_differs_between_named_and_default():
+    gen = _gemm_gen()
+    d1 = CompilableDesign(gen)  # name=None -> default "sequence"
+    d2 = CompilableDesign(gen, name="a")
     assert hash(d1) != hash(d2)
 
 
@@ -1215,6 +1241,7 @@ def test_config_param_names_matches_construction():
         "aiecc_flags",
         "object_files",
         "full_elf",
+        "name",
     }
 
 
@@ -1306,3 +1333,62 @@ def test_get_pdi_paths_empty_before_compile():
 
     cd = CompilableDesign(gen)
     assert cd.get_pdi_paths() == []
+
+
+def test_build_kernels_restages_o_into_each_output_dir(tmp_path, monkeypatch):
+    """A kernel-bearing design reused across folds (distinct ``output_dir``s),
+    or folded after a normal compile, must get its ``.o`` staged into EACH dir.
+
+    ``ExternalFunction._compiled`` is a session-global, directory-unaware flag:
+    once a kernel is compiled anywhere in the process it stays True. If
+    ``_build_kernels`` trusts it, a design reused across two folds with distinct
+    ``output_dir``s (or folded after a normal call that already compiled it)
+    would be skipped on the second fold and its ``.o`` never staged there,
+    breaking aiecc's ``link_with`` resolution (``cwd=output_dir``). The guard
+    must reflect THIS dir's reality, not the session flag.
+    """
+    set_current_device(NPU2Col1())
+
+    # Faithful stand-in for compile_external_kernel's contract: emit the .o into
+    # kernel_dir unless it is already compiled OR already present there.
+    def fake_compile(func, kernel_dir, target_arch):
+        out = os.path.join(kernel_dir, func.object_file_name)
+        if func._compiled or os.path.exists(out):
+            return
+        Path(out).write_bytes(b"")  # simulate object emission
+        func._compiled = True
+
+    monkeypatch.setattr(
+        "aie.utils.compile.jit.compilabledesign.compile_external_kernel",
+        fake_compile,
+    )
+
+    func = SimpleNamespace(object_file_name="add_ext.o", _compiled=False)
+
+    class _Stub:
+        def _generated_for(self, *, full_elf, reconfig):
+            return ("<mlir>", [func])
+
+    stub = _Stub()
+
+    # First fold: compiles into dirA and sets the session-global _compiled flag.
+    dir_a = tmp_path / "outA"
+    dir_a.mkdir()
+    CompilableDesign._build_kernels(stub, str(dir_a), full_elf=True, reconfig=True)
+    assert (dir_a / "add_ext.o").exists()
+    assert func._compiled is True
+
+    # Second fold to a DIFFERENT dir with the same (now _compiled=True) kernel:
+    # the .o must still be staged here. Pre-fix this was skipped -> missing .o.
+    dir_b = tmp_path / "outB"
+    dir_b.mkdir()
+    CompilableDesign._build_kernels(stub, str(dir_b), full_elf=True, reconfig=True)
+    assert (dir_b / "add_ext.o").exists(), (
+        "kernel .o was not staged into the second fold's output_dir; "
+        "_build_kernels trusted the dir-unaware _compiled flag"
+    )
+
+    # Idempotent: re-running on a dir that already has the .o does not error and
+    # leaves the object in place.
+    CompilableDesign._build_kernels(stub, str(dir_b), full_elf=True, reconfig=True)
+    assert (dir_b / "add_ext.o").exists()

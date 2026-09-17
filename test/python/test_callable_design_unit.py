@@ -41,6 +41,41 @@ def test_repr_contains_callable_design():
 
 
 # ---------------------------------------------------------------------------
+# name= (per-design runtime_sequence sym_name override)
+# ---------------------------------------------------------------------------
+
+
+def test_name_is_a_jit_config_key():
+    """name= is a config key (not a CompileTime[T] value), so the decorator
+    routes it to CallableDesign instead of rejecting it as an unknown kwarg."""
+    assert "name" in _JIT_CONFIG_KEYS
+
+
+def test_jit_default_sequence_name_is_none():
+    @jit(M=8)
+    def gen(a: In, o: Out, *, M: CompileTime[int]):
+        pass
+
+    assert gen.compilable.name is None
+
+
+def test_jit_name_sets_sequence_name():
+    @jit(name="myseq", M=8)
+    def gen(a: In, o: Out, *, M: CompileTime[int]):
+        pass
+
+    assert gen.compilable.name == "myseq"
+
+
+def test_specialize_preserves_name():
+    @jit(name="keep", M=8)
+    def gen(a: In, o: Out, *, M: CompileTime[int]):
+        pass
+
+    assert gen.specialize(M=16).compilable.name == "keep"
+
+
+# ---------------------------------------------------------------------------
 # @jit decorator — construction-time behaviour only
 # ---------------------------------------------------------------------------
 
@@ -167,6 +202,7 @@ class TestJitDecorator:
             "object_files",
             "trace_config",
             "full_elf",
+            "name",
         }
         assert _JIT_CONFIG_KEYS == expected
 

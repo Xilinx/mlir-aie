@@ -101,6 +101,24 @@ def test_full_elf_injects_load_pdi(input_array):
     assert "npu.load_pdi" in mlir
 
 
+@iron.jit(full_elf=True, name="my_add")
+def add_const_named(
+    input_buf: In, output_buf: Out, *, N: CompileTime[int], add_value: CompileTime[int]
+):
+    return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
+
+
+def test_name_override_sets_sequence_sym_name(input_array):
+    """@iron.jit(name=...) sets the runtime_sequence sym_name (-> dispatch
+    main:<name>); the default preserves "sequence", which the ODS printer elides
+    (the sequence prints bare, i.e. today's main:sequence, unchanged)."""
+    named = add_const_named.as_mlir(input_array, None, N=_N, add_value=1)
+    assert "aie.runtime_sequence @my_add(" in named
+
+    default = add_const_full_elf.as_mlir(input_array, None, N=_N, add_value=1)
+    assert "aie.runtime_sequence @" not in default
+
+
 def test_full_elf_aot_single_elf(tmp_path):
     """AOT compile(full_elf_path=...) writes one ELF and returns (elf, None)."""
     elf_path = tmp_path / "design.elf"

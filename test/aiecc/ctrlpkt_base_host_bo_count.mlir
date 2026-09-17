@@ -11,6 +11,12 @@
 // args, so base declares bo0..bo6 (6 + 1 ctrlpkt = 7); the old fallback would
 // have wrongly declared only 5 and under-provisioned the host ABI.
 
+// This exercises the reconfigure double-application path: the overlay is applied
+// once by aie-opt, then aiecc re-runs the overlay pass on the already-overlaid
+// module. The pass is idempotent (it skips a device that already carries a
+// TileControl control route), so the emitted overlay shape and the derived
+// host-BO count are stable across the re-run and match the ABI checked below.
+
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t_overlay.mlir
 // RUN: %aiecc -n --device-name=base --get-xclbin --tmpdir=%t.prj %t_overlay.mlir
 // RUN: FileCheck %s --input-file=%t.prj/kernels_base.json

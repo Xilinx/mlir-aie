@@ -1,0 +1,67 @@
+//===- pathfinder_freeze_nonfit.mlir ----------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: not aie-opt %s --aie-freeze-control-fabric --aie-create-pathfinder-flows 2>&1 | FileCheck %s
+
+// Task 6 (acceptance gate), Part 2.3: non-fit diagnostic. An AIE2 mem tile
+// has exactly 6 North destination channels (AIETargetModel.cpp
+// getNumDestSwitchboxConnections). The frozen control master reserves one of
+// them at (0,1); this config packs SIX independent circuit data flows that
+// each need a dedicated North egress channel at (0,1) to reach (0,2) -- one
+// more than the 5 remaining after reservation. There is NO route around the
+// reserved control master for the sixth flow: the pathfinder must fail with
+// a clean compile-time diagnostic, and -- critically -- must not emit a
+// partially-routed module (a silent wedge waiting to happen on device). This
+// over-constrained module would route cleanly WITHOUT freeze (6 flows fit in
+// 6 channels); reserving one for control is what tips it into non-fit,
+// exactly the tradeoff the design's spec flagged as "freezing imposes a
+// strictly tighter cross-device data budget".
+
+// CHECK: error: Unable to find a legal routing
+
+// No routed artifact reaches stdout on failure (aie-opt's diagnostic goes to
+// stderr; both streams are merged into this FileCheck, so absence of any
+// wire/connect content here also confirms nothing was printed to stdout
+// either -- a successful (even partial) route would emit aie.wire and
+// aie.connect ops, which only exist once the pathfinder's emission phase
+// runs after findPaths succeeds; it never gets there.
+// CHECK-NOT: aie.wire
+// CHECK-NOT: aie.connect
+
+module {
+  aie.device(npu2) {
+    %t00 = aie.tile(0, 0)
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    // Control flow (frozen: co-routed + pinned, decl kept). Layer 0 reserves
+    // its North master at (0,1), claiming one of the six North egress channels
+    // (and a circuit flow could not share it anyway -- circuit capacity is 1).
+    aie.packet_flow(1) {
+      aie.packet_source<%t01, DMA : 0>
+      aie.packet_dest<%t02, TileControl : 0>
+    } {keep_pkt_header = true, priority_route = true}
+    // Six independent circuit data flows, each needing a DISTINCT dedicated
+    // North egress channel at (0,1) to continue toward (0,2). Only 6 total
+    // North dest channels exist at a mem tile (AIE2TargetModel); freeze
+    // reserves one for control, leaving 5 -- the 6th data flow has no route
+    // around the frozen control master.
+    aie.flow(%t00, DMA : 0, %t02, DMA : 0)
+    aie.flow(%t00, DMA : 1, %t02, DMA : 1)
+    aie.flow(%t00, North : 0, %t02, Core : 0)
+    aie.flow(%t00, North : 1, %t02, East : 0)
+    aie.flow(%t00, North : 2, %t02, West : 0)
+    aie.flow(%t00, North : 3, %t02, FIFO : 0)
+  } {sym_name = "cfg"}
+  aie.device(npu2) {
+    %o01 = aie.tile(0, 1)
+    %o02 = aie.tile(0, 2)
+    aie.packet_flow(1) {
+      aie.packet_source<%o01, DMA : 0>
+      aie.packet_dest<%o02, TileControl : 0>
+    } {keep_pkt_header = true, priority_route = true}
+  } {sym_name = "ctrl_pkt_overlay"}
+}

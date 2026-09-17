@@ -29,17 +29,42 @@
 // TCTALLTILES:   aie.packet_source<%[[tile_0_1]], TileControl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
 // TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
+// control routing covers every physical row of the column, not just the
+// declared rows 0-1: rows 2-5 get auto-created tiles and control routes too.
+// The pass inserts newly-auto-created tiles at the start of the device body,
+// so they appear in the emitted IR BEFORE the declared tiles below (in
+// descending row order).
 // CTRLPKT-LABEL: module {
+// CTRLPKT-DAG: %[[tile_0_2:.*]] = aie.tile(0, 2){{$}}
+// CTRLPKT-DAG: %[[tile_0_3:.*]] = aie.tile(0, 3) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_0_4:.*]] = aie.tile(0, 4) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_0_5:.*]] = aie.tile(0, 5) {ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0)
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1)
 // CTRLPKT: aie.packet_flow(15) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0)
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0, <pkt_type = 0, pkt_id = 15>)
 // CTRLPKT: aie.packet_flow(26) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_1]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(27) {
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_0_2]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(29) {
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_0_3]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(30) {
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_0_4]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(31) {
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_0_5]], TileControl : 0>
 // CTRLPKT: }
 
 aie.device(npu1_1col) {
@@ -85,7 +110,19 @@ aie.device(npu1_1col) {
 // TCTALLTILES:   aie.packet_source<%[[tile_1_1]], TileControl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_1_0]], South : 0>
 // TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
+// each column's control routing covers every physical row, not just its
+// declared rows 0-1. Newly-auto-created tiles are inserted at the start of
+// the device body, so (regardless of which column is processed last) all of
+// them appear in the emitted IR before any of the declared tiles below.
 // CTRLPKT-LABEL: module {
+// CTRLPKT-DAG: %[[tile_0_2:.*]] = aie.tile(0, 2){{$}}
+// CTRLPKT-DAG: %[[tile_0_3:.*]] = aie.tile(0, 3) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_0_4:.*]] = aie.tile(0, 4) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_0_5:.*]] = aie.tile(0, 5) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_1_2:.*]] = aie.tile(1, 2){{$}}
+// CTRLPKT-DAG: %[[tile_1_3:.*]] = aie.tile(1, 3) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_1_4:.*]] = aie.tile(1, 4) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_1_5:.*]] = aie.tile(1, 5) {ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0)
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1)
 // CTRLPKT: %[[tile_1_0:.*]] = aie.tile(1, 0)
@@ -94,19 +131,51 @@ aie.device(npu1_1col) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0)
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0, <pkt_type = 0, pkt_id = 15>)
 // CTRLPKT: aie.packet_flow(26) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_1]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(27) {
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_0_2]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(29) {
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_0_3]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(30) {
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_0_4]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(31) {
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_0_5]], TileControl : 0>
 // CTRLPKT: }
 // CTRLPKT: aie.packet_flow(15) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0(%[[tile_1_0]], MM2S, 0)
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0(%[[tile_1_0]], MM2S, 0, <pkt_type = 0, pkt_id = 15>)
 // CTRLPKT: aie.packet_flow(26) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_1]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(27) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_2]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(29) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_3]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(30) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_4]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(31) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_5]], TileControl : 0>
 // CTRLPKT: }
 
 aie.device(npu1_2col) {
@@ -118,8 +187,16 @@ aie.device(npu1_2col) {
 
 // -----
 
-// controller_id attribute overriding packet header assignment in aie.packet_flow; 
-// round-robin shim dma channel assignment to cover all 5 tiles in a column
+// controller_id attribute overriding packet header assignment in aie.packet_flow;
+// single-trunk shim dma channel assignment covers all 5 tiles in a column via
+// one shim channel -- rows 3-5 (mandated to the second shim channel by the
+// fixed round-robin map) are relocated onto the column's chosen trunk
+// (channel 0) and carry ctrl_pkt_shim_chan to record the relocation. Column 1
+// declares only rows 0-1; control routing still covers every physical row
+// (0-5), so rows 2-5 get auto-created tiles with no manually-assigned
+// controller_id. Column 0 already declares all 6 rows, so it gets no new
+// tiles; column 1's newly-auto-created tiles are inserted at the start of the
+// device body, ahead of every declared tile (including column 0's).
 
 // CHECK-LABEL: module {
 // CHECK: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
@@ -180,19 +257,23 @@ aie.device(npu1_2col) {
 // TCTALLTILES:   aie.packet_dest<%[[tile_1_0]], South : 0>
 // TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // CTRLPKT-LABEL: module {
+// CTRLPKT-DAG: %[[tile_1_2:.*]] = aie.tile(1, 2){{$}}
+// CTRLPKT-DAG: %[[tile_1_3:.*]] = aie.tile(1, 3) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_1_4:.*]] = aie.tile(1, 4) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_1_5:.*]] = aie.tile(1, 5) {ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
 // CTRLPKT: %[[tile_0_2:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CTRLPKT: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// CTRLPKT: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
-// CTRLPKT: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+// CTRLPKT: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>, ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>, ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>, ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
 // CTRLPKT: %[[tile_1_1:.*]] = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 7>}
 // CTRLPKT: aie.packet_flow(4) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0)
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0, <pkt_type = 0, pkt_id = 4>)
 // CTRLPKT: aie.packet_flow(3) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_1]], TileControl : 0>
@@ -202,26 +283,41 @@ aie.device(npu1_2col) {
 // CTRLPKT:   aie.packet_dest<%[[tile_0_2]], TileControl : 0>
 // CTRLPKT: }
 // CTRLPKT: aie.packet_flow(1) {
-// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 1>
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_3]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%[[tile_0_0]], MM2S, 1)
 // CTRLPKT: aie.packet_flow(6) {
-// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 1>
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_4]], TileControl : 0>
 // CTRLPKT: }
 // CTRLPKT: aie.packet_flow(2) {
-// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 1>
+// CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_5]], TileControl : 0>
 // CTRLPKT: }
 // CTRLPKT: aie.packet_flow(5) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0(%[[tile_1_0]], MM2S, 0)
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0(%[[tile_1_0]], MM2S, 0, <pkt_type = 0, pkt_id = 5>)
 // CTRLPKT: aie.packet_flow(7) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_1]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(27) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_2]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(29) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_3]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(30) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_4]], TileControl : 0>
+// CTRLPKT: }
+// CTRLPKT: aie.packet_flow(31) {
+// CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
+// CTRLPKT:   aie.packet_dest<%[[tile_1_5]], TileControl : 0>
 // CTRLPKT: }
 
 aie.device(npu1_2col) {
@@ -239,9 +335,12 @@ aie.device(npu1_2col) {
 
 // two occupied columns with a gap: flows between column 0 and column 2 route
 // through column 1's stream switches, so column 1's switchboxes get configured
-// by control packets and need a shim dma allocation of their own. Column 2
-// reaches row 5, which maps to the second shim channel, so column 1 has to
-// cover both channels and not just the one its own shim row maps to.
+// by control packets and need a shim dma allocation of their own. Control
+// routing covers every physical row of a covered column (0-5 on npu2), which
+// the fixed round-robin map mandates to the second shim channel for some
+// rows, but single-trunk selection collapses every covered column onto ONE
+// chosen channel regardless of row -- so no column ever needs a second shim
+// dma allocation.
 
 // Only the control-packet path covers the gap. Without
 // route-shim-to-tile-ctrl the pass runs on every aiecc invocation for every
@@ -253,9 +352,8 @@ aie.device(npu1_2col) {
 // CTRLPKT-LABEL: module {
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0
-// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan1
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan0
-// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan1
+// CTRLPKT-NOT: mm2s_chan1
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
