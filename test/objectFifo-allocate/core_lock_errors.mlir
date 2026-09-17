@@ -53,3 +53,22 @@ module @unreachable_binary_core_locks {
     aie.objectfifo.core_endpoint @reader(%reader) drains @p
   }
 }
+
+// -----
+
+// A compute DMA cannot use neighbor locks even though a core could. Partial
+// coordinates cannot make distinct, already-known rows co-locate.
+module @nonlocal_core_dma_locks {
+  aie.device(npu2) {
+    %home = aie.tile(0, 3)
+    %reader = aie.logical_tile<CoreTile>(?, 2)
+    %b = aie.buffer(%reader) {sym_name = "b"} : memref<16xi32>
+    %free = aie.lock(%home) {sym_name = "free", init = 1 : i32}
+    %full = aie.lock(%home) {sym_name = "full", init = 0 : i32}
+    aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32, produceLock = @free, consumeLock = @full}
+    }
+    // expected-error @+1 {{cannot access pool locks}}
+    aie.objectfifo.dma_endpoint @reader(%reader) drains @p
+  }
+}

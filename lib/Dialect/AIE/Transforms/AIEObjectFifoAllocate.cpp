@@ -106,7 +106,7 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  bool canAccess(Value user, Value memory) {
+  bool canAccess(Value user, Value memory, bool localOnly = false) {
     if (user == memory)
       return true;
     auto userTile = dyn_cast<TileLike>(user.getDefiningOp());
@@ -134,6 +134,8 @@ struct AIEObjectFifoAllocatePass
     auto memoryPositions = positions(memoryTile);
     for (TileID u : userPositions)
       for (TileID m : memoryPositions) {
+        if (localOnly && u != m)
+          continue;
         auto shared = target.getSharedMemory(u, m);
         if (shared == AIETargetModel::SharedMemory::Second ||
             shared == AIETargetModel::SharedMemory::Either)
@@ -462,7 +464,7 @@ struct AIEObjectFifoAllocatePass
     // Compute-tile DMA engines, unlike cores, only use their own lock module.
     if (isa<ObjectFifoDmaEndpointOp>(endpoint) &&
         !cast<TileLike>(user.getDefiningOp()).isMemTile())
-      return sameTile(user, tile);
+      return canAccess(user, tile, /*localOnly=*/true);
     return canAccess(user, tile);
   }
 
