@@ -785,6 +785,77 @@ struct AIEObjectFifoAllocatePass
     }
   }
 
+  /// Alternative packing order: prioritize DMA demand within each home tile,
+  /// but merge those lists by object size to avoid globally prioritizing small
+  /// pools over large objects on unrelated tiles. This is only a heuristic;
+  /// the same buffer, lock and channel planner validates both orders.
+  SmallVector<ObjectFifoPoolOp>
+  demandOrderedPools(ArrayRef<ObjectFifoPoolOp> pools) {
+    SmallVector<ObjectFifoPoolOp> ordered(pools);
+    SmallVector<size_t> memTileSlots;
+    SmallVector<Value> memTileHomes;
+    DenseMap<Value, SmallVector<ObjectFifoPoolOp>> memTilePools;
+    DenseMap<Operation *, std::pair<int, int>> poolChannelDemand;
+    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (!sameTile(endpoint.getTile(), pool.getTile()))
+        continue;
+      auto &demand = poolChannelDemand[pool];
+      if (endpoint.getRouteDirection() == DMAChannelDir::S2MM)
+        ++demand.first;
+      else
+        ++demand.second;
+    }
+    for (auto [index, pool] : llvm::enumerate(pools)) {
+      if (pool.getTileLike().isMemTile()) {
+        memTileSlots.push_back(index);
+        Value home = pool.getTile();
+        for (Value known : memTileHomes)
+          if (sameTile(home, known)) {
+            home = known;
+            break;
+          }
+        if (!memTilePools.count(home))
+          memTileHomes.push_back(home);
+        memTilePools[home].push_back(pool);
+      }
+    }
+    DenseMap<Value, size_t> nextPool;
+    auto demand = [&](ObjectFifoPoolOp pool) {
+      auto [input, output] = poolChannelDemand.lookup(pool.getOperation());
+      return std::max(input, output);
+    };
+    for (Value home : memTileHomes) {
+      auto &tilePools = memTilePools[home];
+      llvm::stable_sort(tilePools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+        if (demand(a) != demand(b))
+          return demand(a) > demand(b);
+        return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
+      });
+    }
+    for (size_t slot : memTileSlots) {
+      Value bestHome;
+      ObjectFifoPoolOp bestPool;
+      for (Value home : memTileHomes) {
+        auto &tilePools = memTilePools[home];
+        size_t index = nextPool[home];
+        if (index >= tilePools.size())
+          continue;
+        ObjectFifoPoolOp pool = tilePools[index];
+        if (!bestPool ||
+            pool.getObjectSizeInBytes() > bestPool.getObjectSizeInBytes() ||
+            (pool.getObjectSizeInBytes() == bestPool.getObjectSizeInBytes() &&
+             demand(pool) > demand(bestPool))) {
+          bestHome = home;
+          bestPool = pool;
+        }
+      }
+      ordered[slot] = bestPool;
+      ++nextPool[bestHome];
+    }
+    return ordered;
+  }
+
   void runOnOperation() override {
     device = getOperation();
     builder = OpBuilder(device.getContext());
@@ -797,8 +868,8 @@ struct AIEObjectFifoAllocatePass
     localPools.clear();
     poolUsers.clear();
 
-    // MemTile pools are served largest-first so the big buffers claim home
-    // placement before smaller ones consume the neighbors they would spill to.
+    // Preserve successful largest-first allocations, including their locality
+    // repairs. Only try demand ordering when that search fails.
     SmallVector<ObjectFifoPoolOp> pools(device.getOps<ObjectFifoPoolOp>());
     SmallVector<size_t> memTileSlots;
     SmallVector<ObjectFifoPoolOp> memTilePools;
@@ -811,9 +882,8 @@ struct AIEObjectFifoAllocatePass
     llvm::stable_sort(memTilePools, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
       return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
     });
-    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools)) {
+    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools))
       pools[slot] = pool;
-    }
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
@@ -832,7 +902,17 @@ struct AIEObjectFifoAllocatePass
     }
 
     std::set<std::vector<unsigned>> tried;
-    if (failed(planAllocation(pools, tried))) {
+    LogicalResult allocated = planAllocation(pools, tried);
+    if (failed(allocated)) {
+      auto demandOrdered = demandOrderedPools(pools);
+      if (!llvm::equal(pools, demandOrdered)) {
+        // Memoized locality sets are specific to a packing order.
+        localPools.clear();
+        tried.clear();
+        allocated = planAllocation(demandOrdered, tried);
+      }
+    }
+    if (failed(allocated)) {
       localPools.clear();
       if (failed(planBuffers(pools))) {
         bufferFailure.emitOpError(
@@ -845,8 +925,9 @@ struct AIEObjectFifoAllocatePass
         DMAChannelAnalysis channels(device);
         (void)assignChannels(channels);
         device.emitRemark(
-            "could not find a spill-aware allocation with bounded local-pool "
-            "retries; tile placement and buffer packing remain greedy");
+            "could not find a spill-aware allocation with size-first and "
+            "demand-first packing and bounded local-pool retries; tile "
+            "placement and buffer packing remain greedy");
       }
       return signalPassFailure();
     }
