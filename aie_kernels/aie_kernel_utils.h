@@ -87,11 +87,11 @@ Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 #define AIE_LOOP_GPR_REALLOC
 #endif
 
-// Runs `body` (a zero-arg lambda) `count` times.  When count >= MinIters the
-// loop is eligible for software pipelining (extra pragma macros may be passed
-// after `body`, e.g. AIE_PREPARE_FOR_POSTPIPELINING); otherwise a plain
-// no-unroll loop is emitted, avoiding invalid pipeliner assumptions for tiny
-// trip counts.
+// Runs `body` (a zero-arg lambda) `count` times. `body` cannot reference the
+// internal loop index. When count >= MinIters the loop is eligible for software
+// pipelining (extra pragma macros may be passed after `body`, e.g.
+// AIE_PREPARE_FOR_POSTPIPELINING); otherwise a plain no-unroll loop is emitted,
+// avoiding invalid pipeliner assumptions for tiny trip counts.
 #define VERSIONED_LOOP(MinIters, count, body, ...)                             \
   do {                                                                         \
     if ((count) >= (MinIters)) {                                               \

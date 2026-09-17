@@ -35,7 +35,8 @@ void zero_bf16_rowmaj(bfloat16 *c_out) {
 }
 
 void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
   // Explicitly instantiate with b_row_maj=true (row-major B), c_row_maj=true.
   constexpr unsigned r = 8, s = 8, t = 8;
   static_assert(DIM_M % (2 * r) == 0);
@@ -45,6 +46,7 @@ void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
                              (DIM_N / t), r, s, t,
                              /*b_row_maj=*/true,
                              /*c_row_maj=*/true>(a_in, b_in, c_out);
+  ::aie::set_rounding(saved_rounding);
 }
 
 } // extern "C" (row-major wrappers)
@@ -58,29 +60,30 @@ void passThroughLine(int32_t *in, int32_t *out, int32_t lineWidth);
 
 void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out,
                               int32_t *idx_buffer) {
-
-  ::aie::set_rounding(ROUNDING_MODE);
+  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   if (idx_buffer[0] > idx_buffer[1]) {
+    ::aie::set_rounding(saved_rounding);
     return;
   }
 
   matmul_bf16_bf16(a_in, b_in, c_out);
+  ::aie::set_rounding(saved_rounding);
 }
 
 void matmul_bf16_bf16_wrapper_scalar(bfloat16 *a_in, bfloat16 *b_in,
                                      bfloat16 *c_out) {
-
-  ::aie::set_rounding(ROUNDING_MODE);
+  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
   matmul_scalar_bf16_bf16(a_in, b_in, c_out);
+  ::aie::set_rounding(saved_rounding);
 }
 
 void matmul_PV(bfloat16 *Q, bfloat16 *K, bfloat16 *out, bfloat16 *scale_buffer,
                const int32_t B_q, int32_t first_iter, int32_t *idx_buffer) {
-
-  ::aie::set_rounding(ROUNDING_MODE);
+  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   if (idx_buffer[0] > idx_buffer[1]) {
+    ::aie::set_rounding(saved_rounding);
     return;
   }
 
@@ -109,12 +112,12 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, bfloat16 *out, bfloat16 *scale_buffer,
   }
 
   matmul_bf16_bf16_rowmaj(Q, K, out);
+  ::aie::set_rounding(saved_rounding);
 }
 
 void rescale_O(bfloat16 *O, bfloat16 *scale_buffer, int32_t B_q,
                int32_t *idx_buffer) {
-
-  ::aie::set_rounding(ROUNDING_MODE);
+  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   for (int32_t i = 0; i < B_q; i += VECTOR_LENGTH) {
     using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
@@ -145,13 +148,13 @@ void rescale_O(bfloat16 *O, bfloat16 *scale_buffer, int32_t B_q,
       }
     }
   }
+  ::aie::set_rounding(saved_rounding);
 }
 
 void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
                      int32_t *idx_buffer, bfloat16 inv_scale, int32_t B_q,
                      int32_t B_kv, int32_t S_q_eff, int32_t S_kv_eff) {
-
-  ::aie::set_rounding(ROUNDING_MODE);
+  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   // Block indices
   int32_t q_block_idx = idx_buffer[1];
@@ -160,6 +163,7 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
   // Causal full mask: skip blocks strictly above diagonal
   if (kv_block_idx > q_block_idx) {
     zero_bf16(P);
+    ::aie::set_rounding(saved_rounding);
     return;
   }
 
@@ -179,6 +183,7 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
   // Fully padded block: contributes nothing
   if (valid_q_rows == 0 || valid_kv_cols == 0) {
     zero_bf16(P);
+    ::aie::set_rounding(saved_rounding);
     return;
   }
 
@@ -283,10 +288,11 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
     aie::store_v(scale_buffer + 2 * B_q + i, l_i.to_vector<bfloat16>());
     aie::store_v(scale_buffer + i, m_i);
   }
+  ::aie::set_rounding(saved_rounding);
 }
 
 void init_scale_buffer(bfloat16 *scale_buffer, int32_t size) {
-  ::aie::set_rounding(ROUNDING_MODE);
+  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
   Vec64bf16 lowest_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(
@@ -301,5 +307,6 @@ void init_scale_buffer(bfloat16 *scale_buffer, int32_t size) {
     // VJUNG: l_{i} vector
     aie::store_v(scale_buffer + 2 * size + i, zeros_vec);
   }
+  ::aie::set_rounding(saved_rounding);
 }
 }
