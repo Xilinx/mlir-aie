@@ -44,7 +44,7 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   }
 }
 
-int DMAChannelAnalysis::getDMAChannelIndex(
+int DMAChannelAnalysis::getDMAChannelLimit(
     TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
                           ? tile.getNumSourceConnections(WireBundle::DMA)
@@ -61,7 +61,13 @@ int DMAChannelAnalysis::getDMAChannelIndex(
         targetModel.getMaxChannelNumForAdjacentMemTile(*col, *row));
   }
 
-  for (int i = 0; i < maxChannelNum; i++) {
+  return maxChannelNum;
+}
+
+int DMAChannelAnalysis::getDMAChannelIndex(
+    TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
+  int limit = getDMAChannelLimit(tile, dir, requiresAdjacentTileAccessChannels);
+  for (int i = 0; i < limit; i++) {
     if (reservePinnedChannel(tile, dir, i) >= 0) {
       return i;
     }
@@ -71,9 +77,7 @@ int DMAChannelAnalysis::getDMAChannelIndex(
 
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
                                              int channel) {
-  int maxChannelNum = (dir == DMAChannelDir::MM2S)
-                          ? tile.getNumSourceConnections(WireBundle::DMA)
-                          : tile.getNumDestConnections(WireBundle::DMA);
+  int maxChannelNum = getDMAChannelLimit(tile, dir, false);
   if (channel < 0 || channel >= maxChannelNum) {
     return -1;
   }

@@ -26,9 +26,13 @@ class DMAChannelAnalysis {
 public:
   DMAChannelAnalysis(DeviceOp &device);
 
+  /// Exclusive upper bound on channel indices eligible for this transfer.
+  static int getDMAChannelLimit(TileLike tile, DMAChannelDir dir,
+                                bool requiresAdjacentTileAccessChannels);
+
   /// Next free channel of `tile` in `dir`, or -1 when the tile has none left.
-  /// A channel reaching an adjacent MemTile's memory must come from the lower
-  /// half of the range, which only a placed tile can bound.
+  /// A channel reaching an adjacent MemTile's memory must come from the
+  /// target's restricted range, which only a placed tile can bound.
   int getDMAChannelIndex(TileLike tile, DMAChannelDir dir,
                          bool requiresAdjacentTileAccessChannels);
 

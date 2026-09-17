@@ -6,6 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEObjectFifoUtils.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -179,6 +181,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
   addChannelRequirementsFromFlows(flows, pktFlows, channelRequirements);
+
+  if (failed(initializeMemTileMemory(device)))
+    return failure();
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
@@ -568,6 +573,20 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     return failure();
   }
 
+  int64_t bytes = memTileMemoryRequirements.lookup(logicalTile);
+  if (!hasAvailableMemTileMemory(tile, bytes)) {
+    auto diag = logicalTile.emitError();
+    diag << "MemTile (" << tile.col << ", " << tile.row << ") requires "
+         << memTileMemoryUsed.lookup(tile) + bytes
+         << " bytes of local memory, but capacity is "
+         << targetModel->getMemTileSize();
+    diag.attachNote() << "automatic MemTile placement keeps buffers local "
+                         "because spilling restricts DMA channel availability";
+    return failure();
+  }
+  if (logicalTile.getTileType() == AIETileType::MemTile)
+    memTileMemoryUsed[tile] += bytes;
+
   if (inChannels > 0)
     updateChannelUsage(tile, DmaDir::In, inChannels);
   if (outChannels > 0)
@@ -687,6 +706,104 @@ SequentialPlacer::buildChannelRequirements(
   }
 
   return channelRequirements;
+}
+
+LogicalResult SequentialPlacer::initializeMemTileMemory(DeviceOp device) {
+  memTileMemoryRequirements.clear();
+  memTileMemoryUsed.clear();
+  if (llvm::none_of(device.getOps<LogicalTileOp>(), [](LogicalTileOp tile) {
+        return tile.getTileType() == AIETileType::MemTile;
+      }))
+    return success();
+
+  auto addPool = [&](Value tile, MemRefType type, int depth, Operation *op) {
+    auto tileLike = dyn_cast<TileLike>(tile.getDefiningOp());
+    if (tileLike && tileLike.isMemTile()) {
+      DataLayout layout = DataLayout::closest(op);
+      memTileMemoryRequirements[tile.getDefiningOp()] +=
+          depth * type.getNumElements() *
+          layout.getTypeSize(type.getElementType());
+    }
+  };
+  auto fifoType = [](ObjectFifoCreateOp fifo) {
+    return cast<MemRefType>(
+        cast<AIEObjectFifoType>(fifo.getElemType()).getElementType());
+  };
+
+  // A linked end uses the link's one shared pool, not a pool per participant.
+  DenseMap<Operation *, Value> linkedProducers, linkedConsumers;
+  for (auto link : device.getOps<ObjectFifoLinkOp>()) {
+    auto shared = link.getOptionalSharedTile();
+    if (!shared)
+      continue;
+    auto ins = link.getInputObjectFifos();
+    auto outs = link.getOutputObjectFifos();
+    for (auto in : ins)
+      linkedConsumers[in] = *shared;
+    for (auto out : outs)
+      linkedProducers[out] = *shared;
+    auto owner = getObjectFifoLinkPoolOwner(link);
+    int depth = owner.size();
+    if (!llvm::is_contained(outs, owner)) {
+      auto consumers = owner.getConsumerTiles();
+      int index =
+          std::distance(consumers.begin(), llvm::find(consumers, *shared));
+      if (isa<ArrayAttr>(owner.getElemNumber()))
+        depth = owner.size(index + 1);
+    }
+    addPool(*shared, fifoType(owner), depth, owner);
+  }
+  for (auto fifo : device.getOps<ObjectFifoCreateOp>()) {
+    if (!linkedProducers.count(fifo))
+      addPool(fifo.getProducerTile(), fifoType(fifo), fifo.size(), fifo);
+    auto consumerType = cast<MemRefType>(
+        cast<AIEObjectFifoType>(fifo.getConsumerElemTypeOrDefault())
+            .getElementType());
+    for (auto [index, tile] : llvm::enumerate(fifo.getConsumerTiles())) {
+      if (linkedConsumers.lookup(fifo) == tile)
+        continue;
+      int depth = isa<ArrayAttr>(fifo.getElemNumber()) ? fifo.size(index + 1)
+                                                       : fifo.size();
+      addPool(tile, consumerType, depth, fifo);
+    }
+  }
+  // Delegate allocations and already split pools can also occupy MemTiles.
+  for (auto alloc : device.getOps<ObjectFifoAllocateOp>()) {
+    auto fifo = alloc.getObjectFifo();
+    addPool(alloc.getDelegateTile(), fifoType(fifo), fifo.size(), fifo);
+  }
+  for (auto pool : device.getOps<ObjectFifoPoolOp>())
+    if (!pool.getBuffers())
+      addPool(pool.getTile(), pool.getElemType(), pool.getDepth(), pool);
+  for (auto buffer : device.getOps<BufferOp>()) {
+    auto tile = dyn_cast<TileLike>(buffer.getTile().getDefiningOp());
+    if (tile && tile.isMemTile())
+      memTileMemoryRequirements[tile.getOperation()] +=
+          buffer.getAllocationSize();
+  }
+  // Reserve fixed tiles before considering any logical placement. If every
+  // MemTile's home pools fit, lowering never needs to spill into a neighbor
+  // and cannot invalidate another tile's six-channel budget.
+  for (auto tile : device.getOps<TileOp>()) {
+    if (!tile.isMemTile())
+      continue;
+    TileID pos{tile.getCol(), tile.getRow()};
+    memTileMemoryUsed[pos] += memTileMemoryRequirements.lookup(tile);
+    if (!hasAvailableMemTileMemory(pos, 0))
+      return tile.emitError()
+             << "automatic MemTile placement requires local buffers: "
+             << memTileMemoryUsed[pos] << " bytes required, but capacity is "
+             << targetModel->getMemTileSize()
+             << "; spilling restricts DMA channel availability";
+  }
+  return success();
+}
+
+bool SequentialPlacer::hasAvailableMemTileMemory(TileID tile,
+                                                 int64_t bytes) const {
+  return targetModel->getTileType(tile.col, tile.row) != AIETileType::MemTile ||
+         memTileMemoryUsed.lookup(tile) + bytes <=
+             targetModel->getMemTileSize();
 }
 
 // Walk view-like aliasing memref ops back to the underlying BufferOp.
@@ -1254,13 +1371,26 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   auto [numInputChannels, numOutputChannels] =
       channelRequirements.lookup(logicalTile.getOperation());
 
-  auto maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
-                                        numInputChannels, numOutputChannels,
-                                        logicalTile.getTileType());
+  auto maybeTile = findTileWithCapacity(
+      targetCol, availability.nonCompTiles, numInputChannels, numOutputChannels,
+      logicalTile.getTileType(), memTileMemoryRequirements.lookup(logicalTile));
   if (!maybeTile) {
     AIETileType requestedType = logicalTile.getTileType();
     StringRef tileTypeName = stringifyAIETileType(requestedType);
     auto diag = logicalTile.emitError();
+    if (requestedType == AIETileType::MemTile &&
+        findTileWithCapacity(targetCol, availability.nonCompTiles,
+                             numInputChannels, numOutputChannels,
+                             requestedType)) {
+      diag << "no MemTile has sufficient local memory for "
+           << memTileMemoryRequirements.lookup(logicalTile)
+           << " bytes with the required DMA capacity (local memory capacity "
+           << targetModel->getMemTileSize() << " bytes per tile)";
+      diag.attachNote()
+          << "automatic MemTile placement keeps buffers local "
+             "because spilling restricts DMA channel availability";
+      return failure();
+    }
     CapacityDiagnosis diagnosis = diagnoseCapacityExhaustion(
         requestedType, numInputChannels, numOutputChannels);
     if (!diagnosis.capacityExistsSomewhere) {
@@ -1296,6 +1426,9 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   }
 
   result[logicalTile] = *maybeTile;
+  if (logicalTile.getTileType() == AIETileType::MemTile)
+    memTileMemoryUsed[*maybeTile] +=
+        memTileMemoryRequirements.lookup(logicalTile);
   LLVM_DEBUG({
     auto showCol = [](std::optional<int> c) {
       return c ? std::to_string(*c) : std::string("none");
@@ -1317,7 +1450,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     std::optional<int> targetCol, llvm::ArrayRef<TileID> tiles,
     int requiredInputChannels, int requiredOutputChannels,
-    AIETileType requestedType) {
+    AIETileType requestedType, int64_t requiredMemory) {
   // Choose a physical tile by lexicographic minimum of
   //   (|col - targetCol|, current load, col, row).
   // Distance-from-centroid comes first to preserve routing locality: a tile
@@ -1341,6 +1474,8 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
       continue;
     if (!hasAvailableChannels(tile, requiredInputChannels,
                               requiredOutputChannels))
+      continue;
+    if (!hasAvailableMemTileMemory(tile, requiredMemory))
       continue;
     // When merge-logical-tiles is disabled, a tile that already hosts a
     // non-core aie.logical_tile is off-limits even if it has spare DMA

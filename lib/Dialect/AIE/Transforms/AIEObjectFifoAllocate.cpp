@@ -254,8 +254,8 @@ struct AIEObjectFifoAllocatePass
       pending.push_back(endpoint);
     }
 
-    // Endpoints reaching a spilled buffer draw from the restricted low half of
-    // the range, so they are served before the unrestricted ones.
+    // Endpoints reaching a spilled buffer draw from a restricted channel
+    // range, so they are served before the unrestricted ones.
     llvm::stable_sort(pending, [&](RouteEndpoint a, RouteEndpoint b) {
       return reachesAdjacentTile(a) && !reachesAdjacentTile(b);
     });
@@ -265,10 +265,37 @@ struct AIEObjectFifoAllocatePass
       int channel = channels.getDMAChannelIndex(tileOf(endpoint), dir,
                                                 reachesAdjacentTile(endpoint));
       if (channel < 0) {
-        return tileOf(endpoint).emitOpError(
-            dir == DMAChannelDir::MM2S
-                ? "number of output DMA channel exceeded!"
-                : "number of input DMA channel exceeded!");
+        TileLike tile = tileOf(endpoint);
+        bool adjacent = reachesAdjacentTile(endpoint);
+        int capacity =
+            DMAChannelAnalysis::getDMAChannelLimit(tile, dir, adjacent);
+        auto diag =
+            tile.emitOpError(dir == DMAChannelDir::MM2S
+                                 ? "number of output DMA channel exceeded!"
+                                 : "number of input DMA channel exceeded!");
+        diag << " requires at least " << capacity + 1 << " "
+             << stringifyDMAChannelDir(dir) << " channels, but capacity is "
+             << capacity;
+        if (adjacent) {
+          diag << " for adjacent MemTile access";
+        }
+        for (auto contributor : device.getOps<RouteEndpoint>()) {
+          if (contributor.getTile() != endpoint.getTile() ||
+              contributor.getRouteBundle() != WireBundle::DMA ||
+              contributor.getRouteDirection() != dir) {
+            continue;
+          }
+          auto &note = diag.attachNote(contributor.getLoc());
+          note << "DMA endpoint @"
+               << cast<SymbolOpInterface>(contributor.getOperation()).getName();
+          if (auto fifo = contributor->getAttrOfType<StringAttr>("fifoName")) {
+            note << " for ObjectFifo @" << fifo.getValue();
+          }
+          if (reachesAdjacentTile(contributor)) {
+            note << " requires adjacent MemTile access";
+          }
+        }
+        return failure();
       }
       endpoint.setRouteChannel(channel);
     }

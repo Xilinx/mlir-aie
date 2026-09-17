@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEObjectFifoUtils.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
@@ -471,20 +472,7 @@ void AIEObjectFifoSplitPass::createLinkPools() {
     bool isJoin = linkOp.isJoin();
     bool isDistribute = linkOp.isDistribute();
 
-    ObjectFifoCreateOp owner = isJoin ? outs[0] : ins[0];
-    if (!isJoin && !isDistribute) {
-      auto inType = cast<MemRefType>(
-          cast<AIEObjectFifoType>(ins[0].getElemType()).getElementType());
-      auto outType = cast<MemRefType>(
-          cast<AIEObjectFifoType>(outs[0].getElemType()).getElementType());
-      // Padding is applied as the objects leave, so the pool holds what
-      // arrives.
-      if (outs[0].getInitValues() ||
-          (outType.getNumElements() > inType.getNumElements() &&
-           !outs[0].getPadDimensions())) {
-        owner = outs[0];
-      }
-    }
+    ObjectFifoCreateOp owner = getObjectFifoLinkPoolOwner(linkOp);
 
     auto elemType = cast<MemRefType>(
         cast<AIEObjectFifoType>(owner.getElemType()).getElementType());
