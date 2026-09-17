@@ -73,7 +73,10 @@ def copy_buffer(
     tile_buffer, off_chip = (
         (dst_buffer, src_buffer) if into_tile else (src_buffer, dst_buffer)
     )
+    assert isinstance(tile_buffer, Buffer) and isinstance(off_chip, ExternalBuffer)
     tile = tile_buffer.tile
+    if tile is None:
+        raise ValueError(f"{tile_buffer} must be placed on a tile to copy to or from.")
     wait = dst_wait_for_lock if into_tile else src_wait_for_lock
     release = dst_release_lock if into_tile else src_release_lock
 
@@ -167,7 +170,10 @@ def dma_slice_memcpy():
         through_shim=shim,
     )
 
-    return Program(NPU2Col1(), rt).resolve_program()
+    # NPU2Col1 is built by create_class, so pyright sees the base Device
+    # __init__ rather than the generated no-argument one.
+    device = NPU2Col1()  # pyright: ignore[reportCallIssue]
+    return Program(device, rt).resolve_program()
 
 
 if __name__ == "__main__":

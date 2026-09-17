@@ -135,7 +135,10 @@ def dma_slice_memcpy_static():
     rt.add_flow(Flow(shim, tile, src_channel=0, dst_channel=0))
     rt.add_flow(Flow(tile, shim, src_channel=0, dst_channel=0))
 
-    return Program(NPU2Col1(), rt).resolve_program()
+    # NPU2Col1 is built by create_class, so pyright sees the base Device
+    # __init__ rather than the generated no-argument one.
+    device = NPU2Col1()  # pyright: ignore[reportCallIssue]
+    return Program(device, rt).resolve_program()
 
 
 if __name__ == "__main__":
