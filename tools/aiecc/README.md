@@ -66,6 +66,22 @@ An explicit `-j` or `--nthreads` takes precedence over `AIECC_JOBS`, which in
 turn takes precedence over the default. The environment variable accepts the
 same non-negative integer values as `-j`, including `0` for auto-detection.
 
+### Core memory placement and validation
+
+`aiecc` checks stack and ordinary static-data requirements after linking.
+Explicit bank annotations are also checked by default, for both Peano and
+Chess; `--no-check-bank-placement` disables that check.
+
+The separate, opt-in `--check-lut-banks` verifies LUT table-pair separation.
+It requires Peano-readable LLVM IR in object-linked kernels, or optimized
+core IR for merge-mode kernels; Chess compilation/linking is unsupported.
+Neither check replaces the allocator's stack/buffer overlap checks or the
+linker's region limits.
+
+See [Core Data Memory](https://github.com/Xilinx/mlir-aie/blob/main/programming_guide/core_data_memory.md) for
+`data_size`, `stack_bank`/`stack_address`, portable `AIE_BANK_A`–`AIE_BANK_D`
+annotations, IR-retention options and verification limitations.
+
 ### Seeing what the compiler will do / dry-running: `--emit-dot`
 
 The compiler builds its execution plan from the flags you pass.

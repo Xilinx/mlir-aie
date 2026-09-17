@@ -51,13 +51,18 @@ This can leave unused gaps before pinned tables; use an explicit reservation
 when the default contiguous region is too small. A bank overflow is a link error,
 not permission to place the table in another bank.
 
+By default, `aiecc` checks explicit bank requests against linked symbol
+addresses and complete nonzero extents, for both Peano and Chess. It reads
+objects and archive members, but skips absent or ambiguous symbols; it is not
+a proof of LUT-pair separation. Disable it with `--no-check-bank-placement`.
+
 Enable `--check-lut-banks` to check table separation against the linked ELF.
 IRON preserves kernel IR automatically when this aiecc flag is enabled.
 Makefile examples that use the bitcode-attachment recipes can opt in with
 `AIE_CHECK_LUT_BANKS=1`. Manually built object-linked kernels must retain
 readable LLVM IR in their `.llvmbc` section; merge-mode kernels are checked
 through the optimized core IR. The check is Peano-only and off by default.
-Prebuilt `elf_file` cores cannot be checked without their compiler IR.
+The opt-in check does not support archive inputs or prebuilt `elf_file` cores.
 Unresolved pointers, parameter bindings, and stack-local placement produce an
 error rather than a successful verification. Prefer bank-pinned static tables
 when separately compiling a kernel. Merged kernels can also use bank-pinned
@@ -71,6 +76,9 @@ of bank A in aiecc requires Peano and merge-mode kernels: separately compiled
 objects and Chess compilation/linking are rejected because their stack-bank
 assumptions cannot be verified. With no placement attributes, the existing
 stack-at-zero behavior is unchanged.
+
+See [Core Data Memory](../programming_guide/core_data_memory.md) for placement
+examples, Peano/Chess support, measurement boundaries and diagnostic guidance.
 
 ## Single-buffered Communication
 [Single-buffer DMA example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/05_tiledma/aie.mlir)
