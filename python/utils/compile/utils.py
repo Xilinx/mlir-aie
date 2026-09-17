@@ -7,9 +7,9 @@
 
 import concurrent.futures
 import contextlib
+import filecmp
 import hashlib
 import json
-import filecmp
 import logging
 import os
 import re
