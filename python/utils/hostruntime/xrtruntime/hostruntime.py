@@ -7,6 +7,7 @@ import atexit
 import gc
 import logging
 import os
+import threading
 import time
 import weakref
 from collections import OrderedDict
@@ -126,15 +127,16 @@ class XRTHostRuntime(HostRuntime):
         # _dispatch_insts_bo. Never allocated for a static design.
         self._dispatch_storage: XrtTransport | None = None
         self._dispatch_storage_group: int | None = None
+        self._dispatch_lock = threading.Lock()
 
     def _dispatch_insts_bo(self, dispatch_insts, group_id: int):
         """Return a device BO holding *dispatch_insts*, reusing one allocation.
 
         A dispatch design synthesizes a fresh stream every call, but the buffer
         carrying it can be reused: ``run()`` waits for completion before
-        returning, XRT has no batched ``run_chain``, and the runtime takes no
-        locks (single-threaded by construction) -- the same conditions under
-        which the static path already reuses ``kernel_handle.insts_bo``.
+        returning, and ``run()`` holds ``_dispatch_lock`` across the write,
+        sync, submission and wait. Static instruction BOs are immutable and
+        do not need this lock.
         Worth ~11us of a ~235us dispatch on Strix (measured end to end).
 
         The buffer only grows, and the submit passes the true length
@@ -279,8 +281,8 @@ class XRTHostRuntime(HostRuntime):
             only_if_loaded (bool, optional): Accepted for API compatibility with the runtime base class.
             dispatch_insts (np.ndarray | None, optional): Freshly-generated
                 instruction words for a DispatchTime[T] design. When set, a
-                fresh (never cached) instruction BO is built from these words
-                every call, instead of reading ``kernel_handle.insts``.
+                reusable instruction BO is updated from these words every
+                call, instead of reading ``kernel_handle.insts``.
             **kwargs: Additional arguments.
 
         Returns:
@@ -334,6 +336,8 @@ class XRTHostRuntime(HostRuntime):
 
         insts_bo = None
         insts_bytes = 0
+        if dispatch_insts is not None:
+            self._dispatch_lock.acquire()
         try:
             if dispatch_insts is not None:
                 # New words each time, but into one recycled buffer. Never
@@ -366,6 +370,8 @@ class XRTHostRuntime(HostRuntime):
             if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
                 raise HostRuntimeError(f"Kernel returned {str(r)}")
         finally:
+            if dispatch_insts is not None:
+                self._dispatch_lock.release()
             # delete insts buffer if it was created locally. The dispatch BO is
             # owned by _dispatch_insts_bo's reused allocation, not by this call.
             if insts_bo and not kernel_handle.insts_bo and dispatch_insts is None:
@@ -936,7 +942,7 @@ class CachedXRTRuntime(XRTHostRuntime):
 
                 if insts_path is None:
                     # DispatchTime[T] design: no static insts to cache --
-                    # run() builds a fresh, uncached BO from dispatch_insts.
+                    # run() updates its locked, reusable BO from dispatch_insts.
                     kernel_handle = CachedXRTKernelHandle(
                         kernel, xclbin, context, None, None
                     )

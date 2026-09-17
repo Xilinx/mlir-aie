@@ -233,7 +233,11 @@ class HRXHostRuntime(HostRuntime):
             insts_bytes = insts_data
         try:
             exe = self._ctx.create_executable(xclbin_bytes, insts_bytes, kernel_name)
-            ordv = self._ctx.lookup_export(exe, kernel_name)
+            try:
+                ordv = self._ctx.lookup_export(exe, kernel_name)
+            except BaseException:
+                self._release_executable(exe)
+                raise
         except HRXError as e:
             raise HostRuntimeError(f"HRX failed to load kernel: {e}") from e
         return exe, ordv
@@ -537,6 +541,7 @@ class CachedHRXRuntime(HRXHostRuntime):
         # Executable cache keyed by (xclbin_path, xclbin_mtime, insts_path,
         # insts_mtime, kernel_name).
         self._exe_cache = OrderedDict()
+        self._dispatch_cache = OrderedDict()
         env_cache_size = os.environ.get("HRX_EXE_CACHE_SIZE")
         if env_cache_size is not None:
             self._cache_size = int(env_cache_size)
@@ -548,16 +553,34 @@ class CachedHRXRuntime(HRXHostRuntime):
             )
         atexit.register(self.cleanup)
 
+    def _create_executable_from_bytes(self, xclbin_bytes, insts_data, kernel_name):
+        # Both static loads and per-call dynamic executables need a free hardware
+        # context *before* creation, not after the driver has rejected it.
+        while self._exe_cache and len(self._exe_cache) >= max(1, self._cache_size):
+            _, (old_exe, _) = self._exe_cache.popitem(last=False)
+            self._release_executable(old_exe)
+        return super()._create_executable_from_bytes(
+            xclbin_bytes, insts_data, kernel_name
+        )
+
     def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
         xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)
 
         if insts_path is None:
-            # DispatchTime[T] design: nothing stable to cache here -- run()
-            # builds and releases a fresh executable from each call's
-            # instruction words (see HRXHostRuntime.load/run).
-            return HRXKernelHandle(
+            # Cache the immutable image via its handle, not the per-call
+            # executable. load_and_run() obtains a handle on every dispatch.
+            key = (str(xclbin_path), xclbin_path.stat().st_mtime, kernel_name)
+            if key in self._dispatch_cache:
+                self._dispatch_cache.move_to_end(key)
+                return self._dispatch_cache[key]
+            handle = HRXKernelHandle(
                 None, None, kernel_name, xclbin_path, None, ctx=self._ctx
             )
+            if self._cache_size > 0:
+                while len(self._dispatch_cache) >= self._cache_size:
+                    self._dispatch_cache.popitem(last=False)
+                self._dispatch_cache[key] = handle
+            return handle
 
         key = (
             str(xclbin_path),
@@ -575,10 +598,10 @@ class CachedHRXRuntime(HRXHostRuntime):
 
         exe, ordv = self._build_executable(xclbin_path, insts_path, kernel_name)
 
-        if len(self._exe_cache) >= self._cache_size:
-            _, (old_exe, _) = self._exe_cache.popitem(last=False)
-            self._release_executable(old_exe)
-        self._exe_cache[key] = (exe, ordv)
+        if self._cache_size > 0:
+            self._exe_cache[key] = (exe, ordv)
+        else:
+            self._executables.append(exe)
 
         return HRXKernelHandle(
             exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx
@@ -591,4 +614,7 @@ class CachedHRXRuntime(HRXHostRuntime):
             while cache:
                 _, (exe, _) = cache.popitem(last=False)
                 self._release_executable(exe)
+        dispatch_cache = getattr(self, "_dispatch_cache", None)
+        if dispatch_cache is not None:
+            dispatch_cache.clear()
         super().cleanup()

@@ -295,12 +295,15 @@ class HSAHostRuntime(HostRuntime):
             failed = True
             raise
         finally:
-            self._release_dispatch(failed, overflows)
-            # Same rule _release_dispatch applies to the overflow buffers: a
-            # failed dispatch may have reached the device, which can still be
-            # reading these words, so leak rather than hand the pages back.
-            if dispatch_ptr is not None and not failed:
-                self._ctx.free_dev(dispatch_ptr)
+            # Snapshot before _release_dispatch replaces the signal and clears
+            # its publication flag. Unpublished failures never exposed these
+            # words to the device; published failures may still be reading them.
+            in_flight = failed and self._ctx.signal_in_flight()
+            try:
+                self._release_dispatch(failed, overflows)
+            finally:
+                if dispatch_ptr is not None and not in_flight:
+                    self._ctx.free_dev(dispatch_ptr)
 
         self._mark_device_resident(kept)
         return HSAKernelResult(stop - start, success=True)

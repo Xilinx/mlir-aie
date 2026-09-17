@@ -143,6 +143,108 @@ def _run_with_fake_ctx(monkeypatch, overflows, timeout_on_wait):
     return rt, handle
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        None,
+        "allocate",
+        "copy",
+        "args",
+        "unpublished",
+        "poisoned",
+        "published",
+        "wait",
+        "discard",
+    ],
+)
+def test_dynamic_instruction_lifetime(monkeypatch, failure):
+    """Free unpublished instructions, but retain any a failed device may read."""
+    import ctypes
+
+    import numpy as np
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    base = _make_fake_ctx_cls([])
+    events = []
+    allocations = {}
+    words = np.array([0x12345678, 0xABCDEF01], dtype=np.uint32)
+
+    class DynamicCtx(base):
+        def __init__(self):
+            super().__init__(timeout_on_wait=False)
+            self._poisoned = (
+                "previous un-rung packets" if failure == "poisoned" else None
+            )
+
+        def alloc_dev(self, nbytes):
+            events.append("allocate")
+            if failure == "allocate":
+                raise HSAErrorForTest("allocate")
+            buf = ctypes.create_string_buffer(nbytes)
+            ptr = ctypes.addressof(buf)
+            allocations[ptr] = buf
+            return ptr
+
+        def free_dev(self, ptr):
+            events.append("free")
+            del allocations[ptr]
+
+        def dispatch(self, pdi_ptr, insts_ptr, insts_size, arg_pairs, signal):
+            assert pdi_ptr == 1
+            assert ctypes.string_at(insts_ptr, insts_size) == words.tobytes()
+            assert arg_pairs == []
+            assert signal == 42
+            events.append("dispatch")
+            if failure in ("unpublished", "poisoned"):
+                raise HSAErrorForTest(failure)
+            self._in_flight = True
+            if failure == "published":
+                raise HSAErrorForTest(failure)
+            return []
+
+        def wait(self, signal):
+            events.append("wait")
+            if failure in ("wait", "discard"):
+                raise HSAErrorForTest("wait")
+
+        def discard_signal(self):
+            events.append("discard")
+            if failure == "discard":
+                raise HSAErrorForTest("discard")
+            super().discard_signal()
+
+    ctx = DynamicCtx()
+    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: ctx))
+    rt = hrt.HSAHostRuntime()
+    handle = hrt.HSAKernelHandle(pdi_ptr=1, insts_ptr=None, insts_size=0)
+
+    def fail(*args):
+        raise HSAErrorForTest(failure)
+
+    if failure == "copy":
+        monkeypatch.setattr(hrt.ctypes, "memmove", fail)
+    elif failure == "args":
+        monkeypatch.setattr(rt, "_arg_pairs", fail)
+
+    if failure is None:
+        for _ in range(2):
+            assert rt.run(handle, [], dispatch_insts=words).is_success()
+        assert events == ["allocate", "dispatch", "wait", "free"] * 2
+    else:
+        with pytest.raises(HSAErrorForTest):
+            rt.run(handle, [], dispatch_insts=words)
+
+    published = failure in ("published", "wait", "discard")
+    assert bool(allocations) == published
+    assert ("free" in events) == (failure != "allocate" and not published)
+    assert ("discard" in events) == published
+    assert ctx._poisoned == (
+        "previous un-rung packets" if failure == "poisoned" else None
+    )
+    assert handle.insts_ptr is None
+    assert handle.insts_size == 0
+
+
 def test_pooled_run_allocates_and_frees_nothing(monkeypatch):
     """The steady-state dispatch path touches no allocator at all.
 
