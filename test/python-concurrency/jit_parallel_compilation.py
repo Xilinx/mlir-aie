@@ -31,8 +31,7 @@ void copy_with_bias(int *input, int *output, int tile_size) {
   }
 }
 }
-"""
-            )
+""")
 
         # Create a simple test script that does JIT compilation.
         # Uses In/Out + CompileTime[T] (the post-unify-compilation-workflow API);
