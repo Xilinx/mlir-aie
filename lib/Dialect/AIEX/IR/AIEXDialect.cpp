@@ -26,6 +26,7 @@
 #include "llvm/Support/TypeSize.h"
 
 #include <cstdint>
+#include <limits>
 #include <numeric>
 
 using namespace mlir;
@@ -853,10 +854,28 @@ std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
   return static_cast<uint32_t>(cst.getZExtValue());
 }
 
+// Widthwise counterpart of getConstantIntOperand; see createConstantArgPlus.
+std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
+  mlir::APInt cst;
+  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
+    return std::nullopt;
+  return cst.getZExtValue();
+}
+
 mlir::Value AIEX::createConstantI32(mlir::OpBuilder &builder,
                                     mlir::Location loc, uint32_t value) {
   return arith::ConstantOp::create(
       builder, loc, builder.getI32IntegerAttr(static_cast<int32_t>(value)));
+}
+
+mlir::Value AIEX::createConstantArgPlus(mlir::OpBuilder &builder,
+                                        mlir::Location loc, uint64_t value) {
+  if (value <= std::numeric_limits<uint32_t>::max())
+    return createConstantI32(builder, loc, static_cast<uint32_t>(value));
+  return arith::ConstantOp::create(
+      builder, loc,
+      IntegerAttr::get(builder.getIntegerType(64),
+                       static_cast<int64_t>(value)));
 }
 
 //===----------------------------------------------------------------------===//

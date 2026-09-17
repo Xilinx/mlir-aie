@@ -37,6 +37,7 @@ over the kernel would make two different kernels share one cached build.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from operator import index
 from pathlib import Path
 from typing import Any, Callable
 
@@ -162,12 +163,26 @@ def is_matmul(fn) -> bool:
 
 
 def _matrix_shape(fn, shape: tuple | None, rank: int) -> tuple:
-    """Return the host operand shape a matrix kernel was given, checked for rank."""
-    if shape is None or len(shape) != rank:
+    """Default to one kernel tile; explicit problems must contain whole tiles."""
+    tile_shape = fn.dims
+    if shape is None:
+        return tile_shape
+    if len(shape) != rank:
         raise ValueError(
-            f"{fn.name}: shape=(M, K{', N' if rank == 3 else ''}) is required, got {shape}"
+            f"{fn.name}: expected shape=(M, K{', N' if rank == 3 else ''}), got {shape}"
         )
-    return tuple(int(d) for d in shape)
+    try:
+        dims = tuple(index(d) for d in shape)
+    except TypeError as exc:
+        raise ValueError(
+            f"{fn.name}: shape must contain integers, got {shape}"
+        ) from exc
+    if any(d <= 0 or d % t for d, t in zip(dims, tile_shape)):
+        raise ValueError(
+            f"{fn.name}: shape {shape} must contain positive multiples of tile "
+            f"dimensions {tile_shape}"
+        )
+    return dims
 
 
 def is_matvec(fn) -> bool:
@@ -232,7 +247,7 @@ def _encode_params(fn, params) -> tuple:
             )
         # A tuple of Python scalars prints in full, unlike a large ndarray,
         # so two designs with different constants never share a cache key.
-        vals = tuple(a.astype(dt).astype(np.float64).ravel().tolist())
+        vals = tuple(a.astype(dt).ravel().tolist())
         out.append((np.dtype(dt).name, tuple(shape), vals))
     return tuple(out)
 
@@ -476,7 +491,7 @@ def _matmul(
     (a_shape, dt_a), (_, dt_b), (c_shape, dt_c) = (
         shape_dtype(t) for t in _arg_types(mm)
     )
-    m, k, n = factory_kwargs["dim_m"], factory_kwargs["dim_k"], factory_kwargs["dim_n"]
+    m, k, n = mm.dims
     # A bfp16ebs8 operand counts 8 values per element, so its shapes divide
     # the value counts by 8 along the contiguous axis, as the block_datatypes
     # examples declare them.
@@ -621,13 +636,19 @@ def _matvec(
     mv = factory(**factory_kwargs)
     zero = mv.also.zero
     (_, dt_in), _, (_, dt_out) = (shape_dtype(t) for t in _arg_types(mv))
-    m, k = factory_kwargs["dim_m"], factory_kwargs["dim_k"]
+    m, k = mv.dims
     M_div_m, K_div_k = M // m, K // k
 
-    mem_a = ObjectFifo(np.ndarray[(m, k), np.dtype[dt_in]], name="memA")
+    stack = _stack_bytes(mv)
+    depth = _fifo_depth(
+        mv,
+        (m * k + k) * bfp.itemsize(dt_in) + m * bfp.itemsize(dt_out),
+        stack_bytes=stack,
+    )
+    mem_a = ObjectFifo(np.ndarray[(m, k), np.dtype[dt_in]], name="memA", depth=depth)
     core_a = mem_a.cons().forward(name="coreA", dims_from_stream=mv.a_dims_from_stream)
-    in_b = ObjectFifo(np.ndarray[(k,), np.dtype[dt_in]], name="inB")
-    out_c = ObjectFifo(np.ndarray[(m,), np.dtype[dt_out]], name="outC")
+    in_b = ObjectFifo(np.ndarray[(k,), np.dtype[dt_in]], name="inB", depth=depth)
+    out_c = ObjectFifo(np.ndarray[(m,), np.dtype[dt_out]], name="outC", depth=depth)
 
     setter = _rounding_setter(_contract(mv))
 
@@ -647,6 +668,7 @@ def _matvec(
     worker = Worker(
         core,
         [core_a.cons(), in_b.cons(), out_c.prod(), zero, mv] + _opt(setter),
+        stack_size=stack,
         trace=1 if trace_config else 0,
     )
 
@@ -694,8 +716,10 @@ def design(
     the values of the contract's ``scalar`` arguments in order, and ``params``
     the arrays of its ``param`` arguments, which are baked into core Buffers
     (``fn.param_values(sample_inputs(fn, ...))`` picks them out). Matrix
-    kernels take ``shape=(M, K, N)`` (``mm``) or ``shape=(M, K)`` (``mv``) for
-    the host operands and ignore ``calls``. ``aiecc_flags`` are forwarded to
+    kernels default to one tile product. An explicit ``shape=(M, K, N)``
+    (``mm``) or ``shape=(M, K)`` (``mv``) opts into a tiled whole-problem
+    design; its dimensions must be positive multiples of the kernel tile.
+    Matrix designs require ``calls=1``. ``aiecc_flags`` are forwarded to
     the build (a benchmark passes ``--get-core-elfs`` to size the per-core
     ELFs).
 
@@ -704,12 +728,22 @@ def design(
     """
     fn = factory(**factory_kwargs)
     c = _contract(fn)  # a clear error before any generator is specialised
+    try:
+        calls = index(calls)
+    except TypeError as exc:
+        raise ValueError(f"calls must be a positive integer, got {calls}") from exc
+    if calls <= 0:
+        raise ValueError(f"calls must be a positive integer, got {calls}")
     if c.unsupported:
         raise ValueError(
             f"{fn.name}: the generic harness cannot build this kernel: {c.unsupported}"
         )
     kw: dict[str, Any] = dict(factory=factory, factory_kwargs=factory_kwargs)
     flags = list(aiecc_flags or ())
+    if (is_matmul(fn) or is_matvec(fn)) and calls != 1:
+        raise ValueError(
+            "matrix designs require calls=1; use shape to select the problem"
+        )
     if is_matmul(fn):
         M, K, N = _matrix_shape(fn, shape, 3)
         if any(_bfp_operands(fn)) and "--dynamic-objFifos" not in flags:

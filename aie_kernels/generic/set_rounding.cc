@@ -6,7 +6,7 @@
 // (an `srs` shift, a bf16 store) round in whatever mode the core is in, and a
 // fresh core boots in floor; a design calls this once, before the first such
 // kernel, with the mode that kernel's contract names (-DROUNDING_MODE=conv_even
-// binds `set_rounding_conv_even`). See KernelContract.rounding_mode.
+// binds `set_rounding_conv_even`). See KernelContract.setup.
 
 #include <aie_api/aie.hpp>
 

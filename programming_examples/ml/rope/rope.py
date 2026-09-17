@@ -5,8 +5,6 @@
 #
 """Row-wise bf16 RoPE (Rotary Position Embedding) — IRON API design.
 
-NPU2-only: ``rope.cc`` lives under ``aie_kernels/aie2p/`` only.
-
 Four cores process ``sequence_length // 4`` rows each.  Per row, on
 even/odd element pairs::
 

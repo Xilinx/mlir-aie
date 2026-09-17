@@ -35,9 +35,11 @@ import aie.iron as iron
 import numpy as np
 import pytest
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.controlflow import range_
 from aie.iron.kernels._common import _detect_arch
-from aie.iron.algorithms import kernel_design as kd
+from aie.utils.compile.jit import CompileTime
+from aie.utils.verify import Tolerance, compare
 from cases import inputs_for
 from kernel_cases import CASES
 from ml_dtypes import bfloat16
@@ -350,3 +352,276 @@ def test_setup_reaches_the_core():
         f"{int((got == floor_result).sum())} of {n} ties rounded floor: the "
         "contract's setup did not reach the core"
     )
+
+
+# ---------------------------------------------------------------------------
+# Runtime element-count variants (the *_sized factories added in this branch).
+# Unlike the fixed-1024 add/mul/silu/gelu/relu, these read the element count at
+# runtime, so the design passes it as a trailing arg and may use a non-1024
+# tile.  A 1536-element tile (not a multiple of the fixed 1024) is what pins
+# that the runtime-size path, including the scalar tail on add/mul, is exercised.
+# ---------------------------------------------------------------------------
+
+_SIZED_TILE = 1536
+
+_SIZED_ELT_FACTORY = {"add": kernels.add_sized, "mul": kernels.mul_sized}
+
+
+@iron.jit
+def _sized_eltwise_design(
+    a_in: In, b_in: In, c_out: Out, *, which: CompileTime[str] = "add"
+):
+    kern = _SIZED_ELT_FACTORY[which](tile_size=_SIZED_TILE)
+    tile = np.ndarray[(_SIZED_TILE,), np.dtype[bfloat16]]
+    of_a = ObjectFifo(tile, name="sea")
+    of_b = ObjectFifo(tile, name="seb")
+    of_c = ObjectFifo(tile, name="sec")
+
+    def core(of_a, of_b, of_c, k):
+        a = of_a.acquire(1)
+        b = of_b.acquire(1)
+        c = of_c.acquire(1)
+        k(a, b, c, _SIZED_TILE)
+        of_a.release(1)
+        of_b.release(1)
+        of_c.release(1)
+
+    w = Worker(core, fn_args=[of_a.cons(), of_b.cons(), of_c.prod(), kern])
+
+    def seq(a, b, c, ah, bh, ch):
+        ah.fill(a)
+        bh.fill(b)
+        ch.drain(c, wait=True)
+
+    rt = Runtime(seq, [tile, tile, tile, of_a.prod(), of_b.prod(), of_c.cons()])
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
+
+
+@pytest.mark.parametrize("which, op", [("add", np.add), ("mul", np.multiply)])
+def test_sized_eltwise_e2e(which, op):
+    rng = np.random.default_rng(11)
+    a = rng.uniform(-2, 2, size=(_SIZED_TILE,)).astype(bfloat16)
+    b = rng.uniform(-2, 2, size=(_SIZED_TILE,)).astype(bfloat16)
+    at = iron.tensor(a, dtype=bfloat16, device="npu")
+    bt = iron.tensor(b, dtype=bfloat16, device="npu")
+    ct = iron.zeros(_SIZED_TILE, dtype=bfloat16, device="npu")
+
+    _sized_eltwise_design(at, bt, ct, which=which)
+
+    expected = op(a.astype(np.float32), b.astype(np.float32)).astype(bfloat16)
+    verdict = compare(
+        ct.numpy(), expected, _SIZED_ELT_FACTORY[which](_SIZED_TILE).contract.tolerance
+    )
+    assert verdict, verdict.detail
+
+
+_SIZED_ACT_FACTORY = {
+    "silu": (kernels.silu_sized, kernels.silu_ref),
+    "gelu": (kernels.gelu_sized, kernels.gelu_ref),
+    "relu": (kernels.relu_sized, kernels.relu_ref),
+}
+
+
+@iron.jit
+def _sized_activation_design(a_in: In, b_out: Out, *, which: CompileTime[str] = "silu"):
+    kern = _SIZED_ACT_FACTORY[which][0](tile_size=_SIZED_TILE)
+    tile = np.ndarray[(_SIZED_TILE,), np.dtype[bfloat16]]
+    of_in = ObjectFifo(tile, name="sactin")
+    of_out = ObjectFifo(tile, name="sactout")
+
+    def core(of_in, of_out, k):
+        a = of_in.acquire(1)
+        c = of_out.acquire(1)
+        k(a, c, _SIZED_TILE)
+        of_in.release(1)
+        of_out.release(1)
+
+    w = Worker(core, fn_args=[of_in.cons(), of_out.prod(), kern])
+
+    def seq(a, b, ih, oh):
+        ih.fill(a)
+        oh.drain(b, wait=True)
+
+    rt = Runtime(seq, [tile, tile, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
+
+
+@pytest.mark.parametrize("which", ["silu", "gelu", "relu"])
+def test_sized_activation_e2e(which):
+    ref = _SIZED_ACT_FACTORY[which][1]
+    rng = np.random.default_rng(12)
+    x = rng.uniform(-4, 4, size=(_SIZED_TILE,)).astype(bfloat16)
+    xt = iron.tensor(x, dtype=bfloat16, device="npu")
+    yt = iron.zeros(_SIZED_TILE, dtype=bfloat16, device="npu")
+
+    _sized_activation_design(xt, yt, which=which)
+
+    expected = ref(x)
+    verdict = compare(
+        yt.numpy(),
+        expected,
+        _SIZED_ACT_FACTORY[which][0](_SIZED_TILE).contract.tolerance,
+    )
+    assert verdict, verdict.detail
+
+
+# ---------------------------------------------------------------------------
+# Norms: rms_norm / rms_norm_eps / layer_norm.  Each normalizes one bf16 row of
+# `cols` elements (gamma=1, beta=0), reading cols at runtime.  A 2048-element
+# row is a realistic embedding-dim width and a non-1024 tile.
+# ---------------------------------------------------------------------------
+
+_NORM_COLS = 2048
+
+
+@iron.jit
+def _rms_norm_design(a_in: In, b_out: Out, *, use_eps: CompileTime[bool] = False):
+    tile = np.ndarray[(_NORM_COLS,), np.dtype[bfloat16]]
+    kern = (kernels.rms_norm_eps if use_eps else kernels.rms_norm)(tile_size=_NORM_COLS)
+    of_in = ObjectFifo(tile, name="rnin")
+    of_out = ObjectFifo(tile, name="rnout")
+
+    def core(of_in, of_out, k):
+        a = of_in.acquire(1)
+        c = of_out.acquire(1)
+        if use_eps:
+            k(a, c, _NORM_COLS, 1e-5)
+        else:
+            k(a, c, _NORM_COLS)
+        of_in.release(1)
+        of_out.release(1)
+
+    w = Worker(core, fn_args=[of_in.cons(), of_out.prod(), kern])
+
+    def seq(a, b, ih, oh):
+        ih.fill(a)
+        oh.drain(b, wait=True)
+
+    rt = Runtime(seq, [tile, tile, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
+
+
+@pytest.mark.parametrize("use_eps", [False, True])
+def test_rms_norm_e2e(use_eps):
+    rng = np.random.default_rng(13)
+    x = rng.uniform(-2, 2, size=(_NORM_COLS,)).astype(bfloat16)
+    xt = iron.tensor(x, dtype=bfloat16, device="npu")
+    yt = iron.zeros(_NORM_COLS, dtype=bfloat16, device="npu")
+
+    _rms_norm_design(xt, yt, use_eps=use_eps)
+
+    expected = kernels.rms_norm_ref(x, eps=1e-5)
+    verdict = compare(
+        yt.numpy(), expected, kernels.rms_norm(_NORM_COLS).contract.tolerance
+    )
+    assert verdict, verdict.detail
+
+
+@iron.jit
+def _layer_norm_design(a_in: In, b_out: Out):
+    tile = np.ndarray[(_NORM_COLS,), np.dtype[bfloat16]]
+    kern = kernels.layer_norm(tile_size=_NORM_COLS)
+    of_in = ObjectFifo(tile, name="lnin")
+    of_out = ObjectFifo(tile, name="lnout")
+
+    def core(of_in, of_out, k):
+        a = of_in.acquire(1)
+        c = of_out.acquire(1)
+        k(a, c, _NORM_COLS)
+        of_in.release(1)
+        of_out.release(1)
+
+    w = Worker(core, fn_args=[of_in.cons(), of_out.prod(), kern])
+
+    def seq(a, b, ih, oh):
+        ih.fill(a)
+        oh.drain(b, wait=True)
+
+    rt = Runtime(seq, [tile, tile, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
+
+
+def test_layer_norm_e2e():
+    rng = np.random.default_rng(14)
+    x = rng.uniform(-2, 2, size=(_NORM_COLS,)).astype(bfloat16)
+    xt = iron.tensor(x, dtype=bfloat16, device="npu")
+    yt = iron.zeros(_NORM_COLS, dtype=bfloat16, device="npu")
+
+    _layer_norm_design(xt, yt)
+
+    expected = kernels.layer_norm_ref(x, eps=1e-5)
+    verdict = compare(
+        yt.numpy(), expected, kernels.layer_norm(_NORM_COLS).contract.tolerance
+    )
+    assert verdict, verdict.detail
+
+
+# ---------------------------------------------------------------------------
+# RoPE (interleaved / Llama and two-halves / HuggingFace).  Applies a rotation
+# per (cos, sin) pair from an interleaved LUT to one bf16 row of `dims`.
+# ---------------------------------------------------------------------------
+
+_ROPE_DIMS = 128
+
+
+@iron.jit
+def _rope_design(
+    a_in: In,
+    lut_in: In,
+    b_out: Out,
+    *,
+    two_halves: CompileTime[bool] = False,
+    dims: CompileTime[int] = _ROPE_DIMS,
+):
+    tile = np.ndarray[(dims,), np.dtype[bfloat16]]
+    lut_ty = np.ndarray[(dims,), np.dtype[bfloat16]]
+    kern = kernels.rope(tile_size=dims, two_halves=two_halves)
+    of_in = ObjectFifo(tile, name="ropein")
+    of_lut = ObjectFifo(lut_ty, name="ropelut")
+    of_out = ObjectFifo(tile, name="ropeout")
+
+    def core(of_in, of_lut, of_out, k):
+        a = of_in.acquire(1)
+        lut = of_lut.acquire(1)
+        c = of_out.acquire(1)
+        k(a, lut, c, dims)
+        of_in.release(1)
+        of_lut.release(1)
+        of_out.release(1)
+
+    w = Worker(core, fn_args=[of_in.cons(), of_lut.cons(), of_out.prod(), kern])
+
+    def seq(a, lut, b, ih, lh, oh):
+        ih.fill(a)
+        lh.fill(lut)
+        oh.drain(b, wait=True)
+
+    rt = Runtime(seq, [tile, lut_ty, tile, of_in.prod(), of_lut.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
+
+
+@pytest.mark.parametrize("two_halves", [False, True])
+@pytest.mark.parametrize("dims", [96, _ROPE_DIMS])
+def test_rope_e2e(two_halves, dims):
+    rng = np.random.default_rng(15)
+    x = rng.uniform(-2, 2, size=(dims,)).astype(bfloat16)
+    # dims/2 (cos, sin) pairs, interleaved.
+    theta = rng.uniform(-np.pi, np.pi, size=(dims // 2,)).astype(np.float32)
+    lut = np.empty((dims,), dtype=np.float32)
+    lut[0::2] = np.cos(theta)
+    lut[1::2] = np.sin(theta)
+    lut = lut.astype(bfloat16)
+
+    xt = iron.tensor(x, dtype=bfloat16, device="npu")
+    lt = iron.tensor(lut, dtype=bfloat16, device="npu")
+    yt = iron.zeros(dims, dtype=bfloat16, device="npu")
+
+    _rope_design(xt, lt, yt, two_halves=two_halves, dims=dims)
+
+    expected = kernels.rope_ref(x, lut, two_halves=two_halves)
+    verdict = compare(
+        yt.numpy(),
+        expected,
+        Tolerance.relative(0.05, 0.05, max_mismatch_frac=0.05),
+    )
+    assert verdict, verdict.detail

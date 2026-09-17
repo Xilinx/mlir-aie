@@ -7,11 +7,12 @@
 
 Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu
-- `datamovement` — axpy, convert_copy, expand, transpose
+- `datamovement` — axpy, convert_copy, expand, rope, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
+- `norm` — rms_norm, rms_norm_eps, layer_norm
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.also.zero`` for the companion zero-fill kernel,
   ``.mac_dims`` and ``.stream_dims`` / ``.a_dims_from_stream`` for the DMA layout)
@@ -34,6 +35,7 @@ from .activation import (
     exp2f_vec_ref,
     gelu,
     gelu_ref,
+    gelu_sized,
     leaky_relu,
     leaky_relu_ref,
     relu_ref,
@@ -41,6 +43,7 @@ from .activation import (
     sigmoid_ref,
     silu,
     silu_ref,
+    silu_sized,
     softmax,
     softmax_ref,
     swiglu,
@@ -92,18 +95,23 @@ from .datamovement import (
     convert_copy_ref,
     expand,
     expand_ref,
+    rope,
+    rope_ref,
     transpose,
     transpose_ref,
 )
 from .eltwise import (
     add,
     add_ref,
+    add_sized,
     mul,
     mul_add,
     mul_add_ref,
     mul_ref,
+    mul_sized,
     passthrough,
     relu,
+    relu_sized,
     scale,
     scale_ref,
 )
@@ -126,6 +134,7 @@ from .linalg import (
     mv_ref,
     mv_tile_ref,
 )
+from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .reduce import (
     compute_max,
     compute_max_ref,
@@ -137,18 +146,12 @@ from .reduce import (
     reduce_min_ref,
 )
 from .transformer import (
-    layer_norm,
     layer_norm_affine_cast,
     layer_norm_affine_cast_ref,
     layer_norm_f32,
     layer_norm_f32_ref,
-    layer_norm_ref,
     mm_activation_epilogue,
     mm_activation_epilogue_ref,
-    rms_norm,
-    rms_norm_ref,
-    rope,
-    rope_ref,
 )
 from .vision import (
     add_weighted,
@@ -178,7 +181,9 @@ __all__ = [
     "passthrough",
     "scale",
     "add",
+    "add_sized",
     "mul",
+    "mul_sized",
     "mul_add",
     "mul_add_ref",
     "rms_norm",
@@ -199,6 +204,7 @@ __all__ = [
     "compute_max",
     "compute_max_ref",
     "relu",
+    "relu_sized",
     "rgba2hue",
     "rgba2hue_ref",
     "threshold",
@@ -217,7 +223,9 @@ __all__ = [
     "add_weighted_ref",
     "softmax",
     "gelu",
+    "gelu_sized",
     "silu",
+    "silu_sized",
     "swiglu",
     "swiglu_ref",
     "bf16_exp",
@@ -245,6 +253,7 @@ __all__ = [
     "mv_tile_ref",
     "mv_bf16_ref",
     "mm_stream_dims",
+    "rms_norm_eps",
     "relu_ref",
     "silu_ref",
     "gelu_ref",

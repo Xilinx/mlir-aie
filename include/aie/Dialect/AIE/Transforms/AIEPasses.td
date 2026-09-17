@@ -325,14 +325,27 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
     by aie.flow) or a packet-switched connection (represensted by
     aie.packetflow).  This pass is primarily used for testing automatic
     routing.
+
+    By default every configured connection is lifted, including partial flows
+    whose source or destination is a switchbox port other than a core or DMA.
+    Set `keep-partial-flows=false` to restrict recovery to flows
+    that begin at a core/DMA and end on a core/DMA.
   }];
 
   let constructor = "xilinx::AIE::createAIEFindFlowsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+
+  let options =
+      [Option<"clKeepPartialFlows", "keep-partial-flows", "bool",
+              /*default=*/"true",
+              "Also recover flows that do not start or end at a core or DMA.">,
+       Option<
+           "clRemoveLifted", "remove-lifted", "bool", /*default=*/"true",
+           "Remove the interconnect configuration (connects, packet rules, "
+           "mastersets, amsels, wires) that was lifted into recovered flows, "
+           "leaving only configuration that could not be lifted.">,
   ];
 }
-
 
 def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
   let summary = "Lower vector.transfer_read/write to vector.load/store for AIE";

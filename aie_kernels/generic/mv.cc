@@ -23,8 +23,14 @@
 #define VEC_SIZE 64
 #endif
 
+#ifndef DIM_K
+#error Please define DIM_K at compile time (for example, -DDIM_K=128).
+#endif
+
 void matvec_scalar(uint32_t m, uint32_t k, const bfloat16 *__restrict a,
                    const bfloat16 *__restrict b, bfloat16 *__restrict c) {
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
   for (uint32_t row = 0; row < m; row++) {
     float acc = 0;
     for (uint32_t i = 0; i < k; i++) {
@@ -32,6 +38,7 @@ void matvec_scalar(uint32_t m, uint32_t k, const bfloat16 *__restrict a,
     }
     c[row] = static_cast<bfloat16>(acc);
   }
+  ::aie::set_rounding(saved_rounding);
 }
 
 /*
@@ -48,7 +55,10 @@ processed in chunks of this size
 template <uint32_t r, uint32_t k>
 void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
                        const bfloat16 *__restrict b, bfloat16 *__restrict c) {
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  static_assert(k % r == 0);
+  static_assert(k >= 2 * r);
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
   bfloat16 *c_end = c + m;
   const bfloat16 *b_end = b + k;
   for (; c < c_end; c++) {
@@ -56,7 +66,7 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
     // The following two pragmas enable pipelining the zero-overhead loop, but
     // they do assume that there are at least two iterations of the loop, i.e. k
     // >= 2*r. This pragma will break the code if that is not the case!
-    AIE_LOOP_MIN_ITERATION_COUNT(k / VEC_SIZE)
+    AIE_LOOP_MIN_ITERATION_COUNT(k / r)
     for (const bfloat16 *__restrict b_cur = b; b_cur < b_end;
          b_cur += r, a += r) {
       aie::vector<bfloat16, r> a_vec = aie::load_v<r>(a);
@@ -66,6 +76,7 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
     *c =
         static_cast<bfloat16>(aie::reduce_add(acc.template to_vector<float>()));
   }
+  ::aie::set_rounding(saved_rounding);
 }
 
 extern "C" {

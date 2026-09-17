@@ -14,6 +14,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     _default_source_path,
+    _detect_arch,
     _dtype_to_bit_width,
     _make_extern,
     _require_fixed_tile_size,
@@ -270,5 +271,79 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
             roles=(In, Out),
             reference=lambda x: np.maximum(x.astype(np.float32), 0.0),
             tolerance=Tolerance.exact(note="selection: max(x, 0) is exact in bf16"),
+        ),
+    )
+
+
+def add_sized(tile_size: int = 1024) -> ExternalFunction:
+    """Element-wise bf16 addition, element count read at runtime.
+
+    Runtime-size sibling of [`add`][iron.kernels.eltwise.add]; design passes
+    ``(a, b, c, size)``. Scalar tails are supported.
+    """
+    minimum = 512 if _detect_arch() == "aie2p" else 256
+    if tile_size < minimum:
+        raise ValueError(f"add_sized() tile_size must be >= {minimum}, got {tile_size}")
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "eltwise_add_bf16_vector_size",
+        _default_source_path("add.cc"),
+        [tile_ty, tile_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            setup=conv_even,
+            roles=(In, In, Out, Count),
+            reference=add_ref,
+            acc_dtype=np.float32,
+            tolerance=_BF16_ROUNDTRIP,
+            ops_per_call=tile_size,
+        ),
+    )
+
+
+def mul_sized(tile_size: int = 1024) -> ExternalFunction:
+    """Element-wise bf16 multiplication, element count read at runtime.
+
+    Runtime-size sibling of [`mul`][iron.kernels.eltwise.mul]; design passes
+    ``(a, b, c, size)``. Scalar tails are supported.
+    """
+    minimum = 512 if _detect_arch() == "aie2p" else 256
+    if tile_size < minimum:
+        raise ValueError(f"mul_sized() tile_size must be >= {minimum}, got {tile_size}")
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "eltwise_mul_bf16_vector_size",
+        _default_source_path("mul.cc"),
+        [tile_ty, tile_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            setup=conv_even,
+            roles=(In, In, Out, Count),
+            reference=mul_ref,
+            acc_dtype=np.float32,
+            tolerance=_BF16_ROUNDTRIP,
+            ops_per_call=tile_size,
+        ),
+    )
+
+
+def relu_sized(tile_size: int = 1024) -> ExternalFunction:
+    """Element-wise bf16 ReLU, element count read at runtime.
+
+    Runtime-size sibling of [`relu`][iron.kernels.eltwise.relu]; design passes
+    ``(in, out, size)``. Not LUT-based. Multiples of 32, at least 1024
+    elements on aie2 or 64 on aie2p.
+    """
+    _require_min_trip_count(
+        "relu_sized", tile_size, 32, 32 if _detect_arch() == "aie2" else 2
+    )
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "relu_bf16_size",
+        _default_source_path("relu.cc"),
+        [tile_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            roles=(In, Out, Count),
+            reference=lambda x: np.maximum(x.astype(np.float32), 0.0),
+            tolerance=Tolerance.exact(note="selection: max(x, 0) is exact in bf16"),
+            ops_per_call=tile_size,
         ),
     )

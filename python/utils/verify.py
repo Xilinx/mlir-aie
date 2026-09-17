@@ -103,7 +103,7 @@ def assert_pass(
         actual: Array-like produced by the kernel under test.
         expected: Reference array-like (numpy arrays, scalars, lists).
         rtol: Relative tolerance for the bf16/LUT-style comparator
-            (see :func:`count_mismatches`).  When both ``rtol`` and ``atol``
+            (see `count_mismatches`).  When both ``rtol`` and ``atol``
             are ``None`` (the default), use ``np.array_equal`` for an exact
             compare — the right choice for integer and bit-exact pipelines.
             Pass ``rtol=`` (and/or ``atol=``) to opt into the
@@ -163,8 +163,8 @@ def assert_close_with_benchmark(
         actual: Array-like produced by the kernel under test.
         expected: Reference array-like; ``expected.dtype`` selects the
             comparator branch.
-        bench: A :class:`~aie.utils.benchmark.BenchmarkResult` (typically
-            from :func:`~aie.utils.benchmark.run_iters`).
+        bench: A `aie.utils.benchmark.BenchmarkResult` (typically
+            from `aie.utils.benchmark.run_iters`).
         ops: Total scalar ops for the kernel (e.g. ``2 * M * K * N`` for
             matmul, ``2 * M * K`` for matvec).  When set and
             ``bench.npu`` is available, prints ``NPU GFLOPS`` using
@@ -186,7 +186,7 @@ def assert_close_with_benchmark(
             debugging.  No-op for the float branch.
 
     Raises:
-        SystemExit: On mismatch (via :func:`assert_pass`).
+        SystemExit: On mismatch (via `assert_pass`).
     """
     if tolerance is not None:
         verdict = compare(np.asarray(actual), np.asarray(expected), tolerance)

@@ -3,8 +3,8 @@
 
 """Process-wide HRX device/stream context and dispatch orchestration.
 
-This is the mid-level layer between the raw C ABI (:mod:`._bindings`) and the
-IRON ``HostRuntime`` (:mod:`.hostruntime`): :class:`HRXContext` owns the single
+This is the mid-level layer between the raw C ABI (`._bindings`) and the
+IRON ``HostRuntime`` (`.hostruntime`): `HRXContext` owns the single
 amdxdna device + dispatch stream, allocates/maps persistent buffers, creates
 amdxdna executables, and records/submits (chained) dispatches.
 """
@@ -53,7 +53,7 @@ class HRXContext:
     Concurrency / multi-tenancy model:
 
     * **Multiple processes / users** -- fully isolated. Each process builds its
-      own :class:`HRXContext` (its own ``hrx_gpu_initialize`` /
+      own `HRXContext` (its own ``hrx_gpu_initialize`` /
       ``hrx_gpu_device_get`` / ``hrx_stream_create``) and allocates its own
       buffers, so handles are never shared across processes; the amdxdna driver
       isolates each process's hardware context and device memory. The only
@@ -66,7 +66,7 @@ class HRXContext:
       stream per process (the NPU is a single shared device); we never create
       several.
     * **Multiple threads in one process** -- singleton creation and libhrx
-      binding are thread-safe (see :meth:`get` / :meth:`~._bindings._HrxLib.ensure`),
+      binding are thread-safe (see `get` / `._bindings._HrxLib.ensure`),
       but the shared ``stream`` is *not* built for concurrent dispatch: recording
       ``dispatch``/``dispatch_chain`` and ``synchronize`` from several threads at
       once would interleave into one pending command buffer. Callers must
@@ -112,7 +112,7 @@ class HRXContext:
         Returns:
             tuple: ``(buffer_handle, host_ptr)`` -- the opaque ``hrx_buffer_t``
             and the address of its persistent host mapping. Coherence is
-            maintained explicitly via :meth:`flush_range` / :meth:`invalidate_range`.
+            maintained explicitly via `flush_range` / `invalidate_range`.
         """
         buf = _handle()
         _check(
@@ -263,11 +263,11 @@ class HRXContext:
 
         Args:
             exe: The ``hrx_executable_t`` handle returned by
-                :meth:`create_executable`.
+                `create_executable`.
             name (str): The export/kernel name to look up.
 
         Returns:
-            int: The export ordinal, passed to :meth:`dispatch` as
+            int: The export ordinal, passed to `dispatch` as
             ``export_ordinal``.
 
         Raises:
@@ -297,11 +297,11 @@ class HRXContext:
         The dispatch config is the unit config the amdxdna path expects
         (``{1,1,1}`` workgroup count/size); the I/O addresses are bound by
         binding order plus the TXN's DDR-patch ops. This records only -- call
-        :meth:`synchronize` to submit and wait.
+        `synchronize` to submit and wait.
 
         Args:
             exe: The ``hrx_executable_t`` handle to dispatch.
-            export_ordinal (int): The export ordinal from :meth:`lookup_export`.
+            export_ordinal (int): The export ordinal from `lookup_export`.
             bindings (list): Ordered ``(buffer_handle, size)`` tuples; the list
                 index is the DDR-patch argument index.
 
@@ -336,19 +336,19 @@ class HRXContext:
     def dispatch_chain(self, items):
         """Record a sequence of dispatches into one command buffer (no submit).
 
-        Each entry is recorded via :meth:`dispatch`, and HRX inserts an execution
+        Each entry is recorded via `dispatch`, and HRX inserts an execution
         + memory barrier after every dispatch, so a later dispatch observes an
         earlier one's device writes (producer -> consumer chains are correct).
-        The whole batch stays pending until :meth:`synchronize`, which submits it
+        The whole batch stays pending until `synchronize`, which submits it
         as a single execution -- the amdxdna HAL lowers a multi-dispatch command
         buffer into one ``ERT_CMD_CHAIN`` issued/waited once.
 
-        Records only; call :meth:`synchronize` to submit and wait.
+        Records only; call `synchronize` to submit and wait.
 
         Args:
             items: An iterable of ``(executable, export_ordinal, bindings)``,
                 where ``bindings`` is a list of ``(buffer_handle, size)`` tuples
-                (the same shape :meth:`dispatch` takes).
+                (the same shape `dispatch` takes).
 
         Raises:
             HRXError: If libhrx rejects any recorded dispatch.

@@ -49,6 +49,19 @@ kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
     options:
       show_root_heading: false
 
+## Normalization
+
+`rms_norm`, `rms_norm_eps`, and `layer_norm` support both aie2 and aie2p.
+They accept `tile_size` (default 1024) or its compatibility alias `cols`.
+`rope` in Data movement has the same size API and supports both interleaved
+and `two_halves=True` layouts. The transformer module re-exports the canonical
+bf16 norm and RoPE factories and references; importing through either module
+does not select a different implementation. Norm references accept `eps`.
+
+::: iron.kernels.norm
+    options:
+      show_root_heading: false
+
 ## Transformer blocks
 
 ::: iron.kernels.transformer

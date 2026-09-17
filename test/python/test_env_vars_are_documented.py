@@ -3,6 +3,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+# RUN: %pytest %s
+
 """Every environment variable the library reads is documented somewhere.
 
 An undocumented knob is one only its author knows about. This finds the names

@@ -5,8 +5,9 @@
 #
 """Transformer building blocks: rms_norm, layer_norm (bf16, f32, affine+cast), rope, mm_activation_epilogue.
 
-All wrap ``aie_kernels/aie2p/`` sources with no aie2 port, so the factories
-raise ``NotImplementedError`` under an aie2 device. Each processes one row
+The bf16 norms and RoPE are re-exported from ``norm`` and ``datamovement``;
+they support aie2 and aie2p, with ``cols`` as an alias for ``tile_size``.
+The f32/affine norms and activation epilogue are aie2p-only. Each processes one row
 (``cols`` elements) per call; the row length is a runtime argument the
 design passes as the ``count`` role. These are the kernels
 ``programming_examples/ml/{norm,rope,mm_activation_epilogue}`` build.
@@ -20,14 +21,18 @@ from ml_dtypes import bfloat16
 
 from ._common import KernelContract, _default_source_path, _detect_arch, _make_extern
 from .core import conv_even
+from .datamovement import rope as rope
+from .datamovement import rope_ref as rope_ref
+from .norm import _NORM_BF16
+from .norm import layer_norm as layer_norm
+from .norm import layer_norm_ref as layer_norm_ref
+from .norm import rms_norm as rms_norm
+from .norm import rms_norm_ref as rms_norm_ref
 
 _EPS = 1e-5
 
 # programming_examples/ml/norm judges the bf16 norms with atol 0.05 under the
 # canonical bf16 rtol; the f32 LayerNorm pins rtol = 0 so a 1e-3 atol governs.
-_NORM_BF16 = Tolerance.relative(
-    0.128, 0.05, note="programming_examples/ml/norm: atol 0.05 with the bf16 rtol"
-)
 _NORM_F32 = Tolerance.relative(
     0.0, 1e-3, note="programming_examples/ml/norm layer_f32: atol 1e-3, rtol 0"
 )
@@ -75,45 +80,6 @@ def _row_kernel(
             reduction=cols,
             setup=setup,
         ),
-    )
-
-
-def rms_norm(cols: int = 4096) -> ExternalFunction:
-    """Row-wise RMSNorm on bf16 (``x / sqrt(mean(x^2) + 1e-5)``, gamma = 1).
-
-    Args:
-        cols: Elements per row (multiple of 16).
-    """
-    return _row_kernel(
-        "rms_norm",
-        "rms_norm",
-        "rms_norm.cc",
-        cols,
-        bfloat16,
-        bfloat16,
-        rms_norm_ref,
-        _NORM_BF16,
-        4 * cols,
-        setup=conv_even,
-    )
-
-
-def layer_norm(cols: int = 4096) -> ExternalFunction:
-    """Row-wise LayerNorm on bf16 (gamma = 1, beta = 0, eps 1e-5).
-
-    Args:
-        cols: Elements per row (multiple of 16).
-    """
-    return _row_kernel(
-        "layer_norm",
-        "layer_norm",
-        "layer_norm.cc",
-        cols,
-        bfloat16,
-        bfloat16,
-        layer_norm_ref,
-        _NORM_BF16,
-        6 * cols,
     )
 
 
@@ -173,38 +139,6 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
     )
 
 
-def rope(cols: int = 4096) -> ExternalFunction:
-    """Row-wise rotary position embedding on bf16, with a per-row (cos, sin) LUT.
-
-    ``out[2i] = x[2i] cos - x[2i+1] sin``, ``out[2i+1] = x[2i] sin + x[2i+1] cos``
-    where the LUT row interleaves ``cos, sin, cos, sin, ...``; each call takes
-    its own LUT row (position-dependent), so the LUT is streamed like the
-    input. See programming_examples/ml/rope for the LUT construction.
-
-    Args:
-        cols: Elements per row (multiple of 16).
-    """
-    _aie2p_only("rope", "rope.cc")
-    _cols("rope", cols)
-    tile_ty = np.ndarray[(cols,), np.dtype[bfloat16]]
-    return _make_extern(
-        "rope",
-        _default_source_path("rope.cc", subdir="aie2p"),
-        [tile_ty, tile_ty, tile_ty, np.int32],
-        contract=KernelContract(
-            setup=conv_even,
-            roles=(In, In, Out, Count),
-            reference=rope_ref,
-            acc_dtype=np.float32,
-            reduction=2,
-            tolerance=Tolerance.relative(
-                0.128, note="programming_examples/ml/rope: default bf16 rtol"
-            ),
-            ops_per_call=3 * cols,
-        ),
-    )
-
-
 def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
     """GEMM epilogue on float32 rows: identity (0), SiLU (1), tanh-GELU (2) or ReLU (3) by ``mode``.
 
@@ -244,21 +178,6 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
 # --------------------------------------------------------------------------
 
 
-def rms_norm_ref(x):
-    """Numpy reference for [`rms_norm`][iron.kernels.transformer.rms_norm]."""
-    x32 = x.astype(np.float32)
-    rms = np.sqrt(np.mean(x32 * x32, axis=-1, keepdims=True) + _EPS)
-    return (x32 / rms).astype(x.dtype)
-
-
-def layer_norm_ref(x):
-    """Numpy reference for [`layer_norm`][iron.kernels.transformer.layer_norm] (bf16)."""
-    x32 = x.astype(np.float32)
-    mean = x32.mean(axis=-1, keepdims=True)
-    var = (x32 * x32).mean(axis=-1, keepdims=True) - mean * mean
-    return ((x32 - mean) / np.sqrt(var + _EPS)).astype(x.dtype)
-
-
 def layer_norm_f32_ref(x):
     """Numpy reference for [`layer_norm_f32`][iron.kernels.transformer.layer_norm_f32].
 
@@ -283,17 +202,6 @@ def layer_norm_affine_cast_ref(x, gamma_beta):
     mean = x32.mean(axis=-1, keepdims=True)
     var = ((x32 - mean) ** 2).mean(axis=-1, keepdims=True)
     return ((x32 - mean) / np.sqrt(var + _EPS) * gamma + beta).astype(bfloat16)
-
-
-def rope_ref(x, lut):
-    """Numpy reference for [`rope`][iron.kernels.transformer.rope]: rotate (even, odd) pairs by the LUT angle."""
-    x32, l32 = x.astype(np.float32), lut.astype(np.float32)
-    cos_v, sin_v = l32[..., 0::2], l32[..., 1::2]
-    x_even, x_odd = x32[..., 0::2], x32[..., 1::2]
-    out = np.empty_like(x32)
-    out[..., 0::2] = x_even * cos_v - x_odd * sin_v
-    out[..., 1::2] = x_even * sin_v + x_odd * cos_v
-    return out.astype(x.dtype)
 
 
 def mm_activation_epilogue_ref(x, mode):

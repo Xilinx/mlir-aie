@@ -512,6 +512,7 @@ def mv(
     # of each 2-column word slowly, m rows then the next 2-col word. A design
     # applies this as dims_from_stream on the hop into the core.
     extern.design_shape = DesignShape.MATVEC
+    extern.dims = (dim_m, dim_k)
     extern.a_dims_from_stream = (
         [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
     )

@@ -49,6 +49,10 @@ class KernelContract:
             of shape ``(calls, n)`` in the kernel's dtype, ``Scalar`` values
             as Python numbers. Returns the expected
             output for all calls; the harness casts it to the output dtype.
+            Matrix factories currently use whole-problem references on
+            logical matrices, matching the builder's explicit matrix layouts;
+            their exported ``*_tile_ref`` helpers accept independent call
+            batches instead.
             ``None`` when no host reference exists yet -- the kernel is then
             built but not judged.
         tolerance: How close the device result must be, or ``None`` for

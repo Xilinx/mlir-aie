@@ -1,0 +1,30 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# The same zero-sized alias fixture must measure 16 + 32 bytes on every AIE
+# variant. This checks both that the false back edge is dropped and that the
+# forward edge to the sized function is retained.
+
+# REQUIRES: peano
+# RUN: clang --target=aie-none-unknown-elf -c %S/stack_size_false_recursion_zero_sized_alias.s -o %t.aie.o
+# RUN: ld.lld --emit-relocs -e helper_cycle %t.aie.o -o %t.aie.elf
+# RUN: stack_size_analysis %t.aie.elf | FileCheck %s
+# RUN: clang --target=aie2-none-unknown-elf -c %S/stack_size_false_recursion_zero_sized_alias.s -o %t.aie2.o
+# RUN: ld.lld --emit-relocs -e helper_cycle %t.aie2.o -o %t.aie2.elf
+# RUN: stack_size_analysis %t.aie2.elf | FileCheck %s
+# RUN: clang --target=aie2p-none-unknown-elf -c %S/stack_size_false_recursion_zero_sized_alias.s -o %t.aie2p.o
+# RUN: ld.lld --emit-relocs -e helper_cycle %t.aie2p.o -o %t.aie2p.elf
+# RUN: stack_size_analysis %t.aie2p.elf | FileCheck %s
+# RUN: clang --target=aie2ps-none-unknown-elf -c %S/stack_size_false_recursion_zero_sized_alias.s -o %t.aie2ps.o
+# RUN: ld.lld --emit-relocs -e helper_cycle %t.aie2ps.o -o %t.aie2ps.elf
+# RUN: stack_size_analysis %t.aie2ps.elf | FileCheck %s
+
+# CHECK: {{^}}48{{$}}
+
+# A real call through the zero-sized alias must still close the cycle.
+# RUN: sed 's/\.long inlined_entry/jl #inlined_entry/' %S/stack_size_false_recursion_zero_sized_alias.s > %t.call.s
+# RUN: clang --target=aie2p-none-unknown-elf -c %t.call.s -o %t.call.o
+# RUN: ld.lld --emit-relocs -e helper_cycle %t.call.o -o %t.call.elf
+# RUN: not stack_size_analysis %t.call.elf 2>&1 | FileCheck %s --check-prefix=CYCLE
+
+# CYCLE: recursion detected: helper_cycle@0x{{[0-9A-Fa-f]+}} -> entry_real@0x{{[0-9A-Fa-f]+}} -> helper_cycle@0x{{[0-9A-Fa-f]+}}

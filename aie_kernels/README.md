@@ -21,6 +21,8 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | data movement | [expand.cc](./generic/expand.cc) | AIE API | uint4→bf16 dequant with per-group scale factors (zero-extended, no zero point) | `uint4`→`bfloat16` |
 | gemv | [mv.cc](./generic/mv.cc) | AIE API | Matrix/Vector multiply | `bfloat16` |
 | blas | [axpy.cc](./generic/axpy.cc) | AIE API | `z = a*x + y` (SAXPY) | `bfloat16` |
+| positional | [rope.cc](./generic/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
+| gemm | [mm_fused.cc](./generic/mm_fused.cc) | AIE API | Fused GEMM with in-L1 f32 accumulate and activation epilogue (`acc_init` / `k_step` / `epilogue_chunk`); tile geometry via `-DMM_FUSED_*` | `bfloat16` |
 
 ## AIE1
 | Name | Coding style | Purpose |
@@ -29,7 +31,7 @@ In some cases, the kernels are just generic C code, and will run on any family o
 ## AIE2
 | Class | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|-|
-| basic | [zero.cc](./aie2/zero.cc) | AIE API | Fill a tensor with zeroes | template |
+| basic | [zero.cc](./generic/zero.cc) | AIE API | Fill a tensor with zeroes | template |
 | basic | [add.cc](./aie2/add.cc) | AIE API | Pointwise addition of 2 tensors | `bfloat16` |
 | basic | [mul.cc](./aie2/mul.cc) | AIE API | Pointwise multiplication of 2 tensors | `bfloat16` |
 | basic | [scale.cc](./aie2/scale.cc) | AIE API | Scale all elements of a tensor with a scale factor | `int32_t` |
@@ -53,6 +55,7 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | activation | [sigmoid.cc](./aie2/sigmoid.cc) | AIE API | Sigmoid activation (LUT) | `bfloat16` |
 | activation | [softmax.cc](./aie2/softmax.cc) | AIE API | Softmax | `bfloat16` |
 | activation | [bf16_exp.cc](./aie2/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
+| norm | [rms_norm.cc](./aie2/rms_norm.cc) | AIE API | RMS normalization — `rms_norm` (eps=1e-5) + `rms_norm_eps` (runtime eps) | `bfloat16` |
 | |
 | ml | [conv2dk1_i8.cc](./aie2/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
 | ml | [conv2dk1.cc](./aie2/conv2dk1.cc) | AIE API | 1x1 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
@@ -71,7 +74,7 @@ In some cases, the kernels are just generic C code, and will run on any family o
 ## AIE2P
 | Class | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|-|
-| basic | [zero.cc](./aie2p/zero.cc) | AIE API | Fill a tensor with zeroes (512-bit stores) | template |
+| basic | [zero.cc](./generic/zero.cc) | AIE API | Fill a tensor with zeroes (512-bit stores) | template |
 | basic | [add.cc](./aie2p/add.cc) | AIE API | Pointwise addition of 2 tensors (512-bit vectors) | `bfloat16` |
 | basic | [mul.cc](./aie2p/mul.cc) | AIE API | Pointwise multiplication of 2 tensors (512-bit vectors) | `bfloat16` |
 | gemm | [mm.cc](./aie2p/mm.cc) | AIE API | Matrix/Matrix multiplication | `int8_t`,`int16_t`,`bfloat16` |
@@ -90,12 +93,11 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | activation | [exp2f_vec.cc](./aie2p/exp2f_vec.cc) | AIE API | Element-wise `2^x` (degree-5 minimax poly; higher accuracy on negatives) | `float32` |
 | |
 | norm | [layer_norm.cc](./aie2p/layer_norm.cc) | AIE API | Layer normalization (+ affine/cast f32 path) | `bfloat16`, `float32` |
-| norm | [rms_norm.cc](./aie2p/rms_norm.cc) | AIE API | RMS normalization | `bfloat16` |
+| norm | [rms_norm.cc](./aie2p/rms_norm.cc) | AIE API | RMS normalization — `rms_norm` (eps=1e-5) + `rms_norm_eps` (runtime eps) | `bfloat16` |
 | |
 | data movement | [cast_f32_bf16.cc](./aie2p/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
 | |
 | attention | [mha.cc](./aie2p/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …); composes `softmax.cc` + `mm.cc` | `bfloat16` |
-| positional | [rope.cc](./aie2p/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
 | |
 | ml | [conv2dk1_i8.cc](./aie2p/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
 | ml | [conv2dk14.cc](./aie2p/conv2dk14.cc) | AIE API | 1x14 / 14x1 Conv2D | `int8_t` |

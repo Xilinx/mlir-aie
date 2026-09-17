@@ -36,6 +36,7 @@ from ._common import (
     _kernel_source,
     _make_extern,
     _require_fixed_tile_size,
+    _require_min_trip_count,
 )
 from .core import conv_even
 
@@ -211,6 +212,44 @@ def silu(tile_size: int = 1024) -> ExternalFunction:
         tile_size,
         arg_arity=2,
         contract=_unary_lut_contract(silu_ref, count=False),
+    )
+
+
+def silu_sized(tile_size: int = 1024) -> ExternalFunction:
+    """SiLU (Swish) for bf16 tiles, element count read at runtime.
+
+    Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
+    passes ``(in, out, size)``. At least 1024 elements, in whole vectors
+    (16 on aie2, 32 on aie2p).
+    """
+    width = 32 if _detect_arch() == "aie2p" else 16
+    _require_min_trip_count("silu_sized", tile_size, width, 1024 // width)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "silu_bf16_size",
+        "silu.cc",
+        [tile_ty, tile_ty, np.int32],
+        contract=_unary_lut_contract(silu_ref, count=True),
+    )
+
+
+def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
+    """GELU (tanh approx) for bf16 tiles, element count read at runtime.
+
+    Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
+    passes ``(in, out, size)``. Whole vectors only: multiples of 16, at least
+    1024 elements on aie2; positive multiples of 32 on aie2p.
+    """
+    if _detect_arch() == "aie2":
+        _require_min_trip_count("gelu_sized", tile_size, 16, 64)
+    else:
+        _require_min_trip_count("gelu_sized", tile_size, 32, 1)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "gelu_bf16_size",
+        "gelu.cc",
+        [tile_ty, tile_ty, np.int32],
+        contract=_unary_lut_contract(gelu_ref, count=True),
     )
 
 

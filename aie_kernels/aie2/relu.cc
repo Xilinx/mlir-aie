@@ -21,7 +21,7 @@ void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
 
   event0();
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_RANGE(32, 32)
+  AIE_LOOP_MIN_ITERATION_COUNT(32)
   for (size_t i = 0; i < TILE_SIZE; i += v_factor) {
     v32bfloat16 input = *(v32bfloat16 *)(a + i);
     v32bfloat16 output = max(input, zeroes);
@@ -34,5 +34,10 @@ void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
 extern "C" {
 
 void bf16_relu(bfloat16 *a_in, bfloat16 *c_out) { relu(a_in, c_out, 1024); }
+
+void relu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
+                    int32_t input_size) {
+  relu(input, output, input_size);
+}
 
 } // extern "C"

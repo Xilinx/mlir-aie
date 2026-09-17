@@ -3,6 +3,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+# RUN: %pytest %s
+
 """Every file in ``aie_kernels/`` is compiled by some factory.
 
 A kernel source nothing builds is a copy of something, drifting: it is never
@@ -27,6 +29,9 @@ from aie.iron import kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 
 _KERNELS = Path(__file__).resolve().parents[2] / "aie_kernels"
+# Fused GEMM exposes a multi-entry-point ABI driven by an external design's
+# loop nest; it arrived on main without a Python factory.
+_DESIGN_ONLY = {_KERNELS / "generic" / "mm_fused.cc"}
 
 
 def _built_by_a_factory() -> set[Path]:
@@ -81,7 +86,9 @@ def test_no_kernel_source_is_unreachable():
     unreachable = sorted(
         p
         for p in sources
-        if p.resolve() not in built and not _included_by_another_kernel(p)
+        if p not in _DESIGN_ONLY
+        and p.resolve() not in built
+        and not _included_by_another_kernel(p)
     )
     assert not unreachable, (
         "no factory compiles these, so nothing ever checks them: "

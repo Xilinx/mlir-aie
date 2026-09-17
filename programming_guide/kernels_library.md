@@ -177,6 +177,19 @@ verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
 assert verdict, verdict.detail
 ```
 
+Matrix designs default to one tile product: `kd.design(kernels.mm)` and
+`kd.sample_inputs(kernels.mm())` use the factory's tile dimensions. Passing
+`shape=(M, K, N)` (or `(M, K)` for integer `mv`) explicitly selects a
+whole-problem integration test; every dimension must be a positive multiple
+of its tile dimension. Matrix designs require `calls=1`; streaming designs
+use `calls` to repeat independent tiles.
+
+The builder currently supports one output and uses specialized matrix
+layout adapters. Matrix contract references take logical whole matrices;
+the exported `mm_tile_ref`, `mv_tile_ref`, and `mm_bfp_tile_ref` instead take
+flattened, independent call batches. They are not interchangeable when a
+design accumulates several products into one output.
+
 Tolerances are kernel-owned. Integer kernels and lossless copies are
 bit-exact; LUT approximations declare the `rtol` their reference
 documents; a factory that declares nothing is judged with
@@ -286,16 +299,15 @@ above picks it up.
 A new factory is complete when one line each in two places covers it:
 
 1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
-   with the argument roles (`in`, `out` or `inout`, `param`, `count`,
-   `scalar`), a
+   with the argument roles (`In`, `Out` or `InOut`, `Param`, `Count`,
+   `Scalar`), a
    numpy reference exported as `<name>_ref`, `ops_per_call` for the
    benchmark's throughput series, and a `Tolerance` with its evidence in
    `note` — or none, to get the dtype default. Reductions set `out_valid`
    to the number of meaningful output elements. Say what the kernel
-   accumulates in (`acc_dtype`, `reduction`), what an integer overflow
-   does (`overflow`) and how a fixed-point shift rounds (`rounding`),
-   from the C++ rather than from a guess; a factory with more than one
-   dtype lists them in a `.dtypes` table.
+   accumulates in (`acc_dtype`, `reduction`), and model overflow and
+   rounding in the reference from the C++ rather than from a guess.
+   A factory with more than one dtype lists them in a `.dtypes` table.
 2. **Case.** Add one `Case(...)` to
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
    the shape to run and, with `smoke=True`, that it is the kernel's

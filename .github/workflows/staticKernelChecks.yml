@@ -96,7 +96,7 @@ jobs:
           root = aie.__path__[0]
           assert root.startswith("${{ github.workspace }}"), root
           print("aie package:", root)
-          print("design builder:", kh.design.__module__)
+          print("design builder:", kd.design.__module__)
           print("factories:", len(kernels.__all__))
           EOF
 

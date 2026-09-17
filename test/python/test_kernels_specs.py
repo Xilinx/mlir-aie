@@ -31,7 +31,7 @@ from typing import Callable
 import numpy as np
 import pytest
 from aie.iron import kernels
-from aie.iron.device import NPU2Col1
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
@@ -149,6 +149,27 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=1024, dtype=np.float32), "dtype must be bfloat16"),
             (dict(tile_size=512), "tile_size must be 1024"),
         ],
+    ),
+    KernelSpec(
+        name="add_sized",
+        factory=kernels.add_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # a, b, c, size
+        expected_name="eltwise_add_bf16_vector_size",
+    ),
+    KernelSpec(
+        name="mul_sized",
+        factory=kernels.mul_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # a, b, c, size
+        expected_name="eltwise_mul_bf16_vector_size",
+    ),
+    KernelSpec(
+        name="relu_sized",
+        factory=kernels.relu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="relu_bf16_size",
     ),
     # ----- reduce -----
     KernelSpec(
@@ -269,6 +290,24 @@ KERNEL_SPECS: list[KernelSpec] = [
         source_kind="string_or_file",
         source_substring="silu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="silu_sized",
+        factory=kernels.silu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="silu_bf16_size",
+        source_kind="string_or_file",
+        source_substring="silu.cc",
+    ),
+    KernelSpec(
+        name="gelu_sized",
+        factory=kernels.gelu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="gelu_bf16_size",
+        source_kind="string_or_file",
+        source_substring="gelu.cc",
     ),
     KernelSpec(
         name="swiglu",
@@ -725,6 +764,37 @@ KERNEL_SPECS: list[KernelSpec] = [
         requires_npu2=True,
         invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
     ),
+    KernelSpec(
+        name="rope",
+        factory=kernels.rope,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, lut, out, dims
+        expected_name="rope",
+        name_variants=[(dict(two_halves=True), "rope_two_halves")],
+        shape_checks=[(dict(tile_size=96, two_halves=True), 0, (96,))],
+    ),
+    # ----- norm (kernels.norm) -----
+    KernelSpec(
+        name="rms_norm",
+        factory=kernels.rms_norm,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, cols
+        expected_name="rms_norm",
+    ),
+    KernelSpec(
+        name="rms_norm_eps",
+        factory=kernels.rms_norm_eps,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, out, cols, epsilon
+        expected_name="rms_norm_eps",
+    ),
+    KernelSpec(
+        name="layer_norm",
+        factory=kernels.layer_norm,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, cols
+        expected_name="layer_norm",
+    ),
 ]
 
 
@@ -952,3 +1022,128 @@ def test_arg_dtype_out_of_range_raises():
     ef = kernels.passthrough(tile_size=96, dtype=np.int32)
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_dtype(99)
+
+
+@pytest.fixture(params=["aie2", "aie2p"])
+def kernel_arch(request):
+    previous = get_current_device(probe_runtime=False)
+    set_current_device(NPU1Col1() if request.param == "aie2" else NPU2Col1())
+    try:
+        yield request.param
+    finally:
+        set_current_device(previous)
+
+
+@pytest.mark.parametrize("name", ["rms_norm", "rms_norm_eps", "layer_norm", "rope"])
+def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
+    from aie.iron.kernels import datamovement, norm, transformer
+
+    factory = getattr(kernels, name)
+    canonical = datamovement if name == "rope" else norm
+    assert factory is getattr(canonical, name)
+    if name != "rms_norm_eps":
+        assert factory is getattr(transformer, name)
+    assert factory().arg_shape(0) == (1024,)
+    fn = factory(tile_size=2048)
+    assert fn is factory(cols=2048)
+    assert fn.arg_shape(0) == (2048,)
+    source_dir = "generic" if name == "rope" else kernel_arch
+    assert Path(fn._source_file).parent.name == source_dir
+    assert len(fn.contract.roles) == len(fn.arg_types())
+    if name != "rope":
+        assert any(kernel_arch.upper() in flag for flag in fn._compile_flags)
+    with pytest.raises(ValueError, match="must agree"):
+        factory(tile_size=512, cols=2048)
+    with pytest.raises(ValueError, match="positive"):
+        factory(tile_size=0)
+
+
+@pytest.mark.parametrize("name", ["rms_norm", "layer_norm"])
+def test_norm_reference_eps_keyword(name):
+    from aie.iron.kernels import norm, transformer
+
+    reference = getattr(kernels, f"{name}_ref")
+    assert reference is getattr(norm, f"{name}_ref")
+    assert reference is getattr(transformer, f"{name}_ref")
+    x = np.array([[1, 2, 4, 8]], dtype=bfloat16)
+    xf = x.astype(np.float32)
+    centered = xf if name == "rms_norm" else xf - xf.mean(axis=-1, keepdims=True)
+    expected = centered / np.sqrt(
+        (centered * centered).mean(axis=-1, keepdims=True) + 0.5
+    )
+    np.testing.assert_array_equal(reference(x, eps=0.5), expected.astype(bfloat16))
+
+
+def test_norm_tail_and_vector_constraints(kernel_arch):
+    assert kernels.rms_norm(tile_size=33).arg_shape(0) == (33,)
+    fn = kernels.rms_norm_eps(cols=33)
+    expected_setup = None if kernel_arch == "aie2" else kernels.conv_even
+    assert fn.contract.setup is expected_setup
+    assert kernels.rms_norm(cols=33).contract.setup is expected_setup
+    x = np.ones((2, 33), dtype=bfloat16)
+    np.testing.assert_array_equal(
+        fn.contract.reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
+    )
+    width = 32 if kernel_arch == "aie2p" else 16
+    assert kernels.layer_norm(cols=width).arg_shape(0) == (width,)
+    with pytest.raises(ValueError, match=f"multiple of {width}"):
+        kernels.layer_norm(cols=width + 1)
+    if kernel_arch == "aie2p":
+        with pytest.raises(ValueError, match="multiple of 32"):
+            kernels.layer_norm(cols=16)
+
+
+@pytest.mark.parametrize("two_halves", [False, True])
+@pytest.mark.parametrize("tile_size", [96, 128])
+def test_rope_layout_contract_and_vector_constraints(
+    kernel_arch, two_halves, tile_size
+):
+    width = 32 if two_halves else 16
+    fn = kernels.rope(cols=tile_size, two_halves=two_halves)
+    assert fn._name == ("rope_two_halves" if two_halves else "rope")
+    with pytest.raises(ValueError, match=f"multiple of {width}"):
+        kernels.rope(cols=width - 2, two_halves=two_halves)
+    x = np.arange(tile_size, dtype=np.float32).astype(bfloat16)
+    lut = np.zeros(tile_size, dtype=bfloat16)
+    lut[1::2] = 1
+    expected = np.empty_like(x)
+    if two_halves:
+        expected[: tile_size // 2] = -x[tile_size // 2 :]
+        expected[tile_size // 2 :] = x[: tile_size // 2]
+    else:
+        expected[0::2] = -x[1::2]
+        expected[1::2] = x[0::2]
+    np.testing.assert_array_equal(fn.contract.reference(x, lut), expected)
+
+
+@pytest.mark.parametrize(
+    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
+)
+def test_sized_factory_contracts(name, kernel_arch):
+    from aie.utils.compile.jit.markers import Count, In, Out
+
+    fn = getattr(kernels, name)(tile_size=1024)
+    binary = name in ("add_sized", "mul_sized")
+    assert fn.contract.roles == ((In, In, Out, Count) if binary else (In, Out, Count))
+    assert fn.contract.tolerance.note
+    inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
+    reference_name = name.replace("_sized", "_ref")
+    expected = getattr(kernels, reference_name)(*inputs)
+    np.testing.assert_array_equal(fn.contract.reference(*inputs), expected)
+    with pytest.raises(ValueError):
+        getattr(kernels, name)(tile_size=0)
+    if binary:
+        assert getattr(kernels, name)(tile_size=1025).arg_shape(0) == (1025,)
+    else:
+        with pytest.raises(ValueError):
+            getattr(kernels, name)(tile_size=1025)
+
+
+def test_relu_sized_runtime_count_constraints(kernel_arch):
+    minimum = 1024 if kernel_arch == "aie2" else 64
+    assert kernels.relu_sized(tile_size=minimum).arg_shape(0) == (minimum,)
+    assert kernels.relu_sized(tile_size=2048).arg_shape(0) == (2048,)
+    with pytest.raises(ValueError, match="minimum"):
+        kernels.relu_sized(tile_size=minimum - 32)
+    with pytest.raises(ValueError, match="32-element vector step"):
+        kernels.relu_sized(tile_size=2049)

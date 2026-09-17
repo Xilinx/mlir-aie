@@ -26,6 +26,7 @@ from ._common import (
     dtypes,
 )
 from .core import conv_even
+from .norm import _row_size
 
 _BF16_ROUNDTRIP = Tolerance.relative(
     0.03,
@@ -235,6 +236,56 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
             ),
         ),
     )
+
+
+def rope(
+    tile_size: int = 1024, two_halves: bool = False, *, cols: int | None = None
+) -> ExternalFunction:
+    """RoPE positional rotation over bf16 tiles; ``dims`` read at runtime.
+
+    Design passes ``(in, lut, out, dims)``.  ``two_halves`` selects the
+    HuggingFace-style ``rope_two_halves`` over the Llama-paper interleave
+    ``rope``. ``cols`` aliases ``tile_size``. Both architectures use the generic
+    source; rows must be positive multiples of 16 (interleaved) or 32
+    (two halves, keeping each half 32-byte aligned). Two-halves rows may end
+    with a scalar tail. Each input row has its own streamed (cos, sin) LUT.
+    """
+    tile_size = _row_size("rope", tile_size, cols, 32 if two_halves else 16)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    func = "rope_two_halves" if two_halves else "rope"
+    return _make_extern(
+        func,
+        _default_source_path("rope.cc"),
+        [tile_ty, tile_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            setup=conv_even,
+            roles=(In, In, Out, Count),
+            reference=lambda x, lut: rope_ref(x, lut, two_halves=two_halves),
+            acc_dtype=np.float32,
+            reduction=2,
+            tolerance=Tolerance.relative(
+                0.128, note="programming_examples/ml/rope: default bf16 rtol"
+            ),
+            ops_per_call=3 * tile_size,
+        ),
+    )
+
+
+def rope_ref(x, lut, *, two_halves: bool = False):
+    """Rotate bf16 pairs by an interleaved (cos, sin) LUT, in either RoPE layout."""
+    x32, l32 = x.astype(np.float32), lut.astype(np.float32)
+    cos_v, sin_v = l32[..., 0::2], l32[..., 1::2]
+    if two_halves:
+        half = x32.shape[-1] // 2
+        x1, x2 = x32[..., :half], x32[..., half:]
+        return np.concatenate(
+            (x1 * cos_v - x2 * sin_v, x2 * cos_v + x1 * sin_v), axis=-1
+        ).astype(x.dtype)
+    x_even, x_odd = x32[..., 0::2], x32[..., 1::2]
+    out = np.empty_like(x32)
+    out[..., 0::2] = x_even * cos_v - x_odd * sin_v
+    out[..., 1::2] = x_even * sin_v + x_odd * cos_v
+    return out.astype(x.dtype)
 
 
 # -DDTYPE_* flag per element width; the transpose only moves bytes.

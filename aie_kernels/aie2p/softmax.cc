@@ -7,6 +7,7 @@
 //===-------------------------------------------------- --------===//
 
 #include <aie_api/aie.hpp>
+#include <limits>
 #include <stdint.h>
 
 #define SM_VEC_LEN 32   // 32
@@ -18,6 +19,8 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
                          bfloat16 *restrict output_vector,
                          const int32_t vector_size) {
   event0();
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
 
   // VJUNG: We do 3 passes on the vector:
   // 1. Find the max value scaled by log2e in the vector
@@ -44,9 +47,8 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, scaled_accum,
       exp_in_accum;
 
-  float max_val = 0;
+  float max_val = std::numeric_limits<bfloat16>::lowest();
   float accum_exp_val = 0;
-  float running_max = 0;
   bfloat16 col_sum_inv;
   const int elem_iters = vector_size / SM_VEC_LEN;
 
@@ -57,7 +59,8 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   // First pass - Optimized: element-wise max + single final reduce_max
   // Use vector max accumulation, then reduce once at the end
   aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec =
-      aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)-32768.0f);
+      aie::broadcast<bfloat16, SM_VEC_LEN>(
+          std::numeric_limits<bfloat16>::lowest());
   for (int i = 0; i < elem_iters; i++) {
     input_bf16 = *it_log_in++;
     scaled_accum = aie::mul(input_bf16, log2e_vec);
@@ -91,6 +94,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   }
 
   event1();
+  ::aie::set_rounding(saved_rounding);
 
   return;
 }
@@ -110,7 +114,8 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
                                 const int32_t row_idx, const int32_t num_rows,
                                 const bfloat16 scale) {
   event0();
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
 
   auto it_log_in =
       aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
@@ -124,9 +129,9 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
   aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, scaled_accum,
       exp_in_accum;
 
-  float max_val = 0;
+  float max_val = std::numeric_limits<bfloat16>::lowest();
   float accum_exp_val = 0;
-  float running_max = 0;
+  float running_max = std::numeric_limits<bfloat16>::lowest();
   const int elem_iters = vector_size / SM_VEC_LEN;
 
   exp_val_accum = aie::zeros<accfloat, SM_VEC_LEN>();
@@ -169,6 +174,7 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
   scale_buffer[3 * num_rows + row_idx] = accum_exp_val;
 
   event1();
+  ::aie::set_rounding(saved_rounding);
 
   return;
 }
@@ -193,7 +199,7 @@ void partial_softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
 void mask_bf16(bfloat16 *inout, const int32_t unmasked_size,
                const int32_t total_size) {
   for (int32_t i = unmasked_size; i < total_size; i++) {
-    inout[i] = (bfloat16)(-INFINITY);
+    inout[i] = std::numeric_limits<bfloat16>::lowest();
   }
 }
 

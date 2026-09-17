@@ -208,20 +208,8 @@ def test_every_case_names_an_exported_factory():
         assert callable(_factory(case_id)), case_id
 
 
-# The factories that carry no contract, and why: each is one half of a
-# two-tile cascade exchange (a PUT kernel has no output argument at all),
-# so its semantics are the pair's, which is a design rather than a kernel.
-WITHOUT_CONTRACT = {
-    "bn_conv2dk1_partial_put_i8",
-    "bn_conv2dk1_partial_get_relu_i8",
-    "bn_conv2dk3_dw_out_split",
-    "bn_conv2dk1_input_split_partial_put_ui8",
-    "bn_conv2dk1_input_split_partial_skip_get",
-}
-
-
 def test_contract_coverage_is_explicit():
-    """Factories without a contract are a known list, not a silent gap."""
+    """Every constructible factory carries a contract, including cascade halves."""
     without = []
     for name in kernels.__all__:
         f = getattr(kernels, name)
@@ -237,7 +225,7 @@ def test_contract_coverage_is_explicit():
             continue
         if getattr(ef, "contract", None) is None:
             without.append(name)
-    assert set(without) == WITHOUT_CONTRACT
+    assert not without, f"factories without contracts: {without}"
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -300,6 +288,65 @@ def test_reduction_reference_yields_one_value_per_call():
     # The output tile is padded to 2 bf16 for DMA alignment; only 1 is valid.
     assert kd.elems(fn.arg_types()[fn.contract.out_index]) == 2
     assert fn.contract.out_valid == 1
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.mm_bfp])
+def test_matrix_design_defaults_to_one_tile(factory):
+    fn = factory()
+    inputs = kd.sample_inputs(fn)
+    ref = fn.expected(inputs)
+    assert ref.shape == (
+        (fn.dims[0], fn.dims[2]) if len(fn.dims) == 3 else (fn.dims[0],)
+    )
+    assert [a.n_elements for a in kd.host_args(fn)][-1] == kd.output_size(fn)
+    assert "func.call" in str(kd.design(factory).as_mlir())
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(0, 32, 64), (-64, 32, 64), (65, 32, 64), (64, 33, 64), (64, 32, 65)],
+)
+def test_matrix_design_rejects_partial_or_empty_tiles(shape):
+    fn = kernels.mm(dim_m=64, dim_k=32, dim_n=64)
+    for helper in (kd.sample_inputs, kd.output_size, kd.host_args):
+        with pytest.raises(ValueError, match="positive multiples"):
+            helper(fn, shape=shape)
+    with pytest.raises(ValueError, match="positive multiples"):
+        kd.design(kernels.mm, dim_m=64, dim_k=32, dim_n=64, shape=shape)
+
+
+@pytest.mark.parametrize("shape", [(64, 32), (64, 32.5, 64)])
+def test_matrix_design_rejects_invalid_shape(shape):
+    with pytest.raises(ValueError, match="shape"):
+        kd.design(kernels.mm, shape=shape)
+
+
+@pytest.mark.parametrize("calls", [0, -1, 1.5])
+def test_design_rejects_invalid_call_count(calls):
+    with pytest.raises(ValueError, match="positive integer"):
+        kd.design(kernels.add, calls=calls)
+
+
+def test_matrix_design_does_not_silently_ignore_calls():
+    with pytest.raises(ValueError, match="matrix designs require calls=1"):
+        kd.design(kernels.mm, calls=2)
+
+
+def test_param_encoding_preserves_integer_bits():
+    from aie.iron import Param
+    from aie.iron.kernel import ExternalFunction
+
+    tile = np.ndarray[(4,), np.dtype[np.uint64]]
+    fn = ExternalFunction(
+        "param_encoding", source_string="", arg_types=[tile, tile, tile]
+    )
+    fn.contract = KernelContract(roles=(In, Param, Out))
+    first = np.array([2**53, 2**63, 2**64 - 2, 2**64 - 1], np.uint64)
+    second = first.copy()
+    second[0] += 1
+    encoded = kd._encode_params(fn, [first])
+    assert encoded[0][2] == tuple(first.tolist())
+    assert encoded != kd._encode_params(fn, [second])
 
 
 def test_per_tile_matrix_references_agree_with_the_whole_problem_ones():
@@ -386,9 +433,13 @@ def test_contract_rejects_bad_roles():
 
 
 def test_harness_refuses_a_kernel_without_a_contract():
-    # A cascade put kernel: its output is the cascade stream, so no contract.
+    from aie.iron.kernel import ExternalFunction
+
+    def factory():
+        return ExternalFunction("uncontracted", source_string="", arg_types=[])
+
     with pytest.raises(ValueError, match="declares no contract"):
-        kd.design(kernels.bn_conv2dk1_partial_put_i8, calls=1)
+        kd.design(factory)
 
 
 def test_rgba2hue_reference_matches_the_kernel():
