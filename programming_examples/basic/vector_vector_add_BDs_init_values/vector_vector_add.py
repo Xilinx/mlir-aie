@@ -7,19 +7,19 @@
 
 Two pedagogical points, both visible in the design body:
 
-  1. **BD-level data movement.**  Instead of letting :class:`ObjectFifo`
+  1. **BD-level data movement.**  Instead of letting ``ObjectFifo``
      manage routing, DMA, and lock handshakes, this design hand-wires
-     them via the iron BD-level primitives :class:`Flow`, :class:`Lock`,
-     :class:`TileDma`, :class:`DmaChannel`, :class:`Bd`, :class:`Acquire`,
-     :class:`Release`.  The core body explicitly acquires / releases the
+     them via the iron BD-level primitives ``Flow``, ``Lock``,
+     ``TileDma``, ``DmaChannel``, ``Bd``, ``Acquire``,
+     ``Release``.  The core body explicitly acquires / releases the
      producer / consumer locks that synchronise with these BDs.
 
   2. **``Buffer(initial_value=array)``.**  The second operand lives in a
-     :class:`PreInitializedConstantBuffer` (a :class:`Buffer` subclass)
+     ``PreInitializedConstantBuffer`` (a ``Buffer`` subclass)
      whose contents are written into L1 at design startup, so no shim
      DMA is needed for it.  Compare with
      ``programming_examples/basic/custom_dma/`` for a richer user-side
-     :class:`Resolvable` example.
+     ``Resolvable`` example.
 
 Invocation:
 
@@ -67,7 +67,7 @@ from aie.utils.hostruntime.cli import run_design_cli
 class PreInitializedConstantBuffer(Buffer):
     """L1 buffer whose contents are baked into the design at startup.
 
-    A thin :class:`Buffer` subclass demonstrating the
+    A thin ``Buffer`` subclass demonstrating the
     ``initial_value=`` mechanism as a named, reusable component.
     """
 
