@@ -457,11 +457,14 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     where it is absent.
 
     MemTile buffers may spill to accessible neighboring memory. Allocation
-    checks DMA channel eligibility against every buffer an endpoint accesses.
+    checks DMA channel eligibility against every buffer and lock an endpoint
+    accesses.
     If the usual largest-first placement exhausts neighbor-capable channels,
-    retry with selected pools reserved locally, without disabling spilling for
-    other pools. At most 64 locality combinations are tried. Tile placement
-    and buffer packing remain greedy; failure is not a proof of infeasibility.
+    retry with selected buffers and generated locks reserved on the accessing
+    endpoint's tile, without disabling spilling for other pools. Existing
+    buffers and locks remain fixed. At most 64 locality combinations are tried.
+    Tile placement and buffer packing remain greedy; failure is not a proof of
+    infeasibility.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";

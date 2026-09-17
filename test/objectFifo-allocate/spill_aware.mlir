@@ -2,6 +2,7 @@
 // RUN: aie-opt --split-input-file --aie-objectfifo-allocate %s -o %t
 // RUN: aie-opt --split-input-file --aie-objectfifo-allocate %t -o %t2
 // RUN: diff %t %t2
+// RUN: aie-opt --split-input-file --aie-objectfifo-allocate --aie-objectfifo-lower-dmas %s -o /dev/null
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -35,7 +36,7 @@ module @pinned_local {
 // -----
 
 // Pool metadata does not determine reachability: these buffers are local to
-// all six readers, but remote to the writer and to the pool's lock tile.
+// all six readers, but remote to the writer. Generated locks must follow them.
 module @shared_existing {
   aie.device(npu2) {
     %reader = aie.tile(0, 1)
@@ -149,8 +150,8 @@ module @reserved_channels {
 
 // -----
 
-// A local-only channel on another user can reserve the pool's objects there.
-// The pool's nominal tile still holds the locks; it need not hold the buffers.
+// A local-only channel on another user can reserve the pool's objects and
+// generated locks there. The nominal pool tile is not a physical owner.
 module @shared_local_channel {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
@@ -164,8 +165,8 @@ module @shared_local_channel {
 }
 // CHECK-LABEL: module @shared_local_channel
 // CHECK-DAG: %[[LOCKS:.*]] = aie.tile(0, 1)
-// CHECK-DAG: aie.lock(%[[LOCKS]]) {{.*}}sym_name = "shared_prod_lock_0"
 // CHECK-DAG: %[[READER:.*]] = aie.tile(1, 1)
+// CHECK-DAG: aie.lock(%[[READER]]) {{.*}}sym_name = "shared_prod_lock_0"
 // CHECK-DAG: aie.buffer(%[[READER]]) {sym_name = "shared_buff_0"}
 // CHECK-DAG: aie.buffer(%[[READER]]) {sym_name = "shared_buff_1"}
 // CHECK: @reader(%[[READER]]) drains @shared {channelIndex = 5 : i32}
@@ -189,3 +190,35 @@ module @unplaced_shared {
 // CHECK: %[[UNPLACED:.*]] = aie.logical_tile<MemTile>(?, ?)
 // CHECK: aie.buffer(%[[UNPLACED]]) {sym_name = "shared_buff_0"}
 // CHECK: @reader({{.*}}) drains @shared {channelIndex = 0 : i32}
+
+// -----
+
+// A distinct unresolved buffer tile must reserve a neighbor-capable channel
+// before local endpoints can consume that restricted range.
+module @partly_placed {
+  aie.device(npu2) {
+    %home = aie.tile(0, 1)
+    %other = aie.logical_tile<MemTile>(1, ?)
+    %a = aie.buffer(%home) {sym_name = "a"} : memref<16xi32>
+    %b = aie.buffer(%other) {sym_name = "b"} : memref<16xi32>
+    aie.objectfifo.pool @local(%home) {
+      depth = 1 : i32, buffers = [@a]
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.pool @remote(%home) {
+      depth = 1 : i32, buffers = [@b]
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @local0(%home) drains @local
+    aie.objectfifo.dma_endpoint @local1(%home) drains @local
+    aie.objectfifo.dma_endpoint @local2(%home) drains @local
+    aie.objectfifo.dma_endpoint @local3(%home) drains @local
+    aie.objectfifo.dma_endpoint @remote_dma(%home) drains @remote
+  }
+}
+// CHECK-LABEL: module @partly_placed
+// CHECK: @local0({{.*}}) drains @local {channelIndex = 1 : i32}
+// CHECK: @local3({{.*}}) drains @local {channelIndex = 4 : i32}
+// CHECK: @remote_dma({{.*}}) drains @remote {channelIndex = 0 : i32}

@@ -53,7 +53,32 @@ module @no_common_memory {
     aie.objectfifo.pool @p(%middle) {depth = 1 : i32} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
+
     aie.objectfifo.dma_endpoint @reader(%left) drains @p
     aie.objectfifo.dma_endpoint @writer(%right) fills @p
+  }
+}
+
+// -----
+
+// Hand-placed locks are fixed, even when the buffers can all be local.
+module @pinned_remote_locks {
+  // expected-remark @+1 {{could not find a spill-aware allocation}}
+  aie.device(npu2) {
+    %home = aie.tile(0, 1)
+    %remote = aie.tile(1, 1)
+    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    %free = aie.lock(%remote) {sym_name = "free", init = 1 : i32}
+    %full = aie.lock(%remote) {sym_name = "full", init = 0 : i32}
+    aie.objectfifo.pool @p(%home) {
+      depth = 1 : i32, buffers = [@b]
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s {
+        offset = 0 : i32, size = 16 : i32,
+        produceLock = @free, consumeLock = @full
+      }
+    }
+    // expected-error @+1 {{pinned MM2S DMA channel 5 cannot access adjacent MemTile buffers or locks}}
+    aie.objectfifo.dma_endpoint @reader(%home) drains @p {channelIndex = 5 : i32}
   }
 }

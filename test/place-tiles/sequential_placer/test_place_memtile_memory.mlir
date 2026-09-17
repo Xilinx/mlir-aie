@@ -7,10 +7,10 @@
 
 // RUN: aie-opt --aie-place-tiles %s | FileCheck %s
 // RUN: aie-opt --aie-place-tiles --aie-objectfifo-split --aie-objectfifo-allocate %s | FileCheck %s --check-prefix=ALLOC
-// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="skip-verify=true" %s -o /dev/null
+// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="skip-verify=true" --aie-assign-lock-ids --aie-assign-buffer-addresses %s -o /dev/null
 // RUN: sed -e 's/196608xi8/32768xi8/' -e 's/147456xi8/65536xi8/' %s > %t
 // RUN: aie-opt --aie-place-tiles --aie-objectfifo-split --aie-objectfifo-allocate %t | FileCheck %s --check-prefix=BOUNDARY
-// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="skip-verify=true" %t -o /dev/null
+// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="skip-verify=true" --aie-assign-lock-ids --aie-assign-buffer-addresses %t -o /dev/null
 
 // A reduction of #3720. Six input channels fit on one MemTile, but merging
 // these pools there makes both a forward and the four-way join spill. Their
