@@ -147,12 +147,47 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
   return getShimBurstLength(tm, burstLength).first;
 }
 
+Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
+                                        StringAttr name) {
+  if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
+      symbolTableOp->getNumRegions() != 1 ||
+      !symbolTableOp->getRegion(0).hasOneBlock()) {
+    return nullptr;
+  }
+  if (Operation *symbol =
+          mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name)) {
+    return symbol;
+  }
+  for (Operation &op : symbolTableOp->getRegion(0).front()) {
+    if (op.getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()) ==
+        name) {
+      return &op;
+    }
+  }
+  return nullptr;
+}
+
+Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
+                                        StringRef name) {
+  return lookupNamedOpIn(symbolTableOp,
+                         StringAttr::get(symbolTableOp->getContext(), name));
+}
+
+Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringAttr name) {
+  Operation *symbolTableOp = mlir::SymbolTable::getNearestSymbolTable(from);
+  return symbolTableOp ? lookupNamedOpIn(symbolTableOp, name) : nullptr;
+}
+
+Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringRef name) {
+  return lookupNamedOp(from, StringAttr::get(from->getContext(), name));
+}
+
 std::string xilinx::AIE::generateUniqueSymbolName(
     mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();
-  } while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name));
+  } while (lookupNamedOpIn(symbolTableOp, llvm::StringRef(name)));
   return name;
 }
 
@@ -624,8 +659,8 @@ SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
   SmallVector<OpTy> ops;
   if (names) {
     for (auto name : names->getAsRange<FlatSymbolRefAttr>()) {
-      if (auto op = dyn_cast_or_null<OpTy>(
-              SymbolTable::lookupNearestSymbolFrom(from, name.getAttr()))) {
+      if (auto op =
+              dyn_cast_or_null<OpTy>(lookupNamedOp(from, name.getAttr()))) {
         ops.push_back(op);
       }
     }
@@ -730,8 +765,7 @@ SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
     for (std::optional<FlatSymbolRefAttr> name :
          {segment.getProduceLockAttr(), segment.getConsumeLockAttr()}) {
       if (name && *name) {
-        if (auto lock = mlir::SymbolTable::lookupNearestSymbolFrom<LockOp>(
-                device, *name)) {
+        if (auto lock = lookupNamedOp<LockOp>(device, name->getAttr())) {
           locks.push_back(lock);
         }
       }
@@ -4487,6 +4521,11 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
       auto walkResult = attr.walk([&](SymbolRefAttr symbolRef) {
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
+        if (!symbolDefOp) {
+          if (auto flat = dyn_cast<FlatSymbolRefAttr>(symbolRef)) {
+            symbolDefOp = lookupNamedOp(*this, flat.getAttr());
+          }
+        }
         if (symbolDefOp) {
           if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
               !llvm::isa<DeviceOp>(symbolDefOp) &&

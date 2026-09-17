@@ -15,6 +15,7 @@ include "aie/Dialect/AIE/IR/AIE.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpAsmInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 // Op is a DMA-like operation with BD contraints
 def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
@@ -256,5 +257,21 @@ def MyOffsetSizeAndStrideOpInterface : OpInterfaceTrait<"::xilinx::AIE::MyOffset
 def SkipAccessibilityCheckTrait : NativeOpTrait<"SkipAccessibilityCheckTrait"> {
   string cppNamespace = "::xilinx::AIE";
 }
+
+// Supplies the visibility accessors that `Symbol` requires, for ops that keep
+// visibility in a plain `sym_visibility` attribute rather than in a
+// tablegen-declared argument. Pair this with `Symbol` in place of upstream's
+// `SymbolVisibility`. See `AttrBasedSymbolVisibility` in AIEDialect.h.
+def AttrBasedSymbolVisibility : NativeOpTrait<"AttrBasedSymbolVisibility"> {
+  string cppNamespace = "::xilinx::AIE";
+}
+
+// `Symbol` no longer implements the name and visibility accessors itself; it
+// expects the op to carry `SymbolName` and `SymbolVisibility`, which forward to
+// tablegen-declared `sym_name` and `sym_visibility` arguments. Our symbol ops
+// declare a `sym_name`, so upstream's `SymbolName` fits, but none of them
+// declare a `sym_visibility` -- they are all public -- so visibility falls back
+// to the attribute. Use this in place of a bare `Symbol`.
+def AIESymbol : TraitList<[Symbol, SymbolName, AttrBasedSymbolVisibility]>;
 
 #endif // AIE_INTERFACES

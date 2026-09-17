@@ -369,6 +369,12 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         // (for cross-device references).
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
+        if (!symbolDefOp && oldSymbolRef.getNestedReferences().empty()) {
+          // Buffers and locks are referred to by name but are not symbol ops,
+          // so a plain symbol lookup does not find them.
+          symbolDefOp =
+              AIE::lookupNamedOp(lookupFrom, oldSymbolRef.getRootReference());
+        }
         if (!symbolDefOp) {
           if (ModuleOp moduleOp = lookupFrom->getParentOfType<ModuleOp>()) {
             symbolDefOp = SymbolTable::lookupSymbolIn(moduleOp, oldSymbolRef);
