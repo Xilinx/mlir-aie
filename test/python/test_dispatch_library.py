@@ -39,14 +39,15 @@ def test_defaulted_compile_param_does_not_consume_dispatch_argument(compile_kwar
     assert scalars == {"scale": 7}
 
 
-def _source(offset=0):
+def _source(offset=0, *, arg_idx=0, device="npu1_1col"):
+    buffers = ", ".join(f"%a{i}: memref<8xi32>" for i in range(arg_idx + 1))
     return f"""module {{
-      aie.device(npu1_1col) {{
-        aie.runtime_sequence @seq(%a: memref<8xi32>, %param: i32, %n: index) {{
+      aie.device({device}) {{
+        aie.runtime_sequence @seq({buffers}, %param: i32, %n: index) {{
           %c0 = arith.constant 0 : index
           %c1 = arith.constant 1 : index
           scf.for %i = %c0 to %n step %c1 {{
-            aiex.npu.address_patch(%param : i32) {{addr = {119300 + offset} : ui32, arg_idx = 0 : i32}}
+            aiex.npu.address_patch(%param : i32) {{addr = {119300 + offset} : ui32, arg_idx = {arg_idx} : i32}}
           }}
         }}
       }}
@@ -76,8 +77,8 @@ def test_generated_bridge_matches_static_binary(tmp_path):
         static = (
             _source()
             .replace(
-                "%a: memref<8xi32>, %param: i32, %n: index",
-                "%a: memref<8xi32>",
+                "%a0: memref<8xi32>, %param: i32, %n: index",
+                "%a0: memref<8xi32>",
             )
             .replace(
                 "%c0 =",
@@ -134,10 +135,24 @@ def test_abi_failure_preserves_loaded_generation(tmp_path):
     assert not list(tmp_path.glob("dispatch.staging.*"))
 
 
-def test_fold_ddr_addr_offset_reaches_translation(tmp_path):
-    folded = DispatchBridge(_compile(tmp_path, fold=True), ["param", "n"])
-    unfolded = DispatchBridge(_compile(tmp_path, fold=False), ["param", "n"])
-    assert not np.array_equal(_words(folded), _words(unfolded))
+@pytest.mark.parametrize("device", ["npu1_1col", "npu2"])
+@pytest.mark.parametrize("arg_idx", [0, 4, 5, 6])
+def test_fold_ddr_addr_offset_reaches_translation(tmp_path, device, arg_idx):
+    source = _source(arg_idx=arg_idx, device=device)
+    folded = DispatchBridge(_compile(tmp_path, source, fold=True), ["param", "n"])
+    unfolded = DispatchBridge(_compile(tmp_path, source, fold=False), ["param", "n"])
+    for n in (1, 3):
+        folded_words, unfolded_words = _words(folded, n), _words(unfolded, n)
+        # Four header words, then 12-word DDR patches: argidx at 8, argplus at 10.
+        patches = unfolded_words[4:].reshape(n, 12)
+        np.testing.assert_array_equal(patches[:, 8], arg_idx)
+        np.testing.assert_array_equal(patches[:, 10], 16)
+        np.testing.assert_array_equal(patches[:, 11], 0)
+        expected = unfolded_words.copy()
+        # Firmware translates buffers 0..4; only later buffers need folding.
+        if arg_idx >= 5:
+            expected[4:].reshape(n, 12)[:, 10] += np.uint32(0x80000000)
+        np.testing.assert_array_equal(folded_words, expected)
 
 
 def test_registered_pipeline_lowers_dynamic_dma_tasks(tmp_path):
