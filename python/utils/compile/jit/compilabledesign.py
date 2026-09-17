@@ -18,7 +18,7 @@ from "rebuild needed":
 ``hash(design)`` composes both into a 24-hex cache key; no MLIR generation
 needed for a cache lookup.
 
-Generation is memoized per active IRON device via :attr:`CompilableDesign._generated`.
+Generation is memoized per active IRON device via `CompilableDesign._generated`.
 Caching the *text* — not the Module — is what makes this safe across MLIR
 Contexts: every consumer call re-parses into a fresh ``mlir_mod_ctx()`` and gets
 a Module bound to its own Context. The active device is part of the generation
@@ -119,7 +119,7 @@ class CompilableDesign:
         include_paths: Extra ``-I`` paths forwarded to the C++ compiler.
         aiecc_flags: Extra flags forwarded to ``aiecc``.
         object_files: Pre-compiled ``.o`` files to link with.
-        full_elf: When ``True``, :meth:`compile` emits a single self-contained
+        full_elf: When ``True``, `compile` emits a single self-contained
             "full" ELF (PDIs + TXN control code) instead of an
             ``xclbin`` + ``insts.bin`` pair.  The ELF is loaded standalone by
             ``XRTHostRuntime`` via ``pyxrt.hw_context(dev, pyxrt.elf(path))``.
@@ -269,7 +269,7 @@ class CompilableDesign:
         Programmable Device Image (config data packed by ``bootgen``) to that
         path.  Like ``elf_path`` it requires explicit ``xclbin_path`` /
         ``inst_path``.  In default cache mode aiecc still emits a ``main.pdi``
-        into the cache directory — use :meth:`get_pdi_path` to locate it.
+        into the cache directory — use `get_pdi_path` to locate it.
         """
         from aie.iron.kernel import ExternalFunction
 
@@ -451,7 +451,7 @@ class CompilableDesign:
 
         With ``full_elf_path`` the ELF is written there and the cache is
         bypassed; otherwise it lands in ``<NPU_CACHE_HOME>/<hash>/design.elf``.
-        Sets :attr:`_elf_path` and :attr:`_full_elf_kernel_name` and returns
+        Sets `_elf_path` and `_full_elf_kernel_name` and returns
         ``(elf_path, None)`` (there is no separate insts artifact).
         """
         if not isinstance(self.mlir_generator, Path):
@@ -617,7 +617,7 @@ class CompilableDesign:
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
         """Return one cache-directory PDI, or ``None`` if none is present.
 
-        Convenience wrapper over :meth:`get_pdi_paths` for the common
+        Convenience wrapper over `get_pdi_paths` for the common
         single-device case.  aiecc names each PDI after its ``aie.device``
         symbol (``<device>.pdi``); IRON's ``@iron.jit`` path uses ``main`` so
         it lands as ``main.pdi``, but a raw ``.mlir`` ``Path`` generator can
@@ -632,7 +632,7 @@ class CompilableDesign:
             The matching PDI, the sole PDI when there's exactly one, or
             ``None`` when there is no PDI (or the named one is absent).  When
             several PDIs exist and ``device_name`` is not given, returns the
-            first by name and leaves the rest to :meth:`get_pdi_paths`.
+            first by name and leaves the rest to `get_pdi_paths`.
         """
         pdis = self.get_pdi_paths()
         if not pdis:
@@ -864,7 +864,7 @@ class CompilableDesign:
     def _resolve_fold_ddr_addr_offset() -> bool:
         """Active backend's DDR-patch fold ABI.
 
-        See :func:`aie.utils.npu_runtime_folds_ddr_addr_offset`. Kept in one
+        See `aie.utils.npu_runtime_folds_ddr_addr_offset`. Kept in one
         place, and resolved from the backend's ``FOLDS_DDR_ADDR_OFFSET`` class
         attribute, so the cache key and the aiecc invocation always agree on
         whether ``insts.bin`` is folded.
@@ -1035,7 +1035,7 @@ class CompilableDesign:
     def _generate_mlir(self, ExternalFunction, *, full_elf: bool = False):
         """Return an MLIR ``Module`` bound to a fresh Context.
 
-        Thin wrapper over :meth:`_generated_for`: parse the cached MLIR text
+        Thin wrapper over `_generated_for`: parse the cached MLIR text
         into a new ``mlir_mod_ctx()`` and re-register the cached
         ``ExternalFunction`` instances so ``compile()`` can collect them.
         """

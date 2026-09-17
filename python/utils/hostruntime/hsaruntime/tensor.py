@@ -23,7 +23,7 @@ from .context import HSAContext
 class _VmemMapping:
     """Sole owner of one vmem allocation, released when the last reference drops.
 
-    Kept separate from :class:`HSATensor` so the numpy views handed out by
+    Kept separate from `HSATensor` so the numpy views handed out by
     ``numpy()`` / ``data`` / ``to_torch()`` can keep the mapping alive. Those
     views are ``np.frombuffer`` over a ctypes array built with ``from_address``,
     which owns nothing -- so with the free tied to the tensor instead, dropping
