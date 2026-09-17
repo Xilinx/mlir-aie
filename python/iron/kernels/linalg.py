@@ -47,13 +47,13 @@ _CASCADE_MM_MAC_DIMS = {
 }
 
 _MM_COMBOS = {
-    (np.int8, np.int8): ("i8_i8", "i8_i8_ONLY"),
-    (np.int8, np.int16): ("i8_i16", "i8_i16_ONLY"),
-    (np.int8, np.int32): ("i8_i32", "i8_i32_ONLY"),
-    (np.int16, np.int16): ("i16_i16", "i16_i16_ONLY"),
-    (np.int16, np.int32): ("i16_i32", "i16_i32_ONLY"),
-    (bfloat16, bfloat16): ("bf16_bf16", "bf16_bf16_ONLY"),
-    (bfloat16, np.float32): ("bf16_f32", "bf16_f32_ONLY"),
+    (np.int8, np.int8): "i8_i8",
+    (np.int8, np.int16): "i8_i16",
+    (np.int8, np.int32): "i8_i32",
+    (np.int16, np.int16): "i16_i16",
+    (np.int16, np.int32): "i16_i32",
+    (bfloat16, bfloat16): "bf16_bf16",
+    (bfloat16, np.float32): "bf16_f32",
 }
 
 # Per-arch MMUL micro-kernel dimensions (r, s, t) used by aie_kernels/<arch>/mm.cc
@@ -157,7 +157,7 @@ def mm(
             f"Supported: {list(_MM_COMBOS.keys())}"
         )
 
-    suffix, only_flag = _MM_COMBOS[key]
+    suffix = _MM_COMBOS[key]
     prefix = "matmul" if vectorized else "matmul_scalar"
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
@@ -166,7 +166,6 @@ def mm(
         f"-DDIM_M={dim_m}",
         f"-DDIM_K={dim_k}",
         f"-DDIM_N={dim_n}",
-        f"-D{only_flag}",
     ]
     if b_col_maj:
         compile_flags.append("-DB_COL_MAJ")
