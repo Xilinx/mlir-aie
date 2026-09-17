@@ -45,36 +45,36 @@ aie.device(npu2) {
       aie.end
     }
   }
+}
 
-  // -----
+// -----
 
-  // A raw channel sync consumes the same FIFO token as a task await and must
-  // release a pending task once that token proves it has completed.
-  // CHECK-LABEL: @sync_completes_pending
-  // CHECK: aiex.dma_await_task
-  // CHECK: aiex.npu.sync
-  // CHECK: aie.dma_bd({{.*}} {bd_id = 1 : i32}
-  aie.device(npu2) {
-    %tile = aie.tile(0, 0)
-    aie.runtime_sequence @sync_completes_pending(%buf: memref<256xi32>) {
-      %c0 = arith.constant 0 : i32
-      %c1 = arith.constant 1 : i32
-      %a = aiex.dma_configure_task(%tile, MM2S, 0) {
-        aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 0 : i32}
-        aie.end
-      } {issue_token = true}
-      %b = aiex.dma_configure_task(%tile, MM2S, 0) {
-        aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%a)
-      aiex.dma_start_task(%b)
-      aiex.dma_await_task(%b)
-      aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
-      %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
-        aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
-        aie.end
-      }
+// A raw channel sync consumes the same FIFO token as a task await and must
+// release a pending task once that token proves it has completed.
+// CHECK-LABEL: @sync_completes_pending
+// CHECK: aiex.dma_await_task
+// CHECK: aiex.npu.sync
+// CHECK: aie.dma_bd({{.*}} {bd_id = 1 : i32}
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.runtime_sequence @sync_completes_pending(%buf: memref<256xi32>) {
+    %c0 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : i32
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 0 : i32}
+      aie.end
+    } {issue_token = true}
+    %b = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%a)
+    aiex.dma_start_task(%b)
+    aiex.dma_await_task(%b)
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
+      aie.end
     }
   }
 }

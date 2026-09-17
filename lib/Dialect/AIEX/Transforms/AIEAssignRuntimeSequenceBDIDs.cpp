@@ -91,6 +91,23 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return std::nullopt;
   }
 
+  static std::optional<DmaQueueModel::ChannelKey>
+  otherAwaitChannel(Operation *op) {
+    if (auto sync = dyn_cast<NpuSyncOp>(op))
+      return syncChannelKey(sync);
+    if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
+      auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
+          op->getParentOfType<AIE::DeviceOp>(), wait.getSymbol());
+      if (allocation)
+        if (AIE::TileOp tile = allocation.getTileOp())
+          return DmaQueueModel::ChannelKey{
+              tile.getCol(), tile.getRow(),
+              static_cast<int>(allocation.getChannelDir()),
+              static_cast<int>(allocation.getChannelIndex())};
+    }
+    return std::nullopt;
+  }
+
   // Mark every BD id a static DMA already took on `tile`, so this allocator
   // doesn't hand the same id to a runtime-sequence task.
   static void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
@@ -192,12 +209,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         }
         tokens--;
         queue.awaitToken(key);
-      } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
-        // Deliberately the queue only, never the `avail` token balance above.
-        // That balance drives a hard error, so it stays with the ops whose
-        // token flags it can read off the IR; the queue only warns or polls,
-        // so it can afford to credit a raw sync it cannot fully account for.
-        awaitSync(queue, sync);
+      } else if (auto key = otherAwaitChannel(op)) {
+        // Raw waits may also consume tokens from outside this sequence. Do not
+        // diagnose those here, but never reuse a token already consumed by one.
+        avail[*key] = std::max(0, avail[*key] - 1);
+        queue.awaitToken(*key);
       } else if (auto key = otherTokenChannel(op)) {
         avail[*key]++;
         queue.push(*key, true);
@@ -502,9 +518,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               noteAwaited(channelOf(cfg));
           if (failed(recycleTask(await.getTask(), await, /*isAwait=*/true)))
             return WalkResult::interrupt();
-        } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
-          if (auto key = syncChannelKey(sync))
-            noteAwaited(*key);
+        } else if (auto key = otherAwaitChannel(op)) {
+          noteAwaited(*key);
           if (failed(recycleCompletedTasks(op)))
             return WalkResult::interrupt();
         } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
