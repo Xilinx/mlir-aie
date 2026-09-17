@@ -154,6 +154,64 @@ def TileElement : OpInterface<"TileElement", [
   }];
 }
 
+def BufferLike : OpInterface<"BufferLike"> {
+  let description = [{
+    Interface for the ops that declare storage a DMA or a core can address:
+    `aie.buffer` in a tile's memory module and `aie.external_buffer` in DDR.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods = [InterfaceMethod<[{The memref this op declares.}],
+                                 "mlir::Value", "getBuffer", (ins), [{}],
+                                 [{ return $_op.getBuffer(); }]>,
+                 InterfaceMethod<
+                     [{The tile whose memory module holds this buffer, null
+      where it lives outside the array.}],
+                     "mlir::Value", "getBufferTile", (ins), [{}],
+                     [{ return nullptr; }]>,
+  ];
+}
+
+def RouteEndpoint : OpInterface<"RouteEndpoint"> {
+  let description = [{
+    Interface for the ops an `aie.route` connects.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods =
+      [InterfaceMethod<[{Which way this end moves data.}], "DMAChannelDir",
+                       "getRouteDirection", (ins)>,
+       InterfaceMethod<[{The switchbox bundle this end occupies.}],
+                       "WireBundle", "getRouteBundle", (ins)>,
+       InterfaceMethod<[{The port within that bundle, once assigned.}],
+                       "std::optional<int>", "getRouteChannel", (ins)>,
+       InterfaceMethod<[{Record the port this end was given.}], "void",
+                       "setRouteChannel", (ins "int":$channel)>,
+       InterfaceMethod<[{The tile this end sits on.}], "mlir::Value", "getTile",
+                       (ins), [{}], [{ return $_op.getTile(); }]>,
+       InterfaceMethod<
+           [{The objectFifo this end was split from, if it came from
+      one; the name runtime records address it by.}],
+           "std::optional<llvm::StringRef>", "getFifoName", (ins), [{}],
+           [{ return $_op.getFifoName(); }]>,
+       InterfaceMethod<[{Stamp a packet header on this end.}], "void",
+                       "setRoutePacket", (ins "PacketInfoAttr":$packet), [{}],
+                       [{ $_op.setPacketAttr(packet); }]>,
+  ];
+}
+
+def DmaBody : OpInterface<"DmaBody", [TileElement]> {
+  let description = [{
+    Interface for the ops whose region holds one tile's DMA program: the
+    `aie.dma_start` chains and the buffer descriptors they run.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods = [InterfaceMethod<[{Return the region holding the DMA program.}],
+                                 "mlir::Region &", "getDmaBody", (ins), [{}],
+                                 [{
+        return $_op.getBody();
+      }]>,
+  ];
+}
+
 def Interconnect : OpInterface<"Interconnect", [TileElement]> {
   let description = [{
     Interface for operations that have interconnect-like properties,

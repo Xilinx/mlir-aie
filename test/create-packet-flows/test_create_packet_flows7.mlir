@@ -12,7 +12,7 @@
 // CHECK:        %[[TILE_1_2:.*]] = aie.tile(1, 2)
 // CHECK:        %{{.*}} = aie.switchbox(%[[TILE_1_2]]) {
 // CHECK:          %[[VAL0:.*]] = aie.amsel<0> (0)
-// CHECK:          %{{.*}} = aie.masterset(South : 0, %[[VAL0]])
+// CHECK:          %{{.*}} = aie.masterset(South : 3, %[[VAL0]])
 // CHECK:          aie.packet_rules(Trace : 0) {
 // CHECK:            aie.rule(31, 1, %[[VAL0]])
 // CHECK:          }
@@ -24,7 +24,7 @@
 // CHECK:        %{{.*}} = aie.switchbox(%[[TILE_0_0]]) {
 // CHECK:          %[[VAL1:.*]] = aie.amsel<0> (0)
 // CHECK:          %{{.*}} = aie.masterset(South : 3, %[[VAL1]]) {keep_pkt_header = true}
-// CHECK:          aie.packet_rules(East : 0) {
+// CHECK:          aie.packet_rules(East : 3) {
 // CHECK:            aie.rule(31, 1, %[[VAL1]])
 // CHECK:          }
 // CHECK:        }
@@ -35,16 +35,16 @@
 // CHECK:        %[[TILE_1_0:.*]] = aie.tile(1, 0)
 // CHECK:        %{{.*}} = aie.switchbox(%[[TILE_1_0]]) {
 // CHECK:          %[[VAL2:.*]] = aie.amsel<0> (0)
-// CHECK:          %{{.*}} = aie.masterset(West : 0, %[[VAL2]])
-// CHECK:          aie.packet_rules(North : 0) {
+// CHECK:          %{{.*}} = aie.masterset(West : 3, %[[VAL2]])
+// CHECK:          aie.packet_rules(North : 3) {
 // CHECK:            aie.rule(31, 1, %[[VAL2]])
 // CHECK:          }
 // CHECK:        }
 // CHECK:        %[[TILE_1_1:.*]] = aie.tile(1, 1)
 // CHECK:        %{{.*}} = aie.switchbox(%[[TILE_1_1]]) {
 // CHECK:          %[[VAL3:.*]] = aie.amsel<0> (0)
-// CHECK:          %{{.*}} = aie.masterset(South : 0, %[[VAL3]])
-// CHECK:          aie.packet_rules(North : 0) {
+// CHECK:          %{{.*}} = aie.masterset(South : 3, %[[VAL3]])
+// CHECK:          aie.packet_rules(North : 3) {
 // CHECK:            aie.rule(31, 1, %[[VAL3]])
 // CHECK:          }
 // CHECK:        }

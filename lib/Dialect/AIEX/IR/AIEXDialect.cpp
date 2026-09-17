@@ -20,11 +20,13 @@
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/TypeSize.h"
 
 #include <cstdint>
+#include <limits>
 #include <numeric>
 
 using namespace mlir;
@@ -106,8 +108,8 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
   // Output strides and sizes are default-initialized to 0
-  std::fill(sizes.begin(), sizes.end(), 0);
-  std::fill(strides.begin(), strides.end(), 0);
+  llvm::fill(sizes, 0);
+  llvm::fill(strides, 0);
 
   if (inputSizes[0] == 0) {
     // Illegal input, this won't transfer anything at all.
@@ -142,23 +144,17 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
   auto elemWidth =
       dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
 
-  uint32_t wrap_bits = 0;
-  uint32_t step_bits = 0;
-  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
-  if (targetModel.isShimNOCTile(tileCol, tileRow)) {
-    step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else if (targetModel.isMemTile(tileCol, tileRow)) {
-    step_bits = 17; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
-  } else if (targetModel.isCoreTile(tileCol, tileRow)) {
-    step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else {
+  // ShimPLTiles have no ShimDMA, so BD field widths are meaningless here.
+  if (!targetModel.isCoreTile(tileCol, tileRow) &&
+      !targetModel.isMemTile(tileCol, tileRow) &&
+      !targetModel.isShimNOCTile(tileCol, tileRow))
     return forOp->emitOpError(
         "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
         std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
-  }
+
+  uint32_t wrap_bits = targetModel.getDmaBdWrapBits(tileCol, tileRow);
+  uint32_t step_bits = targetModel.getDmaBdStepBits(tileCol, tileRow);
+  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] <= 0) {
@@ -473,10 +469,9 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
                  uint32_t requestedBurstLength) {
   if (requestedBurstLength != 0) {
     auto bel = targetModel.getShimBurstEncodingsAndLengths();
-    auto pair = std::find_if(bel.begin(), bel.end(),
-                             [=](const std::pair<uint32_t, uint32_t> &p) {
-                               return p.second == requestedBurstLength;
-                             });
+    auto pair = llvm::find_if(bel, [=](const std::pair<uint32_t, uint32_t> &p) {
+      return p.second == requestedBurstLength;
+    });
 
     if (pair == bel.end()) {
       std::string errorMessage =
@@ -602,6 +597,12 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   BaseMemRefType buffer = getMemref().getType();
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
+
+  if (getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) {
+    uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
+    if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+      return emitOpError("offset_parameter requires a whole-byte element type");
+  }
 
   if (getElementTypeBitwidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
@@ -853,10 +854,28 @@ std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
   return static_cast<uint32_t>(cst.getZExtValue());
 }
 
+// Widthwise counterpart of getConstantIntOperand; see createConstantArgPlus.
+std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
+  mlir::APInt cst;
+  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
+    return std::nullopt;
+  return cst.getZExtValue();
+}
+
 mlir::Value AIEX::createConstantI32(mlir::OpBuilder &builder,
                                     mlir::Location loc, uint32_t value) {
   return arith::ConstantOp::create(
       builder, loc, builder.getI32IntegerAttr(static_cast<int32_t>(value)));
+}
+
+mlir::Value AIEX::createConstantArgPlus(mlir::OpBuilder &builder,
+                                        mlir::Location loc, uint64_t value) {
+  if (value <= std::numeric_limits<uint32_t>::max())
+    return createConstantI32(builder, loc, static_cast<uint32_t>(value));
+  return arith::ConstantOp::create(
+      builder, loc,
+      IntegerAttr::get(builder.getIntegerType(64),
+                       static_cast<int64_t>(value)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -962,6 +981,10 @@ LogicalResult AIEX::NpuAddressPatchOp::verify() {
   // The static binary target checks for the operand and diagnoses it there.
   if (getAddrVal() && !getAddrVal().getType().isInteger(32))
     return emitOpError("addr_val must be an i32 value");
+  if (getArgIdx().has_value() == static_cast<bool>(getBuffer()))
+    return emitOpError("must name the host buffer either by the 'arg_idx' "
+                       "attribute or by the 'buffer' operand, not both and not "
+                       "neither");
   return success();
 }
 
@@ -1118,10 +1141,10 @@ DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
 // DMAConfigureTaskOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
+AIE::DMABDOp AIEX::DMAConfigureTaskOp::getFirstBd() {
   Region &body = getBody();
   if (body.empty()) {
-    return std::nullopt;
+    return nullptr;
   }
   auto bd_ops = body.front().getOps<AIE::DMABDOp>();
   if (bd_ops.empty() && body.front().getNumSuccessors() == 1) {
@@ -1132,10 +1155,9 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     bd_ops = chain_entry.getOps<AIE::DMABDOp>();
   }
   if (bd_ops.empty()) {
-    return std::nullopt;
+    return nullptr;
   }
-  AIE::DMABDOp bd = *bd_ops.begin();
-  return bd.getBdId();
+  return *bd_ops.begin();
 }
 
 LogicalResult
@@ -1220,6 +1242,13 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       failed(verifyTaskBDDimensions(targetModel, *col, *row, getBody())))
     return failure();
   Region &body = getBody();
+  // This is a layering violation on the DMABDOps, but they are never verified
+  // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
+  // dialect. The normal DMABDOp verify operation will skip over any BD inside
+  // a DMAConfigureTaskOp
+  LogicalResult result = success();
+  bool taskHasPacket = getPacket().has_value();
+  llvm::SmallVector<AIE::DMABDOp> bds;
   for (auto &block : body) {
     if (block.empty()) {
       continue;
@@ -1234,13 +1263,6 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     const AIE::AIETargetModel &targetModel =
         AIE::getTargetModel(getOperation());
 
-    // This is a layering violation on the DMABDOps, but they are never verified
-    // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
-    // dialect. The normal DMABDOp verify operation will skip over any BD inside
-    // a DMAConfigureTaskOp
-    LogicalResult result = success();
-    // A task-level packet supplies the header for every BD in the task.
-    bool taskHasPacket = getPacket().has_value();
     block.walk([&](AIE::DMABDOp bd) {
       if (bd.getBurstLength() != 0 &&
           !targetModel.isShimNOCTile(getTileID().col, getTileID().row)) {
@@ -1251,12 +1273,24 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
       if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
         result = failure();
+      bds.push_back(bd);
     });
-    if (failed(result)) {
-      return result;
-    }
   }
-  return success();
+  if (getOutOfOrder()) {
+    // Out-of-order mode rejects task completion token (bits are aliased).
+    if (getIssueToken()) {
+      auto err =
+          emitOpError("out_of_order channel cannot issue a completion token");
+      err.attachNote() << "set issue_token = false on this out-of-order task";
+      result = failure();
+    }
+    if (failed(AIE::verifyOutOfOrderChannel(
+            getOperation(), getDirection(), getOutOfOrder(),
+            llvm::ArrayRef<AIE::DMABDOp>(bds),
+            /*packetEnabledByContext=*/taskHasPacket)))
+      result = failure();
+  }
+  return result;
 }
 
 LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
@@ -1412,13 +1446,13 @@ LogicalResult AIEX::DmaChannelResetOp::verify() {
 LogicalResult AIEX::DmaChannelResetForOp::verify() {
   // Deferring verifier, in the shape of DMAConfigureTaskForOp::verify: the
   // referenced symbol is only resolvable once the objectFIFO lowering has run.
-  // Before aie.objectfifo_stateful_transform it names an aie.objectfifo; after,
-  // the transform retargets it to that fifo's aie.objectfifo_rearm_binding. If
-  // neither is resolvable yet, defer -- a later pass will resolve it.
+  // It names an aie.objectfifo, then that fifo's shim endpoint while the
+  // lowering is in flight, and finally its aie.objectfifo_rearm_binding. If
+  // none is resolvable yet, defer -- a later pass will resolve it.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  // The resident re-arm relies on the aie2p behaviour that a DMA channel has no
+  // The resident re-arm relies on the aie2p behavior that a DMA channel has no
   // enable bit, so the only way to restart it is a START_QUEUE push. AIE1 DMA
   // channels have an enable bit and are armed differently, so the trio this op
   // lowers to would not re-arm them correctly.
@@ -1428,7 +1462,8 @@ LogicalResult AIEX::DmaChannelResetForOp::verify() {
   Operation *target = dev.lookupSymbol(getObjfifo());
   if (!target)
     return success(); // symbol resolved during a later pass; defer the check
-  if (!isa<AIE::ObjectFifoCreateOp, AIE::ObjectFifoRearmBindingOp>(target))
+  if (!isa<AIE::ObjectFifoCreateOp, AIE::RouteEndpoint,
+           AIE::ObjectFifoRearmBindingOp>(target))
     return emitOpError() << "'" << getObjfifo()
                          << "' must reference an aie.objectfifo (or its "
                             "aie.objectfifo_rearm_binding)";

@@ -126,6 +126,7 @@ def group0(
         group0a_body,
         fn_args=[of_din_L2L1.cons(), of_int.prod(), lut0a_buf, group0a_kernel],
         stack_size=4096,
+        trace=1 if trace_size > 0 else 0,
     )
 
     def group0b_body(of_di, of_do, lut_a, lut_b, kernel):
@@ -145,6 +146,7 @@ def group0(
             lut0b_b_buf,
             group0b_kernel,
         ],
+        trace=1 if trace_size > 0 else 0,
     )
 
     # ----- Runtime ----------------------------------------------------------
@@ -168,7 +170,7 @@ def group0(
         workers=[group0a_worker, group0b_worker],
     )
     if trace_size > 0:
-        prog.enable_trace(trace_size)
+        prog.enable_trace(trace_size, workers=[group0a_worker, group0b_worker])
 
     return prog.resolve_program()
 

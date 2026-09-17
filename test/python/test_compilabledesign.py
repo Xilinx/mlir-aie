@@ -12,14 +12,15 @@ test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
 import json
+import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 from types import CodeType
 
 import pytest
 
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
@@ -243,6 +244,22 @@ def test_hash_differs_for_different_compile_flags():
     assert hash(d1) != hash(d2)
 
 
+def test_hash_differs_for_different_include_paths():
+    """-I directories change which headers the C++ kernel compiles against."""
+    gen = _gemm_gen()
+    d1 = CompilableDesign(gen, include_paths=["/a/include"])
+    d2 = CompilableDesign(gen, include_paths=["/b/include"])
+    assert hash(d1) != hash(d2)
+
+
+def test_hash_differs_for_include_path_order():
+    """-I search order decides which header wins, so it is not order-free."""
+    gen = _gemm_gen()
+    d1 = CompilableDesign(gen, include_paths=["/a/include", "/b/include"])
+    d2 = CompilableDesign(gen, include_paths=["/b/include", "/a/include"])
+    assert hash(d1) != hash(d2)
+
+
 def test_hash_differs_for_different_generators():
     # Use meaningfully different bodies so that co_code differs.
     def gen_a(*, M: CompileTime[int]):
@@ -288,18 +305,91 @@ def test_hash_for_path_generator_uses_path_string():
     assert hash(d1) != hash(d2)
 
 
-def test_hash_for_existing_source_file_includes_mtime(tmp_path):
-    """Changing a source file (hence mtime) must change the hash."""
+def test_hash_for_existing_source_file_tracks_content(tmp_path):
+    """Changing a source file's content must change the hash.
+
+    The key digests bytes, so an edit is observable without waiting out
+    filesystem mtime granularity.
+    """
     src = tmp_path / "kernel.cc"
     src.write_text("// v1")
     d1 = CompilableDesign(_gemm_gen(), source_files=[src])
     h1 = hash(d1)
 
-    time.sleep(0.01)
     src.write_text("// v2")
 
     d2 = CompilableDesign(_gemm_gen(), source_files=[src])
     assert h1 != hash(d2)
+
+
+def test_hash_survives_touch_of_an_unchanged_source(tmp_path):
+    """Restamping a source file must NOT change the hash.
+
+    This is the property that makes the cache reusable at all across a fresh
+    checkout, a reinstall or a ``cp``: those restamp every file without
+    changing a byte, and under an mtime-keyed hash every entry was invalidated
+    for reasons that had nothing to do with the build.
+    """
+    src = tmp_path / "kernel.cc"
+    src.write_text("// v1")
+    d1 = CompilableDesign(_gemm_gen(), source_files=[src])
+    h1 = hash(d1)
+
+    st = src.stat()
+    os.utime(src, (st.st_atime + 10_000, st.st_mtime + 10_000))
+
+    d2 = CompilableDesign(_gemm_gen(), source_files=[src])
+    assert hash(d2) == h1
+
+
+def test_hash_survives_touch_of_an_unchanged_object_file(tmp_path):
+    """Same property for prebuilt objects, which are keyed the same way."""
+    obj = tmp_path / "kernel.o"
+    obj.write_bytes(b"\x7fELF-not-really")
+    d1 = CompilableDesign(_gemm_gen(), object_files=[obj])
+    h1 = hash(d1)
+
+    st = obj.stat()
+    os.utime(obj, (st.st_atime + 10_000, st.st_mtime + 10_000))
+
+    d2 = CompilableDesign(_gemm_gen(), object_files=[obj])
+    assert hash(d2) == h1
+
+
+def test_hash_for_path_generator_survives_touch_but_tracks_content(tmp_path):
+    """A static .mlir design is keyed the same way as a C++ source."""
+    design = tmp_path / "design.mlir"
+    design.write_text("module {}\n")
+    h1 = hash(CompilableDesign(design))
+
+    st = design.stat()
+    os.utime(design, (st.st_atime + 10_000, st.st_mtime + 10_000))
+    assert hash(CompilableDesign(design)) == h1
+
+    design.write_text("module { // edited\n}\n")
+    assert hash(CompilableDesign(design)) != h1
+
+
+def test_hash_changes_when_content_changes_under_a_preserved_mtime(tmp_path):
+    """Two different kernels at one path with one mtime must not share a key.
+
+    This is the correctness half rather than the hit-rate half.  An mtime-keyed
+    hash cannot tell these apart, so the second build is served the first
+    build's artifact -- a stale-artifact ride, where a changed kernel runs as
+    the old binary.  Restoring the mtime is not exotic: ``git checkout`` of
+    another revision, a restore from an archive that carries timestamps, and
+    any build step that copies with ``-p`` all reproduce it.
+    """
+    src = tmp_path / "kernel.cc"
+    src.write_text("void k() { /* v1 */ }")
+    st = src.stat()
+    h1 = hash(CompilableDesign(_gemm_gen(), source_files=[src]))
+
+    src.write_text("void k() { /* v2 -- different code */ }")
+    os.utime(src, (st.st_atime, st.st_mtime))  # same timestamp, new bytes
+    assert src.stat().st_mtime == st.st_mtime
+
+    assert hash(CompilableDesign(_gemm_gen(), source_files=[src])) != h1
 
 
 def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch):
@@ -315,6 +405,40 @@ def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch):
     monkeypatch.setattr(config, "aiecc_path", fake_aiecc_path)
     CompilableDesign(_gemm_gen())._compute_cache_hash()
     assert seen, "artifact hash did not consult config.aiecc_path()"
+
+
+def test_content_digest_streams_a_large_file(tmp_path):
+    """Digesting must not materialise the whole input.
+
+    In-tree kernels already carry multi-megabyte generated LUT headers, so the
+    read is chunked; this pins that the chunked path agrees with hashlib.
+    """
+    import hashlib
+
+    from aie.utils.compile.jit import _hash as _hash_mod
+
+    blob = tmp_path / "big.h"
+    payload = (b"0123456789abcdef" * 64) * 1024 + b"tail"  # 1 MiB + 4, two reads
+    blob.write_bytes(payload)
+
+    assert _hash_mod._content_digest(blob) == hashlib.sha256(payload).hexdigest()
+
+
+def test_unreadable_input_does_not_alias_onto_a_readable_one(tmp_path):
+    """An input we cannot read must not share a key with one we can.
+
+    Skipping it would collapse "missing" and "empty" onto the same digest, so a
+    design whose kernel disappeared would hit the entry built when it was there.
+    """
+    from aie.utils.compile.jit import _hash as _hash_mod
+
+    missing = tmp_path / "gone.cc"
+    empty = tmp_path / "empty.cc"
+    empty.write_bytes(b"")
+
+    absent = _hash_mod._content_digest(missing)
+    assert absent.startswith("<unreadable:")
+    assert absent != _hash_mod._content_digest(empty)
 
 
 def _design(body, name="design"):
@@ -1089,6 +1213,55 @@ def test_compile_mixed_explicit_paths_raises():
         cd.compile(xclbin_path="/tmp/foo.xclbin", inst_path=None)
     with pytest.raises(ValueError, match="must be set together"):
         cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")
+
+
+@pytest.mark.parametrize("full_elf", [False, True])
+def test_mlir_path_compile_forwards_include_paths_with_no_kernels(
+    tmp_path, monkeypatch, npu2_device, full_elf
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module {}")
+    include_path = tmp_path / "include"
+    calls = []
+
+    def fake_compile_external_kernels(
+        funcs, kernel_dir, target_arch, include_dirs=None
+    ):
+        calls.append((list(funcs), include_dirs))
+
+    def fake_compile_mlir_module(**kwargs):
+        if full_elf:
+            Path(kwargs["full_elf_path"]).touch()
+        else:
+            Path(kwargs["xclbin_path"]).touch()
+            Path(kwargs["insts_path"]).touch()
+
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_external_kernels",
+        fake_compile_external_kernels,
+    )
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+    )
+    monkeypatch.setattr(
+        compilabledesign_module._manifest, "record", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(compilabledesign_module, "parse_dma_sizes", lambda *args: [])
+
+    design = CompilableDesign(mlir_path, include_paths=[include_path])
+    if full_elf:
+        monkeypatch.setattr(
+            design, "_parse_full_elf_kernel_name", lambda *args: "main:sequence"
+        )
+        design.compile(full_elf_path=tmp_path / "design.elf")
+    else:
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+    assert calls == [([], (include_path,))]
 
 
 # ---------------------------------------------------------------------------

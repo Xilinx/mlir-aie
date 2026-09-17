@@ -82,7 +82,8 @@ struct AIECtrlPacketToDmaPass
       IRMapping mapping;
 
       auto newSeq = AIE::RuntimeSequenceOp::create(
-          builder, loc, f.getSymNameAttr(), BoolAttr{});
+          builder, loc, f.getSymNameAttr(), BoolAttr{}, f.getTraceBufferAttr(),
+          f.getTraceSlicesAttr());
       newSeq.getBody().push_back(new Block);
 
       // Copy the arguments from the old sequence to the new one.
@@ -132,10 +133,11 @@ struct AIECtrlPacketToDmaPass
         // Calculate control packet size
         int64_t ctrlPktSize = 0;
         auto data = ctrlPktOp.getData();
+        auto length = ctrlPktOp.getLength();
         if (data)
           ctrlPktSize = data->size();
-        else if (ctrlPktOp.getLength())
-          ctrlPktSize = *ctrlPktOp.getLength();
+        else if (length)
+          ctrlPktSize = *length;
         ctrlPktSize++; // Ctrl info word
         ctrlPktSize++; // Packet header
 

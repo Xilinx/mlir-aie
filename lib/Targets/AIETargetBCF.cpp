@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIETargets.h"
@@ -56,9 +57,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       const auto &targetModel = getTargetModel(tile);
       TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
 
-      std::string corefunc = std::string("core_") +
-                             std::to_string(tile.getCol()) + "_" +
-                             std::to_string(tile.getRow());
+      std::string corefunc = coreFrameSymbolName(tile.getCol(), tile.getRow());
       output << "_entry_point _main_init\n";
       output << "_symbol " << corefunc << " _after _main_init\n";
       output << "_symbol _main_init 0\n";
@@ -89,28 +88,21 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
           // remaining buffer)
           if (tiles.count(*tile)) {
             for (auto buf : buffers[tiles[*tile]]) {
+              if (buf.getCoreData())
+                continue;
               std::string bufName(buf.name().getValue());
               int bufferBaseAddr = getBufferBaseAddress(buf);
               int numBytes = buf.getAllocationSize();
-              if (buf.getInitialValue() && tile != srcCoord) {
-                output << "// skip initialization of " << buf.name()
-                       << " which is initialized "
-                          "in the neighboring tile\n";
-                output << "\n";
-                continue;
-              }
-              if (buf.getInitialValue() && tile == srcCoord) {
-                output << "_overlay " << bufName << " "
-                       << utohexstr(offset + bufferBaseAddr) << " // "
-                       << numBytes << " bytes\n";
-              } else {
-                output << "_symbol " << bufName << " "
-                       << utohexstr(offset + bufferBaseAddr) << " " << numBytes
-                       << '\n';
-                output << "_extern " << bufName << "\n";
-                output << "_reserved DMb " << utohexstr(offset + bufferBaseAddr)
-                       << " " << numBytes << '\n';
-              }
+              // Every buffer is an external symbol at a reserved address,
+              // whether or not it has an `initial_value`. No core object
+              // defines a buffer, so there is no data here to overlay. Whoever
+              // configures the device writes the initial value.
+              output << "_symbol " << bufName << " "
+                     << utohexstr(offset + bufferBaseAddr) << " " << numBytes
+                     << '\n';
+              output << "_extern " << bufName << "\n";
+              output << "_reserved DMb " << utohexstr(offset + bufferBaseAddr)
+                     << " " << numBytes << '\n';
               output << "\n";
             }
           }

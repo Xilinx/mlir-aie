@@ -104,13 +104,12 @@ PY
 `aiecc` packages the final `.xclbin` by shelling out to a bare `xclbinutil`.
 Upstream that tool ships with XRT (and pulls in Boost + a full XRT install). This
 branch can instead build a self-contained, **XRT-free / Boost-free** `xclbinutil`
-from the `third_party/hrx-xclbinutil` submodule and install it as `xclbinutil`
+from the in-tree `third_party/hrx-xclbinutil` sources and install it as `xclbinutil`
 next to `aiecc` in the wheel's `bin/`, so packaging needs no system XRT.
 
 Enable it when building MLIR-AIE from source:
 
 ```bash
-git submodule update --init third_party/hrx-xclbinutil
 cmake … -DAIE_BUILD_HRXXCLBINUTIL=ON     # add to your normal mlir-aie configure
 ```
 
@@ -158,8 +157,10 @@ cmake … -DAIE_BUILD_HRXXCLBINUTIL=ON     # add to your normal mlir-aie configu
 Auto-detection (`FindHRX.cmake` for C++, `hrxruntime/discovery.py` for Python)
 probes standard locations and a sibling `../hrx-system/build/hrx-install` prefix,
 and prefers the shipped `hrx` CMake package (`find_package(hrx CONFIG)` →
-`hrx::hrx`). If your HRX lives elsewhere, export these **hints** (highest
-priority):
+`hrx::hrx`). Python also locates `libhrx` in a pip-installed package that ships
+it under `<package>/lib` or `<package>/bin` (filesystem only — no import).
+CMake does not search site-packages. If your HRX lives elsewhere, export these
+**hints** (highest priority):
 
 ```bash
 export HRX_DIR=<hrx-install>                  # install prefix w/ include/hrx + lib/libhrx.so
@@ -343,7 +344,7 @@ you ever see all-zero output confirm the transaction bytes reached libhrx intact
 
 | Symptom | Cause / Fix |
 |---|---|
-| `NPU_RUNTIME=hrx … ImportError: libhrx.so could not be located` | HRX not found. Build it (§2), place it as a sibling `../hrx`, or set `HRX_DIR`/`LIBHRX_DIR` (§4). Verify with the §4 probe. |
+| `NPU_RUNTIME=hrx … ImportError: libhrx.so could not be located` | HRX not found. Build it (§2), pip-install a runtime that ships `libhrx`, place it as a sibling `../hrx`, or set `HRX_DIR`/`LIBHRX_DIR` (§4). Verify with the §4 probe. |
 | C++ configure: `USE_HRX=ON but the HRX runtime was not found` | Same as above (CMake side). Set `HRX_DIR`/`CMAKE_PREFIX_PATH` or co-locate `../hrx-system/build/hrx-install`. |
 | C++ link/load: `undefined symbol: hrx_amdxdna_executable_create` | Your `libhrx.so` predates the `amdxdna-hal-native-rel` API. Refresh HRX from the pinned release (§2) and re-check with `nm -D`. |
 | Output is **all zeros** but no error | The transaction didn't reach libhrx intact (or the xclbin/insts pair is mismatched). Confirm you're on this branch and passing the raw `insts.bin`. |

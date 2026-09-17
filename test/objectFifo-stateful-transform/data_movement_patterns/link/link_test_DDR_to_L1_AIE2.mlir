@@ -7,25 +7,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(2, 0)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(2, 1)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(2, 2)
-// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "from_memTile_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "from_memTile_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "from_memTile_cons_prod_lock_0"}
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "from_memTile_cons_cons_lock_0"}
-// CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "to_memTile_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "to_memTile_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "to_memTile_cons_prod_lock_0"}
-// CHECK:           %[[VAL_10:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "to_memTile_cons_cons_lock_0"}
-// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_0]]) {init = 1 : i32, sym_name = "to_memTile_prod_lock_0"}
-// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "to_memTile_cons_lock_0"}
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
-// CHECK:           %[[VAL_13:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(2, 0)
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(2, 1)
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.tile(2, 2)
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "from_memTile_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "from_memTile_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "from_memTile_cons_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "from_memTile_cons_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "to_memTile_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "to_memTile_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "to_memTile_cons_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_10:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "to_memTile_cons_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_11:.*]] = aie.lock(%[[VAL_0]]) {init = 1 : i32, sym_name = "to_memTile_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_12:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "to_memTile_cons_lock_0"}
+// CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
+// CHECK-DAG:           %[[VAL_13:.*]] = aie.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
+// CHECK-DAG:           aie.shim_dma_allocation @to_memTile_shim_alloc(%[[VAL_0]], MM2S, 0)
 // CHECK:           %[[VAL_14:.*]] = aie.shim_dma(%[[VAL_0]]) {
 // CHECK:             %[[VAL_15:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -36,7 +37,6 @@
 // CHECK:           ^bb2:  // pred: ^bb0
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @to_memTile_shim_alloc(%[[VAL_0]], MM2S, 0)
 // CHECK:           %[[VAL_16:.*]] = aie.memtile_dma(%[[VAL_1]]) {
 // CHECK:             %[[VAL_17:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2

@@ -48,6 +48,24 @@ You can override these output file names with `--npu-insts-name`,
 `--xclbin-name`, and `--full-elf-name`. You can filter which devices and 
 runtime sequences are compiled with `--device-name` and `--sequence-name`. 
 
+### Limiting parallel compilation
+
+`aiecc` compiles independent parts of a design, including its cores, in
+parallel. Use `-j N` (or `--nthreads=N`) to limit that parallelism. `-j 1` runs
+compilation sequentially; `-j 0` uses the machine's hardware concurrency and
+is the default.
+
+To apply a limit to every `aiecc` invocation without changing each caller, set
+the `AIECC_JOBS` environment variable:
+
+```bash
+AIECC_JOBS=1 ninja check-aie
+```
+
+An explicit `-j` or `--nthreads` takes precedence over `AIECC_JOBS`, which in
+turn takes precedence over the default. The environment variable accepts the
+same non-negative integer values as `-j`, including `0` for auto-detection.
+
 ### Seeing what the compiler will do / dry-running: `--emit-dot`
 
 The compiler builds its execution plan from the flags you pass.

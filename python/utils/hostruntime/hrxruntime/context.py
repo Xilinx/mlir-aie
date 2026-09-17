@@ -25,7 +25,8 @@ from ._bindings import (
     HRX_MAP_WRITE,
     HRX_MAPPING_MODE_PERSISTENT,
     HRX_MEMORY_TYPE_DEVICE_VISIBLE,
-    HRX_MEMORY_TYPE_HOST_LOCAL,
+    HRX_MEMORY_TYPE_HOST_CACHED,
+    HRX_MEMORY_TYPE_HOST_VISIBLE,
     HrxAmdxdnaExecutableCreateParams,
     HrxAmdxdnaExecutableEntryPoint,
     HrxAmdxdnaExecutableRun,
@@ -118,7 +119,9 @@ class HRXContext:
             lib.hrx_buffer_allocate(
                 self.stream,
                 ctypes.c_size_t(size),
-                HRX_MEMORY_TYPE_HOST_LOCAL | HRX_MEMORY_TYPE_DEVICE_VISIBLE,
+                HRX_MEMORY_TYPE_HOST_VISIBLE
+                | HRX_MEMORY_TYPE_HOST_CACHED
+                | HRX_MEMORY_TYPE_DEVICE_VISIBLE,
                 HRX_BUFFER_USAGE_DEFAULT | HRX_BUFFER_USAGE_MAPPING_PERSISTENT,
                 ctypes.byref(buf),
             ),

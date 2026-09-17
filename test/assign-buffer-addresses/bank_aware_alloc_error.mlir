@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s 2>&1 | FileCheck %s
-// CHECK:   warning: Failed to allocate buffer: "b" with size: 32768 bytes.
+// CHECK:   warning: Failed to allocate buffer "b", which needs 32768 bytes.
 // CHECK:   %1 = aie.buffer(%0) { sym_name = "b" } : memref<8192xi32>
 // CHECK: note: see current operation: %b = aie.buffer(%tile_3_3) {sym_name = "b"} : memref<8192xi32>
 // CHECK: warning: Not all requested buffers fit in the available memory.
@@ -17,7 +17,7 @@
 // CHECK:         bank : 1        0x2000-0x3FFF
 // CHECK:         bank : 2        0x4000-0x5FFF
 // CHECK:         bank : 3        0x6000-0x7FFF
-// CHECK: error: 'aie.tile' op Bank-aware allocation failed.
+// CHECK: error: 'aie.tile' op bank-aware allocation failed
 
 module @test {
   aie.device(xcvc1902) {

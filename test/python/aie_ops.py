@@ -15,6 +15,7 @@ from aie.dialects.aie import (
     external_buffer,
     bd_dim_layout,
     end,
+    logical_tile,
     object_fifo,
     object_fifo_link,
     tile,
@@ -24,6 +25,7 @@ from aie.dialects.aie import (
     get_target_model,
     dma_bd,
 )
+from aie.dialects._aie_enum_gen import AIETileType
 from aie.ir import InsertionPoint, Block
 from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
@@ -35,6 +37,20 @@ from util import construct_and_print_module
 @construct_and_print_module
 def tileOp():
     t = tile(col=0, row=0)
+
+
+# CHECK-LABEL: tileOpControlPacket
+# CHECK: aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 3, pkt_id = 4>}
+@construct_and_print_module
+def tileOpControlPacket():
+    t = tile(col=1, row=2, packet_type=3, packet_id=4)
+
+
+# CHECK-LABEL: logicalTileOpControlPacket
+# CHECK: aie.logical_tile<CoreTile>(1, 2) {controller_id = #aie.packet_info<pkt_type = 3, pkt_id = 4>}
+@construct_and_print_module
+def logicalTileOpControlPacket():
+    t = logical_tile(AIETileType.CoreTile, col=1, row=2, packet_type=3, packet_id=4)
 
 
 # CHECK-LABEL: tileOpAllocationScheme
@@ -173,7 +189,7 @@ def objFifoLink():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : memref<12xf16>
 @construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
@@ -194,8 +210,7 @@ def objFifoAcquire():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
-# CHECK: %[[VAL_4:.*]] = aie.objectfifo.subview.access %[[VAL_3]][0] : !aie.objectfifosubview<memref<12xf16>> -> memref<12xf16>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : memref<12xf16>
 @construct_and_print_module
 def objFifoSubviewAccess():
     dev = Device(AIEDevice.xcvc1902)

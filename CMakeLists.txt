@@ -41,8 +41,11 @@ if(POLICY CMP0091)
   cmake_policy(SET CMP0091 NEW)
 endif()
 
+# LLVM's tablegen() macro emits a depfile only under CMP0116 NEW. The depfile
+# lists the transitive .td includes, so a generated file rebuilds whenever any
+# .td it includes changes.
 if(POLICY CMP0116)
-  cmake_policy(SET CMP0116 OLD)
+  cmake_policy(SET CMP0116 NEW)
 endif()
 
 if(POLICY CMP0144)
@@ -109,10 +112,9 @@ option(AIE_BUILD_CHESS_CLANG "Build chess-clang (requires Vitis chess toolchain)
 option(AIE_BUILD_LSP_SERVER "Build aie-lsp-server (MLIR language server for IDE/editor integration)" ON)
 option(AIE_BUILD_VISUALIZE "Build aie-visualize (AIE design visualization tool)" ON)
 # Build the bundled XRT-free, Boost-free hrx-xclbinutil (an NPU-minimal
-# xclbinutil, vendored as the third_party/hrx-xclbinutil submodule) and install
+# xclbinutil, vendored in-tree at third_party/hrx-xclbinutil) and install
 # it as `xclbinutil` next to aiecc. Lets aiecc package .xclbins without a system
-# XRT install (e.g. for the HRX/amdxdna runtime). OFF by default; enabling it
-# requires the submodule to be initialized.
+# XRT install (e.g. for the HRX/amdxdna runtime). OFF by default.
 option(AIE_BUILD_HRXXCLBINUTIL "Build the bundled hrx-xclbinutil and install it as xclbinutil (no system XRT needed)" OFF)
 
 find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
@@ -135,6 +137,8 @@ find_package(XRT)
 # (https://github.com/Xilinx/llvm-aie.git <sha>)". That is identity/provenance, not a compatibility
 # predicate: llvm-aie's LLVM_VERSION stays fixed between releases, so there is no meaningful ">="
 # range to gate on here, only "which exact build is this." Record it for diagnostics.
+set(PEANO_VERSION_STRING "")
+set(PEANO_REVISION "")
 if(NOT PEANO_INSTALL_DIR STREQUAL "<unset>")
   # FindPeano.cmake lives in the cmake/modulesXilinx submodule, and this file only puts that
   # directory on CMAKE_MODULE_PATH on WIN32; every other build passes -DCMAKE_MODULE_PATH (see
@@ -165,8 +169,6 @@ if(NOT PEANO_INSTALL_DIR STREQUAL "<unset>")
       "under ${PEANO_INSTALL_DIR}/include/. Fix PEANO_INSTALL_DIR, or unset it to configure without "
       "Peano.")
   else()
-    set(PEANO_VERSION_STRING "")
-    set(PEANO_REVISION "")
     if(PEANO_CLANG)
       execute_process(
         COMMAND ${PEANO_CLANG} --version
@@ -191,6 +193,20 @@ if(NOT PEANO_INSTALL_DIR STREQUAL "<unset>")
       message(STATUS "Peano (llvm-aie) validated: ${PEANO_DIR}")
     endif()
   endif()
+endif()
+
+# Description of the Peano used to configure this build, recorded into aie/version.h so a
+# built tool can report which llvm-aie it was configured against. This is provenance, not a
+# compatibility check: llvm-aie publishes no version query to gate on (see FindPeano above).
+if(PEANO_INSTALL_DIR STREQUAL "<unset>")
+  set(AIE_PEANO_VERSION "not configured")
+elseif(PEANO_VERSION_STRING AND PEANO_REVISION)
+  set(AIE_PEANO_VERSION "${PEANO_VERSION_STRING} (${PEANO_REVISION})")
+elseif(PEANO_VERSION_STRING)
+  set(AIE_PEANO_VERSION "${PEANO_VERSION_STRING}")
+else()
+  # Validated above, but clang --version did not run or did not parse.
+  set(AIE_PEANO_VERSION "unknown")
 endif()
 
 # Find AIEBU library for direct ELF generation (optional, falls back to subprocess)

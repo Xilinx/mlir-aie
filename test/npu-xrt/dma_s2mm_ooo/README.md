@@ -50,6 +50,7 @@ wrong slot.
 | Flag | Values | Meaning |
 |------|--------|---------|
 | `--recv-tile` | `core`, `mem` | Receiver (merge) tile type. |
+| `--recv-config` | `static`, `runtime` | How the out-of-order receive channel is configured (see [Configuring the receiver](#configuring-the-receiver)). |
 | `--channels`  | `1`, `2`      | Out-of-order channels on the receiver tile. |
 | `-n`/`--sources` | `1..8`     | Merge width (`n=1` is a degenerate 1-way merge). |
 | `--packets`   | `m` (default 1) | Packets per source; fills `n*m` sub-buffers. |
@@ -127,6 +128,29 @@ DmaChannel(
 - reads `repeat_count = k` as `k` extra merge rounds. The hardware field is the
   all-rounds packet count `M*(k+1) - 1`, which the channel derives from the
   receive BDs and `repeat_count` (see [Multiple rounds](#multiple-rounds))
+
+## Configuring the receiver
+
+`--recv-config` selects how the channel is armed; both paths produce the same
+on-device behavior and share everything else (senders, routing, counting-lock
+completion, egress drain, verifier).
+
+- **`static`** (default): part of the receiver tile's static DMA program,
+  `DmaChannel(..., out_of_order=True)` on a `TileDma`. Lowers to
+  `aie.dma_start {out_of_order}`.
+- **`runtime`**: armed from the host sequence with
+  `aiex.dma_configure_task(receiver, S2MM, ch) {out_of_order}`
+  followed by `dma_start_task`; only the drain MM2S stays static. Supports the
+  full merge matrix (multi-packet, multi-channel, multi-round). Two runtime-only
+  wrinkles: per-slot BD iteration is expressed via the outermost `sizes`/`strides`
+  dimension rather than the static `BdIteration` attribute (which the
+  runtime-sequence path rejects); and on a **core** tile the static drain/token
+  BDs are pinned off the receive ids, because a core's tile-wide bd_ids let the
+  static allocator -- blind to the runtime-pinned receive ids -- otherwise reuse a
+  receive slot and deadlock (a memtile restricts ids per channel and avoids this).
+
+End-to-end out-of-order reception on a **shim** tile is out of scope here: the
+receiver stays on-chip so its own MM2S drains the merged buffer to the host.
 
 ## Multiple rounds
 
@@ -213,5 +237,6 @@ python dma_s2mm_ooo.py --recv-tile core --channels 2 -n 7    # core 2-channel ce
 python dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --packets 4   # m=4, n*m=16
 python dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --nonuniform  # slot j gets j+1
 python dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --repeat-count 2  # 3 merge rounds
+python dma_s2mm_ooo.py --recv-config runtime --recv-tile mem  --channels 1 -n 4  # runtime-configured receiver
 python dma_s2mm_ooo.py --emit-mlir                           # print the generated MLIR
 ```

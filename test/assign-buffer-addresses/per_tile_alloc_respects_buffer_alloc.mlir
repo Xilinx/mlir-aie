@@ -9,7 +9,7 @@
 
 module @test {
   aie.device(xcvc1902) {
-    
+
     //Note that the bank-aware allocator should issue two different types of errors with these buffer allocation addresses.
     //This test is making sure that the alloc-scheme=basic-sequential flag is respected.
 
@@ -25,6 +25,6 @@ module @test {
 
     aie.core(%t1) {
       aie.end
-    }{ stackSize = 2048 :i32}
+    }{ stack_size = 2048 : i32}
   }
 }

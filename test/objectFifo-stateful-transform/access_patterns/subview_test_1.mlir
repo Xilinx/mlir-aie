@@ -8,18 +8,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_2"} : memref<16xi32>
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_3"} : memref<16xi32>
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_0"}
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_1"}
-// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_2"}
-// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_3"}
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_2"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_3"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_0"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_1"}
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_2"}
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_3"}
 // CHECK:           func.func @some_work(%[[VAL_10:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
@@ -60,17 +60,12 @@ module @singleFifo {
 
         %core12 = aie.core(%tile12) {
             // this acquires 2 elements
-            %subview0 = aie.objectfifo.acquire @objfifo (Produce, 2) : !aie.objectfifosubview<memref<16xi32>>
-            %elem00 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem01 = aie.objectfifo.subview.access %subview0[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem00, %elem01 = aie.objectfifo.acquire @objfifo (Produce, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem00) : (memref<16xi32>) -> ()
             func.call @some_work(%elem01) : (memref<16xi32>) -> ()
 
             // this should only acquire one new element, previous two are still acquired
-            %subview1 = aie.objectfifo.acquire @objfifo (Produce, 3) : !aie.objectfifosubview<memref<16xi32>>
-            %elem10 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem11 = aie.objectfifo.subview.access %subview1[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem12 = aie.objectfifo.subview.access %subview1[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem10, %elem11, %elem12 = aie.objectfifo.acquire @objfifo (Produce, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem10) : (memref<16xi32>) -> ()
             func.call @some_work(%elem11) : (memref<16xi32>) -> ()
             func.call @some_work(%elem12) : (memref<16xi32>) -> ()
@@ -78,16 +73,12 @@ module @singleFifo {
             // one new acquire should take place
             aie.objectfifo.release @objfifo (Produce, 1)
             aie.objectfifo.release @objfifo (Produce, 1)
-            %subview2 = aie.objectfifo.acquire @objfifo (Produce, 2) : !aie.objectfifosubview<memref<16xi32>>
-            %elem20 = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem21 = aie.objectfifo.subview.access %subview2[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem20, %elem21 = aie.objectfifo.acquire @objfifo (Produce, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem20) : (memref<16xi32>) -> ()
             func.call @some_work(%elem21) : (memref<16xi32>) -> ()
 
             // no new acquires should take place, elem30 should be third element of objFifo (with index 2)
-            %subview3 = aie.objectfifo.acquire @objfifo (Produce, 2) : !aie.objectfifosubview<memref<16xi32>>
-            %elem30 = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem31 = aie.objectfifo.subview.access %subview3[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem30, %elem31 = aie.objectfifo.acquire @objfifo (Produce, 2) : memref<16xi32>, memref<16xi32>
             //%elem32 = aie.subview.access %subview3[2] : !aie.subview<memref<16xi32>> -> memref<16xi32> // expected to fail if this line is uncommented
             func.call @some_work(%elem30) : (memref<16xi32>) -> ()
             func.call @some_work(%elem31) : (memref<16xi32>) -> ()

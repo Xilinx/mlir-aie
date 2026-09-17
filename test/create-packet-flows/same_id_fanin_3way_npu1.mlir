@@ -29,20 +29,27 @@
 
 // CHECK-LABEL: aie.device(npu1)
 
-// Each source tile emits on exactly one master port, driven by exactly one amsel.
+// Every masterset below is fed by its own amsel, never a shared one. tile_0_2
+// carries two streams -- its own DMA:0 and tile_0_3's passing through -- so it
+// has two amsels and two master ports, one each.
 // CHECK:      %[[tile_0_2:.*]] = aie.tile(0, 2)
 // CHECK:      aie.switchbox(%[[tile_0_2]]) {
-// CHECK-NEXT:   %[[a:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(South : 2, %[[a]])
+// CHECK-NEXT:   %[[a0:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   %[[a1:.*]] = aie.amsel<1> (0)
+// CHECK-NEXT:   aie.masterset(South : 1, %[[a1]])
+// CHECK-NEXT:   aie.masterset(South : 3, %[[a0]])
+// CHECK-NEXT:   aie.packet_rules(North : 3) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[a1]])
+// CHECK-NEXT:   }
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[a]])
+// CHECK-NEXT:     aie.rule(31, 0, %[[a0]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 
 // CHECK:      %[[tile_0_3:.*]] = aie.tile(0, 3)
 // CHECK:      aie.switchbox(%[[tile_0_3]]) {
 // CHECK-NEXT:   %[[b:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(East : 0, %[[b]])
+// CHECK-NEXT:   aie.masterset(South : 3, %[[b]])
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[b]])
 // CHECK-NEXT:   }

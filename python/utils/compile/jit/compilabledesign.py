@@ -13,7 +13,7 @@ Hashing is split into two halves so callers can distinguish "recipe changed"
 from "rebuild needed":
 
 * ``recipe_hash``   — generator identity + compile_kwargs + aiecc/compile flags
-* ``artifact_hash`` — source / object mtimes + tool mtimes + target device
+* ``artifact_hash`` — source / object content + tool mtimes + target device
 
 ``hash(design)`` composes both into a 24-hex cache key; no MLIR generation
 needed for a cache lookup.
@@ -46,7 +46,7 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
 )
 from aie.utils.compile import (
     NPU_CACHE_HOME,
-    compile_external_kernel,
+    compile_external_kernels,
     compile_mlir_module,
 )
 from aie.utils.compile.cache.utils import file_lock
@@ -114,7 +114,7 @@ class CompilableDesign:
         compile_kwargs: Values for the ``CompileTime[T]``-annotated parameters.
             Validated against the generator signature via ``inspect.Signature.bind``.
         compile_flags: Extra flags forwarded to the Peano C++ compiler.
-        source_files: Paths to C++ kernel source files.  Their mtimes are
+        source_files: Paths to C++ kernel source files.  Their content is
             included in the cache key so that edits correctly invalidate the cache.
         include_paths: Extra ``-I`` paths forwarded to the C++ compiler.
         aiecc_flags: Extra flags forwarded to ``aiecc``.
@@ -389,9 +389,12 @@ class CompilableDesign:
 
                 use_chess = self._resolve_use_chess(external_kernels)
 
-                for func in external_kernels:
-                    if not func._compiled:
-                        compile_external_kernel(func, kernel_dir, target_arch)
+                compile_external_kernels(
+                    external_kernels,
+                    kernel_dir,
+                    target_arch,
+                    include_dirs=self.include_paths,
+                )
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
@@ -508,9 +511,12 @@ class CompilableDesign:
                 ExternalFunction._instances.clear()
 
                 use_chess = self._resolve_use_chess(external_kernels)
-                for func in external_kernels:
-                    if not func._compiled:
-                        compile_external_kernel(func, kernel_dir, target_arch)
+                compile_external_kernels(
+                    external_kernels,
+                    kernel_dir,
+                    target_arch,
+                    include_dirs=self.include_paths,
+                )
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
@@ -851,6 +857,7 @@ class CompilableDesign:
             self.aiecc_flags,
             self.compile_flags,
             self.full_elf,
+            self.include_paths,
         )
 
     @staticmethod
@@ -868,7 +875,7 @@ class CompilableDesign:
 
     @property
     def artifact_hash(self) -> str:
-        """Hash of the build environment: source/object mtimes + tool mtimes + device.
+        """Hash of the build environment: source/object content + tool mtimes + device.
 
         Changes whenever a kernel ``.cc``, an ``.o``, Peano, aiecc, or the
         target device changes; identifies the *with what* of compilation.
@@ -890,6 +897,7 @@ class CompilableDesign:
             self.compile_flags,
             self.full_elf,
             self._resolve_fold_ddr_addr_offset(),
+            self.include_paths,
         )
 
     def _bind_generation_device(self):

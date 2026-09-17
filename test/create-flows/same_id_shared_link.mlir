@@ -24,7 +24,7 @@
 
 // CHECK-LABEL: aie.device(npu2)
 
-// Destination tile: both id-0 streams arrive on separate input ports (North : 0
+// Destination tile: both id-0 streams arrive on separate input ports (North : 2
 // and North : 3) and fan in to the single DMA : 3 endpoint.
 // CHECK:      %[[mem_tile_1_1:.*]] = aie.tile(1, 1)
 // CHECK:      aie.switchbox(%[[mem_tile_1_1]]) {
@@ -32,7 +32,7 @@
 // CHECK-NEXT:   %[[b1:.*]] = aie.amsel<1> (0)
 // CHECK-NEXT:   aie.masterset(DMA : 3, %[[b1]])
 // CHECK-NEXT:   aie.masterset(North : 1, %[[b0]])
-// CHECK-NEXT:   aie.packet_rules(North : 0) {
+// CHECK-NEXT:   aie.packet_rules(North : 2) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[b1]])
 // CHECK-NEXT:   }
 // CHECK-NEXT:   aie.packet_rules(North : 3) {
@@ -44,21 +44,21 @@
 // CHECK-NEXT: }
 
 // Merge tile: the two id-0 streams stay on distinct amsels, each driving exactly
-// one output port (North : 1 -> South : 3 via %[[a1]]; North : 3 -> South : 0 via
+// one output port (North : 2 -> South : 2 via %[[a1]]; East : 2 -> South : 3 via
 // %[[a2]]). No single amsel fans out to two ports.
 // CHECK:      %[[tile_1_2:.*]] = aie.tile(1, 2)
 // CHECK:      aie.switchbox(%[[tile_1_2]]) {
 // CHECK-NEXT:   %[[a0:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:   %[[a1:.*]] = aie.amsel<1> (0)
 // CHECK-NEXT:   %[[a2:.*]] = aie.amsel<2> (0)
-// CHECK-NEXT:   aie.masterset(South : 0, %[[a2]])
-// CHECK-NEXT:   aie.masterset(South : 3, %[[a1]])
-// CHECK-NEXT:   aie.masterset(East : 3, %[[a0]])
-// CHECK-NEXT:   aie.packet_rules(North : 3) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[a2]])
-// CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules(North : 1) {
+// CHECK-NEXT:   aie.masterset(South : 2, %[[a1]])
+// CHECK-NEXT:   aie.masterset(South : 3, %[[a2]])
+// CHECK-NEXT:   aie.masterset(East : 2, %[[a0]])
+// CHECK-NEXT:   aie.packet_rules(North : 2) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[a1]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(East : 2) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[a2]])
 // CHECK-NEXT:   }
 // CHECK-NEXT:   aie.packet_rules(South : 1) {
 // CHECK-NEXT:     aie.rule(31, 2, %[[a0]])

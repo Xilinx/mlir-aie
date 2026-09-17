@@ -24,6 +24,7 @@ on:
   # - or edit directly the step below which runs tmate and push to the
   #   PR, ignoring the manual workflow launch.
   workflow_dispatch:
+    inputs:
       launch_tmate_terminal_for_debug:
         type: boolean
         description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
@@ -69,7 +70,7 @@ jobs:
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 

@@ -65,16 +65,34 @@ RESOURCE_DIR=$(clang++ -print-resource-dir)
 # importing its broken wrapper (see note above); fall back to plain
 # `clang-tidy` on PATH for a system install that has no such wrapper.
 CLANG_TIDY_BIN=$(python3 - <<'PYEOF'
-import sysconfig, glob
-for p in set(sysconfig.get_paths().values()):
-    matches = glob.glob(p + "/clang_tidy/data/bin/clang-tidy*")
-    if matches:
-        print(matches[0])
-        break
+import sysconfig, os
+paths = sysconfig.get_paths()
+# platlib/purelib only, in that order -- clang-tidy's wheel is a
+# platform-specific binary distribution, so platlib is where it normally
+# lands; purelib is a fallback for oddly-configured installs. Iterating a
+# fixed, ordered key list (rather than set(paths.values())) keeps this
+# deterministic: a set's iteration order isn't guaranteed, so if the binary
+# somehow existed under more than one path, the pick could vary run to run.
+for key in ("platlib", "purelib"):
+    p = paths[key]
+    # Match the binary itself only -- clang_tidy/data/bin/ also ships
+    # clang-tidy-diff.py, run-clang-tidy.py, clang-apply-replacements, etc.,
+    # and an unanchored glob can pick one of those instead (glob.glob order
+    # isn't alphabetical, it's directory-iteration order).
+    for name in ("clang-tidy", "clang-tidy.exe"):
+        candidate = os.path.join(p, "clang_tidy", "data", "bin", name)
+        if os.path.isfile(candidate):
+            print(candidate)
+            raise SystemExit
 PYEOF
 )
 CLANG_TIDY_BIN="${CLANG_TIDY_BIN:-clang-tidy}"
 
+# clang-tidy 22 flipped --header-filter's default from '' (main file only) to
+# '.*' (every non-system header), so without this it now also lints whatever
+# MLIR/LLVM headers each file transitively includes. Pin it back to the old
+# default: this project's incremental clang-tidy rollout only wants findings
+# in the file list below, not in vendored headers.
 printf '%s\n' "$@" | xargs -P "$(nproc)" -I{} \
   "$CLANG_TIDY_BIN" -p "$BUILD_DIR" --extra-arg="-resource-dir=$RESOURCE_DIR" \
-  --warnings-as-errors='*' {}
+  --header-filter='' --warnings-as-errors='*' {}

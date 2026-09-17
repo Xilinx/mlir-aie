@@ -19,8 +19,8 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence @dyn_ooo(%arg0: memref<1024xi32>) {
       %bd = aiex.dma_bd_pool_pop(0, 0) : i32
-      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) bd_id %bd : i32 {
-        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256) {out_of_order_id = 5 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256) bd_id_val %bd : i32 {out_of_order_id = 5 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)

@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: aiesimulator
+// REQUIRES: aiesimulator, aietools_aie2p
 
 // RUN: %aiecc --get-aiesim --xchesscc --xbridge %s -- %S/test.cpp
-// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: ./aie.mlir.prj/aiesim.sh | FileCheck %s
 
 // CHECK: AIE2P ISS
 // CHECK: Hello, world.

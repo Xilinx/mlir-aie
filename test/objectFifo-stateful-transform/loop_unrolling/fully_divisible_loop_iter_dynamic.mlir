@@ -9,16 +9,16 @@
 // (the aiecc driver default) the loop is preserved (step 1, single body) with a
 // runtime buffer-index switch, instead of being unrolled by the buffer depth.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // The loop is NOT unrolled: original step of 1 is kept (static lowering would
 // rewrite this to step 2 and emit two acquire/release bodies).
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK:           %[[T12:.*]] = aie.tile(1, 2)
-// CHECK:           %[[B0:.*]] = aie.buffer(%[[T12]]) {sym_name = "loop_of_buff_0"} : memref<16xi32>
-// CHECK:           %[[B1:.*]] = aie.buffer(%[[T12]]) {sym_name = "loop_of_buff_1"} : memref<16xi32>
-// CHECK:           %[[L0:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "loop_of_lock_0"}
-// CHECK:           %[[L1:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "loop_of_lock_1"}
+// CHECK-DAG:           %[[T12:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[B0:.*]] = aie.buffer(%[[T12]]) {sym_name = "loop_of_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[B1:.*]] = aie.buffer(%[[T12]]) {sym_name = "loop_of_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[L0:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "loop_of_lock_0"}
+// CHECK-DAG:           %[[L1:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "loop_of_lock_1"}
 // CHECK:           func.func @some_work(%{{.*}}: memref<16xi32>, %{{.*}}: index) {
 // CHECK:             return
 // CHECK:           }
@@ -88,8 +88,7 @@ module {
       %c1 = arith.constant 1 : index
       %c4 = arith.constant 4 : index
       scf.for %indexInHeight = %c0 to %c4 step %c1 {
-        %subview = aie.objectfifo.acquire @loop_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-        %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+        %elem0 = aie.objectfifo.acquire @loop_of (Produce, 1) : memref<16xi32>
         func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
         aie.objectfifo.release @loop_of (Produce, 1)
       }

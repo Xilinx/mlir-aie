@@ -136,6 +136,7 @@ def group2(
         ],
         tile=compute_tile,
         while_true=False,
+        trace=1 if trace_size > 0 else 0,
     )
 
     def sequence(a, _b, c, in_prod, out_cons):
@@ -154,7 +155,7 @@ def group2(
     )
     prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_size > 0:
-        prog.enable_trace(trace_size)
+        prog.enable_trace(trace_size, workers=[worker])
 
     return prog.resolve_program()
 

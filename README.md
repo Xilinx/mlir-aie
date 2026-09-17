@@ -412,6 +412,10 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [Device Descriptions](docs/Devices.md)
 
+[AMD XDNA NPU Architecture Cheatsheet](skills/aie-code-creator/references/architecture.md) — device/tile layout, memory hierarchy, vector register widths, MMUL shapes and divisibility constraints, routing/placement limits, and per-tile performance ballparks
+
+[AIE C++ Kernel Intrinsics Cheatsheet](skills/aie-code-creator/references/kernel_intrinsics.md) — AIE API boilerplate, loop-pipelining annotations, vector load/store, MMUL usage, and common intrinsic quick-reference tables
+
 [Building mlir-aie tools from source](docs/Building.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)

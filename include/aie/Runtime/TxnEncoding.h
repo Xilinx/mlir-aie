@@ -94,6 +94,21 @@ inline BdPool bd_pool_init(uint32_t n) {
   return p;
 }
 
+// Withhold `id` from the pool -- a static BD already owns that slot in the
+// tile's shared BD table, and popping it here would silently overwrite it.
+// `free_ids[0..head)` is kept sorted highest-to-lowest (see bd_pool_init) so
+// pop keeps handing out the lowest remaining id first; shift the tail down
+// instead of swapping in the top, which would scramble that order.
+inline void bd_pool_reserve(BdPool &p, uint32_t id) {
+  for (int i = 0; i < p.head; ++i)
+    if (p.free_ids[i] == id) {
+      for (int j = i; j < p.head - 1; ++j)
+        p.free_ids[j] = p.free_ids[j + 1];
+      --p.head;
+      return;
+    }
+}
+
 // Pop a free BD ID into `out`. Returns false if the pool is empty -- the
 // generated builder turns that into a `return std::nullopt`, so a runtime
 // working set that exceeds the tile's BD count yields no stream rather than a
@@ -185,20 +200,26 @@ inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
 }
 
 // Append a 12-word address_patch (DDR_PATCH) instruction.
+//
+// The consumer casts this byte range to aie-rt's `XAie_CustomOpHdr` followed by
+// `patch_op_t` (xaie_txn.h), so the layout is that struct pair's under natural
+// alignment: an 8-byte header at words 0-1, op_base and action at 2-5, then
+// regaddr, argidx and argplus as u64 word pairs at 6-7, 8-9 and 10-11, low half
+// first.
 inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
-                                     int32_t arg_idx, uint32_t arg_plus) {
+                                     int32_t arg_idx, uint64_t arg_plus) {
   size_t pos = txn.size();
   txn.resize(pos + 12, 0);
   txn[pos + 0] = TXN_OPC_DDR_PATCH;     // opcode
   txn[pos + 1] = 12 * sizeof(uint32_t); // operation size
   // pos+2..4 are reserved (zero)
-  txn[pos + 5] = 0;    // action (0 = patch)
+  txn[pos + 5] = 0;    // action; the struct puts it at word 4, inert while zero
   txn[pos + 6] = addr; // register address to patch
   // pos+7 is reserved (zero)
   txn[pos + 8] = static_cast<uint32_t>(arg_idx); // buffer argument index
   // pos+9 is reserved (zero)
-  txn[pos + 10] = arg_plus; // byte offset into buffer
-  // pos+11 is reserved (zero)
+  txn[pos + 10] = static_cast<uint32_t>(arg_plus & 0xFFFFFFFFull);
+  txn[pos + 11] = static_cast<uint32_t>(arg_plus >> 32);
 }
 
 // Append a 4-word loadpdi instruction.

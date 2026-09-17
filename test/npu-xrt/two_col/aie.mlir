@@ -40,10 +40,8 @@ module {
       memref.store %th, %rtp0[%c0] : memref<16xi32>
       memref.store %v0, %rtp0[%c1] : memref<16xi32>
       scf.for %arg0 = %c0 to %c4096 step %c1 {
-        %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<128xui8>>
-        %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<128xui8>> -> memref<128xui8>
-        %subview1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : !aie.objectfifosubview<memref<128xui8>>
-        %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<128xui8>> -> memref<128xui8>
+        %elem0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : memref<128xui8>
+        %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : memref<128xui8>
         %thresh = memref.load %rtp0[%c0] : memref<16xi32>
         %tt = memref.load %rtp0[%c1] : memref<16xi32>
         %threshType = arith.trunci %tt : i32 to i8
@@ -64,10 +62,8 @@ module {
       memref.store %th, %rtp1[%c0] : memref<16xi32>
       memref.store %v0, %rtp1[%c1] : memref<16xi32>
       scf.for %arg0 = %c0 to %c4096 step %c1 {
-        %subview0 = aie.objectfifo.acquire @objFifo_in2(Consume, 1) : !aie.objectfifosubview<memref<128xui8>>
-        %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<128xui8>> -> memref<128xui8>
-        %subview1 = aie.objectfifo.acquire @objFifo_out2(Produce, 1) : !aie.objectfifosubview<memref<128xui8>>
-        %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<128xui8>> -> memref<128xui8>
+        %elem0 = aie.objectfifo.acquire @objFifo_in2(Consume, 1) : memref<128xui8>
+        %elem1 = aie.objectfifo.acquire @objFifo_out2(Produce, 1) : memref<128xui8>
         %thresh = memref.load %rtp1[%c0] : memref<16xi32>
         %tt = memref.load %rtp1[%c1] : memref<16xi32>
         %threshType = arith.trunci %tt : i32 to i8
@@ -88,10 +84,8 @@ module {
       memref.store %th, %rtp2[%c0] : memref<16xi32>
       memref.store %v0, %rtp2[%c1] : memref<16xi32>
       scf.for %arg0 = %c0 to %c4096 step %c1 {
-        %subview0 = aie.objectfifo.acquire @objFifo_in3(Consume, 1) : !aie.objectfifosubview<memref<128xui8>>
-        %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<128xui8>> -> memref<128xui8>
-        %subview1 = aie.objectfifo.acquire @objFifo_out3(Produce, 1) : !aie.objectfifosubview<memref<128xui8>>
-        %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<128xui8>> -> memref<128xui8>
+        %elem0 = aie.objectfifo.acquire @objFifo_in3(Consume, 1) : memref<128xui8>
+        %elem1 = aie.objectfifo.acquire @objFifo_out3(Produce, 1) : memref<128xui8>
         %thresh = memref.load %rtp2[%c0] : memref<16xi32>
         %tt = memref.load %rtp2[%c1] : memref<16xi32>
         %threshType = arith.trunci %tt : i32 to i8
@@ -112,10 +106,8 @@ module {
       memref.store %th, %rtp3[%c0] : memref<16xi32>
       memref.store %v0, %rtp3[%c1] : memref<16xi32>
       scf.for %arg0 = %c0 to %c4096 step %c1 {
-        %subview0 = aie.objectfifo.acquire @objFifo_in4(Consume, 1) : !aie.objectfifosubview<memref<128xui8>>
-        %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<128xui8>> -> memref<128xui8>
-        %subview1 = aie.objectfifo.acquire @objFifo_out4(Produce, 1) : !aie.objectfifosubview<memref<128xui8>>
-        %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<128xui8>> -> memref<128xui8>
+        %elem0 = aie.objectfifo.acquire @objFifo_in4(Consume, 1) : memref<128xui8>
+        %elem1 = aie.objectfifo.acquire @objFifo_out4(Produce, 1) : memref<128xui8>
         %thresh = memref.load %rtp3[%c0] : memref<16xi32>
         %tt = memref.load %rtp3[%c1] : memref<16xi32>
         %threshType = arith.trunci %tt : i32 to i8
@@ -151,4 +143,3 @@ module {
     }
   }
 }
-

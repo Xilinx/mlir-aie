@@ -8,6 +8,7 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cstdint>
 #include <utility>
@@ -1080,7 +1081,7 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
   // Lambda function to check if a bundle is in a list
   auto isBundleInList = [](WireBundle bundle,
                            std::initializer_list<WireBundle> bundles) {
-    return std::find(bundles.begin(), bundles.end(), bundle) != bundles.end();
+    return llvm::find(bundles, bundle) != bundles.end();
   };
 
   // Memtile
@@ -1617,6 +1618,64 @@ bool BaseNPU2TargetModel::isSupportedBlockFormat(
     std::string const &format) const {
   std::set<std::string> supportedTypes = {"v8bfp16ebs8", "v16bfp16ebs16"};
   return static_cast<bool>(supportedTypes.find(format) != supportedTypes.end());
+}
+
+// AIE2PS overrides: shim DMA registers are at different offsets than AIE2.
+// Memtile and core tile DMA addresses are identical to AIE2.
+uint64_t
+AIE2PSTargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
+                                   int channel,
+                                   AIE::DMAChannelDir direction) const {
+  if (isShimNOCTile(col, row)) {
+    uint64_t offset = 0x00009000 + bd_id * 0x30;
+    return ((col & 0xff) << getColumnShift()) |
+           ((row & 0xff) << getRowShift()) | offset;
+  }
+  // Memtile and core tile use same addresses as AIE2.
+  return AIE2TargetModel::getDmaBdAddress(col, row, bd_id, channel, direction);
+}
+
+uint32_t
+AIE2PSTargetModel::getDmaControlAddress(int col, int row, int channel,
+                                        AIE::DMAChannelDir direction) const {
+  if (isShimNOCTile(col, row)) {
+    uint32_t offset = 0x00009300 + (channel * 0x8);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x10;
+    return ((col & 0xff) << getColumnShift()) |
+           ((row & 0xff) << getRowShift()) | offset;
+  }
+  // Memtile and core tile use same addresses as AIE2.
+  return AIE2TargetModel::getDmaControlAddress(col, row, channel, direction);
+}
+
+// AIE2PS shim tiles have uC stream switch port for routing TCT to CERT uC.
+uint32_t
+AIE2PSTargetModel::getNumDestSwitchboxConnections(int col, int row,
+                                                  WireBundle bundle) const {
+  if (isShimNOCTile(col, row) && bundle == WireBundle::Controller32)
+    return 1;
+  return AIE2TargetModel::getNumDestSwitchboxConnections(col, row, bundle);
+}
+
+uint32_t
+AIE2PSTargetModel::getNumSourceSwitchboxConnections(int col, int row,
+                                                    WireBundle bundle) const {
+  if (isShimNOCTile(col, row) && bundle == WireBundle::Controller32)
+    return 1;
+  return AIE2TargetModel::getNumSourceSwitchboxConnections(col, row, bundle);
+}
+
+std::optional<uint32_t> AIE2PSTargetModel::getStreamSwitchPortIndex(
+    int col, int row, WireBundle bundle, uint32_t channel, bool master) const {
+  // AIE2PS shim: Controller32 maps to hw master port 22 / slave port 23.
+  if (isShimNOCTile(col, row) && bundle == WireBundle::Controller32) {
+    if (channel > 0)
+      return std::nullopt;
+    return master ? 22 : 23;
+  }
+  return AIE2TargetModel::getStreamSwitchPortIndex(col, row, bundle, channel,
+                                                   master);
 }
 
 } // namespace AIE

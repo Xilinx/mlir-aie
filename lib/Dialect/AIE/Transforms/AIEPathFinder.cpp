@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "d_ary_heap.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
 
@@ -240,8 +241,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
             // wordaround for shimMux
             auto isBundleInList = [](WireBundle bundle,
                                      std::vector<WireBundle> bundles) {
-              return std::find(bundles.begin(), bundles.end(), bundle) !=
-                     bundles.end();
+              return llvm::find(bundles, bundle) != bundles.end();
             };
             const std::vector<WireBundle> bundles = {
                 WireBundle::DMA, WireBundle::NOC, WireBundle::PLIO};
@@ -471,8 +471,7 @@ void Pathfinder::buildRoutingGraph() {
       if (nIt != graph.end() &&
           src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
         auto &sb = nIt->second;
-        if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
-            sb.dstPorts.end())
+        if (llvm::find(sb.dstPorts, neighborPort) != sb.dstPorts.end())
           dests.emplace_back(neighborCoords, neighborPort);
       }
     }
@@ -483,11 +482,9 @@ void Pathfinder::buildRoutingGraph() {
     for (auto &dest : dests) {
       auto &sb = graph[std::make_pair(src.coords, dest.coords)];
       int i = static_cast<int>(std::distance(
-          sb.srcPorts.begin(),
-          std::find(sb.srcPorts.begin(), sb.srcPorts.end(), src.port)));
+          sb.srcPorts.begin(), llvm::find(sb.srcPorts, src.port)));
       int j = static_cast<int>(std::distance(
-          sb.dstPorts.begin(),
-          std::find(sb.dstPorts.begin(), sb.dstPorts.end(), dest.port)));
+          sb.dstPorts.begin(), llvm::find(sb.dstPorts, dest.port)));
       assert(i < static_cast<int>(sb.srcPorts.size()));
       assert(j < static_cast<int>(sb.dstPorts.size()));
       int destId = getOrAddNodeId(dest);
@@ -503,28 +500,26 @@ void Pathfinder::buildRoutingGraph() {
   if (adjacency.size() < n)
     adjacency.resize(n);
 
-  // Size the reusable Dijkstra scratch buffers.
-  distance.assign(n, INF);
-  indexInHeap.assign(n, 0);
-  colors.assign(n, WHITE);
-  preds.assign(n, -1);
-  predEdge.assign(n, Edge{-1, nullptr, 0, 0});
+  // Size the reusable Dijkstra scratch buffers. These are indexed by state id,
+  // i.e. two entries per node -- one per side of the port.
+  distance.assign(2 * n, INF);
+  indexInHeap.assign(2 * n, 0);
+  colors.assign(2 * n, WHITE);
+  preds.assign(2 * n, -1);
+  predEdge.assign(2 * n, Edge{-1, nullptr, 0, 0});
   graphBuilt = true;
 }
 
-// Dijkstra over the dense graph from dense node `srcId`. Fills the `preds` and
-// `predEdge` scratch buffers. This is a 1:1 port of the legacy
-// PathEndPoint-keyed version with all per-node std::map lookups replaced by
-// flat vector indexing; the push/relax control flow (including the WHITE-node
-// always-push behavior and the absence of a heap decrease-key) is preserved to
-// keep output identical.
+// Dijkstra over the dense graph from dense node `srcId`, searching states
+// (node, PortSide) rather than bare nodes. Fills the `preds` and `predEdge`
+// scratch buffers, both indexed by state id. The push/relax control flow
+// (including the WHITE-node always-push behavior and the absence of a heap
+// decrease-key) is inherited from the legacy PathEndPoint-keyed version.
 void Pathfinder::dijkstraShortestPaths(int srcId) {
-  size_t n = nodes.size();
-  std::fill(distance.begin(), distance.end(), INF);
-  std::fill(colors.begin(), colors.end(), static_cast<int8_t>(WHITE));
-  std::fill(preds.begin(), preds.end(), -1);
-  std::fill(indexInHeap.begin(), indexInHeap.end(), uint64_t{0});
-  (void)n;
+  llvm::fill(distance, INF);
+  llvm::fill(colors, static_cast<int8_t>(WHITE));
+  llvm::fill(preds, -1);
+  llvm::fill(indexInHeap, uint64_t{0});
 
   using MutableQueue = d_ary_heap_indirect<
       /*Value=*/int, /*Arity=*/4,
@@ -533,13 +528,24 @@ void Pathfinder::dijkstraShortestPaths(int srcId) {
       /*Compare=*/std::less<>>;
   MutableQueue Q(distance, indexInHeap);
 
-  distance[srcId] = 0.0;
-  Q.push(srcId);
+  // The flow source port feeds into its switchbox, so the search starts on the
+  // In side and the first edge taken is necessarily a crossbar hop.
+  int srcState = stateId(srcId, In);
+  distance[srcState] = 0.0;
+  Q.push(srcState);
   while (!Q.empty()) {
     int s = Q.top();
     Q.pop();
-    for (Edge &e : adjacency[s]) {
-      int dst = e.dst;
+    // In takes crossbar edges and lands on the Out side of the port it picks;
+    // Out takes the wire to the neighbour and lands on that tile's In side. Any
+    // other pairing would either turn the stream around inside a switchbox or
+    // ride a wire the crossbar was never set to drive.
+    const bool sIsOut = (s & 1) == Out;
+    for (Edge &e : adjacency[stateNode(s)]) {
+      const bool isIntra = e.sb->srcCoords == e.sb->dstCoords;
+      if (sIsOut == isIntra)
+        continue;
+      int dst = stateId(e.dst, isIntra ? Out : In);
       double w = e.sb->demand[e.i][e.j];
       bool relax = distance[s] + w < distance[dst];
       if (colors[dst] == WHITE) {
@@ -575,7 +581,7 @@ Pathfinder::findPaths(const int maxIterations) {
   if (!graphBuilt)
     buildRoutingGraph();
   // Stamp-based "processed" set (avoids O(n) clears per flow).
-  std::vector<uint32_t> processedStamp(nodes.size(), 0);
+  std::vector<uint32_t> processedStamp(2 * nodes.size(), 0);
   uint32_t curStamp = 0;
   // initialize all Channel histories to 0
   for (auto &[_, sb] : graph) {
@@ -653,14 +659,19 @@ Pathfinder::findPaths(const int maxIterations) {
         // increment used_capacity for the associated channels
         SwitchSettings switchSettings;
         ++curStamp;
-        processedStamp[srcId] = curStamp;
+        processedStamp[stateId(srcId, In)] = curStamp;
         for (auto endPoint : dsts) {
           if (endPoint == src) {
-            // route to self
+            // Route to self: the port is both ends, so there is no path to
+            // trace. The source was stamped on the In side, so falling through
+            // would trace back from an Out state Dijkstra never reached.
             switchSettings[src.coords].srcs.push_back(src.port);
             switchSettings[src.coords].dsts.push_back(src.port);
+            continue;
           }
-          int currId = nodeIds.at(endPoint);
+          // A destination port is driven by its switchbox, so it is reached on
+          // the Out side.
+          int currId = stateId(nodeIds.at(endPoint), Out);
           // trace backwards until a vertex already processed is reached
           while (processedStamp[currId] != curStamp) {
             // If Dijkstra never reached this node it has no predecessor; the
@@ -668,10 +679,10 @@ Pathfinder::findPaths(const int maxIterations) {
             // this iteration rather than indexing with a -1 predecessor.
             if (preds[currId] < 0)
               return std::nullopt;
-            const PathEndPoint &curr = nodes[currId];
+            const PathEndPoint &curr = nodes[stateNode(currId)];
             const Edge &e = predEdge[currId];
             int predId = preds[currId];
-            const PathEndPoint &pred = nodes[predId];
+            const PathEndPoint &pred = nodes[stateNode(predId)];
             SwitchboxConnect &sb = *e.sb;
             int i = e.i;
             int j = e.j;
@@ -679,16 +690,24 @@ Pathfinder::findPaths(const int maxIterations) {
             // Packet flows in the same group may share a channel, but only if
             // their ids differ, so two same-id flows never merge onto a channel
             // and then fan back out to separate destinations.
-            if (packetGroupId >= 0 &&
-                (sb.packetGroupId[i][j] == -1 ||
-                 sb.packetGroupId[i][j] == packetGroupId) &&
-                sb.packetIds[i][j].count(*packetId) == 0) {
+            // packetGroupId only becomes >= 0 when packetId has a value (see
+            // Pathfinder::addFlow), so the dereferences below are safe; the
+            // checker just can't correlate the two across this while loop's
+            // back edge.
+            // NOLINTBEGIN(bugprone-unchecked-optional-access)
+            bool sameGroupUnseen = packetGroupId >= 0 && packetId.has_value() &&
+                                   (sb.packetGroupId[i][j] == -1 ||
+                                    sb.packetGroupId[i][j] == packetGroupId) &&
+                                   sb.packetIds[i][j].count(*packetId) == 0;
+            if (sameGroupUnseen) {
+              int packetIdValue = *packetId;
+              // NOLINTEND(bugprone-unchecked-optional-access)
               for (size_t k = 0; k < sb.srcPorts.size(); k++) {
                 for (size_t l = 0; l < sb.dstPorts.size(); l++) {
                   if (k == static_cast<size_t>(i) ||
                       l == static_cast<size_t>(j)) {
                     sb.packetGroupId[k][l] = packetGroupId;
-                    sb.packetIds[k][l].insert(*packetId);
+                    sb.packetIds[k][l].insert(packetIdValue);
                   }
                 }
               }

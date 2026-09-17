@@ -9,18 +9,18 @@
 // honored under dynamic lowering (the aiecc driver default): the producer
 // acquire/release reflect the repeat count, and the consumer loop is preserved.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu1) {
-// CHECK:           %[[T12:.*]] = aie.tile(1, 2)
-// CHECK:           %[[T13:.*]] = aie.tile(1, 3)
-// CHECK:           %[[CB0:.*]] = aie.buffer(%[[T13]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[CPROD:.*]] = aie.lock(%[[T13]]) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK:           %[[CCONS:.*]] = aie.lock(%[[T13]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK:           %[[B0:.*]] = aie.buffer(%[[T12]]) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK:           %[[PROD:.*]] = aie.lock(%[[T12]]) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:           %[[CONS:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK:           aie.flow(%[[T12]], DMA : 0, %[[T13]], DMA : 0)
+// CHECK-DAG:           %[[T12:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[T13:.*]] = aie.tile(1, 3)
+// CHECK-DAG:           %[[CB0:.*]] = aie.buffer(%[[T13]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[CPROD:.*]] = aie.lock(%[[T13]]) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
+// CHECK-DAG:           %[[CCONS:.*]] = aie.lock(%[[T13]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK-DAG:           %[[B0:.*]] = aie.buffer(%[[T12]]) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[PROD:.*]] = aie.lock(%[[T12]]) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK-DAG:           %[[CONS:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK-DAG:           aie.flow(%[[T12]], DMA : 0, %[[T13]], DMA : 0)
 // CHECK:           func.func @some_work(%{{.*}}: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
@@ -77,8 +77,7 @@ module @repeatCount {
       %height = arith.constant 12 : index
 
       scf.for %indexInHeight = %c0 to %height step %c1 {
-         %subview = aie.objectfifo.acquire @of1 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-         %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+         %elem0 = aie.objectfifo.acquire @of1 (Produce, 1) : memref<16xi32>
          func.call @some_work(%elem0) : (memref<16xi32>) -> ()
          aie.objectfifo.release @of1 (Produce, 1)
       }

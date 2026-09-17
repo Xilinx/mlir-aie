@@ -48,7 +48,7 @@ if (BUILD_TEST_UTILS_LIBRARY)
   # XRT headers on Windows pull in boost/any.hpp which is not typically
   # available.  Skip XRT integration there; the core helpers (load_instr_*,
   # nearly_equal, etc.) are still usable without it.
-  if (${XRT_FOUND} AND NOT WIN32)
+  if (XRT_FOUND AND NOT WIN32)
     target_compile_options(test_utils PRIVATE -DTEST_UTILS_USE_XRT)
     target_include_directories(test_utils PRIVATE ${XRT_INCLUDE_DIR})
   endif()

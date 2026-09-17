@@ -9,10 +9,10 @@
 
 // CHECK: module @init_join_input {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     %[[SHIM_TILE:.*]] = aie.tile(1, 0)
-// CHECK:     %[[MEM_TILE:.*]] = aie.tile(1, 1)
-// CHECK:     %[[TILE_1_2:.*]] = aie.tile(1, 2)
-// CHECK:     %[[TILE_2_3:.*]] = aie.tile(2, 3)
+// CHECK-DAG:     %[[SHIM_TILE:.*]] = aie.tile(1, 0)
+// CHECK-DAG:     %[[MEM_TILE:.*]] = aie.tile(1, 1)
+// CHECK-DAG:     %[[TILE_1_2:.*]] = aie.tile(1, 2)
+// CHECK-DAG:     %[[TILE_2_3:.*]] = aie.tile(2, 3)
 // CHECK-DAG:     %[[OF2_BUFF_0:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "of2_buff_0"} : memref<8xi32>
 // CHECK-DAG:     %[[OF2_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "of2_buff_1"} : memref<8xi32>
 // CHECK-DAG:     %[[OF2_PROD_LOCK_0:.*]] = aie.lock(%[[MEM_TILE]]) {init = 2 : i32, sym_name = "of2_prod_lock_0"}
@@ -30,6 +30,7 @@
 // CHECK-DAG:     aie.flow(%[[TILE_1_2]], DMA : 0, %[[MEM_TILE]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[TILE_2_3]], DMA : 0, %[[MEM_TILE]], DMA : 1)
 // CHECK-DAG:     aie.flow(%[[MEM_TILE]], DMA : 0, %[[SHIM_TILE]], DMA : 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of2_shim_alloc(%[[SHIM_TILE]], S2MM, 0)
 // CHECK:     %mem_1_2 = aie.mem(%[[TILE_1_2]]) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:
@@ -109,7 +110,6 @@
 // CHECK:     ^bb3:
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of2_shim_alloc(%[[SHIM_TILE]], S2MM, 0)
 // CHECK:   }
 // CHECK: }
 

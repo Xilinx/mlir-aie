@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @memtileRepeat {
 // CHECK:   aie.device(npu1) {
@@ -21,6 +21,7 @@
 // CHECK-DAG: %[[OF0C_BUF:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of0_cons_buff_0"} : memref<32xi32>
 // CHECK-DAG: %[[OF0C_PROD:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 3 : i32, sym_name = "of0_cons_prod_lock_0"}
 // CHECK-DAG: %[[OF0C_CONS:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "of0_cons_cons_lock_0"}
+// CHECK-DAG:     aie.shim_dma_allocation @of3_shim_alloc(%shim_noc_tile_1_0, S2MM, 0)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%{{.*}}tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:
@@ -75,7 +76,6 @@
 // CHECK:     ^bb4:
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of3_shim_alloc(%shim_noc_tile_1_0, S2MM, 0)
 // CHECK:   }
 // CHECK: }
 

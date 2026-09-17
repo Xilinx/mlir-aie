@@ -44,11 +44,9 @@ aie.device(xcvc1902) {
             ^bb0(%arg2: i32):
             %next = func.call @payload(%arg2) : (i32) -> i32
 
-            %inputSubview = aie.objectfifo.acquire @of_in (Consume, 1) : !aie.objectfifosubview<memref<256xi32>>
-            %outputSubview = aie.objectfifo.acquire @of_out (Produce, 1) : !aie.objectfifosubview<memref<256xi32>>
+            %input = aie.objectfifo.acquire @of_in (Consume, 1) : memref<256xi32>
+            %output = aie.objectfifo.acquire @of_out (Produce, 1) : memref<256xi32>
 
-            %input = aie.objectfifo.subview.access %inputSubview[0] : !aie.objectfifosubview<memref<256xi32>> -> memref<256xi32>
-            %output = aie.objectfifo.subview.access %outputSubview[0] : !aie.objectfifosubview<memref<256xi32>> -> memref<256xi32>
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
                 %d1 = memref.load %input[%indexInHeight] : memref<256xi32>

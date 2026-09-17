@@ -9,17 +9,16 @@
 
 // CHECK: module @stream_to_link_AIE2 {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     %shim_pl_tile_1_0 = aie.tile(1, 0)
-// CHECK:     %mem_tile_1_1 = aie.tile(1, 1)
-// CHECK:     %tile_3_3 = aie.tile(3, 3)
-// CHECK:     %of_out_cons_prod_lock_0 = aie.lock(%shim_pl_tile_1_0) {init = 0 : i32, sym_name = "of_out_cons_prod_lock_0"}
-// CHECK:     %of_out_cons_cons_lock_0 = aie.lock(%shim_pl_tile_1_0) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
-// CHECK:     %of_stream_cons_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32>
-// CHECK:     %of_stream_cons_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32>
-// CHECK:     %of_stream_cons_prod_lock_0 = aie.lock(%mem_tile_1_1) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock_0"}
-// CHECK:     %of_stream_cons_cons_lock_0 = aie.lock(%mem_tile_1_1) {init = 0 : i32, sym_name = "of_stream_cons_cons_lock_0"}
-// CHECK:     aie.flow(%tile_3_3, Core : 0, %mem_tile_1_1, DMA : 0)
-// CHECK:     aie.flow(%mem_tile_1_1, DMA : 0, %shim_pl_tile_1_0, DMA : 0)
+// CHECK-DAG:     %shim_pl_tile_1_0 = aie.tile(1, 0)
+// CHECK-DAG:     %mem_tile_1_1 = aie.tile(1, 1)
+// CHECK-DAG:     %tile_3_3 = aie.tile(3, 3)
+// CHECK-DAG:     %of_stream_cons_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %of_stream_cons_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:     %of_stream_cons_prod_lock_0 = aie.lock(%mem_tile_1_1) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock_0"}
+// CHECK-DAG:     %of_stream_cons_cons_lock_0 = aie.lock(%mem_tile_1_1) {init = 0 : i32, sym_name = "of_stream_cons_cons_lock_0"}
+// CHECK-DAG:     aie.flow(%tile_3_3, Core : 0, %mem_tile_1_1, DMA : 0)
+// CHECK-DAG:     aie.flow(%mem_tile_1_1, DMA : 0, %shim_pl_tile_1_0, DMA : 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of_out_shim_alloc(%shim_pl_tile_1_0, S2MM, 0)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%mem_tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -47,7 +46,6 @@
 // CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of_out_shim_alloc(%shim_pl_tile_1_0, S2MM, 0)
 // CHECK:   }
 // CHECK: }
 

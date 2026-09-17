@@ -73,7 +73,7 @@
 
 // LD44: MEMORY
 // LD44-NEXT: {
-// LD44-NEXT:    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+// LD44-NEXT:    program (RX) : ORIGIN = 0, LENGTH = 0x4000
 // LD44-NEXT:    data (!RX) : ORIGIN = 0x28450, LENGTH = 0x7BB0
 // LD44-NEXT: }
 // LD44-NEXT: ENTRY(__start)

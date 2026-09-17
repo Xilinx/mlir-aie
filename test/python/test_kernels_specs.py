@@ -150,6 +150,27 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=512), "tile_size must be 1024"),
         ],
     ),
+    KernelSpec(
+        name="add_sized",
+        factory=kernels.add_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # a, b, c, size
+        expected_name="eltwise_add_bf16_vector_size",
+    ),
+    KernelSpec(
+        name="mul_sized",
+        factory=kernels.mul_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # a, b, c, size
+        expected_name="eltwise_mul_bf16_vector_size",
+    ),
+    KernelSpec(
+        name="relu_sized",
+        factory=kernels.relu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="relu_bf16_size",
+    ),
     # ----- reduce -----
     KernelSpec(
         name="reduce_add",
@@ -271,6 +292,24 @@ KERNEL_SPECS: list[KernelSpec] = [
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
+        name="silu_sized",
+        factory=kernels.silu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="silu_bf16_size",
+        source_kind="string_or_file",
+        source_substring="silu.cc",
+    ),
+    KernelSpec(
+        name="gelu_sized",
+        factory=kernels.gelu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="gelu_bf16_size",
+        source_kind="string_or_file",
+        source_substring="gelu.cc",
+    ),
+    KernelSpec(
         name="swiglu",
         factory=kernels.swiglu,
         kwargs=dict(tile_size=1024),
@@ -288,6 +327,36 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="exp_bf16_1024",
         source_kind="string_or_file",
         source_substring="bf16_exp.cc",
+        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="tanh",
+        factory=kernels.tanh,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,
+        expected_name="tanh_bf16",
+        source_kind="string_or_file",
+        source_substring="tanh.cc",
+        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="sigmoid",
+        factory=kernels.sigmoid,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,
+        expected_name="sigmoid_bf16",
+        source_kind="string_or_file",
+        source_substring="sigmoid.cc",
+        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="leaky_relu",
+        factory=kernels.leaky_relu,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, out, size (int32), alpha (bfloat16)
+        expected_name="leaky_relu_bf16",
+        source_kind="string_or_file",
+        source_substring="leaky_relu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -651,6 +720,73 @@ KERNEL_SPECS: list[KernelSpec] = [
             ),
         ],
         invalid_kwargs=[(dict(block_index=12), "block_index")],
+    ),
+    # ----- data movement (kernels.datamovement) -----
+    KernelSpec(
+        name="axpy",
+        factory=kernels.axpy,
+        kwargs=dict(tile_size=1024),
+        arg_count=5,  # x, y, a (scalar), z, size
+        expected_name="saxpy",
+        invalid_kwargs=[(dict(tile_size=1000), "multiple of 64")],
+    ),
+    KernelSpec(
+        name="expand",
+        factory=kernels.expand,
+        kwargs=dict(tile_size=1024, group_size=32),
+        arg_count=2,  # packed uint4 payload+scales, bf16 out
+        expected_name="expand_uint4_to_bfloat16",
+        invalid_kwargs=[(dict(group_size=48), "multiple of 32")],
+    ),
+    KernelSpec(
+        name="transpose",
+        factory=kernels.transpose,
+        kwargs=dict(dim_m=32, dim_n=32, subtile=4),
+        arg_count=2,
+        expected_name="transpose_4x4",
+        name_variants=[(dict(dim_m=32, dim_n=32, subtile=8), "transpose_8x8")],
+        invalid_kwargs=[(dict(subtile=3), "subtile must be 4 or 8")],
+    ),
+    KernelSpec(
+        name="convert_copy",
+        factory=kernels.convert_copy,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # f32 in, bf16 out, size
+        expected_name="cast_f32_bf16_row",
+        # Binds aie2p/cast_f32_bf16.cc (upstream's cast, chosen over the dropped
+        # IRON convert_copy.cc — see KERNEL_DEDUP_REPORT §4.1); aie2p-only source.
+        requires_npu2=True,
+        invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
+    ),
+    KernelSpec(
+        name="rope",
+        factory=kernels.rope,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, lut, out, dims
+        expected_name="rope",
+        name_variants=[(dict(two_halves=True), "rope_two_halves")],
+    ),
+    # ----- norm (kernels.norm) -----
+    KernelSpec(
+        name="rms_norm",
+        factory=kernels.rms_norm,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, cols
+        expected_name="rms_norm",
+    ),
+    KernelSpec(
+        name="rms_norm_eps",
+        factory=kernels.rms_norm_eps,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, out, cols, epsilon
+        expected_name="rms_norm_eps",
+    ),
+    KernelSpec(
+        name="layer_norm",
+        factory=kernels.layer_norm,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, cols
+        expected_name="layer_norm",
     ),
 ]
 

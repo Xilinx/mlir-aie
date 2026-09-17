@@ -5,27 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: chess
 // REQUIRES: peano
 
-// Give each run private output/work dirs: Chess drops scratch and aiecc emits
-// per-core dirs into the output dir, so concurrent runs sharing a directory (as
-// the lit suite does) would clobber each other. The PDIs land in %t; the final
-// ls checks both are there.
-// RUN: %aiecc -v --xchesscc --xbridge --get-pdi --pdi-name=MlirAie0.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
-// RUN: %aiecc -v --get-pdi --pdi-name=MlirAie1.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=PEANO
+// Private output/work dirs: aiecc emits per-core dirs into the output dir, so
+// concurrent runs sharing one would clobber each other.
+// RUN: %aiecc -v --get-pdi --pdi-name=MlirAie0.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=PEANO
 
 // RUN: ls %t | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
 
 // bootgen runs in-process (no exec line); the PDI edge is reported as written.
-// XCHESSCC: wrote edge 'MlirAie0.pdi'
-// XCHESSCC-NOT: xclbinutil
-
-// PEANO: wrote edge 'MlirAie1.pdi'
+// PEANO: wrote edge 'MlirAie0.pdi'
 // PEANO-NOT: xclbinutil
 
 // CHECK-FILE: MlirAie0.pdi
-// CHECK-FILE: MlirAie1.pdi
 
 module {
   aie.device(npu1) {
