@@ -99,7 +99,9 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | data movement | [cast_f32_bf16.cc](./aie2p/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
 | |
 | attention | [mha.cc](./aie2p/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …); composes `softmax.cc` + `mm.cc` | `bfloat16` |
+| attention | [flash_attn_prefill.cc](./aie2p/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** (online softmax), split into per-step entry points for ObjectFifo designs; `attn_*` = global (head_dim 512), `swa_*` = sliding-window (head_dim 256) | `bfloat16` |
 | |
 | ml | [conv2dk1_i8.cc](./aie2p/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
 | ml | [conv2dk14.cc](./aie2p/conv2dk14.cc) | AIE API | 1x14 / 14x1 Conv2D | `int8_t` |
-| ml | [dwconv1d.cc](./aie2p/dwconv1d.cc) | AIE API | Depthwise 1D convolution | `bfloat16` |
+| ml | [dwconv1d.cc](./aie2p/dwconv1d.cc) | AIE API | Depthwise 1D convolution, channels-first (one channel per call; vectorizes along time) | `bfloat16` |
+| ml | [dwconv1d_channels_last.cc](./aie2p/dwconv1d_channels_last.cc) | AIE API | Depthwise 1D convolution, channels-last (one timestep per call; vectorizes across channels, per-channel taps, optional clamp) | `bfloat16` |
