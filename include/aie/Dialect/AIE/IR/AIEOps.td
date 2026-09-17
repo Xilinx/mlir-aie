@@ -2085,7 +2085,8 @@ def AIE_ShimDMAAllocationOp
 def AIE_ObjectFifoRearmBindingOp
     : AIE_Op<"objectfifo_rearm_binding", [HasParent<"DeviceOp">, AIESymbol,
                                           AttrSizedOperandSegments]> {
-  let summary = "Resident re-arm binding for an objectFIFO's core/mem DMA channels";
+  let summary =
+      "Resident re-arm binding for an objectFIFO's core/mem DMA channels";
   let description = [{
     Runtime re-arm information for a single objectFIFO, generalizing
     `aie.shim_dma_allocation` to the core and mem tile endpoints.
