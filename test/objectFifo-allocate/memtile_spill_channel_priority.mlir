@@ -1,4 +1,5 @@
 // RUN: aie-opt --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: aie-opt --aie-objectfifo-allocate --aie-objectfifo-lower-dmas --aie-assign-lock-ids --aie-assign-buffer-addresses %s -o /dev/null
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception

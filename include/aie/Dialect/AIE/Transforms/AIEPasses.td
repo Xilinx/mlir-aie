@@ -463,9 +463,15 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     retry with selected buffers and generated locks reserved on the accessing
     endpoint's tile, without disabling spilling for other pools. Existing
     buffers and locks remain fixed. Each trial checks memory and lock capacity
-    as well as channel eligibility. At most 64 locality combinations are tried.
-    Tile placement and buffer packing remain greedy; failure is not a proof of
-    infeasibility.
+    as well as channel eligibility.
+
+    If size-first packing and its locality retries fail, try an alternative
+    order that prioritizes DMA demand within each home MemTile, counting only
+    endpoints on that tile. Across homes, select the largest currently eligible
+    object. Both orders use the same resource checks and locality repair;
+    successful size-first plans are unchanged. At most 64 locality combinations
+    are tried per distinct packing order. Tile placement and buffer packing
+    remain greedy; failure is not a proof of infeasibility.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";

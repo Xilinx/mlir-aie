@@ -806,7 +806,7 @@ struct AIEObjectFifoAllocatePass
       else
         ++demand.second;
     }
-    for (auto [index, pool] : llvm::enumerate(pools)) {
+    for (auto [index, pool] : llvm::enumerate(ordered)) {
       if (pool.getTileLike().isMemTile()) {
         memTileSlots.push_back(index);
         Value home = pool.getTile();
@@ -882,8 +882,9 @@ struct AIEObjectFifoAllocatePass
     llvm::stable_sort(memTilePools, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
       return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
     });
-    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools))
+    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools)) {
       pools[slot] = pool;
+    }
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
