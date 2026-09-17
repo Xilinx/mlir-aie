@@ -23,8 +23,8 @@ module @packing_failure {
     %home = aie.tile(0, 1)
     %neighbor = aie.tile(1, 1)
     %other = aie.tile(2, 1)
-    %reserved0 = aie.buffer(%home) : memref<393216xi8>
-    %reserved1 = aie.buffer(%neighbor) : memref<327680xi8>
+    %reserved0 = aie.buffer(%home) {sym_name = "reserved0"} : memref<393216xi8>
+    %reserved1 = aie.buffer(%neighbor) {sym_name = "reserved1"} : memref<327680xi8>
     aie.objectfifo.pool @low(%home) {depth = 2 : i32} : memref<98304xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 98304 : i32}
     }
@@ -65,7 +65,7 @@ module @preserve_size_first {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
     %neighbor = aie.tile(1, 1)
-    %reserved = aie.buffer(%home) : memref<358400xi8>
+    %reserved = aie.buffer(%home) {sym_name = "reserved"} : memref<358400xi8>
     aie.objectfifo.pool @low(%home) {depth = 2 : i32} : memref<102400xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 102400 : i32}
     }
