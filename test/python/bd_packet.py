@@ -34,7 +34,6 @@ def emit_packet_bd():
                         offset=0,
                         length=n,
                         packet=(0, 5),
-                        next="self",
                     ),
                 ],
             ),

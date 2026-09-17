@@ -5,6 +5,7 @@
 Provides the primary abstractions for describing NPU designs:
 
 - [`Buffer`][iron.Buffer] — named memory region shared between Workers and the Runtime
+- [`ExternalBuffer`][iron.ExternalBuffer] — off-chip memory declared at device scope, at a fixed address
 - [`ObjectFifo`][iron.ObjectFifo] — synchronized dataflow channel between program components
 - [`CascadeFlow`][iron.CascadeFlow] — directed cascade stream connection between two Workers
 - [`Worker`][iron.Worker] — a task running on an AIE compute core
@@ -80,6 +81,7 @@ from .dataflow import (
     TileDma,
 )
 from .dtype import dtype_to_str, str_to_dtype
+from .external_buffer import ExternalBuffer
 from .kernel import ExternalFunction, Kernel
 from .lock import Lock
 from .program import Program
@@ -90,6 +92,7 @@ from .worker import Worker, WorkerRuntimeBarrier
 __all__ = [
     # Core design abstractions
     "Buffer",
+    "ExternalBuffer",
     "ExternalFunction",
     "Kernel",
     "Program",

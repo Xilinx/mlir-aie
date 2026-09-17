@@ -410,7 +410,7 @@ class CallableDesign:
         ``design.specialize(full_elf=True)`` re-aims an existing design at the
         full-ELF path, symmetric with ``@iron.jit(full_elf=True)``.
 
-        Use together with :meth:`compile` to perform ahead-of-time compilation
+        Use together with ``compile`` to perform ahead-of-time compilation
         of a JIT-decorated design at known shapes::
 
             @iron.jit
@@ -464,7 +464,7 @@ class CallableDesign:
 
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
         Device Image to that path.  Requires explicit ``xclbin_path`` +
-        ``inst_path``.  In cache mode, use :meth:`get_pdi_path` to locate the
+        ``inst_path``.  In cache mode, use ``get_pdi_path`` to locate the
         ``main.pdi`` aiecc emits into the cache directory.
         """
         return self.compilable.compile(
@@ -478,7 +478,7 @@ class CallableDesign:
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
         """Return one cache-directory PDI, or ``None`` if none is present.
 
-        Thin passthrough to :meth:`CompilableDesign.get_pdi_path`; pass
+        Thin passthrough to ``CompilableDesign.get_pdi_path``; pass
         ``device_name`` to pick a specific ``aie.device``'s PDI in a
         multi-device design.
         """
@@ -487,7 +487,7 @@ class CallableDesign:
     def get_pdi_paths(self) -> list[Path]:
         """Return every cache-directory PDI aiecc emitted, sorted by name.
 
-        Thin passthrough to :meth:`CompilableDesign.get_pdi_paths` — use this
+        Thin passthrough to ``CompilableDesign.get_pdi_paths`` — use this
         for a multi-device design where a single return is ambiguous.
         """
         return self.compilable.get_pdi_paths()
@@ -495,15 +495,19 @@ class CallableDesign:
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.
 
-        Accepts the same arguments as ``__call__``.  Tensor args may be real
-        tensors (shape and dtype are read from them) or ``None`` (in which case
-        the generator body must use ``CompileTime[T]`` params for all shape/dtype
-        info).
+        Accepts the same arguments as ``__call__`` so the two can be called
+        alike, but the tensor arguments are **not read**: generating MLIR does
+        not depend on them. A generator never sees its ``In``/``Out`` tensors
+        (they arrive as a placeholder that refuses attribute access), so all
+        shape and dtype information has to come from ``CompileTime[T]``
+        parameters, which is what the compile kwargs here carry. Passing real
+        tensors is harmless; passing ``None`` for them is equivalent.
 
         Returns:
             The MLIR module as a string (suitable for inspection, debugging,
             or feeding to a separate aiecc invocation).
         """
+        del runtime_args  # accepted for call-signature parity; see above
         call_compile_kwargs, _scalar_runtime_kwargs, _ = self._extract_compile_kwargs(
             runtime_kwargs
         )

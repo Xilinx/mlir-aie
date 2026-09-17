@@ -56,6 +56,15 @@ Workers are passed to `Program(workers=...)` rather than started from the body.
     options:
       show_root_heading: false
 
+### ExternalBuffer
+
+Off-chip memory named and addressed in the design, rather than supplied per
+dispatch. Peer of `Buffer`, which names on-chip tile memory.
+
+::: iron.external_buffer
+    options:
+      show_root_heading: false
+
 ### Kernels
 
 ::: iron.kernel

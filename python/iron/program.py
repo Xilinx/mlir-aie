@@ -14,6 +14,7 @@ from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImport
 from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
+from .buffer import Buffer
 from .device import Device
 from .resolvable import Resolvable
 from .runtime import Runtime
@@ -206,12 +207,19 @@ class Program:
                 for lk in self._rt.locks:
                     lk.resolve()
 
+                # Declare off-chip memory the design addresses itself.
+                for eb in self._rt.external_buffers:
+                    eb.resolve()
+
                 # Resolve any Buffers referenced by explicit TileDma programs
                 # (those aren't reached via worker.fn_args).
                 for td in self._rt.tile_dmas:
                     bufs, _ = td.all_buffers_and_locks()
                     for b in bufs:
-                        if b.tile is None:
+                        # An ExternalBuffer sits off-chip, on no tile; an
+                        # unplaced on-chip Buffer belongs to the tile whose DMA
+                        # program reads it.
+                        if isinstance(b, Buffer) and b.tile is None:
                             b._tile = td.tile
                         b.resolve()
 
