@@ -31,7 +31,9 @@ def dispatch_runlist(elf, per_ep):
     """
     dev = acquire_device()
     ctx = pyxrt.hw_context(dev, pyxrt.elf(str(elf.path)))
-    dummy = iron.zeros(1024, dtype=np.int32, device="npu") if elf.needs_ctrl_bo else None
+    dummy = (
+        iron.zeros(1024, dtype=np.int32, device="npu") if elf.needs_ctrl_bo else None
+    )
 
     def _bos(*tensors):
         bos = [t.buffer_object() for t in tensors]
