@@ -9,7 +9,6 @@ import re
 import unittest
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PRE_COMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
 DEPENDABOT_CONFIG = REPO_ROOT / ".github" / "dependabot.yml"
