@@ -21,6 +21,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/Object/Archive.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Endian.h"
@@ -606,20 +607,8 @@ std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
     llvm::ArrayRef<std::string> objectPaths) {
   std::vector<BankAssertion> assertions;
   llvm::StringSet<> seenObjects, definitions, ambiguous;
-  for (llvm::StringRef path : objectPaths) {
-    if (!seenObjects.insert(path).second) {
-      continue;
-    }
-    auto binary = llvm::object::createBinary(path);
-    if (!binary) {
-      llvm::consumeError(binary.takeError());
-      continue;
-    }
-    auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
-    if (!obj) {
-      continue;
-    }
-    for (const SymbolRef &sym : obj->symbols()) {
+  auto inspectObject = [&](const ObjectFile &obj) {
+    for (const SymbolRef &sym : obj.symbols()) {
       auto name = sym.getName();
       auto section = sym.getSection();
       auto type = sym.getType();
@@ -640,7 +629,7 @@ std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
       if (!definitions.insert(*name).second) {
         ambiguous.insert(*name);
       }
-      if (*section == obj->section_end()) {
+      if (*section == obj.section_end()) {
         continue;
       }
       auto sectionName = (*section)->getName();
@@ -653,6 +642,32 @@ std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
         continue;
       }
       assertions.push_back({name->str(), sectionName->str(), banks});
+    }
+  };
+  for (llvm::StringRef path : objectPaths) {
+    if (!seenObjects.insert(path).second) {
+      continue;
+    }
+    auto binary = llvm::object::createBinary(path);
+    if (!binary) {
+      llvm::consumeError(binary.takeError());
+      continue;
+    }
+    if (auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary())) {
+      inspectObject(*obj);
+    } else if (auto *archive = llvm::dyn_cast<Archive>(binary->getBinary())) {
+      llvm::Error error = llvm::Error::success();
+      for (const auto &child : archive->children(error)) {
+        auto member = child.getAsBinary();
+        if (!member) {
+          llvm::consumeError(member.takeError());
+          continue;
+        }
+        if (auto *obj = llvm::dyn_cast<ObjectFile>(member->get())) {
+          inspectObject(*obj);
+        }
+      }
+      llvm::consumeError(std::move(error));
     }
   }
   llvm::erase_if(assertions, [&](const BankAssertion &assertion) {
@@ -669,7 +684,8 @@ std::vector<BankViolation> xilinx::aiecc::checkBankPlacements(
   if (assertions.empty() || bankSize <= 0 || numBanks <= 0) {
     return violations;
   }
-  auto addrByName = readDataSymbolAddresses(elfPath, tileBaseAddress);
+  llvm::StringMap<uint64_t> sizes;
+  auto addrByName = readDataSymbolAddresses(elfPath, tileBaseAddress, &sizes);
 
   for (const BankAssertion &assertion : assertions) {
     auto it = addrByName.find(assertion.symbol);
@@ -683,10 +699,13 @@ std::vector<BankViolation> xilinx::aiecc::checkBankPlacements(
       continue; // Not in this tile's data memory; not ours to judge.
     }
     int actualBank = static_cast<int>(offset / bankSize);
-    if (llvm::is_contained(assertion.banks, actualBank)) {
+    uint64_t size = sizes.lookup(assertion.symbol);
+    bool crossesBank =
+        size > static_cast<uint64_t>(bankSize - offset % bankSize);
+    if (llvm::is_contained(assertion.banks, actualBank) && !crossesBank) {
       continue;
     }
-    violations.push_back({assertion, offset, actualBank});
+    violations.push_back({assertion, offset, actualBank, size, crossesBank});
   }
   return violations;
 }
@@ -892,7 +911,8 @@ xilinx::aiecc::readLutPairsFromIR(llvm::StringRef irPath) {
 }
 
 std::optional<std::vector<LutPair>>
-xilinx::aiecc::readLutPairsFromObject(llvm::StringRef objectPath) {
+xilinx::aiecc::readLutPairsFromObject(llvm::StringRef objectPath,
+                                      llvm::StringRef elfPath) {
   if (objectPath.ends_with(".ll") || objectPath.ends_with(".bc")) {
     return readLutPairsFromIR(objectPath);
   }
@@ -904,6 +924,33 @@ xilinx::aiecc::readLutPairsFromObject(llvm::StringRef objectPath) {
   auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
   if (!obj) {
     return std::nullopt;
+  }
+  llvm::StringSet<> liveFunctions;
+  if (!elfPath.empty()) {
+    auto linkedBinary = llvm::object::createBinary(elfPath);
+    if (!linkedBinary) {
+      llvm::consumeError(linkedBinary.takeError());
+      return std::nullopt;
+    }
+    auto *linkedObject = llvm::dyn_cast<ObjectFile>(linkedBinary->getBinary());
+    if (!linkedObject) {
+      return std::nullopt;
+    }
+    for (const SymbolRef &sym : linkedObject->symbols()) {
+      auto name = sym.getName();
+      auto type = sym.getType();
+      auto flags = sym.getFlags();
+      if (!name || !type || !flags) {
+        llvm::consumeError(name.takeError());
+        llvm::consumeError(type.takeError());
+        llvm::consumeError(flags.takeError());
+        return std::nullopt;
+      }
+      if (*type == SymbolRef::ST_Function &&
+          !(*flags & SymbolRef::SF_Undefined)) {
+        liveFunctions.insert(*name);
+      }
+    }
   }
   std::optional<std::vector<LutPair>> pairs;
   for (const SectionRef &sec : obj->sections()) {
@@ -929,6 +976,11 @@ xilinx::aiecc::readLutPairsFromObject(llvm::StringRef objectPath) {
       pairs.emplace();
     }
     llvm::append_range(*pairs, *sectionPairs);
+  }
+  if (pairs && !elfPath.empty()) {
+    llvm::erase_if(*pairs, [&](const LutPair &pair) {
+      return !liveFunctions.contains(pair.function);
+    });
   }
   return pairs;
 }

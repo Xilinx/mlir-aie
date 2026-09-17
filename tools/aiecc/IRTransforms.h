@@ -395,54 +395,58 @@ inline mlir::LogicalResult checkBankPlacement(
     llvm::function_ref<std::string(xilinx::AIE::CoreOp)> objectForCore,
     llvm::function_ref<std::string(llvm::StringRef)> resolvePath) {
   mlir::LogicalResult result = mlir::success();
-  module.walk(
-      [&](xilinx::AIE::CoreOp coreOp) {
-        std::string elf = elfForCore(coreOp);
-        if (elf.empty()) {
-          return;
-        }
-        std::vector<std::string> objects;
-        std::string coreObject = objectForCore(coreOp);
-        if (!coreObject.empty())
-          objects.push_back(std::move(coreObject));
-        if (auto filesAttr = coreOp.getLinkFiles()) {
-          for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
-            objects.push_back(resolvePath(f.getValue()));
-          }
-        } else if (auto file = coreOp.getLinkWith()) {
-          objects.push_back(resolvePath(*file));
-        }
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    std::string elf = elfForCore(coreOp);
+    if (elf.empty()) {
+      return;
+    }
+    std::vector<std::string> objects;
+    std::string coreObject = objectForCore(coreOp);
+    if (!coreObject.empty())
+      objects.push_back(std::move(coreObject));
+    if (auto filesAttr = coreOp.getLinkFiles()) {
+      for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+        objects.push_back(resolvePath(f.getValue()));
+      }
+    } else if (auto file = coreOp.getLinkWith()) {
+      objects.push_back(resolvePath(*file));
+    }
 
-        auto tile =
-            mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-        const auto &targetModel = xilinx::AIE::getTargetModel(coreOp);
-        int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
-        if (numBanks <= 0) {
-          return;
-        }
-        int64_t bankSize = targetModel.getLocalMemorySize() / numBanks;
-        int64_t base = targetModel.getMemInternalBaseAddress(
-            {tile.getCol(), tile.getRow()});
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &targetModel = xilinx::AIE::getTargetModel(coreOp);
+    int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+    if (numBanks <= 0) {
+      return;
+    }
+    int64_t bankSize = targetModel.getLocalMemorySize() / numBanks;
+    int64_t base =
+        targetModel.getMemInternalBaseAddress({tile.getCol(), tile.getRow()});
 
-        auto assertions = xilinx::aiecc::readBankAssertionsFromObjects(objects);
-        for (const auto &v : xilinx::aiecc::checkBankPlacements(
-                 elf, assertions, base, bankSize, numBanks)) {
-          std::string wanted;
-          for (int b : v.assertion.banks) {
-            wanted += (wanted.empty() ? "" : " or ");
-            wanted += static_cast<char>('A' + b);
-          }
-          coreOp.emitError()
-              << "core (" << tile.getCol() << ", " << tile.getRow() << "): '"
-              << v.assertion.symbol << "' is placed for memory bank " << wanted
-              << " (" << v.assertion.origin << "), but the linker put it at 0x"
-              << llvm::utohexstr(v.address) << ", which is bank "
-              << static_cast<char>('A' + v.actualBank)
-              << ". A parallel access that relies on this table being in bank "
-              << wanted << " reads the wrong bank";
-          result = mlir::failure();
-        }
-      });
+    auto assertions = xilinx::aiecc::readBankAssertionsFromObjects(objects);
+    for (const auto &v : xilinx::aiecc::checkBankPlacements(
+             elf, assertions, base, bankSize, numBanks)) {
+      std::string wanted;
+      for (int b : v.assertion.banks) {
+        wanted += (wanted.empty() ? "" : " or ");
+        wanted += static_cast<char>('A' + b);
+      }
+      auto diag = coreOp.emitError()
+                  << "core (" << tile.getCol() << ", " << tile.getRow()
+                  << "): '" << v.assertion.symbol
+                  << "' is placed for memory bank " << wanted << " ("
+                  << v.assertion.origin << "), but the linker put it at 0x"
+                  << llvm::utohexstr(v.address) << ", which is bank "
+                  << static_cast<char>('A' + v.actualBank);
+      if (v.crossesBank) {
+        diag << ", and its " << v.size
+             << "-byte extent crosses that bank's boundary";
+      }
+      diag << ". A parallel access that relies on this table being in bank "
+           << wanted << " reads the wrong bank";
+      result = mlir::failure();
+    }
+  });
   return result;
 }
 
@@ -550,11 +554,12 @@ inline mlir::LogicalResult checkLutBankSeparation(
     if (auto files = coreOp.getLinkFiles()) {
       for (auto f : files->getAsRange<mlir::StringAttr>()) {
         std::string object = resolvePath(f.getValue());
-        checkPairs(f.getValue(), xilinx::aiecc::readLutPairsFromObject(object));
+        checkPairs(f.getValue(),
+                   xilinx::aiecc::readLutPairsFromObject(object, elf));
       }
     } else if (auto file = coreOp.getLinkWith()) {
-      checkPairs(*file,
-                 xilinx::aiecc::readLutPairsFromObject(resolvePath(*file)));
+      checkPairs(*file, xilinx::aiecc::readLutPairsFromObject(
+                            resolvePath(*file), elf));
     }
   });
   return result;
@@ -624,6 +629,21 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
   };
   erasePattern("nocreateundeforpoison",
                [](char c) { return c == ' ' || c == '\t'; });
+  // Upgrading older bitcode adds a target_mem location Peano cannot parse.
+  // Its usual "none" suffix can be dropped; other target-specific effects
+  // need the whole memory attribute removed to avoid understating accesses.
+  erasePattern(", target_mem: none", [](char) { return false; });
+  for (size_t p = 0; (p = result.find("memory(", p)) != std::string::npos;) {
+    size_t end = result.find(')', p);
+    if (end == std::string::npos) {
+      break;
+    }
+    if (llvm::StringRef(result).slice(p, end).contains("target_mem:")) {
+      result.erase(p, end + 1 - p);
+    } else {
+      p = end + 1;
+    }
+  }
   // LLVM 23 dropped the size operand of `llvm.lifetime.start`/`.end`; Peano
   // still declares it `immarg`, so the size-less form fails its verifier
   // ("immarg operand has non-immediate parameter"). Put it back -- `-1` is

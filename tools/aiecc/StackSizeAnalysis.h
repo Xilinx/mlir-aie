@@ -79,9 +79,9 @@ struct BankAssertion {
   llvm::SmallVector<int, 2> banks;
 };
 
-// Bank requests carried by the objects a core links. Both toolchains put the
-// bank in the section name: chess from `chess_storage(DM_bankA)`, Peano from an
-// explicit `__attribute__((section))`.
+// Bank requests carried by the objects and archive members a core links. Both
+// toolchains put the bank in the section name: chess from
+// `chess_storage(DM_bankA)`, Peano from an explicit `__attribute__((section))`.
 // Names defined by multiple input objects are omitted, even if only one
 // definition is pinned: linking/GC cannot reliably associate their requests.
 std::vector<BankAssertion>
@@ -92,11 +92,14 @@ struct BankViolation {
   BankAssertion assertion;
   int64_t address; // tile-relative
   int actualBank;
+  uint64_t size;
+  bool crossesBank;
 };
 
 // Reports the requests the linked ELF contradicts. A symbol the ELF does not
 // define is dropped: --gc-sections removes what the core never reaches.
 // Ambiguous duplicate names are also skipped, not reported as contradictions.
+// Nonzero symbol extents must fit wholly within one permitted bank.
 std::vector<BankViolation>
 checkBankPlacements(llvm::StringRef elfPath,
                     llvm::ArrayRef<BankAssertion> assertions,
@@ -124,11 +127,14 @@ struct LutPair {
 //
 // Unresolvable gather addresses produce Unknown operands, not an empty result.
 // Direct LLVM IR inputs (.ll or .bc) are also accepted.
+// When elfPath is supplied, native-object pairs are limited to functions still
+// defined in the linked ELF; raw IR stays conservative because of LTO inlining.
 // Returns nothing when the object carries no readable IR, which the caller
 // reports rather than mistaking for "no pairs found". Peano only: chess emits
 // IR from an LLVM old enough that this parser rejects it.
 std::optional<std::vector<LutPair>>
-readLutPairsFromObject(llvm::StringRef objectPath);
+readLutPairsFromObject(llvm::StringRef objectPath,
+                       llvm::StringRef elfPath = {});
 
 // Inspects a textual or bitcode IR file, including optimized per-core IR.
 // Unknown operands and unresolved parameters remain in the result so the

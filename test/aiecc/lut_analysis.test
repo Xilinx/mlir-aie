@@ -16,8 +16,12 @@
 // RUN: %host_clang -ffunction-sections -fdata-sections -DSECOND -c %S/bank_analysis_duplicates.c -o %t.second.o
 // RUN: %host_clang -DSECOND -DUNPINNED -c %S/bank_analysis_duplicates.c -o %t.unpinned.o
 // RUN: %host_clang -nostdlib -no-pie -Wl,-e,get_first %t.first.o %t.second.o -o %t.duplicates.elf
-// RUN: %host_clang -nostdlib -no-pie -Wl,--gc-sections -Wl,-e,get_first %t.first.o %t.second.o -o %t.gc.elf
-// RUN: %t.exe %S/lut_analysis_pairs.ll %t.embedded.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf %t.gc.elf %t.unpinned.o | FileCheck %s
+// RUN: %host_clang -nostdlib -no-pie -Wl,--gc-sections -Wl,-e,gather_with_unrelated_blend %t.first.o %t.second.o -o %t.gc.elf
+// RUN: rm -f %t.symbols.a %t.duplicates.a %t.thin.a
+// RUN: %LLVM_TOOLS_DIR/llvm-ar rc %t.symbols.a %t.o
+// RUN: %LLVM_TOOLS_DIR/llvm-ar rc %t.duplicates.a %t.first.o %t.second.o
+// RUN: %LLVM_TOOLS_DIR/llvm-ar rcT %t.thin.a %t.first.o %t.second.o
+// RUN: %t.exe %S/lut_analysis_pairs.ll %t.embedded.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf %t.gc.elf %t.unpinned.o %t.symbols.a %t.duplicates.a %t.thin.a | FileCheck %s
 // RUN: llvm-objcopy --add-section .llvmbc=%t.bc %t.o %t.bitcode.o
-// RUN: %t.exe %S/lut_analysis_pairs.ll %t.bitcode.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf %t.gc.elf %t.unpinned.o | FileCheck %s
+// RUN: %t.exe %S/lut_analysis_pairs.ll %t.bitcode.o %t.bc %t.o %t.empty.o %t.corrupt.o %t.concat.bc %t.first.o %t.second.o %t.duplicates.elf %t.gc.elf %t.unpinned.o %t.symbols.a %t.duplicates.a %t.thin.a | FileCheck %s
 // CHECK: LUT analysis: all checks passed

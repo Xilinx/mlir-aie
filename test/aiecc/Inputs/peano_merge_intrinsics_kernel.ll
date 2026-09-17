@@ -63,4 +63,4 @@ declare i32 @llvm.smin.i32(i32, i32)
 declare void @llvm.lifetime.start.p0(i64 immarg, ptr nocapture)
 declare void @llvm.lifetime.end.p0(i64 immarg, ptr nocapture)
 
-attributes #0 = { alwaysinline }
+attributes #0 = { alwaysinline memory(read, argmem: readwrite, target_mem: none) }
