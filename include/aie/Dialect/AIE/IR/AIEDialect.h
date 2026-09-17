@@ -22,6 +22,8 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 
@@ -61,6 +63,29 @@ struct AttrBasedSymbolVisibility
   // reachable from here without including the generated interface header.
   static constexpr llvm::StringRef getVisibilityAttrName() {
     return "sym_visibility";
+  }
+
+  // `mlir::detail::verifySymbol` only checks the *inherent* visibility
+  // attribute, so it never sees ours. Repeat its check here so that a
+  // malformed visibility is still rejected rather than silently read as
+  // public by `getVisibility` below.
+  static mlir::LogicalResult verifyTrait(mlir::Operation *op) {
+    mlir::Attribute vis = op->getAttr(getVisibilityAttrName());
+    if (!vis)
+      return mlir::success();
+    auto visStrAttr = llvm::dyn_cast<mlir::StringAttr>(vis);
+    if (!visStrAttr)
+      return op->emitOpError()
+             << "requires visibility attribute '" << getVisibilityAttrName()
+             << "' to be a string attribute, but got " << vis;
+    if (!llvm::is_contained(
+            llvm::ArrayRef<llvm::StringRef>{"public", "private", "nested"},
+            visStrAttr.getValue()))
+      return op->emitOpError()
+             << "visibility expected to be one of [\"public\", \"private\", "
+                "\"nested\"], but got "
+             << visStrAttr;
+    return mlir::success();
   }
 
   mlir::SymbolTable::Visibility getVisibility() {
