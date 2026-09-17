@@ -1,0 +1,13 @@
+<map id="BankAwareContext" name="BankAwareContext">
+<area shape="rect" id="Node000001" title=" " alt="" coords="201,123,347,148"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,13,44,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="32,51,41,76,58,97,82,107,117,116,201,127,200,132,116,121,80,113,55,101,37,78,27,53"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="91,13,166,38"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="134,51,141,75,155,97,176,112,202,122,200,127,174,117,151,101,136,77,129,52"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="193,5,352,45"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="276,59,277,122,271,122,270,59"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="377,13,443,38"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="399,52,381,77,357,101,335,115,312,125,310,120,333,110,354,97,377,73,394,49"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="546,13,597,38"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="567,52,555,78,534,101,501,114,454,124,348,134,347,129,453,119,500,109,531,96,550,75,562,50"/>
+</map>
