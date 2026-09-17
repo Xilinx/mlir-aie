@@ -7,7 +7,7 @@
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import Count, In, Out, Param, Scalar
+from aie.utils.compile.jit.markers import In, Out, Param, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
@@ -121,7 +121,8 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         contract=KernelContract(
-            roles=(In, Out, Count),
+            roles=(In, Out, Scalar),
+            scalar_bindings=((2, tile_size),),
             reference=lambda x: x,
             tolerance=Tolerance.exact(note="lossless copy"),
         ),
@@ -164,7 +165,8 @@ def scale(
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, Out, Param, Count),
+            roles=(In, Out, Param, Scalar),
+            scalar_bindings=((3, tile_size),),
             reference=scale_ref,
             acc_dtype=np.int32 if dtype == np.int16 else np.int64,  # acc32 / acc64
             reduction=1,
@@ -291,7 +293,8 @@ def add_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, In, Out, Count),
+            roles=(In, In, Out, Scalar),
+            scalar_bindings=((3, tile_size),),
             reference=add_ref,
             acc_dtype=np.float32,
             tolerance=_BF16_ROUNDTRIP,
@@ -316,7 +319,8 @@ def mul_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, In, Out, Count),
+            roles=(In, In, Out, Scalar),
+            scalar_bindings=((3, tile_size),),
             reference=mul_ref,
             acc_dtype=np.float32,
             tolerance=_BF16_ROUNDTRIP,
@@ -341,7 +345,8 @@ def relu_sized(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("relu.cc"),
         [tile_ty, tile_ty, np.int32],
         contract=KernelContract(
-            roles=(In, Out, Count),
+            roles=(In, Out, Scalar),
+            scalar_bindings=((2, tile_size),),
             reference=lambda x: np.maximum(x.astype(np.float32), 0.0),
             tolerance=Tolerance.exact(note="selection: max(x, 0) is exact in bf16"),
             ops_per_call=tile_size,

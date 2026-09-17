@@ -7,6 +7,7 @@
 
 import hashlib
 import logging
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,9 +43,13 @@ class DesignShape(Enum):
 def _as_dtype(dt):
     """``np.dtype(dt)``, or ``dt`` itself for a block type numpy has no dtype for.
 
-    ``v8bfp16ebs8`` and friends are ``np.generic`` subclasses standing in for a
-    hardware block format, and numpy refuses to make a dtype of them.
+    Older numpy versions coerce custom ``np.generic`` subclasses to void rather
+    than rejecting them, so preserve the block formats before conversion.
     """
+    from ..helpers.util import v8bfp16ebs8, v16bfp16ebs16
+
+    if dt is v8bfp16ebs8 or dt is v16bfp16ebs16:
+        return dt
     try:
         return np.dtype(dt)
     except TypeError:
@@ -264,6 +269,33 @@ class BaseKernel(Resolvable):
         call(self._op, adapted, **kwargs)
 
 
+@dataclass(frozen=True)
+class _KernelSource:
+    source_file: str | None
+    source_string: str | None
+    source_digest: str
+    include_dirs: tuple[str, ...]
+    compile_flags: tuple[str, ...]
+    use_chess: bool
+    symbol_prefix: str | None
+    inline_symbol: str | None
+
+
+@dataclass(frozen=True, eq=False)
+class KernelObject:
+    """One link artifact, shared by every kernel that binds one of its symbols.
+
+    A prebuilt object only needs a filename and link policy. ExternalFunction
+    supplies the immutable source recipe; compilation state belongs here, not
+    to any particular exported function.
+    """
+
+    name: str
+    link_with_mode: str | None = None
+    _source: _KernelSource | None = field(default=None, repr=False)
+    _compiled_dirs: set[str] = field(default_factory=set, repr=False)
+
+
 class Kernel(BaseKernel):
     """An AIE core function backed by a pre-compiled object file.
 
@@ -284,7 +316,7 @@ class Kernel(BaseKernel):
     def __init__(
         self,
         name: str,
-        object_file_name: str,
+        object_file_name: str | KernelObject,
         arg_types: list[type[np.ndarray] | np.dtype] | None = None,
         *,
         link_with_mode: str | None = None,
@@ -294,9 +326,9 @@ class Kernel(BaseKernel):
 
         Args:
             name: Symbol name of the function as it appears in the object file.
-            object_file_name: Filename of the pre-compiled object file
-                (e.g. ``"add_one.o"``).  Must be on the linker search path
-                at compile time.
+            object_file_name: Filename (e.g. ``"add_one.o"``) or shared
+                ``KernelObject`` of the pre-compiled object file. Must be on
+                the linker search path at compile time.
             arg_types: Type signature of the function arguments.  Defaults to None (empty list).
             link_with_mode: Optional link policy emitted alongside
                 ``link_with``.  ``"merge"`` routes the artifact through aiecc's
@@ -309,9 +341,31 @@ class Kernel(BaseKernel):
                 [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
         """
         super().__init__(name, arg_types)
-        self._object_file_name = object_file_name
-        self._link_with_mode = link_with_mode
+        if isinstance(object_file_name, KernelObject):
+            if (
+                link_with_mode is not None
+                and link_with_mode != object_file_name.link_with_mode
+            ):
+                raise ValueError(
+                    "link_with_mode conflicts with the shared KernelObject"
+                )
+            self._object_file = object_file_name
+        else:
+            self._object_file = KernelObject(object_file_name, link_with_mode)
         self._stack_size_override = stack_size_override
+
+    @property
+    def object_file(self) -> KernelObject:
+        """The artifact owner, also shared by sibling symbol bindings."""
+        return self._object_file
+
+    @property
+    def _object_file_name(self) -> str:
+        return self.object_file.name
+
+    @property
+    def _link_with_mode(self) -> str | None:
+        return self.object_file.link_with_mode
 
     @property
     def object_file_name(self) -> str:
@@ -339,6 +393,10 @@ class Kernel(BaseKernel):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
+        if self.object_file._source is not None:
+            # JIT clears its discovery registry before generating a design.
+            # Re-register the artifact even when only a sibling binding survives.
+            ExternalFunction._register_object(self)
         if not self._op:
             self._op = external_func(
                 self._name,
@@ -363,6 +421,28 @@ class ExternalFunction(Kernel):
     """
 
     _instances: set = set()  # Registry of all live ExternalFunction instances.
+
+    @classmethod
+    def _register_object(cls, kernel: Kernel) -> None:
+        if isinstance(kernel, cls):
+            cls._instances.add(kernel)
+            return
+        if any(f.object_file is kernel.object_file for f in cls._instances):
+            return
+        # A discovery binding references the existing owner; it does not rebuild
+        # the recipe or retain the ExternalFunction that originally created it.
+        binding = cls.__new__(cls)
+        BaseKernel.__init__(binding, kernel.name, kernel.arg_types())
+        binding._object_file = kernel.object_file
+        binding._stack_size_override = kernel.stack_size_override
+        recipe = binding._recipe
+        prefix = f"{recipe.symbol_prefix}_" if recipe.symbol_prefix else ""
+        binding._original_name = recipe.inline_symbol or kernel.name.removeprefix(
+            prefix
+        )
+        binding._cached_digest = None
+        binding.also = SimpleNamespace()
+        cls._instances.add(binding)
 
     # Optional metadata the kernel factories attach: the contract
     # (aie.iron.kernels.KernelContract) and the matmul layout facts.
@@ -431,8 +511,8 @@ class ExternalFunction(Kernel):
         limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
         return max(1, min(limit, int(np.iinfo(dt).max)))
 
-    def expected(self, inputs: list, *, scalars: tuple = ()) -> np.ndarray:
-        """Return the contract's reference result, cast to the output dtype."""
+    def expected(self, inputs: list, *, scalars: tuple = ()):
+        """Return reference output(s), cast to each output argument's dtype."""
         from aie.helpers.util import v8bfp16ebs8
         from aie.utils.compile.jit.markers import Scalar
 
@@ -444,58 +524,78 @@ class ExternalFunction(Kernel):
             next(s) if c.roles[i] is Scalar else next(tensors)
             for i in c.reference_indices()
         ]
-        out_dt = self.arg_dtype(c.out_index)
-        if out_dt is v8bfp16ebs8:
-            out_dt = np.float32  # judged after decoding the device's blocks
-        return np.asarray(c.reference(*args)).astype(out_dt)
-
-    def _bfp_output(self) -> bool:
-        """Whether this kernel writes bfp16ebs8 blocks rather than plain values."""
-        from aie.helpers.util import v8bfp16ebs8
-
-        c = self._require_contract()
-        return self.arg_dtype(c.out_index) is v8bfp16ebs8
+        result = c.reference(*args)
+        multiple = len(c.out_indices) > 1
+        results = result if multiple else (result,)
+        if multiple and (
+            not isinstance(results, tuple) or len(results) != len(c.out_indices)
+        ):
+            raise ValueError("reference must return one tuple entry per output")
+        outputs = []
+        for i, value in zip(c.out_indices, results):
+            dt = self.arg_dtype(i)
+            outputs.append(
+                np.asarray(value).astype(np.float32 if dt is v8bfp16ebs8 else dt)
+            )
+        return tuple(outputs) if multiple else outputs[0]
 
     def output_dtype(self, ref_dtype):
-        """Host dtype of the device output buffer.
+        """Host dtype(s) of the device output buffer(s).
 
         A bfp16ebs8 output arrives as packed bytes; everything else arrives in
-        the reference's own dtype.
+        the reference's own dtype. Multiple outputs take and return tuples in
+        output argument order.
         """
         import numpy as np
+        from aie.helpers.util import v8bfp16ebs8
 
-        return np.uint8 if self._bfp_output() else ref_dtype
+        outputs = self._require_contract().out_indices
+        multiple = len(outputs) > 1
+        dtypes = ref_dtype if multiple else (ref_dtype,)
+        if multiple and (
+            not isinstance(dtypes, (tuple, list)) or len(dtypes) != len(outputs)
+        ):
+            raise ValueError("provide one reference dtype per output")
+        result = tuple(
+            np.uint8 if self.arg_dtype(i) is v8bfp16ebs8 else dt
+            for i, dt in zip(outputs, dtypes)
+        )
+        return result if multiple else result[0]
 
     def judge(self, got, ref, *, calls: int = 1, tolerance=None):
         """Compare a flat device output against a reference under the contract.
 
-        Streaming outputs are viewed as ``(calls, tile)`` and trimmed to the
-        contract's ``out_valid`` elements per call, so DMA padding is never
-        compared; matrix outputs are reshaped to the reference, a bfp16ebs8 C
-        unshuffled and decoded first.
+        Declared layouts decode each output into logical tiles. DMA padding
+        is trimmed per call. Multiple outputs return a tuple of verdicts;
+        callers must check all entries, not the truthiness of the tuple.
         """
-        from aie.utils import bfp
         from aie.utils.verify import Tolerance, compare
 
         c = self._require_contract()
-        got, ref = np.asarray(got), np.asarray(ref)
-        matmul = self.design_shape is DesignShape.MATMUL
-        if matmul and self._bfp_output():
-            M, N = ref.shape
-            m, _, n = self.dims
-            got = bfp.decode(bfp.shuffle(got, N, M, n, m, unshuffle=True))
-        elif matmul and self.c_col_maj:
-            got = got.reshape(ref.shape[1], ref.shape[0]).T  # host buffer holds C^T
-        elif matmul or self.design_shape is DesignShape.MATVEC:
-            got = got.reshape(ref.shape)
-        else:
-            got = got.reshape(calls, -1)
+        multiple = len(c.out_indices) > 1
+        actuals, references = (got, ref) if multiple else ((got,), (ref,))
+        if (
+            not isinstance(actuals, (tuple, list))
+            or not isinstance(references, (tuple, list))
+            or len(actuals) != len(c.out_indices)
+            or len(references) != len(c.out_indices)
+        ):
+            raise ValueError("provide one actual and reference array per output")
+        verdicts = []
+        for i, actual, reference in zip(c.out_indices, actuals, references):
+            layout = c.layouts[i] if c.layouts else None
+            got = layout.decode(actual, calls=calls) if layout else np.asarray(actual)
+            got, ref = got.reshape(calls, -1), np.asarray(reference).reshape(calls, -1)
             if c.out_valid is not None:
                 got = got[:, : c.out_valid]
-            ref = ref.reshape(calls, -1)
-        return compare(
-            got, ref, tolerance or c.tolerance or Tolerance.default_for(ref.dtype)
-        )
+            verdicts.append(
+                compare(
+                    got,
+                    ref,
+                    tolerance or c.tolerance or Tolerance.default_for(ref.dtype),
+                )
+            )
+        return tuple(verdicts) if multiple else verdicts[0]
 
     def siblings(self, **symbols: tuple) -> SimpleNamespace:
         """Bind other symbols exported by this kernel's own object file.
@@ -524,7 +624,7 @@ class ExternalFunction(Kernel):
             {
                 attr: Kernel(
                     f"{prefix}_{symbol}" if prefix else symbol,
-                    self.object_file_name,
+                    self.object_file,
                     arg_types,
                 )
                 for attr, (symbol, arg_types) in symbols.items()
@@ -605,13 +705,7 @@ class ExternalFunction(Kernel):
                 "this kernel."
             )
 
-        # Must precede the collision scan below: it registers this instance in
-        # `_instances`, whose hash/eq run `_content_digest()` -- which reads
-        # `_inline`.  `_original_name` / `_symbol_prefix` are likewise read by
-        # compile_external_kernel (source naming and the objcopy symbol rename).
         self._original_name = name
-        self._symbol_prefix = symbol_prefix
-        self._inline = inline
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if not object_file_name:
@@ -639,39 +733,47 @@ class ExternalFunction(Kernel):
             stack_size_override=stack_size_override,
         )
 
-        if source_file is not None:
-            self._source_file = source_file
-            self._source_string = None
-        elif source_string is not None:
-            self._source_file = None
-            self._source_string = source_string
-        else:
+        if source_file is None and source_string is None:
             raise ValueError("source_file or source_string must be provided.")
-
-        self._include_dirs = include_dirs if include_dirs is not None else []
-        self._compile_flags = compile_flags if compile_flags is not None else []
-        self._use_chess = use_chess
-        self._compiled = False
-        self._compiled_dir = None
+        if source_file is not None:
+            try:
+                source_bytes = Path(source_file).read_bytes()
+            except OSError:
+                source_bytes = f"<unreadable:{source_file}>".encode()
+        else:
+            assert source_string is not None
+            source_bytes = source_string.encode()
+        self._object_file = KernelObject(
+            object_file_name,
+            "merge" if inline else None,
+            _KernelSource(
+                str(Path(source_file).resolve()) if source_file is not None else None,
+                source_string if source_file is None else None,
+                hashlib.sha256(source_bytes).hexdigest(),
+                tuple(include_dirs or ()),
+                tuple(compile_flags or ()),
+                use_chess,
+                symbol_prefix,
+                name if inline else None,
+            ),
+        )
         self._cached_digest: str | None = None
 
-        # Two same-name EFs with default object_file_name would collide on the
-        # same artifact path. Auto-suffix defaulted names with a content digest;
-        # raise on explicit names so silent renames don't surprise the caller.
+        # A translation unit may export several symbols, but an output path
+        # must have only one recipe. Auto-suffix default names on conflict;
+        # explicit names are never silently changed.
         for existing in ExternalFunction._instances:
             if (
-                existing._name == effective_name
-                and existing._object_file_name == object_file_name
-                and existing._content_digest() != self._content_digest()
+                existing.object_file_name == object_file_name
+                and existing.object_file._source != self.object_file._source
             ):
                 if object_file_name_explicit:
                     raise ValueError(
                         f"ExternalFunction '{effective_name}' would collide with "
-                        f"an already-registered instance: same name and "
+                        f"an already-registered instance: same "
                         f"explicit object_file_name='{object_file_name}' but "
                         f"different compile_flags / source.  Distinguish them "
-                        f"by passing a distinct `object_file_name=...` or "
-                        f"`name=...`."
+                        f"by passing a distinct `object_file_name=...`."
                     )
                 suffix = self._content_digest()[:8]
                 output_path = Path(object_file_name)
@@ -680,7 +782,16 @@ class ExternalFunction(Kernel):
                         f"{output_path.stem}_{suffix}{output_path.suffix}"
                     )
                 )
-                self._object_file_name = object_file_name
+                self._object_file = replace(self.object_file, name=object_file_name)
+                self._cached_digest = None
+                break
+        for existing in ExternalFunction._instances:
+            if existing.object_file_name == self.object_file_name:
+                if existing.object_file._source != self.object_file._source:
+                    raise ValueError(
+                        f"ExternalFunction '{effective_name}' would collide on '{self.object_file_name}'"
+                    )
+                self._object_file = existing.object_file
                 break
         self.also = SimpleNamespace()  # siblings from this kernel's object
         ExternalFunction._instances.add(self)
@@ -689,6 +800,40 @@ class ExternalFunction(Kernel):
     # recompiles a kernel outside the JIT path (aie.utils.compile.remarks) reads
     # these rather than the private fields; the JIT itself keeps using the
     # private fields directly.
+
+    @property
+    def _recipe(self) -> _KernelSource:
+        recipe = self.object_file._source
+        assert recipe is not None
+        return recipe
+
+    @property
+    def _source_file(self):
+        return self._recipe.source_file
+
+    @property
+    def _source_string(self):
+        return self._recipe.source_string
+
+    @property
+    def _include_dirs(self):
+        return self._recipe.include_dirs
+
+    @property
+    def _compile_flags(self):
+        return self._recipe.compile_flags
+
+    @property
+    def _use_chess(self):
+        return self._recipe.use_chess
+
+    @property
+    def _symbol_prefix(self):
+        return self._recipe.symbol_prefix
+
+    @property
+    def _inline(self):
+        return self._recipe.inline_symbol is not None
 
     @property
     def source_file(self) -> str | None:
@@ -773,7 +918,7 @@ class ExternalFunction(Kernel):
         from pathlib import Path as _Path
 
         include_dir_mtimes = []
-        for d in sorted(self._include_dirs):
+        for d in self._include_dirs:
             try:
                 mtime = str(_Path(d).stat().st_mtime)
             except (FileNotFoundError, OSError):
@@ -782,23 +927,17 @@ class ExternalFunction(Kernel):
 
         parts = [
             self._name,
+            self.object_file_name,
             str(self._arg_types),
             str(include_dir_mtimes),
-            str(sorted(self._compile_flags)),
+            str(self._compile_flags),
             # Toolchain choice (peano vs chess) changes the resulting .o
             # contents even when name + arg_types + flags + source are
             # identical, so the digest must distinguish them.
             f"chess={self._use_chess}",
             f"inline={self._inline}",
         ]
-        if self._source_string:
-            parts.append(self._source_string)
-        elif self._source_file:
-            try:
-                with open(self._source_file) as f:
-                    parts.append(f.read())
-            except OSError:
-                parts.append(f"<unreadable:{self._source_file}>")
+        parts.extend([str(self._source_file), self._recipe.source_digest])
         self._cached_digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
         return self._cached_digest
 

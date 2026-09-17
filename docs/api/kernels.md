@@ -90,6 +90,7 @@ reimplements the math.
       show_root_heading: false
       members:
         - KernelContract
+        - TensorLayout
         - ROLES
 
 `aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a

@@ -3,35 +3,12 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Build, run and check any ``aie.iron.kernels`` factory from its contract.
+"""Build, sample and check independent kernel calls from their declarations.
 
-A kernel factory returns an ``ExternalFunction`` whose ``arg_types()`` fix
-every argument's shape and dtype and whose ``.contract``
-(:class:`~aie.iron.kernels.KernelContract`) says which argument is which, how
-to compute the expected result on the host, and how close the device must
-come. That is enough to generate a single-Worker design for it, so this
-module does it once, for every kernel:
-
-    from aie.iron import kernels
-    from aie.iron.algorithms import kernel_design as kd
-
-    fn = kernels.reduce_max(dtype=bfloat16)
-    design = kd.design(kernels.reduce_max, calls=16, dtype=bfloat16)
-    inputs = kd.sample_inputs(fn, calls=16)
-    ins, out = kd.upload(inputs, kd.output_size(fn, calls=16),
-                         fn.output_dtype(np.dtype(bfloat16)), fn=fn, poison=True)
-    design(*ins, out)
-    verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
-
-The pieces are separate on purpose: a design is built, run and judged the
-same way anything else built with ``@iron.jit`` is.
-
-Design generators are module-level functions with fixed arity, and everything
-that varies -- the factory, its kwargs, the call count, runtime scalars, the
-values of ``param`` arguments (baked into core Buffers) -- arrives through
-``CompileTime`` kwargs. The JIT cache keys a generator by its
-bytecode and its ``CompileTime`` values, not by closure cells, so a closure
-over the kernel would make two different kernels share one cached build.
+Each call consumes one tile per ``In``, reads constant ``Param`` buffers, and
+writes one tile per output. Layout codecs convert logical tiles to kernel
+storage on the host. Whole-problem tiling, reductions across kernel calls and
+multi-core schedules belong to algorithms, not this kernel-validation harness.
 """
 
 from __future__ import annotations
@@ -39,370 +16,242 @@ from __future__ import annotations
 from dataclasses import dataclass
 from operator import index
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import numpy as np
 from aie.iron.buffer import Buffer
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
-from aie.iron.kernel import DesignShape
 from aie.iron.program import Program
 from aie.iron.runtime import Runtime, TaskGroup
 from aie.iron.worker import Worker
-from aie.utils import bfp, ceildiv, get_current_device, tensor
-from aie.utils.compile.jit import (
-    CompileTime,
-    Count,
-    In,
-    InOut,
-    Out,
-    Param,
-    Scalar,
-)
+from aie.utils import bfp, get_current_device, tensor
+from aie.utils.compile.jit import CompileTime, In, InOut, Out, Param, Scalar
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import get_cycles_summary
 from aie.utils.verify import poisoned
 
-# --------------------------------------------------------------------------
-# Contract helpers
-# --------------------------------------------------------------------------
-
 
 def _contract(fn):
-    c = getattr(fn, "contract", None)
-    if c is None:
+    if getattr(fn, "contract", None) is None:
         raise ValueError(
-            f"kernel '{fn.name}' declares no contract; add a KernelContract to its "
-            "factory (roles, reference, tolerance) so it can be built and checked"
+            f"kernel '{fn.name}' declares no contract; add a KernelContract"
         )
-    return c
+    return fn.contract
 
 
-def _arg_types(fn) -> list:
-    """Return the kernel's declared argument types (numpy shapes and dtypes)."""
+def _arg_types(fn):
     return fn.arg_types()
 
 
 def shape_dtype(arg_type):
-    """``(shape, dtype)`` of an ``np.ndarray[(n,), np.dtype[T]]`` argument type."""
+    """Return the shape and dtype of a declared numpy tensor type."""
     return arg_type.__args__[0], arg_type.__args__[1].__args__[0]
 
 
-def elems(arg_type) -> int:
-    """Return the number of elements an argument type holds."""
+def elems(arg_type):
     return int(np.prod(shape_dtype(arg_type)[0]))
 
 
-def _bfp_operands(fn) -> tuple[bool, bool, bool]:
-    """Return ``(A, B, C)`` flags: which of a matmul's operands are bfp16ebs8 blocks.
-
-    False for an argument a kernel does not have, so this answers for any
-    kernel rather than only for the three-operand ones.
-    """
-    flags = [bfp.is_bfp(shape_dtype(t)[1]) for t in _arg_types(fn)[:3]]
-    a, b, c = flags + [False] * (3 - len(flags))
-    return a, b, c
-
-
-def _tensor_positions(contract):
-    """Return host-tensor argument indices in design order: inputs, then the output.
-
-    Design parameters are ``In`` for ``in``/``param`` arguments and ``Out`` for
-    the output, so the kernel's own argument order (``scale`` puts its output
-    before its parameter) is not the design's parameter order.
-    """
-    ins = [i for i, r in enumerate(contract.roles) if r in (In, Param)]
-    return ins, contract.out_index
+def _calls(calls, shape=None):
+    if shape is not None:
+        raise ValueError(
+            "kernel validation takes independent tiles, not a whole-problem shape; "
+            "set the factory's tile dimensions and use calls for repetitions"
+        )
+    try:
+        calls = index(calls)
+    except TypeError as exc:
+        raise ValueError(f"calls must be a positive integer, got {calls}") from exc
+    if calls < 1:
+        raise ValueError(f"calls must be a positive integer, got {calls}")
+    return calls
 
 
 def _device():
-    """Return the bound device, whose target model sizes tiles and stacks."""
     device = get_current_device()
     if device is None:
         raise RuntimeError(
-            "no device is bound: a design's core memory and stack budget come "
-            "from the target model, so select one with iron.set_current_device()"
+            "no device is bound; select one with iron.set_current_device()"
         )
     return device
 
 
-def _stack_bytes(fn) -> int:
-    """Stack a Worker calling ``fn`` needs.
-
-    aiecc measures each core's stack and rejects a design whose stack is too
-    small, so a kernel that needs more than the target's default says so in
-    its contract; everything else takes the default.
-    """
-    declared = getattr(_contract(fn), "stack_bytes", None)
-    return declared or _device().default_core_stack_bytes
+def _stack_bytes(fn):
+    return _contract(fn).stack_bytes or _device().default_core_stack_bytes
 
 
-def _fifo_depth(fn, tile_bytes: int, stack_bytes: int, fixed_bytes: int = 0) -> int:
-    """Largest ObjectFifo depth (2 or 1) at which ``tile_bytes`` per depth fits.
-
-    ObjectFifos default to depth 2 (ping-pong); when that does not fit beside
-    the stack, depth 1 still runs the kernel correctly, just without overlap.
-    ``fixed_bytes`` is memory used once regardless of depth: the Buffers that
-    hold ``Param`` arguments (a 3x3x64x64 conv weight set is 36 KB).
-    """
-    core_memory = _device().core_memory_bytes
+def _fifo_depth(fn, tile_bytes, stack_bytes, fixed_bytes=0):
     for depth in (2, 1):
-        if depth * tile_bytes + fixed_bytes + stack_bytes <= core_memory:
+        if (
+            depth * tile_bytes + fixed_bytes + stack_bytes
+            <= _device().core_memory_bytes
+        ):
             return depth
     raise ValueError(
-        f"{fn.name}: one set of tiles is {tile_bytes} bytes plus {fixed_bytes} bytes "
-        f"of parameters; with a {stack_bytes}-byte stack that exceeds the "
-        f"{core_memory}-byte core memory. Use a smaller tile."
+        f"{fn.name}: tiles plus parameters and stack exceed core memory; use a smaller tile"
     )
 
 
-def is_matmul(fn) -> bool:
-    """Whether a design must walk this kernel's operands as a matmul."""
-    return fn.design_shape is DesignShape.MATMUL
+def _tensor_positions(c):
+    return [i for i, r in enumerate(c.roles) if r in (In, Param)], c.out_indices
 
 
-def _matrix_shape(fn, shape: tuple | None, rank: int) -> tuple:
-    """Default to one kernel tile; explicit problems must contain whole tiles."""
-    tile_shape = fn.dims
-    if shape is None:
-        return tile_shape
-    if len(shape) != rank:
-        raise ValueError(
-            f"{fn.name}: expected shape=(M, K{', N' if rank == 3 else ''}), got {shape}"
-        )
-    try:
-        dims = tuple(index(d) for d in shape)
-    except TypeError as exc:
-        raise ValueError(
-            f"{fn.name}: shape must contain integers, got {shape}"
-        ) from exc
-    if any(d <= 0 or d % t for d, t in zip(dims, tile_shape)):
-        raise ValueError(
-            f"{fn.name}: shape {shape} must contain positive multiples of tile "
-            f"dimensions {tile_shape}"
-        )
-    return dims
-
-
-def is_matvec(fn) -> bool:
-    """Whether a design must walk this kernel's operands as a matrix-vector product."""
-    return fn.design_shape is DesignShape.MATVEC
-
-
-# --------------------------------------------------------------------------
-# Streaming kernels: N tiles in, one tile out, `calls` iterations
-# --------------------------------------------------------------------------
+def _layout(c, i):
+    return c.layouts[i] if c.layouts else None
 
 
 def _fifo_plan(fn):
-    """How the harness feeds ``fn``: ``(groups, in_roles, param_roles)``.
-
-    ``groups`` are the ``in`` tensors gathered by type, one ObjectFifo each,
-    in the order the types first appear. Tiles of one type travel through one
-    fifo and are acquired together, the way the vision examples slide a window
-    of lines, so swiglu's three same-type inputs cost one channel rather than
-    three. A core tile has two input DMA channels, so two types can be fed and
-    a third cannot -- conv2dk1_skip_init's int8 residual beside its uint8
-    activations is two, and fits.
-
-    ``param`` tensors (scale's factor, filter2d's 3x3 kernel) are not streamed
-    at all: they become core Buffers with an initial value, as
-    programming_examples/vision/edge_detect does, which also sidesteps the
-    4-byte DMA length rule an 18-byte kernel would break.
-    """
+    """Pack same-type inputs per call, respecting the core's DMA channel budget."""
     c = _contract(fn)
-    in_pos, _ = _tensor_positions(c)
-    in_roles = [i for i in in_pos if c.roles[i] == In]
-    param_roles = [i for i in in_pos if c.roles[i] == Param]
-    by_type: dict[str, list[int]] = {}
-    for i in in_roles:
-        by_type.setdefault(str(_arg_types(fn)[i]), []).append(i)
+    ins = [i for i, r in enumerate(c.roles) if r is In]
+    params = [i for i, r in enumerate(c.roles) if r is Param]
+    by_type = {}
+    for i in ins:
+        by_type.setdefault(str(fn.arg_types()[i]), []).append(i)
     groups = list(by_type.values())
-    channels = _device().core_dma_channels_in
-    if len(groups) > channels:
+    if len(groups) > _device().core_dma_channels_in:
+        raise ValueError(f"{fn.name}: input types exceed the core's input DMA channels")
+    if len(c.out_indices) > _device().core_dma_channels_out:
+        raise ValueError(f"{fn.name}: outputs exceed the core's output DMA channels")
+    return groups, ins, params
+
+
+def _encode_params(fn, params):
+    _, _, positions = _fifo_plan(fn)
+    if len(params) != len(positions):
         raise ValueError(
-            f"{fn.name}: {len(in_roles)} 'in' tensors of {len(groups)} types need "
-            f"{len(groups)} fifos, but a core tile has {channels} input channels: "
-            f"{sorted(by_type)}"
+            f"{fn.name}: parameters need values at design time; "
+            f"expected {len(positions)} param values, got {len(params)}"
         )
-    return groups, in_roles, param_roles
-
-
-def _encode_params(fn, params) -> tuple:
-    """Param arrays -> a hashable, fully-printed CompileTime value."""
-    _, _, param_roles = _fifo_plan(fn)
-    if len(params) != len(param_roles):
-        raise ValueError(
-            f"{fn.name}: {len(param_roles)} 'param' argument(s) need values at design "
-            f"time (design(..., params=[...]); see param_values), got {len(params)}"
+    encoded = []
+    for i, value in zip(positions, params):
+        shape, dt = shape_dtype(fn.arg_types()[i])
+        layout = _layout(fn.contract, i)
+        value = layout.encode(value) if layout else np.asarray(value)
+        if value.size != int(np.prod(shape)):
+            raise ValueError(f"{fn.name}: param {i} must contain {shape} elements")
+        encoded.append(
+            (np.dtype(dt).name, shape, tuple(value.astype(dt).ravel().tolist()))
         )
-    out = []
-    for i, a in zip(param_roles, params):
-        shape, dt = shape_dtype(_arg_types(fn)[i])
-        a = np.asarray(a)
-        if a.size != int(np.prod(shape)):
-            raise ValueError(
-                f"{fn.name}: param {i} has {a.size} elements, kernel expects {shape}"
-            )
-        # A tuple of Python scalars prints in full, unlike a large ndarray,
-        # so two designs with different constants never share a cache key.
-        vals = tuple(a.astype(dt).ravel().tolist())
-        out.append((np.dtype(dt).name, tuple(shape), vals))
-    return tuple(out)
-
-
-def _rounding_setter(c):
-    """Return the kernel a contract's ``setup`` asks to run first, or ``None``.
-
-    A fresh Worker boots in floor; a kernel that needs another mode names the
-    setter, as a design following its contract would.
-    """
-    return c.setup() if c.setup else None
-
-
-def _opt(x) -> list:
-    return [x] if x is not None else []
+    return tuple(encoded)
 
 
 def _build_stream(
-    tensors_in,
-    tensor_out,
-    *,
-    factory,
-    factory_kwargs,
-    calls,
-    scalars,
-    params,
-    trace_config,
+    *, factory, factory_kwargs, calls, scalars=(), params=(), trace_config=None
 ):
     fn = factory(**factory_kwargs)
     c = _contract(fn)
-    arg_types = _arg_types(fn)
-    in_pos, out_pos = _tensor_positions(c)
-    groups, in_roles, param_roles = _fifo_plan(fn)
-    n_fifos_in = len(groups)
-    if len(tensors_in) != n_fifos_in:
+    types = fn.arg_types()
+    groups, ins, param_pos = _fifo_plan(fn)
+    outs = c.out_indices
+    bound = dict(c.scalar_bindings)
+    free = [i for i, r in enumerate(c.roles) if r is Scalar and i not in bound]
+    if len(free) != len(scalars):
         raise ValueError(
-            f"{fn.name}: design has {len(tensors_in)} input tensors, kernel needs {n_fifos_in}"
+            f"{fn.name}: expected {len(free)} scalar(s), got {len(scalars)}"
         )
-    if len(params) != len(param_roles):
-        raise ValueError(
-            f"{fn.name}: {len(param_roles)} param value(s) expected, got {len(params)}"
-        )
-    n_scalars = c.roles.count(Scalar)
-    if len(scalars) != n_scalars:
-        raise ValueError(
-            f"{fn.name}: expected {n_scalars} scalar(s), got {len(scalars)}"
-        )
+    bound.update(zip(free, scalars))
+    if len(params) != len(param_pos):
+        raise ValueError(f"{fn.name}: expected {len(param_pos)} param values")
+    initializers = [(i, init(fn)) for i, init in c.initializers]
+    if any(r is InOut and i not in dict(initializers) for i, r in enumerate(c.roles)):
+        raise ValueError(f"{fn.name}: every InOut requires a declared initializer")
+    setter = c.setup() if c.setup else None
 
     def nbytes(i):
-        return elems(arg_types[i]) * bfp.itemsize(shape_dtype(arg_types[i])[1])
+        return elems(types[i]) * bfp.itemsize(shape_dtype(types[i])[1])
 
-    # One "set" is every streamed tile plus the output; `param` arguments
-    # live in one Buffer each, whatever the depth.
     depth = _fifo_depth(
         fn,
-        sum(nbytes(i) for i in in_roles + [out_pos]),
-        stack_bytes=_stack_bytes(fn),
-        fixed_bytes=sum(nbytes(i) for i in param_roles),
+        sum(nbytes(i) for i in [*ins, *outs]),
+        _stack_bytes(fn),
+        fixed_bytes=sum(nbytes(i) for i in param_pos),
     )
     fifos_in = [
-        ObjectFifo(arg_types[g[0]], name=f"in{k}", depth=len(g) * depth)
+        ObjectFifo(types[g[0]], name=f"in{k}", depth=len(g) * depth)
         for k, g in enumerate(groups)
     ]
-    fifo_out = ObjectFifo(arg_types[out_pos], name="out", depth=depth)
-    # `param` arguments live in core Buffers initialised at build time.
-    param_bufs = [
-        Buffer(
-            arg_types[i],
-            name=f"param{k}",
-            initial_value=np.array(vals, dtype=np.dtype(dt_name)).reshape(shape),
-        )
-        for k, (i, (dt_name, shape, vals)) in enumerate(zip(param_roles, params))
+    fifos_out = [
+        ObjectFifo(types[i], name=f"out{k}", depth=depth) for k, i in enumerate(outs)
     ]
-    # The trailing element count the C++ takes at runtime is the number of
-    # per-call iterations, which is 1:1 with whichever tensor has fewer raw
-    # elements when one side packs several values per iteration (rgba2hue's
-    # 4-byte RGBA pixels in, 1-byte hue out: lineWidth is the smaller, output
-    # side). A reduction's ``out_valid`` marks its output tile as padded
-    # rather than narrower-per-iteration, so there the count is the (larger)
-    # input's element count instead.
-    in0_elems = elems(arg_types[in_roles[0]])
-    count = (
-        in0_elems
-        if c.out_valid is not None
-        else min(in0_elems, elems(arg_types[out_pos]))
-    )
-    setter = _rounding_setter(c)
+    buffers = [
+        Buffer(
+            types[i],
+            name=f"param{k}",
+            initial_value=np.array(vals, dtype=np.dtype(dt)).reshape(shape),
+        )
+        for k, (i, (dt, shape, vals)) in enumerate(zip(param_pos, params))
+    ]
+    ni, no, np_ = len(groups), len(outs), len(buffers)
 
     def core(*args):
-        f_in = args[:n_fifos_in]
-        f_out = args[n_fifos_in]
-        held = dict(
-            zip(param_roles, args[n_fifos_in + 1 : n_fifos_in + 1 + len(param_bufs)])
-        )
-        kernel = args[n_fifos_in + 1 + len(param_bufs)]
+        f_in, f_out = args[:ni], args[ni : ni + no]
+        held = dict(zip(param_pos, args[ni + no : ni + no + np_]))
+        kernel = args[ni + no + np_]
+        init_kernels = args[ni + no + np_ + 1 : ni + no + np_ + 1 + len(initializers)]
         if setter is not None:
             args[-1]()
         for _ in range_(calls) if calls > 1 else range(1):
-            elems = {}
-            for k, g in enumerate(groups):
-                # acquire(1) hands back the tile; acquire(n) a list of them.
-                got = f_in[k].acquire(len(g))
-                if len(g) == 1:
-                    elems[g[0]] = got
-                else:
-                    elems.update({i: got[j] for j, i in enumerate(g)})
-            o = f_out.acquire(1)
-            call_args, s = [], iter(scalars)
-            for i, role in enumerate(c.roles):
-                if role == In:
-                    call_args.append(elems[i])
-                elif role == Param:
-                    call_args.append(held[i])
-                elif role in (Out, InOut):
-                    call_args.append(o)
-                elif role == Count:
-                    call_args.append(count)
-                else:  # scalar: a plain Python number, typed by the kernel's arg
-                    call_args.append(next(s))
-            kernel(*call_args)
-            for k, g in enumerate(groups):
-                f_in[k].release(len(g))
-            f_out.release(1)
+            values = dict(held)
+            values.update(bound)
+            for fifo, group in zip(f_in, groups):
+                got = fifo.acquire(len(group))
+                values.update(
+                    (i, got if len(group) == 1 else got[j]) for j, i in enumerate(group)
+                )
+            for i, fifo in zip(outs, f_out):
+                values[i] = fifo.acquire(1)
+            for (i, _), initialize in zip(initializers, init_kernels):
+                initialize(values[i])
+            kernel(*(values[i] for i in range(len(c.roles))))
+            for fifo, group in zip(f_in, groups):
+                fifo.release(len(group))
+            for fifo in f_out:
+                fifo.release(1)
 
     worker = Worker(
         core,
         [f.cons() for f in fifos_in]
-        + [fifo_out.prod(), *param_bufs, fn]
-        + _opt(setter),
+        + [f.prod() for f in fifos_out]
+        + buffers
+        + [fn]
+        + [init for _, init in initializers]
+        + ([setter] if setter else []),
         stack_size=_stack_bytes(fn),
         trace=1 if trace_config else 0,
     )
 
-    def host_ty(i, reps):
-        shape, dt = shape_dtype(arg_types[i])
-        return np.ndarray[(int(np.prod(shape)) * reps,), np.dtype[dt]]
+    def host_ty(i, repetitions):
+        return np.ndarray[
+            (elems(types[i]) * repetitions,), np.dtype[shape_dtype(types[i])[1]]
+        ]
 
-    host_tys = [host_ty(g[0], calls * len(g)) for g in groups]
-    host_tys += [host_ty(out_pos, calls)]
+    host_types = [host_ty(g[0], calls * len(g)) for g in groups]
+    host_types += [host_ty(i, calls) for i in outs]
 
     def sequence(*args):
-        n = n_fifos_in
-        host_in, host_out = args[:n], args[n]
-        h_in, h_out = args[n + 1 : 2 * n + 1], args[2 * n + 1]
-        for h, t in zip(h_in, host_in):
-            h.fill(t)
-        h_out.drain(host_out, wait=True)
+        hosts, handles = args[: ni + no], args[ni + no :]
+        group = TaskGroup()
+        for h, value in zip(handles[:ni], hosts[:ni]):
+            h.fill(value, group=group)
+        for h, value in zip(handles[ni:], hosts[ni:]):
+            h.drain(value, group=group, wait=True)
+        group.finish()
 
-    rt = Runtime(sequence, host_tys + [f.prod() for f in fifos_in] + [fifo_out.cons()])
+    rt = Runtime(
+        sequence,
+        host_types + [f.prod() for f in fifos_in] + [f.cons() for f in fifos_out],
+    )
     prog = Program(get_current_device(), rt, workers=[worker])
     if trace_config:
         prog.enable_trace(trace_config.trace_size, workers=[worker])
     return prog.resolve_program()
 
 
+# Fixed signatures keep JIT cache keys independent of closure state. The
+# generator's tensor arity is selected only by DMA channels, not kernel kind.
 @jit
 def _stream1(
     x0: In,
@@ -416,8 +265,6 @@ def _stream1(
     trace_config: CompileTime[TraceConfig | None] = None,
 ):
     return _build_stream(
-        [x0],
-        out,
         factory=factory,
         factory_kwargs=factory_kwargs,
         calls=calls,
@@ -441,8 +288,6 @@ def _stream2(
     trace_config: CompileTime[TraceConfig | None] = None,
 ):
     return _build_stream(
-        [x0, x1],
-        out,
         factory=factory,
         factory_kwargs=factory_kwargs,
         calls=calls,
@@ -452,586 +297,232 @@ def _stream2(
     )
 
 
-# One generator per feasible fifo count; _fifo_plan caps this at the
-# tile's input DMA channel count.
-_STREAM = {1: _stream1, 2: _stream2}
-
-
-# --------------------------------------------------------------------------
-# Matrix kernels: mm / mv with their published DMA layouts
-# --------------------------------------------------------------------------
-
-
 @jit
-def _matmul(
-    A: In,
-    B: In,
-    C: Out,
+def _stream1_2(
+    x0: In,
+    out0: Out,
+    out1: Out,
     *,
     factory: CompileTime[Callable],
     factory_kwargs: CompileTime[dict],
-    M: CompileTime[int],
-    K: CompileTime[int],
-    N: CompileTime[int],
+    calls: CompileTime[int],
+    scalars: CompileTime[tuple] = (),
+    params: CompileTime[tuple] = (),
     trace_config: CompileTime[TraceConfig | None] = None,
 ):
-    """Single-core C = A @ B over (M/m) x (N/n) output tiles, K/k products each.
-
-    The design of programming_examples/basic/matrix_multiplication/single_core,
-    with the micro-tile layout transforms taken from the kernel's
-    ``stream_dims`` instead of re-derived. With the kernel's ``b_col_maj`` the
-    host B buffer holds B^T (N, K) and with ``c_col_maj`` the host C buffer
-    receives C^T (N, M), as in whole_array; ``upload`` and ``judge`` do the
-    transposes so callers keep the logical (K, N) and (M, N).
-    """
-    from aie.helpers.taplib import TensorTiler2D
-
-    mm = factory(**factory_kwargs)
-    zero = mm.also.zero
-    (a_shape, dt_a), (_, dt_b), (c_shape, dt_c) = (
-        shape_dtype(t) for t in _arg_types(mm)
+    return _build_stream(
+        factory=factory,
+        factory_kwargs=factory_kwargs,
+        calls=calls,
+        scalars=scalars,
+        params=params,
+        trace_config=trace_config,
     )
-    m, k, n = mm.dims
-    # A bfp16ebs8 operand counts 8 values per element, so its shapes divide
-    # the value counts by 8 along the contiguous axis, as the block_datatypes
-    # examples declare them.
-    va, vb, vc = (bfp.values_per_elem(dt) for dt in (dt_a, dt_b, dt_c))
-    assert a_shape == (m * k // va,) and c_shape == (m * n // vc,)
-    stack = _stack_bytes(mm)
-    M_div_m, K_div_k, N_div_n = M // m, K // k, N // n
-    tiles = M_div_m * N_div_n
-    # C drains in ping-pong groups of ``c_rows`` tile rows: two when M holds
-    # an even number of tile rows, one otherwise, so a single-tile M builds.
-    c_rows = 2 if M_div_m % 2 == 0 else 1
-    rows_per_block = 2 * c_rows
-    dims = mm.stream_dims
-
-    tile_bytes = (
-        m * k // va * bfp.itemsize(dt_a)
-        + k * n // vb * bfp.itemsize(dt_b)
-        + m * n // vc * bfp.itemsize(dt_c)
-    )
-    depth = _fifo_depth(mm, tile_bytes, stack_bytes=stack)
-    a_ty = np.ndarray[(m, k // va), np.dtype[dt_a]]
-    b_ty = np.ndarray[(k, n // vb), np.dtype[dt_b]]
-    c_ty = np.ndarray[(m, n // vc), np.dtype[dt_c]]
-    in_a = ObjectFifo(a_ty, name="inA", depth=depth)
-    mem_a = in_a.cons().forward(name="memA", dims_to_stream=dims.A)
-    in_b = ObjectFifo(b_ty, name="inB", depth=depth)
-    mem_b = in_b.cons().forward(name="memB", dims_to_stream=dims.B)
-    mem_c = ObjectFifo(c_ty, name="memC", depth=depth)
-    out_c = mem_c.cons().forward(name="outC", dims_to_stream=dims.C)
-
-    setter = _rounding_setter(_contract(mm))
-
-    def core(of_a, of_b, of_c, zero_k, mm_k, *set_mode):
-        if set_mode:
-            set_mode[0]()
-        for _ in range_(tiles) if tiles > 1 else range(1):
-            c = of_c.acquire(1)
-            zero_k(c)
-            for _ in range_(K_div_k) if K_div_k > 1 else range(1):
-                a = of_a.acquire(1)
-                b = of_b.acquire(1)
-                mm_k(a, b, c)
-                of_a.release(1)
-                of_b.release(1)
-            of_c.release(1)
-
-    worker = Worker(
-        core,
-        [mem_a.cons(), mem_b.cons(), mem_c.prod(), zero, mm] + _opt(setter),
-        stack_size=stack,
-        trace=1 if trace_config else 0,
-    )
-
-    A_ty = np.ndarray[(M * K // va,), np.dtype[dt_a]]
-    B_ty = np.ndarray[(K * N // vb,), np.dtype[dt_b]]
-    C_ty = np.ndarray[(M * N // vc,), np.dtype[dt_c]]
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K // va),
-        (m, k // va),
-        (1, K_div_k),
-        pattern_repeat=N_div_n,
-        prune_step=False,
-    )
-    if mm.b_col_maj:
-        # B^T on the host: the (n, k) tiles of one B column are consecutive rows.
-        b_tap = TensorTiler2D.group_tiler(
-            (N, K // vb), (n, k // vb), (N_div_n, K_div_k), prune_step=False
-        )[0]
-    else:
-        b_tap = TensorTiler2D.group_tiler(
-            (K, N // vb),
-            (k, n // vb),
-            (K_div_k, N_div_n),
-            tile_group_col_major=True,
-            prune_step=False,
-        )[0]
-    if mm.c_col_maj:
-        # C^T on the host: the core emits C tiles row by row, i.e. down one
-        # column of C^T's tile grid, so each drained group is c_rows columns
-        # of (n, m) tiles walked column-major.
-        C_tiles = TensorTiler2D.group_tiler(
-            (N, M // vc),
-            (n, m // vc),
-            (N_div_n, c_rows),
-            tile_group_col_major=True,
-            prune_step=False,
-        )
-    else:
-        C_tiles = TensorTiler2D.group_tiler(
-            (M, N // vc), (m, n // vc), (c_rows, N_div_n), prune_step=False
-        )
-
-    def sequence(A_h, B_h, C_h, in_a_h, in_b_h, out_c_h):
-        tgs: list = []
-        c_index = 0
-        for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
-            for pingpong in (0, 1):
-                row_base = tile_row_block * rows_per_block + pingpong * c_rows
-                num_tile_rows = min(c_rows, M_div_m - row_base)
-                if num_tile_rows <= 0:
-                    break
-                tgs.append(TaskGroup())
-                for tile_row in range(num_tile_rows):
-                    tile_offset = (row_base + tile_row) % len(A_tiles)
-                    in_a_h.fill(A_h, tap=A_tiles[tile_offset], group=tgs[-1])
-                    in_b_h.fill(B_h, tap=b_tap, group=tgs[-1])
-                out_c_h.drain(C_h, tap=C_tiles[c_index], group=tgs[-1], wait=True)
-                c_index += 1
-                if tile_row_block > 0 or pingpong > 0:
-                    tgs[-2].finish()
-                    del tgs[-2]
-        tgs[-1].finish()
-        del tgs[-1]
-
-    rt = Runtime(sequence, [A_ty, B_ty, C_ty, in_a.prod(), in_b.prod(), out_c.cons()])
-    prog = Program(get_current_device(), rt, workers=[worker])
-    if trace_config:
-        prog.enable_trace(trace_config.trace_size, workers=[worker])
-    return prog.resolve_program()
 
 
 @jit
-def _matvec(
-    A: In,
-    B: In,
-    C: Out,
+def _stream2_2(
+    x0: In,
+    x1: In,
+    out0: Out,
+    out1: Out,
     *,
     factory: CompileTime[Callable],
     factory_kwargs: CompileTime[dict],
-    M: CompileTime[int],
-    K: CompileTime[int],
+    calls: CompileTime[int],
+    scalars: CompileTime[tuple] = (),
+    params: CompileTime[tuple] = (),
     trace_config: CompileTime[TraceConfig | None] = None,
 ):
-    """Single-core c = A @ b, one m-row block of c per Worker iteration.
-
-    The design of programming_examples/basic/matrix_multiplication/matrix_vector
-    with ``n_cores = 1``; the transposed A layout comes from the kernel's
-    ``a_dims_from_stream``.
-    """
-    from aie.helpers.taplib import TensorTiler2D
-
-    mv = factory(**factory_kwargs)
-    zero = mv.also.zero
-    (_, dt_in), _, (_, dt_out) = (shape_dtype(t) for t in _arg_types(mv))
-    m, k = mv.dims
-    M_div_m, K_div_k = M // m, K // k
-
-    stack = _stack_bytes(mv)
-    depth = _fifo_depth(
-        mv,
-        (m * k + k) * bfp.itemsize(dt_in) + m * bfp.itemsize(dt_out),
-        stack_bytes=stack,
-    )
-    mem_a = ObjectFifo(np.ndarray[(m, k), np.dtype[dt_in]], name="memA", depth=depth)
-    core_a = mem_a.cons().forward(name="coreA", dims_from_stream=mv.a_dims_from_stream)
-    in_b = ObjectFifo(np.ndarray[(k,), np.dtype[dt_in]], name="inB", depth=depth)
-    out_c = ObjectFifo(np.ndarray[(m,), np.dtype[dt_out]], name="outC", depth=depth)
-
-    setter = _rounding_setter(_contract(mv))
-
-    def core(of_a, of_b, of_c, zero_k, mv_k, *set_mode):
-        if set_mode:
-            set_mode[0]()
-        c = of_c.acquire(1)
-        zero_k(c)
-        for _ in range_(K_div_k) if K_div_k > 1 else range(1):
-            a = of_a.acquire(1)
-            b = of_b.acquire(1)
-            mv_k(a, b, c)
-            of_a.release(1)
-            of_b.release(1)
-        of_c.release(1)
-
-    worker = Worker(
-        core,
-        [core_a.cons(), in_b.cons(), out_c.prod(), zero, mv] + _opt(setter),
-        stack_size=stack,
-        trace=1 if trace_config else 0,
+    return _build_stream(
+        factory=factory,
+        factory_kwargs=factory_kwargs,
+        calls=calls,
+        scalars=scalars,
+        params=params,
+        trace_config=trace_config,
     )
 
-    A_ty = np.ndarray[(M * K,), np.dtype[dt_in]]
-    B_ty = np.ndarray[(K,), np.dtype[dt_in]]
-    C_ty = np.ndarray[(M,), np.dtype[dt_out]]
-    a_tap = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (M_div_m, K_div_k), prune_step=False
-    )[0]
-    c_tap = TensorTiler2D.simple_tiler((1, M), (1, M), prune_step=False)[0]
-    b_tap = TensorTiler2D.simple_tiler(
-        (1, K), pattern_repeat=M_div_m, prune_step=False
-    )[0]
 
-    def sequence(A_h, B_h, C_h, in_b_h, mem_a_h, out_c_h):
-        in_b_h.fill(B_h, b_tap)
-        mem_a_h.fill(A_h, a_tap)
-        out_c_h.drain(C_h, c_tap, wait=True)
-
-    rt = Runtime(sequence, [A_ty, B_ty, C_ty, in_b.prod(), mem_a.prod(), out_c.cons()])
-    prog = Program(get_current_device(), rt, workers=[worker])
-    if trace_config:
-        prog.enable_trace(trace_config.trace_size, workers=[worker])
-    return prog.resolve_program()
-
-
-# --------------------------------------------------------------------------
-# Public API
-# --------------------------------------------------------------------------
+_STREAM = {(1, 1): _stream1, (2, 1): _stream2, (1, 2): _stream1_2, (2, 2): _stream2_2}
 
 
 def design(
-    factory: Callable,
+    factory,
     *,
-    calls: int = 1,
-    scalars: tuple = (),
-    shape: tuple | None = None,
-    params: list[np.ndarray] | None = None,
-    aiecc_flags: list[str] | None = None,
+    calls=1,
+    scalars=(),
+    shape=None,
+    params=None,
+    aiecc_flags=None,
     **factory_kwargs,
 ):
-    """Return a compiled-on-first-call design wrapping ``factory(**factory_kwargs)``.
-
-    Streaming kernels run ``calls`` iterations over tiles; ``scalars`` supplies
-    the values of the contract's ``scalar`` arguments in order, and ``params``
-    the arrays of its ``param`` arguments, which are baked into core Buffers
-    (``fn.param_values(sample_inputs(fn, ...))`` picks them out). Matrix
-    kernels default to one tile product. An explicit ``shape=(M, K, N)``
-    (``mm``) or ``shape=(M, K)`` (``mv``) opts into a tiled whole-problem
-    design; its dimensions must be positive multiples of the kernel tile.
-    Matrix designs require ``calls=1``. ``aiecc_flags`` are forwarded to
-    the build (a benchmark passes ``--get-core-elfs`` to size the per-core
-    ELFs).
-
-    The returned ``CallableDesign`` is called with the host tensors the
-    design streams -- see ``host_layout`` -- then the output.
-    """
+    """Wrap independent tile calls, with constant params and runtime scalar bindings."""
+    calls = _calls(calls, shape)
     fn = factory(**factory_kwargs)
-    c = _contract(fn)  # a clear error before any generator is specialised
-    try:
-        calls = index(calls)
-    except TypeError as exc:
-        raise ValueError(f"calls must be a positive integer, got {calls}") from exc
-    if calls <= 0:
-        raise ValueError(f"calls must be a positive integer, got {calls}")
+    c = _contract(fn)
     if c.unsupported:
         raise ValueError(
             f"{fn.name}: the generic harness cannot build this kernel: {c.unsupported}"
         )
-    kw: dict[str, Any] = dict(factory=factory, factory_kwargs=factory_kwargs)
+    groups, _, _ = _fifo_plan(fn)
+    key = len(groups), len(c.out_indices)
+    if key not in _STREAM:
+        raise ValueError(f"{fn.name}: unsupported DMA signature {key}")
     flags = list(aiecc_flags or ())
-    if (is_matmul(fn) or is_matvec(fn)) and calls != 1:
-        raise ValueError(
-            "matrix designs require calls=1; use shape to select the problem"
-        )
-    if is_matmul(fn):
-        M, K, N = _matrix_shape(fn, shape, 3)
-        if any(_bfp_operands(fn)) and "--dynamic-objFifos" not in flags:
-            # 9-byte block elements: the block_datatypes examples build with it.
+    if any(
+        bfp.is_bfp(shape_dtype(t)[1])
+        for i, t in enumerate(fn.arg_types())
+        if c.roles[i] in (In, Param, Out, InOut)
+    ):
+        if "--dynamic-objFifos" not in flags:
             flags.append("--dynamic-objFifos")
-        if flags:
-            kw["aiecc_flags"] = flags
-        return _matmul.specialize(M=M, K=K, N=N, **kw)
-    if flags:
-        kw["aiecc_flags"] = flags
-    if is_matvec(fn):
-        M, K = _matrix_shape(fn, shape, 2)
-        return _matvec.specialize(M=M, K=K, **kw)
-    groups, _, _ = _fifo_plan(fn)  # raises when the types need a third channel
-    return _STREAM[len(groups)].specialize(
+    return _STREAM[key].specialize(
+        factory=factory,
+        factory_kwargs=factory_kwargs,
         calls=calls,
         scalars=tuple(scalars),
         params=_encode_params(fn, params or ()),
-        **kw,
+        **({"aiecc_flags": flags} if flags else {}),
     )
 
 
-# Fallback magnitudes for integer inputs of a kernel that declares no
-# accumulator: wide enough to exercise the datapath, small enough that a
-# product or a short sum stays inside a 32-bit accumulator.
 _INT_RANGE = {np.int8: 60, np.int16: 8000, np.int32: 1 << 20, np.uint8: 255}
 
 
-def sample_inputs(
-    fn, *, calls: int = 1, shape: tuple | None = None, rng=None
-) -> list[np.ndarray]:
-    """Random host inputs for one run of ``fn``: one array per ``in``/``param``.
+def _draw(rng, shape, dt, int_range=None):
+    if np.issubdtype(np.dtype(dt), np.integer):
+        r = int_range or _INT_RANGE.get(dt, 1 << 15)
+        return rng.integers(
+            0 if np.dtype(dt).kind == "u" else -r, r, size=shape
+        ).astype(dt)
+    return rng.standard_normal(shape).astype(np.float32).astype(dt)
 
-    Streaming inputs are shaped ``(calls, n)``; ``param`` inputs ``(n,)``. For
-    ``mm``/``mv`` the operands are ``A (M, K)`` and ``B (K, N)`` / ``b (K,)``.
-    A contract may supply its own ``sample`` when the data has structure.
-    """
+
+def sample_inputs(fn, *, calls=1, shape=None, rng=None):
+    """One logical array per In/Param; only In has a leading call dimension."""
+    calls = _calls(calls, shape)
     rng = np.random.default_rng(0) if rng is None else rng
     c = _contract(fn)
     if c.sample is not None:
         return c.sample(rng, calls)
-    if is_matmul(fn) or is_matvec(fn):
-        # A bfp16ebs8 operand is sampled as the float32 the host encodes.
-        dt_a, dt_b = (
-            np.float32 if bfp.is_bfp(dt) else dt
-            for dt in (shape_dtype(t)[1] for t in _arg_types(fn)[:2])
-        )
-        shape = _matrix_shape(fn, shape, 3 if is_matmul(fn) else 2)
-        M, K = shape[0], shape[1]
-        b_shape = (K, shape[2]) if is_matmul(fn) else (K,)
-        # The design accumulates over the full K, not one tile's k.
-        limit = fn.input_limit(dt_a, reduction=K) or 60
-        return [
-            _draw(rng, (M, K), dt_a, int_range=limit),
-            _draw(rng, b_shape, dt_b, int_range=limit),
-        ]
-    out = []
+    result = []
     for i in _tensor_positions(c)[0]:
-        s, dt = shape_dtype(_arg_types(fn)[i])
-        n = int(np.prod(s))
-        reps = (calls,) if c.roles[i] == In else ()
-        out.append(_draw(rng, reps + (n,), dt, int_range=fn.input_limit(dt)))
-    return out
+        s, dt = shape_dtype(fn.arg_types()[i])
+        layout = _layout(c, i)
+        s = layout.shape if layout else (int(np.prod(s)),)
+        dt = np.float32 if bfp.is_bfp(dt) else dt
+        result.append(
+            _draw(
+                rng,
+                ((calls,) if c.roles[i] is In else ()) + s,
+                dt,
+                int_range=fn.input_limit(dt),
+            )
+        )
+    return result
 
 
-def _draw(rng, shape, dt, int_range: int | None = None):
-    if np.issubdtype(np.dtype(dt), np.integer):
-        r = int_range or _INT_RANGE.get(dt, 1 << 15)
-        lo = 0 if np.dtype(dt).kind == "u" else -r
-        return rng.integers(lo, r, size=shape).astype(dt)
-    return rng.standard_normal(shape).astype(np.float32).astype(dt)
-
-
-def host_layout(fn, inputs: list[np.ndarray]) -> list[np.ndarray]:
-    """Logical inputs (one per ``in``/``param``) -> the host tensors the design takes.
-
-    ``mm`` with ``b_col_maj`` gets B transposed. ``param`` arrays are dropped
-    (they were baked into the design). A kernel whose ``in`` tensors share
-    one packed fifo (see :func:`_fifo_plan`) gets them interleaved per call,
-    ``(calls, n_in, tile)``.
-    """
-    if is_matmul(fn):
-        a, b = (np.asarray(x) for x in inputs)
-        if fn.b_col_maj:
-            b = np.ascontiguousarray(b.T)  # (N, K)
-        bfp_a, bfp_b, _ = _bfp_operands(fn)
-        if bfp_a or bfp_b:
-            # Encoded along K (8 values share an exponent) and shuffled so
-            # each (tile rows, k) DMA tile carries whole 8x8 sub-tiles.
-            m, k, n = fn.dims
-            if bfp_a:
-                a = bfp.shuffle(bfp.encode(a), a.shape[1], a.shape[0], k, m)
-            if bfp_b:
-                b = bfp.shuffle(bfp.encode(b), b.shape[1], b.shape[0], k, n)
-        return [a, b]
-    if is_matvec(fn):
-        return list(inputs)
-    groups, _, _ = _fifo_plan(fn)
+def host_layout(fn, inputs):
+    """Pack declared layouts and interleave same-type In tiles; omit Param buffers."""
     c = _contract(fn)
-    in_pos, _ = _tensor_positions(c)
-    by_pos = dict(zip(in_pos, inputs))  # params are baked in
-    out = []
-    for g in groups:
-        tiles = [np.asarray(by_pos[i]) for i in g]
-        if len(tiles) == 1:
-            out.append(tiles[0])
-            continue
-        # One fifo carries this group's tiles interleaved per call, matching
-        # the order the core acquires them in.
-        calls = tiles[0].shape[0] if tiles[0].ndim > 1 else 1
-        packed = np.stack([a.reshape(calls, -1) for a in tiles], axis=1)
-        out.append(np.ascontiguousarray(packed))
-    return out
+    positions = _tensor_positions(c)[0]
+    if len(inputs) != len(positions):
+        raise ValueError(f"{fn.name}: expected {len(positions)} input arrays")
+    values = dict(zip(positions, inputs))
+    groups, _, _ = _fifo_plan(fn)
+    result = []
+    for group in groups:
+        arrays = []
+        for i in group:
+            value = np.asarray(values[i])
+            layout = _layout(c, i)
+            arrays.append(
+                layout.encode(value)
+                if layout
+                else value.reshape(-1, elems(fn.arg_types()[i]))
+            )
+        result.append(
+            np.ascontiguousarray(
+                arrays[0] if len(arrays) == 1 else np.stack(arrays, axis=1)
+            )
+        )
+    return result
 
 
-def upload(
-    inputs: list[np.ndarray],
-    out_size: int,
-    out_dtype,
-    *,
-    fn,
-    poison: bool = False,
-):
-    """Device tensors for one run: ``(design inputs, output)``.
-
-    ``inputs`` are the logical ones from ``sample_inputs``; ``host_layout``
-    turns them into what ``fn``'s design streams (B^T for ``b_col_maj``,
-    interleaved tiles for a packed fifo), and ``judge`` undoes the output
-    side. ``poison`` fills the output with ``0x55`` bytes instead of zeros,
-    so a kernel that never writes cannot pass a comparison against a
-    reference of zeros. Callers that time repeated runs keep the tensors and
-    reuse them; ``run`` is the one-shot form.
-    """
-    # dtype= is required, not inferred: iron.tensor defaults to uint32, and
-    # copying a float (or any other kind of) array into that buffer raises
-    # rather than reinterpreting it.
-    ins = [
-        tensor(np.ascontiguousarray(a).reshape(-1), dtype=a.dtype, device="npu")
-        for a in host_layout(fn, inputs)
-    ]
-    host = (
-        poisoned(out_size, out_dtype) if poison else np.zeros(out_size, dtype=out_dtype)
+def output_size(fn, *, calls=1, shape=None):
+    """Storage elements per output; a tuple for multiple outputs."""
+    calls = _calls(calls, shape)
+    types = fn.arg_types()
+    sizes = tuple(
+        elems(types[i])
+        * calls
+        * (bfp.BLOCK_BYTES if bfp.is_bfp(shape_dtype(types[i])[1]) else 1)
+        for i in _contract(fn).out_indices
     )
-    out = tensor(host, dtype=out_dtype, device="npu")
-    return ins, out
-
-
-def _run(
-    design_,
-    inputs: list[np.ndarray],
-    out_size: int,
-    out_dtype,
-    *,
-    fn,
-    poison: bool = False,
-    **call_kwargs,
-) -> np.ndarray:
-    """Move ``inputs`` to the device, run ``design_`` and return the output array.
-
-    Private: a design is callable, so that is how anything else runs one.
-    This exists for :func:`cycles_per_call`, which needs the upload and the
-    call together to trace around them.
-
-    The result is a copy: ``Tensor.numpy()`` is a view of the XRT buffer's
-    mapped host memory, and ``out`` is the last reference to that buffer, so
-    the mapping goes away when this returns and the view would dangle.
-    """
-    ins, out = upload(inputs, out_size, out_dtype, fn=fn, poison=poison)
-    design_(*ins, out, **call_kwargs)
-    return out.numpy().copy()
-
-
-def output_size(fn, *, calls: int = 1, shape: tuple | None = None) -> int:
-    """Return the number of elements the device writes in one run, padding included.
-
-    Elements of :func:`output_dtype`: bytes for a bfp16ebs8 output.
-    """
-    if is_matmul(fn):
-        M, _, N = _matrix_shape(fn, shape, 3)
-        n = M * N
-        return n * bfp.BLOCK_BYTES // bfp.BLOCK if _bfp_operands(fn)[2] else n
-    if is_matvec(fn):
-        return _matrix_shape(fn, shape, 2)[0]
-    return elems(_arg_types(fn)[_contract(fn).out_index]) * calls
+    return sizes[0] if len(sizes) == 1 else sizes
 
 
 @dataclass(frozen=True)
 class HostArg:
-    """One host buffer a design takes, in the order it is called with.
-
-    ``direction`` is ``In`` or ``Out``; ``shape`` and ``dtype`` are what
-    the device expects *after* :func:`host_layout` (B transposed for a
-    ``b_col_maj`` matmul, encoded bytes for a bfp16ebs8 operand, interleaved
-    tiles for a packed fifo), so a caller can allocate straight from it.
-    """
+    """A physical host buffer in design argument order."""
 
     direction: type
     shape: tuple[int, ...]
     dtype: type
 
     @property
-    def n_elements(self) -> int:
+    def n_elements(self):
         return int(np.prod(self.shape))
 
 
-def host_args(fn, *, calls: int = 1, shape: tuple | None = None) -> list[HostArg]:
-    """Return the host buffers one run of ``fn``'s design takes, inputs then the output.
-
-    The declarative form of what :func:`sample_inputs`, :func:`host_layout`,
-    :func:`output_size` and :func:`output_dtype` compute between them: a
-    caller that only needs to size and allocate buffers (a runtime wrapper,
-    a benchmark, an operator declaring its signature) can read this instead
-    of running the sampler. ``param`` arguments are absent -- they are baked
-    into the design -- and a reduction's output keeps the DMA padding the
-    device actually writes.
-    """
-    c = _contract(fn)
-    types = _arg_types(fn)
-    out_dt = shape_dtype(types[c.out_index])[1]
-    args: list[HostArg] = []
-    if is_matmul(fn) or is_matvec(fn):
-        rank = 3 if is_matmul(fn) else 2
-        dims = _matrix_shape(fn, shape, rank)
-        M, K = dims[0], dims[1]
-        in_dts = [shape_dtype(t)[1] for t in types[:2]]
-        bfp_a, bfp_b, bfp_c = (
-            _bfp_operands(fn) if is_matmul(fn) else (False, False, False)
-        )
-        b_shape = (
-            (dims[2], K)
-            if is_matmul(fn) and fn.b_col_maj
-            else ((K, dims[2]) if is_matmul(fn) else (K,))
-        )
-
-        def _enc(sh, dt, is_bfp):
-            # An encoded operand is bytes: 9 per block of 8 along the last axis.
-            if not is_bfp:
-                return HostArg(In, sh, np.float32 if bfp.is_bfp(dt) else dt)
-            return HostArg(In, (sh[0], sh[1] * bfp.BLOCK_BYTES // bfp.BLOCK), np.uint8)
-
-        args.append(_enc((M, K), in_dts[0], bfp_a))
-        args.append(_enc(b_shape, in_dts[1], bfp_b))
-        if is_matmul(fn):
-            c_shape = (dims[2], M) if fn.c_col_maj else (M, dims[2])
-            args.append(
-                HostArg(
-                    Out,
-                    (c_shape[0], c_shape[1] * bfp.BLOCK_BYTES // bfp.BLOCK),
-                    np.uint8,
-                )
-                if bfp_c
-                else HostArg(Out, c_shape, out_dt)
-            )
-        else:
-            args.append(HostArg(Out, (M,), out_dt))
-        return args
+def host_args(fn, *, calls=1, shape=None):
+    calls = _calls(calls, shape)
     groups, _, _ = _fifo_plan(fn)
-    for g in groups:
-        n, dt = elems(types[g[0]]), shape_dtype(types[g[0]])[1]
-        args.append(
-            HostArg(In, (calls, n), dt)
-            if len(g) == 1
-            else HostArg(In, (calls, len(g), n), dt)
+    types = fn.arg_types()
+    result = []
+    for direction, indices in [(In, g) for g in groups] + [
+        (Out, [i]) for i in fn.contract.out_indices
+    ]:
+        i = indices[0]
+        dt = shape_dtype(types[i])[1]
+        n = elems(types[i])
+        if bfp.is_bfp(dt):
+            n, dt = n * bfp.BLOCK_BYTES, np.uint8
+        s = (calls, n) if len(indices) == 1 else (calls, len(indices), n)
+        result.append(HostArg(direction, s, dt))
+    return result
+
+
+def upload(inputs, out_size, out_dtype, *, fn, poison=False):
+    """Return design inputs and output tensor(s); splat multiple outputs when calling."""
+    ins = [
+        tensor(a.reshape(-1), dtype=a.dtype, device="npu")
+        for a in host_layout(fn, inputs)
+    ]
+    multiple = len(fn.contract.out_indices) > 1
+    sizes, dtypes = (out_size, out_dtype) if multiple else ((out_size,), (out_dtype,))
+    outs = [
+        tensor(
+            poisoned(n, dt) if poison else np.zeros(n, dtype=dt), dtype=dt, device="npu"
         )
-    args.append(HostArg(Out, (output_size(fn, calls=calls, shape=shape),), out_dt))
-    return args
+        for n, dt in zip(sizes, dtypes)
+    ]
+    return ins, tuple(outs) if multiple else outs[0]
 
 
-def cycles_per_call(
-    design_, inputs, out_size, out_dtype, *, fn, trace_size: int, workdir: Path
-) -> list[int]:
-    """Run once with tracing and return the core cycles of each kernel call.
-
-    The event0 -> event1 pairing is ``aie.utils.trace.utils.get_cycles_summary``,
-    the same one the programming examples print.
-    """
+def cycles_per_call(design_, inputs, out_size, out_dtype, *, fn, trace_size, workdir):
+    """Trace independent calls using the same design invocation as correctness tests."""
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     cfg = TraceConfig(trace_size=trace_size, trace_file=str(workdir / "trace.txt"))
-    _run(design_, inputs, out_size, out_dtype, fn=fn, trace_config=cfg)
-    trace_json = workdir / "trace.json"
+    ins, out = upload(inputs, out_size, out_dtype, fn=fn)
+    design_(*ins, *(out if isinstance(out, tuple) else (out,)), trace_config=cfg)
     if cfg.physical_mlir_path is None:
         raise RuntimeError("the traced run recorded no physical MLIR path")
+    trace_json = workdir / "trace.json"
     cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
-    cycles: list[int] = []
-    for per_process in get_cycles_summary(str(trace_json)):
-        cycles.extend(int(d) for d in per_process[1:])
-    return cycles
+    return [int(d) for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
 
 
 __all__ = [
@@ -1039,8 +530,6 @@ __all__ = [
     "design",
     "elems",
     "host_layout",
-    "is_matmul",
-    "is_matvec",
     "host_args",
     "HostArg",
     "output_size",

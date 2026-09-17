@@ -43,12 +43,10 @@ All are exported from ``aie.iron``.
     alpha, ``axpy``'s a).
 
 ``Count``
-    A kernel argument that is the trailing element count the C++ takes at
-    runtime: the smaller of the ``In``/``Out`` element counts, so a
-    channel-ratio conversion gets it from whichever side is 1:1
-    (``rgba2hue``'s ``lineWidth`` counts hue pixels, a quarter of its RGBA
-    input). A reduction's ``out_valid`` exempts it: the count is then the
-    larger input's element count.
+    Compatibility spelling for a bound scalar count. New kernel contracts
+    use ``Scalar`` with an explicit ``scalar_bindings`` entry. A count's
+    units belong to the kernel ABI; neither tensor sizes nor output padding
+    determine its value.
 
 Any generator parameter without one of the first four annotations is currently
 rejected at ``@iron.jit`` decoration time when the parameter has a default

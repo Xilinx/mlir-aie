@@ -14,6 +14,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
+import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -646,7 +648,12 @@ def _prefix_symbols_in_object(object_path: str, prefix: str) -> list[str]:
     if not renamed:
         return []
     objcopy = config.objcopy_path()
-    with tempfile.NamedTemporaryFile("w", suffix=".symbols", delete=False) as f:
+    with tempfile.NamedTemporaryFile(
+        "w",
+        suffix=".symbols",
+        dir=os.path.dirname(os.path.abspath(object_path)),
+        delete=False,
+    ) as f:
         f.write("".join(f"{s} {pre}{s}\n" for s in renamed))
         map_file = f.name
     try:
@@ -666,19 +673,9 @@ def _prefix_symbols_in_object(object_path: str, prefix: str) -> list[str]:
 def _staged(dest: str):
     """Yield a sibling temp path that replaces ``dest`` atomically on success.
 
-    Kernels are grouped by ``_original_name``, but a source file is named after
-    its own basename, so the several ExternalFunctions that share one .cc (only
-    their -D flags differ) land in different groups and materialize the same
-    path concurrently.  Writing in place truncates that file under a sibling
-    compile: the reader either takes SIGBUS when the mapping shrinks beneath it,
-    or sees a short prefix, compiles it clean because the missing part was
-    behind an #ifdef, and emits an object with no symbol in it.
-
-    Safe while every writer to one ``dest`` stages identical bytes: renaming
-    makes the swap atomic, and a compile already holding the old inode keeps
-    reading it until it unmaps.  Writers whose bytes differ have to be ordered
-    instead; ``compile_external_kernels`` says which of those its grouping
-    covers.
+    Existing readers keep their original inode. The compile path also locks
+    the source destination through compilation, since atomic replacement alone
+    cannot protect a reader that has not opened a differently-contented source.
     """
     directory = os.path.dirname(dest) or "."
     fd, tmp = tempfile.mkstemp(
@@ -737,6 +734,11 @@ def _compiled_into(func, kernel_dir) -> bool:
     directory, so ``_compiled`` on its own would deny every design after the
     first an object.
     """
+    owner = getattr(func, "object_file", None)
+    if owner is not None:
+        return os.path.realpath(kernel_dir) in owner._compiled_dirs and os.path.exists(
+            os.path.join(kernel_dir, func.object_file_name)
+        )
     compiled_dir = getattr(func, "_compiled_dir", None)
     if not getattr(func, "_compiled", False) or compiled_dir is None:
         return False
@@ -746,20 +748,9 @@ def _compiled_into(func, kernel_dir) -> bool:
 def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
-    Kernels are separate translation units with separate outputs, so they
-    compile concurrently.  Their source files are not always separate --
-    several ExternalFunctions can share one .cc -- so ``_staged`` makes each
-    write atomic rather than ordering the compiles behind it.
-
-    The ``_original_name`` grouping below is still load-bearing, for a case
-    ``_staged`` cannot cover: two ExternalFunctions can share an
-    ``_original_name`` while carrying different ``source_string``s, because
-    ``ExternalFunction.__init__`` auto-suffixes a defaulted ``object_file_name``
-    on collision but never the original name.  Both write ``<_original_name>.cc``
-    and the bytes differ, so an atomic swap is not enough and they have to run
-    one after the other.  Not covered either way: two ``source_file``s with the
-    same basename in different directories land on one path with different bytes
-    but different ``_original_name``s, so nothing orders them.
+    Symbols sharing an object are grouped together. Compilation also locks
+    actual output and staged-source paths, including across concurrent batches
+    and direct calls, so unrelated symbol names cannot race on either file.
 
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
@@ -769,16 +760,25 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     if not pending:
         return
 
+    groups: dict[str, list] = {}
+    for f in pending:
+        output = os.path.normcase(
+            os.path.realpath(os.path.join(kernel_dir, f.object_file_name))
+        )
+        groups.setdefault(output, []).append(f)
+    for output, group in groups.items():
+        recipes = {
+            f.object_file._source for f in group if getattr(f, "object_file", None)
+        }
+        if len(recipes) > 1:
+            raise ValueError(f"Conflicting kernel compile recipes for '{output}'")
+
     # Every compile in a batch shares one cwd (kernel_dir), and xchesscc keeps
     # per-invocation state there, so the Chess path runs serially.
     if any(getattr(f, "_use_chess", False) for f in pending):
         for f in pending:
             compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
         return
-
-    groups: dict[str, list] = {}
-    for f in pending:
-        groups.setdefault(getattr(f, "_original_name", f._name), []).append(f)
 
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
@@ -804,6 +804,34 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
         list(pool.map(_run, groups.values()))
 
 
+_compile_locks = weakref.WeakValueDictionary()
+_compile_locks_guard = threading.Lock()
+
+
+def _source_destination(func, kernel_dir):
+    basename = (
+        os.path.basename(func._source_file)
+        if func._source_file is not None
+        else f"{func._original_name}.cc"
+    )
+    return os.path.join(kernel_dir, basename)
+
+
+@contextlib.contextmanager
+def _lock_compile_paths(paths):
+    # Hold strong references through acquisition and release; unused locks are
+    # then reclaimable even in a process compiling many distinct designs.
+    with _compile_locks_guard:
+        locks = []
+        for path in sorted({os.path.normcase(os.path.realpath(p)) for p in paths}):
+            lock = _compile_locks.setdefault(path, threading.RLock())
+            locks.append(lock)
+    with contextlib.ExitStack() as stack:
+        for lock in locks:
+            stack.enter_context(lock)
+        yield
+
+
 def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
@@ -820,9 +848,31 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
         include_dirs: Design-wide include directories appended after the
             ExternalFunction's own include directories.
     """
-    if _compiled_into(func, kernel_dir):
-        return
+    output = os.path.join(kernel_dir, func.object_file_name)
+    paths = [output, _source_destination(func, kernel_dir)]
+    if getattr(func, "_use_chess", False):
+        paths.append(kernel_dir)
+    with _lock_compile_paths(paths):
+        if _compiled_into(func, kernel_dir):
+            return
+        cached = os.path.exists(output)
+        try:
+            _compile_external_kernel(func, kernel_dir, target_arch, include_dirs)
+        except BaseException:
+            if not cached:
+                for path in (output, output + ".d"):
+                    with contextlib.suppress(FileNotFoundError):
+                        os.unlink(path)
+            raise
+        owner = getattr(func, "object_file", None)
+        if owner is not None:
+            owner._compiled_dirs.add(os.path.realpath(kernel_dir))
+        else:
+            func._compiled = True
+            func._compiled_dir = os.path.abspath(kernel_dir)
 
+
+def _compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
     # ``define`` carries the un-prefixed _original_name. Object mode reconciles
@@ -847,8 +897,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
         return
 
     if func._source_string is not None:
-        original_name = getattr(func, "_original_name", func._name)
-        source_file = os.path.join(kernel_dir, f"{original_name}.cc")
+        source_file = _source_destination(func, kernel_dir)
         _write_source(source_file, func._source_string)
         compile_cxx_core_function(
             source_path=source_file,
@@ -859,7 +908,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
             # (inline + symbol_prefix is rejected above, so no rename applies.)
             symbol_name=func._original_name,
             include_dirs=[*func._include_dirs, *(include_dirs or ())],
-            compile_args=func._compile_flags,
+            compile_args=list(func._compile_flags),
             cwd=str(kernel_dir),
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
@@ -870,7 +919,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
         # points sharing one object_file_name compile only on the first
         # visit, and `_instances` iteration order (a content-hashed set)
         # shifts whenever any registered kernel's content changes.
-        source_file = os.path.join(kernel_dir, os.path.basename(func._source_file))
+        source_file = _source_destination(func, kernel_dir)
         # Check if source file exists before copying
         if not os.path.exists(func._source_file):
             raise FileNotFoundError(
@@ -897,7 +946,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
             # the source_string branch above).
             symbol_name=func._original_name,
             include_dirs=kernel_include_dirs,
-            compile_args=func._compile_flags,
+            compile_args=list(func._compile_flags),
             cwd=kernel_dir,
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
@@ -914,9 +963,6 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
                 f"ExternalFunction '{func._name}': the compiled object does not "
                 f"define '{func._original_name}' (found {sorted(renamed)})"
             )
-
-    func._compiled = True
-    func._compiled_dir = os.path.abspath(kernel_dir)
 
 
 def _cleanup_failed_compilation(cache_dir):

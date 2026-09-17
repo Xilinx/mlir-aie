@@ -15,8 +15,13 @@ An undocumented knob is one only its author knows about. This finds the names
 import re
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parents[2]
-_READS = re.compile(r'(?:environ(?:\.get)?\(|getenv\()\s*"([A-Z][A-Z_0-9]*)"')
+_READS = re.compile(
+    r"""(?:\benviron(?:\.get)?\s*\(|\bgetenv\s*\(|\benviron\s*\[)\s*"""
+    r"""(?P<quote>['"])(?P<name>[A-Z][A-Z_0-9]*)(?P=quote)"""
+)
 
 # Read but not ours to document: set by the platform, the CI provider, or a
 # third-party toolchain that documents them itself.
@@ -34,7 +39,12 @@ _EXTERNAL = {
 def _read_names() -> set[str]:
     names = set()
     for path in (_ROOT / "python").rglob("*.py*"):
-        names |= set(_READS.findall(path.read_text(encoding="utf-8", errors="ignore")))
+        names.update(
+            match["name"]
+            for match in _READS.finditer(
+                path.read_text(encoding="utf-8", errors="ignore")
+            )
+        )
     return names - _EXTERNAL
 
 
@@ -53,3 +63,28 @@ def test_every_environment_variable_is_documented():
         f"programming_guide/: {undocumented}. Document them, or add them to "
         f"_EXTERNAL here if they belong to the platform rather than to us."
     )
+
+
+@pytest.mark.parametrize("quote", ["'", '"'])
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "os.getenv({name})",
+        "getenv( {name}, 'default')",
+        "os.environ.get({name}, 'default')",
+        "environ.get(\n{name}\n)",
+        "os.environ[{name}]",
+        "environ[ {name} ]",
+    ],
+)
+def test_environment_read_forms(expression, quote):
+    source = expression.format(name=f"{quote}NEW_VAR{quote}")
+    assert [match["name"] for match in _READS.finditer(source)] == ["NEW_VAR"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["os.getenv(variable)", "os.environ[variable]", """os.getenv('MISMATCH")"""],
+)
+def test_environment_reads_require_literal_names(source):
+    assert not list(_READS.finditer(source))

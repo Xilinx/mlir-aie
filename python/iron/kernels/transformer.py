@@ -15,7 +15,7 @@ design passes as the ``count`` role. These are the kernels
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import Count, In, Out, Param, Scalar
+from aie.utils.compile.jit.markers import In, Out, Param, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
@@ -72,7 +72,8 @@ def _row_kernel(
         _default_source_path(source, subdir="aie2p"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
-            roles=(In, Out, Count),
+            roles=(In, Out, Scalar),
+            scalar_bindings=((2, cols),),
             reference=ref,
             tolerance=tol,
             ops_per_call=ops,
@@ -87,7 +88,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
     """Row-wise LayerNorm on float32 in and out (gamma = 1, beta = 0, eps 1e-5).
 
     A separate factory rather than a dtype of
-    [`layer_norm`][iron.kernels.transformer.layer_norm], though both come from
+    [`layer_norm`][iron.kernels.norm.layer_norm], though both come from
     one templated core in ``layer_norm.cc``: this one is held to atol 1e-3
     instead of the bf16 tolerance, which its reference meets only by computing
     the variance two-pass in float64. Merging them would put that numerical
@@ -129,7 +130,8 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
         _default_source_path("layer_norm.cc", subdir="aie2p"),
         [in_ty, gb_ty, out_ty, np.int32],
         contract=KernelContract(
-            roles=(In, Param, Out, Count),
+            roles=(In, Param, Out, Scalar),
+            scalar_bindings=((3, cols),),
             reference=layer_norm_affine_cast_ref,
             acc_dtype=np.float32,
             reduction=cols,
@@ -158,7 +160,8 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32, np.int32],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, Out, Count, Scalar),
+            roles=(In, Out, Scalar, Scalar),
+            scalar_bindings=((2, tile_size),),
             reference=mm_activation_epilogue_ref,
             acc_dtype=np.float32,
             reduction=1,

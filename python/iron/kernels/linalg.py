@@ -5,6 +5,8 @@
 #
 """Linear algebra kernel factories: mm, mv, cascade_mm."""
 
+from dataclasses import replace
+from functools import partial
 from typing import NamedTuple
 
 import numpy as np
@@ -17,6 +19,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    TensorLayout,
     _default_source_path,
     _detect_arch,
     _make_extern,
@@ -219,6 +222,58 @@ def mm_bfp_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int, mixed: bool = F
     return (aq @ bq).reshape(len(a), dim_m * dim_n)
 
 
+def _tile_layout(shape, dims=None, *, axes=None, inverse=False):
+    """Translate a DMA permutation into an equivalent per-tile host codec."""
+    logical = np.arange(np.prod(shape)).reshape(shape)
+    if axes is not None:
+        logical = logical.transpose(axes)
+    order = logical.ravel()
+    if dims:
+        offsets = np.zeros(1, dtype=np.int64)
+        for size, stride in dims:
+            offsets = (offsets[:, None] + np.arange(size) * stride).ravel()
+        order = order[np.argsort(offsets) if inverse else offsets]
+    undo = np.argsort(order)
+    return TensorLayout(
+        shape,
+        pack=lambda x: x.reshape(len(x), -1)[:, order],
+        unpack=lambda x: x[:, undo].reshape(len(x), *shape),
+    )
+
+
+def _block_layout(shape, *, axes=None):
+    """Describe the block datatype kernels' 8x8 tile storage."""
+    from aie.utils import bfp
+
+    def pack(values):
+        tiles = []
+        for value in values:
+            if axes is not None:
+                value = value.transpose(axes)
+            h, w = value.shape
+            tiles.append(
+                bfp.shuffle(bfp.encode(np.ascontiguousarray(value)), w, h, w, h).ravel()
+            )
+        return np.stack(tiles)
+
+    def unpack(values):
+        stored_shape = tuple(shape[i] for i in axes) if axes else shape
+        h, w = stored_shape
+        tiles = []
+        for value in values:
+            tile = bfp.decode(bfp.shuffle(value, w, h, w, h, unshuffle=True)).reshape(
+                stored_shape
+            )
+            tiles.append(tile.transpose(np.argsort(axes)) if axes else tile)
+        return np.stack(tiles)
+
+    return TensorLayout(shape, pack=pack, unpack=unpack)
+
+
+def _zero_output(fn):
+    return fn.also.zero
+
+
 # programming_examples/ml/block_datatypes/matrix_multiplication/{bfp,mixed}_test.cpp:
 # the bf16 matmul tolerances, with 3x the absolute term for a bfp16 C (its
 # 8-bit mantissas share one exponent per 8 values) and 2x the relative term
@@ -394,7 +449,8 @@ def mm(
             # stores bf16 in whatever mode the core is in.
             setup=(conv_even if arch != "aie2p" and output_dtype is bfloat16 else None),
             roles=(In, In, InOut),  # C += A * B; see the .also.zero sibling
-            reference=mm_ref,
+            reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
+            initializers=((2, _zero_output),),
             acc_dtype=mm_acc_dtype(input_dtype),
             reduction=dim_k,
             tolerance=_linalg_tolerance(input_dtype),
@@ -420,6 +476,23 @@ def mm(
     # these to transpose the host operands.
     extern.b_col_maj = bool(b_col_maj)
     extern.c_col_maj = bool(c_col_maj)
+    extern.contract = replace(
+        extern.contract,
+        layouts=(
+            _tile_layout((dim_m, dim_k), extern.stream_dims.A if vectorized else None),
+            _tile_layout(
+                (dim_k, dim_n),
+                extern.stream_dims.B if vectorized else None,
+                axes=(1, 0) if b_col_maj else None,
+            ),
+            _tile_layout(
+                (dim_m, dim_n),
+                extern.stream_dims.C if vectorized else None,
+                axes=(1, 0) if c_col_maj else None,
+                inverse=True,
+            ),
+        ),
+    )
     # mm.cc emits both matmul_* and zero_* symbols; expose the zero binding
     # as a sibling Kernel pointing at the same .o so the design does
     # `matmul = kernels.mm(...); zero = matmul.also.zero` instead of a separate
@@ -500,7 +573,8 @@ def mv(
         use_chess=use_chess,
         contract=KernelContract(
             roles=(In, In, InOut),  # C += A * B; see the .also.zero sibling
-            reference=mv_ref,
+            reference=partial(mv_tile_ref, dim_m=dim_m, dim_k=dim_k),
+            initializers=((2, _zero_output),),
             acc_dtype=np.int32,  # acc32
             reduction=dim_k,
             tolerance=Tolerance.exact(note="int16 x int16 accumulated in int32"),
@@ -515,6 +589,14 @@ def mv(
     extern.dims = (dim_m, dim_k)
     extern.a_dims_from_stream = (
         [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
+    )
+    extern.contract = replace(
+        extern.contract,
+        layouts=(
+            _tile_layout((dim_m, dim_k), extern.a_dims_from_stream, inverse=True),
+            TensorLayout((dim_k,)),
+            TensorLayout((dim_m,)),
+        ),
     )
     # mv.cc emits both matvec_* and zero_* symbols; expose the zero binding
     # as a sibling Kernel pointing at the same .o.
@@ -534,7 +616,7 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[bfloat16]]
     c_ty = np.ndarray[(dim_m,), np.dtype[bfloat16]]
-    return _make_extern(
+    extern = _make_extern(
         f"{prefix}_bf16_bf16",
         _default_source_path("mv.cc", subdir="generic"),
         [np.int32, np.int32, a_ty, b_ty, c_ty],
@@ -542,18 +624,25 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
         use_chess=use_chess,
         contract=KernelContract(
             roles=(Scalar, Scalar, In, In, Out),
-            reference=mv_bf16_ref,
+            scalar_bindings=((0, dim_m), (1, 0)),
+            layouts=(
+                None,
+                None,
+                TensorLayout((dim_m, dim_k)),
+                TensorLayout((dim_k,)),
+                TensorLayout((dim_m,)),
+            ),
+            reference=lambda a, b: np.einsum(
+                "cmk,ck->cm", a.astype(np.float32), b.astype(np.float32)
+            ),
             acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
             reduction=dim_k,
             tolerance=_linalg_tolerance(bfloat16),
             ops_per_call=2 * dim_m * dim_k,
-            unsupported=(
-                "the harness's matvec design drives the int16 kernel's "
-                "(A, b, c) signature; this one leads with the runtime m and "
-                "row_offset scalars"
-            ),
         ),
     )
+    extern.dims = (dim_m, dim_k)
+    return extern
 
 
 def mv_bf16_ref(m, row_offset, a, b):
@@ -630,7 +719,10 @@ def mm_bfp(
             stack_bytes=0xF00,  # programming_examples/ml/block_datatypes
             setup=conv_even,
             roles=(In, In, InOut),  # C += A * B; see the .also.zero sibling
-            reference=mm_bfp_mixed_ref if mixed else mm_bfp_ref,
+            reference=partial(
+                mm_bfp_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n, mixed=mixed
+            ),
+            initializers=((2, _zero_output),),
             acc_dtype=np.float32,
             reduction=dim_k,
             tolerance=_BFP_MIXED_TOLERANCE if mixed else _BFP_TOLERANCE,
@@ -654,6 +746,22 @@ def mm_bfp(
     # The kernel reads B transposed (8x8 sub-tiles of B^T), so the host B
     # buffer is B^T (N, K), as the block_datatypes examples tile it.
     extern.b_col_maj, extern.c_col_maj = True, False
+    extern.contract = replace(
+        extern.contract,
+        layouts=(
+            (
+                _tile_layout((dim_m, dim_k), dims.A)
+                if mixed
+                else _block_layout((dim_m, dim_k))
+            ),
+            _block_layout((dim_k, dim_n), axes=(1, 0)),
+            (
+                _tile_layout((dim_m, dim_n), dims.C, inverse=True)
+                if mixed
+                else _block_layout((dim_m, dim_n))
+            ),
+        ),
+    )
     return extern
 
 

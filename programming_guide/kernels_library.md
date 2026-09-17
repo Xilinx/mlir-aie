@@ -149,7 +149,8 @@ a `KernelContract` to the function they return:
 
 ```python
 fn = kernels.reduce_max(dtype=np.int32, tile_size=1024)
-fn.contract.roles        # (In, Out, Count) -- the markers @iron.jit uses
+fn.contract.roles        # (In, Out, Scalar) -- the markers @iron.jit uses
+fn.contract.scalar_bindings  # ((2, 1024),): explicit runtime element count
 fn.contract.reference    # kernels.reduce_max_ref
 fn.contract.tolerance.kind  # 'exact'
 fn.contract.ops_per_call # 1024
@@ -177,18 +178,30 @@ verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
 assert verdict, verdict.detail
 ```
 
-Matrix designs default to one tile product: `kd.design(kernels.mm)` and
-`kd.sample_inputs(kernels.mm())` use the factory's tile dimensions. Passing
-`shape=(M, K, N)` (or `(M, K)` for integer `mv`) explicitly selects a
-whole-problem integration test; every dimension must be a positive multiple
-of its tile dimension. Matrix designs require `calls=1`; streaming designs
-use `calls` to repeat independent tiles.
+Every design validates independent tile calls, including matrix kernels.
+`kd.design(kernels.mm, calls=16)` repeats sixteen tile products, initializing
+each output before its call. The factory's dimensions size a tile; `calls`
+does not change its reduction length. Whole-problem `shape=` is rejected:
+algorithm integration tests own global iteration and accumulation.
 
-The builder currently supports one output and uses specialized matrix
-layout adapters. Matrix contract references take logical whole matrices;
-the exported `mm_tile_ref`, `mv_tile_ref`, and `mm_bfp_tile_ref` instead take
-flattened, independent call batches. They are not interchangeable when a
-design accumulates several products into one output.
+`contract.layouts` declares a `TensorLayout` per argument: its logical tile
+shape and reversible host storage codec. The same builder handles row-major,
+blocked, transposed and block-floating-point tiles without recognizing a
+kernel's name or kind. Matrix contracts use the independent-call `*_tile_ref`
+references; whole-matrix `mm_ref` and `mv_ref` remain available to algorithms.
+
+`In` is a read-only streamed tensor; `Param` is a read-only tensor baked into
+a core buffer, constant across calls. `Scalar` is a runtime scalar operand.
+Fixed scalar values, including counts, belong in `scalar_bindings`; remaining
+scalars come from `design(..., scalars=...)`. `Out` is written, while `InOut`
+is read and written and requires a declared `initializers` entry. Its reference
+describes the result from that initial state. Initialization occurs on every
+independent call, not only the first.
+
+Multiple outputs are ordered by `contract.out_indices`. Their reference,
+output sizes, device dtypes and verdicts are tuples; `upload` returns a tuple
+of output tensors, passed as `design(*inputs, *outputs)`. The builder supports
+up to the target's two output DMA channels.
 
 Tolerances are kernel-owned. Integer kernels and lossless copies are
 bit-exact; LUT approximations declare the `rtol` their reference
@@ -251,20 +264,19 @@ Three things make this work for more than one kernel per design:
   cascade trio and `mha`'s flash-attention siblings are built. Chess-built
   kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
   they keep bare symbols and only one variant may appear in a design.
-- **`host_args`.** `kernel_design.host_args(fn, calls=, shape=)`
+- **`host_args`.** `kernel_design.host_args(fn, calls=)`
   returns one `HostArg` (direction, shape, dtype) per host buffer the
-  design takes, in the layout the device expects: B transposed for a
-  `b_col_maj` matmul, C transposed for `c_col_maj`, encoded bytes for a
-  bfp16ebs8 operand, interleaved tiles where streamed tensors share one
+  design takes, in the layout the device expects: packed tiles from each
+  argument's layout codec, encoded bytes for a bfp16ebs8 operand,
+  interleaved tiles where streamed tensors share one
   fifo, a reduction's DMA padding. `param` arguments are absent, since
   they are baked into the design. A caller that only needs to size
   buffers reads this instead of running the sampler.
 
-Two factories are drop-ins even though the generic builder cannot run
-them: `kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
-ten symbols, and the bf16 `mv` builds the shared `aie_kernels/generic/mv.cc`
-with its `(m, row_offset, A, b, c)` signature. What a caller needs from
-those is the object and the binding, and both provide that; see
+`kernels.mha()` remains a drop-in even though the generic builder cannot run
+its multi-stage protocol: it compiles `aie_kernels/aie2p/mha.cc` once and binds
+its ten symbols. The bf16 `mv` uses scalar bindings for `(m, row_offset)` and
+can be validated by the generic tile builder. For protocol limitations, see
 [Kernels the generic builder cannot run](#kernels-the-generic-builder-cannot-run).
 
 ## When you outgrow the library
@@ -299,8 +311,7 @@ above picks it up.
 A new factory is complete when one line each in two places covers it:
 
 1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
-   with the argument roles (`In`, `Out` or `InOut`, `Param`, `Count`,
-   `Scalar`), a
+   with the argument roles (`In`, `Out` or `InOut`, `Param`, `Scalar`), a
    numpy reference exported as `<name>_ref`, `ops_per_call` for the
    benchmark's throughput series, and a `Tolerance` with its evidence in
    `note` — or none, to get the dtype default. Reductions set `out_valid`
@@ -308,6 +319,8 @@ A new factory is complete when one line each in two places covers it:
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
    rounding in the reference from the C++ rather than from a guess.
    A factory with more than one dtype lists them in a `.dtypes` table.
+   Bind runtime counts explicitly with `scalar_bindings`, publish nontrivial
+   storage with `layouts`, and initialize `InOut` tiles with `initializers`.
 2. **Case.** Add one `Case(...)` to
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
    the shape to run and, with `smoke=True`, that it is the kernel's
@@ -417,7 +430,6 @@ they compute, and `design()` refuses them with that reason:
 | --- | --- |
 | `cascade_mm` | partial sums travel over the cascade stream, which is not an argument |
 | `mm_bfp_shuffle` | a bfp16ebs8 tile through a plain fifo, which the builder samples only as a matmul operand |
-| bf16 `mv` | its signature leads with runtime `m` / `row_offset` scalars; the matvec design drives the int16 `(A, b, c)` form |
 | `mha` | a multi-core attention dataflow with a running softmax |
 | `bn_conv2dk1_relu_xy_pool_padded` | accumulates across calls through its output, one row per `y_index` |
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import Count, In, Out, Scalar
+from aie.utils.compile.jit.markers import In, Out, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
@@ -64,7 +64,8 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
         [tile_ty, tile_ty, np.int32],
         KernelContract(
             setup=None if _detect_arch() == "aie2" else conv_even,
-            roles=(In, Out, Count),
+            roles=(In, Out, Scalar),
+            scalar_bindings=((2, tile_size),),
             reference=rms_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,
@@ -84,7 +85,8 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
         [tile_ty, tile_ty, np.int32, np.float32],
         KernelContract(
             setup=None if _detect_arch() == "aie2" else conv_even,
-            roles=(In, Out, Count, Scalar),
+            roles=(In, Out, Scalar, Scalar),
+            scalar_bindings=((2, tile_size),),
             reference=lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
             acc_dtype=np.float32,
             reduction=tile_size,
@@ -109,7 +111,8 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
         "layer_norm.cc",
         [tile_ty, tile_ty, np.int32],
         KernelContract(
-            roles=(In, Out, Count),
+            roles=(In, Out, Scalar),
+            scalar_bindings=((2, tile_size),),
             reference=layer_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,

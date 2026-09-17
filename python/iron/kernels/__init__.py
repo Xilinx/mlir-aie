@@ -27,6 +27,7 @@ Most factories attach a [`KernelContract`][iron.kernels.KernelContract] as
 from ._common import (
     ROLES,
     KernelContract,
+    TensorLayout,
 )
 from .activation import (
     bf16_exp,
@@ -115,6 +116,7 @@ from .eltwise import (
     scale,
     scale_ref,
 )
+from .fused import fused_mm
 from .linalg import (
     cascade_mm,
     mha,
@@ -174,6 +176,7 @@ from .vision import (
 
 __all__ = [
     "KernelContract",
+    "TensorLayout",
     "ROLES",
     "RoundingMode",
     "conv_even",
@@ -264,6 +267,7 @@ __all__ = [
     "sigmoid_ref",
     "leaky_relu_ref",
     "mm",
+    "fused_mm",
     "mm_acc_dtype",
     "mha",
     "mm_bfp",

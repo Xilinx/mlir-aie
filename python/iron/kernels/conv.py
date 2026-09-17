@@ -1247,6 +1247,12 @@ def bn_conv2dk1_partial_put_i8(
         _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
         [in_ty, wt_ty, *_i32s(7)],
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"],
+        contract=KernelContract(
+            roles=(In, In, *((Scalar,) * 7)),
+            cascade_partner=bn_conv2dk1_partial_get_relu_i8,
+            acc_dtype=np.int32,
+            reduction=input_channels,
+        ),
     )
 
 
@@ -1290,6 +1296,12 @@ def bn_conv2dk1_partial_get_relu_i8(
         _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, *_i32s(9)],
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"],
+        contract=KernelContract(
+            roles=(In, In, Out, *((Scalar,) * 9)),
+            cascade_partner=bn_conv2dk1_partial_put_i8,
+            acc_dtype=np.int32,
+            reduction=input_channels,
+        ),
     )
 
 
@@ -1326,15 +1338,59 @@ def bn_conv2dk3_dw_out_split(
         ValueError: When ``block_index`` is not 13 or 14.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk3_dw_out_split")
+    if (
+        input_width < 2
+        or output_split_channels <= 0
+        or input_channels != 2 * output_split_channels
+        or output_split_channels % 8
+    ):
+        raise ValueError(
+            "bn_conv2dk3_dw_out_split requires width >= 2 and equal channel "
+            "halves divisible by 8"
+        )
     line_size = input_width * input_channels
     line_ty = np.ndarray[(line_size,), np.dtype[np.uint8]]
     wt_ty = np.ndarray[(3 * 3 * input_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_split_channels,), np.dtype[np.uint8]]
+
+    def reference(line0, line1, line2, weights, check, scale):
+        full = bn_conv2dk3_dw_ref(
+            line0,
+            line1,
+            line2,
+            weights,
+            input_width,
+            input_channels,
+            input_channels,
+            3,
+            3,
+            check,
+            scale,
+            0,
+        )
+        return tuple(np.split(full, 2, axis=-1))
+
     return _make_extern(
         f"bn{block_index}_conv2dk3_ui8_out_split",
         _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"],
+        contract=KernelContract(
+            roles=(In, In, In, Param, Out, Out, *((Scalar,) * 8)),
+            scalar_bindings=(
+                (6, input_width),
+                (7, input_channels),
+                (8, input_channels),
+                (9, 3),
+                (10, 3),
+                (13, 0),
+            ),
+            reference=reference,
+            acc_dtype=np.int32,
+            reduction=9,
+            tolerance=_BN_TOLERANCE,
+            ops_per_call=2 * 9 * input_width * input_channels,
+        ),
     )
 
 
@@ -1374,6 +1430,12 @@ def bn_conv2dk1_input_split_partial_put_ui8(
         compile_flags=[
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW"
         ],
+        contract=KernelContract(
+            roles=(In, In, *((Scalar,) * 7)),
+            cascade_partner=bn_conv2dk1_input_split_partial_skip_get,
+            acc_dtype=np.int32,
+            reduction=input_channels,
+        ),
     )
 
 
@@ -1417,6 +1479,12 @@ def bn_conv2dk1_input_split_partial_skip_get(
         compile_flags=[
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW"
         ],
+        contract=KernelContract(
+            roles=(In, In, Out, In, *((Scalar,) * 10)),
+            cascade_partner=bn_conv2dk1_input_split_partial_put_ui8,
+            acc_dtype=np.int32,
+            reduction=input_channels,
+        ),
     )
 
 

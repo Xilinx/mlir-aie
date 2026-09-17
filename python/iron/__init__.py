@@ -11,6 +11,7 @@ Provides the primary abstractions for describing NPU designs:
 - [`Runtime`][iron.Runtime] — host-side orchestration of data movement and worker execution
 - [`Program`][iron.Program] — top-level container that compiles a design to MLIR
 - [`Kernel`][iron.Kernel] / [`ExternalFunction`][iron.ExternalFunction] — pre-compiled or C++ kernel functions
+- [`KernelObject`][iron.KernelObject] — shared link artifact and compilation ownership
 - [`WorkerRuntimeBarrier`][iron.WorkerRuntimeBarrier] — synchronization primitive between workers and runtime
 - Tensor utilities ([`arange`][iron.arange], [`zeros`][iron.zeros], [`ones`][iron.ones], etc.) for NPU-accessible buffers
 - dtype helpers ([`str_to_dtype`][iron.str_to_dtype], [`dtype_to_str`][iron.dtype_to_str])
@@ -83,7 +84,7 @@ from .dataflow import (
     TileDma,
 )
 from .dtype import dtype_to_str, str_to_dtype
-from .kernel import ExternalFunction, Kernel
+from .kernel import ExternalFunction, Kernel, KernelObject
 from .lock import Lock
 from .program import Program
 from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
@@ -95,6 +96,7 @@ __all__ = [
     "Buffer",
     "ExternalFunction",
     "Kernel",
+    "KernelObject",
     "Program",
     "Worker",
     "WorkerRuntimeBarrier",

@@ -59,7 +59,7 @@ def _param(case: Case):
     return pytest.param(case, id=case.name, marks=marks)
 
 
-_PERF_CASES = [_param(c) for c in CASES if c.perf]
+_PERF_CASES = [_param(c) for c in CASES if c.perf and c.name != SMOKE_TEST.name]
 
 
 def _measure(case: Case, config, workdir: Path) -> dict:
@@ -77,8 +77,11 @@ def _measure(case: Case, config, workdir: Path) -> dict:
 
     ref = fn.expected(inputs, scalars=case.scalars)
     out_n = kd.output_size(fn, calls=case.calls, shape=case.shape)
-    out_dt = fn.output_dtype(ref.dtype)
+    out_dt = fn.output_dtype(
+        tuple(r.dtype for r in ref) if isinstance(ref, tuple) else ref.dtype
+    )
     ins, out = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
+    outputs = out if isinstance(out, tuple) else (out,)
 
     measured: dict = {}
     if not config.getoption("--no-compile"):
@@ -89,14 +92,15 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         # faster than it is.
         measured["compile"] = measure_compile(design, workdir / case.name)
 
-    design(*ins, out)
-    verdict = fn.judge(out.numpy(), ref, calls=case.calls)
+    design(*ins, *outputs)
+    got = tuple(o.numpy() for o in outputs)
+    verdict = fn.judge(got if len(got) > 1 else got[0], ref, calls=case.calls)
     assert verdict, f"{case.name}: {verdict.detail}"
 
     measured["wall"] = run_iters(
         design,
         *ins,
-        out,
+        *outputs,
         warmup=config.getoption("--warmup"),
         iters=config.getoption("--iters"),
     )
@@ -119,7 +123,7 @@ def _record(record, case: Case, m: dict) -> None:
                 case.name,
                 "cycles_per_kop",
                 "cycles/1k-ops",
-                round(1000.0 * cycles / ops, 3),
+                round(1000.0 * cycles * case.kernel_calls() / ops, 3),
             )
     wall = m.get("wall")
     if wall and wall.npu:

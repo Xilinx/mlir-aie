@@ -56,8 +56,9 @@ def device_for(devices: tuple[str, ...]):
 class Case:
     """One (kernel, shape) the suite builds, checks and times.
 
-    ``calls`` iterations of a streaming kernel, or ``shape`` = (M, K, N) /
-    (M, K) host operands for ``mm`` / ``mv``. ``params`` overrides the value
+    ``calls`` independent tile invocations of any kernel. ``shape`` is retained
+    for diagnostics of old callers, but whole-problem shapes are rejected by
+    the builder. ``params`` overrides the value
     of ``param`` arguments (``scale``'s factor); ``scalars`` supplies
     ``scalar`` arguments in order. ``devices`` restricts a case to the NPU
     generations whose kernels exist (``("npu2",)``), as IRON's
@@ -116,8 +117,8 @@ class Case:
         in_dt = bfp.dtype_name(kd.shape_dtype(types[fn.contract.roles.index(In)])[1])
         out_dt = bfp.dtype_name(kd.shape_dtype(types[fn.contract.out_index])[1])
         dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
-        if self.shape:
-            dims = "x".join(str(d) for d in self.shape)
+        if getattr(fn, "dims", None):
+            dims = "x".join(str(d) for d in (*fn.dims, self.calls))
         else:
             dims = f"{kd.elems(types[fn.contract.roles.index(In)])}x{self.calls}"
         extra = [
@@ -135,15 +136,8 @@ class Case:
         )
 
     def kernel_calls(self) -> int:
-        """How many times the core invokes the kernel in one run."""
-        if self.shape is None:
-            return self.calls
-        m, k = self.kwargs["dim_m"], self.kwargs["dim_k"]
-        if len(self.shape) == 3:
-            M, K, N = self.shape
-            return (M // m) * (N // self.kwargs["dim_n"]) * (K // k)
-        M, K = self.shape
-        return (M // m) * (K // k)
+        """How many independent tile calls the core invokes in one run."""
+        return self.calls
 
     def work(self) -> int:
         """Arithmetic operations per run, from the contract's ``ops_per_call``."""
@@ -186,8 +180,6 @@ def data_policy(fn) -> tuple[str, ...]:
     in_dt = kd.shape_dtype(types[c.roles.index(In)])[1]
     if bfp.is_bfp(in_dt):
         return tuple(d for d in MATRIX_DATA if d != "max")
-    if kd.is_matmul(fn) or kd.is_matvec(fn):
-        return MATRIX_DATA
     if np.issubdtype(np.dtype(in_dt), np.integer):
         return INT_DATA
     return FLOAT_BASE

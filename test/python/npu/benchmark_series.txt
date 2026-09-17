@@ -45,6 +45,12 @@ exp2f_vec/1024x256/float32
 expand/576x16/uint8_bfloat16
 expand/576x256/uint8_bfloat16
 filter2d/1920x16/uint8
+fused_mm/32x32x16x4/bfloat16
+fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)
+fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu
+fused_mm/32x48x16x4/bfloat16/epilogue=gelu
+fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid
+fused_mm/32x48x16x4/bfloat16/epilogue=silu
 gelu/1024x16/bfloat16
 gelu/1024x256/bfloat16
 gray2rgba/1920x16/uint8

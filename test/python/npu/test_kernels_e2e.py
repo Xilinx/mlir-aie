@@ -31,6 +31,8 @@ Cases whose kernels exist only for one NPU generation carry
 ``supported_devices`` (see ``conftest.py``), so they skip elsewhere.
 """
 
+from types import SimpleNamespace
+
 import aie.iron as iron
 import numpy as np
 import pytest
@@ -57,8 +59,10 @@ def _run(design, fn, inputs, out_n, out_dt):
     host memory, and ``out`` is the last reference to that buffer.
     """
     ins, out = kd.upload(inputs, out_n, out_dt, fn=fn, poison=True)
-    design(*ins, out)
-    return out.numpy().copy()
+    outputs = out if isinstance(out, tuple) else (out,)
+    design(*ins, *outputs)
+    got = tuple(o.numpy().copy() for o in outputs)
+    return got if len(got) > 1 else got[0]
 
 
 def _run_case(case, data_case: str, seed: int):
@@ -72,7 +76,9 @@ def _run_case(case, data_case: str, seed: int):
     )
     ref = fn.expected(inputs, scalars=case.scalars)
     out_n = kd.output_size(fn, calls=case.calls, shape=case.shape)
-    out_dt = fn.output_dtype(ref.dtype)
+    out_dt = fn.output_dtype(
+        tuple(r.dtype for r in ref) if isinstance(ref, tuple) else ref.dtype
+    )
     # The output is poisoned so a kernel that writes nothing cannot pass.
     got = _run(design, fn, inputs, out_n, out_dt)
     verdict = fn.judge(got, ref, calls=case.calls)
@@ -110,6 +116,19 @@ def test_kernel_extensive(case, data_case, seed):
 def test_case_names_are_unique():
     names = [c.name for c in CASES]
     assert len(names) == len(set(names)), "two cases share a series name"
+
+
+def test_run_reads_all_outputs(monkeypatch):
+    arrays = (np.arange(4), np.arange(4) + 10)
+    outputs = tuple(SimpleNamespace(numpy=lambda a=a: a) for a in arrays)
+    inp = object()
+    monkeypatch.setattr(kd, "upload", lambda *args, **kwargs: ([inp], outputs))
+    calls = []
+    got = _run(lambda *args: calls.append(args), None, [], (4, 4), (int, int))
+    assert calls == [(inp, *outputs)]
+    for actual, expected in zip(got, arrays):
+        np.testing.assert_array_equal(actual, expected)
+        assert not np.shares_memory(actual, expected)
 
 
 # getExpBf16 reaches its tables through a Q8 fixed-point int16, so an input

@@ -110,26 +110,52 @@ CASES: list[Case] = [
     Case("transpose", dict(subtile=4, dtype=np.uint8), calls=16, smoke=True),
     Case("transpose", dict(subtile=8, dtype=np.uint32), calls=16),
     # linalg
-    Case("mm", _mm_bf16, shape=(256, 256, 256)),
-    Case("mm", _mm_bf16, shape=(512, 512, 512)),
+    Case("mm", _mm_bf16, calls=16),
+    Case("mm", _mm_bf16, calls=256),
     Case(
         "mm",
         dict(**_mm, input_dtype=np.int16, output_dtype=np.int32),
-        shape=(256, 256, 256),
+        calls=16,
     ),
     Case(
         "mm",
         dict(**_mm, input_dtype=np.int8, output_dtype=np.int32),
-        shape=(256, 256, 256),
+        calls=16,
     ),
-    Case("mm", _mm_bf16, shape=(64, 64, 64), tag="edge-single-tile", perf=False),
+    Case("mm", _mm_bf16, calls=1, tag="edge-single-tile", perf=False),
+    # Bounded fused composition: two A bands and multiple K/drain chunks.
+    Case("fused_mm", calls=4, smoke=True),
+    *[
+        Case(
+            "fused_mm",
+            dict(dim_k=48, epilogue=mode),
+            calls=4,
+            perf=False,
+            # Keep tanh's AIE2 LUT input in its representable domain.
+            data_cases=("random", "zeros", "ones", "alternating"),
+        )
+        for mode in ("gelu", "silu", "sigmoid")
+    ],
+    Case(
+        "fused_mm",
+        dict(dim_k=48, clamp=(-0.125, 0.75)),
+        calls=4,
+        perf=False,
+    ),
+    Case(
+        "fused_mm",
+        dict(dim_k=48, epilogue="silu", clamp=(-0.125, 0.75)),
+        calls=4,
+        perf=False,
+        data_cases=("random", "zeros", "ones", "alternating"),
+    ),
     # block floating point (aie2p): bfp16ebs8 A, B and C, and the mixed
     # kernel with bf16 A and C; host encode/shuffle via aie.utils.bfp.
-    Case("mm_bfp", _mm_bfp, shape=(256, 256, 256), devices=("npu2",)),
+    Case("mm_bfp", _mm_bfp, calls=16, devices=("npu2",)),
     Case(
         "mm_bfp",
         dict(**_mm_bfp, mixed=True),
-        shape=(256, 256, 256),
+        calls=16,
         devices=("npu2",),
     ),
     Case(
@@ -137,11 +163,18 @@ CASES: list[Case] = [
         dict(
             dim_m=32, dim_k=32, dim_n=32, input_dtype=bfloat16, output_dtype=np.float32
         ),
-        shape=(256, 256, 256),
+        calls=16,
         tag="edge-small-tile",
         perf=False,
     ),
-    Case("mv", dict(dim_m=32, dim_k=32), shape=(256, 256)),
+    Case("mv", dict(dim_m=32, dim_k=32), calls=16),
+    Case(
+        "mv",
+        dict(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16),
+        calls=4,
+        smoke=True,
+        perf=False,
+    ),
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
@@ -332,33 +365,33 @@ CASES: list[Case] = [
 # Smaller shapes for the per-PR smoke test; the nightly times the shapes above.
 CASES += [
     Case("passthrough", calls=4, smoke=True, perf=False),
-    Case("mm", _mm_bf16, shape=(128, 128, 128), smoke=True, perf=False),
+    Case("mm", _mm_bf16, calls=4, smoke=True, perf=False),
     Case(
         "mm",
         dict(**_mm, input_dtype=np.int16, output_dtype=np.int32),
-        shape=(128, 128, 128),
+        calls=4,
         smoke=True,
         perf=False,
     ),
     Case(
         "mm",
         dict(**_mm_bf16, b_col_maj=True),
-        shape=(128, 128, 128),
+        calls=4,
         smoke=True,
         perf=False,
     ),
     Case(
         "mm",
         dict(**_mm, input_dtype=np.int16, output_dtype=np.int32, c_col_maj=True),
-        shape=(128, 128, 128),
+        calls=4,
         smoke=True,
         perf=False,
     ),
-    Case("mv", dict(dim_m=32, dim_k=32), shape=(128, 128), smoke=True, perf=False),
+    Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
     Case(
         "mm_bfp",
         _mm_bfp,
-        shape=(128, 128, 128),
+        calls=4,
         devices=("npu2",),
         smoke=True,
         perf=False,
@@ -366,7 +399,7 @@ CASES += [
     Case(
         "mm_bfp",
         dict(**_mm_bfp, mixed=True),
-        shape=(128, 128, 128),
+        calls=4,
         devices=("npu2",),
         smoke=True,
         perf=False,

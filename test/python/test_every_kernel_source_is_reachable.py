@@ -29,9 +29,6 @@ from aie.iron import kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 
 _KERNELS = Path(__file__).resolve().parents[2] / "aie_kernels"
-# Fused GEMM exposes a multi-entry-point ABI driven by an external design's
-# loop nest; it arrived on main without a Python factory.
-_DESIGN_ONLY = {_KERNELS / "generic" / "mm_fused.cc"}
 
 
 def _built_by_a_factory() -> set[Path]:
@@ -71,13 +68,11 @@ def _included_by_another_kernel(source: Path) -> bool:
 
 
 @pytest.mark.skipif(not _KERNELS.is_dir(), reason="no aie_kernels/ checkout")
-def test_no_kernel_source_is_unreachable():
+def test_no_kernel_source_is_unreachable(monkeypatch):
+    # Probe this checkout even when lit imports the package from a staged build.
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(_KERNELS.parent))
     built = _built_by_a_factory()
     sources = sorted(_KERNELS.rglob("*.cc"))
-    # A factory resolves its source against MLIR_AIE_KERNEL_SOURCES, which may
-    # point at an installed copy rather than this checkout. Then no path here
-    # matches and every kernel looks orphaned, which is a misconfigured probe
-    # and not a tree full of dead code -- so say which it is.
     assert built & {p.resolve() for p in sources}, (
         f"no factory resolved to a source under {_KERNELS}, so this cannot tell "
         "a reachable kernel from an orphaned one. Point MLIR_AIE_KERNEL_SOURCES "
@@ -86,9 +81,7 @@ def test_no_kernel_source_is_unreachable():
     unreachable = sorted(
         p
         for p in sources
-        if p not in _DESIGN_ONLY
-        and p.resolve() not in built
-        and not _included_by_another_kernel(p)
+        if p.resolve() not in built and not _included_by_another_kernel(p)
     )
     assert not unreachable, (
         "no factory compiles these, so nothing ever checks them: "

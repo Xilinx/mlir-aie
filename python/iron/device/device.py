@@ -69,6 +69,16 @@ class Device(Resolvable):
         )
         return self._tm.get_num_dest_switchbox_connections(0, row, WireBundle.DMA)
 
+    @property
+    def core_dma_channels_out(self) -> int:
+        """Output DMA channels available on a compute tile."""
+        row = next(
+            r
+            for r in range(self.rows)
+            if self.get_tile_type(0, r) is AIETileType.CoreTile
+        )
+        return self._tm.get_num_source_switchbox_connections(0, row, WireBundle.DMA)
+
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""
         if col < 0 or col >= self._tm.columns() or row < 0 or row >= self._tm.rows():

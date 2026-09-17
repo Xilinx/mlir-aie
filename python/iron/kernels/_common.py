@@ -14,12 +14,36 @@ from typing import Callable, Iterable
 import numpy as np
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit import markers as _markers
-from aie.utils.compile.jit.markers import Count, InOut, Out
+from aie.utils.compile.jit.markers import Count, InOut, Out, Scalar
 from aie.utils.verify import Tolerance
 
 _log = logging.getLogger(__name__)
 
 ROLES = _markers.ROLES
+
+
+@dataclass(frozen=True)
+class TensorLayout:
+    """Logical shape of one tensor tile and its reversible host storage codec.
+
+    ``pack`` and ``unpack`` operate on batches shaped ``(calls, *shape)`` and
+    ``(calls, storage_elements)`` respectively. They describe storage, not an
+    algorithm or a whole-problem iteration schedule. Identity is the default.
+    """
+
+    shape: tuple[int, ...]
+    pack: Callable | None = None
+    unpack: Callable | None = None
+
+    def encode(self, values):
+        values = np.asarray(values).reshape(-1, *self.shape)
+        return self.pack(values) if self.pack else values.reshape(len(values), -1)
+
+    def decode(self, values, *, calls=1):
+        values = np.asarray(values).reshape(calls, -1)
+        return (
+            self.unpack(values) if self.unpack else values.reshape(calls, *self.shape)
+        )
 
 
 @dataclass(frozen=True)
@@ -40,8 +64,10 @@ class KernelContract:
             the same markers ``@iron.jit`` uses. ``Out`` is written by the
             kernel; ``InOut`` is accumulated into (``mm``'s ``C += A * B``),
             which is why such a kernel ships a ``.also.zero`` sibling and a design
-            zeroes the buffer before the first call. Exactly one argument is
-            ``Out`` or ``InOut``.
+            initializes the buffer before each independent call. ``In`` is a
+            read-only streamed tensor; ``Param`` is a read-only tensor held in
+            a core Buffer, constant across calls. Neither is a scalar. Multiple
+            ``Out``/``InOut`` arguments are permitted, in argument order.
         reference: Host implementation, and the kernel's arithmetic model:
             a saturating kernel's reference clips, a flushing one flushes.
             Called with every non-``Out``, non-``InOut``, non-``Count``
@@ -49,10 +75,8 @@ class KernelContract:
             of shape ``(calls, n)`` in the kernel's dtype, ``Scalar`` values
             as Python numbers. Returns the expected
             output for all calls; the harness casts it to the output dtype.
-            Matrix factories currently use whole-problem references on
-            logical matrices, matching the builder's explicit matrix layouts;
-            their exported ``*_tile_ref`` helpers accept independent call
-            batches instead.
+            Multiple outputs are returned as a tuple in output argument order.
+            Bound scalar arguments are omitted from the reference.
             ``None`` when no host reference exists yet -- the kernel is then
             built but not judged.
         tolerance: How close the device result must be, or ``None`` for
@@ -98,6 +122,16 @@ class KernelContract:
             judge the kernel in a single-Worker design; otherwise the reason
             it cannot (a cascade protocol, an operand it cannot sample). The
             reference and the dtype facts still say what the kernel computes.
+        layouts: Optional :class:`TensorLayout` per argument (``None`` means
+            identity). Logical tile shapes and storage codecs belong to the
+            declaration, never to a kernel-name switch in the harness.
+        scalar_bindings: ``(argument_index, value)`` pairs for fixed runtime
+            scalar operands, including element counts. Unbound ``Scalar``
+            operands are supplied by the caller. Counts are never inferred
+            from input/output sizes.
+        initializers: ``(argument_index, factory)`` pairs for ``InOut``
+            arguments; ``factory(fn)`` returns a one-buffer initialization
+            kernel. The reference describes the result from that initial state.
 
     What the kernel does when a result overflows, how it rounds a narrowing
     store, and what it does with NaN or subnormal inputs are not declared
@@ -118,6 +152,9 @@ class KernelContract:
     stack_bytes: int | None = None
     cascade_partner: Callable[..., object] | None = None
     unsupported: str | None = None
+    layouts: tuple[TensorLayout | None, ...] = ()
+    scalar_bindings: tuple[tuple[int, int | float], ...] = ()
+    initializers: tuple[tuple[int, Callable], ...] = ()
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in ROLES]
@@ -128,12 +165,24 @@ class KernelContract:
         # has nothing to be the output. A cascade half may also have none: its
         # result leaves on the cascade stream, which is not an argument.
         n_out = self.roles.count(Out) + self.roles.count(InOut)
-        allowed = (0, 1) if self.cascade_partner is not None else (1,)
-        if self.roles and n_out not in allowed:
-            raise ValueError(
-                "a kernel contract needs exactly one Out or InOut role"
-                + (", or none when it emits on a cascade" if allowed == (0, 1) else "")
-            )
+        if self.roles and not n_out and self.cascade_partner is None:
+            raise ValueError("a kernel contract needs at least one Out or InOut role")
+        if self.layouts and len(self.layouts) != len(self.roles):
+            raise ValueError("layouts must have one entry per argument")
+        bound = dict(self.scalar_bindings)
+        if len(bound) != len(self.scalar_bindings) or any(
+            i < 0 or i >= len(self.roles) or self.roles[i] not in (Scalar, Count)
+            for i in bound
+        ):
+            raise ValueError("scalar_bindings must name distinct scalar arguments")
+        if any(r is Count and i not in bound for i, r in enumerate(self.roles)):
+            raise ValueError("Count requires an explicit scalar binding")
+        initialized = dict(self.initializers)
+        if len(initialized) != len(self.initializers) or any(
+            i < 0 or i >= len(self.roles) or self.roles[i] is not InOut
+            for i in initialized
+        ):
+            raise ValueError("initializers must name distinct InOut arguments")
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.stack_bytes is not None and self.stack_bytes < 1:
@@ -148,12 +197,19 @@ class KernelContract:
                 "unsupported",
                 f"one half of a cascade pair with {self.cascade_partner.__name__}; "
                 "the partial sum crosses the cascade stream, which is not an "
-                "argument, so the reference is what the pair computes",
+                "argument; a paired design is required to observe the result",
             )
+
+    @property
+    def out_indices(self) -> tuple[int, ...]:
+        """Output argument positions, in declaration order."""
+        return tuple(i for i, r in enumerate(self.roles) if r in (Out, InOut))
 
     @property
     def out_index(self) -> int:
         """Position of the output, whether the kernel writes it or accumulates into it."""
+        if len(self.out_indices) > 1:
+            raise ValueError("multiple outputs: use out_indices")
         roles = list(self.roles)
         if Out in roles:
             return roles.index(Out)
@@ -174,10 +230,15 @@ class KernelContract:
         """Argument positions handed to ``reference``, in order.
 
         An ``InOut`` output is excluded like an ``Out`` one: the reference
-        computes the whole result, and a design that accumulates zeroes the
-        buffer first (see the ``.also.zero`` sibling).
+        computes the result from the declared initializer's state. The
+        builder initializes the buffer before each independent tile call.
         """
-        return [i for i, r in enumerate(self.roles) if r not in (Out, InOut, Count)]
+        bound = dict(self.scalar_bindings)
+        return [
+            i
+            for i, r in enumerate(self.roles)
+            if r not in (Out, InOut, Count) and i not in bound
+        ]
 
 
 def _detect_arch() -> str:

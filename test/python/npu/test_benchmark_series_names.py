@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from cases import device_for  # noqa: E402
+from cases import Case, device_for  # noqa: E402
 from kernel_cases import CASES  # noqa: E402
 
 _SNAPSHOT = Path(__file__).parent / "benchmark_series.txt"
@@ -64,7 +64,37 @@ def test_series_names_are_unique():
     assert not duplicates, f"cases share a benchmark series: {duplicates}"
 
 
+def test_smoke_benchmark_is_measured_once():
+    from test_kernels_bench import _PERF_CASES, SMOKE_TEST
+
+    names = [SMOKE_TEST.name, *(param.values[0].name for param in _PERF_CASES)]
+    assert len(names) == len(set(names))
+    assert set(names) == {case.name for case in CASES if case.perf}
+
+
+def test_cycle_efficiency_is_independent_of_call_count():
+    from test_kernels_bench import _record
+
+    for calls in (1, 16, 256):
+        case = Case("passthrough", dict(tile_size=2048), calls=calls)
+        rows = []
+        _record(lambda *row: rows.append(row), case, {"cycles": 270})
+        assert rows[1][1:] == ("cycles_per_kop", "cycles/1k-ops", 131.836)
+
+
+def test_matrix_series_keep_tile_geometry_and_call_count():
+    cases = [
+        Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=4, devices=("npu2",)),
+        Case("mm", dict(dim_m=64, dim_k=32, dim_n=32), calls=4, devices=("npu2",)),
+        Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=8, devices=("npu2",)),
+    ]
+    assert len({case.name for case in cases}) == len(cases)
+
+
 if __name__ == "__main__":
     test_series_names_are_unchanged()
     test_series_names_are_unique()
+    test_smoke_benchmark_is_measured_once()
+    test_cycle_efficiency_is_independent_of_call_count()
+    test_matrix_series_keep_tile_geometry_and_call_count()
     print("PASS!")

@@ -1120,11 +1120,12 @@ def test_rope_layout_contract_and_vector_constraints(
     "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
 )
 def test_sized_factory_contracts(name, kernel_arch):
-    from aie.utils.compile.jit.markers import Count, In, Out
+    from aie.utils.compile.jit.markers import In, Out, Scalar
 
     fn = getattr(kernels, name)(tile_size=1024)
     binary = name in ("add_sized", "mul_sized")
-    assert fn.contract.roles == ((In, In, Out, Count) if binary else (In, Out, Count))
+    assert fn.contract.roles == ((In, In, Out, Scalar) if binary else (In, Out, Scalar))
+    assert fn.contract.scalar_bindings == ((3 if binary else 2, 1024),)
     assert fn.contract.tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
     reference_name = name.replace("_sized", "_ref")

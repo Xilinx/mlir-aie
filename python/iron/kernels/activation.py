@@ -24,7 +24,7 @@ from typing import Callable
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import Count, In, Out, Scalar
+from aie.utils.compile.jit.markers import In, Out, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
@@ -62,7 +62,7 @@ _LUT_TOLERANCE = Tolerance.relative(
 def _unary_lut_contract(
     ref,
     *,
-    count: bool,
+    count: int | None,
     tolerance: Tolerance = _LUT_TOLERANCE,
     setup: Callable[[], object] | None = conv_even,
 ) -> KernelContract:
@@ -73,7 +73,8 @@ def _unary_lut_contract(
     numpy's reference rounds in.
     """
     return KernelContract(
-        roles=(In, Out, Count) if count else (In, Out),
+        roles=(In, Out, Scalar) if count else (In, Out),
+        scalar_bindings=((2, count),) if count else (),
         reference=ref,
         tolerance=tolerance,
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
@@ -183,7 +184,7 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         contract=_unary_lut_contract(
             lambda x: softmax_ref(x, tile_size=tile_size),
-            count=True,
+            count=tile_size,
             tolerance=_softmax_tolerance(tile_size),
             # aie2p/softmax.cc sets conv_even itself; the aie2 LUT path does not.
             setup=None if _detect_arch() == "aie2p" else conv_even,
@@ -229,7 +230,7 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
         "silu_bf16_size",
         "silu.cc",
         [tile_ty, tile_ty, np.int32],
-        contract=_unary_lut_contract(silu_ref, count=True),
+        contract=_unary_lut_contract(silu_ref, count=tile_size),
     )
 
 
@@ -249,7 +250,7 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
         "gelu_bf16_size",
         "gelu.cc",
         [tile_ty, tile_ty, np.int32],
-        contract=_unary_lut_contract(gelu_ref, count=True),
+        contract=_unary_lut_contract(gelu_ref, count=tile_size),
     )
 
 
@@ -347,7 +348,8 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, Out, Count),
+            roles=(In, Out, Scalar),
+            scalar_bindings=((2, tile_size),),
             reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
             acc_dtype=np.float32,
             tolerance=Tolerance.relative(
@@ -371,7 +373,7 @@ def tanh(tile_size: int = 1024) -> ExternalFunction:
         "tanh_bf16",
         "tanh.cc",
         [tile_ty, tile_ty, np.int32],
-        contract=_unary_lut_contract(tanh_ref, count=True),
+        contract=_unary_lut_contract(tanh_ref, count=tile_size),
     )
 
 
@@ -386,7 +388,7 @@ def sigmoid(tile_size: int = 1024) -> ExternalFunction:
         "sigmoid_bf16",
         "sigmoid.cc",
         [tile_ty, tile_ty, np.int32],
-        contract=_unary_lut_contract(sigmoid_ref, count=True),
+        contract=_unary_lut_contract(sigmoid_ref, count=tile_size),
     )
 
 
@@ -404,7 +406,8 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32, bfloat16],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, Out, Count, Scalar),
+            roles=(In, Out, Scalar, Scalar),
+            scalar_bindings=((2, tile_size),),
             reference=leaky_relu_ref,
             acc_dtype=bfloat16,
             tolerance=Tolerance.relative(
