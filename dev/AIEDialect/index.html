@@ -13004,7 +13004,7 @@ Must be unique within a design.</p>
 <h3 id="aiepacket_flow-xilinxaiepacketflowop"><code>aie.packet_flow</code> (::xilinx::AIE::PacketFlowOp)<a class="headerlink" href="#aiepacket_flow-xilinxaiepacketflowop" title="Permanent link">&para;</a></h3>
 <p><em>Packet switched flow</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-76-1" name="__codelineno-76-1" href="#__codelineno-76-1"></a>operation ::= `aie.packet_flow` `(` $ID `)` regions attr-dict
+<div class="highlight"><pre><span></span><code><a id="__codelineno-76-1" name="__codelineno-76-1" href="#__codelineno-76-1"></a>operation ::= `aie.packet_flow` `(` $ID (`,` `mask` `=` $mask^)? `)` regions attr-dict
 </code></pre></div>
 <p>A logical packet-switched flow between tiles.  During place and
 route, this is replaced by MasterSets and PacketRules inside
@@ -13015,18 +13015,31 @@ destination. The optional attribute priority_route indicates
 whether the packet flow is routed in priority over other flows,
 so that they always get allocated with the same master, slave
 ports, arbiters and master selects (msel).</p>
+<p>The optional attribute mask, written after the ID in the parentheses,
+states the packet-rule mask of the flow. A slave port accepts a packet
+when <code>incoming &amp; mask == ID</code>, so the flow claims every ID that agrees
+with ID on the bits the mask selects. When the attribute is absent, the
+router decides the mask that matches the given ID and rejects known IDs
+from other routes. The ID must have no bit outside the mask, or no packet
+can match.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a>  %01 = aie.tile(0, 1)
 <a id="__codelineno-77-2" name="__codelineno-77-2" href="#__codelineno-77-2"></a>  aie.packet_flow(0x10) {
 <a id="__codelineno-77-3" name="__codelineno-77-3" href="#__codelineno-77-3"></a>    aie.packet_source&lt;%01, &quot;Core&quot; : 0&gt;
 <a id="__codelineno-77-4" name="__codelineno-77-4" href="#__codelineno-77-4"></a>    aie.packet_dest&lt;%01, &quot;Core&quot; : 0&gt;
 <a id="__codelineno-77-5" name="__codelineno-77-5" href="#__codelineno-77-5"></a>  }
+<a id="__codelineno-77-6" name="__codelineno-77-6" href="#__codelineno-77-6"></a>  // Claims 0x10 through 0x13: the mask ignores the low two bits.
+<a id="__codelineno-77-7" name="__codelineno-77-7" href="#__codelineno-77-7"></a>  aie.packet_flow(0x10, mask = 0x1c) {
+<a id="__codelineno-77-8" name="__codelineno-77-8" href="#__codelineno-77-8"></a>    aie.packet_source&lt;%01, &quot;Core&quot; : 0&gt;
+<a id="__codelineno-77-9" name="__codelineno-77-9" href="#__codelineno-77-9"></a>    aie.packet_dest&lt;%01, &quot;Core&quot; : 0&gt;
+<a id="__codelineno-77-10" name="__codelineno-77-10" href="#__codelineno-77-10"></a>  }
 </code></pre></div></p>
 <p>Traits: <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
 <h4 id="attributes_29">Attributes:<a class="headerlink" href="#attributes_29" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>ID</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute</td></tr>
+<tr><td><code>mask</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute</td></tr>
 <tr><td><code>keep_pkt_header</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>priority_route</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>

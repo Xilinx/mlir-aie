@@ -3286,6 +3286,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="-aie-find-flows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3301,7 +3318,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_3" class="md-nav__link">
+  <a href="#options_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -3340,7 +3357,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_4" class="md-nav__link">
+  <a href="#options_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -3412,7 +3429,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_5" class="md-nav__link">
+  <a href="#options_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -3440,7 +3457,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_6" class="md-nav__link">
+  <a href="#options_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -3534,7 +3551,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_7" class="md-nav__link">
+  <a href="#options_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -3573,7 +3590,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_8" class="md-nav__link">
+  <a href="#options_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -3634,7 +3651,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_9" class="md-nav__link">
+  <a href="#options_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4127,6 +4144,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="-aie-find-flows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -4142,7 +4176,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_3" class="md-nav__link">
+  <a href="#options_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4181,7 +4215,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_4" class="md-nav__link">
+  <a href="#options_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4253,7 +4287,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_5" class="md-nav__link">
+  <a href="#options_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4281,7 +4315,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_6" class="md-nav__link">
+  <a href="#options_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4375,7 +4409,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_7" class="md-nav__link">
+  <a href="#options_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4414,7 +4448,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_8" class="md-nav__link">
+  <a href="#options_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4475,7 +4509,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#options_9" class="md-nav__link">
+  <a href="#options_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Options
@@ -4665,14 +4699,22 @@ to another.  These flows may be circuit-switched flows (represented
 by aie.flow) or a packet-switched connection (represensted by
 aie.packetflow).  This pass is primarily used for testing automatic
 routing.</p>
+<p>By default every configured connection is lifted, including partial flows
+whose source or destination is a switchbox port other than a core or DMA.
+Set <code>keep-partial-flows=false</code> to restrict recovery to flows
+that begin at a core/DMA and end on a core/DMA.</p>
+<h4 id="options_3">Options<a class="headerlink" href="#options_3" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-keep-partial-flows : Also recover flows that do not start or end at a core or DMA.
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>-remove-lifted      : Remove the interconnect configuration (connects, packet rules, mastersets, amsels, wires) that was lifted into recovered flows, leaving only configuration that could not be lifted.
+</code></pre></div>
 <h3 id="-aie-generate-column-control-overlay"><code>-aie-generate-column-control-overlay</code><a class="headerlink" href="#-aie-generate-column-control-overlay" title="Permanent link">&para;</a></h3>
 <p><em>Spawns streaming interconnect network for column control</em></p>
 <p>For each column of AIE tiles being employed in the design, spawn a network of control packet
 streaming interconnects which overlay on top of the design.</p>
-<h4 id="options_3">Options<a class="headerlink" href="#options_3" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-route-shim-to-tct       : Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: [&#39;shim-only&#39;, &#39;all-tiles&#39;, &#39;disable&#39;].
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>-route-shim-to-tile-ctrl : Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>-emit-standalone-overlay : Emit a standalone @ctrl_pkt_overlay device (and tag source devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When false, the pass applies the overlay in place only.
+<h4 id="options_4">Options<a class="headerlink" href="#options_4" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>-route-shim-to-tct       : Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: [&#39;shim-only&#39;, &#39;all-tiles&#39;, &#39;disable&#39;].
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>-route-shim-to-tile-ctrl : Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>-emit-standalone-overlay : Emit a standalone @ctrl_pkt_overlay device (and tag source devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When false, the pass applies the overlay in place only.
 </code></pre></div>
 <h3 id="-aie-hoist-vector-transfer-pointers"><code>-aie-hoist-vector-transfer-pointers</code><a class="headerlink" href="#-aie-hoist-vector-transfer-pointers" title="Permanent link">&para;</a></h3>
 <p><em>Hoist vector transfer pointer computations out of scf.for loops in aie.core regions</em></p>
@@ -4711,30 +4753,30 @@ The host must allocate 2x buffer_size for the trace buffer.</p>
 <p>With <code>lateral-routing</code>, trace destinations are redirected from columns
 with active cores to spare shim NOC columns, reducing data path
 perturbation. Use <code>lateral-target-col</code> to force a specific target.</p>
-<h4 id="options_4">Options<a class="headerlink" href="#options_4" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>-shim-channel        : S2MM DMA channel to use for trace (default: 1)
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>-default-bd-id       : Buffer descriptor ID for trace (default: 15)
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>-packet-id-start     : Starting packet ID for trace flows (default: 1)
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>-burst-length        : DMA burst length for trace transfers (default: 64 bytes)
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>-distribute-channels : Distribute traces across multiple S2MM channels per shim tile
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>-lateral-routing     : Route traces to spare columns to minimize data path perturbation
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>-lateral-target-col  : Force lateral routing target column (-1 = auto-detect nearest spare)
+<h4 id="options_5">Options<a class="headerlink" href="#options_5" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>-shim-channel        : S2MM DMA channel to use for trace (default: 1)
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>-default-bd-id       : Buffer descriptor ID for trace (default: 15)
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>-packet-id-start     : Starting packet ID for trace flows (default: 1)
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>-burst-length        : DMA burst length for trace transfers (default: 64 bytes)
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>-distribute-channels : Distribute traces across multiple S2MM channels per shim tile
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>-lateral-routing     : Route traces to spare columns to minimize data path perturbation
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>-lateral-target-col  : Force lateral routing target column (-1 = auto-detect nearest spare)
 </code></pre></div>
 <h3 id="-aie-localize-locks"><code>-aie-localize-locks</code><a class="headerlink" href="#-aie-localize-locks" title="Permanent link">&para;</a></h3>
 <p><em>Convert global locks to a core-relative index</em></p>
 <p>An individual lock can be referenced by 4 different AIE cores.  However, each individual core
 accesses the lock through a different 'lock address space'.  This pass converts a lock in the
 conceptual global address space into a local index.  e.g.:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>%lock = AIE.lock(%tile, 2)
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>AIE.core(%tile) {
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  AIE.useLock(%lock, &quot;Acquire&quot;, 1)
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>%lock = AIE.lock(%tile, 2)
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>AIE.core(%tile) {
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  AIE.useLock(%lock, &quot;Acquire&quot;, 1)
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>}
 </code></pre></div>
 becomes
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>AIE.core(%tile) {
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  %lockindex = arith.constant ? : index
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  AIE.useLock(%lockindex, &quot;Acquire&quot;, 1)
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>AIE.core(%tile) {
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  %lockindex = arith.constant ? : index
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  AIE.useLock(%lockindex, &quot;Acquire&quot;, 1)
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>}
 </code></pre></div></p>
 <h3 id="-aie-lower-cascade-flows"><code>-aie-lower-cascade-flows</code><a class="headerlink" href="#-aie-lower-cascade-flows" title="Permanent link">&para;</a></h3>
 <p><em>Lower aie.cascade_flow operations through <code>aie.configure_cascade</code> operations</em></p>
@@ -4777,9 +4819,9 @@ keeps that count in a loop-carried value. <code>peel-first-iteration</code> peel
 iteration so that the rest of the loop starts in the steady state. Peeling
 costs a copy of the loop body, so each peel is kept only where it turns the
 loop's lock values into constants.</p>
-<h4 id="options_5">Options<a class="headerlink" href="#options_5" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>-default-dynamic      : Default objectFifo lowering for cores that do not set the dynamic_objfifo_lowering attribute: true leaves loops rolled (dynamic), false unrolls them (static).
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>-peel-first-iteration : Peel the first iteration off objectFifo loops whose lock values are computed at run time, keeping the peel where it makes them constant: &quot;true&quot;, &quot;false&quot;, or &quot;auto&quot; (peel unless default-dynamic is set).
+<h4 id="options_6">Options<a class="headerlink" href="#options_6" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>-default-dynamic      : Default objectFifo lowering for cores that do not set the dynamic_objfifo_lowering attribute: true leaves loops rolled (dynamic), false unrolls them (static).
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>-peel-first-iteration : Peel the first iteration off objectFifo loops whose lock values are computed at run time, keeping the peel where it makes them constant: &quot;true&quot;, &quot;false&quot;, or &quot;auto&quot; (peel unless default-dynamic is set).
 </code></pre></div>
 <h3 id="-aie-objectfifo-allocate"><code>-aie-objectfifo-allocate</code><a class="headerlink" href="#-aie-objectfifo-allocate" title="Permanent link">&para;</a></h3>
 <p><em>Give pools and endpoints their buffers, locks and channels</em></p>
@@ -4790,8 +4832,8 @@ a shim endpoint gains the <code>aie.shim_dma_allocation</code> the runtime resol
 <p>Whatever is already written down is kept, so hand-placed buffers,
 hand-written locks and pinned channels all survive; each is filled in only
 where it is absent.</p>
-<h4 id="options_6">Options<a class="headerlink" href="#options_6" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>-packet-sw-objFifos : Flag to enable aie.packetflow lowering from objectfifos.
+<h4 id="options_7">Options<a class="headerlink" href="#options_7" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>-packet-sw-objFifos : Flag to enable aie.packetflow lowering from objectfifos.
 </code></pre></div>
 <h3 id="-aie-objectfifo-erase-pools"><code>-aie-objectfifo-erase-pools</code><a class="headerlink" href="#-aie-objectfifo-erase-pools" title="Permanent link">&para;</a></h3>
 <p><em>Drop pools that no endpoint works any more</em></p>
@@ -4863,12 +4905,12 @@ one whose other half is supplied elsewhere -- may decline to run this pass.</p>
 column-major order and places fifo-connected Shim/Mem tiles
 near its core tiles. One or more aie.logical_tile operation is mapped
 to one aie.tile.</p>
-<h4 id="options_7">Options<a class="headerlink" href="#options_7" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>-placer                  : Placement algorithm to use (default: sequential_placer)
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>-cores-per-col           : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>-merge-logical-tiles     : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>-spread-unanchored-tiles : When true (default), a non-core aie.logical_tile with no CoreTile peers to derive a routing centroid from is ranked by current DMA load rather than by distance to column 0. Affects only designs with no core anchors (e.g. pure DMA passthrough); CoreTile placement and anchored non-core placement are unaffected.
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>-sa-seed                 : Random seed for SA placer (0 = non-deterministic).
+<h4 id="options_8">Options<a class="headerlink" href="#options_8" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>-placer                  : Placement algorithm to use (default: sequential_placer)
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>-cores-per-col           : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>-merge-logical-tiles     : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>-spread-unanchored-tiles : When true (default), a non-core aie.logical_tile with no CoreTile peers to derive a routing centroid from is ranked by current DMA load rather than by distance to column 0. Affects only designs with no core anchors (e.g. pure DMA passthrough); CoreTile placement and anchored non-core placement are unaffected.
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>-sa-seed                 : Random seed for SA placer (0 = non-deterministic).
 </code></pre></div>
 <h3 id="-aie-prepare-buffers"><code>-aie-prepare-buffers</code><a class="headerlink" href="#-aie-prepare-buffers" title="Permanent link">&para;</a></h3>
 <p><em>Check buffer placement and give every buffer a name</em></p>
@@ -4886,10 +4928,10 @@ those buffers are converted to GetGlobalMemrefOp.  Other AIE operations
 inside the cores are generally lowered to appropriate function intrinsics.
 Other AIE operations (e.g. CoreOp, TileOp, LockOp) outside the core are removed.</p>
 <p>Optionally, tileCol and tileRow can specify a single core to export</p>
-<h4 id="options_8">Options<a class="headerlink" href="#options_8" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>-device  : Device to generate code for
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>-tilecol : X coordinate of tile to generate code for
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>-tilerow : Y coordinate of tile to generate code for
+<h4 id="options_9">Options<a class="headerlink" href="#options_9" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>-device  : Device to generate code for
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>-tilecol : X coordinate of tile to generate code for
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>-tilerow : Y coordinate of tile to generate code for
 </code></pre></div>
 <h3 id="-aie-trace-pack-reg-writes"><code>-aie-trace-pack-reg-writes</code><a class="headerlink" href="#-aie-trace-pack-reg-writes" title="Permanent link">&para;</a></h3>
 <p><em>Pack multiple register field writes into single register writes</em></p>
@@ -4899,12 +4941,12 @@ into a single aie.trace.reg operation with a combined mask and value.</p>
 1. Convert field+value pairs to mask+shifted_value using register database
 2. Merge multiple writes to the same register with non-overlapping masks</p>
 <p>Example transformation:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>// Before:
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>aie.trace.reg register=&quot;Trace_Event0&quot; field=&quot;Trace_Event0&quot; value=33
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>aie.trace.reg register=&quot;Trace_Event0&quot; field=&quot;Trace_Event1&quot; value=34
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>// After:
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>aie.trace.reg register=&quot;Trace_Event0&quot; value=0x22210000 mask=0xFFFF0000
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>// Before:
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>aie.trace.reg register=&quot;Trace_Event0&quot; field=&quot;Trace_Event0&quot; value=33
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>aie.trace.reg register=&quot;Trace_Event0&quot; field=&quot;Trace_Event1&quot; value=34
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>// After:
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>aie.trace.reg register=&quot;Trace_Event0&quot; value=0x22210000 mask=0xFFFF0000
 </code></pre></div></p>
 <p>It is an error for two aie.trace.reg in the same aie.trace block to have
 overlapping masks for the same register.</p>
@@ -4945,8 +4987,8 @@ and vector.transfer_write operations to vector.store, when applicable.
 It's a wrapper for the upstream <code>populateVectorTransferLoweringPatterns</code>.
 TODO: Deprecate this pass once <code>populateVectorTransferLoweringPatterns</code> is included in
 <code>convert-to-llvm</code>.</p>
-<h4 id="options_9">Options<a class="headerlink" href="#options_9" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>-max-transfer-rank : Maximum vector rank to lower. -1 means no limit.
+<h4 id="options_10">Options<a class="headerlink" href="#options_10" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>-max-transfer-rank : Maximum vector rank to lower. -1 means no limit.
 </code></pre></div>
 
 
