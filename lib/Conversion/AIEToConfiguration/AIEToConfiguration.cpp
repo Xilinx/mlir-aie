@@ -551,20 +551,41 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
 static LogicalResult
 emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
                      std::vector<TransactionBinaryOperation> &operations,
-                     std::vector<memref::GlobalOp> &global_data) {
+                     std::vector<memref::GlobalOp> &global_data,
+                     SmallVectorImpl<AIEX::NpuControlPacketOp> &emitted,
+                     bool foldMaskWrites,
+                     const llvm::DenseMap<uint32_t, uint32_t> &seedRegState) {
 
   auto *ctx = builder.getContext();
+
+  // A control packet writes the WHOLE 32-bit word; the hardware has no
+  // read-modify-write (masked) control packet. A MASKWRITE txn op
+  // (`reg = (reg & ~mask) | (value & mask)`) must therefore be folded to a
+  // full write of the resulting value. Track each register's running value and
+  // resolve each maskwrite against it, exactly as the reference direct-MMIO
+  // write32/maskwrite32 path leaves the register. Naively emitting `value`
+  // (dropping the mask) clobbers the bits the maskwrite was meant to preserve
+  // -- e.g. a DMA channel CTRL written full by the config then reset-pulsed by
+  // the self-clear teardown, whose reset-bit pulse would otherwise zero the
+  // channel's enable/controller-id fields -- corrupting on-device behavior
+  // while leaving the emitted register set value-identical to a plain write.
+  // `seedRegState` carries the register values left by prior control packets in
+  // the same runtime-sequence block (config -> switch-disable -> reset all
+  // accumulate), so a later transaction's maskwrite folds onto the earlier
+  // transaction's writes just as a live read-modify-write would.
+  llvm::DenseMap<uint32_t, uint32_t> regState = seedRegState;
 
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
     Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      AIEX::NpuControlPacketOp::create(
+      regState[op.cmd.RegOff] = op.cmd.Value;
+      emitted.push_back(AIEX::NpuControlPacketOp::create(
           builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
-          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
+          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value))));
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
       auto initialValue = payload.getInitialValue();
       if (!initialValue)
@@ -583,20 +604,33 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
         SmallVector<int32_t> splitData =
             SmallVector<int32_t>(blockWriteDataValues.begin() + i,
                                  blockWriteDataValues.begin() + last);
-        AIEX::NpuControlPacketOp::create(
+        for (size_t j = 0; j < splitData.size(); ++j)
+          regState[currAddr + j * sizeof(int32_t)] = splitData[j];
+        emitted.push_back(AIEX::NpuControlPacketOp::create(
             builder, loc, builder.getUI32IntegerAttr(currAddr), nullptr,
             /*opcode*/ builder.getI32IntegerAttr(0),
             /*stream_id*/ builder.getI32IntegerAttr(0),
-            DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(splitData)));
+            DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(splitData))));
         currAddr += splitData.size() * sizeof(int32_t);
       }
 
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      AIEX::NpuControlPacketOp::create(
+      // foldMaskWrites=false opts out of read-modify-write reconstruction,
+      // emitting a literal write of the masked value. No production caller uses
+      // it today (config, switch-disable and DMA-reset all fold), but it is kept
+      // for callers that deliberately want raw same-value pulses.
+      int32_t value = op.cmd.Value;
+      if (foldMaskWrites) {
+        uint32_t mask = op.cmd.Mask;
+        uint32_t cur = regState.lookup(op.cmd.RegOff);
+        value = static_cast<int32_t>((cur & ~mask) | (op.cmd.Value & mask));
+        regState[op.cmd.RegOff] = static_cast<uint32_t>(value);
+      }
+      emitted.push_back(AIEX::NpuControlPacketOp::create(
           builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
-          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
+          DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(value))));
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
       return failure();
@@ -605,62 +639,13 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
   return success();
 }
 
-// Perform bitwise or on consecutive control packets operating on the same
-// address, to resolve the lack of mask write in control packets.
-static LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
-  SmallVector<AIEX::NpuControlPacketOp> ctrlPktOps;
-  body->walk(
-      [&](AIEX::NpuControlPacketOp cpOp) { ctrlPktOps.push_back(cpOp); });
-  if (ctrlPktOps.empty())
-    return success();
-
-  SmallVector<Operation *> erased;
-  int addrBuffer = ctrlPktOps[0].getAddress();
-  AIEX::NpuControlPacketOp ctrlPktBuffer = ctrlPktOps[0];
-  for (size_t i = 1; i < ctrlPktOps.size(); i++) {
-    int currentAddrBuffer = ctrlPktOps[i].getAddress();
-    if (addrBuffer != currentAddrBuffer) {
-      addrBuffer = currentAddrBuffer;
-      ctrlPktBuffer = ctrlPktOps[i];
-      continue;
-    }
-    auto bufferedDataAttr = ctrlPktBuffer.getData();
-    auto currentDataAttr = ctrlPktOps[i].getData();
-    if (!bufferedDataAttr || !currentDataAttr) {
-      ctrlPktOps[i].emitError(
-          "cannot OR consecutive control packets on the same address: "
-          "control packet has no data payload");
-      return failure();
-    }
-    auto bufferedData = *bufferedDataAttr;
-    auto currentData = *currentDataAttr;
-    SmallVector<int> newData;
-    for (unsigned j = 0; j < std::max(bufferedData.size(), currentData.size());
-         j++) {
-      if (j < std::min(bufferedData.size(), currentData.size())) {
-        newData.push_back(bufferedData[j] | currentData[j]);
-        continue;
-      }
-      newData.push_back(j < bufferedData.size() ? bufferedData[j]
-                                                : currentData[j]);
-    }
-    ctrlPktBuffer.getProperties().data = DenseI32ArrayAttr::get(
-        ctrlPktBuffer->getContext(), ArrayRef<int>{newData});
-    erased.push_back(ctrlPktOps[i]);
-  }
-
-  for (auto *e : erased)
-    e->erase();
-
-  return success();
-}
-
 // Take transaction operations and insert them at the _current_ insertion point
 // of the supplied builder.
 static LogicalResult convertTransactionOpsToMLIR(
     OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
     std::vector<TransactionBinaryOperation> &operations,
-    const std::string &blockwrite_prefix = "config_blockwrite_data_") {
+    const std::string &blockwrite_prefix = "config_blockwrite_data_",
+    bool foldMaskWrites = true) {
 
   // for each blockwrite in the binary, create a GlobalOp with the data at the
   // device level
@@ -726,10 +711,37 @@ static LogicalResult convertTransactionOpsToMLIR(
     if (failed(emitTransactionOps(builder, loc, operations, global_data)))
       return failure();
   } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
-    if (failed(emitControlPacketOps(builder, loc, operations, global_data)))
-      return failure();
-    // resolve mask writes; control packet doesn't natively support mask write.
-    if (failed(orConsecutiveWritesOnSameAddr(builder.getBlock())))
+    // Control packets have no read-modify-write; emitControlPacketOps resolves
+    // each maskwrite by folding it against a running per-register value.
+    //
+    // Seed that running value with the registers already written by control
+    // packets earlier in this same runtime-sequence block. Successive
+    // conversions append to one block (config -> self-clear switch-disable ->
+    // self-clear DMA reset), and on device they apply cumulatively; a later
+    // conversion's maskwrite (e.g. the DMA-reset's channel-CTRL reset-bit pulse)
+    // must fold onto the earlier conversion's writes (the channel's enable /
+    // controller-id fields) exactly as a live read-modify-write would, or it
+    // zeroes those fields. Every prior packet is a full-word write, so its
+    // payload reconstructs the register state directly.
+    llvm::DenseMap<uint32_t, uint32_t> seedRegState;
+    if (Block *blk = builder.getInsertionBlock()) {
+      Block::iterator ip = builder.getInsertionPoint();
+      for (Block::iterator it = blk->begin(); it != ip; ++it) {
+        auto cp = dyn_cast<AIEX::NpuControlPacketOp>(*it);
+        if (!cp)
+          continue;
+        auto data = cp.getData();
+        if (!data)
+          continue;
+        uint32_t addr = cp.getAddress();
+        for (unsigned i = 0; i < data->size(); ++i)
+          seedRegState[addr + i * sizeof(int32_t)] =
+              static_cast<uint32_t>((*data)[i]);
+      }
+    }
+    SmallVector<AIEX::NpuControlPacketOp> emitted;
+    if (failed(emitControlPacketOps(builder, loc, operations, global_data,
+                                    emitted, foldMaskWrites, seedRegState)))
       return failure();
   } else {
     llvm_unreachable("bad output type");
@@ -784,6 +796,48 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   return module;
 }
 
+// Export the recorded transaction, parse it back, project AIERT's per-op source
+// locations onto the parsed ops, and emit them as MLIR. Shared tail of the
+// three generateAndInsert* entry points below; only the recording step and
+// foldMaskWrites differ between them.
+static LogicalResult
+finalizeRecordedTransaction(OpBuilder &builder, AIERTControl &ctl,
+                            AIE::AIEToConfigurationOutputType outputType,
+                            const std::string &blockwrite_prefix,
+                            bool foldMaskWrites = true) {
+  // Export the transactions to a binary buffer, then parse it back.
+  std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
+
+  std::vector<TransactionBinaryOperation> operations;
+  if (!parseTransactionBinary(txn_data, operations)) {
+    llvm::errs() << "Failed to parse binary\n";
+    return failure();
+  }
+
+  // Attach per-op source locations from AIERT's instruction-range bracketing.
+  // AIERTControl already projected those onto the serialized transaction's
+  // operations, so the indices line up with what the parser reproduced here.
+  // Ops with no bracketed location keep std::nullopt and inherit the device
+  // fallback location at emit time.
+  //
+  // Sharp edge: that projection models how aie-rt's serializer maps recorded
+  // commands to binary operations. A count disagreement means the model has
+  // drifted from the pinned aie-rt and every index past the divergence is
+  // mislabeled -- fail loudly instead of silently. An empty vector just means
+  // nothing was bracketed.
+  const std::vector<mlir::Location> &opLocs = ctl.getTxnOpLocs();
+  assert((opLocs.empty() || opLocs.size() == operations.size()) &&
+         "txn loc/op count mismatch: AIERTControl's command-to-operation "
+         "projection disagrees with the transaction parser; aie-rt's "
+         "serializer has drifted from projectCmdLocsOntoSerializedOps");
+  for (size_t i = 0, e = std::min(opLocs.size(), operations.size()); i < e; ++i)
+    if (!isa<UnknownLoc>(opLocs[i]))
+      operations[i].sourceLoc = opLocs[i];
+
+  return convertTransactionOpsToMLIR(builder, outputType, operations,
+                                     blockwrite_prefix, foldMaskWrites);
+}
+
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
     AIE::AIEToConfigurationOutputType outputType,
@@ -809,41 +863,72 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
                                   true, true, skipCtrlPktOverlay)))
     return failure();
 
-  // Export the transactions to a binary buffer
-  std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
+  return finalizeRecordedTransaction(builder, ctl, outputType,
+                                     blockwrite_prefix);
+}
 
-  // parse the binary data
-  std::vector<TransactionBinaryOperation> operations;
-  if (!parseTransactionBinary(txn_data, operations)) {
-    llvm::errs() << "Failed to parse binary\n";
+LogicalResult xilinx::AIE::generateAndInsertSwitchDisableOps(
+    OpBuilder &builder, xilinx::AIE::DeviceOp device,
+    const llvm::DenseSet<std::tuple<int, int, int, int, int>> &excludePorts,
+    AIE::AIEToConfigurationOutputType outputType,
+    const std::string &blockwrite_prefix, bool disableCircuit) {
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)device.getTargetModel();
+
+  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
     return failure();
-  }
 
-  // Attach per-op source locations from AIERT's instruction-range bracketing.
-  // AIERTControl already projected those onto the serialized transaction's
-  // operations, so the indices line up with what the parser reproduced here.
-  // Ops with no bracketed location keep std::nullopt and inherit the device
-  // fallback location at emit time.
-  const std::vector<mlir::Location> &opLocs = ctl.getTxnOpLocs();
-  // Sharp edge: that projection models how aie-rt's serializer maps recorded
-  // commands to binary operations. A count disagreement means the model has
-  // drifted from the pinned aie-rt and every index past the divergence is
-  // mislabeled -- fail loudly instead of silently. An empty vector just means
-  // nothing was bracketed.
-  assert((opLocs.empty() || opLocs.size() == operations.size()) &&
-         "txn loc/op count mismatch: AIERTControl's command-to-operation "
-         "projection disagrees with the transaction parser; aie-rt's "
-         "serializer has drifted from projectCmdLocsOntoSerializedOps");
-  for (size_t i = 0, e = std::min(opLocs.size(), operations.size()); i < e; ++i)
-    if (!isa<UnknownLoc>(opLocs[i]))
-      operations[i].sourceLoc = opLocs[i];
+  bool aieSim = false;
+  bool xaieDebug = false;
 
-  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
-                                         blockwrite_prefix))) {
+  AIERTControl ctl(targetModel);
+  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
     return failure();
-  }
 
-  return success();
+  // Record only the switch-disable transactions (no init/core/elf config).
+  ctl.startTransaction();
+  if (failed(ctl.disableDataSwitches(device, excludePorts, disableCircuit)))
+    return failure();
+
+  // Export, parse, and re-emit through the shared transaction->op path so the
+  // disables become the same op class (control_packet / write32) the enables
+  // use.
+  return finalizeRecordedTransaction(builder, ctl, outputType,
+                                     blockwrite_prefix);
+}
+
+LogicalResult xilinx::AIE::generateAndInsertDmaChannelResetOps(
+    OpBuilder &builder, xilinx::AIE::DeviceOp device,
+    AIE::AIEToConfigurationOutputType outputType,
+    const std::string &blockwrite_prefix) {
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)device.getTargetModel();
+
+  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
+    return failure();
+
+  AIERTControl ctl(targetModel);
+  if (failed(ctl.setIOBackend(/*aieSim=*/false, /*xaieDebug=*/false)))
+    return failure();
+
+  // Record only the DMA channel reset transactions (no init/core/elf config).
+  ctl.startTransaction();
+  if (failed(ctl.resetDataDmaChannels(device)))
+    return failure();
+
+  // Export, parse, and re-emit through the shared transaction->op path so the
+  // resets become the same op class (control_packet / write32) the config uses.
+  // A reset pulse is two maskwrites (assert then deassert the reset bit). For
+  // the control-packet path these fold via read-modify-write against the
+  // channel state the config left (seeded from prior in-block control packets),
+  // reproducing the direct-write maskwrite32 semantics: the reset bit is pulsed
+  // while the channel's other CTRL fields (enable, controller id) are preserved
+  // rather than zeroed. RMW folding keeps both the assert and deassert (unlike
+  // the former OR-merge, which collapsed the pulse -- the reason this call used
+  // to opt out), so foldMaskWrites stays on.
+  return finalizeRecordedTransaction(builder, ctl, outputType,
+                                     blockwrite_prefix,
+                                     /*foldMaskWrites=*/true);
 }
 
 static LogicalResult

@@ -10,7 +10,9 @@
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/DenseSet.h"
 #include <memory>
+#include <tuple>
 
 namespace xilinx::AIE {
 
@@ -45,6 +47,36 @@ mlir::LogicalResult generateAndInsertConfigOps(
         AIEToConfigurationOutputType::Transaction,
     const std::string &blockwrite_prefix = "config_blockwrite_data_",
     bool skipCtrlPktOverlay = false);
+
+// Emit switch-port DISABLE configuration ops (reset value 0) at the current
+// insertion point for every data-plane (untagged) master/slave packet-switch
+// port of `device` whose (col, row, bundle, index, isSlave) key is NOT in
+// `excludePorts`. Routes the disable transactions through the same
+// transaction->op conversion `generateAndInsertConfigOps` uses, so with
+// `ControlPacket` output each disable becomes an `aiex.npu.control_packet`
+// {data = [0]} write at the port's config register, and with `Transaction`
+// output each becomes a `write32`/`blockwrite` direct write. Pass the resident
+// overlay's ports as `excludePorts` to restrict the teardown to
+// exclusively-data ports.
+mlir::LogicalResult generateAndInsertSwitchDisableOps(
+    mlir::OpBuilder &builder, xilinx::AIE::DeviceOp device,
+    const llvm::DenseSet<std::tuple<int, int, int, int, int>> &excludePorts,
+    AIEToConfigurationOutputType outputType =
+        AIEToConfigurationOutputType::ControlPacket,
+    const std::string &blockwrite_prefix = "selfclear_disable_data_",
+    bool disableCircuit = false);
+
+// Emit DMA channel RESET configuration ops at the current insertion point for
+// every non-shim tile DMA (MemOp/MemTileDMAOp) of `device` -- assert then
+// deassert the Ctrl.Reset bit for all channels of the tile. Routes through the
+// same transaction->op conversion as generateAndInsertSwitchDisableOps, so
+// `ControlPacket` output emits `aiex.npu.control_packet` writes (in-band) and
+// `Transaction` output emits `write32`/`maskwrite32` direct writes (OOB).
+mlir::LogicalResult generateAndInsertDmaChannelResetOps(
+    mlir::OpBuilder &builder, xilinx::AIE::DeviceOp device,
+    AIEToConfigurationOutputType outputType =
+        AIEToConfigurationOutputType::ControlPacket,
+    const std::string &blockwrite_prefix = "selfclear_dma_reset_");
 
 // --------------------------------------------------------------------------
 // Device reset

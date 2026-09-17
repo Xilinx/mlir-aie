@@ -150,6 +150,21 @@ struct AIEMaterializeBDChainsPass
                                      rewriter_config))) {
       signalPassFailure();
     }
+
+    // The inline pattern erases each BD-chain USE (the `dma_start_bd_chain` op)
+    // but leaves the `aie.bd_chain` symbol DEF behind. Once every use is
+    // inlined the def is dead; erase it so it does not leak into every
+    // downstream stage (CDO-gen etc.). A chain still referenced by an unlowered
+    // symbol use is kept (symbolKnownUseEmpty is false).
+    SmallVector<AIE::BDChainOp> deadChains;
+    for (auto chain : device.getOps<AIE::BDChainOp>()) {
+      if (SymbolTable::symbolKnownUseEmpty(chain, device)) {
+        deadChains.push_back(chain);
+      }
+    }
+    for (AIE::BDChainOp chain : deadChains) {
+      chain.erase();
+    }
   }
 };
 

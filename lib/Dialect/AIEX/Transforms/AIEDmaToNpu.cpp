@@ -167,18 +167,37 @@ public:
       AIE::TileOp shimTile = AIE::TileOp::getOrCreate(
           rewriter, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(),
           op.getRow());
-      if (shimTile->hasAttr("controller_id")) {
-        AIE::PacketInfoAttr controller_id_attr =
-            shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-        uint32_t data = controller_id_attr.getPktId() << 8;
-        uint32_t mask = 0x00001F00;
-        NpuMaskWrite32Op::create(
-            rewriter, op->getLoc(),
-            createConstantI32(rewriter, op->getLoc(), ctrl_offset),
-            createConstantI32(rewriter, op->getLoc(), data),
-            createConstantI32(rewriter, op->getLoc(), mask), nullptr, nullptr,
-            nullptr);
+      // The controller id normally comes from the shim tile's `controller_id`
+      // attr, which AIEAssignTileCtrlIDs stamps on every tile of an occupied
+      // column from the deterministic getTileToControllerIdMap. The
+      // reconfiguration fold (iron.Reconfiguration) inlines the design's
+      // runtime sequence into a synthesized host `@main` device that carries NO
+      // tiles: npu.push_queue references its tile by col/row *attributes*, not
+      // SSA, so the tile is never carried into `@main`, and
+      // AIEAssignTileCtrlIDs (which runs per config device) never stamps
+      // `@main`. Fall back to the SAME deterministic map so the MM2S
+      // task-completion token still carries the column's controller id;
+      // otherwise the design's own npu.sync waits on a controller-0 token that
+      // never arrives (ERT_CMD_STATE_TIMEOUT). A non-fold design always reaches
+      // here with a stamped tile (every design's input-with-addresses lowering
+      // runs AIEAssignTileCtrlIDs), so the fallback fires only for the fold's
+      // `@main`.
+      int pktId;
+      if (auto controller_id_attr =
+              shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id")) {
+        pktId = controller_id_attr.getPktId();
+      } else {
+        pktId = tm.getTileToControllerIdMap(/*columnWiseUniqueIDs=*/true)
+                    .lookup(AIE::TileID{(int)op.getColumn(), (int)op.getRow()});
       }
+      uint32_t data = (uint32_t)pktId << 8;
+      uint32_t mask = 0x00001F00;
+      NpuMaskWrite32Op::create(
+          rewriter, op->getLoc(),
+          createConstantI32(rewriter, op->getLoc(), ctrl_offset),
+          createConstantI32(rewriter, op->getLoc(), data),
+          createConstantI32(rewriter, op->getLoc(), mask), nullptr, nullptr,
+          nullptr);
     }
 
     // the offset of the task queue register in the tile

@@ -16,8 +16,9 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   for (auto program : device.getOps<DmaBody>()) {
     for (Block &block : program.getDmaBody()) {
       for (auto start : block.getOps<DMAStartOp>()) {
-        usedChannels.insert({program.getTile(), start.getChannelDir(),
-                             start.getChannelIndex()});
+        usedChannels[std::make_tuple(program.getTile(), start.getChannelDir(),
+                                     start.getChannelIndex())] =
+            ChannelOccupant::Circuit;
       }
     }
   }
@@ -39,13 +40,16 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
     if (!tile) {
       continue;
     }
-    usedChannels.insert({tile.getResult(), allocOp.getChannelDir(),
-                         (int)allocOp.getChannelIndex()});
+    bool isPkt = (bool)allocOp.getPacket();
+    usedChannels[std::make_tuple(tile.getResult(), allocOp.getChannelDir(),
+                                 (int)allocOp.getChannelIndex())] =
+        isPkt ? ChannelOccupant::Packet : ChannelOccupant::Circuit;
   }
 }
 
 int DMAChannelAnalysis::getDMAChannelIndex(
-    TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
+    TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels,
+    bool isPacket) {
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
                           ? tile.getNumSourceConnections(WireBundle::DMA)
                           : tile.getNumDestConnections(WireBundle::DMA);
@@ -61,8 +65,14 @@ int DMAChannelAnalysis::getDMAChannelIndex(
         targetModel.getMaxChannelNumForAdjacentMemTile(*col, *row));
   }
 
+  // First-free, not load-balanced: for an unpinned PACKET endpoint this
+  // returns the first channel that admits it, so once a channel already
+  // holds a Packet occupant, subsequent unpinned packet legs co-tenant that
+  // same channel instead of spreading out to a still-free one. Currently
+  // unreachable (no in-tree design has two unpinned packet shim legs on one
+  // tile); flagged for anyone enabling data-data packet sharing.
   for (int i = 0; i < maxChannelNum; i++) {
-    if (reservePinnedChannel(tile, dir, i) >= 0) {
+    if (reservePinnedChannel(tile, dir, i, isPacket) >= 0) {
       return i;
     }
   }
@@ -70,16 +80,34 @@ int DMAChannelAnalysis::getDMAChannelIndex(
 }
 
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
-                                             int channel) {
+                                             int channel, bool isPacket) {
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
                           ? tile.getNumSourceConnections(WireBundle::DMA)
                           : tile.getNumDestConnections(WireBundle::DMA);
   if (channel < 0 || channel >= maxChannelNum) {
     return -1;
   }
-  return usedChannels.insert({tile->getResult(0), dir, channel}).second
-             ? channel
-             : -1;
+  auto key = std::make_tuple(tile->getResult(0), dir, channel);
+  auto it = usedChannels.find(key);
+  if (it == usedChannels.end()) {
+    usedChannels[key] =
+        isPacket ? ChannelOccupant::Packet : ChannelOccupant::Circuit;
+    return channel;
+  }
+  // Occupied: only packet-onto-packet co-tenancy is allowed.
+  // Reachability: this fires only when TWO design packet legs are assigned to
+  // the same shim (tile, dir, channel) through assignChannels. No in-tree
+  // design reaches it today -- the resident control overlay shares a design
+  // channel via the overlay generator's own sharedWithData path at
+  // overlay-generation time, which is upstream of and independent from this
+  // analysis, and AIEAutoPacketizeControlIngress flips at most one leg per
+  // column, so two design packet legs never land on one channel. This is a
+  // correct enabler for future data-data packet sharing; it is exercised
+  // today only by test/dialect/AIE/dma-channel-packet-cotenancy.mlir.
+  if (isPacket && it->second == ChannelOccupant::Packet) {
+    return channel;
+  }
+  return -1;
 }
 
 void DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile, DMAChannel chan) {

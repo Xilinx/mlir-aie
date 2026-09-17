@@ -427,6 +427,10 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Flag to enable aie.packetflow lowering from objectfifos.">,
+       Option<"clReserveControlIds", "reserve-control-ids", "bool",
+              /*default=*/"false",
+              "Reserve the ctrl-pkt overlay's controller packet IDs so data packet "
+              "IDs never collide with control on a shared shim channel.">,
   ];
 }
 

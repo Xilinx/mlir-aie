@@ -189,6 +189,18 @@ struct AIEInsertTraceFlowsPass
                                      return isa<MemRefType>(a.getType());
                                    }) -
                     1;
+      // Record which block argument is the trace buffer. The
+      // --reconfig-method flow wraps this runtime_sequence in a host
+      // seq_k that forwards its args via aiex.run; that wrapper is built
+      // before this pass runs, so it is one arg short after this append. The
+      // host-wrapper conform in AIEMaterializeRuntimeSequences threads the
+      // trace buffer up using this index. Block arguments carry no attributes
+      // and RuntimeSequenceOp is not a FunctionOpInterface, so record the tail
+      // block-arg index (not the memref-only traceArgIdx, which excludes
+      // scalar args) as an op-level attribute.
+      runtimeSeq->setAttr(
+          "aie.trace_buffer_arg",
+          builder.getI32IntegerAttr(entryBB.getNumArguments() - 1));
     }
 
     // Remove host_config op

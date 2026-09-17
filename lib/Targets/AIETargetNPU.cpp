@@ -551,12 +551,34 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     int col = packetOp.getColumnFromAddr();
     int row = packetOp.getRowFromAddr();
     DeviceOp deviceOp2 = packetOp->getParentOfType<AIE::DeviceOp>();
-    OpBuilder builder2 = OpBuilder::atBlockBegin(deviceOp2.getBody());
-    auto destTile = TileOp::getOrCreate(builder2, deviceOp2, col, row);
-    auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-    uint32_t hdr = 0;
-    if (info)
-      hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+    // Read-only tile lookup: this translator runs on a module that (after the
+    // SplitIRAction sharing change) is shared across all control-packet
+    // sequences, so it must NOT create a tile. A missing tile is as fatal as an
+    // unstamped one -- both fall through to the controller_id check below.
+    TileOp destTile = nullptr;
+    for (auto t : deviceOp2.getOps<AIE::TileOp>())
+      if (t.getCol() == col && t.getRow() == row) {
+        destTile = t;
+        break;
+      }
+    auto info =
+        destTile ? destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id")
+                 : AIE::PacketInfoAttr();
+    // A control packet's stream-header pkt_id is the target tile's
+    // controller_id. If the tile was never stamped (e.g. an overlay-created
+    // pass-through tile that aie-assign-tile-controller-ids did not cover),
+    // baking hdr=0 here silently produces a packet that matches no
+    // stream-switch rule and wedges in-band delivery. Fail loudly at build time
+    // instead.
+    if (!info)
+      return packetOp.emitOpError()
+             << "control packet targets tile (" << col << ", " << row
+             << ") which has no controller_id; every control-route tile must "
+                "be "
+                "stamped before its control-packet header is baked (run "
+                "aie-assign-tile-controller-ids after all control-route tiles "
+                "exist)";
+    uint32_t hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // control packet header

@@ -285,6 +285,20 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
                       "attributes";
           }
         }
+        // A reused tile may sit later in the caller block than the current
+        // SSA-def insert point. Locks are cloned next at that insert point and
+        // reference this tile (via argMap), so if the tile is positioned after
+        // the insert point the cloned lock would not be dominated by its tile
+        // operand. Advance the insert point past the reused tile, but only when
+        // it is not already before that point, so designs whose tiles precede
+        // the insert point are unperturbed.
+        Block *ipBlock = clonedSSAInsertPoint.getBlock();
+        Block::iterator ipIt = clonedSSAInsertPoint.getPoint();
+        if (existingTile->getBlock() == ipBlock && ipIt != ipBlock->end() &&
+            !existingTile->isBeforeInBlock(&*ipIt)) {
+          rewriter.setInsertionPointAfter(existingTile);
+          clonedSSAInsertPoint = rewriter.saveInsertionPoint();
+        }
       } else {
         // Clone the tile operation into the caller device
         rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
@@ -578,6 +592,60 @@ static LogicalResult verifyRunOpsInConfigureOp(ConfigureOp configureOp,
   return success();
 }
 
+/// The --reconfig-method flow synthesizes a host wrapper whose per-config
+/// sequence forwards that config's args through `aiex.run @sequence(args)`. The
+/// wrapper is built before the trace pipeline runs, so when trace lowering
+/// appends a trace buffer to a config's runtime_sequence (tagging it with
+/// "aie.trace_buffer_arg"), the wrapping host sequence and its `aiex.run` are
+/// left one operand short and verifyRunOpsInConfigureOp would reject them.
+///
+/// Thread the tagged trace buffer up to the host sequence: for each `aiex.run`
+/// whose callee carries the tag and which forwards exactly the callee's
+/// pre-trace argument count, add a matching block argument to the enclosing
+/// host runtime_sequence and append it to the run operands. The trace buffer is
+/// always the callee's tail argument, so a plain append lands it at the tagged
+/// index; the inliner then maps it positionally and the host-BO ABI (which
+/// tracks the host sequence's arity) provisions it automatically. Keying on the
+/// tag -- not on an argument-count delta -- means a genuine arity mismatch
+/// still errors. The tag is propagated onto the host sequence so a multi-hop
+/// wrapper (host -> intermediate -> traced leaf) threads through as well.
+static void conformOverlayTraceBufferArgs(ModuleOp moduleOp) {
+  OpBuilder builder(moduleOp.getContext());
+  constexpr StringRef kTraceArgAttr = "aie.trace_buffer_arg";
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    moduleOp.walk([&](RunOp runOp) {
+      AIE::RuntimeSequenceOp callee = runOp.getCalleeRuntimeSequenceOp();
+      if (!callee)
+        return;
+      auto tag = callee->getAttrOfType<IntegerAttr>(kTraceArgAttr);
+      if (!tag)
+        return;
+      unsigned idx = tag.getInt();
+      if (callee.getBody().empty() ||
+          idx >= callee.getBody().front().getNumArguments())
+        return;
+      // Thread only when the run forwards exactly the callee's pre-trace args.
+      // This is idempotent for a re-applied overlay (already-threaded runs pass
+      // idx+1 operands) and leaves any genuine mismatch to the verifier.
+      if (runOp.getArgs().size() != idx)
+        return;
+      auto hostSeq = runOp->getParentOfType<AIE::RuntimeSequenceOp>();
+      if (!hostSeq || hostSeq.getBody().empty())
+        return;
+      Block &hostEntry = hostSeq.getBody().front();
+      Type traceTy = callee.getBody().front().getArgument(idx).getType();
+      BlockArgument newArg = hostEntry.addArgument(traceTy, hostSeq.getLoc());
+      runOp.getArgsMutable().append(ValueRange{newArg});
+      // Propagate the tag so an outer wrapper threads the buffer up too.
+      hostSeq->setAttr(kTraceArgAttr, builder.getI32IntegerAttr(
+                                          hostEntry.getNumArguments() - 1));
+      changed = true;
+    });
+  }
+}
+
 struct AIEMaterializeRuntimeSequencesPass
     : xilinx::AIEX::impl::AIEMaterializeRuntimeSequencesBase<
           AIEMaterializeRuntimeSequencesPass> {
@@ -617,6 +685,12 @@ struct AIEMaterializeRuntimeSequencesPass
 
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
+
+    // Reconcile reconfig-overlay host wrappers with trace buffers appended to
+    // their callee configs. Must run before verifyRunOpsInConfigureOp and the
+    // run inliner below, both of which require run/callee arity to already
+    // agree.
+    conformOverlayTraceBufferArgs(moduleOp);
 
     // Process each device in the module
     for (AIE::DeviceOp deviceOp : moduleOp.getOps<AIE::DeviceOp>()) {

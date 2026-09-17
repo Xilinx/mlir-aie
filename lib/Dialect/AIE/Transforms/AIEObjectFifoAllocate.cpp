@@ -227,10 +227,29 @@ struct AIEObjectFifoAllocatePass
   }
 
   LogicalResult assignChannels(DMAChannelAnalysis &channels) {
+    // A RouteOp's $packet UnitAttr is the authoritative packet-ness at
+    // allocation time (the endpoint's own packet attr is populated only
+    // later, during lowerFlows). Key by endpoint Operation* through the
+    // existing lookupEndpoint resolver rather than by endpoint symbol.
+    llvm::DenseMap<Operation *, bool> endpointIsPacket;
+    for (auto route : device.getOps<RouteOp>()) {
+      bool pkt = route.getPacket();
+      if (auto src = lookupEndpoint(route.getSourceAttr())) {
+        endpointIsPacket[src.getOperation()] = pkt;
+      }
+      for (auto destName :
+           route.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+        if (auto dst = lookupEndpoint(destName)) {
+          endpointIsPacket[dst.getOperation()] = pkt;
+        }
+      }
+    }
+
     SmallVector<RouteEndpoint> pending;
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
+      bool isPacket = endpointIsPacket.lookup(endpoint.getOperation());
 
       // A core's stream port is named by the design, not drawn from the tile's
       // DMA channels.
@@ -243,8 +262,8 @@ struct AIEObjectFifoAllocatePass
       }
 
       if (channel) {
-        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel) <
-            0) {
+        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel,
+                                          isPacket) < 0) {
           return endpoint->emitOpError("pinned ")
                  << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
                  << " is out of range or already in use on this tile";
@@ -262,8 +281,9 @@ struct AIEObjectFifoAllocatePass
 
     for (auto endpoint : pending) {
       DMAChannelDir dir = endpoint.getRouteDirection();
-      int channel = channels.getDMAChannelIndex(tileOf(endpoint), dir,
-                                                reachesAdjacentTile(endpoint));
+      bool isPacket = endpointIsPacket.lookup(endpoint.getOperation());
+      int channel = channels.getDMAChannelIndex(
+          tileOf(endpoint), dir, reachesAdjacentTile(endpoint), isPacket);
       if (channel < 0) {
         return tileOf(endpoint).emitOpError(
             dir == DMAChannelDir::MM2S
@@ -288,6 +308,29 @@ struct AIEObjectFifoAllocatePass
     for (auto flow : device.getOps<RouteOp>()) {
       if (auto pinned = flow.getPacketId()) {
         taken.insert(*pinned);
+      }
+    }
+
+    // The ctrl-pkt overlay stamps its controller packets with a fixed id per
+    // (column, row); reserve those on every column this device actually
+    // occupies so data packet IDs never grow into them on a shared shim
+    // channel.
+    if (clReserveControlIds) {
+      const auto &tm = device.getTargetModel();
+      auto ctrlIds = tm.getTileToControllerIdMap(/*columnWiseUniqueIDs=*/true);
+      llvm::SmallDenseSet<int> occupiedCols;
+      device.walk([&](TileOp t) { occupiedCols.insert(t.colIndex()); });
+      for (auto &kv : ctrlIds) {
+        // Scoping the reservation to columns the design occupies is defensive.
+        // The overlay uses column-wise-unique controller ids, where the map
+        // hands every column the same id set, so this filter reserves the same
+        // ids whether or not it runs -- it is a no-op in that mode. It only
+        // narrows the set under globally-unique controller ids, where each
+        // column carries a distinct set and an unoccupied column's ids need not
+        // be reserved.
+        if (occupiedCols.contains(kv.first.col)) {
+          taken.insert(kv.second);
+        }
       }
     }
     return taken;
@@ -572,5 +615,14 @@ std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched) {
   AIEObjectFifoAllocateOptions options;
   options.clPacketSwObjectFifos = packetSwitched;
+  return std::make_unique<AIEObjectFifoAllocatePass>(options);
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched,
+                                             bool reserveControlIds) {
+  AIEObjectFifoAllocateOptions options;
+  options.clPacketSwObjectFifos = packetSwitched;
+  options.clReserveControlIds = reserveControlIds;
   return std::make_unique<AIEObjectFifoAllocatePass>(options);
 }
