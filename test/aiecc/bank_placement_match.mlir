@@ -12,7 +12,7 @@
 // table asks for a paired resource, so either of two banks satisfies it and the
 // test does not depend on which one this linker picks.
 
-// REQUIRES: chess
+// REQUIRES: chess, aietools_aie2p
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: xchesscc_wrapper aie2p -c %S/bank_placement_match_kernel.cc -o %t.d/bank_placement_match_kernel.o
 // RUN: cd %t.d && aiecc --xchesscc --xbridge --get-core-elfs %s 2>&1 | FileCheck %s

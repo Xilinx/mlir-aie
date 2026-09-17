@@ -18,7 +18,7 @@
 // linker merges `.bss.DM_bankB` into `.bss.DM_bankA`, so the linked section
 // names describe a grouping rather than a request.
 
-// REQUIRES: chess
+// REQUIRES: chess, aietools_aie2p
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: xchesscc_wrapper aie2p -c %S/bank_placement_mismatch_kernel.cc -o %t.d/bank_placement_mismatch_kernel.o
 // RUN: cd %t.d && not aiecc --xchesscc --xbridge --get-core-elfs %s 2>&1 | FileCheck %s

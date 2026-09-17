@@ -767,7 +767,7 @@ def _lut_pair_object(tmp_path, aiecc_flags):
         rt = Runtime(seq, [ty, of_out.cons()])
         return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
 
-    design(iron.zeros(64, dtype=np.uint8, device="npu"))
+    design.compile()
     # The cache root is resolved at import, so read back where the compile
     # actually put the kernel rather than trying to redirect it.
     kernel_dir = design.compilable._kernel_dir
