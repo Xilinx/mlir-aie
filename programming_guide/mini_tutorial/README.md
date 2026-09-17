@@ -195,7 +195,7 @@ def sequence(a_in, c_out, in_h, out_h):
 
 rt = Runtime(
     sequence,
-    [tile_ty, tile_ty, of_in.prod(), of_out.cons()],
+    [data_ty, data_ty, of_in.prod(), of_out.cons()],
 )
 
 Program(device, rt, workers=[my_worker]).resolve_program()
@@ -205,7 +205,7 @@ Up to five buffers are supported in the runtime sequence, where the fifth is typ
 
 Runtime sequence commands are submitted to and executed by a dedicated command processor in order. The command processor will wait on commands that are set to `wait` until a token associated with their completion is generated. When all the commands in the runtime sequence have been executed the command processor sends an interrupt to the host processor.
 
-IRON also supports grouping of runtime sequence commands using `TaskGroup`s. A task is added to a group by passing `group=` to `fill`/`drain`; commands that are in the same group begin execution concurrently, and the completion of the group can be explicitly synchronized using the group's `finish()` method. These features can be combined to achieve an optimized grouping of waits for parallel tasks, as is shown in [this](../../programming_examples/basic/memcpy/README.md) programming example.
+IRON also supports grouping of runtime transfers using `TaskGroup`s. A task is added to a group by passing `group=` to `fill`/`drain`. Transfers are submitted in sequence order and may overlap; a group does not make them start simultaneously. The group's `finish()` method waits for transfers marked `wait=True`, then frees every transfer in the group. Unwaited transfers must be dependencies of waited transfers so that their resources are not freed while still in use. Transfers without an explicit group use the default group, which finishes at the end of the sequence. See [Runtime Task Groups](../section-2/section-2d/RuntimeTasks.md#runtime-task-groups) for examples.
 
 More on the runtime sequence in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide.
 
