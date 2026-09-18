@@ -1315,6 +1315,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIEDmaToNpuPass());
   dpm.addPass(X::createAIELowerSetLockPass());
   dpm.addPass(X::createAIELowerCoreResetPass());
+  dpm.addPass(X::createAIELowerBufferClearPass());
   return pm;
 }
 
