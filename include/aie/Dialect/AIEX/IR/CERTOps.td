@@ -9,8 +9,8 @@
 #define CERT_OPS
 
 def AIE_CertUcDmaChainOp
-    : AIEX_Op<"cert.uc_dma_chain", [Symbol, SingleBlockImplicitTerminator<
-                                                "AIE::EndOp">]> {
+    : AIEX_Op<"cert.uc_dma_chain", [AIESymbol, SingleBlockImplicitTerminator<
+                                                   "AIE::EndOp">]> {
   let summary = "uC DMA Chain operation";
   let description = [{
     This operation defines a chain of uC DMA buffer descriptors. It contains a
@@ -300,7 +300,7 @@ def AIE_CertNopOp : AIEX_Op<"cert.nop", []> {
 
 def AIE_CertSectionOp
     : AIEX_Op<"cert.section",
-              [Symbol, ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp"]>,
+              [AIESymbol, ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp"]>,
                SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Named control code section";
   let description = [{
