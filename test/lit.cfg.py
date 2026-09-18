@@ -59,14 +59,24 @@ llvm_config.with_system_environment(
 )
 
 # Basic substitutions
-config.substitutions.append(("%PYTHON", config.python_executable))
+# lit runs many Python/JIT tests in one suite; give each test file its own
+# NPU cache namespace so cache state cannot leak between unrelated tests while
+# still allowing multiple RUN lines from one test to share that test-local cache.
+_python_with_test_cache = LitConfigHelper._run_with_test_cache_wrap(config.aie_src_root)
+config.substitutions.append(
+    (
+        "%PYTHON",
+        f"{_python_with_test_cache} "
+        f"{LitConfigHelper._quote_lit_arg(config.python_executable)}",
+    )
+)
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
 config.substitutions.append(
     ("%aie_runtime_lib%", os.path.join(config.aie_obj_root, "aie_runtime_lib"))
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # Show only failures
-config.substitutions.append(("%pytest", "pytest -rA"))
+config.substitutions.append(("%pytest", f"{_python_with_test_cache} pytest -rA"))
 
 # Setup test library substitutions
 LitConfigHelper.setup_test_lib_substitutions(

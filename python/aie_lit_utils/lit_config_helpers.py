@@ -113,6 +113,18 @@ class LitConfigHelper:
         )
 
     @staticmethod
+    def _run_with_test_cache_wrap(aie_src_root: str, test_key: str = "%s") -> str:
+        """Build the cross-platform per-test cache wrapper command."""
+        wrapper = os.path.join(aie_src_root, "utils", "run_with_test_cache.py")
+        return " ".join(
+            [
+                LitConfigHelper._quote_lit_arg(sys.executable),
+                LitConfigHelper._quote_lit_arg(wrapper),
+                LitConfigHelper._quote_lit_arg(test_key),
+            ]
+        )
+
+    @staticmethod
     def add_makefile_examples_feature(config_obj) -> None:
         """Enable Make-based example tests on POSIX hosts."""
         if os.name != "nt" and shutil.which("make"):
