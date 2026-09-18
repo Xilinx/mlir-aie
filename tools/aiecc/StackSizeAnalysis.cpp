@@ -100,16 +100,14 @@ struct Graph {
 // FIXME: Peano compiles libclang_rt.builtins.a without -fstack-size-section,
 // so any core reaching a builtin such as `__divsf3` or `__modsi3` needs bytes
 // that no `.stack_sizes` entry reports. CompilerRtStackFrames.inc supplies
-// them. `_main_init` covers aie2 crt1.o from Peano builds that predate its
-// `.stack_sizes` section (`paddb [sp], #0x20`). Once llvm-aie builds the
-// builtins with -fstack-size-section (llvm-aie#1374), delete this table.
+// them. Once llvm-aie builds the builtins with -fstack-size-section
+// (llvm-aie#1374), delete this table.
 struct FallbackFrame {
   unsigned elfFlags;
   llvm::StringLiteral symbol;
   int64_t bytes;
 };
 constexpr FallbackFrame fallbackFrames[] = {
-    {2, llvm::StringLiteral("_main_init"), 32},
 #include "CompilerRtStackFrames.inc"
 };
 
