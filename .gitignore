@@ -65,4 +65,3 @@ runtime_lib/xaiengine/src
 
 # Local Claude Code tooling/settings
 /.claude/
-sandbox-hsa-env/
