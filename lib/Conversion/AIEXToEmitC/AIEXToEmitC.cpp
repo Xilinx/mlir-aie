@@ -121,6 +121,11 @@ public:
   // or nullopt on error. With a runtime op-count var (a loop is present) each
   // op increments it instead and the returned count is unused.
   std::optional<uint32_t> run() {
+    // DMA lowering consumes buffer views but can leave dead subview/cast
+    // chains behind (notably after configure/run materialization). They are
+    // not transaction operations and must not reach the C++ converter.
+    IRRewriter rewriter(funcOp.getContext());
+    (void)runRegionDCE(rewriter, funcOp.getFunctionBody());
     uint32_t count = 0;
     SmallVector<Operation *> consumed;
     convertBlockRecursive(funcOp.getBlocks().front(), count, consumed);
@@ -134,7 +139,6 @@ public:
     // other sequences in the module still reference.
     for (Operation *op : llvm::reverse(consumed))
       op->erase();
-    IRRewriter rewriter(funcOp.getContext());
     (void)runRegionDCE(rewriter, funcOp.getFunctionBody());
     return count;
   }
@@ -214,6 +218,21 @@ private:
           emitTxnCall(b, loc, "txn_append_sync", txnVec,
                       {s.getColumn(), s.getRow(), s.getDirection(),
                        s.getChannel(), s.getColumnNum(), s.getRowNum()});
+          countOp(b, loc, count);
+        })
+        .Case<AIEX::NpuLoadPdiOp>([&](auto pdi) {
+          Value address = emitc::ConstantOp::create(
+              b, loc, emitc::OpaqueType::get(b.getContext(), "uint64_t"),
+              emitc::OpaqueAttr::get(b.getContext(),
+                                     std::to_string(pdi.getAddress()) + "ULL"));
+          emitTxnCall(b, loc, "txn_append_loadpdi", txnVec,
+                      {u32Literal(b, loc, pdi.getId()),
+                       u32Literal(b, loc, pdi.getSize()), address});
+          countOp(b, loc, count);
+        })
+        .Case<AIEX::NpuPreemptOp>([&](auto preempt) {
+          emitTxnCall(b, loc, "txn_append_preempt", txnVec,
+                      {u32Literal(b, loc, preempt.getLevel())});
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuAddressPatchOp>([&](auto ap) {

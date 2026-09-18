@@ -11,6 +11,7 @@ import pytest
 from aie.dialects.aie import translate_npu_to_binary
 from aie.ir import Context, Module
 from aie.passmanager import PassManager
+from aie.utils.compile import utils as compile_utils
 from aie.utils.compile.jit import _manifest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
 from aie.utils.compile.jit._dispatch_compile import (
@@ -20,6 +21,40 @@ from aie.utils.compile.jit._dispatch_compile import (
 )
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In
+from aie.utils.compile.utils import _run_aiecc
+
+
+@pytest.mark.parametrize("emit_shim", [False, True])
+def test_compile_mlir_module_requests_cpp_with_device_outputs(
+    tmp_path, monkeypatch, emit_shim
+):
+    calls = []
+    monkeypatch.setattr(
+        compile_utils.config, "peano_install_dir", lambda: tmp_path / "peano"
+    )
+    monkeypatch.setattr(
+        compile_utils, "_run_aiecc", lambda path, args: calls.append((path, args))
+    )
+    cpp = tmp_path / "dispatch_gen.cpp"
+    xclbin = tmp_path / "design.xclbin"
+    compile_utils.compile_mlir_module(
+        "module {}",
+        xclbin_path=xclbin,
+        work_dir=tmp_path,
+        npu_cpp_path=cpp,
+        npu_cpp_emit_dispatch_shim=emit_shim,
+        fold_ddr_addr_offset=False,
+        options=["--get=npu_lowered.mlir"],
+    )
+    assert len(calls) == 1
+    _, args = calls[0]
+    assert "--get-xclbin" in args
+    assert f"--xclbin-name={xclbin}" in args
+    assert "--get-npu-cpp" in args
+    assert f"--npu-cpp-name={cpp}" in args
+    assert ("--npu-cpp-emit-dispatch-shim" in args) == emit_shim
+    assert "--get=npu_lowered.mlir" in args
+    assert "--fold-ddr-addr-offset=false" in args
 
 
 @pytest.mark.parametrize("bound", [{}, {"bar": 3}, {"baz": 7}])
@@ -38,9 +73,9 @@ def test_reordered_parameters_reach_generated_instructions(
         return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
 
     design = CompilableDesign(generator).specialize(**bound)
-    (tmp_path / "input_with_addresses.mlir").write_text(str(design.generate_mlir()))
+    _generate_cpp(tmp_path, str(design.generate_mlir()), fold=False)
     library = compile_dispatch_bridge(
-        tmp_path, design.dispatch_params, False, design.dispatch_param_types
+        tmp_path, design.dispatch_params, design.dispatch_param_types
     )
     bridge = DispatchBridge(library, design.dispatch_params)
     for values in ({}, {name: 11 + i for i, name in enumerate(design.dispatch_params)}):
@@ -85,13 +120,26 @@ def _source(offset=0, *, arg_idx=0, device="npu1_1col"):
     }}"""
 
 
+def _generate_cpp(kernel_dir, source, *, fold=True):
+    mlir_path = kernel_dir / "aie.mlir"
+    mlir_path.write_text(source)
+    _run_aiecc(
+        str(mlir_path),
+        [
+            "--get-npu-cpp",
+            f"--npu-cpp-name={kernel_dir / 'dispatch_gen.cpp'}",
+            "--npu-cpp-emit-dispatch-shim",
+            "--get=npu_lowered.mlir",
+            f"--output-dir={kernel_dir}",
+            f"--tmpdir={kernel_dir / 'aiecc.prj'}",
+            f"--fold-ddr-addr-offset={'true' if fold else 'false'}",
+        ],
+    )
+
+
 def _compile(kernel_dir, source=None, *, fold=True):
-    (kernel_dir / "input_with_addresses.mlir").write_text(
-        _source() if source is None else source
-    )
-    return compile_dispatch_bridge(
-        kernel_dir, ["param", "n"], fold, [np.int32, np.uintp]
-    )
+    _generate_cpp(kernel_dir, _source() if source is None else source, fold=fold)
+    return compile_dispatch_bridge(kernel_dir, ["param", "n"], [np.int32, np.uintp])
 
 
 def _words(bridge, n=2):
@@ -186,18 +234,37 @@ def test_fold_ddr_addr_offset_reaches_translation(tmp_path, device, arg_idx):
         np.testing.assert_array_equal(folded_words, expected)
 
 
-def test_registered_pipeline_lowers_dynamic_dma_tasks(tmp_path):
+def test_aiecc_lowers_dynamic_dma_tasks(tmp_path):
     source = (
         Path(__file__).parents[1] / "Targets/NPU/aie_npu_to_cpp_rolled_loop.mlir"
     ).read_text()
-    (tmp_path / "input_with_addresses.mlir").write_text(source)
-    path = compile_dispatch_bridge(tmp_path, ["n"], True, [np.uintp])
-    lowered = (tmp_path / "dispatch_lowered.mlir").read_text()
+    _generate_cpp(tmp_path, source)
+    path = compile_dispatch_bridge(tmp_path, ["n"], [np.uintp])
+    lowered = (tmp_path / "npu_lowered.mlir").read_text()
     assert "dma_configure_task" not in lowered
     assert "aiex.npu.blockwrite_values" in lowered
     assert "scf.for" in lowered
     bridge = DispatchBridge(path, ["n"])
     assert bridge.generate({"n": 3}).size > bridge.generate({"n": 1}).size
+
+
+@pytest.mark.parametrize("missing", ["dispatch_gen.cpp", "npu_lowered.mlir"])
+def test_bridge_requires_compiler_outputs(tmp_path, missing):
+    for name in ("dispatch_gen.cpp", "npu_lowered.mlir"):
+        if name != missing:
+            (tmp_path / name).write_text("")
+    with pytest.raises(DispatchCompileError, match="expected aiecc"):
+        compile_dispatch_bridge(tmp_path, ["n"], [np.uintp])
+
+
+def test_python_bridge_rejects_unprovided_pdi_resources():
+    with Context():
+        module = Module.parse(
+            "module { aie.device(npu2) { aie.runtime_sequence @seq(%n: index) "
+            "{ aiex.npu.load_pdi {id = 1 : i32} } } }"
+        )
+        with pytest.raises(DispatchCompileError, match="cannot supply load_pdi"):
+            _check_runtime_sequence_abi(module, ["n"], [np.uintp])
 
 
 @pytest.mark.parametrize("count", [0, 2])

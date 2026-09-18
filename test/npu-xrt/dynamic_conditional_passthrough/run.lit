@@ -11,17 +11,13 @@
 // (n, do_copy): the instruction stream is built at runtime by the generated C++
 // TXN builder called with both.
 //
-// aiecc builds the xclbin (device structure). The instruction builder is
-// generated separately via aie-translate --aie-npu-to-cpp from aiecc's lowered
-// intermediate. The host #includes that header and calls it per (n, do_copy).
+// aiecc builds both the xclbin and the parameterized instruction builder.
+// The host #includes that header and calls it per (n, do_copy).
 //
 // RUN: mkdir -p %t.prj
-// RUN: %aiecc --get-xclbin \
-// RUN:   --get-input-with-addresses --output-dir=%t.prj \
+// RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
+// RUN:   --output-dir=%t.prj \
 // RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
-//
-// RUN: aie-opt --aie-npu-dma-lowering %t.prj/input_with_addresses.mlir -o %t.lowered.mlir
-// RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
 // RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \

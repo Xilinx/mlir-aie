@@ -7,7 +7,7 @@
 
 // RUN: aie-opt --aie-npu-dma-lowering %s | FileCheck %s
 
-// aiecc and the JIT dispatch bridge both resolve to buildNpuDmaLoweringPipeline.
+// aiecc uses this DMA-lowering stage for both static and parameterized output.
 // If this named pipeline stops resolving, the bridge silently lowers a runtime
 // sequence differently from the same design compiled statically.
 

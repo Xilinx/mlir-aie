@@ -177,18 +177,24 @@ the xclbin. There is no static instruction stream, so `inst_path`, `elf_path`,
 and `full_elf=True` are unsupported while any parameters remain dynamic.
 The default compilation mode manages these artifacts in the JIT cache.
 
-The JIT still invokes `aiecc` to build device artifacts. For the dispatch
-builder, it then reads `input_with_addresses.mlir`, runs the shared
-`aie-npu-dma-lowering` pipeline in-process, translates to C++, and compiles the
-host library. This pipeline is the DMA-lowering stage, not a replacement for
-`aiecc`'s runtime-sequence materialization, load-PDI expansion, PDI-ID assignment,
-or full-ELF packaging.
+The JIT invokes `aiecc` for both device artifacts and the parameterized
+transaction builder (`--get-npu-cpp`). Static instructions and generated C++
+consume the same lowered runtime sequences, including materialization,
+load-PDI/control-packet expansion, PDI-ID assignment, and device/sequence
+selection. Python validates the final scalar ABI and compiles the generated
+C++ into a host library; it does not run a separate compiler pipeline.
 
-The dynamic bridge requires exactly one runtime sequence. Dynamic
-multi-device/reconfiguration flows are not supported by this integration;
-the sequence-count check alone does not validate those flows. Ordinary static
-designs, including designs with every dispatch parameter explicitly
-specialized, use the existing `aiecc` path.
+Native hosts can request the same generated C++ directly from `aiecc`, without
+Python or the JIT. See the [compiler driver guide](../../tools/aiecc/README.md).
+
+The Python bridge currently loads one runtime sequence and submits its generated
+instructions through the xclbin/instruction-buffer runtimes. This does not give
+the full-ELF runtime a per-call instruction replacement API: a full ELF embeds
+fixed transaction bytes, so unbound dispatch parameters still cannot use
+`full_elf=True`. Reconfiguration builders can be compiled by `aiecc`; their host
+must package/provide the referenced PDIs and control-packet data using the
+chosen runtime's ABI. Ordinary static designs, including designs with every
+dispatch parameter explicitly specialized, retain full-ELF support.
 
 See the [Programming Guide](../programming_guide/README.md) for worked
 examples of `@iron.jit`.

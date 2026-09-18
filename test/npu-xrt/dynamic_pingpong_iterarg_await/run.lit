@@ -8,21 +8,13 @@
 // input task) from INSIDE the loop body, once per iteration, instead of
 // only after the whole loop. Same runtime tile-count parameterization.
 //
-// aiecc builds the xclbin (device structure). The instruction builder is
-// generated separately via aie-translate --aie-npu-to-cpp from aiecc's lowered
-// intermediate (the runtime sequence lowers to a runtime-addressed C++ builder,
-// not a static insts.bin). The host #includes that header and calls it per n.
+// aiecc builds both the xclbin and the parameterized instruction builder.
+// The host #includes the generated header and calls it per n.
 //
 // RUN: mkdir -p %t.prj
-// RUN: %aiecc --get-xclbin \
-// RUN:   --get-input-with-addresses --output-dir=%t.prj \
+// RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
+// RUN:   --output-dir=%t.prj \
 // RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
-//
-// Generate the C++ TXN builder from aiecc's lowered intermediate.
-// --aie-npu-dma-lowering is the same pipeline aiecc runs in-process, so the npu
-// ops produced here match what a static build of this design would emit.
-// RUN: aie-opt --aie-npu-dma-lowering %t.prj/input_with_addresses.mlir -o %t.lowered.mlir
-// RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
 // RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \

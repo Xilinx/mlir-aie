@@ -1517,6 +1517,34 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 return seqFilter.empty() || seq.getSymName() == seqFilter;
               });
 
+  // The C++ target consumes (and replaces) its module. Keep the shared lowered
+  // IR intact, and retain only the selected sequence in the private clone:
+  // SplitIRAction preserves the complete module for symbol resolution.
+  bool cppFoldDDRAddrOffset =
+      foldDDRAddrOffsetOpt.getNumOccurrences() || !generateFullElf
+          ? foldDDRAddrOffsetOpt.getValue()
+          : false;
+  auto &npuCpp = perSeq.map<std::string>(
+      npuCppName.getValue(),
+      [cppFoldDDRAddrOffset, emitShim = npuCppEmitDispatchShim.getValue()](
+          const Item<OpInModule<RuntimeSequenceOp>> &item,
+          Item<std::string> &out) -> mlir::LogicalResult {
+        RuntimeSequenceOp selected = item.get().op;
+        auto deviceName = selected->getParentOfType<DeviceOp>().getSymName();
+        ModRef clone = item.get().module.get().clone();
+        llvm::SmallVector<RuntimeSequenceOp> toErase;
+        clone->walk([&](RuntimeSequenceOp seq) {
+          if (seq.getSymName() != selected.getSymName() ||
+              seq->getParentOfType<DeviceOp>().getSymName() != deviceName)
+            toErase.push_back(seq);
+        });
+        for (RuntimeSequenceOp seq : toErase)
+          seq.erase();
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateNpuToCpp(
+            *clone, os, cppFoldDDRAddrOffset, emitShim);
+      });
+
   // Translate each sequence exactly once into its NPU program (the .bin bytes
   // and the locmap). Two variants are built from the same per-sequence input.
   // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
@@ -1745,10 +1773,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
       generateInputWithAddresses || generateScratchpadParams ||
-      generateNpuInsts || keepLoc || generateElf || generateCdo ||
-      generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
-      generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
-      !cutOutputs.empty();
+      generateNpuInsts || generateNpuCpp || keepLoc || generateElf ||
+      generateCdo || generatePdi || generateTxn || generateCtrlpkt ||
+      generateXclbin || generateFullElf || wantAiesim || doCompileHost ||
+      !getOutputs.empty() || !cutOutputs.empty();
   // Every other artifact depends on the post-link checks through
   // physicalWithElfs. A core-ELF build ends before that edge, so name the
   // checks here.
@@ -1764,6 +1792,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
   if (generateNpuInsts) {
     outputs.push_back(&npuInsts);
+  }
+  if (generateNpuCpp) {
+    outputs.push_back(&npuCpp);
   }
   if (keepLoc) {
     outputs.push_back(&npuLocmap);

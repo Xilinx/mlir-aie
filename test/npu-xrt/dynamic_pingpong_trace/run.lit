@@ -11,16 +11,12 @@
 // n; the host reads the trace buffer back and checks it is non-empty while the
 // data output still matches the golden.
 //
-// aiecc builds the xclbin. The instruction builder is generated separately via
-// aie-translate --aie-npu-to-cpp from aiecc's lowered intermediate.
+// aiecc builds both the xclbin and the parameterized instruction builder.
 //
 // RUN: mkdir -p %t.prj
-// RUN: %aiecc --get-xclbin \
-// RUN:   --get-input-with-addresses --output-dir=%t.prj \
+// RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
+// RUN:   --output-dir=%t.prj \
 // RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
-//
-// RUN: aie-opt --aie-npu-dma-lowering %t.prj/input_with_addresses.mlir -o %t.lowered.mlir
-// RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
 // RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \

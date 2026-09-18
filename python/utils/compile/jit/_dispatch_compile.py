@@ -3,10 +3,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Lower and translate dynamic runtime sequences in process, then build a host DLL.
+"""Build a host DLL from aiecc's parameterized transaction output.
 
-Only the host C++ compiler is an external tool. Libraries are published under
-immutable content-addressed names and never loaded by the compiler, so rebuilds
+All runtime-sequence lowering and C++ translation belong to aiecc, including
+materialization, reconfiguration expansion, and PDI-ID assignment. This module
+only checks the final scalar ABI and compiles the generated host source.
+Libraries are published under immutable content-addressed names and never
+loaded by the compiler, so rebuilds
 cannot replace a mapped generation or pin a staging DLL on Windows.
 """
 
@@ -26,9 +29,6 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
     Module,  # pyright: ignore[reportAttributeAccessIssue]
     UnrankedMemRefType,  # pyright: ignore[reportAttributeAccessIssue]
     WalkResult,  # pyright: ignore[reportAttributeAccessIssue]
-)
-from aie.passmanager import (  # pyright: ignore[reportMissingImports]
-    PassManager,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils import config
 from aie.utils.compile.utils import SHARED_LIB_SUFFIX, host_shared_lib_cmd
@@ -70,17 +70,21 @@ def dispatch_scalar_c_type(declared) -> str:
 def _check_runtime_sequence_abi(
     module: Module, dispatch_params: list[str], dispatch_param_types: list
 ) -> None:
-    """Validate the canonical scalar ABI before translation consumes it.
+    """Validate the compiler's canonical scalar ABI before loading its builder.
 
     Memrefs become address patches, not C parameters. Every other argument
     must have a supported scalar ABI. IRON Runtime assigns dispatch block
     arguments in signature order, independently of callback argument order.
     """
     sequences = []
+    requires_pdi_resources = False
 
     def collect(op):
+        nonlocal requires_pdi_resources
         if op.name == "aie.runtime_sequence":
             sequences.append(op)
+        elif op.name == "aiex.npu.load_pdi":
+            requires_pdi_resources = True
         return WalkResult.ADVANCE
 
     module.operation.walk(collect)
@@ -88,6 +92,13 @@ def _check_runtime_sequence_abi(
         raise DispatchCompileError(
             "dispatch bridge requires exactly one runtime_sequence; "
             f"found {len(sequences)}."
+        )
+    if requires_pdi_resources:
+        raise DispatchCompileError(
+            "The Python dispatch runtime cannot supply load_pdi resources. "
+            "Use aiecc --get-npu-cpp with a native host that packages the "
+            "referenced PDIs, or specialize all dispatch parameters and use "
+            "full_elf=True."
         )
     if len(dispatch_param_types) != len(dispatch_params):
         raise DispatchCompileError(
@@ -123,39 +134,23 @@ def _check_runtime_sequence_abi(
 def compile_dispatch_bridge(
     kernel_dir: Path,
     dispatch_params: list[str],
-    fold_ddr_addr_offset: bool,
     dispatch_param_types: list,
 ) -> Path:
     """Build an immutable dispatch library under the kernel-directory lock."""
-    input_mlir = kernel_dir / "input_with_addresses.mlir"
-    if not input_mlir.is_file():
-        raise DispatchCompileError(
-            f"{input_mlir} does not exist; expected aiecc's "
-            "--get-input-with-addresses output."
-        )
+    lowered_mlir = kernel_dir / "npu_lowered.mlir"
     gen_cpp = kernel_dir / "dispatch_gen.cpp"
+    for path in (lowered_mlir, gen_cpp):
+        if not path.is_file():
+            raise DispatchCompileError(
+                f"{path} does not exist; expected aiecc's "
+                "--get-npu-cpp and --get=npu_lowered.mlir outputs."
+            )
     with Context():
         try:
-            module = Module.parse(input_mlir.read_text())
-            # The same registered pipeline aiecc uses, not a copied pass list.
-            PassManager.parse("builtin.module(aie-npu-dma-lowering)").run(
-                module.operation
-            )
-            (kernel_dir / "dispatch_lowered.mlir").write_text(str(module))
+            module = Module.parse(lowered_mlir.read_text())
             _check_runtime_sequence_abi(module, dispatch_params, dispatch_param_types)
-            from aie.dialects.aie import translate_npu_to_cpp
-
-            gen_cpp.write_text(
-                translate_npu_to_cpp(
-                    module.operation,
-                    fold_ddr_addr_offset=fold_ddr_addr_offset,
-                    emit_dispatch_shim=True,
-                )
-            )
         except (MLIRError, RuntimeError) as e:
-            raise DispatchCompileError(
-                f"dispatch bridge lowering/translation: {e}"
-            ) from e
+            raise DispatchCompileError(f"dispatch bridge ABI validation: {e}") from e
     staging = kernel_dir / f"dispatch.staging{SHARED_LIB_SUFFIX}"
     try:
         cmd = host_shared_lib_cmd(

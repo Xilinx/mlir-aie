@@ -468,8 +468,10 @@ def compile_mlir_module(
     use_chess: bool = False,
     device=None,
     fold_ddr_addr_offset: bool = True,
+    npu_cpp_path: str | Path | None = None,
+    npu_cpp_emit_dispatch_shim: bool = False,
 ):
-    """Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
+    """Compile MLIR to instruction, PDI, ELF, xclbin, or C++ files using aiecc.
 
     Parameters:
         mlir_module (str): MLIR module to compile.
@@ -504,6 +506,11 @@ def compile_mlir_module(
             behavior).  Without this, low-level designs going through
             ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
             still need a Makefile-side ``.o`` rule.
+        npu_cpp_path: Output parameterized C++ transaction builder, produced by
+            aiecc's same runtime-sequence pipeline as static instructions.
+        npu_cpp_emit_dispatch_shim: Include the C ABI used by the Python dispatch
+            bridge. Native callers can leave this false and call the generated
+            C++ function directly.
     """
     if use_chess:
         # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
@@ -534,6 +541,12 @@ def compile_mlir_module(
     # flag when unfolding is requested.
     if not fold_ddr_addr_offset:
         args.append("--fold-ddr-addr-offset=false")
+    if npu_cpp_path is not None:
+        args.extend(["--get-npu-cpp", f"--npu-cpp-name={npu_cpp_path}"])
+        if npu_cpp_emit_dispatch_shim:
+            args.append("--npu-cpp-emit-dispatch-shim")
+    elif npu_cpp_emit_dispatch_shim:
+        raise ValueError("npu_cpp_emit_dispatch_shim requires npu_cpp_path.")
     if pdi_path:
         args.extend(["--get-pdi", f"--pdi-name={pdi_path}"])
     if elf_path:

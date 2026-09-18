@@ -130,9 +130,12 @@ their executables; cache eviction cannot release a context that a handle uses.
 ## Dispatch-time scalar compilation
 
 `DispatchTime[T]` designs compile a host instruction-builder library alongside
-the device program. Lowering and translation run in-process using the compiler's
-registered DMA pipeline and C++ transaction emitter, rather than duplicating
-them in Python. Only the host C++ compilation launches an external process.
+the device program. The same `aiecc` invocation produces the device artifacts,
+the fully lowered runtime IR, and parameterized C++ (`--get-npu-cpp`).
+Static instructions and parameterized C++ share the driver's runtime lowering,
+including materialization, reconfiguration expansion, and PDI-ID assignment.
+Python checks the scalar ABI and invokes the host compiler; it does not lower
+runtime sequences independently.
 A host C++17 compiler is required for both source and wheel installations.
 `CXX` selects its executable; otherwise IRON searches for `c++`,
 `g++`, then `clang++`, excluding Peano's device-toolchain directory.

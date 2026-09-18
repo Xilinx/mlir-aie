@@ -523,6 +523,9 @@ class CompilableDesign:
                     include_dirs=self.include_paths,
                 )
 
+                compiler_options = list(self.aiecc_flags)
+                if has_dispatch:
+                    compiler_options.append("--get=npu_lowered.mlir")
                 compile_mlir_module(
                     mlir_module=mlir_module,
                     insts_path=inst_path,
@@ -531,8 +534,12 @@ class CompilableDesign:
                     pdi_path=pdi_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
-                    options=list(self.aiecc_flags) if self.aiecc_flags else None,
+                    options=compiler_options or None,
                     fold_ddr_addr_offset=fold_ddr_addr_offset,
+                    npu_cpp_path=(
+                        kernel_dir / "dispatch_gen.cpp" if has_dispatch else None
+                    ),
+                    npu_cpp_emit_dispatch_shim=has_dispatch,
                 )
 
                 # aiecc may exit 0 even when xclbin generation fails silently
@@ -559,7 +566,6 @@ class CompilableDesign:
                     dispatch_so_path = compile_dispatch_bridge(
                         kernel_dir,
                         self.dispatch_params,
-                        fold_ddr_addr_offset,
                         self.dispatch_param_types,
                     )
                     if not dispatch_so_path.exists():
