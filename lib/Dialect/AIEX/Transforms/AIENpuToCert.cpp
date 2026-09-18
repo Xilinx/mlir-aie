@@ -732,10 +732,8 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
     std::string secondName = AIE::generateUniqueSymbolNameFromBase(
         deviceOp, dataOperand.getName().str() + "_split_1", secondCounter);
     if (secondName == firstName) {
-      std::string secondBase = dataOperand.getName().str() + "_split_1_";
-      do {
-        secondName = secondBase + std::to_string(secondCounter++);
-      } while (secondName == firstName || deviceOp.lookupSymbol(secondName));
+      secondName =
+          AIE::generateUniqueSymbolName(deviceOp, secondName + "_", secondCounter);
     }
 
     // Create the new global operations
