@@ -186,17 +186,30 @@ class NPUKernel:
 
         Args:
             *args: Arguments passed to the kernel.
-            **kwargs: Additional arguments passed to the runtime load_and_run method.
+            **kwargs: Declared dispatch scalar values and the optional ``retry``
+                runtime load option. A declared dispatch parameter named ``retry``
+                takes precedence over the load option.
 
         Returns:
             The result returned by the runtime ``load_and_run`` call.
+
+        Raises:
+            TypeError: If an unknown keyword argument is supplied.
         """
+        dispatch_names = set(self._dispatch_params)
+        unknown = set(kwargs) - dispatch_names - {"retry"}
+        if unknown:
+            raise TypeError(
+                f"NPUKernel got unexpected keyword argument(s): {sorted(unknown)}; "
+                f"expected dispatch parameters {self._dispatch_params!r} "
+                "or runtime option 'retry'"
+            )
+
         from . import DefaultNPURuntime
 
         if DefaultNPURuntime is None:
             raise Exception("Cannot run kernel; DefaultNPURuntime not set.")
 
-        dispatch_names = set(self._dispatch_params)
         dispatch_scalars = {k: v for k, v in kwargs.items() if k in dispatch_names}
         other_kwargs = {k: v for k, v in kwargs.items() if k not in dispatch_names}
         return DefaultNPURuntime.load_and_run(
