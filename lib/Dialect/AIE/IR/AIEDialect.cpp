@@ -160,11 +160,8 @@ std::string xilinx::AIE::generateUniqueSymbolNameFromBase(
     mlir::Operation *symbolTableOp, llvm::StringRef baseName,
     unsigned &counter) {
   std::string name = baseName.str();
-  if (!mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name))
-    return name;
-  do {
+  while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name))
     name = (baseName + "_" + llvm::Twine(counter++)).str();
-  } while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name));
   return name;
 }
 
