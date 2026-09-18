@@ -31,7 +31,7 @@ aiecc.py --get-full-elf --reconfig-method=ctrlpkt <inputs...>
 ```
 
 `--get-full-elf` produces the folded full ELF; `--reconfig-method=ctrlpkt`
-selects control-packet delivery. Every correctness default (control-fabric
+selects control-packet delivery. Every correctness default (control-overlay
 pinning, self-clear teardown, shim-ingress auto-packetize) and the performance
 default (column-parallel delivery) is on already, so no other flag is required.
 
@@ -52,7 +52,7 @@ teardown). There is no `--reconfig-with-reset`.
 
 ### `--ctrlpkt-pinned-overlay={adapt | blind | off}` (default `adapt`)
 
-Control-fabric pinning mode for the `ctrlpkt` overlay. Pins one canonical
+Control-overlay pinning mode for the `ctrlpkt` overlay. Pins one canonical
 control routing across all config devices so a config's data route can no longer
 repoint a resident control master mid-delivery.
 

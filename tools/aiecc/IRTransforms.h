@@ -895,12 +895,12 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
 
 // Routing (`aie-create-pathfinder-flows`), nested under DeviceOp. Both params
 // are fed from --ctrlpkt-pinned-overlay={adapt|blind|off}.
-// `freezeControlFabric` is set for adapt/blind (off => false, which lowers
-// byte-identically to before the freeze existed). `designAware` is set only for
-// adapt; it takes effect only when `freezeControlFabric` is set, and blind
+// `pinControlOverlay` is set for adapt/blind (off => false, which lowers
+// byte-identically to before the pinning existed). `designAware` is set only
+// for adapt; it takes effect only when `pinControlOverlay` is set, and blind
 // (false) is byte-identical.
 inline std::unique_ptr<mlir::PassManager>
-getRoutingPipeline(mlir::MLIRContext *ctx, bool freezeControlFabric = false,
+getRoutingPipeline(mlir::MLIRContext *ctx, bool pinControlOverlay = false,
                    bool designAware = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   // Module-level pass (whole module present, before the per-device split):
@@ -909,8 +909,8 @@ getRoutingPipeline(mlir::MLIRContext *ctx, bool freezeControlFabric = false,
   // pathfinder (below) unconditionally decodes that annotation and pins the
   // flow so it replays the captured route instead of re-routing it; this
   // flag's only live effect is gating whether the module pass runs at all.
-  if (freezeControlFabric)
-    pm->addPass(xilinx::AIE::createAIEFreezeControlFabricPass(designAware));
+  if (pinControlOverlay)
+    pm->addPass(xilinx::AIE::createAIEPinControlOverlayPass(designAware));
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIE::createAIEPathfinderPass());
   return pm;

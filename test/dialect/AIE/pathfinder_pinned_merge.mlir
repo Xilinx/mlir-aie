@@ -1,11 +1,17 @@
-//===- pathfinder_freeze_merge.mlir ---------------------------*- MLIR -*-===//
+//===- pathfinder_pinned_merge.mlir ---------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-freeze-control-fabric --aie-create-pathfinder-flows | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s
+// Pin must have actually run: the control flow carries its captured
+// pinned route, an attribute that is absent entirely without
+// --aie-pin-control-overlay -- so this guards the feature, not just the
+// base pathfinder co-lowering that the CHECK lines below share with it.
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s --check-prefix=PINNED
+// PINNED: ctrl_pkt_pinned_route
 
 // View-unification (C): control is CO-ROUTED (pinned), not materialized. When a
 // data flow shares the control slave port (here both source tile (0,1) DMA:0),
@@ -13,7 +19,7 @@
 // captured route and data is routed around it, rejoining at the shared source
 // slave. The native emitClass then lowers control+data onto that ONE shared
 // slave port -- control id in the low slot (is_ctrl_pkt_overlay), data id after
-// -- for free (the proven non-freeze co-lowering), instead of the (A) path's
+// -- for free (the proven non-pinning co-lowering), instead of the (A) path's
 // merge-into-a-materialized-op. No second packet_rules is emitted on the slave.
 
 // CHECK-LABEL: aie.device(npu2) @cfg

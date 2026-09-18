@@ -607,8 +607,8 @@ def AIEGenerateColumnControlOverlay
   ];
 }
 
-def AIEFreezeControlFabric
-    : Pass<"aie-freeze-control-fabric", "mlir::ModuleOp"> {
+def AIEPinControlOverlay
+    : Pass<"aie-pin-control-overlay", "mlir::ModuleOp"> {
   let summary = "Pin one canonical control routing across all config devices";
   let description = [{
     Module-level capture of one canonical control routing, pinned across all
@@ -619,7 +619,7 @@ def AIEFreezeControlFabric
     the per-device pathfinder decodes the annotation and pins the flow so it
     cannot drift, while config data routes around the reserved control masters.
 
-    By default control freezes BLIND (routed with no knowledge of config data).
+    By default control pins BLIND (routed with no knowledge of config data).
     With `design-aware`, control instead routes AROUND the ports the configs'
     data uses (eager avoidance), minimizing the overlay's imposition on
     already-routable designs; the blind default stays byte-identical.
@@ -631,7 +631,7 @@ def AIEFreezeControlFabric
            "instead of blind">,
   ];
 
-  let constructor = "xilinx::AIE::createAIEFreezeControlFabricPass()";
+  let constructor = "xilinx::AIE::createAIEPinControlOverlayPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
   ];

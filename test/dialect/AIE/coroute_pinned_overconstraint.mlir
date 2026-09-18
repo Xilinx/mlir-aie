@@ -5,7 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-freeze-control-fabric --aie-create-pathfinder-flows | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s
+// Pin must have actually run: the control flow carries its captured
+// pinned route, an attribute that is absent entirely without
+// --aie-pin-control-overlay -- so this guards the feature, not just the
+// base pathfinder co-lowering that the CHECK lines below share with it.
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s --check-prefix=PINNED
+// PINNED: ctrl_pkt_pinned_route
 
 // View-unification (C) over-constraint guard (spec gate 7, refined by Layer 0):
 // Layer 0 reserves control master ports (connectivity-INVALID via
@@ -95,7 +101,7 @@ module {
     %t05 = aie.tile(0, 5)
     // Six control flows, one per DMA source channel at the memtile (0,1),
     // all transiting north through (0,2) toward distinct destination ports
-    // on the three core tiles below -- the overlay's FULL control fabric,
+    // on the three core tiles below -- the overlay's FULL control overlay,
     // saturating all 6 North channels at the (0,1)->(0,2) and
     // (0,2)->(0,3) hops.
     aie.packet_flow(1) {

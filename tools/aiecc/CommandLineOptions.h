@@ -372,11 +372,12 @@ inline cl::opt<bool> parallelColumns(
 // active -- there is no CLI flag to gate it; running a resident-overlay
 // method without teardown is incorrect behavior, not a supported mode.
 
-// Control-fabric pinning mode for the ctrl-pkt-overlay flow. Pins one canonical
-// control routing across all config devices so control-packet reconfiguration
-// is safe (a config's data route can no longer repoint a resident control
-// master mid-delivery). Threaded via getRoutingPipeline; gates the module-level
-// AIEFreezeControlFabric pass, which self-gates to a no-op without an
+// Control-overlay pinning mode for the ctrl-pkt-overlay flow. Pins one
+// canonical control routing across all config devices so control-packet
+// reconfiguration is safe (a config's data route can no longer repoint a
+// resident control master mid-delivery). Threaded via getRoutingPipeline; gates
+// the module-level AIEPinControlOverlay pass, which self-gates to a no-op
+// without an
 // @ctrl_pkt_overlay device (plain builds byte-identical).
 //   adapt (default) -- pin control AROUND the ports config data uses (eager
 //                      avoidance; less disruptive, parity with blind).
@@ -385,7 +386,7 @@ inline cl::opt<bool> parallelColumns(
 //                      wedge; ablation / escape hatch only).
 inline cl::opt<std::string> ctrlpktPinnedOverlay(
     "ctrlpkt-pinned-overlay",
-    cl::desc("Control-fabric pinning mode (ctrlpkt overlay): "
+    cl::desc("Control-overlay pinning mode (ctrlpkt overlay): "
              "adapt (default) | blind | off."),
     cl::init("adapt"));
 
@@ -573,13 +574,13 @@ inline bool doCompileHost = false;
 // --ctrlpkt-auto-packetize=false).
 inline bool doAutoPacketizeControlIngress = true;
 
-// Freeze the control fabric in the ctrl-pkt-overlay flow, selected by
+// Pin the control overlay in the ctrl-pkt-overlay flow, selected by
 // --ctrlpkt-pinned-overlay={adapt|blind|off} (default adapt). Required for
 // multi-column co-tenancy correctness; the pass self-gates to a no-op without
 // an overlay, so plain builds are byte-identical. `adapt` engages design-aware
-// capture, `blind` engages blind capture, `off` disables the freeze.
-inline bool doReconfigFreezeControl = true;
-inline bool doReconfigFreezeControlDesignAware = true;
+// capture, `blind` engages blind capture, `off` disables the pinning.
+inline bool doReconfigPinControl = true;
+inline bool doReconfigPinControlDesignAware = true;
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
 //
@@ -609,8 +610,8 @@ inline bool resolveOptions() {
                     "adapt|blind|off\n";
     return false;
   }
-  doReconfigFreezeControl = ctrlpktPinnedOverlay != "off";
-  doReconfigFreezeControlDesignAware = ctrlpktPinnedOverlay == "adapt";
+  doReconfigPinControl = ctrlpktPinnedOverlay != "off";
+  doReconfigPinControlDesignAware = ctrlpktPinnedOverlay == "adapt";
   return true;
 }
 

@@ -5,10 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-freeze-control-fabric --aie-create-pathfinder-flows | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s
+// Pin must have actually run: the control flow carries its captured
+// pinned route, an attribute that is absent entirely without
+// --aie-pin-control-overlay -- so this guards the feature, not just the
+// base pathfinder co-lowering that the CHECK lines below share with it.
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s --check-prefix=PINNED
+// PINNED: ctrl_pkt_pinned_route
 
-// View-unification (C): under freeze the control packet flow is CO-ROUTED, not
-// materialized. AIEFreezeControlFabric captures @ctrl_pkt_overlay's canonical
+// View-unification (C): under pinning the control packet flow is CO-ROUTED, not
+// materialized. AIEPinControlOverlay captures @ctrl_pkt_overlay's canonical
 // control route and ANNOTATES each config's control packet_flow op with it
 // (ctrl_pkt_pinned_route); it no longer clones switch ops or removes the decl.
 // The per-device pathfinder then REPLAYS that captured route for the pinned

@@ -36,7 +36,7 @@ add_mlir_dialect_library(
   AIEObjectFifoUnroll.cpp
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp
-  AIEFreezeControlFabric.cpp
+  AIEPinControlOverlay.cpp
   AIETraceToConfig.cpp
   AIEInsertTraceFlows.cpp
   ADDITIONAL_HEADER_DIRS

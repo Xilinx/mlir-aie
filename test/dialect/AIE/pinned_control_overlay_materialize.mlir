@@ -1,13 +1,13 @@
-//===- freeze_control_fabric_materialize.mlir ------------------*- MLIR -*-===//
+//===- pinned_control_overlay_materialize.mlir ------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-freeze-control-fabric | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay | FileCheck %s
 
-// View-unification (C): the module-level freeze pass captures @ctrl_pkt_overlay's
+// View-unification (C): the module-level pinning pass captures @ctrl_pkt_overlay's
 // canonical control route ONCE (data-free -> the iteration-0-stable route) and
 // ANNOTATES each config's control packet_flow op with it (ctrl_pkt_pinned_route),
 // one entry per source. It does NOT materialize switch ops and does NOT remove
@@ -18,7 +18,7 @@
 // The config device (printed first): its control packet_flow decls SURVIVE, each
 // now carrying a ctrl_pkt_pinned_route annotation alongside its original
 // priority_route; its data decl is unchanged; and NO switch ops are materialized
-// (the freeze pass no longer lowers anything).
+// (the pinning pass no longer lowers anything).
 // CHECK-LABEL: aie.device(npu2) @cfg
 // CHECK: aie.packet_flow(1) {
 // CHECK:   aie.packet_source<%{{.*}}, DMA : 0>
@@ -30,7 +30,7 @@
 // CHECK:   aie.packet_source<%{{.*}}, DMA : 0>
 // CHECK:   aie.packet_dest<%{{.*}}, DMA : 0>
 // CHECK: }
-// The freeze pass materializes no switch ops -- control is co-routed, not lowered.
+// The pinning pass materializes no switch ops -- control is co-routed, not lowered.
 // CHECK-NOT: aie.switchbox
 // CHECK-NOT: aie.masterset
 

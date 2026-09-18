@@ -1,13 +1,19 @@
-//===- freeze_control_fabric_two_configs.mlir -------------------*- MLIR -*-===//
+//===- pinned_control_overlay_two_configs.mlir -------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-freeze-control-fabric --aie-create-pathfinder-flows | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s
+// Pin must have actually run: the control flow carries its captured
+// pinned route, an attribute that is absent entirely without
+// --aie-pin-control-overlay -- so this guards the feature, not just the
+// base pathfinder co-lowering that the CHECK lines below share with it.
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s --check-prefix=PINNED
+// PINNED: ctrl_pkt_pinned_route
 
-// Task 6 (acceptance gate), Part 2.1: the whole point of freezing is that
+// Task 6 (acceptance gate), Part 2.1: the whole point of pinning is that
 // control routing is IDENTICAL across every config device regardless of what
 // data that config carries. Two config devices, @cfg_a and @cfg_b, carry
 // DIFFERENT data (opposite directions, different packet ids, different
@@ -51,7 +57,7 @@
 // CHECK:   aie.rule(31, 1, %[[B_CA1]]) {is_ctrl_pkt_overlay}
 
 // The source of truth: @ctrl_pkt_overlay reproduces the SAME canonical
-// control routing both configs were frozen to.
+// control routing both configs were pinned to.
 // CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // CHECK:   %[[O_CA0:.*]] = aie.amsel<5> (3)
 // CHECK:   aie.masterset(North : 3, %[[O_CA0]]) {is_ctrl_pkt_overlay}
@@ -65,7 +71,7 @@ module {
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
     %t02 = aie.tile(0, 2)
-    // Control flow (frozen: materialized, decl removed). Identical to @cfg_b's.
+    // Control flow (pinned: materialized, decl removed). Identical to @cfg_b's.
     aie.packet_flow(1) {
       aie.packet_source<%t00, DMA : 0>
       aie.packet_dest<%t01, TileControl : 0>

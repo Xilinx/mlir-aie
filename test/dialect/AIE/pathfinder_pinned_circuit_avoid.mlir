@@ -1,11 +1,11 @@
-//===- pathfinder_freeze_circuit_avoid.mlir ---------------------*- MLIR -*-===//
+//===- pathfinder_pinned_circuit_avoid.mlir ---------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-freeze-control-fabric --aie-create-pathfinder-flows | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s
 
 // View-unification (C) + Layer 0: control is CO-ROUTED and pinned via its
 // captured route; Layer 0 then RESERVES control's master ports

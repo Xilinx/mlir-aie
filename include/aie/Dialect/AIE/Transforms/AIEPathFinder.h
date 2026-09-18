@@ -47,7 +47,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
   std::vector<std::vector<double>> demand;
   // persistent per-cell demand added on top of the congestion weight each
   // updateDemand iteration. Seeded once before findPaths for a design-aware
-  // control freeze (steers control off cells config data uses); 0.0 for every
+  // control pinning (steers control off cells config data uses); 0.0 for every
   // other analysis, so demand stays byte-identical when it is not seeded.
   std::vector<std::vector<double>> designDemand;
   // history of Channel being over capacity
@@ -203,7 +203,7 @@ using SwitchSettings = std::map<TileID, SwitchSetting>;
 
 // A design-demand field: per switchbox-connect cell
 // (srcCoords, dstCoords, srcPort, dstPort) -> extra demand. Seeded into the
-// pathfinder before a design-aware control freeze so control routes around the
+// pathfinder before a design-aware control pinning so control routes around the
 // ports config data uses. Keyed by ports (not matrix [i][j]) so it stays valid
 // regardless of per-instance port ordering.
 using DesignField = std::map<std::tuple<TileID, TileID, Port, Port>, double>;
@@ -226,8 +226,8 @@ public:
   // congestion iterations or across sibling devices.
   virtual void pinRoute(const PathEndPoint &src,
                         const SwitchSettings &route) = 0;
-  // Seed a persistent per-cell demand field (design-aware freeze). Added on top
-  // of the congestion demand each iteration; an empty field leaves routing
+  // Seed a persistent per-cell demand field (design-aware pinning). Added on
+  // top of the congestion demand each iteration; an empty field leaves routing
   // byte-identical. Default no-op so routers that never seed are unaffected.
   virtual void seedDesignDemand(const DesignField &field) {}
   // Penalize cross-column (East/West) hops so a design-aware control capture
@@ -243,7 +243,7 @@ public:
   virtual void setCoherentControlCapture(bool on) {}
   // Mark this a control-overlay (reconfiguration) routing run. Scopes the
   // multi-destination packet trunk consolidation to control-overlay compiles
-  // (freeze on OR off) so a plain, non-reconfiguration design routes
+  // (pinning on OR off) so a plain, non-reconfiguration design routes
   // byte-identically to upstream. Default off.
   virtual void setControlOverlayRouting(bool on) {}
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
@@ -334,9 +334,10 @@ private:
   // control's own. buildRoutingGraph then omits those edges, so a forced data-
   // onto-control-master share becomes a clean "Unable to find a legal routing"
   // instead of a silent in-band repoint wedge. A no-op when pinnedRoutes is
-  // empty (non-freeze), so OFF routing is unchanged. Returns false if control's
-  // frozen route collides with a pre-placed circuit connection (a control cell
-  // already INVALID), which must fail closed rather than double-use the cell.
+  // empty (non-pinning), so OFF routing is unchanged. Returns false if
+  // control's pinned route collides with a pre-placed circuit connection (a
+  // control cell already INVALID), which must fail closed rather than
+  // double-use the cell.
   bool reservePinnedControlMasters();
 
   // Flows to be routed
@@ -357,7 +358,7 @@ private:
 
   // Control-overlay (reconfiguration) routing run: gates the multi-destination
   // packet trunk consolidation so a plain, non-reconfiguration design routes
-  // byte-identically to upstream. Set for control-overlay compiles (freeze on
+  // byte-identically to upstream. Set for control-overlay compiles (pinning on
   // or off) and the design-aware capture.
   bool controlOverlayRouting = false;
 
@@ -402,7 +403,7 @@ public:
       : pathfinder(std::make_shared<Pathfinder>()) {}
 
   // skipControlFlows drops priority_route control packet flows (route config
-  // DATA only, for design-aware freeze demand capture). baseline, when set,
+  // DATA only, for design-aware pinning demand capture). baseline, when set,
   // seeds the pathfinder's per-cell demand field before routing.
   mlir::LogicalResult runAnalysis(DeviceOp &device,
                                   bool skipControlFlows = false,
@@ -431,7 +432,7 @@ int getWireBundleAsInt(WireBundle bundle);
 std::array<std::pair<TileID, Port>, 4> getCardinalNeighbors(TileID coords,
                                                             int channel);
 
-// Attribute key under which AIEFreezeControlFabric stashes a control flow's
+// Attribute key under which AIEPinControlOverlay stashes a control flow's
 // captured canonical route (one entry per source), decoded in the per-device
 // pathfinder to pin the flow. The route rides the config's own IR, so parallel
 // per-device passes never share mutable state.

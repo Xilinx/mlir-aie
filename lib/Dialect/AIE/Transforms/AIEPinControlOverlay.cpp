@@ -1,11 +1,11 @@
-//===- AIEFreezeControlFabric.cpp -------------------------------*- C++ -*-===//
+//===- AIEPinControlOverlay.cpp -------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
-// Module-level capture + annotate of the reconfiguration-safe control fabric.
+// Module-level capture + annotate of the reconfiguration-safe control overlay.
 // A per-device sibling read is unsafe: DeviceOp is IsolatedFromAbove so the
 // per-device pathfinder parallelizes across devices, the standalone
 // @ctrl_pkt_overlay is emitted last, and canonical control routing does not
@@ -33,11 +33,11 @@
 #include <array>
 
 namespace xilinx::AIE {
-#define GEN_PASS_DEF_AIEFREEZECONTROLFABRIC
+#define GEN_PASS_DEF_AIEPINCONTROLOVERLAY
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-#define DEBUG_TYPE "aie-freeze-control-fabric"
+#define DEBUG_TYPE "aie-pin-control-overlay"
 
 using namespace mlir;
 using namespace xilinx;
@@ -52,7 +52,7 @@ static bool isControlPacketFlow(AIE::PacketFlowOp flow) {
   return flow.getPriorityRoute().value_or(false);
 }
 
-// Extra demand a design-aware freeze puts on every cell config data occupies,
+// Extra demand a design-aware pinning puts on every cell config data occupies,
 // so control routes around it. Finite (never INF, which is reserved for pinned
 // priority): big enough that one avoided data cell outweighs a few extra
 // control hops, small enough that control can still overlap when a direction is
@@ -111,12 +111,11 @@ static void accumulatePreplacedDemand(AIE::DeviceOp cfg,
                  mux.getOps<AIE::ConnectOp>());
 }
 
-struct AIEFreezeControlFabricPass
-    : xilinx::AIE::impl::AIEFreezeControlFabricBase<
-          AIEFreezeControlFabricPass> {
-  AIEFreezeControlFabricPass() = default;
-  AIEFreezeControlFabricPass(const AIEFreezeControlFabricOptions &options)
-      : AIEFreezeControlFabricBase(options) {}
+struct AIEPinControlOverlayPass
+    : xilinx::AIE::impl::AIEPinControlOverlayBase<AIEPinControlOverlayPass> {
+  AIEPinControlOverlayPass() = default;
+  AIEPinControlOverlayPass(const AIEPinControlOverlayOptions &options)
+      : AIEPinControlOverlayBase(options) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
@@ -126,7 +125,7 @@ struct AIEFreezeControlFabricPass
     ModuleOp module = getOperation();
 
     // Find the standalone control-only overlay device. Without one there is no
-    // canonical control routing to freeze.
+    // canonical control routing to pin.
     DeviceOp overlay;
     for (auto dev : module.getOps<DeviceOp>()) {
       if (dev.getSymName() == "ctrl_pkt_overlay") {
@@ -137,7 +136,7 @@ struct AIEFreezeControlFabricPass
     if (!overlay)
       return;
 
-    // Config devices that carry control packet flows to freeze.
+    // Config devices that carry control packet flows to pin.
     SmallVector<DeviceOp> configs;
     for (auto dev : module.getOps<DeviceOp>()) {
       if (dev == overlay)
@@ -154,10 +153,10 @@ struct AIEFreezeControlFabricPass
     if (configs.empty())
       return;
 
-    // Design-aware freeze (eager avoidance): route each config's DATA demand
+    // Design-aware pinning (eager avoidance): route each config's DATA demand
     // (control excluded) and aggregate it into a field so the captured control
     // route steers OFF the ports the designs use, minimizing the overlay's
-    // imposition on already-routable designs. Control still freezes to ONE
+    // imposition on already-routable designs. Control still pins to ONE
     // route across all configs, so it avoids the UNION of their demand. Off by
     // default the field stays empty and the overlay routes blind
     // (byte-identical Layer 0).
@@ -186,7 +185,8 @@ struct AIEFreezeControlFabricPass
     // the per-device pathfinder to route -- data-free and deterministic, it
     // reproduces this exact routing. flowSolutions maps each control source to
     // its routed SwitchSettings (the captured canonical route). Under
-    // design-aware freeze the seeded field bends this route around config data.
+    // design-aware pinning, the seeded field bends this route around config
+    // data.
     DynamicTileAnalysis analyzer;
     if (failed(analyzer.runAnalysis(overlay, /*skipControlFlows=*/false,
                                     designAware ? &designField : nullptr)))
@@ -198,9 +198,9 @@ struct AIEFreezeControlFabricPass
     // the annotation and PINS the flow to the captured route so it cannot
     // drift, while the native emitClass merges control+data for free.
     //
-    // Design-aware freeze also pins @ctrl_pkt_overlay itself: its captured
+    // Design-aware pinning also pins @ctrl_pkt_overlay itself: its captured
     // route differs from what the per-device pathfinder derives BLIND, so the
-    // resident overlay (routed downstream to build the fabric) must replay the
+    // resident overlay (routed downstream to build the overlay) must replay the
     // SAME route as the configs, or the two would disagree on the physical
     // control port. In blind mode the overlay reproduces the capture
     // deterministically, so it is left unpinned and OFF stays byte-identical.
@@ -232,7 +232,7 @@ struct AIEFreezeControlFabricPass
           if (it == analyzer.flowSolutions.end()) {
             // The overlay analysis produced no route for this control source,
             // so it would ship UNPINNED and could drift config-to-config (the
-            // freeze silently fails for that source). Fail loud instead.
+            // pinning silently fails for that source). Fail loud instead.
             pktSource.emitOpError()
                 << "control source (" << srcCoords.col << ", " << srcCoords.row
                 << ") " << stringifyWireBundle(srcPort.bundle)
@@ -253,13 +253,13 @@ struct AIEFreezeControlFabricPass
 } // namespace
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
-AIE::createAIEFreezeControlFabricPass() {
-  return std::make_unique<AIEFreezeControlFabricPass>();
+AIE::createAIEPinControlOverlayPass() {
+  return std::make_unique<AIEPinControlOverlayPass>();
 }
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
-AIE::createAIEFreezeControlFabricPass(bool designAware) {
-  AIEFreezeControlFabricOptions options;
+AIE::createAIEPinControlOverlayPass(bool designAware) {
+  AIEPinControlOverlayOptions options;
   options.designAware = designAware;
-  return std::make_unique<AIEFreezeControlFabricPass>(options);
+  return std::make_unique<AIEPinControlOverlayPass>(options);
 }

@@ -159,7 +159,7 @@ struct AIEAutoPacketizeControlIngressPass
 
   // Confine the packet segment of a packetized shim-ingress leg to the
   // contested shim hop by synthesizing a local memtile relay. A single-hop shim
-  // -> core packet leg rides the resident control fabric's switchbox arbiters
+  // -> core packet leg rides the resident control overlay's switchbox arbiters
   // all the way to the core, which on a multi-column grid deadlocks the packet
   // arbiters. Splitting it into a shim ->
   // memtile PACKET fifo (this op, symbol retained so the runtime_sequence DMA
@@ -382,7 +382,7 @@ struct AIEAutoPacketizeControlIngressPass
           trunk->setAttr("prod_dma_channel", builder.getI32IntegerAttr(K));
         // Confine the packet segment to the shim hop: for a single-hop trunk,
         // synthesize a memtile relay so the data leg goes circuit to its
-        // core(s) and never rides the control fabric's arbiters to the compute
+        // core(s) and never rides the control overlay's arbiters to the compute
         // tile.
         if (trunk)
           synthesizeMemtileRelay(device, trunk);

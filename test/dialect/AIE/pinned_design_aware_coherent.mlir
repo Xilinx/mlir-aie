@@ -1,13 +1,13 @@
-//===- freeze_design_aware_coherent.mlir ---------------------*- MLIR -*-===//
+//===- pinned_design_aware_coherent.mlir ---------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-freeze-control-fabric="design-aware=true" --aie-create-pathfinder-flows | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay="design-aware=true" --aie-create-pathfinder-flows | FileCheck %s
 
-// Design-aware control freeze captures a COHERENT control spine: a control
+// Design-aware control pinning captures a COHERENT control spine: a control
 // multicast leaves its source on a SINGLE output channel, even when config data
 // makes weaving onto a fresh channel locally cheaper. The capture routes each
 // multicast destination farthest-first, so the longest path establishes the

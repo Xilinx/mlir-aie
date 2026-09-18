@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// --ctrlpkt-pinned-overlay selects the control-fabric pinning mode
+// --ctrlpkt-pinned-overlay selects the control-overlay pinning mode
 // (adapt|blind|off). The option validates its domain up front, so an
 // unrecognized mode is rejected before any lowering runs.
 

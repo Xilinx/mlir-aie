@@ -17,12 +17,12 @@ How: ``iron.Reconfiguration(method="ctrlpkt")`` folds the ``@iron.jit`` design a
 its external matmul kernel into one full ELF, dispatched via ``pyxrt.runlist``.
 Each column streams two shim inputs (A and B) into its memtile, claiming both shim
 MM2S channels; aiecc's default-on auto-packetize packet-switches one leg per column
-so the resident control overlay time-shares it, and the design-aware freeze pins
+so the resident control overlay time-shares it, and the design-aware pinning pins
 the control masters so each column's data routes around them.
 
 Why: this is the full end-to-end demonstration -- a real, dense, multi-column
 workload reconfigured on hardware -- and the only device exercise of the
-auto-packetize + freeze co-tenancy that two data legs per column would otherwise
+auto-packetize + pinning co-tenancy that two data legs per column would otherwise
 leave unroutable for control.
 """
 
@@ -115,17 +115,26 @@ def test_whole_array_matmul_ctrlpkt():
     np.testing.assert_array_equal(got, expected)
 
 
-def test_freeze_off_is_load_bearing():
-    """Negative arm: --ctrlpkt-pinned-overlay=off skips the control-fabric freeze,
+def test_pinning_off_is_load_bearing():
+    """Negative arm: --ctrlpkt-pinned-overlay=off skips the control-overlay pinning,
     so the same two-shim-input-per-column co-tenancy routes column data through the
     live control masters -- control packets never arrive and the dispatch fails
-    (ERT_CMD_STATE_TIMEOUT). Proves the design-aware freeze (the default) is
-    required, not cosmetic. The freeze is control routing, so the wedge is
+    (ERT_CMD_STATE_TIMEOUT). Proves the design-aware pinning (the default) is
+    required, not cosmetic. The pinning is control routing, so the wedge is
     structural (not a timing race); the device recovers after the firmware
     command timeout, which is what runlist.wait() raises here."""
     elf, _, _, A, B, C = _fold_whole_array(
-        "whole_array_freezeoff", extra_aiecc_args=["--ctrlpkt-pinned-overlay=off"]
+        "whole_array_pinoff", extra_aiecc_args=["--ctrlpkt-pinned-overlay=off"]
     )
     per_ep = {ep: () if ep == elf.init else (A, B, C) for ep in elf.entrypoints}
-    with pytest.raises(Exception):
+    with pytest.raises(Exception) as excinfo:
         dispatch_runlist(elf, per_ep)
+    # The wedge must surface as a runtime/hardware error from runlist.wait()
+    # (firmware command timeout), NOT a Python-level test bug -- otherwise this
+    # arm could pass for an unintended reason (e.g. a harness typo). The exact
+    # pyxrt exception type/message is driver-version dependent, so we don't pin
+    # it, but a test-authoring error is never the wedge.
+    assert not isinstance(
+        excinfo.value,
+        (AssertionError, TypeError, NameError, ImportError, AttributeError, KeyError),
+    ), f"dispatch failed for a non-hardware reason: {excinfo.value!r}"

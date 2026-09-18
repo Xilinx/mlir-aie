@@ -602,7 +602,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
   }
 
-  // Freeze-gated fail-closed backstop for the control-master exclusion
+  // Pin-gated fail-closed backstop for the control-master exclusion
   // invariant (Layer 0). reservePinnedControlMasters (AIEPathFinder.cpp)
   // prevents data from ROUTING onto a control master from a foreign slave, but
   // this is a second net at the emit layer: a data connection reaching a
@@ -610,16 +610,16 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // control master) UNLESS it shares a control slave into that master -- the
   // legitimate co-route merge, where data and control ride the same
   // slave->master on the same amsel, so the masterset is byte-identical to
-  // resident. Gated on freeze (a flow carries the pinned-route annotation) so
-  // OOB / non-freeze builds -- which legitimately let data share
+  // resident. Gated on pinning (a flow carries the pinned-route annotation) so
+  // OOB / non-pinning builds -- which legitimately let data share
   // is_ctrl_pkt_overlay masters -- are untouched.
-  bool freezeActive = false;
+  bool pinActive = false;
   for (auto pf : device.getOps<PacketFlowOp>())
     if (pf->hasAttr(kPinnedRouteAttr)) {
-      freezeActive = true;
+      pinActive = true;
       break;
     }
-  if (freezeActive) {
+  if (pinActive) {
     // control slave ports feeding each control master (the safe merge sources).
     std::map<PhysPort, std::set<Port>> ctrlSlavesIntoMaster;
     for (const auto &[slaveFlow, masters] : ctrlPacketFlows)
@@ -640,7 +640,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                "master port "
             << stringifyWireBundle(m.second.bundle) << ":" << m.second.channel
             << "; applying this config in-band would repoint the live control "
-               "master (freeze master-exclusion violated)";
+               "master (pinning master-exclusion violated)";
         return failure();
       }
     }
@@ -1351,7 +1351,7 @@ void AIEPathfinderPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
   // runAnalysis always decodes a control packet_flow's ctrl_pkt_pinned_route
-  // annotation (set by the AIEFreezeControlFabric module pass, if it ran) and
+  // annotation (set by the AIEPinControlOverlay module pass, if it ran) and
   // pins that flow so findPaths replays its captured route instead of
   // re-routing it. Absent the annotation this is a no-op.
   DeviceOp d = getOperation();

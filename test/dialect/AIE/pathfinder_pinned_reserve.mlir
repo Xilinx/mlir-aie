@@ -1,16 +1,22 @@
-//===- pathfinder_freeze_reserve.mlir --------------------------*- MLIR -*-===//
+//===- pathfinder_pinned_reserve.mlir --------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-freeze-control-fabric --aie-create-pathfinder-flows | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s
+// Pin must have actually run: the control flow carries its captured
+// pinned route, an attribute that is absent entirely without
+// --aie-pin-control-overlay -- so this guards the feature, not just the
+// base pathfinder co-lowering that the CHECK lines below share with it.
+// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s --check-prefix=PINNED
+// PINNED: ctrl_pkt_pinned_route
 
 // View-unification (C) + Layer 0: control is CO-ROUTED and pinned; Layer 0 then
 // RESERVES control's master ports (connectivity-INVALID on the master column) so
 // data cannot be routed onto a control master (the num16 wedge: a config's data
-// route repointing a resident control master mid-delivery). Here the frozen
+// route repointing a resident control master mid-delivery). Here the pinned
 // control master is North:1 through (0,1)/(0,2); the data flow that would
 // (unpinned) take North:1 is routed onto a different master instead. If it
 // collided on North:1 the switchbox verifier would reject the duplicate master
@@ -19,7 +25,7 @@
 // The reservation touches only the master COLUMN, not the slave rows, so
 // slave-slot sharing on a SOURCE port is untouched: the two data flows (7, 8)
 // that share the shim source still share a slave port on disjoint packet-id
-// slots (rules 8 and 7), exactly as in the non-freeze path.
+// slots (rules 8 and 7), exactly as in the non-pinning path.
 
 // CHECK-LABEL: aie.device(npu2) @cfg
 // (0,1): control's canonical master (North:1, is_ctrl_pkt_overlay) is pinned;

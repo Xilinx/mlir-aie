@@ -91,9 +91,9 @@ createAIEGenerateColumnControlOverlayPass(
     const AIEGenerateColumnControlOverlayOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEFreezeControlFabricPass();
+createAIEPinControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEFreezeControlFabricPass(bool designAware);
+createAIEPinControlOverlayPass(bool designAware);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIETraceRegPackWritesPass();

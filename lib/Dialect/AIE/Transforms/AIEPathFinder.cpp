@@ -28,7 +28,7 @@ using namespace xilinx::AIE;
 // trunk when equal-cost. Not a tuned value.
 static constexpr double kTrunkReuseDiscount = 0.001;
 
-// Design-aware control freeze keeps control column-local. Control is packet-
+// Design-aware control pinning keeps control column-local. Control is packet-
 // switched and shares a channel with data 32-way, so it must never leave its
 // source column just to dodge data -- a cross-column (East/West) detour splits
 // the control multicast's coherent spine into extra output ports, fragmenting
@@ -65,7 +65,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device,
 
   pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
 
-  // Design-aware freeze: seed the persistent per-cell demand field before any
+  // Design-aware pinning: seed the persistent per-cell demand field before any
   // flow is routed. initialize() has built the full graph and buildRoutingGraph
   // (inside findPaths) only reads it, so the seed survives to updateDemand.
   if (baseline) {
@@ -81,7 +81,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device,
   // Consolidate a control multicast onto a shared trunk for any control-overlay
   // (reconfiguration) compile: the design-aware capture (baseline) or a device
   // carrying the generated control overlay (has_ctrl_pkt_overlay, set for
-  // freeze on OR off). A plain, non-reconfiguration design has neither, so its
+  // pinning on OR off). A plain, non-reconfiguration design has neither, so its
   // packet routing stays byte-identical to upstream.
   bool devHasCtrlPktOverlay = false;
   if (auto a = device->getAttrOfType<mlir::BoolAttr>("has_ctrl_pkt_overlay"))
@@ -95,7 +95,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device,
   // packet flows.
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     bool priorityFlow = pktFlowOp.getPriorityRoute().value_or(false);
-    // Design-aware freeze demand capture routes config DATA only: skip the
+    // Design-aware pinning demand capture routes config DATA only: skip the
     // control (priority_route) packet flows entirely.
     if (skipControlFlows && priorityFlow)
       continue;
@@ -134,11 +134,11 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device,
       }
     }
 
-    // Under freeze, AIEFreezeControlFabric annotated this control flow with its
+    // Under pinning, AIEPinControlOverlay annotated this control flow with its
     // captured canonical route. Decode it from THIS device's own IR (never
     // shared state, so parallel per-device findPaths stays correct) and pin the
-    // flow so findPaths replays it instead of re-routing, freezing control
-    // against data-driven drift. Absent the annotation (non-freeze) this is a
+    // flow so findPaths replays it instead of re-routing, pinning control
+    // against data-driven drift. Absent the annotation (non-pinning) this is a
     // no-op and the routing is byte-identical.
     if (auto attr = pktFlowOp->getAttr(kPinnedRouteAttr))
       for (auto &[pinSrc, pinnedRoute] : decodePinnedRoutes(attr))
@@ -509,7 +509,7 @@ void Pathfinder::pinRoute(const PathEndPoint &src,
 }
 
 // Seed the per-cell demand field from a design-demand map (design-aware
-// freeze). Iterate the (small) field, resolve each (srcCoords, dstCoords,
+// pinning). Iterate the (small) field, resolve each (srcCoords, dstCoords,
 // srcPort, dstPort) key to its switchbox-connect cell, and assign the weight
 // (assignment, not accumulation: a cell any config's data uses gets one fixed
 // penalty). initialize() has already built `graph`, so the cells exist.
@@ -938,7 +938,7 @@ Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
   std::map<PathEndPoint, SwitchSettings> routingSolution;
   // Build the dense routing graph once; topology is invariant across
-  // iterations. Under freeze, reserve control's master ports FIRST so the
+  // iterations. Under pinning, reserve control's master ports FIRST so the
   // reserved connectivity is baked into the dense graph (a foreign data flow
   // then has no edge into a control master); a collision with a pre-placed
   // circuit connection fails closed.
@@ -1016,7 +1016,7 @@ Pathfinder::findPaths(const int maxIterations) {
       for (const auto &[packetGroupId, isPriority, src, dsts, packetId,
                         dstPacketIds] : flows) {
         int srcId = nodeIds.at(src);
-        // A pinned flow (control under freeze) does not route its OWN
+        // A pinned flow (control under pinning) does not route its OWN
         // destinations: seed the solution with the captured route, account its
         // edges (INF demand on control's channels so data steers clear), and
         // stamp its ports processed. addFlow merges a co-sourced data leg into
@@ -1045,7 +1045,7 @@ Pathfinder::findPaths(const int maxIterations) {
         //
         // Scoped to control-overlay (reconfiguration) routing: a merged control
         // multicast needs a coherent trunk only when the compile carries the
-        // control overlay (controlOverlayRouting, set for freeze on OR off) or
+        // control overlay (controlOverlayRouting, set for pinning on OR off) or
         // replays a pinned control route. A plain, non-reconfiguration compile
         // keeps the upstream single-Dijkstra, all-dsts-against-one-tree path,
         // so generic packet routing stays byte-identical to upstream. Circuit
