@@ -6,7 +6,7 @@
 """Linear algebra kernel factories: mm, mv, cascade_mm."""
 
 import numpy as np
-from aie.iron.kernel import ExternalFunction, Kernel
+from aie.iron.kernel import ExternalFunction
 from ml_dtypes import bfloat16
 
 from ._common import _default_source_path, _detect_arch, _make_extern
@@ -190,13 +190,12 @@ def mm(
     else:
         extern.mac_dims = _MM_MAC_DIMS[arch][key]
     # mm.cc emits both matmul_* and zero_* symbols; expose the zero binding
-    # as a sibling Kernel pointing at the same .o so the design does
-    # `matmul = kernels.mm(...); zero = matmul.zero` instead of a separate
-    # kernels.mm_zero call (which would compile mm.cc a second time).
+    # as another symbol bound from the same object-file handle so the design
+    # does `matmul = kernels.mm(...); zero = matmul.zero` instead of a
+    # separate kernels.mm_zero call (which would compile mm.cc a second time).
     zero_prefix = "zero" if vectorized else "zero_scalar"
-    extern.zero = Kernel(
+    extern.zero = extern.object_file.bind(
         f"{zero_prefix}_{_ZERO_SUFFIX[output_dtype]}",
-        extern.object_file_name,
         [c_ty],
     )
     return extern
@@ -246,9 +245,9 @@ def mv(
         use_chess=use_chess,
     )
     # mv.cc emits both matvec_* and zero_* symbols; expose the zero binding
-    # as a sibling Kernel pointing at the same .o.
+    # as another symbol bound from the same object-file handle.
     zero_prefix = "zero_vectorized" if vectorized else "zero_scalar"
-    extern.zero = Kernel(f"{zero_prefix}_i32", extern.object_file_name, [c_ty])
+    extern.zero = extern.object_file.bind(f"{zero_prefix}_i32", [c_ty])
     return extern
 
 
@@ -309,19 +308,16 @@ def cascade_mm(
         use_chess=use_chess,
     )
     extern.get_only = extern
-    extern.put_only = Kernel(
+    extern.put_only = extern.object_file.bind(
         f"matmul_scalar_cascade_put_only_{suffix}",
-        extern.object_file_name,
         [a_ty, b_ty, c_ty],
     )
-    extern.put_get = Kernel(
+    extern.put_get = extern.object_file.bind(
         f"matmul_scalar_cascade_put_get_{suffix}",
-        extern.object_file_name,
         [a_ty, b_ty, c_ty],
     )
-    extern.zero = Kernel(
+    extern.zero = extern.object_file.bind(
         f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}",
-        extern.object_file_name,
         [c_ty],
     )
     arch = _detect_arch()
