@@ -725,16 +725,12 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
         DenseIntElementsAttr::get(secondTensorType, secondChunkData);
 
     // Generate unique names for the new globals
-    auto makeUniqueFromBase = [&](StringRef baseName) {
-      std::string name = baseName.str();
-      for (unsigned counter = 0; deviceOp.lookupSymbol(name); ++counter)
-        name = (baseName + "_" + std::to_string(counter)).str();
-      return name;
-    };
-    std::string firstName =
-        makeUniqueFromBase(dataOperand.getName().str() + "_split_0");
-    std::string secondName =
-        makeUniqueFromBase(dataOperand.getName().str() + "_split_1");
+    unsigned firstCounter = 0;
+    unsigned secondCounter = 0;
+    std::string firstName = AIE::generateUniqueSymbolNameFromBase(
+        deviceOp, dataOperand.getName().str() + "_split_0", firstCounter);
+    std::string secondName = AIE::generateUniqueSymbolNameFromBase(
+        deviceOp, dataOperand.getName().str() + "_split_1", secondCounter);
 
     // Create the new global operations
     rewriter.setInsertionPoint(originalGlobal);
