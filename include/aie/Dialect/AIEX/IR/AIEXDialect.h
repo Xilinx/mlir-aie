@@ -75,11 +75,11 @@ mlir::Value createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
 
 // Marker attribute the aiecc --reconfig-method fold stamps on the entry
 // (dispatch host) device; readers (AIESplitConfigureEntries, aiecc's entry
-// select + host keep) match on `hasAttr(kEntrypointAttr)`. Defined on the
+// select + host keep) match on `hasAttr(kEntryDeviceAttr)`. Defined on the
 // dialect so the pass and the driver share ONE source of truth.
-constexpr llvm::StringLiteral kEntrypointAttr = "aiex.entrypoint";
+constexpr llvm::StringLiteral kEntryDeviceAttr = "aiex.entry_device";
 
-// Key, within the kEntrypointAttr dictionary, holding the --reconfig-method
+// Key, within the kEntryDeviceAttr dictionary, holding the --reconfig-method
 // spelling (loadpdi|write32|ctrlpkt). The AIEApplyReconfigMethod pass reads
 // it to derive its behavior; the aiecc fold stamps it. Defined on the dialect
 // so the pass and the driver share one source of truth.

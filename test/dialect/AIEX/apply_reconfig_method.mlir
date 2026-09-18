@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// ctrlpkt method: on the aiex.entrypoint-marked device, synthesize ONE shared
+// ctrlpkt method: on the aiex.entry_device-marked device, synthesize ONE shared
 // `init` (cloned from the first entrypoint's sole load_pdi, signature = the
 // trailing ctrl-pkt-stream arg) inserted BEFORE the configs, and STRIP every
 // per-config load_pdi re-arm (the in-band self-clear supplies each reset). The
@@ -38,5 +38,5 @@ module {
     aie.runtime_sequence @config_2(%s: memref<8xi32>) {
       aiex.npu.load_pdi {id = 2 : i32}
     }
-  } {aiex.entrypoint = {reconfig_method = "ctrlpkt"}}
+  } {aiex.entry_device = {reconfig_method = "ctrlpkt"}}
 }

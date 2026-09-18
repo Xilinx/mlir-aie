@@ -20,11 +20,11 @@
 // design's own now-internal sequence reverts to the canonical @sequence
 // (referenced only by aiex.run, never dispatched). So the dispatchable kernel is
 // main:sequence; @sequence_config and the inner @sequence are purely internal.
-// The fold labels the host with the aiex.entrypoint marker (a trailing dict
+// The fold labels the host with the aiex.entry_device marker (a trailing dict
 // carrying the reconfig_method), which identifies the entry device downstream.
 // CHECK: aie.device([[ARCH:.*]]) {
 // CHECK-NEXT: aie.runtime_sequence(%{{.*}}: memref<4xi32>)
 // CHECK:     aiex.configure @sequence_config {
 // CHECK:       aiex.run @sequence(%{{.*}}) : (memref<4xi32>)
-// CHECK: aiex.entrypoint = {reconfig_method = "ctrlpkt"}
+// CHECK: aiex.entry_device = {reconfig_method = "ctrlpkt"}
 // CHECK: aie.device([[ARCH]]) @sequence_config {

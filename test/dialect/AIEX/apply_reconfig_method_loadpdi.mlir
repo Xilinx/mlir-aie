@@ -24,5 +24,5 @@ module {
     aie.runtime_sequence @config_2(%s: memref<8xi32>) {
       aiex.npu.load_pdi {id = 4 : i32}
     }
-  } {aiex.entrypoint = {reconfig_method = "loadpdi"}}
+  } {aiex.entry_device = {reconfig_method = "loadpdi"}}
 }

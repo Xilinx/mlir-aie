@@ -16,7 +16,7 @@
 // never renames), each issuing its own config device (kept verbatim). The host
 // device prints with no symbol: "main" is DeviceOp's default sym_name
 // (getDefaultDeviceName()), and the assembly format elides a symbol that
-// equals the default. The fold labels that host with the aiex.entrypoint marker
+// equals the default. The fold labels that host with the aiex.entry_device marker
 // (a trailing dict carrying the reconfig_method), which identifies the entry
 // device downstream.
 // CHECK: aie.device({{.*}}) {
@@ -24,6 +24,6 @@
 // CHECK: aiex.configure @cfg_a
 // CHECK: aie.runtime_sequence @configs_2
 // CHECK: aiex.configure @cfg_b
-// CHECK: aiex.entrypoint = {reconfig_method = "ctrlpkt"}
+// CHECK: aiex.entry_device = {reconfig_method = "ctrlpkt"}
 // CHECK: aie.device({{.*}}) @cfg_a
 // CHECK: aie.device({{.*}}) @cfg_b

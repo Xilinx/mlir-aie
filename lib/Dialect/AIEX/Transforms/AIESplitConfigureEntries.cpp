@@ -18,8 +18,9 @@
 // runtime_sequences (one `aiex.configure` each), in original program order, so
 // all the existing downstream union machinery is reused unchanged.
 //
-// Only the `aiex.entrypoint`-marked host device is touched; the config-template
-// devices (`aie.device @opK`) and their offset-agnostic bodies are left alone.
+// Only the `aiex.entry_device`-marked host device is touched; the
+// config-template devices (`aie.device @opK`) and their offset-agnostic bodies
+// are left alone.
 //
 //===----------------------------------------------------------------------===//
 
@@ -51,11 +52,11 @@ using namespace xilinx::AIE;
 
 namespace {
 
-// The entry-device marker `xilinx::AIEX::kEntrypointAttr` (AIEXDialect.h, in
+// The entry-device marker `xilinx::AIEX::kEntryDeviceAttr` (AIEXDialect.h, in
 // scope via `using namespace xilinx::AIEX`) is the sole discriminator that
 // identifies the reconfiguration entry device; config-order / name suffixes and
 // tile-lessness are all fragile. The `--reconfig-method` fold stamps it and
-// readers match on `hasAttr(kEntrypointAttr)`.
+// readers match on `hasAttr(kEntryDeviceAttr)`.
 
 // Split one multi-configure runtime sequence into N per-configure sequences.
 // Returns failure (with a diagnostic already emitted) on a malformed input.
@@ -167,7 +168,7 @@ struct AIESplitConfigureEntriesPass
     ModuleOp module = getOperation();
 
     for (DeviceOp dev : module.getOps<DeviceOp>()) {
-      if (!dev->hasAttr(kEntrypointAttr))
+      if (!dev->hasAttr(kEntryDeviceAttr))
         continue;
 
       // Names are unique across the whole marked device (the dispatch name is

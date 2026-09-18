@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // Explode IRON's single multi-`aiex.configure` runtime_sequence (on the
-// `aiex.entrypoint`-marked host device) into N per-config runtime_sequences,
+// `aiex.entry_device`-marked host device) into N per-config runtime_sequences,
 // one `aiex.configure` each, in original program order. The referenced device
 // symbol repeats (op0 appears twice), so the new sequence names carry the
 // block-order index to disambiguate occurrences and preserve schedule order.
@@ -81,5 +81,5 @@ module {
         aiex.run @sequence(%sv0, %sv1) : (memref<8xi32, strided<[1]>>, memref<8xi32, strided<[1]>>)
       }
     }
-  } {aiex.entrypoint = {reconfig_method = "ctrlpkt"}}
+  } {aiex.entry_device = {reconfig_method = "ctrlpkt"}}
 }

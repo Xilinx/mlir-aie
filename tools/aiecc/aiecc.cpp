@@ -639,17 +639,17 @@ static std::string writeMergedModule(mlir::ModuleOp mod,
 }
 
 // Label the fold-synthesized entry (top-level host) device with the
-// aiex.entrypoint marker -- a dictionary carrying the reconfig_method. Its
+// aiex.entry_device marker -- a dictionary carrying the reconfig_method. Its
 // presence is what downstream (aie-apply-reconfig-method entry select,
 // SidecarFiles host-keep) uses to identify the entry device, robust to the
-// sequence sym_names. See kEntrypointAttr.
-static void markEntrypointDevice(xilinx::AIE::DeviceOp host,
-                                 ReconfigMethod reconfigMethod) {
+// sequence sym_names. See kEntryDeviceAttr.
+static void markEntryDevice(xilinx::AIE::DeviceOp host,
+                            ReconfigMethod reconfigMethod) {
   mlir::MLIRContext *ctx = host.getContext();
   mlir::NamedAttribute methodAttr(
       mlir::StringAttr::get(ctx, xilinx::aiecc::kReconfigMethodKey),
       mlir::StringAttr::get(ctx, reconfigMethodName(reconfigMethod)));
-  host->setAttr(xilinx::aiecc::kEntrypointAttr,
+  host->setAttr(xilinx::aiecc::kEntryDeviceAttr,
                 mlir::DictionaryAttr::get(ctx, {methodAttr}));
 }
 
@@ -711,7 +711,7 @@ static std::string conformIdiomaticInputs(llvm::ArrayRef<std::string> inputs,
       host.setSymName("main");
       // Label the synthesized entry device so downstream identifies it by the
       // marker's presence rather than the (migrating) sequence sym_names.
-      markEntrypointDevice(host, reconfigMethod);
+      markEntryDevice(host, reconfigMethod);
       hostBody = b.createBlock(&host.getRegion());
       OpBuilder endBuilder(hostBody, hostBody->end());
       EndOp::create(endBuilder, loc); // aie.end terminator
@@ -870,7 +870,7 @@ static std::string unionConfigDesigns(mlir::MLIRContext &context,
 
   // Label the base host as the entry device (its presence, not the sequence
   // names, is what identifies it downstream).
-  markEntrypointDevice(baseHost, reconfigMethod);
+  markEntryDevice(baseHost, reconfigMethod);
 
   // Keep the base design's host runtime sequence name as-authored here: it is
   // the entrypoint (dispatch) name the design chose (main:<name>). Entry names
@@ -1350,16 +1350,16 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
   // IRON's fused decode arrives as ONE `aie.runtime_sequence` holding N
-  // `aiex.configure` ops on the `aiex.entrypoint`-marked host (llama: 322
+  // `aiex.configure` ops on the `aiex.entry_device`-marked host (llama: 322
   // configures over 19 config devices). The aie-apply-reconfig-method pass
   // and the aie-expand-load-pdi self-clear (getExpandLoadPdiPipeline) both need
   // exactly one configure/load_pdi per runtime-sequence block, so explode the
   // monolith into N one-configure sequences HERE -- before
   // getMaterializeRuntimeSeqPipeline rewrites `aiex.configure` into `aie.run`
   // (after which nothing is left to split). Gated on the --reconfig-method fold
-  // (generateMultiConfigElf); the pass itself keys on the entrypoint marker and
-  // is a genuine no-op on already-split single-configure sequences (conformed
-  // multi-config inputs), so those fold inputs pass through
+  // (generateMultiConfigElf); the pass itself keys on the entry-device marker
+  // and is a genuine no-op on already-split single-configure sequences
+  // (conformed multi-config inputs), so those fold inputs pass through
   // unchanged.
   EdgeWithTypedOutput<ModRef> &npuConfigureSplit =
       generateMultiConfigElf
@@ -1431,7 +1431,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Assign PDI ids on every flow, then (on the fold only) synthesize the shared
   // reconfig `init` and normalize each per-config load_pdi re-arm. The
   // aie-apply-reconfig-method pass reads the delivery method off the
-  // aiex.entrypoint marker and derives its own policy, so it needs no options
+  // aiex.entry_device marker and derives its own policy, so it needs no options
   // and no-ops on non-fold modules (which carry no marker). The result folds N
   // per-config designs (seq_1..seq_N from unionConfigDesigns) into
   // init + config_1..config_N (or just config_1..config_N for the no-init

@@ -302,8 +302,8 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
 // because that config rides in the baked `.ctrldata` control-packet stream (or
 // the OOB direct-write patches) rather than in a resident core.
 //
-// The host device is identified by the `aiex.entrypoint` MARKER the fold sets
-// on it (kEntrypointAttr), OR -- for a still-legacy path that has not yet been
+// The host device is identified by the `aiex.entry_device` MARKER the fold sets
+// on it (kEntryDeviceAttr), OR -- for a still-legacy path that has not yet been
 // migrated to the marker -- by SEQUENCE NAME (`init`/`config_<n>`). It is NOT
 // identified by load_pdi presence: whether the host or a streamed-config
 // template carries a load_pdi is method-dependent (a load_pdi may be rewritten
@@ -345,7 +345,7 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
     for (const auto &item : devices.items) {
       xilinx::AIE::DeviceOp devOp = item.get().op;
       // Marker presence OR (migration window) the legacy split-entry name.
-      bool isHostDev = devOp->hasAttr(kEntrypointAttr);
+      bool isHostDev = devOp->hasAttr(kEntryDeviceAttr);
       devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
         if (isSplitEntry(seq.getSymName()))
           isHostDev = true;

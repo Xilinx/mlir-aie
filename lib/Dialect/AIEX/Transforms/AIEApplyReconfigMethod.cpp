@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// On the `aiex.entrypoint`-marked host device of a `--reconfig-method` fold,
+// On the `aiex.entry_device`-marked host device of a `--reconfig-method` fold,
 // this pass synthesizes the shared standup `init` sequence and normalizes each
 // per-config entrypoint's load_pdi re-arm, according to the delivery method
 // recorded in the marker's `reconfig_method` key (loadpdi | write32 | ctrlpkt).
@@ -200,11 +200,11 @@ struct AIEApplyReconfigMethodPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
-    // The entry device carries the aiex.entrypoint marker (kEntrypointAttr) --
-    // the SOLE discriminator. Its dictionary records the reconfig_method
+    // The entry device carries the aiex.entry_device marker (kEntryDeviceAttr)
+    // -- the SOLE discriminator. Its dictionary records the reconfig_method
     // spelling, from which the split policy is derived. No marker -> no-op.
     for (DeviceOp dev : module.getOps<DeviceOp>()) {
-      auto marker = dev->getAttrOfType<DictionaryAttr>(kEntrypointAttr);
+      auto marker = dev->getAttrOfType<DictionaryAttr>(kEntryDeviceAttr);
       if (!marker)
         continue;
 
@@ -217,7 +217,7 @@ struct AIEApplyReconfigMethodPass
       if (!ctrlPkt && !write32 && !loadPdiNoInit) {
         dev->emitError() << "aie-apply-reconfig-method: unrecognized "
                          << kReconfigMethodKey << " '" << method
-                         << "' on the entrypoint marker (expected "
+                         << "' on the entry-device marker (expected "
                             "loadpdi|write32|ctrlpkt)";
         signalPassFailure();
         return;

@@ -607,7 +607,7 @@ def AIESplitConfigureEntries
   let summary = "Explode a multi-configure runtime sequence into per-config "
                 "entries";
   let description = [{
-    On the `aiex.entrypoint`-marked host device (the reconfiguration entry
+    On the `aiex.entry_device`-marked host device (the reconfiguration entry
     device synthesized by the `--reconfig-method` fold), IRON's
     `OperatorSequence` lowering emits a SINGLE `aie.runtime_sequence` whose body
     holds MANY `aiex.configure @opK { ... aiex.run @sequence(subviews) }` ops in
@@ -644,7 +644,7 @@ def AIEApplyReconfigMethod
   let summary = "Synthesize the shared reconfig init and normalize per-config "
                 "load_pdi re-arm";
   let description = [{
-    On the `aiex.entrypoint`-marked host device of a `--reconfig-method` fold,
+    On the `aiex.entry_device`-marked host device of a `--reconfig-method` fold,
     synthesize the single shared standup `init` runtime_sequence and normalize
     each per-config entrypoint's `npu.load_pdi` re-arm, according to the
     delivery method recorded in the marker's `reconfig_method` key

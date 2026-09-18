@@ -16,7 +16,7 @@ module {
     aie.runtime_sequence @config_1(%s: memref<8xi32>) {
       aiex.npu.load_pdi {id = 1 : i32}
     }
-  } {aiex.entrypoint = {reconfig_method = "bogus"}}
+  } {aiex.entry_device = {reconfig_method = "bogus"}}
 }
 
 // -----
@@ -29,5 +29,5 @@ module {
     aie.runtime_sequence @config_1() {
       aiex.npu.load_pdi {id = 1 : i32}
     }
-  } {aiex.entrypoint = {reconfig_method = "ctrlpkt"}}
+  } {aiex.entry_device = {reconfig_method = "ctrlpkt"}}
 }

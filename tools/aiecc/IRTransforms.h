@@ -79,11 +79,11 @@ constexpr llvm::StringLiteral kPdiIdAttr = "aiecc.pdi_id";
 // A DictionaryAttr so it stays forward-looking -- more descriptors can become
 // keys; the `reconfig_method` key carries the delivery method
 // ("loadpdi"/"write32"/"ctrlpkt"). Readers (applyReconfigMethod entry select,
-// SidecarFiles host-keep) match on hasAttr(kEntrypointAttr) OR the legacy
+// SidecarFiles host-keep) match on hasAttr(kEntryDeviceAttr) OR the legacy
 // `init`/`config_<n>` name during the Task-1..Task-5 migration window.
-// Single source of truth: xilinx::AIEX::kEntrypointAttr (AIEXDialect.h), so the
-// AIESplitConfigureEntries pass and this driver cannot drift apart.
-constexpr llvm::StringLiteral kEntrypointAttr = xilinx::AIEX::kEntrypointAttr;
+// Single source of truth: xilinx::AIEX::kEntryDeviceAttr (AIEXDialect.h), so
+// the AIESplitConfigureEntries pass and this driver cannot drift apart.
+constexpr llvm::StringLiteral kEntryDeviceAttr = xilinx::AIEX::kEntryDeviceAttr;
 constexpr llvm::StringLiteral kReconfigMethodKey =
     xilinx::AIEX::kReconfigMethodKey;
 
@@ -1187,7 +1187,7 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false,
 }
 
 // Explode IRON's fused multi-configure host sequence into one `aiex.configure`
-// per runtime sequence (module-level). Only the `aiex.entrypoint`-marked host
+// per runtime sequence (module-level). Only the `aiex.entry_device`-marked host
 // device is touched, and the pass is a genuine no-op on sequences that already
 // hold a single configure (conformed multi-config inputs). MUST run
 // before getMaterializeRuntimeSeqPipeline, which rewrites `aiex.configure` into
@@ -1202,7 +1202,7 @@ getSplitConfigureEntriesPipeline(mlir::MLIRContext *ctx) {
 }
 
 // Synthesize the shared reconfig `init` and normalize per-config load_pdi
-// re-arm on the aiex.entrypoint-marked device, per its recorded
+// re-arm on the aiex.entry_device-marked device, per its recorded
 // reconfig_method. Runs AFTER per-device DMA lowering + PDI-id assignment; a
 // no-op without the marker (so ordinary non-fold compiles are untouched).
 inline std::unique_ptr<mlir::PassManager>

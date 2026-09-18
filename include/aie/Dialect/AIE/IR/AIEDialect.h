@@ -29,7 +29,7 @@ namespace xilinx::AIE {
 // passes (AIEAutoPacketizeControlIngress / AIEGenerateColumnControlOverlay
 // producers, AIEPathFinder / AIECtrlPacketToDma consumers). Defined on the
 // dialect so producers and consumers share ONE source of truth rather than
-// re-typing the string literal (mirrors AIEX::kEntrypointAttr).
+// re-typing the string literal (mirrors AIEX::kEntryDeviceAttr).
 constexpr llvm::StringLiteral kCtrlPktTrunkChanAttr = "ctrl_pkt_trunk_chan";
 constexpr llvm::StringLiteral kCtrlPktShimChanAttr = "ctrl_pkt_shim_chan";
 constexpr llvm::StringLiteral kHasCtrlPktOverlayAttr = "has_ctrl_pkt_overlay";
