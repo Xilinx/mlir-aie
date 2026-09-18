@@ -504,8 +504,7 @@ struct AIEObjectFifoAllocatePass
       for (auto name :
            {segment.getProduceLockAttr(), segment.getConsumeLockAttr()})
         if (name)
-          if (auto lock =
-                  SymbolTable::lookupNearestSymbolFrom<LockOp>(device, name))
+          if (auto lock = lookupNamedOp<LockOp>(device, name.getAttr()))
             tiles.push_back(lock.getTile());
     }
     return tiles;
