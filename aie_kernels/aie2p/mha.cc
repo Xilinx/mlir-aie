@@ -12,7 +12,6 @@
 // compiled by passing -DB_COL_MAJ to the compiler; this flag is set in the
 // PeanoCompilationRule configuration for this file.
 // mm.cc provides matmul_bf16_bf16 and matmul_scalar_bf16_bf16.
-#include "mm.cc"
 #include "../generic/zero.cc"
 
 #include <aie_api/aie.hpp>
