@@ -337,7 +337,10 @@ def test_compile_failure_leaves_no_trusted_cache(tmp_path, func):
     assert compile_utils._has_current_symbol_prefix_stamp(str(obj), "op0_")
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory write bits")
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0,
+    reason="requires POSIX directory permissions and a non-root user",
+)
 def test_unwritable_directory_leaves_no_trusted_cache(tmp_path, func):
     """If the stamp cannot be written, the entry must not be trusted later."""
     obj = tmp_path / func.object_file_name

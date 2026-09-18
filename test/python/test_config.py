@@ -82,6 +82,7 @@ def _resolve(expr, path_dirs=None, **env_overrides):
         env=env,
         capture_output=True,
         text=True,
+        timeout=30,
     )
     return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
 
@@ -129,6 +130,33 @@ def test_broken_candidate_is_skipped_for_a_working_one(tmp_path):
 
 
 @posix_only
+def test_hanging_candidate_is_skipped_for_a_working_one(tmp_path):
+    hanging = _write_tool(tmp_path / "hanging", "llvm-faketool")
+    hanging.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(60)\n")
+    working = _write_tool(tmp_path / "working", "llvm-faketool")
+    stdout, _, code = _resolve(_FAKE, path_dirs=[hanging.parent, working.parent])
+    assert code == 0
+    assert stdout == str(working)
+
+
+@posix_only
+@pytest.mark.parametrize("name", ["llvm-faketool", "llvm-faketool-18"])
+@pytest.mark.parametrize("kind", ["directory", "fifo", "non_executable"])
+def test_path_ignores_non_executable_files(tmp_path, name, kind):
+    candidate = tmp_path / name
+    if kind == "directory":
+        candidate.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(candidate, 0o755)
+    else:
+        candidate.write_text("#!/bin/sh\nexit 0\n")
+        candidate.chmod(0o644)
+    _, stderr, code = _resolve(_FAKE, path_dirs=[tmp_path])
+    assert code != 0
+    assert "Could not find llvm-faketool" in stderr
+
+
+@posix_only
 def test_versioned_spelling_used_when_bare_name_absent(tmp_path):
     tool = _write_tool(tmp_path / "bin", "llvm-faketool-18")
     stdout, _, code = _resolve(_FAKE, path_dirs=[tool.parent])
@@ -139,19 +167,37 @@ def test_versioned_spelling_used_when_bare_name_absent(tmp_path):
 @posix_only
 def test_bare_name_preferred_over_versioned(tmp_path):
     bare = _write_tool(tmp_path / "bin", "llvm-faketool")
-    _write_tool(tmp_path / "bin", "llvm-faketool-18")
-    stdout, _, code = _resolve(_FAKE, path_dirs=[bare.parent])
+    versioned = _write_tool(tmp_path / "versioned", "llvm-faketool-18")
+    stdout, _, code = _resolve(_FAKE, path_dirs=[versioned.parent, bare.parent])
     assert code == 0
     assert stdout == str(bare)
 
 
 @posix_only
 def test_highest_version_wins(tmp_path):
-    _write_tool(tmp_path / "bin", "llvm-faketool-9")
+    older = _write_tool(tmp_path / "older", "llvm-faketool-9")
     newest = _write_tool(tmp_path / "bin", "llvm-faketool-18")
-    stdout, _, code = _resolve(_FAKE, path_dirs=[newest.parent])
+    stdout, _, code = _resolve(_FAKE, path_dirs=[older.parent, newest.parent])
     assert code == 0
     assert stdout == str(newest)
+
+
+@posix_only
+def test_broken_versioned_candidate_is_skipped(tmp_path):
+    broken = _write_tool(tmp_path / "bin", "llvm-faketool-18", exit_code=1)
+    working = _write_tool(tmp_path / "bin", "llvm-faketool-9")
+    stdout, _, code = _resolve(_FAKE, path_dirs=[broken.parent])
+    assert code == 0
+    assert stdout == str(working)
+
+
+@posix_only
+def test_same_version_preserves_path_order(tmp_path):
+    preferred = _write_tool(tmp_path / "first", "llvm-faketool-18")
+    other = _write_tool(tmp_path / "second", "llvm-faketool-18")
+    stdout, _, code = _resolve(_FAKE, path_dirs=[preferred.parent, other.parent])
+    assert code == 0
+    assert stdout == str(preferred)
 
 
 @posix_only
@@ -173,6 +219,7 @@ def test_nothing_found_raises(tmp_path):
     _, stderr, code = _resolve(_FAKE, path_dirs=[empty])
     assert code != 0
     assert "Could not find llvm-faketool" in stderr
+    assert f"PATH directories: {empty}" in stderr
 
 
 def test_nm_path_lists_symbols_of_a_real_aie_object(aie_object):

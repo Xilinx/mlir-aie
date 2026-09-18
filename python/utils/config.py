@@ -89,8 +89,13 @@ def _tool_runs(path):
     its output sees an empty symbol listing rather than a broken toolchain.
     """
     try:
-        return subprocess.run([path, "--version"], capture_output=True).returncode == 0
-    except OSError:
+        return (
+            subprocess.run(
+                [path, "--version"], capture_output=True, timeout=5
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.TimeoutExpired):
         return False
 
 
@@ -125,29 +130,26 @@ def _path_candidates(name):
     suffix = ".exe" if os.name == "nt" else ""
     pattern = re.compile(rf"{re.escape(name)}-(\d+){re.escape(suffix)}$")
 
-    bare = []
+    directories = list(
+        dict.fromkeys(directory or os.curdir for directory in os.get_exec_path())
+    )
+    for directory in directories:
+        candidate = os.path.join(directory, exe)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            yield candidate
+
     versioned = []
-    seen = set()
-    for directory in os.get_exec_path():
+    for directory in directories:
         try:
-            entries = sorted(os.listdir(directory))
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    match = pattern.fullmatch(entry.name)
+                    if match and entry.is_file() and os.access(entry.path, os.X_OK):
+                        versioned.append((int(match.group(1)), entry.path))
         except OSError:
             # PATH routinely names directories that do not exist.
             continue
-        for entry in entries:
-            candidate = os.path.join(directory, entry)
-            if candidate in seen or not os.access(candidate, os.X_OK):
-                continue
-            if entry == exe:
-                seen.add(candidate)
-                bare.append(candidate)
-                continue
-            match = pattern.match(entry)
-            if match:
-                seen.add(candidate)
-                versioned.append((int(match.group(1)), candidate))
 
-    yield from bare
     for _, candidate in sorted(versioned, key=lambda item: -item[0]):
         yield candidate
 
@@ -192,6 +194,8 @@ def _find_llvm_tool(name, env_var):
         f"environment variable, the MLIR-AIE and Peano bin directories, then "
         f"PATH (including versioned spellings such as {name}-18). Searched: "
         + (", ".join(searched) if searched else "(no bundled bin directories)")
+        + ". PATH directories: "
+        + ", ".join(directory or os.curdir for directory in os.get_exec_path())
     )
 
 
