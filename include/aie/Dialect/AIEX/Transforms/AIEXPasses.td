@@ -20,11 +20,10 @@ def AIEXToStandard : Pass<"aiex-standard-lowering", "mlir::ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIEXToStandardPass()";
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "mlir::memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -50,11 +49,10 @@ def AIEDecomposeLargeDmaBd
   }];
 
   let constructor = "xilinx::AIEX::createAIEDecomposeLargeDmaBdPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -81,10 +79,9 @@ def AIESCFToControlFlow : Pass<"aie-scf-to-control-flow", "mlir::ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIESCFToControlFlowPass()";
-  let dependentDialects = [
-    "mlir::cf::ControlFlowDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::cf::ControlFlowDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -119,10 +116,8 @@ def AIECreateCores : Pass<"aie-create-cores", "AIE::DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIECreateCoresPass()";
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -137,17 +132,16 @@ def AIECreateLocks : Pass<"aie-create-locks", "AIE::DeviceOp"> {
   let constructor = "xilinx::AIEX::createAIECreateLocksPass()";
 }
 
-
 def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "AIE::DeviceOp"> {
-  let summary = "Replace combination of broadcast and packet-switch by packet-flow";
+  let summary =
+      "Replace combination of broadcast and packet-switch by packet-flow";
   let description = [{
     Replace combination of broadcast and packet-switch by packet-flow
   }];
 
   let constructor = "xilinx::AIEX::createAIEBroadcastPacketPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -160,9 +154,8 @@ def AIEMulticast : Pass<"aie-lower-multicast", "AIE::DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIELowerMulticastPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -175,10 +168,8 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIELowerMemcpyPass()";
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -188,13 +179,20 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 
   }];
 
+  let options = [Option<
+      "enforceQueueDepth", "enforce-queue-depth", "bool",
+      /*default=*/"true",
+      "Insert an aiex.npu.maskpoll before any npu.dma_memcpy_nd that could "
+      "push onto a full DMA task queue. Mirrors the option of the same "
+      "name on aie-assign-runtime-sequence-bd-ids, which covers the "
+      "dma_start_task path.">];
+
   let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::func::FuncDialect",
-    "mlir::memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -210,16 +208,14 @@ def AIENpuToCert : Pass<"aie-npu-to-cert", "mlir::ModuleOp"> {
     from the output, keeping only the main device.
   }];
 
-  let options = [
-    Option<"deviceName", "device-name", "std::string", /*default=*/"\"main\"",
-           "Name of the main device to emit (other devices are removed after absorption)">
-  ];
+  let options = [Option<"deviceName", "device-name", "std::string",
+                        /*default=*/"\"main\"",
+                        "Name of the main device to emit (other devices are "
+                        "removed after absorption)">];
 
   let constructor = "xilinx::AIEX::createAIENpuToCertPass()";
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -232,28 +228,28 @@ def AIECertPages : Pass<"cert-legalize-pages", "AIE::DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIECertPagesPass()";
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
-def AIEMaterializeBDChains : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
+def AIEMaterializeBDChains
+    : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
   let summary = "Concretize aie.bd_chain ops at aiex.start_task use sites";
   let description = [{
     Inlines pre-defined `aie.bd_chains` at `aiex.start_task` use sites to become `aiex.dma_configure_task` and `aiex.dma_start_task` ops.
   }];
 
   let constructor = "xilinx::AIEX::createAIEMaterializeBDChainsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
-def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "mlir::ModuleOp"> {
-  let summary = "Turn `aiex.configure` into configuration primitives and inline `aiex.run` calls";
+def AIEMaterializeRuntimeSequences
+    : Pass<"aie-materialize-runtime-sequences", "mlir::ModuleOp"> {
+  let summary = "Turn `aiex.configure` into configuration primitives and "
+                "inline `aiex.run` calls";
   let description = [{
     Turns top-level `aiex.configure` into load PDI firmware instructions that set up the requested configuration.
 
@@ -263,9 +259,8 @@ def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "
   }];
 
   let constructor = "xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -316,13 +311,37 @@ def AIEResolveAddressPatchBuffers
                            "xilinx::AIEX::AIEXDialect"];
 }
 
-def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
-  let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
+def AIEAssignRuntimeSequenceBDIDs
+    : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
+  let summary =
+      "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
+
+  let options =
+      [Option<
+           "enforceQueueDepth", "enforce-queue-depth", "bool",
+           /*default=*/"true",
+           "Insert an aiex.npu.maskpoll before any dma_start_task that could "
+           "push onto a full DMA task queue, so the sequence waits for a free "
+           "slot instead of racing on drain timing. On by default: the stall "
+           "only happens where the DMA cannot drain ahead of the pushes, which "
+           "is exactly where the alternative is a dropped transfer. Targets "
+           "that report no pollable occupancy register fall back to warning.">,
+       Option<
+           "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
+           /*default=*/"false",
+           "Warn when a BD id released by aiex.dma_free_task without any "
+           "completion guarantee is later reused on the same tile. Off by "
+           "default: the common fill/drain idiom frees tasks on one channel "
+           "having awaited another, and that cross-channel reasoning runs "
+           "through the compute core, which the runtime sequence cannot see, "
+           "so this reports designs that are correct by an argument the "
+           "compiler does not have. Useful when chasing a suspected BD "
+           "aliasing hang.">];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -360,17 +379,15 @@ def AIEUnrollRuntimeSequenceLoops
   }];
 
   let constructor = "xilinx::AIEX::createAIEUnrollRuntimeSequenceLoopsPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::scf::SCFDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::scf::SCFDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
-def AIELowerDynamicBDPool
-    : Pass<"aie-lower-dynamic-bd-pool", "AIE::DeviceOp"> {
-  let summary = "Lower runtime-bound DMA task allocation to a runtime BD free-list pool";
+def AIELowerDynamicBDPool : Pass<"aie-lower-dynamic-bd-pool", "AIE::DeviceOp"> {
+  let summary =
+      "Lower runtime-bound DMA task allocation to a runtime BD free-list pool";
   let description = [{
     The dynamic counterpart to `aie-assign-runtime-sequence-bd-ids`. That pass
     requires straight-line IR and rejects runtime-bound `scf.for`; this pass
@@ -388,12 +405,19 @@ def AIELowerDynamicBDPool
     runtime loop are diagnosed.
   }];
 
+  let options = [Option<
+      "enforceQueueDepth", "enforce-queue-depth", "bool",
+      /*default=*/"true",
+      "Insert an aiex.npu.maskpoll before any dma_start_task in a "
+      "runtime-bound loop that could push onto a full DMA task queue. "
+      "The same option as on aie-dma-to-npu and "
+      "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
+      "of those reaches: a loop this pass deliberately keeps rolled.">];
+
   let constructor = "xilinx::AIEX::createAIELowerDynamicBDPoolPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::scf::SCFDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::scf::SCFDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -407,13 +431,14 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
-def AIESubstituteShimDMAAllocations : Pass<"aie-substitute-shim-dma-allocations", "AIE::DeviceOp"> {
-  let summary = "Replace symbolic references to `aie.shim_dma_allocation` ops with their `(tile, direction, channel)` triple";
+def AIESubstituteShimDMAAllocations
+    : Pass<"aie-substitute-shim-dma-allocations", "AIE::DeviceOp"> {
+  let summary = "Replace symbolic references to `aie.shim_dma_allocation` ops "
+                "with their `(tile, direction, channel)` triple";
 
   let constructor = "xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -421,20 +446,19 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
   let summary = "Lowers npu.control_packet op to npu.dma_memcpy_nd op";
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
-def AIECtrlPacketInferTiles : Pass<"aie-ctrl-packet-infer-tiles", "AIE::DeviceOp"> {
+def AIECtrlPacketInferTiles
+    : Pass<"aie-ctrl-packet-infer-tiles", "AIE::DeviceOp"> {
   let summary = "Infer aie.tile ops from aiex.control_packet addresses";
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketInferTilesPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -442,15 +466,16 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
   let summary = "Lowers all aiex.set_lock operations to npu.write32Op";
 
   let constructor = "xilinx::AIEX::createAIELowerSetLockPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
-def AIELowerDmaChannelReset : Pass<"aie-lower-dma-channel-reset", "AIE::DeviceOp"> {
-  let summary = "Lowers aiex.dma_channel_reset(_for) to npu.maskwrite32 + re-arm";
+def AIELowerDmaChannelReset
+    : Pass<"aie-lower-dma-channel-reset", "AIE::DeviceOp"> {
+  let summary =
+      "Lowers aiex.dma_channel_reset(_for) to npu.maskwrite32 + re-arm";
   let description = [{
     Two concerns, one pass (kept together like the other reset lowerings):
 
@@ -467,36 +492,36 @@ def AIELowerDmaChannelReset : Pass<"aie-lower-dma-channel-reset", "AIE::DeviceOp
     `--aie-lower-set-lock` / `--aie-dma-to-npu`, so run this before them.
   }];
   let constructor = "xilinx::AIEX::createAIELowerDmaChannelResetPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
 def AIELowerCoreReset : Pass<"aie-lower-core-reset", "AIE::DeviceOp"> {
   let summary = "Lowers all aiex.core_reset operations to npu.maskwrite32";
   let constructor = "xilinx::AIEX::createAIELowerCoreResetPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
 def AIEVerifyRuntimeRearm : Pass<"aie-verify-runtime-rearm", "AIE::DeviceOp"> {
-  let summary = "Experimental, opt-in: reject an aiex.dma_channel_reset whose "
-                "objectFIFO lock is never re-armed (a necessary, not sufficient, "
-                "condition for a safe reset)";
+  let summary =
+      "Experimental, opt-in: reject an aiex.dma_channel_reset whose "
+      "objectFIFO lock is never re-armed (a necessary, not sufficient, "
+      "condition for a safe reset)";
   let constructor = "xilinx::AIEX::createAIEVerifyRuntimeRearmPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
-def AIELowerScratchpadParameters : Pass<"aie-lower-scratchpad-parameters", "mlir::ModuleOp"> {
-  let summary = "Lower scratchpad parameter ops and emit parameter-sync preambles";
+def AIELowerScratchpadParameters
+    : Pass<"aie-lower-scratchpad-parameters", "mlir::ModuleOp"> {
+  let summary =
+      "Lower scratchpad parameter ops and emit parameter-sync preambles";
   let description = [{
     Lowers `aiex.scratchpad_parameter` and `aiex.read_scratchpad_parameter`
     ops into concrete scratchpad-based communication between host and AIE
@@ -523,17 +548,14 @@ def AIELowerScratchpadParameters : Pass<"aie-lower-scratchpad-parameters", "mlir
   }];
 
   let constructor = "xilinx::AIEX::createAIELowerScratchpadParametersPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::memref::MemRefDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
   ];
-  let options = [
-    Option<"outputParamsFile", "output-params-file", "std::string",
-           /*default=*/"\"\"",
-           "Path to write the parameter layout file to.">
-  ];
+  let options = [Option<"outputParamsFile", "output-params-file", "std::string",
+                        /*default=*/"\"\"",
+                        "Path to write the parameter layout file to.">];
 }
 
 def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
@@ -545,9 +567,8 @@ def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIETransformBfpTypesPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -555,24 +576,24 @@ def AIETxnToControlPacket : Pass<"aie-txn-to-ctrl-packet", "AIE::DeviceOp"> {
   let summary = "Convert transaction operations to control packet operations";
 
   let constructor = "xilinx::AIEX::createAIETxnToControlPacketPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
-def AIELegalizeControlPacket : Pass<"aie-legalize-ctrl-packet", "AIE::DeviceOp"> {
+def AIELegalizeControlPacket
+    : Pass<"aie-legalize-ctrl-packet", "AIE::DeviceOp"> {
   let summary = "Legalize control packet operations for target";
 
   let constructor = "xilinx::AIEX::createAIELegalizeControlPacketPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
 def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
-  let summary = "Expand load_pdi operations to explicit configuration sequences";
+  let summary =
+      "Expand load_pdi operations to explicit configuration sequences";
   let description = [{
     This pass transforms `load_pdi { device_ref = @device }` operations.
 
@@ -598,10 +619,9 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";
-  let dependentDialects = [
-    "mlir::memref::MemRefDialect",
-        "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
   let options =
       [Option<"clCtrlPkt", "ctrl-pkt", "bool", /*default=*/"false",
@@ -623,10 +643,9 @@ def AIEXInlineTraceConfig : Pass<"aie-inline-trace-config", "AIE::DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIEXInlineTraceConfigPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 

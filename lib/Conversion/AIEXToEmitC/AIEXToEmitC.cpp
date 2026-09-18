@@ -205,6 +205,15 @@ private:
                       {addrV, mw.getValue(), mw.getMask()});
           countOp(b, loc, count);
         })
+        .Case<AIEX::NpuMaskPollOp>([&](auto mp) {
+          Value addrV = runtimeOrResolvedAddr(b, loc, mp, mp.getAddress());
+          if (!addrV)
+            return fail(mp, "cannot convert a symbolic/unresolved maskpoll "
+                            "address to the C++ TXN target");
+          emitTxnCall(b, loc, "txn_append_maskpoll32", txnVec,
+                      {addrV, mp.getValue(), mp.getMask()});
+          countOp(b, loc, count);
+        })
         .Case<AIEX::NpuSyncOp>([&](auto s) {
           emitTxnCall(b, loc, "txn_append_sync", txnVec,
                       {s.getColumn(), s.getRow(), s.getDirection(),
@@ -512,6 +521,9 @@ private:
         resolved.absoluteAddr[clone] = *a;
     } else if (auto mw = dyn_cast<AIEX::NpuMaskWrite32Op>(orig)) {
       if (auto a = mw.getAbsoluteAddress())
+        resolved.absoluteAddr[clone] = *a;
+    } else if (auto mp = dyn_cast<AIEX::NpuMaskPollOp>(orig)) {
+      if (auto a = mp.getAbsoluteAddress())
         resolved.absoluteAddr[clone] = *a;
     } else if (auto bw = dyn_cast<AIEX::NpuBlockWriteOp>(orig)) {
       if (auto a = bw.getAbsoluteAddress())

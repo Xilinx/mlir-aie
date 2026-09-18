@@ -1300,9 +1300,13 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // A runtime-bound scf.for that survived unroll takes the dynamic BD pool path
   // (rewritten to pool pop/push, ids drawn at runtime); the static allocator
   // below skips it. Straight-line sequences fall through unchanged.
-  dpm.addPass(X::createAIELowerDynamicBDPoolPass());
+  X::AIELowerDynamicBDPoolOptions poolOpts;
+  poolOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  dpm.addPass(X::createAIELowerDynamicBDPoolPass(poolOpts));
   dpm.addPass(mlir::createCanonicalizerPass());
-  dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
+  X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
+  bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
   // set_lock + a START_QUEUE re-push) and lower the resulting dma_channel_reset
@@ -1312,7 +1316,9 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // bd_id + repeat it re-pushes were folded into the objectfifo_rearm_binding
   // by aie-assign-bd-ids.
   dpm.addPass(X::createAIELowerDmaChannelResetPass());
-  dpm.addPass(X::createAIEDmaToNpuPass());
+  X::AIEDmaToNpuOptions dmaToNpuOpts;
+  dmaToNpuOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  dpm.addPass(X::createAIEDmaToNpuPass(dmaToNpuOpts));
   dpm.addPass(X::createAIELowerSetLockPass());
   dpm.addPass(X::createAIELowerCoreResetPass());
   return pm;
@@ -1357,11 +1363,15 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
-  dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
+  X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
+  bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(mlir::createCanonicalizerPass());
   dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());
-  dpm.addPass(X::createAIEDmaToNpuPass());
+  X::AIEDmaToNpuOptions dmaToNpuOpts;
+  dmaToNpuOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  dpm.addPass(X::createAIEDmaToNpuPass(dmaToNpuOpts));
   dpm.addPass(X::createAIELowerSetLockPass());
   return pm;
 }
@@ -1423,7 +1433,14 @@ getControlPacketDmaPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
   dpm.addPass(xilinx::AIEX::createAIECtrlPacketToDmaPass());
-  dpm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
+  // Not the user's queue-depth setting: this sequence is generated one push and
+  // one sync at a time, so the queue never fills. If that ever regresses, a
+  // warning against compiler-generated IR is the right diagnostic for a
+  // compiler bug -- a poll would paper over it, and a build failure would blame
+  // the user for IR they cannot edit.
+  xilinx::AIEX::AIEDmaToNpuOptions ctrlPktOpts;
+  ctrlPktOpts.enforceQueueDepth = false;
+  dpm.addPass(xilinx::AIEX::createAIEDmaToNpuPass(ctrlPktOpts));
   return pm;
 }
 

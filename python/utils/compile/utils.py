@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -429,6 +430,21 @@ def _run_aiecc(mlir_file: str, args: list[str]):
         logger.debug("%s", result.stdout)
     if result.stderr:
         logger.debug("%s", result.stderr)
+        # Diagnostics from a build that succeeded would otherwise be dropped:
+        # debug logging is off by default and the failure path below only runs
+        # on a non-zero exit.
+        if result.returncode == 0:
+            for line in result.stderr.splitlines():
+                # Notes are the explanation, not decoration. A warning that
+                # queue-depth enforcement could not be applied says why in an
+                # attached note, so dropping notes leaves the generic overflow
+                # text with no hint that the target is the reason. Diagnostics
+                # without a location print without the "file:line:" prefix.
+                if any(
+                    f": {severity}:" in line or line.startswith(f"{severity}:")
+                    for severity in ("warning", "error", "note")
+                ):
+                    print(f"[aiecc] {line}", file=sys.stderr)
     if result.returncode != 0:
         error_msg = result.stderr if result.stderr else result.stdout
         raise RuntimeError(
