@@ -180,13 +180,7 @@ def test_out_of_range_value_rejected(fixture_so, value):
 
 
 def test_param_type_mismatch_rejected():
-    """A declared/generated type mismatch means the values are transposed.
-
-    The generated parameter order is the Runtime(seq, fn_args=[...]) order the
-    author wrote by hand; the declared order is the Python signature. Nothing
-    ties them together, so this is the only signal available when a design
-    threads its scalars in a different order than it declares them.
-    """
+    """Reject a scalar ABI that disagrees with the canonical signature order."""
     with Context():
         module = Module.parse("""module { aie.device(npu1_1col) {
               aie.runtime_sequence @seq(%rows: i64, %a: memref<8xi32>, %cols: i32) {}

@@ -55,35 +55,35 @@ aiecc --get-npu-cpp design.mlir
 # -> npu_<device>_<seq>.cpp (one standalone C++17 builder per selected sequence)
 ```
 
-This uses the same materialization, load-PDI expansion, DMA lowering, and PDI ID
-assignment as instruction binaries; it does not generate a static instruction
-binary first. `aiex.configure`/`aiex.run`, `--expand-load-pdis`, and
-`--load-pdi-to-ctrl-pkt` therefore work through the shared compiler pipeline.
-Device and sequence filters apply to C++ output too.
+C++ builders and static instructions share runtime-sequence materialization,
+reconfiguration expansion, DMA lowering, PDI-ID assignment, and device/sequence
+filtering. This includes `aiex.configure`/`aiex.run`, `--expand-load-pdis`, and
+`--load-pdi-to-ctrl-pkt`; C++ output does not require a static instruction binary.
 
-Include the generated file in a native C++17 host program and add the MLIR-AIE
-`include` directory to the compiler's include path. Call
+Include the generated file in a C++17 host program with MLIR-AIE's `include`
+directory on the compiler's include path. Call
 `generate_txn_<device>_<seq>(...)` with the runtime sequence's scalar arguments
 in declaration order. Memref arguments are not C++ parameters: transactions
 reference their host-buffer argument indices for runtime address patching.
-The result is `std::optional<std::vector<uint32_t>>`; an invalid dynamic DMA
-field produces `std::nullopt`. The vector contains transaction words, not
-already-patched device addresses.
+The result is `std::optional<std::vector<uint32_t>>` containing unpatched
+transaction words, or `std::nullopt` if a dynamic DMA field fails validation.
+For reconfiguration, the host must also provide referenced PDIs and
+control-packet data according to its runtime's ABI.
 
-`--npu-cpp-name` overrides the filename (`{0}` is the device/sequence key).
-`--npu-cpp-emit-dispatch-shim` additionally emits the `dispatch_abi` and
-`dispatch_generate` C entry points for loading a builder from a shared library;
-it is off by default and is not required by native callers. Select a single
-sequence when using a fixed filename. `--get=npu_lowered.mlir` can additionally
-save the final runtime-sequence signatures used to construct the builder.
+- `--npu-cpp-name`: output filename; `{0}` expands to the device/sequence key.
+  Select one sequence when using a fixed filename.
+- `--npu-cpp-emit-dispatch-shim`: add `dispatch_abi` and `dispatch_generate` C
+  entry points for shared-library loading (off by default).
+- `--get=npu_lowered.mlir`: also save the final runtime-sequence IR.
 
-By default builders use the instruction-buffer DDR-patch ABI, matching
-`--get-npu-insts`. When requested together with `--get-full-elf`, they instead
-default to the unfolded full-ELF ABI. An explicit `--fold-ddr-addr-offset=true`
-or `false` overrides the builder's choice; full-ELF instructions always remain
-unfolded. Generating C++ does not make full-ELF packaging dynamic: full ELF still
-requires static instruction streams, and a runtime must support submitting and
-patching the generated transactions to execute parameterized builders.
+Builders default to the instruction-buffer DDR-patch ABI (`--get-npu-insts`),
+or the unfolded ABI when combined with `--get-full-elf`.
+`--fold-ddr-addr-offset=true|false` overrides the builder's choice; full-ELF
+instructions always remain unfolded.
+
+Full ELF still requires static instructions. Executing a parameterized builder
+requires a host runtime that can submit and patch its generated transactions;
+generating C++ alone does not add dynamic full-ELF support.
 
 ### Limiting parallel compilation
 

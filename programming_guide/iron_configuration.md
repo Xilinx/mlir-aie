@@ -123,31 +123,24 @@ context, so concurrent processes should use a smaller per-process share:
 export HRX_EXE_CACHE_SIZE=2
 ```
 
-Setting it to `0` disables executable caching. Live kernel handles still retain
-their executables; cache eviction cannot release a context that a handle uses.
-`DispatchTime` designs cache their xclbin image, not a per-call executable.
+`0` disables caching. Eviction does not release executables held by live kernel
+handles. `DispatchTime` designs cache the xclbin image, not per-call executables.
 
 ## Dispatch-time scalar compilation
 
-`DispatchTime[T]` designs compile a host instruction-builder library alongside
-the device program. The same `aiecc` invocation produces the device artifacts,
-the fully lowered runtime IR, and parameterized C++ (`--get-npu-cpp`).
-Static instructions and parameterized C++ share the driver's runtime lowering,
-including materialization, reconfiguration expansion, and PDI-ID assignment.
-Python checks the scalar ABI and invokes the host compiler; it does not lower
-runtime sequences independently.
-A host C++17 compiler is required for both source and wheel installations.
-`CXX` selects its executable; otherwise IRON searches for `c++`,
+`DispatchTime[T]` requires a host C++17 compiler, including with wheel
+installations, to build the host library from
+[`aiecc`'s generated C++](../tools/aiecc/README.md#parameterized-c-transaction-builders).
+`CXX` selects the compiler executable; otherwise IRON searches for `c++`,
 `g++`, then `clang++`, excluding Peano's device-toolchain directory.
 
 ```bash
 CXX=/usr/bin/clang++ python my_design.py
 ```
 
-The runtime headers are included in the MLIR-AIE installation. They are resolved
-from the installed package first; an uninstalled build can fall back to its
-configured source-tree headers. No compiler process is launched per dispatch:
-the compiled builder is called in-process with that call's scalar values.
+Runtime headers are resolved from the installation first, with a configured
+source-tree fallback for uninstalled builds. Each dispatch calls the compiled
+library in-process; it does not launch a compiler.
 
 ## Host-runtime backend selection (`NPU_RUNTIME`)
 
@@ -274,22 +267,18 @@ NPU_RUNTIME=hsa ROCM_PATH=/opt/rocm-7.0 IRON_HSA_DEVICE=npu2 \
 
 ### HSA hardware tests
 
-On a provisioned HSA NPU host, set `AIE_HSA_NPU=npu1` or `npu2` when invoking
-lit. This opt-in enables the `hsa_npu` feature and HSA dispatch tests without
-requiring XRT discovery. It does not install ROCm or override HSA device
-detection. Finding a ROCm library alone does not enable hardware tests on
-GPU-only hosts.
+On a provisioned HSA NPU host, `AIE_HSA_NPU=npu1` or `npu2` enables lit's
+`hsa_npu` feature without XRT discovery. It neither installs ROCm nor overrides
+HSA device detection; finding ROCm alone does not enable tests on GPU-only hosts.
 
 ```bash
 AIE_HSA_NPU=npu2 llvm-lit -sv build/test/python/npu/test_dispatch_time_scalar.py \
   build/test/python/npu/test_hsa_dispatch.py
 ```
 
-The HSA RUN lines select `NPU_RUNTIME=hsa`; lit forwards `ROCM_PATH`,
-`IRON_HSA_DEVICE`, and `IRON_HSA_TIMEOUT` to the test processes. The ownership
-tests observe real allocation/free calls, including a rejected enqueue after
-instruction allocation, without replacing the runtime. They do not deliberately
-wedge the device to test failures after publication.
+The tests select `NPU_RUNTIME=hsa`; lit forwards `ROCM_PATH`, `IRON_HSA_DEVICE`,
+and `IRON_HSA_TIMEOUT`. Coverage includes real allocation/free calls and cleanup
+after pre-publication enqueue failure, but not induced post-publication failures.
 
 ### Limitations
 

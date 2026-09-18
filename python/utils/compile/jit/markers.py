@@ -28,19 +28,9 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     Data is DMA-transferred in both directions on every kernel call.
 
 ``DispatchTime[T]``
-    Marks a generator function parameter as a runtime *scalar*.  Unlike
-    ``CompileTime[T]``, the value is not baked into the compiled kernel and
-    does not affect the cache key — one compiled artifact is meant to serve
-    many scalar values. At generation time the generator receives an opaque,
-    identity-bearing parameter, not a concrete value. Forward it into
-    ``Runtime(seq, fn_args=[...])`` in any order; the callback receives its
-    runtime SSA block argument. Generation-time value operations are rejected.
-    Each call rebuilds the instruction stream for the
-    given value through the host dispatch bridge (a shared library compiled
-    alongside the xclbin and called via ``ctypes``), so the per-call value
-    reaches the NPU without recompiling the design.  Not supported together
-    with ``full_elf=True``, which bakes one static instruction stream into the
-    ELF.
+    Marks a keyword-only integer scalar that can vary per dispatch without
+    recompiling. Explicit specialization instead fixes it at compile time.
+    See ``DispatchTime`` below for generator binding and usage restrictions.
 
 Any parameter without one of these annotations is rejected at ``@iron.jit``
 decoration time when the parameter has a default value: an unannotated scalar
@@ -119,30 +109,25 @@ _DISPATCH_TIME_TAG = _DispatchTimeTag()
 DispatchTime = Annotated[T, _DISPATCH_TIME_TAG]
 """Runtime-scalar parameter annotation.
 
-Use as a type annotation on generator function parameters that are runtime
-scalars: bound once per compiled artifact's *type* (not baked in by value),
-re-suppliable per call without a recompile.
-
-Unlike ``CompileTime[T]``, a per-call ``DispatchTime[T]`` value is not part of
-the cache key. Explicit prebinding with ``iron.jit(generator, name=value)``
-or ``design.specialize(name=value)`` instead makes that parameter a typed
-compile-time constant for the specialization. Signature defaults alone do
-not specialize it, and calls cannot override an explicitly bound parameter.
-
-Unlike ``In``/``Out``/``InOut``, no DMA is involved -- the scalar
-reaches the device as a runtime sequence value (an ``npu.write32``/inline TXN
-argument or an ``rt.inline_ops`` symbolic bind), not a buffer transfer.
+Per-call values rebuild instructions through a compiled host library without
+changing the device-program cache key. An omitted value uses the signature
+default, if any. Explicit binding with ``iron.jit(generator, name=value)`` or
+``design.specialize(name=value)`` instead produces a typed NumPy constant and
+includes it in the cache key; calls cannot override it.
 
 ``T`` must be a NumPy integer scalar type supported by ``Runtime``, such as
 ``np.int32`` or ``np.int64``. Built-in ``int``/``bool`` and floating-point
-types are rejected. Forward each unbound scalar once as a direct entry in
-``Runtime(seq, fn_args=[...])``, in any order. Parameter identity determines its
-binding. Use the callback's SSA argument for runtime arithmetic; generation-time
-arithmetic, truth tests, shapes, dtypes, and Worker arguments require
-``CompileTime`` or explicit specialization instead.
-Dispatch parameters must be keyword-only, including when defaulted or prebound.
-Prefer tensor operands first, then dispatch scalars, then compile-time
-configuration; the ordering of keyword-only groups is not enforced.
+types are rejected. Parameters must be keyword-only, even when defaulted or
+specialized.
+
+The generator receives an identity-bearing symbolic parameter for each unbound
+scalar. Forward it exactly once as a direct ``Runtime(seq, fn_args=[...])``
+entry, in any order. Use the callback's SSA argument for runtime operations.
+Generation-time arithmetic, truth tests, shapes, dtypes, and Worker arguments
+require ``CompileTime`` or specialization instead.
+
+The Python bridge supports one runtime sequence, rejects remaining load-PDI
+operations, and cannot use ``full_elf=True`` while any parameters remain dynamic.
 
 Example::
 
