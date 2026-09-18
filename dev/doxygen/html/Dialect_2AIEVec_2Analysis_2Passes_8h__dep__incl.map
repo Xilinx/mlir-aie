@@ -1,0 +1,9 @@
+<map id="include/aie/Dialect/AIEVec/Analysis/Passes.h" name="include/aie/Dialect/AIEVec/Analysis/Passes.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="250,5,439,45"/>
+<area shape="rect" id="Node000002" href="$Registration_8cpp.html" title=" " alt="" coords="5,108,188,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="283,53,128,110,126,105,281,48"/>
+<area shape="rect" id="Node000003" href="$AIEVecOptimizations_8cpp.html" title=" " alt="" coords="213,101,477,141"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="347,59,347,101,342,101,342,59"/>
+<area shape="rect" id="Node000004" href="$FoldMulAddChainToConvOp_8cpp.html" title=" " alt="" coords="501,93,716,148"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="412,47,535,91,533,96,410,52"/>
+</map>
