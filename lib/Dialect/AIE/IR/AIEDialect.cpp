@@ -2063,6 +2063,40 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   return failure(result.wasInterrupted());
 }
 
+// `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
+// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` name themselves
+// with `sym_name` but define an SSA value, so they are not `Symbol` ops and
+// their names escape that check. `lookupNamedOpIn` resolves them by name, so a
+// repeated name would bind every reference to whichever op comes first.
+LogicalResult verifyNoDuplicateNames(Operation *symbolTableOp) {
+  if (symbolTableOp->getNumRegions() == 0 ||
+      symbolTableOp->getRegion(0).empty()) {
+    return success();
+  }
+  DenseMap<StringAttr, Operation *> nameSeen;
+  for (Operation &op : symbolTableOp->getRegion(0).front()) {
+    auto name = op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    if (!name) {
+      continue;
+    }
+    auto [it, inserted] = nameSeen.try_emplace(name, &op);
+    if (inserted) {
+      continue;
+    }
+    // Leave a pair of `Symbol` ops to `verifySymbolTable`, which runs after the
+    // body and so lets the body ops report about themselves first.
+    if (isa<SymbolOpInterface>(op) && isa<SymbolOpInterface>(it->second)) {
+      continue;
+    }
+    InFlightDiagnostic diag = op.emitError() << "redefinition of symbol named '"
+                                             << name.getValue() << "'";
+    diag.attachNote(it->second->getLoc())
+        << "see existing symbol definition here";
+    return failure();
+  }
+  return success();
+}
+
 } // namespace
 
 LogicalResult DeviceOp::verify() {
@@ -2102,6 +2136,10 @@ LogicalResult DeviceOp::verify() {
     return failure();
   if (failed(verifyNoDuplicatePacketFlows(*this)))
     return failure();
+
+  if (failed(verifyNoDuplicateNames(*this))) {
+    return failure();
+  }
 
   return success();
 }
