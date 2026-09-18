@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -203,10 +204,8 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(
   if (nextId) {
     name = "blockwrite_data_" + std::to_string((*nextId)++);
   } else {
-    name = "blockwrite_data_";
-    while (dev.lookupSymbol(name + std::to_string(blockwriteDataCounter)))
-      blockwriteDataCounter++;
-    name += std::to_string(blockwriteDataCounter++);
+    name = AIE::generateUniqueSymbolName(dev, "blockwrite_data_",
+                                         blockwriteDataCounter);
   }
   global = memref::GlobalOp::create(builder, loc, name,
                                     builder.getStringAttr("private"),

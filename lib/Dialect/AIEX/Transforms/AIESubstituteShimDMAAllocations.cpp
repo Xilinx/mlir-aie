@@ -43,10 +43,10 @@ struct DMAConfigureTaskForOpPattern
   // AIETargetNPU getDataWords symbol-cache. The pattern never erases/creates a
   // symbol (it rewrites task ops, not ShimDMAAllocationOps), so the prebuilt
   // table stays valid across the greedy run.
-  const mlir::SymbolTable &symbolTable;
+  mlir::SymbolTable &symbolTable;
 
   DMAConfigureTaskForOpPattern(mlir::MLIRContext *ctx,
-                               const mlir::SymbolTable &symbolTable)
+                               mlir::SymbolTable &symbolTable)
       : OpRewritePattern<DMAConfigureTaskForOp>(ctx), symbolTable(symbolTable) {
   }
 
@@ -88,10 +88,12 @@ struct AIESubstituteShimDMAAllocationsPass
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
-    // Build the device symbol table ONCE (O(1) per-task allocation lookup
-    // instead of getForSymbol's per-task linear scan -> O(n^2)).
-    // Byte-identical.
-    mlir::SymbolTable symbolTable(device);
+    // Build and cache symbol tables via SymbolTableCollection ONCE (O(1)
+    // per-task allocation lookup instead of getForSymbol's per-task linear
+    // scan -> O(n^2)). Byte-identical.
+    mlir::SymbolTableCollection symbolTables;
+    mlir::SymbolTable &symbolTable =
+        symbolTables.getSymbolTable(device.getOperation());
 
     // Convert DMAConfigureTaskForOps that reference shim DMA allocations
     // to regular DMAConfigureTaskOps

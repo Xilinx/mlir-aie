@@ -209,21 +209,20 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     MemRefType dataType = cast<MemRefType>(dataOperand.getResult().getType());
     uint32_t dataSize = dataType.getNumElements();
 
-    int id = 0;
-    std::string symbolName = "chain_" + std::to_string(id);
-    while (op->getParentOfType<AIE::DeviceOp>().lookupSymbol(symbolName))
-      symbolName = "chain_" + std::to_string(++id);
+    auto parentDevice = op->getParentOfType<AIE::DeviceOp>();
+    if (!parentDevice) {
+      // No parent device - this shouldn't happen but handle gracefully
+      return failure();
+    }
+    unsigned id = 0;
+    std::string symbolName =
+        AIE::generateUniqueSymbolName(parentDevice, "chain_", id);
 
     // Create a new uc_dma_write_des_sync operation
     rewriter.replaceOpWithNewOp<AIEX::CertUcDmaWriteDesSyncOp>(op, symbolName);
 
     // Create the uc_dma_chain operation
     // Find the nearest device to insert the chain
-    auto parentDevice = op->getParentOfType<AIE::DeviceOp>();
-    if (!parentDevice) {
-      // No parent device - this shouldn't happen but handle gracefully
-      return failure();
-    }
 
     // Insert after the last existing uc_dma_chain (before any pages/jobs),
     // preserving the order of blockwrite ops. Globals are allowed to precede
@@ -730,15 +729,15 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
     std::string secondName = dataOperand.getName().str() + "_split_1";
 
     // Ensure unique names
-    int counter = 0;
-    while (deviceOp.lookupSymbol(firstName)) {
-      firstName =
-          dataOperand.getName().str() + "_split_0_" + std::to_string(counter++);
+    if (deviceOp.lookupSymbol(firstName)) {
+      unsigned counter = 0;
+      firstName = AIE::generateUniqueSymbolName(
+          deviceOp, dataOperand.getName().str() + "_split_0_", counter);
     }
-    counter = 0;
-    while (deviceOp.lookupSymbol(secondName)) {
-      secondName =
-          dataOperand.getName().str() + "_split_1_" + std::to_string(counter++);
+    if (deviceOp.lookupSymbol(secondName)) {
+      unsigned counter = 0;
+      secondName = AIE::generateUniqueSymbolName(
+          deviceOp, dataOperand.getName().str() + "_split_1_", counter);
     }
 
     // Create the new global operations
