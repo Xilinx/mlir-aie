@@ -16,7 +16,6 @@
 
 #include <aie_api/aie.hpp>
 
-
 template <typename T_in, typename T_out, int rowA, int colA, int colB,
           bool b_row_maj = true, bool c_row_maj = true>
 static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
