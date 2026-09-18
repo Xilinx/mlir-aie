@@ -26,10 +26,10 @@ struct ObjectFifoLoweringOptions
       *this, "skip-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR."),
       llvm::cl::init(false)};
-  Option<bool> reserveControlIds{
-      *this, "reserve-control-ids",
-      llvm::cl::desc(
-          "Reserve ctrl-pkt controller ids during packet id assignment."),
+  Option<bool> reserveControllerPacketIds{
+      *this, "reserve-controller-packet-ids",
+      llvm::cl::desc("Reserve the target's tile-controller packet ids during "
+                     "packet id assignment."),
       llvm::cl::init(false)};
   Option<bool> dmaFenceSharedMem{
       *this, "dma-fence-shared-mem",
@@ -37,11 +37,11 @@ struct ObjectFifoLoweringOptions
                      "shared-memory objectfifo on DMA (write-completion "
                      "barrier). Off by default."),
       llvm::cl::init(false)};
-  Option<bool> warnUnfencedSharedOverlay{
-      *this, "warn-unfenced-shared-overlay",
+  Option<bool> warnUnfencedSharedMem{
+      *this, "warn-unfenced-shared-mem",
       llvm::cl::desc("Warn when a cross-tile core-to-core shared-memory "
                      "objectfifo is left on the lock-only path (no "
-                     "write-completion barrier under the ctrl-pkt overlay)."),
+                     "write-completion barrier)."),
       llvm::cl::init(false)};
 };
 } // namespace
@@ -51,13 +51,13 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
       "aie-objectFifo-stateful-transform",
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
-        pm.addPass(createAIEObjectFifoSplitPass(
-            options.dmaFenceSharedMem, options.warnUnfencedSharedOverlay));
+        pm.addPass(createAIEObjectFifoSplitPass(options.dmaFenceSharedMem,
+                                                options.warnUnfencedSharedMem));
         if (!options.skipVerify) {
           pm.addPass(createAIEObjectFifoVerifyPass());
         }
-        pm.addPass(createAIEObjectFifoAllocatePass(options.packetSwitched,
-                                                   options.reserveControlIds));
+        pm.addPass(createAIEObjectFifoAllocatePass(
+            options.packetSwitched, options.reserveControllerPacketIds));
         pm.addPass(createAIEObjectFifoLowerDMAsPass());
         pm.addPass(createAIEObjectFifoLowerCoresPass());
         pm.addPass(createAIEObjectFifoErasePoolsPass());

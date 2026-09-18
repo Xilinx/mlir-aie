@@ -621,14 +621,13 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     if (shared && isCrossTileCoreShared(fifo)) {
       if (clDmaFenceSharedMem) {
         shared = false;
-      } else if (clWarnUnfencedSharedOverlay) {
+      } else if (clWarnUnfencedSharedMem) {
         fifo.emitWarning()
             << "objectfifo '" << fifoName
-            << "' uses cross-tile shared memory under the ctrl-pkt overlay: "
-               "the "
-               "lock-only path has no write-completion barrier and may read "
-               "stale data. Pass --dma-fence-shared-mem or set via_DMA on "
-               "this fifo to carry it via DMA for correctness.";
+            << "' uses a cross-tile core-to-core lock-only shared-memory path "
+               "with no write-completion barrier and may read stale data. Pass "
+               "--dma-fence-shared-mem or set via_DMA on this fifo to carry it "
+               "via DMA for correctness.";
       }
     }
 
@@ -848,9 +847,9 @@ xilinx::AIE::createAIEObjectFifoSplitPass() {
 
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoSplitPass(bool dmaFenceSharedMem,
-                                          bool warnUnfencedSharedOverlay) {
+                                          bool warnUnfencedSharedMem) {
   AIEObjectFifoSplitOptions options;
   options.clDmaFenceSharedMem = dmaFenceSharedMem;
-  options.clWarnUnfencedSharedOverlay = warnUnfencedSharedOverlay;
+  options.clWarnUnfencedSharedMem = warnUnfencedSharedMem;
   return std::make_unique<AIEObjectFifoSplitPass>(options);
 }

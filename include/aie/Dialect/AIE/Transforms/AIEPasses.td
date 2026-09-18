@@ -383,11 +383,11 @@ def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
               "shared-memory objectfifo on DMA (whose completion event supplies "
               "the write-completion barrier the shared path lacks). Off by "
               "default so shared memory stays the fast path.">,
-       Option<"clWarnUnfencedSharedOverlay", "warn-unfenced-shared-overlay",
+       Option<"clWarnUnfencedSharedMem", "warn-unfenced-shared-mem",
               "bool", /*default=*/"false",
               "Warn when a cross-tile core-to-core shared-memory objectfifo is "
-              "left on the lock-only path (set under the resident ctrl-pkt "
-              "overlay, where that path may read stale data).">,
+              "left on the lock-only path (no write-completion barrier, so it "
+              "may read stale data).">,
   ];
 }
 
@@ -427,9 +427,9 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Flag to enable aie.packetflow lowering from objectfifos.">,
-       Option<"clReserveControlIds", "reserve-control-ids", "bool",
-              /*default=*/"false",
-              "Reserve the ctrl-pkt overlay's controller packet IDs so data packet "
+       Option<"clReserveControllerPacketIds", "reserve-controller-packet-ids",
+              "bool", /*default=*/"false",
+              "Reserve the target's tile-controller packet IDs so data packet "
               "IDs never collide with control on a shared shim channel.">,
   ];
 }

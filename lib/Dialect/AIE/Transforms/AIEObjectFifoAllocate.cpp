@@ -315,7 +315,7 @@ struct AIEObjectFifoAllocatePass
     // (column, row); reserve those on every column this device actually
     // occupies so data packet IDs never grow into them on a shared shim
     // channel.
-    if (clReserveControlIds) {
+    if (clReserveControllerPacketIds) {
       const auto &tm = device.getTargetModel();
       auto ctrlIds = tm.getTileToControllerIdMap(/*columnWiseUniqueIDs=*/true);
       llvm::SmallDenseSet<int> occupiedCols;
@@ -620,9 +620,9 @@ xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched) {
 
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched,
-                                             bool reserveControlIds) {
+                                             bool reserveControllerPacketIds) {
   AIEObjectFifoAllocateOptions options;
   options.clPacketSwObjectFifos = packetSwitched;
-  options.clReserveControlIds = reserveControlIds;
+  options.clReserveControllerPacketIds = reserveControllerPacketIds;
   return std::make_unique<AIEObjectFifoAllocatePass>(options);
 }

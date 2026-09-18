@@ -825,9 +825,9 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   if (mlir::failed(mlir::parsePassPipeline(
           llvm::formatv(
               "aie-objectFifo-stateful-transform{{packet-sw-objFifos={0} "
-              "skip-verify={1} reserve-control-ids={2} "
+              "skip-verify={1} reserve-controller-packet-ids={2} "
               "dma-fence-shared-mem={3} "
-              "warn-unfenced-shared-overlay={4}}",
+              "warn-unfenced-shared-mem={4}}",
               packetSwObjFifos, skipObjectFifoVerify,
               ctrlPktOverlay || loadPdiToCtrlPkt, dmaFenceSharedMem,
               ctrlPktOverlay || loadPdiToCtrlPkt)

@@ -1,6 +1,6 @@
 // RUN: aie-opt --aie-objectfifo-split %s | FileCheck %s --check-prefix=DEFAULT
 // RUN: aie-opt --aie-objectfifo-split="dma-fence-shared-mem=true" %s | FileCheck %s --check-prefix=VIADMA
-// RUN: aie-opt --aie-objectfifo-split="warn-unfenced-shared-overlay=true" %s 2>&1 | FileCheck %s --check-prefix=WARN
+// RUN: aie-opt --aie-objectfifo-split="warn-unfenced-shared-mem=true" %s 2>&1 | FileCheck %s --check-prefix=WARN
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -13,7 +13,7 @@
 // safe). The only architected barrier is DMA completion. Shared memory is the
 // fast DEFAULT; correctness is opt-in. --dma-fence-shared-mem carries
 // EVERY such fifo on DMA (acquire count is irrelevant -- single-acquire is only
-// luckier, not safe). --warn-unfenced-shared-overlay (set under the resident
+// luckier, not safe). --warn-unfenced-shared-mem (set under the resident
 // ctrl-pkt overlay) warns on each such fifo left on the shared path. A self-loop
 // (producer == consumer) reads its own memory and is never touched.
 
@@ -73,6 +73,6 @@ module @xtile {
 
 // Warn (overlay): each cross-tile shared fifo left on the shared path warns;
 // the self-loop does not.
-// WARN: warning: objectfifo 'stencil_of' uses cross-tile shared memory under the ctrl-pkt overlay
-// WARN: warning: objectfifo 'plain_of' uses cross-tile shared memory under the ctrl-pkt overlay
+// WARN: warning: objectfifo 'stencil_of' uses a cross-tile core-to-core lock-only shared-memory path
+// WARN: warning: objectfifo 'plain_of' uses a cross-tile core-to-core lock-only shared-memory path
 // WARN-NOT: objectfifo 'self_of' uses cross-tile shared memory

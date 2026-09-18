@@ -8,7 +8,7 @@
 // The ctrl-pkt overlay's controller ids on an occupied column are {15, 26,
 // 27, 29, 30, 31} (npu1, aie.getTileToControllerIdMap(columnWiseUniqueIDs=
 // true)). With 16 unpinned packet flows, plain auto-assignment counts up from
-// 0 and reaches 15 -- the shim controller id. With `reserve-control-ids=true`,
+// 0 and reaches 15 -- the shim controller id. With `reserve-controller-packet-ids=true`,
 // the allocator pre-reserves those ids on every occupied column so data ids
 // skip over them instead.
 //
@@ -19,7 +19,7 @@
 // the single-column module documents that the subset shape behaves identically.
 
 // RUN: aie-opt %s -split-input-file --aie-objectfifo-allocate | FileCheck %s --check-prefix=OFF
-// RUN: aie-opt %s -split-input-file --aie-objectfifo-allocate="reserve-control-ids=true" | FileCheck %s --check-prefix=ON
+// RUN: aie-opt %s -split-input-file --aie-objectfifo-allocate="reserve-controller-packet-ids=true" | FileCheck %s --check-prefix=ON
 
 module @reserve_control_ids_all_columns {
   aie.device(npu1) {
