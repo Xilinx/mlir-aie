@@ -88,13 +88,17 @@ def low_level_locations():
                 buf = buffer(dst, np.ndarray[(16,), np.dtype[np.int32]], name="rtp")
                 lk = lock(dst, lock_id=0, init=1)
                 dests = {"dest": dst, "port": WireBundle.DMA, "channel": 0}
+                destinations = iter([dst, tile(1, 2), tile(2, 2)])
                 check_builder(
-                    lambda **kw: flow(src, dest=dst, **kw),
+                    lambda **kw: flow(src, dest=next(destinations), **kw),
                     "aie.flow",
                 )
+                packet_ids = iter(range(3))
                 check_builder(
-                    lambda **kw: packetflow(0, src, WireBundle.DMA, 0, dests, **kw),
-                    "aie.packetflow",
+                    lambda **kw: packetflow(
+                        next(packet_ids), src, WireBundle.DMA, 0, dests, **kw
+                    ),
+                    "aie.packet_flow",
                 )
 
                 @core(dst)
@@ -199,7 +203,7 @@ def iron_locations():
                             extra_dsts=[PacketDest(extra)],
                             shim_symbol="output",
                         ),
-                        ["aie.packetflow", "aie.shim_dma_allocation"],
+                        ["aie.packet_flow", "aie.shim_dma_allocation"],
                     ),
                     (Lock(dst, lock_id=0, name="lock"), ["aie.lock"]),
                     (
@@ -213,7 +217,7 @@ def iron_locations():
                 for obj, names in objects:
                     for op in emitted_by(obj.resolve, names, loc=loc):
                         assert_location(op.operation, loc)
-                        if op.operation.name == "aie.packetflow":
+                        if op.operation.name == "aie.packet_flow":
                             assert [
                                 child.operation.name
                                 for child in op.regions[0].blocks[0].operations
