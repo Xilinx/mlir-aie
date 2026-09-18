@@ -864,11 +864,10 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
 
   if (configureOps.empty()) {
     // create aiex.runtime_sequence
+    int id = 0;
     std::string seq_name = "configure";
-    if (device.lookupSymbol(seq_name)) {
-      unsigned id = 0;
-      seq_name = AIE::generateUniqueSymbolName(device, "configure", id);
-    }
+    while (device.lookupSymbol(seq_name))
+      seq_name = "configure" + std::to_string(id++);
     StringAttr seq_sym_name = builder.getStringAttr(seq_name);
     auto seq =
         AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name, BoolAttr{},

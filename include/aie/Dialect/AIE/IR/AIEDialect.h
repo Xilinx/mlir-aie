@@ -66,6 +66,10 @@ uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
 // be returned again).
 std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
                                      llvm::StringRef prefix, unsigned &counter);
+// Generate a symbol name from `baseName`, returning `baseName` itself if free
+// and otherwise trying "<baseName>_<n>" for increasing n from `counter`.
+// Unlike generateUniqueSymbolName, this helper does not advance `counter` when
+// `baseName` is free.
 std::string generateUniqueSymbolNameFromBase(mlir::Operation *symbolTableOp,
                                              llvm::StringRef baseName,
                                              unsigned &counter);
