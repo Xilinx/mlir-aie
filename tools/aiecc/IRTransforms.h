@@ -84,7 +84,8 @@ constexpr llvm::StringLiteral kPdiIdAttr = "aiecc.pdi_id";
 // Single source of truth: xilinx::AIEX::kEntrypointAttr (AIEXDialect.h), so the
 // AIESplitConfigureEntries pass and this driver cannot drift apart.
 constexpr llvm::StringLiteral kEntrypointAttr = xilinx::AIEX::kEntrypointAttr;
-constexpr llvm::StringLiteral kReconfigMethodKey = "reconfig_method";
+constexpr llvm::StringLiteral kReconfigMethodKey =
+    xilinx::AIEX::kReconfigMethodKey;
 
 //===----------------------------------------------------------------------===//
 // IR inspection
@@ -1197,6 +1198,18 @@ getSplitConfigureEntriesPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   pm->addPass(X::createAIESplitConfigureEntriesPass());
+  return pm;
+}
+
+// Synthesize the shared reconfig `init` and normalize per-config load_pdi
+// re-arm on the aiex.entrypoint-marked device, per its recorded
+// reconfig_method. Runs AFTER per-device DMA lowering + PDI-id assignment; a
+// no-op without the marker (so ordinary non-fold compiles are untouched).
+inline std::unique_ptr<mlir::PassManager>
+getSplitMultiConfigEntryPipeline(mlir::MLIRContext *ctx) {
+  namespace X = xilinx::AIEX;
+  auto pm = std::make_unique<mlir::PassManager>(ctx);
+  pm->addPass(X::createAIESplitMultiConfigEntryPass());
   return pm;
 }
 

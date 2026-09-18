@@ -79,6 +79,18 @@ mlir::Value createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
 // dialect so the pass and the driver share ONE source of truth.
 constexpr llvm::StringLiteral kEntrypointAttr = "aiex.entrypoint";
 
+// Key, within the kEntrypointAttr dictionary, holding the --reconfig-method
+// spelling (loadpdi|write32|ctrlpkt). The AIESplitMultiConfigEntry pass reads
+// it to derive its behavior; the aiecc fold stamps it. Defined on the dialect
+// so the pass and the driver share one source of truth.
+constexpr llvm::StringLiteral kReconfigMethodKey = "reconfig_method";
+
+// Marker the trace-flow pass (AIEInsertTraceFlows, AIE dialect) stamps on a
+// host runtime_sequence to record which block argument is the trace buffer;
+// read by AIEMaterializeRuntimeSequences (AIEX). Defined here (both ends
+// already include this header) so producer and consumer share one constant.
+constexpr llvm::StringLiteral kTraceBufferArgAttr = "aie.trace_buffer_arg";
+
 } // namespace AIEX
 } // namespace xilinx
 

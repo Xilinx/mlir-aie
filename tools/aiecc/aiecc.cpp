@@ -603,19 +603,6 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 // AIEPlaceTiles assigns coordinates. Keying on TileOp alone misclassifies a
 // real (unplaced) idiomatic design as a tile-less host, silently bypassing
 // the fold below.
-// Reconfiguration delivery method, resolved once from the --reconfig-method
-// flag string instead of re-comparing the literal at each decision point.
-enum class ReconfigMethod { None, Loadpdi, Write32, Ctrlpkt };
-static ReconfigMethod parseReconfigMethod(llvm::StringRef m) {
-  if (m == "loadpdi")
-    return ReconfigMethod::Loadpdi;
-  if (m == "write32")
-    return ReconfigMethod::Write32;
-  if (m == "ctrlpkt")
-    return ReconfigMethod::Ctrlpkt;
-  return ReconfigMethod::None;
-}
-
 static bool deviceHasTiles(xilinx::AIE::DeviceOp d) {
   return !d.getOps<xilinx::AIE::TileOp>().empty() ||
          !d.getOps<xilinx::AIE::LogicalTileOp>().empty();
@@ -653,15 +640,15 @@ static std::string writeMergedModule(mlir::ModuleOp mod,
 
 // Label the fold-synthesized entry (top-level host) device with the
 // aiex.entrypoint marker -- a dictionary carrying the reconfig_method. Its
-// presence is what downstream (splitMultiConfigEntry entry select, SidecarFiles
-// host-keep) uses to identify the entry device, robust to the sequence
-// sym_names. See kEntrypointAttr.
+// presence is what downstream (aie-split-multi-config-entry entry select,
+// SidecarFiles host-keep) uses to identify the entry device, robust to the
+// sequence sym_names. See kEntrypointAttr.
 static void markEntrypointDevice(xilinx::AIE::DeviceOp host,
-                                 llvm::StringRef reconfigMethod) {
+                                 ReconfigMethod reconfigMethod) {
   mlir::MLIRContext *ctx = host.getContext();
   mlir::NamedAttribute methodAttr(
       mlir::StringAttr::get(ctx, xilinx::aiecc::kReconfigMethodKey),
-      mlir::StringAttr::get(ctx, reconfigMethod));
+      mlir::StringAttr::get(ctx, reconfigMethodName(reconfigMethod)));
   host->setAttr(xilinx::aiecc::kEntrypointAttr,
                 mlir::DictionaryAttr::get(ctx, {methodAttr}));
 }
@@ -669,7 +656,7 @@ static void markEntrypointDevice(xilinx::AIE::DeviceOp host,
 static std::string conformIdiomaticInputs(llvm::ArrayRef<std::string> inputs,
                                           llvm::StringRef workDir,
                                           mlir::MLIRContext &context,
-                                          llvm::StringRef reconfigMethod) {
+                                          ReconfigMethod reconfigMethod) {
   using namespace mlir;
   using xilinx::AIE::DeviceOp;
   using xilinx::AIE::EndOp;
@@ -753,7 +740,7 @@ static std::string conformIdiomaticInputs(llvm::ArrayRef<std::string> inputs,
     // reverts to the canonical "sequence". Only the entrypoint is ever
     // dispatched (main:<entrypoint>), so the config device and its inner
     // sequence are purely internal. Distinct designs must therefore carry
-    // distinct names (splitMultiConfigEntry loud-fails on a duplicate
+    // distinct names (aie-split-multi-config-entry loud-fails on a duplicate
     // entrypoint name).
     std::string entryName = seq.getSymName().str();
 
@@ -788,8 +775,8 @@ static std::string conformIdiomaticInputs(llvm::ArrayRef<std::string> inputs,
     // Append the LIFTED entrypoint before @main's aie.end, named with the
     // user's entrypoint name so the dispatchable kernel is main:<entrypoint>.
     // It issues `configure @<name>_config { run @sequence }`;
-    // splitMultiConfigEntry keeps this name (block order = chain order) and,
-    // for the init methods, synthesizes a shared main:init.
+    // aie-split-multi-config-entry keeps this name (block order = chain order)
+    // and, for the init methods, synthesizes a shared main:init.
     SmallVector<Type> argTys(seq.getBody().getArgumentTypes());
     SmallVector<Location> argLocs(argTys.size(), loc);
     OpBuilder hb(hostBody->getTerminator());
@@ -836,7 +823,7 @@ static std::string conformIdiomaticInputs(llvm::ArrayRef<std::string> inputs,
 static std::string unionConfigDesigns(mlir::MLIRContext &context,
                                       llvm::ArrayRef<std::string> inputs,
                                       llvm::StringRef workDir,
-                                      llvm::StringRef reconfigMethod) {
+                                      ReconfigMethod reconfigMethod) {
   using xilinx::AIE::DeviceOp;
   using xilinx::AIE::RuntimeSequenceOp;
 
@@ -938,7 +925,7 @@ static std::string unionConfigDesigns(mlir::MLIRContext &context,
     // sequence, KEEPING the design's chosen entrypoint name (retargeting
     // nothing: the cloned sequence still references its own config symbol,
     // which travels with the cloned device). Distinct designs must carry
-    // distinct entrypoint names -- splitMultiConfigEntry loud-fails on a
+    // distinct entrypoint names -- aie-split-multi-config-entry loud-fails on a
     // duplicate.
     modBuilder.clone(*config.getOperation());
     unsigned added = 0;
@@ -989,209 +976,6 @@ static std::string unionConfigDesigns(mlir::MLIRContext &context,
   }
 
   return writeMergedModule(base.get(), workDir);
-}
-
-// Prepare the entry device's N host runtime sequences (the ENTRYPOINTS) for
-// dispatch, and for the init methods synthesize one shared `init` entry. The
-// entrypoint device is the one carrying the aiex.entrypoint marker; every entry
-// is processed in BLOCK ORDER (= chain order) and its sym_name is KEPT VERBATIM
-// -- the dispatch name is the entrypoint's own name (main:<name>), chosen by
-// the design (single-design: its runtime_sequence; multi-design: each lifted
-// entrypoint). The toolchain never renames entries or special-cases any name
-// form (no seq_<n>/config_<n> magic): a design that names its sequences
-// config_1..N simply dispatches main:config_1..N.
-//
-// `expectInit` and `loadPdiNoInit` select which of three load_pdi shapes the
-// entries must already be in (passed in, never inferred):
-//   * expectInit == true (--reconfig-method=ctrlpkt or =write32): each
-//     entrypoint carries exactly one `aiex.npu.load_pdi` (after the
-//     --load-pdi-to-ctrl-pkt / reset-free expansion). Synthesizes a shared
-//     `init` whose dispatch stands up the resident overlay / resets to @empty
-//     and streams nothing. The `init` shape depends on `ctrlPkt`: for ctrlpkt
-//     (ctrlPkt == true) it is a fresh sequence taking only the uniform trailing
-//     ctrl-pkt-stream arg that AIECtrlPacketToDma appended to every entrypoint,
-//     with a body of just the overlay's own cloned load_pdi (design-
-//     independent); for write32 (ctrlPkt == false, no ctrl-pkt lowering ran, so
-//     no uniform arg exists) it is a clone of the first entrypoint truncated
-//     right after its first load_pdi.
-//     `stripRearm` (fed by selfClear, now unconditional for ctrlpkt/write32)
-//     then STRIPS every entrypoint's load_pdi -- the `init` keeps the sole
-//     real standup and the in-band self-clear supplies each per-config reset;
-//     otherwise each entrypoint keeps its own load_pdi re-arm so a separately-
-//     dispatched config re-establishes the reset.
-//   * expectInit == false, loadPdiNoInit == true (--reconfig-method=loadpdi):
-//     each entrypoint STILL carries exactly one un-expanded full-PDI-reload
-//     load_pdi (its own self reset). A load_pdi fully resets on every apply, so
-//     a shared `init` is redundant -- synthesize NONE; entrypoints keep their
-//     load_pdi.
-//   * expectInit == false, loadPdiNoInit == false: no current reconfig method
-//     selects this (write32 now always synthesizes the @empty init above). The
-//     branch synthesizes NO `init` and leaves each entrypoint as-is; kept for a
-//     load_pdi-free streamed-config caller that resets out of band.
-// An unexpected load_pdi count for the mode fails loud instead of silently mis-
-// splitting. Mutates `mod` in place; a no-op for a module with no marked entry
-// device.
-static mlir::LogicalResult
-splitMultiConfigEntry(mlir::ModuleOp mod, bool stripRearm, bool expectInit,
-                      bool loadPdiNoInit, bool ctrlPkt) {
-  using xilinx::AIE::DeviceOp;
-  using xilinx::AIE::RuntimeSequenceOp;
-  using xilinx::AIEX::NpuLoadPdiOp;
-
-  // The entry device carries the aiex.entrypoint marker (kEntrypointAttr) --
-  // the SOLE discriminator. Split only the marked device's entrypoint
-  // sequences; every other device is a config template. No marker -> nothing to
-  // split.
-  for (DeviceOp dev : mod.getOps<DeviceOp>()) {
-    if (!dev->hasAttr(xilinx::aiecc::kEntrypointAttr))
-      continue;
-
-    // Entrypoint sequences in block order (= chain order). An init method
-    // (expectInit: --reconfig-method=ctrlpkt or =write32) carries exactly one
-    // load_pdi per entrypoint post-expansion, so select the load_pdi-carrying
-    // config entrypoints; every other mode takes every non-empty entrypoint.
-    // The per-mode load_pdi count is validated below.
-    // Entrypoint NAMES ARE KEPT VERBATIM: the sym_name IS the dispatch name
-    // (main:<name>), chosen by the design (a design may name its sequences
-    // config_1..N itself); the toolchain never renames or format-special-cases
-    // them (no seq_<n>/config_<n> magic).
-    llvm::SmallVector<RuntimeSequenceOp> seqs;
-    for (RuntimeSequenceOp s : dev.getOps<RuntimeSequenceOp>()) {
-      if (s.getBody().empty())
-        continue;
-      if (expectInit) {
-        if (llvm::any_of(s.getBody().front(), [](mlir::Operation &op) {
-              return llvm::isa<NpuLoadPdiOp>(op);
-            }))
-          seqs.push_back(s);
-      } else {
-        seqs.push_back(s);
-      }
-    }
-    if (seqs.empty())
-      continue;
-
-    // Loud-fail on duplicate entrypoint names within the marked device -- the
-    // multi-design fold names each entrypoint with its design's name=, and two
-    // designs sharing a name would silently collide on one dispatch kernel.
-    {
-      llvm::StringSet<> seen;
-      for (RuntimeSequenceOp s : seqs)
-        if (!seen.insert(s.getSymName()).second) {
-          s.emitError() << "aiecc: --reconfig-method: duplicate entry sequence "
-                           "name '"
-                        << s.getSymName() << "' -- set name= per design";
-          return mlir::failure();
-        }
-    }
-
-    // Validate the per-mode load_pdi count on every selected entrypoint.
-    for (RuntimeSequenceOp s : seqs) {
-      unsigned nLoadPdi = 0;
-      for (mlir::Operation &op : s.getBody().front())
-        if (llvm::isa<NpuLoadPdiOp>(op))
-          ++nLoadPdi;
-      if (expectInit) {
-        if (nLoadPdi != 1) {
-          s.emitError() << "aiecc: --reconfig-method: expected exactly one "
-                           "load_pdi in runtime sequence '"
-                        << s.getSymName() << "', found " << nLoadPdi;
-          return mlir::failure();
-        }
-      } else if (loadPdiNoInit) {
-        if (nLoadPdi != 1) {
-          s.emitError() << "aiecc: --reconfig-method: expected exactly one "
-                           "load_pdi in runtime sequence '"
-                        << s.getSymName()
-                        << "' (no-init --reconfig-method=loadpdi), found "
-                        << nLoadPdi;
-          return mlir::failure();
-        }
-      } else if (nLoadPdi != 0) {
-        // expectInit == false && loadPdiNoInit == false: no current reconfig
-        // method routes here (see the load_pdi-shape table above) -- a
-        // defensive guard for a future no-load_pdi mode.
-        s.emitError() << "aiecc: --reconfig-method: expected zero "
-                         "load_pdi in runtime sequence '"
-                      << s.getSymName() << "', found " << nLoadPdi;
-        return mlir::failure();
-      }
-    }
-
-    if (expectInit) {
-      RuntimeSequenceOp first = seqs.front();
-      mlir::OpBuilder builder(first);
-      builder.setInsertionPoint(first);
-      if (ctrlPkt) {
-        // ctrlpkt: synthesize ONE shared `init` from the overlay, design-
-        // independent. Its signature is only the uniform trailing ctrl-pkt-
-        // stream buffer that AIECtrlPacketToDma appended as the LAST block arg
-        // of every entrypoint (read off the first entrypoint rather than
-        // hardcoded, in case the type ever varies); its body is nothing but
-        // that entrypoint's own load_pdi (validated exactly-one above), cloned
-        // so its device_ref/id/expand_mode come along verbatim.
-        mlir::Type ctrlArgType =
-            first.getBody().getArguments().back().getType();
-        NpuLoadPdiOp firstLoadPdi;
-        for (mlir::Operation &op : first.getBody().front())
-          if (auto loadPdi = llvm::dyn_cast<NpuLoadPdiOp>(op)) {
-            firstLoadPdi = loadPdi;
-            break;
-          }
-        assert(
-            firstLoadPdi &&
-            "expectInit validated exactly one load_pdi per entrypoint above");
-
-        auto initSeq = RuntimeSequenceOp::create(
-            builder, first.getLoc(), mlir::StringAttr{}, mlir::BoolAttr{});
-        initSeq.setSymName("init");
-        initSeq.getBody().push_back(new mlir::Block);
-        initSeq.getBody().addArgument(ctrlArgType, first.getLoc());
-        builder.setInsertionPointToStart(&initSeq.getBody().front());
-        builder.clone(*firstLoadPdi);
-      } else {
-        // write32: no ctrl-pkt lowering ran, so there is
-        // no uniform trailing arg to key off of. Clone the first entrypoint and
-        // truncate right after its first load_pdi -- the shared `init` keeps
-        // the sole @empty reset standup and streams nothing.
-        auto initSeq = mlir::cast<RuntimeSequenceOp>(builder.clone(*first));
-        initSeq.setSymName("init");
-        mlir::Block &b = initSeq.getBody().front();
-        bool afterLoadPdi = false;
-        llvm::SmallVector<mlir::Operation *> toErase;
-        for (mlir::Operation &op : b) {
-          if (afterLoadPdi)
-            toErase.push_back(&op);
-          else if (llvm::isa<NpuLoadPdiOp>(op))
-            afterLoadPdi = true;
-        }
-        for (mlir::Operation *op : llvm::reverse(toErase))
-          op->erase();
-      }
-    }
-    // expectInit == false: no shared standup entry is synthesized, whether or
-    // not the configs individually carry a load_pdi. Only loadpdi reaches here
-    // now (write32 is expectInit == true): its `loadPdiNoInit` configs keep
-    // their own self-reset load_pdi below. Either way, no shared `init`
-    // dispatches -- just config_1..config_N.
-
-    // `stripRearm` (fed by selfClear, now unconditional for ctrlpkt/write32)
-    // STRIPS every per-entrypoint load_pdi re-arm: the @init synthesized above
-    // keeps the sole real standup load_pdi and the entrypoints stay
-    // load_pdi-free (the in-band self-clear supplies each per-config reset).
-    // Otherwise (default load_pdi re-arm) each entrypoint keeps its own
-    // load_pdi so a separately-dispatched config re-arms via a PDI reload.
-    // Names are untouched
-    // -- the dispatch name is the entrypoint's own sym_name (main:<name>).
-    if (stripRearm)
-      for (RuntimeSequenceOp s : seqs) {
-        mlir::Block &b = s.getBody().front();
-        for (mlir::Operation &op : llvm::make_early_inc_range(b))
-          if (llvm::isa<NpuLoadPdiOp>(op))
-            op.erase();
-      }
-  }
-  return mlir::success();
 }
 
 } // namespace
@@ -1263,31 +1047,32 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
           .map<ModRef>(
               "input_with_addresses.mlir",
-              PassPipeline{&context,
-                           [scheme = allocScheme.getValue(),
-                            dyn = dynamicObjFifos.getValue(),
-                            pkt = packetSwObjFifos.getValue(),
-                            // --reconfig-method=write32 does not feed into
-                            // ctrl or ldpdi: write32 is overlay-free (no
-                            // column-control-overlay pass, no
-                            // @ctrl_pkt_overlay, no reserve-control-ids /
-                            // auto-packetize). Only ctrlPktOverlay and
-                            // loadPdiToCtrlPkt need the ctrl-overlay setup.
-                            ctrl = ctrlPktOverlay.getValue() ||
-                                   loadPdiToCtrlPkt.getValue(),
-                            ldpdi = loadPdiToCtrlPkt.getValue(),
-                            bf16 = bf16Emulation.getValue(),
-                            skipVerify = skipObjectFifoVerify.getValue(),
-                            // Resolved by resolveOptions() from the default-on
-                            // --ctrlpkt-auto-packetize bool (negated by
-                            // --ctrlpkt-auto-packetize=false).
-                            autoPkt = doAutoPacketizeControlIngress,
-                            xtileDma = dmaFenceSharedMem.getValue()](
-                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                             return getInputWithAddressesPipeline(
-                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi,
-                                 skipVerify, autoPkt, xtileDma);
-                           }});
+              PassPipeline{
+                  &context,
+                  [scheme = allocScheme.getValue(),
+                   dyn = dynamicObjFifos.getValue(),
+                   pkt = packetSwObjFifos.getValue(),
+                   // --reconfig-method=write32 does not feed into
+                   // ctrl or ldpdi: write32 is overlay-free (no
+                   // column-control-overlay pass, no
+                   // @ctrl_pkt_overlay, no reserve-controller-packet-ids /
+                   // auto-packetize). Only ctrlPktOverlay and
+                   // loadPdiToCtrlPkt need the ctrl-overlay setup.
+                   ctrl =
+                       ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
+                   ldpdi = loadPdiToCtrlPkt.getValue(),
+                   bf16 = bf16Emulation.getValue(),
+                   skipVerify = skipObjectFifoVerify.getValue(),
+                   // Resolved by resolveOptions() from the default-on
+                   // --ctrlpkt-auto-packetize bool (negated by
+                   // --ctrlpkt-auto-packetize=false).
+                   autoPkt = doAutoPacketizeControlIngress,
+                   xtileDma = dmaFenceSharedMem.getValue()](
+                      mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
+                    return getInputWithAddressesPipeline(
+                        ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi,
+                        skipVerify, autoPkt, xtileDma);
+                  }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
@@ -1556,7 +1341,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //   * --reconfig-method=write32 expands each config to direct writes (via the
   //     same expand-load-pdi machinery, reset-free mode), which reads the
   //     compiled cores just like --expand-load-pdis.
-  const ReconfigMethod method = parseReconfigMethod(reconfigMethod);
+  const ReconfigMethod method = reconfigMethod;
   bool npuTransactionsNeedCoresLowered =
       expandLoadPdis.getValue() || generateTxn || loadPdiToCtrlPkt.getValue() ||
       method == ReconfigMethod::Write32;
@@ -1566,8 +1351,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
   // IRON's fused decode arrives as ONE `aie.runtime_sequence` holding N
   // `aiex.configure` ops on the `aiex.entrypoint`-marked host (llama: 322
-  // configures over 19 config devices). splitMultiConfigEntry (below) and the
-  // aie-expand-load-pdi self-clear (getExpandLoadPdiPipeline) both require
+  // configures over 19 config devices). The aie-split-multi-config-entry pass
+  // and the aie-expand-load-pdi self-clear (getExpandLoadPdiPipeline) both need
   // exactly one configure/load_pdi per runtime-sequence block, so explode the
   // monolith into N one-configure sequences HERE -- before
   // getMaterializeRuntimeSeqPipeline rewrites `aiex.configure` into `aie.run`
@@ -1643,43 +1428,27 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                     "npu_dma_lowered.mlir",
                     PassPipeline{getNpuDmaLoweringPipeline(&context)});
 
-  // The --reconfig-method fold folds N per-config designs into
-  // seq_1..seq_N (unionConfigDesigns) and splits them here into
-  // init + config_1..config_N (or just config_1..config_N, for the
-  // no-init methods), so every downstream consumer of `npuLowered` sees the
-  // split uniformly. Non-fold flows leave `npuLowered` untouched. This call
-  // site is shared by every method (generateMultiConfigElf is true for
-  // loadpdi, write32, and ctrlpkt): expectInit is true for ctrlpkt (which
-  // stands up a resident overlay that must be shared) and for write32 (which
-  // always synthesizes the @empty-reset `main:init`; withReset == resetFree).
-  // It is false for loadpdi: a load_pdi is a full reset every time it is
-  // applied, so loadpdi's per-config self-reset load_pdi already makes a shared
-  // `init` standup redundant (see splitMultiConfigEntry's loadPdiNoInit case).
-  bool splitMultiConfig = generateMultiConfigElf;
-  bool expectInit = method == ReconfigMethod::Ctrlpkt || withReset;
-  bool loadPdiNoInit = method == ReconfigMethod::Loadpdi;
-  auto &npuLowered = npuDmaLowered.map<ModRef>(
-      "npu_lowered.mlir",
-      [splitMultiConfig, selfClear, expectInit, loadPdiNoInit, ctrlPkt](
-          const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
+  // Assign PDI ids on every flow, then (on the fold only) synthesize the shared
+  // reconfig `init` and normalize each per-config load_pdi re-arm. The
+  // aie-split-multi-config-entry pass reads the delivery method off the
+  // aiex.entrypoint marker and derives its own policy, so it needs no options
+  // and no-ops on non-fold modules (which carry no marker). The result folds N
+  // per-config designs (seq_1..seq_N from unionConfigDesigns) into
+  // init + config_1..config_N (or just config_1..config_N for the no-init
+  // loadpdi method), so every downstream consumer of `npuLowered` sees the
+  // split uniformly.
+  auto &npuIdsAssigned = npuDmaLowered.map<ModRef>(
+      "npu_pdi_ids.mlir",
+      [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
         assignDevicePdiIds(*clone);
         assignLoadPdiIds(*clone);
-        // On the self-clear arms strip each config's load_pdi re-arm: the
-        // synthesized `init` keeps the sole standup load_pdi and the per-config
-        // switch self-clear epilogue supplies the reset instead of a PDI
-        // reload.
-        if (splitMultiConfig &&
-            mlir::failed(splitMultiConfigEntry(*clone,
-                                               /*stripRearm=*/selfClear,
-                                               /*expectInit=*/expectInit,
-                                               /*loadPdiNoInit=*/
-                                               loadPdiNoInit,
-                                               /*ctrlPkt=*/ctrlPkt)))
-          return mlir::failure();
         out.value = std::move(clone);
         return mlir::success();
       });
+  auto &npuLowered = npuIdsAssigned.map<ModRef>(
+      "npu_lowered.mlir",
+      PassPipeline{getSplitMultiConfigEntryPipeline(&context)});
 
   // Root of the static configuration branch; contains compiled cores, etc., to
   // produce xclbins, or feed into the full ELF. Usually, this is completely
@@ -2500,13 +2269,8 @@ int main(int argc, char **argv) {
   //     full-PDI-reload baseline). Sets neither.
   // --reconfig-method REQUIRES --get-full-elf: the fold engages only in the
   // full-ELF flow, and its output IS the full ELF (written to --full-elf-name).
-  if (!reconfigMethod.empty()) {
-    const ReconfigMethod method = parseReconfigMethod(reconfigMethod);
-    if (method == ReconfigMethod::None) {
-      llvm::errs()
-          << "aiecc: --reconfig-method must be loadpdi|write32|ctrlpkt\n";
-      return 1;
-    }
+  if (reconfigMethod != ReconfigMethod::None) {
+    const ReconfigMethod method = reconfigMethod;
     if (!generateFullElf) {
       llvm::errs() << "aiecc: --reconfig-method requires --get-full-elf\n";
       return 1;
@@ -2563,10 +2327,24 @@ int main(int argc, char **argv) {
   // (overlay-free, out-of-band direct writes via reset-free mode). It drives
   // the expand-load-pdi machinery itself, so it cannot be combined with the
   // other two expansion strategies.
-  if (parseReconfigMethod(reconfigMethod) == ReconfigMethod::Write32 &&
+  if (reconfigMethod == ReconfigMethod::Write32 &&
       (expandLoadPdis || loadPdiToCtrlPkt)) {
     llvm::errs()
         << "aiecc: --reconfig-method=write32 is mutually exclusive with "
+           "--expand-load-pdis and --load-pdi-to-ctrl-pkt\n";
+    return 1;
+  }
+
+  // --reconfig-method=loadpdi keeps each config's load_pdi (firmware reloads
+  // the full PDI); it must not be combined with an expansion strategy. In
+  // particular --load-pdi-to-ctrl-pkt would flip the fold to control-packet
+  // delivery while the entry marker still says `loadpdi`, so
+  // aie-split-multi-config-entry (which derives its behavior from the marker)
+  // would mis-split. Reject the contradiction rather than mis-lower.
+  if (reconfigMethod == ReconfigMethod::Loadpdi &&
+      (expandLoadPdis || loadPdiToCtrlPkt)) {
+    llvm::errs()
+        << "aiecc: --reconfig-method=loadpdi is mutually exclusive with "
            "--expand-load-pdis and --load-pdi-to-ctrl-pkt\n";
     return 1;
   }

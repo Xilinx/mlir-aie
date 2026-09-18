@@ -38,6 +38,29 @@ namespace xilinx::aiecc::cli {
 
 namespace cl = llvm::cl;
 
+// Reconfiguration delivery method (see the --reconfig-method option below).
+// The clEnumValN spellings loadpdi/write32/ctrlpkt are a SERIALIZED CONTRACT:
+// reconfigMethodName() writes them into the `reconfig_method` marker attribute,
+// and the IRON Python API (Reconfiguration(method=...)) passes them verbatim --
+// do not rename them.
+enum class ReconfigMethod { None, Loadpdi, Write32, Ctrlpkt };
+inline llvm::StringLiteral reconfigMethodName(ReconfigMethod m) {
+  switch (m) {
+  case ReconfigMethod::Loadpdi:
+    return "loadpdi";
+  case ReconfigMethod::Write32:
+    return "write32";
+  case ReconfigMethod::Ctrlpkt:
+    return "ctrlpkt";
+  case ReconfigMethod::None:
+    break;
+  }
+  llvm_unreachable("reconfigMethodName(None): caller must gate on != None");
+}
+
+// Control-overlay pinning mode (see the --ctrlpkt-pinned-overlay option below).
+enum class PinMode { Adapt, Blind, Off };
+
 //===----------------------------------------------------------------------===//
 // Command-line options
 //===----------------------------------------------------------------------===//
@@ -331,12 +354,19 @@ inline cl::opt<std::string>
 // @ctrl_pkt_overlay. Every method folds N configs into a shared `main:init`
 // (loadpdi/ctrlpkt/with-init) plus N `main:config_1..N` entries. Implies the
 // multi-config fold (generateMultiConfigElf) and REQUIRES --get-full-elf.
-// Empty = inactive (single-input --get-full-elf).
+// None (flag omitted) = inactive (single-input --get-full-elf).
 inline bool generateMultiConfigElf = false;
-inline cl::opt<std::string> reconfigMethod(
-    "reconfig-method",
-    cl::desc("Reconfiguration delivery method: loadpdi | write32 | ctrlpkt"),
-    cl::init(""));
+inline cl::opt<ReconfigMethod> reconfigMethod(
+    "reconfig-method", cl::desc("Reconfiguration delivery method"),
+    cl::values(clEnumValN(ReconfigMethod::Loadpdi, "loadpdi",
+                          "Keep load_pdi; firmware reloads the full PDI"),
+               clEnumValN(ReconfigMethod::Write32, "write32",
+                          "Expand to write32/blockwrite direct writes "
+                          "(no overlay, reset-free)"),
+               clEnumValN(ReconfigMethod::Ctrlpkt, "ctrlpkt",
+                          "Expand to control packets through a resident "
+                          "@ctrl_pkt_overlay")),
+    cl::init(ReconfigMethod::None));
 
 // --reconfig-method=write32 always synthesizes a shared `main:init` carrying
 // the @empty whole-column reset; the host loads `main:init` or not, as it
@@ -384,11 +414,16 @@ inline cl::opt<bool> parallelColumns(
 //   blind           -- blind Layer-0 capture (pin all control routing).
 //   off             -- do not pin (reintroduces the multi-column co-tenancy
 //                      wedge; ablation / escape hatch only).
-inline cl::opt<std::string> ctrlpktPinnedOverlay(
+inline cl::opt<PinMode> ctrlpktPinnedOverlay(
     "ctrlpkt-pinned-overlay",
-    cl::desc("Control-overlay pinning mode (ctrlpkt overlay): "
-             "adapt (default) | blind | off."),
-    cl::init("adapt"));
+    cl::desc("Control-overlay pinning mode (ctrlpkt overlay)"),
+    cl::values(clEnumValN(PinMode::Adapt, "adapt",
+                          "Design-aware pinning (default)"),
+               clEnumValN(PinMode::Blind, "blind", "Blind pinning"),
+               clEnumValN(PinMode::Off, "off",
+                          "No pinning (ablation / escape hatch; may fail to "
+                          "route)")),
+    cl::init(PinMode::Adapt));
 
 // Auto-packetize the minimal set of shim-ingress objectFifos so control ingress
 // always has a shim MM2S channel to share, instead of hitting the
@@ -604,14 +639,8 @@ inline bool resolveOptions() {
   doUnified = unified && !noUnified;
   doCompileHost = generateHost;
   doAutoPacketizeControlIngress = ctrlpktAutoPacketize;
-  if (ctrlpktPinnedOverlay != "adapt" && ctrlpktPinnedOverlay != "blind" &&
-      ctrlpktPinnedOverlay != "off") {
-    llvm::errs() << "aiecc: --ctrlpkt-pinned-overlay must be one of "
-                    "adapt|blind|off\n";
-    return false;
-  }
-  doReconfigPinControl = ctrlpktPinnedOverlay != "off";
-  doReconfigPinControlDesignAware = ctrlpktPinnedOverlay == "adapt";
+  doReconfigPinControl = ctrlpktPinnedOverlay != PinMode::Off;
+  doReconfigPinControlDesignAware = ctrlpktPinnedOverlay == PinMode::Adapt;
   return true;
 }
 

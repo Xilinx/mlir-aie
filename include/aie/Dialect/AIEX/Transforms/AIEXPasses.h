@@ -70,6 +70,8 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIESplitConfigureEntriesPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIESplitMultiConfigEntryPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEXInlineTraceConfigPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

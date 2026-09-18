@@ -14,7 +14,9 @@
 //     transports for the same reconfiguration.
 
 // RUN: not aiecc --get-full-elf --reconfig-method=bogus %s 2>&1 | FileCheck %s --check-prefix=BADMETHOD
-// BADMETHOD: --reconfig-method must be loadpdi|write32|ctrlpkt
+// An unrecognized method is rejected by the LLVM cl option parser itself (the
+// option is cl::opt<ReconfigMethod>), before the input is even read.
+// BADMETHOD: Cannot find option named 'bogus'
 
 // RUN: not aiecc --reconfig-method=ctrlpkt %s 2>&1 | FileCheck %s --check-prefix=NOFULLELF
 // NOFULLELF: --reconfig-method requires --get-full-elf

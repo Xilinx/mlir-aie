@@ -6,12 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 // --ctrlpkt-pinned-overlay selects the control-overlay pinning mode
-// (adapt|blind|off). The option validates its domain up front, so an
-// unrecognized mode is rejected before any lowering runs.
+// (adapt|blind|off). It is a cl::opt<PinMode> enum, so an unrecognized mode is
+// rejected by the LLVM cl option parser up front, before any lowering runs.
 
 // RUN: not aiecc --get-full-elf --reconfig-method=ctrlpkt --ctrlpkt-pinned-overlay=bogus %s 2>&1 | FileCheck %s
 
-// CHECK: --ctrlpkt-pinned-overlay must be one of adapt|blind|off
+// CHECK: Cannot find option named 'bogus'
 
 // A two-config idiomatic module (host device @main configuring config device
 // @add_one), so the option check sees a real design.

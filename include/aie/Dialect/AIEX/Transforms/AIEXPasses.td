@@ -639,6 +639,37 @@ def AIESplitConfigureEntries
   ];
 }
 
+def AIESplitMultiConfigEntry
+    : Pass<"aie-split-multi-config-entry", "mlir::ModuleOp"> {
+  let summary = "Synthesize the shared reconfig init and normalize per-config "
+                "load_pdi re-arm";
+  let description = [{
+    On the `aiex.entrypoint`-marked host device of a `--reconfig-method` fold,
+    synthesize the single shared standup `init` runtime_sequence and normalize
+    each per-config entrypoint's `npu.load_pdi` re-arm, according to the
+    delivery method recorded in the marker's `reconfig_method` key
+    (loadpdi | write32 | ctrlpkt -- the pass's sole input, no options).
+
+    ctrlpkt / write32 each carry exactly one materialized `load_pdi` per
+    entrypoint: a shared `init` is synthesized (cloned from the overlay for
+    ctrlpkt, from the truncated first entrypoint for write32) and every
+    entrypoint's own re-arm is stripped (the in-band self-clear supplies each
+    per-config reset). loadpdi keeps each entrypoint's sole self-reset load_pdi
+    and synthesizes no `init`. An out-of-contract load_pdi count fails loud.
+
+    Runs AFTER per-device DMA lowering and PDI-id assignment (distinct from
+    `aie-split-configure-entries`, which runs earlier on the pre-materialize
+    `aiex.configure` monolith). A no-op if no device carries the marker.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIESplitMultiConfigEntryPass()";
+  let dependentDialects = [
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEXInlineTraceConfig : Pass<"aie-inline-trace-config", "AIE::DeviceOp"> {
   let summary = "Inline trace configuration and generate NPU writes";
   let description = [{
