@@ -110,7 +110,6 @@ static LogicalResult
 transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
                  AIEX::ExpandMode defaultMode, bool resetFree, bool selfClear,
                  bool withReset, unsigned loadPdisInBlock) {
-  static unsigned long i = 0;
   OpBuilder builder(loadPdiOp);
   // The three self-clear teardowns (switch, circuit, DMA) are no longer
   // independently selectable: self-clear (now unconditional for
@@ -203,10 +202,10 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
   // write32 resets to empty and must include them).
   auto outputType = ctrlPkt ? AIEToConfigurationOutputType::ControlPacket
                             : AIEToConfigurationOutputType::Transaction;
-  std::string prefix = ctrlPkt ? ("loadpdi_ctrlpkt_" + std::to_string(i) + "_")
-                       : resetFree
-                           ? ("loadpdi_write32_" + std::to_string(i) + "_")
-                           : ("loadpdi_" + std::to_string(i));
+  std::string prefix =
+      ctrlPkt     ? ("loadpdi_ctrlpkt_" + std::to_string(index) + "_")
+      : resetFree ? ("loadpdi_write32_" + std::to_string(index) + "_")
+                  : ("loadpdi_" + std::to_string(index));
   if (failed(xilinx::AIE::generateAndInsertConfigOps(
           builder, referencedDevice, /*clElfDir=*/"", outputType, prefix,
           /*skipCtrlPktOverlay=*/useOverlay))) {
@@ -297,7 +296,7 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
       }
       if (failed(xilinx::AIE::generateAndInsertSwitchDisableOps(
               builder, referencedDevice, excludePorts, outputType,
-              "selfclear_disable_" + std::to_string(i) + "_",
+              "selfclear_disable_" + std::to_string(index) + "_",
               selfClearCircuit))) {
         loadPdiOp.emitError("Failed to generate self-clear switch-disable ops");
         return failure();
@@ -309,7 +308,7 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
     if (selfClearDma &&
         failed(xilinx::AIE::generateAndInsertDmaChannelResetOps(
             builder, referencedDevice, outputType,
-            "selfclear_dma_reset_" + std::to_string(i) + "_"))) {
+            "selfclear_dma_reset_" + std::to_string(index) + "_"))) {
       loadPdiOp.emitError("Failed to generate self-clear DMA reset ops");
       return failure();
     }
@@ -317,8 +316,6 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp, unsigned index,
 
   // Erase the original load_pdi operation
   loadPdiOp.erase();
-
-  i++;
 
   return success();
 }
