@@ -40,3 +40,16 @@ def test_hrx_rejects_full_elf_kernel_clearly():
     )
     with pytest.raises(HostRuntimeError, match="full-ELF"):
         rt._resolve_kernel(npu_kernel)
+
+
+def test_reconfiguration_rejects_unknown_method():
+    """An unknown --reconfig-method must fail fast in the constructor, before
+    add()/compile() stage MLIR and build kernels -- not late inside aiecc."""
+    from aie.utils.compile.reconfiguration import Reconfiguration
+
+    with pytest.raises(ValueError, match="loadpdi|write32|ctrlpkt"):
+        Reconfiguration("prog", method="ctrl_pkt")  # typo of "ctrlpkt"
+
+    # Valid methods and the None/"" defaults must be accepted.
+    for ok in ("loadpdi", "write32", "ctrlpkt", None, ""):
+        Reconfiguration("prog", method=ok)

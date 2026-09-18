@@ -32,9 +32,15 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .utils import FullElf, _mlir_text_and_name, _run_aiecc
+
+# Recognized --reconfig-method values. Keep in sync with the ReconfigMethod
+# cl::values enum (tools/aiecc/CommandLineOptions.h); aiecc is the authority and
+# rejects unknown methods itself -- this is a fail-fast mirror so a typo
+# surfaces before the fold runs.
+_RECONFIG_METHODS = ("loadpdi", "write32", "ctrlpkt")
 
 
 class Reconfiguration:
@@ -60,7 +66,7 @@ class Reconfiguration:
     def __init__(
         self,
         name: str,
-        method: "str | None" = None,
+        method: 'Literal["loadpdi", "write32", "ctrlpkt"] | None' = None,
         output_dir: "str | Path | None" = None,
         extra_aiecc_args: "list[str] | None" = None,
     ):
@@ -69,6 +75,16 @@ class Reconfiguration:
                 f"Reconfiguration: name must be a bare identifier (used to name "
                 f"the output ELF and aiecc's working directory), not a path; "
                 f"got {name!r}."
+            )
+        # Fail fast on an unknown method rather than after add()/compile() have
+        # staged MLIR and built kernels: aiecc rejects it too, but only late and
+        # nested in a subprocess error. None/"" mean "aiecc's default" (matches
+        # the `if self._method:` gate in compile()), so let them through.
+        if method and method not in _RECONFIG_METHODS:
+            raise ValueError(
+                f"Reconfiguration: method must be "
+                f"{'|'.join(_RECONFIG_METHODS)} (or None for aiecc's default); "
+                f"got {method!r}."
             )
         self._name = name
         self._method = method
