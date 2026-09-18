@@ -24,11 +24,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from aie.iron import In, InOut, Out, Scalar, kernels
+from aie.iron import In, InOut, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
-from aie.iron.kernels import ROLES, KernelContract
-from aie.utils import bfp
+from aie.iron.kernels import KernelContract, Param
+from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
@@ -36,6 +36,8 @@ from ml_dtypes import bfloat16
 # One build per factory, on the default kwargs unless a non-default variant
 # is worth pinning. Matrix kernels carry the host shape they are checked at.
 CASES = {
+    "zero": (dict(tile_size=64), dict(calls=3)),
+    "zero/bf16": (dict(tile_size=64, dtype=bfloat16), dict(calls=3)),
     "passthrough": ({}, dict(calls=4)),
     "passthrough/int16": (dict(dtype=np.int16), dict(calls=4)),
     "scale/int16": (dict(dtype=np.int16), dict(calls=4)),
@@ -207,9 +209,12 @@ def _factory(case_id: str):
 def _aie2p_device():
     # Factories pick sources and mac_dims from the current device; a few
     # (exp2f_vec, convert_copy) exist only for aie2p.
+    previous = get_current_device(probe_runtime=False)
     set_current_device(NPU2Col1())
-    yield
-    set_current_device(None)
+    try:
+        yield
+    finally:
+        set_current_device(previous)
 
 
 def test_every_case_names_an_exported_factory():
@@ -217,24 +222,70 @@ def test_every_case_names_an_exported_factory():
         assert callable(_factory(case_id)), case_id
 
 
+def test_device_fixture_restores_previous_device():
+    previous = get_current_device(probe_runtime=False)
+    binding = _aie2p_device.__wrapped__()
+    next(binding)
+    binding.close()
+    assert get_current_device(probe_runtime=False) is previous
+
+
 def test_contract_coverage_is_explicit():
-    """Every constructible factory carries a contract, including cascade halves."""
+    """Every exported factory carries a contract, including cascade and setup."""
     without = []
     for name in kernels.__all__:
         f = getattr(kernels, name)
         if (
-            not inspect.isfunction(f)
+            not callable(f)
+            or inspect.isclass(f)
             or name.endswith("_ref")
-            or name == "mm_stream_dims"
+            or name in ("mm_stream_dims", "mm_acc_dtype")
         ):
             continue
+        signature = inspect.signature(f)
+        kwargs = {}
         try:
-            ef = f()
-        except Exception:  # a factory that needs kwargs; covered by CASES if in scope
-            continue
-        if getattr(ef, "contract", None) is None:
+            signature.bind()
+        except TypeError:
+            covered = [
+                fkw
+                for case_id, (fkw, _) in CASES.items()
+                if case_id.split("/")[0] == name
+            ]
+            assert covered, f"{name}: required-argument factory needs a CASES entry"
+            kwargs = covered[0]
+            signature.bind(**kwargs)
+        ef = f(**kwargs)
+        if ef.contract is None:
             without.append(name)
     assert not without, f"factories without contracts: {without}"
+
+
+@pytest.mark.parametrize("error", [RuntimeError, TypeError, ValueError])
+def test_contract_coverage_propagates_constructor_failures(monkeypatch, error):
+    def broken():
+        raise error("factory construction failed")
+
+    monkeypatch.setattr(kernels, "__all__", ["zero"])
+    monkeypatch.setattr(kernels, "zero", broken)
+    with pytest.raises(error, match="factory construction failed"):
+        test_contract_coverage_is_explicit()
+
+
+def test_contract_coverage_constructs_required_case_arguments(monkeypatch):
+    from types import SimpleNamespace
+
+    sizes = []
+
+    def required(*, tile_size):
+        sizes.append(tile_size)
+        return SimpleNamespace(contract=KernelContract(roles=(Out,)))
+
+    monkeypatch.setattr(kernels, "__all__", ["zero"])
+    monkeypatch.setattr(kernels, "zero", required)
+    monkeypatch.setitem(CASES, "zero", ({"tile_size": 64}, {}))
+    test_contract_coverage_is_explicit()
+    assert sizes == [64]
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -246,7 +297,7 @@ def test_roles_match_arg_types(case_id):
     assert len(c.roles) == len(
         fn.arg_types()
     ), f"{case_id}: {len(c.roles)} roles for {len(fn.arg_types())} arguments"
-    assert set(c.roles) <= set(ROLES)
+    assert set(c.roles) <= {In, Out, InOut, Param}
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -342,11 +393,13 @@ def test_matrix_design_repeats_independent_calls():
 
 
 def test_scalar_counts_are_bound_not_inferred_from_tensor_sizes():
-    assert kernels.reduce_max(tile_size=1024).contract.scalar_bindings == ((2, 1024),)
-    assert kernels.rgba2hue(line_width=64).contract.scalar_bindings == ((2, 64),)
-    assert kernels.gray2rgba(line_width=64).contract.scalar_bindings == ((2, 64),)
+    assert kernels.reduce_max(tile_size=1024).contract.parameter_bindings == (
+        (2, 1024),
+    )
+    assert kernels.rgba2hue(line_width=64).contract.parameter_bindings == ((2, 64),)
+    assert kernels.gray2rgba(line_width=64).contract.parameter_bindings == ((2, 64),)
     fn = kernels.leaky_relu(tile_size=1024)
-    assert fn.contract.scalar_bindings == ((2, 1024),)
+    assert fn.contract.parameter_bindings == ((2, 1024),)
     assert fn.contract.reference_indices() == [0, 3]
     mlir = str(kd.design(kernels.leaky_relu, tile_size=1024, scalars=(0.5,)).as_mlir())
     assert "1024 : i32" in mlir
@@ -410,16 +463,13 @@ def test_layer_norm_f32_stack_includes_scalar_division():
 
 
 def test_contract_validates_argument_bindings():
-    from aie.iron import Count
-
     with pytest.raises(ValueError, match="layouts"):
         KernelContract(roles=(In, Out), layouts=(None,))
-    with pytest.raises(ValueError, match="scalar_bindings"):
-        KernelContract(roles=(In, Out), scalar_bindings=((1, 64),))
+    with pytest.raises(ValueError, match="parameter_bindings"):
+        KernelContract(roles=(In, Out), parameter_bindings=((1, 64),))
     with pytest.raises(ValueError, match="distinct"):
-        KernelContract(roles=(In, Out, Scalar), scalar_bindings=((2, 64), (2, 128)))
-    with pytest.raises(ValueError, match="explicit scalar binding"):
-        KernelContract(roles=(In, Out, Count))
+        KernelContract(roles=(In, Out, Param), parameter_bindings=((2, 64), (2, 128)))
+    assert KernelContract(roles=(In, Out, Param)).reference_indices() == [0, 2]
     with pytest.raises(ValueError, match="initializers"):
         KernelContract(roles=(In, Out), initializers=((1, lambda fn: fn),))
 
@@ -512,7 +562,6 @@ def test_matrix_layouts_are_reversible_per_argument(factory):
 
 
 def test_param_encoding_preserves_integer_bits():
-    from aie.iron import Param
     from aie.iron.kernel import ExternalFunction
 
     tile = np.ndarray[(4,), np.dtype[np.uint64]]
@@ -526,6 +575,117 @@ def test_param_encoding_preserves_integer_bits():
     encoded = kd._encode_params(fn, [first])
     assert encoded[0][2] == tuple(first.tolist())
     assert encoded != kd._encode_params(fn, [second])
+
+
+def test_mixed_params_infer_scalar_and_tensor_abi():
+    from aie.iron.kernel import ExternalFunction
+
+    tile = np.ndarray[(4,), np.dtype[np.int32]]
+    constant = np.arange(4, dtype=np.int32)
+    fn = ExternalFunction(
+        "mixed_params",
+        source_string="void mixed_params() {}",
+        arg_types=[np.int32, tile, tile, tile, np.int32, tile, tile, np.int32],
+    )
+    fn.contract = KernelContract(
+        roles=(Param, In, Param, Param, Param, Out, Out, Param),
+        parameter_bindings=((0, 4), (3, constant), (7, 7)),
+        reference=lambda x, weights, factor: (
+            x * weights + factor + constant,
+            x - weights,
+        ),
+        acc_dtype=np.int32,
+        stack_bytes=1024,
+    )
+    inputs = kd.sample_inputs(fn, calls=3)
+    assert [a.shape for a in inputs] == [(3, 4), (4,)]
+    assert fn.contract.reference_indices() == [1, 2, 4]
+    np.testing.assert_array_equal(fn.param_values(inputs)[0], inputs[1])
+    encoded = kd._encode_params(fn, fn.param_values(inputs))
+    assert len(encoded) == 2 and encoded[1][2] == tuple(constant)
+    refs = fn.expected(inputs, scalars=(3,))
+    np.testing.assert_array_equal(refs[0], inputs[0] * inputs[1] + 3 + constant)
+    np.testing.assert_array_equal(refs[1], inputs[0] - inputs[1])
+    assert fn.judge(refs, refs, calls=3)
+    assert [a.direction for a in kd.host_args(fn, calls=3)] == [In, Out, Out]
+    assert len(kd.host_layout(fn, inputs)) == 1
+    with pytest.raises(ValueError, match="expected 1 scalar"):
+        kd.design(lambda: fn, params=fn.param_values(inputs)).as_mlir()
+    with pytest.raises(ValueError, match="expected scalar parameter"):
+        kd.design(
+            lambda: fn, params=fn.param_values(inputs), scalars=(np.ones(4),)
+        ).as_mlir()
+    module = kd.design(
+        lambda: fn, calls=3, scalars=(3,), params=fn.param_values(inputs)
+    ).as_mlir()
+    assert "mixed_params" in str(module)
+    assert "param0" in str(module) and "param1" in str(module)
+
+
+def test_param_is_kernel_only_and_host_descriptors_are_private():
+    import aie.iron as iron
+    from aie.utils.compile import jit
+    from aie.utils.compile.jit import markers
+
+    assert Param is kernels.Param
+    assert not hasattr(iron, "Param")
+    assert (iron.In, iron.Out, iron.InOut) == (jit.In, jit.Out, jit.InOut)
+    for name in ("Param", "Scalar", "Count", "ROLES"):
+        assert not hasattr(jit, name)
+        assert not hasattr(markers, name)
+    assert not hasattr(kernels, "ROLES")
+    assert not hasattr(kd, "HostArg")
+    assert not hasattr(iron.algorithms, "HostArg")
+
+
+def test_output_only_kernel_uses_no_host_inputs():
+    fn = kernels.zero(tile_size=64)
+    assert kd.sample_inputs(fn) == []
+    assert fn.param_values([]) == []
+    assert kd.host_layout(fn, []) == []
+    assert [arg.direction for arg in kd.host_args(fn)] == [Out]
+    assert fn.judge(np.zeros(64, np.int32), fn.expected([]))
+    assert kd.design(kernels.zero, tile_size=64) is not None
+
+
+def test_parameter_only_kernel_can_have_multiple_outputs():
+    from aie.iron.kernel import ExternalFunction
+
+    tile = np.ndarray[(4,), np.dtype[np.int32]]
+    fn = ExternalFunction(
+        "param_outputs", source_string="", arg_types=[tile, np.int32, tile, tile]
+    )
+    fn.contract = KernelContract(
+        roles=(Param, Param, Out, Out),
+        reference=lambda weights, factor: (weights * factor, weights + factor),
+        stack_bytes=1024,
+    )
+    inputs = kd.sample_inputs(fn)
+    assert len(inputs) == 1
+    assert kd.host_layout(fn, inputs) == []
+    assert [arg.direction for arg in kd.host_args(fn)] == [Out, Out]
+    refs = fn.expected(inputs, scalars=(2,))
+    np.testing.assert_array_equal(refs[0], inputs[0] * 2)
+    actuals = tuple(np.tile(ref, (3, 1)) for ref in refs)
+    assert fn.judge(actuals, refs, calls=3)
+    actuals[1][-1, -1] += 1
+    assert not fn.judge(actuals, refs, calls=3)
+    design = kd.design(lambda: fn, params=fn.param_values(inputs), scalars=(2,), calls=3)
+    assert "param_outputs" in str(design.as_mlir())
+
+
+def test_fifo_plan_groups_hashable_numpy_abi_types():
+    from aie.iron.kernel import ExternalFunction
+
+    i16 = np.ndarray[(4,), np.dtype[np.int16]]
+    same_i16 = np.ndarray[(4,), np.dtype[np.int16]]
+    i32 = np.ndarray[(4,), np.dtype[np.int32]]
+    assert i16 == same_i16 and hash(i16) == hash(same_i16)
+    fn = ExternalFunction(
+        "typed_groups", source_string="", arg_types=[i16, i32, same_i16, i16]
+    )
+    fn.contract = KernelContract(roles=(In, In, In, Out))
+    assert kd._fifo_plan(fn) == ([[0, 2], [1]], [0, 1, 2], [])
 
 
 def test_per_tile_matrix_references_agree_with_the_whole_problem_ones():
@@ -679,7 +839,7 @@ def test_conv_references_follow_the_kernel_layouts():
     l1 = np.arange(W * IC, dtype=np.int8)
     l2 = np.full(W * IC, -100, np.int8)
     got = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 1, 1, 0)
-    assert got.tolist() == (((l1.astype(np.int64) + 1) >> 1)).tolist()
+    assert got.tolist() == ((l1.astype(np.int64) + 1) >> 1).tolist()
     w[:, :, 0, 1] = np.eye(8, dtype=np.int8)  # add line0's centre tap
     mid = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 1, 1, 0)
     top = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 0, 1, 0)
@@ -978,14 +1138,14 @@ def test_bf16_matvec_matches_the_iron_gemv_signature():
     assert types[0] is np.int32 and types[1] is np.int32
     assert [kd.shape_dtype(t)[0] for t in types[2:]] == [(32 * 256,), (256,), (32,)]
     assert all(kd.shape_dtype(t)[1] is bfloat16 for t in types[2:])
-    assert fn.contract.roles == (Scalar, Scalar, In, In, Out)
+    assert fn.contract.roles == (Param, Param, In, In, Out)
     # row_offset shifts the write into c, so one core fills several blocks.
     a = np.arange(4 * 8, dtype=np.float32).reshape(4, 8).astype(bfloat16)
     b = np.ones(8, dtype=bfloat16)
     assert kernels.mv_bf16_ref(2, 1, a, b).tolist() == [0.0, 28.0, 92.0]
-    # The int16 kernel is a different source with a zero symbol and no scalars.
+    # The int16 kernel accumulates and declares an independent initializer.
     i16 = kernels.mv(dim_m=32, dim_k=32)
-    assert i16.contract.roles == (In, In, InOut) and hasattr(i16.also, "zero")
+    assert i16.contract.roles == (In, In, InOut) and i16.contract.initializers
     with pytest.raises(ValueError, match="multiple of vec_size"):
         kernels.mv(dim_k=100, input_dtype=bfloat16, output_dtype=bfloat16)
 
@@ -1050,30 +1210,25 @@ def test_host_args_describe_the_layouts_a_caller_must_allocate():
 
 
 def test_mha_binds_its_translation_unit_as_one_object():
-    """mha.cc is one compile with many symbols, bound through siblings.
-
-    It ``#include``s softmax.cc and mm.cc, so it defines ``matmul_*`` and
-    ``zero_*`` names of its own; the parameterisation prefix is what stops
-    those colliding with a separate ``mm`` in the same design.
-    """
+    """mha.cc entry points bind explicitly through one artifact owner."""
     fn = kernels.mha(dim_m=64, dim_k=64, dim_n=64)
     p = fn._symbol_prefix
     assert fn.name == f"{p}_matmul_bf16_bf16_wrapper"
+    tile = np.ndarray[(64 * 64,), np.dtype[bfloat16]]
+    scale = np.ndarray[(64,), np.dtype[bfloat16]]
+    idx = np.ndarray[(2,), np.dtype[np.int32]]
     expected = {
-        "zero": "zero_bf16_rowmaj",
-        "matmul_scalar": "matmul_bf16_bf16_wrapper_scalar",
-        "matmul_rowmaj": "matmul_bf16_bf16_rowmaj",
-        "partial_softmax": "partial_softmax",
-        "matmul_pv": "matmul_PV",
-        "rescale_o": "rescale_O",
-        "init_scale_buffer": "init_scale_buffer",
+        "matmul_bf16_bf16_wrapper_scalar": [tile, tile, tile],
+        "matmul_bf16_bf16_rowmaj": [tile, tile, tile],
+        "partial_softmax": [tile, tile, scale, idx, bfloat16, *([np.int32] * 4)],
+        "matmul_PV": [tile, tile, tile, scale, np.int32, np.int32, idx],
+        "rescale_O": [tile, scale, np.int32, idx],
+        "init_scale_buffer": [scale, np.int32],
     }
-    for attr, symbol in expected.items():
-        sib = getattr(fn.also, attr)
-        assert sib.name == f"{p}_{symbol}", attr
-        assert sib.object_file_name == fn.object_file_name, attr
-    # mha.cc only declares passThroughLine; that copy is its own kernel.
-    assert not hasattr(fn.also, "passthrough")
+    for symbol, arg_types in expected.items():
+        sib = fn.object_file.bind(symbol, arg_types)
+        assert sib.name == f"{p}_{symbol}"
+        assert sib.object_file is fn.object_file
     # Its own matmul symbols cannot collide with a real mm in one design.
     assert kernels.mm(dim_m=64, dim_k=64, dim_n=64).name != fn.name
     # A dataflow the harness cannot drive says so rather than failing oddly.
@@ -1088,7 +1243,7 @@ def test_accumulating_kernels_are_inout_and_ship_a_zero():
     """``inout`` marks a kernel that reads its output back, and needs zeroing.
 
     ``mm``'s ``C += A * B`` reads C, so a design must zero the buffer before
-    the first call -- which is what the ``.also.zero`` sibling is for. The
+    the first call using its independent initializer. The
     reference still computes the whole product, so an ``inout`` output is
     excluded from ``reference_indices`` exactly like an ``out`` one.
     """
@@ -1101,11 +1256,13 @@ def test_accumulating_kernels_are_inout_and_ship_a_zero():
         c = fn.contract
         assert c.accumulates, f"{f.__name__} accumulates into C"
         assert c.roles[c.out_index] is InOut
-        assert hasattr(fn.also, "zero"), f"{f.__name__} needs a .also.zero to clear C"
+        zero = c.initializers[0][1](fn)
+        assert zero.object_file is not fn.object_file
+        assert zero.contract.roles == (Out,)
         assert c.out_index not in c.reference_indices()
     # The autouse fixture selects aie2p, so the bfp matmul builds here too.
     bfp = kernels.mm_bfp()
-    assert bfp.contract.accumulates and bfp.also.zero is not None
+    assert bfp.contract.accumulates and bfp.contract.initializers
     # The bf16 matvec stores rather than accumulating: plain "out".
     st = kernels.mv(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16)
     assert not st.contract.accumulates
@@ -1123,21 +1280,21 @@ def test_sibling_symbols_follow_the_parameterisation_prefix():
     """A kernel's siblings bind names its own object actually defines.
 
     Each parameterisation gets a symbol prefix so two of them can share a
-    design; the whole object is prefixed, so ``.also.zero`` and the cascade
+    design; the whole object is prefixed, so the cascade
     get/put trio have to be prefixed to match.
     """
     fn = kernels.mm(dim_m=64, dim_k=64, dim_n=64)
     prefix = fn._symbol_prefix
     assert prefix and fn.name == f"{prefix}_matmul_i16_i16"
-    assert fn.also.zero.name == f"{prefix}_zero_i16"
-    assert fn.also.zero.object_file_name == fn.object_file_name
     # A different parameterisation gets a different prefix on every symbol.
     other = kernels.mm(dim_m=32, dim_k=32, dim_n=32)
     assert other._symbol_prefix != prefix
-    assert other.also.zero.name != fn.also.zero.name
     casc = kernels.cascade_mm()
     cp = casc._symbol_prefix
-    for sib in (casc.also.put_only, casc.also.put_get, casc.also.zero):
+    for mode in ("put_only", "put_get"):
+        sib = casc.object_file.bind(
+            f"matmul_scalar_cascade_{mode}_i16_i16", casc.arg_types()
+        )
         assert (
             sib.name.startswith(f"{cp}_")
             and sib.object_file_name == casc.object_file_name
@@ -1418,6 +1575,8 @@ def test_input_limit_keeps_the_reference_inside_the_accumulator():
 
 def _combo_id(v) -> str:
     """One `.dtypes` entry value as a test id: a dtype name, else its value."""
+    if bfp.is_bfp(v):
+        return "bfp16ebs8"
     return np.dtype(v).name if isinstance(v, type) else str(v)
 
 
@@ -1438,7 +1597,9 @@ def test_declared_dtype_combinations_build(name, combo):
     """Every combination a factory lists as supported builds, and its arg types use it."""
     fn = getattr(kernels, name)(**combo)
     if name == "mm_bfp":  # block-floating-point operands are not numpy dtypes
-        assert fn.also.zero is not None
+        assert fn.contract.initializers
+        return
+    if any(bfp.is_bfp(v) for v in combo.values()):
         return
     tensor_dts = {
         np.dtype(kd.shape_dtype(t)[1]) for t in fn.arg_types() if hasattr(t, "__args__")
@@ -1513,7 +1674,7 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
         elif c.setup is not None:
             # A setup only matters where an accumulator is narrowed: a bf16
             # or bfp16 output, or an explicit conversion in the source.
-            out_dt = kd.shape_dtype(kd._arg_types(ef)[c.out_index])[1]
+            out_dt = kd.shape_dtype(ef.arg_types()[c.out_index])[1]
             narrows = (
                 bfp.is_bfp(out_dt)
                 or np.dtype(out_dt) == np.dtype(bfloat16)
@@ -1567,10 +1728,9 @@ def test_bf16_exp_clamp_matches_the_kernel_headers():
             continue
         found = pattern.search(header.read_text())
         assert found, f"{header}: no EXP_BF16_CLAMP definition"
-        assert float(found.group(1)) == _EXP_BF16_CLAMP, (
-            f"{header} clamps at {found.group(1)} but bf16_exp_ref uses "
-            f"{_EXP_BF16_CLAMP}; the reference no longer matches the kernel"
-        )
+        assert (
+            float(found.group(1)) == _EXP_BF16_CLAMP
+        ), f"{header} clamps at {found.group(1)} but bf16_exp_ref uses {_EXP_BF16_CLAMP}; the reference no longer matches the kernel"
         checked.append(arch)
     assert checked, "no lut_based_ops.h found to check the clamp against"
 

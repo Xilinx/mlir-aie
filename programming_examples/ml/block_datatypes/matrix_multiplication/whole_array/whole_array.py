@@ -75,7 +75,7 @@ def whole_array_matmul(
     C_l1_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
     matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n)
-    zero_kernel = matmul_kernel.also.zero
+    zero_kernel = kernels.zero(m * n // 8, v8bfp16ebs8)
 
     A_l3l2_fifos: list[ObjectFifo] = []
     A_l2l1_fifos: list[ObjectFifo] = []

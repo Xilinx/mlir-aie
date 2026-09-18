@@ -22,9 +22,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import numpy as np
-from aie.iron import In, Param, kernels
+from aie.iron import In, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import from_name
+from aie.iron.kernels import Param
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
 
@@ -59,8 +60,9 @@ class Case:
     ``calls`` independent tile invocations of any kernel. ``shape`` is retained
     for diagnostics of old callers, but whole-problem shapes are rejected by
     the builder. ``params`` overrides the value
-    of ``param`` arguments (``scale``'s factor); ``scalars`` supplies
-    ``scalar`` arguments in order. ``devices`` restricts a case to the NPU
+    of unbound tensor ``Param`` arguments (``scale``'s factor); ``scalars``
+    supplies unbound scalar ``Param`` arguments in ABI order.
+    ``devices`` restricts a case to the NPU
     generations whose kernels exist (``("npu2",)``), as IRON's
     ``supported_devices`` marker does; empty means every device.
     ``smoke`` marks the one case per kernel the per-PR device test runs;
@@ -114,7 +116,12 @@ class Case:
         """
         fn = self.fn()
         types = fn.arg_types()
-        in_dt = bfp.dtype_name(kd.shape_dtype(types[fn.contract.roles.index(In)])[1])
+        primary = (
+            fn.contract.roles.index(In)
+            if In in fn.contract.roles
+            else fn.contract.out_indices[0]
+        )
+        in_dt = bfp.dtype_name(kd.shape_dtype(types[primary])[1])
         out_dt = "+".join(
             bfp.dtype_name(kd.shape_dtype(types[i])[1]) for i in fn.contract.out_indices
         )
@@ -122,7 +129,7 @@ class Case:
         if getattr(fn, "dims", None):
             dims = "x".join(str(d) for d in (*fn.dims, self.calls))
         else:
-            dims = f"{kd.elems(types[fn.contract.roles.index(In)])}x{self.calls}"
+            dims = f"{kd.elems(types[primary])}x{self.calls}"
         extra = [
             f"{k}={bfp.dtype_name(v) if isinstance(v, type) else v}"
             for k, v in sorted(self.kwargs.items())
@@ -177,6 +184,8 @@ MATRIX_DATA = ("random", "zeros", "ones", "alternating", "max")
 def data_policy(fn) -> tuple[str, ...]:
     """Return the edge-data cases a kernel's contract admits (see the note above)."""
     c = fn.contract
+    if In not in c.roles:
+        return ("random",)  # output-only kernels have no input edge cases
     if c.sample is not None:
         return ("random",)  # structured inputs have no edge variants
     types = fn.arg_types()
@@ -232,7 +241,7 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     fn = case.fn()
     c = fn.contract
     inputs = kd.sample_inputs(fn, calls=case.calls, shape=case.shape, rng=rng)
-    tensor_pos = [i for i, r in enumerate(c.roles) if r in (In, Param)]
+    tensor_pos = kd._tensor_positions(fn)[0]
     if data_case != "random":
         if c.sample is not None:
             raise ValueError(

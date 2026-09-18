@@ -7,12 +7,13 @@
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, Out, Scalar
+from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    Param,
     _default_source_path,
     _make_extern,
     _min_dma_aligned_elems,
@@ -56,8 +57,8 @@ def _reduce_contract(op: str, tile_size: int) -> KernelContract:
     # is padding), so only element 0 of each output tile is compared. Every
     # reduction here is exact: integer arithmetic, or a selection in bf16.
     return KernelContract(
-        roles=(In, Out, Scalar),
-        scalar_bindings=((2, tile_size),),
+        roles=(In, Out, Param),
+        parameter_bindings=((2, tile_size),),
         reference=_REDUCE_REFS[op],
         acc_dtype=np.int32 if op == "add" else None,
         reduction=tile_size if op == "add" else None,

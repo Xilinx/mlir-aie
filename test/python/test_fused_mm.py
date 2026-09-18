@@ -34,15 +34,33 @@ def test_fused_variants_have_distinct_symbols_and_reuse_bindings(device):
     assert plain.object_file_name != activated.object_file_name
     assert plain._symbol_prefix and activated._symbol_prefix
     for fn in (plain, activated):
-        fn.siblings(
-            init=("mm_fused_acc_init", [np.ndarray[(512,), np.dtype[np.float32]]])
+        init = fn.object_file.bind(
+            "mm_fused_acc_init", [np.ndarray[(512,), np.dtype[np.float32]]]
         )
-        assert fn.also.init.name == f"{fn._symbol_prefix}_mm_fused_acc_init"
-        assert fn.also.init.object_file is fn.object_file
+        assert init.name == f"{fn._symbol_prefix}_mm_fused_acc_init"
+        assert init.object_file is fn.object_file
 
 
-def test_fused_accumulator_uses_target_vector_alignment(device):
-    assert "alignas(aie::vector_decl_align) float acc[" in fused_mm().source_string
+def test_fused_uses_native_source(device):
+    fn = fused_mm()
+    assert fn.source_string is None
+    assert Path(fn.source_file).is_file()
+    assert Path(fn.source_file).name == "fused_mm_tile.cc"
+
+
+def test_fused_architectures_have_distinct_symbols():
+    try:
+        set_current_device(NPU1Col1())
+        aie2 = fused_mm()
+        set_current_device(NPU2Col1())
+        aie2p = fused_mm()
+        assert aie2.name != aie2p.name
+        assert aie2.object_file_name != aie2p.object_file_name
+        assert fused_mm() is aie2p
+        set_current_device(NPU1Col1())
+        assert fused_mm() is aie2
+    finally:
+        set_current_device(None)
 
 
 def test_fused_e2e_binds_runtime_before_constructing_host_layouts(monkeypatch):

@@ -55,7 +55,7 @@ def single_core_no_tiling(
     c_ty = np.ndarray[(m * n // 8,), np.dtype[v8bfp16ebs8]]
 
     matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n)
-    zero_kernel = matmul_kernel.also.zero
+    zero_kernel = kernels.zero(m * n // 8, v8bfp16ebs8)
 
     inA = ObjectFifo(a_ty, name="inA")
     memA = inA.cons().forward(name="memA")

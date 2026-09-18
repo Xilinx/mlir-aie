@@ -24,12 +24,13 @@ from typing import Callable
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, Out, Scalar
+from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    Param,
     _default_source_path,
     _detect_arch,
     _include_dirs,
@@ -73,8 +74,8 @@ def _unary_lut_contract(
     numpy's reference rounds in.
     """
     return KernelContract(
-        roles=(In, Out, Scalar) if count else (In, Out),
-        scalar_bindings=((2, count),) if count else (),
+        roles=(In, Out, Param) if count else (In, Out),
+        parameter_bindings=((2, count),) if count else (),
         reference=ref,
         tolerance=tolerance,
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
@@ -111,7 +112,7 @@ def _create_lut_kernel(
     """Create an ExternalFunction for a LUT-dependent kernel.
 
     Handles the aie2/aie2p split:
-    - aie2: combines kernel source with lut_based_ops.cpp in a single TU.
+    - aie2: selects a kernel in the LUT-linking source translation unit.
     - aie2p: uses source_file directly (no LUT object linkage).
 
     ``contract`` is attached as ``.contract`` like ``_make_extern`` does.
@@ -127,26 +128,18 @@ def _create_lut_kernel(
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     include.append(str(runtime_dir))
 
-    flags = compile_flags or []
+    flags = list(compile_flags or [])
 
     if arch == "aie2":
-        lut_cpp = runtime_dir / "lut_based_ops.cpp"
-        source = f'#include "{kernel_path}"\n#include "{lut_cpp}"\n'
-        ef = ExternalFunction(
-            func_name,
-            source_string=source,
-            arg_types=arg_types,
-            include_dirs=include,
-            compile_flags=flags,
-        )
-    else:
-        ef = ExternalFunction(
-            func_name,
-            source_file=str(kernel_path),
-            arg_types=arg_types,
-            include_dirs=include,
-            compile_flags=flags,
-        )
+        flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
+        kernel_path = _kernel_source(arch, arch, "lut_kernel.cc")
+    ef = ExternalFunction(
+        func_name,
+        source_file=str(kernel_path),
+        arg_types=arg_types,
+        include_dirs=include,
+        compile_flags=flags,
+    )
     ef.contract = contract
     return ef
 
@@ -349,8 +342,8 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, Out, Scalar),
-            scalar_bindings=((2, tile_size),),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
             reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
             acc_dtype=np.float32,
             tolerance=Tolerance.relative(
@@ -407,8 +400,8 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32, bfloat16],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, Out, Scalar, Scalar),
-            scalar_bindings=((2, tile_size),),
+            roles=(In, Out, Param, Param),
+            parameter_bindings=((2, tile_size),),
             reference=leaky_relu_ref,
             acc_dtype=bfloat16,
             tolerance=Tolerance.relative(

@@ -8,24 +8,8 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-template <int M, int N>
-void zero_vectorized_v64bfp16ebs8(bfp16ebs8 *__restrict cOut) {
-  int const vectorSize = 64;
-
-  const aie::accum<accfloat, vectorSize> acc =
-      aie::zeros<accfloat, vectorSize>();
-
-  aie::block_vector_output_buffer_stream<bfp16ebs8, vectorSize> outStreamC(
-      cOut);
-
-  for (int i = 0; i < M * N / 64; i++) {
-    outStreamC << acc.to_vector<bfp16ebs8>();
-  }
-}
-
 // There is a CPU version of this function in the helper.h file.
-// `static` so distinct ExternalFunction .o builds of this TU (e.g.
-// MATMUL_ONLY vs ZERO_ONLY) don't both emit the symbol and clash at link.
+// Internal linkage lets MATMUL_ONLY and SHUFFLE_ONLY objects coexist.
 [[maybe_unused]] static void
 scalarShuffleMatrixForBfp16ebs8(size_t tileWidth, size_t tileHeight,
                                 uint8_t *inBfpMatrix, uint8_t *outBfpMatrix,
@@ -167,14 +151,13 @@ extern "C" {
 #define DIM_N 64
 #endif
 
-// MATMUL_ONLY / ZERO_ONLY / SHUFFLE_ONLY let callers (e.g. @iron.jit
-// ExternalFunction) compile a .o containing exactly one of the three
+// MATMUL_ONLY / SHUFFLE_ONLY let callers (e.g. @iron.jit
+// ExternalFunction) compile a .o containing exactly one of the two
 // entry points, avoiding duplicate-symbol errors when the same .cc is
 // compiled multiple times for distinct ExternalFunctions in one design.
-// Without any macro, all three symbols are emitted (legacy behaviour).
-#if !defined(MATMUL_ONLY) && !defined(ZERO_ONLY) && !defined(SHUFFLE_ONLY)
+// Without any macro, both symbols are emitted.
+#if !defined(MATMUL_ONLY) && !defined(SHUFFLE_ONLY)
 #define MATMUL_ONLY
-#define ZERO_ONLY
 #define SHUFFLE_ONLY
 #endif
 
@@ -195,12 +178,6 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
   static_assert(n % (2 * t) == 0);
 
   matmul_vectorized_2x2_bfp16<m / r, k / s, n / t, r, s, t>(pA, pB, pC);
-}
-#endif
-
-#ifdef ZERO_ONLY
-void zero_kernel(bfp16ebs8 *__restrict cOut) {
-  zero_vectorized_v64bfp16ebs8<DIM_M, DIM_N>(cOut);
 }
 #endif
 

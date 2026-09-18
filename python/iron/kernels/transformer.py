@@ -15,11 +15,17 @@ design passes as the ``count`` role. These are the kernels
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, Out, Param, Scalar
+from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, _default_source_path, _detect_arch, _make_extern
+from ._common import (
+    KernelContract,
+    Param,
+    _default_source_path,
+    _detect_arch,
+    _make_extern,
+)
 from .core import conv_even
 from .datamovement import rope as rope
 from .datamovement import rope_ref as rope_ref
@@ -73,8 +79,8 @@ def _row_kernel(
         _default_source_path(source, subdir="aie2p"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
-            roles=(In, Out, Scalar),
-            scalar_bindings=((2, cols),),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, cols),),
             reference=ref,
             tolerance=tol,
             ops_per_call=ops,
@@ -135,8 +141,8 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
         _default_source_path("layer_norm.cc", subdir="aie2p"),
         [in_ty, gb_ty, out_ty, np.int32],
         contract=KernelContract(
-            roles=(In, Param, Out, Scalar),
-            scalar_bindings=((3, cols),),
+            roles=(In, Param, Out, Param),
+            parameter_bindings=((3, cols),),
             reference=layer_norm_affine_cast_ref,
             acc_dtype=np.float32,
             reduction=cols,
@@ -165,8 +171,8 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32, np.int32],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, Out, Scalar, Scalar),
-            scalar_bindings=((2, tile_size),),
+            roles=(In, Out, Param, Param),
+            parameter_bindings=((2, tile_size),),
             reference=mm_activation_epilogue_ref,
             acc_dtype=np.float32,
             reduction=1,

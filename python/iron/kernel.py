@@ -8,9 +8,7 @@
 import hashlib
 import logging
 from dataclasses import dataclass, field, replace
-from enum import Enum
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -24,20 +22,6 @@ from .buffer import Buffer
 from .resolvable import Resolvable
 
 logger = logging.getLogger(__name__)
-
-
-class DesignShape(Enum):
-    """The dataflow a generic design has to build to run a kernel.
-
-    A kernel's arguments say what it consumes, not how a design feeds it.
-    ``STREAM`` tiles every input through an ObjectFifo, one element per call;
-    the matrix shapes walk operands in the micro-tile blocking the kernel was
-    compiled for, which is a property of the kernel, not of its signature.
-    """
-
-    STREAM = "stream"
-    MATMUL = "matmul"
-    MATVEC = "matvec"
 
 
 def _as_dtype(dt):
@@ -492,7 +476,6 @@ class ExternalFunction(Kernel):
             prefix
         )
         binding._cached_digest = None
-        binding.also = SimpleNamespace()
         cls._instances.add(binding)
 
     # Optional metadata the kernel factories attach: the contract
@@ -507,8 +490,6 @@ class ExternalFunction(Kernel):
     b_col_maj: bool
     c_col_maj: bool
     a_dims_from_stream: object
-    #: How a generic design must feed this kernel.
-    design_shape: DesignShape = DesignShape.STREAM
 
     def _require_contract(self):
         if self.contract is None:
@@ -522,14 +503,18 @@ class ExternalFunction(Kernel):
     def param_values(self, inputs: list) -> list:
         """Pick the ``Param`` arrays out of one logical input list.
 
-        ``inputs`` is one array per ``In``/``Param`` argument in argument
-        order. A design bakes ``Param`` arguments into core buffers rather
+        ``inputs`` is one array per unbound ``In``/tensor ``Param`` in argument
+        order. A design bakes tensor ``Param`` arguments into core buffers rather
         than streaming them, so it needs them separately.
         """
-        from aie.utils.compile.jit.markers import In, Param
+        from .kernels._common import Param, _is_tensor_type
 
         c = self._require_contract()
-        positions = [i for i, r in enumerate(c.roles) if r in (In, Param)]
+        types = self.arg_types()
+        c.validate_types(types)
+        positions = [i for i in c.reference_indices() if _is_tensor_type(types[i])]
+        if len(inputs) != len(positions):
+            raise ValueError(f"{self.name}: expected {len(positions)} input arrays")
         return [np.asarray(a) for a, i in zip(inputs, positions) if c.roles[i] is Param]
 
     def input_limit(self, dtype, *, reduction: int | None = None) -> int | None:
@@ -548,9 +533,13 @@ class ExternalFunction(Kernel):
         clipping inputs to the output range would leave a requantising
         kernel's data near zero.
         """
-        from aie.utils.compile.jit.markers import In, Param
+        from aie.utils.compile.jit.markers import In
+
+        from .kernels._common import Param, _is_tensor_type
 
         c = self._require_contract()
+        types = self.arg_types()
+        c.validate_types(types)
         dt = np.dtype(dtype)
         if not np.issubdtype(dt, np.integer):
             return None
@@ -558,22 +547,33 @@ class ExternalFunction(Kernel):
             return None
         n = reduction or c.reduction or 1
         budget = np.iinfo(c.acc_dtype).max // 4
-        n_tensors = sum(1 for r in c.roles if r in (In, Param))
+        n_tensors = sum(
+            r in (In, Param) and _is_tensor_type(t) for r, t in zip(c.roles, types)
+        )
         limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
         return max(1, min(limit, int(np.iinfo(dt).max)))
 
     def expected(self, inputs: list, *, scalars: tuple = ()):
         """Return reference output(s), cast to each output argument's dtype."""
         from aie.helpers.util import v8bfp16ebs8
-        from aie.utils.compile.jit.markers import Scalar
+
+        from .kernels._common import _is_tensor_type
 
         c = self._require_contract()
+        types = self.arg_types()
+        c.validate_types(types)
         if c.reference is None:
             raise ValueError(f"{self.name}: contract has no reference")
+        positions = c.reference_indices()
+        n_tensors = sum(_is_tensor_type(types[i]) for i in positions)
+        n_scalars = len(positions) - n_tensors
+        if len(inputs) != n_tensors:
+            raise ValueError(f"{self.name}: expected {n_tensors} input arrays")
+        if len(scalars) != n_scalars:
+            raise ValueError(f"{self.name}: expected {n_scalars} scalar(s)")
         tensors, s = iter(inputs), iter(scalars)
         args = [
-            next(s) if c.roles[i] is Scalar else next(tensors)
-            for i in c.reference_indices()
+            next(tensors) if _is_tensor_type(types[i]) else next(s) for i in positions
         ]
         result = c.reference(*args)
         multiple = len(c.out_indices) > 1
@@ -623,7 +623,9 @@ class ExternalFunction(Kernel):
         Declared layouts decode each output into logical tiles. DMA padding
         is trimmed per call. One Verdict summarizes all outputs and is false
         if any output fails; its detail identifies the failing output.
+        With no streamed inputs, a one-tile reference is repeated across calls.
         """
+        from aie.utils.compile.jit.markers import In
         from aie.utils.verify import Tolerance, Verdict, compare
 
         c = self._require_contract()
@@ -640,9 +642,13 @@ class ExternalFunction(Kernel):
         for i, actual, reference in zip(c.out_indices, actuals, references):
             layout = c.layouts[i] if c.layouts else None
             got = layout.decode(actual, calls=calls) if layout else np.asarray(actual)
-            got, ref = got.reshape(calls, -1), np.asarray(reference).reshape(calls, -1)
+            got, ref = got.reshape(calls, -1), np.asarray(reference)
             if c.out_valid is not None:
                 got = got[:, : c.out_valid]
+            if In not in c.roles and ref.size == got.shape[1]:
+                ref = np.broadcast_to(ref.reshape(1, -1), got.shape)
+            else:
+                ref = ref.reshape(calls, -1)
             verdicts.append(
                 compare(
                     got,
@@ -670,36 +676,6 @@ class ExternalFunction(Kernel):
                 for i, (arg, v) in enumerate(zip(c.out_indices, verdicts))
             ),
         )
-
-    def siblings(self, **symbols: tuple) -> SimpleNamespace:
-        """Bind other symbols exported by this kernel's own object file.
-
-        A translation unit often exports more than the symbol this
-        ExternalFunction declares -- ``mm.cc`` emits the ``zero_*`` that
-        accumulation needs beside ``matmul_*``, ``cascade_mm.cc`` a get/put
-        trio -- and binding them here avoids compiling the source a second
-        time::
-
-            fn.siblings(zero=("zero_i32", [c_ty]))
-            fn.also.zero  # a Kernel over the same object file
-
-        Each keyword names the attribute to bind under ``also`` and takes
-        ``(symbol, arg_types)``, where ``symbol`` is the name as written in
-        the source: when this kernel carries a ``symbol_prefix``, the
-        object's symbols have all been prefixed to keep parameterizations
-        apart (see ``aie.utils.compile.utils.prefix_symbols_in_object``),
-        so each sibling is prefixed to match.
-
-        Returns ``self.also``, which is always present, and empty for a
-        kernel whose object exports nothing else.
-        """
-        vars(self.also).update(
-            {
-                attr: self.object_file.bind(symbol, arg_types)
-                for attr, (symbol, arg_types) in symbols.items()
-            }
-        )
-        return self.also
 
     def __init__(
         self,
@@ -862,7 +838,6 @@ class ExternalFunction(Kernel):
                     )
                 self._object_file = existing.object_file
                 break
-        self.also = SimpleNamespace()  # siblings from this kernel's object
         ExternalFunction._instances.add(self)
 
     # Read-only views of the compile recipe. Tooling that inspects or

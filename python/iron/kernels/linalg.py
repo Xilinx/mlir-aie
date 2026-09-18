@@ -7,18 +7,19 @@
 
 from dataclasses import replace
 from functools import partial
-from typing import NamedTuple
+from typing import NamedTuple, get_args
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.dataflow import StreamDims
-from aie.iron.kernel import DesignShape, ExternalFunction
-from aie.utils.compile.jit.markers import In, InOut, Out, Param, Scalar
+from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    Param,
     TensorLayout,
     _default_source_path,
     _detect_arch,
@@ -26,6 +27,7 @@ from ._common import (
     dtypes,
 )
 from .core import conv_even
+from .zero import zero
 
 _CASCADE_COMBOS = {
     (np.int16, np.int16): "i16_i16",
@@ -106,16 +108,6 @@ _MM_MAC_DIMS = {
 _MM_EMULATED_BF16_MAC_DIMS_AIE2P = {
     (bfloat16, bfloat16): (8, 8, 8),
     (bfloat16, np.float32): (8, 8, 8),
-}
-
-# Suffix for the zero_* symbol per output_dtype (used by kernels.mm to bind
-# the .also.zero sibling Kernel).
-_ZERO_SUFFIX = {
-    np.int8: "i8",
-    np.int16: "i16",
-    np.int32: "i32",
-    np.float32: "f32",
-    bfloat16: "bf16",
 }
 
 
@@ -271,7 +263,8 @@ def _block_layout(shape, *, axes=None):
 
 
 def _zero_output(fn):
-    return fn.also.zero
+    shape, dtype = get_args(fn.arg_types()[2])
+    return zero(shape, get_args(dtype)[0], use_chess=fn.use_chess)
 
 
 # programming_examples/ml/block_datatypes/matrix_multiplication/{bfp,mixed}_test.cpp:
@@ -376,9 +369,8 @@ def mm(
 ) -> ExternalFunction:
     """Matrix-multiply kernel: C += A * B.
 
-    The compiled ``.o`` exports both the ``matmul_*`` and ``zero_*`` symbols.
-    Use ``kernels.mm(...).also.zero`` to get a sibling Kernel binding the zero
-    symbol against the same .o, suitable for accumulator initialization.
+    Initialize the accumulator with ``kernels.zero(dim_m * dim_n, output_dtype)``.
+    The contract declares this independent initializer for the generic harness.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -412,8 +404,7 @@ def mm(
     key = (input_dtype, output_dtype)
     if key not in _MM_COMBOS:
         raise ValueError(
-            f"mm(): unsupported (input_dtype, output_dtype) = {key}. "
-            f"Supported: {list(_MM_COMBOS.keys())}"
+            f"mm(): unsupported (input_dtype, output_dtype) = {key}. Supported: {list(_MM_COMBOS.keys())}"
         )
 
     suffix, only_flag = _MM_COMBOS[key]
@@ -448,7 +439,7 @@ def mm(
             # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
             # stores bf16 in whatever mode the core is in.
             setup=(conv_even if arch != "aie2p" and output_dtype is bfloat16 else None),
-            roles=(In, In, InOut),  # C += A * B; see the .also.zero sibling
+            roles=(In, In, InOut),
             reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
             initializers=((2, _zero_output),),
             acc_dtype=mm_acc_dtype(input_dtype),
@@ -462,7 +453,6 @@ def mm(
     else:
         extern.mac_dims = _MM_MAC_DIMS[arch][key]
     extern.dims = (dim_m, dim_k, dim_n)
-    extern.design_shape = DesignShape.MATMUL
     extern.stream_dims = mm_stream_dims(
         dim_m,
         dim_k,
@@ -493,12 +483,6 @@ def mm(
             ),
         ),
     )
-    # mm.cc emits both matmul_* and zero_* symbols; expose the zero binding
-    # as a sibling Kernel pointing at the same .o so the design does
-    # `matmul = kernels.mm(...); zero = matmul.also.zero` instead of a separate
-    # kernels.mm_zero call (which would compile mm.cc a second time).
-    zero_prefix = "zero" if vectorized else "zero_scalar"
-    extern.siblings(zero=(f"{zero_prefix}_{_ZERO_SUFFIX[output_dtype]}", [c_ty]))
     return extern
 
 
@@ -525,8 +509,8 @@ def mv(
 
     * ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``, whose
       vectorized path wants A in the word-transposed layout
-      ``a_dims_from_stream`` publishes, and which also exports the
-      ``zero_*`` symbol exposed as ``.also.zero``.
+      ``a_dims_from_stream`` publishes. Initialize C with
+      ``kernels.zero(dim_m, output_dtype)``.
     * ``(bfloat16, bfloat16)`` builds the shared
       ``aie_kernels/generic/mv.cc``, the kernel behind IRON's ``GEMV``
       operator. Its signature leads with two runtime scalars,
@@ -557,8 +541,7 @@ def mv(
         return _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size)
     if input_dtype != np.int16 or output_dtype != np.int32:
         raise ValueError(
-            f"mv(): only (np.int16, np.int32) and (bfloat16, bfloat16) are "
-            f"supported, got ({input_dtype}, {output_dtype})"
+            f"mv(): only (np.int16, np.int32) and (bfloat16, bfloat16) are supported, got ({input_dtype}, {output_dtype})"
         )
 
     prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
@@ -572,7 +555,7 @@ def mv(
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, In, InOut),  # C += A * B; see the .also.zero sibling
+            roles=(In, In, InOut),
             reference=partial(mv_tile_ref, dim_m=dim_m, dim_k=dim_k),
             initializers=((2, _zero_output),),
             acc_dtype=np.int32,  # acc32
@@ -585,7 +568,6 @@ def mv(
     # aie_kernels/aie2/mv.cc): 2-byte elements are packed two per word, rows
     # of each 2-column word slowly, m rows then the next 2-col word. A design
     # applies this as dims_from_stream on the hop into the core.
-    extern.design_shape = DesignShape.MATVEC
     extern.dims = (dim_m, dim_k)
     extern.a_dims_from_stream = (
         [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
@@ -598,10 +580,6 @@ def mv(
             TensorLayout((dim_m,)),
         ),
     )
-    # mv.cc emits both matvec_* and zero_* symbols; expose the zero binding
-    # as another symbol bound from the same object-file handle.
-    zero_prefix = "zero_vectorized" if vectorized else "zero_scalar"
-    extern.siblings(zero=(f"{zero_prefix}_i32", [c_ty]))
     return extern
 
 
@@ -609,8 +587,7 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
     """bf16 matvec from ``aie_kernels/generic/mv.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k % vec_size:
         raise ValueError(
-            f"mv(): dim_k ({dim_k}) must be a positive multiple of vec_size "
-            f"({vec_size})"
+            f"mv(): dim_k ({dim_k}) must be a positive multiple of vec_size ({vec_size})"
         )
     prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
@@ -623,8 +600,8 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
         compile_flags=[f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(Scalar, Scalar, In, In, Out),
-            scalar_bindings=((0, dim_m), (1, 0)),
+            roles=(Param, Param, In, In, Out),
+            parameter_bindings=((0, dim_m), (1, 0)),
             layouts=(
                 None,
                 None,
@@ -672,8 +649,8 @@ def mm_bfp(
     micro-tile layout, B is bfp16ebs8, C is bf16; ``stream_dims.A`` and
     ``.C`` carry the transforms and ``.B`` is ``None``.
 
-    ``.also.zero`` is the matching zeroing kernel, compiled from the same source
-    with ``-DZERO_ONLY``. The host holds B transposed (``b_col_maj``), and
+    Initialize C with the independent ``kernels.zero`` factory.
+    The host holds B transposed (``b_col_maj``), and
     every bfp16ebs8 operand is encoded and shuffled into the mmul tile
     layout on the host with :mod:`aie.utils.bfp`, which is what the generic
     harness does; the contract's reference multiplies the quantised
@@ -701,15 +678,12 @@ def mm_bfp(
         source = _default_source_path("mm_bfp_mixed.cc", subdir="aie2p")
         a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
         c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
-        symbol, zero_symbol = (
-            "matmul_vectorized_different_datatypes",
-            "zero_kernel_bf16",
-        )
+        symbol = "matmul_vectorized_different_datatypes"
     else:
         source = _default_source_path("mm_bfp.cc", subdir="aie2p")
         a_ty = np.ndarray[(dim_m * dim_k // 8,), np.dtype[v8bfp16ebs8]]
         c_ty = np.ndarray[(dim_m * dim_n // 8,), np.dtype[v8bfp16ebs8]]
-        symbol, zero_symbol = "matmul_vectorized_bfp16", "zero_kernel"
+        symbol = "matmul_vectorized_bfp16"
     extern = _make_extern(
         symbol,
         source,
@@ -718,7 +692,7 @@ def mm_bfp(
         contract=KernelContract(
             stack_bytes=0xF00,  # programming_examples/ml/block_datatypes
             setup=conv_even,
-            roles=(In, In, InOut),  # C += A * B; see the .also.zero sibling
+            roles=(In, In, InOut),
             reference=partial(
                 mm_bfp_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n, mixed=mixed
             ),
@@ -729,15 +703,9 @@ def mm_bfp(
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
-    # Compiled from the same source with -DZERO_ONLY rather than bound as a
-    # sibling symbol, but reached the same way.
-    extern.also.zero = _make_extern(
-        zero_symbol, source, [c_ty], compile_flags=flags + ["-DZERO_ONLY"]
-    )
     extern.mac_dims = _BFP_MAC_DIMS
     dims = mm_stream_dims(dim_m, dim_k, dim_n, _BFP_MAC_DIMS)
     extern.dims = (dim_m, dim_k, dim_n)
-    extern.design_shape = DesignShape.MATMUL
     extern.stream_dims = (
         StreamDimsABC(A=dims.A, B=None, C=dims.C)
         if mixed
@@ -813,8 +781,8 @@ def mm_bfp_shuffle(
         [in_ty, out_ty, np.int16, np.int16, np.int16],
         compile_flags=flags + ["-DSHUFFLE_ONLY"],
         contract=KernelContract(
-            roles=(In, Out, Scalar, Scalar, Scalar),
-            scalar_bindings=((2, dim_k), (3, dim_m), (4, 0)),
+            roles=(In, Out, Param, Param, Param),
+            parameter_bindings=((2, dim_k), (3, dim_m), (4, 0)),
             layouts=(
                 plain,
                 blocked,
@@ -843,28 +811,19 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
     Not one kernel but one *translation unit*: ``mha.cc`` ``#include``s
     ``softmax.cc`` and ``mm.cc`` and exports the symbols an attention
     dataflow composes, all sharing the ``DIM_M`` / ``DIM_K`` / ``DIM_N``
-    micro-tile. This factory compiles it once and binds them together --
-    the returned ExternalFunction is the ``QK^T`` matmul, and the rest hang
-    off it:
-
-    | Attribute | Symbol | Role |
-    | --- | --- | --- |
-    | (returned) | ``matmul_bf16_bf16_wrapper`` | ``QK^T``, skipped when the block index says so |
-    | ``.also.matmul_scalar`` | ``matmul_bf16_bf16_wrapper_scalar`` | the scalar fallback |
-    | ``.also.matmul_rowmaj`` | ``matmul_bf16_bf16_rowmaj`` | row-major B and C |
-    | ``.also.zero`` | ``zero_bf16_rowmaj`` | clear an accumulator tile |
-    | ``.also.partial_softmax`` | ``partial_softmax`` | running max / sum over a block |
-    | ``.also.matmul_pv`` | ``matmul_PV`` | ``P @ V`` into the running output |
-    | ``.also.rescale_o`` | ``rescale_O`` | apply the running scale to O |
-    | ``.also.init_scale_buffer`` | ``init_scale_buffer`` | seed the scale buffer |
+    micro-tile. The returned ExternalFunction is the ``QK^T`` matmul.
+    Bind additional entry points explicitly with
+    ``fn.object_file.bind(symbol, arg_types)``: ``matmul_bf16_bf16_wrapper_scalar``,
+    ``matmul_bf16_bf16_rowmaj``, ``partial_softmax``, ``matmul_PV``,
+    ``rescale_O`` and ``init_scale_buffer``. Clear tiles with ``kernels.zero``.
 
     ``mha.cc`` also *declares* ``passThroughLine`` without defining it; that
     line copy is its own translation unit, so take it from
     ``passthrough(dtype=np.int32)`` as a second kernel, which is what IRON's
     MHA operator builds too.
 
-    Because the unit includes ``mm.cc``, it defines ``matmul_*`` and
-    ``zero_*`` names of its own; the per-parameterisation symbol prefix is
+    Because the unit includes ``mm.cc``, it defines ``matmul_*``
+    names of its own; the per-parameterisation symbol prefix is
     what keeps those from colliding with a separate ``mm`` kernel in the
     same design.
 
@@ -894,7 +853,6 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
-    scale = np.ndarray[(dim_m,), np.dtype[bfloat16]]
     flags = [f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}", f"-DDIM_N={dim_n}"]
     extern = _make_extern(
         "matmul_bf16_bf16_wrapper",
@@ -908,22 +866,9 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
             tolerance=_linalg_tolerance(bfloat16),
             ops_per_call=2 * dim_m * dim_k * dim_n,
             unsupported=(
-                "attention is a multi-core dataflow with a running softmax "
-                "across blocks; the single-Worker harness cannot drive it"
+                "attention is a multi-core dataflow with a running softmax across blocks; the single-Worker harness cannot drive it"
             ),
         ),
-    )
-    extern.siblings(
-        matmul_scalar=("matmul_bf16_bf16_wrapper_scalar", [a_ty, b_ty, tile]),
-        matmul_rowmaj=("matmul_bf16_bf16_rowmaj", [a_ty, b_ty, tile]),
-        zero=("zero_bf16_rowmaj", [tile]),
-        partial_softmax=(
-            "partial_softmax",
-            [tile, tile, scale, idx, bfloat16, np.int32, np.int32, np.int32, np.int32],
-        ),
-        matmul_pv=("matmul_PV", [a_ty, b_ty, tile, scale, np.int32, np.int32, idx]),
-        rescale_o=("rescale_O", [tile, scale, np.int32, idx]),
-        init_scale_buffer=("init_scale_buffer", [scale, np.int32]),
     )
     extern.dims = (dim_m, dim_k, dim_n)
     return extern
@@ -952,16 +897,10 @@ def cascade_mm(
     r"""Cascade matrix-multiply kernel for multi-core accumulation.
 
     cascade_mm.cc emits all three cascade variants (``get_only``,
-    ``put_only``, ``put_get``) plus a ``zero`` companion in one .o.  The
-    returned ExternalFunction binds the ``get_only`` symbol; the other
-    three are sibling [`Kernel`][iron.Kernel]\\s available as attributes:
-
-    * ``.also.get_only`` — same as the returned EF (top of the cascade chain).
-    * ``.also.put_only`` — bottom of the chain.
-    * ``.also.put_get`` — middle of the chain.
-    * ``.also.zero`` — accumulator initializer.
-
-    Designs typically use all four together, one per row of compute cores.
+    ``put_only``, ``put_get``) in one object. The returned ExternalFunction
+    binds ``get_only``; bind the other entries explicitly with
+    ``fn.object_file.bind("matmul_scalar_cascade_put_only_<dtype>", fn.arg_types())``
+    (or ``put_get``). Initialize accumulators with ``kernels.zero``.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -978,8 +917,7 @@ def cascade_mm(
     key = (input_dtype, output_dtype)
     if key not in _CASCADE_COMBOS:
         raise ValueError(
-            f"cascade_mm(): unsupported (input_dtype, output_dtype) = {key}. "
-            f"Supported: {list(_CASCADE_COMBOS.keys())}"
+            f"cascade_mm(): unsupported (input_dtype, output_dtype) = {key}. Supported: {list(_CASCADE_COMBOS.keys())}"
         )
 
     suffix = _CASCADE_COMBOS[key]
@@ -997,8 +935,9 @@ def cascade_mm(
         ],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, In, InOut),  # C += A * B; see the .also.zero sibling
+            roles=(In, In, InOut),
             reference=mm_ref,
+            initializers=((2, _zero_output),),
             acc_dtype=mm_acc_dtype(input_dtype),
             reduction=dim_k,
             tolerance=_linalg_tolerance(input_dtype),
@@ -1010,17 +949,10 @@ def cascade_mm(
             ),
         ),
     )
-    extern.siblings(
-        put_only=(f"matmul_scalar_cascade_put_only_{suffix}", [a_ty, b_ty, c_ty]),
-        put_get=(f"matmul_scalar_cascade_put_get_{suffix}", [a_ty, b_ty, c_ty]),
-        zero=(f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}", [c_ty]),
-    )
-    extern.also.get_only = extern  # the declared symbol is the get-only half
     arch = _detect_arch()
     if arch not in _CASCADE_MM_MAC_DIMS:
         raise ValueError(
-            f"cascade_mm(): unsupported arch {arch!r}; "
-            f"cascade_mm.cc only ships for {sorted(_CASCADE_MM_MAC_DIMS)}."
+            f"cascade_mm(): unsupported arch {arch!r}; cascade_mm.cc only ships for {sorted(_CASCADE_MM_MAC_DIMS)}."
         )
     extern.mac_dims = _CASCADE_MM_MAC_DIMS[arch][key]
     return extern

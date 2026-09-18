@@ -3,13 +3,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Argument markers: how a value reaches a design or a kernel.
+"""Argument markers for JIT design parameters.
 
 ``CompileTime`` / ``In`` / ``Out`` / ``InOut`` annotate ``@iron.jit`` generator
-parameters. ``In`` / ``Out`` / ``InOut`` are also the vocabulary a
-``KernelContract`` uses to name what each of a kernel's arguments is, alongside
-``Param`` / ``Scalar`` / ``Count`` below, which have no design-parameter
-meaning. One set of names for one question, whichever side is asking.
+parameters.
 
 All are exported from ``aie.iron``.
 
@@ -33,22 +30,7 @@ All are exported from ``aie.iron``.
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
-``Param``
-    A kernel argument held for the whole run rather than streamed per call
-    (``scale``'s factor, ``filter2d``'s 3x3 window). A design gives it a core
-    buffer with an initial value; it is not a design parameter.
-
-``Scalar``
-    A kernel argument that is a runtime scalar constant (``leaky_relu``'s
-    alpha, ``axpy``'s a).
-
-``Count``
-    Compatibility spelling for a bound scalar count. New kernel contracts
-    use ``Scalar`` with an explicit ``scalar_bindings`` entry. A count's
-    units belong to the kernel ABI; neither tensor sizes nor output padding
-    determine its value.
-
-Any generator parameter without one of the first four annotations is currently
+Any generator parameter without one of these annotations is currently
 rejected at ``@iron.jit`` decoration time when the parameter has a default
 value — there is no runtime-scalar plumbing yet (tracked separately as future
 work), so the default would be baked into the compiled kernel and per-call
@@ -105,24 +87,4 @@ class Out:
 
 
 class InOut:
-    """Runtime bidirectional tensor annotation (DMA in both directions each call).
-
-    As a kernel-contract role: the kernel accumulates into this argument
-    (``mm``'s ``C += A * B``), so a design zeroes it before the first call.
-    """
-
-
-class Param:
-    """Kernel argument held for the whole run, not streamed per call."""
-
-
-class Scalar:
-    """Kernel argument that is a runtime scalar constant."""
-
-
-class Count:
-    """Kernel argument that is the trailing element count, passed at runtime."""
-
-
-#: Every marker a ``KernelContract`` may give an argument, in no order.
-ROLES = (In, Out, InOut, Param, Scalar, Count)
+    """Runtime bidirectional tensor annotation (DMA in both directions each call)."""

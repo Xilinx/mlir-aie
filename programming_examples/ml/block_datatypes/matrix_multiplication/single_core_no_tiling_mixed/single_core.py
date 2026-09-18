@@ -50,7 +50,7 @@ def single_core_no_tiling_mixed(
     c_ty = np.ndarray[(m * n,), np.dtype[bfloat16]]
 
     matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n, mixed=True)
-    zero_kernel = matmul_kernel.also.zero
+    zero_kernel = kernels.zero(m * n, bfloat16)
 
     inA = ObjectFifo(a_ty, name="inA")
     a_dims = matmul_kernel.stream_dims.A

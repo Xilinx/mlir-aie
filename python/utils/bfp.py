@@ -15,6 +15,10 @@ test compiles that header and compares), including the header's rounding:
 mantissas truncate toward negative infinity, and a value more than 31
 binades below its block's maximum becomes 0 (positive) or -1 LSB (negative).
 
+NumPy structured arrays describe the packed storage. Neither NumPy nor
+ml_dtypes provides shared-exponent arithmetic for this format; the codec
+below supplies that conversion, not a replacement scalar dtype.
+
 The block-floating-point matmul kernels (``aie.iron.kernels.mm_bfp``) load
 8x8 sub-tiles as one 72-byte block vector, which a DMA cannot gather at
 9-byte granularity, so tiles are :func:`shuffle` d on the host: within each
@@ -29,7 +33,8 @@ import numpy as np
 from aie.helpers.util import v8bfp16ebs8
 
 BLOCK = 8  # values per block
-BLOCK_BYTES = 9  # one shared exponent plus one mantissa per value
+_BLOCK_DTYPE = np.dtype([("exponent", np.uint8), ("mantissas", np.int8, (BLOCK,))])
+BLOCK_BYTES = _BLOCK_DTYPE.itemsize
 _MANTISSA_SHIFT = 23 - 7 + 1  # keep 7 magnitude bits of a float32 mantissa
 
 __all__ = [
@@ -96,25 +101,24 @@ def encode(x) -> np.ndarray:
     shift = (max_exp - exp).astype(np.int64)
     far = shift >= 32
     v = np.right_shift(v, np.minimum(shift, 31).astype(np.int32))  # arithmetic
-    mantissas = np.where(far, np.where(sign, -1, 0), v).astype(np.int8).view(np.uint8)
-    out = np.empty(lead + (n // BLOCK, BLOCK_BYTES), dtype=np.uint8)
-    out[..., 0] = max_exp.reshape(lead + (n // BLOCK,)).astype(np.uint8)
-    out[..., 1:] = mantissas
-    return out.reshape(*lead, n // BLOCK * BLOCK_BYTES)
+    out = np.empty(lead + (n // BLOCK,), dtype=_BLOCK_DTYPE)
+    out["exponent"] = max_exp[..., 0]
+    out["mantissas"] = np.where(far, np.where(sign, -1, 0), v)
+    return out.view(np.uint8).reshape(*lead, n // BLOCK * BLOCK_BYTES)
 
 
 def decode(b) -> np.ndarray:
     """``uint8`` ``(..., n * 9 // 8)`` -> float32 ``(..., n)``; the exact inverse map of a block."""
-    b = np.asarray(b, dtype=np.uint8)
+    b = np.ascontiguousarray(b, dtype=np.uint8)
     nb = b.shape[-1]
     if nb % BLOCK_BYTES:
         raise ValueError(
             f"bfp.decode: last axis {nb} is not a multiple of {BLOCK_BYTES}"
         )
     lead = b.shape[:-1]
-    blk = b.reshape(*lead, nb // BLOCK_BYTES, BLOCK_BYTES)
-    scale = np.ldexp(1.0, blk[..., :1].astype(np.int32) - 127 - 6)  # 2**(e-127) / 64
-    vals = blk[..., 1:].view(np.int8).astype(np.float64) * scale
+    blk = b.view(_BLOCK_DTYPE)
+    scale = np.ldexp(1.0, blk["exponent"].astype(np.int32) - 127 - 6)
+    vals = blk["mantissas"].astype(np.float64) * scale[..., None]
     return vals.astype(np.float32).reshape(*lead, nb // BLOCK_BYTES * BLOCK)
 
 

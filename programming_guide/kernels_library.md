@@ -61,13 +61,10 @@ The kernel `.o` lands in the per-design cache directory alongside the
 xclbin — see [`compilation_stages.md`](./compilation_stages.md)
 §Per-design cache directory contents.  No Makefile rule was harmed.
 
-## Sibling kernels share one `.o`: `kernels.mm(...).also.zero`
+## Compose kernels explicitly
 
-Some factories expose an extra binding for a companion symbol that
-lives in the same `.cc`.  `kernels.mm(...)` is the canonical case: the
-matmul `.cc` exports both `matmul_*` and `zero_*` symbols, and the
-returned `ExternalFunction` carries an `.also.zero` attribute that binds the
-zero-fill kernel against *the same* compiled `.o`:
+Use the same zero factory for any accumulator, independently of the operation
+that follows it:
 
 ```python
 matmul = kernels.mm(
@@ -75,13 +72,13 @@ matmul = kernels.mm(
     input_dtype=np.int16,
     output_dtype=np.int16,
 )
-zero_kernel = matmul.also.zero     # sibling binding, no extra compile
+zero_kernel = kernels.zero(tile_size=m * n, dtype=np.int16)
 ```
 
-Without the `.also.zero` attribute the design would have to call a separate
-`kernels.mm_zero(...)` factory that recompiled `mm.cc` a second time
-for no functional benefit.  The same pattern applies to any factory
-that documents an `.also.zero` (today: `mm` and `mv`).
+Zeroing compiles only the zero kernel, not another copy of the matrix kernel.
+The generic test builder uses this factory through each accumulating kernel's
+declared initializer. Explicit designs choose when to zero, allowing repeated
+accumulation into the same tile.
 
 `kernels.mm(...)` also exposes `.mac_dims` — the `(r, s, t)` MMUL
 geometry the kernel was compiled with, which varies by arch and dtype.
@@ -117,8 +114,9 @@ on each submodule's `__doc__`:
 | [`kernels.reduce`](../python/iron/kernels/reduce.py)         | reductions: reduce_add, reduce_min, reduce_max, compute_max |
 | [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec |
 | [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: axpy, convert_copy, expand, transpose |
+| [`kernels.zero`](../python/iron/kernels/zero.py) | target-vectorized zero fill, including partial vectors and packed BFP blocks |
 | [`kernels.quant`](../python/iron/kernels/quant.py) | q4nx dequantization to GEMM-ordered bfp16ebs8 (AIE2P), with byte-exact verification |
-| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.also.zero`, `.mac_dims`, `.stream_dims`), mv (int16 + `.also.zero`, bf16), cascade_mm (+ `.also.{get_only,put_only,put_get,zero}`, `.mac_dims`), mm_bfp (+ `.also.zero`), mm_bfp_shuffle, mha (+ the flash-attention siblings) |
+| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm, mv, cascade_mm, mm_bfp, mm_bfp_shuffle, mha |
 | [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
 | [`kernels.transformer`](../python/iron/kernels/transformer.py) | transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue |
 | [`kernels.vision`](../python/iron/kernels/vision.py)         | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted |
@@ -144,16 +142,15 @@ The factories themselves are short — typically a `_make_extern` call
 plus dtype validation.  Reading the source of a factory you're about
 to use is often faster than chasing through the docstring.
 
-Every module also exports a numpy reference per kernel (`add_ref`,
-`reduce_max_ref`, `mm_ref`, `softmax_ref`, ...), and most factories attach
-a `KernelContract` to the function they return:
+Factories attach a `KernelContract` to the function they return. Use
+`fn.expected(inputs)` for the configured reference calculation:
 
 ```python
 fn = kernels.reduce_max(dtype=np.int32, tile_size=1024)
-fn.contract.roles        # (In, Out, Scalar) -- the markers @iron.jit uses
-fn.contract.scalar_bindings  # ((2, 1024),): explicit runtime element count
+fn.contract.roles        # (In, Out, Param): marker classes, not strings
+fn.contract.parameter_bindings  # ((2, 1024),): the fixed element count
 fn.contract.reference    # kernels.reduce_max_ref
-fn.contract.tolerance.kind  # 'exact'
+fn.contract.tolerance    # exact integer comparison
 fn.contract.ops_per_call # 1024
 
 mm = kernels.mm(input_dtype=np.int16, output_dtype=np.int32)
@@ -198,10 +195,16 @@ blocked, transposed and block-floating-point tiles without recognizing a
 kernel's name or kind. Matrix contracts use the independent-call `*_tile_ref`
 references; whole-matrix `mm_ref` and `mv_ref` remain available to algorithms.
 
-`In` is a read-only streamed tensor; `Param` is a read-only tensor baked into
-a core buffer, constant across calls. `Scalar` is a runtime scalar operand.
-Fixed scalar values, including counts, belong in `scalar_bindings`; remaining
-scalars come from `design(..., scalars=...)`. `Out` is written, while `InOut`
+`In`, `Out`, and `InOut` reuse the JIT's tensor direction markers.
+The kernel-only `Param` means a read-only value fixed across the builder's
+independent calls. Its existing argument type determines whether it is a scalar
+operand or a tensor initialized in a core buffer; there is no count-specific role.
+Fixed values, including counts, belong in `parameter_bindings`; unbound scalar
+values come from `design(..., scalars=...)`, and tensor values from `params=`.
+These values are embedded in the compiled design: changing them recompiles it.
+This describes the validation builder, not an inherent lifetime restriction on
+the C++ argument; a hand-written design can supply a different operand per call.
+`Out` is written, while `InOut`
 is read and written and requires a declared `initializers` entry. Its reference
 describes the result from that initial state. Initialization occurs on every
 independent call, not only the first.
@@ -210,8 +213,8 @@ Multiple outputs are ordered by `contract.out_indices`. Their reference,
 output sizes and device dtypes are tuples; `output_dtype()` derives the latter
 from declarations. `judge` returns one aggregate verdict, false if any output
 fails, with per-output diagnostics. `upload` returns a tuple of output tensors,
-passed as `design(*inputs, *outputs)`. The builder supports
-up to the target's two output DMA channels.
+passed as `design(*inputs, *outputs)`. The builder respects the target's available
+output DMA channels.
 
 Tolerances are kernel-owned. Integer kernels and lossless copies are
 bit-exact; LUT approximations declare the `rtol` their reference
@@ -258,36 +261,35 @@ elsewhere.
 
 Three things make this work for more than one kernel per design:
 
-- **`inout`.** A kernel that accumulates into its output declares that
-  argument `inout` rather than `out`: `mm` computes `C += A * B`, reads C
-  back, ships an `.also.zero` sibling, and a design zeroes the buffer before
+- **`InOut`.** A kernel that accumulates into its output declares that
+  argument `InOut` rather than `Out`: `mm` computes `C += A * B`, reads C
+  back, and a design calls `kernels.zero(...)` before
   the first call. The reference still computes the whole product, so an
-  `inout` output is excluded from `reference_indices` like an `out` one;
+  `InOut` output is excluded from `reference_indices` like an `Out` one;
   `contract.accumulates` says which kind a kernel is. The int16 `mv` and
   `cascade_mm` accumulate the same way; the bf16 `mv` stores.
 - **Whole-object symbol prefixing.** Each parameterisation of a kernel
   gets its own symbol prefix, and every symbol its object defines is
   prefixed, not just the declared one. A translation unit usually
-  exports more (`mm.cc` emits the `zero_*` that `.also.zero` binds; `mha.cc`
+  exports more (`mha.cc`
   includes `mm.cc` and defines `matmul_*` names of its own), and leaving
   those bare made two parameterisations collide at link.
-  `ExternalFunction.sibling(symbol, arg_types)` binds another symbol
-  from the same object with the prefix applied; that is how `.also.zero`, the
-  cascade trio and `mha`'s flash-attention siblings are built. Chess-built
+  `fn.object_file.bind(symbol, arg_types)` binds another symbol
+  from the same object with the prefix applied. Chess-built
   kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
   they keep bare symbols and only one variant may appear in a design.
 - **`host_args`.** `kernel_design.host_args(fn, calls=)`
-  returns one `HostArg` (direction, shape, dtype) per host buffer the
+  reports the direction, shape, dtype and element count of each host buffer the
   design takes, in the layout the device expects: packed tiles from each
   argument's layout codec, encoded bytes for a bfp16ebs8 operand,
   interleaved tiles where streamed tensors share one
-  fifo, a reduction's DMA padding. `param` arguments are absent, since
+  fifo, a reduction's DMA padding. `Param` arguments are absent, since
   they are baked into the design. A caller that only needs to size
   buffers reads this instead of running the sampler.
 
 `kernels.mha()` remains a drop-in even though the generic builder cannot run
 its multi-stage protocol: it compiles `aie_kernels/aie2p/mha.cc` once and binds
-its ten symbols. The bf16 `mv` uses scalar bindings for `(m, row_offset)` and
+its selected entry point. The bf16 `mv` binds parameters `(m, row_offset)` and
 can be validated by the generic tile builder. For protocol limitations, see
 [Kernels the generic builder cannot run](#kernels-the-generic-builder-cannot-run).
 
@@ -323,7 +325,7 @@ above picks it up.
 A new factory is complete when one line each in two places covers it:
 
 1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
-   with the argument roles (`In`, `Out` or `InOut`, `Param`, `Scalar`), a
+   with the argument roles (`In`, `Out`, `InOut`, or `Param`), a
    numpy reference exported as `<name>_ref`, `ops_per_call` for the
    benchmark's throughput series, and a `Tolerance` with its evidence in
    `note` — or none, to get the dtype default. Reductions set `out_valid`
@@ -331,7 +333,7 @@ A new factory is complete when one line each in two places covers it:
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
    rounding in the reference from the C++ rather than from a guess.
    A factory with more than one dtype lists them in a `.dtypes` table.
-   Bind runtime counts explicitly with `scalar_bindings`, publish nontrivial
+   Bind fixed parameters explicitly with `parameter_bindings`, publish nontrivial
    storage with `layouts`, and initialize `InOut` tiles with `initializers`.
 2. **Case.** Add one `Case(...)` to
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
@@ -369,9 +371,9 @@ python -m aie.utils.compile.remarks --target aie2p --out static.json
 
 ### Data policy
 
-Random data is bounded by `fn.input_limit(dtype)`, which the contract's
-`acc_dtype` and `reduction` fix (over the design's full `K` for a
-matmul), so an edge case exercises the datapath rather than overflowing
+Random data is bounded by `fn.input_limit(dtype)`, using the contract's
+`acc_dtype` and per-call `reduction`. A whole-design test can supply its
+full reduction length explicitly. An edge case exercises the datapath rather than overflowing
 the accumulator. The output range does not bound it: what a kernel does
 when a result leaves that range is its reference's to model, and clipping
 inputs to it would leave a requantising kernel's data near zero.

@@ -149,31 +149,13 @@ def fused_mm(
             f"-DMM_FUSED_CLAMP_MIN={clamp[0]}f",
             f"-DMM_FUSED_CLAMP_MAX={clamp[1]}f",
         ]
-    source = f'#include "{_default_source_path("mm_fused.cc", "generic")}"\n'
+    source = _default_source_path("fused_mm_tile.cc", "generic")
     include_dirs = _include_dirs()
     if arch == "aie2":
         from aie.utils import config
 
         runtime = Path(config.aie_runtime_lib_dir()) / "AIE2"
         include_dirs.append(str(runtime))
-        source += f'#include "{runtime / "lut_based_ops.cpp"}"\n'
-    source += """
-extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c) {
-  alignas(aie::vector_decl_align) float acc[MM_FUSED_TILE_M * MM_FUSED_TILE_N];
-  mm_fused_acc_init(acc);
-  for (int k = 0; k < MM_FUSED_TILE_K / MM_FUSED_CT_K; ++k)
-    for (int band = 0; band < MM_FUSED_TILE_M / MM_FUSED_TILE_MA; ++band)
-      mm_fused_k_step(
-          a + (k * MM_FUSED_TILE_M + band * MM_FUSED_TILE_MA) * MM_FUSED_CT_K,
-          b + k * MM_FUSED_CT_K * MM_FUSED_TILE_N, acc, band);
-  for (int outer = 0;
-       outer < MM_FUSED_TILE_M * MM_FUSED_TILE_N / (2 * MM_FUSED_OUT_CHUNK);
-       ++outer)
-    for (int half = 0; half < 2; ++half)
-      mm_fused_epilogue_chunk(
-          c + (outer * 2 + half) * MM_FUSED_OUT_CHUNK, acc, outer, half);
-}
-"""
     # Include the complete recipe, not just geometry: architecture, source
     # location and runtime includes can change without changing the operands.
     key = (
@@ -190,7 +172,7 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c) {
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
     fn = ExternalFunction(
         "fused_mm_tile",
-        source_string=source,
+        source_file=source,
         arg_types=[
             np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
             np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]],

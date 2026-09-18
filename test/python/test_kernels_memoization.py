@@ -5,7 +5,7 @@
 #
 
 # RUN: %pytest %s
-"""Memoization, collision protection, .also.zero attribute, and auto-prefix
+"""Memoization, collision protection, independent zero, and auto-prefix
 on symbol collision for the aie.iron.kernels factory functions.
 
 Sibling files:
@@ -121,8 +121,7 @@ def test_inline_collision_disambiguation_preserves_ir_extension():
     second = ExternalFunction(
         name=name,
         source_string=(
-            'extern "C" void sentinel_inline_collision() { '
-            "volatile int distinguish_source = 1; }"
+            'extern "C" void sentinel_inline_collision() { volatile int distinguish_source = 1; }'
         ),
         inline=True,
     )
@@ -208,63 +207,45 @@ def test_external_function_collision_check_allows_identical_redeclaration():
 
 
 # ---------------------------------------------------------------------------
-# kernels.mm and kernels.mv expose a `.also.zero` Kernel attribute pointing at
-# the same .o file (mm.cc / mv.cc emit both matmul_*/matvec_* and zero_*
-# symbols natively).  Designs use `matmul = kernels.mm(...); zero = matmul.also.zero`
-# — one mm.cc compile, both bindings, no duplicate-symbol footgun.
+# Accumulator initialization uses an independent, reusable zero object.
 # ---------------------------------------------------------------------------
 
 
-def test_mm_zero_attribute_is_kernel():
-    """kernels.mm(...).also.zero is a Kernel binding the zero symbol."""
+def test_mm_zero_initializer_is_independent_kernel():
     ef = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
-    assert isinstance(ef.also.zero, Kernel)
-    # The object's symbols all carry this parameterisation's prefix, so the
-    # sibling binding does too (see ExternalFunction.sibling).
-    assert ef.also.zero._name == f"{ef._symbol_prefix}_zero_i16"
+    zero = ef.contract.initializers[0][1](ef)
+    assert isinstance(zero, Kernel)
+    assert zero is kernels.zero(64 * 32, np.int16)
+    assert zero.object_file is not ef.object_file
 
 
-def test_mm_zero_attribute_shares_object_file():
-    """ef.also.zero must point at the same .o the mm ExternalFunction will produce —
-    that's the whole point of the attribute pattern (one compile, two bindings)."""
-    ef = kernels.mm(
-        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
-    )
-    assert ef.also.zero.object_file_name == ef.object_file_name
-    assert ef.also.zero.object_file is ef.object_file
+def test_zero_initializer_reused_across_matmul_reduction_sizes():
+    first = kernels.mm(dim_m=64, dim_k=64, dim_n=32)
+    second = kernels.mm(dim_m=64, dim_k=32, dim_n=32)
+    assert first.contract.initializers[0][1](first) is second.contract.initializers[0][
+        1
+    ](second)
 
 
-def test_mm_zero_attribute_arg_count():
+def test_zero_arg_count():
     """zero kernel takes one arg (the output buffer to zero)."""
-    ef = kernels.mm(
-        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
-    )
-    assert len(ef.also.zero._arg_types) == 1
+    assert len(kernels.zero(64 * 32, np.int16).arg_types()) == 1
 
 
-def test_mm_zero_attribute_scalar_variant():
-    """vectorized=False picks zero_scalar_* instead of zero_*."""
-    ef = kernels.mm(
-        dim_m=64,
-        dim_k=64,
-        dim_n=32,
-        input_dtype=np.int16,
-        output_dtype=np.int16,
-        vectorized=False,
-    )
-    assert ef.also.zero._name == f"{ef._symbol_prefix}_zero_scalar_i16"
+def test_zero_scalar_variant():
+    scalar = kernels.zero(64, np.int16, vectorized=False)
+    vector = kernels.zero(64, np.int16)
+    assert "-DZERO_SCALAR" in scalar.compile_flags
+    assert scalar.object_file is not vector.object_file
 
 
-def test_mv_zero_attribute_is_kernel():
-    """kernels.mv(...).also.zero is a Kernel binding the zero symbol against the
-    same mv.cc-built .o."""
+def test_mv_zero_initializer_is_independent_kernel():
     ef = kernels.mv(dim_m=32, dim_k=32, vectorized=False)
-    assert isinstance(ef.also.zero, Kernel)
-    assert ef.also.zero._name == f"{ef._symbol_prefix}_zero_scalar_i32"
-    assert ef.also.zero.object_file_name == ef.object_file_name
-    assert ef.also.zero.object_file is ef.object_file
+    zero = ef.contract.initializers[0][1](ef)
+    assert zero is kernels.zero(32, np.int32)
+    assert zero.object_file is not ef.object_file
 
 
 def test_mm_no_longer_carries_only_flags():

@@ -126,8 +126,7 @@ def test_chess_path_needs_the_wrapper_on_path(monkeypatch):
 def test_prefixing_renames_every_defined_symbol(tmp_path, monkeypatch):
     """A prefix covers the object's siblings, not just the declared symbol.
 
-    ``mm.cc`` exports the ``zero_*`` that ``.also.zero`` binds beside ``matmul_*``;
-    leaving those bare made two parameterizations of one kernel collide at
+    Leaving additional entry points bare makes parameterizations collide at
     link. Uses a stub object so the test needs no Peano.
     """
     from aie.utils.compile import utils
@@ -172,17 +171,18 @@ def test_prefixing_renames_every_defined_symbol(tmp_path, monkeypatch):
         ]
 
 
-def test_siblings_bind_other_symbols_from_the_same_object():
-    """Siblings follow the parent's prefix, and several bind in one call."""
+def test_bind_other_symbols_from_the_same_object():
+    """Explicit bindings follow the artifact's prefix."""
     tile = [np.ndarray[(16,), np.dtype[np.int32]]]
     prefixed = ExternalFunction(
         "matmul", source_string="void matmul(){}", arg_types=[], symbol_prefix="d00d"
     )
-    also = prefixed.siblings(zero=("zero_i16", tile), wider=("zero_i32", tile))
-    assert also.zero.name == "d00d_zero_i16"
-    assert also.wider.name == "d00d_zero_i32"
-    assert also.zero.object_file_name == prefixed.object_file_name
-    assert also.zero.arg_types() == tile
+    first = prefixed.object_file.bind("first", tile)
+    second = prefixed.object_file.bind("second", tile)
+    assert first.name == "d00d_first"
+    assert second.name == "d00d_second"
+    assert first.object_file_name == prefixed.object_file_name
+    assert first.arg_types() == tile
     # An unprefixed kernel binds the bare name.
     plain = ExternalFunction("k", source_string="void k(){}", arg_types=[])
-    assert plain.siblings(zero=("zero_i16", tile)).zero.name == "zero_i16"
+    assert plain.object_file.bind("first", tile).name == "first"

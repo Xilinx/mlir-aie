@@ -9,17 +9,34 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, get_args, get_origin
 
 import numpy as np
+from aie.helpers.util import (
+    NpuDType,
+    np_ndarray_type_get_dtype,
+    np_ndarray_type_get_shape,
+)
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit import markers as _markers
-from aie.utils.compile.jit.markers import Count, InOut, Out, Scalar
+from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
 
 _log = logging.getLogger(__name__)
 
-ROLES = _markers.ROLES
+
+class Param:
+    """Read-only test-fixture parameter; its ABI determines scalar or tensor.
+
+    The generic harness holds its value fixed across calls. This is not a C++
+    operand lifetime: direct designs may pass a new value on every kernel call.
+    """
+
+
+_ROLES = (In, Out, InOut, Param)
+
+
+def _is_tensor_type(arg_type):
+    return get_origin(arg_type) is np.ndarray
 
 
 @dataclass(frozen=True)
@@ -59,24 +76,27 @@ class KernelContract:
     it.
 
     Attributes:
-        roles: One of :data:`ROLES` per argument, in argument order --
-            ``In``, ``Out``, ``InOut``, ``Param``, ``Scalar`` or ``Count``,
-            the same markers ``@iron.jit`` uses. ``Out`` is written by the
+        roles: ``In``, ``Out``, ``InOut`` or ``Param`` per argument.
+            The first three reuse the ``@iron.jit`` markers; ``Param`` is
+            kernel-only. ``Out`` is written by the
             kernel; ``InOut`` is accumulated into (``mm``'s ``C += A * B``),
-            which is why such a kernel ships a ``.also.zero`` sibling and a design
+            which is why such a kernel declares an initializer and a design
             initializes the buffer before each independent call. ``In`` is a
-            read-only streamed tensor; ``Param`` is a read-only tensor held in
-            a core Buffer, constant across calls. Neither is a scalar. Multiple
+            read-only streamed tensor; ``Param`` is a constant scalar or a
+            read-only tensor held in a core Buffer, as determined by
+            ``ExternalFunction.arg_types()``. Constancy is the generic harness's
+            test-fixture choice, not a C++ argument lifetime: direct designs can
+            pass a different parameter value each call. Multiple
             ``Out``/``InOut`` arguments are permitted, in argument order.
         reference: Host implementation, and the kernel's arithmetic model:
             a saturating kernel's reference clips, a flushing one flushes.
-            Called with every non-``Out``, non-``InOut``, non-``Count``
-            argument in argument order: ``In``/``Param`` tiles as numpy arrays
-            of shape ``(calls, n)`` in the kernel's dtype, ``Scalar`` values
+            Called with every unbound non-output argument in argument order:
+            ``In`` tiles as numpy arrays of shape ``(calls, n)``, tensor
+            ``Param`` values as constant arrays, scalar ``Param`` values
             as Python numbers. Returns the expected
             output for all calls; the harness casts it to the output dtype.
             Multiple outputs are returned as a tuple in output argument order.
-            Bound scalar arguments are omitted from the reference.
+            Bound parameters are omitted from the reference.
             ``None`` when no host reference exists yet -- the kernel is then
             built but not judged.
         tolerance: How close the device result must be, or ``None`` for
@@ -88,7 +108,7 @@ class KernelContract:
             the tile is padded for DMA alignment (reductions write one value
             into a 4-byte-aligned tile). ``None`` means the whole tile.
         sample: ``sample(rng, calls) -> list[np.ndarray]`` producing one host
-            array per ``In``/``Param`` argument for ``calls`` kernel calls,
+            array per unbound ``In``/tensor ``Param`` for ``calls`` kernel calls,
             for kernels whose inputs have structure a dtype cannot express
             (``expand``'s packed nibbles + scales). ``None`` lets the harness
             draw plain random data of each argument's dtype.
@@ -125,9 +145,9 @@ class KernelContract:
         layouts: Optional :class:`TensorLayout` per argument (``None`` means
             identity). Logical tile shapes and storage codecs belong to the
             declaration, never to a kernel-name switch in the harness.
-        scalar_bindings: ``(argument_index, value)`` pairs for fixed runtime
-            scalar operands, including element counts. Unbound ``Scalar``
-            operands are supplied by the caller. Counts are never inferred
+        parameter_bindings: ``(argument_index, value)`` pairs for fixed
+            ``Param`` operands, including element counts and constant tensors.
+            Unbound parameters are supplied by the caller. Counts are never inferred
             from input/output sizes.
         initializers: ``(argument_index, factory)`` pairs for ``InOut``
             arguments; ``factory(fn)`` returns a one-buffer initialization
@@ -156,14 +176,14 @@ class KernelContract:
     cascade_partner: Callable[..., object] | None = None
     unsupported: str | None = None
     layouts: tuple[TensorLayout | None, ...] = ()
-    scalar_bindings: tuple[tuple[int, int | float], ...] = ()
+    parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
     trace_cycles: bool = False
 
     def __post_init__(self):
-        bad = [r for r in self.roles if r not in ROLES]
+        bad = [r for r in self.roles if r not in _ROLES]
         if bad:
-            names = ", ".join(r.__name__ for r in ROLES)
+            names = ", ".join(r.__name__ for r in _ROLES)
             raise ValueError(f"unknown kernel argument role(s) {bad}; use {names}")
         # A kernel with no data arguments at all (set_rounding sets core state)
         # has nothing to be the output. A cascade half may also have none: its
@@ -173,14 +193,15 @@ class KernelContract:
             raise ValueError("a kernel contract needs at least one Out or InOut role")
         if self.layouts and len(self.layouts) != len(self.roles):
             raise ValueError("layouts must have one entry per argument")
-        bound = dict(self.scalar_bindings)
-        if len(bound) != len(self.scalar_bindings) or any(
-            i < 0 or i >= len(self.roles) or self.roles[i] not in (Scalar, Count)
+        bound = dict(self.parameter_bindings)
+        if len(bound) != len(self.parameter_bindings) or any(
+            not isinstance(i, (int, np.integer))
+            or i < 0
+            or i >= len(self.roles)
+            or self.roles[i] is not Param
             for i in bound
         ):
-            raise ValueError("scalar_bindings must name distinct scalar arguments")
-        if any(r is Count and i not in bound for i, r in enumerate(self.roles)):
-            raise ValueError("Count requires an explicit scalar binding")
+            raise ValueError("parameter_bindings must name distinct Param arguments")
         initialized = dict(self.initializers)
         if len(initialized) != len(self.initializers) or any(
             i < 0 or i >= len(self.roles) or self.roles[i] is not InOut
@@ -237,12 +258,59 @@ class KernelContract:
         computes the result from the declared initializer's state. The
         builder initializes the buffer before each independent tile call.
         """
-        bound = dict(self.scalar_bindings)
+        bound = dict(self.parameter_bindings)
         return [
             i
             for i, r in enumerate(self.roles)
-            if r not in (Out, InOut, Count) and i not in bound
+            if r not in (Out, InOut) and i not in bound
         ]
+
+    def validate_types(self, arg_types):
+        """Validate contracts against NumPy tensor aliases and scalar dtypes.
+
+        Raw MLIR types remain usable by ExternalFunction, but the host contract
+        requires NumPy declarations for sampling, layouts and references.
+        """
+        if len(arg_types) != len(self.roles):
+            raise ValueError("roles must have one entry per argument")
+        bound = dict(self.parameter_bindings)
+        for i, (role, arg_type) in enumerate(zip(self.roles, arg_types)):
+            tensor = _is_tensor_type(arg_type)
+            if tensor:
+                try:
+                    np_ndarray_type_get_shape(arg_type)
+                    dtype = np_ndarray_type_get_dtype(arg_type)
+                except (AssertionError, IndexError, TypeError) as exc:
+                    raise ValueError(
+                        f"argument {i}: expected np.ndarray[shape, np.dtype[dtype]]"
+                    ) from exc
+            else:
+                dtype = arg_type
+            if dtype not in get_args(NpuDType):
+                raise ValueError(
+                    f"argument {i}: kernel contracts require NumPy tensor aliases "
+                    "or supported NumPy scalar dtypes"
+                )
+            if not tensor and role is not Param:
+                raise ValueError(f"argument {i}: scalar arguments require Param")
+            if self.layouts and self.layouts[i] is not None and not tensor:
+                raise ValueError(f"argument {i}: layouts require tensor arguments")
+            if i not in bound:
+                continue
+            value = bound[i]
+            if tensor:
+                value = np.asarray(value)
+                shape = (
+                    self.layouts[i].shape
+                    if self.layouts and self.layouts[i] is not None
+                    else np_ndarray_type_get_shape(arg_type)
+                )
+                if value.ndim == 0 or value.size != int(np.prod(shape)):
+                    raise ValueError(
+                        f"argument {i}: tensor parameter must contain {shape} elements"
+                    )
+            elif not isinstance(value, (int, float, np.integer, np.floating)):
+                raise ValueError(f"argument {i}: expected scalar parameter")
 
 
 def _detect_arch() -> str:
@@ -603,6 +671,8 @@ def _make_extern(
         use_chess=use_chess,
         inline=inline,
     )
+    if contract is not None:
+        contract.validate_types(extern.arg_types())
     extern.contract = contract
     _EXTERN_CACHE[cache_key] = extern
     return extern

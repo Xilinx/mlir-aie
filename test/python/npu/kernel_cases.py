@@ -19,6 +19,7 @@ marks kernels whose source exists only for AIE2P.
 """
 
 import numpy as np
+from aie.dialects.aiex import v8bfp16ebs8
 from cases import Case
 from ml_dtypes import bfloat16
 
@@ -42,6 +43,37 @@ IEEE_FLOAT = (
 )
 
 CASES: list[Case] = [
+    Case("zero", dict(tile_size=64), calls=4, smoke=True, perf=False),
+    Case("zero", dict(tile_size=64, dtype=bfloat16), calls=4, smoke=True, perf=False),
+    Case(
+        "zero",
+        dict(tile_size=64, dtype=v8bfp16ebs8),
+        calls=4,
+        smoke=True,
+        perf=False,
+        devices=("npu2",),
+    ),
+    Case(
+        "zero",
+        dict(tile_size=68, dtype=np.int8),
+        calls=3,
+        tag="vector-tail",
+        perf=False,
+    ),
+    Case(
+        "zero",
+        dict(tile_size=34, dtype=np.int16, vectorized=False),
+        calls=3,
+        perf=False,
+    ),
+    Case(
+        "zero",
+        dict(tile_size=12, dtype=v8bfp16ebs8),
+        calls=3,
+        tag="vector-tail",
+        perf=False,
+        devices=("npu2",),
+    ),
     Case(
         "bn_conv2dk3_dw_out_split",
         dict(input_width=7, input_channels=16, output_split_channels=8),

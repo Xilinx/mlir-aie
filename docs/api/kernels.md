@@ -19,6 +19,10 @@ kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
     options:
       show_root_heading: false
 
+::: iron.kernels.zero
+    options:
+      show_root_heading: false
+
 ## Quantization
 
 ::: iron.kernels.quant
@@ -97,7 +101,7 @@ reimplements the math.
       members:
         - KernelContract
         - TensorLayout
-        - ROLES
+        - Param
 
 `aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a
 single-Worker design. What a kernel can answer about itself -- its
@@ -114,7 +118,6 @@ the add-a-kernel procedure and the test tiers built on it.
       members:
         - design
         - host_args
-        - HostArg
         - sample_inputs
         - host_layout
         - output_size

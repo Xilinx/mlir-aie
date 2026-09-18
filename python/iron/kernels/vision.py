@@ -7,11 +7,12 @@
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, Out, Param, Scalar
+from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 
 from ._common import (
     KernelContract,
+    Param,
     _default_source_path,
     _dtype_to_bit_width,
     _make_extern,
@@ -52,8 +53,8 @@ def _bitwise_kernel(
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, In, Out, Scalar),
-            scalar_bindings=((3, line_width),),
+            roles=(In, In, Out, Param),
+            parameter_bindings=((3, line_width),),
             reference={"OR": bitwise_or_ref, "AND": bitwise_and_ref}[op],
             tolerance=Tolerance.exact(note="bitwise op"),
         ),
@@ -69,8 +70,8 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
         line_width,
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, Out, Scalar),
-            scalar_bindings=((2, line_width),),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, line_width),),
             reference=rgba2hue_ref,
             acc_dtype=np.int32,
             reduction=1,
@@ -106,8 +107,8 @@ def threshold(
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, Out, Scalar, Scalar, Scalar, Scalar),
-            scalar_bindings=((2, line_width),),
+            roles=(In, Out, Param, Param, Param, Param),
+            parameter_bindings=((2, line_width),),
             reference=threshold_ref,
             tolerance=Tolerance.exact(note="selection"),
         ),
@@ -139,8 +140,8 @@ def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
         line_width * 4,
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, Out, Scalar),
-            scalar_bindings=((2, line_width),),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, line_width),),
             reference=gray2rgba_ref,
             tolerance=Tolerance.exact(note="copy with alpha = 255"),
         ),
@@ -156,8 +157,8 @@ def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
         line_width,
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, Out, Scalar),
-            scalar_bindings=((2, line_width),),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, line_width),),
             reference=rgba2gray_ref,
             tolerance=Tolerance.exact(
                 note="measured bit-exact against the reference over every data case"
@@ -184,8 +185,8 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
         [line_ty, line_ty, line_ty, line_ty, np.int32, kernel_ty],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, In, In, Out, Scalar, Param),
-            scalar_bindings=((4, line_width),),
+            roles=(In, In, In, Out, Param, Param),
+            parameter_bindings=((4, line_width),),
             reference=filter2d_ref,
             acc_dtype=np.int32,
             reduction=9,
@@ -232,8 +233,8 @@ def add_weighted(
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=(In, In, Out, Scalar, Scalar, Scalar, Scalar),
-            scalar_bindings=((3, line_width),),
+            roles=(In, In, Out, Param, Param, Param, Param),
+            parameter_bindings=((3, line_width),),
             reference=add_weighted_ref,
             acc_dtype=np.int32,
             reduction=2,

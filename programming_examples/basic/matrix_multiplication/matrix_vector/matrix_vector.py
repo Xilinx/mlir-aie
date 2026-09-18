@@ -52,7 +52,7 @@ def matrix_vector(
     matvec_kernel = kernels.mv(
         dim_m=m, dim_k=k, vectorized=vectorized, use_chess=use_chess
     )
-    zero_kernel = matvec_kernel.also.zero
+    zero_kernel = kernels.zero(m, np.int32, use_chess=use_chess)
 
     dtype_in = np.dtype[np.int16]
     dtype_out = np.dtype[np.int32]

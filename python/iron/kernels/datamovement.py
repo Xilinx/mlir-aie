@@ -14,12 +14,13 @@ with host-matching ``conv_even`` rounding), and is aie2p-only.
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, Out, Scalar
+from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    Param,
     _default_source_path,
     _detect_arch,
     _make_extern,
@@ -131,8 +132,8 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, In, Scalar, Out, Scalar),
-            scalar_bindings=((4, tile_size),),
+            roles=(In, In, Param, Out, Param),
+            parameter_bindings=((4, tile_size),),
             reference=axpy_ref,
             acc_dtype=np.float32,
             reduction=1,
@@ -178,8 +179,8 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("cast_f32_bf16.cc"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
-            roles=(In, Out, Scalar),
-            scalar_bindings=((2, tile_size),),
+            roles=(In, Out, Param),
+            parameter_bindings=((2, tile_size),),
             reference=convert_copy_ref,
             tolerance=Tolerance.exact(
                 note="conv_even rounding matches ml_dtypes bit-for-bit (test_kernels_e2e)"
@@ -261,8 +262,8 @@ def rope(
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
             setup=conv_even,
-            roles=(In, In, Out, Scalar),
-            scalar_bindings=((3, tile_size),),
+            roles=(In, In, Out, Param),
+            parameter_bindings=((3, tile_size),),
             reference=lambda x, lut: rope_ref(x, lut, two_halves=two_halves),
             acc_dtype=np.float32,
             reduction=2,

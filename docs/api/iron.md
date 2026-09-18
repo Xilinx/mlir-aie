@@ -75,13 +75,14 @@ Unlike an ObjectFifo, a Buffer does not provide producer/consumer synchronizatio
 `Kernel` binds a function symbol; `KernelObject` owns the shared link artifact.
 Both are exported from `aie.iron`. Pass a `KernelObject("shared.o")` to several
 `Kernel` constructors to bind symbols from one precompiled object. For C++ source,
-`ExternalFunction` creates the owner, exposed as `fn.object_file`; `fn.siblings(...)`
-binds additional symbols to that same owner. External functions with the same
+`ExternalFunction` creates the owner, exposed as `fn.object_file`;
+`fn.object_file.bind(symbol, arg_types)` binds another entry point to that owner,
+applying its symbol prefix. External functions with the same
 explicit output filename and identical source recipes also share ownership.
 Conflicting recipes for one output filename are rejected.
-Resolving a source-backed sibling also registers its artifact for compilation,
-so retaining only `kernels.mm(...).also.zero` does not require retaining the
-original `ExternalFunction`.
+Resolving a source-backed binding registers its artifact for compilation without
+requiring the original `ExternalFunction` to remain alive. Independent operations
+such as `kernels.zero(...)` own their own objects.
 
 ::: iron.kernel
     options:

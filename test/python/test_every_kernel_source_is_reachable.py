@@ -15,7 +15,7 @@ bf16 softmax.
 
 Asking the factories is the only reliable way to tell. A grep cannot: a
 factory names its source by computed string (``f"bitwise{op}.cc"``), the LUT
-kernels reach theirs through a generated ``#include``, and every file's own
+kernels reach theirs through a source-selection define, and every file's own
 LLVM banner mentions its filename.
 """
 
@@ -49,13 +49,11 @@ def _built_by_a_factory() -> set[Path]:
                         continue
                     if getattr(fn, "source_file", None):
                         built.add(Path(fn.source_file).resolve())
-                    # The aie2 LUT kernels are compiled from a generated source
-                    # that includes the .cc rather than naming it as source_file.
-                    for line in (getattr(fn, "source_string", None) or "").splitlines():
-                        if '#include "' in line:
-                            path = Path(line.split('"')[1])
-                            if path.suffix == ".cc":
-                                built.add(path.resolve())
+                    # The AIE2 LUT translation unit selects its native kernel
+                    # source via a preprocessor include operand.
+                    for flag in fn.compile_flags:
+                        if flag.startswith("-DAIE_LUT_KERNEL_SOURCE="):
+                            built.add(Path(flag.split("=", 1)[1].strip('"')).resolve())
     finally:
         iron.set_current_device(previous)
     return built

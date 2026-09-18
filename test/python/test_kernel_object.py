@@ -26,21 +26,16 @@ def test_exported_symbols_share_recipe_and_owner():
     second = _function("compute_max", object_file_name="reduce_max.cc.o")
     assert first.object_file is second.object_file
     assert first != second
-    first.siblings(compute=("compute_max", []))
-    assert first.also.compute.object_file is first.object_file
+    compute = first.object_file.bind("compute_max", [])
+    assert compute.object_file is first.object_file
 
 
 @pytest.mark.parametrize("inline", [False, True])
-@pytest.mark.parametrize("binding_api", ["siblings", "bind"])
 def test_sibling_alone_rediscovers_source_owner_after_registry_reset(
-    tmp_path, monkeypatch, inline, binding_api
+    tmp_path, monkeypatch, inline
 ):
     original = _function("reduce_max", inline=inline)
-    if binding_api == "bind":
-        sibling = original.object_file.bind("compute_max", [])
-    else:
-        original.siblings(compute=("compute_max", []))
-        sibling = original.also.compute
+    sibling = original.object_file.bind("compute_max", [])
     original_ref = weakref.ref(original)
     ExternalFunction._instances.clear()
     del original
@@ -100,8 +95,8 @@ def test_prebuilt_object_can_be_shared():
 
 def test_inline_sibling_retains_object_link_policy():
     first = _function("reduce_max", inline=True)
-    first.siblings(compute=("compute_max", []))
-    assert first.also.compute.link_with_mode == "merge"
+    compute = first.object_file.bind("compute_max", [])
+    assert compute.link_with_mode == "merge"
 
 
 @pytest.mark.parametrize(

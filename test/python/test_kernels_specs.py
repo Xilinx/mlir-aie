@@ -16,7 +16,7 @@ Also covers the public arg_shape() / arg_dtype() introspection methods
 that BaseKernel exposes for unwrapping parameterized np.ndarray arg types.
 
 Sibling files:
-  test_kernels_memoization.py  — memoization, .also.zero, auto-prefix-on-collision
+  test_kernels_memoization.py  — memoization, independent zero, auto-prefix-on-collision
   test_kernels_chess.py        — use_chess + emulated bf16 plumbing
 
 The shared _isolate_extern_state fixture lives in conftest.py at this
@@ -51,10 +51,7 @@ class KernelSpec:
     kwargs: dict  # baseline kwargs that should produce a valid kernel
     arg_count: int
     expected_name: str  # expected ef._name with baseline kwargs
-    # Source is either a real .cc file (source_substring=None checks _source_file)
-    # or an embedded source_string containing a particular #include.
-    source_kind: str = "file"  # "file" | "string_or_file"
-    source_substring: str | None = None  # for "string_or_file": substring to find
+    lut_source: str | None = None  # kernel selected by the AIE2 LUT translation unit
     # Additional (kwargs_overrides, expected_name) pairs
     name_variants: list[tuple[dict, str]] = field(default_factory=list)
     # (kwargs_overrides, error_pattern) pairs
@@ -72,6 +69,16 @@ class KernelSpec:
 
 
 KERNEL_SPECS: list[KernelSpec] = [
+    KernelSpec(
+        name="zero",
+        factory=kernels.zero,
+        kwargs=dict(tile_size=1024, dtype=np.int32),
+        arg_count=1,
+        expected_name="zero",
+        invalid_kwargs=[(dict(tile_size=0), "positive integer or shape")],
+        shape_checks=[(dict(tile_size=(8, 16)), 0, (8, 16))],
+        tile_size_checks=[(dict(tile_size=192), 192)],
+    ),
     # ----- eltwise -----
     KernelSpec(
         name="passthrough",
@@ -267,8 +274,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="softmax_bf16",
-        source_kind="string_or_file",
-        source_substring="softmax.cc",
+        lut_source="softmax.cc",
         invalid_kwargs=[(dict(tile_size=2048), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -277,8 +283,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=2,
         expected_name="gelu_bf16",
-        source_kind="string_or_file",
-        source_substring="gelu.cc",
+        lut_source="gelu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -287,8 +292,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=2,
         expected_name="silu_bf16",
-        source_kind="string_or_file",
-        source_substring="silu.cc",
+        lut_source="silu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -297,8 +301,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="silu_bf16_size",
-        source_kind="string_or_file",
-        source_substring="silu.cc",
+        lut_source="silu.cc",
     ),
     KernelSpec(
         name="gelu_sized",
@@ -306,8 +309,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="gelu_bf16_size",
-        source_kind="string_or_file",
-        source_substring="gelu.cc",
+        lut_source="gelu.cc",
     ),
     KernelSpec(
         name="swiglu",
@@ -315,8 +317,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=4,
         expected_name="swiglu_bf16",
-        source_kind="string_or_file",
-        source_substring="swiglu.cc",
+        lut_source="swiglu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -325,8 +326,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=2,
         expected_name="exp_bf16_1024",
-        source_kind="string_or_file",
-        source_substring="bf16_exp.cc",
+        lut_source="bf16_exp.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -335,8 +335,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="tanh_bf16",
-        source_kind="string_or_file",
-        source_substring="tanh.cc",
+        lut_source="tanh.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -345,8 +344,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="sigmoid_bf16",
-        source_kind="string_or_file",
-        source_substring="sigmoid.cc",
+        lut_source="sigmoid.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -355,8 +353,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=4,  # in, out, size (int32), alpha (bfloat16)
         expected_name="leaky_relu_bf16",
-        source_kind="string_or_file",
-        source_substring="leaky_relu.cc",
+        lut_source="leaky_relu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -873,15 +870,40 @@ def test_returns_external_function(spec: KernelSpec):
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
 def test_source_locatable(spec: KernelSpec):
     ef = _call_factory(spec, spec.kwargs)
-    if spec.source_kind == "file":
-        src = ef._source_file
-        assert src is not None
-        assert Path(src).exists(), f"Source file not found: {src}"
-    else:
-        # source_string OR source_file must be set; if string, must reference the .cc
-        assert ef._source_string is not None or ef._source_file is not None
-        if ef._source_string is not None and spec.source_substring is not None:
-            assert spec.source_substring in ef._source_string
+    assert ef.source_string is None
+    assert ef.source_file is not None
+    assert Path(ef.source_file).is_file()
+
+
+@pytest.mark.parametrize("device,arch", [(NPU1Col1, "aie2"), (NPU2Col1, "aie2p")])
+@pytest.mark.parametrize(
+    "spec",
+    [s for s in KERNEL_SPECS if s.lut_source],
+    ids=lambda s: s.name,
+)
+def test_lut_source_selection(spec: KernelSpec, device, arch):
+    previous = get_current_device(probe_runtime=False)
+    set_current_device(device())
+    try:
+        ef = spec.factory(**spec.kwargs)
+        assert ef.source_string is None
+        assert Path(ef.source_file).is_file()
+        selectors = [
+            flag
+            for flag in ef.compile_flags
+            if flag.startswith("-DAIE_LUT_KERNEL_SOURCE=")
+        ]
+        if arch == "aie2":
+            assert Path(ef.source_file).name == "lut_kernel.cc"
+            assert len(selectors) == 1
+            selected = Path(selectors[0].split("=", 1)[1].strip('"'))
+            assert selected.is_file()
+            assert selected.name == spec.lut_source
+        else:
+            assert not selectors
+            assert Path(ef.source_file).name == spec.lut_source
+    finally:
+        set_current_device(previous)
 
 
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
@@ -1120,12 +1142,13 @@ def test_rope_layout_contract_and_vector_constraints(
     "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
 )
 def test_sized_factory_contracts(name, kernel_arch):
-    from aie.utils.compile.jit.markers import In, Out, Scalar
+    from aie.iron.kernels import Param
+    from aie.utils.compile.jit.markers import In, Out
 
     fn = getattr(kernels, name)(tile_size=1024)
     binary = name in ("add_sized", "mul_sized")
-    assert fn.contract.roles == ((In, In, Out, Scalar) if binary else (In, Out, Scalar))
-    assert fn.contract.scalar_bindings == ((3 if binary else 2, 1024),)
+    assert fn.contract.roles == ((In, In, Out, Param) if binary else (In, Out, Param))
+    assert fn.contract.parameter_bindings == ((3 if binary else 2, 1024),)
     assert fn.contract.tolerance.note
     inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
     reference_name = name.replace("_sized", "_ref")

@@ -285,16 +285,18 @@ def test_compile_command_uses_the_kernels_own_directory(tmp_path):
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
-def test_inline_source_kernels_are_written_out_first(tmp_path):
+def test_lut_kernel_command_uses_native_source(tmp_path):
     set_current_device(None)
     from aie.iron.device import NPU1Col1
 
     set_current_device(NPU1Col1())
-    ef = kernels.gelu()  # the aie2 LUT activations include their sources inline
-    assert ef.source_file is None
+    ef = kernels.gelu()
+    assert ef.source_string is None
+    assert Path(ef.source_file).name == "lut_kernel.cc"
     cmd, _ = compile_command(ef, "aie2", tmp_path)
-    written = tmp_path / f"{ef.name}.cc"
-    assert str(written) in cmd and "lut_based_ops.cpp" in written.read_text()
+    assert ef.source_file in cmd
+    assert any(arg.startswith("-DAIE_LUT_KERNEL_SOURCE=") for arg in cmd)
+    assert not (tmp_path / f"{ef.name}.cc").exists()
 
 
 def test_kernel_sources_follow_the_environment_override(tmp_path, monkeypatch):

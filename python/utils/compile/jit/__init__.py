@@ -5,17 +5,13 @@
 from .compilabledesign import CompilableDesign
 from .compileconfig import compileconfig
 from .context import compile_context, get_compile_arg
-from .markers import ROLES, CompileTime, Count, In, InOut, Out, Param, Scalar
+from .markers import CompileTime, In, InOut, Out
 
 __all__ = [
     "CompilableDesign",
     "compile_context",
     "CompileTime",
     "In",
-    "Param",
-    "Scalar",
-    "Count",
-    "ROLES",
     "InOut",
     "Out",
     "compileconfig",

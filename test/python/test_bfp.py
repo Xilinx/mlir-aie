@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from aie.utils import bfp
+from ml_dtypes import bfloat16
 
 _HELPER = (
     Path(__file__).resolve().parents[2]
@@ -24,6 +25,24 @@ _HELPER = (
     / "block_datatypes"
     / "helper.h"
 )
+
+
+def test_dtype_metadata_uses_native_scalar_sizes():
+    for dtype in (np.int8, np.int32, np.float32, bfloat16):
+        assert bfp.itemsize(dtype) == np.dtype(dtype).itemsize
+        assert bfp.dtype_name(dtype) == np.dtype(dtype).name
+        assert bfp.values_per_elem(dtype) == 1
+    assert bfp.itemsize(bfp.v8bfp16ebs8) == 9
+    assert bfp.values_per_elem(bfp.v8bfp16ebs8) == 8
+
+
+def test_decode_accepts_strided_and_empty_storage():
+    values = np.arange(-8, 8, dtype=np.float32).reshape(2, 8)
+    encoded = bfp.encode(values)
+    strided = np.zeros((2, 18), dtype=np.uint8)
+    strided[:, ::2] = encoded
+    np.testing.assert_array_equal(bfp.decode(strided[:, ::2]), values)
+    assert bfp.decode(bfp.encode(np.empty((2, 0), np.float32))).shape == (2, 0)
 
 
 def test_layout_and_small_integers_are_exact():

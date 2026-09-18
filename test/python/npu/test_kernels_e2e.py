@@ -256,7 +256,7 @@ def _mha_compile_probe(
     # is the simplest of them to instantiate the translation unit with.
     kern = kernels.mha(
         dim_m=_MHA_DIM, dim_k=_MHA_DIM, dim_n=_MHA_DIM
-    ).also.init_scale_buffer
+    ).object_file.bind("init_scale_buffer", [buf, np.int32])
     of_in = ObjectFifo(buf, name="mhi")
     of_out = ObjectFifo(buf, name="mho")
 

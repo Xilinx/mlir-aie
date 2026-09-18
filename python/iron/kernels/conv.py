@@ -9,12 +9,13 @@ import functools
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, InOut, Out, Param, Scalar
+from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    Param,
     _conv_act_dtype_info,
     _default_source_path,
     _detect_arch,
@@ -583,7 +584,7 @@ def dwconv1d(
         [in_ty, w_ty, out_ty, np.int32],
         compile_flags=[f"-DDWCONV_K={kernel_size}", f"-DDWCONV_BIAS={int(bias)}"],
         contract=KernelContract(
-            roles=(In, In, Out, Scalar),
+            roles=(In, In, Out, Param),
             reference=lambda x, w, n: dwconv1d_ref(
                 x, w, n, kernel_size=kernel_size, bias=bias
             ),
@@ -647,7 +648,7 @@ def conv2dk1(
         compile_flags=flags,
         contract=KernelContract(
             stack_bytes=2752,  # aiecc measured_stack_size (Peano 22)
-            roles=(In, Param, Out, Scalar, Scalar, Scalar, Scalar),
+            roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -705,7 +706,7 @@ def conv2dk3(
         compile_flags=flags,
         contract=KernelContract(
             stack_bytes=4736,  # aiecc measured_stack_size (Peano 22)
-            roles=(In, In, In, Param, Out, *((Scalar,) * 8)),
+            roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
             reduction=9 * input_channels,
@@ -762,7 +763,7 @@ def conv2dk1_skip(
         compile_flags=flags,
         contract=KernelContract(
             stack_bytes=2752,  # aiecc measured_stack_size (Peano 22, uint8)
-            roles=(In, In, Param, Out, In, *((Scalar,) * 5)),
+            roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -800,7 +801,7 @@ def conv2dk1_i8(
         compile_flags=["-DINT8_ACT"],
         contract=KernelContract(
             stack_bytes=1504,  # aiecc measured_stack_size
-            roles=(In, Param, Out, Scalar, Scalar, Scalar, Scalar),
+            roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_i8_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -845,7 +846,7 @@ def conv2dk14(
         _default_source_path("conv2dk14.cc", subdir="aie2p"),
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         contract=KernelContract(
-            roles=(In, Param, Out, *((Scalar,) * 5)),
+            roles=(In, Param, Out, *((Param,) * 5)),
             reference=conv2dk14_ref,
             acc_dtype=np.int32,
             reduction=pixels * _RGBA,
@@ -911,7 +912,7 @@ def conv2dk1_skip_init(
         compile_flags=flags,
         contract=KernelContract(
             stack_bytes=0x2000,  # >=2144 measured; __modsi3 has no .stack_sizes
-            roles=(In, In, Param, Out, In, *((Scalar,) * 7)),
+            roles=(In, In, Param, Out, In, *((Param,) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,
             reduction=max(input_channels, skip_input_channels),
@@ -954,7 +955,7 @@ def bn_conv2dk1_relu(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DINT8_ACT"],
         contract=KernelContract(
-            roles=(In, Param, Out, *((Scalar,) * 4)),
+            roles=(In, Param, Out, *((Param,) * 4)),
             reference=bn_conv2dk1_relu_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -989,7 +990,7 @@ def bn_conv2dk3(
         _default_source_path("bottleneck/bn_conv2dk3.cc", subdir="aie2"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         contract=KernelContract(
-            roles=(In, In, In, Param, Out, *((Scalar,) * 8)),
+            roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=bn_conv2dk3_ref,
             acc_dtype=np.int32,
             reduction=9 * input_channels,
@@ -1023,7 +1024,7 @@ def bn_conv2dk1_i8(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DSCALAR"],
         contract=KernelContract(
-            roles=(In, Param, Out, *((Scalar,) * 4)),
+            roles=(In, Param, Out, *((Param,) * 4)),
             reference=bn_conv2dk1_i8_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -1076,7 +1077,7 @@ def bn_conv2dk1_skip(
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
         contract=KernelContract(
-            roles=(In, Param, Out, In, *((Scalar,) * 5)),
+            roles=(In, Param, Out, In, *((Param,) * 5)),
             reference=bn_conv2dk1_skip_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -1124,7 +1125,7 @@ def bn_conv2dk3_dw(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"],
         contract=KernelContract(
-            roles=(In, In, In, Param, Out, *((Scalar,) * 8)),
+            roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=functools.partial(_bn_conv2dk3_dw_ref_stride, stride),
             acc_dtype=np.int32,
             reduction=9,
@@ -1177,7 +1178,7 @@ def bn_conv2dk1_relu_xy_pool_padded(
         compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
         contract=KernelContract(
             # The output is read back on every row after the first (y_index).
-            roles=(In, Param, InOut, *((Scalar,) * 8)),
+            roles=(In, Param, InOut, *((Param,) * 8)),
             reference=bn_conv2dk1_relu_xy_pool_padded_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -1248,7 +1249,7 @@ def bn_conv2dk1_partial_put_i8(
         [in_ty, wt_ty, *_i32s(7)],
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"],
         contract=KernelContract(
-            roles=(In, In, *((Scalar,) * 7)),
+            roles=(In, In, *((Param,) * 7)),
             cascade_partner=bn_conv2dk1_partial_get_relu_i8,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -1297,7 +1298,7 @@ def bn_conv2dk1_partial_get_relu_i8(
         [in_ty, wt_ty, out_ty, *_i32s(9)],
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"],
         contract=KernelContract(
-            roles=(In, In, Out, *((Scalar,) * 9)),
+            roles=(In, In, Out, *((Param,) * 9)),
             cascade_partner=bn_conv2dk1_partial_put_i8,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -1376,8 +1377,8 @@ def bn_conv2dk3_dw_out_split(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"],
         contract=KernelContract(
-            roles=(In, In, In, Param, Out, Out, *((Scalar,) * 8)),
-            scalar_bindings=(
+            roles=(In, In, In, Param, Out, Out, *((Param,) * 8)),
+            parameter_bindings=(
                 (6, input_width),
                 (7, input_channels),
                 (8, input_channels),
@@ -1431,7 +1432,7 @@ def bn_conv2dk1_input_split_partial_put_ui8(
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW"
         ],
         contract=KernelContract(
-            roles=(In, In, *((Scalar,) * 7)),
+            roles=(In, In, *((Param,) * 7)),
             cascade_partner=bn_conv2dk1_input_split_partial_skip_get,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -1480,7 +1481,7 @@ def bn_conv2dk1_input_split_partial_skip_get(
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW"
         ],
         contract=KernelContract(
-            roles=(In, In, Out, In, *((Scalar,) * 10)),
+            roles=(In, In, Out, In, *((Param,) * 10)),
             cascade_partner=bn_conv2dk1_input_split_partial_put_ui8,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -1526,7 +1527,7 @@ def bn_fc_relu_ui16_pad(
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
         contract=KernelContract(
-            roles=(In, Param, Out, *((Scalar,) * 5)),
+            roles=(In, Param, Out, *((Param,) * 5)),
             reference=bn_fc_relu_ui16_pad_ref,
             acc_dtype=np.int32,
             reduction=input_channels,

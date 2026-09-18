@@ -5,7 +5,7 @@
 #
 """Build, sample and check independent kernel calls from their declarations.
 
-Each call consumes one tile per ``In``, reads constant ``Param`` buffers, and
+Each call consumes one tile per ``In``, reads constant ``Param`` values, and
 writes one tile per output. Layout codecs convert logical tiles to kernel
 storage on the host. Whole-problem tiling, reductions across kernel calls and
 multi-core schedules belong to algorithms, not this kernel-validation harness.
@@ -19,14 +19,16 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+from aie.helpers.util import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.iron.buffer import Buffer
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
+from aie.iron.kernels._common import Param, _is_tensor_type
 from aie.iron.program import Program
 from aie.iron.runtime import Runtime, TaskGroup
 from aie.iron.worker import Worker
 from aie.utils import bfp, get_current_device, tensor
-from aie.utils.compile.jit import CompileTime, In, InOut, Out, Param, Scalar
+from aie.utils.compile.jit import CompileTime, In, InOut, Out
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import get_cycles_summary
@@ -34,20 +36,17 @@ from aie.utils.verify import poisoned
 
 
 def _contract(fn):
-    if getattr(fn, "contract", None) is None:
+    if fn.contract is None:
         raise ValueError(
             f"kernel '{fn.name}' declares no contract; add a KernelContract"
         )
+    fn.contract.validate_types(fn.arg_types())
     return fn.contract
-
-
-def _arg_types(fn):
-    return fn.arg_types()
 
 
 def shape_dtype(arg_type):
     """Return the shape and dtype of a declared numpy tensor type."""
-    return arg_type.__args__[0], arg_type.__args__[1].__args__[0]
+    return np_ndarray_type_get_shape(arg_type), np_ndarray_type_get_dtype(arg_type)
 
 
 def elems(arg_type):
@@ -94,8 +93,12 @@ def _fifo_depth(fn, tile_bytes, stack_bytes, fixed_bytes=0):
     )
 
 
-def _tensor_positions(c):
-    return [i for i, r in enumerate(c.roles) if r in (In, Param)], c.out_indices
+def _tensor_positions(fn):
+    c = _contract(fn)
+    types = fn.arg_types()
+    return [
+        i for i in c.reference_indices() if _is_tensor_type(types[i])
+    ], c.out_indices
 
 
 def _layout(c, i):
@@ -105,11 +108,14 @@ def _layout(c, i):
 def _fifo_plan(fn):
     """Pack same-type inputs per call, respecting the core's DMA channel budget."""
     c = _contract(fn)
+    types = fn.arg_types()
     ins = [i for i, r in enumerate(c.roles) if r is In]
-    params = [i for i, r in enumerate(c.roles) if r is Param]
+    params = [
+        i for i, r in enumerate(c.roles) if r is Param and _is_tensor_type(types[i])
+    ]
     by_type = {}
     for i in ins:
-        by_type.setdefault(str(fn.arg_types()[i]), []).append(i)
+        by_type.setdefault(types[i], []).append(i)
     groups = list(by_type.values())
     if len(groups) > _device().core_dma_channels_in:
         raise ValueError(f"{fn.name}: input types exceed the core's input DMA channels")
@@ -120,13 +126,17 @@ def _fifo_plan(fn):
 
 def _encode_params(fn, params):
     _, _, positions = _fifo_plan(fn)
-    if len(params) != len(positions):
+    bound = dict(fn.contract.parameter_bindings)
+    free = [i for i in positions if i not in bound]
+    if len(params) != len(free):
         raise ValueError(
             f"{fn.name}: parameters need values at design time; "
-            f"expected {len(positions)} param values, got {len(params)}"
+            f"expected {len(free)} param values, got {len(params)}"
         )
     encoded = []
-    for i, value in zip(positions, params):
+    bound.update(zip(free, params))
+    for i in positions:
+        value = bound[i]
         shape, dt = shape_dtype(fn.arg_types()[i])
         layout = _layout(fn.contract, i)
         value = layout.encode(value) if layout else np.asarray(value)
@@ -146,13 +156,21 @@ def _build_stream(
     types = fn.arg_types()
     groups, ins, param_pos = _fifo_plan(fn)
     outs = c.out_indices
-    bound = dict(c.scalar_bindings)
-    free = [i for i, r in enumerate(c.roles) if r is Scalar and i not in bound]
+    bound = {
+        i: value for i, value in c.parameter_bindings if not _is_tensor_type(types[i])
+    }
+    free = [
+        i
+        for i, r in enumerate(c.roles)
+        if r is Param and not _is_tensor_type(types[i]) and i not in bound
+    ]
     if len(free) != len(scalars):
         raise ValueError(
             f"{fn.name}: expected {len(free)} scalar(s), got {len(scalars)}"
         )
     bound.update(zip(free, scalars))
+    if any(not isinstance(v, (int, float, np.integer, np.floating)) for v in scalars):
+        raise ValueError(f"{fn.name}: expected scalar parameter values")
     if len(params) != len(param_pos):
         raise ValueError(f"{fn.name}: expected {len(param_pos)} param values")
     initializers = [(i, init(fn)) for i, init in c.initializers]
@@ -253,6 +271,49 @@ def _build_stream(
 # Fixed signatures keep JIT cache keys independent of closure state. The
 # generator's tensor arity is selected only by DMA channels, not kernel kind.
 @jit
+def _stream0(
+    out: Out,
+    *,
+    factory: CompileTime[Callable],
+    factory_kwargs: CompileTime[dict],
+    calls: CompileTime[int],
+    scalars: CompileTime[tuple] = (),
+    params: CompileTime[tuple] = (),
+    trace_config: CompileTime[TraceConfig | None] = None,
+):
+    return _build_stream(
+        factory=factory,
+        factory_kwargs=factory_kwargs,
+        calls=calls,
+        scalars=scalars,
+        params=params,
+        trace_config=trace_config,
+    )
+
+
+@jit
+def _stream0_2(
+    out0: Out,
+    out1: Out,
+    *,
+    factory: CompileTime[Callable],
+    factory_kwargs: CompileTime[dict],
+    calls: CompileTime[int],
+    scalars: CompileTime[tuple] = (),
+    params: CompileTime[tuple] = (),
+    trace_config: CompileTime[TraceConfig | None] = None,
+):
+    return _build_stream(
+        factory=factory,
+        factory_kwargs=factory_kwargs,
+        calls=calls,
+        scalars=scalars,
+        params=params,
+        trace_config=trace_config,
+    )
+
+
+@jit
 def _stream1(
     x0: In,
     out: Out,
@@ -344,7 +405,14 @@ def _stream2_2(
     )
 
 
-_STREAM = {(1, 1): _stream1, (2, 1): _stream2, (1, 2): _stream1_2, (2, 2): _stream2_2}
+_STREAM = {
+    (0, 1): _stream0,
+    (0, 2): _stream0_2,
+    (1, 1): _stream1,
+    (2, 1): _stream2,
+    (1, 2): _stream1_2,
+    (2, 2): _stream2_2,
+}
 
 
 def design(
@@ -357,7 +425,11 @@ def design(
     aiecc_flags=None,
     **factory_kwargs,
 ):
-    """Wrap independent tile calls, with constant params and runtime scalar bindings."""
+    """Wrap tile calls; ``params``/``scalars`` supply unbound tensor/scalar Params.
+
+    This harness embeds these values for every call; changing them recompiles
+    the design. Direct designs can supply different operands on each call.
+    """
     calls = _calls(calls, shape)
     fn = factory(**factory_kwargs)
     c = _contract(fn)
@@ -373,7 +445,7 @@ def design(
     if any(
         bfp.is_bfp(shape_dtype(t)[1])
         for i, t in enumerate(fn.arg_types())
-        if c.roles[i] in (In, Param, Out, InOut)
+        if _is_tensor_type(t)
     ):
         if "--dynamic-objFifos" not in flags:
             flags.append("--dynamic-objFifos")
@@ -400,14 +472,14 @@ def _draw(rng, shape, dt, int_range=None):
 
 
 def sample_inputs(fn, *, calls=1, shape=None, rng=None):
-    """One logical array per In/Param; only In has a leading call dimension."""
+    """One array per unbound In/tensor Param; only In has a call dimension."""
     calls = _calls(calls, shape)
     rng = np.random.default_rng(0) if rng is None else rng
     c = _contract(fn)
     if c.sample is not None:
         return c.sample(rng, calls)
     result = []
-    for i in _tensor_positions(c)[0]:
+    for i in _tensor_positions(fn)[0]:
         s, dt = shape_dtype(fn.arg_types()[i])
         layout = _layout(c, i)
         s = layout.shape if layout else (int(np.prod(s)),)
@@ -426,7 +498,7 @@ def sample_inputs(fn, *, calls=1, shape=None, rng=None):
 def host_layout(fn, inputs):
     """Pack declared layouts and interleave same-type In tiles; omit Param buffers."""
     c = _contract(fn)
-    positions = _tensor_positions(c)[0]
+    positions = _tensor_positions(fn)[0]
     if len(inputs) != len(positions):
         raise ValueError(f"{fn.name}: expected {len(positions)} input arrays")
     values = dict(zip(positions, inputs))
@@ -464,7 +536,7 @@ def output_size(fn, *, calls=1, shape=None):
 
 
 @dataclass(frozen=True)
-class HostArg:
+class _HostBuffer:
     """A physical host buffer in design argument order."""
 
     direction: type
@@ -477,6 +549,11 @@ class HostArg:
 
 
 def host_args(fn, *, calls=1, shape=None):
+    """Describe physical host buffers, not kernel arguments or constant Params.
+
+    Same-type streamed inputs share a buffer; each output has its own buffer.
+    Descriptors expose ``direction``, ``shape``, ``dtype`` and ``n_elements``.
+    """
     calls = _calls(calls, shape)
     groups, _, _ = _fifo_plan(fn)
     types = fn.arg_types()
@@ -490,7 +567,7 @@ def host_args(fn, *, calls=1, shape=None):
         if bfp.is_bfp(dt):
             n, dt = n * bfp.BLOCK_BYTES, np.uint8
         s = (calls, n) if len(indices) == 1 else (calls, len(indices), n)
-        result.append(HostArg(direction, s, dt))
+        result.append(_HostBuffer(direction, s, dt))
     return result
 
 
@@ -542,7 +619,6 @@ __all__ = [
     "elems",
     "host_layout",
     "host_args",
-    "HostArg",
     "output_size",
     "sample_inputs",
     "shape_dtype",
