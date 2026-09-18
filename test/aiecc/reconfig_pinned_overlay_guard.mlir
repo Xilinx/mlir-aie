@@ -6,7 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 // --ctrlpkt-pinned-overlay selects the control-overlay pinning mode
-// (adapt|blind|off). It is a cl::opt<PinMode> enum, so an unrecognized mode is
+// (adapt|blind|off). It is a cl::opt<ControlOverlayPinMode> enum, so an
+// unrecognized mode is
 // rejected by the LLVM cl option parser up front, before any lowering runs.
 
 // RUN: not aiecc --get-full-elf --reconfig-method=ctrlpkt --ctrlpkt-pinned-overlay=bogus %s 2>&1 | FileCheck %s

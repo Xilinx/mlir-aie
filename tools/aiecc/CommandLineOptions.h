@@ -59,7 +59,7 @@ inline llvm::StringLiteral reconfigMethodName(ReconfigMethod m) {
 }
 
 // Control-overlay pinning mode (see the --ctrlpkt-pinned-overlay option below).
-enum class PinMode { Adapt, Blind, Off };
+enum class ControlOverlayPinMode { Adapt, Blind, Off };
 
 //===----------------------------------------------------------------------===//
 // Command-line options
@@ -414,16 +414,17 @@ inline cl::opt<bool> parallelColumns(
 //   blind           -- blind Layer-0 capture (pin all control routing).
 //   off             -- do not pin (reintroduces the multi-column co-tenancy
 //                      wedge; ablation / escape hatch only).
-inline cl::opt<PinMode> ctrlpktPinnedOverlay(
+inline cl::opt<ControlOverlayPinMode> ctrlpktPinnedOverlay(
     "ctrlpkt-pinned-overlay",
     cl::desc("Control-overlay pinning mode (ctrlpkt overlay)"),
-    cl::values(clEnumValN(PinMode::Adapt, "adapt",
+    cl::values(clEnumValN(ControlOverlayPinMode::Adapt, "adapt",
                           "Design-aware pinning (default)"),
-               clEnumValN(PinMode::Blind, "blind", "Blind pinning"),
-               clEnumValN(PinMode::Off, "off",
+               clEnumValN(ControlOverlayPinMode::Blind, "blind",
+                          "Blind pinning"),
+               clEnumValN(ControlOverlayPinMode::Off, "off",
                           "No pinning (ablation / escape hatch; may fail to "
                           "route)")),
-    cl::init(PinMode::Adapt));
+    cl::init(ControlOverlayPinMode::Adapt));
 
 // Auto-packetize the minimal set of shim-ingress objectFifos so control ingress
 // always has a shim MM2S channel to share, instead of hitting the
@@ -639,8 +640,9 @@ inline bool resolveOptions() {
   doUnified = unified && !noUnified;
   doCompileHost = generateHost;
   doAutoPacketizeControlIngress = ctrlpktAutoPacketize;
-  doReconfigPinControl = ctrlpktPinnedOverlay != PinMode::Off;
-  doReconfigPinControlDesignAware = ctrlpktPinnedOverlay == PinMode::Adapt;
+  doReconfigPinControl = ctrlpktPinnedOverlay != ControlOverlayPinMode::Off;
+  doReconfigPinControlDesignAware =
+      ctrlpktPinnedOverlay == ControlOverlayPinMode::Adapt;
   return true;
 }
 
