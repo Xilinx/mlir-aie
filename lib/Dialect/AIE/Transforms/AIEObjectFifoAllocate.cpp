@@ -136,7 +136,7 @@ struct AIEObjectFifoAllocatePass
       lastPlaced[placement] = BufferOp::create(
           builder, pool.getLoc(), pool.getElemType(), placement,
           builder.getStringAttr(name), /*address=*/nullptr, init,
-          /*mem_bank=*/nullptr, /*aligned=*/nullptr);
+          /*mem_bank=*/nullptr, /*core_data=*/nullptr);
       names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
     }
     pool.setBuffersAttr(builder.getArrayAttr(names));
@@ -447,7 +447,8 @@ struct AIEObjectFifoAllocatePass
       }
 
       std::string name = (fifoName + "_rearm").str();
-      for (unsigned suffix = 0; device.lookupSymbol(name); suffix++) {
+      for (unsigned suffix = 0; lookupNamedOpIn(device, StringRef(name));
+           suffix++) {
         name = (fifoName + "_rearm_" + std::to_string(suffix)).str();
       }
 
