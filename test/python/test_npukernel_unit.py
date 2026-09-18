@@ -24,6 +24,26 @@ def runtime(monkeypatch):
     return runtime
 
 
+def test_dispatch_signature_cannot_be_mutated(monkeypatch):
+    import aie.utils.npukernel as npukernel
+    from aie.utils.hostruntime.hostruntime import HostRuntimeError
+
+    bridge = Mock()
+    bridge_factory = Mock(return_value=bridge)
+    monkeypatch.setattr(npukernel, "DispatchBridge", bridge_factory)
+    names = ["count"]
+    kernel = NPUKernel(dispatch_params=names, dispatch_lib_path="unused.so")
+    names.append("extra")
+    kernel.dispatch_params.clear()
+    kernel._generate_dispatch_insts({"count": 3})
+    kernel.dispatch_params.append("extra")
+    with pytest.raises(HostRuntimeError, match="dispatch scalar mismatch"):
+        kernel._generate_dispatch_insts({"count": 3, "extra": 4})
+    assert kernel.dispatch_params == ["count"]
+    bridge_factory.assert_called_once()
+    bridge.generate.assert_called_once_with({"count": 3})
+
+
 @pytest.mark.parametrize("dispatch_params", [[], ["n_tiles"]])
 @pytest.mark.parametrize("unknown", ["n_tile", "rety", "dispatch_scalars"])
 def test_unknown_keyword_rejected_before_runtime(runtime, dispatch_params, unknown):

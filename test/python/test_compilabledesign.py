@@ -317,17 +317,62 @@ def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
 
 
 def test_hash_stable_for_generator_with_dispatch_param():
-    """A DispatchTime[T] param in the signature must not affect hash(design).
-
-    DispatchTime[T] values are never part of compile_kwargs (Guard 0-A), so
-    two designs built from the same generator + compile_kwargs must hash
-    identically -- there is no way to make hash(design) depend on a runtime
-    scalar value.
-    """
+    """Unbound dispatch values do not affect the compiled design's identity."""
     gen = _dispatch_gen()
     d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
     d2 = CompilableDesign(gen, compile_kwargs={"N": 512})
     assert hash(d1) == hash(d2)
+
+
+def test_dispatch_defaults_do_not_change_recipe():
+    def make(default):
+        def gen(*, count: DispatchTime[np.int32] = default):
+            pass
+
+        return CompilableDesign(gen)
+
+    first, second = make(3), make(7)
+    assert first.recipe_hash == second.recipe_hash
+    assert first.split_runtime_args((), {}) == ([], {"count": 3})
+    assert second.split_runtime_args((), {}) == ([], {"count": 7})
+    assert (
+        first.specialize(count=5).recipe_hash == second.specialize(count=5).recipe_hash
+    )
+    assert first.recipe_hash != first.specialize(count=5).recipe_hash
+
+
+def test_compile_defaults_change_recipe_unless_explicitly_bound():
+    def make(default):
+        def gen(*, count: CompileTime[int] = default):
+            pass
+
+        return CompilableDesign(gen)
+
+    first, second = make(3), make(7)
+    assert first.recipe_hash != second.recipe_hash
+    assert (
+        first.specialize(count=5).recipe_hash == second.specialize(count=5).recipe_hash
+    )
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [DispatchTime[np.int32], DispatchTime[np.int64], CompileTime[np.int32], In, Out],
+)
+def test_recipe_uses_resolved_annotations(annotation):
+    def gen(*, count):
+        pass
+
+    def make(ann):
+        from types import FunctionType
+
+        clone = FunctionType(gen.__code__, {**gen.__globals__, "alias": annotation})
+        clone.__annotations__ = {"count": ann}
+        return CompilableDesign(clone)
+
+    assert make(annotation).recipe_hash == make("alias").recipe_hash
+    if annotation != DispatchTime[np.int32]:
+        assert make(annotation).recipe_hash != make(DispatchTime[np.int32]).recipe_hash
 
 
 def test_hash_differs_for_compile_time_change_with_dispatch_param_present():
@@ -438,7 +483,7 @@ def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
-@pytest.mark.parametrize("tool", ["aiecc", "host_cxx"])
+@pytest.mark.parametrize("tool", ["aiecc", "peano_cxx", "host_cxx"])
 def test_artifact_hash_tracks_active_compilers(monkeypatch, tmp_path, dynamic, tool):
     import os
 
@@ -455,7 +500,7 @@ def test_artifact_hash_tracks_active_compilers(monkeypatch, tmp_path, dynamic, t
     os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
     after = _compute_artifact_hash(generator, [], [], True, dynamic)
 
-    assert (before != after) == (tool == "aiecc" or dynamic)
+    assert (before != after) == (tool != "host_cxx" or dynamic)
 
 
 def test_hash_for_path_generator_uses_path_string():
@@ -607,13 +652,18 @@ def _design(body, name="design"):
     return ns[name]
 
 
-def test_hash_is_stable_for_a_generator_with_a_nested_function(tmp_path):
+@pytest.mark.parametrize(
+    "signature", ["a, b", "a: In, *, count: DispatchTime[np.int32] = 3"]
+)
+def test_hash_is_stable_for_a_generator_with_a_nested_function(tmp_path, signature):
     """repr() of a nested code object embeds its address; the key must not."""
     script = tmp_path / "probe.py"
     script.write_text(
         "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "from aie.iron import DispatchTime, In\n"
+        "import numpy as np\n"
         "def make():\n"
-        "    def design(a, b):\n"
+        f"    def design({signature}):\n"
         "        def core(x):\n"
         "            return x + 1\n"
         "        return core\n"
@@ -1684,6 +1734,33 @@ def test_get_dispatch_lib_path_none_for_non_dispatch_design():
     """get_dispatch_lib_path() returns None for a design with no DispatchTime[T] params."""
     d = CompilableDesign(_gemm_gen())
     assert d.get_dispatch_lib_path() is None
+
+
+def test_dispatch_library_selected_once_per_compile(monkeypatch, tmp_path, npu2_device):
+    from aie.utils.compile.jit import _manifest
+    from aie.utils.compile.utils import SHARED_LIB_SUFFIX
+
+    design = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
+    monkeypatch.setattr(design, "_compute_cache_hash", lambda: "cached")
+    directory = tmp_path / "cached"
+    directory.mkdir()
+    (directory / "final.xclbin").touch()
+
+    def publish(contents):
+        library = directory / f"dispatch-{contents * 64}{SHARED_LIB_SUFFIX}"
+        library.touch()
+        _manifest._write(directory, [], dispatch_library=library.name)
+        return library
+
+    first = publish("a")
+    design.compile()
+    assert design.get_dispatch_lib_path() == first
+    second = publish("b")
+    # A later publication must not silently change this design's selected ABI.
+    assert design.get_dispatch_lib_path() == first
+    design.compile()
+    assert design.get_dispatch_lib_path() == second
 
 
 @pytest.mark.parametrize("dtype", [int, bool, float, str, np.float32, np.bool_])

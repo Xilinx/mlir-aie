@@ -170,6 +170,7 @@ class CompilableDesign:
         # Cached artifact paths (set after compile()).
         self._xclbin_path: Path | None = None
         self._inst_path: Path | None = None
+        self._dispatch_lib_path: Path | None = None
         # Full-ELF artifacts (set after compile() when full_elf is active).
         self._elf_path: Path | None = None
         self._full_elf_kernel_name: str | None = None
@@ -439,14 +440,14 @@ class CompilableDesign:
             # other's input_with_addresses.mlir / .o files.
             kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
             lock_file_path = kernel_dir / ".lock"
-            dispatch_so_path = None
         else:
             cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
             inst_path = None if has_dispatch else kernel_dir / "insts.bin"
-            dispatch_so_path = None
+
+        dispatch_so_path = None
 
         with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
@@ -483,6 +484,7 @@ class CompilableDesign:
                 )
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
+                self._dispatch_lib_path = companion_path if has_dispatch else None
                 self._kernel_dir = kernel_dir
                 # The active artifact may have changed since the previous
                 # compile(), so refresh its validation metadata on every hit.
@@ -594,6 +596,7 @@ class CompilableDesign:
 
         self._xclbin_path = xclbin_path
         self._inst_path = inst_path
+        self._dispatch_lib_path = dispatch_so_path
         self._kernel_dir = kernel_dir
         # Parse expected tensor sizes for runtime validation.
         self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
@@ -754,18 +757,12 @@ class CompilableDesign:
         return self._xclbin_path, self._inst_path
 
     def get_dispatch_lib_path(self) -> Path | None:
-        """Return the immutable dispatch library generation for a DispatchTime[T] design.
+        """Return the immutable dispatch library selected by the last compile().
 
         ``None`` if this design has no ``DispatchTime[T]`` parameters, or if
         it hasn't been compiled yet.
         """
-        if self._kernel_dir is None or not self.dispatch_params:
-            return None
-        with file_lock(
-            self._kernel_dir / ".lock",
-            timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS,
-        ):
-            return _manifest.resolve_dispatch_library(self._kernel_dir)
+        return self._dispatch_lib_path
 
     def get_pdi_paths(self) -> list[Path]:
         """Return every cache-directory PDI aiecc emitted, sorted by name.

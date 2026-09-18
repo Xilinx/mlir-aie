@@ -59,6 +59,7 @@
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
@@ -1977,6 +1978,24 @@ int main(int argc, char **argv) {
   // CommandLineOptions.h.
   if (!cli::resolveOptions()) {
     return 1;
+  }
+
+  // Exact edge selectors also request C++ output, including a checkpoint cut.
+  // On resume these selectors may change while the recorded C++ options remain.
+  bool wantNpuCpp = generateNpuCpp ||
+                    llvm::is_contained(getOutputs, npuCppName.getValue()) ||
+                    llvm::is_contained(cutOutputs, npuCppName.getValue());
+  if (!resume.active && !wantNpuCpp) {
+    if (npuCppEmitDispatchShim) {
+      llvm::errs() << "aiecc: --npu-cpp-emit-dispatch-shim requires NPU C++ "
+                      "output; use --get-npu-cpp\n";
+      return 1;
+    }
+    if (npuCppName.getNumOccurrences()) {
+      llvm::errs() << "aiecc: --npu-cpp-name requires NPU C++ output; "
+                      "use --get-npu-cpp\n";
+      return 1;
+    }
   }
 
   // --expand-load-pdis reconfigures via PDI swaps and routes the config branch

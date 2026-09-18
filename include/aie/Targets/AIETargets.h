@@ -70,9 +70,8 @@ mlir::LogicalResult AIETranslateNpuToBinary(
     llvm::StringRef sequenceName = "",
     std::vector<TxnLocEntry> *locmap = nullptr, bool foldDDRAddrOffset = true);
 /// \brief Emit a C++ builder that reconstructs the TXN stream at runtime.
-/// \param foldDDRAddrOffset true for the xclbin + instruction-buffer runtime;
-/// false for full-ELF and HRX, which translate host addresses themselves.
-/// Matches the default on AIETranslateNpuToBinary.
+/// \param foldDDRAddrOffset apply firmware DDR folding; see
+/// aie/Runtime/TxnEncoding.h for the runtime-specific address convention.
 /// \param emitDispatchShim also emit the extern "C" dispatch_abi() /
 /// dispatch_generate() entry points the JIT dispatch bridge loads via ctypes.
 mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,

@@ -21,7 +21,7 @@ import logging
 import typing
 from typing import Annotated, Callable, get_args, get_origin
 
-from .markers import _COMPILE_TIME_TAG, _DISPATCH_TIME_TAG, In, InOut, Out
+from .markers import In, InOut, Out
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,11 @@ def _tagged_type(annotation, tag):
     origin = get_origin(annotation)
     if origin is Annotated:
         args = get_args(annotation)
-        return args[0] if any(arg is tag for arg in args[1:]) else None
+        return (
+            args[0]
+            if any(isinstance(arg, str) and arg == tag for arg in args[1:])
+            else None
+        )
     if origin is typing.Union:
         for arg in get_args(annotation):
             wrapped = _tagged_type(arg, tag)
@@ -51,12 +55,12 @@ def _tagged_type(annotation, tag):
 
 def _is_compile_param(annotation) -> bool:
     """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
-    return _tagged_type(annotation, _COMPILE_TIME_TAG) is not None
+    return _tagged_type(annotation, "aie.compile_time") is not None
 
 
 def _is_dispatch_param(annotation) -> bool:
     """Return True for ``DispatchTime[T]`` or ``Optional[DispatchTime[T]]``."""
-    return _tagged_type(annotation, _DISPATCH_TIME_TAG) is not None
+    return _dispatch_param_type(annotation) is not None
 
 
 def _is_tensor_param(annotation) -> bool:
@@ -66,7 +70,7 @@ def _is_tensor_param(annotation) -> bool:
 
 def _dispatch_param_type(annotation):
     """Return the wrapped ``T`` of a ``DispatchTime[T]``, else ``None``."""
-    return _tagged_type(annotation, _DISPATCH_TIME_TAG)
+    return _tagged_type(annotation, "aie.dispatch_time")
 
 
 @functools.lru_cache(maxsize=None)

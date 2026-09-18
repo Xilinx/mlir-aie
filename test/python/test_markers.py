@@ -8,6 +8,7 @@
 """Unit tests for CompileTime[T], In, Out, InOut, DispatchTime[T] annotation markers — no NPU required."""
 
 import inspect
+import json
 from typing import Annotated, get_args, get_origin
 
 import pytest
@@ -76,13 +77,12 @@ def test_dispatch_is_not_compile():
 
 
 @pytest.mark.parametrize(
-    "annotation,name",
-    [(CompileTime[int], "CompileTime"), (DispatchTime[int], "DispatchTime")],
+    "annotation,predicate",
+    [(CompileTime[int], _is_compile_param), (DispatchTime[int], _is_dispatch_param)],
 )
-def test_parameter_tag_repr_is_stable(annotation, name):
-    tag = get_args(annotation)[1]
-    assert repr(tag) == name
-    assert repr(type(tag)()) == name
+def test_parameter_metadata_uses_value_not_identity(annotation, predicate):
+    metadata = json.loads(json.dumps(get_args(annotation)[1]))
+    assert predicate(Annotated[int, metadata])
     assert "0x" not in repr(annotation)
 
 

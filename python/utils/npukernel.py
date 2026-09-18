@@ -136,7 +136,7 @@ class NPUKernel:
         Returns:
             list[str]: Empty for a design with no DispatchTime[T] parameters.
         """
-        return self._dispatch_params
+        return list(self._dispatch_params)
 
     @property
     def dispatch_lib_path(self):

@@ -48,24 +48,7 @@ from typing import Annotated, NoReturn, TypeVar
 T = TypeVar("T")
 
 
-class _ParameterTag:
-    """Annotation metadata with a stable representation for JIT cache keys."""
-
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return type(self).__name__.removeprefix("_").removesuffix("Tag")
-
-
-class _CompileTimeTag(_ParameterTag):
-    """Mark a parameter whose value is bound when generating the design."""
-
-    __slots__ = ()
-
-
-_COMPILE_TIME_TAG = _CompileTimeTag()
-
-CompileTime = Annotated[T, _COMPILE_TIME_TAG]
+CompileTime = Annotated[T, "aie.compile_time"]
 """Compile-time parameter annotation.
 
 Use as a type annotation on generator function parameters that affect the
@@ -98,15 +81,7 @@ class InOut:
     """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
 
 
-class _DispatchTimeTag(_ParameterTag):
-    """Mark a scalar whose value is supplied when dispatching the design."""
-
-    __slots__ = ()
-
-
-_DISPATCH_TIME_TAG = _DispatchTimeTag()
-
-DispatchTime = Annotated[T, _DISPATCH_TIME_TAG]
+DispatchTime = Annotated[T, "aie.dispatch_time"]
 """Runtime-scalar parameter annotation.
 
 Per-call values rebuild instructions through a compiled host library without
