@@ -87,8 +87,13 @@ static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
                                             AIE::AIEDevice deviceType,
                                             unsigned parity, Location loc) {
   std::string emptyName = "empty_" + std::to_string(parity);
-  if (auto existing = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName))
+  if (auto existing = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName)) {
+    // Shared reset PDIs retain every load and trailing sequence's provenance.
+    loc = FusedLoc::get(moduleOp.getContext(), {existing.getLoc(), loc});
+    existing->setLoc(loc);
+    existing.getRegion().front().getTerminator()->setLoc(loc);
     return existing;
+  }
 
   OpBuilder builder(moduleOp.getContext());
   builder.setInsertionPointToStart(moduleOp.getBody());

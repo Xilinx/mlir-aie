@@ -44,7 +44,7 @@
 // Merely checking for a non-unknown location would accept the checkpoint file's
 // own line numbers if printing debug information were accidentally disabled.
 // IR: aie.device
-// IR: aie.tile(0, 2) loc(#[[TILE:loc[0-9]*]])
+// IR: aie.tile(0, 2) {{.*}}loc(#[[TILE:loc[0-9]*]])
 // IR: aie.core
 // IR: #[[SOURCE:loc[0-9]*]] = loc("checkpoint_user.py":42:7)
 // IR: #[[TILE]] = loc("compute_tile"(#[[SOURCE]]))
