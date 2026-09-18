@@ -660,7 +660,7 @@ struct AIEGenerateColumnControlOverlayPass
     if (isShimMM2S) {
       // CONSUME Stage-1's stamp when present. Stage-1's
       // AIEAutoPacketizeControlIngress stamps the union-chosen control trunk
-      // channel K on this column's row-0 shim tile as `ctrl_pkt_trunk_chan`,
+      // channel K on this column's row-0 shim tile as `ctrl_pkt_shim_chan`,
       // and conforms each config to pin control's leg to that K. Stage-1's
       // choice is AUTHORITATIVE: it unions the data-pin / shim-mux
       // reservations across ALL configs -- knowledge this per-device recompute
@@ -672,7 +672,7 @@ struct AIEGenerateColumnControlOverlayPass
       // ingress leg with a free sibling channel), so recomputing here and
       // asserting agreement wrongly rejects a correct build. Consume K instead.
       if (auto kAttr =
-              shimTile->getAttrOfType<IntegerAttr>(kCtrlPktTrunkChanAttr)) {
+              shimTile->getAttrOfType<IntegerAttr>(kCtrlPktShimChanAttr)) {
         trunkChan = (int)kAttr.getInt();
       } else {
         // No stamp: Stage-1 did not run (an isolated overlay unit test). Fall
@@ -690,6 +690,11 @@ struct AIEGenerateColumnControlOverlayPass
           return failure();
         }
       }
+      // Publish the resolved per-column channel on the shim tile (idempotent
+      // when Stage-1 already stamped it) so AIECtrlPacketToDma reads it off
+      // row 0 -- one trunk per column, no per-controlled-tile stamp.
+      shimTile->setAttr(kCtrlPktShimChanAttr,
+                        builder.getI32IntegerAttr(trunkChan));
     }
 
     builder.setInsertionPoint(device.getBody()->getTerminator());
@@ -722,16 +727,9 @@ struct AIEGenerateColumnControlOverlayPass
       // leg keeps the fixed mandated channel and the original usability check.
       int chosenChan;
       if (isShimMM2S) {
+        // The whole column rides the single trunk channel resolved above and
+        // published on the shim tile; there is no per-controlled-tile stamp.
         chosenChan = trunkChan;
-        // Only when this row's control is relocated off its fixed mandated
-        // channel onto the column trunk, record the chosen channel on the
-        // controlled tile so AIECtrlPacketToDma delivers on the same channel
-        // the overlay routed. When not relocated, AIECtrlPacketToDma's
-        // fallback recomputes the same mandated channel, so no attribute is
-        // needed -- keeping unrelocated IR (and existing tests) unperturbed.
-        if (chosenChan != rowToShimChanMap[tOp.rowIndex()])
-          tOp->setAttr(kCtrlPktShimChanAttr,
-                       builder.getI32IntegerAttr(chosenChan));
       } else {
         chosenChan = rowToShimChanMap[tOp.rowIndex()];
         if (!llvm::is_contained(availableShimChans, chosenChan) &&

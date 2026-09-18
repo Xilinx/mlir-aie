@@ -13,8 +13,8 @@
 // RUN: aie-opt -aie-auto-packetize-control-ingress -split-input-file -verify-diagnostics %s | FileCheck %s
 // RUN: not aie-opt -aie-auto-packetize-control-ingress -split-input-file %s 2>&1 | FileCheck %s --check-prefix=ERR
 
-// CHECK: aie.tile(0, 0) {{.*}}ctrl_pkt_trunk_chan = [[K:[0-9]+]]
-// CHECK: aie.tile(0, 0) {{.*}}ctrl_pkt_trunk_chan = [[K]]
+// CHECK: aie.tile(0, 0) {{.*}}ctrl_pkt_shim_chan = [[K:[0-9]+]]
+// CHECK: aie.tile(0, 0) {{.*}}ctrl_pkt_shim_chan = [[K]]
 module {
   aie.device(npu2) @cfg_a {
     %sh = aie.tile(0, 0)
@@ -42,8 +42,8 @@ module {
 // Assert BOTH column-0 shim tiles land on the SAME K, and that K is 1 -- this
 // case fails if chooseUnionTrunkChan regresses to per-device selection.
 
-// CHECK: aie.tile(0, 0) {{.*}}ctrl_pkt_trunk_chan = 1 : i32
-// CHECK: aie.tile(0, 0) {{.*}}ctrl_pkt_trunk_chan = 1 : i32
+// CHECK: aie.tile(0, 0) {{.*}}ctrl_pkt_shim_chan = 1 : i32
+// CHECK: aie.tile(0, 0) {{.*}}ctrl_pkt_shim_chan = 1 : i32
 module {
   aie.device(npu2) @union_a {
     %sh = aie.tile(0, 0)

@@ -36,10 +36,10 @@
 // descending row order).
 // CTRLPKT-LABEL: module {
 // CTRLPKT-DAG: %[[tile_0_2:.*]] = aie.tile(0, 2){{$}}
-// CTRLPKT-DAG: %[[tile_0_3:.*]] = aie.tile(0, 3) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT-DAG: %[[tile_0_4:.*]] = aie.tile(0, 4) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT-DAG: %[[tile_0_5:.*]] = aie.tile(0, 5) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0)
+// CTRLPKT-DAG: %[[tile_0_3:.*]] = aie.tile(0, 3){{$}}
+// CTRLPKT-DAG: %[[tile_0_4:.*]] = aie.tile(0, 4){{$}}
+// CTRLPKT-DAG: %[[tile_0_5:.*]] = aie.tile(0, 5){{$}}
+// CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0) {ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1)
 // CTRLPKT: aie.packet_flow(15) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
@@ -116,16 +116,16 @@ aie.device(npu1_1col) {
 // them appear in the emitted IR before any of the declared tiles below.
 // CTRLPKT-LABEL: module {
 // CTRLPKT-DAG: %[[tile_0_2:.*]] = aie.tile(0, 2){{$}}
-// CTRLPKT-DAG: %[[tile_0_3:.*]] = aie.tile(0, 3) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT-DAG: %[[tile_0_4:.*]] = aie.tile(0, 4) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT-DAG: %[[tile_0_5:.*]] = aie.tile(0, 5) {ctrl_pkt_shim_chan = 0 : i32}
+// CTRLPKT-DAG: %[[tile_0_3:.*]] = aie.tile(0, 3){{$}}
+// CTRLPKT-DAG: %[[tile_0_4:.*]] = aie.tile(0, 4){{$}}
+// CTRLPKT-DAG: %[[tile_0_5:.*]] = aie.tile(0, 5){{$}}
 // CTRLPKT-DAG: %[[tile_1_2:.*]] = aie.tile(1, 2){{$}}
-// CTRLPKT-DAG: %[[tile_1_3:.*]] = aie.tile(1, 3) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT-DAG: %[[tile_1_4:.*]] = aie.tile(1, 4) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT-DAG: %[[tile_1_5:.*]] = aie.tile(1, 5) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0)
+// CTRLPKT-DAG: %[[tile_1_3:.*]] = aie.tile(1, 3){{$}}
+// CTRLPKT-DAG: %[[tile_1_4:.*]] = aie.tile(1, 4){{$}}
+// CTRLPKT-DAG: %[[tile_1_5:.*]] = aie.tile(1, 5){{$}}
+// CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0) {ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1)
-// CTRLPKT: %[[tile_1_0:.*]] = aie.tile(1, 0)
+// CTRLPKT: %[[tile_1_0:.*]] = aie.tile(1, 0) {ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_1_1:.*]] = aie.tile(1, 1)
 // CTRLPKT: aie.packet_flow(15) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
@@ -190,8 +190,8 @@ aie.device(npu1_2col) {
 // controller_id attribute overriding packet header assignment in aie.packet_flow;
 // single-trunk shim dma channel assignment covers all 5 tiles in a column via
 // one shim channel -- rows 3-5 (mandated to the second shim channel by the
-// fixed round-robin map) are relocated onto the column's chosen trunk
-// (channel 0) and carry ctrl_pkt_shim_chan to record the relocation. Column 1
+// fixed round-robin map) ride the column's chosen trunk (channel 0), which is
+// recorded once on the column's shim tile as ctrl_pkt_shim_chan. Column 1
 // declares only rows 0-1; control routing still covers every physical row
 // (0-5), so rows 2-5 get auto-created tiles with no manually-assigned
 // controller_id. Column 0 already declares all 6 rows, so it gets no new
@@ -258,16 +258,16 @@ aie.device(npu1_2col) {
 // TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // CTRLPKT-LABEL: module {
 // CTRLPKT-DAG: %[[tile_1_2:.*]] = aie.tile(1, 2){{$}}
-// CTRLPKT-DAG: %[[tile_1_3:.*]] = aie.tile(1, 3) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT-DAG: %[[tile_1_4:.*]] = aie.tile(1, 4) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT-DAG: %[[tile_1_5:.*]] = aie.tile(1, 5) {ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
+// CTRLPKT-DAG: %[[tile_1_3:.*]] = aie.tile(1, 3){{$}}
+// CTRLPKT-DAG: %[[tile_1_4:.*]] = aie.tile(1, 4){{$}}
+// CTRLPKT-DAG: %[[tile_1_5:.*]] = aie.tile(1, 5){{$}}
+// CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>, ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
 // CTRLPKT: %[[tile_0_2:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CTRLPKT: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>, ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>, ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>, ctrl_pkt_shim_chan = 0 : i32}
-// CTRLPKT: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
+// CTRLPKT: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+// CTRLPKT: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
+// CTRLPKT: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+// CTRLPKT: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>, ctrl_pkt_shim_chan = 0 : i32}
 // CTRLPKT: %[[tile_1_1:.*]] = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 7>}
 // CTRLPKT: aie.packet_flow(4) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>

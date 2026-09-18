@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // The column's row-0 shim tile carries a Stage-1 stamp
-// `ctrl_pkt_trunk_chan = 1`. Stage-1 (AIEAutoPacketizeControlIngress) is
+// `ctrl_pkt_shim_chan = 1`. Stage-1 (AIEAutoPacketizeControlIngress) is
 // authoritative: it unions the data-pin / shim-mux reservations across ALL
 // configs and conforms each config to pin control's leg to K, and its
 // "shareable channel" criterion co-tenants control onto a packet leg's channel.
@@ -25,6 +25,6 @@
 // CHECK-NOT: aie.packet_source<%shim_noc_tile_0_0, DMA : 0>
 
 aie.device(npu2) {
-  %tile_0_0 = aie.tile(0, 0) {ctrl_pkt_trunk_chan = 1 : i32}
+  %tile_0_0 = aie.tile(0, 0) {ctrl_pkt_shim_chan = 1 : i32}
   %tile_0_2 = aie.tile(0, 2)
 }

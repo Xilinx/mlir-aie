@@ -106,35 +106,35 @@ struct AIECtrlPacketToDmaPass
                       (int)allocOp.getChannelIndex()}] = allocOp.getSymName();
     }
 
-    // (col, row) -> shim MM2S channel the control overlay chose for this
-    // controlled tile, recorded by AIEGenerateColumnControlOverlay as the
-    // `ctrl_pkt_shim_chan` attribute. Read this instead of recomputing the
-    // fixed round-robin map: occupancy-aware channel selection may have
-    // relocated control off the mandated channel, and recomputing would then
-    // resolve the wrong allocation (dangling symbol) and wait on the wrong
-    // completion channel (host hang).
-    std::map<std::pair<int, int>, int> ctrlChanByColRow;
+    // col -> the shim MM2S channel carrying this column's control-packet
+    // ingress, published by AIEGenerateColumnControlOverlay on the column's
+    // shim tile (row 0) as `ctrl_pkt_shim_chan`. A column's control rides ONE
+    // trunk channel, so this is keyed by COLUMN (any tile carrying the attr
+    // reports the same value). Read this instead of recomputing the fixed
+    // round-robin map: occupancy-aware selection may have chosen a channel the
+    // fixed map would not, and recomputing would resolve the wrong allocation
+    // (dangling symbol) and wait on the wrong completion channel (host hang).
+    std::map<int, int> ctrlChanByCol;
     for (auto tileOp : device.getOps<AIE::TileOp>())
       if (auto a = tileOp->getAttrOfType<IntegerAttr>(kCtrlPktShimChanAttr))
-        ctrlChanByColRow[{tileOp.colIndex(), tileOp.rowIndex()}] =
-            (int)a.getInt();
+        ctrlChanByCol[tileOp.colIndex()] = (int)a.getInt();
 
     // Resolve a controlled tile's shim MM2S channel and the allocation that
-    // owns it: prefer the channel the overlay actually chose (occupancy-aware
-    // selection may have relocated control off the fixed round-robin map), fall
-    // back to the fixed map otherwise, then look up whatever allocation owns
-    // that physical (col, 0, MM2S, chan) -- the auto-generated `ctrlpkt_...`
-    // one, or a reused data allocation when the channel is shared. Shared by
-    // the serial and column-parallel delivery paths so their source offsets
-    // agree.
-    auto resolveShimAlloc = [&](int col,
-                                int row) -> std::pair<int, std::string> {
-      int shimChan;
-      auto cIt = ctrlChanByColRow.find({col, row});
-      if (cIt != ctrlChanByColRow.end())
-        shimChan = cIt->second;
-      else
-        shimChan = getRowToShimChanMap(targetModel, WireBundle::DMA)[row];
+    // owns it: read the column's published control-ingress channel, then look
+    // up whatever allocation owns that physical (col, 0, MM2S, chan) -- the
+    // auto-generated `ctrlpkt_...` one, or a reused data allocation when the
+    // channel is shared. Shared by the serial and column-parallel delivery
+    // paths so their source offsets agree.
+    auto resolveShimAlloc = [&](int col) -> std::pair<int, std::string> {
+      auto cIt = ctrlChanByCol.find(col);
+      // AIEGenerateColumnControlOverlay always publishes the column's channel
+      // on the shim tile. Fail loud in asserts builds if it is missing; default
+      // to channel 0 in release so we still emit a best-effort reference rather
+      // than crashing (mirrors the shim_dma_allocation guard below).
+      assert(cIt != ctrlChanByCol.end() &&
+             "control-packet column has no ctrl_pkt_shim_chan; "
+             "AIEGenerateColumnControlOverlay should have published it");
+      int shimChan = cIt != ctrlChanByCol.end() ? cIt->second : 0;
 
       auto it = shimAllocByLoc.find(
           {col, 0, (int)AIE::DMAChannelDir::MM2S, shimChan});
@@ -255,7 +255,7 @@ struct AIECtrlPacketToDmaPass
           } else {
             // Start a new batch on the channel + allocation this tile resolves
             // to (shared with the column-parallel path).
-            auto [shimChan, shimDmaAllocName] = resolveShimAlloc(col, row);
+            auto [shimChan, shimDmaAllocName] = resolveShimAlloc(col);
             batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                                shimDmaAllocName, shimChan, &o});
             new_batch = false;
@@ -416,7 +416,7 @@ struct AIECtrlPacketToDmaPass
             int col = cp.getColumnFromAddr();
             int row = cp.getRowFromAddr();
             int64_t sz = ctrlPacketSize(cp);
-            auto [shimChan, allocName] = resolveShimAlloc(col, row);
+            auto [shimChan, allocName] = resolveShimAlloc(col);
 
             // Merge only CONTIGUOUS same-tile packets into one linear BD, and
             // only on AIE2P: same-tile packing rides AIE2P TLAST_Suppress
@@ -493,10 +493,12 @@ struct AIECtrlPacketToDmaPass
             // Fail-loud: one `dma_start_bd_chain_for @chain(%payload) for
             // @alloc` runs on ONE shim DMA channel/alloc, so a column whose
             // rows resolved to different channels/allocations has no
-            // well-defined single chain endpoint. resolveShimAlloc keys on
-            // (col,row), so this CAN happen; the serial path tolerated it
-            // (per-tile DMA on its own alloc) but the chain cannot. Do not
-            // silently pick the first tile's alloc.
+            // well-defined single chain endpoint. resolveShimAlloc now keys on
+            // the column alone (one published `ctrl_pkt_shim_chan` per column),
+            // so every tile in a column resolves identically and this check is
+            // a defensive invariant assertion -- it would only trip if a future
+            // change reintroduced per-tile channel selection. Do not silently
+            // pick the first tile's alloc.
             int chan0 = tiles.front()->shimChan;
             StringRef alloc0 = tiles.front()->allocName;
             for (auto *t : tiles)

@@ -10,10 +10,11 @@
 // A user circuit occupies shim MM2S channel 0 -- the channel the fixed
 // round-robin map mandates for row 1. Occupancy-aware selection must relocate
 // control ingress to the free channel 1 instead of hard-rejecting: record the
-// chosen channel on the controlled tile as `ctrl_pkt_shim_chan = 1`, place the
-// control allocation on channel 1, and source the control flow from DMA : 1.
+// chosen channel on the column's shim tile (row 0) as `ctrl_pkt_shim_chan = 1`,
+// place the control allocation on channel 1, and source the control flow from
+// DMA : 1.
 
-// CHECK: aie.tile(0, 1){{.*}}ctrl_pkt_shim_chan = 1
+// CHECK: aie.tile(0, 0){{.*}}ctrl_pkt_shim_chan = 1
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1({{.*}}, MM2S, 1, <pkt_type = 0, pkt_id = 15>)
 // CHECK: aie.packet_source<{{.*}}, DMA : 1>
 // CHECK: aie.packet_dest<{{.*}}tile_0_1{{.*}}, TileControl : 0>

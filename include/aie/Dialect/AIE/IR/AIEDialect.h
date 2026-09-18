@@ -30,7 +30,15 @@ namespace xilinx::AIE {
 // producers, AIEPathFinder / AIECtrlPacketToDma consumers). Defined on the
 // dialect so producers and consumers share ONE source of truth rather than
 // re-typing the string literal (mirrors AIEX::kEntryDeviceAttr).
-constexpr llvm::StringLiteral kCtrlPktTrunkChanAttr = "ctrl_pkt_trunk_chan";
+//
+// kCtrlPktShimChanAttr: the single shim MM2S channel carrying a whole column's
+// control-packet ingress, stamped on the column's shim tile (row 0). A column's
+// control rides ONE trunk channel, so this is per-column, not per-controlled-
+// tile. AIEAutoPacketizeControlIngress picks it (unioned across configs), or --
+// absent that pass -- AIEGenerateColumnControlOverlay chooses and stamps it;
+// AIECtrlPacketToDma reads it off the shim tile to program/await the delivery
+// DMA. (The TCT/S2MM completion leg keeps its own per-row round-robin channel
+// via getRowToShimChanMap -- a separate, pre-existing concern.)
 constexpr llvm::StringLiteral kCtrlPktShimChanAttr = "ctrl_pkt_shim_chan";
 constexpr llvm::StringLiteral kHasCtrlPktOverlayAttr = "has_ctrl_pkt_overlay";
 

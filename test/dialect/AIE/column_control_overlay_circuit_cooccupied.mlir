@@ -15,7 +15,7 @@
 // the free channel 1, instead of sharing it (a circuit-mode slave port cannot
 // carry a second SlvPktEn control stream).
 
-// CHECK: aie.tile(0, 1){{.*}}ctrl_pkt_shim_chan = 1
+// CHECK: aie.tile(0, 0){{.*}}ctrl_pkt_shim_chan = 1
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1({{.*}}, MM2S, 1, <pkt_type = 0, pkt_id = 15>)
 
 // Control must NOT land on the circuit-occupied channel 0 (it relocated to
