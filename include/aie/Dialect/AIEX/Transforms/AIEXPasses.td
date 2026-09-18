@@ -484,6 +484,17 @@ def AIELowerCoreReset : Pass<"aie-lower-core-reset", "AIE::DeviceOp"> {
   ];
 }
 
+def AIELowerBufferClear : Pass<"aie-lower-buffer-clear", "AIE::DeviceOp"> {
+  let summary = "Lowers all aiex.buffer_clear operations to npu.blockwrite";
+  let constructor = "xilinx::AIEX::createAIELowerBufferClearPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEVerifyRuntimeRearm : Pass<"aie-verify-runtime-rearm", "AIE::DeviceOp"> {
   let summary = "Experimental, opt-in: reject an aiex.dma_channel_reset whose "
                 "objectFIFO lock is never re-armed (a necessary, not sufficient, "
