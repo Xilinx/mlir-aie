@@ -14,7 +14,10 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-template <typename T, int N>
+// Pipelined carries the AIE_LOOP_MIN_ITERATION_COUNT(6) promise. The kernel
+// cannot derive a trip count from height/width/N, so it has to come from the
+// caller: asserting >=6 for a loop that runs fewer iterations hangs on device.
+template <typename T, int N, bool Pipelined = true>
 __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
                                                const int32_t height,
                                                const int32_t width) {
@@ -23,11 +26,19 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
   v64uint8 *restrict outPtr = (v64uint8 *)out;
   v64uint8 *restrict inPtr = (v64uint8 *)in;
 
-  AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(6)
-  for (int j = 0; j < (height * width); j += N) // Nx samples per loop
-  {
-    *outPtr++ = *inPtr++;
+  if constexpr (Pipelined) {
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(6)
+    for (int j = 0; j < (height * width); j += N) // Nx samples per loop
+    {
+      *outPtr++ = *inPtr++;
+    }
+  } else {
+    AIE_PREPARE_FOR_PIPELINING
+    for (int j = 0; j < (height * width); j += N) // Nx samples per loop
+    {
+      *outPtr++ = *inPtr++;
+    }
   }
 
   event1();
@@ -51,6 +62,15 @@ void passThroughTile(uint8_t *in, uint8_t *out, int32_t tileHeight,
   passThrough_aie<uint8_t, 64>(in, out, tileHeight, tileWidth);
 }
 
+void passThroughLineUnhinted(uint8_t *in, uint8_t *out, int32_t lineWidth) {
+  passThrough_aie<uint8_t, 64, false>(in, out, 1, lineWidth);
+}
+
+void passThroughTileUnhinted(uint8_t *in, uint8_t *out, int32_t tileHeight,
+                             int32_t tileWidth) {
+  passThrough_aie<uint8_t, 64, false>(in, out, tileHeight, tileWidth);
+}
+
 #elif BIT_WIDTH == 16
 
 void passThroughLine(int16_t *in, int16_t *out, int32_t lineWidth) {
@@ -62,6 +82,15 @@ void passThroughTile(int16_t *in, int16_t *out, int32_t tileHeight,
   passThrough_aie<int16_t, 32>(in, out, tileHeight, tileWidth);
 }
 
+void passThroughLineUnhinted(int16_t *in, int16_t *out, int32_t lineWidth) {
+  passThrough_aie<int16_t, 32, false>(in, out, 1, lineWidth);
+}
+
+void passThroughTileUnhinted(int16_t *in, int16_t *out, int32_t tileHeight,
+                             int32_t tileWidth) {
+  passThrough_aie<int16_t, 32, false>(in, out, tileHeight, tileWidth);
+}
+
 #elif BIT_WIDTH == 32
 
 void passThroughLine(int32_t *in, int32_t *out, int32_t lineWidth) {
@@ -71,6 +100,15 @@ void passThroughLine(int32_t *in, int32_t *out, int32_t lineWidth) {
 void passThroughTile(int32_t *in, int32_t *out, int32_t tileHeight,
                      int32_t tileWidth) {
   passThrough_aie<int32_t, 16>(in, out, tileHeight, tileWidth);
+}
+
+void passThroughLineUnhinted(int32_t *in, int32_t *out, int32_t lineWidth) {
+  passThrough_aie<int32_t, 16, false>(in, out, 1, lineWidth);
+}
+
+void passThroughTileUnhinted(int32_t *in, int32_t *out, int32_t tileHeight,
+                             int32_t tileWidth) {
+  passThrough_aie<int32_t, 16, false>(in, out, tileHeight, tileWidth);
 }
 
 #else
