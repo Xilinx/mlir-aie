@@ -1,0 +1,16 @@
+<map id="include/aie/Dialect/AIE/IR/AIECoreMemory.h" name="include/aie/Dialect/AIE/IR/AIECoreMemory.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="249,5,432,45"/>
+<area shape="rect" id="Node000002" href="$AIETargetShared_8h.html" title=" " alt="" coords="269,93,413,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="343,59,343,93,338,93,338,59"/>
+<area shape="rect" id="Node000004" href="$AIETargetLdScript_8cpp.html" title=" " alt="" coords="5,181,239,207"/>
+<area shape="poly" id="edge7_Node000001_Node000004" title=" " alt="" coords="307,56,139,183,136,179,303,52"/>
+<area shape="rect" id="Node000007" href="$AIEAssignBuffers_8cpp.html" title=" " alt="" coords="437,93,626,133"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="396,49,491,91,488,96,394,53"/>
+<area shape="rect" id="Node000003" href="$AIERT_8cpp.html" title=" " alt="" coords="263,181,419,207"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="343,147,343,181,338,181,338,147"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="277,140,155,184,153,179,275,135"/>
+<area shape="rect" id="Node000005" href="$AIETargetShared_8cpp.html" title=" " alt="" coords="443,181,670,207"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="406,136,526,179,524,184,404,141"/>
+<area shape="rect" id="Node000006" href="$AIETargetXAIEV2_8cpp.html" title=" " alt="" coords="695,181,923,207"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="427,131,589,159,725,179,724,184,588,164,426,136"/>
+</map>
