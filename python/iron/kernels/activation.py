@@ -112,7 +112,7 @@ def _create_lut_kernel(
 
     Handles the aie2/aie2p split:
     - aie2: combines kernel source with lut_based_ops.cpp in a single TU.
-    - aie2p: uses source_file directly (no LUT dependency).
+    - aie2p: uses source_file directly (no LUT object linkage).
 
     ``contract`` is attached as ``.contract`` like ``_make_extern`` does.
     """
@@ -124,13 +124,13 @@ def _create_lut_kernel(
     include = _include_dirs()
     kernel_arch_dir = Path(config.cxx_header_path()) / "aie_kernels" / arch
     include.append(str(kernel_arch_dir))
+    runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
+    include.append(str(runtime_dir))
 
     flags = compile_flags or []
 
     if arch == "aie2":
-        runtime_dir = Path(config.aie_runtime_lib_dir()) / "AIE2"
         lut_cpp = runtime_dir / "lut_based_ops.cpp"
-        include.append(str(runtime_dir))
         source = f'#include "{kernel_path}"\n#include "{lut_cpp}"\n'
         ef = ExternalFunction(
             func_name,

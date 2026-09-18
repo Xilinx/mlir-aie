@@ -364,6 +364,16 @@ def test_rounding_setup_is_merged_alwaysinline_ir():
     assert setter.object_file_name in mlir
 
 
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+def test_exp_factory_can_include_shared_clamp_header(arch):
+    from aie.utils import config
+
+    set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1())
+    fn = kernels.bf16_exp()
+    runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
+    assert str(runtime_dir) in fn.include_dirs
+
+
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))
 def test_rounding_mode_preserves_string_api(mode):
     assert str(mode) == f"{mode}" == mode.value
