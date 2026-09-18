@@ -52,3 +52,21 @@ module {
     aie.objectfifo @of(%prod, {%cons}, 2 : i32) : !aie.objectfifo<memref<64xi16>>
   }
 }
+
+// -----
+
+// A join's shared pool has one repeat_count, so its inputs must agree, the
+// same way a distribute's outputs must.
+module {
+  aie.device(xcve2302) {
+    %tile12 = aie.tile(1, 2)
+    %tile23 = aie.tile(2, 3)
+    %tile11 = aie.tile(1, 1)
+    %tile10 = aie.tile(1, 0)
+    aie.objectfifo @of0(%tile12, {%tile11}, 2 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1(%tile23, {%tile11}, 2 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of2(%tile11, {%tile10}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    // expected-error@+1 {{repeat counts of linked object FIFOs must be equal}}
+    aie.objectfifo.link [@of0, @of1] -> [@of2] ([0, 16] [])
+  }
+}
