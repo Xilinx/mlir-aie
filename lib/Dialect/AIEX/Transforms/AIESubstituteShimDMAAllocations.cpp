@@ -43,10 +43,10 @@ struct DMAConfigureTaskForOpPattern
   // AIETargetNPU getDataWords symbol-cache. The pattern never erases/creates a
   // symbol (it rewrites task ops, not ShimDMAAllocationOps), so the prebuilt
   // table stays valid across the greedy run.
-  mlir::SymbolTable &symbolTable;
+  const mlir::SymbolTable &symbolTable;
 
   DMAConfigureTaskForOpPattern(mlir::MLIRContext *ctx,
-                               mlir::SymbolTable &symbolTable)
+                               const mlir::SymbolTable &symbolTable)
       : OpRewritePattern<DMAConfigureTaskForOp>(ctx), symbolTable(symbolTable) {
   }
 
