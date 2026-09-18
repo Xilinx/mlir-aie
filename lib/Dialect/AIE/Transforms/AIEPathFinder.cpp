@@ -36,7 +36,7 @@ static constexpr double kTrunkReuseDiscount = 0.001;
 // in-column data-avoid penalty (DESIGN_AVOID_PENALTY x column height), so
 // control prefers sharing an in-column channel with data over an East/West
 // escape; it is finite, so a column with no in-column path (e.g. no shim) can
-// still fall back to a cross-column ingress. Seeded only in the design-aware
+// still fall back to a cross-column ingress. Seeded only in the adaptive
 // capture (alongside the design field), so blind/off routing is untouched.
 static constexpr double kControlCrossColumnPenalty = 1.0e6;
 
@@ -79,7 +79,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device,
   }
 
   // Consolidate a control multicast onto a shared trunk for any control-overlay
-  // (reconfiguration) compile: the design-aware capture (baseline) or a device
+  // (reconfiguration) compile: the adaptive capture (baseline) or a device
   // carrying the generated control overlay (has_ctrl_pkt_overlay, set for
   // pinning on OR off). A plain, non-reconfiguration design has neither, so its
   // packet routing stays byte-identical to upstream.
@@ -508,7 +508,7 @@ void Pathfinder::pinRoute(const PathEndPoint &src,
   pinnedRoutes[src] = route;
 }
 
-// Seed the per-cell demand field from a design-demand map (design-aware
+// Seed the per-cell demand field from a design-demand map (adaptive
 // pinning). Iterate the (small) field, resolve each (srcCoords, dstCoords,
 // srcPort, dstPort) key to its switchbox-connect cell, and assign the weight
 // (assignment, not accumulation: a cell any config's data uses gets one fixed
@@ -528,7 +528,7 @@ void Pathfinder::seedDesignDemand(const DesignField &field) {
   }
 }
 
-// Add `penalty` to every cross-column (East/West) output cell so a design-aware
+// Add `penalty` to every cross-column (East/West) output cell so an adaptive
 // control capture keeps control column-local (see kControlCrossColumnPenalty).
 // Additive so it composes with the per-cell design field; finite so a column
 // with no in-column path can still fall back to a cross-column hop.
@@ -1058,7 +1058,7 @@ Pathfinder::findPaths(const int maxIterations) {
         std::vector<std::tuple<SwitchboxConnect *, int, int, double>>
             trunkDiscounts;
         // Non-consolidated flows (circuit flows, and packet flows outside the
-        // design-aware path) route all destinations against one tree. For a
+        // adaptive path) route all destinations against one tree. For a
         // consolidated pinned flow the per-destination passes route only the
         // uncovered co-sourced legs around control's just-accounted footprint.
         if (!consolidate)
@@ -1068,7 +1068,7 @@ Pathfinder::findPaths(const int maxIterations) {
         // increment used_capacity for the associated channels
         processedStamp[stateId(srcId, In)] = curStamp;
         // Order in which this flow's destinations are traced. Default = IR
-        // order (byte-identical). Under the design-aware capture, trace a
+        // order (byte-identical). Under the adaptive capture, trace a
         // priority control multicast farthest-first: the longest path leaves
         // the source on one channel and every nearer destination (a prefix of
         // it) reuses that trunk via the discount, so the source emits a single

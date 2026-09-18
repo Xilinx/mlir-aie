@@ -17,7 +17,7 @@ How: ``iron.Reconfiguration(method="ctrlpkt")`` folds the ``@iron.jit`` design a
 its external matmul kernel into one full ELF, dispatched via ``pyxrt.runlist``.
 Each column streams two shim inputs (A and B) into its memtile, claiming both shim
 MM2S channels; aiecc's default-on auto-packetize packet-switches one leg per column
-so the resident control overlay time-shares it, and the design-aware pinning pins
+so the resident control overlay time-shares it, and the adaptive pinning pins
 the control masters so each column's data routes around them.
 
 Why: this is the full end-to-end demonstration -- a real, dense, multi-column
@@ -119,7 +119,7 @@ def test_pinning_off_is_load_bearing():
     """Negative arm: --ctrlpkt-pinned-overlay=off skips the control-overlay pinning,
     so the same two-shim-input-per-column co-tenancy routes column data through the
     live control masters -- control packets never arrive and the dispatch fails
-    (ERT_CMD_STATE_TIMEOUT). Proves the design-aware pinning (the default) is
+    (ERT_CMD_STATE_TIMEOUT). Proves the adaptive pinning (the default) is
     required, not cosmetic. The pinning is control routing, so the wedge is
     structural (not a timing race); the device recovers after the firmware
     command timeout, which is what runlist.wait() raises here."""

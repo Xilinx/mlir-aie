@@ -619,16 +619,28 @@ def AIEPinControlOverlay
     the per-device pathfinder decodes the annotation and pins the flow so it
     cannot drift, while config data routes around the reserved control masters.
 
-    By default control pins BLIND (routed with no knowledge of config data).
-    With `design-aware`, control instead routes AROUND the ports the configs'
-    data uses (eager avoidance), minimizing the overlay's imposition on
-    already-routable designs; the blind default stays byte-identical.
+    Pinning mode is selected by `mode` (default `adapt`):
+      adapt -- control routes AROUND the ports the configs' data uses (eager
+               avoidance), minimizing the overlay's imposition on
+               already-routable designs.
+      blind -- control pins with no knowledge of config data (byte-identical to
+               the pre-pinning route).
+      off   -- do not pin (no-op).
   }];
 
   let options = [
-    Option<"designAware", "design-aware", "bool", /*default=*/"false",
-           "Route control aware of config data demand (eager avoidance) "
-           "instead of blind">,
+    Option<"pinMode", "mode", "enum xilinx::AIE::ControlOverlayPinMode",
+           /*default=*/"xilinx::AIE::ControlOverlayPinMode::Adapt",
+           "Control-overlay pinning mode (default: adapt)",
+           "llvm::cl::values("
+             "clEnumValN(xilinx::AIE::ControlOverlayPinMode::Adapt, "
+                        "\"adapt\", \"Route control around config data demand "
+                        "(eager avoidance)\"), "
+             "clEnumValN(xilinx::AIE::ControlOverlayPinMode::Blind, "
+                        "\"blind\", \"Blind capture (byte-identical to the "
+                        "pre-pinning route)\"), "
+             "clEnumValN(xilinx::AIE::ControlOverlayPinMode::Off, "
+                        "\"off\", \"Do not pin (no-op)\"))">,
   ];
 
   let constructor = "xilinx::AIE::createAIEPinControlOverlayPass()";

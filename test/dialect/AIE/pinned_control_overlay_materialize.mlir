@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-pin-control-overlay | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay='mode=blind' | FileCheck %s
 
 // View-unification (C): the module-level pinning pass captures @ctrl_pkt_overlay's
 // canonical control route ONCE (data-free -> the iteration-0-stable route) and

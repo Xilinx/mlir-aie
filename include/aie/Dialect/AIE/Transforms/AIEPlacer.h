@@ -19,6 +19,18 @@ namespace xilinx::AIE {
 /// Placement algorithm type for pass option
 enum class PlacerType { SequentialPlacer, SAPlacer };
 
+/// Control-overlay pinning mode. Shared by the `aie-pin-control-overlay` pass
+/// option (`mode`) and the aiecc driver flag `--ctrlpkt-pinned-overlay`,
+/// which forwards it verbatim. The CLI spellings adapt/blind/off are the
+/// contract.
+///   Adapt -- route control AROUND the ports config data uses (eager
+///            avoidance), minimizing the overlay's imposition on
+///            already-routable designs (default).
+///   Blind -- pin control with no knowledge of config data (byte-identical to
+///            the pre-pinning route).
+///   Off   -- do not pin (pass no-ops; overlay left unpinned).
+enum class ControlOverlayPinMode { Adapt, Blind, Off };
+
 /// Get DMA channel capacity (maxIn, maxOut) for a tile position.
 inline std::pair<int, int> getDMACapacity(const AIETargetModel &tm,
                                           TileID tile) {

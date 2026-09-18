@@ -46,7 +46,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
   // weights of Dijkstra's shortest path
   std::vector<std::vector<double>> demand;
   // persistent per-cell demand added on top of the congestion weight each
-  // updateDemand iteration. Seeded once before findPaths for a design-aware
+  // updateDemand iteration. Seeded once before findPaths for an adaptive
   // control pinning (steers control off cells config data uses); 0.0 for every
   // other analysis, so demand stays byte-identical when it is not seeded.
   std::vector<std::vector<double>> designDemand;
@@ -203,7 +203,7 @@ using SwitchSettings = std::map<TileID, SwitchSetting>;
 
 // A design-demand field: per switchbox-connect cell
 // (srcCoords, dstCoords, srcPort, dstPort) -> extra demand. Seeded into the
-// pathfinder before a design-aware control pinning so control routes around the
+// pathfinder before an adaptive control pinning so control routes around the
 // ports config data uses. Keyed by ports (not matrix [i][j]) so it stays valid
 // regardless of per-instance port ordering.
 using DesignField = std::map<std::tuple<TileID, TileID, Port, Port>, double>;
@@ -226,11 +226,11 @@ public:
   // congestion iterations or across sibling devices.
   virtual void pinRoute(const PathEndPoint &src,
                         const SwitchSettings &route) = 0;
-  // Seed a persistent per-cell demand field (design-aware pinning). Added on
+  // Seed a persistent per-cell demand field (adaptive pinning). Added on
   // top of the congestion demand each iteration; an empty field leaves routing
   // byte-identical. Default no-op so routers that never seed are unaffected.
   virtual void seedDesignDemand(const DesignField &field) {}
-  // Penalize cross-column (East/West) hops so a design-aware control capture
+  // Penalize cross-column (East/West) hops so an adaptive control capture
   // stays column-local. Default no-op so unaffected routers stay
   // byte-identical.
   virtual void seedColumnLocalControl(double penalty) {}
@@ -238,7 +238,7 @@ public:
   // longest path establishes the column trunk and nearer destinations reuse it
   // (one coherent output channel per source), instead of each destination
   // opening a fresh channel and fragmenting the shim packet-rule cover. Enabled
-  // only for the design-aware capture; default off so other routing (blind
+  // only for the adaptive capture; default off so other routing (blind
   // capture, per-device replay) stays byte-identical.
   virtual void setCoherentControlCapture(bool on) {}
   // Mark this a control-overlay (reconfiguration) routing run. Scopes the
@@ -359,7 +359,7 @@ private:
   // Control-overlay (reconfiguration) routing run: gates the multi-destination
   // packet trunk consolidation so a plain, non-reconfiguration design routes
   // byte-identically to upstream. Set for control-overlay compiles (pinning on
-  // or off) and the design-aware capture.
+  // or off) and the adaptive capture.
   bool controlOverlayRouting = false;
 
   // Dense routing graph (built once by buildRoutingGraph()).
@@ -403,7 +403,7 @@ public:
       : pathfinder(std::make_shared<Pathfinder>()) {}
 
   // skipControlFlows drops priority_route control packet flows (route config
-  // DATA only, for design-aware pinning demand capture). baseline, when set,
+  // DATA only, for adaptive pinning demand capture). baseline, when set,
   // seeds the pathfinder's per-cell demand field before routing.
   mlir::LogicalResult runAnalysis(DeviceOp &device,
                                   bool skipControlFlows = false,

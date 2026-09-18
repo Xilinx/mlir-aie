@@ -52,7 +52,7 @@ static bool isControlPacketFlow(AIE::PacketFlowOp flow) {
   return flow.getPriorityRoute().value_or(false);
 }
 
-// Extra demand a design-aware pinning puts on every cell config data occupies,
+// Extra demand an adaptive pinning puts on every cell config data occupies,
 // so control routes around it. Finite (never INF, which is reserved for pinned
 // priority): big enough that one avoided data cell outweighs a few extra
 // control hops, small enough that control can still overlap when a direction is
@@ -122,6 +122,12 @@ struct AIEPinControlOverlayPass
   }
 
   void runOnOperation() override {
+    // `off` disables pinning entirely (the driver normally expresses this by
+    // not scheduling the pass; standalone aie-opt runs can still select it).
+    if (pinMode == ControlOverlayPinMode::Off)
+      return;
+    const bool adapt = pinMode == ControlOverlayPinMode::Adapt;
+
     ModuleOp module = getOperation();
 
     // Find the standalone control-only overlay device. Without one there is no
@@ -153,15 +159,15 @@ struct AIEPinControlOverlayPass
     if (configs.empty())
       return;
 
-    // Design-aware pinning (eager avoidance): route each config's DATA demand
+    // Adaptive pinning (eager avoidance): route each config's DATA demand
     // (control excluded) and aggregate it into a field so the captured control
     // route steers OFF the ports the designs use, minimizing the overlay's
     // imposition on already-routable designs. Control still pins to ONE
-    // route across all configs, so it avoids the UNION of their demand. Off by
-    // default the field stays empty and the overlay routes blind
+    // route across all configs, so it avoids the UNION of their demand. In
+    // blind mode the field stays empty and the overlay routes blind
     // (byte-identical Layer 0).
     DesignField designField;
-    if (designAware) {
+    if (adapt) {
       for (auto cfg : configs) {
         // Fresh analyzer per config (each owns its Pathfinder; read-only, no
         // shared state). skipControlFlows routes the config's circuit + data
@@ -185,11 +191,11 @@ struct AIEPinControlOverlayPass
     // the per-device pathfinder to route -- data-free and deterministic, it
     // reproduces this exact routing. flowSolutions maps each control source to
     // its routed SwitchSettings (the captured canonical route). Under
-    // design-aware pinning, the seeded field bends this route around config
+    // adaptive pinning, the seeded field bends this route around config
     // data.
     DynamicTileAnalysis analyzer;
     if (failed(analyzer.runAnalysis(overlay, /*skipControlFlows=*/false,
-                                    designAware ? &designField : nullptr)))
+                                    adapt ? &designField : nullptr)))
       return signalPassFailure();
 
     // Annotate each config's control packet_flow op with its captured route,
@@ -198,14 +204,14 @@ struct AIEPinControlOverlayPass
     // the annotation and PINS the flow to the captured route so it cannot
     // drift, while the native emitClass merges control+data for free.
     //
-    // Design-aware pinning also pins @ctrl_pkt_overlay itself: its captured
+    // Adaptive pinning also pins @ctrl_pkt_overlay itself: its captured
     // route differs from what the per-device pathfinder derives BLIND, so the
     // resident overlay (routed downstream to build the overlay) must replay the
     // SAME route as the configs, or the two would disagree on the physical
     // control port. In blind mode the overlay reproduces the capture
     // deterministically, so it is left unpinned and OFF stays byte-identical.
     SmallVector<DeviceOp> annotate(configs.begin(), configs.end());
-    if (designAware)
+    if (adapt)
       annotate.push_back(overlay);
     MLIRContext *ctx = module.getContext();
     for (auto cfg : annotate) {
@@ -258,8 +264,8 @@ AIE::createAIEPinControlOverlayPass() {
 }
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
-AIE::createAIEPinControlOverlayPass(bool designAware) {
+AIE::createAIEPinControlOverlayPass(ControlOverlayPinMode pinMode) {
   AIEPinControlOverlayOptions options;
-  options.designAware = designAware;
+  options.pinMode = pinMode;
   return std::make_unique<AIEPinControlOverlayPass>(options);
 }

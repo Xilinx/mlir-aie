@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt %s --aie-pin-control-overlay 2>&1 | FileCheck %s
+// RUN: not aie-opt %s --aie-pin-control-overlay='mode=blind' 2>&1 | FileCheck %s
 
 // A config control source absent from @ctrl_pkt_overlay's captured routing must
 // HARD-FAIL: without a pinned route it would ship unpinned and could drift

@@ -94,7 +94,7 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEPinControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEPinControlOverlayPass(bool designAware);
+createAIEPinControlOverlayPass(ControlOverlayPinMode pinMode);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIETraceRegPackWritesPass();

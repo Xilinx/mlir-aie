@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows | FileCheck %s
+// RUN: aie-opt %s --aie-pin-control-overlay='mode=blind' --aie-create-pathfinder-flows | FileCheck %s
 
 // View-unification (C) + Layer 0: control is CO-ROUTED and pinned via its
 // captured route; Layer 0 then RESERVES control's master ports
 // (reservePinnedControlMasters marks their columns connectivity-INVALID) so no
 // other flow -- including a circuit flow (aie.flow, lowered to a plain
 // aie.connect) -- can be routed onto a control master. A circuit flow that would
-// otherwise take a frozen control master's exact (bundle, channel) is routed
+// otherwise take a pinned control master's exact (bundle, channel) is routed
 // onto a different channel at every hop; the reservation makes that structural
 // (edge-absent), not merely demand-discouraged.
 //
@@ -23,7 +23,7 @@
 // proves no collision), and the exact routed connects pin it off North:1.
 
 // CHECK-LABEL: aie.device(npu2) @cfg
-// The frozen control master (North:1, amsel<5>(3), is_ctrl_pkt_overlay) is pinned.
+// The pinned control master (North:1, amsel<5>(3), is_ctrl_pkt_overlay) is pinned.
 // CHECK-DAG: aie.masterset(North : 1, %{{.*}}) {is_ctrl_pkt_overlay}
 // The circuit flow routed around it on North:0 / South:0 at every hop, never
 // North:1 (its per-hop connects are pinned below).

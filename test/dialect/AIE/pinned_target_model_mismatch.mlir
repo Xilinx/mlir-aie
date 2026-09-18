@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt %s --aie-pin-control-overlay 2>&1 | FileCheck %s
+// RUN: not aie-opt %s --aie-pin-control-overlay='mode=blind' 2>&1 | FileCheck %s
 
 // A captured control route encodes physical ports valid only for the overlay's
 // target model; replaying it into a config declared on a DIFFERENT device model

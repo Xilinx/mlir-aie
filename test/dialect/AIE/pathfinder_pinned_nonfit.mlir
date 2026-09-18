@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt %s --aie-pin-control-overlay --aie-create-pathfinder-flows 2>&1 | FileCheck %s
+// RUN: not aie-opt %s --aie-pin-control-overlay='mode=blind' --aie-create-pathfinder-flows 2>&1 | FileCheck %s
 
 // Non-fit diagnostic + no-partial-artifact guarantee. An AIE2 mem tile has
 // exactly 6 North destination channels (AIETargetModel.cpp
@@ -22,7 +22,7 @@
 // makes it a clean-failure/no-partial-artifact test, NOT a pinning-tradeoff
 // test. Pin's tighter cross-device budget (reserving control's master port
 // against foreign data) is exercised where it is actually load-bearing, in
-// pathfinder_pinned_reserve. The --aie-pin-control-overlay flag is retained
+// pathfinder_pinned_reserve. The --aie-pin-control-overlay='mode=blind' flag is retained
 // only to run this diagnostic in a realistic pinning build.
 
 // CHECK: error: Unable to find a legal routing

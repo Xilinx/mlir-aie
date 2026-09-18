@@ -59,7 +59,9 @@ inline llvm::StringLiteral reconfigMethodName(ReconfigMethod m) {
 }
 
 // Control-overlay pinning mode (see the --ctrlpkt-pinned-overlay option below).
-enum class ControlOverlayPinMode { Adapt, Blind, Off };
+// Defined in the AIE dialect (AIEPlacer.h) and shared with the
+// `aie-pin-control-overlay` pass, whose `mode` option this flag forwards.
+using xilinx::AIE::ControlOverlayPinMode;
 
 //===----------------------------------------------------------------------===//
 // Command-line options
@@ -418,7 +420,7 @@ inline cl::opt<ControlOverlayPinMode> ctrlpktPinnedOverlay(
     "ctrlpkt-pinned-overlay",
     cl::desc("Control-overlay pinning mode (ctrlpkt overlay)"),
     cl::values(clEnumValN(ControlOverlayPinMode::Adapt, "adapt",
-                          "Design-aware pinning (default)"),
+                          "Adaptive pinning (default)"),
                clEnumValN(ControlOverlayPinMode::Blind, "blind",
                           "Blind pinning"),
                clEnumValN(ControlOverlayPinMode::Off, "off",
@@ -613,10 +615,10 @@ inline bool doAutoPacketizeControlIngress = true;
 // Pin the control overlay in the ctrl-pkt-overlay flow, selected by
 // --ctrlpkt-pinned-overlay={adapt|blind|off} (default adapt). Required for
 // multi-column co-tenancy correctness; the pass self-gates to a no-op without
-// an overlay, so plain builds are byte-identical. `adapt` engages design-aware
-// capture, `blind` engages blind capture, `off` disables the pinning.
-inline bool doReconfigPinControl = true;
-inline bool doReconfigPinControlDesignAware = true;
+// an overlay, so plain builds are byte-identical. Forwarded verbatim to the
+// `aie-pin-control-overlay` pass `mode` option (`off` => the pass is not
+// scheduled at all).
+inline ControlOverlayPinMode reconfigPinMode = ControlOverlayPinMode::Adapt;
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
 //
@@ -640,9 +642,7 @@ inline bool resolveOptions() {
   doUnified = unified && !noUnified;
   doCompileHost = generateHost;
   doAutoPacketizeControlIngress = ctrlpktAutoPacketize;
-  doReconfigPinControl = ctrlpktPinnedOverlay != ControlOverlayPinMode::Off;
-  doReconfigPinControlDesignAware =
-      ctrlpktPinnedOverlay == ControlOverlayPinMode::Adapt;
+  reconfigPinMode = ctrlpktPinnedOverlay;
   return true;
 }
 

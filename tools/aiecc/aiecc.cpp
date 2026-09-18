@@ -1085,8 +1085,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto &physical = withAddresses.map<ModRef>(
       "input_physical.mlir",
-      PassPipeline{getRoutingPipeline(&context, doReconfigPinControl,
-                                      doReconfigPinControlDesignAware)});
+      PassPipeline{getRoutingPipeline(&context, reconfigPinMode)});
 
   // Split every core once, then filter into compile / pre-baked subviews.
   auto &allCores =

@@ -894,24 +894,24 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   return pm;
 }
 
-// Routing (`aie-create-pathfinder-flows`), nested under DeviceOp. Both params
-// are fed from --ctrlpkt-pinned-overlay={adapt|blind|off}.
-// `pinControlOverlay` is set for adapt/blind (off => false, which lowers
-// byte-identically to before the pinning existed). `designAware` is set only
-// for adapt; it takes effect only when `pinControlOverlay` is set, and blind
-// (false) is byte-identical.
+// Routing (`aie-create-pathfinder-flows`), nested under DeviceOp. `pinMode` is
+// fed from --ctrlpkt-pinned-overlay={adapt|blind|off}. `off` skips the pinning
+// pass entirely (byte-identical to before the pinning existed); adapt/blind
+// schedule it with the selected mode.
 inline std::unique_ptr<mlir::PassManager>
-getRoutingPipeline(mlir::MLIRContext *ctx, bool pinControlOverlay = false,
-                   bool designAware = false) {
+getRoutingPipeline(mlir::MLIRContext *ctx,
+                   xilinx::AIE::ControlOverlayPinMode pinMode =
+                       xilinx::AIE::ControlOverlayPinMode::Off) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   // Module-level pass (whole module present, before the per-device split):
   // captures @ctrl_pkt_overlay's data-free canonical control route and
   // annotates each config's control packet_flow with it. The per-device
   // pathfinder (below) unconditionally decodes that annotation and pins the
-  // flow so it replays the captured route instead of re-routing it; this
-  // flag's only live effect is gating whether the module pass runs at all.
-  if (pinControlOverlay)
-    pm->addPass(xilinx::AIE::createAIEPinControlOverlayPass(designAware));
+  // flow so it replays the captured route instead of re-routing it; the mode's
+  // only live effect is gating whether the module pass runs and (adapt vs
+  // blind) how it captures the route.
+  if (pinMode != xilinx::AIE::ControlOverlayPinMode::Off)
+    pm->addPass(xilinx::AIE::createAIEPinControlOverlayPass(pinMode));
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIE::createAIEPathfinderPass());
   return pm;
