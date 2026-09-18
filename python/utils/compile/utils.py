@@ -8,6 +8,8 @@
 import concurrent.futures
 import contextlib
 import filecmp
+import hashlib
+import json
 import logging
 import os
 import re
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 _UMASK = os.umask(0o022)
 os.umask(_UMASK)
 _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
+_SYMBOL_PREFIX_STAMP_VERSION = 1
 
 
 def resolve_target_arch(device=None) -> str:
@@ -586,16 +589,105 @@ def compile_mlir_module(
             os.unlink(mlir_file)
 
 
-def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> None:
-    """Rename a symbol in a compiled object file using llvm-objcopy."""
-    objcopy = config.objcopy_path()
-    result = subprocess.run(
-        [objcopy, f"--redefine-sym={old_name}={new_name}", str(object_path)],
+def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
+    """Prefix every defined, external symbol in a compiled object file.
+
+    Used when linking multiple independently-compiled objects into one module
+    (e.g. IRON's operator fusion, or mlir-aie's own kernel memoization: see
+    ``compile_external_kernel``'s ``symbol_prefix`` handling), to avoid symbol
+    collisions between them: every symbol an object defines is renamed to
+    ``{prefix}{symbol}`` before it is linked alongside sibling objects.
+
+    Internally this lists symbols with llvm-nm and bulk-renames them with a
+    single llvm-objcopy --redefine-syms= pass, done directly in Python
+    (rather than shelling out to sh/awk) so it behaves identically on POSIX
+    and Windows. nm's exit status is checked explicitly before objcopy ever
+    runs: silently ignoring an nm failure would produce an empty rename map,
+    turning this into a silent no-op that only surfaces later as a
+    confusing "undefined symbol: <prefix><sym>" at final link time.
+
+    This operation is intentionally literal: every defined external symbol is
+    renamed to ``{prefix}{symbol}``, even if the original spelling already
+    starts with ``prefix``. Callers that need one-time application across
+    cache hits must track that state explicitly rather than inferring it from
+    the symbol names themselves.
+    """
+    nm = config.nm_path()
+    nm_result = subprocess.run(
+        [nm, "--defined-only", "--extern-only", str(object_path)],
         capture_output=True,
         check=False,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"Symbol rename failed: {result.stderr.decode()}")
+    if nm_result.returncode != 0:
+        raise RuntimeError(f"Symbol listing failed: {nm_result.stderr.decode()}")
+
+    symbols = [
+        line.split()[-1]
+        for line in nm_result.stdout.decode().splitlines()
+        if len(line.split()) >= 3
+    ]
+
+    objcopy = config.objcopy_path()
+    with tempfile.TemporaryDirectory(prefix="aie-symbol-map-") as tmpdir:
+        map_file = os.path.join(tmpdir, "symbols.map")
+        with open(map_file, "w") as f:
+            for symbol in symbols:
+                f.write(f"{symbol} {prefix}{symbol}\n")
+
+        result = subprocess.run(
+            [objcopy, f"--redefine-syms={map_file}", str(object_path)],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Symbol prefixing failed: {result.stderr.decode()}")
+
+
+def _symbol_prefix_stamp_path(object_path: str, prefix: str) -> str:
+    """Return the sidecar path that records one successful symbol-prefix pass."""
+    prefix_digest = hashlib.sha256(prefix.encode()).hexdigest()[:16]
+    return f"{object_path}.prefix_state.{prefix_digest}.json"
+
+
+def _sha256_file(path: str) -> str:
+    """Return the SHA-256 digest of ``path``'s current contents."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _has_current_symbol_prefix_stamp(object_path: str, prefix: str) -> bool:
+    """Report whether ``object_path`` already carries a current prefix stamp."""
+    stamp_path = _symbol_prefix_stamp_path(object_path, prefix)
+    try:
+        with open(stamp_path) as f:
+            state = json.load(f)
+        object_sha256 = _sha256_file(object_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return state == {
+        "version": _SYMBOL_PREFIX_STAMP_VERSION,
+        "prefix": prefix,
+        "object_sha256": object_sha256,
+    }
+
+
+def _write_symbol_prefix_stamp(object_path: str, prefix: str) -> None:
+    """Record that ``prefix`` has been applied to the current object bytes."""
+    stamp_path = _symbol_prefix_stamp_path(object_path, prefix)
+    with _staged(stamp_path) as tmp:
+        with open(tmp, "w") as f:
+            json.dump(
+                {
+                    "version": _SYMBOL_PREFIX_STAMP_VERSION,
+                    "prefix": prefix,
+                    "object_sha256": _sha256_file(object_path),
+                },
+                f,
+            )
+        os.chmod(tmp, _DEFAULT_FILE_MODE)
 
 
 @contextlib.contextmanager
@@ -744,7 +836,9 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
-    If the object file already exists in ``kernel_dir``, compilation is skipped.
+    Existing objects are reused, except that prefixed objects require a matching
+    content stamp. Unstamped or modified prefixed objects are rebuilt from source:
+    their symbol names cannot establish whether prefixing has already happened.
 
     Args:
         func: ExternalFunction instance to compile.
@@ -762,7 +856,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
     # ``define`` carries the un-prefixed _original_name. Object mode reconciles
-    # the two via an llvm-objcopy --redefine-sym rename, which cannot rewrite a
+    # the two via an llvm-objcopy --redefine-syms rename, which cannot rewrite a
     # .ll. Fail loudly here rather than downstream in objcopy or as a silent
     # call/define name mismatch at llvm-link time.
     if getattr(func, "_inline", False) and getattr(func, "_symbol_prefix", None):
@@ -773,13 +867,24 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
             "symbol_prefix, or drop inline for this kernel."
         )
 
-    # Skip if the object file already exists (cache hit).
+    # A missing/stale stamp can mean either a legacy cache entry or an interrupted
+    # prefix pass. Never rename those bytes again; rebuild from source instead.
     output_file = os.path.join(kernel_dir, func.object_file_name)
-    if os.path.exists(output_file):
-        if getattr(func, "_symbol_prefix", None):
-            # Ensure rename is applied even on cache hit — idempotent with llvm-objcopy
-            _rename_symbol_in_object(output_file, func._original_name, func._name)
+    prefix = (
+        f"{func._symbol_prefix}_" if getattr(func, "_symbol_prefix", None) else None
+    )
+    if os.path.exists(output_file) and (
+        prefix is None or _has_current_symbol_prefix_stamp(output_file, prefix)
+    ):
+        func._compiled = True
+        func._compiled_dir = os.path.abspath(kernel_dir)
         return
+
+    # Invalidate before any writes, so a failed compile, rename, or stamp write
+    # cannot leave a cache entry that a later invocation trusts.
+    if prefix is not None:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(_symbol_prefix_stamp_path(output_file, prefix))
 
     if func._source_string is not None:
         original_name = getattr(func, "_original_name", func._name)
@@ -840,11 +945,14 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    # Rename symbol if a prefix is set.
-    if getattr(func, "_symbol_prefix", None):
-        original = func._original_name
-        prefixed = func._name  # already prefixed
-        _rename_symbol_in_object(output_file, original, prefixed)
+    # Prefix every defined symbol in the object if a prefix is set. This covers
+    # not just the entry point (func._name is already "{symbol_prefix}_{original}")
+    # but any other extern "C" helper symbols the kernel source happens to define,
+    # so multiple memoized instantiations of the same source can be linked
+    # together without their helpers colliding too.
+    if prefix is not None:
+        prefix_symbols_in_object(output_file, prefix)
+        _write_symbol_prefix_stamp(output_file, prefix)
 
     func._compiled = True
     func._compiled_dir = os.path.abspath(kernel_dir)

@@ -101,6 +101,30 @@ def objcopy_path():
     )
 
 
+def nm_path():
+    """Return the llvm-nm used to list defined external symbols in compiled objects.
+
+    Paired with objcopy_path() to bulk-rename symbols in a compiled object: list
+    every defined external symbol with nm, then bulk-``--redefine-syms`` with
+    objcopy. AIE objects use the AIEngine ELF e_machine, which GNU binutils nm
+    cannot parse; llvm-nm reads it structurally regardless of target, same as
+    llvm-objcopy.
+    """
+    bundled_nm = os.path.join(root_path(), "bin", _executable_name("llvm-nm"))
+    if os.path.isfile(bundled_nm):
+        return bundled_nm
+
+    path_nm = shutil.which(_executable_name("llvm-nm"))
+    if path_nm:
+        return path_nm
+
+    raise RuntimeError(
+        "Could not find llvm-nm. Expected it under the MLIR-AIE bin "
+        "directory or on PATH. GNU binutils nm cannot process AIE "
+        "objects, so an LLVM nm is required."
+    )
+
+
 def cxx_header_path():
     """Return the path to the MLIR-AIE C++ headers."""
     include_dir = os.path.join(root_path(), "include")
