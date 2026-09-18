@@ -10947,7 +10947,7 @@ its symbol.</p>
 <a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>    cert.load_pdi(0, @pdi0)
 <a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a>  }
 </code></pre></div></p>
-<p>Traits: <code>HasParent&lt;AIE::DeviceOp, CertAttachToGroupOp&gt;</code>, <code>SingleBlockImplicitTerminator&lt;AIE::EndOp&gt;</code>, <code>SingleBlock</code></p>
+<p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;AIE::DeviceOp, CertAttachToGroupOp&gt;</code>, <code>SingleBlockImplicitTerminator&lt;AIE::EndOp&gt;</code>, <code>SingleBlock</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
 <h4 id="attributes_11">Attributes:<a class="headerlink" href="#attributes_11" title="Permanent link">&para;</a></h4>
 <table>
@@ -10999,7 +10999,7 @@ single region where the buffer descriptors can be specified.</p>
 <a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>    ...
 <a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>  }
 </code></pre></div></p>
-<p>Traits: <code>SingleBlockImplicitTerminator&lt;AIE::EndOp&gt;</code>, <code>SingleBlock</code></p>
+<p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>SingleBlockImplicitTerminator&lt;AIE::EndOp&gt;</code>, <code>SingleBlock</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
 <h4 id="attributes_13">Attributes:<a class="headerlink" href="#attributes_13" title="Permanent link">&para;</a></h4>
 <table>
@@ -12592,6 +12592,7 @@ for details on how values are shifted to work around this).</p>
 <a id="__codelineno-83-2" name="__codelineno-83-2" href="#__codelineno-83-2"></a>aiex.scratchpad_parameter @bar : bf16
 <a id="__codelineno-83-3" name="__codelineno-83-3" href="#__codelineno-83-3"></a>aie.device(npu2) { ... }
 </code></pre></div></p>
+<p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
 <h4 id="attributes_48">Attributes:<a class="headerlink" href="#attributes_48" title="Permanent link">&para;</a></h4>
 <table>
@@ -12680,11 +12681,13 @@ core executions.</p>
 <p>AIE.useToken @token0("Acquire", 0) // acquire token0 if its value is 0</p>
 <p>...</p>
 <p>AIE.useToken @token0("Release", 5) // release token0 and set its value to 5</p>
+<p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>SymbolName</code></p>
 <p>Interfaces: <code>Symbol</code></p>
 <h4 id="attributes_50">Attributes:<a class="headerlink" href="#attributes_50" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 </table>
 
 <h3 id="aiexusetoken-xilinxaiexusetokenop"><code>aiex.useToken</code> (::xilinx::AIEX::UseTokenOp)<a class="headerlink" href="#aiexusetoken-xilinxaiexusetokenop" title="Permanent link">&para;</a></h3>
