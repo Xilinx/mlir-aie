@@ -13,6 +13,7 @@
 // PeanoCompilationRule configuration for this file.
 // mm.cc provides matmul_bf16_bf16 and matmul_scalar_bf16_bf16.
 #include "../generic/zero.cc"
+#include "mm.cc"
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
