@@ -9,7 +9,11 @@
 #include <string>
 
 int main(int argc, char **argv) {
-#ifdef SCALAR
+#ifdef CONDITIONAL
+  if (argc != 4)
+    return 2;
+  auto txn = GEN_FN(std::stoll(argv[2]), std::stoll(argv[3]) != 0);
+#elif defined(SCALAR)
   if (argc != 3)
     return 2;
   auto txn = GEN_FN(std::stoll(argv[2]));
@@ -20,11 +24,16 @@ int main(int argc, char **argv) {
 #endif
   if (!txn)
     return 3;
+  if (txn->size() < 4 || (*txn)[3] != txn->size() * sizeof(uint32_t))
+    return 7;
 #ifdef CHECK_SHIM
   if (std::strcmp(dispatch_abi(), ABI_STRING) != 0)
     return 5;
   uint32_t *words = nullptr;
-#ifdef SCALAR
+#ifdef CONDITIONAL
+  int64_t count =
+      dispatch_generate(std::stoll(argv[2]), std::stoll(argv[3]) != 0, &words);
+#elif defined(SCALAR)
   int64_t count = dispatch_generate(std::stoll(argv[2]), &words);
 #else
   int64_t count = dispatch_generate(&words);

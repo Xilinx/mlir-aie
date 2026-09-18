@@ -30,6 +30,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/RegionUtils.h"
@@ -124,8 +125,17 @@ public:
     // DMA lowering consumes buffer views but can leave dead subview/cast
     // chains behind (notably after configure/run materialization). They are
     // not transaction operations and must not reach the C++ converter.
-    IRRewriter rewriter(funcOp.getContext());
-    (void)runRegionDCE(rewriter, funcOp.getFunctionBody());
+    bool erased;
+    do {
+      erased = false;
+      funcOp.walk([&](Operation *op) {
+        if (isa<memref::MemRefDialect>(op->getDialect()) &&
+            isOpTriviallyDead(op)) {
+          op->erase();
+          erased = true;
+        }
+      });
+    } while (erased);
     uint32_t count = 0;
     SmallVector<Operation *> consumed;
     convertBlockRecursive(funcOp.getBlocks().front(), count, consumed);
@@ -139,6 +149,7 @@ public:
     // other sequences in the module still reference.
     for (Operation *op : llvm::reverse(consumed))
       op->erase();
+    IRRewriter rewriter(funcOp.getContext());
     (void)runRegionDCE(rewriter, funcOp.getFunctionBody());
     return count;
   }
