@@ -390,11 +390,23 @@ def test_rounding_mode_preserves_string_api(mode):
         (kernels.conv2dk1, 2752),
         (kernels.conv2dk1_skip, 2752),
         (kernels.conv2dk3, 4736),
-        (kernels.layer_norm_f32, 1152),
+        (kernels.layer_norm_f32, 1216),
     ],
 )
 def test_stack_contract_covers_measured_core(factory, minimum):
     assert factory().contract.stack_bytes >= minimum
+
+
+def test_layer_norm_f32_stack_includes_scalar_division():
+    # The measured core's 1152 bytes omit __divsf3's 64-byte frame because
+    # compiler-rt does not emit .stack_sizes. Exercise the CI case's design.
+    minimum = 1152 + 64
+    fn = kernels.layer_norm_f32(cols=1024)
+    assert fn.contract.stack_bytes >= minimum
+    mlir = str(kd.design(kernels.layer_norm_f32, cols=1024, calls=16).as_mlir())
+    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
+    assert stack_sizes
+    assert all(int(size) >= minimum for size in stack_sizes)
 
 
 def test_contract_validates_argument_bindings():
@@ -1518,6 +1530,22 @@ def test_a_design_runs_the_setup_a_contract_names():
     assert kernels.convert_copy().contract.setup is None
     mlir = str(kd.design(kernels.convert_copy, calls=1).as_mlir())
     assert "set_rounding" not in mlir
+
+
+def test_bf16_exp_reference_preserves_subnormal_tail():
+    x = np.array(
+        [-np.inf, -128, -88, -87.5, -87, 0, 87.5, 88, 128, np.inf],
+        dtype=bfloat16,
+    )
+    got = kernels.bf16_exp_ref(x).astype(np.float64)
+    expected = np.exp(np.clip(x.astype(np.float64), -88, 88)).astype(bfloat16)
+    np.testing.assert_array_equal(got, expected.astype(np.float64))
+    assert np.all(got[:4] > 0)
+    assert np.all(got[:4] < np.finfo(np.float32).tiny)
+    assert np.all(np.isfinite(got))
+    assert got[4] >= np.finfo(np.float32).tiny
+    assert got[5] == 1
+    assert got[-1] > 1e38
 
 
 def test_bf16_exp_clamp_matches_the_kernel_headers():

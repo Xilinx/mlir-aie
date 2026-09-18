@@ -280,9 +280,11 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise exponential kernel for bf16 tiles (must be 1024).
 
     Computes ``exp(clip(x, -88, 88))``: the kernel saturates rather than
-    overflowing, so every input is well defined. See
+    overflowing for real inputs, including infinities. On AIE2P a
+    range-reduced polynomial and integer exponent reconstruction replace
+    the hardware exp2 approximation, preserving subnormal outputs. See
     [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref] for why that
-    clamp is the table's own limit and costs no accuracy.
+    clamp matches the AIE2 table's domain.
     """
     return _bf16_lut_factory(
         "bf16_exp",
@@ -297,10 +299,9 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
 def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
     """Software f32 ``2**x`` kernel: a degree-5 minimax poly, not a LUT.
 
-    An accuracy-tradeoff alternative to the LUT-based [`bf16_exp`]
-    [iron.kernels.activation.bf16_exp] path for callers (softmax, sigmoid)
-    that need better than the LUT's domain-dependent error (worst on
-    negative inputs, which is exactly softmax's range). See
+    A float32-output alternative to [`bf16_exp`]
+    [iron.kernels.activation.bf16_exp], sharing its AIE2P range-reduced
+    polynomial but with a separately configurable input domain. See
     ``aie_kernels/aie2p/exp2f_vec.cc`` for the accuracy rationale and the
     ``noinline`` codegen hazard this kernel carries.
 
@@ -516,10 +517,11 @@ def bf16_exp_ref(x):
     ``exp(clip(x, -88, 88))``, not plain ``exp(x)``: the kernel clamps to
     ``EXP_BF16_CLAMP`` before its Q8 fixed-point table lookup (see
     ``aie_runtime_lib/AIE2/lut_based_ops.h``), so it saturates rather than
-    overflowing. The clamp is exact -- ``+88`` is the largest value the
-    tables carry and ``exp(-88)`` has already underflowed bf16 to 0 -- so
-    this matches the device over the whole real line, including the inputs
-    that used to wrap. It also keeps the reference itself in range:
+    overflowing. ``+88`` is the largest value the tables carry.
+    ``exp(-88)`` is a nonzero bf16 subnormal (about ``6.06e-39``), not
+    zero: AIE2P preserves it through integer exponent reconstruction,
+    whereas the AIE2 LUT may flush the tail under the absolute tolerance.
+    The clamp also keeps the reference itself in range:
     ``exp(88) = 1.65e+38`` fits float32 where ``exp(89)`` would not.
     """
     xf = np.clip(x.astype(np.float32), -_EXP_BF16_CLAMP, _EXP_BF16_CLAMP)

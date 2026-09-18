@@ -109,7 +109,9 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         layer_norm_f32_ref,
         _NORM_F32,
         6 * cols,
-        stack_bytes=1152,  # aiecc measured_stack_size (Peano 22)
+        # Allow headroom above Peano 22's 1152-byte measured lower bound:
+        # __divsf3 adds 64 bytes without .stack_sizes metadata.
+        stack_bytes=2048,
     )
 
 

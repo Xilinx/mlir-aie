@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.kernels.fused import fused_mm
+from aie.utils import ensure_current_device
 from ml_dtypes import bfloat16
 
 
@@ -26,6 +27,9 @@ from ml_dtypes import bfloat16
     ],
 )
 def test_fused_init_k_bands_and_epilogue(epilogue, clamp):
+    # Bind before constructing the host codecs: JIT generation binds the runtime
+    # device too, but by then an unbound factory has already chosen AIE2 layouts.
+    ensure_current_device()
     # Small dyadic operands make the unactivated GEMM exact in both f32 and
     # bf16. Different rows/columns, two A bands and three K chunks expose a
     # missing accumulation or an incorrect offset. Three consecutive calls

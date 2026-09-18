@@ -159,6 +159,53 @@ def test_bf16_exp_saturates_outside_lut_domain():
     assert verdict, verdict.detail
 
 
+@pytest.mark.supported_devices("npu2")
+def test_bf16_exp_full_clamped_range():
+    """Check every lane relatively, including the nonzero subnormal tail."""
+    fn = kernels.bf16_exp()
+    tile = np.linspace(-88, 88, 1024, dtype=np.float32)
+    # Include bf16 neighbours of both ends, the normal/subnormal transition,
+    # infinities, and inputs that wrapped the old AIE2 Q8 lookup.
+    edges = [
+        -np.inf,
+        -4e4,
+        -200,
+        -128,
+        -89,
+        -88,
+        -87.5,
+        -87,
+        -1,
+        -0.5,
+        0,
+        0.5,
+        1,
+        87,
+        87.5,
+        88,
+        89,
+        128,
+        200,
+        4e4,
+        np.inf,
+    ]
+    tile[: len(edges)] = edges
+    tile_bf16 = tile.astype(bfloat16).reshape(1, 1024)
+    design = kd.design(kernels.bf16_exp, calls=1)
+    got = _run(design, fn, [tile_bf16], 1024, np.dtype(bfloat16))
+    expected = fn.expected([tile_bf16])
+    verdict = fn.judge(got, expected, calls=1)
+    assert verdict, verdict.detail
+    # No absolute floor or mismatch budget: zero at -88 and a single bad
+    # exponent are failures, regardless of the other 1023 lanes.
+    np.testing.assert_allclose(
+        got.astype(np.float64),
+        expected.ravel().astype(np.float64),
+        rtol=0.01,
+        atol=0,
+    )
+
+
 def test_softmax_wide_dynamic_range():
     """A tile whose x - max runs past the LUT domain still normalises.
 

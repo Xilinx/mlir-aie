@@ -4,11 +4,16 @@
 # RUN: %pytest %s
 """The fused tile contract's codecs and reference, without an NPU."""
 
+import runpy
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels.fused import fused_mm
+from aie.utils import ensure_current_device, get_current_device
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -38,6 +43,65 @@ def test_fused_variants_have_distinct_symbols_and_reuse_bindings(device):
 
 def test_fused_accumulator_uses_target_vector_alignment(device):
     assert "alignas(aie::vector_decl_align) float acc[" in fused_mm().source_string
+
+
+def test_fused_e2e_binds_runtime_before_constructing_host_layouts(monkeypatch):
+    monkeypatch.setattr("aie.utils.hostruntime._CURRENT_DEVICE", None)
+    monkeypatch.setattr(
+        "aie.utils._get_default_npu_runtime",
+        lambda: SimpleNamespace(device=NPU2Col1),
+    )
+    case = runpy.run_path(str(Path(__file__).parent / "npu" / "test_fused_mm_e2e.py"))[
+        "test_fused_init_k_bands_and_epilogue"
+    ]
+
+    class ContractChecked(Exception):
+        pass
+
+    def check_contract(**kwargs):
+        assert isinstance(get_current_device(probe_runtime=False), NPU2Col1)
+        assert "-DMM_FUSED_T=8" in fused_mm(**kwargs).compile_flags
+        raise ContractChecked
+
+    monkeypatch.setitem(case.__globals__, "fused_mm", check_contract)
+    with pytest.raises(ContractChecked):
+        case("none", None)
+
+
+def test_fused_unbound_layout_reproduces_npu2_failure(monkeypatch):
+    monkeypatch.setattr("aie.utils.hostruntime._CURRENT_DEVICE", None)
+    monkeypatch.setattr(
+        "aie.utils._get_default_npu_runtime",
+        lambda: SimpleNamespace(device=NPU2Col1),
+    )
+    unbound = fused_mm(dim_k=48)
+    ensure_current_device()
+    bound = fused_mm(dim_k=48)
+    rng = np.random.default_rng(3740)
+    a = (rng.integers(-2, 3, size=(3, 32, 48)) / 8).astype(bfloat16)
+    b = (rng.integers(-2, 3, size=(3, 48, 16)) / 8).astype(bfloat16)
+    a[0, 0, :] = 0.25
+    b[0, :, 0] = 0.25
+    b[0, :, 1] = -0.25
+    a[1] = 0
+    expected = a.astype(np.float32) @ b.astype(np.float32)
+
+    def execute(host):
+        # mm_fused_mmul_2x2 consumes row-major bf16 microblocks on both
+        # targets; the kernel's target, not the uploader, fixes their size.
+        operands = [
+            native.decode(upload.encode(x), calls=3).astype(np.float32)
+            for native, upload, x in zip(
+                bound.contract.layouts, host.contract.layouts, (a, b)
+            )
+        ]
+        output = bound.contract.layouts[2].encode(operands[0] @ operands[1])
+        return host.contract.layouts[2].decode(output, calls=3)
+
+    wrong = execute(unbound)
+    assert np.count_nonzero(wrong != expected) == 998
+    np.testing.assert_array_equal(wrong[0, 0, :2], [1.28125, -1.8125])
+    np.testing.assert_array_equal(execute(bound), expected)
 
 
 def test_fused_layouts_match_microblock_addressing(device):
