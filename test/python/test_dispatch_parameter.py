@@ -68,7 +68,6 @@ def test_reordered_dispatch_identity(other_type, bound, npu2_device):
         lambda x: x & 1,
         lambda x: np.int32(1) + x,
         lambda x: np.array(x),
-        lambda x: np.dtype(x),
         lambda x: np.empty((x,), dtype=np.int32),
         lambda x: np_ndarray_type_to_memref_type(np.ndarray[(x,), np.dtype[np.int32]]),
         lambda x: np_ndarray_type_to_memref_type(np.ndarray[x, np.dtype[np.int32]]),
@@ -85,6 +84,22 @@ def test_dispatch_generation_time_misuse(use, npu2_device):
 
     with pytest.raises(
         TypeError, match="DispatchTime parameter 'count'.*generation-time"
+    ):
+        CompilableDesign(gen).generate_mlir()
+
+
+def test_dispatch_cannot_be_used_as_numpy_dtype(npu2_device):
+    def gen(*, count: DispatchTime[np.int32]):
+        np.dtype(count)
+
+    # Older NumPy replaces exceptions from dtype attribute lookup with its own
+    # TypeError. Both diagnostics must identify the rejected dispatch parameter.
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"DispatchTime parameter 'count'.*generation-time"
+            r"|Cannot interpret .*DispatchTime\('count', int32\).* as a data type"
+        ),
     ):
         CompilableDesign(gen).generate_mlir()
 
