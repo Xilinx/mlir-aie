@@ -141,7 +141,7 @@ struct AIELowerScratchpadParametersPass
 
     for (auto readOp : readOps) {
       FlatSymbolRefAttr bufRef = readOp.getBufferAttr();
-      auto buf = device.lookupSymbol<BufferOp>(bufRef.getAttr());
+      auto buf = AIE::lookupNamedOpIn<BufferOp>(device, bufRef.getAttr());
 
       builder.setInsertionPoint(readOp);
       Value c0 = arith::ConstantIndexOp::create(builder, readOp.getLoc(), 0);

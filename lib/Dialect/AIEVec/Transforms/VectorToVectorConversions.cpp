@@ -533,7 +533,8 @@ struct ExtractTransposeFromContractionOp
       rhsVal =
           arith::ExtFOp::create(
               rewriter, loc,
-              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
+              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal,
+              /*fastmath=*/nullptr)
               .getOut();
     if (doExtSI)
       rhsVal =
@@ -824,6 +825,34 @@ static Value smartTruncF32ToBF16(PatternRewriter &rewriter, Location loc,
   return arith::TruncFOp::create(rewriter, loc, bf16Type, val);
 }
 
+/// Pattern to drop `bf16 -> f32 -> bf16` round trips.
+///
+/// Arith used to fold these but no longer does: widening a signaling NaN quiets
+/// it, so the original bit pattern cannot be recovered. This pass has always
+/// made that trade anyway -- `smartTruncF32ToBF16` collapses the same pair on
+/// sight -- so fold here to keep the pipeline's pre-existing behavior rather
+/// than leaving the round trips for the backend.
+struct FoldBF16RoundTripPattern : public OpRewritePattern<arith::TruncFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::TruncFOp op,
+                                PatternRewriter &rewriter) const override {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    auto intermediateType = dyn_cast<VectorType>(op.getIn().getType());
+    if (!resultType || !intermediateType ||
+        !resultType.getElementType().isBF16() ||
+        !intermediateType.getElementType().isF32())
+      return failure();
+
+    auto extfOp = op.getIn().getDefiningOp<arith::ExtFOp>();
+    if (!extfOp || extfOp.getIn().getType() != resultType)
+      return failure();
+
+    rewriter.replaceOp(op, extfOp.getIn());
+    return success();
+  }
+};
+
 /// Pattern to emulate f32 binary vector arithmetic ops in bf16.
 /// For an op like: %r = arith.addf %a, %b : vector<16xf32>
 /// Produces:
@@ -852,7 +881,8 @@ struct EmulateBinaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
 
     Value newResult =
         OpTy::create(rewriter, loc, bf16VecType, lhsBF16, rhsBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
@@ -907,7 +937,8 @@ struct EmulateSelectF32InBF16Pattern
 
     Value newResult = arith::SelectOp::create(rewriter, loc, op.getCondition(),
                                               trueValBF16, falseValBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
@@ -937,7 +968,8 @@ struct EmulateFMAF32InBF16Pattern : public OpRewritePattern<vector::FMAOp> {
 
     Value newResult =
         vector::FMAOp::create(rewriter, loc, lhsBF16, rhsBF16, accBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
@@ -962,7 +994,8 @@ struct EmulateUnaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
         smartTruncF32ToBF16(rewriter, loc, op->getOperand(0), bf16VecType);
 
     Value newResult = OpTy::create(rewriter, loc, bf16VecType, inputBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
@@ -995,6 +1028,9 @@ struct BF16EmulationPass
 
     // Unary ops
     patterns.add<EmulateUnaryF32InBF16Pattern<arith::NegFOp>>(context);
+
+    // Clean up the round trips the demotion itself introduces.
+    patterns.add<FoldBF16RoundTripPattern>(context);
 
     (void)applyPatternsGreedily(op, std::move(patterns));
   }
