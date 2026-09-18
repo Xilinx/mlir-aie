@@ -6,6 +6,7 @@
 //===-----------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
+#include <lut_based_ops.h>
 #include <stdint.h>
 
 #define VEC_LEN 16
@@ -25,12 +26,18 @@ void exp_bf16_func(bfloat16 *restrict in, bfloat16 *restrict out) {
   aie::vector<bfloat16, VEC_LEN> input_bf16;
   aie::accum<accfloat, VEC_LEN> exp_in;
   aie::vector<bfloat16, VEC_LEN> exp_val;
-  aie::vector<bfloat16, VEC_LEN> log2e_vec =
-      aie::broadcast<bfloat16, VEC_LEN>(log2e);
+  aie::vector<float, VEC_LEN> log2e_vec = aie::broadcast<float, VEC_LEN>(log2e);
+  const auto upper = aie::broadcast<bfloat16, VEC_LEN>(EXP_BF16_CLAMP);
+  const auto lower = aie::broadcast<bfloat16, VEC_LEN>(-EXP_BF16_CLAMP);
 
   for (int i = 0; i < elem_iters; i++) {
     input_bf16 = *it_exp_in++;
-    exp_in = aie::mul(input_bf16, log2e_vec);
+    // Match the LUT-backed AIE2 kernel's domain, including infinite inputs.
+    input_bf16 = aie::select(input_bf16, upper, aie::gt(input_bf16, upper));
+    input_bf16 = aie::select(input_bf16, lower, aie::lt(input_bf16, lower));
+    // A bf16 log2(e) introduces about 17% relative error at x = 88.
+    const aie::accum<accfloat, VEC_LEN> input_acc(input_bf16);
+    exp_in = aie::mul(input_acc.to_vector<float>(), log2e_vec);
     exp_val = aie::exp2<bfloat16>(exp_in.to_vector<float>());
     *it_exp_out++ = exp_val;
   }

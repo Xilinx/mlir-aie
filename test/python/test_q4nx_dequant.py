@@ -185,6 +185,7 @@ def test_factory_metadata_and_finite_sample(npu2_device):
     assert contract.ops_per_call == 16384
     assert contract.acc_dtype == np.float32
     assert contract.reduction == 1
+    assert contract.stack_bytes >= 1216
     sample = contract.sample(np.random.default_rng(8), 3)
     assert len(sample) == 1
     assert sample[0].shape == (3, 5120)

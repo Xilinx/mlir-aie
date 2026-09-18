@@ -57,7 +57,9 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
   auto dims_half = dims / 2;
   for (int v = 0, i = 0; v + N <= dims_half; v += N, i += 2 * N) {
     ::aie::vector<T, N> x1 = ::aie::load_v<N>(input + v);
-    ::aie::vector<T, N> x2 = ::aie::load_v<N>(input + v + dims_half);
+    // For dims = 96, the second half is only 32-byte aligned, not the
+    // 64-byte alignment required by AIE2P's 32-lane bf16 loads/stores.
+    ::aie::vector<T, N> x2 = ::aie::load_unaligned_v<N>(input + v + dims_half);
     ::aie::vector<T, 2 * N> cache = ::aie::load_v<2 * N>(lut + i);
 
     ::aie::vector<T, N> cos_val = ::aie::filter_even(cache, 1);
@@ -74,7 +76,7 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
     ::aie::vector<T, N> y_second_half =
         ::aie::mac(::aie::mul(x2, cos_val), x1, sin_val)
             .template to_vector<T>();
-    ::aie::store_v(output + v + dims_half, y_second_half);
+    ::aie::store_unaligned_v(output + v + dims_half, y_second_half);
   }
   for (int v = (dims_half / N) * N, i = 2 * v; v < dims_half; v++, i += 2) {
     const float c = static_cast<float>(lut[i]);

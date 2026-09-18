@@ -137,7 +137,7 @@ def test_run_reads_all_outputs(monkeypatch):
 
 
 def test_bf16_exp_saturates_outside_lut_domain():
-    """exp saturates rather than wrapping, over the whole real line."""
+    """Exp saturates rather than wrapping, over the whole real line."""
     fn = kernels.bf16_exp()
     xs = np.array(
         [88, 89, 128, 200, 4e4, np.inf, -88, -128, -200, -4e4, -np.inf],
@@ -149,7 +149,13 @@ def test_bf16_exp_saturates_outside_lut_domain():
 
     design = kd.design(kernels.bf16_exp, calls=1)
     got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
-    verdict = fn.judge(got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
+    expected = fn.expected([tile_bf16.reshape(1, 1024)])
+    verdict = fn.judge(got, expected, calls=1)
+    assert verdict, verdict.detail
+    # Padding must not dilute the mismatch budget for the boundary inputs.
+    verdict = compare(
+        got[: len(xs)], expected.ravel()[: len(xs)], fn.contract.tolerance
+    )
     assert verdict, verdict.detail
 
 
