@@ -870,7 +870,8 @@ struct AIEObjectFifoAllocatePass
       }
 
       std::string name = (fifoName + "_rearm").str();
-      for (unsigned suffix = 0; device.lookupSymbol(name); suffix++) {
+      for (unsigned suffix = 0; lookupNamedOpIn(device, StringRef(name));
+           suffix++) {
         name = (fifoName + "_rearm_" + std::to_string(suffix)).str();
       }
 
