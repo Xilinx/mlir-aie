@@ -251,6 +251,10 @@ def _compute_artifact_hash(
         h.update(_content_digest(of).encode())
 
     h.update(f"fold_ddr_addr_offset={fold_ddr_addr_offset}".encode())
+    if has_dispatch_params:
+        # Old raw-type bindings may have silently permuted equal-type scalars.
+        # Do not reuse those artifacts after switching to identity-based binding.
+        h.update(b"dispatch_binding=identity-v1")
 
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
     # Missing components collapse to a constant + WARNING log so cross-target

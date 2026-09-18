@@ -70,11 +70,11 @@ def dispatch_scalar_c_type(declared) -> str:
 def _check_runtime_sequence_abi(
     module: Module, dispatch_params: list[str], dispatch_param_types: list
 ) -> None:
-    """Validate declaration order against IR before translation consumes it.
+    """Validate the canonical scalar ABI before translation consumes it.
 
     Memrefs become address patches, not C parameters. Every other argument
-    must have a supported scalar ABI. Same-typed arguments remain
-    indistinguishable, as they do in the generated C signature.
+    must have a supported scalar ABI. IRON Runtime assigns dispatch block
+    arguments in signature order, independently of callback argument order.
     """
     sequences = []
 
@@ -106,7 +106,7 @@ def _check_runtime_sequence_abi(
             f"the generated builder takes {len(c_types)} scalar parameter(s) "
             f"but the design declares {len(dispatch_params)} DispatchTime[T] "
             f"param(s) ({dispatch_params!r}). Check that every DispatchTime[T] "
-            "value is threaded into Runtime(seq, fn_args=[...]) in declaration order."
+            "value is forwarded once into Runtime(seq, fn_args=[...])."
         )
     for c_type, name, declared in zip(c_types, dispatch_params, dispatch_param_types):
         expected = dispatch_scalar_c_type(declared)
@@ -115,8 +115,7 @@ def _check_runtime_sequence_abi(
                 f"DispatchTime[T] parameter {name!r} is declared as "
                 f"{getattr(declared, '__name__', declared)} (C {expected}) but "
                 f"the generated builder takes {c_type} in that position. The "
-                "order values are threaded into Runtime(seq, fn_args=[...]) must "
-                "match the order they are declared in the signature "
+                "scalar block-argument ABI must match signature order "
                 f"({dispatch_params!r})."
             )
 

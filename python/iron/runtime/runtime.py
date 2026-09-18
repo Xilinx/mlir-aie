@@ -40,6 +40,7 @@ from ...helpers.util import (
     try_convert_np_type_to_mlir_type,
 )
 from ...utils import trace as trace_utils
+from ...utils.compile.jit._dispatch_parameter import _DispatchParameter
 from ..dataflow import ObjectFifoHandle
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
@@ -185,6 +186,9 @@ class Runtime(Resolvable):
 
         Each ``fn_args`` entry is one of:
 
+        * an unbound **DispatchTime parameter**: replaced with its live SSA
+          scalar. Forward each parameter once, in any order; parameter identity
+          determines the host binding, not its position in ``fn_args``.
         * a **type** (a tensor type or a scalar type like ``np.int32``): declares
           a runtime input and is replaced with a live SSA value bound to a new
           ``runtime_sequence`` block arg -- a tensor type becomes a
@@ -208,6 +212,25 @@ class Runtime(Resolvable):
         """
         self._seq_fn: Callable = seq_fn
         self._fn_args = list(fn_args) if fn_args is not None else []
+        self._dispatch_binding = object()
+        dispatch_args = [
+            arg for arg in self._fn_args if isinstance(arg, _DispatchParameter)
+        ]
+        if len({id(arg) for arg in dispatch_args}) != len(dispatch_args):
+            raise TypeError(
+                "Forward each DispatchTime parameter exactly once to Runtime."
+            )
+        if len({id(arg.owner) for arg in dispatch_args}) > 1:
+            raise TypeError(
+                "Runtime cannot mix DispatchTime parameters from different designs."
+            )
+        for container in self._fn_args:
+            if isinstance(container, (list, tuple)):
+                for arg in flatten_fn_args(container):
+                    if isinstance(arg, _DispatchParameter):
+                        raise TypeError(
+                            f"DispatchTime parameter {arg.name!r} must be a direct Runtime fn_args entry."
+                        )
         # A concrete int entry is a folded constant; a type/generic-alias entry
         # is a runtime input; anything else passes through as an object fn_arg.
         self._const_inputs: list[int | np.integer | None] = [
@@ -216,13 +239,41 @@ class Runtime(Resolvable):
         ]
         self._rt_data: list["RuntimeData | None"] = [
             (
-                RuntimeData(arg)
+                RuntimeData(
+                    arg.scalar_type if isinstance(arg, _DispatchParameter) else arg
+                )
                 if c is None
-                and (isinstance(arg, type) or get_origin(arg) is np.ndarray)
+                and (
+                    isinstance(arg, (type, _DispatchParameter))
+                    or get_origin(arg) is np.ndarray
+                )
                 else None
             )
             for c, arg in zip(self._const_inputs, self._fn_args)
         ]
+        # Keep the host scalar ABI in signature order, while the callback and
+        # tensor arguments retain fn_args order. Only dispatch slots move.
+        dispatch_data = iter(
+            data
+            for _, data in sorted(
+                (
+                    (arg.position, data)
+                    for arg, data in zip(self._fn_args, self._rt_data)
+                    if isinstance(arg, _DispatchParameter)
+                ),
+                key=lambda item: item[0],
+            )
+        )
+        self._block_data = []
+        for arg, data in zip(self._fn_args, self._rt_data):
+            if isinstance(arg, _DispatchParameter):
+                self._block_data.append(next(dispatch_data))
+            elif data is not None:
+                if dispatch_args and data.is_scalar:
+                    raise TypeError(
+                        "Runtime cannot mix bare scalar types with DispatchTime parameters."
+                    )
+                self._block_data.append(data)
         self._fifos: set[ObjectFifoHandle] = set()
         self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
@@ -326,7 +377,7 @@ class Runtime(Resolvable):
         # inputs contribute no block arg.
         rt_dtypes = [
             try_convert_np_type_to_mlir_type(rt_data.arr_type)
-            for rt_data in self._rt_data
+            for rt_data in self._block_data
             if rt_data is not None
         ]
         active = ActiveSequence(self)
@@ -340,9 +391,12 @@ class Runtime(Resolvable):
                 npu_load_pdi(device_ref=load_pdi_device_ref)
 
             block_args = iter(entry_block.arguments)
-            for rt_data in self._rt_data:
+            for rt_data in self._block_data:
                 if rt_data is not None:
                     rt_data.op = next(block_args)
+            for arg in self._fn_args:
+                if isinstance(arg, _DispatchParameter):
+                    arg._bind(self._dispatch_binding)
 
             if trace_size is not None and trace_size > 0:
                 trace_utils.start_trace(

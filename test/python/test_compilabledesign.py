@@ -1071,22 +1071,25 @@ def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
         d._generate_mlir(ExternalFunction)
 
 
-def test_generate_mlir_dispatch_param_receives_wrapped_type():
-    """DispatchTime[T] params generate from the wrapped type T, not a value."""
-    import numpy as np
+def test_generate_mlir_dispatch_param_receives_identity(npu2_device):
+    """Dynamic parameters carry identity; specialization still supplies constants."""
+    from aie.iron import Program, Runtime
+    from aie.utils.compile.jit._dispatch_parameter import _DispatchParameter
 
     observed = {}
 
     def gen(*, scale: DispatchTime[np.int32], M: CompileTime[int]):
         observed["scale"] = scale
-        with mlir_mod_ctx() as ctx:
-            pass
-        return ctx.module
+        return Program(
+            NPU2Col1(), Runtime(lambda value: None, [scale])
+        ).resolve_program()
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
     d._generate_mlir(ExternalFunction)
 
-    assert observed["scale"] is np.int32
+    assert isinstance(observed["scale"], _DispatchParameter)
+    assert observed["scale"].name == "scale"
+    assert observed["scale"].scalar_type is np.int32
 
     static = d.specialize(scale=5)
     static._generate_mlir(ExternalFunction)
@@ -1132,15 +1135,23 @@ def test_specialized_dispatch_runtime_constant_preserves_dtype(
     assert observed["value"] & mask == literal & mask
 
 
-def test_dispatch_default_remains_dynamic_during_generation():
+def test_dispatch_default_remains_dynamic_during_generation(npu2_device):
+    from aie.iron import Program, Runtime
+    from aie.utils.compile.jit._dispatch_parameter import _DispatchParameter
+
     observed = []
 
     def gen(*, scale: DispatchTime[np.int32] = 3):
         observed.append(scale)
+        return Program(
+            NPU2Col1(), Runtime(lambda value: None, [scale])
+        ).resolve_program()
 
     design = CompilableDesign(gen)
     design.generate_mlir()
-    assert observed == [np.int32]
+    assert len(observed) == 1
+    assert isinstance(observed[0], _DispatchParameter)
+    assert observed[0].scalar_type is np.int32
     assert design.dispatch_params == ["scale"]
     assert design.compile_kwargs == {}
     assert design.split_runtime_args((), {}) == ([], {"scale": 3})

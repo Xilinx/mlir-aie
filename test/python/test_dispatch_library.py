@@ -22,6 +22,37 @@ from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In
 
 
+@pytest.mark.parametrize("bound", [{}, {"bar": 3}, {"baz": 7}])
+def test_reordered_parameters_reach_generated_instructions(
+    tmp_path, npu2_device, bound
+):
+    from aie.dialects.aiex import npu_address_patch
+    from aie.iron import Program, Runtime
+    from aie.iron.device import NPU2Col1
+
+    def generator(*, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7):
+        def sequence(baz_value, bar_value):
+            npu_address_patch(addr=119300, arg_idx=0, arg_plus=bar_value)
+            npu_address_patch(addr=119304, arg_idx=0, arg_plus=baz_value)
+
+        return Program(NPU2Col1(), Runtime(sequence, [baz, bar])).resolve_program()
+
+    design = CompilableDesign(generator).specialize(**bound)
+    (tmp_path / "input_with_addresses.mlir").write_text(str(design.generate_mlir()))
+    library = compile_dispatch_bridge(
+        tmp_path, design.dispatch_params, False, design.dispatch_param_types
+    )
+    bridge = DispatchBridge(library, design.dispatch_params)
+    for values in ({}, {name: 11 + i for i, name in enumerate(design.dispatch_params)}):
+        _, scalars = design.split_runtime_args((), values)
+        words = bridge.generate(scalars)
+        expected = {"bar": 3, "baz": 7, **values}
+        patches = words[4:].reshape(2, 12)
+        np.testing.assert_array_equal(
+            patches[:, 10], [expected["bar"], expected["baz"]]
+        )
+
+
 @pytest.mark.parametrize("compile_kwargs", [{}, {"bound": 8}])
 def test_defaulted_compile_param_does_not_consume_dispatch_argument(compile_kwargs):
     def generator(

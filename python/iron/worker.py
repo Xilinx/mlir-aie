@@ -23,6 +23,7 @@ from ..dialects.aiex import (
 )
 from ..helpers.dialects.scf import _for as range_
 from ..helpers.util import flatten_fn_args
+from ..utils.compile.jit._dispatch_parameter import _DispatchParameter
 from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
@@ -81,6 +82,21 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
+        for arg in flatten_fn_args(
+            [
+                fn_args or [],
+                tile,
+                while_true,
+                stack_size,
+                data_size,
+                allocation_scheme,
+                trace,
+                trace_events,
+                dynamic_objfifo_lowering,
+            ]
+        ):
+            if isinstance(arg, _DispatchParameter):
+                arg._misuse()
         if tile is None:
             tile = AnyComputeTile
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:

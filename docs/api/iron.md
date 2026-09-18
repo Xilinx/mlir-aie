@@ -136,28 +136,37 @@ copy(a, b, count=6)               # Same compiled design; a different dispatch.
 copy.specialize(count=3)(a, b)    # Compile with count fixed to 3.
 ```
 
-### Generator-side binding limitations
+### Generator-side binding and scope
 
-An unbound `DispatchTime[T]` parameter currently reaches the generator as the
-NumPy scalar **type** `T`, not an identity-bearing symbolic value. Forward
-each such parameter once to `Runtime(seq, fn_args=[...])`, in signature order
-relative to the other unbound dispatch parameters. The runtime-sequence body
-receives the corresponding SSA block arguments. Explicitly specialized
-parameters instead reach the generator as typed NumPy constants.
+An unbound `DispatchTime[T]` parameter reaches the generator as an opaque
+symbolic parameter carrying its identity and scalar type. Forward each such
+parameter once as a direct entry in `Runtime(seq, fn_args=[...])`, **in any
+order**. The callback receives the corresponding SSA block arguments:
 
-!!! warning
-    Binding is currently positional, not tracked through Python variable
-    identity. With two `DispatchTime[np.int32]` parameters, forwarding them in
-    reverse order silently swaps their values. The ABI check detects argument
-    count and C-type mismatches, but cannot detect a same-type permutation or
-    replacement.
+```python
+@iron.jit
+def design(*, bar: iron.DispatchTime[np.int32],
+           baz: iron.DispatchTime[np.int32]):
+    def seq(baz_value, bar_value):
+        ...  # baz_value corresponds to baz, bar_value to bar.
 
-    There is also no general check restricting an unbound parameter's use to
-    the runtime sequence. Using it as an integer may raise a Python type error,
-    but operations valid on a type object (such as a Python truth test or using
-    it as a dtype) can succeed at generation time. Do not use unbound dispatch
-    parameters for tensor shapes, worker configuration, or Python conditionals.
-    Use `CompileTime[T]` or explicit specialization for those purposes.
+    rt = iron.Runtime(seq, fn_args=[baz, bar])
+    ...  # Build and resolve the Program with rt.
+```
+
+Aliases retain identity; forwarding the same parameter twice is rejected.
+Omitted parameters, substitution with a bare scalar type, and binding a
+parameter to multiple runtime sequences are also rejected. Explicitly
+specialized parameters instead reach the generator as typed NumPy constants;
+the same callback can consume either kind.
+
+An unbound parameter is not a generation-time value or dtype. Python arithmetic,
+comparisons, truth tests (`if bar:`), integer conversion (`range(bar)`), NumPy
+value/dtype conversion, and passing it to `Worker.fn_args` raise `TypeError`.
+Use the **callback argument**, not the captured generator parameter, for
+runtime arithmetic and MLIR control flow. Tensor shapes and worker configuration
+must use `CompileTime[T]` or explicit specialization. Ordinary Python bookkeeping,
+such as storing or forwarding the symbolic parameter, remains valid.
 
 ### Compilation scope
 

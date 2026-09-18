@@ -31,11 +31,11 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     Marks a generator function parameter as a runtime *scalar*.  Unlike
     ``CompileTime[T]``, the value is not baked into the compiled kernel and
     does not affect the cache key — one compiled artifact is meant to serve
-    many scalar values.  At generation time the generator receives the
-    wrapped type ``T`` itself (e.g. ``np.int32``), not a concrete value, so it
-    can forward it into ``Runtime(seq, fn_args=[...])`` and get back a runtime
-    SSA block arg (the same scalar-type-in-``fn_args`` duality ``Runtime``
-    already implements).  Each call rebuilds the instruction stream for the
+    many scalar values. At generation time the generator receives an opaque,
+    identity-bearing parameter, not a concrete value. Forward it into
+    ``Runtime(seq, fn_args=[...])`` in any order; the callback receives its
+    runtime SSA block argument. Generation-time value operations are rejected.
+    Each call rebuilds the instruction stream for the
     given value through the host dispatch bridge (a shared library compiled
     alongside the xclbin and called via ``ctypes``), so the per-call value
     reaches the NPU without recompiling the design.  Not supported together
@@ -135,8 +135,11 @@ argument or an ``rt.inline_ops`` symbolic bind), not a buffer transfer.
 
 ``T`` must be a NumPy integer scalar type supported by ``Runtime``, such as
 ``np.int32`` or ``np.int64``. Built-in ``int``/``bool`` and floating-point
-types are rejected. Scalars must appear in ``Runtime(seq, fn_args=[...])`` in
-signature order, using Runtime's existing NumPy-to-MLIR type mapping.
+types are rejected. Forward each unbound scalar once as a direct entry in
+``Runtime(seq, fn_args=[...])``, in any order. Parameter identity determines its
+binding. Use the callback's SSA argument for runtime arithmetic; generation-time
+arithmetic, truth tests, shapes, dtypes, and Worker arguments require
+``CompileTime`` or explicit specialization instead.
 Dispatch parameters must be keyword-only, including when defaulted or prebound.
 Prefer tensor operands first, then dispatch scalars, then compile-time
 configuration; the ordering of keyword-only groups is not enforced.

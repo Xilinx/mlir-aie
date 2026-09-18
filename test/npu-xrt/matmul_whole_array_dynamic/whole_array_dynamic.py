@@ -228,7 +228,7 @@ def whole_array_dynamic(
     # --- Runtime sequence: range_ + fill/drain, one body for both lowerings ---
     # The body's M/K/N are declared as inputs to Runtime(seq, [...]):
     # K is always constant; only M/N can remain runtime inputs.
-    #   unbound: passed as np.int32 types -> runtime i32 block args, so the
+    #   unbound: passed as symbolic parameters -> runtime i32 block args, so the
     #                  scf.for survives to the EmitC path; one xclbin, many shapes.
     #   specialized: passed as Python ints -> folded arith.constant, so
     #                  the range_ bounds are constant, aie-unroll-runtime-sequence-

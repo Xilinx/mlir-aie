@@ -61,7 +61,7 @@ def dyn_copy(
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
-    def seq(a_h, b_h, n, start, in_prod, out_cons):
+    def seq(a_h, b_h, start, n, in_prod, out_cons):
         i32 = np_dtype_to_mlir_type(np.int32)
         i64 = np_dtype_to_mlir_type(np.int64)
         n64 = arith.extsi(i64, n)
@@ -88,8 +88,9 @@ def dyn_copy(
             )
             tg.finish()
 
+    # Reverse the same-typed dispatch parameters to exercise identity binding.
     rt = Runtime(
-        seq, [max_ty, max_ty, n_tiles, start_tile, of_in.prod(), of_out.cons()]
+        seq, [max_ty, max_ty, start_tile, n_tiles, of_in.prod(), of_out.cons()]
     )
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 

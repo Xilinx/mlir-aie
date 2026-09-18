@@ -1192,12 +1192,17 @@ class CompilableDesign:
         _tensor_placeholders = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
-        # DispatchTime[T] params generate from the wrapped type T (e.g.
-        # np.int32), not a value: the generator forwards it into Runtime(
-        # inputs=[...]) for a runtime SSA block arg. Hence not in the cache key.
-        _dispatch_placeholders = dict(
+        from ._dispatch_parameter import _DispatchParameter
+
+        dispatch_owner = object()
+        _dispatch_placeholders = {}
+        for position, (name, dtype) in enumerate(
             zip(self.dispatch_params, self.dispatch_param_types)
-        )
+        ):
+            assert dtype is not None
+            _dispatch_placeholders[name] = _DispatchParameter(
+                name, dtype, position, dispatch_owner
+            )
         _gen_call_kwargs = {
             **_tensor_placeholders,
             **_dispatch_placeholders,
@@ -1221,6 +1226,17 @@ class CompilableDesign:
                 bound = inspect.BoundArguments(sig, OrderedDict(_gen_call_kwargs))
                 bound.apply_defaults()
                 result = self.mlir_generator(*bound.args, **bound.kwargs)
+                for parameter in _dispatch_placeholders.values():
+                    if parameter._binding is None:
+                        raise TypeError(
+                            f"DispatchTime parameter {parameter.name!r} was not bound "
+                            "to a Runtime sequence. Forward every unbound parameter "
+                            "once in Runtime(seq, fn_args=[...]) and resolve the Program."
+                        )
+                if len({id(p._binding) for p in _dispatch_placeholders.values()}) > 1:
+                    raise TypeError(
+                        "All DispatchTime parameters must belong to one Runtime sequence."
+                    )
                 module = ctx.module if result is None else result
                 if not module.operation.verify():
                     raise RuntimeError(
