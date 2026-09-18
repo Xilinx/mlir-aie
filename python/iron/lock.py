@@ -81,6 +81,8 @@ class Lock(Resolvable):
                 lock_id=self._lock_id,
                 init=self._init,
                 sym_name=self._name,
+                loc=loc,
+                ip=ip,
             )
 
     # ------------------------------------------------------------------

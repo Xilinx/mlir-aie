@@ -24,6 +24,7 @@
 // textual MLIR, which resume re-parses before running everything downstream.
 // RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/phys_insts.bin --xclbin-name=%t/phys.xclbin --tmpdir=%t/phys.prj --cut='input_physical.mlir' --checkpoint=%t/phys.ckpt %s
 // RUN: cat %t/phys.ckpt/*/input_physical.mlir | FileCheck --check-prefix=IR %s
+// RUN: cat %t/phys.ckpt/*/input_physical.mlir | aie-opt --mlir-print-debuginfo | FileCheck --check-prefix=IR %s
 // RUN: rm -f %t/phys_insts.bin
 // RUN: aiecc --resume=%t/phys.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/phys_insts.bin
@@ -34,18 +35,24 @@
 // rebinds per item.
 // RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/core_insts.bin --xclbin-name=%t/core.xclbin --tmpdir=%t/core.prj --cut='perCore_{0}.mlir' --checkpoint=%t/core.ckpt %s
 // RUN: cat %t/core.ckpt/*/module.mlir | FileCheck --check-prefix=IR %s
+// RUN: cat %t/core.ckpt/*/module.mlir | aie-opt --mlir-print-debuginfo | FileCheck --check-prefix=IR %s
 // RUN: rm -f %t/core_insts.bin
 // RUN: aiecc --resume=%t/core.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/core_insts.bin
 
-// The captured frontier is textual MLIR, not a binary artifact.
+// Both serializers must preserve user provenance, including after reparsing.
+// Merely checking for a non-unknown location would accept the checkpoint file's
+// own line numbers if printing debug information were accidentally disabled.
 // IR: aie.device
+// IR: aie.tile(0, 2) loc(#[[TILE:loc[0-9]*]])
 // IR: aie.core
+// IR: #[[SOURCE:loc[0-9]*]] = loc("checkpoint_user.py":42:7)
+// IR: #[[TILE]] = loc("compute_tile"(#[[SOURCE]]))
 
 module {
   aie.device(npu1_1col) {
     %tile_0_0 = aie.tile(0, 0)
-    %tile_0_2 = aie.tile(0, 2)
+    %tile_0_2 = aie.tile(0, 2) loc("compute_tile"("checkpoint_user.py":42:7))
 
     aie.objectfifo @data(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
 

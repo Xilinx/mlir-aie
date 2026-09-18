@@ -85,14 +85,13 @@ static AIE::DeviceOp getOrCreateCtrlPktOverlayCopy(ModuleOp moduleOp,
 // transformLoadPdi).
 static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
                                             AIE::AIEDevice deviceType,
-                                            unsigned parity) {
+                                            unsigned parity, Location loc) {
   std::string emptyName = "empty_" + std::to_string(parity);
   if (auto existing = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName))
     return existing;
 
   OpBuilder builder(moduleOp.getContext());
   builder.setInsertionPointToStart(moduleOp.getBody());
-  auto loc = builder.getUnknownLoc();
   auto emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
                                            builder.getStringAttr(emptyName));
   emptyDevice.getRegion().emplaceBlock();
@@ -150,7 +149,7 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   } else {
     // Empty device PDI (triggers firmware reset)
     AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
-        moduleOp, referencedDevice.getDevice(), index % 2);
+        moduleOp, referencedDevice.getDevice(), index % 2, loadPdiOp.getLoc());
     preloadRef = FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr());
   }
 
@@ -279,8 +278,8 @@ struct AIEExpandLoadPdiPass
     for (auto &[seq, info] : resetsPerSequence) {
       if (!info.seen || info.firstParity != info.lastParity)
         continue;
-      AIE::DeviceOp emptyDevice =
-          getOrCreateEmptyDevice(module, info.device, 1 - info.lastParity);
+      AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
+          module, info.device, 1 - info.lastParity, seq.getLoc());
       OpBuilder builder(seq.getContext());
       Block &body = seq.getBody().front();
       if (!body.empty() && body.back().hasTrait<OpTrait::IsTerminator>())

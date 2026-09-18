@@ -43,6 +43,7 @@ from ..ir import (
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
 from ..extras.dialects import arith
+from ..extras.util import get_user_code_loc
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
 
@@ -50,60 +51,123 @@ from ..helpers.taplib import TensorAccessPattern
 register_dialect(get_dialect_registry())
 
 
-def npu_write32(address, value, buffer=None, column=None, row=None, **kwargs):
+def npu_write32(
+    address, value, buffer=None, column=None, row=None, *, loc=None, ip=None, **kwargs
+):
+    if loc is None:
+        loc = get_user_code_loc()
     return _npu_write32(
-        _as_i32(address),
-        _as_i32(value),
+        _as_i32(address, loc=loc, ip=ip),
+        _as_i32(value, loc=loc, ip=ip),
         buffer=buffer,
         column=column,
         row=row,
+        loc=loc,
+        ip=ip,
         **kwargs,
     )
 
 
-def npu_maskwrite32(address, value, mask, buffer=None, column=None, row=None, **kwargs):
+def npu_maskwrite32(
+    address,
+    value,
+    mask,
+    buffer=None,
+    column=None,
+    row=None,
+    *,
+    loc=None,
+    ip=None,
+    **kwargs,
+):
+    if loc is None:
+        loc = get_user_code_loc()
     return _npu_maskwrite32(
-        _as_i32(address),
-        _as_i32(value),
-        _as_i32(mask),
+        _as_i32(address, loc=loc, ip=ip),
+        _as_i32(value, loc=loc, ip=ip),
+        _as_i32(mask, loc=loc, ip=ip),
         buffer=buffer,
         column=column,
         row=row,
+        loc=loc,
+        ip=ip,
         **kwargs,
     )
 
 
-def npu_sync(column, row, direction, channel, column_num=1, row_num=1, **kwargs):
+def npu_sync(
+    column,
+    row,
+    direction,
+    channel,
+    column_num=1,
+    row_num=1,
+    *,
+    loc=None,
+    ip=None,
+    **kwargs,
+):
+    if loc is None:
+        loc = get_user_code_loc()
     return _npu_sync(
-        _as_i32(column),
-        _as_i32(row),
-        _as_i32(direction),
-        _as_i32(channel),
-        _as_i32(column_num),
-        _as_i32(row_num),
+        _as_i32(column, loc=loc, ip=ip),
+        _as_i32(row, loc=loc, ip=ip),
+        _as_i32(direction, loc=loc, ip=ip),
+        _as_i32(channel, loc=loc, ip=ip),
+        _as_i32(column_num, loc=loc, ip=ip),
+        _as_i32(row_num, loc=loc, ip=ip),
+        loc=loc,
+        ip=ip,
         **kwargs,
     )
 
 
-def npu_address_patch(addr, arg_idx, arg_plus, **kwargs):
-    return _npu_address_patch(addr, _as_i32(arg_plus), arg_idx=arg_idx, **kwargs)
+def npu_address_patch(addr, arg_idx, arg_plus, *, loc=None, ip=None, **kwargs):
+    if loc is None:
+        loc = get_user_code_loc()
+    return _npu_address_patch(
+        addr,
+        _as_i32(arg_plus, loc=loc, ip=ip),
+        arg_idx=arg_idx,
+        loc=loc,
+        ip=ip,
+        **kwargs,
+    )
 
 
-def npu_rtp_write(buffer, index, value, **kwargs):
-    return _npu_rtp_write(buffer, index, _as_i32(value), **kwargs)
+def npu_rtp_write(buffer, index, value, *, loc=None, ip=None, **kwargs):
+    if loc is None:
+        loc = get_user_code_loc()
+    return _npu_rtp_write(
+        buffer, index, _as_i32(value, loc=loc, ip=ip), loc=loc, ip=ip, **kwargs
+    )
 
 
 def npu_push_queue(
-    column, row, direction, channel, issue_token, repeat_count, bd_id, **kwargs
+    column,
+    row,
+    direction,
+    channel,
+    issue_token,
+    repeat_count,
+    bd_id,
+    *,
+    loc=None,
+    ip=None,
+    **kwargs,
 ):
+    if loc is None:
+        loc = get_user_code_loc()
     return _npu_push_queue(
         column,
         row,
         direction,
         channel,
         issue_token,
-        _as_i32(repeat_count),
-        _as_i32(bd_id),
+        _as_i32(repeat_count, loc=loc, ip=ip),
+        _as_i32(bd_id, loc=loc, ip=ip),
+        loc=loc,
+        ip=ip,
         **kwargs,
     )
 
