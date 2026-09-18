@@ -354,7 +354,10 @@ endif()
 # Make sure we generate the headers
 add_custom_target(aie-headers)
 set_target_properties(aie-headers PROPERTIES FOLDER "Misc")
-add_dependencies(aie-headers mlir-headers)
+# A standalone MLIR stubs mlir-headers and mlir-generic-headers as two unrelated
+# empty targets (MLIRConfig.cmake), so depending on the first reaches nothing
+# attached to the second.
+add_dependencies(aie-headers mlir-headers mlir-generic-headers)
 
 option(AIE_INCLUDE_DOCS "Generate build targets for the MLIR AIE docs." OFF)
 if(AIE_INCLUDE_DOCS)
