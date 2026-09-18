@@ -19,9 +19,13 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 
 namespace xilinx::AIE {
 
@@ -44,6 +48,65 @@ template <typename ConcreteType>
 struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
+// Supplies `Symbol`'s visibility accessors for ops that keep visibility in a
+// plain `sym_visibility` attribute rather than in a tablegen-declared argument
+// (which is what upstream's `SymbolVisibility` trait requires).
+template <typename ConcreteType>
+struct AttrBasedSymbolVisibility
+    : mlir::OpTrait::TraitBase<ConcreteType, AttrBasedSymbolVisibility> {
+  static constexpr llvm::StringRef getVisibilityAttrName() {
+    return "sym_visibility";
+  }
+
+  // `mlir::detail::verifySymbol` only checks the inherent attribute, so it
+  // never sees ours.
+  static mlir::LogicalResult verifyTrait(mlir::Operation *op) {
+    mlir::Attribute vis = op->getAttr(getVisibilityAttrName());
+    if (!vis)
+      return mlir::success();
+    auto visStrAttr = llvm::dyn_cast<mlir::StringAttr>(vis);
+    if (!visStrAttr)
+      return op->emitOpError()
+             << "requires visibility attribute '" << getVisibilityAttrName()
+             << "' to be a string attribute, but got " << vis;
+    if (!llvm::is_contained(
+            llvm::ArrayRef<llvm::StringRef>{"public", "private", "nested"},
+            visStrAttr.getValue()))
+      return op->emitOpError()
+             << "visibility expected to be one of [\"public\", \"private\", "
+                "\"nested\"], but got "
+             << visStrAttr;
+    return mlir::success();
+  }
+
+  mlir::SymbolTable::Visibility getVisibility() {
+    mlir::StringAttr vis =
+        this->getOperation()->template getAttrOfType<mlir::StringAttr>(
+            getVisibilityAttrName());
+    if (!vis)
+      return mlir::SymbolTable::Visibility::Public;
+    return llvm::StringSwitch<mlir::SymbolTable::Visibility>(vis.getValue())
+        .Case("private", mlir::SymbolTable::Visibility::Private)
+        .Case("nested", mlir::SymbolTable::Visibility::Nested)
+        .Default(mlir::SymbolTable::Visibility::Public);
+  }
+
+  void setVisibility(mlir::SymbolTable::Visibility vis) {
+    mlir::Operation *op = this->getOperation();
+    if (vis == mlir::SymbolTable::Visibility::Public) {
+      op->removeAttr(getVisibilityAttrName());
+      return;
+    }
+    assert((vis == mlir::SymbolTable::Visibility::Private ||
+            vis == mlir::SymbolTable::Visibility::Nested) &&
+           "unknown symbol visibility kind");
+    llvm::StringRef visName =
+        vis == mlir::SymbolTable::Visibility::Private ? "private" : "nested";
+    op->setAttr(getVisibilityAttrName(),
+                mlir::StringAttr::get(op->getContext(), visName));
+  }
+};
+
 // Marker trait for operations that can be flow endpoints (e.g., TileOp, CoreOp,
 // MemOp)
 template <typename ConcreteType>
@@ -56,6 +119,28 @@ uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
                                  uint32_t burstLength);
 uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                     uint32_t burstLength);
+
+// Looks up a name, falling back to a scan for the `sym_name` attribute.
+// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` are referred to
+// by name but define an SSA value, so they cannot be `Symbol` ops and
+// `mlir::SymbolTable` does not find them.
+mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
+                                 mlir::StringAttr name);
+mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
+                                 llvm::StringRef name);
+// Looks in the symbol table nearest to (or at) `from`.
+mlir::Operation *lookupNamedOp(mlir::Operation *from, mlir::StringAttr name);
+mlir::Operation *lookupNamedOp(mlir::Operation *from, llvm::StringRef name);
+
+template <typename OpTy, typename NameT>
+OpTy lookupNamedOpIn(mlir::Operation *symbolTableOp, NameT name) {
+  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOpIn(symbolTableOp, name));
+}
+
+template <typename OpTy, typename NameT>
+OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
+  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
+}
 
 // Generate a symbol name guaranteed to be unique within the symbol table of
 // `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
