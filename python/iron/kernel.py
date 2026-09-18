@@ -948,6 +948,22 @@ class ExternalFunction(Kernel):
     def _validate_arg(self, index: int, arg, expected_ty) -> None:
         """Validate a single argument against its expected type."""
         if isinstance(expected_ty, type) and issubclass(expected_ty, np.generic):
+            if isinstance(arg, ir.Value):
+                from ..helpers.util import np_dtype_to_mlir_type
+
+                expected_mlir_ty = np_dtype_to_mlir_type(expected_ty)
+                if arg.type == expected_mlir_ty:
+                    return
+                # helpers.dialects.func.call casts loop indices to integer
+                # parameters; all other SSA operands must match exactly.
+                if isinstance(arg.type, ir.IndexType) and isinstance(
+                    expected_mlir_ty, ir.IntegerType
+                ):
+                    return
+                raise ValueError(
+                    f"Argument {index}: expected scalar {expected_mlir_ty}, "
+                    f"got {arg.type}"
+                )
             if not isinstance(arg, (int, float, np.integer, np.floating)):
                 raise ValueError(
                     f"Argument {index}: expected scalar, got {type(arg).__name__}"
