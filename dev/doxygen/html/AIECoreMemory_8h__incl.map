@@ -1,0 +1,17 @@
+<map id="include/aie/Dialect/AIE/IR/AIECoreMemory.h" name="include/aie/Dialect/AIE/IR/AIECoreMemory.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="562,5,745,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,93,168,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="562,42,182,94,182,89,561,37"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="193,93,367,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="564,48,348,93,347,88,563,43"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="392,93,587,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="615,48,527,90,524,85,613,43"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="611,93,696,119"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="656,46,656,79,651,79,651,46"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="720,93,789,119"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="679,43,730,82,727,87,676,48"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="813,93,880,119"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="701,43,807,86,805,91,699,48"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="905,93,965,119"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="721,43,892,90,890,95,720,48"/>
+</map>
