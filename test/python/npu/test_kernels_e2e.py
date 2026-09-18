@@ -254,9 +254,9 @@ def _mha_compile_probe(
     buf = np.ndarray[(_MHA_TILE,), np.dtype[bfloat16]]
     # kernels.mha compiles mha.cc once and binds its symbols; init_scale_buffer
     # is the simplest of them to instantiate the translation unit with.
-    kern = kernels.mha(
-        dim_m=_MHA_DIM, dim_k=_MHA_DIM, dim_n=_MHA_DIM
-    ).object_file.bind("init_scale_buffer", [buf, np.int32])
+    kern = kernels.mha(dim_m=_MHA_DIM, dim_k=_MHA_DIM, dim_n=_MHA_DIM).object_file.bind(
+        "init_scale_buffer", [buf, np.int32]
+    )
     of_in = ObjectFifo(buf, name="mhi")
     of_out = ObjectFifo(buf, name="mho")
 

@@ -670,7 +670,9 @@ def test_parameter_only_kernel_can_have_multiple_outputs():
     assert fn.judge(actuals, refs, calls=3)
     actuals[1][-1, -1] += 1
     assert not fn.judge(actuals, refs, calls=3)
-    design = kd.design(lambda: fn, params=fn.param_values(inputs), scalars=(2,), calls=3)
+    design = kd.design(
+        lambda: fn, params=fn.param_values(inputs), scalars=(2,), calls=3
+    )
     assert "param_outputs" in str(design.as_mlir())
 
 
