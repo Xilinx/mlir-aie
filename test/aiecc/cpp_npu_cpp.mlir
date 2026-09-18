@@ -34,9 +34,10 @@
 
 // Checkpoint cuts can select C++ without a final output. A resume may select a
 // different artifact while retaining the original graph's C++ options.
+// Restored artifacts keep their checkpoint paths rather than being copied out.
 // RUN: aiecc --cut=custom.cpp --checkpoint=%t.d/checkpoint --npu-cpp-name=custom.cpp --npu-cpp-emit-dispatch-shim --device-name=first --sequence-name=two --output-dir=%t.d/cut --tmpdir=%t.d/cut/work %s
 // RUN: aiecc --resume=%t.d/checkpoint/manifest.json --get=custom.cpp
-// RUN: FileCheck %s --check-prefix=FILTER --input-file=%t.d/cut/custom.cpp
+// RUN: cat %t.d/checkpoint/*/custom.cpp | FileCheck %s --check-prefix=FILTER
 // RUN: aiecc --resume=%t.d/checkpoint/manifest.json --get=insts_{0}.bin
 // RUN: cmp %t.d/cut/insts_first_two.bin %t.d/insts_first_two.bin
 
