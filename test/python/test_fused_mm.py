@@ -36,6 +36,10 @@ def test_fused_variants_have_distinct_symbols_and_reuse_bindings(device):
         assert fn.also.init.object_file is fn.object_file
 
 
+def test_fused_accumulator_uses_target_vector_alignment(device):
+    assert "alignas(aie::vector_decl_align) float acc[" in fused_mm().source_string
+
+
 def test_fused_layouts_match_microblock_addressing(device):
     fn = fused_mm()
     assert fn.contract.stack_bytes == (

@@ -159,7 +159,7 @@ def fused_mm(
         source += f'#include "{runtime / "lut_based_ops.cpp"}"\n'
     source += """
 extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c) {
-  alignas(32) float acc[MM_FUSED_TILE_M * MM_FUSED_TILE_N];
+  alignas(aie::vector_decl_align) float acc[MM_FUSED_TILE_M * MM_FUSED_TILE_N];
   mm_fused_acc_init(acc);
   for (int k = 0; k < MM_FUSED_TILE_K / MM_FUSED_CT_K; ++k)
     for (int band = 0; band < MM_FUSED_TILE_M / MM_FUSED_TILE_MA; ++band)
