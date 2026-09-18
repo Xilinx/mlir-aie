@@ -7422,8 +7422,7 @@ for non-bf16 inputs and on AIE2.</p>
 <span class="normal"><a href="#__codelineno-0-198">198</a></span>
 <span class="normal"><a href="#__codelineno-0-199">199</a></span>
 <span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span>
-<span class="normal"><a href="#__codelineno-0-202">202</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-106" name="__codelineno-0-106"></a><span class="k">def</span><span class="w"> </span><span class="nf">mm</span><span class="p">(</span>
+<span class="normal"><a href="#__codelineno-0-201">201</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-106" name="__codelineno-0-106"></a><span class="k">def</span><span class="w"> </span><span class="nf">mm</span><span class="p">(</span>
 <a id="__codelineno-0-107" name="__codelineno-0-107"></a>    <span class="n">dim_m</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
 <a id="__codelineno-0-108" name="__codelineno-0-108"></a>    <span class="n">dim_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
 <a id="__codelineno-0-109" name="__codelineno-0-109"></a>    <span class="n">dim_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
@@ -7510,16 +7509,15 @@ for non-bf16 inputs and on AIE2.</p>
 <a id="__codelineno-0-190" name="__codelineno-0-190"></a>    <span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-0-191" name="__codelineno-0-191"></a>        <span class="n">extern</span><span class="o">.</span><span class="n">mac_dims</span> <span class="o">=</span> <span class="n">_MM_MAC_DIMS</span><span class="p">[</span><span class="n">arch</span><span class="p">][</span><span class="n">key</span><span class="p">]</span>
 <a id="__codelineno-0-192" name="__codelineno-0-192"></a>    <span class="c1"># mm.cc emits both matmul_* and zero_* symbols; expose the zero binding</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="c1"># as a sibling Kernel pointing at the same .o so the design does</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="c1"># `matmul = kernels.mm(...); zero = matmul.zero` instead of a separate</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="c1"># kernels.mm_zero call (which would compile mm.cc a second time).</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="c1"># as another symbol bound from the same object-file handle so the design</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="c1"># does `matmul = kernels.mm(...); zero = matmul.zero` instead of a</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>    <span class="c1"># separate kernels.mm_zero call (which would compile mm.cc a second time).</span>
 <a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="n">zero_prefix</span> <span class="o">=</span> <span class="s2">&quot;zero&quot;</span> <span class="k">if</span> <span class="n">vectorized</span> <span class="k">else</span> <span class="s2">&quot;zero_scalar&quot;</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">zero</span> <span class="o">=</span> <span class="n">Kernel</span><span class="p">(</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">zero</span> <span class="o">=</span> <span class="n">extern</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
 <a id="__codelineno-0-198" name="__codelineno-0-198"></a>        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">zero_prefix</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">_ZERO_SUFFIX</span><span class="p">[</span><span class="n">output_dtype</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>        <span class="n">extern</span><span class="o">.</span><span class="n">object_file_name</span><span class="p">,</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="p">[</span><span class="n">c_ty</span><span class="p">],</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="p">)</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a>    <span class="k">return</span> <span class="n">extern</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>        <span class="p">[</span><span class="n">c_ty</span><span class="p">],</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>    <span class="p">)</span>
+<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="k">return</span> <span class="n">extern</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -7710,7 +7708,8 @@ constraint (all EFs in one design must agree).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/linalg.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-205">205</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
 <span class="normal"><a href="#__codelineno-0-206">206</a></span>
 <span class="normal"><a href="#__codelineno-0-207">207</a></span>
 <span class="normal"><a href="#__codelineno-0-208">208</a></span>
@@ -7756,55 +7755,54 @@ constraint (all EFs in one design must agree).</p>
 <span class="normal"><a href="#__codelineno-0-248">248</a></span>
 <span class="normal"><a href="#__codelineno-0-249">249</a></span>
 <span class="normal"><a href="#__codelineno-0-250">250</a></span>
-<span class="normal"><a href="#__codelineno-0-251">251</a></span>
-<span class="normal"><a href="#__codelineno-0-252">252</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-205" name="__codelineno-0-205"></a><span class="k">def</span><span class="w"> </span><span class="nf">mv</span><span class="p">(</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="n">dim_m</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span><span class="p">,</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="n">dim_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span><span class="p">,</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="n">input_dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">,</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a>    <span class="n">output_dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a>    <span class="n">use_chess</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Matrix-vector multiply kernel: c += A * b.</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">        dim_m: Number of rows of A (output vector length).</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">        dim_k: Number of columns of A (input vector length).</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">        input_dtype: Input element type. Only ``np.int16`` is supported.</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">        output_dtype: Output element type. Only ``np.int32`` is supported.</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">        vectorized: If ``True`` use the vectorized variant.</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">            instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">            constraint (all EFs in one design must agree).</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">        ExternalFunction configured for the matvec kernel.</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">        ValueError: When the dtype combination is not supported.</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>    <span class="k">if</span> <span class="n">input_dtype</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">int16</span> <span class="ow">or</span> <span class="n">output_dtype</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">:</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>            <span class="sa">f</span><span class="s2">&quot;mv(): only (np.int16, np.int32) is supported, &quot;</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>            <span class="sa">f</span><span class="s2">&quot;got (</span><span class="si">{</span><span class="n">input_dtype</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">output_dtype</span><span class="si">}</span><span class="s2">)&quot;</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>        <span class="p">)</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;matvec_vectorized&quot;</span> <span class="k">if</span> <span class="n">vectorized</span> <span class="k">else</span> <span class="s2">&quot;matvec_scalar&quot;</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">a_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_m</span> <span class="o">*</span> <span class="n">dim_k</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">]]</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="n">b_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_k</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">]]</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">c_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_m</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="n">extern</span> <span class="o">=</span> <span class="n">_make_extern</span><span class="p">(</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_i16_i32&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>        <span class="n">_default_source_path</span><span class="p">(</span><span class="s2">&quot;mv.cc&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="p">[</span><span class="n">a_ty</span><span class="p">,</span> <span class="n">b_ty</span><span class="p">,</span> <span class="n">c_ty</span><span class="p">],</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;-DDIM_M=</span><span class="si">{</span><span class="n">dim_m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;-DDIM_K=</span><span class="si">{</span><span class="n">dim_k</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a>        <span class="n">use_chess</span><span class="o">=</span><span class="n">use_chess</span><span class="p">,</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a>    <span class="p">)</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a>    <span class="c1"># mv.cc emits both matvec_* and zero_* symbols; expose the zero binding</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>    <span class="c1"># as a sibling Kernel pointing at the same .o.</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="n">zero_prefix</span> <span class="o">=</span> <span class="s2">&quot;zero_vectorized&quot;</span> <span class="k">if</span> <span class="n">vectorized</span> <span class="k">else</span> <span class="s2">&quot;zero_scalar&quot;</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">zero</span> <span class="o">=</span> <span class="n">Kernel</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">zero_prefix</span><span class="si">}</span><span class="s2">_i32&quot;</span><span class="p">,</span> <span class="n">extern</span><span class="o">.</span><span class="n">object_file_name</span><span class="p">,</span> <span class="p">[</span><span class="n">c_ty</span><span class="p">])</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="k">return</span> <span class="n">extern</span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="k">def</span><span class="w"> </span><span class="nf">mv</span><span class="p">(</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>    <span class="n">dim_m</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a>    <span class="n">dim_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a>    <span class="n">input_dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">,</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="n">output_dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>    <span class="n">vectorized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="n">use_chess</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Matrix-vector multiply kernel: c += A * b.</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">        dim_m: Number of rows of A (output vector length).</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">        dim_k: Number of columns of A (input vector length).</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">        input_dtype: Input element type. Only ``np.int16`` is supported.</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">        output_dtype: Output element type. Only ``np.int32`` is supported.</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">        vectorized: If ``True`` use the vectorized variant.</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">            instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">            constraint (all EFs in one design must agree).</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">        ExternalFunction configured for the matvec kernel.</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">        ValueError: When the dtype combination is not supported.</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="k">if</span> <span class="n">input_dtype</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">int16</span> <span class="ow">or</span> <span class="n">output_dtype</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">:</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>            <span class="sa">f</span><span class="s2">&quot;mv(): only (np.int16, np.int32) is supported, &quot;</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>            <span class="sa">f</span><span class="s2">&quot;got (</span><span class="si">{</span><span class="n">input_dtype</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">output_dtype</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="p">)</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="s2">&quot;matvec_vectorized&quot;</span> <span class="k">if</span> <span class="n">vectorized</span> <span class="k">else</span> <span class="s2">&quot;matvec_scalar&quot;</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="n">a_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_m</span> <span class="o">*</span> <span class="n">dim_k</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">]]</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">b_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_k</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">]]</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="n">c_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_m</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">extern</span> <span class="o">=</span> <span class="n">_make_extern</span><span class="p">(</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_i16_i32&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>        <span class="n">_default_source_path</span><span class="p">(</span><span class="s2">&quot;mv.cc&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>        <span class="p">[</span><span class="n">a_ty</span><span class="p">,</span> <span class="n">b_ty</span><span class="p">,</span> <span class="n">c_ty</span><span class="p">],</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;-DDIM_M=</span><span class="si">{</span><span class="n">dim_m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;-DDIM_K=</span><span class="si">{</span><span class="n">dim_k</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="n">use_chess</span><span class="o">=</span><span class="n">use_chess</span><span class="p">,</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>    <span class="p">)</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>    <span class="c1"># mv.cc emits both matvec_* and zero_* symbols; expose the zero binding</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>    <span class="c1"># as another symbol bound from the same object-file handle.</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>    <span class="n">zero_prefix</span> <span class="o">=</span> <span class="s2">&quot;zero_vectorized&quot;</span> <span class="k">if</span> <span class="n">vectorized</span> <span class="k">else</span> <span class="s2">&quot;zero_scalar&quot;</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">zero</span> <span class="o">=</span> <span class="n">extern</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">zero_prefix</span><span class="si">}</span><span class="s2">_i32&quot;</span><span class="p">,</span> <span class="p">[</span><span class="n">c_ty</span><span class="p">])</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="k">return</span> <span class="n">extern</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -7982,7 +7980,8 @@ instead of Peano.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/kernels/linalg.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-255">255</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
 <span class="normal"><a href="#__codelineno-0-256">256</a></span>
 <span class="normal"><a href="#__codelineno-0-257">257</a></span>
 <span class="normal"><a href="#__codelineno-0-258">258</a></span>
@@ -8057,90 +8056,83 @@ instead of Peano.</p>
 <span class="normal"><a href="#__codelineno-0-327">327</a></span>
 <span class="normal"><a href="#__codelineno-0-328">328</a></span>
 <span class="normal"><a href="#__codelineno-0-329">329</a></span>
-<span class="normal"><a href="#__codelineno-0-330">330</a></span>
-<span class="normal"><a href="#__codelineno-0-331">331</a></span>
-<span class="normal"><a href="#__codelineno-0-332">332</a></span>
-<span class="normal"><a href="#__codelineno-0-333">333</a></span>
-<span class="normal"><a href="#__codelineno-0-334">334</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-255" name="__codelineno-0-255"></a><span class="k">def</span><span class="w"> </span><span class="nf">cascade_mm</span><span class="p">(</span>
-<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">dim_m</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
-<a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="n">dim_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
-<a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="n">dim_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
-<a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="n">input_dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">,</span>
-<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="n">output_dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">,</span>
-<a id="__codelineno-0-261" name="__codelineno-0-261"></a>    <span class="n">use_chess</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
-<a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Cascade matrix-multiply kernel for multi-core accumulation.</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">    cascade_mm.cc emits all three cascade variants (``get_only``,</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    ``put_only``, ``put_get``) plus a ``zero`` companion in one .o.  The</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">    returned ExternalFunction binds the ``get_only`` symbol; the other</span>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a><span class="sd">    three are sibling [`Kernel`][iron.Kernel]\\s available as attributes:</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">    * ``.get_only`` — same as the returned EF (top of the cascade chain).</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    * ``.put_only`` — bottom of the chain.</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">    * ``.put_get`` — middle of the chain.</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="sd">    * ``.zero`` — accumulator initializer.</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a><span class="sd">    Designs typically use all four together, one per row of compute cores.</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        dim_m: Number of rows of A / C.</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">        dim_k: Number of columns of A / rows of B.</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">        dim_n: Number of columns of B / C.</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        input_dtype: Input element type.</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">        output_dtype: Output element type.</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">            instead of Peano.</span>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">        ValueError: When the dtype combination is not supported.</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">input_dtype</span><span class="p">,</span> <span class="n">output_dtype</span><span class="p">)</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_CASCADE_COMBOS</span><span class="p">:</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="sa">f</span><span class="s2">&quot;cascade_mm(): unsupported (input_dtype, output_dtype) = </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">. &quot;</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a>            <span class="sa">f</span><span class="s2">&quot;Supported: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">_CASCADE_COMBOS</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a>        <span class="p">)</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a>    <span class="n">suffix</span> <span class="o">=</span> <span class="n">_CASCADE_COMBOS</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a>    <span class="n">a_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_m</span> <span class="o">*</span> <span class="n">dim_k</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">input_dtype</span><span class="p">]]</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="n">b_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_k</span> <span class="o">*</span> <span class="n">dim_n</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">input_dtype</span><span class="p">]]</span>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="n">c_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_m</span> <span class="o">*</span> <span class="n">dim_n</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">output_dtype</span><span class="p">]]</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a>    <span class="n">extern</span> <span class="o">=</span> <span class="n">_make_extern</span><span class="p">(</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>        <span class="sa">f</span><span class="s2">&quot;matmul_scalar_cascade_get_only_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a>        <span class="n">_default_source_path</span><span class="p">(</span><span class="s2">&quot;cascade_mm.cc&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a>        <span class="p">[</span><span class="n">a_ty</span><span class="p">,</span> <span class="n">b_ty</span><span class="p">,</span> <span class="n">c_ty</span><span class="p">],</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>            <span class="sa">f</span><span class="s2">&quot;-DDIM_M=</span><span class="si">{</span><span class="n">dim_m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a>            <span class="sa">f</span><span class="s2">&quot;-DDIM_K=</span><span class="si">{</span><span class="n">dim_k</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a>            <span class="sa">f</span><span class="s2">&quot;-DDIM_N=</span><span class="si">{</span><span class="n">dim_n</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a>        <span class="p">],</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>        <span class="n">use_chess</span><span class="o">=</span><span class="n">use_chess</span><span class="p">,</span>
-<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="p">)</span>
-<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">get_only</span> <span class="o">=</span> <span class="n">extern</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">put_only</span> <span class="o">=</span> <span class="n">Kernel</span><span class="p">(</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="sa">f</span><span class="s2">&quot;matmul_scalar_cascade_put_only_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a>        <span class="n">extern</span><span class="o">.</span><span class="n">object_file_name</span><span class="p">,</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a>        <span class="p">[</span><span class="n">a_ty</span><span class="p">,</span> <span class="n">b_ty</span><span class="p">,</span> <span class="n">c_ty</span><span class="p">],</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="p">)</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">put_get</span> <span class="o">=</span> <span class="n">Kernel</span><span class="p">(</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>        <span class="sa">f</span><span class="s2">&quot;matmul_scalar_cascade_put_get_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a>        <span class="n">extern</span><span class="o">.</span><span class="n">object_file_name</span><span class="p">,</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a>        <span class="p">[</span><span class="n">a_ty</span><span class="p">,</span> <span class="n">b_ty</span><span class="p">,</span> <span class="n">c_ty</span><span class="p">],</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="p">)</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">zero</span> <span class="o">=</span> <span class="n">Kernel</span><span class="p">(</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="sa">f</span><span class="s2">&quot;zero_scalar_</span><span class="si">{</span><span class="n">_ZERO_SUFFIX</span><span class="p">[</span><span class="n">output_dtype</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>        <span class="n">extern</span><span class="o">.</span><span class="n">object_file_name</span><span class="p">,</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>        <span class="p">[</span><span class="n">c_ty</span><span class="p">],</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>    <span class="p">)</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a>    <span class="n">arch</span> <span class="o">=</span> <span class="n">_detect_arch</span><span class="p">()</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>    <span class="k">if</span> <span class="n">arch</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_CASCADE_MM_MAC_DIMS</span><span class="p">:</span>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a>            <span class="sa">f</span><span class="s2">&quot;cascade_mm(): unsupported arch </span><span class="si">{</span><span class="n">arch</span><span class="si">!r}</span><span class="s2">; &quot;</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a>            <span class="sa">f</span><span class="s2">&quot;cascade_mm.cc only ships for </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">_CASCADE_MM_MAC_DIMS</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a>        <span class="p">)</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">mac_dims</span> <span class="o">=</span> <span class="n">_CASCADE_MM_MAC_DIMS</span><span class="p">[</span><span class="n">arch</span><span class="p">][</span><span class="n">key</span><span class="p">]</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="k">return</span> <span class="n">extern</span>
+<span class="normal"><a href="#__codelineno-0-330">330</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-254" name="__codelineno-0-254"></a><span class="k">def</span><span class="w"> </span><span class="nf">cascade_mm</span><span class="p">(</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="n">dim_m</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="n">dim_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a>    <span class="n">dim_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>    <span class="n">input_dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">,</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="n">output_dtype</span><span class="p">:</span> <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">,</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>    <span class="n">use_chess</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExternalFunction</span><span class="p">:</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a><span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Cascade matrix-multiply kernel for multi-core accumulation.</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="sd">    cascade_mm.cc emits all three cascade variants (``get_only``,</span>
+<a id="__codelineno-0-265" name="__codelineno-0-265"></a><span class="sd">    ``put_only``, ``put_get``) plus a ``zero`` companion in one .o.  The</span>
+<a id="__codelineno-0-266" name="__codelineno-0-266"></a><span class="sd">    returned ExternalFunction binds the ``get_only`` symbol; the other</span>
+<a id="__codelineno-0-267" name="__codelineno-0-267"></a><span class="sd">    three are sibling [`Kernel`][iron.Kernel]\\s available as attributes:</span>
+<a id="__codelineno-0-268" name="__codelineno-0-268"></a>
+<a id="__codelineno-0-269" name="__codelineno-0-269"></a><span class="sd">    * ``.get_only`` — same as the returned EF (top of the cascade chain).</span>
+<a id="__codelineno-0-270" name="__codelineno-0-270"></a><span class="sd">    * ``.put_only`` — bottom of the chain.</span>
+<a id="__codelineno-0-271" name="__codelineno-0-271"></a><span class="sd">    * ``.put_get`` — middle of the chain.</span>
+<a id="__codelineno-0-272" name="__codelineno-0-272"></a><span class="sd">    * ``.zero`` — accumulator initializer.</span>
+<a id="__codelineno-0-273" name="__codelineno-0-273"></a>
+<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="sd">    Designs typically use all four together, one per row of compute cores.</span>
+<a id="__codelineno-0-275" name="__codelineno-0-275"></a>
+<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">        dim_m: Number of rows of A / C.</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">        dim_k: Number of columns of A / rows of B.</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">        dim_n: Number of columns of B / C.</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">        input_dtype: Input element type.</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">        output_dtype: Output element type.</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">            instead of Peano.</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">        ValueError: When the dtype combination is not supported.</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>    <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">input_dtype</span><span class="p">,</span> <span class="n">output_dtype</span><span class="p">)</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_CASCADE_COMBOS</span><span class="p">:</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>            <span class="sa">f</span><span class="s2">&quot;cascade_mm(): unsupported (input_dtype, output_dtype) = </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">. &quot;</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>            <span class="sa">f</span><span class="s2">&quot;Supported: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">_CASCADE_COMBOS</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>        <span class="p">)</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="n">suffix</span> <span class="o">=</span> <span class="n">_CASCADE_COMBOS</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a>    <span class="n">a_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_m</span> <span class="o">*</span> <span class="n">dim_k</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">input_dtype</span><span class="p">]]</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a>    <span class="n">b_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_k</span> <span class="o">*</span> <span class="n">dim_n</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">input_dtype</span><span class="p">]]</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="n">c_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">dim_m</span> <span class="o">*</span> <span class="n">dim_n</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">output_dtype</span><span class="p">]]</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="n">extern</span> <span class="o">=</span> <span class="n">_make_extern</span><span class="p">(</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>        <span class="sa">f</span><span class="s2">&quot;matmul_scalar_cascade_get_only_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>        <span class="n">_default_source_path</span><span class="p">(</span><span class="s2">&quot;cascade_mm.cc&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>        <span class="p">[</span><span class="n">a_ty</span><span class="p">,</span> <span class="n">b_ty</span><span class="p">,</span> <span class="n">c_ty</span><span class="p">],</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>        <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a>            <span class="sa">f</span><span class="s2">&quot;-DDIM_M=</span><span class="si">{</span><span class="n">dim_m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a>            <span class="sa">f</span><span class="s2">&quot;-DDIM_K=</span><span class="si">{</span><span class="n">dim_k</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>            <span class="sa">f</span><span class="s2">&quot;-DDIM_N=</span><span class="si">{</span><span class="n">dim_n</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>        <span class="p">],</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>        <span class="n">use_chess</span><span class="o">=</span><span class="n">use_chess</span><span class="p">,</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="p">)</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">get_only</span> <span class="o">=</span> <span class="n">extern</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">put_only</span> <span class="o">=</span> <span class="n">extern</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>        <span class="sa">f</span><span class="s2">&quot;matmul_scalar_cascade_put_only_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>        <span class="p">[</span><span class="n">a_ty</span><span class="p">,</span> <span class="n">b_ty</span><span class="p">,</span> <span class="n">c_ty</span><span class="p">],</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>    <span class="p">)</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">put_get</span> <span class="o">=</span> <span class="n">extern</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>        <span class="sa">f</span><span class="s2">&quot;matmul_scalar_cascade_put_get_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>        <span class="p">[</span><span class="n">a_ty</span><span class="p">,</span> <span class="n">b_ty</span><span class="p">,</span> <span class="n">c_ty</span><span class="p">],</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="p">)</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">zero</span> <span class="o">=</span> <span class="n">extern</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>        <span class="sa">f</span><span class="s2">&quot;zero_scalar_</span><span class="si">{</span><span class="n">_ZERO_SUFFIX</span><span class="p">[</span><span class="n">output_dtype</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>        <span class="p">[</span><span class="n">c_ty</span><span class="p">],</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="p">)</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>    <span class="n">arch</span> <span class="o">=</span> <span class="n">_detect_arch</span><span class="p">()</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>    <span class="k">if</span> <span class="n">arch</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_CASCADE_MM_MAC_DIMS</span><span class="p">:</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a>            <span class="sa">f</span><span class="s2">&quot;cascade_mm(): unsupported arch </span><span class="si">{</span><span class="n">arch</span><span class="si">!r}</span><span class="s2">; &quot;</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>            <span class="sa">f</span><span class="s2">&quot;cascade_mm.cc only ships for </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">_CASCADE_MM_MAC_DIMS</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a>        <span class="p">)</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>    <span class="n">extern</span><span class="o">.</span><span class="n">mac_dims</span> <span class="o">=</span> <span class="n">_CASCADE_MM_MAC_DIMS</span><span class="p">[</span><span class="n">arch</span><span class="p">][</span><span class="n">key</span><span class="p">]</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a>    <span class="k">return</span> <span class="n">extern</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
