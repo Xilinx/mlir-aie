@@ -115,7 +115,7 @@ struct AIECtrlPacketToDmaPass
     // completion channel (host hang).
     std::map<std::pair<int, int>, int> ctrlChanByColRow;
     for (auto tileOp : device.getOps<AIE::TileOp>())
-      if (auto a = tileOp->getAttrOfType<IntegerAttr>("ctrl_pkt_shim_chan"))
+      if (auto a = tileOp->getAttrOfType<IntegerAttr>(kCtrlPktShimChanAttr))
         ctrlChanByColRow[{tileOp.colIndex(), tileOp.rowIndex()}] =
             (int)a.getInt();
 
@@ -210,8 +210,8 @@ struct AIECtrlPacketToDmaPass
       // before the enable phase.
       bool engage =
           clParallelColumns &&
-          device->hasAttrOfType<BoolAttr>("has_ctrl_pkt_overlay") &&
-          device->getAttrOfType<BoolAttr>("has_ctrl_pkt_overlay").getValue();
+          device->hasAttrOfType<BoolAttr>(kHasCtrlPktOverlayAttr) &&
+          device->getAttrOfType<BoolAttr>(kHasCtrlPktOverlayAttr).getValue();
 
       if (!engage) {
         // ------------------------------------------------------------------

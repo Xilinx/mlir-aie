@@ -287,7 +287,7 @@ struct AIEAutoPacketizeControlIngressPass
         for (auto tile : device.getOps<TileOp>())
           if (tile.colIndex() == col && tile.rowIndex() == 0 &&
               tile.isShimNOCorPLTile())
-            tile->setAttr("ctrl_pkt_trunk_chan", kAttr);
+            tile->setAttr(kCtrlPktTrunkChanAttr, kAttr);
       }
     }
 

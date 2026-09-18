@@ -25,6 +25,15 @@
 
 namespace xilinx::AIE {
 
+// Discardable attributes carrying the control-packet overlay contract between
+// passes (AIEAutoPacketizeControlIngress / AIEGenerateColumnControlOverlay
+// producers, AIEPathFinder / AIECtrlPacketToDma consumers). Defined on the
+// dialect so producers and consumers share ONE source of truth rather than
+// re-typing the string literal (mirrors AIEX::kEntrypointAttr).
+constexpr llvm::StringLiteral kCtrlPktTrunkChanAttr = "ctrl_pkt_trunk_chan";
+constexpr llvm::StringLiteral kCtrlPktShimChanAttr = "ctrl_pkt_shim_chan";
+constexpr llvm::StringLiteral kHasCtrlPktOverlayAttr = "has_ctrl_pkt_overlay";
+
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
 template <typename ConcreteType>

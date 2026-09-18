@@ -199,7 +199,7 @@ struct AIEInsertTraceFlowsPass
       // block-arg index (not the memref-only traceArgIdx, which excludes
       // scalar args) as an op-level attribute.
       runtimeSeq->setAttr(
-          "aie.trace_buffer_arg",
+          AIEX::kTraceBufferArgAttr,
           builder.getI32IntegerAttr(entryBB.getNumArguments() - 1));
     }
 

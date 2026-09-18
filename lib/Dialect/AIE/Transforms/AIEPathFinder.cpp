@@ -84,7 +84,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device,
   // pinning on OR off). A plain, non-reconfiguration design has neither, so its
   // packet routing stays byte-identical to upstream.
   bool devHasCtrlPktOverlay = false;
-  if (auto a = device->getAttrOfType<mlir::BoolAttr>("has_ctrl_pkt_overlay"))
+  if (auto a = device->getAttrOfType<mlir::BoolAttr>(kHasCtrlPktOverlayAttr))
     devHasCtrlPktOverlay = a.getValue();
   pathfinder->setControlOverlayRouting(baseline != nullptr ||
                                        devHasCtrlPktOverlay);

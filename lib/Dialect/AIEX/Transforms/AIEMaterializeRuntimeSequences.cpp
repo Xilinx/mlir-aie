@@ -611,7 +611,6 @@ static LogicalResult verifyRunOpsInConfigureOp(ConfigureOp configureOp,
 /// wrapper (host -> intermediate -> traced leaf) threads through as well.
 static void conformOverlayTraceBufferArgs(ModuleOp moduleOp) {
   OpBuilder builder(moduleOp.getContext());
-  constexpr StringRef kTraceArgAttr = "aie.trace_buffer_arg";
   bool changed = true;
   while (changed) {
     changed = false;
@@ -619,7 +618,7 @@ static void conformOverlayTraceBufferArgs(ModuleOp moduleOp) {
       AIE::RuntimeSequenceOp callee = runOp.getCalleeRuntimeSequenceOp();
       if (!callee)
         return;
-      auto tag = callee->getAttrOfType<IntegerAttr>(kTraceArgAttr);
+      auto tag = callee->getAttrOfType<IntegerAttr>(kTraceBufferArgAttr);
       if (!tag)
         return;
       unsigned idx = tag.getInt();
@@ -639,8 +638,9 @@ static void conformOverlayTraceBufferArgs(ModuleOp moduleOp) {
       BlockArgument newArg = hostEntry.addArgument(traceTy, hostSeq.getLoc());
       runOp.getArgsMutable().append(ValueRange{newArg});
       // Propagate the tag so an outer wrapper threads the buffer up too.
-      hostSeq->setAttr(kTraceArgAttr, builder.getI32IntegerAttr(
-                                          hostEntry.getNumArguments() - 1));
+      hostSeq->setAttr(
+          kTraceBufferArgAttr,
+          builder.getI32IntegerAttr(hostEntry.getNumArguments() - 1));
       changed = true;
     });
   }

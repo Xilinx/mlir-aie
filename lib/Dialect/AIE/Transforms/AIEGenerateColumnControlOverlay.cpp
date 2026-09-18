@@ -170,7 +170,7 @@ struct AIEGenerateColumnControlOverlayPass
     for (auto dev : sourceDevices) {
       if (deviceOptedOut(dev)) {
         if (clEmitStandaloneOverlay) {
-          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(false));
+          dev->setAttr(kHasCtrlPktOverlayAttr, builder.getBoolAttr(false));
         }
         continue;
       }
@@ -233,7 +233,7 @@ struct AIEGenerateColumnControlOverlayPass
       if (failed(applyOverlayToDevice(dev)))
         return signalPassFailure();
       if (clEmitStandaloneOverlay)
-        dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+        dev->setAttr(kHasCtrlPktOverlayAttr, builder.getBoolAttr(true));
     }
 
     // Emit standalone `@ctrl_pkt_overlay` device.
@@ -341,7 +341,7 @@ struct AIEGenerateColumnControlOverlayPass
                                     /*allowCrossDeviceDataShare=*/false)))
       return failure();
 
-    overlayDevice->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+    overlayDevice->setAttr(kHasCtrlPktOverlayAttr, builder.getBoolAttr(true));
     return success();
   }
 
@@ -672,7 +672,7 @@ struct AIEGenerateColumnControlOverlayPass
       // ingress leg with a free sibling channel), so recomputing here and
       // asserting agreement wrongly rejects a correct build. Consume K instead.
       if (auto kAttr =
-              shimTile->getAttrOfType<IntegerAttr>("ctrl_pkt_trunk_chan")) {
+              shimTile->getAttrOfType<IntegerAttr>(kCtrlPktTrunkChanAttr)) {
         trunkChan = (int)kAttr.getInt();
       } else {
         // No stamp: Stage-1 did not run (an isolated overlay unit test). Fall
@@ -730,7 +730,7 @@ struct AIEGenerateColumnControlOverlayPass
         // fallback recomputes the same mandated channel, so no attribute is
         // needed -- keeping unrelocated IR (and existing tests) unperturbed.
         if (chosenChan != rowToShimChanMap[tOp.rowIndex()])
-          tOp->setAttr("ctrl_pkt_shim_chan",
+          tOp->setAttr(kCtrlPktShimChanAttr,
                        builder.getI32IntegerAttr(chosenChan));
       } else {
         chosenChan = rowToShimChanMap[tOp.rowIndex()];
