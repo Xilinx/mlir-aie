@@ -542,7 +542,7 @@ struct AIEObjectFifoAllocatePass
         note << " requires adjacent MemTile access";
       if (channel)
         note << "; occupies channel " << *channel;
-    } else {
+    } else if (channel) {
       note << "pre-existing " << owner->getName() << " reserves DMA channel "
            << *channel;
     }
@@ -588,7 +588,7 @@ struct AIEObjectFifoAllocatePass
                << " is out of range or already in use on this tile";
           if (Operation *owner =
                   channels.getDMAChannelOwner(tileOf(endpoint), dir, *channel))
-            noteChannelOwner(diag, owner, *channel);
+            noteChannelOwner(diag, owner, channel);
           return failure();
         }
         continue;
