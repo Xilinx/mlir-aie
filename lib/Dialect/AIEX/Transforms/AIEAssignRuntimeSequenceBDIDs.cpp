@@ -304,8 +304,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // Configures whose completion an await has established.
   llvm::SmallPtrSet<Operation *, 16> knownComplete;
   // BD ids released by aiex.dma_free_task while the task could still have been
-  // in flight, keyed by tile, with the free that released them.
-  std::map<std::pair<int, int>, std::map<uint32_t, Operation *>> freedInFlight;
+  // in flight, keyed by tile, with the task and the free that released them.
+  struct ReleasedTask {
+    DMAConfigureTaskOp configure;
+    Operation *freeOp;
+  };
+  std::map<std::pair<int, int>, std::map<uint32_t, ReleasedTask>> freedInFlight;
 
   static DmaQueueModel::ChannelKey channelOf(DMAConfigureTaskOp cfg) {
     AIE::TileOp tile = cfg.getTileOp();
@@ -335,13 +339,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // from 0, so a just-freed low id is the first one handed out again -- the
   // worst case for aliasing a BD that is still running.
   void noteFreedInFlight(DMAConfigureTaskOp cfg, Operation *freeOp) {
-    if (knownComplete.contains(cfg))
+    if (!llvm::is_contained(startedOnChannel[channelOf(cfg)], cfg))
       return;
     AIE::TileOp tile = cfg.getTileOp();
     auto &ids = freedInFlight[{tile.getCol(), tile.getRow()}];
     cfg.walk([&](AIE::DMABDOp bd) {
       if (bd.getBdId().has_value())
-        ids[bd.getBdId().value()] = freeOp;
+        ids[bd.getBdId().value()] = {cfg, freeOp};
     });
   }
 
@@ -355,8 +359,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     auto idIt = tileIt->second.find(id);
     if (idIt == tileIt->second.end())
       return;
-    Operation *freeOp = idIt->second;
+    ReleasedTask released = idIt->second;
     tileIt->second.erase(idIt);
+    if (knownComplete.contains(released.configure))
+      return;
     auto diag =
         bd->emitWarning()
         << "reuses buffer descriptor ID " << id << " on tile (" << tile.getCol()
@@ -367,7 +373,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
            "tokens on the same tile, direction and channel through a task "
            "queued at or after this transfer -- each await consumes the oldest "
            "token, regardless of the task it names";
-    diag.attachNote(freeOp->getLoc()) << "released here";
+    diag.attachNote(released.freeOp->getLoc()) << "released here";
   }
 
   // Configures already completed by an aiex.dma_await_task. Awaiting a task

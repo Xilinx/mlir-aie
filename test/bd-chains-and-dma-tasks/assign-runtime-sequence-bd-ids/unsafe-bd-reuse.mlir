@@ -85,3 +85,145 @@ aie.device(npu2) {
     aiex.dma_start_task(%t0)
   }
 }
+
+// -----
+
+// A wait after the free, but before reuse, proves the released task complete.
+// Reserve a different ID for the token task so configuring it is not the reuse.
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.runtime_sequence @free_then_await(%buf: memref<256xi32>) {
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+    aiex.dma_start_task(%a)
+    aiex.dma_free_task(%a)
+    %b = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%b)
+    aiex.dma_await_task(%b)
+    %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A configure that was never started cannot have descriptors in flight.
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.runtime_sequence @never_started(%buf: memref<256xi32>) {
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 0 : i32}
+      aie.end
+    }
+    aiex.dma_free_task(%a)
+    %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 0 : i32}
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Both outstanding starts must complete before a released ID is safe to reuse.
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.runtime_sequence @free_then_sync_twice(%buf: memref<256xi32>) {
+    %c0 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : i32
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%a)
+    aiex.dma_start_task(%a)
+    aiex.dma_free_task(%a)
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 0 : i32}
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Consuming only the first token leaves the second start in flight.
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.runtime_sequence @free_then_sync_once(%buf: memref<256xi32>) {
+    %c0 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : i32
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%a)
+    aiex.dma_start_task(%a)
+    // expected-note@+1 {{released here}}
+    aiex.dma_free_task(%a)
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
+      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A token wait on another channel cannot prove the released task complete.
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.runtime_sequence @free_then_await_other_channel(%buf: memref<256xi32>) {
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+    aiex.dma_start_task(%a)
+    // expected-note@+1 {{released here}}
+    aiex.dma_free_task(%a)
+    %b = aiex.dma_configure_task(%tile, MM2S, 1) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%b)
+    aiex.dma_await_task(%b)
+    %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
+      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0)}}
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A memcpy token and wait also establish completion of a freed earlier task.
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.shim_dma_allocation @alloc (%tile, MM2S, 0)
+  aie.runtime_sequence @free_then_memcpy_wait(%buf: memref<256xi32>) {
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+    aiex.dma_start_task(%a)
+    aiex.dma_free_task(%a)
+    aiex.npu.dma_memcpy_nd(%buf[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1]) {id = 7 : i64, metadata = @alloc, issue_token = true} : memref<256xi32>
+    aiex.npu.dma_wait {symbol = @alloc}
+    %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+  }
+}
