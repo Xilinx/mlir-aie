@@ -62,6 +62,7 @@ def _row_kernel(
     ops,
     *,
     setup=None,
+    stack_bytes=None,
 ) -> ExternalFunction:
     _aie2p_only(name, source)
     _cols(name, cols)
@@ -80,6 +81,7 @@ def _row_kernel(
             acc_dtype=np.float32,
             reduction=cols,
             setup=setup,
+            stack_bytes=stack_bytes,
         ),
     )
 
@@ -107,6 +109,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         layer_norm_f32_ref,
         _NORM_F32,
         6 * cols,
+        stack_bytes=1152,  # aiecc measured_stack_size (Peano 22)
     )
 
 

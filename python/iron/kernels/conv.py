@@ -646,7 +646,7 @@ def conv2dk1(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=flags,
         contract=KernelContract(
-            stack_bytes=2688,  # aiecc measured_stack_size
+            stack_bytes=2752,  # aiecc measured_stack_size (Peano 22)
             roles=(In, Param, Out, Scalar, Scalar, Scalar, Scalar),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,
@@ -704,7 +704,7 @@ def conv2dk3(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=flags,
         contract=KernelContract(
-            stack_bytes=4672,  # aiecc measured_stack_size
+            stack_bytes=4736,  # aiecc measured_stack_size (Peano 22)
             roles=(In, In, In, Param, Out, *((Scalar,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
@@ -761,7 +761,7 @@ def conv2dk1_skip(
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
         contract=KernelContract(
-            stack_bytes=1504,  # aiecc measured_stack_size
+            stack_bytes=2752,  # aiecc measured_stack_size (Peano 22, uint8)
             roles=(In, In, Param, Out, In, *((Scalar,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,

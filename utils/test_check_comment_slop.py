@@ -104,9 +104,10 @@ class CollectTests(unittest.TestCase):
             )
         )
         self.assertEqual(len(blocks), 1)
-        self.assertIn(
-            "This kernel assumes the caller already validated shapes.",
+        self.assertEqual(blocks[0].line, 3)
+        self.assertEqual(
             blocks[0].lines,
+            ["This kernel assumes the caller already validated shapes."],
         )
 
     def test_unrelated_mention_of_copyright_is_not_a_header(self):
@@ -187,6 +188,34 @@ class DuplicateTests(unittest.TestCase):
         )
         blocks = self._blocks(banner, banner, banner)
         self.assertEqual(slop.find_duplicates(blocks), [])
+
+    def test_license_adjacent_explanations_are_checked_without_boilerplate(self):
+        for suffix, marker in (("py", "#"), ("cc", "//")):
+            for explanations, expected_groups in (
+                (["Kernel buffers require aligned contiguous storage."] * 3, 1),
+                (["Apples ripen.", "Bananas soften.", "Cherries darken."], 0),
+            ):
+                with self.subTest(suffix=suffix, explanations=explanations):
+                    blocks, _ = slop.collect(
+                        diff(
+                            *[
+                                (
+                                    f"{i}.{suffix}",
+                                    1,
+                                    [
+                                        f"{marker} Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                                        # REUSE-IgnoreStart
+                                        f"{marker} SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                                        # REUSE-IgnoreEnd
+                                        f"{marker} {text}",
+                                    ],
+                                )
+                                for i, text in enumerate(explanations)
+                            ]
+                        )
+                    )
+                    self.assertEqual([b.line for b in blocks], [3, 3, 3])
+                    self.assertEqual(len(slop.find_duplicates(blocks)), expected_groups)
 
     def test_test_files_may_restate_the_invariant(self):
         blocks = self._blocks(

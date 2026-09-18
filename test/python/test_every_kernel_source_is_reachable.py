@@ -34,27 +34,49 @@ _KERNELS = Path(__file__).resolve().parents[2] / "aie_kernels"
 def _built_by_a_factory() -> set[Path]:
     """Return the sources some factory compiles, over both architectures."""
     built: set[Path] = set()
-    for device in (NPU1Col1, NPU2Col1):
-        iron.set_current_device(device())
-        for name in kernels.__all__:
-            factory = getattr(kernels, name)
-            if not inspect.isfunction(factory) or name.endswith("_ref"):
-                continue
-            for combo in [{}] + [dict(c) for c in getattr(factory, "dtypes", ())]:
-                try:
-                    fn = factory(**combo)
-                except Exception:  # noqa: BLE001 - needs kwargs, or wrong arch
+    previous = iron.get_current_device(probe_runtime=False)
+    try:
+        for device in (NPU1Col1, NPU2Col1):
+            iron.set_current_device(device())
+            for name in kernels.__all__:
+                factory = getattr(kernels, name)
+                if not inspect.isfunction(factory) or name.endswith("_ref"):
                     continue
-                if getattr(fn, "source_file", None):
-                    built.add(Path(fn.source_file).resolve())
-                # The aie2 LUT kernels are compiled from a generated source
-                # that includes the .cc rather than naming it as source_file.
-                for line in (getattr(fn, "source_string", None) or "").splitlines():
-                    if '#include "' in line:
-                        path = Path(line.split('"')[1])
-                        if path.suffix == ".cc":
-                            built.add(path.resolve())
+                for combo in [{}] + [dict(c) for c in getattr(factory, "dtypes", ())]:
+                    try:
+                        fn = factory(**combo)
+                    except Exception:  # noqa: BLE001 - needs kwargs, or wrong arch
+                        continue
+                    if getattr(fn, "source_file", None):
+                        built.add(Path(fn.source_file).resolve())
+                    # The aie2 LUT kernels are compiled from a generated source
+                    # that includes the .cc rather than naming it as source_file.
+                    for line in (getattr(fn, "source_string", None) or "").splitlines():
+                        if '#include "' in line:
+                            path = Path(line.split('"')[1])
+                            if path.suffix == ".cc":
+                                built.add(path.resolve())
+    finally:
+        iron.set_current_device(previous)
     return built
+
+
+@pytest.mark.parametrize("device", [None, NPU1Col1, NPU2Col1])
+@pytest.mark.parametrize("fails", [False, True])
+def test_factory_probe_restores_device(monkeypatch, device, fails):
+    previous = iron.get_current_device(probe_runtime=False)
+    selected = device() if device else None
+    iron.set_current_device(selected)
+    try:
+        monkeypatch.setattr(kernels, "__all__", ["missing_factory"] if fails else [])
+        if fails:
+            with pytest.raises(AttributeError, match="missing_factory"):
+                _built_by_a_factory()
+        else:
+            assert _built_by_a_factory() == set()
+        assert iron.get_current_device(probe_runtime=False) is selected
+    finally:
+        iron.set_current_device(previous)
 
 
 def _included_by_another_kernel(source: Path) -> bool:

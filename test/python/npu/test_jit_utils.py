@@ -249,17 +249,23 @@ def test_compile_external_kernel_skips_an_object_already_there(npu_target_arch):
         assert os.stat(obj).st_mtime_ns == first
 
 
-def test_compile_external_kernel_skip_is_per_kernel_dir(npu_target_arch):
+def test_compile_external_kernel_skip_is_per_kernel_dir(npu_target_arch, monkeypatch):
     """The in-memory skip covers the directory already built into, not the function."""
     func = ExternalFunction(
         "add_one",
         source_string='extern "C" void add_one(int* a, int* b, int n) {}',
     )
     with tempfile.TemporaryDirectory() as kernel_dir:
-        func._compiled = True
-        func._compiled_dir = kernel_dir
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
-        assert not os.path.exists(os.path.join(kernel_dir, func.object_file_name))
+        assert os.path.exists(os.path.join(kernel_dir, func.object_file_name))
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                "aie.utils.compile.utils._compile_external_kernel",
+                lambda *args, **kwargs: pytest.fail(
+                    "already compiled in this directory"
+                ),
+            )
+            compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
 
     with tempfile.TemporaryDirectory() as other_dir:
         compile_external_kernel(func, other_dir, target_arch=npu_target_arch)

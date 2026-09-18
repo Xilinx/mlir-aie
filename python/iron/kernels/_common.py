@@ -144,7 +144,7 @@ class KernelContract:
     """
 
     roles: tuple[type, ...]
-    reference: Callable[..., np.ndarray] | None = None
+    reference: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     tolerance: Tolerance | None = None
     ops_per_call: int | None = None
     out_valid: int | None = None

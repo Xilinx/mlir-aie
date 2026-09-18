@@ -345,10 +345,11 @@ def test_scalar_counts_are_bound_not_inferred_from_tensor_sizes():
     assert kernels.reduce_max(tile_size=1024).contract.scalar_bindings == ((2, 1024),)
     assert kernels.rgba2hue(line_width=64).contract.scalar_bindings == ((2, 64),)
     assert kernels.gray2rgba(line_width=64).contract.scalar_bindings == ((2, 64),)
-    fn = kernels.leaky_relu(tile_size=128)
+    fn = kernels.leaky_relu(tile_size=1024)
+    assert fn.contract.scalar_bindings == ((2, 1024),)
     assert fn.contract.reference_indices() == [0, 3]
-    mlir = str(kd.design(kernels.leaky_relu, tile_size=128, scalars=(0.5,)).as_mlir())
-    assert "128 : i32" in mlir
+    mlir = str(kd.design(kernels.leaky_relu, tile_size=1024, scalars=(0.5,)).as_mlir())
+    assert "1024 : i32" in mlir
 
 
 def test_rounding_setup_is_merged_alwaysinline_ir():
@@ -361,6 +362,29 @@ def test_rounding_setup_is_merged_alwaysinline_ir():
     mlir = str(kd.design(kernels.gelu).as_mlir())
     assert 'link_with_mode = "merge"' in mlir
     assert setter.object_file_name in mlir
+
+
+@pytest.mark.parametrize("mode", list(kernels.RoundingMode))
+def test_rounding_mode_preserves_string_api(mode):
+    assert str(mode) == f"{mode}" == mode.value
+    assert mode == mode.value
+    setter = kernels.set_rounding(mode)
+    assert setter.name == f"set_rounding_{mode.value}"
+    assert f"-DROUNDING_MODE={mode.value}" in setter.compile_flags
+    assert setter is kernels.set_rounding(mode.value)
+
+
+@pytest.mark.parametrize(
+    "factory,minimum",
+    [
+        (kernels.conv2dk1, 2752),
+        (kernels.conv2dk1_skip, 2752),
+        (kernels.conv2dk3, 4736),
+        (kernels.layer_norm_f32, 1152),
+    ],
+)
+def test_stack_contract_covers_measured_core(factory, minimum):
+    assert factory().contract.stack_bytes >= minimum
 
 
 def test_contract_validates_argument_bindings():

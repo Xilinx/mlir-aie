@@ -369,7 +369,7 @@ def design(
     key = len(groups), len(c.out_indices)
     if key not in _STREAM:
         raise ValueError(f"{fn.name}: unsupported DMA signature {key}")
-    flags = list(aiecc_flags or ())
+    flags: list[str] = list(aiecc_flags or ())
     if any(
         bfp.is_bfp(shape_dtype(t)[1])
         for i, t in enumerate(fn.arg_types())

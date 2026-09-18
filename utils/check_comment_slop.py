@@ -46,10 +46,6 @@ POINTER_RE = re.compile(r"\bsee\s+\S", re.IGNORECASE)
 # explains the same mechanism.
 TEST_PATH_RE = re.compile(r"(^|/)tests?(/|_|\.)|(^|/)testing(/|_)|_tests?\.|(^|/)test_")
 
-# The SPDX/copyright license header is mandatory boilerplate (reuse-lint requires
-# it verbatim), so every new file repeats it -- that is compliance, not slop.
-LICENSE_RE = re.compile(r"SPDX-\w+|Copyright", re.IGNORECASE)
-
 STOPWORDS = {
     "about",
     "after",
@@ -313,6 +309,9 @@ def collect(diff):
 
         if is_comment:
             stripped = strip_comment_markers(text)
+            if LICENSE_RE.match(stripped):
+                current = None
+                continue
             if (
                 current
                 and current.path == path
@@ -326,9 +325,7 @@ def collect(diff):
             current = None
             if text.strip():
                 code += 1
-    # Drop a block only if every line in it is header boilerplate, so an
-    # explanation with no blank/code line separating it from the header
-    # keeps its own lines rather than being dropped along with it.
+    # Drop the remaining header wrappers, not adjacent explanations.
     return [
         b
         for b in blocks
@@ -354,7 +351,9 @@ def find_duplicates(blocks):
         if len(b.terms) >= SHARED_TERMS_THRESHOLD
         and not TEST_PATH_RE.search(b.path)
         and not POINTER_RE.search(b.text)
-        and not LICENSE_RE.search(b.text)
+        and not all(
+            LICENSE_RE.match(line) or _HEADER_FILLER_RE.match(line) for line in b.lines
+        )
     ]
 
     groups = []  # [members, terms common to every member]

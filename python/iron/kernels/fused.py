@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 
 import numpy as np
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import from_name
 from aie.iron.kernel import ExternalFunction
 from aie.utils import get_current_device
 from aie.utils.compile.jit.markers import In, Out
@@ -50,7 +50,7 @@ def fused_mm(
     arch = _detect_arch()
     device = get_current_device(probe_runtime=False)
     if device is None:
-        device = NPU1Col1() if arch == "aie2" else NPU2Col1()
+        device = from_name("npu1" if arch == "aie2" else "npu2")
     r, s, t = (4, 8, 4) if arch == "aie2" else (4, 8, 8)
     dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
@@ -124,7 +124,7 @@ def fused_mm(
             sigmoid = (np.tanh(x * 0.5) + 1) * 0.5
             c = sigmoid if epilogue == "sigmoid" else c * sigmoid
         if clamp is not None:
-            c = np.clip(c, *clamp)
+            c = np.clip(c, clamp[0], clamp[1])
         return c.reshape(len(c), -1)
 
     flags = {

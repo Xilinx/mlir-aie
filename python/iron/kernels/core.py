@@ -12,7 +12,7 @@ and a design calls it once before the kernel's first call; the mode persists
 on that core until something changes it.
 """
 
-from enum import StrEnum
+from enum import Enum
 from functools import partial
 
 from aie.iron.kernel import ExternalFunction
@@ -20,7 +20,7 @@ from aie.iron.kernel import ExternalFunction
 from ._common import KernelContract, _default_source_path, _make_extern
 
 
-class RoundingMode(StrEnum):
+class RoundingMode(str, Enum):
     """An ``aie::rounding_mode``, named as the C++ enumerator is."""
 
     FLOOR = "floor"
@@ -31,6 +31,9 @@ class RoundingMode(StrEnum):
     SYMMETRIC_ZERO = "symmetric_zero"
     CONV_EVEN = "conv_even"
     CONV_ODD = "conv_odd"
+
+    def __str__(self):
+        return self.value
 
 
 def set_rounding(mode: RoundingMode = RoundingMode.CONV_EVEN) -> ExternalFunction:
