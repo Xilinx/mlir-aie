@@ -294,6 +294,57 @@ class KernelObject:
     link_with_mode: str | None = None
     _source: _KernelSource | None = field(default=None, repr=False)
     _compiled_dirs: set[str] = field(default_factory=set, repr=False)
+    _symbol_prefix: str | None = field(default=None, repr=False, kw_only=True)
+
+    def __post_init__(self):
+        if not self.name:
+            raise ValueError("Object file name cannot be empty.")
+
+    @property
+    def object_file_name(self) -> str:
+        """Filename of the linked artifact."""
+        return self.name
+
+    @property
+    def symbol_prefix(self) -> str | None:
+        """Symbol namespace shared by all bindings of this artifact."""
+        return self._source.symbol_prefix if self._source else self._symbol_prefix
+
+    def resolve_symbol(self, name: str) -> str:
+        """Return ``name`` qualified into this object's symbol namespace."""
+        if not name:
+            raise ValueError("Kernel name cannot be empty.")
+        return f"{self.symbol_prefix}_{name}" if self.symbol_prefix else name
+
+    def bind(
+        self,
+        name: str,
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        *,
+        link_with_mode: str | None = None,
+        stack_size_override: int | None = None,
+    ) -> "Kernel":
+        """Bind a source-level symbol while retaining this artifact's ownership."""
+        return Kernel(
+            self.resolve_symbol(name),
+            self,
+            arg_types,
+            link_with_mode=link_with_mode,
+            stack_size_override=stack_size_override,
+        )
+
+
+class ObjectFile(KernelObject):
+    """A prebuilt KernelObject with an optional symbol namespace."""
+
+    def __init__(
+        self,
+        object_file_name: str,
+        *,
+        symbol_prefix: str | None = None,
+        link_with_mode: str | None = None,
+    ) -> None:
+        super().__init__(object_file_name, link_with_mode, _symbol_prefix=symbol_prefix)
 
 
 class Kernel(BaseKernel):
@@ -636,20 +687,15 @@ class ExternalFunction(Kernel):
         ``(symbol, arg_types)``, where ``symbol`` is the name as written in
         the source: when this kernel carries a ``symbol_prefix``, the
         object's symbols have all been prefixed to keep parameterizations
-        apart (see ``aie.utils.compile.utils._prefix_symbols_in_object``),
+        apart (see ``aie.utils.compile.utils.prefix_symbols_in_object``),
         so each sibling is prefixed to match.
 
         Returns ``self.also``, which is always present, and empty for a
         kernel whose object exports nothing else.
         """
-        prefix = getattr(self, "_symbol_prefix", None)
         vars(self.also).update(
             {
-                attr: Kernel(
-                    f"{prefix}_{symbol}" if prefix else symbol,
-                    self.object_file,
-                    arg_types,
-                )
+                attr: self.object_file.bind(symbol, arg_types)
                 for attr, (symbol, arg_types) in symbols.items()
             }
         )

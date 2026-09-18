@@ -599,7 +599,7 @@ def mv(
         ),
     )
     # mv.cc emits both matvec_* and zero_* symbols; expose the zero binding
-    # as a sibling Kernel pointing at the same .o.
+    # as another symbol bound from the same object-file handle.
     zero_prefix = "zero_vectorized" if vectorized else "zero_scalar"
     extern.siblings(zero=(f"{zero_prefix}_i32", [c_ty]))
     return extern

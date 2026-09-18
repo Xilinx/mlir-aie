@@ -123,14 +123,17 @@ def test_chess_path_needs_the_wrapper_on_path(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_prefixing_renames_every_defined_symbol_and_is_idempotent(tmp_path):
+def test_prefixing_renames_every_defined_symbol(tmp_path, monkeypatch):
     """A prefix covers the object's siblings, not just the declared symbol.
 
     ``mm.cc`` exports the ``zero_*`` that ``.also.zero`` binds beside ``matmul_*``;
     leaving those bare made two parameterizations of one kernel collide at
     link. Uses a stub object so the test needs no Peano.
     """
-    from aie.utils.compile.utils import _prefix_symbols_in_object
+    from aie.utils.compile import utils
+
+    monkeypatch.setattr(utils.config, "nm_path", lambda: "nm")
+    monkeypatch.setattr(utils.config, "objcopy_path", lambda: "objcopy")
 
     obj = tmp_path / "k.o"
     obj.write_bytes(b"")
@@ -154,21 +157,19 @@ def test_prefixing_renames_every_defined_symbol_and_is_idempotent(tmp_path):
 
     fake_run.symbols = ["matmul_i16_i16", "matmul_scalar_i16_i16", "zero_i16"]
     with patch("subprocess.run", fake_run):
-        renamed = _prefix_symbols_in_object(str(obj), "d00d")
-        assert sorted(renamed) == [
-            "matmul_i16_i16",
-            "matmul_scalar_i16_i16",
-            "zero_i16",
-        ]
+        utils.prefix_symbols_in_object(str(obj), "d00d_")
         assert fake_run.symbols == [
             "d00d_matmul_i16_i16",
             "d00d_matmul_scalar_i16_i16",
             "d00d_zero_i16",
         ]
-        # Re-applying on a cache hit must not double-prefix.
-        before = list(fake_run.symbols)
-        assert _prefix_symbols_in_object(str(obj), "d00d") == []
-        assert fake_run.symbols == before
+        # Prefixing is literal; compile_external_kernel tracks cache state.
+        utils.prefix_symbols_in_object(str(obj), "d00d_")
+        assert fake_run.symbols == [
+            "d00d_d00d_matmul_i16_i16",
+            "d00d_d00d_matmul_scalar_i16_i16",
+            "d00d_d00d_zero_i16",
+        ]
 
 
 def test_siblings_bind_other_symbols_from_the_same_object():

@@ -31,12 +31,16 @@ def test_exported_symbols_share_recipe_and_owner():
 
 
 @pytest.mark.parametrize("inline", [False, True])
+@pytest.mark.parametrize("binding_api", ["siblings", "bind"])
 def test_sibling_alone_rediscovers_source_owner_after_registry_reset(
-    tmp_path, monkeypatch, inline
+    tmp_path, monkeypatch, inline, binding_api
 ):
     original = _function("reduce_max", inline=inline)
-    original.siblings(compute=("compute_max", []))
-    sibling = original.also.compute
+    if binding_api == "bind":
+        sibling = original.object_file.bind("compute_max", [])
+    else:
+        original.siblings(compute=("compute_max", []))
+        sibling = original.also.compute
     original_ref = weakref.ref(original)
     ExternalFunction._instances.clear()
     del original
@@ -90,6 +94,8 @@ def test_prebuilt_object_can_be_shared():
     assert first.link_with_mode == "merge"
     with pytest.raises(ValueError, match="link_with_mode conflicts"):
         Kernel("third", artifact, link_with_mode="other")
+    with pytest.raises(ValueError, match="link_with_mode conflicts"):
+        artifact.bind("third", link_with_mode="other")
 
 
 def test_inline_sibling_retains_object_link_policy():

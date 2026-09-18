@@ -106,8 +106,8 @@ def nm_path():
 
     Same sourcing rule as :func:`objcopy_path`, plus the Peano install: AIE
     objects use the AIEngine ELF e_machine, which GNU binutils nm cannot
-    parse, and the wheel bundles llvm-objcopy but not llvm-nm, so a wheel
-    install finds it in the Peano that compiled the object.
+    parse. Older wheels did not bundle llvm-nm, so also check the Peano
+    installation that compiled the object.
     """
     bundled_nm = os.path.join(root_path(), "bin", _executable_name("llvm-nm"))
     if os.path.isfile(bundled_nm):
