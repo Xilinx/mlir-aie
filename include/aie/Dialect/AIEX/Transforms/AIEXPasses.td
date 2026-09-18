@@ -623,7 +623,7 @@ def AIESplitConfigureEntries
     The new sequences are named `<referenced-device-symbol>_<block-order-index>`
     so occurrences of a repeated device stay unique and the index records the
     original schedule position. This restores the one-configure-per-sequence
-    shape the downstream union machinery (`splitMultiConfigEntry`,
+    shape the downstream union machinery (`applyReconfigMethod`,
     `aie-expand-load-pdi` self-clear) assumes.
 
     Only the marked device is touched; config-template devices and their
@@ -639,8 +639,8 @@ def AIESplitConfigureEntries
   ];
 }
 
-def AIESplitMultiConfigEntry
-    : Pass<"aie-split-multi-config-entry", "mlir::ModuleOp"> {
+def AIEApplyReconfigMethod
+    : Pass<"aie-apply-reconfig-method", "mlir::ModuleOp"> {
   let summary = "Synthesize the shared reconfig init and normalize per-config "
                 "load_pdi re-arm";
   let description = [{
@@ -662,7 +662,7 @@ def AIESplitMultiConfigEntry
     `aiex.configure` monolith). A no-op if no device carries the marker.
   }];
 
-  let constructor = "xilinx::AIEX::createAIESplitMultiConfigEntryPass()";
+  let constructor = "xilinx::AIEX::createAIEApplyReconfigMethodPass()";
   let dependentDialects = [
     "mlir::memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",

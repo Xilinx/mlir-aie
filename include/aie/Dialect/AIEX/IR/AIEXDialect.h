@@ -80,7 +80,7 @@ mlir::Value createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
 constexpr llvm::StringLiteral kEntrypointAttr = "aiex.entrypoint";
 
 // Key, within the kEntrypointAttr dictionary, holding the --reconfig-method
-// spelling (loadpdi|write32|ctrlpkt). The AIESplitMultiConfigEntry pass reads
+// spelling (loadpdi|write32|ctrlpkt). The AIEApplyReconfigMethod pass reads
 // it to derive its behavior; the aiecc fold stamps it. Defined on the dialect
 // so the pass and the driver share one source of truth.
 constexpr llvm::StringLiteral kReconfigMethodKey = "reconfig_method";

@@ -293,7 +293,7 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
 //
 // When `overlayOnly` is set, the config is restricted to a config-agnostic
 // control-packet OVERLAY: it keeps ONLY the host-invoked runtime-sequence
-// device(s) -- identified by `splitMultiConfigEntry`'s post-split naming
+// device(s) -- identified by `applyReconfigMethod`'s post-split naming
 // convention (a runtime sequence named `init` or `config_<n>`) -- plus the
 // PDIs any `load_pdi` on that device still references (the reset
 // `@ctrl_pkt_overlay`/`@empty` overlay). Every other config device is a

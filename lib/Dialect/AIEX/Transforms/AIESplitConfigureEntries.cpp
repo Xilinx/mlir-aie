@@ -9,7 +9,7 @@
 // host device carries ONE `aie.runtime_sequence` holding MANY
 // `aiex.configure @opK { ... aiex.run @sequence(subviews) }` ops in schedule
 // order (llama: 322 configures over 19 distinct config devices, e.g. op0 x33).
-// The union `--reconfig-method` flow downstream -- `splitMultiConfigEntry`
+// The union `--reconfig-method` flow downstream -- `applyReconfigMethod`
 // (tools/aiecc) and the `aie-expand-load-pdi` self-clear -- instead assumes the
 // host holds exactly ONE `aiex.configure`/`load_pdi` per runtime-sequence block
 // (the `main:init`+`main:config_k` shape produced from N separate designs).
@@ -118,7 +118,7 @@ static LogicalResult splitOneSequence(RuntimeSequenceOp seq,
     std::string name = (cfg.getSymbol() + "_" + llvm::Twine(index)).str();
     if (!seenNames.insert(name).second) {
       // Cannot happen with the block-order index (it is unique per sequence),
-      // but mirror splitMultiConfigEntry's loud duplicate-name guard.
+      // but mirror applyReconfigMethod's loud duplicate-name guard.
       cfg.emitError("aie-split-configure-entries: duplicate entry sequence "
                     "name '")
           << name << "'";

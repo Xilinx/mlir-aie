@@ -1,4 +1,4 @@
-//===- split_multi_config_entry_loadpdi.mlir -------------------*- MLIR -*-===//
+//===- apply_reconfig_method_loadpdi.mlir -------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -9,7 +9,7 @@
 // shared `init` is synthesized and each entrypoint KEEPS its own sole
 // self-reset load_pdi.
 
-// RUN: aie-opt --aie-split-multi-config-entry %s | FileCheck %s
+// RUN: aie-opt --aie-apply-reconfig-method %s | FileCheck %s
 
 // CHECK-NOT:  @init
 // CHECK:      aie.runtime_sequence @config_1(%{{.*}}: memref<8xi32>)

@@ -1,4 +1,4 @@
-//===- split_multi_config_entry_invalid.mlir -------------------*- MLIR -*-===//
+//===- apply_reconfig_method_invalid.mlir -------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -7,7 +7,7 @@
 
 // The pass fails loud on out-of-contract input rather than mis-splitting.
 
-// RUN: aie-opt --aie-split-multi-config-entry --split-input-file --verify-diagnostics %s
+// RUN: aie-opt --aie-apply-reconfig-method --split-input-file --verify-diagnostics %s
 
 // An unrecognized reconfig_method on the marker is rejected.
 module {

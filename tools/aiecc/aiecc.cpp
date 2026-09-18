@@ -640,7 +640,7 @@ static std::string writeMergedModule(mlir::ModuleOp mod,
 
 // Label the fold-synthesized entry (top-level host) device with the
 // aiex.entrypoint marker -- a dictionary carrying the reconfig_method. Its
-// presence is what downstream (aie-split-multi-config-entry entry select,
+// presence is what downstream (aie-apply-reconfig-method entry select,
 // SidecarFiles host-keep) uses to identify the entry device, robust to the
 // sequence sym_names. See kEntrypointAttr.
 static void markEntrypointDevice(xilinx::AIE::DeviceOp host,
@@ -740,7 +740,7 @@ static std::string conformIdiomaticInputs(llvm::ArrayRef<std::string> inputs,
     // reverts to the canonical "sequence". Only the entrypoint is ever
     // dispatched (main:<entrypoint>), so the config device and its inner
     // sequence are purely internal. Distinct designs must therefore carry
-    // distinct names (aie-split-multi-config-entry loud-fails on a duplicate
+    // distinct names (aie-apply-reconfig-method loud-fails on a duplicate
     // entrypoint name).
     std::string entryName = seq.getSymName().str();
 
@@ -775,7 +775,7 @@ static std::string conformIdiomaticInputs(llvm::ArrayRef<std::string> inputs,
     // Append the LIFTED entrypoint before @main's aie.end, named with the
     // user's entrypoint name so the dispatchable kernel is main:<entrypoint>.
     // It issues `configure @<name>_config { run @sequence }`;
-    // aie-split-multi-config-entry keeps this name (block order = chain order)
+    // aie-apply-reconfig-method keeps this name (block order = chain order)
     // and, for the init methods, synthesizes a shared main:init.
     SmallVector<Type> argTys(seq.getBody().getArgumentTypes());
     SmallVector<Location> argLocs(argTys.size(), loc);
@@ -925,7 +925,7 @@ static std::string unionConfigDesigns(mlir::MLIRContext &context,
     // sequence, KEEPING the design's chosen entrypoint name (retargeting
     // nothing: the cloned sequence still references its own config symbol,
     // which travels with the cloned device). Distinct designs must carry
-    // distinct entrypoint names -- aie-split-multi-config-entry loud-fails on a
+    // distinct entrypoint names -- aie-apply-reconfig-method loud-fails on a
     // duplicate.
     modBuilder.clone(*config.getOperation());
     unsigned added = 0;
@@ -1351,7 +1351,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
   // IRON's fused decode arrives as ONE `aie.runtime_sequence` holding N
   // `aiex.configure` ops on the `aiex.entrypoint`-marked host (llama: 322
-  // configures over 19 config devices). The aie-split-multi-config-entry pass
+  // configures over 19 config devices). The aie-apply-reconfig-method pass
   // and the aie-expand-load-pdi self-clear (getExpandLoadPdiPipeline) both need
   // exactly one configure/load_pdi per runtime-sequence block, so explode the
   // monolith into N one-configure sequences HERE -- before
@@ -1430,7 +1430,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Assign PDI ids on every flow, then (on the fold only) synthesize the shared
   // reconfig `init` and normalize each per-config load_pdi re-arm. The
-  // aie-split-multi-config-entry pass reads the delivery method off the
+  // aie-apply-reconfig-method pass reads the delivery method off the
   // aiex.entrypoint marker and derives its own policy, so it needs no options
   // and no-ops on non-fold modules (which carry no marker). The result folds N
   // per-config designs (seq_1..seq_N from unionConfigDesigns) into
@@ -1448,7 +1448,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       });
   auto &npuLowered = npuIdsAssigned.map<ModRef>(
       "npu_lowered.mlir",
-      PassPipeline{getSplitMultiConfigEntryPipeline(&context)});
+      PassPipeline{getApplyReconfigMethodPipeline(&context)});
 
   // Root of the static configuration branch; contains compiled cores, etc., to
   // produce xclbins, or feed into the full ELF. Usually, this is completely
@@ -2339,7 +2339,7 @@ int main(int argc, char **argv) {
   // the full PDI); it must not be combined with an expansion strategy. In
   // particular --load-pdi-to-ctrl-pkt would flip the fold to control-packet
   // delivery while the entry marker still says `loadpdi`, so
-  // aie-split-multi-config-entry (which derives its behavior from the marker)
+  // aie-apply-reconfig-method (which derives its behavior from the marker)
   // would mis-split. Reject the contradiction rather than mis-lower.
   if (reconfigMethod == ReconfigMethod::Loadpdi &&
       (expandLoadPdis || loadPdiToCtrlPkt)) {

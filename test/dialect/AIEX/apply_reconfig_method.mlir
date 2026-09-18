@@ -1,4 +1,4 @@
-//===- split_multi_config_entry.mlir ---------------------------*- MLIR -*-===//
+//===- apply_reconfig_method.mlir ---------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -12,7 +12,7 @@
 // pass derives all of this from the marker's reconfig_method; it takes no
 // options. Config-template devices (no marker) are untouched.
 
-// RUN: aie-opt --aie-split-multi-config-entry %s | FileCheck %s
+// RUN: aie-opt --aie-apply-reconfig-method %s | FileCheck %s
 
 // The unmarked config-template device survives unchanged.
 // CHECK:      aie.device(npu2) @cfg

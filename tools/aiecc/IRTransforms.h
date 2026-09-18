@@ -78,7 +78,7 @@ constexpr llvm::StringLiteral kPdiIdAttr = "aiecc.pdi_id";
 // either), whereas the fold KNOWS the intent and labels the device it creates.
 // A DictionaryAttr so it stays forward-looking -- more descriptors can become
 // keys; the `reconfig_method` key carries the delivery method
-// ("loadpdi"/"write32"/"ctrlpkt"). Readers (splitMultiConfigEntry entry select,
+// ("loadpdi"/"write32"/"ctrlpkt"). Readers (applyReconfigMethod entry select,
 // SidecarFiles host-keep) match on hasAttr(kEntrypointAttr) OR the legacy
 // `init`/`config_<n>` name during the Task-1..Task-5 migration window.
 // Single source of truth: xilinx::AIEX::kEntrypointAttr (AIEXDialect.h), so the
@@ -1206,10 +1206,10 @@ getSplitConfigureEntriesPipeline(mlir::MLIRContext *ctx) {
 // reconfig_method. Runs AFTER per-device DMA lowering + PDI-id assignment; a
 // no-op without the marker (so ordinary non-fold compiles are untouched).
 inline std::unique_ptr<mlir::PassManager>
-getSplitMultiConfigEntryPipeline(mlir::MLIRContext *ctx) {
+getApplyReconfigMethodPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  pm->addPass(X::createAIESplitMultiConfigEntryPass());
+  pm->addPass(X::createAIEApplyReconfigMethodPass());
   return pm;
 }
 

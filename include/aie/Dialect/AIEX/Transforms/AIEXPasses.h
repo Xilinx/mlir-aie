@@ -71,7 +71,7 @@ createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIESplitConfigureEntriesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIESplitMultiConfigEntryPass();
+createAIEApplyReconfigMethodPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEXInlineTraceConfigPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

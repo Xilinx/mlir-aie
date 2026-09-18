@@ -1,4 +1,4 @@
-//===- AIESplitMultiConfigEntry.cpp -----------------------------*- C++ -*-===//
+//===- AIEApplyReconfigMethod.cpp -----------------------------*- C++ -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -42,11 +42,11 @@
 #include "llvm/ADT/StringSet.h"
 
 namespace xilinx::AIEX {
-#define GEN_PASS_DEF_AIESPLITMULTICONFIGENTRY
+#define GEN_PASS_DEF_AIEAPPLYRECONFIGMETHOD
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-#define DEBUG_TYPE "aie-split-multi-config-entry"
+#define DEBUG_TYPE "aie-apply-reconfig-method"
 
 using namespace mlir;
 using namespace xilinx;
@@ -187,10 +187,10 @@ static LogicalResult splitMarkedEntryDevice(DeviceOp dev, bool stripRearm,
   return success();
 }
 
-struct AIESplitMultiConfigEntryPass
-    : public xilinx::AIEX::impl::AIESplitMultiConfigEntryBase<
-          AIESplitMultiConfigEntryPass> {
-  using AIESplitMultiConfigEntryBase::AIESplitMultiConfigEntryBase;
+struct AIEApplyReconfigMethodPass
+    : public xilinx::AIEX::impl::AIEApplyReconfigMethodBase<
+          AIEApplyReconfigMethodPass> {
+  using AIEApplyReconfigMethodBase::AIEApplyReconfigMethodBase;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
@@ -215,7 +215,7 @@ struct AIESplitMultiConfigEntryPass
       const bool write32 = method == "write32";
       const bool loadPdiNoInit = method == "loadpdi";
       if (!ctrlPkt && !write32 && !loadPdiNoInit) {
-        dev->emitError() << "aie-split-multi-config-entry: unrecognized "
+        dev->emitError() << "aie-apply-reconfig-method: unrecognized "
                          << kReconfigMethodKey << " '" << method
                          << "' on the entrypoint marker (expected "
                             "loadpdi|write32|ctrlpkt)";
@@ -237,6 +237,6 @@ struct AIESplitMultiConfigEntryPass
 } // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-xilinx::AIEX::createAIESplitMultiConfigEntryPass() {
-  return std::make_unique<AIESplitMultiConfigEntryPass>();
+xilinx::AIEX::createAIEApplyReconfigMethodPass() {
+  return std::make_unique<AIEApplyReconfigMethodPass>();
 }
