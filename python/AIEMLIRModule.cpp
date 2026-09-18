@@ -308,6 +308,22 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetNumBDs(self.get(), col, row);
            })
+      .def("get_dma_bd_wrap_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdWrapBits(self.get(), col, row);
+           })
+      .def("get_dma_bd_step_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdStepBits(self.get(), col, row);
+           })
+      .def("get_dma_bd_iter_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdIterBits(self.get(), col, row);
+           })
+      .def("get_address_gen_granularity",
+           [](PyAieTargetModel &self) {
+             return aieGetTargetModelAddressGenGranularity(self.get());
+           })
       .def("get_num_mem_tile_rows",
            [](PyAieTargetModel &self) {
              return aieTargetModelGetNumMemTileRows(self.get());
