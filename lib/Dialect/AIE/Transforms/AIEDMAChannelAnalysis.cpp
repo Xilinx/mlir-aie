@@ -25,8 +25,10 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   for (auto program : device.getOps<DmaBody>()) {
     for (Block &block : program.getDmaBody()) {
       for (auto start : block.getOps<DMAStartOp>()) {
-        usedChannels.insert({getTileKey(program.getTile()),
-                             start.getChannelDir(), start.getChannelIndex()});
+        usedChannels.try_emplace(std::make_tuple(getTileKey(program.getTile()),
+                                                 start.getChannelDir(),
+                                                 start.getChannelIndex()),
+                                 start.getOperation());
       }
     }
   }
@@ -44,8 +46,10 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
   // Shim allocations reserve channels outside the DMA bodies above.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    usedChannels.insert({getTileKey(allocOp.getTile()), allocOp.getChannelDir(),
-                         (int)allocOp.getChannelIndex()});
+    usedChannels.try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
+                                             allocOp.getChannelDir(),
+                                             (int)allocOp.getChannelIndex()),
+                             allocOp.getOperation());
   }
 }
 
@@ -86,10 +90,11 @@ int DMAChannelAnalysis::getDMAChannelLimit(
 }
 
 int DMAChannelAnalysis::getDMAChannelIndex(
-    TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
+    TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels,
+    Operation *owner) {
   int limit = getDMAChannelLimit(tile, dir, requiresAdjacentTileAccessChannels);
   for (int i = 0; i < limit; i++) {
-    if (reservePinnedChannel(tile, dir, i) >= 0) {
+    if (reservePinnedChannel(tile, dir, i, owner) >= 0) {
       return i;
     }
   }
@@ -97,15 +102,24 @@ int DMAChannelAnalysis::getDMAChannelIndex(
 }
 
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
-                                             int channel) {
+                                             int channel, Operation *owner) {
   int maxChannelNum = getDMAChannelLimit(tile, dir, false);
   if (channel < 0 || channel >= maxChannelNum) {
     return -1;
   }
-  return usedChannels.insert({getTileKey(tile->getResult(0)), dir, channel})
+  return usedChannels
+                 .try_emplace(std::make_tuple(getTileKey(tile->getResult(0)),
+                                              dir, channel),
+                              owner)
                  .second
              ? channel
              : -1;
+}
+
+Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
+                                                  DMAChannelDir dir,
+                                                  int channel) {
+  return usedChannels.lookup({getTileKey(tile->getResult(0)), dir, channel});
 }
 
 void DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile, DMAChannel chan) {

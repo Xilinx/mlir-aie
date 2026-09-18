@@ -244,8 +244,8 @@ struct AIEObjectFifoAllocatePass
       if (col < 0 || col >= target.columns()) {
         continue;
       }
-      TileOp neighbor =
-          TileOp::getOrCreate(builder, device, col, homeOp.getRow());
+      TileOp neighbor = TileOp::getOrCreate(builder, device, col,
+                                            homeOp.getRow(), pool.getLoc());
       using SharedMemory = AIETargetModel::SharedMemory;
       SharedMemory shared = sharedMemory(homeOp, neighbor);
       if (shared == SharedMemory::Second || shared == SharedMemory::Either) {
@@ -531,6 +531,23 @@ struct AIEObjectFifoAllocatePass
     return dyn_cast<TileLike>(endpoint.getTile().getDefiningOp());
   }
 
+  void noteChannelOwner(InFlightDiagnostic &diag, Operation *owner,
+                        std::optional<int> channel = std::nullopt) {
+    auto &note = diag.attachNote(owner->getLoc());
+    if (auto endpoint = dyn_cast<RouteEndpoint>(owner)) {
+      note << "DMA endpoint @" << cast<SymbolOpInterface>(owner).getName();
+      if (auto fifo = owner->getAttrOfType<StringAttr>("fifoName"))
+        note << " for ObjectFifo @" << fifo.getValue();
+      if (reachesAdjacentTile(endpoint))
+        note << " requires adjacent MemTile access";
+      if (channel)
+        note << "; occupies channel " << *channel;
+    } else {
+      note << "pre-existing " << owner->getName() << " reserves DMA channel "
+           << *channel;
+    }
+  }
+
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
                                bool diagnose = true) {
     channelAssignments.clear();
@@ -562,13 +579,17 @@ struct AIEObjectFifoAllocatePass
                  << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
                  << " cannot access adjacent MemTile buffers or locks";
         }
-        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel) <
-            0) {
+        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel,
+                                          endpoint.getOperation()) < 0) {
           if (!diagnose)
             return failure();
-          return endpoint->emitOpError("pinned ")
-                 << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
-                 << " is out of range or already in use on this tile";
+          auto diag = endpoint->emitOpError("pinned ");
+          diag << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
+               << " is out of range or already in use on this tile";
+          if (Operation *owner =
+                  channels.getDMAChannelOwner(tileOf(endpoint), dir, *channel))
+            noteChannelOwner(diag, owner, *channel);
+          return failure();
         }
         continue;
       }
@@ -584,7 +605,8 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : pending) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       int channel = channels.getDMAChannelIndex(tileOf(endpoint), dir,
-                                                reachesAdjacentTile(endpoint));
+                                                reachesAdjacentTile(endpoint),
+                                                endpoint.getOperation());
       if (channel < 0) {
         channelFailure = endpoint;
         if (!diagnose)
@@ -603,22 +625,10 @@ struct AIEObjectFifoAllocatePass
         if (adjacent) {
           diag << " for adjacent MemTile access";
         }
-        for (auto contributor : device.getOps<RouteEndpoint>()) {
-          if (!sameTile(contributor.getTile(), endpoint.getTile()) ||
-              contributor.getRouteBundle() != WireBundle::DMA ||
-              contributor.getRouteDirection() != dir) {
-            continue;
-          }
-          auto &note = diag.attachNote(contributor.getLoc());
-          note << "DMA endpoint @"
-               << cast<SymbolOpInterface>(contributor.getOperation()).getName();
-          if (auto fifo = contributor->getAttrOfType<StringAttr>("fifoName")) {
-            note << " for ObjectFifo @" << fifo.getValue();
-          }
-          if (reachesAdjacentTile(contributor)) {
-            note << " requires adjacent MemTile access";
-          }
-        }
+        for (int i = 0; i < capacity; ++i)
+          if (Operation *owner = channels.getDMAChannelOwner(tile, dir, i))
+            noteChannelOwner(diag, owner, i);
+        noteChannelOwner(diag, endpoint.getOperation());
         return failure();
       }
       channelAssignments[endpoint.getOperation()] = channel;

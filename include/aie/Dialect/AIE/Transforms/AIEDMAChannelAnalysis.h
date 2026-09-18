@@ -23,9 +23,9 @@ class DMAChannelAnalysis {
   mlir::DenseMap<std::pair<int, int>, mlir::Value> tilesByCoordinate;
   mlir::Value getTileKey(mlir::Value tile);
 
-  /// A channel or stream port is either spoken for or free, so membership is
-  /// the whole state.
-  mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedChannels;
+  /// Keep the reserving operation so diagnostics retain its MLIR location.
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
+      usedChannels;
   mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedStreams;
 
 public:
@@ -39,12 +39,18 @@ public:
   /// A channel reaching an adjacent MemTile's memory must come from the
   /// target's restricted range at every compatible physical position.
   int getDMAChannelIndex(TileLike tile, DMAChannelDir dir,
-                         bool requiresAdjacentTileAccessChannels);
+                         bool requiresAdjacentTileAccessChannels,
+                         mlir::Operation *owner = nullptr);
 
   /// Claim `channel` for (`tile`, `dir`) so first-free assignment cannot take
   /// it. Returns the channel, or -1 when it is out of range or already
   /// claimed; the caller reports, since it knows which endpoint asked.
-  int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel);
+  int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel,
+                           mlir::Operation *owner = nullptr);
+
+  /// Operation reserving this channel, or null if unreserved or unattributed.
+  mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
+                                      int channel);
 
   /// Claim a raw stream port, reporting on `tile` when it is already taken.
   void checkAIEStreamIndex(TileLike tile, DMAChannel chan);

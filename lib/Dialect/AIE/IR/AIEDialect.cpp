@@ -2430,7 +2430,7 @@ static bool isLegalTileConnection(TileOp tile,
 }
 
 TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
-                           int row) {
+                           int row, std::optional<mlir::Location> loc) {
   TileOp tile = nullptr;
   // Find matching predefined tile at device top level, ...
   for (auto t : device.getOps<AIE::TileOp>()) {
@@ -2444,8 +2444,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = TileOp::create(builder, device.getLoc(), builder.getIndexType(), col,
-                          row);
+    tile = TileOp::create(builder, loc.value_or(device.getLoc()),
+                          builder.getIndexType(), col, row);
   }
   return tile;
 }

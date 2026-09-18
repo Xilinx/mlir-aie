@@ -82,6 +82,7 @@ module @co_located_pinned {
     aie.objectfifo.pool @p(%home) {depth = 1 : i32} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
+    // expected-note @+1 {{DMA endpoint @reader; occupies channel 0}}
     aie.objectfifo.dma_endpoint @reader(%home) drains @p {channelIndex = 0 : i32}
     // expected-error @+1 {{pinned MM2S DMA channel 0 is out of range or already in use on this tile}}
     aie.objectfifo.dma_endpoint @alias_reader(%alias) drains @p {channelIndex = 0 : i32}

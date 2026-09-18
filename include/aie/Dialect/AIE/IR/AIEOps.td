@@ -204,7 +204,8 @@ def AIE_TileOp: AIE_Op<"tile", [
       return nullptr;
     }
 
-    static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row);
+    static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row,
+                                   std::optional<mlir::Location> loc = std::nullopt);
   }];
 
   let assemblyFormat = [{
