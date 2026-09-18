@@ -330,7 +330,7 @@ def collect(diff):
         b
         for b in blocks
         if not all(
-            LICENSE_RE.search(line) or _HEADER_FILLER_RE.match(line) for line in b.lines
+            LICENSE_RE.match(line) or _HEADER_FILLER_RE.match(line) for line in b.lines
         )
     ], code
 

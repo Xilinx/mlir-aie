@@ -4,7 +4,7 @@
 # RUN: %pytest %s
 """Artifact ownership and concurrent compilation; no compiler or NPU required."""
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 import gc
 import threading

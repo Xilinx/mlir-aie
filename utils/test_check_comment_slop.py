@@ -111,19 +111,20 @@ class CollectTests(unittest.TestCase):
         )
 
     def test_unrelated_mention_of_copyright_is_not_a_header(self):
-        blocks, _ = slop.collect(
-            diff(
-                (
-                    "a.py",
-                    1,
-                    [
-                        "# See the copyright notice in LICENSE.txt for the full text.",
-                        "x = 1",
-                    ],
-                )
-            )
-        )
-        self.assertEqual(len(blocks), 1)
+        for suffix, marker in (("py", "#"), ("cc", "//")):
+            for text in (
+                "See the copyright notice in LICENSE.txt for the full text.",
+                "The Copyright holder is recorded in the generated metadata.",
+                "Preserve the SPDX-License-"
+                + "Identifier: field when copying headers.",
+            ):
+                with self.subTest(suffix=suffix, text=text):
+                    blocks, code = slop.collect(
+                        diff((f"a.{suffix}", 1, [f"{marker} {text}", "x = 1"]))
+                    )
+                    self.assertEqual(len(blocks), 1)
+                    self.assertEqual(blocks[0].lines, [text])
+                    self.assertEqual(code, 1)
 
 
 class TermTests(unittest.TestCase):

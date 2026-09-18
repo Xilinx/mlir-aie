@@ -840,6 +840,21 @@ def test_post_stage_references_follow_the_sources():
     assert out.tolist() == [0] * 8 + [1] * 8
 
 
+@pytest.mark.parametrize("act_dtype", [np.int8, np.uint8])
+@pytest.mark.parametrize("input_width", [-64, -32, -1, 0, 1, 31, 33])
+def test_skip_init_rejects_invalid_width(input_width, act_dtype):
+    with pytest.raises(ValueError, match="positive multiple of 32"):
+        kernels.conv2dk1_skip_init(input_width=input_width, act_dtype=act_dtype)
+
+
+@pytest.mark.parametrize("act_dtype", [np.int8, np.uint8])
+@pytest.mark.parametrize("input_width", [32, 64])
+def test_skip_init_accepts_complete_width_blocks(input_width, act_dtype):
+    fn = kernels.conv2dk1_skip_init(input_width=input_width, act_dtype=act_dtype)
+    assert fn.arg_shape(0) == (input_width * 32,)
+    assert fn.arg_shape(3) == (input_width * 64,)
+
+
 def test_conv2dk14_and_skip_init_references():
     # conv2dk14: one patch of K*K RGBA pixels per output; a weight of 1 on
     # channel 0 of pixel 0 for output channel 0 reads that pixel.

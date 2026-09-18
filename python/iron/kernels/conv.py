@@ -881,18 +881,18 @@ def conv2dk1_skip_init(
 
     Raises:
         ValueError: When ``act_dtype`` is not ``np.int8`` or ``np.uint8``, or
-            when ``input_width`` is not a multiple of 32.
+            when ``input_width`` is not a positive multiple of 32.
     """
     func_name, flags = _conv_act_dtype_info(
         "conv2dk1_skip_init", act_dtype, factory_name="conv2dk1_skip_init"
     )
-    if input_width % 32:
+    if input_width <= 0 or input_width % 32:
         # The kernel computes whole 32-wide blocks and its tail path was never
         # implemented, so a width that is not a multiple of 32 silently leaves
         # its last columns unwritten. Refuse it rather than return part of an
         # answer.
         raise ValueError(
-            f"conv2dk1_skip_init: input_width must be a multiple of 32, "
+            f"conv2dk1_skip_init: input_width must be a positive multiple of 32, "
             f"got {input_width}"
         )
     if skip_input_channels is None:
