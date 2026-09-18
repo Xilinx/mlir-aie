@@ -32,7 +32,7 @@ def test_zero_is_an_independent_output_only_kernel(dtype, vectorized):
     assert not hasattr(fn, "siblings")
 
 
-@pytest.mark.parametrize("tile_size", [0, -1, (), (8, 0), (3, 1.5)])
+@pytest.mark.parametrize("tile_size", [0, -1, 1.5, None, (), (8, 0), (3, 1.5)])
 def test_zero_rejects_invalid_shapes(tile_size):
     with pytest.raises(ValueError, match="positive integer or shape"):
         kernels.zero(tile_size)
@@ -106,4 +106,6 @@ def test_zero_device_cases_cover_smoke_and_static_sweeps(monkeypatch, npu2_devic
         assert case.calls > 1
         assert case.data_policy() == ("random",)
         assert inputs_for(case, "random", np.random.default_rng(0)) == []
+        fn = case.fn()
+        assert kd.elems(fn.arg_types()[0]) * bfp.itemsize(fn.arg_dtype(0)) % 4 == 0
         assert kd.design(kernels.zero, **case.kwargs, **case.harness_opts())

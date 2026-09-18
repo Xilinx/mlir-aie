@@ -42,10 +42,12 @@ def zero(tile_size=1024, dtype=np.int32, *, vectorized=True, use_chess=False):
     of every block (exponent and mantissas) are cleared. Vector stores
     use the target's native width, with a scalar tail for smaller tiles.
     """
-    shape = (
-        (tile_size,) if isinstance(tile_size, (int, np.integer)) else tuple(tile_size)
-    )
     try:
+        shape = (
+            (tile_size,)
+            if isinstance(tile_size, (int, np.integer))
+            else tuple(tile_size)
+        )
         shape = tuple(operator.index(n) for n in shape)
     except TypeError as exc:
         raise ValueError("zero: tile_size must be a positive integer or shape") from exc
@@ -59,12 +61,12 @@ def zero(tile_size=1024, dtype=np.int32, *, vectorized=True, use_chess=False):
         from aie.utils import bfp
 
         layout = TensorLayout(
-            (size * 8,),
+            (size * bfp.BLOCK,),
             pack=lambda x: bfp.encode(x).reshape(len(x), -1),
             unpack=lambda x: bfp.decode(x).reshape(len(x), -1),
         )
         reference_dtype = np.float32
-        ctype, count = "uint8_t", size * 9
+        ctype, count = "uint8_t", size * bfp.BLOCK_BYTES
     else:
         dtype = np.dtype(dtype).type
         if dtype not in _TYPES:

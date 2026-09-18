@@ -55,7 +55,7 @@ CASES: list[Case] = [
     ),
     Case(
         "zero",
-        dict(tile_size=68, dtype=np.int8),
+        dict(tile_size=68, dtype=np.uint8),
         calls=3,
         tag="vector-tail",
         perf=False,

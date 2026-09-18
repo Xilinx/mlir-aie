@@ -265,6 +265,23 @@ def test_parameter_only_multioutput_reference_repeats_valid_elements():
     assert not verdict and verdict.first_bad_index == 5
 
 
+def test_tensor_parameter_only_reference_repeats_one_complete_tile():
+    fn = _kernel(
+        [_tile(), _tile()],
+        KernelContract(roles=(Param, Out), reference=lambda weights: weights),
+    )
+    weights = np.arange(4, dtype=np.int32)
+    reference = fn.expected([weights])
+    actual = np.tile(weights, 3)
+    verdict = fn.judge(actual, reference, calls=3)
+    assert verdict and verdict.n_checked == 12
+    actual[-1] += 1
+    verdict = fn.judge(actual, reference, calls=3)
+    assert not verdict and verdict.first_bad_index == 11
+    with pytest.raises(ValueError):
+        fn.judge(actual, reference[:2], calls=3)
+
+
 def test_streamed_inputs_do_not_broadcast_a_one_tile_reference():
     fn = _kernel(
         [_tile(), _tile()],

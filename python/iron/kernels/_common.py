@@ -95,6 +95,8 @@ class KernelContract:
             ``Param`` values as constant arrays, scalar ``Param`` values
             as Python numbers. Returns the expected
             output for all calls; the harness casts it to the output dtype.
+            Without streamed ``In`` arguments, a one-call reference is also
+            accepted and repeated by ``judge`` for every independent call.
             Multiple outputs are returned as a tuple in output argument order.
             Bound parameters are omitted from the reference.
             ``None`` when no host reference exists yet -- the kernel is then

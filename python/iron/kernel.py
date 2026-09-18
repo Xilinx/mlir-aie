@@ -623,6 +623,7 @@ class ExternalFunction(Kernel):
         Declared layouts decode each output into logical tiles. DMA padding
         is trimmed per call. One Verdict summarizes all outputs and is false
         if any output fails; its detail identifies the failing output.
+        Without streamed inputs, a complete one-call reference may be repeated.
         With no streamed inputs, a one-tile reference is repeated across calls.
         """
         from aie.utils.compile.jit.markers import In

@@ -80,6 +80,10 @@ The generic test builder uses this factory through each accumulating kernel's
 declared initializer. Explicit designs choose when to zero, allowing repeated
 accumulation into the same tile.
 
+Output-only kernels need no dummy inputs: `zero_kernel.expected([])` gives one
+tile, and `zero_kernel.judge(actual, reference, calls=n)` checks every repeated
+tile against it. Streamed-input references must still describe all calls.
+
 `kernels.mm(...)` also exposes `.mac_dims` — the `(r, s, t)` MMUL
 geometry the kernel was compiled with, which varies by arch and dtype.
 Designs read it to drive their DMA layout transforms without
