@@ -7,11 +7,22 @@
 from types import SimpleNamespace
 
 import pytest
+from aie.iron import ExternalFunction
 from aie.iron.algorithms import kernel_design as kd
+from aie.iron.kernels import KernelContract
 
 
-def test_unprofiled_contract_does_not_run_a_trace(tmp_path):
-    fn = SimpleNamespace(contract=SimpleNamespace(trace_cycles=False))
+@pytest.fixture
+def fn():
+    kernel = ExternalFunction(
+        "profiled", source_string='extern "C" void profiled() {}', arg_types=[]
+    )
+    kernel.contract = KernelContract(roles=(), trace_cycles=True)
+    return kernel
+
+
+def test_unprofiled_contract_does_not_run_a_trace(tmp_path, fn):
+    fn.contract = KernelContract(roles=())
     assert (
         kd.cycles_per_call(None, [], 1, int, fn=fn, trace_size=1024, workdir=tmp_path)
         == []
@@ -23,9 +34,8 @@ def test_unprofiled_contract_does_not_run_a_trace(tmp_path):
     [([17, 19], True), ([], False), ([17], False), ([1, 17, 1, 19], False)],
 )
 def test_cycle_protocol_requires_one_complete_pair_per_call(
-    monkeypatch, tmp_path, intervals, valid
+    monkeypatch, tmp_path, fn, intervals, valid
 ):
-    fn = SimpleNamespace(name="profiled", contract=SimpleNamespace(trace_cycles=True))
     cfg = SimpleNamespace(
         physical_mlir_path="physical.mlir", trace_to_json=lambda *args: None
     )

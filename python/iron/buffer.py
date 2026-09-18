@@ -135,7 +135,7 @@ class Buffer(Resolvable):
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._arr_type)
 

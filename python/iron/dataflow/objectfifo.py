@@ -220,7 +220,7 @@ class ObjectFifo(Resolvable):
         return np_ndarray_type_get_shape(self._obj_type)
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The per-element data type of each element in each buffer belonging to the ObjectFifo."""
         return np_ndarray_type_get_dtype(self._obj_type)
 
@@ -652,7 +652,7 @@ class ObjectFifoHandle(Resolvable):
         return self._object_fifo.shape
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The per-element datatype of the ObjectFifo."""
         return self._object_fifo.dtype
 

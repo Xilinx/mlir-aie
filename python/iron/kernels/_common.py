@@ -302,9 +302,10 @@ class KernelContract:
             value = bound[i]
             if tensor:
                 value = np.asarray(value)
+                layout = self.layouts[i] if self.layouts else None
                 shape = (
-                    self.layouts[i].shape
-                    if self.layouts and self.layouts[i] is not None
+                    layout.shape
+                    if layout is not None
                     else np_ndarray_type_get_shape(arg_type)
                 )
                 if value.ndim == 0 or value.size != int(np.prod(shape)):

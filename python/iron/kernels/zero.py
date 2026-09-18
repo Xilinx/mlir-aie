@@ -34,7 +34,13 @@ _TYPES = {
 
 
 @dtypes(tuple({"dtype": dtype} for dtype in _TYPES) + ({"dtype": v8bfp16ebs8},))
-def zero(tile_size=1024, dtype=np.int32, *, vectorized=True, use_chess=False):
+def zero(
+    tile_size: int | tuple[int, ...] = 1024,
+    dtype: type | np.dtype = np.int32,
+    *,
+    vectorized: bool = True,
+    use_chess: bool = False,
+):
     """Fill one tile with zeros, independently of any compute kernel.
 
     ``tile_size`` is an element count or shape. For ``v8bfp16ebs8`` it

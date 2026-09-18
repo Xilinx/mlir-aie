@@ -172,7 +172,7 @@ def fused_mm(
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
     fn = ExternalFunction(
         "fused_mm_tile",
-        source_file=source,
+        source_file=str(source),
         arg_types=[
             np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
             np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]],
