@@ -278,7 +278,7 @@ AIE_HSA_NPU=npu2 llvm-lit -sv build/test/python/npu/test_dispatch_time_scalar.py
 
 The tests select `NPU_RUNTIME=hsa`; lit forwards `ROCM_PATH`, `IRON_HSA_DEVICE`,
 and `IRON_HSA_TIMEOUT`. Coverage includes real allocation/free calls and cleanup
-after pre-publication enqueue failure, but not induced post-publication failures.
+after both pre- and post-publication failures.
 
 ### Limitations
 
