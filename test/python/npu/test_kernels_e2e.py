@@ -777,12 +777,18 @@ def _lut_pair_object(tmp_path, aiecc_flags):
 
 
 def _carries_bitcode(obj):
+    import os
     import subprocess
 
     from aie.utils import config
 
     ret = subprocess.run(
-        [config.objcopy_path(), "--dump-section=.llvmbc=/dev/null", str(obj)],
+        [
+            config.objcopy_path(),
+            f"--dump-section=.llvmbc={os.devnull}",
+            str(obj),
+            os.devnull,
+        ],
         capture_output=True,
     )
     return ret.returncode == 0
