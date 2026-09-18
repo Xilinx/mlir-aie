@@ -117,16 +117,6 @@ NB_MODULE(_aie, m) {
       "ctx"_a, "binary"_a);
 
   m.def(
-      "translate_npu_to_cpp",
-      [stealCStr](MlirOperation op, bool foldDDRAddrOffset,
-                  bool emitDispatchShim) {
-        return stealCStr(
-            aieTranslateNpuToCpp(op, foldDDRAddrOffset, emitDispatchShim));
-      },
-      "Translate in place to a C++ TXN builder.", "module"_a,
-      "fold_ddr_addr_offset"_a = true, "emit_dispatch_shim"_a = false);
-
-  m.def(
       "translate_npu_to_binary",
       [](MlirOperation op, const std::string &device_name,
          const std::string &sequence_name) {

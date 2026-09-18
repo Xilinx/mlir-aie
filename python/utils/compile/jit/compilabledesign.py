@@ -1198,7 +1198,7 @@ class CompilableDesign:
         _tensor_placeholders = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
-        from ._dispatch_parameter import _DispatchParameter
+        from .markers import _DispatchParameter
 
         dispatch_owner = object()
         _dispatch_placeholders = {}

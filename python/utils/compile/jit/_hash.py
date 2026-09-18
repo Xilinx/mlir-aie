@@ -196,26 +196,6 @@ def _tool_identity(name: str, resolve: Callable[[], str | Path]) -> str:
         return "absent"
 
 
-def _translation_bindings_path() -> Path:
-    import aie._mlir_libs as _mlir_libs
-
-    package_file = _mlir_libs.__file__
-    if package_file is None:
-        raise RuntimeError("Cannot locate the native bindings package")
-    # _aie and the pass manager link this common CAPI library, which contains
-    # the actual lowering/translation implementation in both builds and wheels.
-    libraries = sorted(
-        {
-            path.resolve()
-            for path in Path(package_file).parent.glob("*AIEAggregateCAPI*")
-            if path.suffix in (".so", ".dylib", ".dll")
-        }
-    )
-    if len(libraries) != 1:
-        raise RuntimeError("Cannot uniquely locate AIEAggregateCAPI")
-    return libraries[0]
-
-
 def _compute_artifact_hash(
     generator: Callable | Path,
     source_files: list[Path] | tuple[Path, ...],
@@ -234,11 +214,9 @@ def _compute_artifact_hash(
     cache entry. It is resolved once by the caller and passed in explicitly (no
     silent default) so the cache key and the compilation can never disagree.
 
-    ``has_dispatch_params`` additionally hashes the dynamic-dispatch toolchain
-    (in-process translation bindings/host C++ compiler), so an upgrade to any of
-    them invalidates a design's ``dispatch.so`` the same way an upgraded Peano
-    invalidates a design's kernel objects. A no-op for the overwhelming
-    majority of (non-DispatchTime[T]) designs.
+    ``has_dispatch_params`` additionally hashes the host C++ compiler used to
+    build the dispatch library. Its generated source is covered by aiecc's
+    identity above; Python does not run a separate translation pipeline.
     """
     h = hashlib.sha256()
 
@@ -323,15 +301,11 @@ def _compute_artifact_hash(
         )
 
         if has_dispatch_params:
-            from aie._mlir_libs import _aie
             from aie.utils import config as _config
 
-            for tool_name, resolve in (
-                ("host_cxx", _config.host_cxx_path),
-                ("aie_python", lambda: _aie.__file__),
-                ("aie_translation", _translation_bindings_path),
-            ):
-                h.update(f"{tool_name}={_tool_identity(tool_name, resolve)}".encode())
+            h.update(
+                f"host_cxx={_tool_identity('host_cxx', _config.host_cxx_path)}".encode()
+            )
 
     return h.hexdigest()
 

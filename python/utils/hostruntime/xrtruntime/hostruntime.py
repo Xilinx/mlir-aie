@@ -904,7 +904,7 @@ class CachedXRTRuntime(XRTHostRuntime):
 
                 if insts_path is None:
                     # DispatchTime[T] design: no static insts to cache --
-                    # run() updates its locked, reusable BO from dispatch_insts.
+                    # run() allocates a per-call BO from dispatch_insts.
                     kernel_handle = CachedXRTKernelHandle(
                         kernel, xclbin, context, None, None
                     )

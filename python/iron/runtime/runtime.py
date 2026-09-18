@@ -40,7 +40,7 @@ from ...helpers.util import (
     try_convert_np_type_to_mlir_type,
 )
 from ...utils import trace as trace_utils
-from ...utils.compile.jit._dispatch_parameter import _DispatchParameter
+from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow import ObjectFifoHandle
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter

@@ -21,11 +21,6 @@ extern "C" {
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation op);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateNpuToBinary(
     MlirOperation op, MlirStringRef deviceName, MlirStringRef sequenceName);
-/// Translate in place to a C++ TXN builder. The caller must free the returned
-/// string; a null data pointer indicates failure.
-MLIR_CAPI_EXPORTED MlirStringRef aieTranslateNpuToCpp(MlirOperation op,
-                                                      bool foldDDRAddrOffset,
-                                                      bool emitDispatchShim);
 MLIR_CAPI_EXPORTED MlirStringRef
 aieTranslateControlPacketsToUI32Vec(MlirOperation op, MlirStringRef deviceName);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToXAIEV2(MlirOperation op,

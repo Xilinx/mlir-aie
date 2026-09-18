@@ -106,91 +106,9 @@ constants. These are re-exported into `iron` from `aie.utils`.
 | `iron.CompileTime` | marker | Type-annotation marker for a compile-time constant argument. |
 | `iron.DispatchTime` | marker | Integer scalar that can vary per call without recompiling the device program. |
 
-### Dispatch-time scalars
-
-`DispatchTime[T]` rebuilds the instruction stream for each call using a compiled
-host builder. `T` must be a supported NumPy integer scalar type, such as
-`np.int32` or `np.int64`; built-in `int`/`bool` and floating-point types are
-rejected.
-
-- **Call-time value:** overrides the signature default without recompiling.
-  If omitted, the default is used; without a default, the value is required.
-- **Explicit specialization:** `iron.jit(generator, count=3)` or
-  `design.specialize(count=3)` fixes the value and includes it in the cache key.
-  Calls cannot override it; use another specialization to change it.
-
-Defaults do not specialize parameters. Tensor capacities and worker tiling
-remain compile-time properties; callers must keep dispatch values within the
-design's valid ranges and buffer capacities.
-
-`DispatchTime` parameters must be keyword-only, even when defaulted or
-explicitly specialized. Prefer tensors first, then dispatch scalars, then
-compile-time configuration; group ordering is a convention, not a restriction:
-
-```python
-import numpy as np
-import aie.iron as iron
-
-@iron.jit
-def copy(a: iron.In, b: iron.Out, *,
-         count: iron.DispatchTime[np.int32] = 3,
-         tile_size: iron.CompileTime[int] = 256):
-    ...  # Build the design.
-
-copy(a, b)                        # Dispatch with the default count=3.
-copy(a, b, count=6)               # Same compiled design; a different dispatch.
-copy.specialize(count=3)(a, b)    # Compile with count fixed to 3.
-```
-
-### Generator-side binding and scope
-
-The generator receives an identity-bearing symbolic parameter for each unbound
-`DispatchTime[T]`, or a typed NumPy constant for a specialized one. Forward each
-symbolic parameter exactly once as a direct `Runtime` argument, **in any order**.
-The callback receives the corresponding SSA values:
-
-```python
-@iron.jit
-def design(*, bar: iron.DispatchTime[np.int32],
-           baz: iron.DispatchTime[np.int32]):
-    def seq(baz_value, bar_value):
-        ...  # baz_value corresponds to baz, bar_value to bar.
-
-    rt = iron.Runtime(seq, fn_args=[baz, bar])
-    ...  # Build and resolve the Program with rt.
-```
-
-Aliases preserve identity. Missing or duplicate bindings, bare scalar-type
-substitutes, and bindings to multiple sequences are rejected.
-
-Use the **callback argument**, not the captured symbolic parameter, for runtime
-arithmetic and MLIR control flow. Generation-time arithmetic, comparisons,
-`if bar`, `range(bar)`, NumPy value/dtype conversion, and `Worker.fn_args` reject
-symbolic parameters with `TypeError`. Shapes and worker configuration require
-`CompileTime[T]` or explicit specialization; storing or forwarding a symbolic
-parameter is valid.
-
-### Compilation scope
-
-The JIT requests device artifacts and a C++ transaction builder from the same
-`aiecc` invocation and lowering pipeline. Python validates the scalar ABI and
-compiles the host library. This requires a
-[host C++17 compiler](../programming_guide/iron_configuration.md#dispatch-time-scalar-compilation),
-including with wheel installations; subsequent dispatches call the library
-without compiling.
-
-By default, artifacts live in the JIT cache. For explicit outputs, use
-`compile(xclbin_path=..., pdi_path=...)` (`pdi_path` is optional). Retain the
-builder library in the adjacent `<xclbin stem>.prj` directory with the device
-artifacts; `design.compilable.get_dispatch_lib_path()` returns its path.
-
-The Python bridge supports one runtime sequence and rejects remaining
-`load_pdi` operations because its runtimes cannot supply those resources.
-While any parameters remain dynamic, `inst_path`, `elf_path`, and
-`full_elf=True` are unsupported: full ELF embeds static instructions, with no
-per-call replacement API. Fully specialized designs retain normal full-ELF
-support. Native hosts can request C++ builders, including reconfiguration
-builders, directly from [`aiecc`](../aiecc/README.md#parameterized-c-transaction-builders).
+For dispatch scalar defaults, specialization, and runtime binding, see
+[Dispatch-time scalars](../programming_guide/section-2/section-2d/RuntimeTasks.md#dispatch-time-scalars)
+in the runtime data-movement guide.
 
 See the [Programming Guide](../programming_guide/README.md) for worked
 examples of `@iron.jit`.

@@ -25,10 +25,10 @@ import numpy as np
 from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
 # The C symbol the generated code exports to describe itself, and the
-# aie-translate flag that emits it. A .so built without the flag has no ABI to
+# aiecc flag that emits it. A .so built without the flag has no ABI to
 # read and no entry point either.
 DISPATCH_ABI_SYMBOL = "dispatch_abi"
-EMIT_DISPATCH_SHIM_FLAG = "--aie-npu-emit-dispatch-shim"
+EMIT_DISPATCH_SHIM_FLAG = "--npu-cpp-emit-dispatch-shim"
 
 # Covers everything AIEXToEmitC.cpp's cTypeName can emit.
 _SCALAR_C_TYPES: dict[str, type] = {

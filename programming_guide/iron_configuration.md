@@ -199,7 +199,7 @@ Python locates `libhrx` in this order (filesystem only — no `dlopen`). Explici
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `IRON_HRX_DEVICE` | auto-detect | Force the amdxdna device generation (`npu1` / `npu2`) instead of detecting it from sysfs PCI IDs. |
-| `HRX_EXE_CACHE_SIZE` | `32` | Max number of amdxdna executables the `CachedHRXRuntime` keeps (LRU). |
+| `HRX_EXE_CACHE_SIZE` | [Device-dependent](#iron-hrx-runtime-cache-size) | Max number of amdxdna executables the `CachedHRXRuntime` keeps (LRU). |
 | `IRON_HRX_TIMEOUT` | `0` (disabled) | Watchdog timeout, in seconds, bounding the wait in `hrx_stream_synchronize`. `0`, unset, or an invalid value disables the watchdog. On expiry a diagnosable error is raised (the underlying sync cannot be cancelled). |
 
 ```bash

@@ -126,7 +126,10 @@ def test_generate_raises_on_guard_failed(fixture_so):
 
 def test_so_without_abi_rejected(fixture_so_no_abi):
     """A .so with no ABI to report is unusable and must be rebuilt."""
-    with pytest.raises(HostRuntimeError, match="exports no dispatch_abi"):
+    with pytest.raises(
+        HostRuntimeError,
+        match="exports no dispatch_abi.*--npu-cpp-emit-dispatch-shim",
+    ):
         DispatchBridge(fixture_so_no_abi, dispatch_params=["scale", "n_tiles"])
 
 

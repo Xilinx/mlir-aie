@@ -23,7 +23,7 @@ from ..dialects.aiex import (
 )
 from ..helpers.dialects.scf import _for as range_
 from ..helpers.util import flatten_fn_args
-from ..utils.compile.jit._dispatch_parameter import _DispatchParameter
+from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle

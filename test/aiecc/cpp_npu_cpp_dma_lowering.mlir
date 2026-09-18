@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-npu-dma-lowering %s | FileCheck %s
+// RUN: aiecc --get=npu_lowered.mlir --output-dir=%t.d --tmpdir=%t.d/work %s
+// RUN: FileCheck %s < %t.d/npu_lowered.mlir
 
 // aiecc uses this DMA-lowering stage for both static and parameterized output.
-// If this named pipeline stops resolving, the bridge silently lowers a runtime
-// sequence differently from the same design compiled statically.
+// Check the driver's shared lowering rather than a separate in-process pipeline.
 
 // The dma_memcpy_nd became a blockwrite of BD words + an address_patch for the
 // host buffer, and the dma_wait a sync -- i.e. the whole pass list ran, not

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids %s | FileCheck %s
-// RUN: aie-opt --aie-npu-dma-lowering %s | FileCheck %s
+// RUN: aiecc --get=npu_lowered.mlir --output-dir=%t.d --tmpdir=%t.d/work %s
+// RUN: FileCheck %s < %t.d/npu_lowered.mlir
 
 // No DMA tasks remain to allocate, but instruction emission still depends on
 // runtime scalars. Neither path should reject or unroll this control flow.

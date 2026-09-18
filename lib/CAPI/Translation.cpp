@@ -95,20 +95,6 @@ MlirStringRef aieTranslateNpuToBinary(MlirOperation moduleOp,
   return mlirStringRefCreate(cStr, insts_size);
 }
 
-MlirStringRef aieTranslateNpuToCpp(MlirOperation moduleOp,
-                                   bool foldDDRAddrOffset,
-                                   bool emitDispatchShim) {
-  std::string cpp;
-  llvm::raw_string_ostream os(cpp);
-  ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(
-          AIETranslateNpuToCpp(mod, os, foldDDRAddrOffset, emitDispatchShim)))
-    return mlirStringRefCreate(nullptr, 0);
-  char *cStr = static_cast<char *>(malloc(cpp.size()));
-  cpp.copy(cStr, cpp.size());
-  return mlirStringRefCreate(cStr, cpp.size());
-}
-
 MlirStringRef aieTranslateControlPacketsToUI32Vec(MlirOperation moduleOp,
                                                   MlirStringRef deviceName) {
   std::vector<uint32_t> insts;

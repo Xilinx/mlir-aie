@@ -8,9 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from aie.dialects.aie import translate_npu_to_binary
 from aie.ir import Context, Module
-from aie.passmanager import PassManager
 from aie.utils.compile import utils as compile_utils
 from aie.utils.compile.jit import _manifest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
@@ -164,13 +162,21 @@ def test_generated_bridge_matches_static_binary(tmp_path):
                 f"%param = arith.constant 16 : i32\n%n = arith.constant {n} : index\n%c0 =",
             )
         )
-        with Context():
-            module = Module.parse(static)
-            PassManager.parse("builtin.module(aie-npu-dma-lowering)").run(
-                module.operation
-            )
-            expected = translate_npu_to_binary(module.operation)
-        np.testing.assert_array_equal(words, np.asarray(expected, dtype=np.uint32))
+        static_dir = tmp_path / f"static-{n}"
+        static_dir.mkdir()
+        mlir_path = static_dir / "aie.mlir"
+        mlir_path.write_text(static)
+        binary_path = static_dir / "insts.bin"
+        _run_aiecc(
+            str(mlir_path),
+            [
+                "--get-npu-insts",
+                f"--npu-insts-name={binary_path}",
+                f"--output-dir={static_dir}",
+                f"--tmpdir={static_dir / 'aiecc.prj'}",
+            ],
+        )
+        np.testing.assert_array_equal(words, np.fromfile(binary_path, dtype="<u4"))
 
 
 def test_rebuild_preserves_loaded_and_unloaded_generations(tmp_path):
@@ -303,15 +309,3 @@ def test_scalar_and_memref_argument_order(arguments, names, types):
             f"module {{ aie.device(npu1_1col) {{ aie.runtime_sequence @seq({arguments}) {{}} }} }}"
         )
         _check_runtime_sequence_abi(module, names, types)
-
-
-def test_translation_binding_defaults_and_failure():
-    from aie.dialects.aie import translate_npu_to_cpp
-
-    with Context():
-        cpp = translate_npu_to_cpp(Module.parse(_source()).operation)
-        assert "dispatch_generate" not in cpp
-        with pytest.raises(RuntimeError, match="translate"):
-            translate_npu_to_cpp(
-                Module.parse("module {}").operation, emit_dispatch_shim=True
-            )

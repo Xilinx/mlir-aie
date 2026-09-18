@@ -437,6 +437,27 @@ def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
     assert hash(d1) == hash(d2)
 
 
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("tool", ["aiecc", "host_cxx"])
+def test_artifact_hash_tracks_active_compilers(monkeypatch, tmp_path, dynamic, tool):
+    import os
+
+    from aie.utils import config
+    from aie.utils.compile.jit._hash import _compute_artifact_hash
+
+    compiler = tmp_path / tool
+    compiler.write_text("compiler")
+    monkeypatch.setattr(config, f"{tool}_path", lambda: str(compiler))
+    generator = _gemm_gen()
+
+    before = _compute_artifact_hash(generator, [], [], True, dynamic)
+    stat = compiler.stat()
+    os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+    after = _compute_artifact_hash(generator, [], [], True, dynamic)
+
+    assert (before != after) == (tool == "aiecc" or dynamic)
+
+
 def test_hash_for_path_generator_uses_path_string():
     d1 = CompilableDesign(Path("/a/design.mlir"))
     d2 = CompilableDesign(Path("/b/design.mlir"))
@@ -1074,7 +1095,7 @@ def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
 def test_generate_mlir_dispatch_param_receives_identity(npu2_device):
     """Dynamic parameters carry identity; specialization still supplies constants."""
     from aie.iron import Program, Runtime
-    from aie.utils.compile.jit._dispatch_parameter import _DispatchParameter
+    from aie.utils.compile.jit.markers import _DispatchParameter
 
     observed = {}
 
@@ -1137,7 +1158,7 @@ def test_specialized_dispatch_runtime_constant_preserves_dtype(
 
 def test_dispatch_default_remains_dynamic_during_generation(npu2_device):
     from aie.iron import Program, Runtime
-    from aie.utils.compile.jit._dispatch_parameter import _DispatchParameter
+    from aie.utils.compile.jit.markers import _DispatchParameter
 
     observed = []
 
