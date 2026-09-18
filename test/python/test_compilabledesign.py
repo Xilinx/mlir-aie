@@ -493,7 +493,8 @@ def test_artifact_hash_tracks_active_compilers(
     before = _compute_artifact_hash(generator, [], [], True, dynamic)
     stat = compiler.stat()
     if change == "mtime":
-        os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+        # NTFS timestamps have 100 ns resolution.
+        os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns + 100))
     elif change == "size":
         compiler.write_text("different compiler")
         os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns))
