@@ -175,7 +175,7 @@ def test_out_of_range_value_rejected(fixture_so, value):
     instruction stream built from a number the caller never passed.
     """
     bridge = _bridge(fixture_so)
-    # scale is int32_t, n_tiles is size_t (unsigned): -1 fits neither.
+    # -1 fits signed scale but not unsigned n_tiles.
     param = "n_tiles" if value == -1 else "scale"
     other = {"n_tiles": 2} if param == "scale" else {"scale": 1}
     with pytest.raises(HostRuntimeError, match="does not fit its generated C"):
@@ -234,8 +234,22 @@ def test_integer_protocol_evaluated_once(fixture_so):
         ("uint64_t", 2**64, False),
     ],
 )
-def test_scalar_bounds(tmp_path, ctype, value, accepted):
-    source = f"""
+def test_scalar_bounds(boundary_bridge, ctype, value, accepted):
+    bridge = boundary_bridge(ctype)
+    if accepted:
+        assert list(bridge.generate({"value": value})) == [value & 0xFFFFFFFF]
+    else:
+        with pytest.raises(HostRuntimeError, match="does not fit"):
+            bridge.generate({"value": value})
+
+
+@pytest.fixture(scope="module")
+def boundary_bridge(tmp_path_factory):
+    from functools import cache
+
+    @cache
+    def build(ctype):
+        source = f"""
 #include <cstdint>
 extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() {{ return "{ctype}"; }}
 extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate({ctype} value, uint32_t **out) {{
@@ -245,12 +259,10 @@ extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate({ctype} value, uint32_t
   return 1;
 }}
 """
-    bridge = DispatchBridge(_compile_fixture(tmp_path, source, "bounds"), ["value"])
-    if accepted:
-        assert list(bridge.generate({"value": value})) == [value & 0xFFFFFFFF]
-    else:
-        with pytest.raises(HostRuntimeError, match="does not fit"):
-            bridge.generate({"value": value})
+        directory = tmp_path_factory.mktemp(f"bounds_{ctype}")
+        return DispatchBridge(_compile_fixture(directory, source, "bounds"), ["value"])
+
+    return build
 
 
 @pytest.mark.parametrize(
@@ -277,7 +289,12 @@ extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate(uint32_t **out) {{
 
 @pytest.mark.parametrize(
     "abi,error",
-    [("nullptr", "null dispatch ABI"), ('"\\xff"', "non-ASCII dispatch ABI")],
+    [
+        ("nullptr", "null dispatch ABI"),
+        ('"\\xff"', "non-ASCII dispatch ABI"),
+        ('"int32_t,"', "malformed dispatch ABI"),
+        ('",int32_t"', "malformed dispatch ABI"),
+    ],
 )
 def test_malformed_abi(tmp_path, abi, error):
     source = (

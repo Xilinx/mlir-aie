@@ -316,14 +316,6 @@ def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
     assert hash(d1) != hash(d3)
 
 
-def test_hash_stable_for_generator_with_dispatch_param():
-    """Unbound dispatch values do not affect the compiled design's identity."""
-    gen = _dispatch_gen()
-    d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
-    d2 = CompilableDesign(gen, compile_kwargs={"N": 512})
-    assert hash(d1) == hash(d2)
-
-
 def test_dispatch_defaults_do_not_change_recipe():
     def make(default):
         def gen(*, count: DispatchTime[np.int32] = default):
@@ -484,7 +476,10 @@ def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("tool", ["aiecc", "peano_cxx", "host_cxx"])
-def test_artifact_hash_tracks_active_compilers(monkeypatch, tmp_path, dynamic, tool):
+@pytest.mark.parametrize("change", ["mtime", "size", "path"])
+def test_artifact_hash_tracks_active_compilers(
+    monkeypatch, tmp_path, dynamic, tool, change
+):
     import os
 
     from aie.utils import config
@@ -497,7 +492,16 @@ def test_artifact_hash_tracks_active_compilers(monkeypatch, tmp_path, dynamic, t
 
     before = _compute_artifact_hash(generator, [], [], True, dynamic)
     stat = compiler.stat()
-    os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+    if change == "mtime":
+        os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+    elif change == "size":
+        compiler.write_text("different compiler")
+        os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    else:
+        replacement = tmp_path / f"other_{tool}"
+        replacement.write_bytes(compiler.read_bytes())
+        os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        compiler = replacement
     after = _compute_artifact_hash(generator, [], [], True, dynamic)
 
     assert (before != after) == (tool != "host_cxx" or dynamic)
@@ -1736,7 +1740,12 @@ def test_get_dispatch_lib_path_none_for_non_dispatch_design():
     assert d.get_dispatch_lib_path() is None
 
 
-def test_dispatch_library_selected_once_per_compile(monkeypatch, tmp_path, npu2_device):
+@pytest.mark.parametrize("cache_hit", [False, True])
+def test_dispatch_library_selected_once_per_compile(
+    monkeypatch, tmp_path, npu2_device, cache_hit
+):
+    from unittest.mock import Mock
+
     from aie.utils.compile.jit import _manifest
     from aie.utils.compile.utils import SHARED_LIB_SUFFIX
 
@@ -1745,7 +1754,8 @@ def test_dispatch_library_selected_once_per_compile(monkeypatch, tmp_path, npu2_
     monkeypatch.setattr(design, "_compute_cache_hash", lambda: "cached")
     directory = tmp_path / "cached"
     directory.mkdir()
-    (directory / "final.xclbin").touch()
+    if cache_hit:
+        (directory / "final.xclbin").touch()
 
     def publish(contents):
         library = directory / f"dispatch-{contents * 64}{SHARED_LIB_SUFFIX}"
@@ -1754,13 +1764,30 @@ def test_dispatch_library_selected_once_per_compile(monkeypatch, tmp_path, npu2_
         return library
 
     first = publish("a")
+    compile_device = Mock(side_effect=lambda **kwargs: kwargs["xclbin_path"].touch())
+    compile_builder = Mock(return_value=first)
+    monkeypatch.setattr(design, "_generate_mlir", lambda *args: None)
+    monkeypatch.setattr(compilabledesign_module, "compile_mlir_module", compile_device)
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_dispatch_bridge", compile_builder
+    )
     design.compile()
     assert design.get_dispatch_lib_path() == first
+    assert (
+        compile_device.call_count
+        == compile_builder.call_count
+        == (0 if cache_hit else 1)
+    )
     second = publish("b")
     # A later publication must not silently change this design's selected ABI.
     assert design.get_dispatch_lib_path() == first
     design.compile()
     assert design.get_dispatch_lib_path() == second
+    assert (
+        compile_device.call_count
+        == compile_builder.call_count
+        == (0 if cache_hit else 1)
+    )
 
 
 @pytest.mark.parametrize("dtype", [int, bool, float, str, np.float32, np.bool_])

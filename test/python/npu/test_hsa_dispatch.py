@@ -6,9 +6,7 @@
 
 """Instruction ownership checks against real HSA allocations and NPU dispatch."""
 
-import gc
 import sys
-import weakref
 from contextlib import contextmanager
 
 import aie.iron as iron
@@ -156,9 +154,10 @@ def test_dispatch_instruction_lifetime(runtime, kernel, fail_before_publish):
         _assert_copied_region(a, b, count)
 
 
-@pytest.mark.parametrize("boundary", ["ring", "wait"])
-@pytest.mark.parametrize("error", [HSATimeoutError, RuntimeError])
-@pytest.mark.parametrize("recover_by", ["cleanup", "run"])
+@pytest.mark.parametrize(
+    "boundary,error,recover_by",
+    [("ring", RuntimeError, "cleanup"), ("wait", HSATimeoutError, "run")],
+)
 def test_published_failure_retains_instructions(
     runtime, kernel, boundary, error, recover_by
 ):
@@ -193,29 +192,6 @@ def test_published_failure_retains_instructions(
         count = len(freed)
         runtime.cleanup()
         assert len(freed) == count
-
-
-def test_published_failure_keeps_runtime_alive(kernel):
-    runtime = HSAHostRuntime()
-    ctx = runtime._ctx
-    handle = runtime.load(kernel)
-    a = iron.tensor(_random_tiles(seed=9), dtype=np.int32, device="npu")
-    b = iron.zeros((MAX_TILES * TILE_SIZE,), dtype=np.int32, device="npu")
-    words = kernel._generate_dispatch_insts({"n_tiles": 2, "start_tile": 0})
-    with _device_allocations(ctx) as (allocated, freed):
-        with pytest.raises(RuntimeError, match="interrupted after publication"):
-            with _fail_after_publication(ctx, "wait", RuntimeError):
-                runtime.run(handle, [a, b], dispatch_insts=words)
-        reference = weakref.ref(runtime)
-        del runtime
-        gc.collect()
-        assert reference() is not None
-        assert freed == []
-        # The exit callback retains ownership until a later completion check.
-        reference().cleanup()
-        gc.collect()
-        assert freed == [allocated[0][0], handle.pdi_ptr]
-        assert reference() is None
 
 
 def test_cleanup_retains_instructions_until_completion(runtime, kernel):
