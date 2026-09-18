@@ -465,7 +465,7 @@ def test_as_mlir_call_time_kwarg_overrides_prebound():
     # the override.
     captured_self = []
 
-    def fake_generate(self):
+    def fake_generate(self, *args, **kwargs):
         captured_self.append(self)
         return "<mlir>"
 
@@ -660,4 +660,7 @@ def test_as_mlir_binds_runtime_device_before_generation(monkeypatch):
 
     keys = list(cd.compilable._generated_cache)
     assert len(keys) == 1
-    assert "NPU2Col1" in keys[0][2]
+    # The runtime-detected device must appear in the generation cache key
+    # (proving it was bound before generation). Search the whole key rather
+    # than a fixed index so this stays robust to key-layout additions.
+    assert any("NPU2Col1" in str(part) for part in keys[0])

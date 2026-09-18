@@ -58,9 +58,17 @@ def test_generated_cache_tracks_active_device():
     assert generated_for == ["NPU1Col1", "NPU2Col1"]
     assert first_aie2 is second_aie2
     assert first_aie2p is second_aie2p
-    # One cache entry per device, keyed by device identity.
+    # One cache entry per device, keyed by device identity. The device's
+    # fully-qualified class name is the only dotted string in the key tuple;
+    # find it by content rather than a fixed index so this stays robust to
+    # key-layout additions (e.g. the reconfig flag).
     assert len(cd._generated_cache) == 2
-    keyed_devices = {key[2].rsplit(".", 1)[-1] for key in cd._generated_cache}
+    keyed_devices = {
+        part.rsplit(".", 1)[-1]
+        for key in cd._generated_cache
+        for part in key
+        if isinstance(part, str) and "." in part
+    }
     assert keyed_devices == {"NPU1Col1", "NPU2Col1"}
 
 
@@ -110,7 +118,9 @@ def test_generated_root_binds_runtime_device_before_cache_key(monkeypatch):
 
     keys = list(cd._generated_cache)
     assert len(keys) == 1
-    assert "NPU2Col1" in keys[0][2]
+    # Device bound before generation => it appears in the cache key. Search the
+    # whole key rather than a fixed index (robust to key-layout additions).
+    assert any("NPU2Col1" in str(part) for part in keys[0])
 
 
 def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact(

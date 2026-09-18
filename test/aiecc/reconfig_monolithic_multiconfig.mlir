@@ -18,9 +18,12 @@
 // RUN: cd %t && aiecc --get-full-elf --reconfig-method=ctrlpkt --get npu_lowered.mlir --tmpdir=%t %s 2>&1
 // RUN: cat %t/npu_lowered.mlir | FileCheck %s
 
-// Both config devices survive the fold (neither is dropped).
-// CHECK-DAG: @cfg_a
-// CHECK-DAG: @cfg_b
+// Both config DEVICES survive the fold (neither is dropped). Anchor on the
+// `aie.device` body, not a bare `@cfg_*` -- the folded host dispatch sequences
+// (@cfg_a_0, @cfg_a_run, ...) carry the same substring and would pass even if a
+// config device body were dropped.
+// CHECK-DAG: aie.device({{.*}}) @cfg_a
+// CHECK-DAG: aie.device({{.*}}) @cfg_b
 
 module {
   aie.device(npu2) @main {

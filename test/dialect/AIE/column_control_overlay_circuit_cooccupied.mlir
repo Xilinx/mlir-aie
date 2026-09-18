@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true emit-standalone-overlay=false" %s | FileCheck %s
+// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true emit-standalone-overlay=false" %s | FileCheck %s --check-prefix=NOSHARE
 
 // A circuit objectFifo shim input co-emits both a circuit-switched aie.flow
 // AND a data aie.shim_dma_allocation on the SAME shim MM2S channel (0) -- the
@@ -16,7 +17,12 @@
 
 // CHECK: aie.tile(0, 1){{.*}}ctrl_pkt_shim_chan = 1
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1({{.*}}, MM2S, 1, <pkt_type = 0, pkt_id = 15>)
-// CHECK-NOT: packet_source{{.*}}DMA : 0{{.*}}TileControl
+
+// Control must NOT land on the circuit-occupied channel 0 (it relocated to
+// chan 1). Whole-file via its own prefix -- the previous single-line
+// `CHECK-NOT: packet_source ... DMA : 0 ... TileControl` was vacuous (FileCheck
+// is line-oriented; a source and its dest are never on one line).
+// NOSHARE-NOT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
