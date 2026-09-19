@@ -8,8 +8,8 @@
 The bf16 norms and RoPE are re-exported from ``norm`` and ``datamovement``;
 they support aie2 and aie2p, with ``cols`` as an alias for ``tile_size``.
 The f32/affine norms and activation epilogue are aie2p-only. Each processes one row
-(``cols`` elements) per call; the row length is a runtime argument the
-design passes as the ``count`` role. These are the kernels
+(``cols`` elements) per call; the row length is a scalar ``Param`` the
+factory binds to ``cols``. These are the kernels
 ``programming_examples/ml/{norm,rope,mm_activation_epilogue}`` build.
 """
 
@@ -125,8 +125,8 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
     """Row-wise LayerNorm, f32 in, per-column gamma/beta, bf16 out.
 
     The second argument holds ``gamma`` (``cols`` values) followed by ``beta``
-    (``cols`` values) as float32; it is a ``param`` the design holds for the
-    whole run.
+    (``cols`` values) as float32: a tensor ``Param``, which the generic
+    builder bakes into a core buffer.
 
     Args:
         cols: Elements per row (multiple of 16).

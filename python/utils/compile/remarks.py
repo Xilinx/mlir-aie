@@ -444,8 +444,6 @@ _EXTRA_WARNINGS = [
     "-Wframe-larger-than=1024",
 ]
 
-_NOT_FACTORIES = {"mm_stream_dims", "mm_acc_dtype"}
-
 
 def compile_command(ext_fn, target: str, out_dir: Path) -> tuple[list[str], Path]:
     """Return the exact Peano command the JIT would run for ``ext_fn``, plus remark flags.
@@ -502,15 +500,11 @@ def kernel_builds():
     (``NotImplementedError``) is skipped. Remarks depend on source and flags,
     not on the shape a test runs, so this is the whole surface.
     """
-    import inspect
-
     from aie.iron import kernels
     from aie.utils.bfp import dtype_name
 
-    for name in kernels.__all__:
+    for name in kernels.factories():
         f = getattr(kernels, name)
-        if not inspect.isfunction(f) or name.endswith("_ref") or name in _NOT_FACTORIES:
-            continue
         combos = [{}] + [dict(c) for c in getattr(f, "dtypes", ()) if c]
         seen: set[str] = set()
         for combo in combos:

@@ -234,7 +234,11 @@ class KernelContract:
 
     @property
     def out_index(self) -> int:
-        """Position of the output, whether the kernel writes it or accumulates into it."""
+        """Position of the one output, written (``Out``) or accumulated into (``InOut``).
+
+        Raises for a kernel with several outputs: code that must handle any
+        kernel reads :attr:`out_indices`.
+        """
         if len(self.out_indices) > 1:
             raise ValueError("multiple outputs: use out_indices")
         roles = list(self.roles)
@@ -534,7 +538,7 @@ def _make_extern(
     compile_flags: list[str] | None = None,
     use_chess: bool = False,
     inline: bool = False,
-    shared_object_file_name: str | None = None,
+    object_file_name: str | None = None,
     contract: KernelContract | None = None,
 ) -> ExternalFunction:
     """Construct (or reuse) an ExternalFunction with the standard include_dirs.
@@ -565,14 +569,13 @@ def _make_extern(
     same toolchain choice (mixed peano/chess is rejected at compile
     time).
 
-    ``shared_object_file_name`` pins the output ``.o`` filename so
-    multiple factories targeting the SAME source file (e.g. companion
-    symbols like ``reduce_max_vector`` + ``compute_max`` both in
-    ``reduce_max.cc``) can share one compile.  The first call builds
-    the ``.o``; subsequent calls with the same ``shared_object_file_name``
-    skip the build and link against the existing one.  Without this,
-    each factory would produce a distinct ``.o`` each carrying ALL
-    symbols from the ``.cc``, tripping a duplicate-symbol link error.
+    ``object_file_name`` names the output explicitly instead of deriving it
+    from the cache key. Two factories that bind different symbols of the
+    same translation unit (``reduce_max_vector`` and ``compute_max``, both
+    in ``reduce_max.cc``) name the same object, and ``ExternalFunction``
+    then gives both one ``KernelObject``: one compile, one link artifact,
+    where separate digest-named objects would each carry every symbol of
+    the ``.cc`` and collide at link.
     """
     flags_tuple = tuple(compile_flags or [])
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
@@ -592,14 +595,11 @@ def _make_extern(
     # ExternalFunctions with identical .o filenames and trip the collision
     # check in ExternalFunction.__init__ (or, if both passed it, would
     # silently overwrite each other on disk).
-    if shared_object_file_name is not None:
-        # Caller explicitly pinned the .o filename so companion symbols from
-        # the same .cc share one compile.  Skip the digest-suffix path so the
-        # ExternalFunction lands at the pinned name; the second-and-later
-        # callers' compiles short-circuit via compile_external_kernel's
-        # "skip if .o exists" check.
+    if object_file_name is not None:
+        # An explicit name is the whole identity of the object: no digest
+        # suffix, and (below) no symbol prefix, so every binding of that
+        # translation unit resolves to the one KernelObject.
         digest = None
-        object_file_name = shared_object_file_name
     elif flags_tuple or arg_keys or str(source_path):
         # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
         # wide enough that the chance of two distinct cache_keys colliding
@@ -628,8 +628,8 @@ def _make_extern(
     # copy.  ``digest`` is a pure function of ``cache_key``, so prefixing every
     # parameterized variant unconditionally keeps the symbol and the
     # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
-    # When ``digest`` is None (unparameterized default-name kernel, or a pinned
-    # ``shared_object_file_name``) this leaves the symbol unprefixed.
+    # When ``digest`` is None (unparameterized default-name kernel, or an
+    # explicit ``object_file_name``) this leaves the symbol unprefixed.
     #
     # Chess exception: the symbol prefix is applied post-compile via
     # ``llvm-objcopy --redefine-sym`` (see compile_external_kernel), which only

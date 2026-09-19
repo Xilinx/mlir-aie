@@ -881,8 +881,10 @@ def conv2dk1_skip_init(
         ExternalFunction configured for the conv2dk1_skip_init kernel.
 
     Raises:
-        ValueError: When ``act_dtype`` is not ``np.int8`` or ``np.uint8``, or
-            when ``input_width`` is not a positive multiple of 32.
+        ValueError: When ``act_dtype`` is not ``np.int8`` or ``np.uint8``,
+            when ``input_width`` is not a positive multiple of 32, or when a
+            channel count is not a positive multiple of what the source
+            steps by (16 input channels, 8 output and skip channels).
     """
     func_name, flags = _conv_act_dtype_info(
         "conv2dk1_skip_init", act_dtype, factory_name="conv2dk1_skip_init"
@@ -898,6 +900,20 @@ def conv2dk1_skip_init(
         )
     if skip_input_channels is None:
         skip_input_channels = input_channels
+    # Both paths in the source count channels in whole steps: the two input
+    # halves in 16s (an 8x8 weight block per half), the output and the skip
+    # projection in 8s. A count that is not a whole number of steps is
+    # silently truncated by the integer division in the loop bounds.
+    for label, count, step in (
+        ("input_channels", input_channels, 16),
+        ("output_channels", output_channels, 8),
+        ("skip_input_channels", skip_input_channels, 8),
+    ):
+        if count <= 0 or count % step:
+            raise ValueError(
+                f"conv2dk1_skip_init: {label} must be a positive multiple of "
+                f"{step}, got {count}"
+            )
     half_ch = input_channels // 2
     total_in_ch = input_channels + skip_input_channels
     in0_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]

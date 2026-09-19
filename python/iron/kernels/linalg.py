@@ -461,11 +461,10 @@ def mm(
         b_col_maj=b_col_maj,
         c_col_maj=c_col_maj,
     )
-    # Host-side layout the streams above assume: B given as (n, k) tiles of
-    # B^T, C emitted as (n, m) tiles of C^T. kernel_design reads
-    # these to transpose the host operands.
-    extern.b_col_maj = bool(b_col_maj)
-    extern.c_col_maj = bool(c_col_maj)
+    # Host-side layout the streams above assume: with b_col_maj, B is given
+    # as (n, k) tiles of B^T; with c_col_maj, C is emitted as (n, m) tiles of
+    # C^T. The contract's layouts carry that, so the builder transposes the
+    # host operands without knowing which kernel it is building.
     extern.contract = replace(
         extern.contract,
         layouts=(
@@ -508,9 +507,11 @@ def mv(
     Two kernels live behind this factory, selected by dtype:
 
     * ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``, whose
-      vectorized path wants A in the word-transposed layout
-      ``a_dims_from_stream`` publishes. Initialize C with
-      ``kernels.zero(dim_m, output_dtype)``.
+      vectorized path wants A in a word-transposed layout; the contract's
+      layout for A applies it on the host, and
+      ``programming_examples/basic/matrix_multiplication/matrix_vector``
+      shows the equivalent ``dims_from_stream`` on the hop into the core.
+      Initialize C with ``kernels.zero(dim_m, output_dtype)``.
     * ``(bfloat16, bfloat16)`` builds the shared
       ``aie_kernels/generic/mv.cc``, the kernel behind IRON's ``GEMV``
       operator. Its signature leads with two runtime scalars,
@@ -569,13 +570,13 @@ def mv(
     # of each 2-column word slowly, m rows then the next 2-col word. A design
     # applies this as dims_from_stream on the hop into the core.
     extern.dims = (dim_m, dim_k)
-    extern.a_dims_from_stream = (
+    a_dims_from_stream = (
         [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
     )
     extern.contract = replace(
         extern.contract,
         layouts=(
-            _tile_layout((dim_m, dim_k), extern.a_dims_from_stream, inverse=True),
+            _tile_layout((dim_m, dim_k), a_dims_from_stream, inverse=True),
             TensorLayout((dim_k,)),
             TensorLayout((dim_m,)),
         ),
@@ -712,8 +713,8 @@ def mm_bfp(
         else StreamDimsABC(A=None, B=None, C=None)
     )
     # The kernel reads B transposed (8x8 sub-tiles of B^T), so the host B
-    # buffer is B^T (N, K), as the block_datatypes examples tile it.
-    extern.b_col_maj, extern.c_col_maj = True, False
+    # buffer is B^T (N, K), as the block_datatypes examples tile it; the
+    # contract's layout for B says so.
     extern.contract = replace(
         extern.contract,
         layouts=(

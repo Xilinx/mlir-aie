@@ -478,18 +478,18 @@ class ExternalFunction(Kernel):
         binding._cached_digest = None
         cls._instances.add(binding)
 
-    # Optional metadata the kernel factories attach: the contract
-    # (aie.iron.kernels.KernelContract) and the matmul layout facts.
-    # Typed Any rather than KernelContract: pyright analyzes the sources and
-    # the staged package as two module trees, so naming the class here would
-    # make the factories' own KernelContract a different type.
+    # Metadata the kernel factories attach. ``contract`` describes any
+    # kernel; typed Any rather than KernelContract because pyright analyzes
+    # the sources and the staged package as two module trees, so naming the
+    # class here would make the factories' own KernelContract a different
+    # type. The other three are what the matrix designs read to lay out
+    # their DMA streams (``mac_dims``, ``stream_dims``) and to name a tile
+    # (``dims``); how the host stores each operand is the contract's
+    # ``layouts``, not an attribute here.
     contract: Any = None
     mac_dims: tuple
     dims: tuple
     stream_dims: Any  # kernels.linalg.StreamDimsABC
-    b_col_maj: bool
-    c_col_maj: bool
-    a_dims_from_stream: object
 
     def _require_contract(self):
         if self.contract is None:

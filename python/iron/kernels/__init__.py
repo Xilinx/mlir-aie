@@ -15,16 +15,23 @@ Submodules:
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
-- `linalg` — mm, mv, cascade_mm (``.mac_dims`` and
-  ``.stream_dims`` / ``.a_dims_from_stream`` describe the DMA layout)
+- `linalg` — mm, mv, cascade_mm (``.mac_dims`` and ``.stream_dims``
+  describe the DMA layout a design streams the tiles in)
 - `zero` — independent zero-fill kernel
 
-Most factories attach a [`KernelContract`][iron.kernels.KernelContract] as
-``.contract``: argument roles, a numpy reference and a tolerance. It is what
-``aie.iron.algorithms.kernel_design`` uses to build, run and check any kernel, and the
-``*_ref`` functions exported here are those references.
+Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
+``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
+``Param``), a numpy reference, a tolerance and the dtype facts a signature
+cannot say. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
+run and check any kernel, and the ``*_ref`` functions exported here are those
+references. :func:`factories` lists the factory names.
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
+
+import inspect
+import sys
+
+from aie.iron.kernel import ExternalFunction
 
 from ._common import (
     KernelContract,
@@ -320,3 +327,24 @@ __all__ = [
     "bn_conv2dk1_input_split_partial_put_ui8",
     "bn_conv2dk1_input_split_partial_skip_get",
 ]
+
+
+def factories() -> list[str]:
+    """Names of the exported kernel factories, in ``__all__`` order.
+
+    A factory is a function declared to return an ``ExternalFunction``. The
+    ``*_ref`` references, query helpers such as ``mm_stream_dims`` and the
+    contract classes are exported too, so anything that walks the library
+    (the contract test, the static-check sweep) reads this rather than
+    keeping its own list of names to skip.
+    """
+    module = sys.modules[__name__]
+
+    def builds_a_kernel(f) -> bool:
+        if not inspect.isfunction(f):
+            return False
+        declared = inspect.signature(f).return_annotation
+        # The string form is what a module with postponed annotations declares.
+        return declared is ExternalFunction or declared == ExternalFunction.__name__
+
+    return [name for name in __all__ if builds_a_kernel(getattr(module, name))]

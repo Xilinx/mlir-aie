@@ -230,18 +230,27 @@ def test_device_fixture_restores_previous_device():
     assert get_current_device(probe_runtime=False) is previous
 
 
+def test_factories_lists_every_exported_builder():
+    """``kernels.factories()`` is what the sweeps walk; a builder it misses is never checked.
+
+    The rule is the declared return type, so this pins the rule against the
+    export list: everything exported that is neither a reference nor one of
+    the two matmul query helpers must be in it.
+    """
+    exported = {n for n in kernels.__all__ if inspect.isfunction(getattr(kernels, n))}
+    not_builders = {n for n in exported if n.endswith("_ref")}
+    not_builders |= {"mm_stream_dims", "mm_acc_dtype"}
+    assert set(kernels.factories()) == exported - not_builders
+    assert kernels.factories() == [
+        n for n in kernels.__all__ if n in exported - not_builders
+    ]
+
+
 def test_contract_coverage_is_explicit():
     """Every exported factory carries a contract, including cascade and setup."""
     without = []
-    for name in kernels.__all__:
+    for name in kernels.factories():
         f = getattr(kernels, name)
-        if (
-            not callable(f)
-            or inspect.isclass(f)
-            or name.endswith("_ref")
-            or name in ("mm_stream_dims", "mm_acc_dtype")
-        ):
-            continue
         signature = inspect.signature(f)
         kwargs = {}
         try:
@@ -337,8 +346,10 @@ def test_harness_lowers_a_design_to_mlir(case_id):
     assert "func.call" in str(mlir) or "aie.core" in str(mlir)
     # The reference already has the output dtype the harness will compare
     # in: the kernel's, or float32 for a bfp16ebs8 output that judge decodes.
-    out_dt = kd.shape_dtype(fn.arg_types()[fn.contract.out_index])[1]
-    assert ref.dtype == (np.float32 if bfp.is_bfp(out_dt) else out_dt)
+    refs = ref if isinstance(ref, tuple) else (ref,)
+    for i, r in zip(fn.contract.out_indices, refs):
+        out_dt = kd.shape_dtype(fn.arg_types()[i])[1]
+        assert r.dtype == (np.float32 if bfp.is_bfp(out_dt) else out_dt)
 
 
 def test_reduction_reference_yields_one_value_per_call():
@@ -355,7 +366,7 @@ def test_matrix_design_defaults_to_one_tile(factory):
     fn = factory()
     inputs = kd.sample_inputs(fn)
     ref = fn.expected(inputs)
-    assert ref.shape == (1, fn.dims[0] * (fn.dims[2] if len(fn.dims) == 3 else 1))
+    assert ref.shape == (1, kd.elems(fn.arg_types()[fn.contract.out_index]))
     assert [a.n_elements for a in kd.host_args(fn)][-1] == kd.output_size(fn)
     assert "func.call" in str(kd.design(factory).as_mlir())
 
@@ -388,7 +399,10 @@ def test_design_rejects_invalid_call_count(calls):
 def test_matrix_design_repeats_independent_calls():
     fn = kernels.mm()
     inputs = kd.sample_inputs(fn, calls=2)
-    assert fn.expected(inputs).shape == (2, fn.dims[0] * fn.dims[2])
+    assert fn.expected(inputs).shape == (
+        2,
+        kd.elems(fn.arg_types()[fn.contract.out_index]),
+    )
     assert "scf.for" in str(kd.design(kernels.mm, calls=2).as_mlir())
 
 
@@ -737,7 +751,7 @@ def test_designs_for_different_kernels_do_not_share_a_cache_key():
         kd.design(kernels.reduce_max, calls=4, dtype=bfloat16)
     )
     assert h(kd.design(kernels.add, calls=4)) == h(kd.design(kernels.add, calls=4))
-    # A `param` is baked into the design, so its value is part of the key.
+    # A tensor Param is baked into the design, so its value is part of the key.
     p3 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])])
     p5 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])])
     assert h(p3) != h(p5)
@@ -865,14 +879,14 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     M, K, N = 64, 64, 64
     fn = kernels.mm_bfp(dim_m=64, dim_k=64, dim_n=64)
     c = fn.contract
-    assert c.roles == (In, In, InOut) and fn.b_col_maj and not fn.c_col_maj
+    assert c.roles == (In, In, InOut)
     a, b = kd.sample_inputs(fn, calls=2)
     assert a.dtype == np.float32 and a.shape == (2, M, K) and b.shape == (2, K, N)
     # Same-type operands share one FIFO, in per-call argument order.
     (packed,) = kd.host_layout(fn, [a, b])
     ha, hb = packed[:, 0], packed[:, 1]
     assert ha.dtype == np.uint8 and ha.shape == (2, M * K * 9 // 8)
-    m, k, n = fn.dims
+    m, k, n = M, K, N
     assert np.array_equal(
         bfp.shuffle(ha[0], K, M, k, m, unshuffle=True).ravel(), bfp.encode(a[0]).ravel()
     )
@@ -1027,6 +1041,31 @@ def test_skip_init_accepts_complete_width_blocks(input_width, act_dtype):
     fn = kernels.conv2dk1_skip_init(input_width=input_width, act_dtype=act_dtype)
     assert fn.arg_shape(0) == (input_width * 32,)
     assert fn.arg_shape(3) == (input_width * 64,)
+
+
+@pytest.mark.parametrize(
+    "kwargs,label",
+    [
+        (dict(input_channels=8), "input_channels"),
+        (dict(input_channels=24), "input_channels"),
+        (dict(input_channels=0), "input_channels"),
+        (dict(output_channels=12), "output_channels"),
+        (dict(output_channels=0), "output_channels"),
+        (dict(skip_input_channels=4), "skip_input_channels"),
+        (dict(skip_input_channels=-8), "skip_input_channels"),
+    ],
+)
+def test_skip_init_rejects_partial_channel_steps(kwargs, label):
+    """The source steps channels in whole 16s (input) and 8s (output, skip)."""
+    with pytest.raises(ValueError, match=f"{label} must be a positive multiple"):
+        kernels.conv2dk1_skip_init(**kwargs)
+
+
+def test_skip_init_accepts_whole_channel_steps():
+    fn = kernels.conv2dk1_skip_init(
+        input_channels=16, output_channels=8, skip_input_channels=8
+    )
+    assert fn.arg_shape(2) == ((16 + 8) * 8,)
 
 
 def test_conv2dk14_and_skip_init_references():
@@ -1404,8 +1443,21 @@ def test_stream_dims_follow_the_layout_flags():
     assert plain.stream_dims.A == bcm.stream_dims.A == ccm.stream_dims.A
     assert plain.stream_dims.B != bcm.stream_dims.B
     assert plain.stream_dims.C != ccm.stream_dims.C
-    assert (plain.b_col_maj, plain.c_col_maj) == (False, False)
-    assert (bcm.b_col_maj, ccm.c_col_maj) == (True, True)
+    # The host-side consequence is in the contract's layouts, where the
+    # generic builder reads it: B is stored as tiles of B^T, C decoded from
+    # tiles of C^T. Nothing on the function itself says "column major".
+    rng = np.random.default_rng(0)
+    b = rng.standard_normal((1, fkw["dim_k"], fkw["dim_n"])).astype(np.float32)
+    c = rng.standard_normal((1, fkw["dim_m"], fkw["dim_n"])).astype(np.float32)
+    assert not np.array_equal(
+        plain.contract.layouts[1].encode(b), bcm.contract.layouts[1].encode(b)
+    )
+    assert np.array_equal(
+        plain.contract.layouts[2].encode(c), bcm.contract.layouts[2].encode(c)
+    )
+    assert not np.array_equal(
+        plain.contract.layouts[2].encode(c), ccm.contract.layouts[2].encode(c)
+    )
 
 
 def test_softmax_tolerance_rejects_an_unwritten_tile():
@@ -1583,9 +1635,9 @@ def _combo_id(v) -> str:
 
 
 def _factories_with_dtypes():
-    for name in kernels.__all__:
+    for name in kernels.factories():
         f = getattr(kernels, name)
-        if inspect.isfunction(f) and hasattr(f, "dtypes"):
+        if hasattr(f, "dtypes"):
             for combo in f.dtypes:
                 yield pytest.param(
                     name,
@@ -1598,19 +1650,19 @@ def _factories_with_dtypes():
 def test_declared_dtype_combinations_build(name, combo):
     """Every combination a factory lists as supported builds, and its arg types use it."""
     fn = getattr(kernels, name)(**combo)
-    if name == "mm_bfp":  # block-floating-point operands are not numpy dtypes
-        assert fn.contract.initializers
-        return
+    assert fn.contract is not None
+    if fn.contract.accumulates and not fn.contract.unsupported:
+        # The builder initializes an InOut output before every call, so a
+        # kernel it can run must say how.
+        assert fn.contract.initializers, f"{name}: InOut without an initializer"
     if any(bfp.is_bfp(v) for v in combo.values()):
-        return
+        return  # block-floating-point operands are not numpy dtypes
     tensor_dts = {
         np.dtype(kd.shape_dtype(t)[1]) for t in fn.arg_types() if hasattr(t, "__args__")
     }
     for v in combo.values():
         if isinstance(v, type):  # a dtype, not a shape or a flag
             assert np.dtype(v) in tensor_dts, f"{name}: {v} not among {tensor_dts}"
-    if name != "mm_bfp":
-        assert fn.contract is not None
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -1676,12 +1728,10 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
         elif c.setup is not None:
             # A setup only matters where an accumulator is narrowed: a bf16
             # or bfp16 output, or an explicit conversion in the source.
-            out_dt = kd.shape_dtype(ef.arg_types()[c.out_index])[1]
-            narrows = (
-                bfp.is_bfp(out_dt)
-                or np.dtype(out_dt) == np.dtype(bfloat16)
-                or _NARROWS.search(src)
-            )
+            out_dts = [kd.shape_dtype(ef.arg_types()[i])[1] for i in c.out_indices]
+            narrows = any(
+                bfp.is_bfp(dt) or np.dtype(dt) == np.dtype(bfloat16) for dt in out_dts
+            ) or _NARROWS.search(src)
             assert narrows, f"{name}: names a setup but narrows nothing"
 
 

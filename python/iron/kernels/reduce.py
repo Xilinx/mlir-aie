@@ -21,9 +21,10 @@ from ._common import (
     dtypes,
 )
 
-# reduce_max_*() and compute_max() both live in reduce_max.cc; pin the
-# output object name so multiple factory calls in the same design share
-# one compile (no duplicate-symbol link errors).
+# reduce_max_*() and compute_max() both live in reduce_max.cc. Naming the
+# object gives every binding of that translation unit one KernelObject (see
+# ExternalFunction.object_file), so a design that uses both compiles the
+# source once and links one artifact.
 _REDUCE_MAX_OBJ = "reduce_max.cc.o"
 
 # reduce_{add,min,max}.cc all step a 16-element int32 vector (32 for the
@@ -176,7 +177,7 @@ def reduce_max(
         f"reduce_max_{func_variant}{suffix}",
         _default_source_path("reduce_max.cc"),
         [in_ty, out_ty, np.int32],
-        shared_object_file_name=_REDUCE_MAX_OBJ,
+        object_file_name=_REDUCE_MAX_OBJ,
         contract=_reduce_contract("max", tile_size),
     )
 
@@ -188,9 +189,10 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
     Used for multi-core reductions where each core produces a partial max and a
     final tree reduces them pairwise.
 
-    Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max]; sharing the
-    output ``.o`` (via ``shared_object_file_name``) means both factories
-    in the same design compile the source exactly once.
+    Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max],
+    and binds a symbol of the same object: ``compute_max().object_file is
+    reduce_max().object_file``, so a design using both compiles the source
+    exactly once.
 
     Args:
         dtype: Element data type (``np.int32`` or ``bfloat16``).
@@ -217,7 +219,7 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
         f"compute_max{suffix}",
         _default_source_path("reduce_max.cc"),
         [out_ty, out_ty, out_ty],
-        shared_object_file_name=_REDUCE_MAX_OBJ,
+        object_file_name=_REDUCE_MAX_OBJ,
         contract=KernelContract(
             roles=(In, In, Out),
             reference=compute_max_ref,

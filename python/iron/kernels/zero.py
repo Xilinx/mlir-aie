@@ -8,6 +8,7 @@ import operator
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
+from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -40,7 +41,7 @@ def zero(
     *,
     vectorized: bool = True,
     use_chess: bool = False,
-):
+) -> ExternalFunction:
     """Fill one tile with zeros, independently of any compute kernel.
 
     ``tile_size`` is an element count or shape. For ``v8bfp16ebs8`` it
