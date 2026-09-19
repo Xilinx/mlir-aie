@@ -703,8 +703,8 @@ xilinx::aiecc::measureBankSectionBytes(llvm::StringRef elfPath, int numBanks) {
       continue;
     }
     sizes[banks[0]].size += sec.getSize();
-    sizes[banks[0]].align =
-        std::max<int64_t>(sizes[banks[0]].align, elf ? sec.getAlignment().value() : 1);
+    sizes[banks[0]].align = std::max<int64_t>(
+        sizes[banks[0]].align, elf ? sec.getAlignment().value() : 1);
   }
   return sizes;
 }
@@ -768,13 +768,13 @@ bool isLutGather(const llvm::CallBase *call) {
 }
 
 // An offset into a table is classified by the object that contains it. That is
-// sound only because `checkLutBankSeparation` assigns a bank to an object solely
-// when the object's whole extent provably lies in one bank, so every in-bounds
-// offset shares that bank. `inbounds` also admits one-past-the-end, which is the
-// next bank when an object ends flush with a boundary, so a constant offset is
-// additionally bounded against the object's size. A variable offset rides on
-// `inbounds` alone, and an object of unknown size (an `extern tbl[]`
-// declaration) has nothing to bound against.
+// sound only because `checkLutBankSeparation` assigns a bank to an object
+// solely when the object's whole extent provably lies in one bank, so every
+// in-bounds offset shares that bank. `inbounds` also admits one-past-the-end,
+// which is the next bank when an object ends flush with a boundary, so a
+// constant offset is additionally bounded against the object's size. A variable
+// offset rides on `inbounds` alone, and an object of unknown size (an `extern
+// tbl[]` declaration) has nothing to bound against.
 bool offsetStaysInObject(const llvm::GEPOperator *gep,
                          const llvm::DataLayout &layout) {
   if (gep->hasAllZeroIndices()) {
@@ -1143,15 +1143,15 @@ xilinx::aiecc::parseLinkOverflowBytes(llvm::StringRef log,
   if (pos == llvm::StringRef::npos) {
     return std::nullopt;
   }
-  llvm::StringRef line = log.drop_front(pos).take_until([](char c) {
-    return c == '\n';
-  });
+  llvm::StringRef line =
+      log.drop_front(pos).take_until([](char c) { return c == '\n'; });
   size_t at = line.find("overflowed by ");
   if (at == llvm::StringRef::npos) {
     return std::nullopt;
   }
   int64_t bytes = 0;
-  if (line.drop_front(at + strlen("overflowed by ")).consumeInteger(10, bytes)) {
+  if (line.drop_front(at + strlen("overflowed by "))
+          .consumeInteger(10, bytes)) {
     return std::nullopt;
   }
   return bytes;

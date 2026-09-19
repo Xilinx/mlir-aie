@@ -97,10 +97,10 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
               "--aie-assign-buffer-addresses with bank-aware allocation");
         stackRun = core.getStackRun();
       }
-      MemoryRun dataRun = probe ? MemoryRun{stackRun.end(),
-                                            targetModel.getLocalMemorySize() -
-                                                stackRun.end()}
-                                : coreDataRegion(tile, buffers[tiles[srcCoord]]);
+      MemoryRun dataRun =
+          probe ? MemoryRun{stackRun.end(),
+                            targetModel.getLocalMemorySize() - stackRun.end()}
+                : coreDataRegion(tile, buffers[tiles[srcCoord]]);
       // The checks below all ask whether placement is stale. A probe link runs
       // before placement, so there is nothing yet to be stale.
       if (!probe) {
@@ -145,8 +145,9 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
           targetModel.getMemInternalBaseAddress(srcCoord) + dataRun.start;
       int length = dataRun.size;
       bool reservedData =
-          !probe && llvm::any_of(buffers[tiles[srcCoord]],
-                                 [](BufferOp buf) { return buf.getCoreData(); });
+          !probe && llvm::any_of(buffers[tiles[srcCoord]], [](BufferOp buf) {
+            return buf.getCoreData();
+          });
       llvm::SmallVector<MemoryRun> bankRuns;
       if (probe) {
         // A probe measures; it does not judge. Section sizes come from the

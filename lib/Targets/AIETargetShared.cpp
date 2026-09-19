@@ -263,8 +263,8 @@ llvm::SmallVector<MemoryRun> coreBankRegions(TileOp tile,
   // A reservation held for a bank *is* that bank's region: the allocator set it
   // aside for precisely the sections this function is sizing a region for.
   // Counting it as occupied would hand the region back the space it was told to
-  // keep, and hand the section a hole somewhere else -- so it may be the largest
-  // free run in the bank while the reservation sits in a smaller one.
+  // keep, and hand the section a hole somewhere else -- so it may be the
+  // largest free run in the bank while the reservation sits in a smaller one.
   llvm::SmallVector<std::optional<MemoryRun>> reserved(numBanks, std::nullopt);
   for (auto buf : buffers) {
     int64_t base = getBufferBaseAddress(buf);
