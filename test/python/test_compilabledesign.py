@@ -72,6 +72,13 @@ def _dispatch_gen():
     return f
 
 
+def _variadic_gen():
+    def stream(out: Out, *tensors: In, N: CompileTime[int]):
+        pass
+
+    return stream
+
+
 # ---------------------------------------------------------------------------
 # Construction defaults
 # ---------------------------------------------------------------------------
@@ -130,6 +137,33 @@ def test_dispatch_params_classified():
     # DispatchTime[T] params must not also land in scalar_params or compile_params.
     assert d.scalar_params == []
     assert d.compile_params == ["N"]
+
+
+def test_variadic_tensor_list_takes_the_remaining_positionals():
+    """``*tensors: In`` is one tensor parameter for every positional the named ones leave."""
+    d = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 4})
+    assert d.tensor_params == ["out", "tensors"]
+    assert d.variadic_tensor_param == "tensors"
+    kernel = Kernel("k", "k.o")
+    assert d.split_runtime_args(("o", "a", kernel, "b"), {}) == (["o", "a", "b"], {})
+    assert d.split_runtime_args(("o",), {}) == (["o"], {})
+    assert [d._tensor_arg_name(i) for i in range(3)] == [
+        "out",
+        "tensors[0]",
+        "tensors[1]",
+    ]
+    d._expected_tensor_sizes = [32, 32, 32]
+    ok, bad = np.zeros(1, np.int32), np.zeros(2, np.int32)
+    d.validate_tensor_args([ok, ok, ok])
+    with pytest.raises(RuntimeError, match=r"'tensors\[1\]' covers 8 bytes"):
+        d.validate_tensor_args([ok, ok, bad])
+    assert CompilableDesign(_gemm_gen()).variadic_tensor_param is None
+
+    def scalars(a: In, *args, N: CompileTime[int]):
+        pass
+
+    with pytest.raises(TypeError, match=r"\*args must be annotated In, Out or InOut"):
+        CompilableDesign(scalars, compile_kwargs={"N": 4})
 
 
 def test_path_generator_has_empty_param_lists():

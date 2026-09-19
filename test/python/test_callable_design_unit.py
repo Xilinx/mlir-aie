@@ -392,6 +392,20 @@ def test_external_function_positional_not_in_tensor_args():
     ), "Kernel instance must not appear in scalar_kwargs"
 
 
+def test_variadic_tensor_design_takes_any_number_of_positionals():
+    """A ``*tensors: In`` design has no positional maximum; the runtime checks the count."""
+
+    def stream(*tensors: In, N: CompileTime[int]):
+        pass
+
+    cd = jit(stream, N=2)
+    assert cd.compilable.variadic_tensor_param == "tensors"
+    assert cd.compilable.tensor_params == ["tensors"]
+    assert cd.compilable.split_runtime_args((1, 2, 3), {}) == ([1, 2, 3], {})
+    with pytest.raises(TypeError, match="keyword arguments"):
+        cd(1, tensors=2)
+
+
 # NOTE: trace_config end-to-end behaviour (forwarded to NPUKernel.__init__,
 # not to kernel.__call__) is covered by a real NPU run in
 # test/python/npu/test_iron_jit_e2e.py::test_trace_config_forwarded_to_kernel.
