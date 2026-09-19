@@ -420,11 +420,11 @@ def compile_cxx_core_function(
                 raise RuntimeError(f"[Peano] LLVM bitcode assembly failed{detail}")
 
 
-def _run_aiecc(mlir_file: str, args: list[str]):
-    aiecc_bin = config.aiecc_path()
-    cmd = [aiecc_bin, mlir_file] + args
+def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
+    aiecc_bin = os.path.abspath(config.aiecc_path())
+    cmd = [aiecc_bin, os.path.abspath(mlir_file)] + args
     logger.debug("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     if result.stdout:
         logger.debug("%s", result.stdout)
     if result.stderr:
@@ -470,8 +470,10 @@ def compile_mlir_module(
             ``pyxrt.hw_context(dev, pyxrt.elf(path))``.  When set, xclbin and
             raw-insts generation are skipped -- the full ELF is self-contained.
         verbose (bool): If True, enable verbose output.
-        work_dir (str): Compilation working directory.
-        options (list[str]): List of additional options.
+        work_dir (str): Compilation working directory, also used as aiecc's
+            subprocess working directory to resolve relative kernel paths.
+        options (list[str]): List of additional options. Relative paths in these
+            options are interpreted by aiecc from work_dir when provided.
         use_chess (bool): When True, drive aiecc with the Chess front-end
             (``--unified``) instead of the Peano front-end.  Must agree
             with the per-ExternalFunction ``_use_chess`` settings — the
@@ -487,6 +489,8 @@ def compile_mlir_module(
             ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
             still need a Makefile-side ``.o`` rule.
     """
+    if work_dir:
+        work_dir = os.path.abspath(work_dir)
     if use_chess:
         # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
         # in a single Chess process to amortise startup cost; matches the
@@ -499,7 +503,7 @@ def compile_mlir_module(
         ]
     else:
         args = [
-            f"--peano={config.peano_install_dir()}",
+            f"--peano={os.path.abspath(config.peano_install_dir())}",
         ]
     if full_elf_path:
         # A full ELF is self-contained (bundles PDIs + TXN control code), so the
@@ -562,7 +566,7 @@ def compile_mlir_module(
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
             f.write(str(mlir_module))
-        _run_aiecc(mlir_file, args)
+        _run_aiecc(mlir_file, args, cwd=work_dir)
     else:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
             f.write(str(mlir_module))
