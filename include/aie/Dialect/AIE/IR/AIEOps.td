@@ -89,8 +89,7 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
   let arguments = (
     ins AIETileType:$tile_type,
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$col,
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$row,
-        OptionalAttr<StrAttr>:$allocation_scheme
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$row
   );
 
   let summary = "Declare a logical AIE tile to be placed";
@@ -164,14 +163,12 @@ def AIE_TileOp: AIE_Op<"tile", [
   ]>, Results<(outs Index:$result)> {
   let arguments = (
     ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$col,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row,
-        OptionalAttr<StrAttr>:$allocation_scheme
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row
   );
 
   let summary = "Declare an AIE tile";
   let description = [{
     This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
-    Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).
 
     A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
     memory buffer (BufferOp), and lock (LockOp).
@@ -233,14 +230,6 @@ def AIE_TileOp: AIE_Op<"tile", [
     }
   }];
 
-  let builders = [
-    OpBuilder<(ins "int32_t":$col, "int32_t":$row), [{
-      build($_builder, $_state, col, row, nullptr);
-    }]>,
-    OpBuilder<(ins "mlir::Type":$type, "int32_t":$col, "int32_t":$row), [{
-      build($_builder, $_state, type, col, row, nullptr);
-    }]>
-  ];
 }
 
 def AIE_EndOp: AIE_Op<"end", [Terminator]> {
@@ -1740,10 +1729,9 @@ def AIE_BufferOp
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
 
-    `mem_bank` pins the buffer to one memory bank of that tile. The bank-aware
-    allocation scheme treats the pin as a hard constraint and reports an error
-    when the bank cannot hold the buffer. The basic-sequential scheme has no
-    notion of banks and ignores the pin.
+    `mem_bank` pins the buffer to one memory bank of that tile. The pin is a
+    hard constraint: if the bank cannot hold the buffer, the allocator reports
+    an error rather than placing it elsewhere.
 
     `core_data` marks the extent that holds the core's own .data, .rodata and
     .bss, which `aie-assign-buffer-addresses` creates from the core's

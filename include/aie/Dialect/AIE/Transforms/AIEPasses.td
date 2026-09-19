@@ -134,10 +134,6 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 
-  let options = [
-    Option<"clAllocScheme", "alloc-scheme", "std::string", /*default=*/"",
-           "Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.">,
-  ];
 }
 
 def AIENormalizeDmaBdDims : Pass<"aie-normalize-dma-bd-dims", "DeviceOp"> {

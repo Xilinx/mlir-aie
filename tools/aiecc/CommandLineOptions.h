@@ -92,8 +92,6 @@ inline cl::opt<int>
     saSeed("sa-seed",
            cl::desc("Random seed for SA placer (0 = non-deterministic)"),
            cl::init(1));
-inline cl::opt<std::string> allocScheme("alloc-scheme",
-                                        cl::desc("Buffer allocation scheme"));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));

@@ -96,7 +96,6 @@ class Device(Resolvable):
             tile_type,
             col=tile.col,
             row=tile.row,
-            allocation_scheme=tile.allocation_scheme,
             loc=loc,
             ip=ip,
             packet_type=tile.packet_type,

@@ -7,19 +7,22 @@
 
 // A core whose own sections do not fit alongside its buffers.
 //
-// The linker reports the shortfall against the `data` region, which the tile's
-// leftover space bounds. aiecc adds that leftover to the shortfall to state the
-// size the core has to reserve.
+// The core declares no data_size. The probe link measures its sections instead,
+// so the 40000-byte .bss is an allocator input and the shortfall is reported
+// while placing buffers -- with a memory map naming what is in the way -- rather
+// than as a linker region overflow after the addresses are already chosen.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -c %S/data_region_overflow_kernel.cc -o %t.d/data_region_overflow_kernel.o
-// RUN: cd %t.d && not aiecc --get-core-elfs %s 2>&1 | FileCheck %s
+// RUN: cd %t.d && not aiecc --get-input-with-addresses %s 2>&1 | FileCheck %s
 
-// CHECK: will not fit in region 'data'
-// CHECK: aiecc: core {{.*}}_core_0_2 needs space for up to 40000 bytes of static data
-// CHECK-SAME: Set data_size on the core
-// CHECK-SAME: data_size = 40000 : i32
+// The measured region is placed like any other buffer, so it appears in the map.
+// CHECK: warning: Not all requested buffers fit in the available memory
+// CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
+// CHECK: (core data sections) {{.*}}(40000 bytes)
+// CHECK: error: {{.*}}could not be placed: buffer "big1" needs 16384 bytes
+// CHECK-NOT: will not fit in region 'data'
 
 module {
   aie.device(npu2) {

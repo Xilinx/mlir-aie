@@ -9,8 +9,8 @@
 // move: the stack at offset 0 and the buffers packed above it. The placement
 // attributes stay absent rather than being materialised.
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s 2>&1 | FileCheck %s
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 
 // CHECK: aie.buffer
 // CHECK-SAME: address = 1024 : i32

@@ -1207,13 +1207,11 @@ getTracePipeline(mlir::MLIRContext *ctx) {
 // Vector → AIEVec → buffer/lock/DMA setup → control-overlay → SCF lowering.
 // Operates on the whole module; the inner pipeline nests under DeviceOp.
 // Inspects `mod` for target arch (drives `convert-vector-to-aievec` opts).
-inline std::unique_ptr<mlir::PassManager>
-getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
-                              llvm::StringRef allocScheme, bool dynamicObjFifos,
-                              bool packetSwObjFifos, bool ctrlPktOverlay,
-                              bool bf16Emulation, bool loadPdiToCtrlPkt = false,
-                              bool skipObjectFifoVerify = false,
-                              bool assignAddresses = true) {
+inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
+    mlir::MLIRContext *ctx, mlir::ModuleOp mod, bool dynamicObjFifos,
+    bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
+    bool loadPdiToCtrlPkt = false, bool skipObjectFifoVerify = false,
+    bool assignAddresses = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1306,9 +1304,7 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   // buffers names the unnamed buffers before the core compiles.
   dpm2.addPass(createAIEPrepareBuffersPass());
   if (assignAddresses) {
-    AIEAssignBufferAddressesOptions bufOpts;
-    bufOpts.clAllocScheme = allocScheme.str();
-    dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));
+    dpm2.addPass(createAIEAssignBufferAddressesPass());
   }
   dpm2.addPass(createAIEAssignCoreLinkFilesPass());
   dpm2.addPass(createAIEVectorTransferLoweringPass());
@@ -1333,6 +1329,14 @@ inline void recordBankDemand(
     if (probe.empty() || numBanks <= 0) {
       return;
     }
+    // The core's unpinned .data/.rodata/.bss is measurable from the same probe,
+    // and needs one contiguous run wherever it goes. Recording it lets
+    // placement treat it as an extent to fit rather than as whatever is left
+    // over, which is what `data_size` had to be declared for.
+    if (auto dataBytes = xilinx::aiecc::measureDataSectionBytes(probe)) {
+      coreOp.setMeasuredDataSizeAttr(
+          mlir::Builder(coreOp.getContext()).getI32IntegerAttr(*dataBytes));
+    }
     auto sizes = xilinx::aiecc::measureBankSectionBytes(probe, numBanks);
     if (llvm::all_of(sizes, [](const xilinx::aiecc::BankSectionSize &s) {
           return s.size == 0;
@@ -1356,13 +1360,10 @@ inline void recordBankDemand(
 
 // Pairs with `getInputWithAddressesPipeline(..., assignAddresses=false)`.
 inline std::unique_ptr<mlir::PassManager>
-getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
-                                 llvm::StringRef allocScheme) {
+getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx) {
   using namespace xilinx::AIE;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  AIEAssignBufferAddressesOptions bufOpts;
-  bufOpts.clAllocScheme = allocScheme.str();
-  pm->nest<DeviceOp>().addPass(createAIEAssignBufferAddressesPass(bufOpts));
+  pm->nest<DeviceOp>().addPass(createAIEAssignBufferAddressesPass());
   return pm;
 }
 

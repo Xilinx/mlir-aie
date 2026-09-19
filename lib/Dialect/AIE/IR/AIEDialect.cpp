@@ -2174,9 +2174,6 @@ LogicalResult LogicalTileOp::verify() {
     }
   }
 
-  if (isShimNOCorPLTile() && getAllocationScheme())
-    return emitOpError("Shim tiles cannot have an allocation scheme");
-
   return success();
 }
 
@@ -2362,9 +2359,6 @@ LogicalResult TileOp::verify() {
       found = true;
     }
   }
-
-  if (isShimNOCorPLTile() && getAllocationScheme())
-    return emitOpError("Shim tiles cannot have an allocation scheme");
 
   return success();
 }

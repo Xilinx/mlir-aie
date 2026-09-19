@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // A stack pinned only to a bank can move around an immovable buffer in it.
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 // CHECK: aie.buffer
 // CHECK-SAME: address = 16384 : i32
 // CHECK: stack_address = 17408 : i32

@@ -15,7 +15,7 @@
 // buffer and the kernel declaration are kept in agreement by the verifier and
 // the buffer's own type is the single thing placement has to read.
 
-// RUN: aie-opt --aie-assign-buffer-addresses=alloc-scheme=bank-aware %s | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
 // CHECK: mem_bank = 1 : i32, sym_name = "in_bank_b"
 // CHECK: mem_bank = 3 : i32, sym_name = "in_bank_d"

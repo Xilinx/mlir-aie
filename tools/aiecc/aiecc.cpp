@@ -685,7 +685,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     };
   };
 
-
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
     // included, regardless of --device-name.
@@ -747,14 +746,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       "input_with_symbols.mlir",
       PassPipeline{
           &context,
-          [scheme = allocScheme.getValue(), dyn = dynamicObjFifos.getValue(),
-           pkt = packetSwObjFifos.getValue(),
+          [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
            ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
            ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
            skipVerify = skipObjectFifoVerify.getValue()](mlir::MLIRContext *ctx,
                                                          mlir::ModuleOp mod) {
-            return getInputWithAddressesPipeline(ctx, mod, scheme, dyn, pkt,
-                                                 ctrl, bf16, ldpdi, skipVerify,
+            return getInputWithAddressesPipeline(ctx, mod, dyn, pkt, ctrl, bf16,
+                                                 ldpdi, skipVerify,
                                                  /*assignAddresses=*/false);
           }});
 
@@ -985,23 +983,21 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &placementInput = useProbe ? probeElfs : objects;
   auto &physical =
       bundle(placementInput.out, unplaced.out)
-          .join<ModRef>("input_with_addresses.mlir",
-                        [&context, scheme = allocScheme.getValue(), elfLookup,
-                         bankDemand, useProbe](
-                            const Node<Directory> &probes,
-                            const Node<ModRef> &modN,
-                            Item<ModRef> &out) -> mlir::LogicalResult {
-                          out.value = ModRef(modN.get().get().clone());
-                          if (useProbe) {
-                            recordBankDemand(out.value->get(),
-                                             elfLookup(probes), *bankDemand);
-                          }
-                          mlir::PassManager *pm = nullptr;
-                          auto owned =
-                              getAssignBufferAddressesPipeline(&context, scheme);
-                          pm = owned.get();
-                          return pm->run(out.value->get());
-                        });
+          .join<ModRef>(
+              "input_with_addresses.mlir",
+              [&context, elfLookup, bankDemand, useProbe](
+                  const Node<Directory> &probes, const Node<ModRef> &modN,
+                  Item<ModRef> &out) -> mlir::LogicalResult {
+                out.value = ModRef(modN.get().get().clone());
+                if (useProbe) {
+                  recordBankDemand(out.value->get(), elfLookup(probes),
+                                   *bankDemand);
+                }
+                mlir::PassManager *pm = nullptr;
+                auto owned = getAssignBufferAddressesPipeline(&context);
+                pm = owned.get();
+                return pm->run(out.value->get());
+              });
 
   // Per-core view of the placed module, for anything that needs addresses.
   auto &placedCores =
@@ -1981,11 +1977,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
       generateInputWithAddresses || generateInputWithSymbols ||
-      generateScratchpadParams ||
-      generateNpuInsts || keepLoc || generateElf || generateCdo ||
-      generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
-      generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
-      !cutOutputs.empty();
+      generateScratchpadParams || generateNpuInsts || keepLoc || generateElf ||
+      generateCdo || generatePdi || generateTxn || generateCtrlpkt ||
+      generateXclbin || generateFullElf || wantAiesim || doCompileHost ||
+      !getOutputs.empty() || !cutOutputs.empty();
   // Every other artifact depends on the post-link checks through
   // physicalWithElfs. A core-ELF build ends before that edge, so name the
   // checks here.

@@ -12,11 +12,7 @@
 // Moving the stack off bank 0 is what lets a design keep a whole bank for
 // something else, and what decides where an overrun lands.
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s 2>&1 | FileCheck %s
-// RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s 2>&1 | FileCheck %s --check-prefix=ERROR
-
-// ERROR: basic-sequential allocation cannot resolve stack_bank; use bank-aware allocation or specify stack_address
-
+// RUN: aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // Bank 1 of an npu2 core tile is [0x4000, 0x8000).
 // CHECK: stack_address = 16384 : i32
 // CHECK-SAME: stack_bank = 1 : i32

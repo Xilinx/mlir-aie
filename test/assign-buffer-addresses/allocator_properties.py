@@ -620,7 +620,7 @@ def allocate(mlir, workdir):
     src = workdir / "case.mlir"
     src.write_text(mlir)
     p = subprocess.run(
-        ["aie-opt", "--aie-assign-buffer-addresses=alloc-scheme=bank-aware", str(src)],
+        ["aie-opt", "--aie-assign-buffer-addresses", str(src)],
         capture_output=True,
         text=True,
     )
