@@ -42,7 +42,8 @@ const int32_t UMAX = 255;
 void conv2dk1_i8_scalar(int8_t *input, int8_t *kernels, uint8_t *output,
                         const int32_t runtime_input_width,
                         const int32_t runtime_input_channels,
-                        const int32_t runtime_output_channels, const int scale) {
+                        const int32_t runtime_output_channels,
+                        const int scale) {
   const int32_t input_width = CONV_INPUT_WIDTH;
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
