@@ -215,45 +215,6 @@ def data_policy(fn) -> tuple[str, ...]:
     return FLOAT_BASE
 
 
-def _edge(shape, dtype, rng, case: str, limit: int | None = None) -> np.ndarray:
-    """Return one edge-case array.
-
-    ``limit`` bounds the integer extremes ("max", "min") to what the kernel's
-    accumulator admits (``ExternalFunction.input_limit``).
-    """
-    dt = np.dtype(dtype)
-    is_int = np.issubdtype(dt, np.integer)
-    hi: int | None = None
-    lo: int | None = None
-    if is_int:
-        hi, lo = int(np.iinfo(dt).max), int(np.iinfo(dt).min)
-        if limit is not None:
-            hi = min(hi, limit)
-            lo = max(lo, -limit) if dt.kind != "u" else 0
-    if case == "zeros":
-        a = np.zeros(shape)
-    elif case == "ones":
-        a = np.ones(shape)
-    elif case == "max":
-        a = np.full(shape, hi if is_int else 3.0e38)
-    elif case == "min":
-        a = np.full(shape, lo if is_int else -3.0e38)
-    elif case == "alternating":
-        a = (np.indices(shape).sum(0) % 2) * 2 - 1
-    elif case == "subnormal":
-        a = rng.uniform(-1e-39, 1e-39, shape)
-    elif case == "nan_inf":
-        a = rng.standard_normal(shape)
-        a.flat[0], a.flat[-1], a.flat[a.size // 2] = np.nan, np.inf, -np.inf
-    elif case == "large":
-        a = rng.standard_normal(shape) * 1e4
-    else:
-        raise KeyError(case)
-    if is_int:
-        return np.clip(a, np.iinfo(dt).min, np.iinfo(dt).max).astype(dt)
-    return a.astype(np.float32).astype(dt)
-
-
 def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     """Host inputs for ``case`` under one data case, in contract order."""
     fn = case.fn()
@@ -267,22 +228,45 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
             )
         # Edge data is about the streamed inputs; a Param (scale's factor,
         # filter2d's kernel) keeps its value, so one design serves every case.
-        # Integer extremes stay inside what the kernel's accumulator admits,
-        # so "max" tests the datapath, not an overflow the source leaves open.
-        inputs = [
-            (
-                a
-                if c.roles[i] == Param
-                else _edge(
-                    a.shape,
-                    a.dtype,
-                    rng,
-                    data_case,
-                    fn.input_limit(a.dtype),
-                )
-            )
-            for a, i in zip(inputs, tensor_pos)
-        ]
+        # Integer extremes stay inside what the kernel's accumulator admits
+        # (ExternalFunction.input_limit), so "max" tests the datapath, not an
+        # overflow the source leaves open.
+        for k, (a, i) in enumerate(zip(inputs, tensor_pos)):
+            if c.roles[i] == Param:
+                continue
+            dt, shape = a.dtype, a.shape
+            is_int = np.issubdtype(dt, np.integer)
+            if is_int:
+                hi, lo = int(np.iinfo(dt).max), int(np.iinfo(dt).min)
+                limit = fn.input_limit(dt)
+                if limit is not None:
+                    hi = min(hi, limit)
+                    lo = max(lo, -limit) if dt.kind != "u" else 0
+            if data_case == "zeros":
+                edge = np.zeros(shape)
+            elif data_case == "ones":
+                edge = np.ones(shape)
+            elif data_case == "max":
+                edge = np.full(shape, hi if is_int else 3.0e38)
+            elif data_case == "min":
+                edge = np.full(shape, lo if is_int else -3.0e38)
+            elif data_case == "alternating":
+                edge = (np.indices(shape).sum(0) % 2) * 2 - 1
+            elif data_case == "subnormal":
+                edge = rng.uniform(-1e-39, 1e-39, shape)
+            elif data_case == "nan_inf":
+                edge = rng.standard_normal(shape)
+                edge.flat[0], edge.flat[-1] = np.nan, np.inf
+                edge.flat[edge.size // 2] = -np.inf
+            elif data_case == "large":
+                edge = rng.standard_normal(shape) * 1e4
+            else:
+                raise KeyError(data_case)
+            if is_int:
+                edge = np.clip(edge, np.iinfo(dt).min, np.iinfo(dt).max).astype(dt)
+            else:
+                edge = edge.astype(np.float32).astype(dt)
+            inputs[k] = edge
     if case.params:
         params = iter(case.params)
         inputs = [

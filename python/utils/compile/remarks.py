@@ -82,13 +82,13 @@ class _Loader(yaml.SafeLoader):
     pass
 
 
-def _tagged(loader, tag_suffix, node):
-    m = loader.construct_mapping(node, deep=True)
-    m["_kind"] = tag_suffix
-    return m
-
-
-_Loader.add_multi_constructor("!", _tagged)
+_Loader.add_multi_constructor(
+    "!",
+    lambda loader, tag, node: {
+        **loader.construct_mapping(node, deep=True),
+        "_kind": tag,
+    },
+)
 
 
 def _args(rec: dict) -> dict:
@@ -109,20 +109,6 @@ def _args(rec: dict) -> dict:
             else:
                 out[k] = v
     return out
-
-
-def _message(rec: dict) -> str:
-    """Reassemble the remark sentence as clang prints it: every Arg value, in order.
-
-    The typed values (MII, SwpMaxMii, II, ...) sit between ``String``
-    fragments; joining only the strings would print
-    "Minimal Initiation Interval too large:  > ." with the numbers missing.
-    """
-    parts = []
-    for a in rec.get("Args", []) or []:
-        if isinstance(a, dict):
-            parts.extend(str(v) for k, v in a.items() if k != "DebugLoc")
-    return "".join(parts)
 
 
 def _loc(rec: dict) -> str:
@@ -241,7 +227,18 @@ def parse_yaml(path: str | Path, report: StaticReport | None = None) -> StaticRe
                 loop.missed_reason = str(a.get("String", "")) or None
                 loop.file, loop.line = _source(d)
             elif kind == "Analysis" and name == "schedule":
-                r.schedule_notes.append(f"{fn}@{_loc(d)}: {_message(d)}")
+                # The sentence as clang prints it: every Arg value in order,
+                # since the typed values (MII, II, ...) sit between the
+                # String fragments and joining only the strings would print
+                # "Minimal Initiation Interval too large:  > ." without them.
+                message = "".join(
+                    str(v)
+                    for arg in d.get("Args", []) or []
+                    if isinstance(arg, dict)
+                    for k, v in arg.items()
+                    if k != "DebugLoc"
+                )
+                r.schedule_notes.append(f"{fn}@{_loc(d)}: {message}")
         elif p == "aie-hardware-loops":
             bb = str(a.get("BasicBlock", "?"))
             r.loop(fn, bb).zol = str(a.get("Zero-Overhead-Loop", "")).lower() == "true"

@@ -84,25 +84,6 @@ def _unary_lut_contract(
     )
 
 
-def _softmax_tolerance(tile_size: int) -> Tolerance:
-    """Return the LUT bound with a floor an unwritten tile cannot hide under.
-
-    Softmax outputs sum to 1 over the tile, so a typical element is about
-    ``1 / tile_size`` and the generic LUT floor of 0.05 would accept an
-    all-zero output. A tenth of an average element still covers the exp
-    LUT's underflow on the far tail, while an unwritten tile mismatches on
-    most elements.
-    """
-    return Tolerance.relative(
-        0.128,
-        0.1 / tile_size,
-        max_mismatch_frac=0.02,
-        note="LUT rtol from softmax_ref; atol = 0.1 / tile_size so an unwritten "
-        "(all-zero) tile fails, since every softmax output is below the generic "
-        "LUT atol",
-    )
-
-
 def _create_lut_kernel(
     func_name: str,
     kernel_filename: str,
@@ -178,7 +159,19 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
         contract=_unary_lut_contract(
             lambda x: softmax_ref(x, tile_size=tile_size),
             count=tile_size,
-            tolerance=_softmax_tolerance(tile_size),
+            # Softmax outputs sum to 1 over the tile, so a typical element is
+            # about 1 / tile_size and the generic LUT floor of 0.05 would
+            # accept an all-zero output. A tenth of an average element still
+            # covers the exp LUT's underflow on the far tail, while an
+            # unwritten tile mismatches on most elements.
+            tolerance=Tolerance.relative(
+                0.128,
+                0.1 / tile_size,
+                max_mismatch_frac=0.02,
+                note="LUT rtol from softmax_ref; atol = 0.1 / tile_size so an "
+                "unwritten (all-zero) tile fails, since every softmax output is "
+                "below the generic LUT atol",
+            ),
             # aie2p/softmax.cc sets conv_even itself; the aie2 LUT path does not.
             setup=None if _detect_arch() == "aie2p" else conv_even,
         ),
