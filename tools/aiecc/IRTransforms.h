@@ -1212,7 +1212,8 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
                               llvm::StringRef allocScheme, bool dynamicObjFifos,
                               bool packetSwObjFifos, bool ctrlPktOverlay,
                               bool bf16Emulation, bool loadPdiToCtrlPkt = false,
-                              bool skipObjectFifoVerify = false) {
+                              bool skipObjectFifoVerify = false,
+                              bool assignAddresses = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1304,12 +1305,26 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   // A buffer's name becomes a symbol in its core's object, so aie-prepare-
   // buffers names the unnamed buffers before the core compiles.
   dpm2.addPass(createAIEPrepareBuffersPass());
-  AIEAssignBufferAddressesOptions bufOpts;
-  bufOpts.clAllocScheme = allocScheme.str();
-  dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));
+  if (assignAddresses) {
+    AIEAssignBufferAddressesOptions bufOpts;
+    bufOpts.clAllocScheme = allocScheme.str();
+    dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));
+  }
   dpm2.addPass(createAIEAssignCoreLinkFilesPass());
   dpm2.addPass(createAIEVectorTransferLoweringPass());
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
+  return pm;
+}
+
+// Pairs with `getInputWithAddressesPipeline(..., assignAddresses=false)`.
+inline std::unique_ptr<mlir::PassManager>
+getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
+                                 llvm::StringRef allocScheme) {
+  using namespace xilinx::AIE;
+  auto pm = std::make_unique<mlir::PassManager>(ctx);
+  AIEAssignBufferAddressesOptions bufOpts;
+  bufOpts.clAllocScheme = allocScheme.str();
+  pm->nest<DeviceOp>().addPass(createAIEAssignBufferAddressesPass(bufOpts));
   return pm;
 }
 

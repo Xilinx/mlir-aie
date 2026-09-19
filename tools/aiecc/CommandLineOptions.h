@@ -271,6 +271,10 @@ inline bool generateCoreElfs = false;
 
 inline bool generateInputWithAddresses = false;
 
+// The same module before placement, which unlike input_with_addresses.mlir
+// needs no core compiler. See the placement edge in aiecc.cpp.
+inline bool generateInputWithSymbols = false;
+
 inline bool generateScratchpadParams = false;
 
 inline bool generateElf = false;
@@ -384,6 +388,8 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
   static const OutputSelector table[] = {
       {"input-with-addresses", "input_with_addresses.mlir",
        &generateInputWithAddresses},
+      {"input-with-symbols", "input_with_symbols.mlir",
+       &generateInputWithSymbols},
       {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
       {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
       {"npu-insts", "insts_{0}.bin", &generateNpuInsts},

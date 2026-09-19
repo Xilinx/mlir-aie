@@ -721,10 +721,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       });
 
   // Everything a core needs before it can be compiled: objectFifo lowering
-  // (which creates buffers), buffer addresses, lock and BD ids, and the
-  // core-body lowerings.
-  auto &withAddresses = withDefaultStackSize.map<ModRef>(
-      "input_with_addresses.mlir",
+  // (which creates buffers), lock and BD ids, and the core-body lowerings.
+  // Buffer addresses are not among them; see the placement edge below.
+  auto &withSymbols = withDefaultStackSize.map<ModRef>(
+      "input_with_symbols.mlir",
       PassPipeline{
           &context,
           [scheme = allocScheme.getValue(), dyn = dynamicObjFifos.getValue(),
@@ -734,11 +734,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
            skipVerify = skipObjectFifoVerify.getValue()](mlir::MLIRContext *ctx,
                                                          mlir::ModuleOp mod) {
             return getInputWithAddressesPipeline(ctx, mod, scheme, dyn, pkt,
-                                                 ctrl, bf16, ldpdi, skipVerify);
+                                                 ctrl, bf16, ldpdi, skipVerify,
+                                                 /*assignAddresses=*/false);
           }});
 
   // Scratchpad run-time parameters sidecar file
-  auto &paramsFile = withAddresses.map<std::string>(
+  auto &paramsFile = withSymbols.map<std::string>(
       "params.txt", [](const ModRef &mod) -> std::string {
         std::string txt;
         llvm::raw_string_ostream os(txt);
@@ -746,12 +747,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return txt;
       });
 
-  auto &physical = withAddresses.map<ModRef>(
+  auto &unplaced = withSymbols.map<ModRef>(
       "input_physical.mlir", PassPipeline{getRoutingPipeline(&context)});
 
   // Split every core once, then filter into compile / pre-baked subviews.
   auto &allCores =
-      physical
+      unplaced
           .split<OpInModule<CoreOp>>(
               "perCore_{0}.mlir",
               SplitIRAction<CoreOp>([](CoreOp c) { return coreKey(c); }))
@@ -854,7 +855,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Unified strategy
   auto &physicalPerDevice = splitPerDevice(
-      physical, "perDeviceCompile_{0}.mlir", "perDeviceCompileMatching");
+      unplaced, "perDeviceCompile_{0}.mlir", "perDeviceCompileMatching");
   auto &perDeviceArches = physicalPerDevice.map<std::string>(
       "perDeviceArches_{0}.txt", [](const OpInModule<DeviceOp> &dev) {
         return detectAIETarget(dev.module.get(), DeviceOp(dev.op).getSymName());
@@ -900,9 +901,42 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &objects = compilation.object;
   auto &optimizedIR = compilation.optimizedIR;
 
+  // Buffer placement, deliberately downstream of the core compile: a kernel
+  // pins static data to a bank through sections that exist only once its object
+  // is built, so placing buffers first leaves them no room. Joining the objects
+  // here is what lets a later step measure those demands.
+  //
+  // Sound because a buffer lowers to a declaration and the linker script
+  // supplies its address, so a core's object depends on buffer names and never
+  // on where they land. Consumers that do need addresses -- ld scripts, BCF
+  // scripts, the runtime sequence, the post-link checks -- read this edge.
+  auto &physical =
+      bundle(objects.out, unplaced.out)
+          .join<ModRef>("input_with_addresses.mlir",
+                        [&context, scheme = allocScheme.getValue()](
+                            const Node<Directory> &, const Node<ModRef> &modN,
+                            Item<ModRef> &out) -> mlir::LogicalResult {
+                          out.value = ModRef(modN.get().get().clone());
+                          mlir::PassManager *pm = nullptr;
+                          auto owned =
+                              getAssignBufferAddressesPipeline(&context, scheme);
+                          pm = owned.get();
+                          return pm->run(out.value->get());
+                        });
+
+  // Per-core view of the placed module, for anything that needs addresses.
+  auto &placedCores =
+      physical
+          .split<OpInModule<CoreOp>>(
+              "placedCore_{0}.mlir",
+              SplitIRAction<CoreOp>([](CoreOp c) { return coreKey(c); }))
+          .filter("placedCoreCompile", [](const OpInModule<CoreOp> &x) {
+            return !CoreOp(x.op).getElfFileAttr() || xbridge;
+          });
+
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts =
-      perCore.map<std::string>(
+      placedCores.map<std::string>(
           "ldScripts_{0}.ld.script",
           [inputFile, workDirStr,
            dataRegionBytes](const Item<OpInModule<CoreOp>> &item,
@@ -974,7 +1008,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // chess/xbridge or peano
 
   // chess linking
-  auto &bcfScripts = perCore.map<std::string>(
+  // The BCF names each buffer's address, so it reads the placed module.
+  auto &bcfScripts = placedCores.map<std::string>(
       "{0}.bcf",
       [](const Item<OpInModule<CoreOp>> &item,
          Item<std::string> &out) -> mlir::LogicalResult {
@@ -1863,7 +1898,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // passed, or as the default when no other artifact was requested (so a bare
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
-      generateInputWithAddresses || generateScratchpadParams ||
+      generateInputWithAddresses || generateInputWithSymbols ||
+      generateScratchpadParams ||
       generateNpuInsts || keepLoc || generateElf || generateCdo ||
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
@@ -1879,7 +1915,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
 
   if (generateInputWithAddresses) {
-    outputs.push_back(&withAddresses);
+    outputs.push_back(&physical);
+  }
+  if (generateInputWithSymbols) {
+    outputs.push_back(&withSymbols);
   }
   if (generateNpuInsts) {
     outputs.push_back(&npuInsts);
