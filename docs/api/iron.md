@@ -97,13 +97,18 @@ constants. These are re-exported into `iron` from `aie.utils`.
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| `iron.jit` | decorator | JIT-compile a design and run it on the attached NPU (Triton-style). The first call compiles to an `xclbin` + instruction stream; later calls hit a cache. |
+| `iron.jit` | decorator | Compile a design on a cache miss, then run it on the attached NPU. |
 | `iron.CompilableDesign` | class | Bundle a design generator with its compile-time configuration. |
 | `iron.CallableDesign` | class | A compiled, callable design produced from a `CompilableDesign`. |
 | `iron.compileconfig` | decorator | Attach compile-time configuration to a design generator. |
 | `iron.get_compile_arg` | function | Dynamically inject a compile-time argument (advanced). |
 | `iron.In` / `iron.Out` / `iron.InOut` | markers | Type-annotation markers for design inputs/outputs. |
 | `iron.CompileTime` | marker | Type-annotation marker for a compile-time constant argument. |
+| `iron.DispatchTime` | marker | Integer scalar that can vary per call without recompiling the device program. |
+
+For dispatch scalar defaults, specialization, and runtime binding, see
+[Dispatch-time scalars](../programming_guide/section-2/section-2d/RuntimeTasks.md#dispatch-time-scalars)
+in the runtime data-movement guide.
 
 See the [Programming Guide](../programming_guide/README.md) for worked
 examples of `@iron.jit`.

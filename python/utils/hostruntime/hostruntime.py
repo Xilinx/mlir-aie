@@ -1,6 +1,8 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 import logging
 import sys
 from abc import ABC, abstractmethod
@@ -13,7 +15,8 @@ from ..tensor_factory import tensor
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
-from ..npukernel import NPUKernel
+
+    from ..npukernel import NPUKernel
 from ..trace import TraceConfig
 from ..trace.utils import create_ctrl_pkt, extract_tile
 from . import bfloat16_safe_allclose
@@ -31,7 +34,8 @@ class HostRuntimeError(Exception):
 class KernelHandle(ABC):
     """Abstract representation that represents a kernel already registered/loaded with a runtime."""
 
-    ...
+    def __init__(self, *, needs_dispatch_insts: bool = False):
+        self.needs_dispatch_insts = needs_dispatch_insts
 
 
 class KernelResult(ABC):
@@ -156,6 +160,7 @@ class HostRuntime(ABC):
         trace_config: TraceConfig | None = None,
         fail_on_error: bool = True,
         only_if_loaded=False,
+        dispatch_insts: np.ndarray | None = None,
         **kwargs,
     ) -> KernelResult:
         """Run a loaded kernel.
@@ -166,6 +171,8 @@ class HostRuntime(ABC):
             trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
+            dispatch_insts (np.ndarray | None, optional): Per-call instruction
+                words for a DispatchTime[T] design. None uses static instructions.
             **kwargs: Additional arguments.
 
         Returns:
@@ -173,10 +180,34 @@ class HostRuntime(ABC):
         """
         pass
 
+    @staticmethod
+    def _resolve_insts_path(npu_kernel) -> Path | None:
+        """Validate the static instruction path, if present."""
+        if not npu_kernel.insts_path:
+            return None
+        insts_path = Path(npu_kernel.insts_path).resolve()
+        if not insts_path.is_file():
+            raise HostRuntimeError(
+                f"insts {insts_path} does not exist or is not a file."
+            )
+        return insts_path
+
+    @staticmethod
+    def _require_dispatch_insts(kernel_handle: KernelHandle, dispatch_insts) -> None:
+        """Reject direct runs of dynamic designs without generated instructions."""
+        if kernel_handle.needs_dispatch_insts and dispatch_insts is None:
+            raise HostRuntimeError(
+                "this kernel declares DispatchTime[T] parameter(s), so it has "
+                "no static instruction stream and run() cannot submit it "
+                "directly. Call the kernel (or load_and_run) with the "
+                "DispatchTime[T] value(s) so the stream is built for this call."
+            )
+
     def load_and_run(
         self,
         npu_kernel: NPUKernel,
         run_args: list,
+        dispatch_scalars: dict | None = None,
         **kwargs,
     ) -> tuple[KernelHandle, KernelResult]:
         """Load and run an NPU kernel.
@@ -184,6 +215,8 @@ class HostRuntime(ABC):
         Args:
             npu_kernel (NPUKernel): The NPU kernel to load and run.
             run_args (list): Arguments to pass to the kernel.
+            dispatch_scalars (dict | None, optional): DispatchTime[T] scalar
+                values for this call, keyed by parameter name.
             **kwargs: Additional arguments passed to load.
 
         Returns:
@@ -191,6 +224,7 @@ class HostRuntime(ABC):
         """
         trace_config = npu_kernel.trace_config
         handle = self.load(npu_kernel, **kwargs)
+        dispatch_insts = npu_kernel._generate_dispatch_insts(dispatch_scalars)
         if trace_config:
             if trace_config.reuse_output_buffer and len(run_args) > 0:
                 trace_config.last_tensor_shape = run_args[-1].shape
@@ -215,7 +249,12 @@ class HostRuntime(ABC):
                     f"land."
                 )
 
-        ret = self.run(handle, list(run_args), trace_config=trace_config)
+        ret = self.run(
+            handle,
+            list(run_args),
+            trace_config=trace_config,
+            dispatch_insts=dispatch_insts,
+        )
 
         if trace_config:
             trace_buffer, ctrl_buffer = self.extract_trace_from_args(

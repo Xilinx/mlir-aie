@@ -9,7 +9,7 @@
 
 """aie.utils.config tool resolution, exercised against real binaries.
 
-Two groups, both free of patching:
+Coverage includes:
 
   * Discovery order runs the real resolver in a real subprocess, over real
     executables placed on a real PATH. Reading the environment and execing a
@@ -20,7 +20,8 @@ Two groups, both free of patching:
     reason to exist is that the AIEngine e_machine is unknown to GNU binutils,
     and the only way to show the resolved binary clears that bar is to run it.
 
-These compile with Peano and need no NPU.
+Host compiler discovery separately checks Peano exclusion and explicit CXX
+overrides. These tests need no NPU; the real-object tests compile with Peano.
 """
 
 import os
@@ -29,6 +30,7 @@ import sys
 
 import pytest
 
+import aie.utils.config as config
 from aie.utils.compile.utils import compile_cxx_core_function
 
 _KERNEL_SOURCE = """
@@ -56,6 +58,34 @@ def aie_object(tmp_path_factory):
     compile_cxx_core_function(str(source), "aie2p", str(obj))
     assert obj.exists()
     return obj
+
+
+def test_host_cxx_skips_peano_on_path(tmp_path, monkeypatch):
+    peano = tmp_path / "peano"
+    host = tmp_path / "host"
+    for directory in (peano / "bin", host):
+        directory.mkdir(parents=True)
+        compiler = directory / config._executable_name("clang++")
+        compiler.touch(mode=0o755)
+    monkeypatch.setattr(config.config, "peano_install_dir", str(peano))
+    monkeypatch.delenv("CXX", raising=False)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(peano / "bin"), str(host)]))
+    assert config.host_cxx_path() == str(host / config._executable_name("clang++"))
+
+    monkeypatch.setenv("PATH", str(peano / "bin"))
+    with pytest.raises(RuntimeError, match="Could not find a host C\\+\\+ compiler"):
+        config.host_cxx_path()
+
+
+def test_host_cxx_honors_explicit_override(tmp_path, monkeypatch):
+    compiler = tmp_path / config._executable_name("custom-cxx")
+    compiler.touch(mode=0o755)
+    monkeypatch.setenv("CXX", str(compiler))
+    assert config.host_cxx_path() == str(compiler)
+
+    monkeypatch.setenv("CXX", str(tmp_path / "missing"))
+    with pytest.raises(RuntimeError, match="CXX is set"):
+        config.host_cxx_path()
 
 
 def _write_tool(directory, name, exit_code=0):
