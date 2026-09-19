@@ -1066,7 +1066,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
         for (int ic = 0; ic < (input_channels / 8); ic++) {
           AIE_PREPARE_FOR_PIPELINING
           for (int i = kernel_height_start; i < kernel_height_end;
-               i++) {            // 1 to 3
+               i++) { // 1 to 3
             AIE_LOOP_UNROLL_FULL
             for (int j = 0; j < kernel_width; j++) {
               aie::vector<int8, 64> wtsVec = aie::load_v<64>(wtsLine[i]);
