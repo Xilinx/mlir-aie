@@ -186,13 +186,6 @@ each output before its call. The factory's dimensions size a tile; `calls`
 does not change its reduction length. Whole-problem `shape=` is rejected:
 algorithm integration tests own global iteration and accumulation.
 
-Cycle metrics require `contract.trace_cycles=True`: an audited event0/event1
-pair must bracket each complete invocation, with no extra initializer events.
-The harness rejects missing or extra intervals. Passthrough declares this
-protocol; other kernels retain wall-time and compilation metrics until their
-instrumentation is audited. In particular, zeroing and partial fused-GEMM
-steps must not be reported as whole-multiply cycle timings.
-
 `contract.layouts` declares a `TensorLayout` per argument: its logical tile
 shape and reversible host storage codec. The same builder handles row-major,
 blocked, transposed and block-floating-point tiles without recognizing a
@@ -332,8 +325,8 @@ A new factory is complete when one line each in two places covers it:
 
 1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
    with the argument roles (`In`, `Out`, `InOut`, or `Param`), a
-   numpy reference exported as `<name>_ref`, `ops_per_call` for the
-   benchmark's throughput series, and a `Tolerance` with its evidence in
+   numpy reference exported as `<name>_ref`, `ops_per_call` (the work one
+   call does), and a `Tolerance` with its evidence in
    `note` — or none, to get the dtype default. Reductions set `out_valid`
    to the number of meaningful output elements. Say what the kernel
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
@@ -345,34 +338,30 @@ A new factory is complete when one line each in two places covers it:
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
    the shape to run and, with `smoke=True`, that it is the kernel's
    representative shape for the per-PR device test. The same table drives
-   the nightly correctness sweep and the benchmark, so there is nothing
-   else to register.
+   the extensive correctness sweep, so there is nothing else to register.
 
 The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
 then checks the roles against the real `arg_types()`, the reference's
 arity, that the generated design lowers to MLIR, and that `setup`
 agrees with the source.
 
-## Testing, benchmarking and static checks
+## Testing
 
-Every tier below reads the contract and the case table; none restates
-what a kernel computes.
+Every tier below reads the contract and one case table
+(`test/python/npu/kernel_cases.py`); none restates what a kernel computes.
+A kernel is either in that table or named, with a reason, in the contract
+test's `NOT_JUDGED` list.
 
 | Tier | What | Where | When |
 | --- | --- | --- | --- |
 | host | contract vs. factory; design lowers to MLIR | `test/python/test_kernel_contracts.py` | every PR (lit) |
-| host, compile | every distinct design through aiecc to CDO | `test/python/npu/test_kernels_compile.py` (`-m extensive`) | static workflow |
 | device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
-| device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
-| host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | nightly and kernel or toolchain PRs |
+| device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | on request |
 
 ```bash
 pytest test/python/test_kernel_contracts.py                        # host
 pytest test/python/npu/test_kernels_e2e.py -k eltwise              # NPU, smoke
 pytest test/python/npu/test_kernels_e2e.py -m extensive --seeds 3  # NPU, everything
-pytest test/python/npu/test_kernels_bench.py -m benchmark -k mul   # time one kernel
-pytest test/python/npu/test_kernels_bench.py -m benchmark --bench-out bench.json
-python -m aie.utils.compile.remarks --target aie2p --out static.json
 ```
 
 ### Data policy
@@ -400,8 +389,8 @@ conv kernels, `layer_norm`, `mha`, the aie2p `mm`) needs none, so its
 mode names the setter: the bf16 kernels that store from an fp32
 accumulator use `setup=conv_even`, the mode numpy's reference rounds in.
 A design calls `fn.contract.setup()` once before the kernel; the builder
-does the same, so tests and benchmarks run each kernel in the mode its
-contract was written for.
+does the same, so every test runs each kernel in the mode its contract was
+written for.
 
 The two are alternatives, and a test enforces it against the sources: a
 kernel whose `.cc` calls `aie::set_rounding` must not also name a
@@ -414,72 +403,23 @@ either owns its mode or assumes the caller set one), not the whole of it:
 around their body, and nothing yet boots a core into `conv_even` by
 default. Both remain to do under that issue.
 
-### What the benchmark records
-
-`test/python/npu/test_kernels_bench.py` measures a kernel only after it has
-produced a correct result under its declared tolerance; a wrong result fails
-the test, and a failed session writes no `--bench-out` file at all. Per case it records core
-`cycles` (trace, median over the run's kernel calls) and
-`cycles_per_kop`, `npu_us` / `e2e_us` from `aie.utils.benchmark`, and
-`compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced
-rebuild. Preflight reads the device and its power mode through the host
-runtime (`HostRuntime.power_mode()`) and refuses to run outside
-`--pmode`; a bit-exact `passthrough` smoke test inside a cycle band guards
-the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
-at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
-and the sizes alert at 3 %, the wall times are advisory, and nothing
-gates a pull request. A Peano-bump PR is compared against the cached
-nightly baseline and gets one comment only if a hard-threshold series
-regressed.
-
-### Static checks
-
-`aie.utils.compile.remarks` compiles every factory build (defaults plus
-each `.dtypes` entry) exactly as the JIT does, with Peano's
-optimization-record flags, and turns the records into per-kernel series:
-each loop's II and whether it is a zero-overhead loop, program memory,
-missing-bank loads and dropped `#pragma`s. The record shapes and the
-regression rules are documented on the module
-([API](../api/kernels.md#static-checks)). A dropped pragma is a
-kernel-source bug and is annotated on the pull request's file and line;
-a kernel that fails to compile is an error annotation. With
-`MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
-`aie_kernels/` is compiled against an installed wheel, which is how the
-workflow runs on a pull request.
-
 ### Kernels the generic builder cannot run
 
-A cascade pair is built by the generic builder: the GET half's contract
-names the PUT half as `cascade_partner`, the builder places the two on
-adjacent tiles joined by a `CascadeFlow`, and the GET half's `reference`
-sees the PUT half's inputs and scalars first. `cascade_mm` is validated
-that way (its reference models the integer cascade lane), and so are the
-two bottleneck pairs (`bn_conv2dk1_partial_put_i8` /
-`bn_conv2dk1_partial_get_relu_i8`, `bn_conv2dk1_input_split_partial_put_ui8`
-/ `bn_conv2dk1_input_split_partial_skip_get`): each half's weight tape is a
-`Param` baked into its tile, and the pair references
-(`bn_conv2dk1_partial_relu_pair_ref`, `bn_conv2dk1_input_split_skip_pair_ref`)
-model the `_new` entry points exactly. A GET call writes seven pixels of one
-8-channel output group and nothing else, so the references accept only the
-tile where that is the whole output (`input_width=7`, `output_channels=8`,
-output group 0); the composed
-[`mobilenet/bottleneck/cascade.py`](../programming_examples/ml/mobilenet/bottleneck/cascade.py)
-design covers the wider geometries.
+The builder runs one kernel on one Worker. A cascade pair is two: the PUT
+half of `cascade_mm` (`cascade_mm_put`) streams its product onto the cascade
+and the GET half adds its own product and the cascade term, so both
+contracts say `unsupported` and `test/python/npu/test_kernels_e2e.py`
+builds the pair by hand and judges it against the two products.
+`set_rounding` has a contract but no data output: it is a setup operation,
+covered by the rounding-mode tests above.
 
-A kernel called once per row of a map, keying on which row this is and
-accumulating into one output, declares that too: `CallIndex` binds a
-scalar `Param` to the call number and `contract.output_spans_calls` keeps
-the output tile across the sequence (`bn_conv2dk1_relu_xy_pool_padded`).
-
-A contract can still say why the builder cannot run a kernel
-(`unsupported`), and `design()` refuses it with that reason; no library
-factory needs it at its defaults (`mm_bfp_shuffle` does for unequal buffer
-extents, below).
-
-`bn_conv2dk3_dw_out_split` is not a cascade half: it has two observable
-outputs and is supported by the generic builder, with a reference for each
-channel half. `set_rounding` also has a contract, but no data outputs: it is
-a setup operation rather than a standalone numerical test.
+The MobileNet bottleneck kernels (`bn_*`) are exported for the
+[`mobilenet`](../programming_examples/ml/mobilenet) examples but carry no
+contract yet: their sources take between four and ten trailing scalars in
+per-kernel orders, several write only part of their output buffer per call,
+and the cascade halves exist as one symbol per network block. They are
+validated through the composed MobileNet designs until the sources are
+regularized; the contract test lists them by name as not judged.
 
 `mm_bfp_shuffle` validates the forward permutation through declared plain-BFP
 input and blocked-BFP output codecs, comparing exactly the represented values.
@@ -492,8 +432,8 @@ bf16 scales and minima followed by unsigned four-bit codes; its output is
 the GEMM-ordered bfp16ebs8 byte stream. Both are exposed as byte buffers so
 the harness checks exponents, mantissas and ordering exactly, including the
 kernel's floor-rounded bf16 intermediate. The default block and two smaller
-geometries participate in the compile and extensive hardware sweeps; the
-default also runs as a hardware smoke test and benchmark.
+geometries participate in the extensive hardware sweep; the default also
+runs as a hardware smoke test.
 
 ## Related reading
 
