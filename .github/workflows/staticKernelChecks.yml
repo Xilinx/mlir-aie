@@ -12,7 +12,9 @@ name: Static Kernel Checks (Peano remarks)
 # SOFT RELEASE: manual (workflow_dispatch) only while this settles. The
 # nightly and PR triggers below are commented out, not deleted -- restoring
 # them is uncommenting the two blocks. Until then nothing records a baseline
-# on a schedule, so the first manual runs are what seed it.
+# on a schedule, so the first manual runs are what seed it, and the two
+# "Compare (PR)" steps at the end never run: they are gated on a
+# pull_request event, and a dispatched run is not one.
 #
 # The job builds the checkout, as benchmarkKernels.yml does. It used to
 # install the published wheel and copy the checkout's pure-Python packages
@@ -121,7 +123,10 @@ jobs:
             test/python/npu/test_fused_mm_compile.py -m extensive -q -x
         env:
           KERNEL_TEST_DEVICE: ${{ matrix.device }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      - name: Upload the records
+        # publishKernelResults.yml downloads these from a main-branch run;
+        # on a PR they are what a reviewer inspects.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: always()
         with:
           name: static-${{ matrix.target }}-${{ github.run_id }}
@@ -132,15 +137,23 @@ jobs:
             static.log
           if-no-files-found: ignore
 
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        if: github.event_name == 'pull_request' && hashFiles('static.json') != ''
+      # The records are complete once "Run static analysis" has written them,
+      # so the comparison runs even when a later test step went red: that is
+      # exactly when the numbers are worth reading. `always()` keeps a failed
+      # step from skipping the rest of the job.
+      - name: Restore baseline (PR)
+        # publishKernelResults.yml saves the nightly baseline under
+        # static-baseline-<target>-<run_id>, so the exact key never hits; the
+        # prefix in restore-keys picks the newest one.
+        if: always() && github.event_name == 'pull_request' && (hashFiles('static.json') != '' || hashFiles('static-pm.json') != '')
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: baseline
           key: static-baseline-${{ matrix.target }}-
           restore-keys: static-baseline-${{ matrix.target }}-
       - name: Compare (PR)
         # Needs a nightly baseline in the cache; the first runs have none.
-        if: github.event_name == 'pull_request' && hashFiles('static.json') != '' && hashFiles('baseline/benchmark-data.json') != ''
+        if: always() && github.event_name == 'pull_request' && hashFiles('static.json') != '' && hashFiles('baseline/benchmark-data.json') != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: static (${{ matrix.target }})
@@ -160,7 +173,7 @@ jobs:
       # moves by whole cycles. 3% catches a real regression without firing on
       # a kernel that gained one instruction.
       - name: Compare program memory against the baseline (PR only)
-        if: github.event_name == 'pull_request' && hashFiles('static-pm.json') != '' && hashFiles('baseline/benchmark-data-pm.json') != ''
+        if: always() && github.event_name == 'pull_request' && hashFiles('static-pm.json') != '' && hashFiles('baseline/benchmark-data-pm.json') != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: static pm (${{ matrix.target }})
