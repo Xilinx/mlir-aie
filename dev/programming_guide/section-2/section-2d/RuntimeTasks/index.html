@@ -1564,6 +1564,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#dispatch-time-scalars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatch-time scalars
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dispatch-time scalars">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generator-side-binding-and-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generator-side binding and scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compilation-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compilation scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3589,6 +3628,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#dispatch-time-scalars" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatch-time scalars
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dispatch-time scalars">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generator-side-binding-and-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generator-side binding and scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compilation-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compilation scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3866,6 +3944,77 @@ For example, you may choose to set <code>wait=False</code> on an input fill if y
 <a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>    <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()],</span>
 <a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="p">)</span>
 </code></pre></div></p>
+<h2 id="dispatch-time-scalars">Dispatch-time scalars<a class="headerlink" href="#dispatch-time-scalars" title="Permanent link">&para;</a></h2>
+<p><code>DispatchTime[T]</code> rebuilds the instruction stream for each call using a compiled
+host builder. <code>T</code> must be a supported NumPy integer scalar type, such as
+<code>np.int32</code> or <code>np.int64</code>; built-in <code>int</code>/<code>bool</code> and floating-point types are
+rejected.</p>
+<ul>
+<li><strong>Call-time value:</strong> overrides the signature default without recompiling.
+  If omitted, the default is used; without a default, the value is required.</li>
+<li><strong>Explicit specialization:</strong> <code>iron.jit(generator, count=3)</code> or
+  <code>design.specialize(count=3)</code> fixes the value and includes it in the cache key.
+  Calls cannot override it; use another specialization to change it.</li>
+</ul>
+<p>Defaults do not specialize parameters. Tensor capacities and worker tiling
+remain compile-time properties; callers must keep dispatch values within the
+design's valid ranges and buffer capacities.</p>
+<p><code>DispatchTime</code> parameters must be keyword-only, even when defaulted or
+explicitly specialized. Prefer tensors first, then dispatch scalars, then
+compile-time configuration; group ordering is a convention, not a restriction:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>         <span class="n">count</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>         <span class="n">tile_size</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    <span class="o">...</span>  <span class="c1"># Build the design.</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="n">copy</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>                        <span class="c1"># Dispatch with the default count=3.</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="n">copy</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>               <span class="c1"># Same compiled design; a different dispatch.</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="n">copy</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">3</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>    <span class="c1"># Compile with count fixed to 3.</span>
+</code></pre></div>
+<h3 id="generator-side-binding-and-scope">Generator-side binding and scope<a class="headerlink" href="#generator-side-binding-and-scope" title="Permanent link">&para;</a></h3>
+<p>The generator receives an identity-bearing symbolic parameter for each unbound
+<code>DispatchTime[T]</code>, or a typed NumPy constant for a specialized one. Forward each
+symbolic parameter exactly once as a direct <code>Runtime</code> argument, <strong>in any order</strong>.
+The callback receives the corresponding SSA values:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">design</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">bar</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">],</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>           <span class="n">baz</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]):</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">seq</span><span class="p">(</span><span class="n">baz_value</span><span class="p">,</span> <span class="n">bar_value</span><span class="p">):</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>        <span class="o">...</span>  <span class="c1"># baz_value corresponds to baz, bar_value to bar.</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="n">rt</span> <span class="o">=</span> <span class="n">iron</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">seq</span><span class="p">,</span> <span class="n">fn_args</span><span class="o">=</span><span class="p">[</span><span class="n">baz</span><span class="p">,</span> <span class="n">bar</span><span class="p">])</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="o">...</span>  <span class="c1"># Build and resolve the Program with rt.</span>
+</code></pre></div>
+<p>Aliases preserve identity. Missing or duplicate bindings, bare scalar-type
+substitutes, and bindings to multiple sequences are rejected.</p>
+<p>Use the <strong>callback argument</strong>, not the captured symbolic parameter, for runtime
+arithmetic and MLIR control flow. Generation-time arithmetic, comparisons,
+<code>if bar</code>, <code>range(bar)</code>, NumPy value/dtype conversion, and <code>Worker.fn_args</code> reject
+symbolic parameters with <code>TypeError</code>. Shapes and worker configuration require
+<code>CompileTime[T]</code> or explicit specialization; storing or forwarding a symbolic
+parameter is valid.</p>
+<h3 id="compilation-scope">Compilation scope<a class="headerlink" href="#compilation-scope" title="Permanent link">&para;</a></h3>
+<p>The JIT requests device artifacts and a C++ transaction builder from the same
+<code>aiecc</code> invocation and lowering pipeline. Python validates the scalar ABI and
+compiles the host library. This requires a
+<a href="../../../iron_configuration/#dispatch-time-scalar-compilation">host C++17 compiler</a>,
+including with wheel installations; subsequent dispatches call the library
+without compiling.</p>
+<p>By default, artifacts live in the JIT cache. For explicit outputs, use
+<code>compile(xclbin_path=..., pdi_path=...)</code> (<code>pdi_path</code> is optional). Retain the
+builder library in the adjacent <code>&lt;xclbin stem&gt;.prj</code> directory with the device
+artifacts; <code>design.compilable.get_dispatch_lib_path()</code> returns its path.</p>
+<p>The Python bridge supports one runtime sequence and rejects remaining
+<code>load_pdi</code> operations because its runtimes cannot supply those resources.
+While any parameters remain dynamic, <code>inst_path</code>, <code>elf_path</code>, and
+<code>full_elf=True</code> are unsupported: full ELF embeds static instructions, with no
+per-call replacement API. Fully specialized designs retain normal full-ELF
+support. Native hosts can request C++ builders, including reconfiguration
+builders, directly from <a href="https://github.com/Xilinx/mlir-aie/blob/main/tools/aiecc/README.md#parameterized-c-transaction-builders"><code>aiecc</code></a>.</p>
 <hr />
 <p><a href="../">Up</a></p>
 
