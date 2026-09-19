@@ -4,16 +4,16 @@
 // Exercise the object/IR analysis directly without an AIE compiler or hardware.
 // REQUIRES: system-linux
 // RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -UNDEBUG -I%S/../../tools/aiecc %S/lut_analysis_test.cpp %S/../../tools/aiecc/StackSizeAnalysis.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags --libs object irreader core support --system-libs) %host_link_flags -o %t.exe'
-// RUN: %host_clang -c %S/bank_analysis_symbols.c -o %t.o
+// RUN: %host_clang -x c -c %S/bank_analysis_symbols.c -o %t.o
 // RUN: %LLVM_TOOLS_DIR/llvm-as %S/lut_analysis_pairs.ll -o %t.bc
 // RUN: touch %t.empty
 // RUN: echo corrupt > %t.corrupt
 // RUN: llvm-objcopy --add-section .llvmbc=%t.empty %t.o %t.empty.o
 // RUN: llvm-objcopy --add-section .llvmbc=%t.corrupt %t.o %t.corrupt.o
 // RUN: cat %t.bc %t.bc > %t.concat.bc
-// RUN: %host_clang -ffunction-sections -fdata-sections -c %S/bank_analysis_duplicates.c -o %t.first.o
-// RUN: %host_clang -ffunction-sections -fdata-sections -DSECOND -c %S/bank_analysis_duplicates.c -o %t.second.o
-// RUN: %host_clang -DSECOND -DUNPINNED -c %S/bank_analysis_duplicates.c -o %t.unpinned.o
+// RUN: %host_clang -x c -ffunction-sections -fdata-sections -c %S/bank_analysis_duplicates.c -o %t.first.o
+// RUN: %host_clang -x c -ffunction-sections -fdata-sections -DSECOND -c %S/bank_analysis_duplicates.c -o %t.second.o
+// RUN: %host_clang -x c -DSECOND -DUNPINNED -c %S/bank_analysis_duplicates.c -o %t.unpinned.o
 // RUN: %host_clang -nostdlib -r %t.first.o %t.second.o -o %t.native.o
 // RUN: llvm-objcopy --add-section .llvmbc=%S/lut_analysis_pairs.ll %t.native.o %t.embedded.o
 // RUN: %host_clang -nostdlib -no-pie -Wl,-e,get_first %t.first.o %t.second.o -o %t.duplicates.elf

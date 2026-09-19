@@ -260,42 +260,6 @@ class KernelBitcodeTest(unittest.TestCase):
         compile_kernel.assert_called_once()
         self.assertTrue(compile_kernel.call_args.kwargs["embed_bitcode"])
 
-    def test_checked_shared_object_keeps_all_symbol_renames(self):
-        funcs = [
-            SimpleNamespace(
-                _name=f"prefixed_{name}",
-                _original_name=name,
-                _source_file=str(self.source),
-                _source_string=None,
-                _include_dirs=[],
-                _compile_flags=[],
-                _symbol_prefix="prefixed",
-                object_file_name="kernel.o",
-            )
-            for name in ("first", "second")
-        ]
-        self.has_bitcode.side_effect = lambda _: self.output.read_bytes() == b"checked"
-
-        def fake_compile(**kwargs):
-            self.output.write_bytes(b"checked")
-
-        with patch.object(
-            compile_utils, "compile_cxx_core_function", side_effect=fake_compile
-        ) as compile_kernel, patch.object(
-            compile_utils, "_rename_symbol_in_object"
-        ) as rename, patch.dict(
-            os.environ, AIE_KERNEL_COMPILE_JOBS="1"
-        ):
-            compile_utils.compile_external_kernels(
-                funcs, self.work, "aie2p", embed_bitcode=True
-            )
-        self.assertEqual(compile_kernel.call_count, 1)
-        self.assertEqual(rename.call_count, 2)
-        self.assertEqual(
-            [call.args[1:] for call in rename.call_args_list],
-            [("first", "prefixed_first"), ("second", "prefixed_second")],
-        )
-
 
 class ObjectBitcodeTest(unittest.TestCase):
     def test_bitcode_inspection_does_not_rewrite_cached_object(self):

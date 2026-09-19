@@ -184,12 +184,16 @@ struct ShellCommand {
     enum Mode { Path, Value } mode = Path;
     std::string text;
     std::string suffix;
+    // Drop the whole argv entry when the source's value is empty, rather than
+    // passing a bare `--flag=`. For an option whose absence is meaningful.
+    bool omitIfEmpty = false;
 
     static Part literal(std::string s) {
       return {Literal, Path, std::move(s), {}};
     }
-    static Part mkSlot(Mode m, std::string prefix, std::string suffix) {
-      return {Slot, m, std::move(prefix), std::move(suffix)};
+    static Part mkSlot(Mode m, std::string prefix, std::string suffix,
+                       bool omitIfEmpty = false) {
+      return {Slot, m, std::move(prefix), std::move(suffix), omitIfEmpty};
     }
     static Part mkSlotList(std::string prefix, std::string suffix) {
       return {SlotList, Value, std::move(prefix), std::move(suffix)};
@@ -341,9 +345,10 @@ struct ShellCommand {
   }
 
   // Insert next source's string value (std::string-payload sources only).
-  ShellCommand &value(std::string prefix = "", std::string suffix = "") {
-    parts.push_back(
-        Part::mkSlot(Part::Value, std::move(prefix), std::move(suffix)));
+  ShellCommand &value(std::string prefix = "", std::string suffix = "",
+                      bool omitIfEmpty = false) {
+    parts.push_back(Part::mkSlot(Part::Value, std::move(prefix),
+                                 std::move(suffix), omitIfEmpty));
     return *this;
   }
 
@@ -495,11 +500,15 @@ private:
                        << "': not enough sources for input/value parts\n";
           return mlir::failure();
         }
-        cmd.push_back(p.text +
-                      (p.mode == Part::Path ? sources[cursor]->asFile()
-                                            : sources[cursor]->asString()) +
-                      p.suffix);
-        ++cursor;
+        {
+          std::string slot = p.mode == Part::Path ? sources[cursor]->asFile()
+                                                  : sources[cursor]->asString();
+          ++cursor;
+          if (p.omitIfEmpty && slot.empty()) {
+            break;
+          }
+          cmd.push_back(p.text + slot + p.suffix);
+        }
         break;
       case Part::SlotList:
         if (cursor >= sources.size()) {

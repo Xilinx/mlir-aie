@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -38,8 +39,12 @@ struct ConvertLogicalTileToTile : OpConversionPattern<LogicalTileOp> {
       return logicalTile.emitError("no placement found for logical tile");
 
     // Handle merging multiple logical tiles to same physical tile
-    TileOp tileOp =
-        TileOp::getOrCreate(rewriter, device, placement->col, placement->row);
+    TileOp tileOp = TileOp::getOrCreate(rewriter, device, placement->col,
+                                        placement->row, logicalTile.getLoc());
+    rewriter.modifyOpInPlace(tileOp, [&] {
+      tileOp->setLoc(
+          rewriter.getFusedLoc({tileOp.getLoc(), logicalTile.getLoc()}));
+    });
 
     if (auto controllerId = logicalTile->getAttr("controller_id"))
       tileOp->setAttr("controller_id", controllerId);
@@ -114,8 +119,9 @@ struct AIEPlaceTilesPass
         OpBuilder builder(ofOp->getContext());
         builder.setInsertionPointAfter(ofOp);
 
-        TileOp delegateTile = TileOp::getOrCreate(
-            builder, device, delegateTileID.col, delegateTileID.row);
+        TileOp delegateTile =
+            TileOp::getOrCreate(builder, device, delegateTileID.col,
+                                delegateTileID.row, ofOp.getLoc());
         ObjectFifoAllocateOp::create(
             builder, ofOp.getLoc(),
             SymbolRefAttr::get(builder.getContext(), ofOp.getSymName()),

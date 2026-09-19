@@ -27,17 +27,11 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 include "aie/Dialect/AIE/IR/AIETraceOps.td"
 
-
-def AIE_DeviceOp: AIE_Op<"device", [
-    Symbol,
-    AIETarget,
-    HasParent<"mlir::ModuleOp">,
-    SymbolTable,
-    SingleBlockImplicitTerminator<"EndOp">,
-    IsolatedFromAbove,
-    DataLayoutOpInterface,
-    HasDefaultDLTIDataLayout
-  ]> {
+def AIE_DeviceOp
+    : AIE_Op<"device", [AIESymbol, AIETarget, HasParent<"mlir::ModuleOp">,
+                        SymbolTable, SingleBlockImplicitTerminator<"EndOp">,
+                        IsolatedFromAbove, DataLayoutOpInterface,
+                        HasDefaultDLTIDataLayout]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
     This operation describes a design that executes on a particular AIEngine device.
@@ -201,7 +195,8 @@ def AIE_TileOp: AIE_Op<"tile", [
       return nullptr;
     }
 
-    static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row);
+    static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row,
+                                   std::optional<mlir::Location> loc = std::nullopt);
   }];
 
   let assemblyFormat = [{
@@ -1997,7 +1992,7 @@ def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
 //============================================================================//
 
 def AIE_RouteEndpointOp
-    : AIE_Op<"route_endpoint", [HasParent<"DeviceOp">, Symbol,
+    : AIE_Op<"route_endpoint", [HasParent<"DeviceOp">, AIESymbol,
                                 DeclareOpInterfaceMethods<RouteEndpoint>]> {
   let summary = "A symbolic name for a channel on a tile";
   let description = [{
@@ -2076,7 +2071,8 @@ def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
   let hasVerifier = 1;
 }
 
-def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">, Symbol]> {
+def AIE_ShimDMAAllocationOp
+    : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">, AIESymbol]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
     This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
@@ -2122,9 +2118,11 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   }];
 }
 
-def AIE_ObjectFifoRearmBindingOp : AIE_Op<"objectfifo_rearm_binding",
-    [HasParent<"DeviceOp">, Symbol, AttrSizedOperandSegments]> {
-  let summary = "Resident re-arm binding for an objectFIFO's core/mem DMA channels";
+def AIE_ObjectFifoRearmBindingOp
+    : AIE_Op<"objectfifo_rearm_binding", [HasParent<"DeviceOp">, AIESymbol,
+                                          AttrSizedOperandSegments]> {
+  let summary =
+      "Resident re-arm binding for an objectFIFO's core/mem DMA channels";
   let description = [{
     Runtime re-arm information for a single objectFIFO, generalizing
     `aie.shim_dma_allocation` to the core and mem tile endpoints.
@@ -2189,7 +2187,8 @@ def AIE_ObjectFifoRearmBindingOp : AIE_Op<"objectfifo_rearm_binding",
   let hasVerifier = 1;
 }
 
-def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
+def AIE_ObjectFifoCreateOp
+    : AIE_Op<"objectfifo", [HasParent<"DeviceOp">, AIESymbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The `aie.objectFifo` operation creates a circular buffer established between a producer and one or
@@ -2472,7 +2471,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 }
 
 def AIE_ObjectFifoSegmentOp
-    : AIE_Op<"objectfifo.segment", [HasParent<"ObjectFifoPoolOp">, Symbol]> {
+    : AIE_Op<"objectfifo.segment", [HasParent<"ObjectFifoPoolOp">, AIESymbol]> {
   let summary =
       "A slice of every buffer in an aie.objectfifo.pool, and its locks";
   let description = [{
@@ -2503,7 +2502,7 @@ def AIE_ObjectFifoSegmentOp
 }
 
 def AIE_ObjectFifoPoolOp
-    : AIE_Op<"objectfifo.pool", [HasParent<"DeviceOp">, Symbol, SymbolTable,
+    : AIE_Op<"objectfifo.pool", [HasParent<"DeviceOp">, AIESymbol, SymbolTable,
                                  SingleBlock, NoTerminator]> {
   let summary = "A rotating set of buffers and the locks guarding them";
   let description = [{
@@ -2586,7 +2585,7 @@ def AIE_ObjectFifoPoolOp
 }
 
 def AIE_ObjectFifoCoreEndpointOp
-    : AIE_Op<"objectfifo.core_endpoint", [HasParent<"DeviceOp">, Symbol]> {
+    : AIE_Op<"objectfifo.core_endpoint", [HasParent<"DeviceOp">, AIESymbol]> {
   let summary = "What a core needs to fill or drain the next object in a pool";
   let description = [{
     Names the pool a core works through, whether it fills or drains it, and which
@@ -2635,7 +2634,7 @@ def AIE_ObjectFifoCoreEndpointOp
 }
 
 def AIE_ObjectFifoDmaEndpointOp
-    : AIE_Op<"objectfifo.dma_endpoint", [HasParent<"DeviceOp">, Symbol,
+    : AIE_Op<"objectfifo.dma_endpoint", [HasParent<"DeviceOp">, AIESymbol,
                                          DeclareOpInterfaceMethods<
                                              RouteEndpoint>]> {
   let summary =
@@ -2817,7 +2816,8 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
   }];
 }
 
-def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
+def AIE_BDChainOp
+    : AIE_Op<"bd_chain", [AIESymbol, SkipAccessibilityCheckTrait]> {
   let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
   let description = [{
     This operation allows you to define buffer descriptor chains with parametrizable inputs.
@@ -2837,13 +2837,10 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   let extraClassDeclaration = [{
   }];
   let hasCustomAssemblyFormat = 1;
-
 }
 
-def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
-  Symbol,
-  NoTerminator,
-  HasParent<"DeviceOp">,
+def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [AIESymbol, NoTerminator,
+                                                        HasParent<"DeviceOp">,
 ]> {
   let summary = "Program the configuration co-processor of the AI Engine array";
   let description = [{

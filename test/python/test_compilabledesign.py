@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 from types import CodeType
 
+import numpy as np
 import pytest
 
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
@@ -27,7 +28,7 @@ from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
-from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
+from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
 
 # ---------------------------------------------------------------------------
@@ -59,6 +60,13 @@ def _scalar_gen():
 
 def _inout_gen():
     def f(x: InOut, *, M: CompileTime[int]):
+        pass
+
+    return f
+
+
+def _dispatch_gen():
+    def f(a: In, c: Out, *, scale: DispatchTime[np.int32], N: CompileTime[int]):
         pass
 
     return f
@@ -116,10 +124,19 @@ def test_inout_classified_as_tensor():
     assert d.tensor_params == ["x"]
 
 
+def test_dispatch_params_classified():
+    d = CompilableDesign(_dispatch_gen())
+    assert d.dispatch_params == ["scale"]
+    # DispatchTime[T] params must not also land in scalar_params or compile_params.
+    assert d.scalar_params == []
+    assert d.compile_params == ["N"]
+
+
 def test_path_generator_has_empty_param_lists():
     d = CompilableDesign(Path("/nonexistent/design.mlir"))
     assert d.compile_params == []
     assert d.tensor_params == []
+    assert d.dispatch_params == []
     assert d.scalar_params == []
 
 
@@ -299,6 +316,198 @@ def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
     assert hash(d1) != hash(d3)
 
 
+def test_dispatch_defaults_do_not_change_recipe():
+    def make(default):
+        def gen(*, count: DispatchTime[np.int32] = default):
+            pass
+
+        return CompilableDesign(gen)
+
+    first, second = make(3), make(7)
+    assert first.recipe_hash == second.recipe_hash
+    assert first.split_runtime_args((), {}) == ([], {"count": 3})
+    assert second.split_runtime_args((), {}) == ([], {"count": 7})
+    assert (
+        first.specialize(count=5).recipe_hash == second.specialize(count=5).recipe_hash
+    )
+    assert first.recipe_hash != first.specialize(count=5).recipe_hash
+
+
+def test_compile_defaults_change_recipe_unless_explicitly_bound():
+    def make(default):
+        def gen(*, count: CompileTime[int] = default):
+            pass
+
+        return CompilableDesign(gen)
+
+    first, second = make(3), make(7)
+    assert first.recipe_hash != second.recipe_hash
+    assert (
+        first.specialize(count=5).recipe_hash == second.specialize(count=5).recipe_hash
+    )
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [DispatchTime[np.int32], DispatchTime[np.int64], CompileTime[np.int32], In, Out],
+)
+def test_recipe_uses_resolved_annotations(annotation):
+    def gen(*, count):
+        pass
+
+    def make(ann):
+        from types import FunctionType
+
+        clone = FunctionType(gen.__code__, {**gen.__globals__, "alias": annotation})
+        clone.__annotations__ = {"count": ann}
+        return CompilableDesign(clone)
+
+    assert make(annotation).recipe_hash == make("alias").recipe_hash
+    if annotation != DispatchTime[np.int32]:
+        assert make(annotation).recipe_hash != make(DispatchTime[np.int32]).recipe_hash
+
+
+def test_hash_differs_for_compile_time_change_with_dispatch_param_present():
+    """Contrast case.
+
+    CompileTime[T] changes still rehash even when the same generator also
+    declares a DispatchTime[T] param.
+    """
+    gen = _dispatch_gen()
+    d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    d2 = CompilableDesign(gen, compile_kwargs={"N": 1024})
+    assert hash(d1) != hash(d2)
+
+
+def test_dispatch_time_explicit_specialization_enters_hash():
+    gen = _dispatch_gen()
+    dynamic = CompilableDesign(gen, compile_kwargs={"N": 512})
+    static = dynamic.specialize(scale=np.int32(4))
+    assert static.dispatch_params == []
+    assert static.dispatch_param_types == []
+    assert static.compile_params == ["N", "scale"]
+    assert type(static.compile_kwargs["scale"]) is int
+    assert hash(static) != hash(dynamic)
+    assert hash(static) != hash(static.specialize(scale=5))
+    assert dynamic.dispatch_params == ["scale"]
+    restored = CompilableDesign.from_json(static.to_json(), gen)
+    assert restored.compile_kwargs == static.compile_kwargs
+    assert restored.dispatch_params == []
+
+
+@pytest.mark.parametrize("value", [1.0, 1.5, "4", None, True, np.bool_(False)])
+def test_dispatch_specialization_rejects_nonintegers(value):
+    with pytest.raises(TypeError, match="integer"):
+        CompilableDesign(_dispatch_gen()).specialize(scale=value)
+
+
+@pytest.mark.parametrize("value", [-(2**31) - 1, 2**31])
+def test_dispatch_specialization_rejects_overflow(value):
+    with pytest.raises(ValueError, match="out of range"):
+        CompilableDesign(_dispatch_gen()).specialize(scale=value)
+
+
+def test_dispatch_specialization_keyword_only_binding():
+    def gen(
+        a: In,
+        *,
+        first: DispatchTime[np.int32],
+        second: DispatchTime[np.int32],
+        last: DispatchTime[np.int32] = 7,
+    ):
+        pass
+
+    design = CompilableDesign(gen).specialize(first=4)
+    assert design.split_runtime_args(("tensor",), {"second": 6}) == (
+        ["tensor"],
+        {"second": 6, "last": 7},
+    )
+    assert design.split_runtime_args(("tensor",), {"second": 6, "last": 9}) == (
+        ["tensor"],
+        {"last": 9, "second": 6},
+    )
+    with pytest.raises(TypeError, match="specialized"):
+        design.split_runtime_args(("tensor",), {"second": 6, "first": 5})
+    with pytest.raises(TypeError, match="Multiple values"):
+        design.split_runtime_args(("tensor",), {"a": "another tensor"})
+    with pytest.raises(TypeError, match="too many positional"):
+        design.split_runtime_args(("tensor", 6), {})
+
+
+def test_tensor_types_cannot_prebind_runtime_tensor_parameters():
+    def gen(a: In, *, count: DispatchTime[np.int32]):
+        pass
+
+    tensor_type = np.ndarray[(16, 32), np.dtype[np.int16]]
+    with pytest.raises(TypeError, match="runtime tensors"):
+        CompilableDesign(gen, compile_kwargs={"a": tensor_type})
+
+
+def test_dispatch_keyword_only_specialization_generates_constant():
+    observed = []
+
+    def gen(a: In, *, count: DispatchTime[np.int32]):
+        observed.append(count)
+
+    design = CompilableDesign(gen).specialize(count=4)
+    design.generate_mlir()
+    assert observed == [4]
+    assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
+
+
+def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
+    """``hash(design)`` must not require the dispatch toolchain to be installed.
+
+    A host C++ compiler is needed to *compile* a DispatchTime[T] design, but
+    hashing it must still work without one.
+    """
+    import aie.utils.config as _config
+
+    def _raise(*_a, **_kw):
+        raise RuntimeError("not found")
+
+    monkeypatch.setattr(_config, "host_cxx_path", _raise)
+
+    gen = _dispatch_gen()
+    d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    d2 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    assert hash(d1) == hash(d2)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("tool", ["aiecc", "peano_cxx", "host_cxx"])
+@pytest.mark.parametrize("change", ["mtime", "size", "path"])
+def test_artifact_hash_tracks_active_compilers(
+    monkeypatch, tmp_path, dynamic, tool, change
+):
+    import os
+
+    from aie.utils import config
+    from aie.utils.compile.jit._hash import _compute_artifact_hash
+
+    compiler = tmp_path / tool
+    compiler.write_text("compiler")
+    monkeypatch.setattr(config, f"{tool}_path", lambda: str(compiler))
+    generator = _gemm_gen()
+
+    before = _compute_artifact_hash(generator, [], [], True, dynamic)
+    stat = compiler.stat()
+    if change == "mtime":
+        # NTFS timestamps have 100 ns resolution.
+        os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns + 100))
+    elif change == "size":
+        compiler.write_text("different compiler")
+        os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    else:
+        replacement = tmp_path / f"other_{tool}"
+        replacement.write_bytes(compiler.read_bytes())
+        os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        compiler = replacement
+    after = _compute_artifact_hash(generator, [], [], True, dynamic)
+
+    assert (before != after) == (tool != "host_cxx" or dynamic)
+
+
 def test_hash_for_path_generator_uses_path_string():
     d1 = CompilableDesign(Path("/a/design.mlir"))
     d2 = CompilableDesign(Path("/b/design.mlir"))
@@ -448,13 +657,18 @@ def _design(body, name="design"):
     return ns[name]
 
 
-def test_hash_is_stable_for_a_generator_with_a_nested_function(tmp_path):
+@pytest.mark.parametrize(
+    "signature", ["a, b", "a: In, *, count: DispatchTime[np.int32] = 3"]
+)
+def test_hash_is_stable_for_a_generator_with_a_nested_function(tmp_path, signature):
     """repr() of a nested code object embeds its address; the key must not."""
     script = tmp_path / "probe.py"
     script.write_text(
         "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "from aie.iron import DispatchTime, In\n"
+        "import numpy as np\n"
         "def make():\n"
-        "    def design(a, b):\n"
+        f"    def design({signature}):\n"
         "        def core(x):\n"
         "            return x + 1\n"
         "        return core\n"
@@ -907,15 +1121,19 @@ def test_generate_mlir_unplaced_style_uses_return_value():
 # ---------------------------------------------------------------------------
 
 
-def test_generate_mlir_guard_2a_tensor_name_in_compile_kwargs():
-    """compile_kwargs must not contain names annotated as In/Out/InOut."""
+def test_construction_rejects_tensor_name_in_compile_kwargs():
+    """compile_kwargs must not contain names annotated as In/Out/InOut.
+
+    Rejected at construction, not generation: `a` is a real parameter, so the
+    design would otherwise be hashable and the misplaced key would reach the
+    cache key before anything generated.
+    """
 
     def gen(a: In, *, M: CompileTime[int]):
         pass
 
-    d = CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
     with pytest.raises(TypeError, match="runtime tensors"):
-        d._generate_mlir(ExternalFunction)
+        CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
 
 
 def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
@@ -927,6 +1145,92 @@ def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
     d = CompilableDesign(gen, compile_kwargs={"M": 1, "NOSUCHPARAM": 99})
     with pytest.raises(TypeError, match="not in the generator signature"):
         d._generate_mlir(ExternalFunction)
+
+
+def test_generate_mlir_dispatch_param_receives_identity(npu2_device):
+    """Dynamic parameters carry identity; specialization still supplies constants."""
+    from aie.iron import Program, Runtime
+    from aie.utils.compile.jit.markers import _DispatchParameter
+
+    observed = {}
+
+    def gen(*, scale: DispatchTime[np.int32], M: CompileTime[int]):
+        observed["scale"] = scale
+        return Program(
+            NPU2Col1(), Runtime(lambda value: None, [scale])
+        ).resolve_program()
+
+    d = CompilableDesign(gen, compile_kwargs={"M": 1})
+    d._generate_mlir(ExternalFunction)
+
+    assert isinstance(observed["scale"], _DispatchParameter)
+    assert observed["scale"].name == "scale"
+    assert observed["scale"].scalar_type is np.int32
+
+    static = d.specialize(scale=5)
+    static._generate_mlir(ExternalFunction)
+    assert observed["scale"] == 5
+    assert type(observed["scale"]) is np.int32
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64],
+)
+@pytest.mark.parametrize("boundary", ["min", "max"])
+def test_specialized_dispatch_runtime_constant_preserves_dtype(
+    dtype, boundary, npu2_device
+):
+    """Generate real IR for every scalar width, without a compiler or an NPU."""
+    from aie.ir import IntegerAttr
+    from aie.iron import Program, Runtime
+    from aie.helpers.util import np_dtype_to_mlir_type
+
+    observed = {}
+    literal = int(getattr(np.iinfo(dtype), boundary))
+
+    def gen(*, value: DispatchTime[dtype]):
+        assert type(value) is dtype
+
+        def sequence(scalar):
+            observed["type"] = str(scalar.type)
+            observed["expected_type"] = str(np_dtype_to_mlir_type(dtype))
+            observed["value"] = IntegerAttr(scalar.owner.attributes["value"]).value
+
+        return Program(NPU2Col1(), Runtime(sequence, [value])).resolve_program()
+
+    design = CompilableDesign(gen).specialize(value=literal)
+    module = design.generate_mlir()
+    assert module.operation.verify()
+    assert design.dispatch_params == []
+    assert type(design.compile_kwargs["value"]) is int
+    assert observed["type"] == observed["expected_type"]
+    # MLIR's signless/index attributes may print uint64's high bit as negative;
+    # compare exact bit patterns so neither narrowing nor sign extension passes.
+    mask = (1 << (np.dtype(dtype).itemsize * 8)) - 1
+    assert observed["value"] & mask == literal & mask
+
+
+def test_dispatch_default_remains_dynamic_during_generation(npu2_device):
+    from aie.iron import Program, Runtime
+    from aie.utils.compile.jit.markers import _DispatchParameter
+
+    observed = []
+
+    def gen(*, scale: DispatchTime[np.int32] = 3):
+        observed.append(scale)
+        return Program(
+            NPU2Col1(), Runtime(lambda value: None, [scale])
+        ).resolve_program()
+
+    design = CompilableDesign(gen)
+    design.generate_mlir()
+    assert len(observed) == 1
+    assert isinstance(observed[0], _DispatchParameter)
+    assert observed[0].scalar_type is np.int32
+    assert design.dispatch_params == ["scale"]
+    assert design.compile_kwargs == {}
+    assert design.split_runtime_args((), {}) == ([], {"scale": 3})
 
 
 def test_generate_mlir_raises_on_verification_failure():
@@ -992,6 +1296,31 @@ module {
     mlir_path.write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
     assert sizes == [1024, 1024], f"Expected [1024, 1024], got {sizes}"
+
+
+@pytest.mark.parametrize(
+    "signature,expected",
+    [
+        (
+            "%n: i32, %a: memref<16x32xi16>, %offset: index, "
+            "%b: memref<1024xi32>, %flags: ui64",
+            [512, 1024],
+        ),
+        (
+            "%a: memref<512xi32>, %unsupported: f32, %b: memref<1024xi32>",
+            None,
+        ),
+        ("%n: i32, %offset: index, %flags: ui64", None),
+    ],
+    ids=["interleaved-dispatch-scalars", "unsupported-float", "scalar-only"],
+)
+def test_parse_dma_sizes_keeps_only_supported_host_tensor_capacities(
+    tmp_path, signature, expected
+):
+    (tmp_path / "input_with_addresses.mlir").write_text(
+        "module { aie.device(npu1) { aie.runtime_sequence(" + signature + ") { } } }"
+    )
+    assert parse_dma_sizes(tmp_path) == expected
 
 
 def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
@@ -1373,3 +1702,123 @@ def test_get_pdi_paths_empty_before_compile():
 
     cd = CompilableDesign(gen)
     assert cd.get_pdi_paths() == []
+
+
+# ---------------------------------------------------------------------------
+# compile(): DispatchTime[T] guards -- these raise before any subprocess runs
+# ---------------------------------------------------------------------------
+
+
+def test_compile_dispatch_time_rejects_full_elf():
+    """DispatchTime[T] + full_elf=True raises before any compilation is attempted."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512}, full_elf=True)
+    with pytest.raises(NotImplementedError, match="full_elf"):
+        d.compile()
+
+
+def test_compile_dispatch_time_rejects_full_elf_path_kwarg():
+    """Same guard via the full_elf_path= call-time kwarg, not just the config."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    with pytest.raises(NotImplementedError, match="full_elf"):
+        d.compile(full_elf_path="foo.elf")
+
+
+@pytest.mark.parametrize("extra", [{"inst_path": "foo.bin"}, {"elf_path": "foo.elf"}])
+def test_compile_dispatch_time_rejects_static_instruction_paths(extra):
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    with pytest.raises(ValueError, match="no static instructions"):
+        d.compile(xclbin_path="foo.xclbin", **extra)
+
+
+def test_get_dispatch_lib_path_none_before_compile():
+    """get_dispatch_lib_path() returns None when no compile has happened yet."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    assert d.get_dispatch_lib_path() is None
+
+
+def test_get_dispatch_lib_path_none_for_non_dispatch_design():
+    """get_dispatch_lib_path() returns None for a design with no DispatchTime[T] params."""
+    d = CompilableDesign(_gemm_gen())
+    assert d.get_dispatch_lib_path() is None
+
+
+@pytest.mark.parametrize("cache_hit", [False, True])
+def test_dispatch_library_selected_once_per_compile(
+    monkeypatch, tmp_path, npu2_device, cache_hit
+):
+    from unittest.mock import Mock
+
+    from aie.utils.compile.jit import _manifest
+    from aie.utils.compile.utils import SHARED_LIB_SUFFIX
+
+    design = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
+    monkeypatch.setattr(design, "_compute_cache_hash", lambda: "cached")
+    directory = tmp_path / "cached"
+    directory.mkdir()
+    if cache_hit:
+        (directory / "final.xclbin").touch()
+
+    def publish(contents):
+        library = directory / f"dispatch-{contents * 64}{SHARED_LIB_SUFFIX}"
+        library.touch()
+        _manifest._write(directory, [], dispatch_library=library.name)
+        return library
+
+    first = publish("a")
+    compile_device = Mock(side_effect=lambda **kwargs: kwargs["xclbin_path"].touch())
+    compile_builder = Mock(return_value=first)
+    monkeypatch.setattr(design, "_generate_mlir", lambda *args: None)
+    monkeypatch.setattr(compilabledesign_module, "compile_mlir_module", compile_device)
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_dispatch_bridge", compile_builder
+    )
+    design.compile()
+    assert design.get_dispatch_lib_path() == first
+    assert (
+        compile_device.call_count
+        == compile_builder.call_count
+        == (0 if cache_hit else 1)
+    )
+    second = publish("b")
+    # A later publication must not silently change this design's selected ABI.
+    assert design.get_dispatch_lib_path() == first
+    design.compile()
+    assert design.get_dispatch_lib_path() == second
+    assert (
+        compile_device.call_count
+        == compile_builder.call_count
+        == (0 if cache_hit else 1)
+    )
+
+
+@pytest.mark.parametrize("dtype", [int, bool, float, str, np.float32, np.bool_])
+def test_dispatch_time_rejects_unsupported_types_at_construction(dtype):
+    def gen(*, scale: DispatchTime[dtype]):
+        pass
+
+    with pytest.raises(TypeError, match="Unsupported DispatchTime.*NumPy integer"):
+        CompilableDesign(gen)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int8,
+        np.int16,
+        np.int32,
+        np.int64,
+        np.uint8,
+        np.uint16,
+        np.uint32,
+        np.uint64,
+        np.intc,
+        np.uintp,
+        np.longlong,
+    ],
+)
+def test_dispatch_time_accepts_runtime_integer_types(dtype):
+    def gen(*, scale: DispatchTime[dtype]):
+        pass
+
+    assert CompilableDesign(gen).dispatch_param_types == [dtype]

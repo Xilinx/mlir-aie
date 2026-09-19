@@ -59,6 +59,7 @@
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
@@ -314,7 +315,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .value("--march=")
       .arg("--function-sections")
       .arg("-stack-size-section")
-      .value("-aie-stack-addrspace=")
+      .value("-aie-stack-addrspace=", "", /*omitIfEmpty=*/true)
       .arg("--filetype=obj")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
@@ -822,6 +823,16 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
         const auto &tm = getTargetModel(op);
         int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
+        int64_t bankSize =
+            numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
+        // An address space names one bank, so it can only describe a stack that
+        // lies inside one. A larger stack spans banks whatever its start, and
+        // claiming a bank for it would tell Peano's bank-conflict model that
+        // every stack access hits that bank when most do not. Say nothing.
+        if (bankSize > 0 && op.getEffectiveStackSize() > bankSize) {
+          out.value = "";
+          return mlir::success();
+        }
         int bank = 0;
         // Prefer the declared `stack_bank`. Codegen needs the bank, not the
         // address, and the bank is an input attribute whereas the address is
@@ -830,10 +841,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         // core is compiled.
         if (auto stackBank = op.getStackBank()) {
           bank = *stackBank;
-        } else if (numBanks > 0) {
-          int64_t bankSize = tm.getLocalMemorySize() / numBanks;
-          if (bankSize > 0)
-            bank = static_cast<int>(op.getStackRun().start / bankSize);
+        } else if (bankSize > 0) {
+          bank = static_cast<int>(op.getStackRun().start / bankSize);
         }
         if (bank != 0) {
           bool hasObjects = false;
@@ -1749,6 +1758,34 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 return seqFilter.empty() || seq.getSymName() == seqFilter;
               });
 
+  // The C++ target consumes (and replaces) its module. Keep the shared lowered
+  // IR intact, and retain only the selected sequence in the private clone:
+  // SplitIRAction preserves the complete module for symbol resolution.
+  bool cppFoldDDRAddrOffset =
+      foldDDRAddrOffsetOpt.getNumOccurrences() || !generateFullElf
+          ? foldDDRAddrOffsetOpt.getValue()
+          : false;
+  auto &npuCpp = perSeq.map<std::string>(
+      npuCppName.getValue(),
+      [cppFoldDDRAddrOffset, emitShim = npuCppEmitDispatchShim.getValue()](
+          const Item<OpInModule<RuntimeSequenceOp>> &item,
+          Item<std::string> &out) -> mlir::LogicalResult {
+        RuntimeSequenceOp selected = item.get().op;
+        auto deviceName = selected->getParentOfType<DeviceOp>().getSymName();
+        ModRef clone = item.get().module.get().clone();
+        llvm::SmallVector<RuntimeSequenceOp> toErase;
+        clone->walk([&](RuntimeSequenceOp seq) {
+          if (seq.getSymName() != selected.getSymName() ||
+              seq->getParentOfType<DeviceOp>().getSymName() != deviceName)
+            toErase.push_back(seq);
+        });
+        for (RuntimeSequenceOp seq : toErase)
+          seq.erase();
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateNpuToCpp(
+            *clone, os, cppFoldDDRAddrOffset, emitShim);
+      });
+
   // Translate each sequence exactly once into its NPU program (the .bin bytes
   // and the locmap). Two variants are built from the same per-sequence input.
   // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
@@ -1977,10 +2014,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
       generateInputWithAddresses || generateInputWithSymbols ||
-      generateScratchpadParams || generateNpuInsts || keepLoc || generateElf ||
-      generateCdo || generatePdi || generateTxn || generateCtrlpkt ||
-      generateXclbin || generateFullElf || wantAiesim || doCompileHost ||
-      !getOutputs.empty() || !cutOutputs.empty();
+      generateScratchpadParams || generateNpuInsts || generateNpuCpp ||
+      keepLoc || generateElf || generateCdo || generatePdi || generateTxn ||
+      generateCtrlpkt || generateXclbin || generateFullElf || wantAiesim ||
+      doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
   // Every other artifact depends on the post-link checks through
   // physicalWithElfs. A core-ELF build ends before that edge, so name the
   // checks here.
@@ -1999,6 +2036,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
   if (generateNpuInsts) {
     outputs.push_back(&npuInsts);
+  }
+  if (generateNpuCpp) {
+    outputs.push_back(&npuCpp);
   }
   if (keepLoc) {
     outputs.push_back(&npuLocmap);
@@ -2187,6 +2227,24 @@ int main(int argc, char **argv) {
     llvm::errs() << "aiecc: --check-lut-banks requires Peano compilation and "
                     "linking; it cannot verify Chess LLVM IR\n";
     return 1;
+  }
+
+  // Exact edge selectors also request C++ output, including a checkpoint cut.
+  // On resume these selectors may change while the recorded C++ options remain.
+  bool wantNpuCpp = generateNpuCpp ||
+                    llvm::is_contained(getOutputs, npuCppName.getValue()) ||
+                    llvm::is_contained(cutOutputs, npuCppName.getValue());
+  if (!resume.active && !wantNpuCpp) {
+    if (npuCppEmitDispatchShim) {
+      llvm::errs() << "aiecc: --npu-cpp-emit-dispatch-shim requires NPU C++ "
+                      "output; use --get-npu-cpp\n";
+      return 1;
+    }
+    if (npuCppName.getNumOccurrences()) {
+      llvm::errs() << "aiecc: --npu-cpp-name requires NPU C++ output; "
+                      "use --get-npu-cpp\n";
+      return 1;
+    }
   }
 
   // --expand-load-pdis reconfigures via PDI swaps and routes the config branch

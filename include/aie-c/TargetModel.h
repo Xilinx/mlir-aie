@@ -137,6 +137,18 @@ aieTargetModelGetNumLocks(AieTargetModel targetModel, int col, int row);
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel,
                                                     int col, int row);
 
+/// Field widths of a DMA buffer descriptor, which differ by tile type. The step
+/// field counts address granules, not elements -- see
+/// aieGetTargetModelAddressGenGranularity.
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDmaBdWrapBits(AieTargetModel targetModel, int col, int row);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDmaBdStepBits(AieTargetModel targetModel, int col, int row);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDmaBdIterBits(AieTargetModel targetModel, int col, int row);
+
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetNumMemTileRows(AieTargetModel targetModel);
 

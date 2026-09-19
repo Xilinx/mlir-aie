@@ -389,12 +389,25 @@ add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
 
-# Bundle llvm-objcopy alongside the AIE bin/ tools.
+# Bundle llvm-nm and llvm-objcopy alongside the AIE bin/ tools.
 #
 # The IRON JIT external-kernel path renames symbols in Peano-compiled objects
-# via `objcopy --redefine-sym`. Those objects use the AIEngine ELF e_machine,
-# which GNU binutils objcopy can't parse; however, the llvm-objcopy
-# implementation is architecture-agnostic, so we ship it along our tools.
+# by first listing them with `llvm-nm`, then rewriting them with
+# `objcopy --redefine-syms`. Those objects are ordinary ELF32 relocatables, but
+# they carry the AIEngine e_machine (0x108), which no GNU BFD backend claims.
+# GNU nm reads them anyway -- an unknown architecture is no obstacle to listing
+# a symbol table -- but GNU objcopy refuses to auto-detect an input target and
+# fails outright. The LLVM tools need no such hint, so we ship both here; see
+# aie.utils.config, which resolves them and records the asymmetry in full.
+set(_aie_llvm_nm "${LLVM_TOOLS_BINARY_DIR}/llvm-nm${CMAKE_EXECUTABLE_SUFFIX}")
+if(EXISTS "${_aie_llvm_nm}")
+  install(PROGRAMS "${_aie_llvm_nm}"
+          DESTINATION bin
+          COMPONENT aie-tools)
+else()
+  message(FATAL_ERROR "llvm-nm not found at ${_aie_llvm_nm}")
+endif()
+
 set(_aie_llvm_objcopy "${LLVM_TOOLS_BINARY_DIR}/llvm-objcopy${CMAKE_EXECUTABLE_SUFFIX}")
 if(EXISTS "${_aie_llvm_objcopy}")
   install(PROGRAMS "${_aie_llvm_objcopy}"

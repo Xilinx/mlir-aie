@@ -337,8 +337,9 @@ static void printMemoryMapEntry(Diagnostic &note, StringRef name,
     note << "\t";
   }
   int64_t end = size == 0 ? address : address + size - 1;
-  note << name << " \t" << ": 0x" << llvm::utohexstr(address) << "-0x"
-       << llvm::utohexstr(end) << " \t(" << size << " bytes)" << suffix << "\n";
+  note << name << " \t"
+       << ": 0x" << llvm::utohexstr(address) << "-0x" << llvm::utohexstr(end)
+       << " \t(" << size << " bytes)" << suffix << "\n";
 }
 
 //===----------------------------------------------------------------------===//

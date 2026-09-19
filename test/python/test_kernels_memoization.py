@@ -221,7 +221,7 @@ def test_mm_zero_attribute_is_kernel():
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
     assert isinstance(ef.zero, Kernel)
-    assert ef.zero._name == "zero_i16"
+    assert ef.zero._name == f"{ef._symbol_prefix}_zero_i16"
 
 
 def test_mm_zero_attribute_shares_object_file():
@@ -231,6 +231,7 @@ def test_mm_zero_attribute_shares_object_file():
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
     assert ef.zero.object_file_name == ef.object_file_name
+    assert ef.zero.object_file is ef.object_file
 
 
 def test_mm_zero_attribute_arg_count():
@@ -251,7 +252,7 @@ def test_mm_zero_attribute_scalar_variant():
         output_dtype=np.int16,
         vectorized=False,
     )
-    assert ef.zero._name == "zero_scalar_i16"
+    assert ef.zero._name == f"{ef._symbol_prefix}_zero_scalar_i16"
 
 
 def test_mv_zero_attribute_is_kernel():
@@ -259,8 +260,9 @@ def test_mv_zero_attribute_is_kernel():
     same mv.cc-built .o."""
     ef = kernels.mv(dim_m=32, dim_k=32, vectorized=False)
     assert isinstance(ef.zero, Kernel)
-    assert ef.zero._name == "zero_scalar_i32"
+    assert ef.zero._name == f"{ef._symbol_prefix}_zero_scalar_i32"
     assert ef.zero.object_file_name == ef.object_file_name
+    assert ef.zero.object_file is ef.object_file
 
 
 def test_mm_no_longer_carries_only_flags():

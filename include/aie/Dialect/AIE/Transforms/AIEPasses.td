@@ -57,10 +57,11 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
 def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
   let summary = "Place logical tiles onto physical AIE tiles";
   let description = [{
-    Sequential placer algorithm places core tiles in a
-    column-major order and places fifo-connected Shim/Mem tiles
-    near its core tiles. One or more aie.logical_tile operation is mapped
-    to one aie.tile.
+    The sequential placer maps cores column-major and FIFO-connected Shim/Mem
+    tiles nearby, allowing multiple logical tiles per physical tile.
+    It checks DMA demand; memory, locks and spill-dependent channel eligibility
+    are checked by `aie-objectfifo-allocate` after splitting. Allocation failures
+    do not trigger re-placement or undo merges.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
@@ -456,14 +457,33 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
 def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
   let summary = "Give pools and endpoints their buffers, locks and channels";
   let description = [{
-    Fill in the resources a pool and endpoint design leaves open: the buffers
-    holding a pool's objects, the locks guarding each segment, and the DMA
-    channel each endpoint drives. `aie.route` becomes `aie.flow`, and
-    a shim endpoint gains the `aie.shim_dma_allocation` the runtime resolves.
+    Allocate missing pool buffers, synchronization locks and endpoint channels;
+    lower routes to circuit/packet flows and emit shim runtime allocations.
+    Existing buffers, locks and pinned channels stay fixed.
 
-    Whatever is already written down is kept, so hand-placed buffers,
-    hand-written locks and pinned channels all survive; each is filled in only
-    where it is absent.
+    MemTile memory checks count each fixed buffer once (including aliased tile
+    coordinates), even without new allocations. Pool sizes use BufferOp's
+    DataLayout byte sizing, including BFP. Planning shares the basic sequential
+    address layout, including alignment and pinned ranges; bank constraints
+    remain with address assignment.
+
+    Buffers may spill to accessible neighboring MemTiles. Locks must be reachable
+    by their core and DMA users: per selected segment for counting pairs, per
+    pool for binary locks. Generated locks prefer their nominal tile but may move
+    to reachable tiles with capacity. DMA channel eligibility includes every
+    accessed buffer and lock.
+
+    Preserve successful largest-first plans. On channel exhaustion, retry with
+    selected pools' buffers and generated locks local to the accessing endpoint.
+    If that search fails, prioritize on-home-tile DMA demand within each MemTile,
+    choosing the largest eligible object across homes. Both orders check memory,
+    locks and channels, with at most 64 locality combinations per distinct order.
+
+    This is bounded allocation, not a placement-time ban on spilling or a proof
+    of infeasibility on failure; it does not undo tile-placement decisions.
+    Before placement, each access must have a reachable physical pair compatible
+    with known coordinates and tile types. These pairwise checks do not prove a
+    jointly feasible placement.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";
