@@ -151,15 +151,16 @@ def test_static_package_setup_without_xrt(tmp_path, existing):
     )
     env_file = tmp_path / "github-env"
     path_file = tmp_path / "github-path"
+    # Set path inputs inside Bash: MSYS rewrites empty Windows environment values.
+    script = 'export PYTHONPATH="$1" LD_LIBRARY_PATH="$1"\n'
+    script += setup["run"] + '\nprintf "%s" "$PWD"'
     result = subprocess.run(
-        ["bash", "-e", "-o", "pipefail", "-c", setup["run"] + '\nprintf "%s" "$PWD"'],
+        ["bash", "-e", "-o", "pipefail", "-c", script, "workflow-env-test", existing],
         cwd=tmp_path,
         env={
             **os.environ,
             "GITHUB_ENV": env_file.as_posix(),
             "GITHUB_PATH": path_file.as_posix(),
-            "PYTHONPATH": existing,
-            "LD_LIBRARY_PATH": existing,
         },
         capture_output=True,
         text=True,
