@@ -16,6 +16,7 @@ cannot replace a mapped generation or pin a staging DLL on Windows.
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import get_args
 
@@ -151,12 +152,15 @@ def compile_dispatch_bridge(
             _check_runtime_sequence_abi(module, dispatch_params, dispatch_param_types)
         except (MLIRError, RuntimeError) as e:
             raise DispatchCompileError(f"dispatch bridge ABI validation: {e}") from e
-    staging = kernel_dir / f"dispatch.staging{SHARED_LIB_SUFFIX}"
-    try:
-        cmd = host_shared_lib_cmd(
-            gen_cpp, staging, opt="-O2", includes=[config.runtime_header_path()]
-        )
+    # Keep linker companions (.lib/.exp on Windows) in the same cleanup scope.
+    with tempfile.TemporaryDirectory(
+        prefix="dispatch.staging.", dir=kernel_dir
+    ) as tmpdir:
+        staging = Path(tmpdir) / f"dispatch{SHARED_LIB_SUFFIX}"
         try:
+            cmd = host_shared_lib_cmd(
+                gen_cpp, staging, opt="-O2", includes=[config.runtime_header_path()]
+            )
             subprocess.run(cmd, check=True, capture_output=True, text=True)
         except (OSError, subprocess.CalledProcessError) as e:
             detail = (
@@ -171,5 +175,3 @@ def compile_dispatch_bridge(
         if not published.exists():
             staging.replace(published)
         return published
-    finally:
-        staging.unlink(missing_ok=True)

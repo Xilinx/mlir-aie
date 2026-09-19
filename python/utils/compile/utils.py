@@ -43,9 +43,23 @@ SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
 
 def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[str]:
     """Build a host shared library with the project's C++17 ABI."""
+    compiler = config.host_cxx_path()
+    link_flags = []
+    if SHARED_LIB_SUFFIX == ".dll":
+        target = subprocess.run(
+            [compiler, "-dumpmachine"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        # PE timestamps must not give identical dispatch builds different hashes.
+        link_flags.append(
+            "-Wl,/Brepro" if "msvc" in target else "-Wl,--no-insert-timestamp"
+        )
     return [
-        config.host_cxx_path(),
+        compiler,
         *SHARED_LIB_FLAGS,
+        *link_flags,
         opt,
         "-std=c++17",
         *(f"-I{inc}" for inc in includes),
