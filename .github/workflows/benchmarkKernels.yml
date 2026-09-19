@@ -105,6 +105,7 @@ jobs:
         run: |
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
+          source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
           # Every case in test/python/npu/kernel_cases.py, under every edge-data
@@ -121,6 +122,7 @@ jobs:
         run: |
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
+          source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
           python -m pytest test/python/npu/test_kernels_bench.py -m benchmark -v \
             --bench-out bench.json --bench-meta meta.json --pmode "$BENCH_PMODE" \

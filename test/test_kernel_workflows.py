@@ -5,6 +5,7 @@
 
 """Host-only publication regression tests; no compiled aie package required."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -124,6 +125,69 @@ def test_dispatch_filter_is_passed_as_data_not_shell_source():
     assert step["env"]["ONLY"] == "${{ github.event.inputs.only }}"
     assert "${{ github.event.inputs.only }}" not in step["run"]
     assert '${ONLY:+-k "$ONLY"}' in step["run"]
+
+
+@pytest.mark.parametrize(
+    "filename,compute",
+    [("benchmarkKernels.yml", "bench"), ("staticKernelChecks.yml", "static")],
+)
+def test_source_builds_initialize_submodules(filename, compute):
+    steps = workflow(filename)["jobs"][compute]["steps"]
+    checkout = next(
+        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert checkout["with"]["submodules"] in ("true", "recursive")
+    build = next(
+        step for step in steps if "build-mlir-aie-from-wheels.sh" in step.get("run", "")
+    )
+    assert steps.index(checkout) < steps.index(build)
+
+
+@pytest.mark.parametrize("existing", ["", "/existing"])
+def test_static_package_setup_without_xrt(tmp_path, existing):
+    steps = workflow("staticKernelChecks.yml")["jobs"]["static"]["steps"]
+    setup = next(
+        step for step in steps if step.get("name") == "Use built package without XRT"
+    )
+    env_file = tmp_path / "github-env"
+    path_file = tmp_path / "github-path"
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", setup["run"] + '\nprintf "%s" "$PWD"'],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "GITHUB_ENV": env_file.as_posix(),
+            "GITHUB_PATH": path_file.as_posix(),
+            "PYTHONPATH": existing,
+            "LD_LIBRARY_PATH": existing,
+        },
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    root = result.stdout
+    suffix = f":{existing}" if existing else ""
+    exported = dict(line.split("=", 1) for line in env_file.read_text().splitlines())
+    assert exported == {
+        "PYTHONPATH": f"{root}/mlir_aie/python{suffix}",
+        "LD_LIBRARY_PATH": f"{root}/mlir_aie/lib{suffix}",
+        "MLIR_AIE_INSTALL_DIR": f"{root}/mlir_aie",
+    }
+    assert path_file.read_text().splitlines() == [
+        f"{root}/aie-venv/bin",
+        f"{root}/mlir_aie/bin",
+    ]
+
+
+@pytest.mark.parametrize("step_id", ["correctness", "bench"])
+def test_benchmark_uses_built_package(step_id):
+    steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == step_id)
+    assert (
+        run.index("source aie-venv/bin/activate")
+        < run.index("source utils/env_setup.sh mlir_aie")
+        < run.index("python -m pytest")
+    )
 
 
 def test_static_compiles_fused_sources_for_the_matrix_device():
