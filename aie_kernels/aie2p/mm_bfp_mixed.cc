@@ -1,4 +1,4 @@
-//===- mm.cc ----------------------------------------------------*- C++ -*-===//
+//===- mm_bfp_mixed.cc ------------------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -6,18 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
+#include "../generic/zero.cc"
 #include <aie_api/aie.hpp>
-
-template <typename T, int M, int N>
-void zero_vectorized(T *__restrict c) {
-  constexpr int r = 512 / (sizeof(T) * 8);
-  static_assert((M * N) % r == 0);
-  const aie::vector<T, r> zeros = aie::zeros<T, r>();
-  const T *__restrict c_end = c + M * N;
-  for (; c < c_end; c += r) {
-    aie::store_v(c, zeros);
-  }
-}
 
 // This kernel is a variation of the conventional matrix multiplications in the
 // repo that uses different datatypes for the A and B and performs a conversion

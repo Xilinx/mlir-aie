@@ -1,9 +1,11 @@
-//===- scale.cc -------------------------------------------------*- C++ -*-===//
+//===- mul.cc -------------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2023 Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+
+#define NOCPP
 
 #include <stdint.h>
 #include <stdio.h>
@@ -12,6 +14,14 @@
 
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
+
+// One vector register of bf16: 512-bit on AIE2P, 256-bit on AIE2. This was the
+// only difference between the two per-arch copies this file replaces.
+#if __AIE_ARCH__ >= 21
+constexpr int vec_factor = 32;
+#else
+constexpr int vec_factor = 16;
+#endif
 
 template <typename T_in, typename T_out, const int N>
 void eltwise_mul(T_in *a, T_in *b, T_out *c) {
@@ -23,7 +33,6 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
 template <typename T_in, typename T_out, const int N>
 void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
 
-  constexpr int vec_factor = 16;
   event0();
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;
@@ -36,7 +45,11 @@ void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
     pA1 += vec_factor;
     aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
     pB1 += vec_factor;
-    aie::vector<T_out, vec_factor> cout = aie::mul(A0, B0);
+    // aie::mul on bf16 yields an accumulator (fp32 products); convert back to
+    // T_out explicitly.  Assigning the accumulator straight into a
+    // vector<T_out> produces garbage at this 32-wide width.
+    aie::vector<T_out, vec_factor> cout =
+        aie::mul(A0, B0).template to_vector<T_out>();
     aie::store_v(pC1, cout);
     pC1 += vec_factor;
   }
@@ -46,7 +59,6 @@ void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
 // Runtime size with a scalar tail.
 template <typename T_in, typename T_out>
 void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
-  constexpr int vec_factor = 16;
   event0();
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;
@@ -59,7 +71,8 @@ void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
     pA1 += vec_factor;
     aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
     pB1 += vec_factor;
-    aie::vector<T_out, vec_factor> cout = aie::mul(A0, B0);
+    aie::vector<T_out, vec_factor> cout =
+        aie::mul(A0, B0).template to_vector<T_out>();
     aie::store_v(pC1, cout);
     pC1 += vec_factor;
   }
