@@ -40,6 +40,7 @@ from ...helpers.util import (
     try_convert_np_type_to_mlir_type,
 )
 from ...utils import trace as trace_utils
+from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow import ObjectFifoHandle
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
@@ -185,16 +186,20 @@ class Runtime(Resolvable):
 
         Each ``fn_args`` entry is one of:
 
+        * an unbound **DispatchTime parameter**: replaced with its live SSA
+          scalar. Forward each parameter once, in any order; parameter identity
+          determines the host binding, not its position in ``fn_args``.
         * a **type** (a tensor type or a scalar type like ``np.int32``): declares
           a runtime input and is replaced with a live SSA value bound to a new
           ``runtime_sequence`` block arg -- a tensor type becomes a
           ``RuntimeData`` (``fill``/``drain`` target), a scalar type becomes the
           bare SSA value (``scf`` survives to the dynamic EmitC path).
-        * a concrete **int value**: also declares a runtime input, but is folded
-          into an ``arith.constant`` instead of a block arg (constant-bound
+        * a concrete **int or NumPy integer value**: also declares a runtime input,
+          but is folded into a constant instead of a block arg (constant-bound
           ``range_``/``if_`` unrolls to the static binary path). One body thus
           serves both lowerings depending on whether the caller passes a type or
-          an int here.
+          an integer here. NumPy integers retain their scalar dtype; plain Python
+          integers use i32 for compatibility with the common ``np.int32`` path.
         * any other object (ObjectFifoHandle, Buffer, Kernel, ScratchpadParameter,
           WorkerRuntimeBarrier, ...): passed through to the body unchanged, as
           with ``Worker.fn_args``.
@@ -207,6 +212,25 @@ class Runtime(Resolvable):
         """
         self._seq_fn: Callable = seq_fn
         self._fn_args = list(fn_args) if fn_args is not None else []
+        self._dispatch_binding = object()
+        dispatch_args = [
+            arg for arg in self._fn_args if isinstance(arg, _DispatchParameter)
+        ]
+        if len({id(arg) for arg in dispatch_args}) != len(dispatch_args):
+            raise TypeError(
+                "Forward each DispatchTime parameter exactly once to Runtime."
+            )
+        if len({id(arg.owner) for arg in dispatch_args}) > 1:
+            raise TypeError(
+                "Runtime cannot mix DispatchTime parameters from different designs."
+            )
+        for container in self._fn_args:
+            if isinstance(container, (list, tuple)):
+                for arg in flatten_fn_args(container):
+                    if isinstance(arg, _DispatchParameter):
+                        raise TypeError(
+                            f"DispatchTime parameter {arg.name!r} must be a direct Runtime fn_args entry."
+                        )
         # A concrete int entry is a folded constant; a type/generic-alias entry
         # is a runtime input; anything else passes through as an object fn_arg.
         self._const_inputs: list[int | np.integer | None] = [
@@ -215,13 +239,41 @@ class Runtime(Resolvable):
         ]
         self._rt_data: list["RuntimeData | None"] = [
             (
-                RuntimeData(arg)
+                RuntimeData(
+                    arg.scalar_type if isinstance(arg, _DispatchParameter) else arg
+                )
                 if c is None
-                and (isinstance(arg, type) or get_origin(arg) is np.ndarray)
+                and (
+                    isinstance(arg, (type, _DispatchParameter))
+                    or get_origin(arg) is np.ndarray
+                )
                 else None
             )
             for c, arg in zip(self._const_inputs, self._fn_args)
         ]
+        # Keep the host scalar ABI in signature order, while the callback and
+        # tensor arguments retain fn_args order. Only dispatch slots move.
+        dispatch_data = iter(
+            data
+            for _, data in sorted(
+                (
+                    (arg.position, data)
+                    for arg, data in zip(self._fn_args, self._rt_data)
+                    if isinstance(arg, _DispatchParameter)
+                ),
+                key=lambda item: item[0],
+            )
+        )
+        self._block_data = []
+        for arg, data in zip(self._fn_args, self._rt_data):
+            if isinstance(arg, _DispatchParameter):
+                self._block_data.append(next(dispatch_data))
+            elif data is not None:
+                if dispatch_args and data.is_scalar:
+                    raise TypeError(
+                        "Runtime cannot mix bare scalar types with DispatchTime parameters."
+                    )
+                self._block_data.append(data)
         self._fifos: set[ObjectFifoHandle] = set()
         self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
@@ -325,7 +377,7 @@ class Runtime(Resolvable):
         # inputs contribute no block arg.
         rt_dtypes = [
             try_convert_np_type_to_mlir_type(rt_data.arr_type)
-            for rt_data in self._rt_data
+            for rt_data in self._block_data
             if rt_data is not None
         ]
         active = ActiveSequence(self)
@@ -339,9 +391,12 @@ class Runtime(Resolvable):
                 npu_load_pdi(device_ref=load_pdi_device_ref)
 
             block_args = iter(entry_block.arguments)
-            for rt_data in self._rt_data:
+            for rt_data in self._block_data:
                 if rt_data is not None:
                     rt_data.op = next(block_args)
+            for arg in self._fn_args:
+                if isinstance(arg, _DispatchParameter):
+                    arg._bind(self._dispatch_binding)
 
             if trace_size is not None and trace_size > 0:
                 trace_utils.start_trace(
@@ -362,11 +417,34 @@ class Runtime(Resolvable):
                 self._fn_args, self._const_inputs, self._rt_data
             ):
                 if const_val is not None:
-                    # i32 to mirror the dynamic np.int32 scalar path, so the same
-                    # body's arithmetic (extsi to i64, etc.) lowers identically.
-                    body_args.append(
-                        constant(int(const_val), np_dtype_to_mlir_type(np.int32))
+                    dtype = (
+                        type(const_val)
+                        if isinstance(const_val, np.integer)
+                        else np.int32
                     )
+                    scalar_type = np_dtype_to_mlir_type(dtype)
+                    value = int(const_val)
+                    # IntegerAttr's C API accepts int64_t, including the bit
+                    # pattern of a uint64/index value above INT64_MAX.
+                    if value > np.iinfo(np.int64).max:
+                        value -= 1 << 64
+                    if (
+                        isinstance(scalar_type, ir.IntegerType)
+                        and ir.IntegerType(scalar_type).is_unsigned
+                    ):
+                        # arith.constant requires signless integers. EmitC's
+                        # ConstantLike op preserves unsigned types and folds.
+                        from ...dialects.emitc import (  # pyright: ignore[reportMissingImports]
+                            ConstantOp,
+                        )
+
+                        body_args.append(
+                            ConstantOp(
+                                scalar_type, ir.IntegerAttr.get(scalar_type, value)
+                            ).result
+                        )
+                    else:
+                        body_args.append(constant(value, scalar_type))
                 elif rt_data is not None:
                     body_args.append(rt_data.op if rt_data.is_scalar else rt_data)
                 else:

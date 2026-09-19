@@ -205,6 +205,12 @@ def ceildiv(a, b):
 
 def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
     shape = get_args(ndarray_type)[0]
+    # Imported lazily: JIT type introspection itself uses this module.
+    from ..utils.compile.jit.markers import _DispatchParameter
+
+    for elem in shape if isinstance(shape, tuple) else (shape,):
+        if isinstance(elem, _DispatchParameter):
+            elem._misuse()
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
     for elem in shape:
         assert isinstance(
