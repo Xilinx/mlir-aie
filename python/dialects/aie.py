@@ -90,10 +90,12 @@ from ._aie_ops_gen import use_lock as _use_lock
 def use_lock(
     lock, action, value=None, *, blocking=None, acq_en=None, loc=None, ip=None
 ):
+    if loc is None:
+        loc = get_user_code_loc()
     if value is None:
         value = 1
     if isinstance(value, int):
-        value = constant(value, T.i32())
+        value = constant(value, T.i32(), loc=loc, ip=ip)
     return _use_lock(
         lock, action, value, blocking=blocking, acq_en=acq_en, loc=loc, ip=ip
     )
@@ -105,24 +107,26 @@ from ._aiex_ops_gen import NpuWriteRTPOp
 
 class npu_write_rtp(NpuWriteRTPOp):
     def __init__(self, buffer, index, value, loc=None, ip=None):
+        if loc is None:
+            loc = get_user_code_loc()
         buff_name = buffer
         if isinstance(buffer, BufferOp):
             buff_name = buffer.sym_name.value
         # `value` is an SSA i32 operand; materialize a constant from a plain int
         # while still accepting a Value for runtime-parameterized sequences.
         if isinstance(value, int):
-            value = constant(value, T.i32())
+            value = constant(value, T.i32(), loc=loc, ip=ip)
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 
-def _as_i32(v):
+def _as_i32(v, *, loc=None, ip=None):
     """Materialize an arith.constant i32 from a Python/NumPy int, pass a Value
     through unchanged, or return None for None. Shared by the npu scalar op
     wrappers in aiex.py (imported from this module)."""
     if v is None:
         return None
     if isinstance(v, (int, np.integer)):
-        return constant(int(v), T.i32())
+        return constant(int(v), T.i32(), loc=loc, ip=ip)
     return v
 
 
@@ -755,15 +759,20 @@ class packetflow(PacketFlowOp):
         source_channel,
         dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
+        *,
+        loc=None,
+        ip=None,
     ):
-        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
+        if loc is None:
+            loc = get_user_code_loc()
+        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header, loc=loc, ip=ip)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
-            PacketSourceOp(source, source_port, source_channel)
+            PacketSourceOp(source, source_port, source_channel, loc=loc)
             dests = [dests] if isinstance(dests, dict) else dests
             for dest in dests:
-                PacketDestOp(dest["dest"], dest["port"], dest["channel"])
-            EndOp()
+                PacketDestOp(dest["dest"], dest["port"], dest["channel"], loc=loc)
+            EndOp(loc=loc)
 
 
 core = region_op(Core, terminator=lambda *_: EndOp())
@@ -1055,7 +1064,12 @@ def flow(
     dest=None,
     dest_bundle=None,
     dest_channel=None,
+    *,
+    loc=None,
+    ip=None,
 ):
+    if loc is None:
+        loc = get_user_code_loc()
     assert dest is not None
     if source_bundle is None:
         source_bundle = WireBundle.DMA
@@ -1066,7 +1080,14 @@ def flow(
     if dest_channel is None:
         dest_channel = 0
     return FlowOp(
-        source, source_bundle, source_channel, dest, dest_bundle, dest_channel
+        source,
+        source_bundle,
+        source_channel,
+        dest,
+        dest_bundle,
+        dest_channel,
+        loc=loc,
+        ip=ip,
     )
 
 

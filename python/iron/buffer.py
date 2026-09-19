@@ -176,4 +176,6 @@ class Buffer(Resolvable):
                 mem_bank=self._mem_bank,
                 initial_value=self._initial_value,
                 use_write_rtp=self._use_write_rtp,
+                loc=loc,
+                ip=ip,
             )
