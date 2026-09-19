@@ -204,6 +204,16 @@ std::string xilinx::AIE::generateUniqueSymbolName(
   return name;
 }
 
+std::string xilinx::AIE::generateUniqueSymbolName(mlir::SymbolTable &symbolTable,
+                                                  llvm::StringRef prefix,
+                                                  unsigned &counter) {
+  std::string name;
+  do {
+    name = (prefix + llvm::Twine(counter++)).str();
+  } while (symbolTable.lookup(name));
+  return name;
+}
+
 LogicalResult
 xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   std::array<unsigned, 3> maxRanks = op.getArrayAttrMaxRanks();
