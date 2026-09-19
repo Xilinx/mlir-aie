@@ -15,6 +15,17 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// Factory dimensions are constants; raw-source callers keep runtime bounds.
+#ifndef CONV_INPUT_WIDTH
+#define CONV_INPUT_WIDTH runtime_input_width
+#endif
+#ifndef CONV_INPUT_CHANNELS
+#define CONV_INPUT_CHANNELS runtime_input_channels
+#endif
+#ifndef CONV_OUTPUT_CHANNELS
+#define CONV_OUTPUT_CHANNELS runtime_output_channels
+#endif
+
 #define REL_WRITE 0
 #define REL_READ 1
 
@@ -29,8 +40,12 @@ const int32_t SMIN = 128;
 // act: int8, wts: int8, out: int8
 //*****************************************************************************
 void conv2dk1_i8_scalar(int8_t *input, int8_t *kernels, int8_t *output,
-                        const int32_t input_width, const int32_t input_channels,
-                        const int32_t output_channels, const int scale) {
+                        const int32_t runtime_input_width,
+                        const int32_t runtime_input_channels,
+                        const int32_t runtime_output_channels, const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   int x, ic, oc, ic8, oc8;
@@ -81,8 +96,12 @@ void conv2dk1_i8_scalar(int8_t *input, int8_t *kernels, int8_t *output,
 // now, we do not.
 //*****************************************************************************
 void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
-                        const int32_t input_width, const int32_t input_channels,
-                        const int32_t output_channels, const int scale) {
+                        const int32_t runtime_input_width,
+                        const int32_t runtime_input_channels,
+                        const int32_t runtime_output_channels, const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   constexpr int NUM_ACC = 8; // Number of accumulators
@@ -130,7 +149,6 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
     for (int oc = 0; oc < (output_channels / CHANNEL_FACTOR); oc++) {
       for (int iw_partialc = 0; iw_partialc < iw_partial; iw_partialc++) {
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / CHANNEL_FACTOR); ic++) {
           aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
           kernels += MMUL_KN; // wts ic0..7(oc0..7)
@@ -173,7 +191,6 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
     for (int oc = 0; oc < (ocs / CHANNEL_FACTOR); oc++) {
       AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (ics / CHANNEL_FACTOR); ic++) {
         aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
         kernels += MMUL_KN; // wts ic0..7(oc0..7)

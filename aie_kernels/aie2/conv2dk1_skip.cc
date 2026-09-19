@@ -18,6 +18,17 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// Factory dimensions are constants; raw-source callers keep runtime bounds.
+#ifndef CONV_INPUT_WIDTH
+#define CONV_INPUT_WIDTH runtime_input_width
+#endif
+#ifndef CONV_INPUT_CHANNELS
+#define CONV_INPUT_CHANNELS runtime_input_channels
+#endif
+#ifndef CONV_OUTPUT_CHANNELS
+#define CONV_OUTPUT_CHANNELS runtime_output_channels
+#endif
+
 #ifdef SCALAR
 
 const int32_t MIN = 128;
@@ -32,10 +43,13 @@ const int32_t UMAX = 255;
 //*****************************************************************************
 void conv2dk1_skip_i8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                              uint8_t *output, int8_t *skip,
-                             const int32_t input_width,
-                             const int32_t input_channels,
-                             const int32_t output_channels, const int scale,
+                             const int32_t runtime_input_width,
+                             const int32_t runtime_input_channels,
+                             const int32_t runtime_output_channels, const int scale,
                              const int skip_scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   int x, ic, ic2, oc, oc8, ic8, ic8b;
@@ -123,10 +137,13 @@ void conv2dk1_skip_i8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 //*****************************************************************************
 void conv2dk1_skip_ui8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                               uint8_t *output, uint8_t *skip,
-                              const int32_t input_width,
-                              const int32_t input_channels,
-                              const int32_t output_channels, const int scale,
+                              const int32_t runtime_input_width,
+                              const int32_t runtime_input_channels,
+                              const int32_t runtime_output_channels, const int scale,
                               const int skip_scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   int x, ic, ic2, oc, oc8, ic8, ic8b;
@@ -224,10 +241,13 @@ void conv2dk1_skip_ui8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 //*****************************************************************************
 void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                              uint8_t *output, int8_t *skip,
-                             const int32_t input_width,
-                             const int32_t input_channels,
-                             const int32_t output_channels, const int scale,
+                             const int32_t runtime_input_width,
+                             const int32_t runtime_input_channels,
+                             const int32_t runtime_output_channels, const int scale,
                              const int skip_scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
@@ -265,7 +285,6 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
           acc_tmp[i] = aie::zeros<acc32, 32>();
         }
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 16); ic++) {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
@@ -281,7 +300,6 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
               256; // Move to next ic/8 position. 256 = 32 input * 8 ic
         }
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 16); ic++) {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
@@ -470,10 +488,13 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 //*****************************************************************************
 void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                               uint8_t *output, uint8_t *skip,
-                              const int32_t input_width,
-                              const int32_t input_channels,
-                              const int32_t output_channels, const int scale,
+                              const int32_t runtime_input_width,
+                              const int32_t runtime_input_channels,
+                              const int32_t runtime_output_channels, const int scale,
                               const int skip_scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
@@ -511,7 +532,6 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
           acc_tmp[i] = aie::zeros<acc32, 32>();
         }
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 16); ic++) {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
@@ -527,7 +547,6 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
               256; // Move to next ic/8 position. 256 = 32 input * 8 ic
         }
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 16); ic++) {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)

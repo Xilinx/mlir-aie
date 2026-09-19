@@ -178,7 +178,7 @@ CASES: list[Case] = [
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     Case("exp2f_vec", calls=16, devices=("npu2",), smoke=True),
     Case("exp2f_vec", calls=256, devices=("npu2",)),
-    # the same kernels reading their element count at run time
+    # Sized kernels retaining their runtime-count ABI.
     Case("add_sized", calls=16, smoke=True, perf=False),
     Case("mul_sized", calls=16, smoke=True, perf=False),
     Case("relu_sized", calls=16, smoke=True, perf=False),

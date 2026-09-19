@@ -15,6 +15,20 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// Factory dimensions are constants; raw-source callers keep runtime bounds.
+#ifndef CONV_INPUT_WIDTH
+#define CONV_INPUT_WIDTH runtime_input_width
+#endif
+#ifndef CONV_INPUT_CHANNELS
+#define CONV_INPUT_CHANNELS runtime_input_channels
+#endif
+#ifndef CONV_OUTPUT_CHANNELS
+#define CONV_OUTPUT_CHANNELS runtime_output_channels
+#endif
+#ifndef CONV_KERNEL_WIDTH
+#define CONV_KERNEL_WIDTH runtime_kernel_width
+#endif
+
 #define REL_WRITE 0
 #define REL_READ 1
 
@@ -45,10 +59,14 @@ const int32_t SMIN = 128;
 //
 //*****************************************************************************
 void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
-                         const int32_t input_width,
-                         const int32_t input_channels,
-                         const int32_t output_channels,
-                         const int32_t kernel_width, const int scale) {
+                         const int32_t runtime_input_width,
+                         const int32_t runtime_input_channels,
+                         const int32_t runtime_output_channels,
+                         const int32_t runtime_kernel_width, const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t kernel_width = CONV_KERNEL_WIDTH;
   event0();
 
   int oc, oc8, nt, nt8, pix, p2;
@@ -120,10 +138,14 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 //
 //*****************************************************************************
 void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
-                         const int32_t input_width,
-                         const int32_t input_channels,
-                         const int32_t output_channels,
-                         const int32_t kernel_width, const int scale) {
+                         const int32_t runtime_input_width,
+                         const int32_t runtime_input_channels,
+                         const int32_t runtime_output_channels,
+                         const int32_t runtime_kernel_width, const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t kernel_width = CONV_KERNEL_WIDTH;
   event0();
 
   // Compute
@@ -152,7 +174,6 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
   for (int k = 0; k < output_channels_div_8; k++) { // 2
     for (int j = 0; j < tiles_div_16; j++) {        // 1
       AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_MIN_ITERATION_COUNT(98)
       // AIE_LOOP_UNROLL_FULL
       for (int i = 0; i < pixels_div_2; i++) {   // 98
         auto tmp_a1 = aie::load_v<64>(in_ptr_1); // 8 tiles x 2 pixels

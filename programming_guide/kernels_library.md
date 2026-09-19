@@ -200,7 +200,14 @@ Fixed values, including counts, belong in `parameter_bindings`; unbound scalar
 values come from `design(..., scalars=...)`, and tensor values from `params=`.
 These values are embedded in the compiled design: changing them recompiles it.
 This describes the validation builder, not an inherent lifetime restriction on
-the C++ argument; a hand-written design can supply a different operand per call.
+the C++ argument; a hand-written design can supply a different operand per call
+when the kernel permits it. Factories that specialize loop bounds compile their
+element counts and convolution dimensions into the kernel object. Their legacy
+count/dimension operands remain for ABI compatibility but do not resize the
+operation: construct another factory configuration to change those bounds.
+Other operands, such as scales and convolution boundary selectors, remain
+runtime values. Compiling the raw sources without the corresponding `*_ELEMS`
+or `CONV_*` defines retains their runtime bounds.
 `Out` is written, while `InOut`
 is read and written and requires a declared `initializers` entry. Its reference
 describes the result from that initial state. Initialization occurs on every

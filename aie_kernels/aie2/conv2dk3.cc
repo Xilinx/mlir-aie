@@ -15,6 +15,23 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// Factory dimensions are constants; raw-source callers keep runtime bounds.
+#ifndef CONV_INPUT_WIDTH
+#define CONV_INPUT_WIDTH runtime_input_width
+#endif
+#ifndef CONV_INPUT_CHANNELS
+#define CONV_INPUT_CHANNELS runtime_input_channels
+#endif
+#ifndef CONV_OUTPUT_CHANNELS
+#define CONV_OUTPUT_CHANNELS runtime_output_channels
+#endif
+#ifndef CONV_KERNEL_WIDTH
+#define CONV_KERNEL_WIDTH runtime_kernel_width
+#endif
+#ifndef CONV_KERNEL_HEIGHT
+#define CONV_KERNEL_HEIGHT runtime_kernel_height
+#endif
+
 #define REL_WRITE 0
 #define REL_READ 1
 
@@ -31,12 +48,19 @@ const int32_t MAX = 255;
 // act: int8, wts: int8, out: uint8
 //*****************************************************************************
 void conv2dk3_i8_scalar(int8_t *line0, int8_t *line1, int8_t *line2,
-                        int8_t *wts, uint8_t *output, const int32_t input_width,
-                        const int32_t input_channels,
-                        const int32_t output_channels,
-                        const int32_t kernel_width, const int32_t kernel_height,
+                        int8_t *wts, uint8_t *output,
+                        const int32_t runtime_input_width,
+                        const int32_t runtime_input_channels,
+                        const int32_t runtime_output_channels,
+                        const int32_t runtime_kernel_width,
+                        const int32_t runtime_kernel_height,
                         const int32_t check, const int scale,
                         const int channel_offset) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t kernel_width = CONV_KERNEL_WIDTH;
+  const int32_t kernel_height = CONV_KERNEL_HEIGHT;
   event0();
 
   int x, ki, ic, oc, ic8, oc8;
@@ -205,12 +229,17 @@ void conv2dk3_i8_scalar(int8_t *line0, int8_t *line1, int8_t *line2,
 //*****************************************************************************
 void conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                          int8_t *wts, uint8_t *output,
-                         const int32_t input_width,
-                         const int32_t input_channels,
-                         const int32_t output_channels,
-                         const int32_t kernel_width,
-                         const int32_t kernel_height, const int32_t check,
+                         const int32_t runtime_input_width,
+                         const int32_t runtime_input_channels,
+                         const int32_t runtime_output_channels,
+                         const int32_t runtime_kernel_width,
+                         const int32_t runtime_kernel_height, const int32_t check,
                          const int scale, const int channel_offset) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t kernel_width = CONV_KERNEL_WIDTH;
+  const int32_t kernel_height = CONV_KERNEL_HEIGHT;
   event0();
 
   int x, ki, ic, oc, ic8, oc8;
@@ -382,12 +411,19 @@ void conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 // act: int8, wts: int8, out: uint8
 //*****************************************************************************
 void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
-                        int8_t *wts, uint8_t *output, const int32_t input_width,
-                        const int32_t input_channels,
-                        const int32_t output_channels,
-                        const int32_t kernel_width, const int32_t kernel_height,
+                        int8_t *wts, uint8_t *output,
+                        const int32_t runtime_input_width,
+                        const int32_t runtime_input_channels,
+                        const int32_t runtime_output_channels,
+                        const int32_t runtime_kernel_width,
+                        const int32_t runtime_kernel_height,
                         const int32_t check, const int scale,
                         const int channel_offset) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t kernel_width = CONV_KERNEL_WIDTH;
+  const int32_t kernel_height = CONV_KERNEL_HEIGHT;
   event0();
 
   // Compute
@@ -498,7 +534,6 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int ic = 0; ic < (input_channels / 8); ic++) {
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         // AIE_LOOP_UNROLL_FULL
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
           // aie::vector<int8, 32> tmp_a1, tmp_a2;
@@ -753,7 +788,6 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int ic = 0; ic < (input_channels / 8); ic++) {
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         // AIE_LOOP_UNROLL_FULL
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
           // Load next set of data for input A (matrix row), need stride info
@@ -813,12 +847,17 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
 // Takes 3 input lines and computes 1 output line
 void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                          int8_t *wts, uint8_t *output,
-                         const int32_t input_width,
-                         const int32_t input_channels,
-                         const int32_t output_channels,
-                         const int32_t kernel_width,
-                         const int32_t kernel_height, const int32_t check,
+                         const int32_t runtime_input_width,
+                         const int32_t runtime_input_channels,
+                         const int32_t runtime_output_channels,
+                         const int32_t runtime_kernel_width,
+                         const int32_t runtime_kernel_height, const int32_t check,
                          const int scale, const int channel_offset) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t kernel_width = CONV_KERNEL_WIDTH;
+  const int32_t kernel_height = CONV_KERNEL_HEIGHT;
   event0();
 
   // Compute
@@ -927,10 +966,8 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++) {
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         // AIE_LOOP_UNROLL_FULL
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
           // Load input data [a0 a1 a2 a3 a4 a5 a6 a7] where each position
@@ -956,7 +993,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
           // multiply it with the act buffer. acc[32] += in_a[32] * wts[64]
           // We then shift the buffer left by 1 data position (8 channels).
           AIE_PREPARE_FOR_PIPELINING
-          AIE_LOOP_RANGE(3, 3) // TODO Assume 3x3
           AIE_LOOP_UNROLL_FULL
           for (int j = 0; j < kernel_width; j++) {
             auto in_b = aie::load_v<64>(wtsLine[i]);
@@ -976,7 +1012,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
         } // for(int i=kernel_height_start; i<kernel_height_end; i++)
 
         // Reset weights and input pointer for next ic/8
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
           wtsLine[i] += kernel_width * kernel_height *
                         64; // kernel_width*kernel_height*8*8
@@ -993,7 +1028,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       acc1 = aie::zeros<acc32, 32>();
 
       // Shift back to beginning of input
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int i = kernel_height_start; i < kernel_height_end; i++) {
         line[i] -= (input_channels / 8) * (iw * 8);
       }
@@ -1004,7 +1038,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     // Reset wts to beginning of wts
     // Reset line to beginning of input, then add 4*8
     output -= (output_channels / 8) * (iw * 8) - 32;
-    AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++) {
       wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
                     kernel_width * kernel_height *
@@ -1030,13 +1063,10 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 8); ic++) {
           AIE_PREPARE_FOR_PIPELINING
-          AIE_LOOP_MIN_ITERATION_COUNT(2)
           for (int i = kernel_height_start; i < kernel_height_end;
                i++) {            // 1 to 3
-            AIE_LOOP_RANGE(3, 3) // TODO Assume 3x3
             AIE_LOOP_UNROLL_FULL
             for (int j = 0; j < kernel_width; j++) {
               aie::vector<int8, 64> wtsVec = aie::load_v<64>(wtsLine[i]);
@@ -1113,7 +1143,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
         }
         // For next 8 activations, reset line buffer and weights
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
           line[i] -=
               (input_channels / 8) * (iw * 8); // length of act to shift back
@@ -1127,7 +1156,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     // Reset weights and line buffers for last section of middle (or right side
     // it there is no last section)
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++) {
       wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
                     kernel_width * kernel_height *
@@ -1143,12 +1171,9 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
   if (iw_32_rem > 0) {
 
     for (int oc = 0; oc < (output_channels / 8); oc++) {
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++) {
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2) // 1 to 3
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
-          AIE_LOOP_RANGE(3, 3) // TODO Assume 3x3
           AIE_LOOP_UNROLL_FULL
           for (int j = 0; j < kernel_width; j++) {
             // New weight every kernel_width
@@ -1227,7 +1252,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       }
       // Reset line ptr to beginning of input
       AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int i = kernel_height_start; i < kernel_height_end; i++) {
         line[i] -= (input_channels / 8) * (iw * 8);
       }
@@ -1236,7 +1260,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     } // for(int oc=0; oc<(output_channels/8); oc++)
     // Reset weights and line buffers for right side
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(2)
     for (int i = kernel_height_start; i < kernel_height_end; i++) {
       wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
                     kernel_width * kernel_height *
@@ -1258,10 +1281,8 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
   {
     MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
     for (int oc = 0; oc < (output_channels / 8); oc++) {
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (input_channels / 8); ic++) {
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         // AIE_LOOP_UNROLL_FULL
         for (int i = kernel_height_start; i < kernel_height_end; i++) {
           // Load next set of data for input A (matrix row), need stride
@@ -1278,7 +1299,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
           // shift by 32-8 (fill 32 then shift up by 8)
           in_a = aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -
 
-          AIE_LOOP_RANGE(3, 3)
           AIE_LOOP_UNROLL_FULL
           for (int j = 0; j < kernel_width; j++) {
             auto in_b = aie::load_v<64>(wtsLine[i]);
@@ -1306,7 +1326,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       acc1 = aie::zeros<acc32, 32>();
 
       AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int i = kernel_height_start; i < kernel_height_end; i++) {
         line[i] -= (input_channels / 8) *
                    (iw * 8); // shift back to beginning of this section
