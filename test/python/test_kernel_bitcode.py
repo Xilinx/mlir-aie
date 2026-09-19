@@ -63,6 +63,46 @@ class KernelBitcodeTest(unittest.TestCase):
         ):
             self.assertFalse(compile_utils._check_lut_banks_enabled(flags))
 
+    def test_ir_symbol_rename_respects_llvm_tokens(self):
+        ir = r"""
+$helper = comdat any
+@table = global [1 x i32] zeroinitializer
+@text = private constant [8 x i8] c"@helper\00"
+@alias = alias void (), ptr @helper
+define void @helper() comdat($helper) {
+$helper:
+  %local$helper = add i32 0, 1
+  %$helper = add i32 %local$helper, 1
+  call void @"quoted\2Dhelper"()
+  call void @"\01asm_helper"()
+  call void @external()
+  ret void
+}
+; @helper and $helper are comments, not references.
+!foo$helper = !{!0}
+!0 = !{!"@helper", !"linkageName", !"helper"}
+"""
+        renamed = compile_utils._rename_ir_symbols(
+            ir, ["helper", "table", "alias", "quoted-helper", "asm_helper"], "op0_"
+        )
+        self.assertIn('$"op0_helper" = comdat any', renamed)
+        self.assertIn('@"op0_table" = global', renamed)
+        self.assertIn('@"op0_alias" = alias void (), ptr @"op0_helper"', renamed)
+        self.assertIn('define void @"op0_helper"() comdat($"op0_helper")', renamed)
+        self.assertIn('call void @"op0_quoted-helper"()', renamed)
+        self.assertIn(r'call void @"\01op0_asm_helper"()', renamed)
+        for unchanged in (
+            r'c"@helper\00"',
+            "call void @external()",
+            "$helper:",
+            "%local$helper = add i32 0, 1",
+            "%$helper = add i32 %local$helper, 1",
+            "; @helper and $helper are comments, not references.",
+            "!foo$helper = !{!0}",
+            '!0 = !{!"@helper", !"linkageName", !"helper"}',
+        ):
+            self.assertIn(unchanged, renamed)
+
     def test_default_compile_does_not_emit_bitcode(self):
         with patch.object(
             compile_utils.subprocess,

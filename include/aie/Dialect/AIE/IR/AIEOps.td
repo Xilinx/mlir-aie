@@ -22,8 +22,8 @@ include "mlir/Interfaces/DataLayoutInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-class AIE_Op<string mnemonic, list<Trait> traits = []> :
-    Op<AIE_Dialect, mnemonic, traits>;
+class AIE_Op<string mnemonic, list<Trait> traits = []>
+    : Op<AIE_Dialect, mnemonic, traits>;
 
 include "aie/Dialect/AIE/IR/AIETraceOps.td"
 
@@ -57,10 +57,8 @@ def AIE_DeviceOp
     ```
   }];
 
-  let arguments = (
-    ins AIEDevice:$device,
-        DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name
-  );
+  let arguments = (ins AIEDevice:$device,
+      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name);
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
     `(` $device `)` ($sym_name^)? regions attr-dict
@@ -74,17 +72,16 @@ def AIE_DeviceOp
   let hasVerifier = 1;
 }
 
-def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
-    SkipAccessibilityCheckTrait,
-    DeclareOpInterfaceMethods<TileLike>,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index:$result)> {
-  let arguments = (
-    ins AIETileType:$tile_type,
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$col,
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$row
-  );
+def AIE_LogicalTileOp
+    : AIE_Op<"logical_tile", [SkipAccessibilityCheckTrait,
+                              DeclareOpInterfaceMethods<TileLike>,
+                              DeclareOpInterfaceMethods<
+                                  OpAsmOpInterface, ["getAsmResultNames"]>,
+                              DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index:$result)> {
+  let arguments = (ins AIETileType:$tile_type,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$col,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$row);
 
   let summary = "Declare a logical AIE tile to be placed";
   let description = [{
@@ -148,17 +145,14 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
   }];
 }
 
-def AIE_TileOp: AIE_Op<"tile", [
-    Pure,
-    DeclareOpInterfaceMethods<TileLike>,
-    IsFlowEndPoint,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index:$result)> {
-  let arguments = (
-    ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$col,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row
-  );
+def AIE_TileOp
+    : AIE_Op<"tile", [Pure, DeclareOpInterfaceMethods<TileLike>, IsFlowEndPoint,
+                      DeclareOpInterfaceMethods<
+                          OpAsmOpInterface, ["getAsmResultNames"]>,
+                      DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index:$result)> {
+  let arguments = (ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$col,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row);
 
   let summary = "Declare an AIE tile";
   let description = [{
@@ -224,10 +218,9 @@ def AIE_TileOp: AIE_Op<"tile", [
                                   std::to_string(getRow()));
     }
   }];
-
 }
 
-def AIE_EndOp: AIE_Op<"end", [Terminator]> {
+def AIE_EndOp : AIE_Op<"end", [Terminator]> {
   let summary = "end op";
   let description = [{
     A generic terminator operation for AIE ops' regions.
@@ -235,11 +228,10 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
   let assemblyFormat = [{ attr-dict }];
 }
 
-def AIE_SwitchboxOp: AIE_Op<"switchbox", [
-    Interconnect,
-    SingleBlockImplicitTerminator<"EndOp">,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index:$result)> {
+def AIE_SwitchboxOp
+    : AIE_Op<"switchbox", [Interconnect, SingleBlockImplicitTerminator<"EndOp">,
+                           DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index:$result)> {
   let arguments = (ins Index:$tile);
 
   let summary = "Declare a switch";
@@ -270,15 +262,12 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   }];
 }
 
-
-def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
-    Interconnect, IsShimTile,
-    SingleBlockImplicitTerminator<"EndOp">,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
-  let arguments = (
-    ins Index:$tile
-  );
+def AIE_ShimMuxOp
+    : AIE_Op<"shim_mux", [Interconnect, IsShimTile,
+                          SingleBlockImplicitTerminator<"EndOp">,
+                          DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
+  let arguments = (ins Index:$tile);
   let summary = "Declare a switch in the PL shim";
   let description = [{
     This operation represents the additional interconnect that is part of a shim interface tile.
@@ -313,9 +302,7 @@ def AIE_ShimDMAOp
                           HasValidDMAChannels, IsShimNOCTile,
                           DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       Results<(outs Index)> {
-  let arguments = (
-    ins Index:$tile
-  );
+  let arguments = (ins Index:$tile);
   let summary = "Declare a DMA in the PL shim";
   let description = [{
     This operation creates a DMA that belongs to a shim tile.
@@ -385,7 +372,7 @@ def AIE_CoreOp
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_data_size,
           // Bytes this core's own sections need in each bank, indexed by bank
-          // and already rounded up to each section's alignment. Written by
+          // and including padding between output sections. Written by
           // aiecc from a probe link, so that placement can leave the room the
           // real link will need. Absent when there is nothing to probe or the
           // probe could not run, in which case placement proceeds as before.
@@ -412,7 +399,14 @@ def AIE_CoreOp
           // `--aie-lower-scratchpad-parameters`.  Defaults to true when any
           // `aiex.read_scratchpad_parameter` op is present in the core body.
           // Set to false automatically after the preamble has been emitted.
-          OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble);
+          OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble,
+          // Alignment of the unpinned data reservation, measured by aiecc from
+          // the probe ELF. A generic buffer alignment can lose bytes to linker
+          // padding before an over-aligned global.
+          OptionalAttr<ConfinedAttr<
+              AIEI32Attr, [IntMinValue<1>]>>:$measured_data_alignment,
+          // Start alignment for each bank reservation, indexed like its size.
+          OptionalAttr<DenseI32ArrayAttr>:$measured_bank_alignments);
   let summary = "Declare a core module";
   let description = [{
     This operation represents an AIEngine processor core belonging to a tile.
@@ -541,17 +535,13 @@ def AIE_CoreOp
     }
   }];
 
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$tile), [{
+  let builders = [OpBuilder<(ins "mlir::Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
-    }]>
-  ];
+    }]>];
 }
 
-def AIE_DebugOp: AIE_Op<"debug", []> {
-  let arguments = (
-    ins AnyType:$arg
-  );
+def AIE_DebugOp : AIE_Op<"debug", []> {
+  let arguments = (ins AnyType:$arg);
   let summary = "Capture a value for debugging";
   let description = [{
     Output the given value for debugging.  This is primarily used for simulation.
@@ -559,9 +549,9 @@ def AIE_DebugOp: AIE_Op<"debug", []> {
   let assemblyFormat = [{ `(` $arg `:` type($arg) `)` attr-dict }];
 }
 
-def AIE_PLIOOp: AIE_Op<"plio", [
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_PLIOOp
+    : AIE_Op<"plio", [DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let arguments = (ins AIEI32Attr:$col);
   let summary = "Declare an interface to the PL";
   let description = [{
@@ -574,13 +564,12 @@ def AIE_PLIOOp: AIE_Op<"plio", [
   }];
 }
 
-def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> ]> {
-  let arguments = (
-    ins WireBundle:$source_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel,
-        WireBundle:$dest_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel
-  );
+def AIE_ConnectOp
+    : AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]>]> {
+  let arguments = (ins WireBundle:$source_bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel,
+      WireBundle:$dest_bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel);
   let summary = "A circuit-switched connection inside a switchbox";
   let description = [{
     This operation represents a programmed circuit-switched connection in a stream switch.
@@ -611,15 +600,11 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
   }];
 }
 
-def AIE_FlowOp: AIE_Op<"flow", []> {
-  let arguments = (
-    ins Index:$source,
-        WireBundle:$source_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel,
-        Index:$dest,
-        WireBundle:$dest_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel
-  );
+def AIE_FlowOp : AIE_Op<"flow", []> {
+  let arguments = (ins Index:$source, WireBundle:$source_bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel, Index:$dest,
+      WireBundle:$dest_bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel);
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
     The `aie.flow` operation represents a circuit switched connection between two endpoints, usually
@@ -646,15 +631,15 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
   }];
 }
 
-def AIE_AMSelOp: AIE_Op<"amsel", [
-    HasParent<"SwitchboxOp">,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
-  let arguments = (
-    ins ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
-        ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel
-  );
-  let summary = "Declare an arbiter of a switchbox with a master select value (arbiter + msel)";
+def AIE_AMSelOp
+    : AIE_Op<"amsel", [HasParent<"SwitchboxOp">,
+                       DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
+  let arguments =
+      (ins ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
+          ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel);
+  let summary = "Declare an arbiter of a switchbox with a master select value "
+                "(arbiter + msel)";
   let description = [{
     A combination of arbiter ID and master select (msel) value.
     This op is used as a pointer to select the arbiter for routing a packet-switched flow
@@ -684,26 +669,20 @@ def AIE_AMSelOp: AIE_Op<"amsel", [
     int getMselValue() { return getMsel(); }
   }];
 
-  let builders = [
-    OpBuilder<(ins "int":$arbiterID, "int":$msel),
-    [{
+  let builders = [OpBuilder<(ins "int":$arbiterID, "int":$msel), [{
       build($_builder, $_state, $_builder.getIndexType(),
             $_builder.getI8IntegerAttr(arbiterID),
             $_builder.getI8IntegerAttr(msel));
-    }]>
-  ];
+    }]>];
 }
 
-def AIE_MasterSetOp: AIE_Op<"masterset", [
-    HasParent<"SwitchboxOp">,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
-  let arguments = (
-    ins WireBundle:$dest_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
-        Variadic<Index>:$amsels,
-        OptionalAttr<BoolAttr>:$keep_pkt_header
-  );
+def AIE_MasterSetOp
+    : AIE_Op<"masterset", [HasParent<"SwitchboxOp">,
+                           DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
+  let arguments = (ins WireBundle:$dest_bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
+      Variadic<Index>:$amsels, OptionalAttr<BoolAttr>:$keep_pkt_header);
   let summary = "Packet switched input connection";
   let description = [{
     A packet switched connection inside a switchbox.
@@ -744,13 +723,9 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
   let hasVerifier = 1;
 }
 
-def AIE_WireOp: AIE_Op<"wire", []> {
-  let arguments = (
-    ins Index:$source,
-        WireBundle:$source_bundle,
-        Index:$dest,
-        WireBundle:$dest_bundle
-  );
+def AIE_WireOp : AIE_Op<"wire", []> {
+  let arguments = (ins Index:$source, WireBundle:$source_bundle, Index:$dest,
+      WireBundle:$dest_bundle);
   let summary = "A bundle of physical wires between components";
   let description = [{
     The `aie.wire` operation represents a physical set of connections between components in a Versal device.
@@ -763,11 +738,10 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   }];
 }
 
-def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"EndOp">]> {
-  let arguments = (
-    ins WireBundle:$source_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel
-  );
+def AIE_PacketRulesOp
+    : AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (ins WireBundle:$source_bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel);
   let regions = (region AnyRegion:$rules);
   let summary = "Packet switched routing rules";
   let description = [{
@@ -779,7 +753,8 @@ def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"En
     See [aie.rule](#aierule-xilinxaiepacketruleop) for an example.
   }];
 
-  let assemblyFormat = [{ `(` $source_bundle `:` $source_channel `)` regions attr-dict }];
+  let assemblyFormat =
+      [{ `(` $source_bundle `:` $source_channel `)` regions attr-dict }];
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
@@ -788,12 +763,8 @@ def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"En
   }];
 }
 
-def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
-  let arguments = (
-    ins AIEI8Attr:$mask,
-        AIEI8Attr:$value,
-        Index:$amsel
-  );
+def AIE_PacketRuleOp : AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
+  let arguments = (ins AIEI8Attr:$mask, AIEI8Attr:$value, Index:$amsel);
   let summary = "Packet switched routing rule";
   let description = [{
     This operation defines a matching rule and a destination for packet-switched
@@ -836,8 +807,8 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   }];
 }
 
-
-def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
+def AIE_PacketFlowOp
+    : AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
   let summary = "Packet switched flow";
   let description = [{
     A logical packet-switched flow between tiles.  During place and
@@ -902,12 +873,9 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   }];
 }
 
-def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
-  let arguments = (
-    ins Index:$tile,
-        WireBundle:$bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel
-  );
+def AIE_PacketSourceOp : AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
+  let arguments = (ins Index:$tile, WireBundle:$bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel);
   let summary = "A sourceport";
   let description = [{
     An object representing the destination of a packet-switched flow. This must exist
@@ -926,12 +894,9 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   }];
 }
 
-def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
-  let arguments = (
-    ins Index:$tile,
-        WireBundle:$bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel
-  );
+def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
+  let arguments = (ins Index:$tile, WireBundle:$bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel);
   let summary = "A destination port";
   let description = [{
     A object representing the destination of a packet-switched flow. This must exist
@@ -951,7 +916,7 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   }];
 }
 
-def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
+def AIE_DMABDPACKETOp : AIE_Op<"dma_bd_packet", []> {
   let summary = "Enable packet headers for a dma block descriptor";
   let description = [{
     This operation enables packet headers for a block descriptor for DMA operations. In particular, it specifies
@@ -972,10 +937,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
     ```
   }];
 
-  let arguments = (
-    ins AIEI32Attr:$packet_type,
-        AIEI32Attr:$packet_id
-  );
+  let arguments = (ins AIEI32Attr:$packet_type, AIEI32Attr:$packet_id);
 
   let assemblyFormat = [{
     `(` $packet_type `,` $packet_id `)` attr-dict
@@ -988,7 +950,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   let hasVerifier = 1;
 }
 
-def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
+def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
     This operation describes a buffer descriptor for DMA operations. In particular, it specifies
@@ -1302,48 +1264,64 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
+  let builders =
+      [OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       buildWithConstants($_builder, $_state, buffer, offset, len,
                          BDDimLayoutArrayAttr{}, BDPadLayoutArrayAttr{},
                          PacketInfoAttr{});
     }]>,
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims), [{
+       OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len,
+                     "BDDimLayoutArrayAttr":$dims),
+                 [{
       buildWithConstants($_builder, $_state, buffer, offset, len, dims,
                          BDPadLayoutArrayAttr{}, PacketInfoAttr{});
     }]>,
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims), [{
+       OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len,
+                     "BDPadLayoutArrayAttr":$paddims),
+                 [{
       buildWithConstants($_builder, $_state, buffer, offset, len,
                          BDDimLayoutArrayAttr{}, paddims, PacketInfoAttr{});
     }]>,
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims), [{
+       OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len,
+                     "BDDimLayoutArrayAttr":$dims,
+                     "BDPadLayoutArrayAttr":$paddims),
+                 [{
       buildWithConstants($_builder, $_state, buffer, offset, len, dims, paddims,
                          PacketInfoAttr{});
     }]>,
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "PacketInfoAttr":$pkt), [{
+       OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len,
+                     "PacketInfoAttr":$pkt),
+                 [{
       buildWithConstants($_builder, $_state, buffer, offset, len,
                          BDDimLayoutArrayAttr{}, BDPadLayoutArrayAttr{}, pkt);
     }]>,
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "PacketInfoAttr":$pkt), [{
+       OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len,
+                     "BDDimLayoutArrayAttr":$dims, "PacketInfoAttr":$pkt),
+                 [{
       buildWithConstants($_builder, $_state, buffer, offset, len, dims,
                          BDPadLayoutArrayAttr{}, pkt);
     }]>,
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
+       OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len,
+                     "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt),
+                 [{
       buildWithConstants($_builder, $_state, buffer, offset, len,
                          BDDimLayoutArrayAttr{}, paddims, pkt);
     }]>,
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
+       OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len,
+                     "BDDimLayoutArrayAttr":$dims,
+                     "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt),
+                 [{
       buildWithConstants($_builder, $_state, buffer, offset, len, dims, paddims,
                          pkt);
-    }]>
-  ];
+    }]>];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dma_start", [
-    ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>,
-    Terminator,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs I1:$valid)> {
+def AIE_DMAStartOp
+    : AIE_Op<"dma_start", [ParentOneOf<["MemOp", "MemTileDMAOp",
+                                        "mlir::func::FuncOp", "ShimDMAOp"]>,
+                           Terminator,
+                           DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
   let description = [{
@@ -1399,12 +1377,13 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   let hasVerifier = 1;
 }
 
-def AIE_DMAOp: AIE_Op<"dma", [
-    ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp"]>,
-    NoTerminator,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
-  ]>, Results<(outs I1:$valid)> {
+def AIE_DMAOp
+    : AIE_Op<"dma", [ParentOneOf<["MemOp", "MemTileDMAOp", "ShimDMAOp"]>,
+                     NoTerminator,
+                     DeclareOpInterfaceMethods<InferTypeOpInterface>,
+                     DeclareOpInterfaceMethods<
+                         OpAsmOpInterface, ["getAsmResultNames"]>]>,
+      Results<(outs I1:$valid)> {
 
   let summary = "An op to describe a set of DMA operations.";
 
@@ -1518,7 +1497,7 @@ def AIE_MemTileDMAOp
   }];
 }
 
-def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
+def AIE_NextBDOp : AIE_Op<"next_bd", [Terminator]> {
   let summary = "The next buffer descriptor";
   let description = [{
     This operation terminates the basic block describing a buffer descriptor inside
@@ -1548,10 +1527,10 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
   }];
 }
 
-def AIE_LockOp: AIE_Op<"lock", [
-    TileElement,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_LockOp
+    : AIE_Op<"lock", [TileElement,
+                      DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let summary = "Declare a physical lock";
   let description = [{
     This operation creates a physical lock. For this operation the lockID variable is optional.
@@ -1569,12 +1548,9 @@ def AIE_LockOp: AIE_Op<"lock", [
       After AIEAssignLockIDs: `%tile33 = aie.tile(3, $assigned_value)`
   }];
 
-  let arguments = (
-    ins Index:$tile,
+  let arguments = (ins Index:$tile,
       OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$lockID,
-      OptionalAttr<AIEI32Attr>:$init,
-      OptionalAttr<StrAttr>:$sym_name
-  );
+      OptionalAttr<AIEI32Attr>:$init, OptionalAttr<StrAttr>:$sym_name);
 
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
 
@@ -1639,7 +1615,7 @@ def AIE_LockOp: AIE_Op<"lock", [
   let hasVerifier = 1;
 }
 
-def AIE_UseLockOp: AIE_Op<"use_lock", []> {
+def AIE_UseLockOp : AIE_Op<"use_lock", []> {
   let summary = "acquire/release lock op";
   let description = [{
     This operation uses a lock.
@@ -1660,13 +1636,9 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
     otherwise.
   }];
 
-  let arguments = (
-    ins Index:$lock,
-        LockAction:$action,
-        I32:$value,
-        OptionalAttr<LockBlocking>:$blocking,
-        DefaultValuedOptionalAttr<BoolAttr, "true">:$acq_en
-  );
+  let arguments = (ins Index:$lock, LockAction:$action, I32:$value,
+      OptionalAttr<LockBlocking>:$blocking,
+      DefaultValuedOptionalAttr<BoolAttr, "true">:$acq_en);
 
   let assemblyFormat = [{
     `(` $lock `,` $action `,` $value (`,` $blocking^)? `)` attr-dict
@@ -1674,21 +1646,20 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
 
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$lock,
-                   "xilinx::AIE::LockAction":$action,
-                   "int32_t":$value), [{
+  let builders =
+      [OpBuilder<(ins "mlir::Value":$lock, "xilinx::AIE::LockAction":$action,
+                     "int32_t":$value),
+                 [{
       auto constant = mlir::arith::ConstantOp::create(
           $_builder, $_state.location, $_builder.getI32Type(),
           $_builder.getI32IntegerAttr(value));
       build($_builder, $_state, lock, action, constant, /*blocking=*/nullptr);
     }]>,
-    OpBuilder<(ins "mlir::Value":$lock,
-                   "xilinx::AIE::LockAction":$action,
-                   "mlir::Value":$value), [{
+       OpBuilder<(ins "mlir::Value":$lock, "xilinx::AIE::LockAction":$action,
+                     "mlir::Value":$value),
+                 [{
       build($_builder, $_state, lock, action, value, /*blocking=*/nullptr);
-    }]>
-  ];
+    }]>];
 
   let extraClassDeclaration = [{
     bool acquire() { return (getAction() == LockAction::Acquire); }
@@ -1750,8 +1721,7 @@ def AIE_BufferOp
       OptionalAttr<AIEI32Attr>:$address,
       OptionalAttr<ElementsAttr>:$initial_value,
       OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
-      UnitAttr:$bank_reserved,
-      DefaultValuedAttr<BoolAttr, "true">:$aligned);
+      UnitAttr:$bank_reserved, DefaultValuedAttr<BoolAttr, "true">:$aligned);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{
@@ -1820,10 +1790,8 @@ def AIE_ExternalBufferOp
     This operation represents an external buffer.
   }];
 
-  let arguments = (
-    ins OptionalAttr<StrAttr>:$sym_name,
-        OptionalAttr<AIEI64Attr>:$address
-  );
+  let arguments = (ins OptionalAttr<StrAttr>:$sym_name,
+      OptionalAttr<AIEI64Attr>:$address);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];
@@ -1852,21 +1820,21 @@ def AIE_ExternalBufferOp
   }];
 }
 
-def AIE_EventOp: AIE_Op<"event", []> {
+def AIE_EventOp : AIE_Op<"event", []> {
   let summary = "Event instruction";
   let description = [{
     Event instruction.
   }];
-  let arguments = (ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$val);
+  let arguments =
+      (ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$val);
   let results = (outs);
   let assemblyFormat = [{
     `(` $val `)` attr-dict
   }];
 }
 
-def AIE_GetStreamOp: AIE_Op<"get_stream", [
-    HasParent<"CoreOp">
-  ]>, Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
+def AIE_GetStreamOp : AIE_Op<"get_stream", [HasParent<"CoreOp">]>,
+                      Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
   let summary = "An op to read from a stream channel/port of a switchbox";
   let description = [{
     An op to read from a stream channel/port of a switchbox.
@@ -1887,16 +1855,14 @@ def AIE_GetStreamOp: AIE_Op<"get_stream", [
   }];
 }
 
-def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
+def AIE_PutStreamOp : AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
   let summary = "An op to write to a stream channel/port of a switchbox";
   let description = [{
     An op to write to a stream channel/port of a switchbox.
   }];
 
-  let arguments = (
-    ins AnyInteger:$channel,
-        AnyTypeOf<[F32, I32, I<128>]>:$stream_value
-  );
+  let arguments = (ins AnyInteger:$channel,
+      AnyTypeOf<[F32, I32, I<128>]>:$stream_value);
 
   let assemblyFormat = [{
     `(` $channel `:` type($channel) `,` $stream_value `:` type($stream_value) `)` attr-dict
@@ -1910,11 +1876,8 @@ def AIE_PutStreamOp: AIE_Op<"put_stream", [HasParent<"CoreOp">]> {
   }];
 }
 
-def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
-  let arguments = (
-    ins Index:$source_tile,
-        Index:$dest_tile
-  );
+def AIE_CascadeFlowOp : AIE_Op<"cascade_flow", []> {
+  let arguments = (ins Index:$source_tile, Index:$dest_tile);
   let summary = "A cascade connection between tiles";
   let description = [{
     The `aie.cascade_flow` operation represents a cascade connection between two tile operations
@@ -1947,8 +1910,10 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   }];
 }
 
-def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]> {
-  let summary = "An op to configure the input and output directions of the cascade for a single AIE tile";
+def AIE_ConfigureCascadeOp
+    : AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]> {
+  let summary = "An op to configure the input and output directions of the "
+                "cascade for a single AIE tile";
   let description = [{
     An operation to configure the cascade on a single tile in both the input and the output
     directions.
@@ -1960,17 +1925,16 @@ def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]>
     ```
     Configures the input cascade port of %tile00 to the West direction, and the output port to the East direction.
   }];
-  let arguments = (
-    ins Index:$tile,
-        CascadeDir:$inputDir,
-        CascadeDir:$outputDir
-  );
+  let arguments = (ins Index:$tile, CascadeDir:$inputDir,
+      CascadeDir:$outputDir);
   let results = (outs);
   let hasVerifier = 1;
-  let assemblyFormat = [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
+  let assemblyFormat =
+      [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
 }
 
-def AIE_GetCascadeOp: AIE_Op<"get_cascade", []>, Results<(outs AnyType:$cascade_value)> {
+def AIE_GetCascadeOp : AIE_Op<"get_cascade", []>,
+                       Results<(outs AnyType:$cascade_value)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
@@ -1981,7 +1945,7 @@ def AIE_GetCascadeOp: AIE_Op<"get_cascade", []>, Results<(outs AnyType:$cascade_
   let assemblyFormat = [{ `(` `)` attr-dict `:` type($cascade_value) }];
 }
 
-def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
+def AIE_PutCascadeOp : AIE_Op<"put_cascade", []> {
   let summary = "An op to write to a cascading stream from a neighboring core";
   let description = [{
     An op to write to a cascading stream from a neighboring core.
@@ -1991,7 +1955,8 @@ def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
 
   let arguments = (ins AnyType:$cascade_value);
   let hasVerifier = 1;
-  let assemblyFormat = [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
+  let assemblyFormat =
+      [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
 }
 
 //============================================================================//
@@ -2101,15 +2066,11 @@ def AIE_ShimDMAAllocationOp
     ```
   }];
 
-  let arguments = (
-    ins SymbolNameAttr:$sym_name,
-        Index:$tile,
-        DMAChannelDir:$channel_dir,
-        AIEI64Attr:$channel_index,
-        // If this is set we are using the PLIO in this ShimTile
-        DefaultValuedAttr<BoolAttr, "false">:$plio,
-        OptionalAttr<PacketInfoAttr>:$packet
-  );
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      DMAChannelDir:$channel_dir, AIEI64Attr:$channel_index,
+      // If this is set we are using the PLIO in this ShimTile
+      DefaultValuedAttr<BoolAttr, "false">:$plio,
+      OptionalAttr<PacketInfoAttr>:$packet);
 
   let results = (outs);
 
@@ -2172,16 +2133,11 @@ def AIE_ObjectFifoRearmBindingOp
     ```
   }];
 
-  let arguments = (ins
-    SymbolNameAttr:$sym_name,
-    Variadic<Index>:$channel_tiles,
-    Variadic<Index>:$locks,
-    DenseI32ArrayAttr:$channel_dirs,
-    DenseI32ArrayAttr:$channel_indices,
-    DenseI32ArrayAttr:$lock_inits,
-    OptionalAttr<DenseI32ArrayAttr>:$head_bd_ids,
-    OptionalAttr<DenseI32ArrayAttr>:$repeat_counts
-  );
+  let arguments = (ins SymbolNameAttr:$sym_name, Variadic<Index>:$channel_tiles,
+      Variadic<Index>:$locks, DenseI32ArrayAttr:$channel_dirs,
+      DenseI32ArrayAttr:$channel_indices, DenseI32ArrayAttr:$lock_inits,
+      OptionalAttr<DenseI32ArrayAttr>:$head_bd_ids,
+      OptionalAttr<DenseI32ArrayAttr>:$repeat_counts);
 
   let results = (outs);
 
@@ -2367,12 +2323,17 @@ def AIE_ObjectFifoCreateOp
     }
   }];
 
-  let builders = [
-    OpBuilder<(ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
-                   "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elem_type,
-                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutAttr>", "{}">:$dimensionsToStream,
-                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer,
-                   CArg<"llvm::ArrayRef<AIE::BDPadLayoutArrayAttr>", "{}">:$padDimensions), [{
+  let builders = [OpBuilder<
+      (ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
+          "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber,
+          "mlir::Type":$elem_type,
+          CArg<"llvm::ArrayRef<AIE::BDDimLayoutAttr>",
+               "{}">:$dimensionsToStream,
+          CArg<"llvm::ArrayRef<AIE::BDDimLayoutArrayAttr>",
+               "{}">:$dimensionsFromStreamPerConsumer,
+          CArg<"llvm::ArrayRef<AIE::BDPadLayoutArrayAttr>",
+               "{}">:$padDimensions),
+      [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
@@ -2382,12 +2343,13 @@ def AIE_ObjectFifoCreateOp
                             odsBuilder.getAttr<BDDimLayoutArrayAttr>(dimensionsToStream));
       odsState.addAttribute(getDimensionsFromStreamPerConsumerAttrName(odsState.name),
                             odsBuilder.getAttr<BDDimLayoutArrayArrayAttr>(dimensionsFromStreamPerConsumer));
-    }]>
-  ];
+    }]>];
 }
 
-def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp">]> {
-  let summary = "Sets a tile's memory module as the target for an objectfifo's memory allocation";
+def AIE_ObjectFifoAllocateOp
+    : AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp">]> {
+  let summary = "Sets a tile's memory module as the target for an objectfifo's "
+                "memory allocation";
   let description = [{
     Specify a tile's memory module to be used as the allocation target for this objectfifo.
     Only works if all the objectfifo's tiles, producer and consumers, have shared memory access to
@@ -2400,10 +2362,7 @@ def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp
     ```
   }];
 
-  let arguments = (
-    ins FlatSymbolRefAttr:$objFifo_name,
-        Index:$delegateTile
-  );
+  let arguments = (ins FlatSymbolRefAttr:$objFifo_name, Index:$delegateTile);
 
   let hasCustomAssemblyFormat = 1;
 
@@ -2419,7 +2378,7 @@ def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp
   }];
 }
 
-def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
+def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
     The `aie.objectfifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
@@ -2450,12 +2409,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     to hold that object and the device must have counting locks to guard the slices independently.
   }];
 
-  let arguments = (
-    ins SymbolRefArrayAttr:$fifoIns,
-        SymbolRefArrayAttr:$fifoOuts,
-        I64ArrayAttr:$src_offsets,
-        I64ArrayAttr:$dst_offsets
-  );
+  let arguments = (ins SymbolRefArrayAttr:$fifoIns,
+      SymbolRefArrayAttr:$fifoOuts, I64ArrayAttr:$src_offsets,
+      I64ArrayAttr:$dst_offsets);
 
   let hasCustomAssemblyFormat = 1;
 
@@ -2725,11 +2681,8 @@ def AIE_ObjectFifoRegisterExternalBuffersOp
     This operation registers external buffers `%buffer_in_0` and `%buffer_in_1` to use in the shim_dma of shimTile `%t70`.
   }];
 
-  let arguments = (
-    ins FlatSymbolRefAttr:$objFifo_name,
-        Index:$tile,
-        Variadic<AnyMemRef>:$externalBuffers
-  );
+  let arguments = (ins FlatSymbolRefAttr:$objFifo_name, Index:$tile,
+      Variadic<AnyMemRef>:$externalBuffers);
 
   let assemblyFormat = [{
     attr-dict $objFifo_name `(` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
@@ -2741,7 +2694,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp
   }];
 }
 
-def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
+def AIE_ObjectFifoAcquireOp : AIE_Op<"objectfifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{
     The `aie.objectFifo.acquire` operation acquires the locks of the next objects
@@ -2786,7 +2739,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   }];
 }
 
-def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
+def AIE_ObjectFifoReleaseOp : AIE_Op<"objectfifo.release", []> {
   let summary = "Release operation for object locks in an ObjectFifo";
   let description = [{
     The `aie.objectFifo.release` operation releases the locks of the given number of objects
@@ -2836,9 +2789,7 @@ def AIE_BDChainOp
     At its usage sites, the abstract BD chain will be concretized with the given input arguments.
   }];
 
-  let arguments = (
-    ins SymbolNameAttr:$sym_name
-  );
+  let arguments = (ins SymbolNameAttr:$sym_name);
   let regions = (region AnyRegion:$body);
 
   let extraClassDeclaration = [{
@@ -2871,9 +2822,7 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [AIESymbol, NoTerminator,
       // If this runtime sequence produces multiple traces, `trace_slices`
       // states which slice of the trace buffer corresponds to which trace.
       OptionalAttr<TraceSliceArrayAttr>:$trace_slices);
-  let regions = (region
-    AnyRegion:$body
-  );
+  let regions = (region AnyRegion:$body);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let extraClassDeclaration = [{

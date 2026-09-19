@@ -88,11 +88,19 @@ std::optional<int64_t> measureDataSectionBytes(llvm::StringRef elfPath);
 /// indexed by bank. Read from a probe link, this is what a core's objects need
 /// reserved; read from a prebaked `elf_file`, it is what they already hold.
 /// Alignment is not incidental: a region that starts unaligned loses bytes to
-/// the linker's own padding and the section stops fitting.
+/// the linker's own padding and the section stops fitting. Sizes include
+/// padding between output sections in linked address order.
 struct BankSectionSize {
   int64_t size = 0;
   int64_t align = 1;
 };
+
+// Unpinned sections packed in linked address order, including padding between
+// output sections (Chess can keep .rodata separate). The returned size fits
+// only when the reservation starts at the returned alignment.
+std::optional<BankSectionSize>
+measureDataSectionDemand(llvm::StringRef elfPath);
+
 llvm::SmallVector<BankSectionSize>
 measureBankSectionBytes(llvm::StringRef elfPath, int numBanks);
 

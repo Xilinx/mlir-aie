@@ -24,6 +24,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <map>
 #include <optional>
@@ -2669,7 +2670,7 @@ LogicalResult CoreOp::verify() {
                     "artifact must be either merged or linked, not both";
     }
   // The core's own sections live in a `core_data` aie.buffer, so the buffer
-  // verifier covers their placement. Only the size belongs here.
+  // verifier covers their placement. Size and measured alignment belong here.
   if (auto measured = getMeasuredDataSize())
     if (auto declared = getDataSize(); declared && *declared < *measured)
       return emitOpError("data_size ")
@@ -2678,6 +2679,21 @@ LogicalResult CoreOp::verify() {
   // Where the stack sits. A pin the allocator could never honor is a user
   // constraint, so it is rejected here rather than at placement.
   const auto &targetModel = getTargetModel(*this);
+  int64_t localMem = targetModel.getLocalMemorySize();
+  auto validAlignment = [localMem](int64_t alignment) {
+    return alignment > 0 && alignment <= localMem &&
+           llvm::isPowerOf2_64(alignment);
+  };
+  if (auto alignment = getMeasuredDataAlignment();
+      alignment && !validAlignment(*alignment))
+    return emitOpError("measured_data_alignment must be a power of two between "
+                       "1 and ")
+           << localMem << " bytes";
+  if (auto alignments = getMeasuredBankAlignments())
+    if (!llvm::all_of(*alignments, validAlignment))
+      return emitOpError("measured_bank_alignments must contain only powers of "
+                         "two between 1 and ")
+             << localMem << " bytes";
   MemoryRun stackRun = getStackRun();
   auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
   int64_t numBanks =
@@ -2712,7 +2728,6 @@ LogicalResult CoreOp::verify() {
   // Checked last so they do not pre-empt the diagnostics above on an op with
   // more than one defect. Size and placement are separate faults: a stack can
   // fit the tile yet be placed so it runs off the end.
-  int64_t localMem = targetModel.getLocalMemorySize();
   if (stackRun.size >= localMem)
     return emitOpError("stack_size ")
            << stackRun.size

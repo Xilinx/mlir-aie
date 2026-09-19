@@ -60,6 +60,12 @@ reconfiguration expansion, DMA lowering, PDI-ID assignment, and device/sequence
 filtering. This includes `aiex.configure`/`aiex.run`, `--expand-load-pdis`, and
 `--load-pdi-to-ctrl-pkt`; C++ output does not require a static instruction binary.
 
+Designs containing cores to compile require the core toolchain even when only
+transaction builders or instructions are requested: buffer placement follows
+core compilation so it can reserve space for the core's static data. Designs
+without cores remain compiler-free; the generated C++ itself needs only a host
+compiler.
+
 Include the generated file in a C++17 host program with MLIR-AIE's `include`
 directory on the compiler's include path. Call
 `generate_txn_<device>_<seq>(...)` with the runtime sequence's scalar arguments

@@ -279,8 +279,8 @@ llvm::SmallVector<MemoryRun> coreBankRegions(TileOp tile,
   occupied.emplace_back(dataRun.start, dataRun.end());
 
   for (int bank = 0; bank < numBanks; ++bank) {
-    if (reserved[bank]) {
-      regions.push_back(*reserved[bank]);
+    if (auto region = reserved[bank]) {
+      regions.push_back(*region);
       continue;
     }
     MemoryRun window{bankSize * bank, bankSize};

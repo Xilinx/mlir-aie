@@ -203,6 +203,14 @@ link. A kernel header that defines a large lookup table no code reads adds to
 the object files and drops out of the ELF. A count taken from the objects would
 reject designs that fit.
 
+Before placement, the probe measurement also includes padding between output
+sections and records their maximum alignment as `measured_data_alignment`.
+The allocator preserves this alignment for the core-data reservation, including
+an explicitly declared `data_size`, so over-aligned globals do not consume
+unreserved leading padding at the final link.
+Bank-pinned reservations likewise retain their per-bank start alignment in
+`measured_bank_alignments`; rounding only their sizes cannot cover that padding.
+
 On Peano, this count excludes the separate `.aie.bank0`–`.aie.bank3` output
 sections. It is not a total of all static storage on the tile: pinned sections
 must fit their own regions, independently of `data_size`. Chess sections whose

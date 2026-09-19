@@ -984,19 +984,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .optional())
           .threadSafe();
 
-  // Buffer placement, deliberately downstream of the core compile: a kernel
-  // pins static data to a bank through sections that exist only once its object
-  // is built, so placing buffers first leaves them no room. Joining the objects
-  // here is what lets a later step measure those demands.
-  //
-  // Sound because a buffer lowers to a declaration and the linker script
-  // supplies its address, so a core's object depends on buffer names and never
-  // on where they land. Consumers that do need addresses -- ld scripts, BCF
-  // scripts, the runtime sequence, the post-link checks -- read this edge.
-  // Chess places bank-pinned statics with its own storage constraints rather
-  // than linker regions, so it has nothing to probe for and its objects are not
-  // lld's to link. Those builds depend on the objects instead and are placed
-  // with no demand recorded, exactly as before.
+  // Compile before placement so the probe can reserve each bank's static data.
+  // Buffer references lower to declarations; the final linker script supplies
+  // their addresses. Address-dependent consumers read this placement edge.
+  // Chess uses native storage constraints and cannot use the LLD probe, so its
+  // placement depends on the compiled objects without recording bank demand.
   bool useProbe = !xchesscc && !xbridge;
   auto &placementInput = useProbe ? probeElfs : objects;
   auto &physical =

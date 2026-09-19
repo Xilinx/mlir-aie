@@ -33,7 +33,8 @@ logger = logging.getLogger(__name__)
 _UMASK = os.umask(0o022)
 os.umask(_UMASK)
 _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
-_SYMBOL_PREFIX_STAMP_VERSION = 1
+# Version 1 renamed only native symbols, leaving embedded bitcode inconsistent.
+_SYMBOL_PREFIX_STAMP_VERSION = 2
 
 
 SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
@@ -688,6 +689,73 @@ def compile_mlir_module(
             os.unlink(mlir_file)
 
 
+def _rename_ir_symbols(ir: str, symbols: list[str], prefix: str) -> str:
+    """Apply the native rename map to IR globals and their COMDAT groups."""
+    names = {symbol.encode() for symbol in symbols}
+    # Consume comments and ordinary strings too: @name in a string constant,
+    # inline assembly, or debug metadata is not an LLVM global reference.
+    tokens = re.compile(
+        r"(?<![-a-zA-Z$._0-9%!])[@$]"
+        r'(?:"(?:[^"\\]|\\[0-9a-fA-F]{2})*"|[-a-zA-Z$._0-9]+)'
+        r"(?![-a-zA-Z$._0-9:])"
+        r'|"(?:[^"\\]|\\.)*"|;[^\n]*'
+    )
+
+    def rename(match):
+        token = match.group()
+        if token[0] not in "@$":
+            return token
+        name = token[1:]
+        if name.startswith('"'):
+            name = re.sub(
+                rb"\\([0-9a-fA-F]{2})",
+                lambda m: bytes([int(m[1], 16)]),
+                name[1:-1].encode(),
+            )
+        else:
+            name = name.encode()
+        # LLVM's \01 suppresses target mangling and is absent from llvm-nm.
+        unmangled = name.startswith(b"\x01")
+        native_name = name[1:] if unmangled else name
+        if native_name not in names:
+            return token
+        renamed = (b"\x01" if unmangled else b"") + prefix.encode() + native_name
+        escaped = "".join(
+            chr(c) if 32 <= c < 127 and c not in (34, 92) else f"\\{c:02X}"
+            for c in renamed
+        )
+        return f'{token[0]}"{escaped}"'
+
+    return tokens.sub(rename, ir)
+
+
+def _prefix_embedded_bitcode(object_path, bitcode_path, symbols, prefix):
+    """Stage renamed bitcode without changing the object on any failure."""
+    opt = os.path.join(
+        os.path.dirname(config.peano_cxx_path()),
+        "opt.exe" if os.name == "nt" else "opt",
+    )
+    commands = [
+        [
+            config.objcopy_path(),
+            f"--dump-section=.llvmbc={bitcode_path}",
+            str(object_path),
+            os.devnull,
+        ],
+        [opt, "-S", str(bitcode_path), "-o", "-"],
+        [opt, "-o", str(bitcode_path)],
+    ]
+    ir = None
+    for command in commands:
+        result = subprocess.run(command, input=ir, capture_output=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Embedded bitcode symbol prefixing failed: {result.stderr.decode()}"
+            )
+        if command == commands[1]:
+            ir = _rename_ir_symbols(result.stdout.decode(), symbols, prefix).encode()
+
+
 def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     """Prefix every defined, external symbol in a compiled object file.
 
@@ -704,6 +772,8 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     runs: silently ignoring an nm failure would produce an empty rename map,
     turning this into a silent no-op that only surfaces later as a
     confusing "undefined symbol: <prefix><sym>" at final link time.
+    Embedded ``.llvmbc`` IR receives the same rename map before that pass, so
+    native definitions and the IR used by ``--check-lut-banks`` stay in sync.
 
     This operation is intentionally literal: every defined external symbol is
     renamed to ``{prefix}{symbol}``, even if the original spelling already
@@ -727,14 +797,21 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     ]
 
     objcopy = config.objcopy_path()
-    with tempfile.TemporaryDirectory(prefix="aie-symbol-map-") as tmpdir:
+    with tempfile.TemporaryDirectory(
+        prefix="aie-symbol-map-", dir=os.path.dirname(object_path) or "."
+    ) as tmpdir:
         map_file = os.path.join(tmpdir, "symbols.map")
         with open(map_file, "w") as f:
             for symbol in symbols:
                 f.write(f"{symbol} {prefix}{symbol}\n")
 
+        command = [objcopy, f"--redefine-syms={map_file}"]
+        if _object_has_bitcode(object_path):
+            bitcode_path = os.path.join(tmpdir, "renamed.bc")
+            _prefix_embedded_bitcode(object_path, bitcode_path, symbols, prefix)
+            command.append(f"--update-section=.llvmbc={bitcode_path}")
         result = subprocess.run(
-            [objcopy, f"--redefine-syms={map_file}", str(object_path)],
+            [*command, str(object_path)],
             capture_output=True,
             check=False,
         )

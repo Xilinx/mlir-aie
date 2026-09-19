@@ -536,6 +536,27 @@ xilinx::aiecc::measureDataSectionBytes(llvm::StringRef elfPath) {
   return total;
 }
 
+std::optional<xilinx::aiecc::BankSectionSize>
+xilinx::aiecc::measureDataSectionDemand(llvm::StringRef elfPath) {
+  auto sections = readCoreDataSections(elfPath);
+  if (sections.empty() && !llvm::sys::fs::exists(elfPath)) {
+    return std::nullopt;
+  }
+  llvm::stable_sort(sections,
+                    [](const CoreDataSection &a, const CoreDataSection &b) {
+                      return a.address < b.address;
+                    });
+  BankSectionSize demand;
+  for (const CoreDataSection &sec : sections) {
+    if (sec.bank || sec.size == 0) {
+      continue;
+    }
+    demand.size = llvm::alignTo(demand.size, sec.align) + sec.size;
+    demand.align = std::max(demand.align, sec.align);
+  }
+  return demand;
+}
+
 namespace {
 
 // Bank letters run in their natural order, matching the `a, b, c, d` order of
@@ -709,12 +730,19 @@ std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
 llvm::SmallVector<xilinx::aiecc::BankSectionSize>
 xilinx::aiecc::measureBankSectionBytes(llvm::StringRef elfPath, int numBanks) {
   llvm::SmallVector<BankSectionSize> sizes(std::max(numBanks, 0));
-  for (const CoreDataSection &sec : readCoreDataSections(elfPath)) {
-    if (!sec.bank || *sec.bank >= static_cast<int>(sizes.size())) {
+  auto sections = readCoreDataSections(elfPath);
+  llvm::stable_sort(sections,
+                    [](const CoreDataSection &a, const CoreDataSection &b) {
+                      return a.address < b.address;
+                    });
+  for (const CoreDataSection &sec : sections) {
+    if (!sec.bank || *sec.bank >= static_cast<int>(sizes.size()) ||
+        sec.size == 0) {
       continue;
     }
-    sizes[*sec.bank].size += sec.size;
-    sizes[*sec.bank].align = std::max(sizes[*sec.bank].align, sec.align);
+    auto &demand = sizes[*sec.bank];
+    demand.size = llvm::alignTo(demand.size, sec.align) + sec.size;
+    demand.align = std::max(demand.align, sec.align);
   }
   return sizes;
 }

@@ -1377,9 +1377,11 @@ inline void recordBankDemand(
     // and needs one contiguous run wherever it goes. Recording it lets
     // placement treat it as an extent to fit rather than as whatever is left
     // over, which is what `data_size` had to be declared for.
-    if (auto dataBytes = xilinx::aiecc::measureDataSectionBytes(probe)) {
-      coreOp.setMeasuredDataSizeAttr(
-          mlir::Builder(coreOp.getContext()).getI32IntegerAttr(*dataBytes));
+    if (auto data = xilinx::aiecc::measureDataSectionDemand(probe)) {
+      mlir::Builder builder(coreOp.getContext());
+      coreOp.setMeasuredDataSizeAttr(builder.getI32IntegerAttr(data->size));
+      coreOp.setMeasuredDataAlignmentAttr(
+          builder.getI32IntegerAttr(data->align));
     }
     auto sizes = xilinx::aiecc::measureBankSectionBytes(probe, numBanks);
     if (llvm::all_of(sizes, [](const xilinx::aiecc::BankSectionSize &s) {
@@ -1387,16 +1389,17 @@ inline void recordBankDemand(
         })) {
       return; // nothing pinned; leave the core as it was
     }
-    // Round each demand up to its own alignment, so the reservation covers the
-    // padding the linker will insert ahead of the section as well as the
-    // section itself.
-    llvm::SmallVector<int32_t> rounded;
+    // The reservation must start at the measured alignment. Rounding its size
+    // alone cannot cover leading padding, even when size is already aligned.
+    llvm::SmallVector<int32_t> bytes, alignments;
     for (const auto &s : sizes) {
-      rounded.push_back(static_cast<int32_t>(
-          s.align > 1 ? llvm::alignTo(s.size, s.align) : s.size));
+      bytes.push_back(static_cast<int32_t>(s.size));
+      alignments.push_back(static_cast<int32_t>(s.align));
     }
     coreOp.setMeasuredBankSizesAttr(
-        mlir::DenseI32ArrayAttr::get(coreOp.getContext(), rounded));
+        mlir::DenseI32ArrayAttr::get(coreOp.getContext(), bytes));
+    coreOp.setMeasuredBankAlignmentsAttr(
+        mlir::DenseI32ArrayAttr::get(coreOp.getContext(), alignments));
     std::lock_guard<std::mutex> guard(out.mutex);
     out.byCore[xilinx::aiecc::coreKey(coreOp)] = std::move(sizes);
   });

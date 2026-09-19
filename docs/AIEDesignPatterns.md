@@ -70,10 +70,11 @@ which is what `aie::linear_approx` produces when given a nonzero bias. Prefer ba
 when separately compiling a kernel. Merged kernels can also use bank-pinned
 buffers on the core's own tile when optimization resolves the table arguments.
 
-`stack_bank` requests a bank-aware stack allocation; `stack_address` specifies
-a tile-relative byte address. An explicit placement must fit the stack in one
-bank and must not overlap buffers. Basic-sequential allocation requires an
-explicit address rather than an unresolved bank request. Moving the stack out
+`stack_bank` requests a stack allocation contained in that bank; `stack_address`
+specifies a tile-relative byte address. Without an explicit address, the allocator
+chooses an aligned free run in the requested bank. An address-only placement may
+span banks, but must remain within local memory and must not overlap buffers or
+static-data reservations. Moving the stack out
 of bank A in aiecc requires Peano and merge-mode kernels: separately compiled
 objects and Chess compilation/linking are rejected because their stack-bank
 assumptions cannot be verified. With no placement attributes, the existing
