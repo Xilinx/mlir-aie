@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from operator import index
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -27,6 +28,8 @@ from aie.iron.kernels._common import Param, _is_tensor_type
 from aie.utils import bfp, get_current_device, tensor
 from aie.utils.compile.jit import CompileTime, In, InOut, Out
 from aie.utils.jit import jit
+from aie.utils.trace import TraceConfig
+from aie.utils.trace.utils import get_cycles_summary
 from aie.utils.verify import poisoned
 
 from ._pipeline import Stage, pipeline
@@ -228,9 +231,12 @@ def _stage(fn, calls, scalars, params):
     )
 
 
-def _build_stream(*, factory, factory_kwargs, calls, scalars=(), params=()):
+def _build_stream(
+    *, factory, factory_kwargs, calls, scalars=(), params=(), trace_config=None
+):
     fn = factory(**factory_kwargs)
     stage = _stage(fn, calls, tuple(scalars), params)
+    stage.trace = trace_config is not None
     types = fn.arg_types()
 
     def host_ty(i, repetitions):
@@ -246,7 +252,12 @@ def _build_stream(*, factory, factory_kwargs, calls, scalars=(), params=()):
     transfers += [
         (fifo, "drain", len(fifos_in) + j) for j, fifo in enumerate(stage.outputs)
     ]
-    return pipeline([stage], host_types, transfers)
+    return pipeline(
+        [stage],
+        host_types,
+        transfers,
+        trace_size=trace_config.trace_size if trace_config else 0,
+    )
 
 
 # One JIT entry for every kernel. Its tensors are the host buffers the
@@ -261,6 +272,7 @@ def _stream(
     calls: CompileTime[int],
     scalars: CompileTime[tuple] = (),
     params: CompileTime[tuple] = (),
+    trace_config: CompileTime[TraceConfig | None] = None,
 ):
     return _build_stream(
         factory=factory,
@@ -268,6 +280,7 @@ def _stream(
         calls=calls,
         scalars=scalars,
         params=params,
+        trace_config=trace_config,
     )
 
 
@@ -425,7 +438,33 @@ def upload(inputs, out_size, out_dtype, *, fn, poison=False):
     return ins, tuple(outs) if multiple else outs[0]
 
 
+def cycles_per_call(
+    design_, inputs, out_size, out_dtype, *, fn, trace_size, workdir, calls=1
+):
+    """Measure declared whole-call event pairs, never partial internal regions."""
+    if not _contract(fn).trace_cycles:
+        return []
+    calls = _calls(calls)
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    cfg = TraceConfig(trace_size=trace_size, trace_file=str(workdir / "trace.txt"))
+    ins, out = upload(inputs, out_size, out_dtype, fn=fn)
+    design_(*ins, *(out if isinstance(out, tuple) else (out,)), trace_config=cfg)
+    if cfg.physical_mlir_path is None:
+        raise RuntimeError("the traced run recorded no physical MLIR path")
+    trace_json = workdir / "trace.json"
+    cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
+    durations = [int(d) for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
+    if len(durations) != calls:
+        raise RuntimeError(
+            f"{fn.name}: expected {calls} whole-call trace intervals, got "
+            f"{len(durations)}; incomplete trace or incorrect trace_cycles contract"
+        )
+    return durations
+
+
 __all__ = [
+    "cycles_per_call",
     "design",
     "elems",
     "host_layout",

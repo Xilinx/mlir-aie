@@ -117,6 +117,8 @@ class KernelContract:
             operands, counts included; the rest come from the caller.
         initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
             ``factory(fn)`` returns the kernel that initializes the buffer.
+        trace_cycles: Whether one event0/event1 pair brackets a whole call
+            and nothing else does; False unless audited.
 
     Overflow, rounding and NaN handling are not declared twice: the
     reference is the arithmetic model and the tolerance the slack against it.
@@ -136,6 +138,7 @@ class KernelContract:
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
+    trace_cycles: bool = False
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]

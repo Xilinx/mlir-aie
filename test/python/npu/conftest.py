@@ -41,6 +41,13 @@ def pytest_configure(config):
         "supported_devices(*devices): the NPU generations a test's kernels exist "
         'for ("npu1", "npu2"); skipped elsewhere',
     )
+    config.addinivalue_line(
+        "markers",
+        "benchmark: times a kernel and records benchmark-action rows; select "
+        "with -m benchmark",
+    )
+    config._bench_rows = []
+    config._bench_meta = {}
 
 
 def _running_on_hrx() -> bool:
@@ -62,6 +69,78 @@ def pytest_addoption(parser):
         default=1,
         help="random seeds per case in the extensive kernel sweep",
     )
+    parser.addoption(
+        "--bench-out",
+        default=None,
+        help="write benchmark-action rows here, if the session passes",
+    )
+    parser.addoption(
+        "--bench-meta", default=None, help="write run provenance and any failures here"
+    )
+    parser.addoption("--warmup", type=int, default=10, help="untimed iterations")
+    parser.addoption("--iters", type=int, default=50, help="timed iterations")
+    parser.addoption(
+        "--pmode",
+        default="any",
+        help="required device power mode; 'any' to accept whatever is set",
+    )
+    parser.addoption(
+        "--no-cycles", action="store_true", help="skip the traced cycle-count run"
+    )
+    parser.addoption(
+        "--no-compile", action="store_true", help="skip the cold-rebuild measurement"
+    )
+
+
+@pytest.fixture
+def benchmark(request):
+    """Record the benchmark-action rows a timed test produces.
+
+    The row name is ``<case>/<metric>``, which is the series key
+    ``benchmark-action`` charts on gh-pages; ``test_benchmark_series_names.py``
+    pins the whole set, so a renamed case restarts a chart and has to say so.
+    """
+    config = request.config
+
+    def record(case: str, metric: str, unit: str, value, span: str | None = None):
+        row = {
+            "name": f"{case}/{metric}",
+            "unit": unit,
+            "value": value,
+            # Read now, not at fixture setup: preflight fills this in.
+            "extra": config._bench_meta.get("provenance", ""),
+        }
+        if span:
+            row["range"] = span
+        config._bench_rows.append(row)
+
+    return record
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Write the benchmark rows, but only from a session that passed.
+
+    Timings from a run where some kernel returned the wrong answer are not
+    worth charting, and a partial file would silently drop series. pytest's
+    own exit status is the gate, so there is no second tally to keep in step
+    with it. Meta is written either way -- when nothing was measured, that
+    file is the only record of why.
+    """
+    import json
+    from pathlib import Path
+
+    config = session.config
+    rows = getattr(config, "_bench_rows", [])
+    meta = getattr(config, "_bench_meta", {})
+
+    if meta_path := config.getoption("--bench-meta"):
+        meta["exitstatus"] = int(exitstatus)
+        meta["n_rows"] = len(rows)
+        Path(meta_path).write_text(json.dumps(meta, indent=1))
+
+    if out := config.getoption("--bench-out"):
+        if exitstatus == 0 and rows:
+            Path(out).write_text(json.dumps(rows, indent=1))
 
 
 def _device_generation() -> str | None:

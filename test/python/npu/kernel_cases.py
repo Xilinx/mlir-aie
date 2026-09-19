@@ -7,7 +7,7 @@
 
 One table, three readers: ``test_kernels_e2e.py`` runs the ``smoke`` cases on
 every pull request and every case x edge-data case x seed under the
-``extensive`` marker; ``perf`` marks the cases a benchmark may time. What a kernel
+``extensive`` marker; ``test_kernels_bench.py`` times the ``perf`` cases. What a kernel
 computes, and how close the device must come, is the factory's
 ``KernelContract``; a case only says which tile to build and how many
 independent calls to make.
