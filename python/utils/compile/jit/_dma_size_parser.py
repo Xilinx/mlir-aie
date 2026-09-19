@@ -53,14 +53,14 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         kernel_dir: Directory aiecc wrote its lowered MLIR into.
 
     Returns:
-        A list of per-arg element counts (length = number of entry-point
-        runtime_sequence args), or ``None`` when validation can't be
+        A list of per-tensor element counts (scalar arguments are skipped),
+        or ``None`` when validation can't be
         performed safely:
 
         * file is absent or unparseable
         * no runtime_sequence found, or no unique call-graph root (e.g.
           multi-device modules with multiple top-level sequences)
-        * any arg has a non-memref type or a dynamic-shape dim
+        * any arg has an unsupported type or a dynamic-shape dim
     """
     mlir_path = kernel_dir / "input_with_addresses.mlir"
     if not mlir_path.exists():
@@ -128,8 +128,14 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         seq_block = entry.regions[0].blocks[0]
         sizes: list[int] = []
         memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
+        scalar_types = (
+            ir.IntegerType,  # pyright: ignore[reportAttributeAccessIssue]
+            ir.IndexType,  # pyright: ignore[reportAttributeAccessIssue]
+        )
         for arg in seq_block.arguments:
             t = arg.type
+            if isinstance(t, scalar_types):
+                continue
             if not isinstance(t, memref_type):
                 return None
             if not t.has_static_shape:

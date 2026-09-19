@@ -283,8 +283,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       // dma_bd_pool_pop and keep their scf.for rolled, which the static
       // straight-line allocator neither needs to touch nor can validate.
       bool dynamicPool = false;
-      seq.walk([&](DMABdPoolPopOp) { dynamicPool = true; });
-      if (dynamicPool)
+      bool hasTasks = false;
+      seq.walk([&](Operation *op) {
+        dynamicPool |= isa<DMABdPoolPopOp>(op);
+        hasTasks |=
+            isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, DMAStartBdChainOp,
+                DMAStartTaskOp, DMAAwaitTaskOp, DMAFreeTaskOp>(op);
+      });
+      // Already-lowered instruction-only control flow needs no BD allocation.
+      if (dynamicPool || !hasTasks)
         return WalkResult::advance();
 
       if (failed(validate(seq)))

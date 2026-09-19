@@ -70,6 +70,8 @@ import logging
 import os
 from pathlib import Path
 
+from aie.utils.compile.utils import _is_dispatch_library_name, _staged
+
 logger = logging.getLogger(__name__)
 
 MANIFEST_NAME = "deps.json"
@@ -155,7 +157,9 @@ def _parse_depfile(depfile: Path) -> list[Path]:
     return [Path(tok) for tok in tokens] if past_target else []
 
 
-def record(kernel_dir, external_kernels, source_files, used_chess=False) -> None:
+def record(
+    kernel_dir, external_kernels, source_files, used_chess=False, dispatch_library=None
+) -> None:
     """Record the inputs this build consumed, if they can be known exactly.
 
     Every kernel compiled through Peano leaves a depfile naming what the
@@ -178,7 +182,7 @@ def record(kernel_dir, external_kernels, source_files, used_chess=False) -> None
             "an incomplete manifest, inputs will not be checked",
             len(compiled),
         )
-        _write(kernel_dir, [], complete=False)
+        _write(kernel_dir, [], complete=False, dispatch_library=dispatch_library)
         return
 
     found: set[Path] = set()
@@ -194,7 +198,7 @@ def record(kernel_dir, external_kernels, source_files, used_chess=False) -> None
                 "manifest, inputs will not be checked",
                 dep,
             )
-            _write(kernel_dir, [], complete=False)
+            _write(kernel_dir, [], complete=False, dispatch_library=dispatch_library)
             return
 
     # Declared paths are the caller's, read where the caller stands -- the same
@@ -204,10 +208,19 @@ def record(kernel_dir, external_kernels, source_files, used_chess=False) -> None
         if getattr(f, "_source_file", None):
             found.add(_absolute(cwd, Path(f._source_file)))
     found.update(_absolute(cwd, Path(sf)) for sf in source_files)
-    _write(kernel_dir, sorted({p for p in found if p.is_file()}, key=str))
+    _write(
+        kernel_dir,
+        sorted({p for p in found if p.is_file()}, key=str),
+        dispatch_library=dispatch_library,
+    )
 
 
-def _write(kernel_dir: Path, inputs: list[Path], complete: bool = True) -> None:
+def _write(
+    kernel_dir: Path,
+    inputs: list[Path],
+    complete: bool = True,
+    dispatch_library: str | None = None,
+) -> None:
     entries: list[dict] = []
     for path in inputs:
         try:
@@ -222,14 +235,30 @@ def _write(kernel_dir: Path, inputs: list[Path], complete: bool = True) -> None:
             entries, complete = [], False
             break
     payload = {"version": _VERSION, "complete": complete, "inputs": entries}
-    tmp = Path(kernel_dir) / (MANIFEST_NAME + ".tmp")
-    tmp.write_text(json.dumps(payload))
-    os.replace(tmp, Path(kernel_dir) / MANIFEST_NAME)
+    if dispatch_library is not None:
+        payload["dispatch_library"] = dispatch_library
+    with _staged(str(Path(kernel_dir) / MANIFEST_NAME)) as tmp:
+        Path(tmp).write_text(json.dumps(payload))
 
 
 def write_for_test(kernel_dir, inputs) -> None:
     """Write a manifest directly. For tests that fabricate a cache entry."""
     _write(Path(kernel_dir), [Path(i) for i in inputs])
+
+
+def resolve_dispatch_library(kernel_dir: Path) -> Path | None:
+    """Resolve the published generation under the caller's kernel-directory lock."""
+    try:
+        payload = json.loads((kernel_dir / MANIFEST_NAME).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("version") != _VERSION:
+        return None
+    name = payload.get("dispatch_library")
+    if not isinstance(name, str) or not _is_dispatch_library_name(name):
+        return None
+    path = kernel_dir / name
+    return path if path.is_file() else None
 
 
 def is_valid(kernel_dir: Path) -> bool:

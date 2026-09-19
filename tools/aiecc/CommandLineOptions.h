@@ -234,6 +234,17 @@ inline std::vector<std::string> hostPassthroughArgs;
 // artifact's filename template ({0} expands to the device / sequence key).
 
 inline bool generateNpuInsts = false;
+inline bool generateNpuCpp = false;
+inline cl::opt<std::string> npuCppName(
+    "npu-cpp-name",
+    cl::desc("Output C++ transaction builder filename template (use {0} for "
+             "device/sequence)"),
+    cl::init("npu_{0}.cpp"));
+inline cl::opt<bool> npuCppEmitDispatchShim(
+    "npu-cpp-emit-dispatch-shim",
+    cl::desc("Emit dispatch_abi/dispatch_generate C entry points in each NPU "
+             "C++ builder"),
+    cl::init(false));
 inline cl::opt<std::string> npuInstsName(
     "npu-insts-name",
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
@@ -375,6 +386,7 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
       {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
       {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
       {"npu-insts", "insts_{0}.bin", &generateNpuInsts},
+      {"npu-cpp", "npu_{0}.cpp", &generateNpuCpp},
       {"elf", "design.elf", &generateElf},
       {"cdo", "cdo_{0}", &generateCdo},
       {"pdi", "{0}.pdi", &generatePdi},
