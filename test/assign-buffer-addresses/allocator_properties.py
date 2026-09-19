@@ -210,12 +210,6 @@ MIN_BANKRES_RATE = 1.0
 # each bank enough room for the section the linker is about to put there. A
 # design that fails this places fine and then fails to link.
 #
-# Currently ~77%: placement succeeds and then the section the linker puts in a
-# bank does not fit the run that placement left. Nothing about these designs is
-# infeasible -- the allocator simply was not told what the objects need, which is
-# the reported bug. Placing buffers after the objects are measured should take
-# this to 1.0.
-MIN_BLIND_RATE = 1.0
 
 
 def model_core_objects(rng, cfg):
@@ -434,13 +428,10 @@ def build_bank_reservation_design(rng, cfg):
                 lo = cursor = lo + align_up(rng.randint(1, 4) * vec, vec)
 
     def emit(tell_allocator):
-        """Render the design, optionally hiding what the objects demand.
+        """Render the design as the allocator now receives it.
 
-        `tell_allocator=True` is the pipeline once it measures objects before
-        placing buffers: the demands arrive as bank-pinned blocks and a
-        `data_size`. `False` is the pipeline as it stands, where the objects are
-        compiled after placement and the allocator never learns of them -- the
-        shape that produced the reported link failure.
+        The pipeline measures a core's objects before placing its buffers, so
+        their bank demands arrive as bank-pinned blocks and a `data_size`.
         """
         out = [
             "module {",
@@ -902,13 +893,6 @@ def main():
         # metrics above stay comparable with their recorded bounds.
         bankres_solved = bankres_total = 0
         bankres_illegal, bankres_bogus = [], []
-        # Same designs, but presented the way the pipeline presents them today:
-        # the objects are compiled after placement, so their bank demands are
-        # invisible to the allocator. Placement then succeeds and the *link*
-        # fails, which is the reported bug. Measured by asking what
-        # `coreBankRegions` would leave each bank, so no linker is needed.
-        blind_ok = blind_total = 0
-        blind_examples = []
         for seed in range(BANKRES_SEEDS):
             cfg = DEVICES[seed % len(DEVICES)]
             mlir, blocks, extra = build_bank_reservation_design(
@@ -920,19 +904,6 @@ def main():
             if faults:
                 bankres_bogus.append(f"seed {seed} ({cfg['name']}): {faults[0]}")
                 continue
-            blind_placed = allocate(extra["blind"], workdir)
-            if blind_placed is not None:
-                blind_total += 1
-                short = unmet_bank_demand(cfg, blind_placed, extra["obj_banks"])
-                if short:
-                    b, want, have = short[0]
-                    if len(blind_examples) < 3:
-                        blind_examples.append(
-                            f"seed {seed} ({cfg['name']}): bank {b} needs {want}B, "
-                            f"placement leaves {have}B"
-                        )
-                else:
-                    blind_ok += 1
             bankres_total += 1
             placed = allocate(mlir, workdir)
             if placed is None:
@@ -978,15 +949,6 @@ def main():
             f"{len(bankres_illegal)} illegal, "
             f"{len(bankres_bogus)} unsolvable-by-construction",
         )
-        for line in blind_examples:
-            print("WOULD-NOT-LINK:", line)
-        blind_rate = blind_ok / blind_total if blind_total else 0.0
-        report(
-            "object-demand-survives-placement",
-            blind_rate >= MIN_BLIND_RATE,
-            f"{blind_ok}/{blind_total} keep room for their objects "
-            f"({blind_rate:.1%}, min {MIN_BLIND_RATE:.0%})",
-        )
         report(
             "bank-crossings",
             needless <= MAX_CROSSINGS,
@@ -1031,7 +993,6 @@ def main():
 # CHECK: determinism: {{.*}} : OK
 # CHECK: completeness: {{.*}} : OK
 # CHECK: bank-reservations: {{.*}} : OK
-# CHECK: object-demand-survives-placement: {{.*}} : OK
 # CHECK: bank-crossings: {{.*}} : OK
 # CHECK: bank-sharing: {{.*}} : OK
 # CHECK: forced-regressions: {{.*}} : OK

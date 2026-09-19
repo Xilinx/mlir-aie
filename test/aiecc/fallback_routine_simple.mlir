@@ -16,7 +16,7 @@
 // this device, so the tile cannot honour the pin. The pass reports an error and
 // does not retry: basic sequential allocation ignores mem_bank and would place
 // "a" in a bank the design never requested.
-// CHECK: error: 'aie.buffer' op requires 16384 bytes, which cannot fit in bank 1 (8192 bytes total)
+// CHECK: error: {{.*}}buffer "a" requires 16384 bytes, which cannot fit in bank 1 (8192 bytes total)
 // CHECK: error: 'aie.tile' op bank-aware allocation failed
 
 module @test {

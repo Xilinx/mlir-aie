@@ -67,7 +67,7 @@ module @test4 {
   aie.device(npu1) {
     // expected-error@+1 {{'aie.tile' op bank-aware allocation failed}}
     %tile34 = aie.tile(3, 4)
-    // expected-error@+1 {{'aie.buffer' op requires 32768 bytes, which cannot fit in bank 0 (16384 bytes total)}}
+    // expected-error@+1 {{'aie.buffer' op buffer "a" requires 32768 bytes, which cannot fit in bank 0 (16384 bytes total)}}
     %buf0 = aie.buffer(%tile34) { sym_name = "a", mem_bank = 0 : i32 } : memref<8192xi32>
   }
 }

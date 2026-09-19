@@ -260,14 +260,29 @@ llvm::SmallVector<MemoryRun> coreBankRegions(TileOp tile,
   llvm::SmallVector<std::pair<int64_t, int64_t>> occupied;
   MemoryRun stackRun = core ? core.getStackRun() : MemoryRun{};
   occupied.emplace_back(stackRun.start, stackRun.end());
+  // A reservation held for a bank *is* that bank's region: the allocator set it
+  // aside for precisely the sections this function is sizing a region for.
+  // Counting it as occupied would hand the region back the space it was told to
+  // keep, and hand the section a hole somewhere else -- so it may be the largest
+  // free run in the bank while the reservation sits in a smaller one.
+  llvm::SmallVector<std::optional<MemoryRun>> reserved(numBanks, std::nullopt);
   for (auto buf : buffers) {
     int64_t base = getBufferBaseAddress(buf);
+    if (auto bank = buf.getMemBank();
+        buf.getBankReserved() && bank && *bank < numBanks) {
+      reserved[*bank] = MemoryRun{base, buf.getAllocationSize()};
+      continue;
+    }
     occupied.emplace_back(base, base + buf.getAllocationSize());
   }
   // The unpinned region is spoken for, so a bank only offers what it leaves.
   occupied.emplace_back(dataRun.start, dataRun.end());
 
   for (int bank = 0; bank < numBanks; ++bank) {
+    if (reserved[bank]) {
+      regions.push_back(*reserved[bank]);
+      continue;
+    }
     MemoryRun window{bankSize * bank, bankSize};
     MemoryRun run = largestFreeRunIn(window, occupied, align);
     // A bank with nothing spare still has to name its own base. Left at the

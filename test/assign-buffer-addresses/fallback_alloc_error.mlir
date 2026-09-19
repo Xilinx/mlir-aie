@@ -15,7 +15,7 @@ module @test2 {
 
     // expected-error @below {{'aie.tile' op bank-aware allocation failed}}
     %tile34 = aie.tile(3, 4)
-    // expected-error @below {{'aie.buffer' op requires 16384 bytes in bank 1, but only 12288 of 16384 bytes are free there}}
+    // expected-error @below {{'aie.buffer' op buffer "a" requires 16384 bytes in bank 1, but only 12288 of 16384 bytes are free there}}
     %buf0 = aie.buffer(%tile34) { sym_name = "a", mem_bank = 1 : i32 } : memref<4096xi32> // use the whole buffer
     %buf2 = aie.buffer(%tile34) { sym_name = "b", address = 16416 : i32, aligned = false } : memref<1024xi32> // allocate on bank_id 1
   }

@@ -5,8 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// A table larger than its bank must overflow rather than spill into a neighbor,
-// even when no explicit data reservation competes with it.
+// A table larger than its bank has nowhere to go. Placement now measures what
+// a core's objects pin to each bank, so this is caught while reserving the room
+// rather than later by the linker, and the diagnostic can name the bank, the
+// demand and the capacity.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -14,9 +16,8 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I%S/../../third_party/aie_api/include -ffunction-sections -fdata-sections -c %t.d/oversized.cc -o %t.d/bank_section_placed_kernel.o
 // RUN: cd %t.d && not aiecc --get-core-elfs %s 2>&1 | FileCheck %s
 
-// CHECK: will not fit in region 'bank1'
-// CHECK: aiecc: core {{.*}}_core_0_2: a static pinned to bank1 does not fit there
-// CHECK-SAME: move buffers, the stack, or an explicit data_size reservation
+// CHECK: error: {{.*}}static data pinned to bank 1 requires {{[0-9]+}} bytes,
+// CHECK-SAME: which cannot fit in bank 1 ({{[0-9]+}} bytes total)
 module {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)

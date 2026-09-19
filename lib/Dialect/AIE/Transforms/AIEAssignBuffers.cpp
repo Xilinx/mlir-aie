@@ -69,19 +69,29 @@ static void sortBuffersByAddress(SmallVectorImpl<BufferOp> &buffers) {
   });
 }
 
-// How a diagnostic names an extent. The allocator creates a core_data buffer
-// from the core's data_size, so its symbol appears in no user source.
+// How a diagnostic names an extent. The allocator creates the core_data and
+// bank_reserved buffers itself, so their symbols appear in no user source and
+// naming them would send the reader looking for something they never wrote.
 static std::string bufferLabel(BufferOp buffer) {
   if (buffer.getCoreData()) {
     return "this core's data sections (data_size)";
+  }
+  if (buffer.getBankReserved()) {
+    return "this core's static data pinned to bank " +
+           std::to_string(buffer.getMemBank().value_or(0));
   }
   return ("buffer \"" + buffer.name().getValue() + "\"").str();
 }
 
 // The name a memory map prints for an extent.
 static StringRef mapLabel(BufferOp buffer) {
-  return buffer.getCoreData() ? StringRef("(core data sections)")
-                              : buffer.name().getValue();
+  if (buffer.getCoreData()) {
+    return StringRef("(core data sections)");
+  }
+  if (buffer.getBankReserved()) {
+    return StringRef("(bank-pinned static data)");
+  }
+  return buffer.name().getValue();
 }
 
 // Give each core's `data_size` an aie.buffer, so placement treats the core's
@@ -112,11 +122,56 @@ static void materializeCoreDataBuffers(DeviceOp device) {
                          /*initial_value=*/nullptr,
                          /*mem_bank=*/nullptr,
                          /*core_data=*/builder.getUnitAttr(),
+                         /*bank_reserved=*/nullptr,
                          /*aligned=*/nullptr);
     buffer->setAttr(SymbolTable::getSymbolAttrName(),
                     builder.getStringAttr("core_data_" +
                                           std::to_string(tile.getCol()) + "_" +
                                           std::to_string(tile.getRow())));
+  }
+}
+
+// Give each bank a core pins static data to an aie.buffer of its own, so the
+// room the linker will need there is held before unconstrained buffers take it.
+// Sizes come from `measured_bank_sizes`, which aiecc fills from a probe link.
+// Idempotent, like materializeCoreDataBuffers.
+static void materializeBankReservations(DeviceOp device) {
+  OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
+  for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
+    auto sizes = core.getMeasuredBankSizes();
+    if (!sizes) {
+      continue;
+    }
+    auto tile = cast<TileOp>(core.getTile().getDefiningOp());
+    for (auto [bank, size] : llvm::enumerate(*sizes)) {
+      if (size <= 0) {
+        continue;
+      }
+      std::string name = "bank_reserved_" + std::to_string(tile.getCol()) + "_" +
+                         std::to_string(tile.getRow()) + "_" +
+                         std::to_string(bank);
+      bool present = false;
+      device.walk([&](BufferOp buffer) {
+        if (buffer.name() == name) {
+          present = true;
+        }
+      });
+      if (present) {
+        continue;
+      }
+      builder.setInsertionPoint(core);
+      auto type = MemRefType::get({size}, builder.getI8Type());
+      auto buffer = BufferOp::create(
+          builder, core.getLoc(), type, tile.getResult(),
+          /*sym_name=*/nullptr, /*address=*/nullptr,
+          /*initial_value=*/nullptr,
+          /*mem_bank=*/builder.getI32IntegerAttr(bank),
+          /*core_data=*/nullptr,
+          /*bank_reserved=*/builder.getUnitAttr(),
+          /*aligned=*/nullptr);
+      buffer->setAttr(SymbolTable::getSymbolAttrName(),
+                      builder.getStringAttr(name));
+    }
   }
 }
 
@@ -1092,12 +1147,14 @@ static BankAwareResult simpleBankAwareAllocation(TileOp tile) {
       int64_t need = failed.getAllocationSize();
       int64_t bankCapacity = bankLimits[bank].size;
       if (need > bankCapacity) {
-        failed->emitOpError("requires ")
-            << need << " bytes, which cannot fit in bank " << bank << " ("
+        failed->emitOpError("")
+            << bufferLabel(failed) << " requires " << need
+            << " bytes, which cannot fit in bank " << bank << " ("
             << bankCapacity << " bytes total)";
       } else {
-        failed->emitOpError("requires ")
-            << need << " bytes in bank " << bank << ", but only "
+        failed->emitOpError("")
+            << bufferLabel(failed) << " requires " << need << " bytes in bank "
+            << bank << ", but only "
             << occupancy.freeBytes(bankLimits[bank].start,
                                    bankLimits[bank].end())
             << " of " << bankCapacity << " bytes are free there";
@@ -1184,6 +1241,7 @@ struct AIEAssignBufferAddressesPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     materializeCoreDataBuffers(device);
+    materializeBankReservations(device);
 
     for (auto tile : device.getOps<TileOp>()) {
       auto tileAllocationScheme = tile.getAllocationScheme();

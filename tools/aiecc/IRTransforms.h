@@ -1334,6 +1334,21 @@ inline void recordBankDemand(
       return;
     }
     auto sizes = xilinx::aiecc::measureBankSectionBytes(probe, numBanks);
+    if (llvm::all_of(sizes, [](const xilinx::aiecc::BankSectionSize &s) {
+          return s.size == 0;
+        })) {
+      return; // nothing pinned; leave the core as it was
+    }
+    // Round each demand up to its own alignment, so the reservation covers the
+    // padding the linker will insert ahead of the section as well as the
+    // section itself.
+    llvm::SmallVector<int32_t> rounded;
+    for (const auto &s : sizes) {
+      rounded.push_back(static_cast<int32_t>(
+          s.align > 1 ? llvm::alignTo(s.size, s.align) : s.size));
+    }
+    coreOp.setMeasuredBankSizesAttr(
+        mlir::DenseI32ArrayAttr::get(coreOp.getContext(), rounded));
     std::lock_guard<std::mutex> guard(out.mutex);
     out.byCore[xilinx::aiecc::coreKey(coreOp)] = std::move(sizes);
   });

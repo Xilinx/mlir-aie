@@ -24,11 +24,13 @@
 // RUN: cd %t.d && aiecc --get-core-elfs --unified --check-lut-banks default.mlir
 
 // Local memory starts at 0x70000 and a bank is 0x4000, so an _ab in 0x70000-
-// 0x73fff and its _cd in 0x74000-0x77fff are a bank apart.
-// CHECK-DAG: 00071{{[0-9a-f]+}} {{.*}} exp_ilut_ab
-// CHECK-DAG: 00074{{[0-9a-f]+}} {{.*}} exp_ilut_cd
-// CHECK-DAG: 00071{{[0-9a-f]+}} {{.*}} exp_flut_ab
-// CHECK-DAG: 00074{{[0-9a-f]+}} {{.*}} exp_flut_cd
+// 0x73fff and its _cd in 0x74000-0x77fff are a bank apart. Match the bank, not
+// an exact address: where inside a bank the reservation lands is the
+// allocator's business and it moves when placement improves.
+// CHECK-DAG: 0007{{[0-3][0-9a-f]+}} {{.*}} exp_ilut_ab
+// CHECK-DAG: 0007{{[4-7][0-9a-f]+}} {{.*}} exp_ilut_cd
+// CHECK-DAG: 0007{{[0-3][0-9a-f]+}} {{.*}} exp_flut_ab
+// CHECK-DAG: 0007{{[4-7][0-9a-f]+}} {{.*}} exp_flut_cd
 
 module {
   aie.device(npu2) {

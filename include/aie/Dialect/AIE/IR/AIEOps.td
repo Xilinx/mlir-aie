@@ -400,6 +400,12 @@ def AIE_CoreOp
           // measure the core.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_data_size,
+          // Bytes this core's own sections need in each bank, indexed by bank
+          // and already rounded up to each section's alignment. Written by
+          // aiecc from a probe link, so that placement can leave the room the
+          // real link will need. Absent when there is nothing to probe or the
+          // probe could not run, in which case placement proceeds as before.
+          OptionalAttr<DenseI32ArrayAttr>:$measured_bank_sizes,
           // Deprecated: attach link_with to func.func declarations instead and
           // run aie-assign-core-link-files to populate link_files.
           OptionalAttr<StrAttr>:$link_with,
@@ -1741,13 +1747,20 @@ def AIE_BufferOp
 
     `core_data` marks the extent that holds the core's own .data, .rodata and
     .bss, which `aie-assign-buffer-addresses` creates from the core's
-    `data_size`. It names no symbol.
+    `data_size`. It names no symbol, and a core has at most one: the region is
+    one extent.
+
+    `bank_reserved` marks space held in the bank named by `mem_bank` for the
+    static data a kernel pins there. It too names no symbol, but unlike
+    `core_data` there is one per bank the core pins to, created from the
+    core's `measured_bank_sizes`.
   }];
 
   let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
       OptionalAttr<AIEI32Attr>:$address,
       OptionalAttr<ElementsAttr>:$initial_value,
       OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
+      UnitAttr:$bank_reserved,
       DefaultValuedAttr<BoolAttr, "true">:$aligned);
 
   let results = (outs AnyMemRef:$buffer);
