@@ -46,9 +46,6 @@ struct ConvertLogicalTileToTile : OpConversionPattern<LogicalTileOp> {
           rewriter.getFusedLoc({tileOp.getLoc(), logicalTile.getLoc()}));
     });
 
-    if (auto scheme = logicalTile.getAllocationScheme())
-      tileOp.setAllocationScheme(scheme);
-
     if (auto controllerId = logicalTile->getAttr("controller_id"))
       tileOp->setAttr("controller_id", controllerId);
 

@@ -381,6 +381,223 @@ inline mlir::LogicalResult checkDataSizeRequirements(
   return result;
 }
 
+// Reports a symbol placed for one memory bank whose linked address is in
+// another. Nothing downstream re-checks the request, so an unsatisfied one
+// corrupts results with no diagnostic.
+//
+// Requests come from the *input* objects, not the linked ELF: the chess linker
+// merges `.bss.DM_bankB` into `.bss.DM_bankA`, so the linked section names
+// describe a grouping rather than a request. Only a request on a definition is
+// visible this way; a bank asserted by a cast inside a kernel body is not.
+inline mlir::LogicalResult checkBankPlacement(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> objectForCore,
+    llvm::function_ref<std::string(llvm::StringRef)> resolvePath) {
+  mlir::LogicalResult result = mlir::success();
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    std::string elf = elfForCore(coreOp);
+    if (elf.empty()) {
+      return;
+    }
+    std::vector<std::string> objects;
+    std::string coreObject = objectForCore(coreOp);
+    if (!coreObject.empty())
+      objects.push_back(std::move(coreObject));
+    if (auto filesAttr = coreOp.getLinkFiles()) {
+      for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+        objects.push_back(resolvePath(f.getValue()));
+      }
+    } else if (auto file = coreOp.getLinkWith()) {
+      objects.push_back(resolvePath(*file));
+    }
+
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &targetModel = xilinx::AIE::getTargetModel(coreOp);
+    int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+    if (numBanks <= 0) {
+      return;
+    }
+    int64_t bankSize = targetModel.getLocalMemorySize() / numBanks;
+    int64_t base =
+        targetModel.getMemInternalBaseAddress({tile.getCol(), tile.getRow()});
+
+    auto assertions = xilinx::aiecc::readBankAssertionsFromObjects(objects);
+    for (const auto &v : xilinx::aiecc::checkBankPlacements(
+             elf, assertions, base, bankSize, numBanks)) {
+      std::string wanted;
+      for (int b : v.assertion.banks) {
+        wanted += (wanted.empty() ? "" : " or ");
+        wanted += static_cast<char>('A' + b);
+      }
+      auto diag = coreOp.emitError()
+                  << "core (" << tile.getCol() << ", " << tile.getRow()
+                  << "): '" << v.assertion.symbol
+                  << "' is placed for memory bank " << wanted << " ("
+                  << v.assertion.origin << "), but the linker put it at 0x"
+                  << llvm::utohexstr(v.address) << ", which is bank "
+                  << static_cast<char>('A' + v.actualBank);
+      if (v.crossesBank) {
+        diag << ", and its " << v.size
+             << "-byte extent crosses that bank's boundary";
+      }
+      diag << ". A parallel access that relies on this table being in bank "
+           << wanted << " reads the wrong bank";
+      result = mlir::failure();
+    }
+  });
+  return result;
+}
+
+// Inspect both the optimized core IR (including merge-mode kernels) and the
+// embedded IR in separately compiled objects. Missing IR or unresolved table
+// placement is an error, not a successful verification.
+inline mlir::LogicalResult checkLutBankSeparation(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> irForCore,
+    llvm::function_ref<std::string(llvm::StringRef)> resolvePath) {
+  mlir::LogicalResult result = mlir::success();
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    std::string elf = elfForCore(coreOp);
+    if (elf.empty()) {
+      return;
+    }
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &targetModel = xilinx::AIE::getTargetModel(coreOp);
+    int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+    if (numBanks <= 0) {
+      return;
+    }
+    int64_t bankSize = targetModel.getLocalMemorySize() / numBanks;
+    llvm::StringMap<uint64_t> sizes;
+    llvm::StringMap<int64_t> addrs = xilinx::aiecc::readDataSymbolAddresses(
+        elf,
+        targetModel.getMemInternalBaseAddress({tile.getCol(), tile.getRow()}),
+        &sizes);
+    llvm::StringMap<std::pair<int64_t, uint64_t>> bufferExtents;
+    for (auto buffer : coreOp->getParentOfType<xilinx::AIE::DeviceOp>()
+                           .getOps<xilinx::AIE::BufferOp>()) {
+      if (buffer.getTile() == coreOp.getTile() && !buffer.getCoreData() &&
+          buffer.getAddress() && buffer.name()) {
+        bufferExtents.try_emplace(buffer.name().getValue(),
+                                  *buffer.getAddress(),
+                                  buffer.getAllocationSize());
+      }
+    }
+
+    auto describe = [&](const xilinx::aiecc::LutOperand &op) {
+      switch (op.kind) {
+      case xilinx::aiecc::LutOperand::Kind::Symbol:
+        return "'" + op.symbol + "'";
+      case xilinx::aiecc::LutOperand::Kind::Param:
+        return "parameter " + std::to_string(op.paramIndex);
+      case xilinx::aiecc::LutOperand::Kind::Stack:
+        return std::string("a stack local");
+      case xilinx::aiecc::LutOperand::Kind::Unknown:
+        return std::string("an unresolved pointer");
+      }
+      return std::string("<unknown>");
+    };
+    // Parameter bindings and stack-local offsets are not recoverable from
+    // separately compiled objects. Do not claim to have checked those banks.
+    //
+    // Both arms below return a bank only when the symbol's *whole* extent fits
+    // inside one bank. That is what lets `resolveBroadcastBase` classify an
+    // in-bounds offset by its containing object: every byte of the object
+    // shares this bank, so `bank(base + K) == bank(base)`. Weakening either
+    // extent test silently unsounds that walk.
+    auto bankOf = [&](const xilinx::aiecc::LutOperand &op,
+                      bool resolveBuffers) -> int {
+      if (op.kind != xilinx::aiecc::LutOperand::Kind::Symbol) {
+        return -1;
+      }
+      // Linker-script buffer symbols have no ELF size. Only core IR can bind
+      // them unambiguously; a native object's same-named local may be
+      // unrelated.
+      if (resolveBuffers) {
+        auto buffer = bufferExtents.find(op.symbol);
+        if (buffer != bufferExtents.end()) {
+          auto [address, size] = buffer->second;
+          if (address >= 0 && address < bankSize * numBanks && size > 0 &&
+              size <= static_cast<uint64_t>(bankSize - address % bankSize)) {
+            return static_cast<int>(address / bankSize);
+          }
+          return -1;
+        }
+      }
+      auto it = addrs.find(op.symbol);
+      if (it == addrs.end() || it->second < 0 ||
+          it->second >= bankSize * numBanks)
+        return -1;
+      uint64_t size = sizes.lookup(op.symbol);
+      if (size == 0 ||
+          size > static_cast<uint64_t>(bankSize - it->second % bankSize))
+        return -1;
+      return static_cast<int>(it->second / bankSize);
+    };
+
+    auto checkPairs = [&](llvm::StringRef input,
+                          const std::optional<std::vector<LutPair>> &pairs,
+                          bool resolveBuffers) {
+      if (!pairs) {
+        coreOp.emitError()
+            << "core (" << tile.getCol() << ", " << tile.getRow() << "): '"
+            << input
+            << "' carries no readable LLVM IR, so its aie::lut tables cannot "
+               "be checked. Rebuild object-linked kernels with embedded LLVM "
+               "IR, or use link_with_mode = \"merge\", or drop "
+               "--check-lut-banks";
+        result = mlir::failure();
+        return;
+      }
+      for (const auto &pair : *pairs) {
+        using Kind = xilinx::aiecc::LutOperand::Kind;
+        bool onStack = pair.a.kind == Kind::Stack || pair.b.kind == Kind::Stack;
+        int bankA = bankOf(pair.a, resolveBuffers);
+        int bankB = bankOf(pair.b, resolveBuffers);
+        if (!onStack && bankA >= 0 && bankB >= 0 && bankA != bankB) {
+          continue;
+        }
+        auto diag = coreOp.emitError()
+                    << "core (" << tile.getCol() << ", " << tile.getRow()
+                    << "): the aie::lut tables in '" << pair.function << "' ("
+                    << describe(pair.a) << " and " << describe(pair.b) << ") ";
+        if (onStack) {
+          diag << "are on the stack, so their bank separation cannot be "
+                  "verified. Use static tables pinned to different banks";
+        } else if (bankA < 0 || bankB < 0) {
+          diag << "have placement that cannot be verified. Use static tables "
+                  "pinned to different banks, or merge the kernel IR so table "
+                  "bindings can be optimized into the core";
+        } else {
+          diag << "are both in memory bank " << static_cast<char>('A' + bankA)
+               << ". The gather reads them at once, so they must be in "
+                  "different banks";
+        }
+        result = mlir::failure();
+      }
+    };
+
+    std::string coreIR = irForCore(coreOp);
+    checkPairs(coreIR, xilinx::aiecc::readLutPairsFromIR(coreIR), true);
+    if (auto files = coreOp.getLinkFiles()) {
+      for (auto f : files->getAsRange<mlir::StringAttr>()) {
+        std::string object = resolvePath(f.getValue());
+        checkPairs(f.getValue(),
+                   xilinx::aiecc::readLutPairsFromObject(object, elf), false);
+      }
+    } else if (auto file = coreOp.getLinkWith()) {
+      checkPairs(*file,
+                 xilinx::aiecc::readLutPairsFromObject(resolvePath(*file), elf),
+                 false);
+    }
+  });
+  return result;
+}
+
 // Clone `src` and replace each matched CoreOp with a stub that carries
 // `elf_file = <path>` and an empty body (verifier requires empty body when
 // elf_file is set).
@@ -445,6 +662,21 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
   };
   erasePattern("nocreateundeforpoison",
                [](char c) { return c == ' ' || c == '\t'; });
+  // Upgrading older bitcode adds a target_mem location Peano cannot parse.
+  // Its usual "none" suffix can be dropped; other target-specific effects
+  // need the whole memory attribute removed to avoid understating accesses.
+  erasePattern(", target_mem: none", [](char) { return false; });
+  for (size_t p = 0; (p = result.find("memory(", p)) != std::string::npos;) {
+    size_t end = result.find(')', p);
+    if (end == std::string::npos) {
+      break;
+    }
+    if (llvm::StringRef(result).slice(p, end).contains("target_mem:")) {
+      result.erase(p, end + 1 - p);
+    } else {
+      p = end + 1;
+    }
+  }
   // LLVM 23 dropped the size operand of `llvm.lifetime.start`/`.end`; Peano
   // still declares it `immarg`, so the size-less form fails its verifier
   // ("immarg operand has non-immediate parameter"). Put it back -- `-1` is
@@ -975,12 +1207,11 @@ getTracePipeline(mlir::MLIRContext *ctx) {
 // Vector → AIEVec → buffer/lock/DMA setup → control-overlay → SCF lowering.
 // Operates on the whole module; the inner pipeline nests under DeviceOp.
 // Inspects `mod` for target arch (drives `convert-vector-to-aievec` opts).
-inline std::unique_ptr<mlir::PassManager>
-getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
-                              llvm::StringRef allocScheme, bool dynamicObjFifos,
-                              bool packetSwObjFifos, bool ctrlPktOverlay,
-                              bool bf16Emulation, bool loadPdiToCtrlPkt = false,
-                              bool skipObjectFifoVerify = false) {
+inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
+    mlir::MLIRContext *ctx, mlir::ModuleOp mod, bool dynamicObjFifos,
+    bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
+    bool loadPdiToCtrlPkt = false, bool skipObjectFifoVerify = false,
+    bool assignAddresses = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1072,12 +1303,116 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   // A buffer's name becomes a symbol in its core's object, so aie-prepare-
   // buffers names the unnamed buffers before the core compiles.
   dpm2.addPass(createAIEPrepareBuffersPass());
-  AIEAssignBufferAddressesOptions bufOpts;
-  bufOpts.clAllocScheme = allocScheme.str();
-  dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));
+  if (assignAddresses) {
+    dpm2.addPass(createAIEAssignBufferAddressesPass());
+  }
   dpm2.addPass(createAIEAssignCoreLinkFilesPass());
   dpm2.addPass(createAIEVectorTransferLoweringPass());
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
+  return pm;
+}
+
+// Reads each core's probe link and records what its own sections want from each
+// bank, so placement can leave room the linker will later need. A core whose
+// probe is missing records nothing and is placed as before.
+// Records what a prebaked `elf_file` core already holds in its tile's data
+// memory, as tile-relative address/size pairs. Placement pins buffers clear of
+// them, the way it would for any address the design fixed itself.
+//
+// A compiled core is measured the same way but only for sizes, because its
+// addresses are not chosen yet; see recordBankDemand. Both read
+// readCoreDataSections, so they cannot disagree about which sections occupy a
+// tile's data memory.
+inline void recordPrebakedRanges(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore) {
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    if (!coreOp.getElfFileAttr()) {
+      return;
+    }
+    std::string elf = elfForCore(coreOp);
+    if (elf.empty()) {
+      return;
+    }
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &tm = xilinx::AIE::getTargetModel(coreOp);
+    int64_t base = tm.getMemInternalBaseAddress({tile.getCol(), tile.getRow()});
+    int64_t localMem = tm.getLocalMemorySize();
+    llvm::SmallVector<int32_t> ranges;
+    for (const auto &sec : xilinx::aiecc::readCoreDataSections(elf, base)) {
+      // A section the linker placed outside this tile's data memory belongs to
+      // program memory or a neighbor's window, and takes none of the space
+      // buffers compete for.
+      if (sec.size <= 0 || sec.address < 0 ||
+          sec.address + sec.size > localMem) {
+        continue;
+      }
+      ranges.push_back(static_cast<int32_t>(sec.address));
+      ranges.push_back(static_cast<int32_t>(sec.size));
+    }
+    if (ranges.empty()) {
+      return;
+    }
+    coreOp.setMeasuredDataRangesAttr(
+        mlir::DenseI32ArrayAttr::get(coreOp.getContext(), ranges));
+  });
+}
+
+template <typename Map>
+inline void recordBankDemand(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> probeForCore, Map &out,
+    bool measureDataSize) {
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &tm = xilinx::AIE::getTargetModel(coreOp);
+    int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
+    std::string probe = probeForCore(coreOp);
+    if (probe.empty() || numBanks <= 0) {
+      return;
+    }
+    // The core's unpinned .data/.rodata/.bss is measurable from the same probe,
+    // and needs one contiguous run wherever it goes. Recording it lets
+    // placement treat it as an extent to fit rather than as whatever is left
+    // over, which is what `data_size` had to be declared for.
+    if (measureDataSize) {
+      if (auto data = xilinx::aiecc::measureDataSectionDemand(probe)) {
+        mlir::Builder builder(coreOp.getContext());
+        coreOp.setMeasuredDataSizeAttr(builder.getI32IntegerAttr(data->size));
+        coreOp.setMeasuredDataAlignmentAttr(
+            builder.getI32IntegerAttr(data->align));
+      }
+    }
+    auto sizes = xilinx::aiecc::measureBankSectionBytes(probe, numBanks);
+    if (llvm::all_of(sizes, [](const xilinx::aiecc::BankSectionSize &s) {
+          return s.size == 0;
+        })) {
+      return; // nothing pinned; leave the core as it was
+    }
+    // The reservation must start at the measured alignment. Rounding its size
+    // alone cannot cover leading padding, even when size is already aligned.
+    llvm::SmallVector<int32_t> bytes, alignments;
+    for (const auto &s : sizes) {
+      bytes.push_back(static_cast<int32_t>(s.size));
+      alignments.push_back(static_cast<int32_t>(s.align));
+    }
+    coreOp.setMeasuredBankSizesAttr(
+        mlir::DenseI32ArrayAttr::get(coreOp.getContext(), bytes));
+    coreOp.setMeasuredBankAlignmentsAttr(
+        mlir::DenseI32ArrayAttr::get(coreOp.getContext(), alignments));
+    std::lock_guard<std::mutex> guard(out.mutex);
+    out.byCore[xilinx::aiecc::coreKey(coreOp)] = std::move(sizes);
+  });
+}
+
+// Pairs with `getInputWithAddressesPipeline(..., assignAddresses=false)`.
+inline std::unique_ptr<mlir::PassManager>
+getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx) {
+  using namespace xilinx::AIE;
+  auto pm = std::make_unique<mlir::PassManager>(ctx);
+  pm->nest<DeviceOp>().addPass(createAIEAssignBufferAddressesPass());
   return pm;
 }
 
