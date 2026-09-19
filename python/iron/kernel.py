@@ -480,7 +480,7 @@ class ExternalFunction(Kernel):
 
     # Optional metadata the kernel factories attach: the contract
     # (aie.iron.kernels.KernelContract) and the matmul layout facts.
-    # Typed Any rather than KernelContract: pyright analyses the sources and
+    # Typed Any rather than KernelContract: pyright analyzes the sources and
     # the staged package as two module trees, so naming the class here would
     # make the factories' own KernelContract a different type.
     contract: Any = None
@@ -530,7 +530,7 @@ class ExternalFunction(Kernel):
 
         The output dtype does not bound this. What a kernel does when a
         result leaves the output range is its reference's to model, and
-        clipping inputs to the output range would leave a requantising
+        clipping inputs to the output range would leave a requantizing
         kernel's data near zero.
         """
         from aie.utils.compile.jit.markers import In

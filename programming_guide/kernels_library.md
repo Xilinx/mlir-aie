@@ -272,12 +272,12 @@ Three things make this work for more than one kernel per design:
   `InOut` output is excluded from `reference_indices` like an `Out` one;
   `contract.accumulates` says which kind a kernel is. The int16 `mv` and
   `cascade_mm` accumulate the same way; the bf16 `mv` stores.
-- **Whole-object symbol prefixing.** Each parameterisation of a kernel
+- **Whole-object symbol prefixing.** Each parameterization of a kernel
   gets its own symbol prefix, and every symbol its object defines is
   prefixed, not just the declared one. A translation unit usually
   exports more (`mha.cc`
   includes `mm.cc` and defines `matmul_*` names of its own), and leaving
-  those bare made two parameterisations collide at link.
+  those bare made two parameterizations collide at link.
   `fn.object_file.bind(symbol, arg_types)` binds another symbol
   from the same object with the prefix applied. Chess-built
   kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
@@ -380,7 +380,7 @@ Random data is bounded by `fn.input_limit(dtype)`, using the contract's
 full reduction length explicitly. An edge case exercises the datapath rather than overflowing
 the accumulator. The output range does not bound it: what a kernel does
 when a result leaves that range is its reference's to model, and clipping
-inputs to it would leave a requantising kernel's data near zero.
+inputs to it would leave a requantizing kernel's data near zero.
 
 Which edge cases a kernel is fed is a property of the case, not of the
 contract. Integer kernels get the extremes; matmul operands never carry

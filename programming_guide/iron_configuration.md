@@ -403,7 +403,7 @@ building the rest of the PR.
 
 External kernels are compiled in parallel, one process per distinct kernel,
 defaulting to `os.cpu_count()`. Set `AIE_KERNEL_COMPILE_JOBS` to cap that — on
-a shared machine, or to serialise the build when a compiler error is easier to
+a shared machine, or to serialize the build when a compiler error is easier to
 read one at a time. Values below 1 mean the default.
 
 ## Peano location (`PEANO_INSTALL_DIR`)

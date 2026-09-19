@@ -164,7 +164,7 @@ def test_bf16_exp_full_clamped_range():
     """Check every lane relatively, including the nonzero subnormal tail."""
     fn = kernels.bf16_exp()
     tile = np.linspace(-88, 88, 1024, dtype=np.float32)
-    # Include bf16 neighbours of both ends, the normal/subnormal transition,
+    # Include bf16 neighbors of both ends, the normal/subnormal transition,
     # infinities, and inputs that wrapped the old AIE2 Q8 lookup.
     edges = [
         -np.inf,
@@ -207,11 +207,11 @@ def test_bf16_exp_full_clamped_range():
 
 
 def test_softmax_wide_dynamic_range():
-    """A tile whose x - max runs past the LUT domain still normalises.
+    """A tile whose x - max runs past the LUT domain still normalizes.
 
     Softmax subtracts the per-tile max, so its exp input is <= 0 but not
     bounded below. Before the clamp, Q8 wrapped those deeply-negative values
-    onto a large positive entry, which swamped the normalising sum and made
+    onto a large positive entry, which swamped the normalizing sum and made
     every element of the tile wrong -- including the peak.
     """
     fn = kernels.softmax()
@@ -386,7 +386,7 @@ def test_setup_reaches_the_core():
     separates the two modes: ordinary data rounds the same way under both, so
     a ``setup`` that never ran would still pass. These inputs are exact ties
     -- their product falls precisely halfway between two bf16 values, with an
-    odd lower neighbour -- which is the one case where floor and conv_even
+    odd lower neighbor -- which is the one case where floor and conv_even
     must disagree.
     """
     n = 1024
@@ -404,7 +404,7 @@ def test_setup_reaches_the_core():
 
     bits = (x.astype(np.float32) * y.astype(np.float32)).view(np.uint32) >> 16
     floor_result = _bf16_from_bits(bits)
-    conv_even_result = _bf16_from_bits(bits + 1)  # ties away from the odd neighbour
+    conv_even_result = _bf16_from_bits(bits + 1)  # ties away from the odd neighbor
 
     fn = kernels.mul(tile_size=n)
     design = kd.design(kernels.mul, calls=1, tile_size=n)

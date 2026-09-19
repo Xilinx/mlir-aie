@@ -167,7 +167,7 @@ class Case:
 
 
 # Data cases every kernel of a kind should survive. Random data finds nothing
-# a vectorised tail, a saturating add or a NaN path gets wrong. The policy
+# a vectorized tail, a saturating add or a NaN path gets wrong. The policy
 # is derived from each contract by `data_policy`: integer kernels get the
 # extremes (inside `input_limit`); float kernels get subnormal inputs only
 # when the contract says what the core does with them (`subnormals`) and

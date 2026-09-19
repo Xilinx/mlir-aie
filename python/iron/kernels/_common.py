@@ -105,7 +105,7 @@ class KernelContract:
             :meth:`Tolerance.default_for` the output dtype. State the
             evidence in ``Tolerance.note``.
         ops_per_call: Arithmetic operations one kernel call performs, for
-            throughput normalisation. ``None`` means one per output element.
+            throughput normalization. ``None`` means one per output element.
         out_valid: Meaningful elements at the start of each output tile when
             the tile is padded for DMA alignment (reductions write one value
             into a 4-byte-aligned tile). ``None`` means the whole tile.
@@ -456,7 +456,7 @@ def _require_min_trip_count(
     *,
     param: str = "tile_size",
 ) -> None:
-    """Raise ValueError when a tile is too small for a kernel's vectorised loop.
+    """Raise ValueError when a tile is too small for a kernel's vectorized loop.
 
     Several kernels declare ``AIE_LOOP_MIN_ITERATION_COUNT(n)``. Peano
     predefines ``__AIECC__``, so that expands to a real ``#pragma clang loop

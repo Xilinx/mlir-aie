@@ -137,9 +137,9 @@ def mv_ref(a, b):
 
 
 def mm_bfp_ref(a, b):
-    """Numpy reference for [`mm_bfp`][iron.kernels.linalg.mm_bfp]: ``a @ b`` on bfp16ebs8-quantised operands.
+    """Numpy reference for [`mm_bfp`][iron.kernels.linalg.mm_bfp]: ``a @ b`` on bfp16ebs8-quantized operands.
 
-    ``a`` is ``(M, K)`` and ``b`` ``(K, N)`` float; each is quantised the way
+    ``a`` is ``(M, K)`` and ``b`` ``(K, N)`` float; each is quantized the way
     the host encodes it for the kernel (blocks of 8 along ``K``, see
     :mod:`aie.utils.bfp`) and the product is accumulated in float64. The
     kernel's own output is bfp16ebs8 too, which the tolerance covers.
@@ -157,7 +157,7 @@ def mm_bfp_mixed_ref(a, b):
     ``a`` (bf16) is used as is, as ``mixed_test.cpp`` does -- the core
     converts it to bfp16 itself, with a rounding the reference does not
     model, which is why the mixed tolerance is twice the plain one; ``b``
-    is quantised as in [`mm_bfp_ref`][iron.kernels.linalg.mm_bfp_ref].
+    is quantized as in [`mm_bfp_ref`][iron.kernels.linalg.mm_bfp_ref].
     """
     from aie.utils import bfp
 
@@ -193,9 +193,9 @@ def mv_tile_ref(a, b, *, dim_m: int, dim_k: int):
 
 
 def mm_bfp_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int, mixed: bool = False):
-    """One [`mm_bfp`][iron.kernels.linalg.mm_bfp] call, on operands quantised as the host encodes them.
+    """One [`mm_bfp`][iron.kernels.linalg.mm_bfp] call, on operands quantized as the host encodes them.
 
-    Blocks of 8 run along K for both operands, so B is quantised transposed.
+    Blocks of 8 run along K for both operands, so B is quantized transposed.
     With ``mixed`` the A tile stays bf16 and the core converts it itself, with
     a rounding this does not model -- which is what the wider mixed tolerance
     covers.
@@ -653,7 +653,7 @@ def mm_bfp(
     The host holds B transposed (``b_col_maj``), and
     every bfp16ebs8 operand is encoded and shuffled into the mmul tile
     layout on the host with :mod:`aie.utils.bfp`, which is what the generic
-    harness does; the contract's reference multiplies the quantised
+    harness does; the contract's reference multiplies the quantized
     operands. These are the kernels
     programming_examples/ml/block_datatypes/matrix_multiplication build.
 
@@ -823,7 +823,7 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
     MHA operator builds too.
 
     Because the unit includes ``mm.cc``, it defines ``matmul_*``
-    names of its own; the per-parameterisation symbol prefix is
+    names of its own; the per-parameterization symbol prefix is
     what keeps those from colliding with a separate ``mm`` kernel in the
     same design.
 

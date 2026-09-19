@@ -155,7 +155,7 @@ _MBB_PREFIX = re.compile(r"^bb\.\d+\.")
 
 
 def _block(name) -> str | None:
-    """Normalise a basic-block name so the three passes key the same loop.
+    """Normalize a basic-block name so the three passes key the same loop.
 
     The pipeliner reports machine-basic-block names (``bb.1.for.body.i``);
     aie-hardware-loops and aie-asm-printer report the IR block

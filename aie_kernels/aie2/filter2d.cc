@@ -96,7 +96,7 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
     // so it has to be taken before the shuffle. Reading it back out afterwards
     // yields the already-shifted vector, whose last element is the
     // second-to-last pixel, and every 32-pixel boundary from the third vector
-    // on then convolves against the wrong left neighbour. The store stays
+    // on then convolves against the wrong left neighbor. The store stays
     // after the shuffle, which still needs the previous iteration's value.
     auto carry1 = data_buf1.template extract<32>(0);
     data_buf1 = ::aie::shuffle_up_fill(data_buf1, prev_buf1, kernel_side);

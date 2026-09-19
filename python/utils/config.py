@@ -290,7 +290,7 @@ def aie_kernels_dir():
 
 
 def aie_runtime_lib_dir():
-    """Return ``aie_runtime_lib/`` (the LUT sources), honouring ``MLIR_AIE_KERNEL_SOURCES``."""
+    """Return ``aie_runtime_lib/`` (the LUT sources), honoring ``MLIR_AIE_KERNEL_SOURCES``."""
     override = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
     if override:
         return os.path.join(override, "aie_runtime_lib")

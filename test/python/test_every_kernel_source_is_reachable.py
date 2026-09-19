@@ -8,7 +8,7 @@
 """Every file in ``aie_kernels/`` is compiled by some factory.
 
 A kernel source nothing builds is a copy of something, drifting: it is never
-compiled, so it never fails, and the catalogue in aie_kernels/README.md goes
+compiled, so it never fails, and the catalog in aie_kernels/README.md goes
 on advertising it. That is how bf16_softmax.cc outlived the deduplication
 (#3599) that removed its last caller while softmax.cc kept providing the same
 bf16 softmax.

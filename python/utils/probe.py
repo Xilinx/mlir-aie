@@ -66,7 +66,7 @@ class Check:
 
 
 def xrt_smi_path() -> str | None:
-    """Locate xrt-smi on PATH or under XILINX_XRT, honouring the platform suffix.
+    """Locate xrt-smi on PATH or under XILINX_XRT, honoring the platform suffix.
 
     ``None`` when it is not installed.
     """

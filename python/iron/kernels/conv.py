@@ -56,7 +56,7 @@ def _requant_even(acc, scale: int, lo: int, hi: int, dtype: type):
 
 # The bottleneck (bn_*) kernels the factories build with -DSCALAR, or whose
 # only entry point is scalar, are the reference: exact.
-_BN_TOLERANCE = Tolerance.exact(note="scalar bottleneck kernel, modelled exactly")
+_BN_TOLERANCE = Tolerance.exact(note="scalar bottleneck kernel, modeled exactly")
 
 
 def _conv1x1_acc(x, weights, W: int, IC: int, OC: int):
@@ -76,7 +76,7 @@ def _conv1x1_acc(x, weights, W: int, IC: int, OC: int):
 
 
 def conv2dk1_ref(x, weights, input_width, input_channels, output_channels, scale):
-    """Numpy reference for [`conv2dk1`][iron.kernels.conv.conv2dk1]: 1x1 conv, requantised.
+    """Numpy reference for [`conv2dk1`][iron.kernels.conv.conv2dk1]: 1x1 conv, requantized.
 
     Layouts are the kernel's: activations ``[C/8][W][8]`` (``x`` is one
     line of ``input_width * input_channels`` values, or ``(calls, ...)`` of
@@ -118,8 +118,8 @@ def conv2dk1_skip_ref(
     ``x0`` and ``x1`` each hold half the input channels (``[IC/16][W][8]``
     lines, ``x1`` the upper half); weights are ``[OC/8][IC/8][ic8][oc8]``
     over all of them and ``skip`` is an ``[OC/8][W][8]`` line. The conv sum
-    is requantised and saturated to ``int8`` first, then the residual is
-    added and the total requantised to ``uint8``::
+    is requantized and saturated to ``int8`` first, then the residual is
+    added and the total requantized to ``uint8``::
 
         conv = sat_i8((sum_ic x * w + 2**(scale-1)) >> scale)
         out  = sat_u8((conv + skip + 2**(skip_scale-1)) >> skip_scale)
@@ -1184,7 +1184,7 @@ def bn_conv2dk1_relu_xy_pool_padded(
             reduction=input_channels,
             tolerance=Tolerance.lsb(
                 1,
-                note="scalar source modelled exactly, except that the pool average "
+                note="scalar source modeled exactly, except that the pool average "
                 "is a float32 division on the core (accumulator / 49.0f) whose "
                 "rounding at a tie is not pinned",
             ),

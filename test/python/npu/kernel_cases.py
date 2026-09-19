@@ -30,7 +30,7 @@ _mm_bfp = dict(dim_m=64, dim_k=64, dim_n=64)  # the block_datatypes examples' ti
 
 # The exact-copy and one-op bf16 kernels propagate NaN/inf and preserve
 # subnormals, and their references do the same. That is a claim about
-# behaviour, so it is made where it is exercised rather than declared on the
+# behavior, so it is made where it is exercised rather than declared on the
 # contract and never checked.
 IEEE_FLOAT = (
     "random",

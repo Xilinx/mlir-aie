@@ -328,7 +328,7 @@ def test_chess_kernels_are_refused(tmp_path):
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_real_build_produces_the_documented_record_shapes(tmp_path):
-    # scale.cc is one vectorised loop over a tile: Peano must report it as a
+    # scale.cc is one vectorized loop over a tile: Peano must report it as a
     # pipelined (or at least seen) loop, with a bundle count from the asm
     # printer. If a Peano bump changes the record shapes, this is the test
     # that goes red.

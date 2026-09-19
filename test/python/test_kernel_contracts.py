@@ -705,7 +705,7 @@ def test_per_tile_matrix_references_agree_with_the_whole_problem_ones():
         kernels.mv_ref(a, v).reshape(1, m),
     )
 
-    # bfp quantises in blocks of 8 along K, so K must be a multiple of 8.
+    # bfp quantizes in blocks of 8 along K, so K must be a multiple of 8.
     af = rng.standard_normal((m, k)).astype(np.float32)
     bf = rng.standard_normal((k, n)).astype(np.float32)
     for mixed, whole in ((False, kernels.mm_bfp_ref), (True, kernels.mm_bfp_mixed_ref)):
@@ -787,7 +787,7 @@ def test_rgba2hue_reference_matches_the_kernel():
         return np.array([r, g, b, 0], np.uint8)
 
     ref = kernels.rgba2hue_ref
-    assert ref(px(0, 0, 0)).tolist() == [0]  # grey: hue 0
+    assert ref(px(0, 0, 0)).tolist() == [0]  # gray: hue 0
     assert ref(px(255, 0, 0)).tolist() == [0]  # red
     assert ref(px(0, 255, 0)).tolist() == [85]  # green: 171 * 512 >> 10
     assert ref(px(0, 0, 255)).tolist() == [170]  # blue: 341 * 512 >> 10
@@ -827,14 +827,14 @@ def test_rgba2hue_reference_is_within_one_lsb_of_exact_hue():
 def test_conv_references_follow_the_kernel_layouts():
     W, IC, OC = 4, 8, 8
     # conv2dk1: one input channel lit, weights an identity in (ic8, oc8):
-    # output channel c equals input channel c, requantised by >> 0.
+    # output channel c equals input channel c, requantized by >> 0.
     x = np.arange(W * IC, dtype=np.int8).reshape(IC // 8, W, 8)  # [C/8][W][8]
     ident = np.eye(8, dtype=np.int8).reshape(OC // 8, IC // 8, 8, 8)
     out = kernels.conv2dk1_ref(x.ravel(), ident.ravel(), W, IC, OC, 1)
     # scale 1: (v + 1) >> 1
     assert out.tolist() == (((x.astype(np.int64) + 1) >> 1).ravel()).tolist()
-    # conv2dk3: centre tap identity, zero-padded borders; middle region
-    # returns line1 requantised, top region ignores line0, bottom line2.
+    # conv2dk3: center tap identity, zero-padded borders; middle region
+    # returns line1 requantized, top region ignores line0, bottom line2.
     w = np.zeros((OC // 8, IC // 8, 3, 3, 8, 8), np.int8)
     w[:, :, 1, 1] = np.eye(8, dtype=np.int8)  # row 1 (line1), ki 1 (x + 0)
     l0 = np.full(W * IC, 100, np.int8)
@@ -842,14 +842,14 @@ def test_conv_references_follow_the_kernel_layouts():
     l2 = np.full(W * IC, -100, np.int8)
     got = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 1, 1, 0)
     assert got.tolist() == ((l1.astype(np.int64) + 1) >> 1).tolist()
-    w[:, :, 0, 1] = np.eye(8, dtype=np.int8)  # add line0's centre tap
+    w[:, :, 0, 1] = np.eye(8, dtype=np.int8)  # add line0's center tap
     mid = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 1, 1, 0)
     top = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 0, 1, 0)
     assert (
         mid.tolist() == np.clip((l1.astype(np.int64) + 100 + 1) >> 1, 0, 255).tolist()
     )
     assert top.tolist() == got.tolist()
-    # Left neighbour tap on a line with a single lit pixel: shifts right by one,
+    # Left neighbor tap on a line with a single lit pixel: shifts right by one,
     # and the left border is zero padded.
     w[:] = 0
     w[:, :, 1, 2] = np.eye(8, dtype=np.int8)  # ki 2 reads pixel x + 1
@@ -924,7 +924,7 @@ def test_bottleneck_references_round_half_even_and_saturate():
     skip = np.full(W * OC, -100, np.int8)
     out = kernels.bn_conv2dk1_skip_ref(xs.ravel(), ident.ravel(), skip, W, IC, OC, 0, 1)
     assert set(out.tolist()) == {14}  # (127 - 100) = 27 -> (27 + 1 - 1 + 1) >> 1 = 14
-    # depthwise: centre tap only, stride 1 returns line1; stride 2 every other
+    # depthwise: center tap only, stride 1 returns line1; stride 2 every other
     # pixel; the left tap on a single lit pixel shifts right and the border
     # is zero padded.
     C = 8
@@ -948,7 +948,7 @@ def test_bottleneck_references_round_half_even_and_saturate():
         l0, l1.ravel(), l2, w.ravel(), W, C, C, 3, 3, 1, 0, 0
     )
     assert got.reshape(C // 8, W, 8)[0, :, 0].tolist() == [0, 10, 20, 30]
-    # full 3x3 stride 2: centre tap identity halves the width; top region
+    # full 3x3 stride 2: center tap identity halves the width; top region
     # ignores line0.
     w3 = np.zeros((OC // 8, IC // 8, 3, 3, 8, 8), np.int8)
     w3[:, :, 1, 1] = np.eye(8, dtype=np.int8)
@@ -1124,7 +1124,7 @@ _IRON_KERNEL_SPECS = {
 def test_factories_reproduce_the_iron_operator_kernel_specs(name):
     fkw, symbol, source, flags = _IRON_KERNEL_SPECS[name]
     fn = getattr(kernels, name)(**fkw)
-    # The exported symbol may carry the memoisation digest prefix; the kernel
+    # The exported symbol may carry the memoization digest prefix; the kernel
     # it binds is what has to match.
     assert fn.name.split("_", 1)[-1] == symbol or fn.name == symbol, fn.name
     assert Path(fn.source_file).name == source
@@ -1278,17 +1278,17 @@ def test_accumulating_kernels_are_inout_and_ship_a_zero():
     assert single.out_index == 1 and single.accumulates
 
 
-def test_sibling_symbols_follow_the_parameterisation_prefix():
+def test_sibling_symbols_follow_the_parameterization_prefix():
     """A kernel's siblings bind names its own object actually defines.
 
-    Each parameterisation gets a symbol prefix so two of them can share a
+    Each parameterization gets a symbol prefix so two of them can share a
     design; the whole object is prefixed, so the cascade
     get/put trio have to be prefixed to match.
     """
     fn = kernels.mm(dim_m=64, dim_k=64, dim_n=64)
     prefix = fn._symbol_prefix
     assert prefix and fn.name == f"{prefix}_matmul_i16_i16"
-    # A different parameterisation gets a different prefix on every symbol.
+    # A different parameterization gets a different prefix on every symbol.
     other = kernels.mm(dim_m=32, dim_k=32, dim_n=32)
     assert other._symbol_prefix != prefix
     casc = kernels.cascade_mm()
@@ -1366,7 +1366,7 @@ def test_conv2dk1_i8_and_skip_references():
 
 
 def test_input_limit_is_bounded_by_the_accumulator_only():
-    # conv2dk1 requantises by >> 12: bounding its inputs by the uint8 output
+    # conv2dk1 requantizes by >> 12: bounding its inputs by the uint8 output
     # would leave every random output at 0 or 1. The accumulator is the only
     # thing that bounds an input; what the kernel does when a result leaves
     # the output range is the reference's job to model.
@@ -1457,7 +1457,7 @@ def test_vision_references_follow_the_kernel_sources():
     b = np.array([200, 255], np.uint8)
     assert kernels.add_weighted_ref(a, b, 8192, 8192, 0).tolist() == [150, 255]
     assert kernels.add_weighted_ref(a, b, 16384, 16384, 0).tolist() == [255, 255]
-    # filter2d: identity kernel (Q4.12 one at the centre) copies the middle line
+    # filter2d: identity kernel (Q4.12 one at the center) copies the middle line
     # and replicates borders; a box kernel of 16/16 sums 9 pixels / 16.
     ident = np.zeros((3, 3), np.int16)
     ident[1, 1] = 4096
@@ -1716,7 +1716,7 @@ def test_bf16_exp_clamp_matches_the_kernel_headers():
 
     ``bf16_exp_ref`` describes the device as ``exp(clip(x, -C, C))``. That is
     only true while the Python constant and the C++ one agree; if they ever
-    drift the reference silently stops modelling the kernel, which is the
+    drift the reference silently stops modeling the kernel, which is the
     class of bug these contracts exist to catch.
     """
     from aie.iron.kernels.activation import _EXP_BF16_CLAMP
@@ -1789,7 +1789,7 @@ def test_reduce_rejects_tiles_below_its_declared_trip_count(factory, kwargs):
 
 
 def test_reduce_scalar_path_has_no_trip_count_floor():
-    """Only the vectorised path carries the pragma, so the scalar one stays free."""
+    """Only the vectorized path carries the pragma, so the scalar one stays free."""
     assert kernels.reduce_add(tile_size=64, vectorized=False) is not None
 
 
