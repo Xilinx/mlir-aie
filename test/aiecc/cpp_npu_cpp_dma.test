@@ -8,7 +8,7 @@
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: aiecc --get-npu-cpp --output-dir=%t.d --tmpdir=%t.d/work %S/../Targets/NPU/static_vs_dynamic/memcpy_nd_dynamic_size.mlir
 // RUN: aiecc --get-npu-insts --sequence-name=nd_static --output-dir=%t.d --tmpdir=%t.d/static %S/../Targets/NPU/static_vs_dynamic/memcpy_nd_dynamic_size.mlir
-// RUN: %PYTHON -c "import pathlib,struct; b=pathlib.Path('%t.d/insts_main_nd_static.bin').read_bytes(); pathlib.Path('%t.d/golden.hex').write_text(''.join('%08X\n'%w for (w,) in struct.iter_unpack('<I',b)))"
+// RUN: %PYTHON -c "import pathlib,struct; b=pathlib.Path('%/t.d/insts_main_nd_static.bin').read_bytes(); pathlib.Path('%/t.d/golden.hex').write_text(''.join('%08X\n'%w for (w,) in struct.iter_unpack('<I',b)))"
 // RUN: %host_clang -std=c++17 -I%S/../../include -include %t.d/npu_main_nd_dynamic.cpp -DGEN_HDR='"%t.d/npu_main_nd_static.cpp"' -DSTATIC_FN=generate_txn_main_nd_static -DDYN_FN=generate_txn_main_nd_dynamic -DARGVAL=4 -DDYN_STRUCTURAL %S/../Targets/NPU/static_vs_dynamic/Inputs/compare_main.cpp %host_link_flags -o %t.d/compare
 // RUN: %t.d/compare %t.d/golden.hex
 // RUN: %host_clang -std=c++17 -I%S/../../include -DGEN_HDR='"%t.d/npu_main_nd_dynamic.cpp"' -DGEN_FN=generate_txn_main_nd_dynamic -DSCALAR %S/Inputs/npu_cpp_dump.cpp %host_link_flags -o %t.d/native

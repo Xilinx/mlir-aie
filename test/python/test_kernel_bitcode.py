@@ -314,15 +314,14 @@ class ObjectBitcodeTest(unittest.TestCase):
                 self.assertEqual(
                     compile_utils._object_has_bitcode("kernel.o"), returncode == 0
                 )
-                self.assertEqual(
-                    run.call_args.args[0],
-                    [
-                        "llvm-objcopy",
-                        f"--dump-section=.llvmbc={os.devnull}",
-                        "kernel.o",
-                        os.devnull,
-                    ],
-                )
+                command = run.call_args.args[0]
+                self.assertEqual(command[0], "llvm-objcopy")
+                self.assertTrue(command[1].startswith("--dump-section=.llvmbc="))
+                dump_path = Path(command[1].split("=", 2)[2])
+                self.assertEqual(dump_path.name, "kernel.bc")
+                self.assertNotEqual(str(dump_path), os.devnull)
+                self.assertFalse(dump_path.parent.exists())
+                self.assertEqual(command[2:], ["kernel.o", os.devnull])
 
 
 class BitcodeCacheIdentityTest(unittest.TestCase):

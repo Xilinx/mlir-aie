@@ -298,7 +298,7 @@ extern "C" int alias(int i) __attribute__((alias("add_one")));
     assert "ptr @op0_add_one" in ir
 
 
-@pytest.mark.parametrize("stamp_version", [1, 2])
+@pytest.mark.parametrize("stamp_version", [1, 2, 3])
 def test_bitcode_prefix_cache_version(tmp_path, func, stamp_version):
     obj = tmp_path / func.object_file_name
     compile_utils.compile_external_kernel(
@@ -307,7 +307,7 @@ def test_bitcode_prefix_cache_version(tmp_path, func, stamp_version):
     stamp = tmp_path / os.path.basename(
         compile_utils._symbol_prefix_stamp_path(str(obj), "op0_")
     )
-    if stamp_version == 1:
+    if stamp_version < 3:
         # Recreate the legacy bug: native names were prefixed, IR was untouched.
         subprocess.run(
             [
@@ -321,7 +321,7 @@ def test_bitcode_prefix_cache_version(tmp_path, func, stamp_version):
         stamp.write_text(
             json.dumps(
                 {
-                    "version": 1,
+                    "version": stamp_version,
                     "prefix": "op0_",
                     "object_sha256": compile_utils._sha256_file(str(obj)),
                 }
@@ -337,11 +337,26 @@ def test_bitcode_prefix_cache_version(tmp_path, func, stamp_version):
     bitcode, _ = _embedded_ir(obj, tmp_path)
     assert _symbols(obj) == _symbols(bitcode) == ["op0_add_one", "op0_helper_fn"]
     assert compile_utils._has_current_symbol_prefix_stamp(str(obj), "op0_")
-    if stamp_version == 2:
+    if stamp_version == 3:
         assert obj.read_bytes() == before
         assert obj.stat().st_mtime_ns == untouched
     else:
         assert obj.read_bytes() != before
+
+
+@pytest.mark.parametrize("embed_bitcode", [False, True])
+def test_bitcode_detection_preserves_object(tmp_path, embed_bitcode):
+    source = tmp_path / "kernel.cc"
+    source.write_text(_KERNEL_SOURCE)
+    obj = tmp_path / "kernel.o"
+    compile_utils.compile_cxx_core_function(
+        str(source), "aie2p", str(obj), embed_bitcode=embed_bitcode
+    )
+    before = obj.read_bytes()
+    mtime = obj.stat().st_mtime_ns
+    assert compile_utils._object_has_bitcode(obj) == embed_bitcode
+    assert obj.read_bytes() == before
+    assert obj.stat().st_mtime_ns == mtime
 
 
 def test_bad_embedded_bitcode_leaves_native_object_untouched(tmp_path, kernel_object):

@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 _UMASK = os.umask(0o022)
 os.umask(_UMASK)
 _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
-# Version 1 renamed only native symbols, leaving embedded bitcode inconsistent.
-_SYMBOL_PREFIX_STAMP_VERSION = 2
+# Versions 1/2 could leave embedded bitcode unprefixed (v2 on Windows).
+_SYMBOL_PREFIX_STAMP_VERSION = 3
 
 
 SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
@@ -161,16 +161,18 @@ def _check_lut_banks_enabled(options) -> bool:
 
 def _object_has_bitcode(output_path) -> bool:
     """Inspect the actual cached object without rewriting it or a sidecar."""
-    ret = subprocess.run(
-        [
-            config.objcopy_path(),
-            f"--dump-section=.llvmbc={os.devnull}",
-            str(output_path),
-            os.devnull,
-        ],
-        check=False,
-        capture_output=True,
-    )
+    # objcopy cannot open NUL for both outputs concurrently on Windows.
+    with tempfile.TemporaryDirectory(prefix="aie-bitcode-") as tmpdir:
+        ret = subprocess.run(
+            [
+                config.objcopy_path(),
+                f"--dump-section=.llvmbc={os.path.join(tmpdir, 'kernel.bc')}",
+                str(output_path),
+                os.devnull,
+            ],
+            check=False,
+            capture_output=True,
+        )
     return ret.returncode == 0
 
 

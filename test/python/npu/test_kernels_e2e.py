@@ -779,18 +779,20 @@ def _lut_pair_object(tmp_path, aiecc_flags):
 def _carries_bitcode(obj):
     import os
     import subprocess
+    import tempfile
 
     from aie.utils import config
 
-    ret = subprocess.run(
-        [
-            config.objcopy_path(),
-            f"--dump-section=.llvmbc={os.devnull}",
-            str(obj),
-            os.devnull,
-        ],
-        capture_output=True,
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ret = subprocess.run(
+            [
+                config.objcopy_path(),
+                f"--dump-section=.llvmbc={os.path.join(tmpdir, 'kernel.bc')}",
+                str(obj),
+                os.devnull,
+            ],
+            capture_output=True,
+        )
     return ret.returncode == 0
 
 
