@@ -15,6 +15,7 @@
 
 #include "llvm/ADT/BitVector.h"
 
+#include <limits>
 #include <optional>
 
 namespace xilinx::AIE {
@@ -724,6 +725,10 @@ namespace {
 //
 // A memtile has no core, so criterion 2 is neutralized there and round-robin
 // governs throughout.
+// Sentinel first key for an unscored fallback, so it sorts behind every
+// scored candidate however those score.
+constexpr int64_t kFallbackRank = std::numeric_limits<int64_t>::max();
+
 struct Placement {
   int64_t addr;
   int bank;
@@ -835,15 +840,57 @@ rankedPlacements(BufferOp buffer, const BankAwareContext &ctx,
   llvm::stable_sort(out, [](const Placement &a, const Placement &b) {
     return a.rank() < b.rank();
   });
+
+  // The probes above ask each hole only for its tightest fit, so a layout
+  // needing some other position in one is unreachable -- and unreachable reads
+  // as "no room". Both flush ends of every hole cover that. Appended after the
+  // sort, never scored: ranking them would move addresses that already work.
+  // Unpinned only; the mem_bank branch above already does this within its bank,
+  // and widening it here would place the buffer outside that bank.
+  if (size > 0 && requiredBanks.find(buffer) == requiredBanks.end()) {
+    for (MemoryRun gap : occupancy.gapsIn(0, ctx.maxDataMemorySize)) {
+      int64_t low = llvm::alignTo(gap.start, alignBytes);
+      if (low + size > gap.end()) {
+        continue;
+      }
+      for (int64_t addr :
+           {low, std::max<int64_t>(
+                     llvm::alignDown(gap.end() - size, alignBytes), low)}) {
+        int bank = getBankContaining(addr, ctx.numBanks, ctx.bankLimits);
+        if (bank >= 0) {
+          // Ranks last by construction, so it is only ever reached by
+          // backtracking past every scored candidate.
+          out.push_back({addr, bank, kFallbackRank, 0, 0, 0});
+        }
+      }
+    }
+  }
+
   // The probes overlap: a gap that is the tightest in its bank is often also
-  // the tightest overall. Equal addresses are the same placement, and trying
-  // one twice only costs budget.
+  // the tightest overall, and the fallbacks repeat whichever of those was a
+  // flush end. Equal addresses are the same placement, and trying one twice
+  // only costs budget. Stable, so the ranked entry survives its duplicate.
+  llvm::stable_sort(out, [](const Placement &a, const Placement &b) {
+    return a.addr < b.addr;
+  });
   out.erase(
       llvm::unique(out, [](const Placement &a,
                            const Placement &b) { return a.addr == b.addr; }),
       out.end());
+  llvm::stable_sort(out, [](const Placement &a, const Placement &b) {
+    return a.rank() < b.rank();
+  });
   return out;
 }
+
+namespace {
+// What the search cost on one device, for --mlir-pass-statistics.
+struct PlacementStats {
+  int64_t backtracks = 0; // placements undone because a later buffer had none
+  int64_t tilesSearched = 0; // tiles needing more than the ranked first try
+  int64_t budgetExhausted = 0;
+};
+} // namespace
 
 // How many placements the search may try per tile before giving up and
 // reporting the deepest failure it reached. Packing around fixed obstacles is
@@ -866,6 +913,7 @@ struct PlacementSearch {
   const RequiredBanks &requiredBanks;
   MemoryOccupancy &occupancy;
   SmallVectorImpl<BufferOp> &placed;
+  PlacementStats &stats;
   int64_t budget = kPlacementBudget;
   // Set when the node budget ran out with candidates still untried, so the
   // caller can say "gave up" rather than "no such layout exists".
@@ -873,6 +921,10 @@ struct PlacementSearch {
 
   // The furthest the search reached, kept so a failure can report the layout it
   // got closest with rather than the empty tile backtracking leaves behind.
+  // First arrangement to reach a given depth wins, not the last: the first
+  // comes down the highest-ranked path, so the map a user sees is the one the
+  // ranking preferred rather than whichever branch happened to be explored
+  // last.
   size_t deepestIndex = 0;
   BufferOp deepest;
   SmallVector<std::pair<BufferOp, Placement>> deepestLayout;
@@ -887,7 +939,7 @@ struct PlacementSearch {
 
     SmallVector<Placement> candidates = rankedPlacements(
         buffer, ctx, startBankIndex, requiredBanks, occupancy, rest);
-    if (candidates.empty() && (!deepest || index >= deepestIndex)) {
+    if (candidates.empty() && (!deepest || index > deepestIndex)) {
       recordDeepest(index, buffer);
     }
     for (const Placement &candidate : candidates) {
@@ -906,6 +958,7 @@ struct PlacementSearch {
         return true;
       }
       placed.pop_back();
+      ++stats.backtracks;
       occupancy.markFree(candidate.addr, candidate.addr + size);
       buffer->removeAttr("address");
       if (!requiredBanks.count(buffer)) {
@@ -941,20 +994,31 @@ private:
 // Places every buffer in `buffersToAlloc`. Returns the buffer that could not be
 // placed, or nullptr when they all were; `placed` collects what was assigned so
 // a failed attempt can be rolled back.
-static BufferOp
-placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc, const BankAwareContext &ctx,
-                 const RequiredBanks &requiredBanks, MemoryOccupancy &occupancy,
-                 SmallVectorImpl<BufferOp> &placed, bool &exhausted) {
+static BufferOp placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc,
+                                 const BankAwareContext &ctx,
+                                 const RequiredBanks &requiredBanks,
+                                 MemoryOccupancy &occupancy,
+                                 SmallVectorImpl<BufferOp> &placed,
+                                 bool &exhausted, PlacementStats &stats) {
   int64_t remaining = 0;
   for (auto buffer : buffersToAlloc) {
     remaining += buffer.getAllocationSize();
   }
-  PlacementSearch search{buffersToAlloc, ctx, requiredBanks, occupancy, placed};
-  if (search.run(/*index=*/0, /*startBankIndex=*/0, remaining)) {
+  PlacementSearch search{buffersToAlloc, ctx,    requiredBanks,
+                         occupancy,      placed, stats};
+  int64_t before = stats.backtracks;
+  bool solved = search.run(/*index=*/0, /*startBankIndex=*/0, remaining);
+  if (stats.backtracks > before) {
+    ++stats.tilesSearched;
+  }
+  if (solved) {
     return nullptr;
   }
   search.restoreDeepest();
   exhausted = search.exhausted;
+  if (search.exhausted) {
+    ++stats.budgetExhausted;
+  }
   return search.deepest;
 }
 
@@ -1025,7 +1089,7 @@ placementOrder(ArrayRef<BufferOp> buffersToAlloc,
   return order;
 }
 
-static LogicalResult allocateTile(TileOp tile) {
+static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device) {
     return failure();
@@ -1116,8 +1180,9 @@ static LogicalResult allocateTile(TileOp tile) {
   // single search can revisit it.
   SmallVector<BufferOp> order = placementOrder(buffersToAlloc, requiredBanks);
   bool searchExhausted = false;
-  BufferOp failedBuffer = placeFreeBuffers(order, ctx, requiredBanks, occupancy,
-                                           allocatedBuffers, searchExhausted);
+  BufferOp failedBuffer =
+      placeFreeBuffers(order, ctx, requiredBanks, occupancy, allocatedBuffers,
+                       searchExhausted, stats);
 
   if (BufferOp failed = failedBuffer) {
     // A buffer pinned to a bank that cannot hold it is a user constraint, not
@@ -1208,11 +1273,15 @@ struct AIEAssignBufferAddressesPass
     // explained itself once, and a `mem_bank` pin could be dropped on the way
     // from one scheme to the other. Placement now either finds a layout or says
     // why it could not.
+    PlacementStats stats;
     for (auto tile : device.getOps<TileOp>()) {
-      if (failed(allocateTile(tile))) {
+      if (failed(allocateTile(tile, stats))) {
         return signalPassFailure();
       }
     }
+    numTilesSearched += stats.tilesSearched;
+    numBacktracks += stats.backtracks;
+    numBudgetExhausted += stats.budgetExhausted;
   }
 };
 } // namespace

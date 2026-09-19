@@ -31,16 +31,18 @@ from collections import defaultdict
 from pathlib import Path
 
 SEEDS = 200
-# All 200 fixed seeds solve at present. Completeness is a ratchet, like the
-# quality metrics below (see the file-level comment). The slack keeps a future
-# adversarial seed that defeats the heuristic a tracked gap.
-MIN_SOLVED = SEEDS - 2
+# All 200 fixed seeds solve, and placement backtracks rather than giving up on
+# the first ranked choice, so there is no slack here to absorb an adversarial
+# seed: one that defeats the search should fail this and be looked at.
+# Note these 200 are solvable without backtracking -- search coverage comes from
+# the bank-reservation corpus below, which search-exercised counts.
+MIN_SOLVED = SEEDS
 MAX_CROSSINGS = 0
 # Co-residency: how many buffer pairs share a bank, against the fewest the bank
 # count allows. Two buffers a kernel reads together serialize on one bank, and
 # byte spread across banks does not report that, so this measures it directly.
 # 0 is the most even split available, 1 puts every buffer in one bank.
-MAX_BANK_PAIR_SHARING = 0.30
+MAX_BANK_PAIR_SHARING = 0.27
 
 # `vec` is the widest alignment a core access can demand (npu2: 512 bits), which
 # is also the data region's alignment. A memtile is reached by DMA rather than
@@ -193,7 +195,7 @@ def build_design(rng, cfg):
 
 # Object-derived per-bank reservations, on their own seed set so the numbers
 # above keep measuring exactly what they measured before.
-BANKRES_SEEDS = 1000
+BANKRES_SEEDS = 12000
 # Set at the answer, not at what the allocator manages today: these two bounds
 # are the one place here that is not a ratchet. A ratchet guards what works,
 # which is right for a healthy metric and wrong for a known defect. Every design
@@ -203,6 +205,15 @@ BANKRES_SEEDS = 1000
 # nearly full tile the allocator cannot rebuild the packing the oracle
 # constructed. Failures concentrate above 75% density, none at or below 70%.
 MIN_BANKRES_RATE = 1.0
+# Tiles whose ranked first choice does not work out, so only backtracking
+# places them, summed over the corpus from the pass's own statistics. A floor
+# rather than a ceiling: it guards the *corpus*, not the allocator. If a
+# generator change stops producing contested layouts this drops, and
+# bank-reservations would still read 100% while testing nothing hard.
+MIN_SEARCHED_TILES = 216
+# Designs per aie-opt invocation. Startup dominates the per-design cost, so
+# batching is what makes a corpus of thousands fit in the time budget.
+BATCH_SIZE = 200
 
 # The reported bug, measured directly. The same designs are placed with their
 # objects' bank demands withheld, exactly as the pipeline withholds them today,
@@ -262,7 +273,7 @@ def model_core_objects(rng, cfg):
     return per_bank, data_size
 
 
-def build_bank_reservation_design(rng, cfg):
+def build_bank_reservation_design(rng, cfg, tag=None):
     """A layout where object-derived per-bank reservations contend with buffers.
 
     `build_design` models only what the allocator can already see: buffers, and
@@ -433,8 +444,12 @@ def build_bank_reservation_design(rng, cfg):
         The pipeline measures a core's objects before placing its buffers, so
         their bank demands arrive as bank-pinned blocks and a `data_size`.
         """
+        # Naming the module lets many designs share one aie-opt invocation:
+        # the name comes back in the output and says which design a placement
+        # belongs to. Process startup dominates otherwise -- 100 designs cost
+        # 1.54s apart and 0.25s batched.
         out = [
-            "module {",
+            "module {" if tag is None else f"module @s{tag} {{",
             f'  aie.device({cfg["dev"]}) {{',
             f'    %t = aie.tile({cfg["tile"][0]}, {cfg["tile"][1]})',
         ]
@@ -615,15 +630,24 @@ def stress_design(cfg, n_buffers):
     return "\n".join(lines)
 
 
-def allocate(mlir, workdir):
-    """Run the pass; returns {name: (addr, size, bank)} or None."""
+SEARCH_STAT_RE = re.compile(r"\(S\)\s+(\d+)\s+tiles-needing-search")
+
+
+def allocate(mlir, workdir, stats=None):
+    """Run the pass; returns {name: (addr, size, bank)} or None.
+
+    Pass a dict as `stats` to also collect the pass's own search counters, which
+    say how much backtracking a design actually cost.
+    """
     src = workdir / "case.mlir"
     src.write_text(mlir)
-    p = subprocess.run(
-        ["aie-opt", "--aie-assign-buffer-addresses", str(src)],
-        capture_output=True,
-        text=True,
-    )
+    cmd = ["aie-opt", "--aie-assign-buffer-addresses", str(src)]
+    if stats is not None:
+        cmd.append("--mlir-pass-statistics")
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if stats is not None:
+        m = SEARCH_STAT_RE.search(p.stderr)
+        stats["tiles_searched"] = int(m.group(1)) if m else 0
     if p.returncode != 0:
         return None
     placed = {}
@@ -642,6 +666,55 @@ def allocate(mlir, workdir):
                 int(mb.group(1)) if mb else None,
             )
     return placed
+
+
+MODULE_TAG_RE = re.compile(r"^module @s(\d+)\b")
+
+
+def allocate_batch(tagged, workdir, stats=None):
+    """Place many tagged designs in one aie-opt run.
+
+    `tagged` is [(tag, mlir)] where each mlir names its module @s<tag>. Returns
+    {tag: placed} for the designs that placed; a design aie-opt rejects is
+    simply absent, because --split-input-file omits a chunk it could not
+    process. Splitting the work this way is what keeps a corpus of thousands
+    affordable: nearly all of the per-design cost is process startup.
+    """
+    src = workdir / "batch.mlir"
+    src.write_text("\n// -----\n".join(m for _, m in tagged))
+    cmd = ["aie-opt", "--split-input-file", "--aie-assign-buffer-addresses", str(src)]
+    if stats is not None:
+        cmd.append("--mlir-pass-statistics")
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if stats is not None:
+        # One statistics report per chunk, so sum them rather than reading the
+        # first.
+        stats["tiles_searched"] = stats.get("tiles_searched", 0) + sum(
+            int(n) for n in SEARCH_STAT_RE.findall(p.stderr)
+        )
+    results, current = {}, None
+    for line in p.stdout.splitlines():
+        tag = MODULE_TAG_RE.match(line)
+        if tag:
+            current = int(tag.group(1))
+            results[current] = {}
+            continue
+        if current is None:
+            continue
+        m = BUF_RE.search(line)
+        if not m:
+            continue
+        attrs, size = m.group(1), int(m.group(2))
+        name = re.search(r'sym_name = "([^"]+)"', attrs)
+        addr = re.search(r"address = (\d+)", attrs)
+        mb = re.search(r"mem_bank = (\d+)", attrs)
+        if name and addr:
+            results[current][name.group(1)] = (
+                int(addr.group(1)),
+                size,
+                int(mb.group(1)) if mb else None,
+            )
+    return results
 
 
 def legality_violations(cfg, blocks, placed, stack_run=None):
@@ -893,10 +966,11 @@ def main():
         # metrics above stay comparable with their recorded bounds.
         bankres_solved = bankres_total = 0
         bankres_illegal, bankres_bogus = [], []
+        bankres_designs, bankres_stats = [], {}
         for seed in range(BANKRES_SEEDS):
             cfg = DEVICES[seed % len(DEVICES)]
             mlir, blocks, extra = build_bank_reservation_design(
-                random.Random(seed), cfg
+                random.Random(seed), cfg, tag=seed
             )
             if mlir is None:
                 continue
@@ -905,13 +979,24 @@ def main():
                 bankres_bogus.append(f"seed {seed} ({cfg['name']}): {faults[0]}")
                 continue
             bankres_total += 1
-            placed = allocate(mlir, workdir)
-            if placed is None:
-                continue
-            bankres_solved += 1
-            bad = legality_violations(cfg, blocks, placed)
-            if bad:
-                bankres_illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
+            bankres_designs.append((seed, cfg, blocks, mlir))
+
+        # One aie-opt run per chunk of designs. Sized so a failure still points
+        # at a manageable slice of input, while keeping startup cost negligible.
+        for start in range(0, len(bankres_designs), BATCH_SIZE):
+            group = bankres_designs[start : start + BATCH_SIZE]
+            results = allocate_batch(
+                [(seed, mlir) for seed, _, _, mlir in group], workdir, bankres_stats
+            )
+            for seed, cfg, blocks, _ in group:
+                placed = results.get(seed)
+                if placed is None:
+                    continue
+                bankres_solved += 1
+                bad = legality_violations(cfg, blocks, placed)
+                if bad:
+                    bankres_illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
+        bankres_searched = bankres_stats.get("tiles_searched", 0)
 
         # A metric with no samples across solved designs means the property was
         # never exercised. Report that instead of passing it by default.
@@ -950,6 +1035,12 @@ def main():
             f"{len(bankres_bogus)} unsolvable-by-construction",
         )
         report(
+            "search-exercised",
+            bankres_searched >= MIN_SEARCHED_TILES,
+            f"{bankres_searched} tile(s) needed backtracking "
+            f"(min {MIN_SEARCHED_TILES})",
+        )
+        report(
             "bank-crossings",
             needless <= MAX_CROSSINGS,
             f"{needless} avoidable (max {MAX_CROSSINGS})",
@@ -958,7 +1049,7 @@ def main():
             "bank-sharing",
             share_has_data and mean_share <= MAX_BANK_PAIR_SHARING,
             (
-                f"mean shared pairs {mean_share:.2f} (max {MAX_BANK_PAIR_SHARING})"
+                f"mean shared pairs {mean_share:.3f} (max {MAX_BANK_PAIR_SHARING})"
                 if share_has_data
                 else "0 samples despite solved designs"
             ),
@@ -993,6 +1084,7 @@ def main():
 # CHECK: determinism: {{.*}} : OK
 # CHECK: completeness: {{.*}} : OK
 # CHECK: bank-reservations: {{.*}} : OK
+# CHECK: search-exercised: {{.*}} : OK
 # CHECK: bank-crossings: {{.*}} : OK
 # CHECK: bank-sharing: {{.*}} : OK
 # CHECK: forced-regressions: {{.*}} : OK

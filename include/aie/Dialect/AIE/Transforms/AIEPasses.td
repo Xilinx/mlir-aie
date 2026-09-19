@@ -135,6 +135,17 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 
+  // Placement is a bounded search. A change that degrades it without breaking
+  // it outright moves these rather than failing anything, so they are worth
+  // watching: see --mlir-pass-statistics.
+  let statistics = [
+    Statistic<"numTilesSearched", "tiles-needing-search",
+              "Tiles where the first ranked placement did not work out">,
+    Statistic<"numBacktracks", "backtracks",
+              "Placements undone and retried">,
+    Statistic<"numBudgetExhausted", "budget-exhausted",
+              "Tiles abandoned at the placement budget">,
+  ];
 }
 
 def AIENormalizeDmaBdDims : Pass<"aie-normalize-dma-bd-dims", "DeviceOp"> {
