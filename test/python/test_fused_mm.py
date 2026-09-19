@@ -125,7 +125,8 @@ def test_fused_unbound_layout_reproduces_npu2_failure(monkeypatch):
 def test_fused_layouts_match_microblock_addressing(device):
     fn = fused_mm()
     assert fn.contract.stack_bytes == (
-        np.dtype(np.float32).itemsize * 32 * 16 + device().default_core_stack_bytes
+        np.dtype(np.float32).itemsize * 32 * 16
+        + max(device().default_core_stack_bytes, 2048)
     )
     r, s, t = (4, 8, 4) if device is NPU1Col1 else (4, 8, 8)
     a = np.arange(32 * 32).reshape(1, 32, 32)
