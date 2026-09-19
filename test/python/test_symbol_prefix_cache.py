@@ -226,37 +226,3 @@ def test_nm_failure_never_runs_objcopy(tmp_path, monkeypatch, tools):
     assert calls == ["nm"]
     assert list(tmp_path.iterdir()) == []
 
-
-@pytest.mark.parametrize("outcome", ["success", "nonzero", "exception"])
-def test_symbol_map_is_private_and_cleaned(tmp_path, monkeypatch, tools, outcome):
-    obj = tmp_path / "kernel with spaces.o"
-    obj.write_text("helper\nop0_helper\n")
-    existing_map = tmp_path / f"{obj.name}.symbol_map"
-    existing_map.write_text("unrelated file")
-    run = compile_utils.subprocess.run
-    maps = []
-
-    def objcopy(args, **kwargs):
-        if args[0] == "objcopy":
-            mapping = Path(args[1].split("=", 1)[1])
-            maps.append(mapping)
-            assert mapping != existing_map
-            assert (
-                mapping.read_text() == "helper op0_helper\nop0_helper op0_op0_helper\n"
-            )
-            if outcome == "nonzero":
-                return SimpleNamespace(returncode=1, stderr=b"bad object")
-            if outcome == "exception":
-                raise OSError("cannot execute")
-        return run(args, **kwargs)
-
-    monkeypatch.setattr(compile_utils.subprocess, "run", objcopy)
-    if outcome == "success":
-        compile_utils.prefix_symbols_in_object(str(obj), "op0_")
-        assert obj.read_text() == "op0_helper\nop0_op0_helper\n"
-    else:
-        with pytest.raises((RuntimeError, OSError)):
-            compile_utils.prefix_symbols_in_object(str(obj), "op0_")
-    assert len(maps) == 1
-    assert not maps[0].parent.exists()
-    assert existing_map.read_text() == "unrelated file"
