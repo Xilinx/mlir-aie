@@ -191,6 +191,367 @@ def build_design(rng, cfg):
     return "\n".join(lines), blocks, core_data["name"] if core_data else None
 
 
+# Object-derived per-bank reservations, on their own seed set so the numbers
+# above keep measuring exactly what they measured before.
+BANKRES_SEEDS = 1000
+# Set at the answer, not at what the allocator manages today: these two bounds
+# are the one place here that is not a ratchet. A ratchet guards what works,
+# which is right for a healthy metric and wrong for a known defect. Every design
+# counted is feasible by construction, so the only correct score is all of them.
+#
+# Currently ~97%: bank-pinned blocks go first and then largest-first, so on a
+# nearly full tile the allocator cannot rebuild the packing the oracle
+# constructed. Failures concentrate above 75% density, none at or below 70%.
+MIN_BANKRES_RATE = 1.0
+
+# The reported bug, measured directly. The same designs are placed with their
+# objects' bank demands withheld, exactly as the pipeline withholds them today,
+# and the resulting layout is asked whether `coreBankRegions` would still leave
+# each bank enough room for the section the linker is about to put there. A
+# design that fails this places fine and then fails to link.
+#
+# Currently ~77%: placement succeeds and then the section the linker puts in a
+# bank does not fit the run that placement left. Nothing about these designs is
+# infeasible -- the allocator simply was not told what the objects need, which is
+# the reported bug. Placing buffers after the objects are measured should take
+# this to 1.0.
+MIN_BLIND_RATE = 1.0
+
+
+def model_core_objects(rng, cfg):
+    """What a core's object files demand of its data memory.
+
+    Modelled rather than compiled: the toolchain's only contribution to
+    placement is a set of sizes and alignments, so generating them directly
+    keeps this at `aie-opt` speed while still covering the shapes a real link
+    produces. A core links one or more objects, and each may carry
+
+      * `.aie.bank<N>` sections, which must land in bank N;
+      * ordinary `.data`/`.rodata`/`.bss`, which need one contiguous run;
+      * for a prebaked `elf_file` core, ranges already fixed at absolute
+        addresses, which nothing may move.
+
+    The linker concatenates same-named sections from every input object, so two
+    objects pinning the same bank need the *sum plus the padding between them*,
+    not the larger of the two. Getting that wrong under-reserves exactly when a
+    core links several kernels, so it is modelled here rather than assumed.
+
+    Returns (per_bank, data_size) with per_bank[b] = (size, align).
+    """
+    nbanks = cfg["banks"]
+    vec = cfg["vec"]
+    per_bank, data_size = {}, 0
+
+    def contribute(b, size, align):
+        # Concatenation: align this object's contribution onto the running
+        # total, then add it. The section's alignment is the strictest any
+        # contributor asked for.
+        cur_size, cur_align = per_bank.get(b, (0, 1))
+        per_bank[b] = (align_up(cur_size, align) + size, max(cur_align, align))
+
+    for _ in range(rng.randint(1, 3)):  # several kernels linked into one core
+        if nbanks >= 2 and rng.random() < 0.45:
+            # A LUT-shaped kernel: `aie::lut<4>` reads two tables at once, so
+            # they are equal-sized, vector-aligned, and must land in different
+            # banks. The runtime library ships several such pairs in one object
+            # (exp and tanh), and the reported design was exactly this shape.
+            for _ in range(rng.randint(1, 2)):
+                lo, hi = rng.sample(range(nbanks), 2)
+                size = rng.choice([256, 512, 1024])
+                contribute(lo, size, 64)
+                contribute(hi, size, 64)
+        else:
+            for b in rng.sample(range(nbanks), rng.randint(0, min(2, nbanks))):
+                contribute(b, rng.randint(1, 8) * 64, rng.choice([vec, vec, 64]))
+        if rng.random() < 0.7:
+            data_size = align_up(data_size, vec) + rng.randint(1, 12) * 64
+    return per_bank, data_size
+
+
+def build_bank_reservation_design(rng, cfg):
+    """A layout where object-derived per-bank reservations contend with buffers.
+
+    `build_design` models only what the allocator can already see: buffers, and
+    one core-owned block standing in for `data_size`. It has no notion of the
+    static data a kernel object pins to a bank, so the whole class of "the
+    object needs bank space the allocator was never told about" is outside its
+    search space.
+
+    That class is what the reported bug was: two bank-filling buffers and two
+    512-byte tables pinned to banks 0 and 1, where the only working layout puts
+    the buffers in banks 2 and 3. Once the pipeline measures those tables they
+    reach the allocator as bank-pinned blocks, which is what this builds.
+
+    Feasible by construction, like `build_design`: reservations sit at the
+    bottom of their banks and buffers are sized to the space genuinely left.
+    """
+    cap, bus, vec, stack = cfg["cap"], cfg["bus"], cfg["vec"], cfg["stack"]
+    nbanks = cfg["banks"]
+    bank = cap // nbanks
+    # Sizes come from the modelled objects, so a bank several kernels pin to
+    # carries their combined demand.
+    obj_banks, obj_data = model_core_objects(rng, cfg)
+    if not obj_banks:
+        return None, None, None
+    blocks, free_top = [], {}
+    n_obstacle = 0
+    for i, b in enumerate(sorted(obj_banks)):
+        res_size, res_align = obj_banks[b]
+        base = align_up(bank * b if b else stack, max(vec, res_align))
+        # An address-pinned block at the bank base pushes the reservation off
+        # the bottom, leaving the bank with two holes. That is the case where
+        # "largest free run in this bank" and "where the reservation actually
+        # went" stop being the same answer.
+        # A prebaked `elf_file` core brings ranges already fixed by its own
+        # link, which the docs say to declare as address-pinned buffers. One at
+        # the bank base also pushes the reservation off the bottom, leaving the
+        # bank with two holes -- the case where "largest free run in this bank"
+        # and "where the reservation actually went" stop being one answer.
+        if rng.random() < 0.30:
+            osize = align_up(rng.randint(1, 6) * vec, vec)
+            if base + osize < (b + 1) * bank:
+                blocks.append(
+                    dict(
+                        addr=base,
+                        size=osize,
+                        aligned=True,
+                        name=f"prebaked{n_obstacle}",
+                        role="pin",
+                    )
+                )
+                n_obstacle += 1
+                base = align_up(base + osize, max(vec, res_align))
+        if base + res_size > (b + 1) * bank:
+            continue
+        blocks.append(
+            dict(
+                addr=base, size=res_size, aligned=True, name=f"bankres{i}", role="bank"
+            )
+        )
+        free_top[b] = base + res_size
+    if not any(b["role"] == "bank" for b in blocks):
+        return None, None, None
+
+    # The core's own static data is measured from the object too, and unlike a
+    # reservation it needs one contiguous run wherever it fits. Carve it out of a
+    # reserved bank's remainder so the layout stays feasible by construction,
+    # then let the allocator rediscover it from `data_size`.
+    core_data = None
+    if stack and free_top and obj_data:
+        host = rng.choice(sorted(free_top))
+        lo = align_up(free_top[host], vec)
+        nxt = min(
+            [a for a, _ in ((x["addr"], x["size"]) for x in blocks) if a >= lo]
+            or [(host + 1) * bank]
+        )
+        room = min((host + 1) * bank, nxt) - lo
+        if room > vec:
+            size = min(align_up(obj_data, vec), align_up(room, vec) - vec)
+            if size > 0 and lo + size <= (host + 1) * bank:
+                core_data = dict(
+                    addr=lo,
+                    size=size,
+                    aligned=True,
+                    name=f'core_data_{cfg["tile"][0]}_{cfg["tile"][1]}',
+                    role="free",
+                )
+                blocks.append(core_data)
+                free_top[host] = lo + size
+
+    # Everything placed so far is immovable, and a buffer may span banks, so
+    # sizing has to stop at the next of them rather than at the bank edge.
+    # Without this a spanning buffer walks straight through the next bank's
+    # reservation and the "solution" the generator claims to have built is not
+    # one -- which silently turns generator bugs into allocator failures.
+    barriers = sorted((b["addr"], b["addr"] + b["size"]) for b in blocks if b["size"])
+
+    def barrier_after(pos):
+        for lo_b, _ in barriers:
+            if lo_b >= pos:
+                return lo_b
+        return cap
+
+    # Fill the rest. A bank with no reservation can take one buffer big enough
+    # that it fits nowhere else -- the pressure that made the original design
+    # fail -- or several smaller ones, some address-pinned. Pinning mid-bank is
+    # what splits a bank into two holes, which is the case where "largest free
+    # run in the bank" and "where the reservation actually landed" diverge.
+    n = 0
+    cursor = stack
+    for b in range(nbanks):
+        lo = align_up(max(cursor, free_top.get(b, bank * b if b else stack)), vec)
+        limit = (b + 1) * bank
+        if lo >= limit:
+            cursor = max(cursor, lo)
+            continue
+        if b not in free_top and rng.random() < 0.45:
+            # One buffer filling the whole bank: the tight, reported shape.
+            size = min(limit, barrier_after(lo)) - lo
+            if size <= 0:
+                cursor = max(cursor, lo)
+                continue
+            if rng.random() < 0.5:
+                size = align_up(int(size * rng.uniform(0.8, 1.0)), vec)
+            blocks.append(
+                dict(addr=lo, size=size, aligned=True, name=f"buf{n}", role="free")
+            )
+            n += 1
+            cursor = lo + size
+            continue
+        # Bias toward near-full banks. Failures live above ~90% density, so a
+        # generator that mostly produces half-empty tiles measures very little.
+        tight = rng.random() < 0.5
+        # Otherwise several blocks, occasionally pinned or spanning into the
+        # next bank. A span must stay `free`: mem_bank could not describe it.
+        for _ in range(rng.randint(1, 3)):
+            lo = align_up(max(lo, cursor), vec)
+            room = limit - lo
+            if room <= vec:
+                break
+            span = rng.random() < 0.20 and b + 1 < nbanks
+            hi = min((b + 2) * bank if span else limit, barrier_after(lo))
+            if hi <= lo:
+                break
+            if tight:
+                size = align_up(int((hi - lo) * rng.uniform(0.5, 1.0)), vec)
+                size = min(size, hi - lo)
+            else:
+                size = align_up(
+                    rng.randint(1, max(1, (hi - lo) // (2 * vec))) * vec, vec
+                )
+            if size <= 0 or lo + size > hi:
+                break
+            role = "pin" if rng.random() < 0.35 else "free"
+            # A buffer the core reaches only by DMA needs no vector alignment;
+            # the allocator may place it anywhere the bus width allows.
+            aligned = rng.random() > 0.15
+            blocks.append(
+                dict(addr=lo, size=size, aligned=aligned, name=f"buf{n}", role=role)
+            )
+            n += 1
+            lo = cursor = lo + size
+            if not tight and rng.random() < 0.35:  # a hole a later buffer finds
+                lo = cursor = lo + align_up(rng.randint(1, 4) * vec, vec)
+
+    def emit(tell_allocator):
+        """Render the design, optionally hiding what the objects demand.
+
+        `tell_allocator=True` is the pipeline once it measures objects before
+        placing buffers: the demands arrive as bank-pinned blocks and a
+        `data_size`. `False` is the pipeline as it stands, where the objects are
+        compiled after placement and the allocator never learns of them -- the
+        shape that produced the reported link failure.
+        """
+        out = [
+            "module {",
+            f'  aie.device({cfg["dev"]}) {{',
+            f'    %t = aie.tile({cfg["tile"][0]}, {cfg["tile"][1]})',
+        ]
+        for b in blocks:
+            if b is core_data:
+                continue  # the allocator rebuilds this one from data_size
+            if b["role"] == "bank" and not tell_allocator:
+                continue  # object-derived: invisible to placement today
+            attrs = [f'sym_name = "{b["name"]}"']
+            if b["role"] == "bank":
+                attrs.append(f'mem_bank = {b["addr"] // bank} : i32')
+            if b["role"] == "pin":
+                attrs.append(f'address = {b["addr"]} : i32')
+            if not b["aligned"]:
+                attrs.append("aligned = false")
+            out.append(
+                f'    %{b["name"]} = aie.buffer(%t) {{{", ".join(attrs)}}} '
+                f'    : memref<{b["size"]}xi8>'
+            )
+        if stack:
+            core_attrs = f"stack_size = {stack} : i32"
+            if core_data and tell_allocator:
+                core_attrs += f', data_size = {core_data["size"]} : i32'
+            out.append(f"    aie.core(%t) {{ aie.end }} {{{core_attrs}}}")
+        else:
+            out.append("    aie.memtile_dma(%t) { aie.end }")
+        out += ["  }", "}", ""]
+        return "\n".join(out)
+
+    return (
+        emit(True),
+        blocks,
+        dict(
+            blind=emit(False),
+            obj_banks=obj_banks,
+            core_data=core_data["name"] if core_data else None,
+        ),
+    )
+
+
+def bank_free_runs(cfg, placed, stack_run=(0, None)):
+    """Largest aligned free run in each bank, the way `coreBankRegions` sees it.
+
+    This is what the linker script hands each `.aie.bank<N>` output section, so
+    comparing it against what the objects demand answers "would this core have
+    linked?" without compiling or linking anything.
+    """
+    cap, vec = cfg["cap"], cfg["vec"]
+    nbanks = cfg["banks"]
+    bank = cap // nbanks
+    stack_lo, stack_hi = stack_run
+    occupied = [(stack_lo, stack_hi if stack_hi is not None else cfg["stack"])]
+    occupied += [(a, a + s) for (a, s, _) in placed.values() if s]
+    runs = []
+    for b in range(nbanks):
+        lo, hi = b * bank, (b + 1) * bank
+        best, cursor = 0, lo
+        for o_lo, o_hi in sorted(occupied):
+            o_lo, o_hi = max(o_lo, lo), min(o_hi, hi)
+            if o_lo >= o_hi:
+                continue
+            best = max(best, o_lo - align_up(cursor, vec))
+            cursor = max(cursor, o_hi)
+        runs.append(max(best, hi - align_up(cursor, vec)))
+    return runs
+
+
+def unmet_bank_demand(cfg, placed, obj_banks, stack_run=(0, None)):
+    """Banks whose leftover run cannot hold what the objects pinned there."""
+    runs = bank_free_runs(cfg, placed, stack_run)
+    short = []
+    for b, (size, align) in sorted(obj_banks.items()):
+        have = runs[b] - (align_up(runs[b], align) - runs[b]) if align else runs[b]
+        if have < size:
+            short.append((b, size, runs[b]))
+    return short
+
+
+def oracle_problems(cfg, blocks):
+    """Faults in the generated layout itself, before the allocator is asked.
+
+    Construct-then-hide only proves a design is solvable if the construction is
+    a solution. A generator bug therefore reads as an allocator failure, which
+    is the most misleading way this test can break, so check it rather than
+    assume it.
+    """
+    bad = []
+    bank = cfg["cap"] // cfg["banks"]
+    spans = sorted(
+        (b["addr"], b["addr"] + b["size"], b["name"]) for b in blocks if b["size"]
+    )
+    for (a1, e1, n1), (a2, e2, n2) in zip(spans, spans[1:]):
+        if a2 < e1:
+            bad.append(f"{n1} [{a1},{e1}) overlaps {n2} [{a2},{e2})")
+    for b in blocks:
+        if b["size"] and b["addr"] < cfg["stack"]:
+            bad.append(f'{b["name"]} starts under the stack')
+        if b["addr"] + b["size"] > cfg["cap"]:
+            bad.append(f'{b["name"]} runs past the tile')
+        if b["aligned"] and b["addr"] % cfg["bus"]:
+            bad.append(f'{b["name"]} claims alignment it does not have')
+        if b["role"] == "bank" and b["size"]:
+            lo = b["addr"] // bank
+            if lo != (b["addr"] + b["size"] - 1) // bank:
+                bad.append(f'{b["name"]} is bank-pinned but crosses a bank')
+    return bad
+
+
 STRESS_BUFFERS = 300
 STRESS_MAX_SECONDS = 30
 
@@ -292,8 +653,13 @@ def allocate(mlir, workdir):
     return placed
 
 
-def legality_violations(cfg, blocks, placed):
-    cap, bus, stack = cfg["cap"], cfg["bus"], cfg["stack"]
+def legality_violations(cfg, blocks, placed, stack_run=None):
+    cap, bus = cfg["cap"], cfg["bus"]
+    # The stack sits at offset zero unless a design placed it elsewhere, in
+    # which case low memory is ordinary free space and the stack is a hole
+    # somewhere above it.
+    stack_lo, stack_hi = stack_run if stack_run else (0, cfg["stack"])
+    stack = stack_hi
     bank = cap // cfg["banks"]
     out = []
     by_name = {b["name"]: b for b in blocks}
@@ -532,6 +898,50 @@ def main():
             if allocate(mlir, workdir) != placed:
                 nondet += 1
 
+        # Object-derived per-bank reservations, kept on their own seeds so the
+        # metrics above stay comparable with their recorded bounds.
+        bankres_solved = bankres_total = 0
+        bankres_illegal, bankres_bogus = [], []
+        # Same designs, but presented the way the pipeline presents them today:
+        # the objects are compiled after placement, so their bank demands are
+        # invisible to the allocator. Placement then succeeds and the *link*
+        # fails, which is the reported bug. Measured by asking what
+        # `coreBankRegions` would leave each bank, so no linker is needed.
+        blind_ok = blind_total = 0
+        blind_examples = []
+        for seed in range(BANKRES_SEEDS):
+            cfg = DEVICES[seed % len(DEVICES)]
+            mlir, blocks, extra = build_bank_reservation_design(
+                random.Random(seed), cfg
+            )
+            if mlir is None:
+                continue
+            faults = oracle_problems(cfg, blocks)
+            if faults:
+                bankres_bogus.append(f"seed {seed} ({cfg['name']}): {faults[0]}")
+                continue
+            blind_placed = allocate(extra["blind"], workdir)
+            if blind_placed is not None:
+                blind_total += 1
+                short = unmet_bank_demand(cfg, blind_placed, extra["obj_banks"])
+                if short:
+                    b, want, have = short[0]
+                    if len(blind_examples) < 3:
+                        blind_examples.append(
+                            f"seed {seed} ({cfg['name']}): bank {b} needs {want}B, "
+                            f"placement leaves {have}B"
+                        )
+                else:
+                    blind_ok += 1
+            bankres_total += 1
+            placed = allocate(mlir, workdir)
+            if placed is None:
+                continue
+            bankres_solved += 1
+            bad = legality_violations(cfg, blocks, placed)
+            if bad:
+                bankres_illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
+
         # A metric with no samples across solved designs means the property was
         # never exercised. Report that instead of passing it by default.
         share_has_data = bool(sharing) or solved == 0
@@ -553,6 +963,30 @@ def main():
         report("legality", not illegal, f"{len(illegal)} illegal of {solved} placed")
         report("determinism", nondet == 0, f"{nondet} unstable")
         report("completeness", solved >= MIN_SOLVED, f"{solved}/{total} solved")
+        for line in bankres_illegal[:10]:
+            print("ILLEGAL:", line)
+        for line in bankres_bogus[:10]:
+            print("BOGUS ORACLE:", line)
+        bankres_rate = bankres_solved / bankres_total if bankres_total else 0.0
+        report(
+            "bank-reservations",
+            bankres_rate >= MIN_BANKRES_RATE
+            and not bankres_illegal
+            and not bankres_bogus,
+            f"{bankres_solved}/{bankres_total} solved ({bankres_rate:.1%}, "
+            f"min {MIN_BANKRES_RATE:.0%}), "
+            f"{len(bankres_illegal)} illegal, "
+            f"{len(bankres_bogus)} unsolvable-by-construction",
+        )
+        for line in blind_examples:
+            print("WOULD-NOT-LINK:", line)
+        blind_rate = blind_ok / blind_total if blind_total else 0.0
+        report(
+            "object-demand-survives-placement",
+            blind_rate >= MIN_BLIND_RATE,
+            f"{blind_ok}/{blind_total} keep room for their objects "
+            f"({blind_rate:.1%}, min {MIN_BLIND_RATE:.0%})",
+        )
         report(
             "bank-crossings",
             needless <= MAX_CROSSINGS,
@@ -596,6 +1030,8 @@ def main():
 # CHECK: legality: {{.*}} : OK
 # CHECK: determinism: {{.*}} : OK
 # CHECK: completeness: {{.*}} : OK
+# CHECK: bank-reservations: {{.*}} : OK
+# CHECK: object-demand-survives-placement: {{.*}} : OK
 # CHECK: bank-crossings: {{.*}} : OK
 # CHECK: bank-sharing: {{.*}} : OK
 # CHECK: forced-regressions: {{.*}} : OK
