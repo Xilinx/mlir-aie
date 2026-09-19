@@ -390,6 +390,7 @@ def AIE_CoreOp
           // real link will need. Absent when there is nothing to probe or the
           // probe could not run, in which case placement proceeds as before.
           OptionalAttr<DenseI32ArrayAttr>:$measured_bank_sizes,
+          OptionalAttr<DenseI32ArrayAttr>:$measured_data_ranges,
           // Deprecated: attach link_with to func.func declarations instead and
           // run aie-assign-core-link-files to populate link_files.
           OptionalAttr<StrAttr>:$link_with,
@@ -1737,6 +1738,12 @@ def AIE_BufferOp
     static data a kernel pins there. It too names no symbol, but unlike
     `core_data` there is one per bank the core pins to, created from the
     core's `measured_bank_sizes`.
+
+    `measured_data_ranges` holds the tile-relative extents a prebaked
+    `elf_file` core already occupies, as address/size pairs. A compiled core
+    records sizes instead, because its addresses are chosen after the measure;
+    a prebaked one has them already, so the pass pins buffers around the
+    extents rather than reserving room of its own.
   }];
 
   let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,

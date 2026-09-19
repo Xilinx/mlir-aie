@@ -521,29 +521,17 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
 
 std::optional<int64_t>
 xilinx::aiecc::measureDataSectionBytes(llvm::StringRef elfPath) {
-  auto binary = llvm::object::createBinary(elfPath);
-  if (!binary) {
-    llvm::consumeError(binary.takeError());
-    return std::nullopt;
-  }
-  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
-  if (!obj) {
+  auto sections = readCoreDataSections(elfPath);
+  if (sections.empty() && !llvm::sys::fs::exists(elfPath)) {
     return std::nullopt;
   }
   int64_t total = 0;
-  for (const SectionRef &sec : obj->sections()) {
-    auto name = sec.getName();
-    if (!name) {
-      llvm::consumeError(name.takeError());
-      continue;
+  for (const CoreDataSection &sec : sections) {
+    // The program memory holds .text; bank-pinned sections have regions of
+    // their own. Only unpinned data competes for the `data` region.
+    if (!sec.bank) {
+      total += sec.size;
     }
-    // The program memory holds .text; only the data regions compete with the
-    // buffers for this tile's data memory.
-    if (!name->starts_with(".data") && !name->starts_with(".rodata") &&
-        !name->starts_with(".bss")) {
-      continue;
-    }
-    total += sec.getSize();
   }
   return total;
 }
@@ -602,6 +590,47 @@ void sortAssertions(std::vector<BankAssertion> &assertions) {
 }
 
 } // namespace
+
+llvm::SmallVector<CoreDataSection>
+xilinx::aiecc::readCoreDataSections(llvm::StringRef elfPath,
+                                    int64_t tileBaseAddress) {
+  llvm::SmallVector<CoreDataSection> sections;
+  auto binary = llvm::object::createBinary(elfPath);
+  if (!binary) {
+    llvm::consumeError(binary.takeError());
+    return sections;
+  }
+  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+  if (!obj) {
+    return sections;
+  }
+  auto *elf = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(obj);
+  for (const SectionRef &sec : obj->sections()) {
+    auto name = sec.getName();
+    if (!name) {
+      llvm::consumeError(name.takeError());
+      continue;
+    }
+    // The linked section name, not a request: chess merges several requests
+    // into one output section, and its name is the bank that won.
+    auto banks = banksFromSectionName(*name);
+    bool isData = name->starts_with(".data") || name->starts_with(".rodata") ||
+                  name->starts_with(".bss");
+    if (banks.empty() && !isData) {
+      continue; // .text and the rest live in program memory.
+    }
+    CoreDataSection out;
+    out.name = name->str();
+    out.address = static_cast<int64_t>(sec.getAddress()) - tileBaseAddress;
+    out.size = static_cast<int64_t>(sec.getSize());
+    out.align = elf ? static_cast<int64_t>(sec.getAlignment().value()) : 1;
+    if (banks.size() == 1) {
+      out.bank = banks[0];
+    }
+    sections.push_back(std::move(out));
+  }
+  return sections;
+}
 
 std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
     llvm::ArrayRef<std::string> objectPaths) {
@@ -680,31 +709,12 @@ std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
 llvm::SmallVector<xilinx::aiecc::BankSectionSize>
 xilinx::aiecc::measureBankSectionBytes(llvm::StringRef elfPath, int numBanks) {
   llvm::SmallVector<BankSectionSize> sizes(std::max(numBanks, 0));
-  auto binary = llvm::object::createBinary(elfPath);
-  if (!binary) {
-    llvm::consumeError(binary.takeError());
-    return sizes;
-  }
-  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
-  if (!obj) {
-    return sizes;
-  }
-  auto *elf = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(obj);
-  for (const SectionRef &sec : obj->sections()) {
-    auto name = sec.getName();
-    if (!name) {
-      llvm::consumeError(name.takeError());
+  for (const CoreDataSection &sec : readCoreDataSections(elfPath)) {
+    if (!sec.bank || *sec.bank >= static_cast<int>(sizes.size())) {
       continue;
     }
-    // The linked section name, not a request: chess merges several requests
-    // into one output section, and its name is the bank that won.
-    auto banks = banksFromSectionName(*name);
-    if (banks.size() != 1 || banks[0] >= static_cast<int>(sizes.size())) {
-      continue;
-    }
-    sizes[banks[0]].size += sec.getSize();
-    sizes[banks[0]].align = std::max<int64_t>(
-        sizes[banks[0]].align, elf ? sec.getAlignment().value() : 1);
+    sizes[*sec.bank].size += sec.size;
+    sizes[*sec.bank].align = std::max(sizes[*sec.bank].align, sec.align);
   }
   return sizes;
 }

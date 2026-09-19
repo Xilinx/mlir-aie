@@ -58,6 +58,27 @@ StackRequirementResult
 computeStackRequirement(llvm::StringRef elfPath,
                         const llvm::StringMap<int64_t> &overrides);
 
+/// One allocatable section of a core ELF that competes for the tile's data
+/// memory: `.data`, `.rodata`, `.bss`, and the bank-pinned `.aie.bank<N>` or
+/// `DM_bank<L>` sections. `address` is relative to `tileBaseAddress`.
+///
+/// Both ways of reserving a core's own memory read this. A core compiled here
+/// is measured from a probe link, where only the sizes carry meaning because
+/// placement has not run yet; a prebaked `elf_file` is read for its addresses,
+/// which are already final. Sharing the walk is what keeps the two from
+/// disagreeing about which sections count.
+struct CoreDataSection {
+  std::string name;
+  int64_t address = 0;
+  int64_t size = 0;
+  int64_t align = 1;
+  // The single bank this section is pinned to. Absent for ordinary data, and
+  // for a request naming several banks, which no region can satisfy alone.
+  std::optional<int> bank;
+};
+llvm::SmallVector<CoreDataSection>
+readCoreDataSections(llvm::StringRef elfPath, int64_t tileBaseAddress = 0);
+
 // Sums the allocated .data, .rodata and .bss of the linked core ELF at
 // `elfPath`. The link runs --gc-sections, so the ELF holds the sections the
 // core reaches. Returns nothing when the file does not parse as an object.

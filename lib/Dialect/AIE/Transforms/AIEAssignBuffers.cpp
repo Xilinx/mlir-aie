@@ -181,6 +181,55 @@ static void materializeBankReservations(DeviceOp device) {
   }
 }
 
+// Give a prebaked `elf_file` core's occupied extents an aie.buffer each, so
+// placement keeps the tile's buffers clear of memory that ELF already holds.
+// aiecc fills `measured_data_ranges` by reading the ELF; without it the
+// allocator has no way to know a prebaked core owns anything at all.
+//
+// The same shape as materializeBankReservations, pinned by address rather than
+// by bank: the addresses in a prebaked image are already final. Idempotent.
+static void materializePrebakedRanges(DeviceOp device) {
+  OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
+  for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
+    auto ranges = core.getMeasuredDataRanges();
+    if (!ranges) {
+      continue;
+    }
+    auto tile = cast<TileOp>(core.getTile().getDefiningOp());
+    for (size_t i = 0; i + 1 < ranges->size(); i += 2) {
+      int32_t address = (*ranges)[i], size = (*ranges)[i + 1];
+      if (size <= 0) {
+        continue;
+      }
+      std::string name = "prebaked_" + std::to_string(tile.getCol()) + "_" +
+                         std::to_string(tile.getRow()) + "_" +
+                         std::to_string(address);
+      bool present = false;
+      device.walk([&](BufferOp buffer) {
+        if (buffer.name() == name) {
+          present = true;
+        }
+      });
+      if (present) {
+        continue;
+      }
+      builder.setInsertionPoint(core);
+      auto type = MemRefType::get({size}, builder.getI8Type());
+      auto buffer =
+          BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
+                           /*sym_name=*/nullptr,
+                           /*address=*/builder.getI32IntegerAttr(address),
+                           /*initial_value=*/nullptr,
+                           /*mem_bank=*/nullptr,
+                           /*core_data=*/nullptr,
+                           /*bank_reserved=*/builder.getUnitAttr(),
+                           /*aligned=*/builder.getBoolAttr(false));
+      buffer->setAttr(SymbolTable::getSymbolAttrName(),
+                      builder.getStringAttr(name));
+    }
+  }
+}
+
 // Peano models a bank as an address space (`aiebase_resources.h`: a..d are
 // 5..8, 9..14 are pairs) and schedules loads on the strength of the qualifier,
 // while nothing placed the buffer to match. Reading it here makes that
@@ -1267,6 +1316,7 @@ struct AIEAssignBufferAddressesPass
     }
     materializeCoreDataBuffers(device);
     materializeBankReservations(device);
+    materializePrebakedRanges(device);
 
     // One allocator, one answer. There used to be two schemes and a fallback
     // between them, which meant a tile that ran out of room reported twice and

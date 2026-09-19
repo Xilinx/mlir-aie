@@ -307,20 +307,27 @@ For LLVM IR kernel compilation, see the
 
 ## Cores built ahead of time
 
-A core that carries an `elf_file` attribute comes linked, and its `.data` and
-`.bss` sit at the addresses that link chose. `aiecc` reads nothing back out of
-that ELF, so nothing tells the buffer allocator which bytes of the tile the ELF
-holds, and a buffer can land on top of them.
+A core that carries an `elf_file` attribute comes linked, and its `.data`,
+`.bss` and any `.aie.bank<N>` tables sit at the addresses that link chose.
+`aiecc` reads those extents back out of the ELF and records them on the core as
+`measured_data_ranges`, address/size pairs relative to the tile. Placement pins
+a buffer over each one, so the tile's own buffers are kept clear of memory the
+image already holds.
 
-`data_size` does not express this. It is a size, and what the ELF needs
-is a specific range. Declare that range as a buffer at a fixed address on the
-same tile:
+This is the same measurement a compiled core gets, read from the same sections;
+only what is taken from it differs. A compiled core is probed for *sizes*,
+because its addresses are chosen afterwards. A prebaked core is read for its
+*addresses*, because they are already final.
+
+`data_size` cannot express this: it is a size, and what a prebaked ELF occupies
+is a specific range. Declaring the range yourself still works, and is worth
+doing when the ELF is not where `aiecc` can read it:
 
 ```mlir
 %prebaked = aie.buffer(%tile_0_3) {sym_name = "prebaked_data", address = 8192 : i32} : memref<4096xi8>
 ```
 
-The allocator treats a fixed-address buffer as occupied space, keeps every
+Either way the allocator treats the extent as occupied space, keeps every
 buffer it places clear of it, reports a collision against it by name, and lists
 it in the memory map when a tile runs out of room.
 

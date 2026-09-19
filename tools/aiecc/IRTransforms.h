@@ -1315,6 +1315,50 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
 // Reads each core's probe link and records what its own sections want from each
 // bank, so placement can leave room the linker will later need. A core whose
 // probe is missing records nothing and is placed as before.
+// Records what a prebaked `elf_file` core already holds in its tile's data
+// memory, as tile-relative address/size pairs. Placement pins buffers clear of
+// them, the way it would for any address the design fixed itself.
+//
+// A compiled core is measured the same way but only for sizes, because its
+// addresses are not chosen yet; see recordBankDemand. Both read
+// readCoreDataSections, so they cannot disagree about which sections occupy a
+// tile's data memory.
+inline void recordPrebakedRanges(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore) {
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    if (!coreOp.getElfFileAttr()) {
+      return;
+    }
+    std::string elf = elfForCore(coreOp);
+    if (elf.empty()) {
+      return;
+    }
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &tm = xilinx::AIE::getTargetModel(coreOp);
+    int64_t base = tm.getMemInternalBaseAddress({tile.getCol(), tile.getRow()});
+    int64_t localMem = tm.getLocalMemorySize();
+    llvm::SmallVector<int32_t> ranges;
+    for (const auto &sec : xilinx::aiecc::readCoreDataSections(elf, base)) {
+      // A section the linker placed outside this tile's data memory belongs to
+      // program memory or a neighbor's window, and takes none of the space
+      // buffers compete for.
+      if (sec.size <= 0 || sec.address < 0 ||
+          sec.address + sec.size > localMem) {
+        continue;
+      }
+      ranges.push_back(static_cast<int32_t>(sec.address));
+      ranges.push_back(static_cast<int32_t>(sec.size));
+    }
+    if (ranges.empty()) {
+      return;
+    }
+    coreOp.setMeasuredDataRangesAttr(
+        mlir::DenseI32ArrayAttr::get(coreOp.getContext(), ranges));
+  });
+}
+
 template <typename Map>
 inline void recordBankDemand(
     mlir::ModuleOp module,

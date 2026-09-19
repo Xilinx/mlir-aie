@@ -1011,6 +1011,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   recordBankDemand(out.value->get(), elfLookup(probes),
                                    *bankDemand);
                 }
+                // A prebaked core is never probed -- its ELF is used verbatim
+                // -- so read the extents it already holds straight from it.
+                recordPrebakedRanges(
+                    out.value->get(), [](xilinx::AIE::CoreOp core) {
+                      return absolutePath(core.getElfFileAttr().getValue());
+                    });
                 mlir::PassManager *pm = nullptr;
                 auto owned = getAssignBufferAddressesPipeline(&context);
                 pm = owned.get();
