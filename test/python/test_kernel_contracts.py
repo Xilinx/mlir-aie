@@ -651,7 +651,7 @@ def test_designs_for_different_kernels_do_not_share_a_cache_key():
     p3 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])])
     p5 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])])
     assert h(p3) != h(p5)
-    with pytest.raises(ValueError, match="need values at design time"):
+    with pytest.raises(ValueError, match=r"expected 1 param value\(s\)"):
         kd.design(kernels.scale, calls=4, dtype=np.int32)
 
 
@@ -1069,8 +1069,9 @@ def test_mha_binds_its_translation_unit_as_one_object():
     assert (fn.mac_dims, fn.stream_dims) == (mm.mac_dims, mm.stream_dims)
     assert dict(fn.contract.parameter_bindings)[3].tolist() == [0, 0]
     a, b = kd.sample_inputs(fn, calls=2)
-    assert np.allclose(
-        fn.expected([a, b]), kernels.mm_tile_ref(a, b, dim_m=64, dim_k=64, dim_n=64)
+    assert np.array_equal(
+        fn.expected([a, b]),
+        kernels.mm_tile_ref(a, b, dim_m=64, dim_k=64, dim_n=64).astype(bfloat16),
     )
     assert fn.name in str(kd.design(kernels.mha, calls=2).as_mlir())
     with pytest.raises(ValueError, match="multiple of"):
@@ -1491,8 +1492,9 @@ def test_declared_dtype_combinations_build(name, combo):
     if any(bfp.is_bfp(v) for v in combo.values()):
         return  # block-floating-point operands are not numpy dtypes
     tensor_dts = {
-        np.dtype(kd.shape_dtype(t)[1]) for t in fn.arg_types() if hasattr(t, "__args__")
+        kd.shape_dtype(t)[1] for t in fn.arg_types() if hasattr(t, "__args__")
     }
+    tensor_dts = {np.dtype(dt) for dt in tensor_dts if not bfp.is_bfp(dt)}
     for v in combo.values():
         if isinstance(v, type):  # a dtype, not a shape or a flag
             assert np.dtype(v) in tensor_dts, f"{name}: {v} not among {tensor_dts}"
