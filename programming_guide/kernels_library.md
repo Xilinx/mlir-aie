@@ -405,6 +405,13 @@ The two are alternatives, and a test enforces it against the sources: a
 kernel whose `.cc` calls `aie::set_rounding` must not also name a
 `setup`, and one that names a `setup` must actually narrow something.
 
+This is the mechanism for the convention
+[#3481](https://github.com/Xilinx/mlir-aie/issues/3481) asks for (a kernel
+either owns its mode or assumes the caller set one), not the whole of it:
+`rms_norm`, `layer_norm` and `mv` still save and restore the register
+around their body, and nothing yet boots a core into `conv_even` by
+default. Both remain to do under that issue.
+
 ### What the benchmark records
 
 `test/python/npu/test_kernels_bench.py` measures a kernel only after it has
