@@ -13,6 +13,10 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+#ifndef MUL_ELEMS
+#define MUL_ELEMS size
+#endif
+
 template <typename T_in, typename T_out, const int N>
 void eltwise_mul(T_in *a, T_in *b, T_out *c) {
   for (int i = 0; i < N; i++) {
@@ -51,9 +55,8 @@ void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;
   T_out *__restrict pC1 = c;
-  const int F = size / vec_factor;
+  const int F = MUL_ELEMS / vec_factor;
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++) {
     aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
     pA1 += vec_factor;
@@ -63,7 +66,7 @@ void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
     aie::store_v(pC1, cout);
     pC1 += vec_factor;
   }
-  const int tail = size - F * vec_factor;
+  const int tail = MUL_ELEMS - F * vec_factor;
   for (int i = 0; i < tail; i++) {
     pC1[i] = pA1[i] * pB1[i];
   }

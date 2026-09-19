@@ -13,6 +13,11 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// IRON specializes the bound; raw-source callers retain the runtime ABI.
+#ifndef REDUCE_MIN_ELEMS
+#define REDUCE_MIN_ELEMS input_size
+#endif
+
 void _reduce_min_vector(int32_t *restrict in, int32_t *restrict out,
                         const int32_t input_size) {
 
@@ -22,8 +27,7 @@ void _reduce_min_vector(int32_t *restrict in, int32_t *restrict out,
   v16int32 after_vector;
   v16int32 running_min = massive;
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(8)
-  for (int32_t i = 0; i < input_size; i += vector_size) {
+  for (int32_t i = 0; i < REDUCE_MIN_ELEMS; i += vector_size) {
     v16int32 next = *(v16int32 *)(in + i);
     v16int32 test = min(running_min, next);
     running_min = test;
@@ -47,7 +51,7 @@ void _reduce_min_scalar(int32_t *restrict in, int32_t *restrict out,
                         const int32_t input_size) {
   event0();
   int32_t running_min = (int32_t)INT32_MAX;
-  for (int32_t i = 0; i < input_size; i++) {
+  for (int32_t i = 0; i < REDUCE_MIN_ELEMS; i++) {
     if (in[i] < running_min)
       running_min = in[i];
   }

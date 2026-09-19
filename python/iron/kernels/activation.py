@@ -38,7 +38,7 @@ from ._common import (
     _kernel_source,
     _make_extern,
     _require_fixed_tile_size,
-    _require_min_trip_count,
+    _require_vector_alignment,
 )
 from .core import conv_even
 
@@ -115,6 +115,14 @@ def _create_lut_kernel(
     if arch == "aie2":
         flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
         kernel_path = _kernel_source(arch, arch, "lut_kernel.cc")
+    if compile_flags:
+        return _make_extern(
+            func_name,
+            kernel_path,
+            arg_types,
+            compile_flags=flags + [f"-I{directory}" for directory in include],
+            contract=contract,
+        )
     return ExternalFunction(
         func_name,
         source_file=str(kernel_path),
@@ -137,7 +145,15 @@ def _bf16_lut_factory(
     _require_fixed_tile_size(factory_name, tile_size, _LUT_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
-        func_name, kernel_filename, [tile_ty] * arg_arity, contract=contract
+        func_name,
+        kernel_filename,
+        [tile_ty] * arg_arity,
+        compile_flags=(
+            [f"-D{factory_name.upper()}_ELEMS={tile_size}"]
+            if factory_name in ("gelu", "silu", "swiglu")
+            else None
+        ),
+        contract=contract,
     )
 
 
@@ -203,39 +219,41 @@ def silu(tile_size: int = 1024) -> ExternalFunction:
 
 
 def silu_sized(tile_size: int = 1024) -> ExternalFunction:
-    """SiLU (Swish) for bf16 tiles, element count read at runtime.
+    """SiLU (Swish) for bf16 tiles, with a compiled-in element count.
 
     Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
-    passes ``(in, out, size)``. At least 1024 elements, in whole vectors
+    keeps the ``(in, out, size)`` ABI. Positive whole vectors are required
     (16 on aie2, 32 on aie2p).
     """
     width = _bf16_lanes()
-    _require_min_trip_count("silu_sized", tile_size, width, 1024 // width)
+    _require_vector_alignment("silu_sized", tile_size, width)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "silu_bf16_size",
         "silu.cc",
         [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DSILU_ELEMS={tile_size}"],
         contract=_unary_lut_contract(silu_ref, count=tile_size),
     )
 
 
 def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
-    """GELU (tanh approx) for bf16 tiles, element count read at runtime.
+    """GELU (tanh approx) for bf16 tiles, with a compiled-in element count.
 
     Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
-    passes ``(in, out, size)``. Whole vectors only: multiples of 16, at least
-    1024 elements on aie2; positive multiples of 32 on aie2p.
+    keeps the ``(in, out, size)`` ABI. Positive whole vectors only: multiples
+    of 16 on aie2 or 32 on aie2p.
     """
     if _detect_arch() == "aie2":
-        _require_min_trip_count("gelu_sized", tile_size, 16, 64)
+        _require_vector_alignment("gelu_sized", tile_size, 16)
     else:
-        _require_min_trip_count("gelu_sized", tile_size, 32, 1)
+        _require_vector_alignment("gelu_sized", tile_size, 32)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "gelu_bf16_size",
         "gelu.cc",
         [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DGELU_ELEMS={tile_size}"],
         contract=_unary_lut_contract(gelu_ref, count=tile_size),
     )
 
@@ -350,7 +368,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
 def tanh(tile_size: int = 1024) -> ExternalFunction:
     """Tanh activation kernel for bf16 tiles (must be 1024).
 
-    The kernel takes the element count at runtime, so the design must pass
+    The kernel retains a count operand for ABI compatibility; pass
     ``tile_size`` as a trailing ``int`` argument (e.g. via
     ``transform_parallel(pass_size_to_kernel=True)``).
     """
@@ -360,6 +378,7 @@ def tanh(tile_size: int = 1024) -> ExternalFunction:
         "tanh_bf16",
         "tanh.cc",
         [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DTANH_ELEMS={tile_size}"],
         contract=_unary_lut_contract(tanh_ref, count=tile_size),
     )
 
@@ -367,7 +386,7 @@ def tanh(tile_size: int = 1024) -> ExternalFunction:
 def sigmoid(tile_size: int = 1024) -> ExternalFunction:
     """Sigmoid activation kernel for bf16 tiles (must be 1024).
 
-    Runtime element count — pass ``tile_size`` as a trailing ``int`` argument.
+    The count is compiled in; retain ``tile_size`` as a trailing ABI argument.
     """
     _require_fixed_tile_size("sigmoid", tile_size, _LUT_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
@@ -375,6 +394,7 @@ def sigmoid(tile_size: int = 1024) -> ExternalFunction:
         "sigmoid_bf16",
         "sigmoid.cc",
         [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DSIGMOID_ELEMS={tile_size}"],
         contract=_unary_lut_contract(sigmoid_ref, count=tile_size),
     )
 
@@ -382,8 +402,8 @@ def sigmoid(tile_size: int = 1024) -> ExternalFunction:
 def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
     """Leaky ReLU activation kernel for bf16 tiles (must be 1024).
 
-    Takes the element count and the ``alpha`` slope at runtime, so the design
-    must pass ``(tile_size, alpha)`` as trailing ``int``/``bfloat16`` arguments.
+    The count is compiled in, but the ABI retains ``(tile_size, alpha)`` as
+    trailing ``int``/``bfloat16`` arguments. The slope remains runtime-valued.
     """
     _require_fixed_tile_size("leaky_relu", tile_size, _LUT_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
@@ -391,6 +411,7 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
         "leaky_relu_bf16",
         "leaky_relu.cc",
         [tile_ty, tile_ty, np.int32, bfloat16],
+        compile_flags=[f"-DLEAKY_RELU_ELEMS={tile_size}"],
         contract=KernelContract(
             setup=conv_even,
             roles=(In, Out, Param, Param),

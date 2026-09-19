@@ -600,7 +600,7 @@ def mv(
 
 def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
     """bf16 matvec from ``aie_kernels/generic/mv.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
-    if vec_size <= 0 or dim_k % vec_size:
+    if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
         raise ValueError(
             f"mv(): dim_k ({dim_k}) must be a positive multiple of vec_size ({vec_size})"
         )

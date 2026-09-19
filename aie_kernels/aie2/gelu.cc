@@ -8,6 +8,10 @@
 
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
+
+#ifndef GELU_ELEMS
+#define GELU_ELEMS vector_size
+#endif
 #include <lut_based_ops.h>
 #include <stdint.h>
 
@@ -35,8 +39,7 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
   auto vBeta = aie::broadcast<bfloat16, 16>(kBeta);
 
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(64)
-  for (int i = 0; i < vector_size; i += 16) {
+  for (int i = 0; i < GELU_ELEMS; i += 16) {
     input = *it_in++;
     auto x = input;
 

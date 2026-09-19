@@ -397,7 +397,17 @@ class CallableDesign:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
 
         # After compile(): validation reads _expected_tensor_sizes.
-        compilable.validate_tensor_args(tensor_args)
+        implicit_tensor_count = 0
+        if trace_config is not None:
+            if not trace_config.reuse_output_buffer:
+                implicit_tensor_count = 1 + int(trace_config.enable_ctrl_pkts)
+            elif not tensor_args:
+                implicit_tensor_count = 1
+        compilable.validate_tensor_args(
+            tensor_args,
+            num_host_bos=kernel.num_host_bos,
+            implicit_tensor_count=implicit_tensor_count,
+        )
 
         try:
             return kernel(*tensor_args, **remaining_scalars)

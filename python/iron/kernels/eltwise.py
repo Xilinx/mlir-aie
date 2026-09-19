@@ -15,11 +15,10 @@ from ._common import (
     KernelContract,
     Param,
     _default_source_path,
-    _detect_arch,
     _dtype_to_bit_width,
     _make_extern,
     _require_fixed_tile_size,
-    _require_min_trip_count,
+    _require_vector_alignment,
     dtypes,
 )
 from .core import conv_even
@@ -27,10 +26,8 @@ from .core import conv_even
 _ELTWISE_FIXED_TILE = 1024
 _RELU_FIXED_TILE = 1024
 
-# passThrough.cc copies one v64uint8 per loop iteration and declares
-# AIE_LOOP_MIN_ITERATION_COUNT(6); both are preconditions the factory checks.
+# passThrough.cc copies one 64-byte vector per loop iteration.
 _PASSTHROUGH_VEC_BYTES = 64
-_PASSTHROUGH_MIN_ITERS = 6
 
 # Tighten toward Tolerance.bf16_ulps(1) once a nightly has shown the margin.
 _BF16_ROUNDTRIP = Tolerance.relative(
@@ -92,10 +89,8 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
     """Element-wise passthrough kernel: copies input tile to output tile.
 
     Args:
-        tile_size: Number of elements per tile. The tile must be a whole
-            number of 64-byte vectors, and at least
-            ``_PASSTHROUGH_MIN_ITERS`` of them (384 bytes: 384 ``uint8``,
-            192 ``int16`` or 96 ``int32`` elements) -- see below.
+        tile_size: Number of elements per tile, a positive whole number of
+            64-byte vectors. Compiled into the kernel's loop bound.
         dtype: Element data type (``np.uint8``, ``np.int16``, or ``np.int32``).
 
     Returns:
@@ -104,23 +99,23 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
     Raises:
         ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or
             ``np.int32``, or when ``tile_size`` is not a whole number of
-            64-byte vectors, or is below the kernel's minimum trip count.
+            64-byte vectors, or is nonpositive.
     """
     bit_width = _dtype_to_bit_width(dtype, factory_name="passthrough")
-    # passThrough.cc copies one 64-byte vector per iteration and declares
-    # AIE_LOOP_MIN_ITERATION_COUNT(6); a 4-iteration tile hangs the core.
-    _require_min_trip_count(
+    _require_vector_alignment(
         "passthrough",
         tile_size,
         _PASSTHROUGH_VEC_BYTES // np.dtype(dtype).itemsize,
-        _PASSTHROUGH_MIN_ITERS,
     )
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
     return _make_extern(
         "passThroughLine",
         _default_source_path("passThrough.cc"),
         [tile_ty, tile_ty, np.int32],
-        compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        compile_flags=[
+            f"-DBIT_WIDTH={bit_width}",
+            f"-DPASSTHROUGH_ELEMS={tile_size}",
+        ],
         contract=KernelContract(
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
@@ -154,6 +149,8 @@ def scale(
     """
     if dtype not in (np.int16, np.int32):
         raise ValueError(f"scale() dtype must be np.int16 or np.int32, got {dtype}")
+    if vectorized:
+        _require_vector_alignment("scale", tile_size, 64 // np.dtype(dtype).itemsize)
 
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
     scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
@@ -163,7 +160,7 @@ def scale(
         f"vector_scalar_mul_{func_variant}",
         _default_source_path("scale.cc"),
         [tile_ty, tile_ty, scalar_ty, np.int32],
-        compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DSCALE_ELEMS={tile_size}"],
         use_chess=use_chess,
         contract=KernelContract(
             roles=(In, Out, Param, Param),
@@ -270,6 +267,7 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
         "bf16_relu",
         _default_source_path("relu.cc"),
         [tile_ty, tile_ty],
+        compile_flags=[f"-DRELU_ELEMS={tile_size}"],
         contract=KernelContract(
             roles=(In, Out),
             reference=lambda x: np.maximum(x.astype(np.float32), 0.0),
@@ -279,19 +277,19 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
 
 
 def add_sized(tile_size: int = 1024) -> ExternalFunction:
-    """Element-wise bf16 addition, element count read at runtime.
+    """Element-wise bf16 addition, with a compiled-in element count.
 
     Runtime-size sibling of [`add`][iron.kernels.eltwise.add]; design passes
-    ``(a, b, c, size)``. Scalar tails are supported.
+    ``(a, b, c, size)`` for ABI compatibility. Scalar tails are supported.
     """
-    minimum = 512 if _detect_arch() == "aie2p" else 256
-    if tile_size < minimum:
-        raise ValueError(f"add_sized() tile_size must be >= {minimum}, got {tile_size}")
+    if tile_size <= 0:
+        raise ValueError(f"add_sized() tile_size must be positive, got {tile_size}")
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "eltwise_add_bf16_vector_size",
         _default_source_path("add.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DADD_ELEMS={tile_size}"],
         contract=KernelContract(
             setup=conv_even,
             roles=(In, In, Out, Param),
@@ -305,19 +303,19 @@ def add_sized(tile_size: int = 1024) -> ExternalFunction:
 
 
 def mul_sized(tile_size: int = 1024) -> ExternalFunction:
-    """Element-wise bf16 multiplication, element count read at runtime.
+    """Element-wise bf16 multiplication, with a compiled-in element count.
 
     Runtime-size sibling of [`mul`][iron.kernels.eltwise.mul]; design passes
-    ``(a, b, c, size)``. Scalar tails are supported.
+    ``(a, b, c, size)`` for ABI compatibility. Scalar tails are supported.
     """
-    minimum = 512 if _detect_arch() == "aie2p" else 256
-    if tile_size < minimum:
-        raise ValueError(f"mul_sized() tile_size must be >= {minimum}, got {tile_size}")
+    if tile_size <= 0:
+        raise ValueError(f"mul_sized() tile_size must be positive, got {tile_size}")
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "eltwise_mul_bf16_vector_size",
         _default_source_path("mul.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DMUL_ELEMS={tile_size}"],
         contract=KernelContract(
             setup=conv_even,
             roles=(In, In, Out, Param),
@@ -331,20 +329,19 @@ def mul_sized(tile_size: int = 1024) -> ExternalFunction:
 
 
 def relu_sized(tile_size: int = 1024) -> ExternalFunction:
-    """Element-wise bf16 ReLU, element count read at runtime.
+    """Element-wise bf16 ReLU, with a compiled-in element count.
 
     Runtime-size sibling of [`relu`][iron.kernels.eltwise.relu]; design passes
-    ``(in, out, size)``. Not LUT-based. Multiples of 32, at least 1024
-    elements on aie2 or 64 on aie2p.
+    ``(in, out, size)`` for ABI compatibility. Not LUT-based. Positive
+    multiples of 32 elements are supported.
     """
-    _require_min_trip_count(
-        "relu_sized", tile_size, 32, 32 if _detect_arch() == "aie2" else 2
-    )
+    _require_vector_alignment("relu_sized", tile_size, 32)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "relu_bf16_size",
         _default_source_path("relu.cc"),
         [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DRELU_ELEMS={tile_size}"],
         contract=KernelContract(
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),

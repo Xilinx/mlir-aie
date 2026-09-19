@@ -13,18 +13,23 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// IRON specializes the bound; raw-source callers retain the runtime ABI.
+#ifndef SCALE_ELEMS
+#define SCALE_ELEMS N
+#endif
+
 // Scalar scale template
 template <typename T>
 void scale_scalar(T *a, T *c, T factor, const int32_t N) {
   event0();
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < SCALE_ELEMS; i++) {
     c[i] = factor * a[i];
   }
   event1();
 }
 
 // Vectorized scale template (general case)
-// Assume N is multiple of 16
+// Assume N is multiple of 32
 template <typename T>
 void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
                       const int32_t N) {
@@ -32,11 +37,10 @@ void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
   constexpr int vec_factor = 32;
   T *__restrict pA1 = a;
   T *__restrict pC1 = c;
-  const int F = N / vec_factor;
+  const int F = SCALE_ELEMS / vec_factor;
   T fac = factor;
 
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++) {
     aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
     pA1 += vec_factor;
@@ -56,10 +60,9 @@ void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
   constexpr int vec_factor = 16;
   int32_t *__restrict pA1 = a;
   int32_t *__restrict pC1 = c;
-  const int F = N / vec_factor;
+  const int F = SCALE_ELEMS / vec_factor;
 
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < F; i++) {
     aie::vector<int32_t, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
     pA1 += vec_factor;

@@ -16,6 +16,7 @@ from ._common import (
     _default_source_path,
     _dtype_to_bit_width,
     _make_extern,
+    _require_vector_alignment,
     dtypes,
 )
 
@@ -45,12 +46,15 @@ def _bitwise_kernel(
 ) -> ExternalFunction:
     """Shared implementation for [`bitwise_or`][iron.kernels.vision.bitwise_or] and [`bitwise_and`][iron.kernels.vision.bitwise_and]."""
     bit_width = _dtype_to_bit_width(dtype, factory_name=f"bitwise{op}")
+    _require_vector_alignment(
+        f"bitwise{op}", line_width, 512 // bit_width, param="line_width"
+    )
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         f"bitwise{op}Line",
         _default_source_path(f"bitwise{op}.cc"),
         [line_ty, line_ty, line_ty, np.int32],
-        compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DBITWISE_ELEMS={line_width}"],
         use_chess=use_chess,
         contract=KernelContract(
             roles=(In, In, Out, Param),
@@ -98,13 +102,16 @@ def threshold(
         ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or ``np.int32``.
     """
     bit_width = _dtype_to_bit_width(dtype, factory_name="threshold")
+    _require_vector_alignment(
+        "threshold", line_width, 512 // bit_width, param="line_width"
+    )
     scalar_ty = np.int32 if bit_width == 32 else np.int16
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         "thresholdLine",
         _default_source_path("threshold.cc"),
         [line_ty, line_ty, np.int32, scalar_ty, scalar_ty, np.int8],
-        compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DTHRESHOLD_ELEMS={line_width}"],
         use_chess=use_chess,
         contract=KernelContract(
             roles=(In, Out, Param, Param, Param, Param),
@@ -225,12 +232,18 @@ def add_weighted(
             "Use np.uint8 or np.int16."
         )
     gamma_ty = {8: np.int8, 16: np.int16, 32: np.int32}[bit_width]
+    _require_vector_alignment(
+        "add_weighted", line_width, 256 // bit_width, param="line_width"
+    )
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         "addWeightedLine",
         _default_source_path("addWeighted.cc"),
         [line_ty, line_ty, line_ty, np.int32, np.int16, np.int16, gamma_ty],
-        compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        compile_flags=[
+            f"-DBIT_WIDTH={bit_width}",
+            f"-DADD_WEIGHTED_ELEMS={line_width}",
+        ],
         use_chess=use_chess,
         contract=KernelContract(
             roles=(In, In, Out, Param, Param, Param, Param),

@@ -575,7 +575,14 @@ def test_call_binds_runtime_device_before_in_process_cache(monkeypatch):
     def fake_compile_and_build(self, compilable, cache_key, trace_config):
         seen_keys.append(cache_key)
         assert type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2"
-        return lambda *args, **kwargs: "ran"
+
+        class FakeKernel:
+            num_host_bos = 0
+
+            def __call__(self, *args, **kwargs):
+                return "ran"
+
+        return FakeKernel()
 
     monkeypatch.setattr(
         CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
@@ -601,6 +608,8 @@ def test_call_rebuilds_removed_cached_artifacts(
         pass
 
     class FakeKernel:
+        num_host_bos = 0
+
         def __init__(self, xclbin_path, insts_path, result):
             self.xclbin_path = xclbin_path
             self.insts_path = insts_path

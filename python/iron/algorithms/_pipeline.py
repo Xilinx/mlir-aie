@@ -77,7 +77,11 @@ class Stage:
 
             if spans:
                 acquire_outputs()
-            loop = range_(self.iterations) if self.iterations > 1 else range(1)
+            loop = (
+                range_(self.iterations)
+                if self.iterations > 1
+                else range(self.iterations)
+            )
             for iteration in loop:
                 ins = [f.acquire(n) for f, n in zip(f_in, counts)]
                 if not spans:

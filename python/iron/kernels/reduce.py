@@ -17,22 +17,17 @@ from ._common import (
     _default_source_path,
     _make_extern,
     _min_dma_aligned_elems,
-    _require_min_trip_count,
+    _require_vector_alignment,
     dtypes,
 )
 
-# reduce_max_*() and compute_max() both live in reduce_max.cc. Naming the
-# object gives every binding of that translation unit one KernelObject (see
-# ExternalFunction.object_file), so a design that uses both compiles the
-# source once and links one artifact.
+# The unspecialized pairwise max can share an object across dtypes.
+# Size-specialized reductions use separate, symbol-prefixed objects.
 _REDUCE_MAX_OBJ = "reduce_max.cc.o"
 
-# reduce_{add,min,max}.cc all step a 16-element int32 vector (32 for the
-# bfloat16 reduce_max) and declare AIE_LOOP_MIN_ITERATION_COUNT(8).
-# reduce_add measurably hangs below that; see _require_min_trip_count.
+# reduce_{add,min,max}.cc step a 16-element int32 vector (32 for bfloat16).
 _REDUCE_VEC_ELEMS = 16
 _REDUCE_VEC_ELEMS_BF16 = 32
-_REDUCE_MIN_ITERS = 8
 
 
 def reduce_add_ref(x):
@@ -80,9 +75,7 @@ def _reduce_kernel(
         )
 
     if vectorized:
-        _require_min_trip_count(
-            f"reduce_{op}", tile_size, _REDUCE_VEC_ELEMS, _REDUCE_MIN_ITERS
-        )
+        _require_vector_alignment(f"reduce_{op}", tile_size, _REDUCE_VEC_ELEMS)
 
     in_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
     out_ty = np.ndarray[(_min_dma_aligned_elems(np.int32),), np.dtype[np.int32]]
@@ -91,6 +84,7 @@ def _reduce_kernel(
         f"reduce_{op}_{func_variant}",
         _default_source_path(f"reduce_{op}.cc"),
         [in_ty, out_ty, np.int32],
+        compile_flags=[f"-DREDUCE_{op.upper()}_ELEMS={tile_size}"],
         contract=_reduce_contract(op, tile_size),
     )
 
@@ -159,11 +153,10 @@ def reduce_max(
 
     actual_dtype = bfloat16 if is_bf16 else np.int32
     if vectorized:
-        _require_min_trip_count(
+        _require_vector_alignment(
             "reduce_max",
             tile_size,
             _REDUCE_VEC_ELEMS_BF16 if is_bf16 else _REDUCE_VEC_ELEMS,
-            _REDUCE_MIN_ITERS,
         )
     in_ty = np.ndarray[(tile_size,), np.dtype[actual_dtype]]
     # The C++ kernel writes one scalar; the output tile must still be at least
@@ -177,7 +170,7 @@ def reduce_max(
         f"reduce_max_{func_variant}{suffix}",
         _default_source_path("reduce_max.cc"),
         [in_ty, out_ty, np.int32],
-        object_file_name=_REDUCE_MAX_OBJ,
+        compile_flags=[f"-DREDUCE_MAX_ELEMS={tile_size}"],
         contract=_reduce_contract("max", tile_size),
     )
 
@@ -190,9 +183,7 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
     final tree reduces them pairwise.
 
     Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max],
-    and binds a symbol of the same object: ``compute_max().object_file is
-    reduce_max().object_file``, so a design using both compiles the source
-    exactly once.
+    but uses an unspecialized object independent of reduction tile sizes.
 
     Args:
         dtype: Element data type (``np.int32`` or ``bfloat16``).

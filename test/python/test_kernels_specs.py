@@ -1163,11 +1163,35 @@ def test_sized_factory_contracts(name, kernel_arch):
             getattr(kernels, name)(tile_size=1025)
 
 
-def test_relu_sized_runtime_count_constraints(kernel_arch):
-    minimum = 1024 if kernel_arch == "aie2" else 64
-    assert kernels.relu_sized(tile_size=minimum).arg_shape(0) == (minimum,)
-    assert kernels.relu_sized(tile_size=2048).arg_shape(0) == (2048,)
-    with pytest.raises(ValueError, match="minimum"):
-        kernels.relu_sized(tile_size=minimum - 32)
+@pytest.mark.parametrize(
+    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
+)
+def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
+    factory = getattr(kernels, name)
+    width = (
+        1
+        if name in ("add_sized", "mul_sized")
+        else 32 if name == "relu_sized" or kernel_arch == "aie2p" else 16
+    )
+    macro = name.removesuffix("_sized").upper() + "_ELEMS"
+    tiny = factory(tile_size=width)
+    other = factory(tile_size=width * 4)
+    assert tiny.arg_shape(0) == (width,)
+    assert f"-D{macro}={width}" in tiny.compile_flags
+    assert f"-D{macro}={width * 4}" in other.compile_flags
+    assert tiny.object_file_name != other.object_file_name
+    assert tiny._symbol_prefix != other._symbol_prefix
+
+
+def test_relu_sized_requires_whole_vectors(kernel_arch):
+    assert kernels.relu_sized(tile_size=32).arg_shape(0) == (32,)
     with pytest.raises(ValueError, match="32-element vector step"):
         kernels.relu_sized(tile_size=2049)
+
+
+@pytest.mark.parametrize(
+    "name", ["gelu", "silu", "relu", "swiglu", "tanh", "sigmoid", "leaky_relu"]
+)
+def test_fixed_activations_compile_their_count(name, kernel_arch):
+    fn = getattr(kernels, name)()
+    assert f"-D{name.upper()}_ELEMS=1024" in fn.compile_flags
