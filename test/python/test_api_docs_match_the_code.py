@@ -23,7 +23,9 @@ def _blocks(doc: str):
     for block in re.split(r"(?m)^::: ", doc)[1:]:
         module = block.split("\n", 1)[0].strip()
         members = re.search(r"^      members:\n((?:        - \S+\n)+)", block, re.M)
-        yield module, re.findall(r"        - (\S+)", members.group(1)) if members else []
+        yield module, (
+            re.findall(r"        - (\S+)", members.group(1)) if members else []
+        )
 
 
 def test_documented_kernel_modules_and_members_exist():
