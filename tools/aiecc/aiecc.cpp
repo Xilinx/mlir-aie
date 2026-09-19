@@ -804,7 +804,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         const auto &tm = getTargetModel(op);
         int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
         int bank = 0;
-        if (numBanks > 0) {
+        // Prefer the declared `stack_bank`. Codegen needs the bank, not the
+        // address, and the bank is an input attribute whereas the address is
+        // resolved later by the allocator: deriving it from `getStackRun()`
+        // would make this edge depend on buffer placement, which runs after the
+        // core is compiled.
+        if (auto stackBank = op.getStackBank()) {
+          bank = *stackBank;
+        } else if (numBanks > 0) {
           int64_t bankSize = tm.getLocalMemorySize() / numBanks;
           if (bankSize > 0)
             bank = static_cast<int>(op.getStackRun().start / bankSize);
