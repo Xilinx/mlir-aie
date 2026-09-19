@@ -490,8 +490,8 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                               uint8_t *output, uint8_t *skip,
                               const int32_t runtime_input_width,
                               const int32_t runtime_input_channels,
-                              const int32_t runtime_output_channels, const int scale,
-                              const int skip_scale) {
+                              const int32_t runtime_output_channels,
+                              const int scale, const int skip_scale) {
   const int32_t input_width = CONV_INPUT_WIDTH;
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
