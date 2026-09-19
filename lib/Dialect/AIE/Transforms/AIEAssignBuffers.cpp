@@ -497,6 +497,16 @@ public:
     return {first, second};
   }
 
+  // Every maximal free run in [lo, hi), lowest first. The search enumerates
+  // candidate placements from these rather than taking the single best run.
+  SmallVector<MemoryRun> gapsIn(int64_t lo, int64_t hi) const {
+    SmallVector<MemoryRun> runs;
+    forEachGap(lo, hi, [&](int64_t gapStart, int64_t gapEnd) {
+      runs.push_back({gapStart, gapEnd - gapStart});
+    });
+    return runs;
+  }
+
   // Largest single free run in [lo, hi). A reservation needs one contiguous
   // run, which freeBytes does not measure.
   int64_t largestGap(int64_t lo, int64_t hi) const {
@@ -674,11 +684,16 @@ static void printMemMap(TileOp tile, ArrayRef<BufferOp> allocatedBuffers,
       printbuffer("(stack)", ctx.stackRun.start, ctx.stackRun.size);
     }
     // This runs on the failure path, where some buffers have no address yet.
+    // A mem_bank-only buffer appears in both lists -- it is pre-allocated in
+    // the sense that its bank was given, but this pass still chose its address
+    // -- so listing it once takes a filter.
+    SmallPtrSet<Operation *, 8> listed;
     auto printPlaced = [&](ArrayRef<BufferOp> buffers) {
       for (auto buffer : buffers) {
         auto addrOpt = buffer.getAddress();
         auto memBankOpt = buffer.getMemBank();
-        if (!addrOpt || !memBankOpt || *memBankOpt != i) {
+        if (!addrOpt || !memBankOpt || *memBankOpt != i ||
+            !listed.insert(buffer).second) {
           continue;
         }
         int64_t size = buffer.getAllocationSize();
@@ -696,164 +711,251 @@ static void printMemMap(TileOp tile, ArrayRef<BufferOp> allocatedBuffers,
   }
 }
 
-// Places a buffer in the tightest hole that fits, and spreads buffers over the
-// banks round-robin to limit DMA contention. A buffer that fits no single bank
-// straddles bank boundaries. Returns false when no room remains; the caller
-// reports which buffer failed.
-static bool setBufferAddress(BufferOp buffer, const BankAwareContext &ctx,
-                             int &startBankIndex,
-                             const RequiredBanks &requiredBanks,
-                             MemoryOccupancy &occupancy,
-                             int64_t contiguityCap) {
+namespace {
+// One address a buffer could take, with the keys that order it against the
+// alternatives. Lower ranks first:
+//  1. banks touched, fewest first (each spanned bank costs DMA bandwidth);
+//  2. largest free run left behind, biggest first, capped by contiguityCap --
+//     the bytes still to place. A run wider than that serves nothing, so past
+//     the cap every candidate ties and criterion 3 takes over;
+//  3. round-robin distance from the cursor, nearest first (spreads for DMA);
+//  4. slack, tightest first, which leaves the large runs unbroken;
+//  5. address, lowest first, for determinism.
+//
+// A memtile has no core, so criterion 2 is neutralized there and round-robin
+// governs throughout.
+struct Placement {
+  int64_t addr;
+  int bank;
+  int64_t banksTouched;
+  int64_t negLargestRunLeft;
+  int64_t rrDistance;
+  int64_t slack;
+
+  std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t> rank() const {
+    return {banksTouched, negLargestRunLeft, rrDistance, slack, addr};
+  }
+};
+} // namespace
+
+// Every address `buffer` could take in the current occupancy, best first.
+//
+// The head of this list is the address a single-pass greedy would have chosen,
+// so a design that placed before places identically; the tail is where the
+// search goes when a later buffer is left with nowhere to sit.
+static SmallVector<Placement>
+rankedPlacements(BufferOp buffer, const BankAwareContext &ctx,
+                 int startBankIndex, const RequiredBanks &requiredBanks,
+                 const MemoryOccupancy &occupancy, int64_t contiguityCap) {
   assert(startBankIndex < ctx.numBanks &&
          "Unexpected input value for startBankIndex");
   int64_t size = buffer.getAllocationSize();
   int64_t alignBytes =
       getBufferAlignBytes(buffer, ctx.tileAlignBitWidth, ctx.maxVecAlignBits);
-
-  auto place = [&](int64_t startAddr, int bank) {
-    placeBuffer(buffer, startAddr, bank, occupancy);
-    startBankIndex = (bank + 1) % ctx.numBanks;
-    return true;
-  };
+  SmallVector<Placement> out;
 
   // A requested mem_bank is a hard constraint: one bank, no straddling, and the
-  // round-robin cursor stays where it is. This placement precedes the
-  // unconstrained buffers, so it takes the spot in its bank that leaves the
-  // largest single run behind.
+  // round-robin cursor stays put. Only the two flush ends of each hole are
+  // worth trying, because an interior start leaves strictly less behind.
   auto required = requiredBanks.find(buffer);
   if (required != requiredBanks.end()) {
     int bank = required->second;
-    if (auto startAddr = occupancy.findLeastFragmentingGap(
-            ctx.bankLimits[bank].start, ctx.bankLimits[bank].end(), size,
-            alignBytes)) {
-      placeBuffer(buffer, *startAddr, bank, occupancy);
-      return true;
+    MemoryRun limits = ctx.bankLimits[bank];
+    for (MemoryRun gap : occupancy.gapsIn(limits.start, limits.end())) {
+      int64_t low = llvm::alignTo(gap.start, alignBytes);
+      if (low + size > gap.end()) {
+        continue;
+      }
+      for (int64_t addr :
+           {low, std::max<int64_t>(
+                     llvm::alignDown(gap.end() - size, alignBytes), low)}) {
+        MemoryOccupancy trial = occupancy;
+        trial.markOccupied(addr, addr + size);
+        out.push_back({addr, bank, /*banksTouched=*/1,
+                       -trial.largestGap(0, trial.size()), /*rrDistance=*/0,
+                       /*slack=*/0});
+      }
     }
     // A zero-sized buffer needs no free byte, so every bank holds it.
-    if (size == 0) {
-      placeBuffer(buffer, ctx.bankLimits[bank].start, bank, occupancy);
+    if (out.empty() && size == 0) {
+      out.push_back({limits.start, bank, 1, 0, 0, 0});
+    }
+  } else {
+    int64_t bankedEnd = ctx.bankLimits.back().end();
+    int64_t bankSize = bankedEnd / ctx.numBanks;
+    // Computed once per buffer, not per candidate: every candidate splits one
+    // run, so the largest run left elsewhere is one of these two. Named
+    // separately, because C++17 cannot capture a structured binding in the
+    // lambda below.
+    std::pair<int64_t, int64_t> topGaps =
+        occupancy.topTwoGaps(0, ctx.maxDataMemorySize);
+    int64_t largestRun = topGaps.first, secondRun = topGaps.second;
+    auto consider = [&](std::optional<int64_t> addr) {
+      if (!addr) {
+        return;
+      }
+      int bank = getBankContaining(*addr, ctx.numBanks, ctx.bankLimits);
+      if (bank < 0) {
+        return;
+      }
+      int64_t touched =
+          size == 0 ? 1 : (*addr + size - 1) / bankSize - *addr / bankSize + 1;
+      // This placement splits one run into the piece below and the piece above.
+      // Every other run stays whole, so the biggest of those is whichever of
+      // the top two this candidate does not consume.
+      MemoryRun gap = occupancy.gapAt(*addr);
+      int64_t elsewhere = gap.size == largestRun ? secondRun : largestRun;
+      int64_t leftPiece = *addr - gap.start;
+      int64_t rightPiece = gap.end() - (*addr + size);
+      int64_t runLeft =
+          std::min(std::max({elsewhere, leftPiece, rightPiece}), contiguityCap);
+      out.push_back({*addr, bank, touched, ctx.hasCore ? -runLeft : 0,
+                     (bank - startBankIndex + ctx.numBanks) % ctx.numBanks,
+                     occupancy.slackAt(*addr, size)});
+    };
+
+    for (int i = 0; i < ctx.numBanks; i++) {
+      consider(occupancy.findGap(ctx.bankLimits[i].start,
+                                 ctx.bankLimits[i].end(), size, alignBytes));
+    }
+    // Allow straddling when nothing fits one bank. The banked region maps to a
+    // bank, so the result always has one.
+    consider(occupancy.findGap(0, bankedEnd, size, alignBytes));
+    // Try bank-boundary starts only when a boundary also satisfies the buffer's
+    // own alignment, because otherwise this searches on an unintended stride.
+    if (bankSize % alignBytes == 0) {
+      consider(occupancy.findGap(0, bankedEnd, size, bankSize));
+    }
+    // A zero-sized buffer needs no free byte, so a full tile still holds it.
+    if (out.empty() && size == 0) {
+      out.push_back({0, 0, 1, 0, 0, 0});
+    }
+  }
+
+  llvm::stable_sort(out, [](const Placement &a, const Placement &b) {
+    return a.rank() < b.rank();
+  });
+  // The probes overlap: a gap that is the tightest in its bank is often also
+  // the tightest overall. Equal addresses are the same placement, and trying
+  // one twice only costs budget.
+  out.erase(
+      llvm::unique(out, [](const Placement &a,
+                           const Placement &b) { return a.addr == b.addr; }),
+      out.end());
+  return out;
+}
+
+// How many placements the search may try per tile before giving up and
+// reporting the deepest failure it reached. Packing around fixed obstacles is
+// NP-hard, so the tree has no useful worst-case bound; this keeps a design the
+// search cannot solve to bounded compile time instead of exponential. A node
+// count rather than a time limit, so a build stays reproducible.
+static constexpr int64_t kPlacementBudget = 20000;
+
+// Depth-first placement over `order`, trying each buffer's addresses in rank
+// order and undoing a choice that leaves a later buffer nowhere to go.
+//
+// The first descent is exactly what a single-pass greedy produces, so this only
+// does extra work where that pass used to fail outright. On failure `deepest`
+// names the buffer that ran out of addresses furthest into the order, which is
+// the one whose demand the tile could not meet.
+namespace {
+struct PlacementSearch {
+  ArrayRef<BufferOp> order;
+  const BankAwareContext &ctx;
+  const RequiredBanks &requiredBanks;
+  MemoryOccupancy &occupancy;
+  SmallVectorImpl<BufferOp> &placed;
+  int64_t budget = kPlacementBudget;
+  // Set when the node budget ran out with candidates still untried, so the
+  // caller can say "gave up" rather than "no such layout exists".
+  bool exhausted = false;
+
+  // The furthest the search reached, kept so a failure can report the layout it
+  // got closest with rather than the empty tile backtracking leaves behind.
+  size_t deepestIndex = 0;
+  BufferOp deepest;
+  SmallVector<std::pair<BufferOp, Placement>> deepestLayout;
+
+  bool run(size_t index, int startBankIndex, int64_t remaining) {
+    if (index == order.size()) {
       return true;
+    }
+    BufferOp buffer = order[index];
+    int64_t size = buffer.getAllocationSize();
+    int64_t rest = remaining - size; // Placement's criterion 2 cap.
+
+    SmallVector<Placement> candidates = rankedPlacements(
+        buffer, ctx, startBankIndex, requiredBanks, occupancy, rest);
+    if (candidates.empty() && (!deepest || index >= deepestIndex)) {
+      recordDeepest(index, buffer);
+    }
+    for (const Placement &candidate : candidates) {
+      if (budget <= 0) {
+        exhausted = true;
+        break;
+      }
+      --budget;
+      placeBuffer(buffer, candidate.addr, candidate.bank, occupancy);
+      placed.push_back(buffer);
+      // A pinned buffer leaves the cursor alone; see rankedPlacements.
+      int nextBank = requiredBanks.count(buffer)
+                         ? startBankIndex
+                         : (candidate.bank + 1) % ctx.numBanks;
+      if (run(index + 1, nextBank, rest)) {
+        return true;
+      }
+      placed.pop_back();
+      occupancy.markFree(candidate.addr, candidate.addr + size);
+      buffer->removeAttr("address");
+      if (!requiredBanks.count(buffer)) {
+        buffer->removeAttr("mem_bank");
+      }
     }
     return false;
   }
 
-  // Score every candidate placement and keep the best, ranked by:
-  //  1. banks touched, fewest first (each spanned bank costs DMA bandwidth);
-  //  2. largest free run left behind, biggest first, up to contiguityCap;
-  //  3. round-robin distance from the cursor, nearest first (spreads for DMA);
-  //  4. slack, tightest first, which leaves the large runs unbroken;
-  //  5. address, lowest first, for determinism.
-  //
-  // Criterion 2 keeps one run wide enough for the extents still to place, and
-  // contiguityCap holds it to that much. Beyond the cap every candidate ties,
-  // so criterion 3 governs and the buffers spread across banks.
-  //
-  // A memtile has no core, so criterion 2 is neutralized there and round-robin
-  // governs throughout.
-  int64_t bankedEnd = ctx.bankLimits.back().end();
-  int64_t bankSize = bankedEnd / ctx.numBanks;
-  // Computed once per buffer, not per candidate: every candidate splits one
-  // run, so the largest run left elsewhere is one of these two. Named
-  // separately, because C++17 cannot capture a structured binding in the lambda
-  // below.
-  std::pair<int64_t, int64_t> topGaps =
-      occupancy.topTwoGaps(0, ctx.maxDataMemorySize);
-  int64_t largestRun = topGaps.first, secondRun = topGaps.second;
-  struct Candidate {
-    int64_t addr;
-    int bank;
-    int64_t banksTouched;
-    int64_t negLargestRunLeft;
-    int64_t rrDistance;
-    int64_t slack;
-  };
-  std::optional<Candidate> best;
-  auto consider = [&](std::optional<int64_t> addr) {
-    if (!addr) {
-      return;
+  // Re-apply the best partial layout so the caller's memory map describes the
+  // closest the search came, not the tile it unwound to.
+  void restoreDeepest() {
+    for (auto &[buffer, at] : deepestLayout) {
+      placeBuffer(buffer, at.addr, at.bank, occupancy);
+      placed.push_back(buffer);
     }
-    int bank = getBankContaining(*addr, ctx.numBanks, ctx.bankLimits);
-    if (bank < 0) {
-      return;
+  }
+
+private:
+  void recordDeepest(size_t index, BufferOp buffer) {
+    deepestIndex = index;
+    deepest = buffer;
+    deepestLayout.clear();
+    for (BufferOp done : placed) {
+      deepestLayout.push_back(
+          {done,
+           Placement{*done.getAddress(), *done.getMemBank(), 0, 0, 0, 0}});
     }
-    int64_t touched =
-        size == 0 ? 1 : (*addr + size - 1) / bankSize - *addr / bankSize + 1;
-    // This placement splits one run into the piece below and the piece above.
-    // Every other run stays whole, so the biggest of those is whichever of the
-    // top two this candidate does not consume.
-    MemoryRun gap = occupancy.gapAt(*addr);
-    int64_t elsewhere = gap.size == largestRun ? secondRun : largestRun;
-    int64_t leftPiece = *addr - gap.start;
-    int64_t rightPiece = gap.end() - (*addr + size);
-    int64_t runLeft =
-        std::min(std::max({elsewhere, leftPiece, rightPiece}), contiguityCap);
-    Candidate c{*addr,
-                bank,
-                touched,
-                ctx.hasCore ? -runLeft : 0,
-                (bank - startBankIndex + ctx.numBanks) % ctx.numBanks,
-                occupancy.slackAt(*addr, size)};
-    auto rank = [](const Candidate &x) {
-      return std::tie(x.banksTouched, x.negLargestRunLeft, x.rrDistance,
-                      x.slack, x.addr);
-    };
-    if (!best || rank(c) < rank(*best)) {
-      best = c;
-    }
-  };
-
-  for (int i = 0; i < ctx.numBanks; i++) {
-    consider(occupancy.findGap(ctx.bankLimits[i].start, ctx.bankLimits[i].end(),
-                               size, alignBytes));
   }
-  // Allow straddling when nothing fits one bank. The banked region maps to a
-  // bank, so the result always has one.
-  consider(occupancy.findGap(0, bankedEnd, size, alignBytes));
-  // Try bank-boundary starts only when a boundary also satisfies the buffer's
-  // own alignment, because otherwise this searches on an unintended stride.
-  if (bankSize % alignBytes == 0) {
-    consider(occupancy.findGap(0, bankedEnd, size, bankSize));
-  }
+};
+} // namespace
 
-  if (best) {
-    return place(best->addr, best->bank);
-  }
-
-  // A zero-sized buffer needs no free byte, so a full tile still holds it.
-  if (size == 0) {
-    return place(0, 0);
-  }
-
-  return false;
-}
-
-// Places every buffer in `buffersToAlloc`, in order. Returns the first buffer
-// that did not fit, or nullptr when they all did; `placed` collects what was
-// assigned so a failed attempt can be rolled back.
-static BufferOp placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc,
-                                 const BankAwareContext &ctx,
-                                 const RequiredBanks &requiredBanks,
-                                 MemoryOccupancy &occupancy,
-                                 SmallVectorImpl<BufferOp> &placed) {
-  int startBankIndex = 0;
+// Places every buffer in `buffersToAlloc`. Returns the buffer that could not be
+// placed, or nullptr when they all were; `placed` collects what was assigned so
+// a failed attempt can be rolled back.
+static BufferOp
+placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc, const BankAwareContext &ctx,
+                 const RequiredBanks &requiredBanks, MemoryOccupancy &occupancy,
+                 SmallVectorImpl<BufferOp> &placed, bool &exhausted) {
   int64_t remaining = 0;
   for (auto buffer : buffersToAlloc) {
     remaining += buffer.getAllocationSize();
   }
-  for (auto buffer : buffersToAlloc) {
-    // The buffers left to place bound what the largest free run has to cover,
-    // and the core's own sections are one of them. Free space past that bound
-    // serves nothing, so the cap stops the run key from ranking there and
-    // leaves round-robin to spread the buffers across banks.
-    remaining -= buffer.getAllocationSize();
-    if (!setBufferAddress(buffer, ctx, startBankIndex, requiredBanks, occupancy,
-                          remaining)) {
-      return buffer;
-    }
-    placed.push_back(buffer);
+  PlacementSearch search{buffersToAlloc, ctx, requiredBanks, occupancy, placed};
+  if (search.run(/*index=*/0, /*startBankIndex=*/0, remaining)) {
+    return nullptr;
   }
-  return nullptr;
+  search.restoreDeepest();
+  exhausted = search.exhausted;
+  return search.deepest;
 }
 
 // Rolls back what the allocator wrote, and leaves a mem_bank the user requested
@@ -1007,21 +1109,15 @@ static LogicalResult allocateTile(TileOp tile) {
   // diagnostics on failure.
   SmallVector<BufferOp> allocatedBuffers;
 
-  // One pass, three steps: place the bank-pinned prefix, reserve the core's
-  // data region in what remains, then fill the unconstrained buffers around it.
-  // The reservation is what makes one pass sufficient.
+  // Bank-pinned buffers lead the order, then the core's data region, then the
+  // unconstrained ones -- most-constrained first, since a pin has one candidate
+  // bank. They are searched together rather than in separate passes: where a
+  // pin's position inside its bank decides whether a later buffer fits, only a
+  // single search can revisit it.
   SmallVector<BufferOp> order = placementOrder(buffersToAlloc, requiredBanks);
-  auto *pinnedEnd = llvm::partition_point(
-      order, [&](BufferOp b) { return requiredBanks.count(b) > 0; });
-  ArrayRef<BufferOp> pinnedPrefix(order.begin(), pinnedEnd);
-  ArrayRef<BufferOp> freeSuffix(pinnedEnd, order.end());
-
-  BufferOp failedBuffer = placeFreeBuffers(pinnedPrefix, ctx, requiredBanks,
-                                           occupancy, allocatedBuffers);
-  if (!failedBuffer) {
-    failedBuffer = placeFreeBuffers(freeSuffix, ctx, requiredBanks, occupancy,
-                                    allocatedBuffers);
-  }
+  bool searchExhausted = false;
+  BufferOp failedBuffer = placeFreeBuffers(order, ctx, requiredBanks, occupancy,
+                                           allocatedBuffers, searchExhausted);
 
   if (BufferOp failed = failedBuffer) {
     // A buffer pinned to a bank that cannot hold it is a user constraint, not
@@ -1049,6 +1145,11 @@ static LogicalResult allocateTile(TileOp tile) {
                               << bufferLabel(failed) << " needs "
                               << failed.getAllocationSize()
                               << " bytes and this tile has no room left for it";
+    if (searchExhausted) {
+      diag.attachNote() << "the search hit its " << kPlacementBudget
+                        << "-placement budget with arrangements still untried, "
+                           "so a layout may exist that it did not reach";
+    }
     // Print before rollback, while the addresses are still set.
     printMemMap(tile, allocatedBuffers, preAllocatedBuffers, ctx);
     deAllocationBuffers(allocatedBuffers, requiredBanks);
