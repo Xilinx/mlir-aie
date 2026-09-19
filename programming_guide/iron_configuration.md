@@ -398,8 +398,8 @@ that checkout's kernel sources instead, against an otherwise-installed wheel:
 MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python3 my_design.py
 ```
 
-This is how a checkout's kernel sources are tested against an installed
-wheel without building the rest of the checkout.
+This is how the static kernel checks build a pull request's kernels without
+building the rest of the PR.
 
 ## Kernel compile parallelism (`AIE_KERNEL_COMPILE_JOBS`)
 
