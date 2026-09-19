@@ -63,6 +63,18 @@ computeStackRequirement(llvm::StringRef elfPath,
 // core reaches. Returns nothing when the file does not parse as an object.
 std::optional<int64_t> measureDataSectionBytes(llvm::StringRef elfPath);
 
+/// Bytes and alignment each bank's pinned sections occupy in a linked ELF,
+/// indexed by bank. Read from a probe link, this is what a core's objects need
+/// reserved; read from a prebaked `elf_file`, it is what they already hold.
+/// Alignment is not incidental: a region that starts unaligned loses bytes to
+/// the linker's own padding and the section stops fitting.
+struct BankSectionSize {
+  int64_t size = 0;
+  int64_t align = 1;
+};
+llvm::SmallVector<BankSectionSize>
+measureBankSectionBytes(llvm::StringRef elfPath, int numBanks);
+
 // Bytes by which a section overran its MEMORY region, from the linker's
 // "overflowed by N bytes" report. A failed link writes no ELF, so this report
 // is the only account of what the core needed. Returns nothing when the log

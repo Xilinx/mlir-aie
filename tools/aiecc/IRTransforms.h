@@ -1316,6 +1316,29 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   return pm;
 }
 
+// Reads each core's probe link and records what its own sections want from each
+// bank, so placement can leave room the linker will later need. A core whose
+// probe is missing records nothing and is placed as before.
+template <typename Map>
+inline void recordBankDemand(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> probeForCore,
+    Map &out) {
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &tm = xilinx::AIE::getTargetModel(coreOp);
+    int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
+    std::string probe = probeForCore(coreOp);
+    if (probe.empty() || numBanks <= 0) {
+      return;
+    }
+    auto sizes = xilinx::aiecc::measureBankSectionBytes(probe, numBanks);
+    std::lock_guard<std::mutex> guard(out.mutex);
+    out.byCore[xilinx::aiecc::coreKey(coreOp)] = std::move(sizes);
+  });
+}
+
 // Pairs with `getInputWithAddressesPipeline(..., assignAddresses=false)`.
 inline std::unique_ptr<mlir::PassManager>
 getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,

@@ -205,6 +205,7 @@ struct ShellCommand {
   std::string tool;
   std::vector<Part> parts;
   std::function<void(llvm::StringRef, llvm::StringRef)> failureHint;
+  bool failureIsEmpty = false;
 
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
@@ -385,6 +386,16 @@ struct ShellCommand {
     return *this;
   }
 
+  // Treat a nonzero exit as "no result" rather than as a build failure, and say
+  // nothing about it. For a tool run to learn something optional, where not
+  // learning it costs quality rather than correctness: the caller is expected
+  // to cope with the missing output, and whatever went wrong will be reported
+  // by the step that genuinely needs the tool to work.
+  ShellCommand &optional() {
+    failureIsEmpty = true;
+    return *this;
+  }
+
   // Uniform entry: takes any number of input Items (in bundle declaration
   // order) followed by the Item<File> output. Each input/value part consumes
   // the next source in order.
@@ -558,7 +569,7 @@ private:
     if (capture) {
       // Verbose replays a successful run too, in place of the live output the
       // capture suppressed.
-      if (rc != 0 || verbose) {
+      if ((rc != 0 && !failureIsEmpty) || verbose) {
         // Move off the live --progress status line before the tool's output.
         if (progress) {
           llvm::errs() << '\n';
@@ -573,6 +584,9 @@ private:
       llvm::sys::fs::remove(logPath);
     }
     if (rc != 0) {
+      if (failureIsEmpty) {
+        return mlir::success();
+      }
       llvm::errs() << "aiecc: '" << cmd[0] << "' failed: " << errMsg << "\n";
       return mlir::failure();
     }

@@ -66,7 +66,8 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
                                                   raw_ostream &output,
                                                   int tileCol, int tileRow,
-                                                  llvm::StringRef deviceName) {
+                                                  llvm::StringRef deviceName,
+                                                  bool probe) {
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
@@ -90,42 +91,50 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       const auto &targetModel = getTargetModel(tile);
       MemoryRun stackRun;
       if (auto core = tile.getCoreOp()) {
-        if (core.getStackBank() && !core.getStackAddress())
+        if (!probe && core.getStackBank() && !core.getStackAddress())
           return core.emitOpError(
               "stack_bank has no assigned stack_address; run "
               "--aie-assign-buffer-addresses with bank-aware allocation");
         stackRun = core.getStackRun();
       }
-      MemoryRun dataRun = coreDataRegion(tile, buffers[tiles[srcCoord]]);
-      if (dataRun.start < 0 || dataRun.end() > targetModel.getLocalMemorySize())
-        return tile.emitOpError(
-            "data region runs past this tile's local memory; the buffer "
-            "allocator's placement is stale. Re-run "
-            "--aie-assign-buffer-addresses");
-      if (dataRun.size > 0 && stackRun.size > 0 &&
-          dataRun.start < stackRun.end() && stackRun.start < dataRun.end())
-        return tile.emitOpError(
-            "data region overlaps the stack; the buffer allocator's "
-            "placement is stale. Re-run --aie-assign-buffer-addresses");
+      MemoryRun dataRun = probe ? MemoryRun{stackRun.end(),
+                                            targetModel.getLocalMemorySize() -
+                                                stackRun.end()}
+                                : coreDataRegion(tile, buffers[tiles[srcCoord]]);
+      // The checks below all ask whether placement is stale. A probe link runs
+      // before placement, so there is nothing yet to be stale.
+      if (!probe) {
+        if (dataRun.start < 0 ||
+            dataRun.end() > targetModel.getLocalMemorySize())
+          return tile.emitOpError(
+              "data region runs past this tile's local memory; the buffer "
+              "allocator's placement is stale. Re-run "
+              "--aie-assign-buffer-addresses");
+        if (dataRun.size > 0 && stackRun.size > 0 &&
+            dataRun.start < stackRun.end() && stackRun.start < dataRun.end())
+          return tile.emitOpError(
+              "data region overlaps the stack; the buffer allocator's "
+              "placement is stale. Re-run --aie-assign-buffer-addresses");
 
-      // A pass that adds or moves a buffer after the allocator ran leaves the
-      // region aliasing it, and the core compiler and that buffer would then
-      // write over each other. Report the alias here.
-      for (auto buf : buffers[tiles[srcCoord]]) {
-        if (buf.getCoreData() || buf.getAllocationSize() == 0 ||
-            dataRun.size == 0) {
-          continue;
-        }
-        int64_t bufStart = getBufferBaseAddress(buf);
-        int64_t bufEnd = bufStart + buf.getAllocationSize();
-        if (bufStart < dataRun.end() && dataRun.start < bufEnd) {
-          return tile.emitOpError("data region 0x")
-                 << llvm::utohexstr(dataRun.start) << "-0x"
-                 << llvm::utohexstr(dataRun.end() - 1) << " overlaps buffer '"
-                 << buf.name().getValue() << "' at 0x"
-                 << llvm::utohexstr(bufStart)
-                 << "; the buffer allocator's placement is stale. Re-run "
-                    "--aie-assign-buffer-addresses";
+        // A pass that adds or moves a buffer after the allocator ran leaves the
+        // region aliasing it, and the core compiler and that buffer would then
+        // write over each other. Report the alias here.
+        for (auto buf : buffers[tiles[srcCoord]]) {
+          if (buf.getCoreData() || buf.getAllocationSize() == 0 ||
+              dataRun.size == 0) {
+            continue;
+          }
+          int64_t bufStart = getBufferBaseAddress(buf);
+          int64_t bufEnd = bufStart + buf.getAllocationSize();
+          if (bufStart < dataRun.end() && dataRun.start < bufEnd) {
+            return tile.emitOpError("data region 0x")
+                   << llvm::utohexstr(dataRun.start) << "-0x"
+                   << llvm::utohexstr(dataRun.end() - 1) << " overlaps buffer '"
+                   << buf.name().getValue() << "' at 0x"
+                   << llvm::utohexstr(bufStart)
+                   << "; the buffer allocator's placement is stale. Re-run "
+                      "--aie-assign-buffer-addresses";
+          }
         }
       }
 
@@ -136,10 +145,25 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
           targetModel.getMemInternalBaseAddress(srcCoord) + dataRun.start;
       int length = dataRun.size;
       bool reservedData =
-          llvm::any_of(buffers[tiles[srcCoord]],
-                       [](BufferOp buf) { return buf.getCoreData(); });
-      llvm::SmallVector<MemoryRun> bankRuns = coreBankRegions(
-          tile, buffers[tiles[srcCoord]], reservedData ? dataRun : MemoryRun{});
+          !probe && llvm::any_of(buffers[tiles[srcCoord]],
+                                 [](BufferOp buf) { return buf.getCoreData(); });
+      llvm::SmallVector<MemoryRun> bankRuns;
+      if (probe) {
+        // A probe measures; it does not judge. Section sizes come from the
+        // objects and the garbage collection, never from how much room a region
+        // offers, so every region is given the whole tile and the regions are
+        // allowed to overlap. A design too big to link still probes cleanly,
+        // and the real link reports it with the diagnostic that belongs there.
+        int numBanks = targetModel.getNumBanks(srcCoord.col, srcCoord.row);
+        int64_t bankSize =
+            numBanks > 0 ? targetModel.getLocalMemorySize() / numBanks : 0;
+        for (int bank = 0; bank < numBanks; ++bank)
+          bankRuns.push_back(
+              MemoryRun{bankSize * bank, targetModel.getLocalMemorySize()});
+      } else {
+        bankRuns = coreBankRegions(tile, buffers[tiles[srcCoord]],
+                                   reservedData ? dataRun : MemoryRun{});
+      }
       std::string dataOrigin = "0x" + llvm::utohexstr(origin);
       std::string dataEnd = "0x" + llvm::utohexstr(origin + length);
       if (!reservedData) {
@@ -240,7 +264,9 @@ SECTIONS
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           const std::string &dir) {
         if (tile) {
-          if (tiles.count(*tile)) {
+          // A probe has no addresses to write; --defsym stands the symbols up
+          // so the link resolves without claiming where anything lives.
+          if (tiles.count(*tile) && !probe) {
             for (auto buf : buffers[tiles[*tile]]) {
               if (!buf.getCoreData()) {
                 writeLDScriptMap(output, buf, offset);

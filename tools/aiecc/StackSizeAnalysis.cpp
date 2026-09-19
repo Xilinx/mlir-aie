@@ -677,6 +677,38 @@ std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
   return assertions;
 }
 
+llvm::SmallVector<xilinx::aiecc::BankSectionSize>
+xilinx::aiecc::measureBankSectionBytes(llvm::StringRef elfPath, int numBanks) {
+  llvm::SmallVector<BankSectionSize> sizes(std::max(numBanks, 0));
+  auto binary = llvm::object::createBinary(elfPath);
+  if (!binary) {
+    llvm::consumeError(binary.takeError());
+    return sizes;
+  }
+  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+  if (!obj) {
+    return sizes;
+  }
+  auto *elf = llvm::dyn_cast<llvm::object::ELFObjectFileBase>(obj);
+  for (const SectionRef &sec : obj->sections()) {
+    auto name = sec.getName();
+    if (!name) {
+      llvm::consumeError(name.takeError());
+      continue;
+    }
+    // The linked section name, not a request: chess merges several requests
+    // into one output section, and its name is the bank that won.
+    auto banks = banksFromSectionName(*name);
+    if (banks.size() != 1 || banks[0] >= static_cast<int>(sizes.size())) {
+      continue;
+    }
+    sizes[banks[0]].size += sec.getSize();
+    sizes[banks[0]].align =
+        std::max<int64_t>(sizes[banks[0]].align, elf ? sec.getAlignment().value() : 1);
+  }
+  return sizes;
+}
+
 std::vector<BankViolation> xilinx::aiecc::checkBankPlacements(
     llvm::StringRef elfPath, llvm::ArrayRef<BankAssertion> assertions,
     int64_t tileBaseAddress, int64_t bankSize, int numBanks) {

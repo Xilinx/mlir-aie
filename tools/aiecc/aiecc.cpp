@@ -666,6 +666,26 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   };
   auto dataRegionBytes = std::make_shared<DataRegionSizes>();
 
+  // What each core's own sections want from each bank, measured from a probe
+  // link before placement runs. The placement edge fills this in; the ld script
+  // and the failure hint read it.
+  struct BankDemand {
+    std::mutex mutex;
+    llvm::StringMap<llvm::SmallVector<xilinx::aiecc::BankSectionSize>> byCore;
+  };
+  auto bankDemand = std::make_shared<BankDemand>();
+
+  auto elfLookup = [](const Node<Directory> &elfs) {
+    auto byKey = std::make_shared<llvm::StringMap<std::string>>();
+    for (const auto &item : elfs.items) {
+      (*byKey)[item.key] = item.filePath;
+    }
+    return [byKey](CoreOp coreOp) -> std::string {
+      return byKey->lookup(coreKey(coreOp));
+    };
+  };
+
+
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
     // included, regardless of --device-name.
@@ -901,6 +921,53 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &objects = compilation.object;
   auto &optimizedIR = compilation.optimizedIR;
 
+  // Probe scripts, from the unplaced module. Emitted by the same function as
+  // the real ones so ENTRY, KEEP and the discarded sections cannot drift: a
+  // probe whose garbage collection differs from the real link would measure
+  // the wrong sections.
+  auto &probeScripts = perCore.map<std::string>(
+      "probeScripts_{0}.ld.script",
+      [inputFile, workDirStr](const Item<OpInModule<CoreOp>> &item,
+                              Item<std::string> &out) -> mlir::LogicalResult {
+        CoreOp op = item.get().op;
+        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
+        auto rewritten =
+            absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
+                                tile.getRow(), inputFile, workDirStr);
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateToLdScript(
+            rewritten.get(), os, tile.getCol(), tile.getRow(),
+            op->getParentOfType<DeviceOp>().getSymName(), /*probe=*/true);
+      });
+
+  // The probe link. Same objects, same garbage collection and the same script
+  // generator as the real link, but with every region offered whole, so the
+  // sections that land in each bank are sized only by what the objects hold.
+  // Buffer symbols are left undefined rather than placed: their addresses are
+  // not known yet, and reachability -- which is all garbage collection depends
+  // on -- does not care where they live.
+  EdgeWithTypedOutput<Directory> &probeElfs =
+      bundle(perCoreArches.out, objects.out, probeScripts.out)
+          .map<Directory>(
+              "probeElfs_{0}.elf",
+              ShellCommand{"clang"}
+                  .arg("-O" + std::to_string(optLevel))
+                  .value("--target=", "-none-unknown-elf")
+                  .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
+                  .input()
+                  .arg("-Wl,--gc-sections")
+                  .arg("-Wl,--orphan-handling=error")
+                  .arg("-Wl,--unresolved-symbols=ignore-all")
+                  .arg("-Wl,--no-check-sections")
+                  .input("-Wl,-T,")
+                  .output("-o")
+                  // A probe that cannot run costs placement quality, never
+                  // correctness: the core is placed as it was before any of
+                  // this, and whatever stopped the probe stops the real link
+                  // too, where it is reported properly.
+                  .optional())
+          .threadSafe();
+
   // Buffer placement, deliberately downstream of the core compile: a kernel
   // pins static data to a bank through sections that exist only once its object
   // is built, so placing buffers first leaves them no room. Joining the objects
@@ -910,13 +977,25 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // supplies its address, so a core's object depends on buffer names and never
   // on where they land. Consumers that do need addresses -- ld scripts, BCF
   // scripts, the runtime sequence, the post-link checks -- read this edge.
+  // Chess places bank-pinned statics with its own storage constraints rather
+  // than linker regions, so it has nothing to probe for and its objects are not
+  // lld's to link. Those builds depend on the objects instead and are placed
+  // with no demand recorded, exactly as before.
+  bool useProbe = !xchesscc && !xbridge;
+  auto &placementInput = useProbe ? probeElfs : objects;
   auto &physical =
-      bundle(objects.out, unplaced.out)
+      bundle(placementInput.out, unplaced.out)
           .join<ModRef>("input_with_addresses.mlir",
-                        [&context, scheme = allocScheme.getValue()](
-                            const Node<Directory> &, const Node<ModRef> &modN,
+                        [&context, scheme = allocScheme.getValue(), elfLookup,
+                         bankDemand, useProbe](
+                            const Node<Directory> &probes,
+                            const Node<ModRef> &modN,
                             Item<ModRef> &out) -> mlir::LogicalResult {
                           out.value = ModRef(modN.get().get().clone());
+                          if (useProbe) {
+                            recordBankDemand(out.value->get(),
+                                             elfLookup(probes), *bankDemand);
+                          }
                           mlir::PassManager *pm = nullptr;
                           auto owned =
                               getAssignBufferAddressesPipeline(&context, scheme);
@@ -1131,16 +1210,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Each measurement reads the linked ELFs and writes its result into a clone
   // of the physical IR. Both run before `physicalWithElfs`, so a failure ends
   // the run before any artifact that depends on a core is written.
-  auto elfLookup = [](const Node<Directory> &elfs) {
-    auto byKey = std::make_shared<llvm::StringMap<std::string>>();
-    for (const auto &item : elfs.items) {
-      (*byKey)[item.key] = item.filePath;
-    }
-    return [byKey](CoreOp coreOp) -> std::string {
-      return byKey->lookup(coreKey(coreOp));
-    };
-  };
-
   EdgeWithTypedOutput<ModRef> *measured = &physical;
   if (!noMeasureStackSize.getValue()) {
     measured = &bundle(compiledElfs.out, measured->out)
