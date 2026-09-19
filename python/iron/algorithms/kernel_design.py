@@ -8,8 +8,9 @@
 Each call consumes one tile per ``In``, reads constant ``Param`` values, and
 writes one tile per output. Layout codecs convert logical tiles to kernel
 storage on the host. A cascade pair (a PUT half and the GET half it names as
-``cascade_partner``) is two Workers on adjacent tiles joined by a
-``CascadeFlow``; the GET half's outputs are what the design returns.
+``cascade_partner``) is two stages joined by a ``CascadeFlow``; the GET
+half's outputs are what the design returns. The Workers and the runtime
+sequence are the shared single-core pipeline's (``_pipeline``).
 Whole-problem tiling, reductions across kernel calls and multi-core
 schedules belong to algorithms, not this kernel-validation harness.
 """
@@ -24,19 +25,16 @@ from typing import Callable
 import numpy as np
 from aie.helpers.util import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.iron.buffer import Buffer
-from aie.iron.controlflow import range_
-from aie.iron.dataflow import CascadeFlow, ObjectFifo
-from aie.iron.device import Tile
+from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernels._common import CallIndex, Param, _is_tensor_type
-from aie.iron.program import Program
-from aie.iron.runtime import Runtime, TaskGroup
-from aie.iron.worker import Worker
 from aie.utils import bfp, get_current_device, tensor
 from aie.utils.compile.jit import CompileTime, In, InOut, Out
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import get_cycles_summary
 from aie.utils.verify import poisoned
+
+from ._pipeline import Stage, pipeline
 
 
 def _contract(fn):
@@ -83,18 +81,6 @@ def _device():
 
 def _stack_bytes(fn):
     return _contract(fn).stack_bytes or _device().default_core_stack_bytes
-
-
-def _fifo_depth(fn, tile_bytes, stack_bytes, fixed_bytes=0):
-    for depth in (2, 1):
-        if (
-            depth * tile_bytes + fixed_bytes + stack_bytes
-            <= _device().core_memory_bytes
-        ):
-            return depth
-    raise ValueError(
-        f"{fn.name}: tiles plus parameters and stack exceed core memory; use a smaller tile"
-    )
 
 
 def _halves(fn):
@@ -173,86 +159,8 @@ def _encode_params(fn, params):
     return tuple(encoded)
 
 
-@dataclass
-class _Stage:
-    """One Worker of a design: a kernel, its fifos, constants and helpers."""
-
-    fn: object
-    groups: list
-    ins: list
-    outs: tuple
-    fifos_in: list
-    fifos_out: list
-    buffers: list
-    param_pos: list
-    bound: dict
-    initializers: list
-    setter: object
-    worker: object = None
-
-    def core(self, calls):
-        c = self.fn.contract
-        ni, no, np_ = len(self.groups), len(self.outs), len(self.buffers)
-        n_init = len(self.initializers)
-        spans = c.output_spans_calls
-
-        def body(*args):
-            f_in, f_out = args[:ni], args[ni : ni + no]
-            held = dict(zip(self.param_pos, args[ni + no : ni + no + np_]))
-            kernel = args[ni + no + np_]
-            init_kernels = args[ni + no + np_ + 1 : ni + no + np_ + 1 + n_init]
-            if self.setter is not None:
-                args[-1]()
-            outputs = {}
-
-            def acquire_outputs():
-                for i, fifo in zip(self.outs, f_out):
-                    outputs[i] = fifo.acquire(1)
-                for (i, _), initialize in zip(self.initializers, init_kernels):
-                    initialize(outputs[i])
-
-            if spans:
-                acquire_outputs()
-            for call in range_(calls) if calls > 1 else range(1):
-                values = dict(held)
-                values.update(self.bound)
-                values.update(
-                    {i: call for i, v in self.bound.items() if v is CallIndex}
-                )
-                for fifo, group in zip(f_in, self.groups):
-                    got = fifo.acquire(len(group))
-                    values.update(
-                        (i, got if len(group) == 1 else got[j])
-                        for j, i in enumerate(group)
-                    )
-                if not spans:
-                    acquire_outputs()
-                values.update(outputs)
-                kernel(*(values[i] for i in range(len(c.roles))))
-                for fifo, group in zip(f_in, self.groups):
-                    fifo.release(len(group))
-                if not spans:
-                    for fifo in f_out:
-                        fifo.release(1)
-            if spans:
-                for fifo in f_out:
-                    fifo.release(1)
-
-        return body
-
-    def fn_args(self):
-        return (
-            [f.cons() for f in self.fifos_in]
-            + [f.prod() for f in self.fifos_out]
-            + self.buffers
-            + [self.fn]
-            + [init for _, init in self.initializers]
-            + ([self.setter] if self.setter else [])
-        )
-
-
 def _stage(fn, k, calls, scalars, params):
-    """Plan one half: consume its scalars and encoded params, return the stage and leftovers."""
+    """Plan one half: consume its scalars and encoded params; return the stage, its fifo groups and the leftovers."""
     c = _contract(fn)
     types = fn.arg_types()
     groups, ins, param_pos = _fifo_plan(fn)
@@ -288,12 +196,18 @@ def _stage(fn, k, calls, scalars, params):
     def nbytes(i):
         return elems(types[i]) * bfp.itemsize(shape_dtype(types[i])[1])
 
-    depth = _fifo_depth(
-        fn,
-        sum(nbytes(i) for i in [*ins, *outs]),
-        _stack_bytes(fn),
-        fixed_bytes=sum(nbytes(i) for i in param_pos),
+    # Two sets of tiles (ping-pong) when they fit beside the parameters and
+    # the stack, one otherwise.
+    tile_bytes = sum(nbytes(i) for i in [*ins, *outs])
+    fixed_bytes = sum(nbytes(i) for i in param_pos) + _stack_bytes(fn)
+    core_bytes = _device().core_memory_bytes
+    depth = next(
+        (d for d in (2, 1) if d * tile_bytes + fixed_bytes <= core_bytes), None
     )
+    if depth is None:
+        raise ValueError(
+            f"{fn.name}: tiles plus parameters and stack exceed core memory; use a smaller tile"
+        )
     fifos_in = [
         ObjectFifo(types[g[0]], name=f"in{k}_{j}", depth=len(g) * depth)
         for j, g in enumerate(groups)
@@ -310,20 +224,42 @@ def _stage(fn, k, calls, scalars, params):
         )
         for j, (i, (dt, shape, vals)) in enumerate(zip(param_pos, params))
     ]
-    stage = _Stage(
-        fn,
-        groups,
-        ins,
-        outs,
-        fifos_in,
-        fifos_out,
-        buffers,
-        param_pos,
-        bound,
-        initializers,
-        setter,
+    # The Worker's constants: the param buffers, the kernel, the
+    # initializer kernels and the setup callable.
+    n_param, n_init = len(buffers), len(initializers)
+    slot = {i: j for j, i in enumerate(outs)}
+
+    def body(acquired, outputs, _held, constants, call):
+        values = dict(zip(param_pos, constants[:n_param]))
+        values.update(bound)
+        values.update({i: call for i, v in bound.items() if v is CallIndex})
+        for got, group in zip(acquired, groups):
+            values.update(
+                (i, got if len(group) == 1 else got[j]) for j, i in enumerate(group)
+            )
+        values.update(zip(outs, outputs))
+        constants[n_param](*(values[i] for i in range(len(c.roles))))
+
+    def initialize(outputs, constants):
+        kernels = constants[n_param + 1 : n_param + 1 + n_init]
+        for (i, _), init in zip(initializers, kernels):
+            init(outputs[slot[i]])
+
+    stage = Stage(
+        body,
+        inputs=[(fifo, len(g)) for fifo, g in zip(fifos_in, groups)],
+        outputs=fifos_out,
+        constants=buffers
+        + [fn]
+        + [init for _, init in initializers]
+        + ([setter] if setter else []),
+        iterations=calls,
+        outputs_span_iterations=c.output_spans_calls,
+        prologue=(lambda constants: constants[-1]()) if setter else None,
+        initialize=initialize if initializers else None,
+        stack_size=_stack_bytes(fn),
     )
-    return stage, scalars
+    return stage, groups, scalars
 
 
 def _build_stream(
@@ -335,67 +271,54 @@ def _build_stream(
         raise ValueError(
             f"{fn.name}: expected encoded params for {len(halves)} kernel(s)"
         )
-    stages = []
+    stages, groups = [], []
     left = tuple(scalars)
     for k, (half, half_params) in enumerate(zip(halves, params)):
-        stage, left = _stage(half, k, calls, left, half_params)
+        stage, stage_groups, left = _stage(half, k, calls, left, half_params)
         stages.append(stage)
+        groups.append(stage_groups)
     if left:
         raise ValueError(
             f"{fn.name}: {len(left)} more scalar(s) than scalar parameters"
         )
-    # A pair sits on two vertically adjacent compute tiles: the cascade
-    # stream runs from the PUT tile north of the GET tile (rows 3 -> 2, the
-    # lowest two compute rows on every NPU). A single kernel goes anywhere.
-    tiles = [Tile(0, 3), Tile(0, 2)] if len(stages) == 2 else [None]
-    for stage, tile in zip(stages, tiles):
-        stage.worker = Worker(
-            stage.core(calls),
-            stage.fn_args(),
-            tile=tile,
-            stack_size=_stack_bytes(stage.fn),
-            trace=1 if trace_config and stage is stages[-1] else 0,
-        )
-    if len(stages) == 2:
-        CascadeFlow(stages[0].worker, stages[1].worker)
-    get = stages[-1]
+    get = halves[-1]
+    stages[-1].trace = trace_config is not None
 
-    def host_ty(stage, i, repetitions):
-        types = stage.fn.arg_types()
+    def host_ty(half, i, repetitions):
+        types = half.arg_types()
         return np.ndarray[
             (elems(types[i]) * repetitions,), np.dtype[shape_dtype(types[i])[1]]
         ]
 
-    host_types = [host_ty(s, g[0], calls * len(g)) for s in stages for g in s.groups]
-    host_types += [host_ty(get, i, _output_calls(get.fn, calls)) for i in get.outs]
-    fifos_in = [f for s in stages for f in s.fifos_in]
-    ni, no = len(fifos_in), len(get.fifos_out)
-
-    def sequence(*args):
-        hosts, handles = args[: ni + no], args[ni + no :]
-        group = TaskGroup()
-        for h, value in zip(handles[:ni], hosts[:ni]):
-            h.fill(value, group=group)
-        for h, value in zip(handles[ni:], hosts[ni:]):
-            h.drain(value, group=group, wait=True)
-        group.finish()
-
-    rt = Runtime(
-        sequence,
-        host_types + [f.prod() for f in fifos_in] + [f.cons() for f in get.fifos_out],
+    host_types = [
+        host_ty(half, g[0], calls * len(g))
+        for half, half_groups in zip(halves, groups)
+        for g in half_groups
+    ]
+    host_types += [
+        host_ty(get, i, _output_calls(get, calls)) for i in get.contract.out_indices
+    ]
+    fifos_in = [fifo for stage in stages for fifo, _ in stage.inputs]
+    transfers = [(fifo, "fill", j) for j, fifo in enumerate(fifos_in)]
+    transfers += [
+        (fifo, "drain", len(fifos_in) + j) for j, fifo in enumerate(stages[-1].outputs)
+    ]
+    return pipeline(
+        stages,
+        host_types,
+        transfers,
+        cascade=len(stages) == 2,
+        trace_size=trace_config.trace_size if trace_config else 0,
     )
-    prog = Program(get_current_device(), rt, workers=[s.worker for s in stages])
-    if trace_config:
-        prog.enable_trace(trace_config.trace_size, workers=[get.worker])
-    return prog.resolve_program()
 
 
-# Fixed signatures keep JIT cache keys independent of closure state. The
-# generator's tensor arity is selected only by DMA channels, not kernel kind.
+# One JIT entry for every kernel. Its tensors are the host buffers the
+# design takes, inputs then outputs, in ``host_args`` order (the marker only
+# says they are tensors); the count follows from the factory, so the cache
+# key never depends on closure state.
 @jit
-def _stream0(
-    out: Out,
-    *,
+def _stream(
+    *tensors: In,
     factory: CompileTime[Callable],
     factory_kwargs: CompileTime[dict],
     calls: CompileTime[int],
@@ -411,181 +334,6 @@ def _stream0(
         params=params,
         trace_config=trace_config,
     )
-
-
-@jit
-def _stream0_2(
-    out0: Out,
-    out1: Out,
-    *,
-    factory: CompileTime[Callable],
-    factory_kwargs: CompileTime[dict],
-    calls: CompileTime[int],
-    scalars: CompileTime[tuple] = (),
-    params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
-):
-    return _build_stream(
-        factory=factory,
-        factory_kwargs=factory_kwargs,
-        calls=calls,
-        scalars=scalars,
-        params=params,
-        trace_config=trace_config,
-    )
-
-
-@jit
-def _stream1(
-    x0: In,
-    out: Out,
-    *,
-    factory: CompileTime[Callable],
-    factory_kwargs: CompileTime[dict],
-    calls: CompileTime[int],
-    scalars: CompileTime[tuple] = (),
-    params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
-):
-    return _build_stream(
-        factory=factory,
-        factory_kwargs=factory_kwargs,
-        calls=calls,
-        scalars=scalars,
-        params=params,
-        trace_config=trace_config,
-    )
-
-
-@jit
-def _stream2(
-    x0: In,
-    x1: In,
-    out: Out,
-    *,
-    factory: CompileTime[Callable],
-    factory_kwargs: CompileTime[dict],
-    calls: CompileTime[int],
-    scalars: CompileTime[tuple] = (),
-    params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
-):
-    return _build_stream(
-        factory=factory,
-        factory_kwargs=factory_kwargs,
-        calls=calls,
-        scalars=scalars,
-        params=params,
-        trace_config=trace_config,
-    )
-
-
-@jit
-def _stream3(
-    x0: In,
-    x1: In,
-    x2: In,
-    out: Out,
-    *,
-    factory: CompileTime[Callable],
-    factory_kwargs: CompileTime[dict],
-    calls: CompileTime[int],
-    scalars: CompileTime[tuple] = (),
-    params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
-):
-    return _build_stream(
-        factory=factory,
-        factory_kwargs=factory_kwargs,
-        calls=calls,
-        scalars=scalars,
-        params=params,
-        trace_config=trace_config,
-    )
-
-
-@jit
-def _stream4(
-    x0: In,
-    x1: In,
-    x2: In,
-    x3: In,
-    out: Out,
-    *,
-    factory: CompileTime[Callable],
-    factory_kwargs: CompileTime[dict],
-    calls: CompileTime[int],
-    scalars: CompileTime[tuple] = (),
-    params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
-):
-    return _build_stream(
-        factory=factory,
-        factory_kwargs=factory_kwargs,
-        calls=calls,
-        scalars=scalars,
-        params=params,
-        trace_config=trace_config,
-    )
-
-
-@jit
-def _stream1_2(
-    x0: In,
-    out0: Out,
-    out1: Out,
-    *,
-    factory: CompileTime[Callable],
-    factory_kwargs: CompileTime[dict],
-    calls: CompileTime[int],
-    scalars: CompileTime[tuple] = (),
-    params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
-):
-    return _build_stream(
-        factory=factory,
-        factory_kwargs=factory_kwargs,
-        calls=calls,
-        scalars=scalars,
-        params=params,
-        trace_config=trace_config,
-    )
-
-
-@jit
-def _stream2_2(
-    x0: In,
-    x1: In,
-    out0: Out,
-    out1: Out,
-    *,
-    factory: CompileTime[Callable],
-    factory_kwargs: CompileTime[dict],
-    calls: CompileTime[int],
-    scalars: CompileTime[tuple] = (),
-    params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
-):
-    return _build_stream(
-        factory=factory,
-        factory_kwargs=factory_kwargs,
-        calls=calls,
-        scalars=scalars,
-        params=params,
-        trace_config=trace_config,
-    )
-
-
-_STREAM = {
-    (0, 1): _stream0,
-    (0, 2): _stream0_2,
-    (1, 1): _stream1,
-    (2, 1): _stream2,
-    (3, 1): _stream3,
-    (4, 1): _stream4,
-    (1, 2): _stream1_2,
-    (2, 2): _stream2_2,
-}
 
 
 def _output_calls(fn, calls):
@@ -622,9 +370,7 @@ def design(
         raise ValueError(
             f"{fn.name}: the generic harness cannot build this kernel: {c.unsupported}"
         )
-    key = len(_host_groups(fn)), len(c.out_indices)
-    if key not in _STREAM:
-        raise ValueError(f"{fn.name}: unsupported DMA signature {key}")
+    _host_groups(fn)  # the DMA channel budget is checked before anything builds
     flags: list[str] = list(aiecc_flags or ())
     if any(
         bfp.is_bfp(shape_dtype(t)[1])
@@ -634,7 +380,7 @@ def design(
     ):
         if "--dynamic-objFifos" not in flags:
             flags.append("--dynamic-objFifos")
-    return _STREAM[key].specialize(
+    return _stream.specialize(
         factory=factory,
         factory_kwargs=factory_kwargs,
         calls=calls,
@@ -645,15 +391,6 @@ def design(
 
 
 _INT_RANGE = {np.int8: 60, np.int16: 8000, np.int32: 1 << 20, np.uint8: 255}
-
-
-def _draw(rng, shape, dt, int_range=None):
-    if np.issubdtype(np.dtype(dt), np.integer):
-        r = int_range or _INT_RANGE.get(dt, 1 << 15)
-        return rng.integers(
-            0 if np.dtype(dt).kind == "u" else -r, r, size=shape
-        ).astype(dt)
-    return rng.standard_normal(shape).astype(np.float32).astype(dt)
 
 
 def sample_inputs(fn, *, calls=1, shape=None, rng=None):
@@ -671,14 +408,13 @@ def sample_inputs(fn, *, calls=1, shape=None, rng=None):
             layout = _layout(hc, i)
             s = layout.shape if layout else (int(np.prod(s)),)
             dt = np.float32 if bfp.is_bfp(dt) else dt
-            result.append(
-                _draw(
-                    rng,
-                    ((calls,) if hc.roles[i] is In else ()) + s,
-                    dt,
-                    int_range=fn.input_limit(dt),
-                )
-            )
+            s = ((calls,) if hc.roles[i] is In else ()) + s
+            if np.issubdtype(np.dtype(dt), np.integer):
+                r = fn.input_limit(dt) or _INT_RANGE.get(dt, 1 << 15)
+                lo = 0 if np.dtype(dt).kind == "u" else -r
+                result.append(rng.integers(lo, r, size=s).astype(dt))
+            else:
+                result.append(rng.standard_normal(s).astype(np.float32).astype(dt))
     return result
 
 

@@ -104,7 +104,9 @@ reimplements the math.
         - Param
 
 `aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a
-single-Worker design. What a kernel can answer about itself -- its
+design of one Worker (two joined by a cascade for a PUT/GET pair), built on
+the same single-core pipeline as `transform`, `for_each` and `reduce`. What
+a kernel can answer about itself -- its
 reference result, its safe input range, which arguments are parameters,
 how to judge a device output -- lives on
 [`ExternalFunction`][iron.ExternalFunction] instead, so bringing up a
