@@ -1001,7 +1001,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 out.value = ModRef(modN.get().get().clone());
                 if (useProbe) {
                   recordBankDemand(out.value->get(), elfLookup(probes),
-                                   *bankDemand);
+                                   *bankDemand, !noMeasureDataSize.getValue());
                 }
                 // A prebaked core is never probed -- its ELF is used verbatim
                 // -- so read the extents it already holds straight from it.

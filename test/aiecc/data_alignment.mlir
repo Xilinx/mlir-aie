@@ -29,6 +29,8 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
+    // Leave only the lower half of bank A free, forcing an aligned start at 4096.
+    %occupied = aie.buffer(%tile) {address = 8192 : i32, sym_name = "occupied"} : memref<57344xi8>
     %out = aie.buffer(%tile) {sym_name = "out"} : memref<16xi32>
     func.func private @touch(memref<16xi32>) attributes {link_with = "data_alignment_kernel.o"}
     %core = aie.core(%tile) {

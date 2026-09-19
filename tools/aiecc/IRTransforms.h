@@ -1362,8 +1362,8 @@ inline void recordPrebakedRanges(
 template <typename Map>
 inline void recordBankDemand(
     mlir::ModuleOp module,
-    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> probeForCore,
-    Map &out) {
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> probeForCore, Map &out,
+    bool measureDataSize) {
   module.walk([&](xilinx::AIE::CoreOp coreOp) {
     auto tile =
         mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
@@ -1377,11 +1377,13 @@ inline void recordBankDemand(
     // and needs one contiguous run wherever it goes. Recording it lets
     // placement treat it as an extent to fit rather than as whatever is left
     // over, which is what `data_size` had to be declared for.
-    if (auto data = xilinx::aiecc::measureDataSectionDemand(probe)) {
-      mlir::Builder builder(coreOp.getContext());
-      coreOp.setMeasuredDataSizeAttr(builder.getI32IntegerAttr(data->size));
-      coreOp.setMeasuredDataAlignmentAttr(
-          builder.getI32IntegerAttr(data->align));
+    if (measureDataSize) {
+      if (auto data = xilinx::aiecc::measureDataSectionDemand(probe)) {
+        mlir::Builder builder(coreOp.getContext());
+        coreOp.setMeasuredDataSizeAttr(builder.getI32IntegerAttr(data->size));
+        coreOp.setMeasuredDataAlignmentAttr(
+            builder.getI32IntegerAttr(data->align));
+      }
     }
     auto sizes = xilinx::aiecc::measureBankSectionBytes(probe, numBanks);
     if (llvm::all_of(sizes, [](const xilinx::aiecc::BankSectionSize &s) {

@@ -42,14 +42,20 @@ runtime-library include directory and annotate static table definitions with
 `.aie.bank0` through `.aie.bank3` sections; Chess uses `chess_storage`.
 MLIR buffers can instead request a bank with `mem_bank`.
 
-For Peano, bank-pinned sections use the free space left in that bank after
-buffers, the stack, and any explicit static-data region are reserved. Set
-`data_size` on the core (or `Worker(..., data_size=...)` in IRON) to bound the
-ordinary static-data reservation. Without it, ordinary data uses the largest
-available run, starting after any pinned sections that intersect that run.
-This can leave unused gaps before pinned tables; use an explicit reservation
-when the default contiguous region is too small. A bank overflow is a link error,
-not permission to place the table in another bank.
+For Peano, a probe link measures each core's live bank-pinned sections and
+ordinary static data before buffer placement. The allocator reserves aligned
+space for the pinned sections in their requested banks. If `data_size` is
+absent, it also materializes an exact aligned reservation for measured ordinary
+data, so buffers are placed with that demand accounted for. Set `data_size` on
+the core (or `Worker(..., data_size=...)` in IRON) to choose an explicit
+ordinary-data reservation instead; it must cover the measured requirement.
+Bank overflow is an error, not permission to place a table in another bank.
+
+Without an ordinary-data measurement or an explicit reservation, ordinary data
+falls back to the largest aligned free run, starting after pinned sections
+that intersect it. This includes Peano builds using `--no-measure-data-size`,
+which still measure and reserve bank-pinned sections. Chess does not use the
+probe; declare `data_size` to reserve ordinary static data before placement.
 
 By default, `aiecc` checks explicit bank requests against linked symbol
 addresses and complete nonzero extents, for both Peano and Chess. It reads

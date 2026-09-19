@@ -26,12 +26,18 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -ffunction-sections -fdata-sections -c %S/bank_reservation_moves_buffers_kernel.cc -o %t.d/bank_reservation_moves_buffers_kernel.o
 // RUN: cd %t.d && aiecc --get-core-elfs %s
 // RUN: llvm-readelf -s %t.d/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s
+// RUN: cd %t.d && %aiecc --no-measure-data-size --get-core-elfs --get-input-with-addresses --output-dir=%t.disabled.out %s
+// RUN: FileCheck %s --check-prefix=BANKS --implicit-check-not=measured_data_ --implicit-check-not=core_data --input-file=%t.disabled.out/input_with_addresses.mlir
+// RUN: llvm-readelf -s %t.disabled.out/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s
 
 // Local memory starts at 0x70000 and a bank is 0x4000. Match the bank rather
 // than an exact address: where inside a bank a reservation lands is the
 // allocator's business.
 // CHECK-DAG: 0007{{[0-3][0-9a-f]+}} {{.*}} table_a
 // CHECK-DAG: 0007{{[4-7][0-9a-f]+}} {{.*}} table_b
+// BANKS: bank_reserved, mem_bank = 0 : i32
+// BANKS: bank_reserved, mem_bank = 1 : i32
+// BANKS: measured_bank_sizes = array<i32: 512, 512, 0, 0>
 
 module {
   aie.device(npu2) {

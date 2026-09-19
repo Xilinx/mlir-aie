@@ -178,11 +178,17 @@ leaves 8192 contiguous bytes often exists where the unconstrained placement
 leaves two runs of 4096. A reservation the allocator cannot satisfy fails buffer
 allocation and names the core.
 
-A core that leaves `data_size` absent starts with the largest aligned free run
-left by the stack and buffers. On Peano, any nonempty bank-pinned sections
-intersecting that run move the ordinary-data start past them; the end stays
-fixed. With no pinned sections, the run is unchanged. This placement remains
-contiguous and can leave unused gaps rather than packing data into every hole.
+On Peano, a core that leaves `data_size` absent normally gets an exact aligned
+`core_data` reservation from the probe's `measured_data_size` and
+`measured_data_alignment`, before buffer placement. No explicit `data_size` is
+needed to make the allocator account for this ordinary static data.
+
+Without that measurement or an explicit reservation, ordinary data uses the
+largest aligned free run left by the stack and buffers. This fallback applies
+when measurement is disabled or unavailable, including the Chess flow. On
+Peano, any nonempty bank-pinned sections intersecting that run move the
+ordinary-data start past them; the end stays fixed. This can leave unused gaps
+rather than packing data into every hole.
 
 The allocator caps the leftover run it aims for. Free space beyond the bytes
 still to place serves nothing, so the ranking counts a run only up to that
@@ -240,15 +246,16 @@ macros to select banks A and B.
 | Feature | Peano | Chess |
 | --- | --- | --- |
 | `AIE_BANK_A`–`AIE_BANK_D` | Emit `.aie.bank0`–`.aie.bank3` sections; Peano does not honor `chess_storage`. | Use native `chess_storage(DM_bankA)`–`DM_bankD` constraints. |
-| Bank-specific linker regions | One aligned contiguous free run per bank, excluding buffers, the stack and an explicit `core_data` reservation. | Not used; placement uses the Chess/BCF flow. |
+| Bank-specific linker regions | One aligned contiguous reservation per measured bank, excluding buffers, the stack and ordinary-data reservations; falls back to a free run when unmeasured. | Not used; placement uses the Chess/BCF flow. |
 | Default bank-placement check | Supported; reads object sections and linked ELF symbols. | Supported; recognizes native `DM_bankX` section names, without needing LLVM IR. |
 | Opt-in `--check-lut-banks` | Supported for recognized gather patterns with readable LLVM IR. | Rejected with `--xchesscc` or `--xbridge`; Chess IR is incompatible with the analyzer. |
 
 A Peano bank region never spills into a neighboring bank. An explicit
 `data_size` reservation competes with pinned tables for memory; increasing it
-can leave less space in the requested banks, not more. Without that reservation,
-pinned sections are placed first and the ordinary `data` region is adjusted as
-described above.
+can leave less space in the requested banks, not more. Without an explicit
+`data_size`, the probe normally supplies the ordinary-data reservation. Only
+the unmeasured fallback adjusts the leftover `data` region around pinned
+sections as described above.
 
 ### The allocator reserves these banks for you
 
@@ -349,8 +356,10 @@ has to skip them:
 
 - **`--no-measure-stack-size`** drops the stack measurement and its check, so no
   `measured_stack_size` reaches the IR.
-- **`--no-measure-data-size`** drops the static-data measurement and its
-  `data_size` check.
+- **`--no-measure-data-size`** drops ordinary static-data measurement before
+  placement and after linking, including its `data_size` check. Per-bank
+  measurements and reservations remain enabled. Explicit `data_size`
+  reservations and linker capacity limits still apply.
 - **`--no-check-bank-placement`** drops the default annotation-placement
   check, but does not relax linker bank regions or disable an explicitly
   requested `--check-lut-banks`.

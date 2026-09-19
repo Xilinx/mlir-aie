@@ -827,8 +827,7 @@ namespace {
 // scored candidate however those score.
 constexpr int64_t kFallbackRank = std::numeric_limits<int64_t>::max();
 
-// One address a buffer could take, with the keys that order it against the
-// alternatives. Lower ranks first:
+// Candidate address ordering, lower ranks first:
 //  1. banks touched, fewest first (each spanned bank costs DMA bandwidth);
 //  2. largest free run left behind, biggest first, capped by contiguityCap --
 //     the bytes still to place. A run wider than that serves nothing, so past
@@ -836,7 +835,6 @@ constexpr int64_t kFallbackRank = std::numeric_limits<int64_t>::max();
 //  3. round-robin distance from the cursor, nearest first (spreads for DMA);
 //  4. slack, tightest first, which leaves the large runs unbroken;
 //  5. address, lowest first, for determinism.
-//
 // A memtile has no core, so criterion 2 is neutralized there and round-robin
 // governs throughout.
 struct Placement {
