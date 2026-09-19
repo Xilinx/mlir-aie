@@ -735,11 +735,44 @@ bool isLutGather(const llvm::CallBase *call) {
   return false;
 }
 
+// An offset into a table is classified by the object that contains it. That is
+// sound only because `checkLutBankSeparation` assigns a bank to an object solely
+// when the object's whole extent provably lies in one bank, so every in-bounds
+// offset shares that bank. `inbounds` also admits one-past-the-end, which is the
+// next bank when an object ends flush with a boundary, so a constant offset is
+// additionally bounded against the object's size. A variable offset rides on
+// `inbounds` alone, and an object of unknown size (an `extern tbl[]`
+// declaration) has nothing to bound against.
+bool offsetStaysInObject(const llvm::GEPOperator *gep,
+                         const llvm::DataLayout &layout) {
+  if (gep->hasAllZeroIndices()) {
+    return true;
+  }
+  if (!gep->isInBounds()) {
+    return false;
+  }
+  llvm::APInt offset(layout.getIndexTypeSizeInBits(gep->getType()), 0);
+  if (!gep->accumulateConstantOffset(layout, offset)) {
+    return true; // Variable offset; `inbounds` is the only guarantee available.
+  }
+  if (offset.isNegative()) {
+    return false;
+  }
+  const auto *global = llvm::dyn_cast<llvm::GlobalVariable>(
+      gep->getPointerOperand()->stripPointerCasts());
+  if (!global) {
+    return true;
+  }
+  uint64_t allocSize = layout.getTypeAllocSize(global->getValueType());
+  return allocSize == 0 || offset.ult(allocSize);
+}
+
 // Walks a broadcast vector of one pointer back to the object it addresses.
 // aie_api builds it as splat(zext(ptrtoint(base))), which reaches the IR as a
 // shufflevector over an insertelement, and as a constant expression when the
 // base is a global.
-const llvm::Value *resolveBroadcastBase(const llvm::Value *v) {
+const llvm::Value *resolveBroadcastBase(const llvm::Value *v,
+                                        const llvm::DataLayout &layout) {
   bool splattedInsert = false;
   for (int hop = 0; hop < 16 && v; ++hop) {
     if (const auto *shuf = llvm::dyn_cast<llvm::ShuffleVectorInst>(v)) {
@@ -757,9 +790,9 @@ const llvm::Value *resolveBroadcastBase(const llvm::Value *v) {
       splattedInsert = false;
       v = ins->getOperand(1);
     } else if (const auto *gep = llvm::dyn_cast<llvm::GEPOperator>(v)) {
-      // An offset may cross a bank boundary. Do not classify it using only
-      // the address of the containing object.
-      if (!gep->hasAllZeroIndices()) {
+      // `aie::linear_approx` folds a nonzero bias into the table address, so
+      // rejecting every offset here rejects the common case.
+      if (!offsetStaysInObject(gep, layout)) {
         return nullptr;
       }
       v = gep->getPointerOperand();
@@ -819,6 +852,7 @@ std::optional<std::vector<LutPair>> readLutPairs(llvm::MemoryBufferRef buffer) {
   }
 
   std::vector<LutPair> pairs;
+  const llvm::DataLayout &layout = module->getDataLayout();
   for (const llvm::Function &fn : *module) {
     for (const llvm::Instruction &inst : llvm::instructions(fn)) {
       const auto *gather = llvm::dyn_cast<llvm::CallBase>(&inst);
@@ -841,8 +875,10 @@ std::optional<std::vector<LutPair>> readLutPairs(llvm::MemoryBufferRef buffer) {
         if (const auto *call = llvm::dyn_cast<llvm::CallBase>(value)) {
           llvm::StringRef name = aieIntrinsicName(call);
           if (name == "vsel32" && call->arg_size() >= 2) {
-            auto a = asLutOperand(resolveBroadcastBase(call->getArgOperand(0)));
-            auto b = asLutOperand(resolveBroadcastBase(call->getArgOperand(1)));
+            auto a = asLutOperand(
+                resolveBroadcastBase(call->getArgOperand(0), layout));
+            auto b = asLutOperand(
+                resolveBroadcastBase(call->getArgOperand(1), layout));
             // The index expression may select ordinary integers too. Require
             // pointer evidence for a candidate; if none is found anywhere,
             // the gather still gets an Unknown pair below.

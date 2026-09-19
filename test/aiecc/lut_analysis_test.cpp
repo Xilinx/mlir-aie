@@ -12,12 +12,12 @@ int main(int argc, char **argv) {
   using Kind = LutOperand::Kind;
   auto textPairs = readLutPairsFromIR(argv[1]);
   auto bitcodePairs = readLutPairsFromIR(argv[3]);
-  assert(textPairs && textPairs->size() == 12);
-  assert(bitcodePairs && bitcodePairs->size() == 12);
+  assert(textPairs && textPairs->size() == 15);
+  assert(bitcodePairs && bitcodePairs->size() == 15);
   assert(!readLutPairsFromIR(argv[7]));
   for (int i = 1; i <= 3; ++i) {
     auto pairs = readLutPairsFromObject(argv[i]);
-    assert(pairs && pairs->size() == 12);
+    assert(pairs && pairs->size() == 15);
     assert((*pairs)[0].function == "gather_with_unrelated_blend");
     assert((*pairs)[0].a.symbol == "table_a");
     assert((*pairs)[0].b.symbol == "table_b");
@@ -49,15 +49,28 @@ int main(int argc, char **argv) {
     assert((*pairs)[11].function == "unresolved_vsel_gather");
     assert((*pairs)[11].a.kind == Kind::Unknown);
     assert((*pairs)[11].b.kind == Kind::Unknown);
+    // An in-bounds offset is classified by its containing object.
+    assert((*pairs)[12].function == "inbounds_offset_gather");
+    assert((*pairs)[12].a.symbol == "table_a");
+    assert((*pairs)[12].b.symbol == "table_b");
+    // One-past-the-end is the next bank when an object ends flush with a
+    // boundary, so it must stay unresolved.
+    assert((*pairs)[13].function == "end_offset_gather");
+    assert((*pairs)[13].a.kind == Kind::Unknown);
+    assert((*pairs)[13].b.symbol == "table_b");
+    // Offsetting does not hide that both tables are one object, one bank.
+    assert((*pairs)[14].function == "same_table_offset_gather");
+    assert((*pairs)[14].a.symbol == "table_a");
+    assert((*pairs)[14].b.symbol == "table_a");
   }
   assert(!readLutPairsFromObject(argv[4]));
   assert(!readLutPairsFromObject(argv[5]));
   assert(!readLutPairsFromObject(argv[6]));
   assert(!readLutPairsFromObject(argv[7]));
   auto livePairs = readLutPairsFromObject(argv[2], argv[10]);
-  assert(livePairs && livePairs->size() == 12);
+  assert(livePairs && livePairs->size() == 15);
   auto collectedPairs = readLutPairsFromObject(argv[2], argv[11]);
-  assert(collectedPairs && collectedPairs->size() == 10);
+  assert(collectedPairs && collectedPairs->size() == 13);
   assert((*collectedPairs)[0].function == "gather_with_unrelated_blend");
   for (const auto &pair : *collectedPairs) {
     assert(pair.function != "unresolved_gather");
@@ -67,7 +80,7 @@ int main(int argc, char **argv) {
   assert(!readLutPairsFromObject(argv[2], argv[7]));
   for (int i : {1, 3}) {
     auto irPairs = readLutPairsFromObject(argv[i], argv[11]);
-    assert(irPairs && irPairs->size() == 12);
+    assert(irPairs && irPairs->size() == 15);
   }
   auto assertions = readBankAssertionsFromObjects({std::string(argv[4])});
   assert(assertions.size() == 6);

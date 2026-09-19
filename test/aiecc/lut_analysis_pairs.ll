@@ -123,3 +123,44 @@ define <8 x i32> @unresolved_vsel_gather(<16 x i32> %a, <16 x i32> %b) {
   %result = call <8 x i32> @llvm.aie2p.load.4x16.lo(<8 x i32> %half)
   ret <8 x i32> %result
 }
+
+; `aie::linear_approx` with a nonzero bias folds the bias into the table address,
+; so the base arrives behind an in-bounds GEP. Classifying it by the containing
+; object is sound because the bank check only assigns a bank to an object whose
+; whole extent lies in one bank.
+define <8 x i32> @inbounds_offset_gather() {
+  %a = insertelement <16 x i32> poison, i32 ptrtoint (ptr getelementptr inbounds (i8, ptr @table_a, i32 16) to i32), i32 0
+  %aa = shufflevector <16 x i32> %a, <16 x i32> poison, <16 x i32> zeroinitializer
+  %b = insertelement <16 x i32> poison, i32 ptrtoint (ptr @table_b to i32), i32 0
+  %bb = shufflevector <16 x i32> %b, <16 x i32> poison, <16 x i32> zeroinitializer
+  %pair = call <16 x i32> @llvm.aie2p.vsel32(<16 x i32> %aa, <16 x i32> %bb, i32 52428)
+  %half = shufflevector <16 x i32> %pair, <16 x i32> poison, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+  %result = call <8 x i32> @llvm.aie2p.load.4x16.lo(<8 x i32> %half)
+  ret <8 x i32> %result
+}
+
+; `inbounds` admits one-past-the-end, which is the first byte of the next bank
+; when an object ends flush with a boundary. @table_a is [32 x i8], so +32 must
+; not resolve to it.
+define <8 x i32> @end_offset_gather() {
+  %a = insertelement <16 x i32> poison, i32 ptrtoint (ptr getelementptr inbounds (i8, ptr @table_a, i32 32) to i32), i32 0
+  %aa = shufflevector <16 x i32> %a, <16 x i32> poison, <16 x i32> zeroinitializer
+  %b = insertelement <16 x i32> poison, i32 ptrtoint (ptr @table_b to i32), i32 0
+  %bb = shufflevector <16 x i32> %b, <16 x i32> poison, <16 x i32> zeroinitializer
+  %pair = call <16 x i32> @llvm.aie2p.vsel32(<16 x i32> %aa, <16 x i32> %bb, i32 52428)
+  %half = shufflevector <16 x i32> %pair, <16 x i32> poison, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+  %result = call <8 x i32> @llvm.aie2p.load.4x16.lo(<8 x i32> %half)
+  ret <8 x i32> %result
+}
+
+; Two offsets into one array are one bank, which the check must still catch.
+define <8 x i32> @same_table_offset_gather() {
+  %a = insertelement <16 x i32> poison, i32 ptrtoint (ptr @table_a to i32), i32 0
+  %aa = shufflevector <16 x i32> %a, <16 x i32> poison, <16 x i32> zeroinitializer
+  %b = insertelement <16 x i32> poison, i32 ptrtoint (ptr getelementptr inbounds (i8, ptr @table_a, i32 16) to i32), i32 0
+  %bb = shufflevector <16 x i32> %b, <16 x i32> poison, <16 x i32> zeroinitializer
+  %pair = call <16 x i32> @llvm.aie2p.vsel32(<16 x i32> %aa, <16 x i32> %bb, i32 52428)
+  %half = shufflevector <16 x i32> %pair, <16 x i32> poison, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+  %result = call <8 x i32> @llvm.aie2p.load.4x16.lo(<8 x i32> %half)
+  ret <8 x i32> %result
+}

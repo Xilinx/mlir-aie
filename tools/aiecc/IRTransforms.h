@@ -503,6 +503,12 @@ inline mlir::LogicalResult checkLutBankSeparation(
     };
     // Parameter bindings and stack-local offsets are not recoverable from
     // separately compiled objects. Do not claim to have checked those banks.
+    //
+    // Both arms below return a bank only when the symbol's *whole* extent fits
+    // inside one bank. That is what lets `resolveBroadcastBase` classify an
+    // in-bounds offset by its containing object: every byte of the object
+    // shares this bank, so `bank(base + K) == bank(base)`. Weakening either
+    // extent test silently unsounds that walk.
     auto bankOf = [&](const xilinx::aiecc::LutOperand &op,
                       bool resolveBuffers) -> int {
       if (op.kind != xilinx::aiecc::LutOperand::Kind::Symbol) {
