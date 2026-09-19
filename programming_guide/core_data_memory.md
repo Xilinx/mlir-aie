@@ -24,6 +24,10 @@ Peano, bank-pinned static tables instead use separate bank-specific linker
 regions; Chess uses its native storage constraints. Buffer and stack placement
 therefore govern whether the core links.
 
+Placement runs *after* each core is compiled, so how much of each bank that
+core's own sections want is measured first and reserved. See
+[The allocator reserves these banks for you](#the-allocator-reserves-these-banks-for-you).
+
 This page covers the **stack** and the **core's own sections**: sizing,
 bank placement, the attributes and flags that control them, and what to do
 when a diagnostic fires.
@@ -233,6 +237,35 @@ A Peano bank region never spills into a neighboring bank. An explicit
 can leave less space in the requested banks, not more. Without that reservation,
 pinned sections are placed first and the ordinary `data` region is adjusted as
 described above.
+
+### The allocator reserves these banks for you
+
+Nothing above needs declaring. `aiecc` compiles each core, links it once
+against permissive regions to see how large its `.aie.bank<N>` sections
+actually are, and records the answer in `measured_bank_sizes` on the
+`aie.core`. Buffer placement then holds that much room in each of those banks
+before it places anything unconstrained, so a buffer cannot take a bank a
+kernel's tables need.
+
+This is why placement runs after the core compile rather than before it: the
+sections only exist once the object is built. A consequence worth knowing is
+that `input_with_addresses.mlir` now costs a core compile. Use
+`--get-input-with-symbols` for the same module before placement, which does
+not.
+
+The measurement is the linked size, so `--gc-sections` has already run and a
+pinned table the kernel never reads reserves nothing. Reservations appear in a
+tile's memory map as `(bank-pinned static data)`. Chess places bank-pinned
+statics through its own storage constraints rather than linker regions, so none
+of this applies there.
+
+A table larger than its bank still cannot be placed, and is now reported while
+reserving rather than by the linker:
+
+```
+error: 'aie.buffer' op this core's static data pinned to bank 1 requires 32768
+bytes, which cannot fit in bank 1 (16384 bytes total)
+```
 
 The **default placement check** compares each unambiguous bank-annotated
 definition with its linked address and complete nonzero symbol extent. It

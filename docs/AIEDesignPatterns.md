@@ -63,8 +63,10 @@ Makefile examples that use the bitcode-attachment recipes can opt in with
 readable LLVM IR in their `.llvmbc` section; merge-mode kernels are checked
 through the optimized core IR. The check is Peano-only and off by default.
 The opt-in check does not support archive inputs or prebuilt `elf_file` cores.
-Unresolved pointers, parameter bindings, and stack-local placement produce an
-error rather than a successful verification. Prefer bank-pinned static tables
+Parameter bindings and stack-local placement produce an error rather than a
+successful verification, as does a table address the analysis cannot trace to
+an object. An in-bounds offset into a table is traced to the table itself,
+which is what `aie::linear_approx` produces when given a nonzero bias. Prefer bank-pinned static tables
 when separately compiling a kernel. Merged kernels can also use bank-pinned
 buffers on the core's own tile when optimization resolves the table arguments.
 
