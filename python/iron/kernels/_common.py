@@ -41,16 +41,24 @@ def _is_tensor_type(arg_type):
 
 @dataclass(frozen=True)
 class TensorLayout:
-    """Logical shape of one tensor tile and its reversible host storage codec.
+    """How a kernel wants one tensor operand laid out.
 
-    ``pack`` and ``unpack`` operate on batches shaped ``(calls, *shape)`` and
-    ``(calls, storage_elements)`` respectively. They describe storage, not an
-    algorithm or a whole-problem iteration schedule. Identity is the default.
+    ``shape`` is the logical tile. ``pack`` and ``unpack`` are the reversible
+    host codec between ``(calls, *shape)`` and ``(calls, storage_elements)``;
+    identity is the default. ``stream`` is the DMA transform
+    (``dims_to_stream``) a design applies on the hop that feeds this operand
+    to the kernel or drains it, ``None`` when the operand streams as stored;
+    ``block`` is the micro-tile the kernel consumes or produces, ``(r, s)``
+    for an MMUL operand. The codec is built from the same two facts, so the
+    host and the design agree by construction. None of this is an algorithm
+    or a whole-problem iteration schedule.
     """
 
     shape: tuple[int, ...]
     pack: Callable | None = None
     unpack: Callable | None = None
+    stream: list | None = None
+    block: tuple[int, ...] | None = None
 
     def encode(self, values):
         values = np.asarray(values).reshape(-1, *self.shape)
@@ -488,14 +496,42 @@ def _require_min_trip_count(
         )
 
 
-def _min_dma_aligned_elems(dtype, align: int = 4) -> int:
-    """Return the minimum element count whose byte size is a multiple of *align*.
+def _device():
+    """Return the bound device, or the default device of the detected architecture.
 
-    The NPU shim DMA requires a 4-byte alignment.  A 1-element output tile is
-    fine for ``int32`` (4 bytes) but only 2 bytes for ``bfloat16`` — kernels
-    whose C++ side writes a single value still need a Python tile type with
-    enough elements to satisfy the alignment.
+    Factories run without a device bound (``_detect_arch`` falls back to
+    aie2); anything that reads the target model goes through here so that
+    fallback is the same everywhere.
     """
+    from aie.iron.device import from_name
+    from aie.utils import get_current_device
+
+    device = get_current_device(probe_runtime=False)
+    if device is None:
+        device = from_name("npu2" if _detect_arch() == "aie2p" else "npu1")
+    return device
+
+
+def _bf16_lanes() -> int:
+    """Elements per bf16 vector in this architecture's kernel sources.
+
+    ``aie::vector<bfloat16, 16>`` on aie2, ``<bfloat16, 32>`` on aie2p
+    (``silu.cc``, ``layer_norm.cc``, ...). A tile has to be whole vectors of
+    it. This is what the sources chose, not a target-model query: the
+    register is wider than the bf16 datapath on aie2.
+    """
+    return 32 if _detect_arch() == "aie2p" else 16
+
+
+def _min_dma_aligned_elems(dtype) -> int:
+    """Return the fewest elements whose byte size the shim DMA can address.
+
+    The DMA moves whole address-generation granules (32 bits on aie2 and
+    aie2p, from the target model). A 1-element output tile is fine for
+    ``int32`` but only 2 bytes for ``bfloat16``, so a kernel whose C++ side
+    writes a single value still needs a tile type with enough elements.
+    """
+    align = _device().address_gen_granularity // 8
     itemsize = np.dtype(dtype).itemsize
     return max(1, (align + itemsize - 1) // itemsize)
 
@@ -540,12 +576,14 @@ def _make_extern(
     inline: bool = False,
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
+    cls: type[ExternalFunction] = ExternalFunction,
 ) -> ExternalFunction:
     """Construct (or reuse) an ExternalFunction with the standard include_dirs.
 
-    ``contract`` (a :class:`KernelContract`) is attached as ``extern.contract``
-    so harnesses and tests can build, run and judge the kernel generically;
-    factories without one leave it ``None``.
+    ``contract`` (a :class:`KernelContract`) is what harnesses and tests read
+    to build, run and judge the kernel generically; every factory passes
+    one. ``cls`` is the class to construct, for factories whose kernels have
+    more to say than a plain ``ExternalFunction`` (``linalg.MatrixKernel``).
 
     ``inline`` uses Peano's always-inline LLVM IR and merge linking. Inline
     factories must use distinct C++ symbol names for distinct variants because
@@ -663,7 +701,7 @@ def _make_extern(
     else:
         symbol_prefix = None if inline else digest
 
-    extern = ExternalFunction(
+    extern = cls(
         func_name,
         object_file_name=object_file_name,
         source_file=str(source_path),
@@ -673,9 +711,9 @@ def _make_extern(
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,
         inline=inline,
+        contract=contract,
     )
     if contract is not None:
         contract.validate_types(extern.arg_types())
-    extern.contract = contract
     _EXTERN_CACHE[cache_key] = extern
     return extern

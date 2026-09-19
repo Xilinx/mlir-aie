@@ -66,9 +66,11 @@ without needing each one attached at build time.
 Some `aie.iron.kernels` factories pick a different MMUL geometry per
 arch — `kernels.mm(int16, int16)` is `(r, s, t) = (4, 4, 4)` on AIE2
 (Phoenix) but `(4, 4, 8)` on AIE2P (Strix).  The chosen geometry is
-exposed on the returned `ExternalFunction` as `.mac_dims`, so designs
-can drive their DMA-layout transforms from the kernel itself instead
-of hardcoding for one arch:
+declared on the contract's operand layouts (`fn.contract.layouts[i].block`)
+and read back as `.mac_dims` on the returned `MatrixKernel`, with the
+matching DMA transforms as `.stream_dims`, so designs can drive their
+DMA-layout transforms from the kernel itself instead of hardcoding for one
+arch:
 
 ```python
 import aie.iron as iron

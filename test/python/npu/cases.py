@@ -54,6 +54,20 @@ def device_for(devices: tuple[str, ...]):
         set_current_device(previous)
 
 
+def _product_extents(contract) -> tuple[int, ...] | None:
+    """``(m, k, n)`` or ``(m, k)`` for a kernel whose streamed operands form a product."""
+    if not contract.layouts:
+        return None
+    ins = [
+        contract.layouts[i]
+        for i, r in enumerate(contract.roles)
+        if r is In and contract.layouts[i] is not None
+    ]
+    if len(ins) < 2 or len(ins[0].shape) != 2 or ins[1].shape[0] != ins[0].shape[1]:
+        return None
+    return (*ins[0].shape, *ins[1].shape[1:])
+
+
 @dataclass
 class Case:
     """One (kernel, tile, call count) the suite builds, checks and times.
@@ -126,8 +140,12 @@ class Case:
             bfp.dtype_name(kd.shape_dtype(types[i])[1]) for i in fn.contract.out_indices
         )
         dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
-        if getattr(fn, "dims", None):
-            dims = "x".join(str(d) for d in (*fn.dims, self.calls))
+        # A product's tile is named (m, k[, n]) from its declared operands:
+        # a 2-D A and a B whose leading extent is A's trailing one. Anything
+        # else is named by the element count of its primary tile.
+        matrix = _product_extents(fn.contract)
+        if matrix:
+            dims = "x".join(str(d) for d in (*matrix, self.calls))
         else:
             dims = f"{kd.elems(types[primary])}x{self.calls}"
         extra = [

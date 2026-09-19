@@ -36,7 +36,11 @@ def benchmark_steps(job):
 )
 def test_parallel_compute_has_one_main_only_publisher(filename, compute, static):
     config = workflow(filename)
-    assert set(config["on"]) == {"workflow_dispatch"}
+    assert set(config["on"]) == {"workflow_dispatch", "schedule", "pull_request"}
+    # A change to the workflow that runs the checks must itself run them.
+    assert filename in " ".join(config["on"]["pull_request"]["paths"]) or (
+        filename == "benchmarkKernels.yml"
+    )
     assert config["permissions"]["contents"] == "read"
     job = config["jobs"][compute]
     assert len(job["strategy"]["matrix"]["include"]) == 2

@@ -478,18 +478,13 @@ class ExternalFunction(Kernel):
         binding._cached_digest = None
         cls._instances.add(binding)
 
-    # Metadata the kernel factories attach. ``contract`` describes any
-    # kernel; typed Any rather than KernelContract because pyright analyzes
-    # the sources and the staged package as two module trees, so naming the
-    # class here would make the factories' own KernelContract a different
-    # type. The other three are what the matrix designs read to lay out
-    # their DMA streams (``mac_dims``, ``stream_dims``) and to name a tile
-    # (``dims``); how the host stores each operand is the contract's
-    # ``layouts``, not an attribute here.
+    # What the kernel computes (aie.iron.kernels.KernelContract), given at
+    # construction. Typed Any rather than KernelContract because pyright
+    # analyzes the sources and the staged package as two module trees, so
+    # naming the class here would make the factories' own KernelContract a
+    # different type. The class-level default covers a discovery binding,
+    # which is created without running __init__.
     contract: Any = None
-    mac_dims: tuple
-    dims: tuple
-    stream_dims: Any  # kernels.linalg.StreamDimsABC
 
     def _require_contract(self):
         if self.contract is None:
@@ -692,6 +687,7 @@ class ExternalFunction(Kernel):
         use_chess: bool = False,
         inline: bool = False,
         stack_size_override: int | None = None,
+        contract: Any = None,
     ) -> None:
         """Construct an ExternalFunction compiled from C/C++ source at JIT time.
 
@@ -737,6 +733,11 @@ class ExternalFunction(Kernel):
                 With ``inline=True``, the merged kernel has no separate object,
                 so this bound is the one input aiecc's stack analysis reads for
                 this kernel.
+            contract: What the kernel computes, as an
+                ``aie.iron.kernels.KernelContract``: argument roles, a host
+                reference, a tolerance and the operand layouts. The library
+                factories always give one; a hand-built kernel may leave it
+                ``None`` and then cannot be built or judged generically.
         """
         if inline and use_chess:
             raise ValueError(
@@ -752,6 +753,7 @@ class ExternalFunction(Kernel):
             )
 
         self._original_name = name
+        self.contract = contract
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if not object_file_name:

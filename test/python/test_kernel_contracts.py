@@ -1433,6 +1433,40 @@ def test_declared_layouts_pack_inputs_and_unpack_outputs():
     assert not ccm.judge(ref.ravel(), ref)
 
 
+def test_matrix_kernels_declare_their_blocking_on_the_operand_layouts():
+    """``mac_dims`` and ``stream_dims`` are views of the contract, not attributes."""
+    fn = kernels.mm(
+        dim_m=64, dim_k=32, dim_n=64, input_dtype=np.int16, output_dtype=np.int32
+    )
+    assert isinstance(fn, kernels.MatrixKernel)
+    a, b, c = fn.contract.layouts
+    r, s, t = fn.mac_dims
+    assert (a.block, b.block, c.block) == ((r, s), (s, t), (r, t))
+    assert fn.stream_dims == kernels.mm_stream_dims(64, 32, 64, (r, s, t))
+    assert (a.stream, b.stream, c.stream) == tuple(fn.stream_dims)
+    assert "dims" not in vars(fn) and "mac_dims" not in vars(fn)
+    # The scalar kernel walks row-major operands: 1x1x1, nothing streamed.
+    scalar = kernels.mm(dim_m=64, dim_k=32, dim_n=64, vectorized=False)
+    assert scalar.mac_dims == (1, 1, 1)
+    assert scalar.stream_dims == kernels.linalg.StreamDimsABC(None, None, None)
+    assert not isinstance(kernels.mv(), kernels.MatrixKernel)
+    assert kernels.mv().contract.layouts[0].stream == [(32, 2), (16, 64), (2, 1)]
+
+
+def test_contract_is_given_at_construction():
+    from aie.iron.kernel import ExternalFunction
+
+    contract = KernelContract(roles=(In, Out), reference=lambda x: x)
+    fn = ExternalFunction(
+        "identity",
+        source_string="void identity(int *a, int *b) {}",
+        arg_types=[np.ndarray[(16,), np.dtype[np.int32]]] * 2,
+        contract=contract,
+    )
+    assert fn.contract is contract
+    assert ExternalFunction("bare", source_string="void bare() {}").contract is None
+
+
 def test_stream_dims_follow_the_layout_flags():
     fkw = dict(dim_m=64, dim_k=32, dim_n=64)
     plain, bcm, ccm = (

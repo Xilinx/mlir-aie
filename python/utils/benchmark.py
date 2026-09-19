@@ -7,20 +7,20 @@
 
 ``Stats`` keeps the raw sample list and robust statistics (median, MAD,
 p95, coefficient of variation) beside avg/min/max, so callers can report
-jitter, not just central tendency.
+jitter, not just central tendency. The numbers are numpy's.
 """
 
 from __future__ import annotations
 
-import math
 import os
-import statistics
 import subprocess
 import time
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from typing import Callable
+
+import numpy as np
 
 
 @dataclass
@@ -39,27 +39,21 @@ class Stats:
     def from_samples(cls, samples_us: list[float]) -> "Stats":
         if not samples_us:
             raise ValueError("Stats.from_samples needs at least one sample")
-        s = sorted(samples_us)
-        med = statistics.median(s)
-        # statistics has no MAD; it is the median of the absolute deviations.
-        mad = statistics.median(abs(x - med) for x in s)
-        # Nearest-rank, rather than statistics.quantiles or np.percentile which
-        # both interpolate between samples. At these sample counts the three
-        # disagree enough to matter -- 102.6 / 105.1 / 101.8 on the same n=5
-        # data -- and an interpolated p95 reports a duration no run took.
-        # Changing this moves every published chart, so it is a definition
-        # rather than an oversight.
-        p95 = s[min(len(s) - 1, math.ceil(0.95 * len(s)) - 1)]
-        mean = statistics.fmean(s)
-        cov = (statistics.stdev(s) / mean) if len(s) > 1 and mean > 0 else 0.0
+        s = np.asarray(samples_us, dtype=np.float64)
+        med = float(np.median(s))
+        mean = float(s.mean())
+        # p95 is a sample, not an interpolation between two: at benchmark
+        # sample counts the interpolating percentile methods report a duration
+        # no run took. inverted_cdf is numpy's name for that (nearest-rank)
+        # definition, and every published chart was recorded with it.
         return cls(
             avg_us=mean,
-            min_us=s[0],
-            max_us=s[-1],
+            min_us=float(s.min()),
+            max_us=float(s.max()),
             median_us=med,
-            mad_us=mad,
-            p95_us=p95,
-            cov=cov,
+            mad_us=float(np.median(np.abs(s - med))),
+            p95_us=float(np.percentile(s, 95, method="inverted_cdf")),
+            cov=float(s.std(ddof=1) / mean) if len(s) > 1 and mean > 0 else 0.0,
             n=len(s),
             samples_us=list(samples_us),
         )

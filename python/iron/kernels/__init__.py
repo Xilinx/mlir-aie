@@ -15,8 +15,9 @@ Submodules:
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
-- `linalg` — mm, mv, cascade_mm (``.mac_dims`` and ``.stream_dims``
-  describe the DMA layout a design streams the tiles in)
+- `linalg` — mm, mv, cascade_mm, mm_bfp (a ``MatrixKernel``: ``.mac_dims``
+  and ``.stream_dims`` read the blocking and DMA transforms off the
+  contract's operand layouts)
 - `zero` — independent zero-fill kernel
 
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
@@ -127,6 +128,7 @@ from .eltwise import (
 )
 from .fused import fused_mm
 from .linalg import (
+    MatrixKernel,
     cascade_mm,
     mha,
     mm,
@@ -187,6 +189,7 @@ from .zero import zero
 
 __all__ = [
     "KernelContract",
+    "MatrixKernel",
     "TensorLayout",
     "Param",
     "RoundingMode",

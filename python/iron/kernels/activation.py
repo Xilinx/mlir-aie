@@ -31,6 +31,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Param,
+    _bf16_lanes,
     _default_source_path,
     _detect_arch,
     _include_dirs,
@@ -133,15 +134,14 @@ def _create_lut_kernel(
     if arch == "aie2":
         flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
         kernel_path = _kernel_source(arch, arch, "lut_kernel.cc")
-    ef = ExternalFunction(
+    return ExternalFunction(
         func_name,
         source_file=str(kernel_path),
         arg_types=arg_types,
         include_dirs=include,
         compile_flags=flags,
+        contract=contract,
     )
-    ef.contract = contract
-    return ef
 
 
 def _bf16_lut_factory(
@@ -216,7 +216,7 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
     passes ``(in, out, size)``. At least 1024 elements, in whole vectors
     (16 on aie2, 32 on aie2p).
     """
-    width = 32 if _detect_arch() == "aie2p" else 16
+    width = _bf16_lanes()
     _require_min_trip_count("silu_sized", tile_size, width, 1024 // width)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(

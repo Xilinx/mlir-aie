@@ -9,10 +9,10 @@ name: Kernel Benchmarks on Ryzen AI
 # hard-threshold series regressed. Everything else: no comments, no data,
 # just a red run and an artifact.
 #
-# SOFT RELEASE: manual (workflow_dispatch) only while this settles. The
-# nightly and PR triggers below are commented out, not deleted -- restoring
-# them is uncommenting the two blocks. Until then nothing records a baseline
-# on a schedule, so the first manual runs are what seed it.
+# Runs nightly from main (which records the baseline), on pull requests
+# that bump the Peano pin, and on demand. A dispatched run on main publishes
+# like the nightly does; a dispatched run on any other branch, or a pull
+# request, only compares and uploads its records.
 
 permissions:
   contents: read
@@ -25,12 +25,11 @@ on:
         description: 'regex on kernel names (e.g. linalg/)'
         required: false
         default: ''
-  # --- soft release: re-enable together when this is trusted ---------------
-  # schedule:
-  #   - cron: '0 6 * * *'          # after the 00:00 test nightly
-  # pull_request:
-  #   paths:
-  #     - utils/peano-requirements.txt
+  schedule:
+    - cron: '0 6 * * *'          # after the 00:00 test nightly
+  pull_request:
+    paths:
+      - utils/peano-requirements.txt
 
 defaults:
   run:
