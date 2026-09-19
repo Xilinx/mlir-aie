@@ -777,6 +777,16 @@ def _copy_source(dest: str, src: str) -> None:
         shutil.copy2(src, tmp)
 
 
+def _copy_object_files(object_files, work_dir):
+    """Stage explicit object files for relative link_with paths in aiecc's cwd."""
+    for object_file in object_files:
+        source = Path(object_file)
+        dest = Path(work_dir) / source.name
+        if dest.exists() and source.samefile(dest):
+            continue
+        _copy_source(str(dest), str(source))
+
+
 def _compiled_into(func, kernel_dir) -> bool:
     """Report whether ``func``'s object was already built into this ``kernel_dir``.
 

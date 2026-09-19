@@ -138,3 +138,44 @@ def test_run_aiecc_child_resolves_kernel_in_work_dir(
     compile_utils._run_aiecc(os.path.relpath(script), [], cwd=work_dir)
 
     assert Path.cwd() == tmp_path
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_copy_object_files_refreshes_work_dir(
+    compile_utils, monkeypatch, tmp_path, relative
+):
+    monkeypatch.chdir(tmp_path)
+    work_dir = tmp_path / "build dir"
+    work_dir.mkdir()
+    sources = [tmp_path / name for name in ("kernel.o", "helper.o")]
+    for source in sources:
+        source.write_bytes(b"current object")
+        (work_dir / source.name).write_bytes(b"stale object")
+
+    compile_utils._copy_object_files(
+        [os.path.relpath(source) if relative else source for source in sources],
+        work_dir,
+    )
+
+    for source in sources:
+        assert (work_dir / source.name).read_bytes() == source.read_bytes()
+
+
+def test_copy_object_files_already_in_work_dir(compile_utils, tmp_path):
+    source = tmp_path / "kernel.o"
+    source.write_bytes(b"current object")
+
+    compile_utils._copy_object_files([source], tmp_path)
+
+    assert source.read_bytes() == b"current object"
+
+
+def test_copy_object_files_missing_source(compile_utils, tmp_path):
+    source = tmp_path / "missing" / "kernel.o"
+    dest = tmp_path / source.name
+    dest.write_bytes(b"stale object")
+
+    with pytest.raises(FileNotFoundError):
+        compile_utils._copy_object_files([source], tmp_path)
+
+    assert dest.read_bytes() == b"stale object"

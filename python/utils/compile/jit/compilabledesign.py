@@ -53,7 +53,7 @@ from aie.utils.compile import (
     compile_mlir_module,
 )
 from aie.utils.compile.cache.utils import file_lock
-from aie.utils.compile.utils import _cleanup_failed_compilation
+from aie.utils.compile.utils import _cleanup_failed_compilation, _copy_object_files
 
 from . import _manifest
 from ._dispatch_compile import (
@@ -524,6 +524,7 @@ class CompilableDesign:
                     target_arch,
                     include_dirs=self.include_paths,
                 )
+                _copy_object_files(self.object_files, kernel_dir)
 
                 compiler_options = list(self.aiecc_flags)
                 if has_dispatch:
@@ -677,6 +678,7 @@ class CompilableDesign:
                     target_arch,
                     include_dirs=self.include_paths,
                 )
+                _copy_object_files(self.object_files, kernel_dir)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
