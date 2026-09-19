@@ -325,8 +325,8 @@ A new factory is complete when one line each in two places covers it:
 
 1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
    with the argument roles (`In`, `Out`, `InOut`, or `Param`), a
-   numpy reference exported as `<name>_ref`, `ops_per_call` (the work one
-   call does), and a `Tolerance` with its evidence in
+   numpy reference exported as `<name>_ref`, `ops_per_call` for the
+   benchmark's throughput series, and a `Tolerance` with its evidence in
    `note` — or none, to get the dtype default. Reductions set `out_valid`
    to the number of meaningful output elements. Say what the kernel
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
@@ -338,30 +338,34 @@ A new factory is complete when one line each in two places covers it:
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
    the shape to run and, with `smoke=True`, that it is the kernel's
    representative shape for the per-PR device test. The same table drives
-   the extensive correctness sweep, so there is nothing else to register.
+   the nightly correctness sweep and the benchmark, so there is nothing
+   else to register.
 
 The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
 then checks the roles against the real `arg_types()`, the reference's
 arity, that the generated design lowers to MLIR, and that `setup`
 agrees with the source.
 
-## Testing
+## Testing, benchmarking and static checks
 
-Every tier below reads the contract and one case table
-(`test/python/npu/kernel_cases.py`); none restates what a kernel computes.
-A kernel is either in that table or named, with a reason, in the contract
-test's `NOT_JUDGED` list.
+Every tier below reads the contract and the case table; none restates
+what a kernel computes.
 
 | Tier | What | Where | When |
 | --- | --- | --- | --- |
 | host | contract vs. factory; design lowers to MLIR | `test/python/test_kernel_contracts.py` | every PR (lit) |
+| host, compile | every distinct design through aiecc to CDO | `test/python/npu/test_kernels_compile.py` (`-m extensive`) | static workflow |
 | device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
-| device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | on request |
+| device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
+| host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | nightly and kernel or toolchain PRs |
 
 ```bash
 pytest test/python/test_kernel_contracts.py                        # host
 pytest test/python/npu/test_kernels_e2e.py -k eltwise              # NPU, smoke
 pytest test/python/npu/test_kernels_e2e.py -m extensive --seeds 3  # NPU, everything
+pytest test/python/npu/test_kernels_bench.py -m benchmark -k mul   # time one kernel
+pytest test/python/npu/test_kernels_bench.py -m benchmark --bench-out bench.json
+python -m aie.utils.compile.remarks --target aie2p --out static.json
 ```
 
 ### Data policy
@@ -403,6 +407,39 @@ either owns its mode or assumes the caller set one), not the whole of it:
 around their body, and nothing yet boots a core into `conv_even` by
 default. Both remain to do under that issue.
 
+### What the benchmark records
+
+`test/python/npu/test_kernels_bench.py` measures a kernel only after it has
+produced a correct result under its declared tolerance; a wrong result fails
+the test, and a failed session writes no `--bench-out` file at all. Per case it records core
+`cycles` (trace, median over the run's kernel calls) and
+`cycles_per_kop`, `npu_us` / `e2e_us` from `aie.utils.benchmark`, and
+`compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced
+rebuild. Preflight reads the device and its power mode through the host
+runtime (`HostRuntime.power_mode()`) and refuses to run outside
+`--pmode`; a bit-exact `passthrough` smoke test inside a cycle band guards
+the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
+at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
+and the sizes alert at 3 %, the wall times are advisory, and nothing
+gates a pull request. A Peano-bump PR is compared against the cached
+nightly baseline and gets one comment only if a hard-threshold series
+regressed.
+
+### Static checks
+
+`aie.utils.compile.remarks` compiles every factory build (defaults plus
+each `.dtypes` entry) exactly as the JIT does, with Peano's
+optimization-record flags, and turns the records into per-kernel series:
+each loop's II and whether it is a zero-overhead loop, program memory,
+missing-bank loads and dropped `#pragma`s. The record shapes and the
+regression rules are documented on the module
+([API](../api/kernels.md#static-checks)). A dropped pragma is a
+kernel-source bug and is annotated on the pull request's file and line;
+a kernel that fails to compile is an error annotation. With
+`MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
+`aie_kernels/` is compiled against an installed wheel, which is how the
+workflow runs on a pull request.
+
 ### Kernels the generic builder cannot run
 
 The builder runs one kernel on one Worker. A cascade pair is two: the PUT
@@ -432,8 +469,8 @@ bf16 scales and minima followed by unsigned four-bit codes; its output is
 the GEMM-ordered bfp16ebs8 byte stream. Both are exposed as byte buffers so
 the harness checks exponents, mantissas and ordering exactly, including the
 kernel's floor-rounded bf16 intermediate. The default block and two smaller
-geometries participate in the extensive hardware sweep; the default also
-runs as a hardware smoke test.
+geometries participate in the compile and extensive hardware sweeps; the
+default also runs as a hardware smoke test and benchmark.
 
 ## Related reading
 
