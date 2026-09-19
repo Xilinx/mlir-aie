@@ -413,6 +413,29 @@ def test_layer_norm_f32_stack_includes_scalar_division():
     assert all(int(size) >= minimum for size in stack_sizes)
 
 
+@pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
+@pytest.mark.parametrize("dim_m,dim_n", [(32, 16), (64, 32)])
+@pytest.mark.parametrize("epilogue", ["none", "gelu", "silu", "sigmoid"])
+def test_fused_mm_stack_covers_accumulator_and_epilogue(device, dim_m, dim_n, epilogue):
+    set_current_device(device())
+    kwargs = dict(
+        dim_m=dim_m,
+        dim_k=48,
+        dim_n=dim_n,
+        epilogue=epilogue,
+        clamp=(-0.125, 0.75),
+    )
+    # The 32x16 AIE2P SiLU+clamp core measured 3648 bytes with pinned Peano.
+    accumulator_bytes = np.dtype(np.float32).itemsize * dim_m * dim_n
+    minimum = accumulator_bytes + max(device().default_core_stack_bytes, 1600)
+    fn = kernels.fused_mm(**kwargs)
+    assert fn.contract.stack_bytes >= minimum
+    mlir = str(kd.design(kernels.fused_mm, calls=4, **kwargs).as_mlir())
+    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
+    assert stack_sizes
+    assert all(int(size) >= minimum for size in stack_sizes)
+
+
 def test_contract_validates_argument_bindings():
     with pytest.raises(ValueError, match="layouts"):
         KernelContract(roles=(In, Out), layouts=(None,))
