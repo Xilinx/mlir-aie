@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Extract per-host-arg element counts from aiecc's lowered MLIR.
+"""Extract per-host-tensor bit counts from aiecc's lowered MLIR.
 
 aiecc writes ``input_with_addresses.mlir`` into the kernel directory as part
 of compilation.  The host-facing ``aie.runtime_sequence`` carries fully
@@ -15,7 +15,8 @@ typed memref arguments — e.g.::
     }
 
 The argument types ARE the kernel's host-side contract, so we read each
-arg's memref shape and compute the element count.  No need to walk
+tensor's memref shape and compute its footprint in bits. Dispatch scalars
+are skipped. No need to walk
 ``aie.dma_bd`` ops, distinguish host-facing transfers from tile-internal
 DMAs, or fold multi-DMA patterns (fan-out / repeated load / InOut fill+drain)
 back together — the runtime_sequence signature already represents what the
@@ -43,24 +44,27 @@ logger = logging.getLogger(__name__)
 
 
 def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
-    """Return per-host-arg element counts from ``input_with_addresses.mlir``.
+    """Return per-host-arg footprints, in bits, from ``input_with_addresses.mlir``.
 
-    The returned list is indexed by ``aie.runtime_sequence`` argument
-    position.  Each entry is the element count (product of static dims) of
-    that arg's memref type.
+    The returned list follows ``aie.runtime_sequence`` tensor argument
+    order, skipping scalars. Each entry is the product of the static dims and
+    the element type's size under the data layout. Bits rather than elements because a
+    host buffer need not divide its bits into elements the way the memref
+    does, and bits rather than bytes so a sub-byte element type stays exact.
 
     Args:
         kernel_dir: Directory aiecc wrote its lowered MLIR into.
 
     Returns:
-        A list of per-tensor element counts (scalar arguments are skipped),
+        A list of per-tensor bit counts (scalar arguments are skipped),
         or ``None`` when validation can't be
         performed safely:
 
         * file is absent or unparseable
         * no runtime_sequence found, or no unique call-graph root (e.g.
           multi-device modules with multiple top-level sequences)
-        * any arg has an unsupported type or a dynamic-shape dim
+        * any arg has an unsupported type, a dynamic-shape dim, or an element
+          type the data layout does not describe
     """
     mlir_path = kernel_dir / "input_with_addresses.mlir"
     if not mlir_path.exists():
@@ -72,6 +76,9 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         )
         from aie._mlir_libs import (  # pyright: ignore[reportMissingImports]
             get_dialect_registry,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        from aie._mlir_libs._aie import (  # pyright: ignore[reportMissingImports]
+            type_size_in_bits,
         )
         from aie.dialects import aie as _aie  # noqa: F401
         from aie.dialects import aiex as _aiex  # noqa: F401
@@ -124,7 +131,7 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
                 return None
             entry = roots[0]
 
-        # Pass 3: read each arg's memref element count.
+        # Pass 3: read each arg's memref footprint, in bits.
         seq_block = entry.regions[0].blocks[0]
         sizes: list[int] = []
         memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
@@ -140,10 +147,17 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
                 return None
             if not t.has_static_shape:
                 return None
+            # Bits, from the element type's own data layout: a host buffer and
+            # the memref agree on how many bits they cover but need not agree on
+            # how those bits are divided into elements. A v8bfp16ebs8 memref
+            # counts one element per 72-bit block where the host counts bytes.
+            bits = type_size_in_bits(t.element_type)
+            if not bits:
+                return None
             elems = 1
             for d in t.shape:
                 elems *= d
-            sizes.append(elems)
+            sizes.append(elems * bits)
         return sizes if sizes else None
     except Exception:
         # Any binding / parsing failure means validation is unavailable

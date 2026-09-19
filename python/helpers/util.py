@@ -219,7 +219,7 @@ def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]
     return shape
 
 
-def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> NpuDType:
+def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> type[NpuDType]:
     return get_args(get_args(ndarray_type)[1])[0]
 
 

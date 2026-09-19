@@ -11,6 +11,10 @@
 
 using namespace aie;
 
+#ifndef SIGMOID_ELEMS
+#define SIGMOID_ELEMS vector_size
+#endif
+
 // sigmoid(x) = 0.5 * (1 + tanh(x/2)), 32 bf16 elements per iteration.  The
 // native tanh works on 16 float lanes, so tanh(x/2) is computed on two halves.
 void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
@@ -18,7 +22,7 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
                               const int32_t vector_size) {
   event0();
 
-  int num_elems = vector_size;
+  const int num_elems = SIGMOID_ELEMS;
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
 
@@ -27,7 +31,6 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, 32> register_0_5_wide =
       aie::broadcast<bfloat16, 32>(0.5f);
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(32)
   for (int i = 0; i < num_elems; i += 32) {
     auto input = *it_in++;
 

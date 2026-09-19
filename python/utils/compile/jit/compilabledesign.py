@@ -202,6 +202,24 @@ class CompilableDesign:
             )
             self.compile_params = list(cp) + list(self.bound_dispatch_params)
             self.tensor_params = list(tp)
+            # A design's positional arguments are its tensors, so the only
+            # *args a generator may take is a tensor list: every positional
+            # the named tensors leave over goes to it, and the generator
+            # decides their count from its compile-time parameters (it is
+            # handed an empty tuple at generation).
+            variadic = [
+                name
+                for name, p in self._sig.parameters.items()
+                if p.kind is inspect.Parameter.VAR_POSITIONAL
+            ]
+            self.variadic_tensor_param = variadic[0] if variadic else None
+            if variadic and variadic[0] not in self.tensor_params:
+                raise TypeError(
+                    f"generator parameter *{variadic[0]} must be annotated In, "
+                    "Out or InOut: a design's positional arguments are its "
+                    "tensors, and only a tensor parameter may take a variable "
+                    "number of them."
+                )
             self.dispatch_params = [
                 name for name in dp if name not in self.bound_dispatch_params
             ]
@@ -246,6 +264,7 @@ class CompilableDesign:
             self._sig = None
             self.compile_params = []
             self.tensor_params = []
+            self.variadic_tensor_param = None
             self.dispatch_params = []
             self.scalar_params = []
             self.dispatch_param_types = []
@@ -866,6 +885,10 @@ class CompilableDesign:
         pos_iter = iter(runtime_args)
         for name, param in params:
             ann = hints.get(name, param.annotation)
+            if param.kind is inspect.Parameter.VAR_POSITIONAL:
+                # The variadic tensor list takes every positional left over.
+                tensor_args.extend(a for a in pos_iter if not isinstance(a, Kernel))
+                continue
             positional = param.kind in (
                 inspect.Parameter.POSITIONAL_ONLY,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -922,20 +945,45 @@ class CompilableDesign:
 
         return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
-    def validate_tensor_args(self, tensor_args: list) -> None:
-        """Validate that *tensor_args* element counts match the compiled kernel.
+    def validate_tensor_args(
+        self,
+        tensor_args: list,
+        *,
+        num_host_bos: int | None = None,
+        implicit_tensor_count: int = 0,
+    ) -> None:
+        """Validate that *tensor_args* cover the bits the compiled kernel expects.
 
-        Compares each tensor's element count against the static memref capacity
+        Compared in bits, not elements: a host buffer and the design's memref
+        cover the same bits but need not divide them the same way, so a block
+        type compares equal rather than off by nine.
+
+        Compares each tensor's footprint against the static memref capacity
         in the compiled ``aie.runtime_sequence`` signature. Dispatch scalars
         are skipped when parsing that signature; partial or repeated transfers
         do not change the underlying host-buffer allocation contract.
 
         Zero-sized entries are skipped.
 
+        ``implicit_tensor_count`` accounts for trailing trace/control buffers
+        supplied by the runtime, not the caller. ``num_host_bos`` preserves count
+        validation on an in-process kernel-cache hit without recompiling.
+
         No-op when expected sizes are unavailable (e.g. offline compilation
-        or when ``input_with_addresses.mlir`` was not produced).
+        or when ``input_with_addresses.mlir`` was not produced), unless
+        ``num_host_bos`` is known.
         """
-        if not self._expected_tensor_sizes:
+        if num_host_bos is None and self._expected_tensor_sizes is not None:
+            num_host_bos = len(self._expected_tensor_sizes)
+        if num_host_bos is not None:
+            expected_count = num_host_bos - implicit_tensor_count
+            if len(tensor_args) != expected_count:
+                raise RuntimeError(
+                    f"Design {self.generator_name!r} expects {expected_count} "
+                    f"tensor argument(s), but received {len(tensor_args)} "
+                    f"({implicit_tensor_count} buffer(s) supplied by the runtime)."
+                )
+        if self._expected_tensor_sizes is None:
             return
         import numpy as np
 
@@ -945,24 +993,31 @@ class CompilableDesign:
             if expected == 0:
                 continue
             try:
-                actual = int(np.size(tensor))
+                # tensor.dtype rather than asarray(tensor): a device tensor
+                # would sync itself back to the host just to be measured.
+                itemsize = np.dtype(tensor.dtype).itemsize
+                actual = int(np.size(tensor)) * itemsize * 8
             except (TypeError, ValueError, AttributeError):
                 # Non-array-like tensor argument (e.g. a scalar passed by mistake);
                 # skip rather than raise so the kernel call surfaces the real
                 # type error.
                 continue
             if actual != expected:
-                param_name = (
-                    self.tensor_params[i]
-                    if i < len(self.tensor_params)
-                    else f"arg[{i}]"
-                )
+                param_name = self._tensor_arg_name(i)
                 raise RuntimeError(
-                    f"Tensor argument {param_name!r} has {actual} elements but "
-                    f"the kernel was compiled for {expected} elements.\n"
+                    f"Tensor argument {param_name!r} covers {actual // 8} bytes "
+                    f"but the kernel was compiled for {expected // 8}.\n"
                     f"CompileTime[T] parameters used at compile time: "
                     f"{self.compile_kwargs!r}"
                 )
+
+    def _tensor_arg_name(self, i: int) -> str:
+        """Name the ``i``-th positional tensor: a parameter, or an entry of the variadic list."""
+        variadic = self.variadic_tensor_param
+        named = [n for n in self.tensor_params if n != variadic]
+        if i < len(named):
+            return named[i]
+        return f"{variadic}[{i - len(named)}]" if variadic else f"arg[{i}]"
 
     def to_json(self) -> str:
         """Serialise the non-callable parts of this design to JSON.
@@ -1192,9 +1247,11 @@ class CompilableDesign:
         ExternalFunction._instances.clear()
         _EXTERN_CACHE.clear()
 
-        _tensor_placeholders = {
+        _tensor_placeholders: dict[str, _TensorPlaceholder | tuple[()]] = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
+        if self.variadic_tensor_param is not None:
+            _tensor_placeholders[self.variadic_tensor_param] = ()
         from .markers import _DispatchParameter
 
         dispatch_owner = object()

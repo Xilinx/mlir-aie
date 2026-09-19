@@ -141,23 +141,21 @@ void rgba2hue_aie_scalar(uint8_t *rgba_in, uint8_t *hue_out,
       rgbMin = r < g ? (r < b ? r : b) : (g < b ? g : b);
       rgbMax = r > g ? (r > b ? r : b) : (g > b ? g : b);
 
-      if (rgbMax == 0 || rgbMax == rgbMin)
+      if (rgbMax == rgbMin) {
         h = 0;
-      else if (rgbMax == r)
-        h = 0 +
-            85 * (g - b) /
-                (rgbMax - rgbMin); // h = 0 + 42.5*(g - b) / (rgbMax - rgbMin);
-      else if (rgbMax == g)
-        h = 85 * 2 +
-            85 * (b - r) /
-                (rgbMax - rgbMin); // h = 85 + 42.5*(b - r) / (rgbMax - rgbMin);
-      else
-        h = 170 * 2 +
-            85 * (r - g) /
-                (rgbMax -
-                 rgbMin); // h = 170 + 42.5*(r - g) / (rgbMax - rgbMin);
-
-      h = (h + 1) >> 1;
+      } else {
+        // Same arithmetic as rgba2hue_aie above, so the two paths agree bit
+        // for bit: inv is the Q7.9 reciprocal that lut_inv_16b holds, each
+        // half-turn offset carries the +1 that rounds the halving, and the
+        // single >>10 replaces a divide-then-(h+1)>>1 that rounded twice.
+        int inv = (85 * 512) / (rgbMax - rgbMin);
+        if (rgbMax == g)
+          h = (171 * 512 + (b - r) * inv) >> 10; // 170 + 42.5*(b-r)/d
+        else if (rgbMax == r)
+          h = (1 * 512 + (g - b) * inv) >> 10; //     0 + 42.5*(g-b)/d
+        else
+          h = (341 * 512 + (r - g) * inv) >> 10; // 340 + 42.5*(r-g)/d
+      }
       hue_out[i * width + j] = (uint8_t)h;
     }
 
@@ -172,7 +170,8 @@ void rgba2hueLine(uint8_t *in, uint8_t *out, int32_t lineWidth) {
   rgba2hue_aie(in, out, 1, lineWidth);
 #else
   // AIE2P (npu2): the vectorized path produces incorrect results due to
-  // differences in acc32 SRS behaviour on AIE2P; use the scalar fallback.
+  // differences in acc32 SRS behavior on AIE2P; use the scalar fallback,
+  // which computes the same values bit for bit.
   rgba2hue_aie_scalar(in, out, 1, lineWidth);
 #endif
 }

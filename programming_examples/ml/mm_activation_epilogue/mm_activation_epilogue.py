@@ -29,9 +29,9 @@ RTP word and the DMA fill/drain addressing differ.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
@@ -47,29 +47,14 @@ from aie.iron import (
     WorkerRuntimeBarrier,
 )
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/mm_activation_epilogue.cc"
-)
 
 _MODE_IDENTITY = 0
 _MODE_SILU = 1
 _MODE_GELU = 2
 _MODE_RELU = 3
-
-
-def _epilogue_extern(tile_ty):
-    return ExternalFunction(
-        "mm_activation_epilogue_row",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[tile_ty, tile_ty, np.int32, np.int32],
-        include_dirs=[config.cxx_header_path()],
-    )
 
 
 @iron.jit
@@ -126,7 +111,7 @@ def mm_activation_epilogue(
     outC = ObjectFifo(memtile_ty, name="outC")
     outC_fifos = _join(outC, "memC")
 
-    epilogue_fn = _epilogue_extern(tile_ty)
+    epilogue_fn = kernels.mm_activation_epilogue(tile_size=tile_size)
 
     modes = [
         Buffer(

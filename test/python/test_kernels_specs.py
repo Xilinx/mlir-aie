@@ -16,7 +16,7 @@ Also covers the public arg_shape() / arg_dtype() introspection methods
 that BaseKernel exposes for unwrapping parameterized np.ndarray arg types.
 
 Sibling files:
-  test_kernels_memoization.py  — memoization, .zero, auto-prefix-on-collision
+  test_kernels_memoization.py  — memoization, independent zero, auto-prefix-on-collision
   test_kernels_chess.py        — use_chess + emulated bf16 plumbing
 
 The shared _isolate_extern_state fixture lives in conftest.py at this
@@ -31,7 +31,7 @@ from typing import Callable
 import numpy as np
 import pytest
 from aie.iron import kernels
-from aie.iron.device import NPU2Col1
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
@@ -51,10 +51,7 @@ class KernelSpec:
     kwargs: dict  # baseline kwargs that should produce a valid kernel
     arg_count: int
     expected_name: str  # expected ef._name with baseline kwargs
-    # Source is either a real .cc file (source_substring=None checks _source_file)
-    # or an embedded source_string containing a particular #include.
-    source_kind: str = "file"  # "file" | "string_or_file"
-    source_substring: str | None = None  # for "string_or_file": substring to find
+    lut_source: str | None = None  # kernel selected by the AIE2 LUT translation unit
     # Additional (kwargs_overrides, expected_name) pairs
     name_variants: list[tuple[dict, str]] = field(default_factory=list)
     # (kwargs_overrides, error_pattern) pairs
@@ -72,6 +69,16 @@ class KernelSpec:
 
 
 KERNEL_SPECS: list[KernelSpec] = [
+    KernelSpec(
+        name="zero",
+        factory=kernels.zero,
+        kwargs=dict(tile_size=1024, dtype=np.int32),
+        arg_count=1,
+        expected_name="zero",
+        invalid_kwargs=[(dict(tile_size=0), "positive integer or shape")],
+        shape_checks=[(dict(tile_size=(8, 16)), 0, (8, 16))],
+        tile_size_checks=[(dict(tile_size=192), 192)],
+    ),
     # ----- eltwise -----
     KernelSpec(
         name="passthrough",
@@ -80,10 +87,10 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="passThroughLine",
         shape_checks=[
-            (dict(tile_size=64, dtype=np.int16), 0, (64,)),
+            (dict(tile_size=192, dtype=np.int16), 0, (192,)),
         ],
         tile_size_checks=[
-            (dict(tile_size=256, dtype=np.uint8), 256),
+            (dict(tile_size=384, dtype=np.uint8), 384),
         ],
     ),
     KernelSpec(
@@ -267,8 +274,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="softmax_bf16",
-        source_kind="string_or_file",
-        source_substring="softmax.cc",
+        lut_source="softmax.cc",
         invalid_kwargs=[(dict(tile_size=2048), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -277,8 +283,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=2,
         expected_name="gelu_bf16",
-        source_kind="string_or_file",
-        source_substring="gelu.cc",
+        lut_source="gelu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -287,8 +292,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=2,
         expected_name="silu_bf16",
-        source_kind="string_or_file",
-        source_substring="silu.cc",
+        lut_source="silu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -297,8 +301,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="silu_bf16_size",
-        source_kind="string_or_file",
-        source_substring="silu.cc",
+        lut_source="silu.cc",
     ),
     KernelSpec(
         name="gelu_sized",
@@ -306,8 +309,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # in, out, size
         expected_name="gelu_bf16_size",
-        source_kind="string_or_file",
-        source_substring="gelu.cc",
+        lut_source="gelu.cc",
     ),
     KernelSpec(
         name="swiglu",
@@ -315,8 +317,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=4,
         expected_name="swiglu_bf16",
-        source_kind="string_or_file",
-        source_substring="swiglu.cc",
+        lut_source="swiglu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -325,8 +326,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=2,
         expected_name="exp_bf16_1024",
-        source_kind="string_or_file",
-        source_substring="bf16_exp.cc",
+        lut_source="bf16_exp.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -335,8 +335,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="tanh_bf16",
-        source_kind="string_or_file",
-        source_substring="tanh.cc",
+        lut_source="tanh.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -345,8 +344,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="sigmoid_bf16",
-        source_kind="string_or_file",
-        source_substring="sigmoid.cc",
+        lut_source="sigmoid.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -355,8 +353,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=4,  # in, out, size (int32), alpha (bfloat16)
         expected_name="leaky_relu_bf16",
-        source_kind="string_or_file",
-        source_substring="leaky_relu.cc",
+        lut_source="leaky_relu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
     ),
     KernelSpec(
@@ -469,10 +466,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="addWeightedLine",
         name_variants=[
             (dict(line_width=1920, dtype=np.int16), "addWeightedLine"),
-            (dict(line_width=1920, dtype=np.int32), "addWeightedLine"),
         ],
         invalid_kwargs=[
             (dict(line_width=1920, dtype=np.float32), "unsupported dtype"),
+            # addWeighted.cc's int32 branch has no int32 x int16 MAC and never compiled.
+            (dict(line_width=1920, dtype=np.int32), "no int32 build"),
         ],
         shape_checks=[(dict(line_width=640, dtype=np.uint8), 0, (640,))],
     ),
@@ -745,7 +743,12 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=2,
         expected_name="transpose_4x4",
         name_variants=[(dict(dim_m=32, dim_n=32, subtile=8), "transpose_8x8")],
-        invalid_kwargs=[(dict(subtile=3), "subtile must be 4 or 8")],
+        invalid_kwargs=[
+            (dict(subtile=3), "subtile must be 4 or 8"),
+            # dim_m=0 sails through the modulo checks below (0 % anything is
+            # 0) and would otherwise reach the kernel's compile-time division.
+            (dict(dim_m=0, dim_n=4, subtile=4, dtype=np.uint32), "must be positive"),
+        ],
     ),
     KernelSpec(
         name="convert_copy",
@@ -765,6 +768,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=4,  # in, lut, out, dims
         expected_name="rope",
         name_variants=[(dict(two_halves=True), "rope_two_halves")],
+        shape_checks=[(dict(tile_size=96, two_halves=True), 0, (96,))],
     ),
     # ----- norm (kernels.norm) -----
     KernelSpec(
@@ -866,15 +870,40 @@ def test_returns_external_function(spec: KernelSpec):
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
 def test_source_locatable(spec: KernelSpec):
     ef = _call_factory(spec, spec.kwargs)
-    if spec.source_kind == "file":
-        src = ef._source_file
-        assert src is not None
-        assert Path(src).exists(), f"Source file not found: {src}"
-    else:
-        # source_string OR source_file must be set; if string, must reference the .cc
-        assert ef._source_string is not None or ef._source_file is not None
-        if ef._source_string is not None and spec.source_substring is not None:
-            assert spec.source_substring in ef._source_string
+    assert ef.source_string is None
+    assert ef.source_file is not None
+    assert Path(ef.source_file).is_file()
+
+
+@pytest.mark.parametrize("device,arch", [(NPU1Col1, "aie2"), (NPU2Col1, "aie2p")])
+@pytest.mark.parametrize(
+    "spec",
+    [s for s in KERNEL_SPECS if s.lut_source],
+    ids=lambda s: s.name,
+)
+def test_lut_source_selection(spec: KernelSpec, device, arch):
+    previous = get_current_device(probe_runtime=False)
+    set_current_device(device())
+    try:
+        ef = spec.factory(**spec.kwargs)
+        assert ef.source_string is None
+        assert Path(ef.source_file).is_file()
+        selectors = [
+            flag
+            for flag in ef.compile_flags
+            if flag.startswith("-DAIE_LUT_KERNEL_SOURCE=")
+        ]
+        if arch == "aie2":
+            assert Path(ef.source_file).name == "lut_kernel.cc"
+            assert len(selectors) == 1
+            selected = Path(selectors[0].split("=", 1)[1].strip('"'))
+            assert selected.is_file()
+            assert selected.name == spec.lut_source
+        else:
+            assert not selectors
+            assert Path(ef.source_file).name == spec.lut_source
+    finally:
+        set_current_device(previous)
 
 
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
@@ -1006,12 +1035,163 @@ def test_tile_size_equivalent_to_arg_shape_first_dim():
 
 def test_arg_shape_out_of_range_raises():
     """Out-of-range arg_index gets a clean error — same as tile_size()."""
-    ef = kernels.passthrough(tile_size=64, dtype=np.int32)  # 3 args
+    ef = kernels.passthrough(tile_size=96, dtype=np.int32)  # 3 args
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_shape(99)
 
 
 def test_arg_dtype_out_of_range_raises():
-    ef = kernels.passthrough(tile_size=64, dtype=np.int32)
+    ef = kernels.passthrough(tile_size=96, dtype=np.int32)
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_dtype(99)
+
+
+@pytest.fixture(params=["aie2", "aie2p"])
+def kernel_arch(request):
+    previous = get_current_device(probe_runtime=False)
+    set_current_device(NPU1Col1() if request.param == "aie2" else NPU2Col1())
+    try:
+        yield request.param
+    finally:
+        set_current_device(previous)
+
+
+@pytest.mark.parametrize("name", ["rms_norm", "rms_norm_eps", "layer_norm", "rope"])
+def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
+    from aie.iron.kernels import datamovement, norm, transformer
+
+    factory = getattr(kernels, name)
+    canonical = datamovement if name == "rope" else norm
+    assert factory is getattr(canonical, name)
+    if name != "rms_norm_eps":
+        assert factory is getattr(transformer, name)
+    assert factory().arg_shape(0) == (1024,)
+    fn = factory(tile_size=2048)
+    assert fn is factory(cols=2048)
+    assert fn.arg_shape(0) == (2048,)
+    source_dir = "generic" if name == "rope" else kernel_arch
+    assert Path(fn._source_file).parent.name == source_dir
+    assert len(fn.contract.roles) == len(fn.arg_types())
+    if name != "rope":
+        assert any(kernel_arch.upper() in flag for flag in fn._compile_flags)
+    with pytest.raises(ValueError, match="must agree"):
+        factory(tile_size=512, cols=2048)
+    with pytest.raises(ValueError, match="positive"):
+        factory(tile_size=0)
+
+
+@pytest.mark.parametrize("name", ["rms_norm", "layer_norm"])
+def test_norm_reference_eps_keyword(name):
+    from aie.iron.kernels import norm, transformer
+
+    reference = getattr(kernels, f"{name}_ref")
+    assert reference is getattr(norm, f"{name}_ref")
+    assert reference is getattr(transformer, f"{name}_ref")
+    x = np.array([[1, 2, 4, 8]], dtype=bfloat16)
+    xf = x.astype(np.float32)
+    centered = xf if name == "rms_norm" else xf - xf.mean(axis=-1, keepdims=True)
+    expected = centered / np.sqrt(
+        (centered * centered).mean(axis=-1, keepdims=True) + 0.5
+    )
+    np.testing.assert_array_equal(reference(x, eps=0.5), expected.astype(bfloat16))
+
+
+def test_norm_tail_and_vector_constraints(kernel_arch):
+    assert kernels.rms_norm(tile_size=33).arg_shape(0) == (33,)
+    fn = kernels.rms_norm_eps(cols=33)
+    expected_setup = None if kernel_arch == "aie2" else kernels.conv_even
+    assert fn.contract.setup is expected_setup
+    assert kernels.rms_norm(cols=33).contract.setup is expected_setup
+    x = np.ones((2, 33), dtype=bfloat16)
+    np.testing.assert_array_equal(
+        fn.contract.reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
+    )
+    width = 32 if kernel_arch == "aie2p" else 16
+    assert kernels.layer_norm(cols=width).arg_shape(0) == (width,)
+    with pytest.raises(ValueError, match=f"multiple of {width}"):
+        kernels.layer_norm(cols=width + 1)
+    if kernel_arch == "aie2p":
+        with pytest.raises(ValueError, match="multiple of 32"):
+            kernels.layer_norm(cols=16)
+
+
+@pytest.mark.parametrize("two_halves", [False, True])
+@pytest.mark.parametrize("tile_size", [96, 128])
+def test_rope_layout_contract_and_vector_constraints(
+    kernel_arch, two_halves, tile_size
+):
+    width = 32 if two_halves else 16
+    fn = kernels.rope(cols=tile_size, two_halves=two_halves)
+    assert fn._original_name == ("rope_two_halves" if two_halves else "rope")
+    with pytest.raises(ValueError, match=f"multiple of {width}"):
+        kernels.rope(cols=width - 2, two_halves=two_halves)
+    x = np.arange(tile_size, dtype=np.float32).astype(bfloat16)
+    lut = np.zeros(tile_size, dtype=bfloat16)
+    lut[1::2] = 1
+    expected = np.empty_like(x)
+    if two_halves:
+        expected[: tile_size // 2] = -x[tile_size // 2 :]
+        expected[tile_size // 2 :] = x[: tile_size // 2]
+    else:
+        expected[0::2] = -x[1::2]
+        expected[1::2] = x[0::2]
+    np.testing.assert_array_equal(fn.contract.reference(x, lut), expected)
+
+
+@pytest.mark.parametrize(
+    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
+)
+def test_sized_factory_contracts(name, kernel_arch):
+    from aie.iron.kernels import Param
+    from aie.utils.compile.jit.markers import In, Out
+
+    fn = getattr(kernels, name)(tile_size=1024)
+    binary = name in ("add_sized", "mul_sized")
+    assert fn.contract.roles == ((In, In, Out, Param) if binary else (In, Out, Param))
+    assert fn.contract.parameter_bindings == ((3 if binary else 2, 1024),)
+    assert fn.contract.tolerance.note
+    inputs = [np.ones(1024, dtype=bfloat16)] * (2 if binary else 1)
+    reference_name = name.replace("_sized", "_ref")
+    expected = getattr(kernels, reference_name)(*inputs)
+    np.testing.assert_array_equal(fn.contract.reference(*inputs), expected)
+    with pytest.raises(ValueError):
+        getattr(kernels, name)(tile_size=0)
+    if binary:
+        assert getattr(kernels, name)(tile_size=1025).arg_shape(0) == (1025,)
+    else:
+        with pytest.raises(ValueError):
+            getattr(kernels, name)(tile_size=1025)
+
+
+@pytest.mark.parametrize(
+    "name", ["add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized"]
+)
+def test_sized_factories_specialize_tiny_bounds(name, kernel_arch):
+    factory = getattr(kernels, name)
+    width = (
+        1
+        if name in ("add_sized", "mul_sized")
+        else 32 if name == "relu_sized" or kernel_arch == "aie2p" else 16
+    )
+    macro = name.removesuffix("_sized").upper() + "_ELEMS"
+    tiny = factory(tile_size=width)
+    other = factory(tile_size=width * 4)
+    assert tiny.arg_shape(0) == (width,)
+    assert f"-D{macro}={width}" in tiny.compile_flags
+    assert f"-D{macro}={width * 4}" in other.compile_flags
+    assert tiny.object_file_name != other.object_file_name
+    assert tiny._symbol_prefix != other._symbol_prefix
+
+
+def test_relu_sized_requires_whole_vectors(kernel_arch):
+    assert kernels.relu_sized(tile_size=32).arg_shape(0) == (32,)
+    with pytest.raises(ValueError, match="32-element vector step"):
+        kernels.relu_sized(tile_size=2049)
+
+
+@pytest.mark.parametrize(
+    "name", ["gelu", "silu", "relu", "swiglu", "tanh", "sigmoid", "leaky_relu"]
+)
+def test_fixed_activations_compile_their_count(name, kernel_arch):
+    fn = getattr(kernels, name)()
+    assert f"-D{name.upper()}_ELEMS=1024" in fn.compile_flags

@@ -248,7 +248,7 @@ def objcopy_path():
 
 
 def nm_path():
-    """Return the llvm-nm used to list defined external symbols in compiled objects.
+    """Return the llvm-nm used to list the symbols a compiled object defines.
 
     Paired with objcopy_path() to bulk-rename symbols in a compiled object: list
     every defined external symbol with nm, then bulk-``--redefine-syms`` with
@@ -272,6 +272,29 @@ def ar_path():
     compiler that produced the objects.
     """
     return _find_llvm_tool("llvm-ar", "AIE_AR_PATH")
+
+
+def aie_kernels_dir():
+    """Return the ``aie_kernels/`` directory the kernel factories compile from.
+
+    The installed tree's copy (``<root>/include/aie_kernels``) unless
+    ``MLIR_AIE_KERNEL_SOURCES`` names a checkout, in which case that
+    checkout's ``aie_kernels/`` is used. The override lets a checked-out
+    kernel source be compiled against an installed wheel, which is how the
+    static kernel checks run on a pull request.
+    """
+    override = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    if override:
+        return os.path.join(override, "aie_kernels")
+    return os.path.join(cxx_header_path(), "aie_kernels")
+
+
+def aie_runtime_lib_dir():
+    """Return ``aie_runtime_lib/`` (the LUT sources), honoring ``MLIR_AIE_KERNEL_SOURCES``."""
+    override = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    if override:
+        return os.path.join(override, "aie_runtime_lib")
+    return os.path.join(root_path(), "aie_runtime_lib")
 
 
 def cxx_header_path():

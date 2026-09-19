@@ -52,7 +52,7 @@ def matrix_vector(
     matvec_kernel = kernels.mv(
         dim_m=m, dim_k=k, vectorized=vectorized, use_chess=use_chess
     )
-    zero_kernel = matvec_kernel.zero
+    zero_kernel = kernels.zero(m, np.int32, use_chess=use_chess)
 
     dtype_in = np.dtype[np.int16]
     dtype_out = np.dtype[np.int32]
@@ -64,12 +64,9 @@ def matrix_vector(
     outC_ty = np.ndarray[(m,), dtype_out]
 
     # The vectorized mv kernel reads A in a "32-bit-word transposed" layout
-    # (see aie_kernels/aie2/mv.cc): for 2-byte elements the transpose
-    # granularity is 2 elements, packing rows of each 2-column word slowly,
-    # m rows then the next 2-col word.
-    a_dims_from_stream: StreamDims | None = (
-        [(m, 2), (k // 2, 2 * m), (2, 1)] if vectorized else None
-    )
+    # (see aie_kernels/aie2/mv.cc); the kernel's contract declares the DMA
+    # transform on A's layout, so the design applies what the kernel wants.
+    a_dims_from_stream: StreamDims | None = matvec_kernel.contract.layouts[0].stream
 
     def core_fn(of_a, of_b, of_c, zero, matvec):
         elem_out = of_c.acquire(1)

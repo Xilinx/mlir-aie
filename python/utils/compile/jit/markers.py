@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Type-annotation markers for compile-time vs. runtime parameter classification.
+"""Argument markers for JIT design parameters.
 
 Five annotation categories are defined here (all exported from ``aie.iron``):
 

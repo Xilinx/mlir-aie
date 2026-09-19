@@ -12,6 +12,10 @@
 
 using namespace aie;
 
+#ifndef SIGMOID_ELEMS
+#define SIGMOID_ELEMS vector_size
+#endif
+
 // sigmoid(x) = 0.5 * (1 + tanh(x/2)) via LUT tanh (aie2), 32 bf16 elems/iter.
 void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
                               bfloat16 *restrict output_vector,
@@ -24,8 +28,7 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, 32> register_0_5 = aie::broadcast<bfloat16, 32>(0.5f);
   aie::vector<bfloat16, 32> register_1 = aie::broadcast<bfloat16, 32>(1.0f);
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(32)
-  for (int i = 0; i < vector_size; i += 32) {
+  for (int i = 0; i < SIGMOID_ELEMS; i += 32) {
     auto input = *it_in++;
 
     aie::vector<bfloat16, 32> half_x = aie::mul(input, register_0_5);
