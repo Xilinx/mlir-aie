@@ -38,8 +38,8 @@ def test_documented_kernel_modules_and_members_exist():
     assert not missing, f"{_DOC.name} documents symbols that do not exist: {missing}"
 
 
-def test_kernel_public_all_entries_resolve():
-    """Kernel-facing ``__all__`` exports must still resolve.
+def test_public_all_entries_resolve():
+    """Public ``__all__`` exports must still resolve.
 
     ``from module import *`` raises on a missing name, but nothing else does,
     so an entry left behind by a move survives until someone uses the star
@@ -48,8 +48,10 @@ def test_kernel_public_all_entries_resolve():
     import importlib
 
     modules = [
+        "aie.iron",
         "aie.iron.kernels",
         "aie.iron.algorithms",
+        "aie.utils.compile.jit",
     ]
     missing = []
     for name in modules:
