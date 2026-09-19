@@ -184,6 +184,21 @@ def mm_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int):
     return (a @ b).reshape(len(a), dim_m * dim_n)
 
 
+def cascade_mm_pair_ref(
+    a_put, b_put, a_get, b_get, *, dim_m: int, dim_k: int, dim_n: int, truncates: bool
+):
+    """One [`cascade_mm`][iron.kernels.linalg.cascade_mm] pair call: the PUT tile's product plus the GET tile's.
+
+    The partial sum crosses the cascade as a 32-bit integer lane, so a
+    floating-point output type has the PUT half's product truncated toward
+    zero on the way (``truncates``); integer outputs cross exactly.
+    """
+    partial = mm_tile_ref(a_put, b_put, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n)
+    if truncates:
+        partial = np.trunc(partial)
+    return partial + mm_tile_ref(a_get, b_get, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n)
+
+
 def mv_tile_ref(a, b, *, dim_m: int, dim_k: int):
     """One [`mv`][iron.kernels.linalg.mv] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k,)`` vector."""
     a = np.asarray(a).reshape(-1, dim_m, dim_k).astype(np.int64)
@@ -529,21 +544,13 @@ def mv(
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
-    Two kernels live behind this factory, selected by dtype:
-
-    * ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``, whose
-      vectorized path wants A in a word-transposed layout; the contract's
-      layout for A applies it on the host, and
-      ``programming_examples/basic/matrix_multiplication/matrix_vector``
-      shows the equivalent ``dims_from_stream`` on the hop into the core.
-      Initialize C with ``kernels.zero(dim_m, output_dtype)``.
-    * ``(bfloat16, bfloat16)`` builds the shared
-      ``aie_kernels/generic/mv.cc``, the kernel behind IRON's ``GEMV``
-      operator. Its signature leads with two runtime scalars,
-      ``(m, row_offset, A, b, c)`` -- ``row_offset`` shifts the write into
-      ``c`` so one core can fill several output blocks -- it takes
-      ``VEC_SIZE`` as well as ``DIM_K``, reads A row-major, and exports no
-      zero symbol.
+    ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``; its
+    vectorized path reads A word-transposed, which A's layout carries
+    (``contract.layouts[0].stream``). Initialize C with
+    ``kernels.zero(dim_m, output_dtype)``. ``(bfloat16, bfloat16)`` builds
+    ``aie_kernels/generic/mv.cc``, IRON's ``GEMV`` kernel, whose signature
+    is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
+    ``c`` so one core can fill several output blocks; A is row-major.
 
     Args:
         dim_m: Number of rows of A (output vector length).
@@ -822,28 +829,16 @@ def mm_bfp_shuffle(
 def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
     """Flash-attention toolkit from ``aie_kernels/aie2p/mha.cc`` (aie2p only).
 
-    Not one kernel but one *translation unit*: ``mha.cc`` ``#include``s
-    ``softmax.cc`` and ``mm.cc`` and exports the symbols an attention
-    dataflow composes, all sharing the ``DIM_M`` / ``DIM_K`` / ``DIM_N``
-    micro-tile. The returned ExternalFunction is the ``QK^T`` matmul.
-    Bind additional entry points explicitly with
-    ``fn.object_file.bind(symbol, arg_types)``: ``matmul_bf16_bf16_wrapper_scalar``,
-    ``matmul_bf16_bf16_rowmaj``, ``partial_softmax``, ``matmul_PV``,
-    ``rescale_O`` and ``init_scale_buffer``. Clear tiles with ``kernels.zero``.
-
-    ``mha.cc`` also *declares* ``passThroughLine`` without defining it; that
-    line copy is its own translation unit, so take it from
-    ``passthrough(dtype=np.int32)`` as a second kernel, which is what IRON's
-    MHA operator builds too.
-
-    Because the unit includes ``mm.cc``, it defines ``matmul_*``
-    names of its own; the per-parameterization symbol prefix is
-    what keeps those from colliding with a separate ``mm`` kernel in the
-    same design.
-
-    The contract declares ``unsupported``: attention is a multi-core
-    dataflow with a running softmax, not something the single-Worker
-    harness can drive.
+    One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
+    exports the symbols an attention dataflow composes over one micro-tile.
+    The returned kernel is the ``QK^T`` matmul; bind the others from the
+    same object with ``fn.object_file.bind(symbol, arg_types)``:
+    ``matmul_bf16_bf16_wrapper_scalar``, ``matmul_bf16_bf16_rowmaj``,
+    ``partial_softmax``, ``matmul_PV``, ``rescale_O``,
+    ``init_scale_buffer``. It declares but does not define
+    ``passThroughLine``: take that from ``passthrough(dtype=np.int32)``, as
+    IRON's MHA operator does. The contract is ``unsupported``: attention is
+    a multi-core dataflow with a running softmax.
 
     Args:
         dim_m: Rows of the micro-tile (multiple of 16).
@@ -907,13 +902,18 @@ def cascade_mm(
     output_dtype: type = np.int16,
     use_chess: bool = False,
 ) -> ExternalFunction:
-    r"""Cascade matrix-multiply kernel for multi-core accumulation.
+    r"""Build the GET half of a cascade matrix multiply: ``C += A * B + cascade``.
 
     cascade_mm.cc emits all three cascade variants (``get_only``,
-    ``put_only``, ``put_get``) in one object. The returned ExternalFunction
-    binds ``get_only``; bind the other entries explicitly with
-    ``fn.object_file.bind("matmul_scalar_cascade_put_only_<dtype>", fn.arg_types())``
-    (or ``put_get``). Initialize accumulators with ``kernels.zero``.
+    ``put_only``, ``put_get``) in one object. This binds ``get_only`` and
+    names [`cascade_mm_put`][iron.kernels.linalg.cascade_mm_put] as its
+    partner, so the generic builder runs the pair on two adjacent tiles;
+    bind ``put_get`` for longer chains with
+    ``fn.object_file.bind("matmul_scalar_cascade_put_get_<dtype>", fn.arg_types())``.
+    Initialize accumulators with ``kernels.zero``. The partial sum crosses
+    the cascade as a 32-bit integer lane: with a floating-point output type
+    the PUT half's product is truncated toward zero, which the reference
+    models.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -964,16 +964,86 @@ def cascade_mm(
                 _tile_layout((dim_k, dim_n), block=(s, t)),
                 _tile_layout((dim_m, dim_n), block=(r, t)),
             ),
-            reference=mm_ref,
+            cascade_partner=partial(
+                cascade_mm_put,
+                dim_m=dim_m,
+                dim_k=dim_k,
+                dim_n=dim_n,
+                input_dtype=input_dtype,
+                output_dtype=output_dtype,
+                use_chess=use_chess,
+            ),
+            reference=partial(
+                cascade_mm_pair_ref,
+                dim_m=dim_m,
+                dim_k=dim_k,
+                dim_n=dim_n,
+                truncates=not np.issubdtype(np.dtype(output_dtype), np.integer),
+            ),
             initializers=((2, _zero_output),),
             acc_dtype=mm_acc_dtype(input_dtype),
-            reduction=dim_k,
+            reduction=2 * dim_k,
             tolerance=_linalg_tolerance(input_dtype),
-            ops_per_call=2 * dim_m * dim_k * dim_n,
-            unsupported=(
-                "a cascade design: get_only / put_only / put_get pass partial "
-                "sums between cores over the cascade stream, which is not an "
-                "argument; the reference is the whole product"
+            ops_per_call=2 * dim_m * (2 * dim_k) * dim_n,
+        ),
+    )
+
+
+def cascade_mm_put(
+    dim_m: int = 64,
+    dim_k: int = 64,
+    dim_n: int = 64,
+    input_dtype: type = np.int16,
+    output_dtype: type = np.int16,
+    use_chess: bool = False,
+) -> ExternalFunction:
+    """Build the PUT half of [`cascade_mm`][iron.kernels.linalg.cascade_mm]: ``A * B`` onto the cascade stream.
+
+    Same object and arguments as the GET half. ``put_only`` never touches
+    its third argument (the ABI just mirrors ``get_only``), so the contract
+    binds it to zeros and nothing is asked of a caller. Build and judge the
+    pair from the GET half.
+    """
+    key = (input_dtype, output_dtype)
+    if key not in _CASCADE_COMBOS:
+        raise ValueError(
+            f"cascade_mm_put(): unsupported (input_dtype, output_dtype) = {key}. Supported: {list(_CASCADE_COMBOS.keys())}"
+        )
+    suffix = _CASCADE_COMBOS[key]
+    a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
+    b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
+    c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
+    r, s, t = _CASCADE_MM_MAC_DIMS[_detect_arch()][key]
+    return _make_extern(
+        f"matmul_scalar_cascade_put_only_{suffix}",
+        _default_source_path("cascade_mm.cc"),
+        [a_ty, b_ty, c_ty],
+        compile_flags=[
+            f"-DDIM_M={dim_m}",
+            f"-DDIM_K={dim_k}",
+            f"-DDIM_N={dim_n}",
+        ],
+        use_chess=use_chess,
+        cls=MatrixKernel,
+        contract=KernelContract(
+            roles=(In, In, Param),
+            parameter_bindings=((2, np.zeros(dim_m * dim_n, dtype=output_dtype)),),
+            layouts=(
+                _tile_layout((dim_m, dim_k), block=(r, s)),
+                _tile_layout((dim_k, dim_n), block=(s, t)),
+                None,
             ),
+            cascade_partner=partial(
+                cascade_mm,
+                dim_m=dim_m,
+                dim_k=dim_k,
+                dim_n=dim_n,
+                input_dtype=input_dtype,
+                output_dtype=output_dtype,
+                use_chess=use_chess,
+            ),
+            acc_dtype=mm_acc_dtype(input_dtype),
+            reduction=dim_k,
+            ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )

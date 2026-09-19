@@ -1266,7 +1266,13 @@ def bn_conv2dk1_partial_put_i8(
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"],
         contract=KernelContract(
             roles=(In, In, *((Param,) * 7)),
-            cascade_partner=bn_conv2dk1_partial_get_relu_i8,
+            cascade_partner=functools.partial(
+                bn_conv2dk1_partial_get_relu_i8,
+                input_width=input_width,
+                input_channels=input_channels,
+                weight_count=weight_count,
+                block_index=block_index,
+            ),
             acc_dtype=np.int32,
             reduction=input_channels,
         ),
@@ -1315,7 +1321,13 @@ def bn_conv2dk1_partial_get_relu_i8(
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"],
         contract=KernelContract(
             roles=(In, In, Out, *((Param,) * 9)),
-            cascade_partner=bn_conv2dk1_partial_put_i8,
+            cascade_partner=functools.partial(
+                bn_conv2dk1_partial_put_i8,
+                input_width=input_width,
+                input_channels=input_channels,
+                weight_count=weight_count,
+                block_index=block_index,
+            ),
             acc_dtype=np.int32,
             reduction=input_channels,
         ),
@@ -1449,7 +1461,13 @@ def bn_conv2dk1_input_split_partial_put_ui8(
         ],
         contract=KernelContract(
             roles=(In, In, *((Param,) * 7)),
-            cascade_partner=bn_conv2dk1_input_split_partial_skip_get,
+            cascade_partner=functools.partial(
+                bn_conv2dk1_input_split_partial_skip_get,
+                input_width=input_width,
+                input_channels=input_channels,
+                weight_count=weight_count,
+                block_index=block_index,
+            ),
             acc_dtype=np.int32,
             reduction=input_channels,
         ),
@@ -1498,7 +1516,13 @@ def bn_conv2dk1_input_split_partial_skip_get(
         ],
         contract=KernelContract(
             roles=(In, In, Out, In, *((Param,) * 10)),
-            cascade_partner=bn_conv2dk1_input_split_partial_put_ui8,
+            cascade_partner=functools.partial(
+                bn_conv2dk1_input_split_partial_put_ui8,
+                input_width=input_width,
+                input_channels=input_channels,
+                weight_count=weight_count,
+                block_index=block_index,
+            ),
             acc_dtype=np.int32,
             reduction=input_channels,
         ),

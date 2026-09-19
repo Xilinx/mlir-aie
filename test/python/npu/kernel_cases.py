@@ -445,6 +445,8 @@ CASES += [
         perf=False,
     ),
     Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
+    # The GET half names its PUT partner; the builder runs the pair.
+    Case("cascade_mm", calls=4, smoke=True, perf=False),
     Case(
         "mm_bfp",
         _mm_bfp,

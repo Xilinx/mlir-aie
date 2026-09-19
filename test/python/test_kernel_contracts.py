@@ -547,13 +547,72 @@ def test_split_depthwise_contract_checks_both_channel_halves():
         kernels.bn_conv2dk1_input_split_partial_skip_get,
     ],
 )
-def test_cascade_factories_declare_their_unobservable_protocol(factory):
+def test_bottleneck_cascade_halves_name_each_other(factory):
+    """Each half's partner is the other half at the same geometry.
+
+    The pair builds as a two-Worker design; neither half carries a pair
+    reference yet, so the builder runs it without judging it.
+    """
     fn = factory()
     assert len(fn.contract.roles) == len(fn.arg_types())
-    assert fn.contract.cascade_partner is not None
-    assert fn.contract.reference is None
-    with pytest.raises(ValueError, match="cascade"):
-        kd.design(factory)
+    assert fn.contract.reference is None and fn.contract.unsupported is None
+    partner = fn.contract.cascade_partner()
+    assert partner.contract.cascade_partner().name == fn.name
+    assert partner.arg_types()[0] == fn.arg_types()[0]  # the same activation slice
+    if fn.contract.out_indices:
+        assert fn.halves() == [partner, fn]
+        assert [a.direction for a in kd.host_args(fn)].count(Out) == 1
+    else:
+        with pytest.raises(ValueError, match="GET half"):
+            fn.halves()
+        with pytest.raises(ValueError, match="GET half"):
+            kd.design(factory)
+
+
+def test_cascade_mm_pair_is_built_and_judged_from_the_get_half():
+    fn = kernels.cascade_mm(dim_m=16, dim_k=16, dim_n=16)
+    put, get = fn.halves()
+    assert (
+        get is fn
+        and put.name.startswith(put._symbol_prefix + "_")
+        and "put_only" in put.name
+    )
+    assert put.contract.cascade_partner().name == fn.name
+    assert put.contract.out_indices == () and put.contract.reference is None
+    # Four streamed tiles per call: the PUT half's A and B, then the GET half's.
+    inputs = kd.sample_inputs(fn, calls=3)
+    assert [a.shape for a in inputs] == [(3, 16, 16)] * 4
+    assert [a.shape for a in kd.host_args(fn, calls=3)] == [
+        (3, 2, 256),
+        (3, 2, 256),
+        (3, 256),
+    ]
+    a1, b1, a2, b2 = (a.astype(np.int64) for a in inputs)
+    ref = fn.expected(inputs)
+    assert ref.dtype == np.int16 and ref.shape == (3, 256)
+    assert np.array_equal(ref, (a1 @ b1 + a2 @ b2).reshape(3, -1).astype(np.int16))
+    assert fn.contract.reduction == 32  # both halves' K
+    mlir = str(
+        kd.design(kernels.cascade_mm, calls=3, dim_m=16, dim_k=16, dim_n=16).as_mlir()
+    )
+    assert "cascade_flow" in mlir and mlir.count("aie.core") == 2
+
+
+def test_cascade_mm_pair_reference_models_the_integer_cascade_lane():
+    """A float product is truncated toward zero crossing the cascade; an integer one is not."""
+    a = np.full((1, 4), 1.5, np.float64)
+    b = np.full((1, 4), 1.0, np.float64)
+    exact = kernels.linalg.cascade_mm_pair_ref(
+        a, b, a, b, dim_m=2, dim_k=2, dim_n=2, truncates=False
+    )
+    truncated = kernels.linalg.cascade_mm_pair_ref(
+        a, b, a, b, dim_m=2, dim_k=2, dim_n=2, truncates=True
+    )
+    assert np.array_equal(exact, np.full((1, 4), 6.0))
+    assert np.array_equal(truncated, np.full((1, 4), 5.0))
+    bf = kernels.cascade_mm(input_dtype=bfloat16, output_dtype=np.float32)
+    assert bf.contract.reference.keywords["truncates"]
+    assert not kernels.cascade_mm().contract.reference.keywords["truncates"]
 
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.mm_bfp])
@@ -1345,10 +1404,10 @@ def test_sibling_symbols_follow_the_parameterization_prefix():
 
 
 def test_unsupported_contracts_are_refused_by_the_harness():
-    fn = kernels.cascade_mm()
+    fn = kernels.mha()
     assert fn.contract is not None and fn.contract.unsupported
     with pytest.raises(ValueError, match="cannot build"):
-        kd.design(kernels.cascade_mm)
+        kd.design(kernels.mha)
     assert kernels.mm_bfp_shuffle(dim_n=32).contract.unsupported
     assert kernels.mm_bfp_shuffle().contract.unsupported is None
 

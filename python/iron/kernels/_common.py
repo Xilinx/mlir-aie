@@ -75,102 +75,58 @@ class TensorLayout:
 class KernelContract:
     """What a kernel computes, declared next to the factory that builds it.
 
-    ``arg_types`` already fixes each argument's shape and dtype. The contract
-    adds what types cannot say: which argument is which, how to compute the
-    expected result on the host, and how close the device must come. With it
-    a generic builder (``aie.iron.algorithms.kernel_design``) can build a design, run
-    the kernel and judge the output for *any* factory, so correctness tests,
-    e2e tests and benchmarks share one definition instead of each restating
-    it.
+    ``arg_types`` fixes each argument's shape and dtype; the contract adds
+    what types cannot say, so ``aie.iron.algorithms.kernel_design`` can
+    build, run and judge any factory from this one declaration.
 
     Attributes:
-        roles: ``In``, ``Out``, ``InOut`` or ``Param`` per argument.
-            The first three reuse the ``@iron.jit`` markers; ``Param`` is
-            kernel-only. ``Out`` is written by the
-            kernel; ``InOut`` is accumulated into (``mm``'s ``C += A * B``),
-            which is why such a kernel declares an initializer and a design
-            initializes the buffer before each independent call. ``In`` is a
-            read-only streamed tensor; ``Param`` is a constant scalar or a
-            read-only tensor held in a core Buffer, as determined by
-            ``ExternalFunction.arg_types()``. Constancy is the generic harness's
-            test-fixture choice, not a C++ argument lifetime: direct designs can
-            pass a different parameter value each call. Multiple
-            ``Out``/``InOut`` arguments are permitted, in argument order.
-        reference: Host implementation, and the kernel's arithmetic model:
-            a saturating kernel's reference clips, a flushing one flushes.
-            Called with every unbound non-output argument in argument order:
-            ``In`` tiles as numpy arrays of shape ``(calls, n)``, tensor
-            ``Param`` values as constant arrays, scalar ``Param`` values
-            as Python numbers. Returns the expected
-            output for all calls; the harness casts it to the output dtype.
-            Without streamed ``In`` arguments, a one-call reference is also
-            accepted and repeated by ``judge`` for every independent call.
-            Multiple outputs are returned as a tuple in output argument order.
-            Bound parameters are omitted from the reference.
-            ``None`` when no host reference exists yet -- the kernel is then
-            built but not judged.
-        tolerance: How close the device result must be, or ``None`` for
-            :meth:`Tolerance.default_for` the output dtype. State the
-            evidence in ``Tolerance.note``.
-        ops_per_call: Arithmetic operations one kernel call performs, for
-            throughput normalization. ``None`` means one per output element.
-        out_valid: Meaningful elements at the start of each output tile when
-            the tile is padded for DMA alignment (reductions write one value
-            into a 4-byte-aligned tile). ``None`` means the whole tile.
-        sample: ``sample(rng, calls) -> list[np.ndarray]`` producing one host
-            array per unbound ``In``/tensor ``Param`` for ``calls`` kernel calls,
-            for kernels whose inputs have structure a dtype cannot express
-            (``expand``'s packed nibbles + scales). ``None`` lets the harness
-            draw plain random data of each argument's dtype.
-        acc_dtype: The type the kernel accumulates in (``np.int32`` for an
-            ``acc32`` mmul, ``np.float32`` for ``accfloat``), or ``None`` when
-            nothing is accumulated (copies, selections, bit operations). With
-            ``reduction`` it tells the harness how large an input may be
-            before the accumulator, or the output, would overflow.
-        reduction: Terms summed into one output element per call (``K`` for
-            a matmul tile, taps x channels for a convolution, the tile size
-            for a reduction). ``None`` means one.
-        setup: A kernel to call once on the core before the first call of
-            this one, or ``None``. The core narrows accumulators in whatever
-            mode its rounding register holds and boots in ``floor``; a kernel
-            that needs another mode names the setter here, e.g.
-            ``setup=conv_even``. A kernel whose source calls
-            ``aie::set_rounding`` itself needs nothing.
-        stack_bytes: Core stack a Worker calling this kernel needs, or
-            ``None`` for the target's default. aiecc measures each core's
-            stack and rejects a design whose stack is too small, so a kernel
-            that needs more than the default says so here rather than making
-            every design guess. Record where the number came from.
-        cascade_partner: The factory for the other half, when this kernel is
-            one half of a two-tile cascade pair. Half a pair computes half an
-            answer: the partial sum crosses the cascade stream, which is not
-            an argument, so a PUT half has no output role at all and neither
-            half is separately observable. ``reference`` is therefore the
-            *pair's* -- what the two compute together -- and ``unsupported``
-            follows from naming a partner rather than being restated.
-        unsupported: ``None`` when the generic builder can build, run and
-            judge the kernel in a single-Worker design; otherwise the reason
-            it cannot (a cascade protocol, an operand it cannot sample). The
-            reference and the dtype facts still say what the kernel computes.
-        layouts: Optional :class:`TensorLayout` per argument (``None`` means
-            identity). Logical tile shapes and storage codecs belong to the
-            declaration, never to a kernel-name switch in the harness.
-        parameter_bindings: ``(argument_index, value)`` pairs for fixed
-            ``Param`` operands, including element counts and constant tensors.
-            Unbound parameters are supplied by the caller. Counts are never inferred
-            from input/output sizes.
-        initializers: ``(argument_index, factory)`` pairs for ``InOut``
-            arguments; ``factory(fn)`` returns a one-buffer initialization
-            kernel. The reference describes the result from that initial state.
-        trace_cycles: Whether exactly one event0/event1 pair brackets the full
-            invocation, with no additional pairs from setup or initializers.
-            False unless audited; partial internal regions are not call timings.
+        roles: ``In``, ``Out``, ``InOut`` or ``Param`` per argument (the
+            first three are the ``@iron.jit`` markers). ``InOut`` is
+            accumulated into, so it needs an initializer. ``Param`` is a
+            scalar or a read-only tensor the generic builder holds fixed
+            across its calls; the argument type decides which. Several
+            outputs are allowed, in argument order.
+        reference: The host implementation, and the arithmetic model (a
+            saturating kernel's reference clips). Called with every unbound
+            non-output argument in order: ``In`` tiles as ``(calls, n)``
+            arrays, ``Param`` values as arrays or numbers. Returns the
+            output for all calls, a tuple for several outputs. ``None``
+            builds the kernel but does not judge it.
+        tolerance: How close the device must come; ``None`` is
+            :meth:`Tolerance.default_for` the output dtype.
+        ops_per_call: Arithmetic operations per call; ``None`` means one
+            per output element.
+        out_valid: Meaningful leading elements of a DMA-padded output tile;
+            ``None`` means the whole tile.
+        sample: ``sample(rng, calls) -> list[np.ndarray]`` for inputs with
+            structure a dtype cannot express; ``None`` draws random data.
+        acc_dtype: The accumulator type, or ``None`` when nothing
+            accumulates. With ``reduction`` it bounds the inputs so the
+            accumulator cannot overflow.
+        reduction: Terms summed into one output element per call; ``None``
+            means one.
+        setup: A kernel to run once on the core first (``conv_even`` sets
+            the rounding mode a bf16 store needs); ``None`` when the source
+            sets its own mode or narrows nothing.
+        stack_bytes: Core stack a Worker calling this kernel needs, when
+            more than the target's default. Say where the number came from.
+        cascade_partner: For one half of a cascade pair, a zero-argument
+            callable returning the other half (``functools.partial`` of its
+            factory). The builder runs the pair on adjacent tiles; the PUT
+            half has no output and no reference, and the GET half's
+            reference is the pair's, called with the PUT half's inputs
+            first.
+        unsupported: Why the builder cannot run this kernel, or ``None``.
+        layouts: A :class:`TensorLayout` per argument; ``None`` is identity.
+        parameter_bindings: ``(index, value)`` pairs fixing ``Param``
+            operands, counts included; the rest come from the caller.
+        initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
+            ``factory(fn)`` returns the kernel that initializes the buffer.
+        trace_cycles: Whether one event0/event1 pair brackets a whole call
+            and nothing else does; False unless audited.
 
-    What the kernel does when a result overflows, how it rounds a narrowing
-    store, and what it does with NaN or subnormal inputs are not declared
-    here: ``reference`` is the arithmetic model (a saturating kernel's
-    reference clips, a flushing kernel's reference flushes) and ``tolerance``
-    is the slack allowed against it. Declaring them twice let the two drift.
+    Overflow, rounding and NaN handling are not declared twice: the
+    reference is the arithmetic model and the tolerance the slack against it.
     """
 
     roles: tuple[type, ...]
@@ -224,15 +180,9 @@ class KernelContract:
             raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
-        # Naming a partner already says the single-Worker builder cannot drive
-        # this kernel, so the reason is derived rather than restated.
-        if self.cascade_partner is not None and self.unsupported is None:
-            object.__setattr__(
-                self,
-                "unsupported",
-                f"one half of a cascade pair with {self.cascade_partner.__name__}; "
-                "the partial sum crosses the cascade stream, which is not an "
-                "argument; a paired design is required to observe the result",
+        if self.cascade_partner is not None and not callable(self.cascade_partner):
+            raise ValueError(
+                "cascade_partner must be a callable returning the other half"
             )
 
     @property

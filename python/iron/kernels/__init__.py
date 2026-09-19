@@ -130,6 +130,7 @@ from .fused import fused_mm
 from .linalg import (
     MatrixKernel,
     cascade_mm,
+    cascade_mm_put,
     mha,
     mm,
     mm_acc_dtype,
@@ -295,6 +296,7 @@ __all__ = [
     "mm_bfp_shuffle",
     "mv",
     "cascade_mm",
+    "cascade_mm_put",
     "conv2dk1",
     "conv2dk1_ref",
     "conv2dk3",

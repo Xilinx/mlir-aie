@@ -447,28 +447,26 @@ workflow runs on a pull request.
 
 ### Kernels the generic builder cannot run
 
-The following contracts explain why an independent single-Worker invocation
-cannot validate their protocol. `design()` refuses them with that reason;
-a missing reference is not a claim of numerical coverage:
+A cascade pair is built by the generic builder: the GET half's contract
+names the PUT half as `cascade_partner`, the builder places the two on
+adjacent tiles joined by a `CascadeFlow`, and the GET half's `reference`
+sees the PUT half's inputs first. `cascade_mm` is validated that way (its
+reference models the integer cascade lane). The four bottleneck halves
+(`bn_conv2dk1_partial_put_i8` / `bn_conv2dk1_partial_get_relu_i8`,
+`bn_conv2dk1_input_split_partial_put_ui8` /
+`bn_conv2dk1_input_split_partial_skip_get`) name their partners and build
+as pairs, but carry no pair reference yet, so the builder runs them
+without judging them; their numbers are checked through the composed
+[`mobilenet/bottleneck/cascade.py`](../programming_examples/ml/mobilenet/bottleneck/cascade.py)
+design and its MobileNet tests until a pair reference is written.
+
+Two contracts still explain why the builder cannot run them; `design()`
+refuses them with that reason:
 
 | Factory | Why |
 | --- | --- |
-| `cascade_mm` | partial sums travel over the cascade stream, which is not an argument |
 | `mha` | a multi-core attention dataflow with a running softmax |
 | `bn_conv2dk1_relu_xy_pool_padded` | accumulates across calls through its output, one row per `y_index` |
-| `bn_conv2dk1_partial_put_i8`, `bn_conv2dk1_partial_get_relu_i8` | paired cascade PUT/GET; neither half has a separately observable result |
-| `bn_conv2dk1_input_split_partial_put_ui8`, `bn_conv2dk1_input_split_partial_skip_get` | paired input-split cascade PUT/GET with a residual |
-
-The four bottleneck cascade halves declare their partner and argument roles,
-but no isolated numerical reference. They are composed in
-[`mobilenet/bottleneck/cascade.py`](../programming_examples/ml/mobilenet/bottleneck/cascade.py),
-which is exercised through the existing MobileNet
-[`test_e2e.py`](../programming_examples/ml/mobilenet/test_e2e.py) and
-[`test_mobilenet.py`](../programming_examples/ml/mobilenet/test_mobilenet.py)
-tests. `cascade_mm` is composed in the existing
-[`matrix_multiplication/cascade`](../programming_examples/basic/matrix_multiplication/cascade/cascade.py)
-example. These are whole-design checks, not isolated cascade-half checks;
-listing them here does not imply they ran during a particular change.
 
 `bn_conv2dk3_dw_out_split` is not a cascade half: it has two observable
 outputs and is supported by the generic builder, with a reference for each

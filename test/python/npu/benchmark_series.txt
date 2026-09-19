@@ -131,3 +131,4 @@ transpose/1024x16/bfloat16/subtile=4
 transpose/1024x16/bfloat16/subtile=8
 transpose/1024x16/uint32/subtile=8
 transpose/1024x16/uint8/subtile=4
+cascade_mm/64x64x64x4/int16

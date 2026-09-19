@@ -37,15 +37,11 @@ filter records nothing); it names loops by machine basic block
 ``unpipelined_loops`` counts every loop the pipeliner declined, outer loops
 included, so its change is the signal, not its value.
 
-Regression rules: the integer series (``II``, ``not_zol``, ``unpipelined_loops``,
-``non_zol_loops``, ``missing_bank_loads``, ``pass_failed_warnings``) alert on
-any increase, so a loop that falls off the zero-overhead loop unit is an
-alert on its own row, not a change hidden in an II hover text; ``pm_bytes`` is written to its own file (``--out-pm``) so it
-can carry a percentage threshold, since a toolchain bump routinely moves
-program memory by a few bytes. Nothing gates: under GitHub Actions a dropped
-pragma becomes a ``::warning`` on the file and line it names and a kernel
-that fails to compile a ``::error``; the run exits 3 on a compile failure
-and writes nothing.
+The integer series alert on any increase; ``pm_bytes`` goes to its own file
+(``--out-pm``) so it can carry a percentage threshold. Nothing gates: under
+GitHub Actions a dropped pragma is a ``::warning`` at its file and line, a
+kernel that fails to compile an ``::error``, and the run then exits 3 and
+writes nothing.
 """
 
 from __future__ import annotations
