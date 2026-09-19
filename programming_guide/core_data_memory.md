@@ -85,12 +85,10 @@ These optional attributes on `aie.core` control placement, independently of
 
 - **`stack_address`** is a byte offset within the tile's local data memory,
   not an absolute ELF address.
-- **`stack_bank`** selects bank 0–3 (A–D) on AIE2/AIE2P. With no address,
-  bank-aware allocation chooses an aligned free run in that bank and writes
+- **`stack_bank`** selects bank 0–3 (A–D) on AIE2/AIE2P. With no address, the
+  allocator chooses an aligned free run in that bank and writes
   `stack_address`, accounting for fixed-address buffers first.
 - With both attributes, the address must lie in the requested bank.
-  Basic-sequential allocation honors an explicit address but rejects a
-  bank-only request; it does not silently drop a stack pin.
 
 For example, on npu2, bank B starts at tile-relative offset `0x4000`:
 
@@ -323,7 +321,7 @@ it in the memory map when a tile runs out of room.
 With `--xchesscc`/`--xbridge`, `aiecc` compiles and links an `elf_file` core, so
 that core gets a `data` region like any other.
 
-## Escape hatches and allocation control
+## Escape hatches
 
 Separate flags disable measurements and checks, for debugging or a build that
 has to skip them:
@@ -345,21 +343,47 @@ A design-wide stand-in for the built-in default covers any core that leaves
   `stack_size` explicitly, and the diagnostics call the value assumed. A core
   with an explicit `stack_size` keeps it.
 
-Separate flags control the allocation strategy:
+## How placement chooses addresses
 
-- **`--alloc-scheme=<basic-sequential|bank-aware>`** picks the scheme for the
-  whole design. Without it, the allocator runs bank-aware first and falls back
-  to basic-sequential when bank-aware runs out of memory. Bank-aware spreads
-  buffers across banks to limit DMA contention, up to the point where the spread
-  costs a core the contiguous run it still needs.
-- The per-tile **`allocation_scheme`** attribute picks the scheme for one tile
-  and overrides `--alloc-scheme` there. IRON spells it
-  `Worker(allocation_scheme="basic-sequential")`.
-- **`Buffer(mem_bank=...)`** pins a buffer to a bank. Under bank-aware the pin
-  is a hard constraint: the allocator reports an error when the bank cannot
-  hold the buffer. Basic-sequential has no notion of banks, ignores the pin and
-  warns that it dropped it, so a design that depends on `mem_bank` must not
-  select that scheme.
+One allocator places every extent on a tile: the stack, each buffer, the core's
+own sections, and the bank reservations described above. It is bank-aware
+throughout — there is no second, bank-oblivious scheme to select or fall back
+to, because "succeeding" by ignoring a `mem_bank` request is not success.
+
+Extents are placed most-constrained first: those with an explicit `address`,
+then those pinned to a bank, then the rest, largest first. Each candidate
+address is ranked by
+
+1. banks touched, fewest first — a spanned bank costs DMA bandwidth;
+2. the largest free run left behind, biggest first, capped by the bytes still
+   to place;
+3. distance from a round-robin cursor, which spreads buffers over banks;
+4. tightness of fit, then lowest address for determinism.
+
+A buffer larger than one bank must span banks, and any unpinned buffer may span
+if that is what fits; the memory map marks it `(straddles into bank N)`. A
+`mem_bank` pin is a hard single-bank constraint, so a pinned buffer larger than
+its bank is an error rather than a straddle — the pin exists to tell Peano's
+bank-conflict model which bank the accesses hit, and a straddling buffer would
+make that untrue.
+
+**Placement backtracks.** Ranking alone is not enough: the placement that
+touches the fewest banks can strand the free run a later buffer needs. When a
+buffer has nowhere to go, the allocator undoes an earlier choice and tries that
+buffer's next-best address. It explores in rank order, so the first arrangement
+it tries is the one the ranking prefers and most designs never backtrack at all.
+
+The search is bounded at 20000 placements per tile — packing around fixed
+obstacles is NP-hard, and the bound is a count rather than a time limit so
+builds stay reproducible. Reaching it is reported (see the diagnostics below)
+rather than passed off as "no such layout exists".
+
+- **`Buffer(mem_bank=...)`** pins a buffer to a bank. The pin is honored or the
+  build fails; it is never silently dropped.
+- **`Buffer(address=...)`** pins an exact address, for a buffer an external ABI
+  fixes — an RTP buffer a host writes at a known location, say. A pinned
+  address is held only to the bus width, not the stricter vector alignment the
+  allocator applies to addresses it chooses itself.
 
 ## What to do when you hit a diagnostic
 
@@ -397,12 +421,15 @@ proven overflow. Reach for it only when you believe the measurement itself is
 wrong, and please file an issue in that case.
 
 **`section '.bss' will not fit in region 'data'` from the linker, followed by
-`core X needs space for N bytes of static data`.** The core's own sections do
-not fit the run left for them. `aiecc` adds the linker's shortfall to the size
-of the region to state `N`, the number to reserve. Set `data_size = N` on the
-core, or `Worker(data_size=N)` in IRON, and rebuild: the allocator then packs
-the tile's buffers around the reservation. Shrinking or moving buffers, or
-lowering `stack_size`, frees the bytes when `N` does not fit.
+`core X needs space for up to N bytes of static data`.** The core's own
+sections do not fit the run left for them, and the linker rather than the
+allocator noticed. A core whose sections were measured usually fails earlier,
+while placing, with the `could not be placed` error above; this is the residual
+case — a `--xbridge` build, or a core whose measurement was skipped. `aiecc`
+adds the linker's shortfall to the size of the region to state `N`. Set
+`data_size = N` on the core, or `Worker(data_size=N)` in IRON, and rebuild.
+Shrinking or moving buffers, or lowering `stack_size`, frees the bytes when `N`
+does not fit.
 
 **`will not fit in region 'program'`, followed by `this core's code exceeds
 the tile's program memory`.** Program memory is fixed and the region covers all
@@ -421,20 +448,39 @@ buffers. If the opt-in check cannot recover placement, supply readable kernel
 IR and resolvable table bindings rather than treating the result as a
 same-bank diagnosis.
 
-**`basic-sequential allocation cannot resolve stack_bank`.** Select
-bank-aware allocation, or provide an aligned `stack_address` whose complete
-stack extent fits the requested bank. Moving outside bank A also requires the
-Peano merge-mode restrictions described above.
+**`requires a N-byte stack in bank B, but no contiguous aligned space remains
+after address-pinned buffers` (error).** `stack_bank` names a bank whose free
+space is already broken up by buffers pinned to exact addresses, which cannot
+move. Repin those buffers, choose another bank, or give the stack an explicit
+aligned `stack_address`. Moving outside bank A also requires the Peano
+merge-mode restrictions described above.
 
 **`data_size M is smaller than the N bytes this core's linked sections occupy`
 (error).** `aiecc` measured the linked ELF and the reservation does not cover
 it. Set `data_size = N` and rebuild.
 
-**`bank-aware allocation failed. Core (X, Y) reserves N bytes for its static
-data` (error).** The tile cannot hold its buffers and the reservation together.
-The message lists the tile's memory map. Lower `data_size`, or shrink or move
-the buffers.
+**`could not be placed: <what> needs N bytes and this tile has no room left for
+it` (error).** Everything the tile must hold does not fit. The message lists
+the tile's memory map, showing the closest arrangement the allocator reached,
+and `<what>` names the one extent left over — a buffer, `this core's data
+sections (data_size)`, or `this core's static data pinned to bank B`. The bytes
+may well exist while being too fragmented to use, so shrinking any extent can
+help, not only the one named. Lower `data_size`, shrink or move buffers, or
+lower `stack_size`.
 
-**`basic-sequential allocation ignores mem_bank; dropping the pin on: "b"`
-(warning).** That scheme has no notion of banks. Either remove the `mem_bank`
-request or let the tile use bank-aware allocation.
+**`the search hit its 20000-placement budget with arrangements still untried`
+(note, attached to the error above).** The allocator gave up rather than proved
+the design infeasible, so a layout may exist that it did not reach. This is
+rare and worth reporting: please file an issue with the design. Pinning a
+buffer or two with `mem_bank` cuts the search down and often gets a build
+through in the meantime.
+
+**`<what> requires N bytes, which cannot fit in bank B (C bytes total)`
+(error).** A `mem_bank` pin, or a kernel's bank-pinned static data, asks for
+more than a whole bank holds. Nothing about the rest of the design can fix
+this: shrink the extent, or drop the pin and let it span banks.
+
+**`<what> requires N bytes in bank B, but only M of C bytes are free there`
+(error).** The bank would hold it on its own, but the stack, address-pinned
+buffers, or another pin already in that bank leave too little. Repin to a
+different bank, or move what is in the way.
