@@ -83,7 +83,7 @@ def whole_array_mixed(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        dims_to_stream = [matmul_kernel.stream_dims.A] * (stop_row - start_row)
+        dims_to_stream = [matmul_kernel.stream_dims.A or []] * (stop_row - start_row)
         a_tmp_fifos = a_l3l2.cons().split(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),

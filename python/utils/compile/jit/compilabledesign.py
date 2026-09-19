@@ -1226,7 +1226,7 @@ class CompilableDesign:
         ExternalFunction._instances.clear()
         _EXTERN_CACHE.clear()
 
-        _tensor_placeholders = {
+        _tensor_placeholders: dict[str, _TensorPlaceholder | tuple[()]] = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
         if self.variadic_tensor_param is not None:

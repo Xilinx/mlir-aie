@@ -393,7 +393,7 @@ def mm(
     c_col_maj: bool = False,
     use_chess: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
-) -> ExternalFunction:
+) -> MatrixKernel:
     """Matrix-multiply kernel: C += A * B.
 
     Initialize the accumulator with ``kernels.zero(dim_m * dim_n, output_dtype)``.
@@ -652,7 +652,7 @@ _BFP_MAC_DIMS = (8, 8, 8)  # the bfp16ebs8 mmul is 8x8x8
 @dtypes(({"mixed": False}, {"mixed": True}))
 def mm_bfp(
     dim_m: int = 64, dim_k: int = 64, dim_n: int = 64, mixed: bool = False
-) -> ExternalFunction:
+) -> MatrixKernel:
     """Block-floating-point matmul ``C += A @ B`` on bfp16ebs8 blocks (aie2p only).
 
     ``mixed=False`` (``aie_kernels/aie2p/mm_bfp.cc``): A, B and C are
@@ -811,7 +811,7 @@ def mm_bfp_shuffle(
     return extern
 
 
-def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
+def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/aie2p/mha.cc`` (aie2p only).
 
     One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
@@ -900,7 +900,7 @@ def cascade_mm(
     input_dtype: type = np.int16,
     output_dtype: type = np.int16,
     use_chess: bool = False,
-) -> ExternalFunction:
+) -> MatrixKernel:
     r"""Build the GET half of a cascade matrix multiply: ``C += A * B + cascade``.
 
     cascade_mm.cc emits all three cascade variants (``get_only``,
@@ -983,7 +983,7 @@ def cascade_mm_put(
     input_dtype: type = np.int16,
     output_dtype: type = np.int16,
     use_chess: bool = False,
-) -> ExternalFunction:
+) -> MatrixKernel:
     """Build the PUT half of [`cascade_mm`][iron.kernels.linalg.cascade_mm]: ``A * B`` onto the cascade stream.
 
     Same object and arguments as the GET half. ``put_only`` never touches

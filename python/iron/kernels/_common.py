@@ -9,7 +9,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, get_args, get_origin
+from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
 
 import numpy as np
 from aie.helpers.util import (
@@ -501,6 +501,36 @@ def _arg_type_key(t):
 # c_col_maj=True kernels.mm() call for the actual binding produced two
 # differently-flagged ExternalFunctions whose .o files collided on disk.
 _EXTERN_CACHE: dict = {}
+_KernelT = TypeVar("_KernelT", bound=ExternalFunction)
+
+
+@overload
+def _make_extern(
+    func_name: str,
+    source_path: "Path | str",
+    arg_types: list,
+    *,
+    compile_flags: list[str] | None = None,
+    use_chess: bool = False,
+    inline: bool = False,
+    object_file_name: str | None = None,
+    contract: KernelContract | None = None,
+    cls: type[_KernelT],
+) -> _KernelT: ...
+
+
+@overload
+def _make_extern(
+    func_name: str,
+    source_path: "Path | str",
+    arg_types: list,
+    *,
+    compile_flags: list[str] | None = None,
+    use_chess: bool = False,
+    inline: bool = False,
+    object_file_name: str | None = None,
+    contract: KernelContract | None = None,
+) -> ExternalFunction: ...
 
 
 def _make_extern(

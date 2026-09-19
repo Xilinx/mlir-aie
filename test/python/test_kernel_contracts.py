@@ -130,6 +130,25 @@ def test_factories_lists_every_exported_builder():
     ]
 
 
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        ExternalFunction,
+        kernels.MatrixKernel,
+        "ExternalFunction",
+        "kernels.MatrixKernel",
+    ],
+)
+def test_factories_accept_subclasses_and_postponed_annotations(monkeypatch, annotation):
+    def builder():
+        raise AssertionError("discovery must not construct kernels")
+
+    builder.__annotations__["return"] = annotation
+    monkeypatch.setattr(kernels, "__all__", ["zero"])
+    monkeypatch.setattr(kernels, "zero", builder)
+    assert kernels.factories() == ["zero"]
+
+
 def _first_kwargs(name: str) -> dict:
     """Keyword arguments that build ``name``: none, or its first case's."""
     signature = inspect.signature(getattr(kernels, name))
@@ -208,6 +227,7 @@ def test_contract_coverage_constructs_required_case_arguments(monkeypatch):
 
     monkeypatch.setattr(kernels, "__all__", ["zero"])
     monkeypatch.setattr(kernels, "zero", required)
+    monkeypatch.setattr(sys.modules[__name__], "NOT_JUDGED", {})
     monkeypatch.setitem(CASES, "zero", ({"tile_size": 64}, {}))
     test_contract_coverage_is_explicit()
     assert sizes == [64]
@@ -282,7 +302,8 @@ def test_matrix_design_defaults_to_one_tile(factory):
     fn = factory()
     inputs = kd.sample_inputs(fn)
     ref = fn.expected(inputs)
-    assert ref.shape == (1, kd.elems(fn.arg_types()[fn.contract.out_index]))
+    out_index = fn.contract.out_index
+    assert ref.shape == (1, np.prod(fn.contract.layouts[out_index].shape))
     assert [a.n_elements for a in kd.host_args(fn)][-1] == kd.output_size(fn)
     assert "func.call" in str(kd.design(factory).as_mlir())
 
@@ -1034,7 +1055,13 @@ def test_mha_binds_its_translation_unit_as_one_object():
         assert sib.name == f"{p}_{symbol}"
         assert sib.object_file is fn.object_file
     # Its own matmul symbols cannot collide with a real mm in one design.
-    mm = kernels.mm(dim_m=64, dim_k=64, dim_n=64, input_dtype=bfloat16)
+    mm = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=64,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+    )
     assert mm.name != fn.name
     # The wrapper is mm.cc's bf16 product with its gate bound open, so it is
     # declared, sampled and judged exactly like mm.
