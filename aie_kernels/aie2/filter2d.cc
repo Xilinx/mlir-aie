@@ -39,9 +39,10 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
 
   set_sat(); // Needed for int16 to saturate properly to uint8
 
-  aie::vector<uint8, 64> data_buf1, data_buf2, data_buf3;
-  aie::vector<uint8, 64> prev_buf1, prev_buf2, prev_buf3;
-  aie::vector<uint8, 64> zero_buf = ::aie::zeros<uint8, 64>();
+  // One line per kernel row; the vectors below are indexed the same way.
+  uint8_t *line[KERNEL_WIDTH] = {lineIn0, lineIn1, lineIn2};
+  aie::vector<uint8, 64> data_buf[KERNEL_WIDTH];
+  aie::vector<uint8, 64> prev_buf[KERNEL_WIDTH];
   aie::vector<int8, 32> kernel_vec;
 
   const uint32_t kernel_side = KERNEL_WIDTH / 2;
@@ -58,95 +59,56 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
   }
 
   // left of line, border extension by mirroring
-  // first kernel row
-  data_buf1.insert(0, aie::load_v<32>(lineIn0));
-  lineIn0 += VecFactor;
-  data_buf1.insert(1, aie::load_v<32>(lineIn0));
-  prev_buf1.insert(1, data_buf1.template extract<32>(0));
-  data_buf1 = ::aie::shuffle_up_replicate(data_buf1, kernel_side);
-  auto acc = mul_ops::mul(kernel_vec, 0, data_buf1, 0);
-
-  // second kernel row
-  data_buf2.insert(0, aie::load_v<32>(lineIn1));
-  lineIn1 += VecFactor;
-  data_buf2.insert(1, aie::load_v<32>(lineIn1));
-  prev_buf2.insert(1, data_buf2.template extract<32>(0));
-  data_buf2 = ::aie::shuffle_up_replicate(data_buf2, kernel_side);
-  acc = mul_ops::mac(acc, kernel_vec, Points, data_buf2, 0);
-
-  // third kernel row
-  data_buf3.insert(0, aie::load_v<32>(lineIn2));
-  lineIn2 += VecFactor;
-  data_buf3.insert(1, aie::load_v<32>(lineIn2));
-  prev_buf3.insert(1, data_buf3.template extract<32>(0));
-  data_buf3 = ::aie::shuffle_up_replicate(data_buf3, kernel_side);
-  acc = mul_ops::mac(acc, kernel_vec, 2 * Points, data_buf3, 0);
-
-  // Store result
+  for (int r = 0; r < KERNEL_WIDTH; r++) {
+    data_buf[r].insert(0, aie::load_v<32>(line[r]));
+    line[r] += VecFactor;
+    data_buf[r].insert(1, aie::load_v<32>(line[r]));
+    prev_buf[r].insert(1, data_buf[r].template extract<32>(0));
+    data_buf[r] = ::aie::shuffle_up_replicate(data_buf[r], kernel_side);
+  }
+  auto acc = mul_ops::mul(kernel_vec, 0, data_buf[0], 0);
+  for (int r = 1; r < KERNEL_WIDTH; r++) {
+    acc = mul_ops::mac(acc, kernel_vec, r * Points, data_buf[r], 0);
+  }
   ::aie::store_v(output, acc.to_vector<uint8>(SRS_SHIFT - 8));
   output += VecFactor;
 
   // middle of line, no border extension needed
   for (int i = 2 * VecFactor; i < width - 1; i += VecFactor) {
-    // first kernel row
-    data_buf1.insert(0, aie::load_v<32>(lineIn0));
-    lineIn0 += VecFactor;
-    data_buf1.insert(1, aie::load_v<32>(lineIn0));
-    // The pixel carried to the next iteration is this vector's own last one,
-    // so it has to be taken before the shuffle. Reading it back out afterwards
-    // yields the already-shifted vector, whose last element is the
-    // second-to-last pixel, and every 32-pixel boundary from the third vector
-    // on then convolves against the wrong left neighbor. The store stays
-    // after the shuffle, which still needs the previous iteration's value.
-    auto carry1 = data_buf1.template extract<32>(0);
-    data_buf1 = ::aie::shuffle_up_fill(data_buf1, prev_buf1, kernel_side);
-    prev_buf1.insert(1, carry1);
-    acc = mul_ops::mul(kernel_vec, 0, data_buf1, 0);
-
-    // second kernel row
-    data_buf2.insert(0, aie::load_v<32>(lineIn1));
-    lineIn1 += VecFactor;
-    data_buf2.insert(1, aie::load_v<32>(lineIn1));
-    auto carry2 = data_buf2.template extract<32>(0);
-    data_buf2 = ::aie::shuffle_up_fill(data_buf2, prev_buf2, kernel_side);
-    prev_buf2.insert(1, carry2);
-    acc = mul_ops::mac(acc, kernel_vec, Points, data_buf2, 0);
-
-    // third kernel row
-    data_buf3.insert(0, aie::load_v<32>(lineIn2));
-    lineIn2 += VecFactor;
-    data_buf3.insert(1, aie::load_v<32>(lineIn2));
-    auto carry3 = data_buf3.template extract<32>(0);
-    data_buf3 = ::aie::shuffle_up_fill(data_buf3, prev_buf3, kernel_side);
-    prev_buf3.insert(1, carry3);
-    acc = mul_ops::mac(acc, kernel_vec, 2 * Points, data_buf3, 0);
-
-    // Store result
+    for (int r = 0; r < KERNEL_WIDTH; r++) {
+      data_buf[r].insert(0, aie::load_v<32>(line[r]));
+      line[r] += VecFactor;
+      data_buf[r].insert(1, aie::load_v<32>(line[r]));
+      // The pixel carried to the next iteration is this vector's own last
+      // one, so it has to be taken before the shuffle. Reading it back out
+      // afterwards yields the already-shifted vector, whose last element is
+      // the second-to-last pixel, and every 32-pixel boundary from the third
+      // vector on then convolves against the wrong left neighbor. The store
+      // stays after the shuffle, which still needs the previous iteration's
+      // value.
+      auto carry = data_buf[r].template extract<32>(0);
+      data_buf[r] =
+          ::aie::shuffle_up_fill(data_buf[r], prev_buf[r], kernel_side);
+      prev_buf[r].insert(1, carry);
+    }
+    acc = mul_ops::mul(kernel_vec, 0, data_buf[0], 0);
+    for (int r = 1; r < KERNEL_WIDTH; r++) {
+      acc = mul_ops::mac(acc, kernel_vec, r * Points, data_buf[r], 0);
+    }
     ::aie::store_v(output, acc.to_vector<uint8>(SRS_SHIFT - 8));
     output += VecFactor;
   }
 
   // right of line, border extension by mirroring
-  // first kernel row
-  data_buf1.insert(1, aie::load_v<32>(lineIn0));
-  data_buf1 = ::aie::shuffle_down_replicate(data_buf1, 32);
-  data_buf1 = ::aie::shuffle_up_fill(data_buf1, prev_buf1, kernel_side);
-  acc = mul_ops::mul(kernel_vec, 0, data_buf1, 0);
-
-  // second kernel row
-  data_buf2.insert(1, aie::load_v<32>(lineIn1));
-  data_buf2 = ::aie::shuffle_down_replicate(data_buf2, 32);
-  data_buf2 = ::aie::shuffle_up_fill(data_buf2, prev_buf2, kernel_side);
-  acc = mul_ops::mac(acc, kernel_vec, Points, data_buf2, 0);
-
-  // third kernel row
-  data_buf3.insert(1, aie::load_v<32>(lineIn2));
-  lineIn2 += VecFactor;
-  data_buf3 = ::aie::shuffle_down_replicate(data_buf3, 32);
-  data_buf3 = ::aie::shuffle_up_fill(data_buf3, prev_buf3, kernel_side);
-  acc = mul_ops::mac(acc, kernel_vec, 2 * Points, data_buf3, 0);
-
-  // Store result
+  for (int r = 0; r < KERNEL_WIDTH; r++) {
+    data_buf[r].insert(1, aie::load_v<32>(line[r]));
+    data_buf[r] = ::aie::shuffle_down_replicate(data_buf[r], 32);
+    data_buf[r] = ::aie::shuffle_up_fill(data_buf[r], prev_buf[r], kernel_side);
+  }
+  acc = mul_ops::mul(kernel_vec, 0, data_buf[0], 0);
+  for (int r = 1; r < KERNEL_WIDTH; r++) {
+    acc = mul_ops::mac(acc, kernel_vec, r * Points, data_buf[r], 0);
+  }
   ::aie::store_v(output, acc.to_vector<uint8>(SRS_SHIFT - 8));
   output += VecFactor;
 
