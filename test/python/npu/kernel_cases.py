@@ -537,7 +537,7 @@ CASES += [
             input_dtype=np.int16,
             output_dtype=np.int32,
             b_col_maj=True,
-            c_col_maj=True
+            c_col_maj=True,
         ),
         calls=3,
         smoke=True,
