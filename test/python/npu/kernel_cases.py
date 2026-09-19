@@ -7,7 +7,7 @@
 
 One table, three readers: ``test_kernels_e2e.py`` runs the ``smoke`` cases on
 every pull request and every case x edge-data case x seed under the
-``extensive`` marker; ``test_kernels_bench.py`` times the ``perf`` cases. What a kernel
+``extensive`` marker; ``perf`` marks the cases a benchmark may time. What a kernel
 computes, and how close the device must come, is the factory's
 ``KernelContract``; a case only says which tile to build and how many
 independent calls to make.
@@ -75,13 +75,6 @@ CASES: list[Case] = [
         perf=False,
         devices=("npu2",),
     ),
-    Case(
-        "bn_conv2dk3_dw_out_split",
-        dict(input_width=7, input_channels=16, output_split_channels=8),
-        calls=4,
-        scalars=(1, 7),
-        smoke=True,
-    ),
     # eltwise
     Case("passthrough", dict(tile_size=2048), calls=16),
     Case("passthrough", dict(tile_size=2048), calls=256),
@@ -138,6 +131,12 @@ CASES: list[Case] = [
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     Case("exp2f_vec", calls=16, devices=("npu2",), smoke=True),
     Case("exp2f_vec", calls=256, devices=("npu2",)),
+    # the same kernels reading their element count at run time
+    Case("add_sized", calls=16, smoke=True, perf=False),
+    Case("mul_sized", calls=16, smoke=True, perf=False),
+    Case("relu_sized", calls=16, smoke=True, perf=False),
+    Case("silu_sized", calls=16, smoke=True, perf=False),
+    Case("gelu_sized", calls=16, smoke=True, perf=False),
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
     Case("axpy", calls=256, scalars=(2.5,), data_cases=IEEE_FLOAT),
@@ -243,6 +242,9 @@ CASES: list[Case] = [
     Case("threshold", calls=16, scalars=(100, 255, 0), smoke=True),
     Case("threshold", calls=16, scalars=(100, 255, 2), tag="trunc", perf=False),
     Case("threshold", calls=16, scalars=(100, 255, 4), tag="tozero-inv", perf=False),
+    Case(
+        "threshold", dict(dtype=np.int16), calls=16, scalars=(100, 255, 1), perf=False
+    ),
     Case("bitwise_or", calls=16, smoke=True),
     Case("bitwise_and", calls=16, smoke=True),
     # alpha = beta = 0.5 in Q2.14; gamma = 0, where the kernel's two paths agree.
@@ -296,44 +298,6 @@ CASES: list[Case] = [
         devices=("npu2",),
         smoke=True,
     ),
-    # bottleneck (bn_*) single-core kernels: scalar sources, round-half-even.
-    Case("bn_conv2dk1_relu", calls=8, scalars=(32, 64, 64, 12), smoke=True),
-    Case("bn_conv2dk1_i8", calls=8, scalars=(32, 64, 64, 13), smoke=True),
-    Case("bn_conv2dk1_skip", calls=8, scalars=(32, 64, 64, 13, 1), smoke=True),
-    Case(
-        "bn_conv2dk1_skip",
-        dict(skip_dtype=np.int8),
-        calls=8,
-        scalars=(32, 64, 64, 13, 1),
-    ),
-    Case(
-        "bn_conv2dk3_dw",
-        calls=8,
-        scalars=(32, 64, 64, 3, 3, 1, 11, 0),
-        smoke=True,
-    ),
-    Case(
-        "bn_conv2dk3_dw",
-        dict(stride=2),
-        calls=8,
-        scalars=(32, 64, 64, 3, 3, 1, 11, 0),
-        smoke=True,
-    ),
-    Case(
-        "bn_conv2dk3",
-        calls=8,
-        scalars=(32, 64, 64, 3, 3, 1, 15, 0),
-        smoke=True,
-    ),
-    # MobileNet's classifier FC: one (1, 1, 1280) uint16 vector in, 16 uint16
-    # logits per call; weights [16/8][1280/8][8][8] unpadded (pad == IC).
-    Case(
-        "bn_fc_relu_ui16_pad",
-        dict(input_channels=1280, output_channels=16),
-        calls=8,
-        scalars=(1, 1280, 1280, 16, 13),
-        smoke=True,
-    ),
     Case(
         "conv2dk1",
         dict(act_dtype=np.uint8),
@@ -361,6 +325,15 @@ CASES: list[Case] = [
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),
     # transformer blocks (aie2p): one row per call
     Case("rms_norm", dict(cols=1024), calls=16, devices=("npu2",), smoke=True),
+    Case(
+        "rms_norm_eps",
+        dict(cols=1024),
+        calls=16,
+        scalars=(1e-5,),
+        devices=("npu2",),
+        smoke=True,
+        perf=False,
+    ),
     Case("layer_norm", dict(cols=1024), calls=16, devices=("npu2",), smoke=True),
     Case(
         "layer_norm_f32",
@@ -377,6 +350,14 @@ CASES: list[Case] = [
         smoke=True,
     ),
     Case("rope", dict(cols=1024), calls=16, devices=("npu2",), smoke=True),
+    Case(
+        "rope",
+        dict(cols=1024, two_halves=True),
+        calls=16,
+        devices=("npu2",),
+        smoke=True,
+        perf=False,
+    ),
     Case(
         "mm_activation_epilogue",
         calls=16,
@@ -444,43 +425,29 @@ CASES += [
         smoke=True,
         perf=False,
     ),
+    Case(
+        "mm",
+        dict(**_mm_bf16, c_col_maj=True),
+        calls=4,
+        smoke=True,
+        perf=False,
+    ),
+    Case(
+        "mm",
+        dict(
+            **_mm,
+            input_dtype=np.int16,
+            output_dtype=np.int32,
+            b_col_maj=True,
+            c_col_maj=True
+        ),
+        calls=3,
+        smoke=True,
+        perf=False,
+    ),
     Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
-    # The GET half names its PUT partner; the builder runs the pair.
-    Case("cascade_mm", calls=4, smoke=True, perf=False),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, devices=("npu2",), smoke=True, perf=False),
-    # The bottleneck cascade pairs, at the one tile their references model:
-    # a call writes seven pixels of one 8-channel output group. Each half
-    # sums an 8-channel chunk of its own 16-channel slice (the relu GET
-    # takes the second chunk, so its slice must hold two). PUT scalars:
-    # width, in ch, out ch, split, weight index, x start, oc; GET scalars
-    # add the shift(s) and the output split after the channel counts.
-    Case(
-        "bn_conv2dk1_partial_get_relu_i8",
-        dict(input_width=7, input_channels=16, output_channels=8, weight_count=64),
-        calls=4,
-        scalars=(7, 16, 8, 2, 0, 0, 0, 7, 16, 8, 8, 2, 1, 0, 0, 0),
-        smoke=True,
-        perf=False,
-    ),
-    Case(
-        "bn_conv2dk1_input_split_partial_skip_get",
-        dict(input_width=7, input_channels=16, output_channels=8, weight_count=128),
-        calls=4,
-        scalars=(7, 16, 8, 1, 0, 0, 0, 7, 16, 8, 9, 1, 1, 1, 0, 0, 0),
-        smoke=True,
-        perf=False,
-    ),
-    # One call per row of the 7x7 map the kernel hard-codes (calls = rows);
-    # scalars: width, in ch, out ch, padded out ch, scale, split, weight index.
-    Case(
-        "bn_conv2dk1_relu_xy_pool_padded",
-        dict(input_channels=16, output_channels=64),
-        calls=7,
-        scalars=(7, 16, 64, 64, 8, 1, 0),
-        smoke=True,
-        perf=False,
-    ),
     Case(
         "mm_bfp",
         _mm_bfp,

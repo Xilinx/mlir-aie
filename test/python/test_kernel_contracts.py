@@ -20,6 +20,7 @@ of which is silent until a device run otherwise:
 
 import inspect
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -27,192 +28,62 @@ import pytest
 from aie.iron import In, InOut, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import KernelContract, Param
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
 
-# One build per factory, on the default kwargs unless a non-default variant
-# is worth pinning. Matrix kernels carry the host shape they are checked at.
+# One table for every tier: the host checks below walk the same cases the
+# device test runs (test/python/npu/kernel_cases.py), so a kernel is either
+# in that table or named in NOT_JUDGED with a reason.
+sys.path.insert(0, str(Path(__file__).parent / "npu"))
+from kernel_cases import CASES as DEVICE_CASES  # noqa: E402
+
+
+def _case_id(case) -> str:
+    parts = [case.factory]
+    parts += [
+        f"{k}={getattr(v, '__name__', v)}" for k, v in sorted(case.kwargs.items())
+    ]
+    parts.append(f"calls={case.calls}")
+    if case.scalars:
+        parts.append("scalars=" + ",".join(str(v) for v in case.scalars))
+    if case.tag:
+        parts.append(case.tag)
+    return "/".join(parts)
+
+
 CASES = {
-    "zero": (dict(tile_size=64), dict(calls=3)),
-    "zero/bf16": (dict(tile_size=64, dtype=bfloat16), dict(calls=3)),
-    "passthrough": ({}, dict(calls=4)),
-    "passthrough/int16": (dict(dtype=np.int16), dict(calls=4)),
-    "scale/int16": (dict(dtype=np.int16), dict(calls=4)),
-    "scale/int32": (dict(dtype=np.int32), dict(calls=4)),
-    "add": ({}, dict(calls=4)),
-    "mul": ({}, dict(calls=4)),
-    "relu": ({}, dict(calls=4)),
-    "reduce_add": ({}, dict(calls=4)),
-    "reduce_min": ({}, dict(calls=4)),
-    "reduce_max": ({}, dict(calls=4)),
-    "reduce_max/bf16": (dict(dtype=bfloat16), dict(calls=4)),
-    "gelu": ({}, dict(calls=2)),
-    "silu": ({}, dict(calls=2)),
-    "bf16_exp": ({}, dict(calls=2)),
-    "tanh": ({}, dict(calls=2)),
-    "sigmoid": ({}, dict(calls=2)),
-    "softmax": ({}, dict(calls=2)),
-    "leaky_relu": ({}, dict(calls=2, scalars=(0.5,))),
-    "exp2f_vec": ({}, dict(calls=2)),
-    "axpy": ({}, dict(calls=2, scalars=(2.5,))),
-    "convert_copy": ({}, dict(calls=2)),
-    "expand": ({}, dict(calls=2)),
-    "transpose/4": (dict(subtile=4), dict(calls=2)),
-    "transpose/8": (dict(subtile=8), dict(calls=2)),
-    "transpose/uint8": (dict(subtile=4, dtype=np.uint8), dict(calls=2)),
-    "transpose/uint32": (dict(subtile=8, dtype=np.uint32), dict(calls=2)),
-    "mm/bf16_f32": (
-        dict(
-            dim_m=64, dim_k=32, dim_n=64, input_dtype=bfloat16, output_dtype=np.float32
-        ),
-        dict(calls=4),
-    ),
-    # One tile row, and an odd number of tile rows: the C drain groups
-    # two rows when it can and one otherwise.
-    "mm/bf16_f32/single-tile": (
-        dict(
-            dim_m=64, dim_k=32, dim_n=64, input_dtype=bfloat16, output_dtype=np.float32
-        ),
-        dict(calls=1),
-    ),
-    "mm/bf16_f32/odd-rows": (
-        dict(
-            dim_m=64, dim_k=32, dim_n=64, input_dtype=bfloat16, output_dtype=np.float32
-        ),
-        dict(calls=3),
-    ),
-    "mm/i16_i32": (
-        dict(dim_m=64, dim_k=32, dim_n=64, input_dtype=np.int16, output_dtype=np.int32),
-        dict(calls=4),
-    ),
-    "mm/bf16_f32/b_col_maj": (
-        dict(
-            dim_m=64,
-            dim_k=32,
-            dim_n=64,
-            input_dtype=bfloat16,
-            output_dtype=np.float32,
-            b_col_maj=True,
-        ),
-        dict(calls=3),
-    ),
-    "mm/bf16_f32/c_col_maj": (
-        dict(
-            dim_m=64,
-            dim_k=32,
-            dim_n=64,
-            input_dtype=bfloat16,
-            output_dtype=np.float32,
-            c_col_maj=True,
-        ),
-        dict(calls=4),
-    ),
-    "mm/i16_i32/both_col_maj": (
-        dict(
-            dim_m=64,
-            dim_k=32,
-            dim_n=64,
-            input_dtype=np.int16,
-            output_dtype=np.int32,
-            b_col_maj=True,
-            c_col_maj=True,
-        ),
-        dict(calls=3),
-    ),
-    "mm/i8_i32": (
-        dict(dim_m=64, dim_k=32, dim_n=64, input_dtype=np.int8, output_dtype=np.int32),
-        dict(calls=4),
-    ),
-    "mv": (dict(dim_m=32, dim_k=32), dict(calls=4)),
-    "mv/bf16": (
-        dict(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16),
-        dict(calls=2),
-    ),
-    "mm_bfp": (dict(dim_m=64, dim_k=64, dim_n=64), dict(calls=4)),
-    "q4nx_dequant": ({}, dict(calls=4)),
-    "q4nx_dequant/group_crosses_slice": (
-        dict(m_tile=48, k_tile=48, group=24, ct_k=16),
-        dict(calls=2),
-    ),
-    "mm_bfp/mixed": (
-        dict(dim_m=64, dim_k=64, dim_n=64, mixed=True),
-        dict(calls=4),
-    ),
-    "compute_max": ({}, dict(calls=4)),
-    "compute_max/bf16": (dict(dtype=bfloat16), dict(calls=4)),
-    "swiglu": ({}, dict(calls=2)),
-    "gray2rgba": ({}, dict(calls=2)),
-    "rgba2gray": ({}, dict(calls=2)),
-    "threshold": ({}, dict(calls=2, scalars=(100, 255, 0))),
-    "threshold/int16": (dict(dtype=np.int16), dict(calls=2, scalars=(100, 255, 1))),
-    "bitwise_or": ({}, dict(calls=2)),
-    "bitwise_and": ({}, dict(calls=2)),
-    "add_weighted": ({}, dict(calls=2, scalars=(8192, 8192, 0))),
-    "filter2d": ({}, dict(calls=2)),
-    "rgba2hue": ({}, dict(calls=2)),
-    "conv2dk1": ({}, dict(calls=2, scalars=(32, 64, 64, 12))),
-    "conv2dk1/uint8": (
-        dict(act_dtype=np.uint8),
-        dict(calls=2, scalars=(32, 64, 64, 12)),
-    ),
-    "conv2dk3": (
-        dict(act_dtype=np.uint8),
-        dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 15, 0)),
-    ),
-    "conv2dk3/int8": ({}, dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 15, 0))),
-    "conv2dk1_i8": ({}, dict(calls=2, scalars=(32, 64, 64, 12))),
-    "conv2dk1_skip/uint8": (
-        dict(input_channels=128, output_channels=64, act_dtype=np.uint8),
-        dict(calls=2, scalars=(32, 128, 64, 12, 1)),
-    ),
-    "conv2dk1_skip_init/uint8": (
-        dict(input_channels=64, skip_input_channels=32, act_dtype=np.uint8),
-        dict(calls=2, scalars=(32, 64, 64, 32, 12, 1, 11)),
-    ),
-    "conv2dk14": ({}, dict(calls=2, scalars=(224, 4, 16, 14, 17))),
-    "bn_conv2dk1_relu": ({}, dict(calls=2, scalars=(32, 64, 64, 12))),
-    "bn_conv2dk1_i8": ({}, dict(calls=2, scalars=(32, 64, 64, 13))),
-    "bn_conv2dk1_skip": ({}, dict(calls=2, scalars=(32, 64, 64, 13, 1))),
-    "bn_conv2dk1_skip/int8": (
-        dict(skip_dtype=np.int8),
-        dict(calls=2, scalars=(32, 64, 64, 13, 1)),
-    ),
-    "bn_conv2dk3_dw": ({}, dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 11, 0))),
-    "bn_conv2dk3_dw/stride2": (
-        dict(stride=2),
-        dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 11, 0)),
-    ),
-    "bn_conv2dk3": ({}, dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 15, 0))),
-    "bn_fc_relu_ui16_pad": (
-        dict(input_channels=1280, output_channels=16),
-        dict(calls=2, scalars=(1, 1280, 1280, 16, 13)),
-    ),
-    "mul_add": ({}, dict(calls=2, scalars=(1,))),
-    "rms_norm": (dict(cols=1024), dict(calls=2)),
-    "layer_norm": (dict(cols=1024), dict(calls=2)),
-    "layer_norm_f32": (dict(cols=1024), dict(calls=2)),
-    "layer_norm_affine_cast": (dict(cols=1024), dict(calls=2)),
-    "rope": (dict(cols=1024), dict(calls=2)),
-    "mm_activation_epilogue": ({}, dict(calls=2, scalars=(2,))),
-    "dwconv1d": (dict(seq_len=1024, kernel_size=9), dict(calls=2, scalars=(1024,))),
-    "mha": ({}, dict(calls=2)),
-    # Cascade pairs are built from the GET half; scalars run PUT then GET.
-    "cascade_mm": ({}, dict(calls=2)),
-    "bn_conv2dk1_partial_get_relu_i8": (
-        dict(input_width=7, input_channels=16, output_channels=8, weight_count=64),
-        dict(calls=2, scalars=(7, 16, 8, 2, 0, 0, 0, 7, 16, 8, 8, 2, 1, 0, 0, 0)),
-    ),
-    "bn_conv2dk1_input_split_partial_skip_get": (
-        dict(input_width=7, input_channels=16, output_channels=8, weight_count=128),
-        dict(calls=2, scalars=(7, 16, 8, 1, 0, 0, 0, 7, 16, 8, 9, 1, 1, 1, 0, 0, 0)),
-    ),
-    "bn_conv2dk1_relu_xy_pool_padded": (
-        dict(input_channels=16, output_channels=64),
-        dict(calls=7, scalars=(7, 16, 64, 64, 8, 1, 0)),
-    ),
+    _case_id(case): (case.kwargs, dict(calls=case.calls, scalars=case.scalars))
+    for case in DEVICE_CASES
+}
+assert len(CASES) == len(DEVICE_CASES), "two device cases map to one host id"
+
+# Exported factories the generic builder does not judge, each with its reason.
+# Anything else exported must carry a contract and appear in the case table.
+NOT_JUDGED = {
+    "cascade_mm": "the GET half of a cascade pair; test_kernels_e2e.py builds and judges the pair",
+    "cascade_mm_put": "the PUT half of that pair; its result leaves on the cascade stream",
+    "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
+    **{
+        name: "MobileNet bottleneck kernel, not validated yet (see the guide)"
+        for name in (
+            "bn_conv2dk1_relu",
+            "bn_conv2dk3",
+            "bn_conv2dk1_i8",
+            "bn_conv2dk1_skip",
+            "bn_conv2dk3_dw",
+            "bn_conv2dk1_relu_xy_pool_padded",
+            "bn_conv2dk1_partial_put_i8",
+            "bn_conv2dk1_partial_get_relu_i8",
+            "bn_conv2dk3_dw_out_split",
+            "bn_conv2dk1_input_split_partial_put_ui8",
+            "bn_conv2dk1_input_split_partial_skip_get",
+            "bn_fc_relu_ui16_pad",
+        )
+    },
 }
 
 
@@ -259,33 +130,65 @@ def test_factories_lists_every_exported_builder():
     ]
 
 
-def test_contract_coverage_is_explicit():
-    """Every exported factory carries a contract, including cascade and setup."""
-    without = []
+def _first_kwargs(name: str) -> dict:
+    """Keyword arguments that build ``name``: none, or its first case's."""
+    signature = inspect.signature(getattr(kernels, name))
+    try:
+        signature.bind()
+        return {}
+    except TypeError:
+        covered = [
+            fkw for case_id, (fkw, _) in CASES.items() if case_id.split("/")[0] == name
+        ]
+        assert covered, f"{name}: required-argument factory needs a case"
+        signature.bind(**covered[0])
+        return covered[0]
+
+
+def _builds():
+    """Every exported factory at its defaults and at each declared dtype combination.
+
+    A factory that refuses the current device (``NotImplementedError``) is
+    skipped: it exists only for the other architecture.
+    """
     for name in kernels.factories():
         f = getattr(kernels, name)
-        signature = inspect.signature(f)
-        kwargs = {}
-        try:
-            signature.bind()
-        except TypeError:
-            covered = [
-                fkw
-                for case_id, (fkw, _) in CASES.items()
-                if case_id.split("/")[0] == name
-            ]
-            assert covered, f"{name}: required-argument factory needs a CASES entry"
-            kwargs = covered[0]
-            signature.bind(**kwargs)
-        ef = f(**kwargs)
+        seen = set()
+        for combo in [_first_kwargs(name)] + [
+            dict(c) for c in getattr(f, "dtypes", ())
+        ]:
+            try:
+                ef = f(**combo)
+            except NotImplementedError:
+                continue
+            if ef.object_file_name in seen:
+                continue  # the default build is one of the dtypes entries
+            seen.add(ef.object_file_name)
+            yield name, ef
+
+
+def test_contract_coverage_is_explicit():
+    """Every exported factory is in the case table with a contract, or in NOT_JUDGED with a reason."""
+    in_table = {case.factory for case in DEVICE_CASES}
+    without, unlisted = [], []
+    for name in kernels.factories():
+        ef = getattr(kernels, name)(**_first_kwargs(name))
+        if name in NOT_JUDGED:
+            assert name not in in_table, f"{name}: in the table and in NOT_JUDGED"
+            continue
         if ef.contract is None:
             without.append(name)
+        if name not in in_table:
+            unlisted.append(name)
     assert not without, f"factories without contracts: {without}"
+    assert not unlisted, f"factories with no case: {unlisted}"
+    assert set(NOT_JUDGED) <= set(kernels.factories())
+    assert all(NOT_JUDGED.values())
 
 
 @pytest.mark.parametrize("error", [RuntimeError, TypeError, ValueError])
 def test_contract_coverage_propagates_constructor_failures(monkeypatch, error):
-    def broken():
+    def broken() -> ExternalFunction:
         raise error("factory construction failed")
 
     monkeypatch.setattr(kernels, "__all__", ["zero"])
@@ -299,7 +202,7 @@ def test_contract_coverage_constructs_required_case_arguments(monkeypatch):
 
     sizes = []
 
-    def required(*, tile_size):
+    def required(*, tile_size) -> ExternalFunction:
         sizes.append(tile_size)
         return SimpleNamespace(contract=KernelContract(roles=(Out,)))
 
@@ -526,215 +429,6 @@ def test_multi_output_contract_drives_design_and_reference():
     assert kd.output_size(fn, calls=3) == (192, 192)
     assert [a.direction for a in kd.host_args(fn, calls=3)] == [In, Out, Out]
     assert "split_outputs" in str(kd.design(lambda: fn, calls=3).as_mlir())
-
-
-def test_split_depthwise_contract_checks_both_channel_halves():
-    fn = kernels.bn_conv2dk3_dw_out_split(
-        input_width=7, input_channels=16, output_split_channels=8
-    )
-    assert fn.contract.out_indices == (4, 5)
-    inputs = kd.sample_inputs(fn, calls=3)
-    refs = fn.expected(inputs, scalars=(1, 7))
-    whole = kernels.bn_conv2dk3_dw_ref(*inputs, 7, 16, 16, 3, 3, 1, 7, 0)
-    np.testing.assert_array_equal(np.concatenate(refs, axis=-1), whole)
-    assert fn.judge(refs, refs, calls=3)
-    assert not fn.judge((refs[0], refs[1] ^ 1), refs, calls=3)
-    design = kd.design(
-        kernels.bn_conv2dk3_dw_out_split,
-        input_width=7,
-        input_channels=16,
-        output_split_channels=8,
-        calls=3,
-        scalars=(1, 7),
-        params=fn.param_values(inputs),
-    )
-    assert "bn13_conv2dk3_ui8_out_split" in str(design.as_mlir())
-
-
-@pytest.mark.parametrize(
-    "factory",
-    [
-        kernels.bn_conv2dk1_partial_put_i8,
-        kernels.bn_conv2dk1_partial_get_relu_i8,
-        kernels.bn_conv2dk1_input_split_partial_put_ui8,
-        kernels.bn_conv2dk1_input_split_partial_skip_get,
-    ],
-)
-def test_bottleneck_cascade_halves_name_each_other(factory):
-    """Each half's partner is the other half at the same geometry.
-
-    The pair builds as a two-Worker design from its GET half, whose
-    reference models both halves; a PUT half has no output to judge.
-    """
-    fn = factory()
-    assert len(fn.contract.roles) == len(fn.arg_types())
-    assert fn.contract.unsupported is None
-    assert fn.contract.roles[1] is Param  # the weight tape is baked into the tile
-    partner = fn.contract.cascade_partner()
-    assert partner.contract.cascade_partner().name == fn.name
-    assert partner.arg_types()[0] == fn.arg_types()[0]  # the same activation slice
-    if fn.contract.out_indices:
-        assert fn.contract.reference is not None
-        assert fn.halves() == [partner, fn]
-        assert [a.direction for a in kd.host_args(fn)].count(Out) == 1
-    else:
-        assert fn.contract.reference is None
-        with pytest.raises(ValueError, match="GET half"):
-            fn.halves()
-        with pytest.raises(ValueError, match="GET half"):
-            kd.design(factory)
-
-
-def test_bottleneck_pair_references_sum_the_halves_chunks():
-    """The relu pair adds the PUT's first chunk to the GET's second; the skip pair, first to first."""
-    W, IC, OC = 7, 16, 8
-    ident = np.eye(8, dtype=np.int8).ravel()  # one 8x8 block: group 0 of a 2-way split
-    x_put = np.zeros((IC // 8, W, 8), np.int8)
-    x_get = np.zeros((IC // 8, W, 8), np.int8)
-    x_put[0, :, 0], x_put[1, :, 0] = 3, 100  # the PUT half reads chunk 0 only
-    x_get[1, :, 0], x_get[0, :, 0] = 5, 100  # the relu GET half reads chunk 1 only
-    put = (W, IC, OC, 2, 0, 0, 0)
-    get = (W, IC, OC, 1, 2, 1, 0, 0, 0)  # scale 1
-    out = kernels.bn_conv2dk1_partial_relu_pair_ref(
-        x_put.ravel(), ident, *put, x_get.ravel(), ident, *get
-    )
-    assert out.shape == (56,) and out.dtype == np.uint8
-    assert out.reshape(W, 8)[:, 0].tolist() == [4] * 7  # (3 + 5) >> 1
-    assert not out.reshape(W, 8)[:, 1:].any()
-    x_get[1, :, 0] = -20  # -17 rounds half-even to -8, ReLU to 0
-    out = kernels.bn_conv2dk1_partial_relu_pair_ref(
-        x_put.ravel(), ident, *put, x_get.ravel(), ident, *get
-    )
-    assert not out.any()
-    # Skip: both halves read chunk 0; 400 saturates to 127 before the
-    # residual, 127 - 100 = 27 rounds to 14 at skip_scale 1; -100 alone is -50.
-    xs_put = np.zeros((IC // 8, W, 8), np.uint8)
-    xs_get = np.zeros((IC // 8, W, 8), np.uint8)
-    xs_put[0, :, 0], xs_get[0, :, 0], xs_get[1, :, 0] = 200, 200, 100
-    skip = np.full(W * OC, -100, np.int8)
-    get = (W, IC, OC, 1, 1, 2, 1, 0, 0, 0)
-    out = kernels.bn_conv2dk1_input_split_skip_pair_ref(
-        xs_put.ravel(), ident, *put, xs_get.ravel(), ident, skip, *get
-    )
-    assert out.dtype == np.int8 and out.reshape(W, 8)[:, 0].tolist() == [14] * 7
-    assert set(out.reshape(W, 8)[:, 1:].ravel().tolist()) == {-50}
-    # A call writes seven pixels of one output group: any other geometry
-    # leaves storage the reference cannot model, and a zero skip_scale
-    # shifts by a negative count in the source.
-    with pytest.raises(ValueError, match="fills its output"):
-        kernels.bn_conv2dk1_partial_relu_pair_ref(
-            x_put.ravel(),
-            ident,
-            *put,
-            x_get.ravel(),
-            ident,
-            W,
-            IC,
-            OC,
-            1,
-            2,
-            1,
-            1,
-            0,
-            0,
-        )
-    with pytest.raises(ValueError, match="positive skip_scale"):
-        kernels.bn_conv2dk1_input_split_skip_pair_ref(
-            xs_put.ravel(),
-            ident,
-            *put,
-            xs_get.ravel(),
-            ident,
-            skip,
-            W,
-            IC,
-            OC,
-            1,
-            0,
-            2,
-            1,
-            0,
-            0,
-            0,
-        )
-    # The pair is sampled, laid out and judged from the GET half.
-    fn = kernels.bn_conv2dk1_partial_get_relu_i8(
-        input_width=W, input_channels=IC, output_channels=OC, weight_count=64
-    )
-    inputs = kd.sample_inputs(fn, calls=3)
-    assert [a.shape for a in inputs] == [(3, 112), (64,), (3, 112), (64,)]
-    assert [a.shape for a in kd.host_args(fn, calls=3)] == [(3, 112), (3, 112), (3, 56)]
-    ref = fn.expected(inputs, scalars=put + (W, IC, OC, 8, 2, 1, 0, 0, 0))
-    assert ref.shape == (3, 56) and ref.dtype == np.uint8
-
-
-def test_pooled_conv_spans_its_calls_and_takes_the_row_index():
-    """One call per row, y_index bound to the call number, one output for the map."""
-    fn = kernels.bn_conv2dk1_relu_xy_pool_padded(input_channels=16, output_channels=64)
-    c = fn.contract
-    assert c.unsupported is None and c.output_spans_calls
-    assert dict(c.parameter_bindings)[8] is kernels.CallIndex
-    assert 8 not in c.reference_indices()
-    # Seven rows in, one 64-channel vector out, sized once for the sequence.
-    assert kd.output_size(fn, calls=7) == 64
-    ins, wts, out = kd.host_args(fn, calls=7)
-    assert (ins.shape, wts.direction, out.shape) == ((7, 112), In, (1, 64))
-    x, w = kd.sample_inputs(fn, calls=7)
-    assert x.shape == (7, 112) and w.shape == (16 * 64,)
-    ref = fn.expected([x, w], scalars=(7, 16, 64, 64, 8, 1, 0))
-    assert ref.shape == (64,) and ref.dtype == np.uint16
-    # A sequence-spanning output is judged as one tile whatever calls says.
-    assert fn.judge(ref, ref, calls=7)
-    assert not fn.judge(ref + 1, ref, calls=7)
-    with pytest.raises(ValueError, match="expected scalar parameter"):
-        KernelContract(roles=(In, Out, Param), parameter_bindings=((2, "x"),))
-    KernelContract(roles=(In, Out, Param), parameter_bindings=((2, kernels.CallIndex),))
-
-
-def test_cascade_mm_pair_is_built_and_judged_from_the_get_half():
-    fn = kernels.cascade_mm(dim_m=16, dim_k=16, dim_n=16)
-    put, get = fn.halves()
-    assert (
-        get is fn
-        and put.name.startswith(put._symbol_prefix + "_")
-        and "put_only" in put.name
-    )
-    assert put.contract.cascade_partner().name == fn.name
-    assert put.contract.out_indices == () and put.contract.reference is None
-    # Four streamed tiles per call: the PUT half's A and B, then the GET half's.
-    inputs = kd.sample_inputs(fn, calls=3)
-    assert [a.shape for a in inputs] == [(3, 16, 16)] * 4
-    assert [a.shape for a in kd.host_args(fn, calls=3)] == [
-        (3, 2, 256),
-        (3, 2, 256),
-        (3, 256),
-    ]
-    a1, b1, a2, b2 = (a.astype(np.int64) for a in inputs)
-    ref = fn.expected(inputs)
-    assert ref.dtype == np.int16 and ref.shape == (3, 256)
-    assert np.array_equal(ref, (a1 @ b1 + a2 @ b2).reshape(3, -1).astype(np.int16))
-    assert fn.contract.reduction == 32  # both halves' K
-    mlir = str(
-        kd.design(kernels.cascade_mm, calls=3, dim_m=16, dim_k=16, dim_n=16).as_mlir()
-    )
-    assert "cascade_flow" in mlir and mlir.count("aie.core") == 2
-
-
-def test_cascade_mm_pair_reference_models_the_integer_cascade_lane():
-    """A float product is truncated toward zero crossing the cascade; an integer one is not."""
-    a = np.full((1, 4), 1.5, np.float64)
-    b = np.full((1, 4), 1.0, np.float64)
-    exact = kernels.linalg.cascade_mm_pair_ref(
-        a, b, a, b, dim_m=2, dim_k=2, dim_n=2, truncates=False
-    )
-    truncated = kernels.linalg.cascade_mm_pair_ref(
-        a, b, a, b, dim_m=2, dim_k=2, dim_n=2, truncates=True
-    )
-    assert np.array_equal(exact, np.full((1, 4), 6.0))
-    assert np.array_equal(truncated, np.full((1, 4), 5.0))
-    bf = kernels.cascade_mm(input_dtype=bfloat16, output_dtype=np.float32)
-    assert bf.contract.reference.keywords["truncates"]
-    assert not kernels.cascade_mm().contract.reference.keywords["truncates"]
 
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.mm_bfp])
@@ -1095,118 +789,6 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     assert ref.dtype == bfloat16 and mixed.output_dtype(ref.dtype) == bfloat16
     assert kd.output_size(mixed, calls=2) == 2 * M * N
     assert mixed.judge(mixed.contract.layouts[2].encode(ref).ravel(), ref, calls=2)
-
-
-def test_bottleneck_references_round_half_even_and_saturate():
-    W, IC, OC = 4, 8, 8
-    ident = np.eye(8, dtype=np.int8).reshape(OC // 8, IC // 8, 8, 8)
-    # Round-half-even at scale 1: 3 -> 2, 5 -> 2 (ties to even), 4 -> 2, -3 -> -2.
-    x = np.zeros((IC // 8, W, 8), np.int8)
-    x[0, :, 0] = [3, 5, 4, -3]
-    out = kernels.bn_conv2dk1_relu_ref(x.ravel(), ident.ravel(), W, IC, OC, 1)
-    assert out.reshape(OC // 8, W, 8)[0, :, 0].tolist() == [2, 2, 2, 0]  # ReLU
-    out = kernels.bn_conv2dk1_i8_ref(
-        x.astype(np.uint8).ravel(), ident.ravel(), W, IC, OC, 1
-    )
-    # uint8 view of -3 is 253: (253 + 1 - 1 + 0) >> 1 = 126
-    assert out.reshape(OC // 8, W, 8)[0, :, 0].tolist() == [2, 2, 2, 126]
-    # skip: conv saturates to int8 first, then the residual is added; a
-    # skip_scale of 0 is no shift, the total saturates to int8.
-    xs = np.full((IC // 8, W, 8), 200, np.uint8)
-    skip = np.full(W * OC, 100, np.int8)
-    out = kernels.bn_conv2dk1_skip_ref(xs.ravel(), ident.ravel(), skip, W, IC, OC, 0, 0)
-    assert set(out.tolist()) == {127}  # 200 -> 127, + 100 -> 227 -> 127
-    skip = np.full(W * OC, -100, np.int8)
-    out = kernels.bn_conv2dk1_skip_ref(xs.ravel(), ident.ravel(), skip, W, IC, OC, 0, 1)
-    assert set(out.tolist()) == {14}  # (127 - 100) = 27 -> (27 + 1 - 1 + 1) >> 1 = 14
-    # depthwise: center tap only, stride 1 returns line1; stride 2 every other
-    # pixel; the left tap on a single lit pixel shifts right and the border
-    # is zero padded.
-    C = 8
-    w = np.zeros((C // 8, 3, 3, 8), np.int8)
-    w[0, 1, 1] = 1
-    l0 = np.full(W * C, 9, np.uint8)
-    l1 = np.arange(W * C, dtype=np.uint8).reshape(C // 8, W, 8)
-    l1[0, :, 0] = [10, 20, 30, 40]
-    l2 = np.full(W * C, 9, np.uint8)
-    got = kernels.bn_conv2dk3_dw_ref(
-        l0, l1.ravel(), l2, w.ravel(), W, C, C, 3, 3, 1, 0, 0
-    )
-    assert got.reshape(C // 8, W, 8)[0, :, 0].tolist() == [10, 20, 30, 40]
-    got = kernels.bn_conv2dk3_dw_ref(
-        l0, l1.ravel(), l2, w.ravel(), W, C, C, 3, 3, 1, 0, 0, stride=2
-    )
-    assert got.reshape(C // 8, W // 2, 8)[0, :, 0].tolist() == [10, 30]
-    w[:] = 0
-    w[0, 1, 0] = 1  # ki 0 reads pixel x - 1
-    got = kernels.bn_conv2dk3_dw_ref(
-        l0, l1.ravel(), l2, w.ravel(), W, C, C, 3, 3, 1, 0, 0
-    )
-    assert got.reshape(C // 8, W, 8)[0, :, 0].tolist() == [0, 10, 20, 30]
-    # full 3x3 stride 2: center tap identity halves the width; top region
-    # ignores line0.
-    w3 = np.zeros((OC // 8, IC // 8, 3, 3, 8, 8), np.int8)
-    w3[:, :, 1, 1] = np.eye(8, dtype=np.int8)
-    l1s = np.zeros((IC // 8, W, 8), np.int8)
-    l1s[0, :, 0] = [10, 20, 30, 40]
-    got = kernels.bn_conv2dk3_ref(
-        l0, l1s.ravel(), l2, w3.ravel(), W, IC, OC, 3, 3, 1, 0, 0
-    )
-    assert got.reshape(OC // 8, W // 2, 8)[0, :, 0].tolist() == [10, 30]
-    w3[:, :, 0, 1] = np.eye(8, dtype=np.int8)
-    mid = kernels.bn_conv2dk3_ref(
-        l0, l1s.ravel(), l2, w3.ravel(), W, IC, OC, 3, 3, 1, 0, 0
-    )
-    top = kernels.bn_conv2dk3_ref(
-        l0, l1s.ravel(), l2, w3.ravel(), W, IC, OC, 3, 3, 0, 0, 0
-    )
-    assert mid.reshape(OC // 8, W // 2, 8)[0, :, 0].tolist() == [19, 39]
-    assert top.tolist() == got.tolist()
-
-
-def test_post_stage_references_follow_the_sources():
-    # FC: uint16 activations, weights padded to a 16-channel stride of which
-    # only the first 8 input channels are read; round-half-even, ReLU, uint8
-    # range in a uint16 store.
-    IC, ICp, OC = 8, 16, 8
-    w = np.zeros((OC // 8, ICp // 8, 8, 8), np.int8)
-    w[0, 0] = np.eye(8, dtype=np.int8)  # the padded half is never read
-    w[0, 1] = 99
-    x = np.zeros(IC, np.uint16)
-    x[:4] = [3, 5, 600, 7]
-    out = kernels.bn_fc_relu_ui16_pad_ref(x, w.ravel(), 1, IC, ICp, OC, 1)
-    assert out.dtype == np.uint16
-    assert out[:4].tolist() == [2, 2, 255, 4]  # 3 -> 2, 5 -> 2, 300 saturates
-    # xy pool: a 7x7 map of ones through an identity 1x1 conv at scale 0 sums
-    # to 49 per channel, so the pooled average is exactly 1; the padding
-    # channels are zero and only the selected output tile is written.
-    W, C = 7, 8
-    x = np.ones((W, W * C), np.int8)
-    ident = np.eye(8, dtype=np.int8).ravel()
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, 16, 0, 1, 0)
-    assert out.dtype == np.uint16 and out.shape == (16,)
-    assert out.tolist() == [1] * 8 + [0] * 8
-    # A per-pixel value of 2 (x = 2) makes the sum 98 and the average 2.0;
-    # x = 3 gives 147 / 49 = 3.0. Odd sums exercise the kernel's rounding:
-    # 25 ones and 24 zeros -> 25 / 49 = 0.5102 -> (int)(5.1) % 10 == 5 ->
-    # ties-to-even on the integer part -> 0.
-    x = np.zeros((W, W * C), np.int8)
-    x.reshape(W, W, C)[:, :, 0].flat[:25] = 1
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, C, 0, 1, 0)
-    assert out[0] == 0
-    x.reshape(W, W, C)[:, :, 0].flat[:] = 1
-    x.reshape(W, W, C)[:, :, 0].flat[:2] = 0  # 47 / 49 = 0.959 -> 1
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, C, 0, 1, 0)
-    assert out[0] == 1
-    # output_split = 2, weight_index = 1: the call carries the weights of
-    # its own 8-channel tile and writes only channels [8, 16).
-    IC = OC = 16
-    wt = np.zeros((OC // 2 // 8, IC // 8, 8, 8), np.int8)
-    wt[0, 1] = np.eye(8, dtype=np.int8)  # tile 1 passes input channels 8..15
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(
-        np.ones((W, W * IC), np.int8), wt.ravel(), W, IC, OC, OC, 0, 2, 1
-    )
-    assert out.tolist() == [0] * 8 + [1] * 8
 
 
 @pytest.mark.parametrize("act_dtype", [np.int8, np.uint8])
@@ -1872,7 +1454,9 @@ def _factories_with_dtypes():
 def test_declared_dtype_combinations_build(name, combo):
     """Every combination a factory lists as supported builds, and its arg types use it."""
     fn = getattr(kernels, name)(**combo)
-    assert fn.contract is not None
+    if fn.contract is None:
+        assert name in NOT_JUDGED, f"{name}: no contract"
+        return
     if fn.contract.accumulates and not fn.contract.unsupported:
         # The builder initializes an InOut output before every call, so a
         # kernel it can run must say how.
@@ -1936,12 +1520,11 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
     neither, on a kernel that narrows an accumulator, means it runs in
     whatever mode the core booted in.
     """
-    from aie.utils.compile.remarks import kernel_builds
-
     set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1())
-    for name, ef in kernel_builds():
-        c = getattr(ef, "contract", None)
+    for name, ef in _builds():
+        c = ef.contract
         if c is None:
+            assert name in NOT_JUDGED, f"{name}: no contract"
             continue
         src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
         sets_own = bool(_SET_ROUNDING_CALL.search(src))

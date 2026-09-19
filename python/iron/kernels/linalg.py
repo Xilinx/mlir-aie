@@ -184,21 +184,6 @@ def mm_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int):
     return (a @ b).reshape(len(a), dim_m * dim_n)
 
 
-def cascade_mm_pair_ref(
-    a_put, b_put, a_get, b_get, *, dim_m: int, dim_k: int, dim_n: int, truncates: bool
-):
-    """One [`cascade_mm`][iron.kernels.linalg.cascade_mm] pair call: the PUT tile's product plus the GET tile's.
-
-    The partial sum crosses the cascade as a 32-bit integer lane, so a
-    floating-point output type has the PUT half's product truncated toward
-    zero on the way (``truncates``); integer outputs cross exactly.
-    """
-    partial = mm_tile_ref(a_put, b_put, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n)
-    if truncates:
-        partial = np.trunc(partial)
-    return partial + mm_tile_ref(a_get, b_get, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n)
-
-
 def mv_tile_ref(a, b, *, dim_m: int, dim_k: int):
     """One [`mv`][iron.kernels.linalg.mv] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k,)`` vector."""
     a = np.asarray(a).reshape(-1, dim_m, dim_k).astype(np.int64)
@@ -919,15 +904,15 @@ def cascade_mm(
     r"""Build the GET half of a cascade matrix multiply: ``C += A * B + cascade``.
 
     cascade_mm.cc emits all three cascade variants (``get_only``,
-    ``put_only``, ``put_get``) in one object. This binds ``get_only`` and
-    names [`cascade_mm_put`][iron.kernels.linalg.cascade_mm_put] as its
-    partner, so the generic builder runs the pair on two adjacent tiles;
-    bind ``put_get`` for longer chains with
+    ``put_only``, ``put_get``) in one object. This binds ``get_only``;
+    [`cascade_mm_put`][iron.kernels.linalg.cascade_mm_put] is the PUT half
+    that feeds it, and ``put_get`` serves longer chains:
     ``fn.object_file.bind("matmul_scalar_cascade_put_get_<dtype>", fn.arg_types())``.
-    Initialize accumulators with ``kernels.zero``. The partial sum crosses
-    the cascade as a 32-bit integer lane: with a floating-point output type
-    the PUT half's product is truncated toward zero, which the reference
-    models.
+    Initialize accumulators with ``kernels.zero``. The pair is a two-tile
+    design, which the generic builder does not run; the device test builds
+    and judges it (``test/python/npu/test_kernels_e2e.py``). The partial sum
+    crosses the cascade as a 32-bit integer lane: with a floating-point
+    output type the PUT half's product is truncated toward zero.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -978,21 +963,9 @@ def cascade_mm(
                 _tile_layout((dim_k, dim_n), block=(s, t)),
                 _tile_layout((dim_m, dim_n), block=(r, t)),
             ),
-            cascade_partner=partial(
-                cascade_mm_put,
-                dim_m=dim_m,
-                dim_k=dim_k,
-                dim_n=dim_n,
-                input_dtype=input_dtype,
-                output_dtype=output_dtype,
-                use_chess=use_chess,
-            ),
-            reference=partial(
-                cascade_mm_pair_ref,
-                dim_m=dim_m,
-                dim_k=dim_k,
-                dim_n=dim_n,
-                truncates=not np.issubdtype(np.dtype(output_dtype), np.integer),
+            unsupported=(
+                "the GET half of a cascade pair: one input arrives on the "
+                "cascade stream; the device test builds and judges the pair"
             ),
             initializers=((2, _zero_output),),
             acc_dtype=mm_acc_dtype(input_dtype),
@@ -1015,8 +988,8 @@ def cascade_mm_put(
 
     Same object and arguments as the GET half. ``put_only`` never touches
     its third argument (the ABI just mirrors ``get_only``), so the contract
-    binds it to zeros and nothing is asked of a caller. Build and judge the
-    pair from the GET half.
+    binds it to zeros. Its result leaves on the cascade stream, so it is
+    judged with its GET half by the device test, not by the generic builder.
     """
     key = (input_dtype, output_dtype)
     if key not in _CASCADE_COMBOS:
@@ -1047,15 +1020,7 @@ def cascade_mm_put(
                 _tile_layout((dim_k, dim_n), block=(s, t)),
                 None,
             ),
-            cascade_partner=partial(
-                cascade_mm,
-                dim_m=dim_m,
-                dim_k=dim_k,
-                dim_n=dim_n,
-                input_dtype=input_dtype,
-                output_dtype=output_dtype,
-                use_chess=use_chess,
-            ),
+            unsupported="the PUT half of a cascade pair: its result leaves on the cascade stream",
             acc_dtype=mm_acc_dtype(input_dtype),
             reduction=dim_k,
             ops_per_call=2 * dim_m * dim_k * dim_n,

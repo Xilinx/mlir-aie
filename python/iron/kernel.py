@@ -495,54 +495,22 @@ class ExternalFunction(Kernel):
             )
         return self.contract
 
-    def halves(self) -> list:
-        """Return the kernels one design runs for this one, in cascade order.
-
-        ``[self]``, or ``[put, get]`` for the GET half of a cascade pair,
-        whose contract names the PUT half as ``cascade_partner``. A PUT half
-        has no output to observe, so a design is always built from the GET.
-        """
-        c = self._require_contract()
-        if c.cascade_partner is None:
-            return [self]
-        if not c.out_indices:
-            raise ValueError(
-                f"{self.name}: a cascade PUT half has no output; build and judge "
-                f"its GET half, {c.cascade_partner().name}"
-            )
-        return [c.cascade_partner(), self]
-
-    def _reference_positions(self) -> list:
-        """``(kernel, argument)`` pairs the reference is called with, in order."""
-        positions = []
-        for half in self.halves():
-            c = half._require_contract()
-            c.validate_types(half.arg_types())
-            positions += [(half, i) for i in c.reference_indices()]
-        return positions
-
     def param_values(self, inputs: list) -> list:
         """Pick the ``Param`` arrays out of one logical input list.
 
         ``inputs`` is one array per unbound ``In``/tensor ``Param`` in argument
-        order (a cascade pair's PUT half first). A design bakes tensor
-        ``Param`` arguments into core buffers rather than streaming them, so
-        it needs them separately.
+        order. A design bakes tensor ``Param`` arguments into core buffers
+        rather than streaming them, so it needs them separately.
         """
         from .kernels._common import Param, _is_tensor_type
 
-        positions = [
-            (h, i)
-            for h, i in self._reference_positions()
-            if _is_tensor_type(h.arg_types()[i])
-        ]
+        c = self._require_contract()
+        types = self.arg_types()
+        c.validate_types(types)
+        positions = [i for i in c.reference_indices() if _is_tensor_type(types[i])]
         if len(inputs) != len(positions):
             raise ValueError(f"{self.name}: expected {len(positions)} input arrays")
-        return [
-            np.asarray(a)
-            for a, (h, i) in zip(inputs, positions)
-            if h.contract.roles[i] is Param
-        ]
+        return [np.asarray(a) for a, i in zip(inputs, positions) if c.roles[i] is Param]
 
     def input_limit(self, dtype, *, reduction: int | None = None) -> int | None:
         """Largest integer magnitude an input may take without overflowing.
@@ -589,10 +557,11 @@ class ExternalFunction(Kernel):
         c = self._require_contract()
         if c.reference is None:
             raise ValueError(f"{self.name}: contract has no reference")
-        positions = self._reference_positions()
-        is_tensor = [_is_tensor_type(h.arg_types()[i]) for h, i in positions]
+        types = self.arg_types()
+        c.validate_types(types)
+        is_tensor = [_is_tensor_type(types[i]) for i in c.reference_indices()]
         n_tensors = sum(is_tensor)
-        n_scalars = len(positions) - n_tensors
+        n_scalars = len(is_tensor) - n_tensors
         if len(inputs) != n_tensors:
             raise ValueError(f"{self.name}: expected {n_tensors} input arrays")
         if len(scalars) != n_scalars:
@@ -654,8 +623,6 @@ class ExternalFunction(Kernel):
         from aie.utils.verify import Tolerance, Verdict, compare
 
         c = self._require_contract()
-        if c.output_spans_calls:
-            calls = 1  # one tile for the whole sequence
         multiple = len(c.out_indices) > 1
         actuals, references = (got, ref) if multiple else ((got,), (ref,))
         if (
@@ -875,7 +842,7 @@ class ExternalFunction(Kernel):
         ExternalFunction._instances.add(self)
 
     # Read-only views of the compile recipe. Tooling that inspects or
-    # recompiles a kernel outside the JIT path (aie.utils.compile.remarks) reads
+    # recompiles a kernel outside the JIT path (a static check, say) reads
     # these rather than the private fields; the JIT itself keeps using the
     # private fields directly.
 

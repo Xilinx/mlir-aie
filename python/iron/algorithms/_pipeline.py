@@ -6,10 +6,10 @@
 """One Worker per stage, fed and drained through fifos: the loop the single-core templates run.
 
 A :class:`Stage` is what one core does: acquire its input fifos, acquire its
-outputs, call its body, release. :func:`pipeline` builds the Workers, joins
-two stages by a cascade when asked, and writes the runtime sequence that
-fills and drains the host buffers. ``transform``, ``for_each``, ``reduce``
-and the kernel-validation builder are each a few lines on top of it.
+outputs, call its body, release. :func:`pipeline` builds the Workers and
+writes the runtime sequence that fills and drains the host buffers.
+``transform``, ``for_each``, ``reduce`` and the kernel-validation builder are
+each a few lines on top of it.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from typing import Callable
 
 import numpy as np
 from aie.iron.controlflow import range_
-from aie.iron.dataflow import CascadeFlow, ObjectFifo
+from aie.iron.dataflow import ObjectFifo
 from aie.iron.device import Tile
 from aie.iron.kernel import ExternalFunction
 from aie.iron.program import Program
@@ -149,16 +149,13 @@ def kernel_params(func, params, first: int) -> KernelParams:
     return result
 
 
-def pipeline(stages, host_types, transfers, *, cascade=False, trace_size=0):
+def pipeline(stages, host_types, transfers, *, trace_size=0):
     """Build the stages' Workers and the sequence that moves their host buffers.
 
     ``host_types`` are the design's host buffers in argument order and
     ``transfers`` the ``(fifo, "fill" | "drain", host index)`` triples that
     connect them; fills are issued first, then drains, each in the order
-    given. With ``cascade`` the two stages sit on vertically adjacent compute
-    tiles, the stream running from the first to the second (the PUT tile
-    north of the GET tile: rows 3 and 2, the lowest two compute rows on every
-    NPU). A positive ``trace_size`` traces the stages that asked for it.
+    given. A positive ``trace_size`` traces the stages that asked for it.
     """
     device = get_current_device()
     if device is None:
@@ -166,14 +163,7 @@ def pipeline(stages, host_types, transfers, *, cascade=False, trace_size=0):
             "iron.algorithms requires an active NPU device. Call "
             "iron.set_current_device() or ensure DefaultNPURuntime is initialized first."
         )
-    if cascade:
-        if len(stages) != 2:
-            raise ValueError("a cascade joins exactly two stages")
-        for stage, tile in zip(stages, (Tile(0, 3), Tile(0, 2))):
-            stage.tile = stage.tile or tile
     workers = [stage.build() for stage in stages]
-    if cascade:
-        CascadeFlow(workers[0], workers[1])
     endpoints = [
         (fifo.prod() if kind == "fill" else fifo.cons(), kind, index)
         for fifo, kind, index in transfers

@@ -7,31 +7,26 @@
 
 Each call consumes one tile per ``In``, reads constant ``Param`` values, and
 writes one tile per output. Layout codecs convert logical tiles to kernel
-storage on the host. A cascade pair (a PUT half and the GET half it names as
-``cascade_partner``) is two stages joined by a ``CascadeFlow``; the GET
-half's outputs are what the design returns. The Workers and the runtime
-sequence are the shared single-core pipeline's (``_pipeline``).
-Whole-problem tiling, reductions across kernel calls and multi-core
-schedules belong to algorithms, not this kernel-validation harness.
+storage on the host. The Worker and the runtime sequence are the shared
+single-core pipeline's (``_pipeline``). Whole-problem tiling, reductions
+across kernel calls and multi-core schedules belong to algorithms, not this
+kernel-validation harness.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from operator import index
-from pathlib import Path
 from typing import Callable
 
 import numpy as np
 from aie.helpers.util import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
-from aie.iron.kernels._common import CallIndex, Param, _is_tensor_type
+from aie.iron.kernels._common import Param, _is_tensor_type
 from aie.utils import bfp, get_current_device, tensor
 from aie.utils.compile.jit import CompileTime, In, InOut, Out
 from aie.utils.jit import jit
-from aie.utils.trace import TraceConfig
-from aie.utils.trace.utils import get_cycles_summary
 from aie.utils.verify import poisoned
 
 from ._pipeline import Stage, pipeline
@@ -83,15 +78,6 @@ def _stack_bytes(fn):
     return _contract(fn).stack_bytes or _device().default_core_stack_bytes
 
 
-def _halves(fn):
-    """Return the kernels one design runs, in cascade order: ``[put, get]`` or ``[fn]``."""
-    _contract(fn)
-    halves = fn.halves()
-    for half in halves:
-        _contract(half)
-    return halves
-
-
 def _tensor_positions(fn):
     c = _contract(fn)
     types = fn.arg_types()
@@ -124,43 +110,31 @@ def _fifo_plan(fn):
 
 
 def _encode_params(fn, params):
-    """Encode the unbound tensor Params of every half, in argument order, as design constants."""
+    """Encode the unbound tensor Params, in argument order, as design constants."""
+    c = _contract(fn)
     params = list(params)
+    _, _, positions = _fifo_plan(fn)
+    bound = dict(c.parameter_bindings)
+    free = [i for i in positions if i not in bound]
+    if len(params) != len(free):
+        raise ValueError(f"{fn.name}: expected {len(free)} param value(s)")
+    bound.update(zip(free, params))
     encoded = []
-    for half in _halves(fn):
-        _, _, positions = _fifo_plan(half)
-        bound = dict(half.contract.parameter_bindings)
-        free = [i for i in positions if i not in bound]
-        bound.update(zip(free, params[: len(free)]))
-        params = params[len(free) :]
-        half_encoded = []
-        for i in positions:
-            if i not in bound:
-                raise ValueError(
-                    f"{half.name}: parameters need values at design time; "
-                    f"param {i} has none"
-                )
-            value = bound[i]
-            shape, dt = shape_dtype(half.arg_types()[i])
-            layout = _layout(half.contract, i)
-            value = layout.encode(value) if layout else np.asarray(value)
-            if value.size != int(np.prod(shape)):
-                raise ValueError(
-                    f"{half.name}: param {i} must contain {shape} elements"
-                )
-            half_encoded.append(
-                (np.dtype(dt).name, shape, tuple(value.astype(dt).ravel().tolist()))
-            )
-        encoded.append(tuple(half_encoded))
-    if params:
-        raise ValueError(
-            f"{fn.name}: {len(params)} more param value(s) than parameters"
+    for i in positions:
+        value = bound[i]
+        shape, dt = shape_dtype(fn.arg_types()[i])
+        layout = _layout(c, i)
+        value = layout.encode(value) if layout else np.asarray(value)
+        if value.size != int(np.prod(shape)):
+            raise ValueError(f"{fn.name}: param {i} must contain {shape} elements")
+        encoded.append(
+            (np.dtype(dt).name, shape, tuple(value.astype(dt).ravel().tolist()))
         )
     return tuple(encoded)
 
 
-def _stage(fn, k, calls, scalars, params):
-    """Plan one half: consume its scalars and encoded params; return the stage, its fifo groups and the leftovers."""
+def _stage(fn, calls, scalars, params):
+    """Plan the Worker: fifos per input group and output, buffers per Param, the call itself."""
     c = _contract(fn)
     types = fn.arg_types()
     groups, ins, param_pos = _fifo_plan(fn)
@@ -173,23 +147,19 @@ def _stage(fn, k, calls, scalars, params):
         for i, r in enumerate(c.roles)
         if r is Param and not _is_tensor_type(types[i]) and i not in bound
     ]
-    if len(scalars) < len(free):
+    if len(scalars) != len(free):
         raise ValueError(
             f"{fn.name}: expected {len(free)} scalar(s), got {len(scalars)}"
         )
-    taken, scalars = scalars[: len(free)], scalars[len(free) :]
-    if any(not isinstance(v, (int, float, np.integer, np.floating)) for v in taken):
+    if any(not isinstance(v, (int, float, np.integer, np.floating)) for v in scalars):
         raise ValueError(f"{fn.name}: expected scalar parameter values")
-    bound.update(zip(free, taken))
+    bound.update(zip(free, scalars))
     if len(params) != len(param_pos):
         raise ValueError(f"{fn.name}: expected {len(param_pos)} param values")
     initializers = [(i, init(fn)) for i, init in c.initializers]
-    # An InOut read back on every independent call needs a declared
-    # initializer; one that spans the sequence is the kernel's own to
-    # initialize on its first call.
-    if not c.output_spans_calls and any(
-        r is InOut and i not in dict(initializers) for i, r in enumerate(c.roles)
-    ):
+    # An InOut is read back on every independent call, so it needs a
+    # declared initializer.
+    if any(r is InOut and i not in dict(initializers) for i, r in enumerate(c.roles)):
         raise ValueError(f"{fn.name}: every InOut requires a declared initializer")
     setter = c.setup() if c.setup else None
 
@@ -209,17 +179,16 @@ def _stage(fn, k, calls, scalars, params):
             f"{fn.name}: tiles plus parameters and stack exceed core memory; use a smaller tile"
         )
     fifos_in = [
-        ObjectFifo(types[g[0]], name=f"in{k}_{j}", depth=len(g) * depth)
+        ObjectFifo(types[g[0]], name=f"in{j}", depth=len(g) * depth)
         for j, g in enumerate(groups)
     ]
     fifos_out = [
-        ObjectFifo(types[i], name=f"out{k}_{j}", depth=depth)
-        for j, i in enumerate(outs)
+        ObjectFifo(types[i], name=f"out{j}", depth=depth) for j, i in enumerate(outs)
     ]
     buffers = [
         Buffer(
             types[i],
-            name=f"param{k}_{j}",
+            name=f"param{j}",
             initial_value=np.array(vals, dtype=np.dtype(dt)).reshape(shape),
         )
         for j, (i, (dt, shape, vals)) in enumerate(zip(param_pos, params))
@@ -229,10 +198,9 @@ def _stage(fn, k, calls, scalars, params):
     n_param, n_init = len(buffers), len(initializers)
     slot = {i: j for j, i in enumerate(outs)}
 
-    def body(acquired, outputs, _held, constants, call):
+    def body(acquired, outputs, _held, constants, _call):
         values = dict(zip(param_pos, constants[:n_param]))
         values.update(bound)
-        values.update({i: call for i, v in bound.items() if v is CallIndex})
         for got, group in zip(acquired, groups):
             values.update(
                 (i, got if len(group) == 1 else got[j]) for j, i in enumerate(group)
@@ -245,7 +213,7 @@ def _stage(fn, k, calls, scalars, params):
         for (i, _), init in zip(initializers, kernels):
             init(outputs[slot[i]])
 
-    stage = Stage(
+    return Stage(
         body,
         inputs=[(fifo, len(g)) for fifo, g in zip(fifos_in, groups)],
         outputs=fifos_out,
@@ -254,62 +222,31 @@ def _stage(fn, k, calls, scalars, params):
         + [init for _, init in initializers]
         + ([setter] if setter else []),
         iterations=calls,
-        outputs_span_iterations=c.output_spans_calls,
         prologue=(lambda constants: constants[-1]()) if setter else None,
         initialize=initialize if initializers else None,
         stack_size=_stack_bytes(fn),
     )
-    return stage, groups, scalars
 
 
-def _build_stream(
-    *, factory, factory_kwargs, calls, scalars=(), params=(), trace_config=None
-):
+def _build_stream(*, factory, factory_kwargs, calls, scalars=(), params=()):
     fn = factory(**factory_kwargs)
-    halves = _halves(fn)
-    if len(params) != len(halves):
-        raise ValueError(
-            f"{fn.name}: expected encoded params for {len(halves)} kernel(s)"
-        )
-    stages, groups = [], []
-    left = tuple(scalars)
-    for k, (half, half_params) in enumerate(zip(halves, params)):
-        stage, stage_groups, left = _stage(half, k, calls, left, half_params)
-        stages.append(stage)
-        groups.append(stage_groups)
-    if left:
-        raise ValueError(
-            f"{fn.name}: {len(left)} more scalar(s) than scalar parameters"
-        )
-    get = halves[-1]
-    stages[-1].trace = trace_config is not None
+    stage = _stage(fn, calls, tuple(scalars), params)
+    types = fn.arg_types()
 
-    def host_ty(half, i, repetitions):
-        types = half.arg_types()
+    def host_ty(i, repetitions):
         return np.ndarray[
             (elems(types[i]) * repetitions,), np.dtype[shape_dtype(types[i])[1]]
         ]
 
-    host_types = [
-        host_ty(half, g[0], calls * len(g))
-        for half, half_groups in zip(halves, groups)
-        for g in half_groups
-    ]
-    host_types += [
-        host_ty(get, i, _output_calls(get, calls)) for i in get.contract.out_indices
-    ]
-    fifos_in = [fifo for stage in stages for fifo, _ in stage.inputs]
+    groups = _fifo_plan(fn)[0]
+    host_types = [host_ty(g[0], calls * len(g)) for g in groups]
+    host_types += [host_ty(i, calls) for i in fn.contract.out_indices]
+    fifos_in = [fifo for fifo, _ in stage.inputs]
     transfers = [(fifo, "fill", j) for j, fifo in enumerate(fifos_in)]
     transfers += [
-        (fifo, "drain", len(fifos_in) + j) for j, fifo in enumerate(stages[-1].outputs)
+        (fifo, "drain", len(fifos_in) + j) for j, fifo in enumerate(stage.outputs)
     ]
-    return pipeline(
-        stages,
-        host_types,
-        transfers,
-        cascade=len(stages) == 2,
-        trace_size=trace_config.trace_size if trace_config else 0,
-    )
+    return pipeline([stage], host_types, transfers)
 
 
 # One JIT entry for every kernel. Its tensors are the host buffers the
@@ -324,7 +261,6 @@ def _stream(
     calls: CompileTime[int],
     scalars: CompileTime[tuple] = (),
     params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
 ):
     return _build_stream(
         factory=factory,
@@ -332,18 +268,7 @@ def _stream(
         calls=calls,
         scalars=scalars,
         params=params,
-        trace_config=trace_config,
     )
-
-
-def _output_calls(fn, calls):
-    """Return how many output tiles ``calls`` calls produce: one when the output spans them."""
-    return 1 if _contract(fn).output_spans_calls else calls
-
-
-def _host_groups(fn):
-    """Every half's input fifo groups, in the order the host tensors take."""
-    return [(half, g) for half in _halves(fn) for g in _fifo_plan(half)[0]]
 
 
 def design(
@@ -360,8 +285,6 @@ def design(
 
     This harness embeds these values for every call; changing them recompiles
     the design. Direct designs can supply different operands on each call.
-    For a cascade pair, pass the GET half's factory: the PUT half's inputs,
-    scalars and params come first in each list.
     """
     calls = _calls(calls, shape)
     fn = factory(**factory_kwargs)
@@ -370,14 +293,9 @@ def design(
         raise ValueError(
             f"{fn.name}: the generic harness cannot build this kernel: {c.unsupported}"
         )
-    _host_groups(fn)  # the DMA channel budget is checked before anything builds
+    _fifo_plan(fn)  # the DMA channel budget is checked before anything builds
     flags: list[str] = list(aiecc_flags or ())
-    if any(
-        bfp.is_bfp(shape_dtype(t)[1])
-        for half in _halves(fn)
-        for t in half.arg_types()
-        if _is_tensor_type(t)
-    ):
+    if any(bfp.is_bfp(shape_dtype(t)[1]) for t in fn.arg_types() if _is_tensor_type(t)):
         if "--dynamic-objFifos" not in flags:
             flags.append("--dynamic-objFifos")
     return _stream.specialize(
@@ -394,46 +312,45 @@ _INT_RANGE = {np.int8: 60, np.int16: 8000, np.int32: 1 << 20, np.uint8: 255}
 
 
 def sample_inputs(fn, *, calls=1, shape=None, rng=None):
-    """One array per unbound In/tensor Param of every half; only In has a call dimension."""
+    """One array per unbound In/tensor Param; only In has a call dimension."""
     calls = _calls(calls, shape)
     rng = np.random.default_rng(0) if rng is None else rng
     c = _contract(fn)
     if c.sample is not None:
         return c.sample(rng, calls)
     result = []
-    for half in _halves(fn):
-        hc = half.contract
-        for i in _tensor_positions(half)[0]:
-            s, dt = shape_dtype(half.arg_types()[i])
-            layout = _layout(hc, i)
-            s = layout.shape if layout else (int(np.prod(s)),)
-            dt = np.float32 if bfp.is_bfp(dt) else dt
-            s = ((calls,) if hc.roles[i] is In else ()) + s
-            if np.issubdtype(np.dtype(dt), np.integer):
-                r = fn.input_limit(dt) or _INT_RANGE.get(dt, 1 << 15)
-                lo = 0 if np.dtype(dt).kind == "u" else -r
-                result.append(rng.integers(lo, r, size=s).astype(dt))
-            else:
-                result.append(rng.standard_normal(s).astype(np.float32).astype(dt))
+    for i in _tensor_positions(fn)[0]:
+        s, dt = shape_dtype(fn.arg_types()[i])
+        layout = _layout(c, i)
+        s = layout.shape if layout else (int(np.prod(s)),)
+        dt = np.float32 if bfp.is_bfp(dt) else dt
+        s = ((calls,) if c.roles[i] is In else ()) + s
+        if np.issubdtype(np.dtype(dt), np.integer):
+            r = fn.input_limit(dt) or _INT_RANGE.get(dt, 1 << 15)
+            lo = 0 if np.dtype(dt).kind == "u" else -r
+            result.append(rng.integers(lo, r, size=s).astype(dt))
+        else:
+            result.append(rng.standard_normal(s).astype(np.float32).astype(dt))
     return result
 
 
 def host_layout(fn, inputs):
     """Pack declared layouts and interleave same-type In tiles; omit Param buffers."""
-    positions = [(half, i) for half in _halves(fn) for i in _tensor_positions(half)[0]]
+    c = _contract(fn)
+    positions = _tensor_positions(fn)[0]
     if len(inputs) != len(positions):
         raise ValueError(f"{fn.name}: expected {len(positions)} input arrays")
-    values = {(id(half), i): a for (half, i), a in zip(positions, inputs)}
+    values = dict(zip(positions, inputs))
     result = []
-    for half, group in _host_groups(fn):
+    for group in _fifo_plan(fn)[0]:
         arrays = []
         for i in group:
-            value = np.asarray(values[(id(half), i)])
-            layout = _layout(half.contract, i)
+            value = np.asarray(values[i])
+            layout = _layout(c, i)
             arrays.append(
                 layout.encode(value)
                 if layout
-                else value.reshape(-1, elems(half.arg_types()[i]))
+                else value.reshape(-1, elems(fn.arg_types()[i]))
             )
         result.append(
             np.ascontiguousarray(
@@ -445,7 +362,7 @@ def host_layout(fn, inputs):
 
 def output_size(fn, *, calls=1, shape=None):
     """Storage elements per output; a tuple for multiple outputs."""
-    calls = _output_calls(fn, _calls(calls, shape))
+    calls = _calls(calls, shape)
     types = fn.arg_types()
     sizes = tuple(
         elems(types[i])
@@ -472,24 +389,21 @@ class _HostBuffer:
 def host_args(fn, *, calls=1, shape=None):
     """Describe physical host buffers, not kernel arguments or constant Params.
 
-    Same-type streamed inputs of one kernel share a buffer; each output has
-    its own. For a cascade pair the PUT half's buffers come first.
+    Same-type streamed inputs share a buffer; each output has its own.
     Descriptors expose ``direction``, ``shape``, ``dtype`` and ``n_elements``.
     """
     calls = _calls(calls, shape)
+    types = fn.arg_types()
     result = []
-    entries = [(In, half, g, calls) for half, g in _host_groups(fn)]
-    entries += [
-        (Out, fn, [i], _output_calls(fn, calls)) for i in _contract(fn).out_indices
-    ]
-    for direction, half, indices, reps in entries:
-        types = half.arg_types()
+    entries = [(In, g) for g in _fifo_plan(fn)[0]]
+    entries += [(Out, [i]) for i in _contract(fn).out_indices]
+    for direction, indices in entries:
         i = indices[0]
         dt = shape_dtype(types[i])[1]
         n = elems(types[i])
         if bfp.is_bfp(dt):
             n, dt = n * bfp.BLOCK_BYTES, np.uint8
-        s = (reps, n) if len(indices) == 1 else (reps, len(indices), n)
+        s = (calls, n) if len(indices) == 1 else (calls, len(indices), n)
         result.append(_HostBuffer(direction, s, dt))
     return result
 
@@ -511,33 +425,7 @@ def upload(inputs, out_size, out_dtype, *, fn, poison=False):
     return ins, tuple(outs) if multiple else outs[0]
 
 
-def cycles_per_call(
-    design_, inputs, out_size, out_dtype, *, fn, trace_size, workdir, calls=1
-):
-    """Measure declared whole-call event pairs, never partial internal regions."""
-    if not _contract(fn).trace_cycles:
-        return []
-    calls = _calls(calls)
-    workdir = Path(workdir)
-    workdir.mkdir(parents=True, exist_ok=True)
-    cfg = TraceConfig(trace_size=trace_size, trace_file=str(workdir / "trace.txt"))
-    ins, out = upload(inputs, out_size, out_dtype, fn=fn)
-    design_(*ins, *(out if isinstance(out, tuple) else (out,)), trace_config=cfg)
-    if cfg.physical_mlir_path is None:
-        raise RuntimeError("the traced run recorded no physical MLIR path")
-    trace_json = workdir / "trace.json"
-    cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
-    durations = [int(d) for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
-    if len(durations) != calls:
-        raise RuntimeError(
-            f"{fn.name}: expected {calls} whole-call trace intervals, got "
-            f"{len(durations)}; incomplete trace or incorrect trace_cycles contract"
-        )
-    return durations
-
-
 __all__ = [
-    "cycles_per_call",
     "design",
     "elems",
     "host_layout",

@@ -35,15 +35,6 @@ class Param:
 _ROLES = (In, Out, InOut, Param)
 
 
-class CallIndex:
-    """Bind a scalar ``Param`` to the 0-based number of the current call.
-
-    ``parameter_bindings=((i, CallIndex),)`` hands argument ``i`` the loop
-    counter of the design's call sequence: a kernel that is called once per
-    row of a map and keys its behaviour on which row this is.
-    """
-
-
 def _is_tensor_type(arg_type):
     return get_origin(arg_type) is np.ndarray
 
@@ -119,26 +110,13 @@ class KernelContract:
             sets its own mode or narrows nothing.
         stack_bytes: Core stack a Worker calling this kernel needs, when
             more than the target's default. Say where the number came from.
-        cascade_partner: For one half of a cascade pair, a zero-argument
-            callable returning the other half (``functools.partial`` of its
-            factory). The builder runs the pair on adjacent tiles; the PUT
-            half has no output and no reference, and the GET half's
-            reference is the pair's, called with the PUT half's inputs
-            first.
-        unsupported: Why the builder cannot run this kernel, or ``None``.
+        unsupported: Why the builder cannot run this kernel, or ``None``. A
+            kernel with no output argument (a cascade PUT half) says so here.
         layouts: A :class:`TensorLayout` per argument; ``None`` is identity.
         parameter_bindings: ``(index, value)`` pairs fixing ``Param``
-            operands, counts included, or :class:`CallIndex` for a scalar
-            that takes the call number; the rest come from the caller.
+            operands, counts included; the rest come from the caller.
         initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
             ``factory(fn)`` returns the kernel that initializes the buffer.
-        output_spans_calls: The outputs are one tile for the whole call
-            sequence: acquired before the first call, read back by later
-            ones, released after the last. The kernel initializes them on
-            its first call, so no initializer is needed, and the reference
-            sees every call's inputs and returns that one tile.
-        trace_cycles: Whether one event0/event1 pair brackets a whole call
-            and nothing else does; False unless audited.
 
     Overflow, rounding and NaN handling are not declared twice: the
     reference is the arithmetic model and the tolerance the slack against it.
@@ -154,13 +132,10 @@ class KernelContract:
     reduction: int | None = None
     setup: Callable[[], object] | None = None
     stack_bytes: int | None = None
-    cascade_partner: Callable[..., object] | None = None
     unsupported: str | None = None
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
-    output_spans_calls: bool = False
-    trace_cycles: bool = False
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -168,10 +143,11 @@ class KernelContract:
             names = ", ".join(r.__name__ for r in _ROLES)
             raise ValueError(f"unknown kernel argument role(s) {bad}; use {names}")
         # A kernel with no data arguments at all (set_rounding sets core state)
-        # has nothing to be the output. A cascade half may also have none: its
-        # result leaves on the cascade stream, which is not an argument.
+        # has nothing to be the output. A cascade PUT half has none either:
+        # its result leaves on the cascade stream, which is not an argument,
+        # so the builder cannot judge it and the contract must say so.
         n_out = self.roles.count(Out) + self.roles.count(InOut)
-        if self.roles and not n_out and self.cascade_partner is None:
+        if self.roles and not n_out and self.unsupported is None:
             raise ValueError("a kernel contract needs at least one Out or InOut role")
         if self.layouts and len(self.layouts) != len(self.roles):
             raise ValueError("layouts must have one entry per argument")
@@ -196,10 +172,6 @@ class KernelContract:
             raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
-        if self.cascade_partner is not None and not callable(self.cascade_partner):
-            raise ValueError(
-                "cascade_partner must be a callable returning the other half"
-            )
 
     @property
     def out_indices(self) -> tuple[int, ...]:
@@ -221,9 +193,8 @@ class KernelContract:
         if InOut in roles:
             return roles.index(InOut)
         raise ValueError(
-            f"this kernel has no output argument: it emits on the cascade to "
-            f"{self.cascade_partner.__name__ if self.cascade_partner else '?'}, "
-            "so there is nothing to size or judge on its own"
+            "this kernel has no output argument (it emits on the cascade), so "
+            "there is nothing to size or judge on its own"
         )
 
     @property
@@ -290,9 +261,7 @@ class KernelContract:
                     raise ValueError(
                         f"argument {i}: tensor parameter must contain {shape} elements"
                     )
-            elif value is not CallIndex and not isinstance(
-                value, (int, float, np.integer, np.floating)
-            ):
+            elif not isinstance(value, (int, float, np.integer, np.floating)):
                 raise ValueError(f"argument {i}: expected scalar parameter")
 
 

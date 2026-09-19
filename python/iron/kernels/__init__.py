@@ -35,7 +35,6 @@ import sys
 from aie.iron.kernel import ExternalFunction
 
 from ._common import (
-    CallIndex,
     KernelContract,
     Param,
     TensorLayout,
@@ -66,26 +65,17 @@ from .activation import (
 from .conv import (
     DWCONV1D_TAIL,
     bn_conv2dk1_i8,
-    bn_conv2dk1_i8_ref,
     bn_conv2dk1_input_split_partial_put_ui8,
     bn_conv2dk1_input_split_partial_skip_get,
-    bn_conv2dk1_input_split_skip_pair_ref,
     bn_conv2dk1_partial_get_relu_i8,
     bn_conv2dk1_partial_put_i8,
-    bn_conv2dk1_partial_relu_pair_ref,
     bn_conv2dk1_relu,
-    bn_conv2dk1_relu_ref,
     bn_conv2dk1_relu_xy_pool_padded,
-    bn_conv2dk1_relu_xy_pool_padded_ref,
     bn_conv2dk1_skip,
-    bn_conv2dk1_skip_ref,
     bn_conv2dk3,
     bn_conv2dk3_dw,
     bn_conv2dk3_dw_out_split,
-    bn_conv2dk3_dw_ref,
-    bn_conv2dk3_ref,
     bn_fc_relu_ui16_pad,
-    bn_fc_relu_ui16_pad_ref,
     conv2dk1,
     conv2dk1_i8,
     conv2dk1_i8_ref,
@@ -192,7 +182,6 @@ from .vision import (
 from .zero import zero
 
 __all__ = [
-    "CallIndex",
     "KernelContract",
     "MatrixKernel",
     "TensorLayout",
@@ -317,26 +306,17 @@ __all__ = [
     "conv2dk1_skip_init",
     "conv2dk1_skip_init_ref",
     "bn_conv2dk1_relu",
-    "bn_conv2dk1_relu_ref",
     "bn_conv2dk3",
-    "bn_conv2dk3_ref",
     "bn_conv2dk1_i8",
-    "bn_conv2dk1_i8_ref",
     "bn_conv2dk1_skip",
-    "bn_conv2dk1_skip_ref",
     "bn_conv2dk3_dw",
-    "bn_conv2dk3_dw_ref",
     "bn_conv2dk1_relu_xy_pool_padded",
-    "bn_conv2dk1_relu_xy_pool_padded_ref",
     "bn_fc_relu_ui16_pad",
-    "bn_fc_relu_ui16_pad_ref",
     "bn_conv2dk1_partial_put_i8",
     "bn_conv2dk1_partial_get_relu_i8",
-    "bn_conv2dk1_partial_relu_pair_ref",
     "bn_conv2dk3_dw_out_split",
     "bn_conv2dk1_input_split_partial_put_ui8",
     "bn_conv2dk1_input_split_partial_skip_get",
-    "bn_conv2dk1_input_split_skip_pair_ref",
 ]
 
 
