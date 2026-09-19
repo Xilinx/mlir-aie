@@ -175,6 +175,56 @@ static void materializeBankReservations(DeviceOp device) {
   }
 }
 
+// Peano models a bank as an address space (`aiebase_resources.h`: a..d are
+// 5..8, 9..14 are pairs) and schedules loads on the strength of the qualifier,
+// while nothing placed the buffer to match. Reading it here makes that
+// assumption true rather than merely asserted.
+//
+// Pairs are left alone: pinning to a choice of two banks is a constraint the
+// allocator cannot express, and picking one would be the same empty promise.
+static std::optional<int> bankFromMemorySpace(Type type) {
+  auto memref = dyn_cast<MemRefType>(type);
+  if (!memref) {
+    return std::nullopt;
+  }
+  auto space = dyn_cast_or_null<IntegerAttr>(memref.getMemorySpace());
+  if (!space) {
+    return std::nullopt;
+  }
+  int64_t value = space.getInt();
+  if (value < 5 || value > 8) {
+    return std::nullopt;
+  }
+  return static_cast<int>(value - 5);
+}
+
+// Turn a buffer's own address space into the bank pin that satisfies it.
+//
+// The buffer carries the space rather than the kernel's declaration doing so
+// alone, because `func.call` already requires operand types to match the
+// callee's signature exactly. Agreement between the buffer and the kernel it is
+// passed to is therefore checked by the verifier, not here; all that is left is
+// to place the buffer where its type says it lives.
+static LogicalResult applySignatureBankConstraints(DeviceOp device) {
+  auto result = success();
+  device.walk([&](BufferOp buffer) {
+    auto bank = bankFromMemorySpace(buffer.getType());
+    if (!bank) {
+      return;
+    }
+    if (auto existing = buffer.getMemBank(); existing && *existing != *bank) {
+      buffer.emitOpError("has address space for bank ")
+          << *bank << " but is pinned to bank " << *existing
+          << ". These state the same fact and disagree";
+      result = failure();
+      return;
+    }
+    buffer.setMemBankAttr(
+        IntegerAttr::get(IntegerType::get(device.getContext(), 32), *bank));
+  });
+  return result;
+}
+
 static bool isBufferPreAllocated(BufferOp buffer) {
   auto addr = buffer.getAddress();
   auto memBank = buffer.getMemBank();
@@ -1240,6 +1290,9 @@ struct AIEAssignBufferAddressesPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
+    if (failed(applySignatureBankConstraints(device))) {
+      return signalPassFailure();
+    }
     materializeCoreDataBuffers(device);
     materializeBankReservations(device);
 
