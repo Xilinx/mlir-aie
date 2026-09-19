@@ -3,12 +3,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""One kernel at one shape: what a test checks and a benchmark times.
+"""One kernel at one tile size: what a test checks and a benchmark times.
 
 A :class:`Case` names a factory, its keyword arguments and the harness
-options (call count or matrix shape, runtime scalars, ``param`` values). What
-the kernel computes stays on the factory's ``KernelContract``; a case only
-says *which* shape to run and which edge data it must survive.
+options (call count, runtime scalars, ``Param`` values). What the kernel
+computes stays on the factory's ``KernelContract``; a case only says *which*
+tile to build, how many independent calls to make, and which edge data it
+must survive.
 
 The case tables themselves live with the tests
 (``test/python/npu/kernel_cases.py``): the device smoke test, the extensive
@@ -53,15 +54,29 @@ def device_for(devices: tuple[str, ...]):
         set_current_device(previous)
 
 
+def _product_extents(contract) -> tuple[int, ...] | None:
+    """``(m, k, n)`` or ``(m, k)`` for a kernel whose streamed operands form a product."""
+    if not contract.layouts:
+        return None
+    ins = [
+        contract.layouts[i]
+        for i, r in enumerate(contract.roles)
+        if r is In and contract.layouts[i] is not None
+    ]
+    if len(ins) < 2 or len(ins[0].shape) != 2 or ins[1].shape[0] != ins[0].shape[1]:
+        return None
+    return (*ins[0].shape, *ins[1].shape[1:])
+
+
 @dataclass
 class Case:
-    """One (kernel, shape) the suite builds, checks and times.
+    """One (kernel, tile, call count) the suite builds, checks and times.
 
-    ``calls`` independent tile invocations of any kernel. ``shape`` is retained
-    for diagnostics of old callers, but whole-problem shapes are rejected by
-    the builder. ``params`` overrides the value
-    of unbound tensor ``Param`` arguments (``scale``'s factor); ``scalars``
-    supplies unbound scalar ``Param`` arguments in ABI order.
+    ``calls`` independent tile invocations of any kernel; the tile itself is
+    fixed by the factory kwargs, since the builder validates kernels one
+    tile at a time and rejects a whole-problem shape. ``params`` overrides
+    the value of unbound tensor ``Param`` arguments (``scale``'s factor);
+    ``scalars`` supplies unbound scalar ``Param`` arguments in ABI order.
     ``devices`` restricts a case to the NPU
     generations whose kernels exist (``("npu2",)``), as IRON's
     ``supported_devices`` marker does; empty means every device.
@@ -72,7 +87,6 @@ class Case:
     factory: str
     kwargs: dict = field(default_factory=dict)
     calls: int = 1
-    shape: tuple | None = None
     scalars: tuple = ()
     params: tuple = ()
     tag: str = ""
@@ -86,7 +100,7 @@ class Case:
             return getattr(kernels, self.factory)(**self.kwargs)
 
     def harness_opts(self) -> dict:
-        return dict(calls=self.calls, shape=self.shape, scalars=self.scalars)
+        return dict(calls=self.calls, scalars=self.scalars)
 
     # Factory kwargs that the dims / dtype segments of the name already encode.
     # skip_dtype is absent on purpose: it types neither the first input nor
@@ -126,8 +140,12 @@ class Case:
             bfp.dtype_name(kd.shape_dtype(types[i])[1]) for i in fn.contract.out_indices
         )
         dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
-        if getattr(fn, "dims", None):
-            dims = "x".join(str(d) for d in (*fn.dims, self.calls))
+        # A product's tile is named (m, k[, n]) from its declared operands:
+        # a 2-D A and a B whose leading extent is A's trailing one. Anything
+        # else is named by the element count of its primary tile.
+        matrix = _product_extents(fn.contract)
+        if matrix:
+            dims = "x".join(str(d) for d in (*matrix, self.calls))
         else:
             dims = f"{kd.elems(types[primary])}x{self.calls}"
         extra = [
@@ -167,7 +185,7 @@ class Case:
 
 
 # Data cases every kernel of a kind should survive. Random data finds nothing
-# a vectorised tail, a saturating add or a NaN path gets wrong. The policy
+# a vectorized tail, a saturating add or a NaN path gets wrong. The policy
 # is derived from each contract by `data_policy`: integer kernels get the
 # extremes (inside `input_limit`); float kernels get subnormal inputs only
 # when the contract says what the core does with them (`subnormals`) and
@@ -197,75 +215,58 @@ def data_policy(fn) -> tuple[str, ...]:
     return FLOAT_BASE
 
 
-def _edge(shape, dtype, rng, case: str, limit: int | None = None) -> np.ndarray:
-    """Return one edge-case array.
-
-    ``limit`` bounds the integer extremes ("max", "min") to what the kernel's
-    accumulator admits (``ExternalFunction.input_limit``).
-    """
-    dt = np.dtype(dtype)
-    is_int = np.issubdtype(dt, np.integer)
-    hi: int | None = None
-    lo: int | None = None
-    if is_int:
-        hi, lo = int(np.iinfo(dt).max), int(np.iinfo(dt).min)
-        if limit is not None:
-            hi = min(hi, limit)
-            lo = max(lo, -limit) if dt.kind != "u" else 0
-    if case == "zeros":
-        a = np.zeros(shape)
-    elif case == "ones":
-        a = np.ones(shape)
-    elif case == "max":
-        a = np.full(shape, hi if is_int else 3.0e38)
-    elif case == "min":
-        a = np.full(shape, lo if is_int else -3.0e38)
-    elif case == "alternating":
-        a = (np.indices(shape).sum(0) % 2) * 2 - 1
-    elif case == "subnormal":
-        a = rng.uniform(-1e-39, 1e-39, shape)
-    elif case == "nan_inf":
-        a = rng.standard_normal(shape)
-        a.flat[0], a.flat[-1], a.flat[a.size // 2] = np.nan, np.inf, -np.inf
-    elif case == "large":
-        a = rng.standard_normal(shape) * 1e4
-    else:
-        raise KeyError(case)
-    if is_int:
-        return np.clip(a, np.iinfo(dt).min, np.iinfo(dt).max).astype(dt)
-    return a.astype(np.float32).astype(dt)
-
-
 def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     """Host inputs for ``case`` under one data case, in contract order."""
     fn = case.fn()
     c = fn.contract
-    inputs = kd.sample_inputs(fn, calls=case.calls, shape=case.shape, rng=rng)
+    inputs = kd.sample_inputs(fn, calls=case.calls, rng=rng)
     tensor_pos = kd._tensor_positions(fn)[0]
     if data_case != "random":
         if c.sample is not None:
             raise ValueError(
                 f"{case.factory}: structured inputs have no '{data_case}' variant"
             )
-        # Edge data is about the streamed inputs; a `param` (scale's factor,
+        # Edge data is about the streamed inputs; a Param (scale's factor,
         # filter2d's kernel) keeps its value, so one design serves every case.
-        # Integer extremes stay inside what the kernel's accumulator admits,
-        # so "max" tests the datapath, not an overflow the source leaves open.
-        k_total = case.shape[1] if case.shape else None
-        inputs = [
-            (
-                a
-                if c.roles[i] == Param
-                else _edge(
-                    a.shape,
-                    a.dtype,
-                    rng,
-                    data_case,
-                    fn.input_limit(a.dtype, reduction=k_total),
-                )
-            )
-            for a, i in zip(inputs, tensor_pos)
-        ]
+        # Integer extremes stay inside what the kernel's accumulator admits
+        # (ExternalFunction.input_limit), so "max" tests the datapath, not an
+        # overflow the source leaves open.
+        for k, (a, i) in enumerate(zip(inputs, tensor_pos)):
+            if c.roles[i] == Param:
+                continue
+            dt, shape = a.dtype, a.shape
+            is_int = np.issubdtype(dt, np.integer)
+            if is_int:
+                hi, lo = int(np.iinfo(dt).max), int(np.iinfo(dt).min)
+                limit = fn.input_limit(dt)
+                if limit is not None:
+                    hi = min(hi, limit)
+                    lo = max(lo, -limit) if dt.kind != "u" else 0
+            if data_case == "zeros":
+                edge = np.zeros(shape)
+            elif data_case == "ones":
+                edge = np.ones(shape)
+            elif data_case == "max":
+                edge = np.full(shape, hi if is_int else 3.0e38)
+            elif data_case == "min":
+                edge = np.full(shape, lo if is_int else -3.0e38)
+            elif data_case == "alternating":
+                edge = (np.indices(shape).sum(0) % 2) * 2 - 1
+            elif data_case == "subnormal":
+                edge = rng.uniform(-1e-39, 1e-39, shape)
+            elif data_case == "nan_inf":
+                edge = rng.standard_normal(shape)
+                edge.flat[0], edge.flat[-1] = np.nan, np.inf
+                edge.flat[edge.size // 2] = -np.inf
+            elif data_case == "large":
+                edge = rng.standard_normal(shape) * 1e4
+            else:
+                raise KeyError(data_case)
+            if is_int:
+                edge = np.clip(edge, np.iinfo(dt).min, np.iinfo(dt).max).astype(dt)
+            else:
+                edge = edge.astype(np.float32).astype(dt)
+            inputs[k] = edge
     if case.params:
         params = iter(case.params)
         inputs = [

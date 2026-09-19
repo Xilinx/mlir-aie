@@ -294,8 +294,12 @@ class CallableDesign:
                 f"{self.compilable.compile_params}."
             )
 
-        # Guard 3-C: too many positional args.
-        if callable(self.compilable.mlir_generator):
+        # Guard 3-C: too many positional args. A variadic tensor list takes
+        # any number; the lowered sequence's operand count checks it later.
+        if (
+            callable(self.compilable.mlir_generator)
+            and self.compilable.variadic_tensor_param is None
+        ):
             max_positional = (
                 len(self.compilable.tensor_params)
                 + len(self.compilable.dispatch_params)

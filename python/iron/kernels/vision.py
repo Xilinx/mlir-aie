@@ -291,7 +291,7 @@ def rgba2hue_ref(rgba):
     Each offset carries the ``+ 1`` that rounds the final halving, so there is
     one rounding step rather than two. The cast to ``uint8`` wraps, so a
     negative hue (R max, G < B) comes out as ``256 + h`` -- the right circular
-    value. Grey pixels (``d == 0``) are hue 0, and a max held by both G and R
+    value. Gray pixels (``d == 0``) are hue 0, and a max held by both G and R
     goes to G, as the kernel's select order does. ``inv`` truncates, which
     leaves hue up to one LSB below the exact value.
     """

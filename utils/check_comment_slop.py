@@ -114,7 +114,7 @@ STOPWORDS = {
 
 # A leading `#` in C is a directive, not a comment, and a leading `*` continues
 # a block comment only when nothing follows it -- `*ptr` is a dereference.
-# Counting either as prose reports an alphabetised #include block as a repeated
+# Counting either as prose reports an alphabetized #include block as a repeated
 # explanation.
 COMMENT_RE_PY = re.compile(r"^\s*#")
 COMMENT_RE_CISH = re.compile(r"^\s*(//|/\*|\*/|\*(?=\s|$))")

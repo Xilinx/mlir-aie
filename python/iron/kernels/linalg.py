@@ -5,7 +5,6 @@
 #
 """Linear algebra kernel factories: mm, mv, cascade_mm."""
 
-from dataclasses import replace
 from functools import partial
 from typing import NamedTuple, get_args
 
@@ -137,9 +136,9 @@ def mv_ref(a, b):
 
 
 def mm_bfp_ref(a, b):
-    """Numpy reference for [`mm_bfp`][iron.kernels.linalg.mm_bfp]: ``a @ b`` on bfp16ebs8-quantised operands.
+    """Numpy reference for [`mm_bfp`][iron.kernels.linalg.mm_bfp]: ``a @ b`` on bfp16ebs8-quantized operands.
 
-    ``a`` is ``(M, K)`` and ``b`` ``(K, N)`` float; each is quantised the way
+    ``a`` is ``(M, K)`` and ``b`` ``(K, N)`` float; each is quantized the way
     the host encodes it for the kernel (blocks of 8 along ``K``, see
     :mod:`aie.utils.bfp`) and the product is accumulated in float64. The
     kernel's own output is bfp16ebs8 too, which the tolerance covers.
@@ -157,7 +156,7 @@ def mm_bfp_mixed_ref(a, b):
     ``a`` (bf16) is used as is, as ``mixed_test.cpp`` does -- the core
     converts it to bfp16 itself, with a rounding the reference does not
     model, which is why the mixed tolerance is twice the plain one; ``b``
-    is quantised as in [`mm_bfp_ref`][iron.kernels.linalg.mm_bfp_ref].
+    is quantized as in [`mm_bfp_ref`][iron.kernels.linalg.mm_bfp_ref].
     """
     from aie.utils import bfp
 
@@ -193,9 +192,9 @@ def mv_tile_ref(a, b, *, dim_m: int, dim_k: int):
 
 
 def mm_bfp_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int, mixed: bool = False):
-    """One [`mm_bfp`][iron.kernels.linalg.mm_bfp] call, on operands quantised as the host encodes them.
+    """One [`mm_bfp`][iron.kernels.linalg.mm_bfp] call, on operands quantized as the host encodes them.
 
-    Blocks of 8 run along K for both operands, so B is quantised transposed.
+    Blocks of 8 run along K for both operands, so B is quantized transposed.
     With ``mixed`` the A tile stays bf16 and the core converts it itself, with
     a rounding this does not model -- which is what the wider mixed tolerance
     covers.
@@ -214,8 +213,13 @@ def mm_bfp_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int, mixed: bool = F
     return (aq @ bq).reshape(len(a), dim_m * dim_n)
 
 
-def _tile_layout(shape, dims=None, *, axes=None, inverse=False):
-    """Translate a DMA permutation into an equivalent per-tile host codec."""
+def _tile_layout(shape, dims=None, *, axes=None, inverse=False, block=None):
+    """Build an operand layout whose host codec is the DMA permutation ``dims``.
+
+    ``dims`` is kept as the layout's ``stream`` and ``block`` as its
+    micro-tile, so a design reads the transform it must apply from the same
+    declaration the host packs by.
+    """
     logical = np.arange(np.prod(shape)).reshape(shape)
     if axes is not None:
         logical = logical.transpose(axes)
@@ -230,11 +234,13 @@ def _tile_layout(shape, dims=None, *, axes=None, inverse=False):
         shape,
         pack=lambda x: x.reshape(len(x), -1)[:, order],
         unpack=lambda x: x[:, undo].reshape(len(x), *shape),
+        stream=dims,
+        block=block,
     )
 
 
-def _block_layout(shape, *, axes=None):
-    """Describe the block datatype kernels' 8x8 tile storage."""
+def _block_layout(shape, *, axes=None, stream=None):
+    """Build the block datatype kernels' storage layout: 8x8 sub-tiles, shuffled on the host."""
     from aie.utils import bfp
 
     def pack(values):
@@ -259,7 +265,7 @@ def _block_layout(shape, *, axes=None):
             tiles.append(tile.transpose(np.argsort(axes)) if axes else tile)
         return np.stack(tiles)
 
-    return TensorLayout(shape, pack=pack, unpack=unpack)
+    return TensorLayout(shape, pack=pack, unpack=unpack, stream=stream, block=(8, 8))
 
 
 def _zero_output(fn):
@@ -299,6 +305,27 @@ class StreamDimsABC(NamedTuple):
     A: StreamDims | None
     B: StreamDims | None
     C: StreamDims | None
+
+
+class MatrixKernel(ExternalFunction):
+    """A kernel whose first three operands are the A, B and C of a product.
+
+    The blocking and the DMA transforms are declared once, on the contract's
+    operand layouts (``TensorLayout.block`` and ``.stream``); these
+    properties read them back in the form the matrix designs consume.
+    """
+
+    @property
+    def mac_dims(self) -> tuple[int, int, int]:
+        """``(r, s, t)``: the MMUL micro-tile of A ``(r, s)``, B ``(s, t)`` and C ``(r, t)``."""
+        a, b, _ = self.contract.layouts[:3]
+        return (a.block[0], a.block[1], b.block[1])
+
+    @property
+    def stream_dims(self) -> StreamDimsABC:
+        """The ``dims_to_stream`` a design applies to A, B and C; ``None`` streams as stored."""
+        a, b, c = self.contract.layouts[:3]
+        return StreamDimsABC(A=a.stream, B=b.stream, C=c.stream)
 
 
 def _blocked(rows: int, cols: int, tile_rows: int, tile_cols: int) -> list:
@@ -428,13 +455,46 @@ def mm(
     )
     if bf16_emulated:
         compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
-    extern = _make_extern(
+    # The scalar kernel walks its operands element by element in row-major
+    # order: its micro-tile is 1x1x1 and nothing is streamed transformed.
+    if not vectorized:
+        r, s, t = 1, 1, 1
+    elif bf16_emulated:
+        r, s, t = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
+    else:
+        r, s, t = _MM_MAC_DIMS[arch][key]
+    streams = mm_stream_dims(
+        dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj, c_col_maj=c_col_maj
+    )
+    # Host-side layout the streams assume: with b_col_maj, B is given as
+    # (n, k) tiles of B^T; with c_col_maj, C is emitted as (n, m) tiles of
+    # C^T. The layouts carry that, so the builder transposes the host
+    # operands without knowing which kernel it is building.
+    layouts = (
+        _tile_layout((dim_m, dim_k), streams.A if vectorized else None, block=(r, s)),
+        _tile_layout(
+            (dim_k, dim_n),
+            streams.B if vectorized else None,
+            axes=(1, 0) if b_col_maj else None,
+            block=(s, t),
+        ),
+        _tile_layout(
+            (dim_m, dim_n),
+            streams.C if vectorized else None,
+            axes=(1, 0) if c_col_maj else None,
+            inverse=True,
+            block=(r, t),
+        ),
+    )
+    return _make_extern(
         f"{prefix}_{suffix}",
         _default_source_path("mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=compile_flags,
         use_chess=use_chess,
+        cls=MatrixKernel,
         contract=KernelContract(
+            layouts=layouts,
             stack_bytes=0xD00,  # programming_examples/basic/matrix_multiplication
             # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
             # stores bf16 in whatever mode the core is in.
@@ -448,42 +508,6 @@ def mm(
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
-    if bf16_emulated:
-        extern.mac_dims = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
-    else:
-        extern.mac_dims = _MM_MAC_DIMS[arch][key]
-    extern.dims = (dim_m, dim_k, dim_n)
-    extern.stream_dims = mm_stream_dims(
-        dim_m,
-        dim_k,
-        dim_n,
-        extern.mac_dims,
-        b_col_maj=b_col_maj,
-        c_col_maj=c_col_maj,
-    )
-    # Host-side layout the streams above assume: B given as (n, k) tiles of
-    # B^T, C emitted as (n, m) tiles of C^T. kernel_design reads
-    # these to transpose the host operands.
-    extern.b_col_maj = bool(b_col_maj)
-    extern.c_col_maj = bool(c_col_maj)
-    extern.contract = replace(
-        extern.contract,
-        layouts=(
-            _tile_layout((dim_m, dim_k), extern.stream_dims.A if vectorized else None),
-            _tile_layout(
-                (dim_k, dim_n),
-                extern.stream_dims.B if vectorized else None,
-                axes=(1, 0) if b_col_maj else None,
-            ),
-            _tile_layout(
-                (dim_m, dim_n),
-                extern.stream_dims.C if vectorized else None,
-                axes=(1, 0) if c_col_maj else None,
-                inverse=True,
-            ),
-        ),
-    )
-    return extern
 
 
 @dtypes(
@@ -505,19 +529,13 @@ def mv(
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
-    Two kernels live behind this factory, selected by dtype:
-
-    * ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``, whose
-      vectorized path wants A in the word-transposed layout
-      ``a_dims_from_stream`` publishes. Initialize C with
-      ``kernels.zero(dim_m, output_dtype)``.
-    * ``(bfloat16, bfloat16)`` builds the shared
-      ``aie_kernels/generic/mv.cc``, the kernel behind IRON's ``GEMV``
-      operator. Its signature leads with two runtime scalars,
-      ``(m, row_offset, A, b, c)`` -- ``row_offset`` shifts the write into
-      ``c`` so one core can fill several output blocks -- it takes
-      ``VEC_SIZE`` as well as ``DIM_K``, reads A row-major, and exports no
-      zero symbol.
+    ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``; its
+    vectorized path reads A word-transposed, which A's layout carries
+    (``contract.layouts[0].stream``). Initialize C with
+    ``kernels.zero(dim_m, output_dtype)``. ``(bfloat16, bfloat16)`` builds
+    ``aie_kernels/generic/mv.cc``, IRON's ``GEMV`` kernel, whose signature
+    is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
+    ``c`` so one core can fill several output blocks; A is row-major.
 
     Args:
         dim_m: Number of rows of A (output vector length).
@@ -548,7 +566,16 @@ def mv(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[np.int16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[np.int16]]
     c_ty = np.ndarray[(dim_m,), np.dtype[np.int32]]
-    extern = _make_extern(
+    # The vectorized kernel reads A in a "32-bit-word transposed" layout (see
+    # aie_kernels/aie2/mv.cc): 2-byte elements are packed two per word, rows
+    # of each 2-column word slowly, m rows then the next 2-col word. A design
+    # applies this as dims_from_stream on the hop into the core, reading it
+    # from the layout (programming_examples/basic/matrix_multiplication/
+    # matrix_vector does).
+    a_dims_from_stream = (
+        [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
+    )
+    return _make_extern(
         f"{prefix}_i16_i32",
         _default_source_path("mv.cc"),
         [a_ty, b_ty, c_ty],
@@ -556,6 +583,11 @@ def mv(
         use_chess=use_chess,
         contract=KernelContract(
             roles=(In, In, InOut),
+            layouts=(
+                _tile_layout((dim_m, dim_k), a_dims_from_stream, inverse=True),
+                TensorLayout((dim_k,)),
+                TensorLayout((dim_m,)),
+            ),
             reference=partial(mv_tile_ref, dim_m=dim_m, dim_k=dim_k),
             initializers=((2, _zero_output),),
             acc_dtype=np.int32,  # acc32
@@ -564,23 +596,6 @@ def mv(
             ops_per_call=2 * dim_m * dim_k,
         ),
     )
-    # The vectorized kernel reads A in a "32-bit-word transposed" layout (see
-    # aie_kernels/aie2/mv.cc): 2-byte elements are packed two per word, rows
-    # of each 2-column word slowly, m rows then the next 2-col word. A design
-    # applies this as dims_from_stream on the hop into the core.
-    extern.dims = (dim_m, dim_k)
-    extern.a_dims_from_stream = (
-        [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
-    )
-    extern.contract = replace(
-        extern.contract,
-        layouts=(
-            _tile_layout((dim_m, dim_k), extern.a_dims_from_stream, inverse=True),
-            TensorLayout((dim_k,)),
-            TensorLayout((dim_m,)),
-        ),
-    )
-    return extern
 
 
 def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
@@ -593,7 +608,7 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[bfloat16]]
     c_ty = np.ndarray[(dim_m,), np.dtype[bfloat16]]
-    extern = _make_extern(
+    return _make_extern(
         f"{prefix}_bf16_bf16",
         _default_source_path("mv.cc", subdir="generic"),
         [np.int32, np.int32, a_ty, b_ty, c_ty],
@@ -618,8 +633,6 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
             ops_per_call=2 * dim_m * dim_k,
         ),
     )
-    extern.dims = (dim_m, dim_k)
-    return extern
 
 
 def mv_bf16_ref(m, row_offset, a, b):
@@ -653,7 +666,7 @@ def mm_bfp(
     The host holds B transposed (``b_col_maj``), and
     every bfp16ebs8 operand is encoded and shuffled into the mmul tile
     layout on the host with :mod:`aie.utils.bfp`, which is what the generic
-    harness does; the contract's reference multiplies the quantised
+    harness does; the contract's reference multiplies the quantized
     operands. These are the kernels
     programming_examples/ml/block_datatypes/matrix_multiplication build.
 
@@ -684,12 +697,33 @@ def mm_bfp(
         a_ty = np.ndarray[(dim_m * dim_k // 8,), np.dtype[v8bfp16ebs8]]
         c_ty = np.ndarray[(dim_m * dim_n // 8,), np.dtype[v8bfp16ebs8]]
         symbol = "matmul_vectorized_bfp16"
-    extern = _make_extern(
+    streams = mm_stream_dims(dim_m, dim_k, dim_n, _BFP_MAC_DIMS)
+    # The kernel reads B transposed (8x8 sub-tiles of B^T), so the host B
+    # buffer is B^T (N, K), as the block_datatypes examples tile it; the
+    # bfp16ebs8 operands are pre-shuffled on the host and stream as stored.
+    layouts = (
+        (
+            _tile_layout((dim_m, dim_k), streams.A, block=_BFP_MAC_DIMS[:2])
+            if mixed
+            else _block_layout((dim_m, dim_k))
+        ),
+        _block_layout((dim_k, dim_n), axes=(1, 0)),
+        (
+            _tile_layout(
+                (dim_m, dim_n), streams.C, inverse=True, block=_BFP_MAC_DIMS[::2]
+            )
+            if mixed
+            else _block_layout((dim_m, dim_n))
+        ),
+    )
+    return _make_extern(
         symbol,
         source,
         [a_ty, b_ty, c_ty],
         compile_flags=flags + ["-DMATMUL_ONLY"],
+        cls=MatrixKernel,
         contract=KernelContract(
+            layouts=layouts,
             stack_bytes=0xF00,  # programming_examples/ml/block_datatypes
             setup=conv_even,
             roles=(In, In, InOut),
@@ -703,34 +737,6 @@ def mm_bfp(
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
-    extern.mac_dims = _BFP_MAC_DIMS
-    dims = mm_stream_dims(dim_m, dim_k, dim_n, _BFP_MAC_DIMS)
-    extern.dims = (dim_m, dim_k, dim_n)
-    extern.stream_dims = (
-        StreamDimsABC(A=dims.A, B=None, C=dims.C)
-        if mixed
-        else StreamDimsABC(A=None, B=None, C=None)
-    )
-    # The kernel reads B transposed (8x8 sub-tiles of B^T), so the host B
-    # buffer is B^T (N, K), as the block_datatypes examples tile it.
-    extern.b_col_maj, extern.c_col_maj = True, False
-    extern.contract = replace(
-        extern.contract,
-        layouts=(
-            (
-                _tile_layout((dim_m, dim_k), dims.A)
-                if mixed
-                else _block_layout((dim_m, dim_k))
-            ),
-            _block_layout((dim_k, dim_n), axes=(1, 0)),
-            (
-                _tile_layout((dim_m, dim_n), dims.C, inverse=True)
-                if mixed
-                else _block_layout((dim_m, dim_n))
-            ),
-        ),
-    )
-    return extern
 
 
 def mm_bfp_shuffle(
@@ -808,28 +814,19 @@ def mm_bfp_shuffle(
 def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
     """Flash-attention toolkit from ``aie_kernels/aie2p/mha.cc`` (aie2p only).
 
-    Not one kernel but one *translation unit*: ``mha.cc`` ``#include``s
-    ``softmax.cc`` and ``mm.cc`` and exports the symbols an attention
-    dataflow composes, all sharing the ``DIM_M`` / ``DIM_K`` / ``DIM_N``
-    micro-tile. The returned ExternalFunction is the ``QK^T`` matmul.
-    Bind additional entry points explicitly with
-    ``fn.object_file.bind(symbol, arg_types)``: ``matmul_bf16_bf16_wrapper_scalar``,
-    ``matmul_bf16_bf16_rowmaj``, ``partial_softmax``, ``matmul_PV``,
-    ``rescale_O`` and ``init_scale_buffer``. Clear tiles with ``kernels.zero``.
-
-    ``mha.cc`` also *declares* ``passThroughLine`` without defining it; that
-    line copy is its own translation unit, so take it from
-    ``passthrough(dtype=np.int32)`` as a second kernel, which is what IRON's
-    MHA operator builds too.
-
-    Because the unit includes ``mm.cc``, it defines ``matmul_*``
-    names of its own; the per-parameterisation symbol prefix is
-    what keeps those from colliding with a separate ``mm`` kernel in the
-    same design.
-
-    The contract declares ``unsupported``: attention is a multi-core
-    dataflow with a running softmax, not something the single-Worker
-    harness can drive.
+    One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
+    exports the symbols an attention dataflow composes over one micro-tile.
+    The returned kernel is the ``QK^T`` matmul: ``mm.cc``'s bf16 product on
+    its 4x8x8 micro-tile, accumulating into ``C``, so it is a
+    [`MatrixKernel`][iron.kernels.linalg.MatrixKernel] judged like
+    [`mm`][iron.kernels.linalg.mm]. Its ``idx_buffer`` gate (the call runs
+    when ``idx[0] <= idx[1]``) is bound to ``[0, 0]``. Bind the others from
+    the same object with ``fn.object_file.bind(symbol, arg_types)``:
+    ``matmul_bf16_bf16_wrapper_scalar``, ``matmul_bf16_bf16_rowmaj``,
+    ``partial_softmax``, ``matmul_PV``, ``rescale_O``,
+    ``init_scale_buffer``. It declares but does not define
+    ``passThroughLine``: take that from ``passthrough(dtype=np.int32)``, as
+    IRON's MHA operator does.
 
     Args:
         dim_m: Rows of the micro-tile (multiple of 16).
@@ -854,24 +851,34 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
     flags = [f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}", f"-DDIM_N={dim_n}"]
-    extern = _make_extern(
+    # mha.cc includes mm.cc without B_COL_MAJ or C_COL_MAJ: row-major
+    # operands on the native bf16 micro-tile.
+    r, s, t = _MM_MAC_DIMS["aie2p"][(bfloat16, bfloat16)]
+    streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t))
+    return _make_extern(
         "matmul_bf16_bf16_wrapper",
         _default_source_path("mha.cc", subdir="aie2p"),
         [a_ty, b_ty, tile, idx],
         compile_flags=flags,
+        cls=MatrixKernel,
         contract=KernelContract(
+            layouts=(
+                _tile_layout((dim_m, dim_k), streams.A, block=(r, s)),
+                _tile_layout((dim_k, dim_n), streams.B, block=(s, t)),
+                _tile_layout((dim_m, dim_n), streams.C, inverse=True, block=(r, t)),
+                None,
+            ),
+            stack_bytes=0xD00,  # mm.cc's product: programming_examples/basic/matrix_multiplication
             roles=(In, In, InOut, Param),
+            parameter_bindings=((3, np.array([0, 0], np.int32)),),
+            reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
+            initializers=((2, _zero_output),),
             acc_dtype=np.float32,
             reduction=dim_k,
             tolerance=_linalg_tolerance(bfloat16),
             ops_per_call=2 * dim_m * dim_k * dim_n,
-            unsupported=(
-                "attention is a multi-core dataflow with a running softmax across blocks; the single-Worker harness cannot drive it"
-            ),
         ),
     )
-    extern.dims = (dim_m, dim_k, dim_n)
-    return extern
 
 
 def mm_bfp_shuffle_ref(tile, tile_width, tile_height, unshuffle):
@@ -894,13 +901,18 @@ def cascade_mm(
     output_dtype: type = np.int16,
     use_chess: bool = False,
 ) -> ExternalFunction:
-    r"""Cascade matrix-multiply kernel for multi-core accumulation.
+    r"""Build the GET half of a cascade matrix multiply: ``C += A * B + cascade``.
 
     cascade_mm.cc emits all three cascade variants (``get_only``,
-    ``put_only``, ``put_get``) in one object. The returned ExternalFunction
-    binds ``get_only``; bind the other entries explicitly with
-    ``fn.object_file.bind("matmul_scalar_cascade_put_only_<dtype>", fn.arg_types())``
-    (or ``put_get``). Initialize accumulators with ``kernels.zero``.
+    ``put_only``, ``put_get``) in one object. This binds ``get_only``;
+    [`cascade_mm_put`][iron.kernels.linalg.cascade_mm_put] is the PUT half
+    that feeds it, and ``put_get`` serves longer chains:
+    ``fn.object_file.bind("matmul_scalar_cascade_put_get_<dtype>", fn.arg_types())``.
+    Initialize accumulators with ``kernels.zero``. The pair is a two-tile
+    design, which the generic builder does not run; the device test builds
+    and judges it (``test/python/npu/test_kernels_e2e.py``). The partial sum
+    crosses the cascade as a 32-bit integer lane: with a floating-point
+    output type the PUT half's product is truncated toward zero.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -924,7 +936,13 @@ def cascade_mm(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-    extern = _make_extern(
+    arch = _detect_arch()
+    if arch not in _CASCADE_MM_MAC_DIMS:
+        raise ValueError(
+            f"cascade_mm(): unsupported arch {arch!r}; cascade_mm.cc only ships for {sorted(_CASCADE_MM_MAC_DIMS)}."
+        )
+    r, s, t = _CASCADE_MM_MAC_DIMS[arch][key]
+    return _make_extern(
         f"matmul_scalar_cascade_get_only_{suffix}",
         _default_source_path("cascade_mm.cc"),
         [a_ty, b_ty, c_ty],
@@ -934,25 +952,77 @@ def cascade_mm(
             f"-DDIM_N={dim_n}",
         ],
         use_chess=use_chess,
+        cls=MatrixKernel,
         contract=KernelContract(
             roles=(In, In, InOut),
-            reference=mm_ref,
+            # Scalar on both targets: row-major operands, nothing streamed
+            # transformed, so the layouts carry the 1x1x1 blocking and no
+            # stream (see _CASCADE_MM_SCALAR_DIMS).
+            layouts=(
+                _tile_layout((dim_m, dim_k), block=(r, s)),
+                _tile_layout((dim_k, dim_n), block=(s, t)),
+                _tile_layout((dim_m, dim_n), block=(r, t)),
+            ),
+            unsupported=(
+                "the GET half of a cascade pair: one input arrives on the "
+                "cascade stream; the device test builds and judges the pair"
+            ),
             initializers=((2, _zero_output),),
             acc_dtype=mm_acc_dtype(input_dtype),
-            reduction=dim_k,
+            reduction=2 * dim_k,
             tolerance=_linalg_tolerance(input_dtype),
-            ops_per_call=2 * dim_m * dim_k * dim_n,
-            unsupported=(
-                "a cascade design: get_only / put_only / put_get pass partial "
-                "sums between cores over the cascade stream, which is not an "
-                "argument; the reference is the whole product"
-            ),
+            ops_per_call=2 * dim_m * (2 * dim_k) * dim_n,
         ),
     )
-    arch = _detect_arch()
-    if arch not in _CASCADE_MM_MAC_DIMS:
+
+
+def cascade_mm_put(
+    dim_m: int = 64,
+    dim_k: int = 64,
+    dim_n: int = 64,
+    input_dtype: type = np.int16,
+    output_dtype: type = np.int16,
+    use_chess: bool = False,
+) -> ExternalFunction:
+    """Build the PUT half of [`cascade_mm`][iron.kernels.linalg.cascade_mm]: ``A * B`` onto the cascade stream.
+
+    Same object and arguments as the GET half. ``put_only`` never touches
+    its third argument (the ABI just mirrors ``get_only``), so the contract
+    binds it to zeros. Its result leaves on the cascade stream, so it is
+    judged with its GET half by the device test, not by the generic builder.
+    """
+    key = (input_dtype, output_dtype)
+    if key not in _CASCADE_COMBOS:
         raise ValueError(
-            f"cascade_mm(): unsupported arch {arch!r}; cascade_mm.cc only ships for {sorted(_CASCADE_MM_MAC_DIMS)}."
+            f"cascade_mm_put(): unsupported (input_dtype, output_dtype) = {key}. Supported: {list(_CASCADE_COMBOS.keys())}"
         )
-    extern.mac_dims = _CASCADE_MM_MAC_DIMS[arch][key]
-    return extern
+    suffix = _CASCADE_COMBOS[key]
+    a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
+    b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
+    c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
+    r, s, t = _CASCADE_MM_MAC_DIMS[_detect_arch()][key]
+    return _make_extern(
+        f"matmul_scalar_cascade_put_only_{suffix}",
+        _default_source_path("cascade_mm.cc"),
+        [a_ty, b_ty, c_ty],
+        compile_flags=[
+            f"-DDIM_M={dim_m}",
+            f"-DDIM_K={dim_k}",
+            f"-DDIM_N={dim_n}",
+        ],
+        use_chess=use_chess,
+        cls=MatrixKernel,
+        contract=KernelContract(
+            roles=(In, In, Param),
+            parameter_bindings=((2, np.zeros(dim_m * dim_n, dtype=output_dtype)),),
+            layouts=(
+                _tile_layout((dim_m, dim_k), block=(r, s)),
+                _tile_layout((dim_k, dim_n), block=(s, t)),
+                None,
+            ),
+            unsupported="the PUT half of a cascade pair: its result leaves on the cascade stream",
+            acc_dtype=mm_acc_dtype(input_dtype),
+            reduction=dim_k,
+            ops_per_call=2 * dim_m * dim_k * dim_n,
+        ),
+    )

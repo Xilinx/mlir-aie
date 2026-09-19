@@ -41,16 +41,24 @@ def _is_tensor_type(arg_type):
 
 @dataclass(frozen=True)
 class TensorLayout:
-    """Logical shape of one tensor tile and its reversible host storage codec.
+    """How a kernel wants one tensor operand laid out.
 
-    ``pack`` and ``unpack`` operate on batches shaped ``(calls, *shape)`` and
-    ``(calls, storage_elements)`` respectively. They describe storage, not an
-    algorithm or a whole-problem iteration schedule. Identity is the default.
+    ``shape`` is the logical tile. ``pack`` and ``unpack`` are the reversible
+    host codec between ``(calls, *shape)`` and ``(calls, storage_elements)``;
+    identity is the default. ``stream`` is the DMA transform
+    (``dims_to_stream``) a design applies on the hop that feeds this operand
+    to the kernel or drains it, ``None`` when the operand streams as stored;
+    ``block`` is the micro-tile the kernel consumes or produces, ``(r, s)``
+    for an MMUL operand. The codec is built from the same two facts, so the
+    host and the design agree by construction. None of this is an algorithm
+    or a whole-problem iteration schedule.
     """
 
     shape: tuple[int, ...]
     pack: Callable | None = None
     unpack: Callable | None = None
+    stream: list | None = None
+    block: tuple[int, ...] | None = None
 
     def encode(self, values):
         values = np.asarray(values).reshape(-1, *self.shape)
@@ -67,102 +75,51 @@ class TensorLayout:
 class KernelContract:
     """What a kernel computes, declared next to the factory that builds it.
 
-    ``arg_types`` already fixes each argument's shape and dtype. The contract
-    adds what types cannot say: which argument is which, how to compute the
-    expected result on the host, and how close the device must come. With it
-    a generic builder (``aie.iron.algorithms.kernel_design``) can build a design, run
-    the kernel and judge the output for *any* factory, so correctness tests,
-    e2e tests and benchmarks share one definition instead of each restating
-    it.
+    ``arg_types`` fixes each argument's shape and dtype; the contract adds
+    what types cannot say, so ``aie.iron.algorithms.kernel_design`` can
+    build, run and judge any factory from this one declaration.
 
     Attributes:
-        roles: ``In``, ``Out``, ``InOut`` or ``Param`` per argument.
-            The first three reuse the ``@iron.jit`` markers; ``Param`` is
-            kernel-only. ``Out`` is written by the
-            kernel; ``InOut`` is accumulated into (``mm``'s ``C += A * B``),
-            which is why such a kernel declares an initializer and a design
-            initializes the buffer before each independent call. ``In`` is a
-            read-only streamed tensor; ``Param`` is a constant scalar or a
-            read-only tensor held in a core Buffer, as determined by
-            ``ExternalFunction.arg_types()``. Constancy is the generic harness's
-            test-fixture choice, not a C++ argument lifetime: direct designs can
-            pass a different parameter value each call. Multiple
-            ``Out``/``InOut`` arguments are permitted, in argument order.
-        reference: Host implementation, and the kernel's arithmetic model:
-            a saturating kernel's reference clips, a flushing one flushes.
-            Called with every unbound non-output argument in argument order:
-            ``In`` tiles as numpy arrays of shape ``(calls, n)``, tensor
-            ``Param`` values as constant arrays, scalar ``Param`` values
-            as Python numbers. Returns the expected
-            output for all calls; the harness casts it to the output dtype.
-            Without streamed ``In`` arguments, a one-call reference is also
-            accepted and repeated by ``judge`` for every independent call.
-            Multiple outputs are returned as a tuple in output argument order.
-            Bound parameters are omitted from the reference.
-            ``None`` when no host reference exists yet -- the kernel is then
-            built but not judged.
-        tolerance: How close the device result must be, or ``None`` for
-            :meth:`Tolerance.default_for` the output dtype. State the
-            evidence in ``Tolerance.note``.
-        ops_per_call: Arithmetic operations one kernel call performs, for
-            throughput normalisation. ``None`` means one per output element.
-        out_valid: Meaningful elements at the start of each output tile when
-            the tile is padded for DMA alignment (reductions write one value
-            into a 4-byte-aligned tile). ``None`` means the whole tile.
-        sample: ``sample(rng, calls) -> list[np.ndarray]`` producing one host
-            array per unbound ``In``/tensor ``Param`` for ``calls`` kernel calls,
-            for kernels whose inputs have structure a dtype cannot express
-            (``expand``'s packed nibbles + scales). ``None`` lets the harness
-            draw plain random data of each argument's dtype.
-        acc_dtype: The type the kernel accumulates in (``np.int32`` for an
-            ``acc32`` mmul, ``np.float32`` for ``accfloat``), or ``None`` when
-            nothing is accumulated (copies, selections, bit operations). With
-            ``reduction`` it tells the harness how large an input may be
-            before the accumulator, or the output, would overflow.
-        reduction: Terms summed into one output element per call (``K`` for
-            a matmul tile, taps x channels for a convolution, the tile size
-            for a reduction). ``None`` means one.
-        setup: A kernel to call once on the core before the first call of
-            this one, or ``None``. The core narrows accumulators in whatever
-            mode its rounding register holds and boots in ``floor``; a kernel
-            that needs another mode names the setter here, e.g.
-            ``setup=conv_even``. A kernel whose source calls
-            ``aie::set_rounding`` itself needs nothing.
-        stack_bytes: Core stack a Worker calling this kernel needs, or
-            ``None`` for the target's default. aiecc measures each core's
-            stack and rejects a design whose stack is too small, so a kernel
-            that needs more than the default says so here rather than making
-            every design guess. Record where the number came from.
-        cascade_partner: The factory for the other half, when this kernel is
-            one half of a two-tile cascade pair. Half a pair computes half an
-            answer: the partial sum crosses the cascade stream, which is not
-            an argument, so a PUT half has no output role at all and neither
-            half is separately observable. ``reference`` is therefore the
-            *pair's* -- what the two compute together -- and ``unsupported``
-            follows from naming a partner rather than being restated.
-        unsupported: ``None`` when the generic builder can build, run and
-            judge the kernel in a single-Worker design; otherwise the reason
-            it cannot (a cascade protocol, an operand it cannot sample). The
-            reference and the dtype facts still say what the kernel computes.
-        layouts: Optional :class:`TensorLayout` per argument (``None`` means
-            identity). Logical tile shapes and storage codecs belong to the
-            declaration, never to a kernel-name switch in the harness.
-        parameter_bindings: ``(argument_index, value)`` pairs for fixed
-            ``Param`` operands, including element counts and constant tensors.
-            Unbound parameters are supplied by the caller. Counts are never inferred
-            from input/output sizes.
-        initializers: ``(argument_index, factory)`` pairs for ``InOut``
-            arguments; ``factory(fn)`` returns a one-buffer initialization
-            kernel. The reference describes the result from that initial state.
-        trace_cycles: Whether exactly one event0/event1 pair brackets the full
-            invocation, with no additional pairs from setup or initializers.
-            False unless audited; partial internal regions are not call timings.
+        roles: ``In``, ``Out``, ``InOut`` or ``Param`` per argument (the
+            first three are the ``@iron.jit`` markers). ``InOut`` is
+            accumulated into, so it needs an initializer. ``Param`` is a
+            scalar or a read-only tensor the generic builder holds fixed
+            across its calls; the argument type decides which. Several
+            outputs are allowed, in argument order.
+        reference: The host implementation, and the arithmetic model (a
+            saturating kernel's reference clips). Called with every unbound
+            non-output argument in order: ``In`` tiles as ``(calls, n)``
+            arrays, ``Param`` values as arrays or numbers. Returns the
+            output for all calls, a tuple for several outputs. ``None``
+            builds the kernel but does not judge it.
+        tolerance: How close the device must come; ``None`` is
+            :meth:`Tolerance.default_for` the output dtype.
+        ops_per_call: Arithmetic operations per call; ``None`` means one
+            per output element.
+        out_valid: Meaningful leading elements of a DMA-padded output tile;
+            ``None`` means the whole tile.
+        sample: ``sample(rng, calls) -> list[np.ndarray]`` for inputs with
+            structure a dtype cannot express; ``None`` draws random data.
+        acc_dtype: The accumulator type, or ``None`` when nothing
+            accumulates. With ``reduction`` it bounds the inputs so the
+            accumulator cannot overflow.
+        reduction: Terms summed into one output element per call; ``None``
+            means one.
+        setup: A kernel to run once on the core first (``conv_even`` sets
+            the rounding mode a bf16 store needs); ``None`` when the source
+            sets its own mode or narrows nothing.
+        stack_bytes: Core stack a Worker calling this kernel needs, when
+            more than the target's default. Say where the number came from.
+        unsupported: Why the builder cannot run this kernel, or ``None``. A
+            kernel with no output argument (a cascade PUT half) says so here.
+        layouts: A :class:`TensorLayout` per argument; ``None`` is identity.
+        parameter_bindings: ``(index, value)`` pairs fixing ``Param``
+            operands, counts included; the rest come from the caller.
+        initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
+            ``factory(fn)`` returns the kernel that initializes the buffer.
 
-    What the kernel does when a result overflows, how it rounds a narrowing
-    store, and what it does with NaN or subnormal inputs are not declared
-    here: ``reference`` is the arithmetic model (a saturating kernel's
-    reference clips, a flushing kernel's reference flushes) and ``tolerance``
-    is the slack allowed against it. Declaring them twice let the two drift.
+    Overflow, rounding and NaN handling are not declared twice: the
+    reference is the arithmetic model and the tolerance the slack against it.
     """
 
     roles: tuple[type, ...]
@@ -175,12 +132,10 @@ class KernelContract:
     reduction: int | None = None
     setup: Callable[[], object] | None = None
     stack_bytes: int | None = None
-    cascade_partner: Callable[..., object] | None = None
     unsupported: str | None = None
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
-    trace_cycles: bool = False
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -188,10 +143,11 @@ class KernelContract:
             names = ", ".join(r.__name__ for r in _ROLES)
             raise ValueError(f"unknown kernel argument role(s) {bad}; use {names}")
         # A kernel with no data arguments at all (set_rounding sets core state)
-        # has nothing to be the output. A cascade half may also have none: its
-        # result leaves on the cascade stream, which is not an argument.
+        # has nothing to be the output. A cascade PUT half has none either:
+        # its result leaves on the cascade stream, which is not an argument,
+        # so the builder cannot judge it and the contract must say so.
         n_out = self.roles.count(Out) + self.roles.count(InOut)
-        if self.roles and not n_out and self.cascade_partner is None:
+        if self.roles and not n_out and self.unsupported is None:
             raise ValueError("a kernel contract needs at least one Out or InOut role")
         if self.layouts and len(self.layouts) != len(self.roles):
             raise ValueError("layouts must have one entry per argument")
@@ -216,16 +172,6 @@ class KernelContract:
             raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
-        # Naming a partner already says the single-Worker builder cannot drive
-        # this kernel, so the reason is derived rather than restated.
-        if self.cascade_partner is not None and self.unsupported is None:
-            object.__setattr__(
-                self,
-                "unsupported",
-                f"one half of a cascade pair with {self.cascade_partner.__name__}; "
-                "the partial sum crosses the cascade stream, which is not an "
-                "argument; a paired design is required to observe the result",
-            )
 
     @property
     def out_indices(self) -> tuple[int, ...]:
@@ -234,7 +180,11 @@ class KernelContract:
 
     @property
     def out_index(self) -> int:
-        """Position of the output, whether the kernel writes it or accumulates into it."""
+        """Position of the one output, written (``Out``) or accumulated into (``InOut``).
+
+        Raises for a kernel with several outputs: code that must handle any
+        kernel reads :attr:`out_indices`.
+        """
         if len(self.out_indices) > 1:
             raise ValueError("multiple outputs: use out_indices")
         roles = list(self.roles)
@@ -243,9 +193,8 @@ class KernelContract:
         if InOut in roles:
             return roles.index(InOut)
         raise ValueError(
-            f"this kernel has no output argument: it emits on the cascade to "
-            f"{self.cascade_partner.__name__ if self.cascade_partner else '?'}, "
-            "so there is nothing to size or judge on its own"
+            "this kernel has no output argument (it emits on the cascade), so "
+            "there is nothing to size or judge on its own"
         )
 
     @property
@@ -456,7 +405,7 @@ def _require_min_trip_count(
     *,
     param: str = "tile_size",
 ) -> None:
-    """Raise ValueError when a tile is too small for a kernel's vectorised loop.
+    """Raise ValueError when a tile is too small for a kernel's vectorized loop.
 
     Several kernels declare ``AIE_LOOP_MIN_ITERATION_COUNT(n)``. Peano
     predefines ``__AIECC__``, so that expands to a real ``#pragma clang loop
@@ -484,14 +433,42 @@ def _require_min_trip_count(
         )
 
 
-def _min_dma_aligned_elems(dtype, align: int = 4) -> int:
-    """Return the minimum element count whose byte size is a multiple of *align*.
+def _device():
+    """Return the bound device, or the default device of the detected architecture.
 
-    The NPU shim DMA requires a 4-byte alignment.  A 1-element output tile is
-    fine for ``int32`` (4 bytes) but only 2 bytes for ``bfloat16`` — kernels
-    whose C++ side writes a single value still need a Python tile type with
-    enough elements to satisfy the alignment.
+    Factories run without a device bound (``_detect_arch`` falls back to
+    aie2); anything that reads the target model goes through here so that
+    fallback is the same everywhere.
     """
+    from aie.iron.device import from_name
+    from aie.utils import get_current_device
+
+    device = get_current_device(probe_runtime=False)
+    if device is None:
+        device = from_name("npu2" if _detect_arch() == "aie2p" else "npu1")
+    return device
+
+
+def _bf16_lanes() -> int:
+    """Elements per bf16 vector in this architecture's kernel sources.
+
+    ``aie::vector<bfloat16, 16>`` on aie2, ``<bfloat16, 32>`` on aie2p
+    (``silu.cc``, ``layer_norm.cc``, ...). A tile has to be whole vectors of
+    it. This is what the sources chose, not a target-model query: the
+    register is wider than the bf16 datapath on aie2.
+    """
+    return 32 if _detect_arch() == "aie2p" else 16
+
+
+def _min_dma_aligned_elems(dtype) -> int:
+    """Return the fewest elements whose byte size the shim DMA can address.
+
+    The DMA moves whole address-generation granules (32 bits on aie2 and
+    aie2p, from the target model). A 1-element output tile is fine for
+    ``int32`` but only 2 bytes for ``bfloat16``, so a kernel whose C++ side
+    writes a single value still needs a tile type with enough elements.
+    """
+    align = _device().address_gen_granularity // 8
     itemsize = np.dtype(dtype).itemsize
     return max(1, (align + itemsize - 1) // itemsize)
 
@@ -534,14 +511,16 @@ def _make_extern(
     compile_flags: list[str] | None = None,
     use_chess: bool = False,
     inline: bool = False,
-    shared_object_file_name: str | None = None,
+    object_file_name: str | None = None,
     contract: KernelContract | None = None,
+    cls: type[ExternalFunction] = ExternalFunction,
 ) -> ExternalFunction:
     """Construct (or reuse) an ExternalFunction with the standard include_dirs.
 
-    ``contract`` (a :class:`KernelContract`) is attached as ``extern.contract``
-    so harnesses and tests can build, run and judge the kernel generically;
-    factories without one leave it ``None``.
+    ``contract`` (a :class:`KernelContract`) is what harnesses and tests read
+    to build, run and judge the kernel generically; every factory passes
+    one. ``cls`` is the class to construct, for factories whose kernels have
+    more to say than a plain ``ExternalFunction`` (``linalg.MatrixKernel``).
 
     ``inline`` uses Peano's always-inline LLVM IR and merge linking. Inline
     factories must use distinct C++ symbol names for distinct variants because
@@ -565,14 +544,13 @@ def _make_extern(
     same toolchain choice (mixed peano/chess is rejected at compile
     time).
 
-    ``shared_object_file_name`` pins the output ``.o`` filename so
-    multiple factories targeting the SAME source file (e.g. companion
-    symbols like ``reduce_max_vector`` + ``compute_max`` both in
-    ``reduce_max.cc``) can share one compile.  The first call builds
-    the ``.o``; subsequent calls with the same ``shared_object_file_name``
-    skip the build and link against the existing one.  Without this,
-    each factory would produce a distinct ``.o`` each carrying ALL
-    symbols from the ``.cc``, tripping a duplicate-symbol link error.
+    ``object_file_name`` names the output explicitly instead of deriving it
+    from the cache key. Two factories that bind different symbols of the
+    same translation unit (``reduce_max_vector`` and ``compute_max``, both
+    in ``reduce_max.cc``) name the same object, and ``ExternalFunction``
+    then gives both one ``KernelObject``: one compile, one link artifact,
+    where separate digest-named objects would each carry every symbol of
+    the ``.cc`` and collide at link.
     """
     flags_tuple = tuple(compile_flags or [])
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
@@ -592,14 +570,11 @@ def _make_extern(
     # ExternalFunctions with identical .o filenames and trip the collision
     # check in ExternalFunction.__init__ (or, if both passed it, would
     # silently overwrite each other on disk).
-    if shared_object_file_name is not None:
-        # Caller explicitly pinned the .o filename so companion symbols from
-        # the same .cc share one compile.  Skip the digest-suffix path so the
-        # ExternalFunction lands at the pinned name; the second-and-later
-        # callers' compiles short-circuit via compile_external_kernel's
-        # "skip if .o exists" check.
+    if object_file_name is not None:
+        # An explicit name is the whole identity of the object: no digest
+        # suffix, and (below) no symbol prefix, so every binding of that
+        # translation unit resolves to the one KernelObject.
         digest = None
-        object_file_name = shared_object_file_name
     elif flags_tuple or arg_keys or str(source_path):
         # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
         # wide enough that the chance of two distinct cache_keys colliding
@@ -628,8 +603,8 @@ def _make_extern(
     # copy.  ``digest`` is a pure function of ``cache_key``, so prefixing every
     # parameterized variant unconditionally keeps the symbol and the
     # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
-    # When ``digest`` is None (unparameterized default-name kernel, or a pinned
-    # ``shared_object_file_name``) this leaves the symbol unprefixed.
+    # When ``digest`` is None (unparameterized default-name kernel, or an
+    # explicit ``object_file_name``) this leaves the symbol unprefixed.
     #
     # Chess exception: the symbol prefix is applied post-compile via
     # ``llvm-objcopy --redefine-sym`` (see compile_external_kernel), which only
@@ -663,7 +638,7 @@ def _make_extern(
     else:
         symbol_prefix = None if inline else digest
 
-    extern = ExternalFunction(
+    extern = cls(
         func_name,
         object_file_name=object_file_name,
         source_file=str(source_path),
@@ -673,9 +648,9 @@ def _make_extern(
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,
         inline=inline,
+        contract=contract,
     )
     if contract is not None:
         contract.validate_types(extern.arg_types())
-    extern.contract = contract
     _EXTERN_CACHE[cache_key] = extern
     return extern

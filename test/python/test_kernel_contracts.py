@@ -20,6 +20,7 @@ of which is silent until a device run otherwise:
 
 import inspect
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -27,177 +28,62 @@ import pytest
 from aie.iron import In, InOut, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import KernelContract, Param
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
 
-# One build per factory, on the default kwargs unless a non-default variant
-# is worth pinning. Matrix kernels carry the host shape they are checked at.
+# One table for every tier: the host checks below walk the same cases the
+# device test runs (test/python/npu/kernel_cases.py), so a kernel is either
+# in that table or named in NOT_JUDGED with a reason.
+sys.path.insert(0, str(Path(__file__).parent / "npu"))
+from kernel_cases import CASES as DEVICE_CASES  # noqa: E402
+
+
+def _case_id(case) -> str:
+    parts = [case.factory]
+    parts += [
+        f"{k}={getattr(v, '__name__', v)}" for k, v in sorted(case.kwargs.items())
+    ]
+    parts.append(f"calls={case.calls}")
+    if case.scalars:
+        parts.append("scalars=" + ",".join(str(v) for v in case.scalars))
+    if case.tag:
+        parts.append(case.tag)
+    return "/".join(parts)
+
+
 CASES = {
-    "zero": (dict(tile_size=64), dict(calls=3)),
-    "zero/bf16": (dict(tile_size=64, dtype=bfloat16), dict(calls=3)),
-    "passthrough": ({}, dict(calls=4)),
-    "passthrough/int16": (dict(dtype=np.int16), dict(calls=4)),
-    "scale/int16": (dict(dtype=np.int16), dict(calls=4)),
-    "scale/int32": (dict(dtype=np.int32), dict(calls=4)),
-    "add": ({}, dict(calls=4)),
-    "mul": ({}, dict(calls=4)),
-    "relu": ({}, dict(calls=4)),
-    "reduce_add": ({}, dict(calls=4)),
-    "reduce_min": ({}, dict(calls=4)),
-    "reduce_max": ({}, dict(calls=4)),
-    "reduce_max/bf16": (dict(dtype=bfloat16), dict(calls=4)),
-    "gelu": ({}, dict(calls=2)),
-    "silu": ({}, dict(calls=2)),
-    "bf16_exp": ({}, dict(calls=2)),
-    "tanh": ({}, dict(calls=2)),
-    "sigmoid": ({}, dict(calls=2)),
-    "softmax": ({}, dict(calls=2)),
-    "leaky_relu": ({}, dict(calls=2, scalars=(0.5,))),
-    "exp2f_vec": ({}, dict(calls=2)),
-    "axpy": ({}, dict(calls=2, scalars=(2.5,))),
-    "convert_copy": ({}, dict(calls=2)),
-    "expand": ({}, dict(calls=2)),
-    "transpose/4": (dict(subtile=4), dict(calls=2)),
-    "transpose/8": (dict(subtile=8), dict(calls=2)),
-    "transpose/uint8": (dict(subtile=4, dtype=np.uint8), dict(calls=2)),
-    "transpose/uint32": (dict(subtile=8, dtype=np.uint32), dict(calls=2)),
-    "mm/bf16_f32": (
-        dict(
-            dim_m=64, dim_k=32, dim_n=64, input_dtype=bfloat16, output_dtype=np.float32
-        ),
-        dict(calls=4),
-    ),
-    # One tile row, and an odd number of tile rows: the C drain groups
-    # two rows when it can and one otherwise.
-    "mm/bf16_f32/single-tile": (
-        dict(
-            dim_m=64, dim_k=32, dim_n=64, input_dtype=bfloat16, output_dtype=np.float32
-        ),
-        dict(calls=1),
-    ),
-    "mm/bf16_f32/odd-rows": (
-        dict(
-            dim_m=64, dim_k=32, dim_n=64, input_dtype=bfloat16, output_dtype=np.float32
-        ),
-        dict(calls=3),
-    ),
-    "mm/i16_i32": (
-        dict(dim_m=64, dim_k=32, dim_n=64, input_dtype=np.int16, output_dtype=np.int32),
-        dict(calls=4),
-    ),
-    "mm/bf16_f32/b_col_maj": (
-        dict(
-            dim_m=64,
-            dim_k=32,
-            dim_n=64,
-            input_dtype=bfloat16,
-            output_dtype=np.float32,
-            b_col_maj=True,
-        ),
-        dict(calls=3),
-    ),
-    "mm/bf16_f32/c_col_maj": (
-        dict(
-            dim_m=64,
-            dim_k=32,
-            dim_n=64,
-            input_dtype=bfloat16,
-            output_dtype=np.float32,
-            c_col_maj=True,
-        ),
-        dict(calls=4),
-    ),
-    "mm/i16_i32/both_col_maj": (
-        dict(
-            dim_m=64,
-            dim_k=32,
-            dim_n=64,
-            input_dtype=np.int16,
-            output_dtype=np.int32,
-            b_col_maj=True,
-            c_col_maj=True,
-        ),
-        dict(calls=3),
-    ),
-    "mm/i8_i32": (
-        dict(dim_m=64, dim_k=32, dim_n=64, input_dtype=np.int8, output_dtype=np.int32),
-        dict(calls=4),
-    ),
-    "mv": (dict(dim_m=32, dim_k=32), dict(calls=4)),
-    "mv/bf16": (
-        dict(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16),
-        dict(calls=2),
-    ),
-    "mm_bfp": (dict(dim_m=64, dim_k=64, dim_n=64), dict(calls=4)),
-    "q4nx_dequant": ({}, dict(calls=4)),
-    "q4nx_dequant/group_crosses_slice": (
-        dict(m_tile=48, k_tile=48, group=24, ct_k=16),
-        dict(calls=2),
-    ),
-    "mm_bfp/mixed": (
-        dict(dim_m=64, dim_k=64, dim_n=64, mixed=True),
-        dict(calls=4),
-    ),
-    "compute_max": ({}, dict(calls=4)),
-    "compute_max/bf16": (dict(dtype=bfloat16), dict(calls=4)),
-    "swiglu": ({}, dict(calls=2)),
-    "gray2rgba": ({}, dict(calls=2)),
-    "rgba2gray": ({}, dict(calls=2)),
-    "threshold": ({}, dict(calls=2, scalars=(100, 255, 0))),
-    "threshold/int16": (dict(dtype=np.int16), dict(calls=2, scalars=(100, 255, 1))),
-    "bitwise_or": ({}, dict(calls=2)),
-    "bitwise_and": ({}, dict(calls=2)),
-    "add_weighted": ({}, dict(calls=2, scalars=(8192, 8192, 0))),
-    "filter2d": ({}, dict(calls=2)),
-    "rgba2hue": ({}, dict(calls=2)),
-    "conv2dk1": ({}, dict(calls=2, scalars=(32, 64, 64, 12))),
-    "conv2dk1/uint8": (
-        dict(act_dtype=np.uint8),
-        dict(calls=2, scalars=(32, 64, 64, 12)),
-    ),
-    "conv2dk3": (
-        dict(act_dtype=np.uint8),
-        dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 15, 0)),
-    ),
-    "conv2dk3/int8": ({}, dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 15, 0))),
-    "conv2dk1_i8": ({}, dict(calls=2, scalars=(32, 64, 64, 12))),
-    "conv2dk1_skip/uint8": (
-        dict(input_channels=128, output_channels=64, act_dtype=np.uint8),
-        dict(calls=2, scalars=(32, 128, 64, 12, 1)),
-    ),
-    "conv2dk1_skip_init/uint8": (
-        dict(input_channels=64, skip_input_channels=32, act_dtype=np.uint8),
-        dict(calls=2, scalars=(32, 64, 64, 32, 12, 1, 11)),
-    ),
-    "conv2dk14": ({}, dict(calls=2, scalars=(224, 4, 16, 14, 17))),
-    "bn_conv2dk1_relu": ({}, dict(calls=2, scalars=(32, 64, 64, 12))),
-    "bn_conv2dk1_i8": ({}, dict(calls=2, scalars=(32, 64, 64, 13))),
-    "bn_conv2dk1_skip": ({}, dict(calls=2, scalars=(32, 64, 64, 13, 1))),
-    "bn_conv2dk1_skip/int8": (
-        dict(skip_dtype=np.int8),
-        dict(calls=2, scalars=(32, 64, 64, 13, 1)),
-    ),
-    "bn_conv2dk3_dw": ({}, dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 11, 0))),
-    "bn_conv2dk3_dw/stride2": (
-        dict(stride=2),
-        dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 11, 0)),
-    ),
-    "bn_conv2dk3": ({}, dict(calls=2, scalars=(32, 64, 64, 3, 3, 1, 15, 0))),
-    "bn_fc_relu_ui16_pad": (
-        dict(input_channels=1280, output_channels=16),
-        dict(calls=2, scalars=(1, 1280, 1280, 16, 13)),
-    ),
-    "mul_add": ({}, dict(calls=2, scalars=(1,))),
-    "rms_norm": (dict(cols=1024), dict(calls=2)),
-    "layer_norm": (dict(cols=1024), dict(calls=2)),
-    "layer_norm_f32": (dict(cols=1024), dict(calls=2)),
-    "layer_norm_affine_cast": (dict(cols=1024), dict(calls=2)),
-    "rope": (dict(cols=1024), dict(calls=2)),
-    "mm_activation_epilogue": ({}, dict(calls=2, scalars=(2,))),
-    "dwconv1d": (dict(seq_len=1024, kernel_size=9), dict(calls=2, scalars=(1024,))),
+    _case_id(case): (case.kwargs, dict(calls=case.calls, scalars=case.scalars))
+    for case in DEVICE_CASES
+}
+assert len(CASES) == len(DEVICE_CASES), "two device cases map to one host id"
+
+# Exported factories the generic builder does not judge, each with its reason.
+# Anything else exported must carry a contract and appear in the case table.
+NOT_JUDGED = {
+    "cascade_mm": "the GET half of a cascade pair; test_kernels_e2e.py builds and judges the pair",
+    "cascade_mm_put": "the PUT half of that pair; its result leaves on the cascade stream",
+    "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
+    **{
+        name: "MobileNet bottleneck kernel, not validated yet (see the guide)"
+        for name in (
+            "bn_conv2dk1_relu",
+            "bn_conv2dk3",
+            "bn_conv2dk1_i8",
+            "bn_conv2dk1_skip",
+            "bn_conv2dk3_dw",
+            "bn_conv2dk1_relu_xy_pool_padded",
+            "bn_conv2dk1_partial_put_i8",
+            "bn_conv2dk1_partial_get_relu_i8",
+            "bn_conv2dk3_dw_out_split",
+            "bn_conv2dk1_input_split_partial_put_ui8",
+            "bn_conv2dk1_input_split_partial_skip_get",
+            "bn_fc_relu_ui16_pad",
+        )
+    },
 }
 
 
@@ -206,15 +92,10 @@ def _factory(case_id: str):
 
 
 @pytest.fixture(autouse=True)
-def _aie2p_device():
+def _aie2p_device(npu2_device):
     # Factories pick sources and mac_dims from the current device; a few
     # (exp2f_vec, convert_copy) exist only for aie2p.
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU2Col1())
-    try:
-        yield
-    finally:
-        set_current_device(previous)
+    yield
 
 
 def test_every_case_names_an_exported_factory():
@@ -223,47 +104,91 @@ def test_every_case_names_an_exported_factory():
 
 
 def test_device_fixture_restores_previous_device():
+    from conftest import npu2_device
+
     previous = get_current_device(probe_runtime=False)
-    binding = _aie2p_device.__wrapped__()
+    binding = npu2_device.__wrapped__()
     next(binding)
+    assert isinstance(get_current_device(probe_runtime=False), NPU2Col1)
     binding.close()
     assert get_current_device(probe_runtime=False) is previous
 
 
-def test_contract_coverage_is_explicit():
-    """Every exported factory carries a contract, including cascade and setup."""
-    without = []
-    for name in kernels.__all__:
+def test_factories_lists_every_exported_builder():
+    """``kernels.factories()`` is what the sweeps walk; a builder it misses is never checked.
+
+    The rule is the declared return type, so this pins the rule against the
+    export list: everything exported that is neither a reference nor one of
+    the two matmul query helpers must be in it.
+    """
+    exported = {n for n in kernels.__all__ if inspect.isfunction(getattr(kernels, n))}
+    not_builders = {n for n in exported if n.endswith("_ref")}
+    not_builders |= {"mm_stream_dims", "mm_acc_dtype"}
+    assert set(kernels.factories()) == exported - not_builders
+    assert kernels.factories() == [
+        n for n in kernels.__all__ if n in exported - not_builders
+    ]
+
+
+def _first_kwargs(name: str) -> dict:
+    """Keyword arguments that build ``name``: none, or its first case's."""
+    signature = inspect.signature(getattr(kernels, name))
+    try:
+        signature.bind()
+        return {}
+    except TypeError:
+        covered = [
+            fkw for case_id, (fkw, _) in CASES.items() if case_id.split("/")[0] == name
+        ]
+        assert covered, f"{name}: required-argument factory needs a case"
+        signature.bind(**covered[0])
+        return covered[0]
+
+
+def _builds():
+    """Every exported factory at its defaults and at each declared dtype combination.
+
+    A factory that refuses the current device (``NotImplementedError``) is
+    skipped: it exists only for the other architecture.
+    """
+    for name in kernels.factories():
         f = getattr(kernels, name)
-        if (
-            not callable(f)
-            or inspect.isclass(f)
-            or name.endswith("_ref")
-            or name in ("mm_stream_dims", "mm_acc_dtype")
-        ):
+        seen = set()
+        for combo in [_first_kwargs(name)] + [
+            dict(c) for c in getattr(f, "dtypes", ())
+        ]:
+            try:
+                ef = f(**combo)
+            except NotImplementedError:
+                continue
+            if ef.object_file_name in seen:
+                continue  # the default build is one of the dtypes entries
+            seen.add(ef.object_file_name)
+            yield name, ef
+
+
+def test_contract_coverage_is_explicit():
+    """Every exported factory is in the case table with a contract, or in NOT_JUDGED with a reason."""
+    in_table = {case.factory for case in DEVICE_CASES}
+    without, unlisted = [], []
+    for name in kernels.factories():
+        ef = getattr(kernels, name)(**_first_kwargs(name))
+        if name in NOT_JUDGED:
+            assert name not in in_table, f"{name}: in the table and in NOT_JUDGED"
             continue
-        signature = inspect.signature(f)
-        kwargs = {}
-        try:
-            signature.bind()
-        except TypeError:
-            covered = [
-                fkw
-                for case_id, (fkw, _) in CASES.items()
-                if case_id.split("/")[0] == name
-            ]
-            assert covered, f"{name}: required-argument factory needs a CASES entry"
-            kwargs = covered[0]
-            signature.bind(**kwargs)
-        ef = f(**kwargs)
         if ef.contract is None:
             without.append(name)
+        if name not in in_table:
+            unlisted.append(name)
     assert not without, f"factories without contracts: {without}"
+    assert not unlisted, f"factories with no case: {unlisted}"
+    assert set(NOT_JUDGED) <= set(kernels.factories())
+    assert all(NOT_JUDGED.values())
 
 
 @pytest.mark.parametrize("error", [RuntimeError, TypeError, ValueError])
 def test_contract_coverage_propagates_constructor_failures(monkeypatch, error):
-    def broken():
+    def broken() -> ExternalFunction:
         raise error("factory construction failed")
 
     monkeypatch.setattr(kernels, "__all__", ["zero"])
@@ -277,7 +202,7 @@ def test_contract_coverage_constructs_required_case_arguments(monkeypatch):
 
     sizes = []
 
-    def required(*, tile_size):
+    def required(*, tile_size) -> ExternalFunction:
         sizes.append(tile_size)
         return SimpleNamespace(contract=KernelContract(roles=(Out,)))
 
@@ -337,8 +262,10 @@ def test_harness_lowers_a_design_to_mlir(case_id):
     assert "func.call" in str(mlir) or "aie.core" in str(mlir)
     # The reference already has the output dtype the harness will compare
     # in: the kernel's, or float32 for a bfp16ebs8 output that judge decodes.
-    out_dt = kd.shape_dtype(fn.arg_types()[fn.contract.out_index])[1]
-    assert ref.dtype == (np.float32 if bfp.is_bfp(out_dt) else out_dt)
+    refs = ref if isinstance(ref, tuple) else (ref,)
+    for i, r in zip(fn.contract.out_indices, refs):
+        out_dt = kd.shape_dtype(fn.arg_types()[i])[1]
+        assert r.dtype == (np.float32 if bfp.is_bfp(out_dt) else out_dt)
 
 
 def test_reduction_reference_yields_one_value_per_call():
@@ -355,7 +282,7 @@ def test_matrix_design_defaults_to_one_tile(factory):
     fn = factory()
     inputs = kd.sample_inputs(fn)
     ref = fn.expected(inputs)
-    assert ref.shape == (1, fn.dims[0] * (fn.dims[2] if len(fn.dims) == 3 else 1))
+    assert ref.shape == (1, kd.elems(fn.arg_types()[fn.contract.out_index]))
     assert [a.n_elements for a in kd.host_args(fn)][-1] == kd.output_size(fn)
     assert "func.call" in str(kd.design(factory).as_mlir())
 
@@ -388,7 +315,10 @@ def test_design_rejects_invalid_call_count(calls):
 def test_matrix_design_repeats_independent_calls():
     fn = kernels.mm()
     inputs = kd.sample_inputs(fn, calls=2)
-    assert fn.expected(inputs).shape == (2, fn.dims[0] * fn.dims[2])
+    assert fn.expected(inputs).shape == (
+        2,
+        kd.elems(fn.arg_types()[fn.contract.out_index]),
+    )
     assert "scf.for" in str(kd.design(kernels.mm, calls=2).as_mlir())
 
 
@@ -499,47 +429,6 @@ def test_multi_output_contract_drives_design_and_reference():
     assert kd.output_size(fn, calls=3) == (192, 192)
     assert [a.direction for a in kd.host_args(fn, calls=3)] == [In, Out, Out]
     assert "split_outputs" in str(kd.design(lambda: fn, calls=3).as_mlir())
-
-
-def test_split_depthwise_contract_checks_both_channel_halves():
-    fn = kernels.bn_conv2dk3_dw_out_split(
-        input_width=7, input_channels=16, output_split_channels=8
-    )
-    assert fn.contract.out_indices == (4, 5)
-    inputs = kd.sample_inputs(fn, calls=3)
-    refs = fn.expected(inputs, scalars=(1, 7))
-    whole = kernels.bn_conv2dk3_dw_ref(*inputs, 7, 16, 16, 3, 3, 1, 7, 0)
-    np.testing.assert_array_equal(np.concatenate(refs, axis=-1), whole)
-    assert fn.judge(refs, refs, calls=3)
-    assert not fn.judge((refs[0], refs[1] ^ 1), refs, calls=3)
-    design = kd.design(
-        kernels.bn_conv2dk3_dw_out_split,
-        input_width=7,
-        input_channels=16,
-        output_split_channels=8,
-        calls=3,
-        scalars=(1, 7),
-        params=fn.param_values(inputs),
-    )
-    assert "bn13_conv2dk3_ui8_out_split" in str(design.as_mlir())
-
-
-@pytest.mark.parametrize(
-    "factory",
-    [
-        kernels.bn_conv2dk1_partial_put_i8,
-        kernels.bn_conv2dk1_partial_get_relu_i8,
-        kernels.bn_conv2dk1_input_split_partial_put_ui8,
-        kernels.bn_conv2dk1_input_split_partial_skip_get,
-    ],
-)
-def test_cascade_factories_declare_their_unobservable_protocol(factory):
-    fn = factory()
-    assert len(fn.contract.roles) == len(fn.arg_types())
-    assert fn.contract.cascade_partner is not None
-    assert fn.contract.reference is None
-    with pytest.raises(ValueError, match="cascade"):
-        kd.design(factory)
 
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.mm_bfp])
@@ -705,7 +594,7 @@ def test_per_tile_matrix_references_agree_with_the_whole_problem_ones():
         kernels.mv_ref(a, v).reshape(1, m),
     )
 
-    # bfp quantises in blocks of 8 along K, so K must be a multiple of 8.
+    # bfp quantizes in blocks of 8 along K, so K must be a multiple of 8.
     af = rng.standard_normal((m, k)).astype(np.float32)
     bf = rng.standard_normal((k, n)).astype(np.float32)
     for mixed, whole in ((False, kernels.mm_bfp_ref), (True, kernels.mm_bfp_mixed_ref)):
@@ -737,7 +626,7 @@ def test_designs_for_different_kernels_do_not_share_a_cache_key():
         kd.design(kernels.reduce_max, calls=4, dtype=bfloat16)
     )
     assert h(kd.design(kernels.add, calls=4)) == h(kd.design(kernels.add, calls=4))
-    # A `param` is baked into the design, so its value is part of the key.
+    # A tensor Param is baked into the design, so its value is part of the key.
     p3 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])])
     p5 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])])
     assert h(p3) != h(p5)
@@ -787,7 +676,7 @@ def test_rgba2hue_reference_matches_the_kernel():
         return np.array([r, g, b, 0], np.uint8)
 
     ref = kernels.rgba2hue_ref
-    assert ref(px(0, 0, 0)).tolist() == [0]  # grey: hue 0
+    assert ref(px(0, 0, 0)).tolist() == [0]  # gray: hue 0
     assert ref(px(255, 0, 0)).tolist() == [0]  # red
     assert ref(px(0, 255, 0)).tolist() == [85]  # green: 171 * 512 >> 10
     assert ref(px(0, 0, 255)).tolist() == [170]  # blue: 341 * 512 >> 10
@@ -827,14 +716,14 @@ def test_rgba2hue_reference_is_within_one_lsb_of_exact_hue():
 def test_conv_references_follow_the_kernel_layouts():
     W, IC, OC = 4, 8, 8
     # conv2dk1: one input channel lit, weights an identity in (ic8, oc8):
-    # output channel c equals input channel c, requantised by >> 0.
+    # output channel c equals input channel c, requantized by >> 0.
     x = np.arange(W * IC, dtype=np.int8).reshape(IC // 8, W, 8)  # [C/8][W][8]
     ident = np.eye(8, dtype=np.int8).reshape(OC // 8, IC // 8, 8, 8)
     out = kernels.conv2dk1_ref(x.ravel(), ident.ravel(), W, IC, OC, 1)
     # scale 1: (v + 1) >> 1
     assert out.tolist() == (((x.astype(np.int64) + 1) >> 1).ravel()).tolist()
-    # conv2dk3: centre tap identity, zero-padded borders; middle region
-    # returns line1 requantised, top region ignores line0, bottom line2.
+    # conv2dk3: center tap identity, zero-padded borders; middle region
+    # returns line1 requantized, top region ignores line0, bottom line2.
     w = np.zeros((OC // 8, IC // 8, 3, 3, 8, 8), np.int8)
     w[:, :, 1, 1] = np.eye(8, dtype=np.int8)  # row 1 (line1), ki 1 (x + 0)
     l0 = np.full(W * IC, 100, np.int8)
@@ -842,14 +731,14 @@ def test_conv_references_follow_the_kernel_layouts():
     l2 = np.full(W * IC, -100, np.int8)
     got = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 1, 1, 0)
     assert got.tolist() == ((l1.astype(np.int64) + 1) >> 1).tolist()
-    w[:, :, 0, 1] = np.eye(8, dtype=np.int8)  # add line0's centre tap
+    w[:, :, 0, 1] = np.eye(8, dtype=np.int8)  # add line0's center tap
     mid = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 1, 1, 0)
     top = kernels.conv2dk3_ref(l0, l1, l2, w.ravel(), W, IC, OC, 3, 3, 0, 1, 0)
     assert (
         mid.tolist() == np.clip((l1.astype(np.int64) + 100 + 1) >> 1, 0, 255).tolist()
     )
     assert top.tolist() == got.tolist()
-    # Left neighbour tap on a line with a single lit pixel: shifts right by one,
+    # Left neighbor tap on a line with a single lit pixel: shifts right by one,
     # and the left border is zero padded.
     w[:] = 0
     w[:, :, 1, 2] = np.eye(8, dtype=np.int8)  # ki 2 reads pixel x + 1
@@ -865,14 +754,14 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     M, K, N = 64, 64, 64
     fn = kernels.mm_bfp(dim_m=64, dim_k=64, dim_n=64)
     c = fn.contract
-    assert c.roles == (In, In, InOut) and fn.b_col_maj and not fn.c_col_maj
+    assert c.roles == (In, In, InOut)
     a, b = kd.sample_inputs(fn, calls=2)
     assert a.dtype == np.float32 and a.shape == (2, M, K) and b.shape == (2, K, N)
     # Same-type operands share one FIFO, in per-call argument order.
     (packed,) = kd.host_layout(fn, [a, b])
     ha, hb = packed[:, 0], packed[:, 1]
     assert ha.dtype == np.uint8 and ha.shape == (2, M * K * 9 // 8)
-    m, k, n = fn.dims
+    m, k, n = M, K, N
     assert np.array_equal(
         bfp.shuffle(ha[0], K, M, k, m, unshuffle=True).ravel(), bfp.encode(a[0]).ravel()
     )
@@ -902,118 +791,6 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     assert mixed.judge(mixed.contract.layouts[2].encode(ref).ravel(), ref, calls=2)
 
 
-def test_bottleneck_references_round_half_even_and_saturate():
-    W, IC, OC = 4, 8, 8
-    ident = np.eye(8, dtype=np.int8).reshape(OC // 8, IC // 8, 8, 8)
-    # Round-half-even at scale 1: 3 -> 2, 5 -> 2 (ties to even), 4 -> 2, -3 -> -2.
-    x = np.zeros((IC // 8, W, 8), np.int8)
-    x[0, :, 0] = [3, 5, 4, -3]
-    out = kernels.bn_conv2dk1_relu_ref(x.ravel(), ident.ravel(), W, IC, OC, 1)
-    assert out.reshape(OC // 8, W, 8)[0, :, 0].tolist() == [2, 2, 2, 0]  # ReLU
-    out = kernels.bn_conv2dk1_i8_ref(
-        x.astype(np.uint8).ravel(), ident.ravel(), W, IC, OC, 1
-    )
-    # uint8 view of -3 is 253: (253 + 1 - 1 + 0) >> 1 = 126
-    assert out.reshape(OC // 8, W, 8)[0, :, 0].tolist() == [2, 2, 2, 126]
-    # skip: conv saturates to int8 first, then the residual is added; a
-    # skip_scale of 0 is no shift, the total saturates to int8.
-    xs = np.full((IC // 8, W, 8), 200, np.uint8)
-    skip = np.full(W * OC, 100, np.int8)
-    out = kernels.bn_conv2dk1_skip_ref(xs.ravel(), ident.ravel(), skip, W, IC, OC, 0, 0)
-    assert set(out.tolist()) == {127}  # 200 -> 127, + 100 -> 227 -> 127
-    skip = np.full(W * OC, -100, np.int8)
-    out = kernels.bn_conv2dk1_skip_ref(xs.ravel(), ident.ravel(), skip, W, IC, OC, 0, 1)
-    assert set(out.tolist()) == {14}  # (127 - 100) = 27 -> (27 + 1 - 1 + 1) >> 1 = 14
-    # depthwise: centre tap only, stride 1 returns line1; stride 2 every other
-    # pixel; the left tap on a single lit pixel shifts right and the border
-    # is zero padded.
-    C = 8
-    w = np.zeros((C // 8, 3, 3, 8), np.int8)
-    w[0, 1, 1] = 1
-    l0 = np.full(W * C, 9, np.uint8)
-    l1 = np.arange(W * C, dtype=np.uint8).reshape(C // 8, W, 8)
-    l1[0, :, 0] = [10, 20, 30, 40]
-    l2 = np.full(W * C, 9, np.uint8)
-    got = kernels.bn_conv2dk3_dw_ref(
-        l0, l1.ravel(), l2, w.ravel(), W, C, C, 3, 3, 1, 0, 0
-    )
-    assert got.reshape(C // 8, W, 8)[0, :, 0].tolist() == [10, 20, 30, 40]
-    got = kernels.bn_conv2dk3_dw_ref(
-        l0, l1.ravel(), l2, w.ravel(), W, C, C, 3, 3, 1, 0, 0, stride=2
-    )
-    assert got.reshape(C // 8, W // 2, 8)[0, :, 0].tolist() == [10, 30]
-    w[:] = 0
-    w[0, 1, 0] = 1  # ki 0 reads pixel x - 1
-    got = kernels.bn_conv2dk3_dw_ref(
-        l0, l1.ravel(), l2, w.ravel(), W, C, C, 3, 3, 1, 0, 0
-    )
-    assert got.reshape(C // 8, W, 8)[0, :, 0].tolist() == [0, 10, 20, 30]
-    # full 3x3 stride 2: centre tap identity halves the width; top region
-    # ignores line0.
-    w3 = np.zeros((OC // 8, IC // 8, 3, 3, 8, 8), np.int8)
-    w3[:, :, 1, 1] = np.eye(8, dtype=np.int8)
-    l1s = np.zeros((IC // 8, W, 8), np.int8)
-    l1s[0, :, 0] = [10, 20, 30, 40]
-    got = kernels.bn_conv2dk3_ref(
-        l0, l1s.ravel(), l2, w3.ravel(), W, IC, OC, 3, 3, 1, 0, 0
-    )
-    assert got.reshape(OC // 8, W // 2, 8)[0, :, 0].tolist() == [10, 30]
-    w3[:, :, 0, 1] = np.eye(8, dtype=np.int8)
-    mid = kernels.bn_conv2dk3_ref(
-        l0, l1s.ravel(), l2, w3.ravel(), W, IC, OC, 3, 3, 1, 0, 0
-    )
-    top = kernels.bn_conv2dk3_ref(
-        l0, l1s.ravel(), l2, w3.ravel(), W, IC, OC, 3, 3, 0, 0, 0
-    )
-    assert mid.reshape(OC // 8, W // 2, 8)[0, :, 0].tolist() == [19, 39]
-    assert top.tolist() == got.tolist()
-
-
-def test_post_stage_references_follow_the_sources():
-    # FC: uint16 activations, weights padded to a 16-channel stride of which
-    # only the first 8 input channels are read; round-half-even, ReLU, uint8
-    # range in a uint16 store.
-    IC, ICp, OC = 8, 16, 8
-    w = np.zeros((OC // 8, ICp // 8, 8, 8), np.int8)
-    w[0, 0] = np.eye(8, dtype=np.int8)  # the padded half is never read
-    w[0, 1] = 99
-    x = np.zeros(IC, np.uint16)
-    x[:4] = [3, 5, 600, 7]
-    out = kernels.bn_fc_relu_ui16_pad_ref(x, w.ravel(), 1, IC, ICp, OC, 1)
-    assert out.dtype == np.uint16
-    assert out[:4].tolist() == [2, 2, 255, 4]  # 3 -> 2, 5 -> 2, 300 saturates
-    # xy pool: a 7x7 map of ones through an identity 1x1 conv at scale 0 sums
-    # to 49 per channel, so the pooled average is exactly 1; the padding
-    # channels are zero and only the selected output tile is written.
-    W, C = 7, 8
-    x = np.ones((W, W * C), np.int8)
-    ident = np.eye(8, dtype=np.int8).ravel()
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, 16, 0, 0, 1, 0)
-    assert out.dtype == np.uint16 and out.shape == (16,)
-    assert out.tolist() == [1] * 8 + [0] * 8
-    # A per-pixel value of 2 (x = 2) makes the sum 98 and the average 2.0;
-    # x = 3 gives 147 / 49 = 3.0. Odd sums exercise the kernel's rounding:
-    # 25 ones and 24 zeros -> 25 / 49 = 0.5102 -> (int)(5.1) % 10 == 5 ->
-    # ties-to-even on the integer part -> 0.
-    x = np.zeros((W, W * C), np.int8)
-    x.reshape(W, W, C)[:, :, 0].flat[:25] = 1
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, C, 0, 0, 1, 0)
-    assert out[0] == 0
-    x.reshape(W, W, C)[:, :, 0].flat[:] = 1
-    x.reshape(W, W, C)[:, :, 0].flat[:2] = 0  # 47 / 49 = 0.959 -> 1
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, C, 0, 0, 1, 0)
-    assert out[0] == 1
-    # output_split = 2, weight_index = 1: the call carries the weights of
-    # its own 8-channel tile and writes only channels [8, 16).
-    IC = OC = 16
-    wt = np.zeros((OC // 2 // 8, IC // 8, 8, 8), np.int8)
-    wt[0, 1] = np.eye(8, dtype=np.int8)  # tile 1 passes input channels 8..15
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(
-        np.ones((W, W * IC), np.int8), wt.ravel(), W, IC, OC, OC, 0, 0, 2, 1
-    )
-    assert out.tolist() == [0] * 8 + [1] * 8
-
-
 @pytest.mark.parametrize("act_dtype", [np.int8, np.uint8])
 @pytest.mark.parametrize("input_width", [-64, -32, -1, 0, 1, 31, 33])
 def test_skip_init_rejects_invalid_width(input_width, act_dtype):
@@ -1027,6 +804,31 @@ def test_skip_init_accepts_complete_width_blocks(input_width, act_dtype):
     fn = kernels.conv2dk1_skip_init(input_width=input_width, act_dtype=act_dtype)
     assert fn.arg_shape(0) == (input_width * 32,)
     assert fn.arg_shape(3) == (input_width * 64,)
+
+
+@pytest.mark.parametrize(
+    "kwargs,label",
+    [
+        (dict(input_channels=8), "input_channels"),
+        (dict(input_channels=24), "input_channels"),
+        (dict(input_channels=0), "input_channels"),
+        (dict(output_channels=12), "output_channels"),
+        (dict(output_channels=0), "output_channels"),
+        (dict(skip_input_channels=4), "skip_input_channels"),
+        (dict(skip_input_channels=-8), "skip_input_channels"),
+    ],
+)
+def test_skip_init_rejects_partial_channel_steps(kwargs, label):
+    """The source steps channels in whole 16s (input) and 8s (output, skip)."""
+    with pytest.raises(ValueError, match=f"{label} must be a positive multiple"):
+        kernels.conv2dk1_skip_init(**kwargs)
+
+
+def test_skip_init_accepts_whole_channel_steps():
+    fn = kernels.conv2dk1_skip_init(
+        input_channels=16, output_channels=8, skip_input_channels=8
+    )
+    assert fn.arg_shape(2) == ((16 + 8) * 8,)
 
 
 def test_conv2dk14_and_skip_init_references():
@@ -1124,7 +926,7 @@ _IRON_KERNEL_SPECS = {
 def test_factories_reproduce_the_iron_operator_kernel_specs(name):
     fkw, symbol, source, flags = _IRON_KERNEL_SPECS[name]
     fn = getattr(kernels, name)(**fkw)
-    # The exported symbol may carry the memoisation digest prefix; the kernel
+    # The exported symbol may carry the memoization digest prefix; the kernel
     # it binds is what has to match.
     assert fn.name.split("_", 1)[-1] == symbol or fn.name == symbol, fn.name
     assert Path(fn.source_file).name == source
@@ -1232,11 +1034,18 @@ def test_mha_binds_its_translation_unit_as_one_object():
         assert sib.name == f"{p}_{symbol}"
         assert sib.object_file is fn.object_file
     # Its own matmul symbols cannot collide with a real mm in one design.
-    assert kernels.mm(dim_m=64, dim_k=64, dim_n=64).name != fn.name
-    # A dataflow the harness cannot drive says so rather than failing oddly.
-    assert fn.contract.unsupported
-    with pytest.raises(ValueError, match="cannot build"):
-        kd.design(kernels.mha)
+    mm = kernels.mm(dim_m=64, dim_k=64, dim_n=64, input_dtype=bfloat16)
+    assert mm.name != fn.name
+    # The wrapper is mm.cc's bf16 product with its gate bound open, so it is
+    # declared, sampled and judged exactly like mm.
+    assert fn.contract.unsupported is None and fn.contract.accumulates
+    assert (fn.mac_dims, fn.stream_dims) == (mm.mac_dims, mm.stream_dims)
+    assert dict(fn.contract.parameter_bindings)[3].tolist() == [0, 0]
+    a, b = kd.sample_inputs(fn, calls=2)
+    assert np.allclose(
+        fn.expected([a, b]), kernels.mm_tile_ref(a, b, dim_m=64, dim_k=64, dim_n=64)
+    )
+    assert fn.name in str(kd.design(kernels.mha, calls=2).as_mlir())
     with pytest.raises(ValueError, match="multiple of"):
         kernels.mha(dim_m=17)
 
@@ -1278,17 +1087,17 @@ def test_accumulating_kernels_are_inout_and_ship_a_zero():
     assert single.out_index == 1 and single.accumulates
 
 
-def test_sibling_symbols_follow_the_parameterisation_prefix():
+def test_sibling_symbols_follow_the_parameterization_prefix():
     """A kernel's siblings bind names its own object actually defines.
 
-    Each parameterisation gets a symbol prefix so two of them can share a
+    Each parameterization gets a symbol prefix so two of them can share a
     design; the whole object is prefixed, so the cascade
     get/put trio have to be prefixed to match.
     """
     fn = kernels.mm(dim_m=64, dim_k=64, dim_n=64)
     prefix = fn._symbol_prefix
     assert prefix and fn.name == f"{prefix}_matmul_i16_i16"
-    # A different parameterisation gets a different prefix on every symbol.
+    # A different parameterization gets a different prefix on every symbol.
     other = kernels.mm(dim_m=32, dim_k=32, dim_n=32)
     assert other._symbol_prefix != prefix
     casc = kernels.cascade_mm()
@@ -1306,12 +1115,12 @@ def test_sibling_symbols_follow_the_parameterisation_prefix():
 
 
 def test_unsupported_contracts_are_refused_by_the_harness():
-    fn = kernels.cascade_mm()
+    fn = kernels.mm_bfp_shuffle(dim_n=32)
     assert fn.contract is not None and fn.contract.unsupported
     with pytest.raises(ValueError, match="cannot build"):
-        kd.design(kernels.cascade_mm)
-    assert kernels.mm_bfp_shuffle(dim_n=32).contract.unsupported
+        kd.design(kernels.mm_bfp_shuffle, dim_n=32)
     assert kernels.mm_bfp_shuffle().contract.unsupported is None
+    assert kernels.mha().contract.unsupported is None
 
 
 def test_bfp_shuffle_contract_uses_declared_storage_codecs():
@@ -1366,7 +1175,7 @@ def test_conv2dk1_i8_and_skip_references():
 
 
 def test_input_limit_is_bounded_by_the_accumulator_only():
-    # conv2dk1 requantises by >> 12: bounding its inputs by the uint8 output
+    # conv2dk1 requantizes by >> 12: bounding its inputs by the uint8 output
     # would leave every random output at 0 or 1. The accumulator is the only
     # thing that bounds an input; what the kernel does when a result leaves
     # the output range is the reference's job to model.
@@ -1394,6 +1203,40 @@ def test_declared_layouts_pack_inputs_and_unpack_outputs():
     assert not ccm.judge(ref.ravel(), ref)
 
 
+def test_matrix_kernels_declare_their_blocking_on_the_operand_layouts():
+    """``mac_dims`` and ``stream_dims`` are views of the contract, not attributes."""
+    fn = kernels.mm(
+        dim_m=64, dim_k=32, dim_n=64, input_dtype=np.int16, output_dtype=np.int32
+    )
+    assert isinstance(fn, kernels.MatrixKernel)
+    a, b, c = fn.contract.layouts
+    r, s, t = fn.mac_dims
+    assert (a.block, b.block, c.block) == ((r, s), (s, t), (r, t))
+    assert fn.stream_dims == kernels.mm_stream_dims(64, 32, 64, (r, s, t))
+    assert (a.stream, b.stream, c.stream) == tuple(fn.stream_dims)
+    assert "dims" not in vars(fn) and "mac_dims" not in vars(fn)
+    # The scalar kernel walks row-major operands: 1x1x1, nothing streamed.
+    scalar = kernels.mm(dim_m=64, dim_k=32, dim_n=64, vectorized=False)
+    assert scalar.mac_dims == (1, 1, 1)
+    assert scalar.stream_dims == kernels.linalg.StreamDimsABC(None, None, None)
+    assert not isinstance(kernels.mv(), kernels.MatrixKernel)
+    assert kernels.mv().contract.layouts[0].stream == [(32, 2), (16, 64), (2, 1)]
+
+
+def test_contract_is_given_at_construction():
+    from aie.iron.kernel import ExternalFunction
+
+    contract = KernelContract(roles=(In, Out), reference=lambda x: x)
+    fn = ExternalFunction(
+        "identity",
+        source_string="void identity(int *a, int *b) {}",
+        arg_types=[np.ndarray[(16,), np.dtype[np.int32]]] * 2,
+        contract=contract,
+    )
+    assert fn.contract is contract
+    assert ExternalFunction("bare", source_string="void bare() {}").contract is None
+
+
 def test_stream_dims_follow_the_layout_flags():
     fkw = dict(dim_m=64, dim_k=32, dim_n=64)
     plain, bcm, ccm = (
@@ -1404,8 +1247,21 @@ def test_stream_dims_follow_the_layout_flags():
     assert plain.stream_dims.A == bcm.stream_dims.A == ccm.stream_dims.A
     assert plain.stream_dims.B != bcm.stream_dims.B
     assert plain.stream_dims.C != ccm.stream_dims.C
-    assert (plain.b_col_maj, plain.c_col_maj) == (False, False)
-    assert (bcm.b_col_maj, ccm.c_col_maj) == (True, True)
+    # The host-side consequence is in the contract's layouts, where the
+    # generic builder reads it: B is stored as tiles of B^T, C decoded from
+    # tiles of C^T. Nothing on the function itself says "column major".
+    rng = np.random.default_rng(0)
+    b = rng.standard_normal((1, fkw["dim_k"], fkw["dim_n"])).astype(np.float32)
+    c = rng.standard_normal((1, fkw["dim_m"], fkw["dim_n"])).astype(np.float32)
+    assert not np.array_equal(
+        plain.contract.layouts[1].encode(b), bcm.contract.layouts[1].encode(b)
+    )
+    assert np.array_equal(
+        plain.contract.layouts[2].encode(c), bcm.contract.layouts[2].encode(c)
+    )
+    assert not np.array_equal(
+        plain.contract.layouts[2].encode(c), ccm.contract.layouts[2].encode(c)
+    )
 
 
 def test_softmax_tolerance_rejects_an_unwritten_tile():
@@ -1457,7 +1313,7 @@ def test_vision_references_follow_the_kernel_sources():
     b = np.array([200, 255], np.uint8)
     assert kernels.add_weighted_ref(a, b, 8192, 8192, 0).tolist() == [150, 255]
     assert kernels.add_weighted_ref(a, b, 16384, 16384, 0).tolist() == [255, 255]
-    # filter2d: identity kernel (Q4.12 one at the centre) copies the middle line
+    # filter2d: identity kernel (Q4.12 one at the center) copies the middle line
     # and replicates borders; a box kernel of 16/16 sums 9 pixels / 16.
     ident = np.zeros((3, 3), np.int16)
     ident[1, 1] = 4096
@@ -1583,9 +1439,9 @@ def _combo_id(v) -> str:
 
 
 def _factories_with_dtypes():
-    for name in kernels.__all__:
+    for name in kernels.factories():
         f = getattr(kernels, name)
-        if inspect.isfunction(f) and hasattr(f, "dtypes"):
+        if hasattr(f, "dtypes"):
             for combo in f.dtypes:
                 yield pytest.param(
                     name,
@@ -1598,19 +1454,21 @@ def _factories_with_dtypes():
 def test_declared_dtype_combinations_build(name, combo):
     """Every combination a factory lists as supported builds, and its arg types use it."""
     fn = getattr(kernels, name)(**combo)
-    if name == "mm_bfp":  # block-floating-point operands are not numpy dtypes
-        assert fn.contract.initializers
+    if fn.contract is None:
+        assert name in NOT_JUDGED, f"{name}: no contract"
         return
+    if fn.contract.accumulates and not fn.contract.unsupported:
+        # The builder initializes an InOut output before every call, so a
+        # kernel it can run must say how.
+        assert fn.contract.initializers, f"{name}: InOut without an initializer"
     if any(bfp.is_bfp(v) for v in combo.values()):
-        return
+        return  # block-floating-point operands are not numpy dtypes
     tensor_dts = {
         np.dtype(kd.shape_dtype(t)[1]) for t in fn.arg_types() if hasattr(t, "__args__")
     }
     for v in combo.values():
         if isinstance(v, type):  # a dtype, not a shape or a flag
             assert np.dtype(v) in tensor_dts, f"{name}: {v} not among {tensor_dts}"
-    if name != "mm_bfp":
-        assert fn.contract is not None
 
 
 @pytest.mark.parametrize("case_id", list(CASES))
@@ -1662,12 +1520,11 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
     neither, on a kernel that narrows an accumulator, means it runs in
     whatever mode the core booted in.
     """
-    from aie.utils.compile.remarks import kernel_builds
-
     set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1())
-    for name, ef in kernel_builds():
-        c = getattr(ef, "contract", None)
+    for name, ef in _builds():
+        c = ef.contract
         if c is None:
+            assert name in NOT_JUDGED, f"{name}: no contract"
             continue
         src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
         sets_own = bool(_SET_ROUNDING_CALL.search(src))
@@ -1676,12 +1533,10 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
         elif c.setup is not None:
             # A setup only matters where an accumulator is narrowed: a bf16
             # or bfp16 output, or an explicit conversion in the source.
-            out_dt = kd.shape_dtype(ef.arg_types()[c.out_index])[1]
-            narrows = (
-                bfp.is_bfp(out_dt)
-                or np.dtype(out_dt) == np.dtype(bfloat16)
-                or _NARROWS.search(src)
-            )
+            out_dts = [kd.shape_dtype(ef.arg_types()[i])[1] for i in c.out_indices]
+            narrows = any(
+                bfp.is_bfp(dt) or np.dtype(dt) == np.dtype(bfloat16) for dt in out_dts
+            ) or _NARROWS.search(src)
             assert narrows, f"{name}: names a setup but narrows nothing"
 
 
@@ -1716,7 +1571,7 @@ def test_bf16_exp_clamp_matches_the_kernel_headers():
 
     ``bf16_exp_ref`` describes the device as ``exp(clip(x, -C, C))``. That is
     only true while the Python constant and the C++ one agree; if they ever
-    drift the reference silently stops modelling the kernel, which is the
+    drift the reference silently stops modeling the kernel, which is the
     class of bug these contracts exist to catch.
     """
     from aie.iron.kernels.activation import _EXP_BF16_CLAMP
@@ -1789,7 +1644,7 @@ def test_reduce_rejects_tiles_below_its_declared_trip_count(factory, kwargs):
 
 
 def test_reduce_scalar_path_has_no_trip_count_floor():
-    """Only the vectorised path carries the pragma, so the scalar one stays free."""
+    """Only the vectorized path carries the pragma, so the scalar one stays free."""
     assert kernels.reduce_add(tile_size=64, vectorized=False) is not None
 
 

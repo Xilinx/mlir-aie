@@ -45,7 +45,7 @@ class CollectTests(unittest.TestCase):
 
     def test_license_headers_are_not_blocks(self):
         # The first line names its own file, so the three headers differ there
-        # and still have to be recognised by what follows.
+        # and still have to be recognized by what follows.
         def header(name):
             return [
                 f"# {name}.py -*- Python -*-",
@@ -64,7 +64,7 @@ class CollectTests(unittest.TestCase):
 
     def test_llvm_style_cpp_headers_are_not_blocks(self):
         # The banner's opening line names its own file, so the three headers
-        # differ there and still have to be recognised by what follows.
+        # differ there and still have to be recognized by what follows.
         def header(name):
             return [
                 f"//===- {name}.cc ------------------------------*- C++ -*-===//",

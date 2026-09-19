@@ -104,7 +104,9 @@ reimplements the math.
         - Param
 
 `aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a
-single-Worker design. What a kernel can answer about itself -- its
+design of one Worker, built on the same single-core pipeline as
+`transform`, `for_each` and `reduce`. What a kernel can answer about itself
+-- its
 reference result, its safe input range, which arguments are parameters,
 how to judge a device output -- lives on
 [`ExternalFunction`][iron.ExternalFunction] instead, so bringing up a
@@ -122,42 +124,6 @@ the add-a-kernel procedure and the test tiers built on it.
         - host_layout
         - output_size
         - upload
-        - cycles_per_call
-
-
-`test/python/npu/test_kernels_bench.py` times the library: correctness
-first, then cycles, wall time and build size, gated by a device preflight
-and a measurement-sanity test. It is an ordinary pytest module, so `-k`
-selects cases and the session's exit status decides whether any numbers are
-written. What it measures with lives here:
-
-::: utils.benchmark
-    options:
-      show_root_heading: false
-      members:
-        - Stats
-        - BenchmarkResult
-        - Preflight
-        - run_iters
-        - preflight
-        - measure_compile
-        - provenance
-
-## Static checks
-
-::: utils.compile.remarks
-    options:
-      show_root_heading: false
-      members:
-        - LoopInfo
-        - StaticReport
-        - parse_yaml
-        - parse_stderr
-        - report_rows
-        - workflow_annotations
-        - compile_command
-        - analyze
-        - kernel_builds
 
 ## Host-side helpers
 

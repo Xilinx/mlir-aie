@@ -478,18 +478,13 @@ class ExternalFunction(Kernel):
         binding._cached_digest = None
         cls._instances.add(binding)
 
-    # Optional metadata the kernel factories attach: the contract
-    # (aie.iron.kernels.KernelContract) and the matmul layout facts.
-    # Typed Any rather than KernelContract: pyright analyses the sources and
-    # the staged package as two module trees, so naming the class here would
-    # make the factories' own KernelContract a different type.
+    # What the kernel computes (aie.iron.kernels.KernelContract), given at
+    # construction. Typed Any rather than KernelContract because pyright
+    # analyzes the sources and the staged package as two module trees, so
+    # naming the class here would make the factories' own KernelContract a
+    # different type. The class-level default covers a discovery binding,
+    # which is created without running __init__.
     contract: Any = None
-    mac_dims: tuple
-    dims: tuple
-    stream_dims: Any  # kernels.linalg.StreamDimsABC
-    b_col_maj: bool
-    c_col_maj: bool
-    a_dims_from_stream: object
 
     def _require_contract(self):
         if self.contract is None:
@@ -504,8 +499,8 @@ class ExternalFunction(Kernel):
         """Pick the ``Param`` arrays out of one logical input list.
 
         ``inputs`` is one array per unbound ``In``/tensor ``Param`` in argument
-        order. A design bakes tensor ``Param`` arguments into core buffers rather
-        than streaming them, so it needs them separately.
+        order. A design bakes tensor ``Param`` arguments into core buffers
+        rather than streaming them, so it needs them separately.
         """
         from .kernels._common import Param, _is_tensor_type
 
@@ -530,7 +525,7 @@ class ExternalFunction(Kernel):
 
         The output dtype does not bound this. What a kernel does when a
         result leaves the output range is its reference's to model, and
-        clipping inputs to the output range would leave a requantising
+        clipping inputs to the output range would leave a requantizing
         kernel's data near zero.
         """
         from aie.utils.compile.jit.markers import In
@@ -560,21 +555,19 @@ class ExternalFunction(Kernel):
         from .kernels._common import _is_tensor_type
 
         c = self._require_contract()
-        types = self.arg_types()
-        c.validate_types(types)
         if c.reference is None:
             raise ValueError(f"{self.name}: contract has no reference")
-        positions = c.reference_indices()
-        n_tensors = sum(_is_tensor_type(types[i]) for i in positions)
-        n_scalars = len(positions) - n_tensors
+        types = self.arg_types()
+        c.validate_types(types)
+        is_tensor = [_is_tensor_type(types[i]) for i in c.reference_indices()]
+        n_tensors = sum(is_tensor)
+        n_scalars = len(is_tensor) - n_tensors
         if len(inputs) != n_tensors:
             raise ValueError(f"{self.name}: expected {n_tensors} input arrays")
         if len(scalars) != n_scalars:
             raise ValueError(f"{self.name}: expected {n_scalars} scalar(s)")
         tensors, s = iter(inputs), iter(scalars)
-        args = [
-            next(tensors) if _is_tensor_type(types[i]) else next(s) for i in positions
-        ]
+        args = [next(tensors) if tensor else next(s) for tensor in is_tensor]
         result = c.reference(*args)
         multiple = len(c.out_indices) > 1
         results = result if multiple else (result,)
@@ -692,6 +685,7 @@ class ExternalFunction(Kernel):
         use_chess: bool = False,
         inline: bool = False,
         stack_size_override: int | None = None,
+        contract: Any = None,
     ) -> None:
         """Construct an ExternalFunction compiled from C/C++ source at JIT time.
 
@@ -737,6 +731,11 @@ class ExternalFunction(Kernel):
                 With ``inline=True``, the merged kernel has no separate object,
                 so this bound is the one input aiecc's stack analysis reads for
                 this kernel.
+            contract: What the kernel computes, as an
+                ``aie.iron.kernels.KernelContract``: argument roles, a host
+                reference, a tolerance and the operand layouts. The library
+                factories always give one; a hand-built kernel may leave it
+                ``None`` and then cannot be built or judged generically.
         """
         if inline and use_chess:
             raise ValueError(
@@ -752,6 +751,7 @@ class ExternalFunction(Kernel):
             )
 
         self._original_name = name
+        self.contract = contract
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if not object_file_name:
@@ -842,7 +842,7 @@ class ExternalFunction(Kernel):
         ExternalFunction._instances.add(self)
 
     # Read-only views of the compile recipe. Tooling that inspects or
-    # recompiles a kernel outside the JIT path (aie.utils.compile.remarks) reads
+    # recompiles a kernel outside the JIT path (a static check, say) reads
     # these rather than the private fields; the JIT itself keeps using the
     # private fields directly.
 

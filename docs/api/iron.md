@@ -74,7 +74,9 @@ Unlike an ObjectFifo, a Buffer does not provide producer/consumer synchronizatio
 
 `Kernel` binds a function symbol; `KernelObject` owns the shared link artifact.
 Both are exported from `aie.iron`. Pass a `KernelObject("shared.o")` to several
-`Kernel` constructors to bind symbols from one precompiled object. For C++ source,
+`Kernel` constructors to bind symbols from one precompiled object;
+`ObjectFile("shared.o", symbol_prefix=...)` is the same for a prebuilt object
+whose symbols were renamed under a prefix. For C++ source,
 `ExternalFunction` creates the owner, exposed as `fn.object_file`;
 `fn.object_file.bind(symbol, arg_types)` binds another entry point to that owner,
 applying its symbol prefix. External functions with the same

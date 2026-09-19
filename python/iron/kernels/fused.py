@@ -6,9 +6,7 @@ import hashlib
 from pathlib import Path
 
 import numpy as np
-from aie.iron.device import from_name
 from aie.iron.kernel import ExternalFunction
-from aie.utils import get_current_device
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -19,6 +17,7 @@ from ._common import (
     TensorLayout,
     _default_source_path,
     _detect_arch,
+    _device,
     _include_dirs,
 )
 
@@ -48,9 +47,7 @@ def fused_mm(
     ``(min, max)`` clamp follows the activation, before the bf16 conversion.
     """
     arch = _detect_arch()
-    device = get_current_device(probe_runtime=False)
-    if device is None:
-        device = from_name("npu1" if arch == "aie2" else "npu2")
+    device = _device()
     r, s, t = (4, 8, 4) if arch == "aie2" else (4, 8, 8)
     dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
@@ -170,26 +167,14 @@ def fused_mm(
     if key in _EXTERN_CACHE:
         return _EXTERN_CACHE[key]
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
-    fn = ExternalFunction(
-        "fused_mm_tile",
-        source_file=str(source),
-        arg_types=[
-            np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
-            np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]],
-            np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
-        ],
-        include_dirs=include_dirs,
-        compile_flags=compile_flags,
-        # Object compilation renames every defined symbol, including the
-        # included init/k_step/epilogue, zero kernels and AIE2 LUT exports.
-        symbol_prefix=prefix,
-    )
-    fn.contract = KernelContract(
+    contract = KernelContract(
         roles=(In, In, Out),
+        # The operands are held on the core in this blocking; nothing is
+        # streamed transformed, the host packs them (block, no stream).
         layouts=(
-            TensorLayout((dim_m, dim_k), pack_a, unpack_a),
-            TensorLayout((dim_k, dim_n), pack_b, unpack_b),
-            TensorLayout((dim_m, dim_n), pack_c, unpack_c),
+            TensorLayout((dim_m, dim_k), pack_a, unpack_a, block=(r, s)),
+            TensorLayout((dim_k, dim_n), pack_b, unpack_b, block=(s, t)),
+            TensorLayout((dim_m, dim_n), pack_c, unpack_c, block=(r, t)),
         ),
         reference=reference,
         tolerance=Tolerance.relative(
@@ -205,6 +190,20 @@ def fused_mm(
         stack_bytes=np.dtype(np.float32).itemsize * dim_m * dim_n
         + device.default_core_stack_bytes,
     )
-    fn.dims = (dim_m, dim_k, dim_n)
+    fn = ExternalFunction(
+        "fused_mm_tile",
+        source_file=str(source),
+        arg_types=[
+            np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
+            np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]],
+            np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
+        ],
+        include_dirs=include_dirs,
+        compile_flags=compile_flags,
+        # Object compilation renames every defined symbol, including the
+        # included init/k_step/epilogue, zero kernels and AIE2 LUT exports.
+        symbol_prefix=prefix,
+        contract=contract,
+    )
     _EXTERN_CACHE[key] = fn
     return fn

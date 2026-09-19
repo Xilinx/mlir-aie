@@ -66,9 +66,11 @@ without needing each one attached at build time.
 Some `aie.iron.kernels` factories pick a different MMUL geometry per
 arch — `kernels.mm(int16, int16)` is `(r, s, t) = (4, 4, 4)` on AIE2
 (Phoenix) but `(4, 4, 8)` on AIE2P (Strix).  The chosen geometry is
-exposed on the returned `ExternalFunction` as `.mac_dims`, so designs
-can drive their DMA-layout transforms from the kernel itself instead
-of hardcoding for one arch:
+declared on the contract's operand layouts (`fn.contract.layouts[i].block`)
+and read back as `.mac_dims` on the returned `MatrixKernel`, with the
+matching DMA transforms as `.stream_dims`, so designs can drive their
+DMA-layout transforms from the kernel itself instead of hardcoding for one
+arch:
 
 ```python
 import aie.iron as iron
@@ -396,14 +398,14 @@ that checkout's kernel sources instead, against an otherwise-installed wheel:
 MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python3 my_design.py
 ```
 
-This is how the static kernel checks build a pull request's kernels without
-building the rest of the PR.
+This is how a checkout's kernel sources are tested against an installed
+wheel without building the rest of the checkout.
 
 ## Kernel compile parallelism (`AIE_KERNEL_COMPILE_JOBS`)
 
 External kernels are compiled in parallel, one process per distinct kernel,
 defaulting to `os.cpu_count()`. Set `AIE_KERNEL_COMPILE_JOBS` to cap that — on
-a shared machine, or to serialise the build when a compiler error is easier to
+a shared machine, or to serialize the build when a compiler error is easier to
 read one at a time. Values below 1 mean the default.
 
 ## Peano location (`PEANO_INSTALL_DIR`)

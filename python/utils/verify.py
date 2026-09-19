@@ -245,7 +245,7 @@ class Tolerance:
       Integer outputs are compared with the same formula in exact integer
       arithmetic, so :meth:`lsb` (``atol = n + 0.5``) admits an ``n``-LSB
       slack for fixed-point pixel kernels whose rounding shift is not
-      modelled; under **exact** and **ulps** integers stay bit-equal.
+      modeled; under **exact** and **ulps** integers stay bit-equal.
 
     Non-finite values are never skipped: NaN must meet NaN, and an infinity
     must meet an infinity of the same sign, under every kind.
@@ -347,7 +347,7 @@ def bf16_ulp_distance(a, b) -> np.ndarray:
     Bit patterns are mapped to a monotonic integer scale (sign-magnitude to
     two's-complement style) so the distance is a plain subtraction. -0 and +0
     map to the same point, so a kernel that produces the other zero is not
-    penalised.
+    penalized.
     """
 
     def ordinal(x):

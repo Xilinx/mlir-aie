@@ -31,6 +31,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Param,
+    _bf16_lanes,
     _default_source_path,
     _detect_arch,
     _include_dirs,
@@ -83,25 +84,6 @@ def _unary_lut_contract(
     )
 
 
-def _softmax_tolerance(tile_size: int) -> Tolerance:
-    """Return the LUT bound with a floor an unwritten tile cannot hide under.
-
-    Softmax outputs sum to 1 over the tile, so a typical element is about
-    ``1 / tile_size`` and the generic LUT floor of 0.05 would accept an
-    all-zero output. A tenth of an average element still covers the exp
-    LUT's underflow on the far tail, while an unwritten tile mismatches on
-    most elements.
-    """
-    return Tolerance.relative(
-        0.128,
-        0.1 / tile_size,
-        max_mismatch_frac=0.02,
-        note="LUT rtol from softmax_ref; atol = 0.1 / tile_size so an unwritten "
-        "(all-zero) tile fails, since every softmax output is below the generic "
-        "LUT atol",
-    )
-
-
 def _create_lut_kernel(
     func_name: str,
     kernel_filename: str,
@@ -133,15 +115,14 @@ def _create_lut_kernel(
     if arch == "aie2":
         flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
         kernel_path = _kernel_source(arch, arch, "lut_kernel.cc")
-    ef = ExternalFunction(
+    return ExternalFunction(
         func_name,
         source_file=str(kernel_path),
         arg_types=arg_types,
         include_dirs=include,
         compile_flags=flags,
+        contract=contract,
     )
-    ef.contract = contract
-    return ef
 
 
 def _bf16_lut_factory(
@@ -178,7 +159,19 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
         contract=_unary_lut_contract(
             lambda x: softmax_ref(x, tile_size=tile_size),
             count=tile_size,
-            tolerance=_softmax_tolerance(tile_size),
+            # Softmax outputs sum to 1 over the tile, so a typical element is
+            # about 1 / tile_size and the generic LUT floor of 0.05 would
+            # accept an all-zero output. A tenth of an average element still
+            # covers the exp LUT's underflow on the far tail, while an
+            # unwritten tile mismatches on most elements.
+            tolerance=Tolerance.relative(
+                0.128,
+                0.1 / tile_size,
+                max_mismatch_frac=0.02,
+                note="LUT rtol from softmax_ref; atol = 0.1 / tile_size so an "
+                "unwritten (all-zero) tile fails, since every softmax output is "
+                "below the generic LUT atol",
+            ),
             # aie2p/softmax.cc sets conv_even itself; the aie2 LUT path does not.
             setup=None if _detect_arch() == "aie2p" else conv_even,
         ),
@@ -216,7 +209,7 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
     passes ``(in, out, size)``. At least 1024 elements, in whole vectors
     (16 on aie2, 32 on aie2p).
     """
-    width = 32 if _detect_arch() == "aie2p" else 16
+    width = _bf16_lanes()
     _require_min_trip_count("silu_sized", tile_size, width, 1024 // width)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(

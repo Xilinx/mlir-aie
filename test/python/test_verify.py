@@ -232,7 +232,7 @@ def test_verdict_detail_names_the_evidence():
     assert not v.ok and "measured on npu2" in v.detail
 
 
-def test_integers_honour_an_lsb_slack_only_under_a_relative_tolerance():
+def test_integers_honor_an_lsb_slack_only_under_a_relative_tolerance():
     ref = np.array([10, 20, 30, 255], dtype=np.uint8)
     got = np.array([11, 19, 30, 254], dtype=np.uint8)
     assert not compare(got, ref, Tolerance.exact())

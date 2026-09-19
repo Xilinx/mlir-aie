@@ -170,7 +170,7 @@ void rgba2hueLine(uint8_t *in, uint8_t *out, int32_t lineWidth) {
   rgba2hue_aie(in, out, 1, lineWidth);
 #else
   // AIE2P (npu2): the vectorized path produces incorrect results due to
-  // differences in acc32 SRS behaviour on AIE2P; use the scalar fallback,
+  // differences in acc32 SRS behavior on AIE2P; use the scalar fallback,
   // which computes the same values bit for bit.
   rgba2hue_aie_scalar(in, out, 1, lineWidth);
 #endif

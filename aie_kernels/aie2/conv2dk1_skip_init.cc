@@ -28,7 +28,8 @@ const int32_t UMAX = 255;
 // conv2d 1x1 skip init - scalar
 // act: uint8, wts: int8, skip: SkipT (int8 or uint8), out: uint8
 //*****************************************************************************
-// NOTE: Assumes input_channels >= 16
+// Channel counts are consumed in whole steps (input_channels in 16s, output
+// and skip channels in 8s); kernels.conv2dk1_skip_init rejects anything else.
 template <typename SkipT>
 static void conv2dk1_skip_init_scalar(
     uint8_t *input0, uint8_t *input1, int8_t *kernels, uint8_t *output,

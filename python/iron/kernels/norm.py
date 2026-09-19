@@ -16,6 +16,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Param,
+    _bf16_lanes,
     _default_source_path,
     _detect_arch,
     _make_extern,
@@ -108,9 +109,7 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
     ``cols`` aliases ``tile_size``, a positive multiple of 16 on aie2 or 32 on
     aie2p (the source processes whole vectors, without a scalar tail).
     """
-    tile_size = _row_size(
-        "layer_norm", tile_size, cols, 32 if _detect_arch() == "aie2p" else 16
-    )
+    tile_size = _row_size("layer_norm", tile_size, cols, _bf16_lanes())
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _norm_extern(
         "layer_norm",
