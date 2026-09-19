@@ -393,6 +393,140 @@ def bn_conv2dk1_skip_ref(
     return _requant_even(total, skip_scale, -128, 127, np.int8).reshape(*lead, W * OC)
 
 
+def _bn_cascade_chunk_acc(
+    x, weights, input_width, input_channels, input_split, oc, chunk
+):
+    """int64 ``[7][8]`` sums one bottleneck cascade half computes per call.
+
+    The half reads channel chunk ``chunk`` (``input_channels / input_split``
+    channels wide) of its own ``[IC/8][W][8]`` activation, the first seven
+    pixels only (``pixel_limit`` in the sources; ``x_start`` is unused),
+    against weight group ``oc`` of a ``[OC/8][chunk/8][8][8]`` tape.
+    """
+    W, IC = int(input_width), int(input_channels)
+    blocks = IC // int(input_split) // 8
+    x = np.asarray(x)
+    lead = x.shape[:-1]
+    xi = x.reshape(*lead, IC // 8, W, 8).astype(np.int64)
+    xi = xi[..., chunk * blocks : (chunk + 1) * blocks, :7, :]
+    w = np.asarray(weights, dtype=np.int8).ravel()
+    w = w[int(oc) * blocks * 64 : (int(oc) + 1) * blocks * 64]
+    w = w.reshape(blocks, 8, 8).astype(np.int64)
+    return np.einsum("...iwc,icp->...wp", xi, w), lead
+
+
+def _bn_cascade_output_group(
+    input_width, output_channels, output_split, weight_index, oc
+):
+    """Refuse a GET geometry whose call leaves part of the output tile unwritten.
+
+    A call writes seven pixels of output group ``oc + weight_index *
+    output_channels / (8 * output_split)`` and nothing else; the reference
+    models the tile where that is all of it.
+    """
+    W, OC = int(input_width), int(output_channels)
+    group = int(oc) + OC // (8 * int(output_split)) * int(weight_index)
+    if (W, OC, group) != (7, 8, 0):
+        raise ValueError(
+            "the pair reference models a call that fills its output tile: "
+            f"input_width 7, output_channels 8, output group 0; got {W}, {OC}, {group}"
+        )
+
+
+def bn_conv2dk1_partial_relu_pair_ref(
+    x_put,
+    w_put,
+    put_input_width,
+    put_input_channels,
+    put_output_channels,
+    put_input_split,
+    put_weight_index,
+    put_x_start,
+    put_oc,
+    x_get,
+    w_get,
+    input_width,
+    input_channels,
+    output_channels,
+    scale,
+    input_split,
+    output_split,
+    weight_index,
+    x_start,
+    oc,
+):
+    """Numpy reference for the [`bn_conv2dk1_partial_get_relu_i8`][iron.kernels.conv.bn_conv2dk1_partial_get_relu_i8] pair.
+
+    The PUT half sums the first ``input_channels / input_split`` channels of
+    its ``int8`` slice and sends the sums over the cascade; the GET half adds
+    the second chunk of its own slice, shifts round-half-even by ``scale``
+    and saturates to ``uint8``. Exact for the ``_new`` PUT/GET entry points
+    of ``bn_conv2dk1_i8.cc`` and ``bn_conv2dk1_relu.cc`` at the geometry
+    :func:`_bn_cascade_output_group` admits.
+    """
+    acc, lead = _bn_cascade_chunk_acc(
+        x_put, w_put, put_input_width, put_input_channels, put_input_split, put_oc, 0
+    )
+    partial, _ = _bn_cascade_chunk_acc(
+        x_get, w_get, input_width, input_channels, input_split, oc, 1
+    )
+    _bn_cascade_output_group(
+        input_width, output_channels, output_split, weight_index, oc
+    )
+    return _requant_even(acc + partial, scale, 0, 255, np.uint8).reshape(*lead, 56)
+
+
+def bn_conv2dk1_input_split_skip_pair_ref(
+    x_put,
+    w_put,
+    put_input_width,
+    put_input_channels,
+    put_output_channels,
+    put_input_split,
+    put_weight_index,
+    put_x_start,
+    put_oc,
+    x_get,
+    w_get,
+    skip,
+    input_width,
+    input_channels,
+    output_channels,
+    scale,
+    skip_scale,
+    input_split,
+    output_split,
+    weight_index,
+    x_start,
+    oc,
+):
+    """Numpy reference for the [`bn_conv2dk1_input_split_partial_skip_get`][iron.kernels.conv.bn_conv2dk1_input_split_partial_skip_get] pair.
+
+    Both halves sum the first ``input_channels / input_split`` channels of
+    their own ``uint8`` slice. The GET half shifts the total round-half-even
+    by ``scale``, saturates to ``int8``, adds the ``int8`` residual, shifts
+    by ``skip_scale`` the same way and saturates again. ``skip_scale`` must
+    be positive: the source's other branch shifts by a negative count. Exact
+    for the ``_new`` PUT/GET entry points of ``bn_conv2dk1_i8.cc`` and
+    ``bn_conv2dk1_skip.cc`` at the geometry :func:`_bn_cascade_output_group`
+    admits.
+    """
+    if int(skip_scale) <= 0:
+        raise ValueError("the skip pair reference needs a positive skip_scale")
+    acc, lead = _bn_cascade_chunk_acc(
+        x_put, w_put, put_input_width, put_input_channels, put_input_split, put_oc, 0
+    )
+    partial, _ = _bn_cascade_chunk_acc(
+        x_get, w_get, input_width, input_channels, input_split, oc, 0
+    )
+    _bn_cascade_output_group(
+        input_width, output_channels, output_split, weight_index, oc
+    )
+    conv = _requant_even(acc + partial, scale, -128, 127, np.int64)
+    total = conv + np.asarray(skip).reshape(*lead, 7, 8).astype(np.int64)
+    return _requant_even(total, skip_scale, -128, 127, np.int8).reshape(*lead, 56)
+
+
 def conv2dk1_skip_init_ref(
     x0,
     x1,
@@ -1263,7 +1397,7 @@ def bn_conv2dk1_partial_put_i8(
         [in_ty, wt_ty, *_i32s(7)],
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"],
         contract=KernelContract(
-            roles=(In, In, *((Param,) * 7)),
+            roles=(In, Param, *((Param,) * 7)),
             cascade_partner=functools.partial(
                 bn_conv2dk1_partial_get_relu_i8,
                 input_width=input_width,
@@ -1318,7 +1452,7 @@ def bn_conv2dk1_partial_get_relu_i8(
         [in_ty, wt_ty, out_ty, *_i32s(9)],
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"],
         contract=KernelContract(
-            roles=(In, In, Out, *((Param,) * 9)),
+            roles=(In, Param, Out, *((Param,) * 9)),
             cascade_partner=functools.partial(
                 bn_conv2dk1_partial_put_i8,
                 input_width=input_width,
@@ -1326,6 +1460,8 @@ def bn_conv2dk1_partial_get_relu_i8(
                 weight_count=weight_count,
                 block_index=block_index,
             ),
+            reference=bn_conv2dk1_partial_relu_pair_ref,
+            tolerance=_BN_TOLERANCE,
             acc_dtype=np.int32,
             reduction=input_channels,
         ),
@@ -1458,7 +1594,7 @@ def bn_conv2dk1_input_split_partial_put_ui8(
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW"
         ],
         contract=KernelContract(
-            roles=(In, In, *((Param,) * 7)),
+            roles=(In, Param, *((Param,) * 7)),
             cascade_partner=functools.partial(
                 bn_conv2dk1_input_split_partial_skip_get,
                 input_width=input_width,
@@ -1513,7 +1649,7 @@ def bn_conv2dk1_input_split_partial_skip_get(
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW"
         ],
         contract=KernelContract(
-            roles=(In, In, Out, In, *((Param,) * 10)),
+            roles=(In, Param, Out, In, *((Param,) * 10)),
             cascade_partner=functools.partial(
                 bn_conv2dk1_input_split_partial_put_ui8,
                 input_width=input_width,
@@ -1521,6 +1657,8 @@ def bn_conv2dk1_input_split_partial_skip_get(
                 weight_count=weight_count,
                 block_index=block_index,
             ),
+            reference=bn_conv2dk1_input_split_skip_pair_ref,
+            tolerance=_BN_TOLERANCE,
             acc_dtype=np.int32,
             reduction=input_channels,
         ),

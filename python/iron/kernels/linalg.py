@@ -831,14 +831,17 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
 
     One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
     exports the symbols an attention dataflow composes over one micro-tile.
-    The returned kernel is the ``QK^T`` matmul; bind the others from the
-    same object with ``fn.object_file.bind(symbol, arg_types)``:
+    The returned kernel is the ``QK^T`` matmul: ``mm.cc``'s bf16 product on
+    its 4x8x8 micro-tile, accumulating into ``C``, so it is a
+    [`MatrixKernel`][iron.kernels.linalg.MatrixKernel] judged like
+    [`mm`][iron.kernels.linalg.mm]. Its ``idx_buffer`` gate (the call runs
+    when ``idx[0] <= idx[1]``) is bound to ``[0, 0]``. Bind the others from
+    the same object with ``fn.object_file.bind(symbol, arg_types)``:
     ``matmul_bf16_bf16_wrapper_scalar``, ``matmul_bf16_bf16_rowmaj``,
     ``partial_softmax``, ``matmul_PV``, ``rescale_O``,
     ``init_scale_buffer``. It declares but does not define
     ``passThroughLine``: take that from ``passthrough(dtype=np.int32)``, as
-    IRON's MHA operator does. The contract is ``unsupported``: attention is
-    a multi-core dataflow with a running softmax.
+    IRON's MHA operator does.
 
     Args:
         dim_m: Rows of the micro-tile (multiple of 16).
@@ -863,23 +866,34 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
     flags = [f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}", f"-DDIM_N={dim_n}"]
-    extern = _make_extern(
+    # mha.cc includes mm.cc without B_COL_MAJ or C_COL_MAJ: row-major
+    # operands on the native bf16 micro-tile.
+    r, s, t = _MM_MAC_DIMS["aie2p"][(bfloat16, bfloat16)]
+    streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t))
+    return _make_extern(
         "matmul_bf16_bf16_wrapper",
         _default_source_path("mha.cc", subdir="aie2p"),
         [a_ty, b_ty, tile, idx],
         compile_flags=flags,
+        cls=MatrixKernel,
         contract=KernelContract(
+            layouts=(
+                _tile_layout((dim_m, dim_k), streams.A, block=(r, s)),
+                _tile_layout((dim_k, dim_n), streams.B, block=(s, t)),
+                _tile_layout((dim_m, dim_n), streams.C, inverse=True, block=(r, t)),
+                None,
+            ),
+            stack_bytes=0xD00,  # mm.cc's product: programming_examples/basic/matrix_multiplication
             roles=(In, In, InOut, Param),
+            parameter_bindings=((3, np.array([0, 0], np.int32)),),
+            reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
+            initializers=((2, _zero_output),),
             acc_dtype=np.float32,
             reduction=dim_k,
             tolerance=_linalg_tolerance(bfloat16),
             ops_per_call=2 * dim_m * dim_k * dim_n,
-            unsupported=(
-                "attention is a multi-core dataflow with a running softmax across blocks; the single-Worker harness cannot drive it"
-            ),
         ),
     )
-    return extern
 
 
 def mm_bfp_shuffle_ref(tile, tile_width, tile_height, unshuffle):

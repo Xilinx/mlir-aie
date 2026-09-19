@@ -447,6 +447,30 @@ CASES += [
     Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
     # The GET half names its PUT partner; the builder runs the pair.
     Case("cascade_mm", calls=4, smoke=True, perf=False),
+    # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
+    Case("mha", calls=4, devices=("npu2",), smoke=True, perf=False),
+    # The bottleneck cascade pairs, at the one tile their references model:
+    # a call writes seven pixels of one 8-channel output group. Each half
+    # sums an 8-channel chunk of its own 16-channel slice (the relu GET
+    # takes the second chunk, so its slice must hold two). PUT scalars:
+    # width, in ch, out ch, split, weight index, x start, oc; GET scalars
+    # add the shift(s) and the output split after the channel counts.
+    Case(
+        "bn_conv2dk1_partial_get_relu_i8",
+        dict(input_width=7, input_channels=16, output_channels=8, weight_count=64),
+        calls=4,
+        scalars=(7, 16, 8, 2, 0, 0, 0, 7, 16, 8, 8, 2, 1, 0, 0, 0),
+        smoke=True,
+        perf=False,
+    ),
+    Case(
+        "bn_conv2dk1_input_split_partial_skip_get",
+        dict(input_width=7, input_channels=16, output_channels=8, weight_count=128),
+        calls=4,
+        scalars=(7, 16, 8, 1, 0, 0, 0, 7, 16, 8, 9, 1, 1, 1, 0, 0, 0),
+        smoke=True,
+        perf=False,
+    ),
     # One call per row of the 7x7 map the kernel hard-codes (calls = rows);
     # scalars: width, in ch, out ch, padded out ch, scale, split, weight index.
     Case(

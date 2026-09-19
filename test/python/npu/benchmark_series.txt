@@ -18,7 +18,10 @@ bf16_exp/1024x256/bfloat16
 bitwise_and/1920x16/uint8
 bitwise_or/1920x16/uint8
 bn_conv2dk1_i8/2048x8/uint8_int8
+bn_conv2dk1_input_split_partial_skip_get/112x4/uint8_int8/input_channels=16/input_width=7/output_channels=8/weight_count=128
+bn_conv2dk1_partial_get_relu_i8/112x4/int8_uint8/input_channels=16/input_width=7/output_channels=8/weight_count=64
 bn_conv2dk1_relu/2048x8/int8_uint8
+bn_conv2dk1_relu_xy_pool_padded/112x7/int8_uint16/input_channels=16/output_channels=64
 bn_conv2dk1_skip/2048x8/uint8_int8
 bn_conv2dk1_skip/2048x8/uint8_int8/skip_dtype=int8
 bn_conv2dk3/2048x8/int8_uint8
@@ -26,6 +29,7 @@ bn_conv2dk3_dw/2048x8/uint8
 bn_conv2dk3_dw/2048x8/uint8/stride=2
 bn_conv2dk3_dw_out_split/112x4/uint8_uint8+uint8/input_channels=16/input_width=7/output_split_channels=8
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16
+cascade_mm/64x64x64x4/int16
 compute_max/1x16/int32
 compute_max/2x16/bfloat16
 conv2dk1/2048x8/int8_uint8
@@ -60,6 +64,7 @@ layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024
 layer_norm_f32/1024x16/float32/cols=1024
 leaky_relu/1024x16/bfloat16
 leaky_relu/1024x256/bfloat16
+mha/64x64x64x4/bfloat16
 mm/32x32x32x16/bfloat16_float32/edge-small-tile
 mm/64x32x64x1/bfloat16_float32/edge-single-tile
 mm/64x32x64x16/bfloat16_float32
@@ -131,5 +136,3 @@ transpose/1024x16/bfloat16/subtile=4
 transpose/1024x16/bfloat16/subtile=8
 transpose/1024x16/uint32/subtile=8
 transpose/1024x16/uint8/subtile=4
-cascade_mm/64x64x64x4/int16
-bn_conv2dk1_relu_xy_pool_padded/112x7/int8_uint16/input_channels=16/output_channels=64

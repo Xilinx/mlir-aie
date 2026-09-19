@@ -69,7 +69,9 @@ from .conv import (
     bn_conv2dk1_i8_ref,
     bn_conv2dk1_input_split_partial_put_ui8,
     bn_conv2dk1_input_split_partial_skip_get,
+    bn_conv2dk1_input_split_skip_pair_ref,
     bn_conv2dk1_partial_get_relu_i8,
+    bn_conv2dk1_partial_relu_pair_ref,
     bn_conv2dk1_partial_put_i8,
     bn_conv2dk1_relu,
     bn_conv2dk1_relu_ref,
@@ -330,9 +332,11 @@ __all__ = [
     "bn_fc_relu_ui16_pad_ref",
     "bn_conv2dk1_partial_put_i8",
     "bn_conv2dk1_partial_get_relu_i8",
+    "bn_conv2dk1_partial_relu_pair_ref",
     "bn_conv2dk3_dw_out_split",
     "bn_conv2dk1_input_split_partial_put_ui8",
     "bn_conv2dk1_input_split_partial_skip_get",
+    "bn_conv2dk1_input_split_skip_pair_ref",
 ]
 
 

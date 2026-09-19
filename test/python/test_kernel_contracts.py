@@ -198,6 +198,21 @@ CASES = {
     "rope": (dict(cols=1024), dict(calls=2)),
     "mm_activation_epilogue": ({}, dict(calls=2, scalars=(2,))),
     "dwconv1d": (dict(seq_len=1024, kernel_size=9), dict(calls=2, scalars=(1024,))),
+    "mha": ({}, dict(calls=2)),
+    # Cascade pairs are built from the GET half; scalars run PUT then GET.
+    "cascade_mm": ({}, dict(calls=2)),
+    "bn_conv2dk1_partial_get_relu_i8": (
+        dict(input_width=7, input_channels=16, output_channels=8, weight_count=64),
+        dict(calls=2, scalars=(7, 16, 8, 2, 0, 0, 0, 7, 16, 8, 8, 2, 1, 0, 0, 0)),
+    ),
+    "bn_conv2dk1_input_split_partial_skip_get": (
+        dict(input_width=7, input_channels=16, output_channels=8, weight_count=128),
+        dict(calls=2, scalars=(7, 16, 8, 1, 0, 0, 0, 7, 16, 8, 9, 1, 1, 1, 0, 0, 0)),
+    ),
+    "bn_conv2dk1_relu_xy_pool_padded": (
+        dict(input_channels=16, output_channels=64),
+        dict(calls=7, scalars=(7, 16, 64, 64, 8, 1, 0)),
+    ),
 }
 
 
@@ -548,23 +563,109 @@ def test_split_depthwise_contract_checks_both_channel_halves():
 def test_bottleneck_cascade_halves_name_each_other(factory):
     """Each half's partner is the other half at the same geometry.
 
-    The pair builds as a two-Worker design; neither half carries a pair
-    reference yet, so the builder runs it without judging it.
+    The pair builds as a two-Worker design from its GET half, whose
+    reference models both halves; a PUT half has no output to judge.
     """
     fn = factory()
     assert len(fn.contract.roles) == len(fn.arg_types())
-    assert fn.contract.reference is None and fn.contract.unsupported is None
+    assert fn.contract.unsupported is None
+    assert fn.contract.roles[1] is Param  # the weight tape is baked into the tile
     partner = fn.contract.cascade_partner()
     assert partner.contract.cascade_partner().name == fn.name
     assert partner.arg_types()[0] == fn.arg_types()[0]  # the same activation slice
     if fn.contract.out_indices:
+        assert fn.contract.reference is not None
         assert fn.halves() == [partner, fn]
         assert [a.direction for a in kd.host_args(fn)].count(Out) == 1
     else:
+        assert fn.contract.reference is None
         with pytest.raises(ValueError, match="GET half"):
             fn.halves()
         with pytest.raises(ValueError, match="GET half"):
             kd.design(factory)
+
+
+def test_bottleneck_pair_references_sum_the_halves_chunks():
+    """The relu pair adds the PUT's first chunk to the GET's second; the skip pair, first to first."""
+    W, IC, OC = 7, 16, 8
+    ident = np.eye(8, dtype=np.int8).ravel()  # one 8x8 block: group 0 of a 2-way split
+    x_put = np.zeros((IC // 8, W, 8), np.int8)
+    x_get = np.zeros((IC // 8, W, 8), np.int8)
+    x_put[0, :, 0], x_put[1, :, 0] = 3, 100  # the PUT half reads chunk 0 only
+    x_get[1, :, 0], x_get[0, :, 0] = 5, 100  # the relu GET half reads chunk 1 only
+    put = (W, IC, OC, 2, 0, 0, 0)
+    get = (W, IC, OC, 1, 2, 1, 0, 0, 0)  # scale 1
+    out = kernels.bn_conv2dk1_partial_relu_pair_ref(
+        x_put.ravel(), ident, *put, x_get.ravel(), ident, *get
+    )
+    assert out.shape == (56,) and out.dtype == np.uint8
+    assert out.reshape(W, 8)[:, 0].tolist() == [4] * 7  # (3 + 5) >> 1
+    assert not out.reshape(W, 8)[:, 1:].any()
+    x_get[1, :, 0] = -20  # -17 rounds half-even to -8, ReLU to 0
+    out = kernels.bn_conv2dk1_partial_relu_pair_ref(
+        x_put.ravel(), ident, *put, x_get.ravel(), ident, *get
+    )
+    assert not out.any()
+    # Skip: both halves read chunk 0; 400 saturates to 127 before the
+    # residual, 127 - 100 = 27 rounds to 14 at skip_scale 1; -100 alone is -50.
+    xs_put = np.zeros((IC // 8, W, 8), np.uint8)
+    xs_get = np.zeros((IC // 8, W, 8), np.uint8)
+    xs_put[0, :, 0], xs_get[0, :, 0], xs_get[1, :, 0] = 200, 200, 100
+    skip = np.full(W * OC, -100, np.int8)
+    get = (W, IC, OC, 1, 1, 2, 1, 0, 0, 0)
+    out = kernels.bn_conv2dk1_input_split_skip_pair_ref(
+        xs_put.ravel(), ident, *put, xs_get.ravel(), ident, skip, *get
+    )
+    assert out.dtype == np.int8 and out.reshape(W, 8)[:, 0].tolist() == [14] * 7
+    assert set(out.reshape(W, 8)[:, 1:].ravel().tolist()) == {-50}
+    # A call writes seven pixels of one output group: any other geometry
+    # leaves storage the reference cannot model, and a zero skip_scale
+    # shifts by a negative count in the source.
+    with pytest.raises(ValueError, match="fills its output"):
+        kernels.bn_conv2dk1_partial_relu_pair_ref(
+            x_put.ravel(),
+            ident,
+            *put,
+            x_get.ravel(),
+            ident,
+            W,
+            IC,
+            OC,
+            1,
+            2,
+            1,
+            1,
+            0,
+            0,
+        )
+    with pytest.raises(ValueError, match="positive skip_scale"):
+        kernels.bn_conv2dk1_input_split_skip_pair_ref(
+            xs_put.ravel(),
+            ident,
+            *put,
+            xs_get.ravel(),
+            ident,
+            skip,
+            W,
+            IC,
+            OC,
+            1,
+            0,
+            2,
+            1,
+            0,
+            0,
+            0,
+        )
+    # The pair is sampled, laid out and judged from the GET half.
+    fn = kernels.bn_conv2dk1_partial_get_relu_i8(
+        input_width=W, input_channels=IC, output_channels=OC, weight_count=64
+    )
+    inputs = kd.sample_inputs(fn, calls=3)
+    assert [a.shape for a in inputs] == [(3, 112), (64,), (3, 112), (64,)]
+    assert [a.shape for a in kd.host_args(fn, calls=3)] == [(3, 112), (3, 112), (3, 56)]
+    ref = fn.expected(inputs, scalars=put + (W, IC, OC, 8, 2, 1, 0, 0, 0))
+    assert ref.shape == (3, 56) and ref.dtype == np.uint8
 
 
 def test_pooled_conv_spans_its_calls_and_takes_the_row_index():
@@ -1351,11 +1452,18 @@ def test_mha_binds_its_translation_unit_as_one_object():
         assert sib.name == f"{p}_{symbol}"
         assert sib.object_file is fn.object_file
     # Its own matmul symbols cannot collide with a real mm in one design.
-    assert kernels.mm(dim_m=64, dim_k=64, dim_n=64).name != fn.name
-    # A dataflow the harness cannot drive says so rather than failing oddly.
-    assert fn.contract.unsupported
-    with pytest.raises(ValueError, match="cannot build"):
-        kd.design(kernels.mha)
+    mm = kernels.mm(dim_m=64, dim_k=64, dim_n=64, input_dtype=bfloat16)
+    assert mm.name != fn.name
+    # The wrapper is mm.cc's bf16 product with its gate bound open, so it is
+    # declared, sampled and judged exactly like mm.
+    assert fn.contract.unsupported is None and fn.contract.accumulates
+    assert (fn.mac_dims, fn.stream_dims) == (mm.mac_dims, mm.stream_dims)
+    assert dict(fn.contract.parameter_bindings)[3].tolist() == [0, 0]
+    a, b = kd.sample_inputs(fn, calls=2)
+    assert np.allclose(
+        fn.expected([a, b]), kernels.mm_tile_ref(a, b, dim_m=64, dim_k=64, dim_n=64)
+    )
+    assert fn.name in str(kd.design(kernels.mha, calls=2).as_mlir())
     with pytest.raises(ValueError, match="multiple of"):
         kernels.mha(dim_m=17)
 
@@ -1425,12 +1533,12 @@ def test_sibling_symbols_follow_the_parameterization_prefix():
 
 
 def test_unsupported_contracts_are_refused_by_the_harness():
-    fn = kernels.mha()
+    fn = kernels.mm_bfp_shuffle(dim_n=32)
     assert fn.contract is not None and fn.contract.unsupported
     with pytest.raises(ValueError, match="cannot build"):
-        kd.design(kernels.mha)
-    assert kernels.mm_bfp_shuffle(dim_n=32).contract.unsupported
+        kd.design(kernels.mm_bfp_shuffle, dim_n=32)
     assert kernels.mm_bfp_shuffle().contract.unsupported is None
+    assert kernels.mha().contract.unsupported is None
 
 
 def test_bfp_shuffle_contract_uses_declared_storage_codecs():

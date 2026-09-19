@@ -291,10 +291,12 @@ Three things make this work for more than one kernel per design:
   they are baked into the design. A caller that only needs to size
   buffers reads this instead of running the sampler.
 
-`kernels.mha()` remains a drop-in even though the generic builder cannot run
-its multi-stage protocol: it compiles `aie_kernels/aie2p/mha.cc` once and binds
-its selected entry point. The bf16 `mv` binds parameters `(m, row_offset)` and
-can be validated by the generic tile builder. For protocol limitations, see
+`kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
+selected entry point, the `QK^T` product: `mm.cc`'s bf16 tile matmul with
+its index gate bound open, validated by the generic builder like `mm`. The
+other symbols of the translation unit bind from the same object. The bf16
+`mv` binds parameters `(m, row_offset)` and is validated the same way. For
+the kernels that need more than one tile, see
 [Kernels the generic builder cannot run](#kernels-the-generic-builder-cannot-run).
 
 ## When you outgrow the library
@@ -450,24 +452,29 @@ workflow runs on a pull request.
 A cascade pair is built by the generic builder: the GET half's contract
 names the PUT half as `cascade_partner`, the builder places the two on
 adjacent tiles joined by a `CascadeFlow`, and the GET half's `reference`
-sees the PUT half's inputs first. `cascade_mm` is validated that way (its
-reference models the integer cascade lane). The four bottleneck halves
-(`bn_conv2dk1_partial_put_i8` / `bn_conv2dk1_partial_get_relu_i8`,
-`bn_conv2dk1_input_split_partial_put_ui8` /
-`bn_conv2dk1_input_split_partial_skip_get`) name their partners and build
-as pairs, but carry no pair reference yet, so the builder runs them
-without judging them; their numbers are checked through the composed
+sees the PUT half's inputs and scalars first. `cascade_mm` is validated
+that way (its reference models the integer cascade lane), and so are the
+two bottleneck pairs (`bn_conv2dk1_partial_put_i8` /
+`bn_conv2dk1_partial_get_relu_i8`, `bn_conv2dk1_input_split_partial_put_ui8`
+/ `bn_conv2dk1_input_split_partial_skip_get`): each half's weight tape is a
+`Param` baked into its tile, and the pair references
+(`bn_conv2dk1_partial_relu_pair_ref`, `bn_conv2dk1_input_split_skip_pair_ref`)
+model the `_new` entry points exactly. A GET call writes seven pixels of one
+8-channel output group and nothing else, so the references accept only the
+tile where that is the whole output (`input_width=7`, `output_channels=8`,
+output group 0); the composed
 [`mobilenet/bottleneck/cascade.py`](../programming_examples/ml/mobilenet/bottleneck/cascade.py)
-design and its MobileNet tests until a pair reference is written.
+design covers the wider geometries.
 
 A kernel called once per row of a map, keying on which row this is and
 accumulating into one output, declares that too: `CallIndex` binds a
 scalar `Param` to the call number and `contract.output_spans_calls` keeps
 the output tile across the sequence (`bn_conv2dk1_relu_xy_pool_padded`).
 
-One contract still explains why the builder cannot run it, and `design()`
-refuses it with that reason: `mha`, a multi-core attention dataflow with a
-running softmax, is validated through the MHA operator's own tests.
+A contract can still say why the builder cannot run a kernel
+(`unsupported`), and `design()` refuses it with that reason; no library
+factory needs it at its defaults (`mm_bfp_shuffle` does for unequal buffer
+extents, below).
 
 `bn_conv2dk3_dw_out_split` is not a cascade half: it has two observable
 outputs and is supported by the generic builder, with a reference for each
