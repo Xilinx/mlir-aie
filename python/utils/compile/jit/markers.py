@@ -5,10 +5,7 @@
 #
 """Argument markers for JIT design parameters.
 
-``CompileTime`` / ``In`` / ``Out`` / ``InOut`` annotate ``@iron.jit`` generator
-parameters.
-
-All are exported from ``aie.iron``.
+Five annotation categories are defined here (all exported from ``aie.iron``):
 
 ``CompileTime[T]``
     Marks a generator function parameter as compile-time.  Changing its value
@@ -30,34 +27,28 @@ All are exported from ``aie.iron``.
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
-Any generator parameter without one of these annotations is currently
-rejected at ``@iron.jit`` decoration time when the parameter has a default
-value — there is no runtime-scalar plumbing yet (tracked separately as future
-work), so the default would be baked into the compiled kernel and per-call
-overrides silently ignored.  Annotate as ``CompileTime[T]`` (recompiles on
-change) or ``In``/``Out``/``InOut`` (DMA tensor) instead.
+``DispatchTime[T]``
+    Marks a keyword-only integer scalar that can vary per dispatch without
+    recompiling. Explicit specialization instead fixes it at compile time.
+    See ``DispatchTime`` below for generator binding and usage restrictions.
+
+Any parameter without one of these annotations is rejected at ``@iron.jit``
+decoration time when the parameter has a default value: an unannotated scalar
+is bound at generation time, so the default would be baked into the compiled
+kernel and per-call overrides silently ignored.  Annotate as
+``CompileTime[T]`` (recompiles on change), ``DispatchTime[T]`` (runtime
+scalar, one compile many values), or ``In``/``Out``/``InOut`` (DMA tensor)
+instead.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, TypeVar
+from typing import Annotated, NoReturn, TypeVar
 
 T = TypeVar("T")
 
 
-class _CompileTimeTag:
-    """Runtime tag embedded in ``Annotated[T, _CompileTimeTag()]``.
-
-    Lets ``_introspect.py`` recognize a ``CompileTime[T]`` annotation without
-    pyright treating the parameter's type as anything other than ``T``.
-    """
-
-    __slots__ = ()
-
-
-_COMPILE_TIME_TAG = _CompileTimeTag()
-
-CompileTime = Annotated[T, _COMPILE_TIME_TAG]
+CompileTime = Annotated[T, "aie.compile_time"]
 """Compile-time parameter annotation.
 
 Use as a type annotation on generator function parameters that affect the
@@ -88,3 +79,81 @@ class Out:
 
 class InOut:
     """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
+
+
+DispatchTime = Annotated[T, "aie.dispatch_time"]
+"""Runtime-scalar parameter annotation.
+
+Per-call values rebuild instructions through a compiled host library without
+changing the device-program cache key. An omitted value uses the signature
+default, if any. Explicit binding with ``iron.jit(generator, name=value)`` or
+``design.specialize(name=value)`` instead produces a typed NumPy constant and
+includes it in the cache key; calls cannot override it.
+
+``T`` must be a NumPy integer scalar type supported by ``Runtime``, such as
+``np.int32`` or ``np.int64``. Built-in ``int``/``bool`` and floating-point
+types are rejected. Parameters must be keyword-only, even when defaulted or
+specialized.
+
+The generator receives an identity-bearing symbolic parameter for each unbound
+scalar. Forward it exactly once as a direct ``Runtime(seq, fn_args=[...])``
+entry, in any order. Use the callback's SSA argument for runtime operations.
+Generation-time arithmetic, truth tests, shapes, dtypes, and Worker arguments
+require ``CompileTime`` or specialization instead.
+
+The Python bridge supports one runtime sequence, rejects remaining load-PDI
+operations, and cannot use ``full_elf=True`` while any parameters remain dynamic.
+
+Example::
+
+    import numpy as np
+
+    def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
+        ...
+"""
+
+
+class _DispatchParameter:
+    """An opaque value until Runtime replaces it with a sequence block argument."""
+
+    __slots__ = ("name", "scalar_type", "position", "owner", "_binding")
+
+    def __init__(self, name: str, scalar_type: type, position: int, owner: object):
+        self.name = name
+        self.scalar_type = scalar_type
+        self.position = position
+        self.owner = owner
+        self._binding = None
+
+    def __repr__(self) -> str:
+        return f"DispatchTime({self.name!r}, {self.scalar_type.__name__})"
+
+    def _misuse(self, *args, **kwargs) -> NoReturn:
+        raise TypeError(
+            f"DispatchTime parameter {self.name!r} has no generation-time value. "
+            "Forward it directly in Runtime(seq, fn_args=[...]) and use the "
+            "sequence callback's argument for runtime arithmetic/control flow. "
+            "For shapes, dtypes, or worker configuration, use CompileTime or "
+            f"specialize({self.name}=...)."
+        )
+
+    def _bind(self, binding: object) -> None:
+        if self._binding is not None:
+            raise TypeError(
+                f"DispatchTime parameter {self.name!r} must be bound exactly once "
+                "in one Runtime sequence."
+            )
+        self._binding = binding
+
+    # Python and NumPy must not silently interpret a symbolic parameter as a
+    # truthy object, a dtype, an object-array element, or a generation-time value.
+    __bool__ = __int__ = __index__ = __float__ = __complex__ = __hash__ = _misuse
+    __array__ = __array_ufunc__ = __getattr__ = _misuse
+    __call__ = __iter__ = __len__ = __getitem__ = __contains__ = _misuse
+    __eq__ = __ne__ = __lt__ = __le__ = __gt__ = __ge__ = _misuse
+    __add__ = __radd__ = __sub__ = __rsub__ = __mul__ = __rmul__ = _misuse
+    __truediv__ = __rtruediv__ = __floordiv__ = __rfloordiv__ = _misuse
+    __mod__ = __rmod__ = __pow__ = __rpow__ = __divmod__ = __rdivmod__ = _misuse
+    __lshift__ = __rlshift__ = __rshift__ = __rrshift__ = _misuse
+    __and__ = __rand__ = __or__ = __ror__ = __xor__ = __rxor__ = _misuse
+    __neg__ = __pos__ = __abs__ = __invert__ = __round__ = _misuse

@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Extract per-host-arg element counts from aiecc's lowered MLIR.
+"""Extract per-host-tensor bit counts from aiecc's lowered MLIR.
 
 aiecc writes ``input_with_addresses.mlir`` into the kernel directory as part
 of compilation.  The host-facing ``aie.runtime_sequence`` carries fully
@@ -15,7 +15,8 @@ typed memref arguments — e.g.::
     }
 
 The argument types ARE the kernel's host-side contract, so we read each
-arg's memref shape and compute the element count.  No need to walk
+tensor's memref shape and compute its footprint in bits. Dispatch scalars
+are skipped. No need to walk
 ``aie.dma_bd`` ops, distinguish host-facing transfers from tile-internal
 DMAs, or fold multi-DMA patterns (fan-out / repeated load / InOut fill+drain)
 back together — the runtime_sequence signature already represents what the
@@ -45,9 +46,9 @@ logger = logging.getLogger(__name__)
 def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
     """Return per-host-arg footprints, in bits, from ``input_with_addresses.mlir``.
 
-    The returned list is indexed by ``aie.runtime_sequence`` argument
-    position.  Each entry is the product of the static dims and the element
-    type's size under the data layout.  Bits rather than elements because a
+    The returned list follows ``aie.runtime_sequence`` tensor argument
+    order, skipping scalars. Each entry is the product of the static dims and
+    the element type's size under the data layout. Bits rather than elements because a
     host buffer need not divide its bits into elements the way the memref
     does, and bits rather than bytes so a sub-byte element type stays exact.
 
@@ -55,14 +56,14 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         kernel_dir: Directory aiecc wrote its lowered MLIR into.
 
     Returns:
-        A list of per-arg bit counts (length = number of entry-point
-        runtime_sequence args), or ``None`` when validation can't be
+        A list of per-tensor bit counts (scalar arguments are skipped),
+        or ``None`` when validation can't be
         performed safely:
 
         * file is absent or unparseable
         * no runtime_sequence found, or no unique call-graph root (e.g.
           multi-device modules with multiple top-level sequences)
-        * any arg has a non-memref type, a dynamic-shape dim, or an element
+        * any arg has an unsupported type, a dynamic-shape dim, or an element
           type the data layout does not describe
     """
     mlir_path = kernel_dir / "input_with_addresses.mlir"
@@ -134,8 +135,14 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         seq_block = entry.regions[0].blocks[0]
         sizes: list[int] = []
         memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
+        scalar_types = (
+            ir.IntegerType,  # pyright: ignore[reportAttributeAccessIssue]
+            ir.IndexType,  # pyright: ignore[reportAttributeAccessIssue]
+        )
         for arg in seq_block.arguments:
             t = arg.type
+            if isinstance(t, scalar_types):
+                continue
             if not isinstance(t, memref_type):
                 return None
             if not t.has_static_shape:

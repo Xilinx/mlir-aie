@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 import aie.utils.configure as config  # pyright: ignore[reportMissingImports]
 
@@ -54,29 +55,58 @@ def root_path():
 def aiecc_path():
     """Return the aiecc executable used by JIT compilation.
 
-    Resolution order: the AIECC_PATH environment variable (for consumers,
-    e.g. IRON, that need to point at a specific aiecc without relying on
-    PATH search order), then the MLIR-AIE bin directory, then PATH.
+    Resolution order: AIECC_PATH, then the MLIR-AIE bin directory, then PATH.
     """
-    env_aiecc = os.environ.get("AIECC_PATH")
-    if env_aiecc:
-        if not os.path.isfile(env_aiecc):
+    override = os.environ.get("AIECC_PATH")
+    if override:
+        if not os.path.isfile(override):
             raise RuntimeError(
-                f"AIECC_PATH is set to {env_aiecc}, but no such file exists."
+                f"AIECC_PATH is set to {override}, but no such file exists."
             )
-        return env_aiecc
+        return override
 
-    bundled_aiecc = os.path.join(root_path(), "bin", _executable_name("aiecc"))
-    if os.path.isfile(bundled_aiecc):
-        return bundled_aiecc
+    bundled = os.path.join(root_path(), "bin", _executable_name("aiecc"))
+    if os.path.isfile(bundled):
+        return bundled
 
-    path_aiecc = shutil.which(_executable_name("aiecc"))
-    if path_aiecc:
-        return path_aiecc
+    found = shutil.which(_executable_name("aiecc"))
+    if found:
+        return found
 
     raise RuntimeError(
         "Could not find aiecc. Resolves in the order of the AIECC_PATH "
         "environment variable, MLIR-AIE bin directory, then PATH."
+    )
+
+
+def host_cxx_path():
+    """Return a host C++ compiler: ``CXX``, then ``c++``/``g++``/``clang++``.
+
+    Exclude Peano's bin directory from automatic discovery: lit prepends it
+    to PATH, but its bundled headers do not support host compilation.
+    """
+    env_cxx = os.environ.get("CXX")
+    if env_cxx:
+        found = shutil.which(env_cxx)
+        if not found:
+            raise RuntimeError(f"CXX is set to {env_cxx!r}, but it was not found.")
+        return found
+
+    peano_bin = os.path.realpath(os.path.join(config.peano_install_dir, "bin"))
+    host_path = os.pathsep.join(
+        entry
+        for entry in os.get_exec_path()
+        if os.path.normcase(os.path.realpath(entry)) != os.path.normcase(peano_bin)
+    )
+    for candidate in ("c++", "g++", "clang++"):
+        found = shutil.which(candidate, path=host_path)
+        if found:
+            return found
+
+    raise RuntimeError(
+        "Could not find a host C++ compiler (checked CXX env var, then "
+        "c++/g++/clang++ on PATH). Required to compile the dynamic dispatch "
+        "bridge for DispatchTime[T] designs."
     )
 
 
@@ -273,3 +303,29 @@ def cxx_header_path():
     if not os.path.isdir(include_dir):
         raise RuntimeError(f"MLIR-AIE C++ headers not found in {include_dir}")
     return include_dir
+
+
+def runtime_header_path():
+    """Return the include directory holding ``aie/Runtime/TxnEncoding.h``.
+
+    Installed headers (including wheel headers) always take precedence. Only a
+    CMake build tree may fall back to its source headers; installed packages do
+    not retain or consult paths from the machine that built them.
+    """
+    sentinel = os.path.join("aie", "Runtime", "TxnEncoding.h")
+    root = Path(root_path())
+    candidates = [root / "include"]
+    if (candidates[0] / sentinel).is_file():
+        return str(candidates[0])
+    cache = root / "CMakeCache.txt"
+    if cache.is_file():
+        for line in cache.read_text().splitlines():
+            if line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL="):
+                candidates.append(Path(line.split("=", 1)[1]) / "include")
+                break
+    for include_dir in candidates:
+        if os.path.isfile(os.path.join(include_dir, sentinel)):
+            return str(include_dir)
+    raise RuntimeError(
+        f"Could not find {sentinel} in any of: {', '.join(map(str, candidates))}."
+    )

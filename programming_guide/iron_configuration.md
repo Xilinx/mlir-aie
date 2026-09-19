@@ -113,6 +113,35 @@ The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of t
 export XRT_CONTEXT_CACHE_SIZE=1
 ```
 
+## IRON HRX Runtime Cache Size
+
+`HRX_EXE_CACHE_SIZE` bounds the loaded-executable cache in `CachedHRXRuntime`.
+The default is 6 on NPU1 and 16 on NPU2. Each executable holds a hardware
+context, so concurrent processes should use a smaller per-process share:
+
+```bash
+export HRX_EXE_CACHE_SIZE=2
+```
+
+`0` disables caching. Eviction does not release executables held by live kernel
+handles. `DispatchTime` designs cache the xclbin image, not per-call executables.
+
+## Dispatch-time scalar compilation
+
+`DispatchTime[T]` requires a host C++17 compiler, including with wheel
+installations, to build the host library from
+[`aiecc`'s generated C++](../tools/aiecc/README.md#parameterized-c-transaction-builders).
+`CXX` selects the compiler executable; otherwise IRON searches for `c++`,
+`g++`, then `clang++`, excluding Peano's device-toolchain directory.
+
+```bash
+CXX=/usr/bin/clang++ python my_design.py
+```
+
+Runtime headers are resolved from the installation first, with a configured
+source-tree fallback for uninstalled builds. Each dispatch calls the compiled
+library in-process; it does not launch a compiler.
+
 ## Host-runtime backend selection (`NPU_RUNTIME`)
 
 IRON dispatches designs through a host runtime that consumes the `aiecc`
@@ -170,7 +199,7 @@ Python locates `libhrx` in this order (filesystem only — no `dlopen`). Explici
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `IRON_HRX_DEVICE` | auto-detect | Force the amdxdna device generation (`npu1` / `npu2`) instead of detecting it from sysfs PCI IDs. |
-| `HRX_EXE_CACHE_SIZE` | `32` | Max number of amdxdna executables the `CachedHRXRuntime` keeps (LRU). |
+| `HRX_EXE_CACHE_SIZE` | [Device-dependent](#iron-hrx-runtime-cache-size) | Max number of amdxdna executables the `CachedHRXRuntime` keeps (LRU). |
 | `IRON_HRX_TIMEOUT` | `0` (disabled) | Watchdog timeout, in seconds, bounding the wait in `hrx_stream_synchronize`. `0`, unset, or an invalid value disables the watchdog. On expiry a diagnosable error is raised (the underlying sync cannot be cancelled). |
 
 ```bash
@@ -235,6 +264,21 @@ only the versioned name.
 NPU_RUNTIME=hsa ROCM_PATH=/opt/rocm-7.0 IRON_HSA_DEVICE=npu2 \
   HSA_EXE_CACHE_SIZE=8 IRON_HSA_TIMEOUT=30 python my_script.py
 ```
+
+### HSA hardware tests
+
+On a provisioned HSA NPU host, `AIE_HSA_NPU=npu1` or `npu2` enables lit's
+`hsa_npu` feature without XRT discovery. It neither installs ROCm nor overrides
+HSA device detection; finding ROCm alone does not enable tests on GPU-only hosts.
+
+```bash
+AIE_HSA_NPU=npu2 llvm-lit -sv build/test/python/npu/test_dispatch_time_scalar.py \
+  build/test/python/npu/test_hsa_dispatch.py
+```
+
+The tests select `NPU_RUNTIME=hsa`; lit forwards `ROCM_PATH`, `IRON_HSA_DEVICE`,
+and `IRON_HSA_TIMEOUT`. Coverage includes real allocation/free calls and cleanup
+after both pre- and post-publication failures.
 
 ### Limitations
 

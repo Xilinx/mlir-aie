@@ -3,6 +3,10 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+from pathlib import Path
+
+from .compile.jit._dispatch_bridge import DispatchBridge
+from .hostruntime.hostruntime import HostRuntimeError
 from .trace import TraceConfig
 
 
@@ -18,6 +22,8 @@ class NPUKernel:
         trace_config: TraceConfig | None = None,
         num_host_bos: int | None = None,
         elf_path=None,
+        dispatch_params: list[str] | None = None,
+        dispatch_lib_path=None,
     ):
         """Initialize the NPUKernel.
 
@@ -25,7 +31,10 @@ class NPUKernel:
             xclbin_path (str | Path | None): Path to the xclbin file. ``None``
                 on the full-ELF path (see ``elf_path``).
             insts_path (str | Path | None): Path to the instructions file.
-                ``None`` on the full-ELF path.
+                ``None`` on the full-ELF path, and on a DispatchTime[T]
+                design (see ``dispatch_params``) -- both synthesize their
+                instruction stream some other way instead of reading a
+                static ``insts.bin``.
             device_index (int, optional): Device index. Defaults to 0.
             kernel_name (str, optional): Name of the kernel. Defaults to
                 "MLIR_AIE". On the full-ELF path this is the
@@ -44,6 +53,14 @@ class NPUKernel:
                 command-chain minimum), so it is the correct value to validate
                 host buffer counts against. ``None`` when it could not be
                 determined (validation is then skipped).
+            dispatch_params (list[str] | None, optional): Declared
+                ``DispatchTime[T]`` parameter names for this design, in
+                declaration order. ``None``/empty for a design with no
+                DispatchTime[T] parameters (the ordinary static/cached path).
+            dispatch_lib_path (str | Path | None, optional): Path to the
+                compiled dispatch bridge (``dispatch.so``) for a
+                DispatchTime[T] design. Required (non-None) whenever
+                ``dispatch_params`` is non-empty.
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -52,6 +69,9 @@ class NPUKernel:
         self._trace_config = trace_config
         self._device_index = device_index
         self._num_host_bos = num_host_bos
+        self._dispatch_params = list(dispatch_params) if dispatch_params else []
+        self._dispatch_lib_path = dispatch_lib_path
+        self._dispatch_bridge = None
 
     @property
     def trace_config(self) -> TraceConfig | None:
@@ -103,11 +123,60 @@ class NPUKernel:
         """Get the compiled design's true host-buffer count.
 
         Returns:
-            int | None: The number of ``aie.runtime_sequence`` operands the
+            int | None: The number of ``aie.runtime_sequence`` memref operands the
             design was compiled with (including any appended trace buffer), or
             ``None`` if it could not be determined.
         """
         return self._num_host_bos
+
+    @property
+    def dispatch_params(self) -> list[str]:
+        """Get the declared ``DispatchTime[T]`` parameter names, in order.
+
+        Returns:
+            list[str]: Empty for a design with no DispatchTime[T] parameters.
+        """
+        return list(self._dispatch_params)
+
+    @property
+    def dispatch_lib_path(self):
+        """Get the path to the compiled dispatch bridge shared library.
+
+        Returns:
+            str | Path | None: ``None`` for a design with no DispatchTime[T]
+            parameters, which dispatches a static ``insts.bin`` instead.
+        """
+        return self._dispatch_lib_path
+
+    def _generate_dispatch_insts(self, dispatch_scalars: dict | None):
+        """Validate this call's scalars and generate its instruction stream."""
+        dispatch_scalars = dispatch_scalars or {}
+        if not self._dispatch_params:
+            if dispatch_scalars:
+                raise HostRuntimeError(
+                    f"got dispatch scalar(s) {list(dispatch_scalars)} but this "
+                    "compiled design declares no DispatchTime[T] parameters"
+                )
+            return None
+        missing = set(self._dispatch_params) - set(dispatch_scalars)
+        extra = set(dispatch_scalars) - set(self._dispatch_params)
+        if missing or extra:
+            raise HostRuntimeError(
+                f"dispatch scalar mismatch: missing={missing or None} "
+                f"extra={extra or None}; design expects exactly {self._dispatch_params}"
+            )
+        if self._dispatch_bridge is None:
+            if self._dispatch_lib_path is None:
+                raise HostRuntimeError(
+                    f"design declares DispatchTime[T] parameter(s) "
+                    f"{self._dispatch_params!r} but was constructed without a "
+                    "dispatch_lib_path; it cannot build a per-call instruction "
+                    "stream."
+                )
+            self._dispatch_bridge = DispatchBridge(
+                Path(self._dispatch_lib_path), self._dispatch_params
+            )
+        return self._dispatch_bridge.generate(dispatch_scalars)
 
     # Blocking call.
     def __call__(self, *args, **kwargs):
@@ -117,17 +186,35 @@ class NPUKernel:
 
         Args:
             *args: Arguments passed to the kernel.
-            **kwargs: Additional arguments passed to the runtime load_and_run method.
+            **kwargs: Declared dispatch scalar values and the optional ``retry``
+                runtime load option. A declared dispatch parameter named ``retry``
+                takes precedence over the load option.
 
         Returns:
             The result returned by the runtime ``load_and_run`` call.
+
+        Raises:
+            TypeError: If an unknown keyword argument is supplied.
         """
+        dispatch_names = set(self._dispatch_params)
+        unknown = set(kwargs) - dispatch_names - {"retry"}
+        if unknown:
+            raise TypeError(
+                f"NPUKernel got unexpected keyword argument(s): {sorted(unknown)}; "
+                f"expected dispatch parameters {self._dispatch_params!r} "
+                "or runtime option 'retry'"
+            )
+
         from . import DefaultNPURuntime
 
         if DefaultNPURuntime is None:
             raise Exception("Cannot run kernel; DefaultNPURuntime not set.")
+
+        dispatch_scalars = {k: v for k, v in kwargs.items() if k in dispatch_names}
+        other_kwargs = {k: v for k, v in kwargs.items() if k not in dispatch_names}
         return DefaultNPURuntime.load_and_run(
             self,
             list(args),
-            **kwargs,
+            dispatch_scalars=dispatch_scalars or None,
+            **other_kwargs,
         )

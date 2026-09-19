@@ -38,6 +38,24 @@ _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
 _SYMBOL_PREFIX_STAMP_VERSION = 1
 
 
+SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
+SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
+
+
+def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[str]:
+    """Build a host shared library with the project's C++17 ABI."""
+    return [
+        config.host_cxx_path(),
+        *SHARED_LIB_FLAGS,
+        opt,
+        "-std=c++17",
+        *(f"-I{inc}" for inc in includes),
+        str(src),
+        "-o",
+        str(out),
+    ]
+
+
 def resolve_target_arch(device=None) -> str:
     """Return ``'aie2'`` or ``'aie2p'`` for the given device, or ``'aie2'`` if device is None."""
     if device is None:
@@ -485,8 +503,10 @@ def compile_mlir_module(
     use_chess: bool = False,
     device=None,
     fold_ddr_addr_offset: bool = True,
+    npu_cpp_path: str | Path | None = None,
+    npu_cpp_emit_dispatch_shim: bool = False,
 ):
-    """Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
+    """Compile MLIR to instruction, PDI, ELF, xclbin, or C++ files using aiecc.
 
     Parameters:
         mlir_module (str): MLIR module to compile.
@@ -521,6 +541,11 @@ def compile_mlir_module(
             behavior).  Without this, low-level designs going through
             ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
             still need a Makefile-side ``.o`` rule.
+        npu_cpp_path: Output parameterized C++ transaction builder, produced by
+            aiecc's same runtime-sequence pipeline as static instructions.
+        npu_cpp_emit_dispatch_shim: Include the C ABI used by the Python dispatch
+            bridge. Native callers can leave this false and call the generated
+            C++ function directly.
     """
     if use_chess:
         # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
@@ -551,6 +576,12 @@ def compile_mlir_module(
     # flag when unfolding is requested.
     if not fold_ddr_addr_offset:
         args.append("--fold-ddr-addr-offset=false")
+    if npu_cpp_path is not None:
+        args.extend(["--get-npu-cpp", f"--npu-cpp-name={npu_cpp_path}"])
+        if npu_cpp_emit_dispatch_shim:
+            args.append("--npu-cpp-emit-dispatch-shim")
+    elif npu_cpp_emit_dispatch_shim:
+        raise ValueError("npu_cpp_emit_dispatch_shim requires npu_cpp_path.")
     if pdi_path:
         args.extend(["--get-pdi", f"--pdi-name={pdi_path}"])
     if elf_path:
@@ -1035,17 +1066,24 @@ def _compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
         _write_symbol_prefix_stamp(output_file, prefix)
 
 
+def _is_dispatch_library_name(name: str) -> bool:
+    return re.fullmatch(r"dispatch-[0-9a-f]{64}\.(?:so|dll)", name) is not None
+
+
 def _cleanup_failed_compilation(cache_dir):
     """Clean up cache directory after failed compilation.
 
     Preserves the lock file and, when present, the ``repeater`` reproducer dir
-    that aiecc's ``--enable-repeater-scripts`` writes.
+    that aiecc's ``--enable-repeater-scripts`` writes. Published dispatch
+    generations are retained cache artifacts, not temporary staging files:
+    a caller can still hold their path without having loaded it yet, so they
+    stay until cache eviction.
     """
     if not os.path.exists(cache_dir):
         return
 
     for item in os.listdir(cache_dir):
-        if item in (".lock", "repeater"):
+        if item in (".lock", "repeater") or _is_dispatch_library_name(item):
             continue
         item_path = os.path.join(cache_dir, item)
         if os.path.isfile(item_path):

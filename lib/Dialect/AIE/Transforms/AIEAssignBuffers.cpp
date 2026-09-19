@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 #include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
@@ -124,13 +125,6 @@ static bool isBufferPreAllocated(BufferOp buffer) {
   auto addr = buffer.getAddress();
   auto memBank = buffer.getMemBank();
   return (addr != std::nullopt || memBank != std::nullopt);
-}
-
-// Round a byte address up to the given alignment, expressed in bits.
-static int64_t getAlignedAddress(int64_t address, uint32_t alignBitWidth) {
-  assert(alignBitWidth != 0 && alignBitWidth % 8 == 0 &&
-         "alignBitWidth must be a non-zero multiple of 8");
-  return llvm::alignTo(address, alignBitWidth / 8);
 }
 
 // Return the alignment (in bits) `buffer` must satisfy.
@@ -280,7 +274,6 @@ static bool basicAllocation(TileOp tile) {
   auto [maxDataMemorySize, tileAlignBitWidth, maxVecAlignBits] =
       tileMemoryLimits(tile, getTargetModel(tile));
 
-  SmallVector<BufferOp> buffers;
   SmallVector<BufferOp> allocated_buffers;
   SmallVector<BufferOp> allBuffers_on_tile;
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
@@ -300,20 +293,8 @@ static bool basicAllocation(TileOp tile) {
     }
     if (buffer.getAddress()) {
       allocated_buffers.push_back(buffer);
-    } else {
-      buffers.push_back(buffer);
     }
     allBuffers_on_tile.push_back(buffer);
-  });
-
-  // Stable, so buffers of equal size keep program order, as the bank-aware
-  // path's placementOrder does.
-  llvm::stable_sort(buffers, [](BufferOp a, BufferOp b) {
-    return a.getAllocationSize() > b.getAllocationSize();
-  });
-
-  llvm::stable_sort(allocated_buffers, [](BufferOp a, BufferOp b) {
-    return a.getAddress().value() < b.getAddress().value();
   });
 
   // Stack lives at the bottom of the tile's data memory.
@@ -337,53 +318,27 @@ static bool basicAllocation(TileOp tile) {
     }
   }
 
-  // Align the address before and after each skip, so the fit test runs on the
-  // final placement. A misaligned candidate otherwise passes the fit test, and
-  // getAlignedAddress then bumps it into a pre-allocated buffer.
-  auto *current_alloc = allocated_buffers.begin();
-  for (auto buffer : buffers) {
-    assert(!buffer.getAddress());
+  SmallVector<BufferAllocation> layout;
+  for (auto buffer : allBuffers_on_tile) {
     uint32_t reqAlignBits =
         getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits);
-    if (buffer.getAligned()) {
-      address = getAlignedAddress(address, reqAlignBits);
-    }
-    while (current_alloc != allocated_buffers.end() &&
-           address + buffer.getAllocationSize() >
-               current_alloc->getAddress().value()) {
-      address = current_alloc->getAddress().value() +
-                current_alloc->getAllocationSize();
-      if (buffer.getAligned()) {
-        address = getAlignedAddress(address, reqAlignBits);
-      }
-      current_alloc++;
-    }
-
-    buffer.setAddress(address);
-    address += buffer.getAllocationSize();
+    layout.push_back({buffer.getAllocationSize(),
+                      buffer.getAligned() ? reqAlignBits / 8 : 1,
+                      buffer.getAddress()});
+  }
+  int64_t highWater = assignSequentialBufferAddresses(layout, address);
+  for (auto [buffer, allocation] : llvm::zip(allBuffers_on_tile, layout)) {
+    assert(allocation.address && "layout assigns every buffer an address");
+    buffer.setAddress(allocation.address.value());
   }
 
   sortBuffersByAddress(allBuffers_on_tile);
 
-  // High-water mark across all buffers, including pre-allocated buffers above
-  // the allocation cursor, so checkAndPrintOverflow reads a correct bound.
-  int64_t highWater = address;
-  if (!allBuffers_on_tile.empty()) {
-    auto &last = allBuffers_on_tile.back();
-    auto lastAddrOpt = last.getAddress();
-    assert(lastAddrOpt.has_value() && "buffer must have address assigned");
-    highWater =
-        std::max<int64_t>(highWater, *lastAddrOpt + last.getAllocationSize());
-  }
-
-  if (!checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) ||
-      !checkAndPrintBufferOverlap(allBuffers_on_tile, tileAlignBitWidth,
-                                  maxVecAlignBits) ||
-      !checkAndPrintOverflow(tile, highWater, maxDataMemorySize, stacksize,
-                             allBuffers_on_tile)) {
-    return false;
-  }
-  return true;
+  return checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) &&
+         checkAndPrintBufferOverlap(allBuffers_on_tile, tileAlignBitWidth,
+                                    maxVecAlignBits) &&
+         checkAndPrintOverflow(tile, highWater, maxDataMemorySize, stacksize,
+                               allBuffers_on_tile);
 }
 
 //===----------------------------------------------------------------------===//
