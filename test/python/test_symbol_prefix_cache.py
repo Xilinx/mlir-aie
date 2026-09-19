@@ -225,4 +225,3 @@ def test_nm_failure_never_runs_objcopy(tmp_path, monkeypatch, tools):
         compile_utils.prefix_symbols_in_object(str(tmp_path / "kernel.o"), "op0_")
     assert calls == ["nm"]
     assert list(tmp_path.iterdir()) == []
-
