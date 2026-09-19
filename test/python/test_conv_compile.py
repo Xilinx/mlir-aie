@@ -84,7 +84,7 @@ def test_convolution_compile_and_bounds(arch, name, dtype, mode, scalar):
         arch,
         "-",
         include_dirs=[str(_ROOT / "third_party/aie_api/include")],
-        compile_args=flags,
+        compile_args=[*flags, "-fno-discard-value-names"],
         inline=True,
     )
     ir = subprocess.run(command, capture_output=True, text=True)
