@@ -62,25 +62,3 @@ module {
     %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_address = 65024 : i32 }
   }
 }
-
-// -----
-
-// Without stack_bank, explicit placement still selects one stack address space.
-// CHECK: error{{.*}}'aie.core' op a 1024-byte stack at 0x7E00 crosses memory banks; explicit stack placement requires the entire stack in one bank
-module {
-  aie.device(npu2) {
-    %t = aie.tile(0, 2)
-    %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_address = 32256 : i32 }
-  }
-}
-
-// -----
-
-// Explicit zero is also a placement hint, unlike an absent address.
-// CHECK: error{{.*}}'aie.core' op a 32768-byte stack at 0x0 crosses memory banks
-module {
-  aie.device(npu2) {
-    %t = aie.tile(0, 2)
-    %c = aie.core(%t) { aie.end } { stack_size = 32768 : i32, stack_address = 0 : i32 }
-  }
-}

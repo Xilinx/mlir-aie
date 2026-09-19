@@ -96,11 +96,17 @@ For example, on npu2, bank B starts at tile-relative offset `0x4000`:
 aie.core(%tile_0_2) { ... } {stack_size = 2048 : i32, stack_bank = 1 : i32, stack_address = 16384 : i32}
 ```
 
-An explicitly placed stack must fit entirely in one bank, stay within local
-memory, and not overlap a buffer or static-data reservation. The address must
-satisfy the stack ABI alignment: 32 bytes on AIE1/AIE2, 64 bytes on
-AIE2P/AIE2PS. Omitting both attributes retains the legacy stack at offset zero,
-including stacks larger than one bank.
+An explicitly placed stack must stay within local memory and not overlap a
+buffer or static-data reservation. The address must satisfy the stack ABI
+alignment: 32 bytes on AIE1/AIE2, 64 bytes on AIE2P/AIE2PS. Omitting both
+attributes retains the legacy stack at offset zero.
+
+A `stack_address` may cross bank boundaries, as the legacy stack always could.
+What such a stack cannot do is claim a bank: `-aie-stack-addrspace` names one,
+so aiecc leaves it at Peano's unrestricted default rather than promise the
+bank-conflict model something untrue. `stack_bank` is the attribute that names
+a bank, and it must hold the whole stack -- a `stack_bank` whose stack runs
+past it is an error, because the two would disagree.
 
 Moving within bank A works with both Peano and Chess. Moving to banks B–D
 through `aiecc` requires Peano compilation and linking, with no separately

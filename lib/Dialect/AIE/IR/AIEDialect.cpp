@@ -2723,14 +2723,6 @@ LogicalResult CoreOp::verify() {
                              << llvm::utohexstr(stackRun.start)
                              << " runs past this tile's local memory ("
                              << localMem << " bytes total)";
-  if (getStackAddress() && bankSize > 0 &&
-      stackRun.start / bankSize != (stackRun.end() - 1) / bankSize)
-    return emitOpError("a ")
-           << stackRun.size << "-byte stack at 0x"
-           << llvm::utohexstr(stackRun.start)
-           << " crosses memory banks; explicit stack placement requires the "
-              "entire stack in one bank. Omit stack_address and stack_bank for "
-              "legacy placement";
   if (getStackAddress() &&
       stackRun.start % targetModel.getCoreStackAlignment() != 0)
     return emitOpError("stack_address must be aligned to ")

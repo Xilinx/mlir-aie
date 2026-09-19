@@ -826,10 +826,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         int64_t bankSize =
             numBanks > 0 ? tm.getLocalMemorySize() / numBanks : 0;
         // An address space names one bank, so it can only describe a stack that
-        // lies inside one. A larger stack spans banks whatever its start, and
-        // claiming a bank for it would tell Peano's bank-conflict model that
-        // every stack access hits that bank when most do not. Say nothing.
-        if (bankSize > 0 && op.getEffectiveStackSize() > bankSize) {
+        // lies inside one. Claiming a bank for a stack that spans two would
+        // tell Peano's bank-conflict model that every stack access hits that
+        // bank when most do not, so say nothing instead.
+        //
+        // Measured across the stack's extent, not its size: a stack smaller
+        // than a bank still spans two when it starts part-way through one. A
+        // `stack_bank` core has no resolved address here -- placement runs
+        // after this -- but the verifier holds that case to a single bank.
+        xilinx::AIE::MemoryRun stackRun = op.getStackRun();
+        bool spansBanks =
+            !op.getStackBank() && bankSize > 0 &&
+            stackRun.start / bankSize != (stackRun.end() - 1) / bankSize;
+        if (spansBanks) {
           out.value = "";
           return mlir::success();
         }
