@@ -15,7 +15,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-// Factory dimensions are constants; raw-source callers keep runtime bounds.
 #ifndef CONV_INPUT_WIDTH
 #define CONV_INPUT_WIDTH runtime_input_width
 #endif
@@ -42,7 +41,8 @@ const int32_t SMIN = 128;
 void conv2dk1_i8_scalar(int8_t *input, int8_t *kernels, int8_t *output,
                         const int32_t runtime_input_width,
                         const int32_t runtime_input_channels,
-                        const int32_t runtime_output_channels, const int scale) {
+                        const int32_t runtime_output_channels,
+                        const int scale) {
   const int32_t input_width = CONV_INPUT_WIDTH;
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;

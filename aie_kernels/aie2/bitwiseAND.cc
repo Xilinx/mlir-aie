@@ -17,7 +17,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-// IRON specializes the bound; raw-source callers retain the runtime ABI.
 #ifndef BITWISE_ELEMS
 #define BITWISE_ELEMS (width * height)
 #endif

@@ -15,7 +15,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-// Factory dimensions are constants; raw-source callers keep runtime bounds.
 #ifndef CONV_INPUT_WIDTH
 #define CONV_INPUT_WIDTH runtime_input_width
 #endif

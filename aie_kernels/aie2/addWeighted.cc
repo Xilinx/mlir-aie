@@ -20,7 +20,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-// IRON specializes the bound; raw-source callers retain the runtime ABI.
 #ifndef ADD_WEIGHTED_ELEMS
 #define ADD_WEIGHTED_ELEMS (width * height)
 #endif

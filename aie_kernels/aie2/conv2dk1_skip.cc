@@ -18,7 +18,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-// Factory dimensions are constants; raw-source callers keep runtime bounds.
 #ifndef CONV_INPUT_WIDTH
 #define CONV_INPUT_WIDTH runtime_input_width
 #endif
@@ -337,14 +336,14 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
             256; // reset to next input_width/32 block. 256 = 32 input * 8 ic
         kernels -=
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
-      }                                // for(int x=0; x<iw_32; x++) {
+      } // for(int x=0; x<iw_32; x++) {
       // input_offset -= (iw_32) * 256; // 8*32, reset beginning of input ptr
       input_offset1 = 0;                    // reset beginning of input ptr
       input_offset2 = 0;                    // reset beginning of input ptr
       kernels += (input_channels / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
-    }                  // for(int oc=0; oc<(output_channels/8); oc++) {
+    } // for(int oc=0; oc<(output_channels/8); oc++) {
 
     out_ptr -= output_channels *
                iw; // output_channels/8*iw_32*8*32 = 256/8*(iw/4/8)*8*32
@@ -584,14 +583,14 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
             256; // reset to next input_width/32 block. 256 = 32 input * 8 ic
         kernels -=
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
-      }                                // for(int x=0; x<iw_32; x++) {
+      } // for(int x=0; x<iw_32; x++) {
       // input_offset -= (iw_32) * 256; // 8*32, reset beginning of input ptr
       input_offset1 = 0;                    // reset beginning of input ptr
       input_offset2 = 0;                    // reset beginning of input ptr
       kernels += (input_channels / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
-    }                  // for(int oc=0; oc<(output_channels/8); oc++) {
+    } // for(int oc=0; oc<(output_channels/8); oc++) {
 
     out_ptr -= output_channels *
                iw; // output_channels/8*iw_32*8*32 = 256/8*(iw/4/8)*8*32

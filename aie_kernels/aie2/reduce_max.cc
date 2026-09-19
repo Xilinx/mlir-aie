@@ -13,7 +13,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-// IRON specializes the bound; raw-source callers retain the runtime ABI.
 #ifndef REDUCE_MAX_ELEMS
 #define REDUCE_MAX_ELEMS input_size
 #endif

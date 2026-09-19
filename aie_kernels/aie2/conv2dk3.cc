@@ -15,7 +15,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-// Factory dimensions are constants; raw-source callers keep runtime bounds.
 #ifndef CONV_INPUT_WIDTH
 #define CONV_INPUT_WIDTH runtime_input_width
 #endif
@@ -47,15 +46,12 @@ const int32_t MAX = 255;
 // conv2d 3x3 - scalar
 // act: int8, wts: int8, out: uint8
 //*****************************************************************************
-void conv2dk3_i8_scalar(int8_t *line0, int8_t *line1, int8_t *line2,
-                        int8_t *wts, uint8_t *output,
-                        const int32_t runtime_input_width,
-                        const int32_t runtime_input_channels,
-                        const int32_t runtime_output_channels,
-                        const int32_t runtime_kernel_width,
-                        const int32_t runtime_kernel_height,
-                        const int32_t check, const int scale,
-                        const int channel_offset) {
+void conv2dk3_i8_scalar(
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, uint8_t *output,
+    const int32_t runtime_input_width, const int32_t runtime_input_channels,
+    const int32_t runtime_output_channels, const int32_t runtime_kernel_width,
+    const int32_t runtime_kernel_height, const int32_t check, const int scale,
+    const int channel_offset) {
   const int32_t input_width = CONV_INPUT_WIDTH;
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
@@ -227,14 +223,12 @@ void conv2dk3_i8_scalar(int8_t *line0, int8_t *line1, int8_t *line2,
 // conv2d 3x3 - scalar
 // act: uint8, wts: int8, out: uint8
 //*****************************************************************************
-void conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2,
-                         int8_t *wts, uint8_t *output,
-                         const int32_t runtime_input_width,
-                         const int32_t runtime_input_channels,
-                         const int32_t runtime_output_channels,
-                         const int32_t runtime_kernel_width,
-                         const int32_t runtime_kernel_height, const int32_t check,
-                         const int scale, const int channel_offset) {
+void conv2dk3_ui8_scalar(
+    uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
+    uint8_t *output, const int32_t runtime_input_width,
+    const int32_t runtime_input_channels, const int32_t runtime_output_channels,
+    const int32_t runtime_kernel_width, const int32_t runtime_kernel_height,
+    const int32_t check, const int scale, const int channel_offset) {
   const int32_t input_width = CONV_INPUT_WIDTH;
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
@@ -410,15 +404,12 @@ void conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 // conv2d 3x3 - vector
 // act: int8, wts: int8, out: uint8
 //*****************************************************************************
-void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
-                        int8_t *wts, uint8_t *output,
-                        const int32_t runtime_input_width,
-                        const int32_t runtime_input_channels,
-                        const int32_t runtime_output_channels,
-                        const int32_t runtime_kernel_width,
-                        const int32_t runtime_kernel_height,
-                        const int32_t check, const int scale,
-                        const int channel_offset) {
+void conv2dk3_i8_vector(
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, uint8_t *output,
+    const int32_t runtime_input_width, const int32_t runtime_input_channels,
+    const int32_t runtime_output_channels, const int32_t runtime_kernel_width,
+    const int32_t runtime_kernel_height, const int32_t check, const int scale,
+    const int channel_offset) {
   const int32_t input_width = CONV_INPUT_WIDTH;
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
@@ -659,10 +650,10 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
                 line[i] += 32; // next_prev = x4..x7(ci0..ci7)
 
                 acc_tmp[x].mac(tmp3.extract<32>(0), wtsVec);
-              }               // for(int x=0; x<8; x++)
+              } // for(int x=0; x<8; x++)
               line[i] -= 320; // (8+2)*32, Reset line buffer ptr to beginning of
                               // line (after first 4)
-            }                 // for(int j=0; j<kernel_width;j++) {
+            } // for(int j=0; j<kernel_width;j++) {
             wtsLine[i] += ((kernel_height - 1) * kernel_width *
                            64);  // Move to next ic/8 position
             line[i] += (iw * 8); // Increment to next ic/8 position (reset at
@@ -670,7 +661,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
 
           } // for(int i=kernel_height_start; i<kernel_height_end; i++) { // 1
             // to 3
-        }   // for(int ic=0; ic<(input_channels/8); ic++) {
+        } // for(int ic=0; ic<(input_channels/8); ic++) {
         for (int x = 0; x < 8; x++) {
           aie::vector<uint8, 32> o1 = acc_tmp[x].to_vector<uint8>(scale);
           aie::store_v(output, o1);
@@ -686,7 +677,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
       output +=
           (iw_32_rem * 32 +
            32); // Shift past remainder output and left section of next oc/8
-    }           //     for(int oc=0; oc<(output_channels/8); oc++) {
+    } //     for(int oc=0; oc<(output_channels/8); oc++) {
 
     // Reset weights and line buffers for last section of middle (or right side
     // it there is no last section)
@@ -741,7 +732,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
             line[i] -=
                 (iw_32_rem + 2) * 32; // Reset line buffer ptr to beginning of
                                       // line (after first 4)
-          }                           //  for(int j=0; j<kernel_width;j++)
+          } //  for(int j=0; j<kernel_width;j++)
           wtsLine[i] += ((kernel_height - 1) * kernel_width *
                          64);  // Move to next ic/8 position
           line[i] += (iw * 8); // Increment to next ic/8 position (reset at end
@@ -845,14 +836,12 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
 // act: uint8, wts: int8, out: uint8
 //*****************************************************************************
 // Takes 3 input lines and computes 1 output line
-void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
-                         int8_t *wts, uint8_t *output,
-                         const int32_t runtime_input_width,
-                         const int32_t runtime_input_channels,
-                         const int32_t runtime_output_channels,
-                         const int32_t runtime_kernel_width,
-                         const int32_t runtime_kernel_height, const int32_t check,
-                         const int scale, const int channel_offset) {
+void conv2dk3_ui8_vector(
+    uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
+    uint8_t *output, const int32_t runtime_input_width,
+    const int32_t runtime_input_channels, const int32_t runtime_output_channels,
+    const int32_t runtime_kernel_width, const int32_t runtime_kernel_height,
+    const int32_t check, const int scale, const int channel_offset) {
   const int32_t input_width = CONV_INPUT_WIDTH;
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
@@ -1121,10 +1110,10 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                 line[i] += 32;
                 tmp1 = aie::shuffle_down(tmp1, j2 * 8);
 
-              }               // for(int x=0; x<8; x++)
+              } // for(int x=0; x<8; x++)
               line[i] -= 320; // (8+2)*32, Reset line buffer ptr to
                               // beginning of line (after first 4)
-            }                 // for(int j=0; j<kernel_width;j++) {
+            } // for(int j=0; j<kernel_width;j++) {
             wtsLine[i] += ((kernel_height - 1) * kernel_width *
                            64);  // Move to next ic/8 position
             line[i] += (iw * 8); // Increment to next ic/8 position (reset
@@ -1132,7 +1121,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
           } // for(int i=kernel_height_start; i<kernel_height_end; i++) { //
             // 1 to 3
-        }   // for(int ic=0; ic<(input_channels/8); ic++) {
+        } // for(int ic=0; ic<(input_channels/8); ic++) {
         AIE_LOOP_RANGE(8, 8)
         AIE_LOOP_UNROLL_FULL
         for (int x = 0; x < 8; x++) {
@@ -1151,7 +1140,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       output +=
           (iw_32_rem * 32 +
            32); // Shift past remainder output and left section of next oc/8
-    }           //     for(int oc=0; oc<(output_channels/8); oc++) {
+    } //     for(int oc=0; oc<(output_channels/8); oc++) {
 
     // Reset weights and line buffers for last section of middle (or right side
     // it there is no last section)

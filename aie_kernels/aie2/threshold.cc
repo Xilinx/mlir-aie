@@ -28,7 +28,6 @@ enum _threshold_type {
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-// IRON specializes the bound; raw-source callers retain the runtime ABI.
 #ifndef THRESHOLD_ELEMS
 #define THRESHOLD_ELEMS (img_height * img_width)
 #endif
