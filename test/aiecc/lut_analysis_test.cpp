@@ -117,6 +117,18 @@ int main(int argc, char **argv) {
   assert(tableAssertions == 0);
   assert(checkBankPlacements(argv[10], duplicateAssertions, base, 4096, 4)
              .empty());
+  // A link can overrun several regions. Each report must be read from its own,
+  // or the shortfall attributed to one region is another's number.
+  llvm::StringRef twoRegions =
+      "ld.lld: error: section '.aie.bank1' will not fit in region 'bank1': "
+      "overflowed by 512 bytes\n"
+      "ld.lld: error: section '.bss' will not fit in region 'data': "
+      "overflowed by 4096 bytes\n";
+  assert(parseLinkOverflowBytes(twoRegions, "bank1") == 512);
+  assert(parseLinkOverflowBytes(twoRegions, "data") == 4096);
+  assert(!parseLinkOverflowBytes(twoRegions, "program"));
+  assert(!parseLinkOverflowBytes("ld.lld: error: undefined symbol: x", "data"));
+
   BankAssertion contradiction{"bank_analysis_anchor", ".aie.bank1", {1}};
   auto violations =
       checkBankPlacements(argv[10], {contradiction}, base, 4096, 4);

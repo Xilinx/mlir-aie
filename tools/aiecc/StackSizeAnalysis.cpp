@@ -1133,14 +1133,25 @@ xilinx::aiecc::readDataSymbolAddresses(llvm::StringRef elfPath,
 }
 
 std::optional<int64_t>
-xilinx::aiecc::parseLinkOverflowBytes(llvm::StringRef log) {
-  size_t pos = log.find("overflowed by ");
+xilinx::aiecc::parseLinkOverflowBytes(llvm::StringRef log,
+                                      llvm::StringRef region) {
+  // Anchored on the region and confined to its own line: a link can overflow
+  // several regions, and reading another one's number here would misreport the
+  // shortfall of whichever the caller asked about.
+  std::string needle = ("will not fit in region '" + region + "'").str();
+  size_t pos = log.find(needle);
   if (pos == llvm::StringRef::npos) {
     return std::nullopt;
   }
+  llvm::StringRef line = log.drop_front(pos).take_until([](char c) {
+    return c == '\n';
+  });
+  size_t at = line.find("overflowed by ");
+  if (at == llvm::StringRef::npos) {
+    return std::nullopt;
+  }
   int64_t bytes = 0;
-  if (log.drop_front(pos + strlen("overflowed by "))
-          .consumeInteger(10, bytes)) {
+  if (line.drop_front(at + strlen("overflowed by ")).consumeInteger(10, bytes)) {
     return std::nullopt;
   }
   return bytes;

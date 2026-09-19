@@ -1151,8 +1151,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                     // Bank sections can shrink the default data region at link
                     // time, so the original region plus overflow is an upper
                     // bound on the reservation needed, not an exact measure.
-                    std::optional<int64_t> over = parseLinkOverflowBytes(log);
-                    if (log.contains("will not fit in region 'data'") && over) {
+                    std::optional<int64_t> over =
+                        parseLinkOverflowBytes(log, "data");
+                    if (over) {
                       int64_t granted = 0;
                       {
                         std::lock_guard<std::mutex> guard(
@@ -1181,12 +1182,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       llvm::StringRef bank =
                           log.substr(at + strlen("will not fit in region '"))
                               .take_while([](char c) { return c != '\''; });
+                      std::optional<int64_t> bankOver =
+                          parseLinkOverflowBytes(log, bank);
                       llvm::errs()
                           << "aiecc: core " << key << ": a static pinned to "
-                          << bank
-                          << " does not fit there. Reduce the pinned data, "
-                             "or move buffers, the stack, or an explicit "
-                             "data_size reservation out of that bank.\n";
+                          << bank << " does not fit there";
+                      if (bankOver) {
+                        llvm::errs() << ", by " << *bankOver << " bytes";
+                      }
+                      // Reaching here means the reservation was wrong rather
+                      // than absent: placement measures each core's objects and
+                      // holds room for them, so the usual causes are a probe
+                      // that could not run and a Chess build, which has no
+                      // reservations to make.
+                      llvm::errs()
+                          << ". Placement reserves what a core's objects "
+                             "measure, so either that measurement was "
+                             "unavailable for this core, or something outside "
+                             "it grew afterwards.\n";
                     }
                     if (log.contains("will not fit in region 'program'")) {
                       llvm::errs()

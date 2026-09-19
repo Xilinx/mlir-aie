@@ -79,7 +79,8 @@ measureBankSectionBytes(llvm::StringRef elfPath, int numBanks);
 // "overflowed by N bytes" report. A failed link writes no ELF, so this report
 // is the only account of what the core needed. Returns nothing when the log
 // carries no such report.
-std::optional<int64_t> parseLinkOverflowBytes(llvm::StringRef log);
+std::optional<int64_t> parseLinkOverflowBytes(llvm::StringRef log,
+                                              llvm::StringRef region);
 
 // Which memory bank a symbol's storage was placed for. `aie::lut<4>` reads its
 // two tables at once and needs them in separate banks.
