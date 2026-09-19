@@ -15,6 +15,7 @@ cannot replace a mapped generation or pin a staging DLL on Windows.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import get_args
@@ -157,6 +158,17 @@ def compile_dispatch_bridge(
             gen_cpp, staging, opt="-O2", includes=[config.runtime_header_path()]
         )
         try:
+            if os.name == "nt":
+                # PE timestamps must not change the hash on identical rebuilds.
+                target = subprocess.run(
+                    [cmd[0], "-dumpmachine"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                cmd.append(
+                    "-Wl,/Brepro" if "msvc" in target else "-Wl,--no-insert-timestamp"
+                )
             subprocess.run(cmd, check=True, capture_output=True, text=True)
         except (OSError, subprocess.CalledProcessError) as e:
             detail = (
@@ -173,3 +185,6 @@ def compile_dispatch_bridge(
         return published
     finally:
         staging.unlink(missing_ok=True)
+        if os.name == "nt":
+            staging.with_suffix(".lib").unlink(missing_ok=True)
+            staging.with_suffix(".exp").unlink(missing_ok=True)

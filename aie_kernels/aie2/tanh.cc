@@ -12,6 +12,10 @@
 
 using namespace aie;
 
+#ifndef TANH_ELEMS
+#define TANH_ELEMS vector_size
+#endif
+
 // LUT-based tanh (aie2 has no native tanh intrinsic), 32 bf16 elems/iter.
 void tanh_bf16_vectorized(bfloat16 *restrict input_vector,
                           bfloat16 *restrict output_vector,
@@ -22,8 +26,7 @@ void tanh_bf16_vectorized(bfloat16 *restrict input_vector,
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
 
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(32)
-  for (int i = 0; i < vector_size; i += 32) {
+  for (int i = 0; i < TANH_ELEMS; i += 32) {
     auto input = *it_in++;
 
     aie::vector<bfloat16, 16> tanh_lo = getTanhBf16(input.extract<16>(0));

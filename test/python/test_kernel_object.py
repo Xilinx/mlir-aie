@@ -63,12 +63,17 @@ def test_sibling_alone_rediscovers_source_owner_after_registry_reset(
     assert len(ExternalFunction._instances) == 1
 
 
-def test_reduce_max_factories_share_object(tmp_path, monkeypatch):
+def test_reduce_max_specializations_do_not_share_objects(tmp_path, monkeypatch):
     from aie.iron.kernels.reduce import compute_max, reduce_max
 
-    first, second = reduce_max(tile_size=256), compute_max()
-    assert first.object_file_name == "reduce_max.cc.o"
-    assert first.object_file is second.object_file
+    first, second, third = (
+        reduce_max(tile_size=16),
+        reduce_max(tile_size=256),
+        compute_max(),
+    )
+    assert len({fn.object_file_name for fn in (first, second, third)}) == 3
+    assert first._symbol_prefix != second._symbol_prefix
+    assert first._symbol_prefix and second._symbol_prefix
     calls = []
 
     def compile_stub(output_path, **kwargs):
@@ -76,9 +81,13 @@ def test_reduce_max_factories_share_object(tmp_path, monkeypatch):
         Path(output_path).write_text("complete")
 
     monkeypatch.setattr(utils, "compile_cxx_core_function", compile_stub)
+    monkeypatch.setattr(utils, "prefix_symbols_in_object", lambda *args: None)
+    monkeypatch.setattr(
+        utils, "_defined_symbols", lambda path: {first.name, second.name}
+    )
     monkeypatch.setenv("AIE_KERNEL_COMPILE_JOBS", "2")
-    utils.compile_external_kernels([first, second], tmp_path, "aie2p")
-    assert len(calls) == 1
+    utils.compile_external_kernels([first, second, third], tmp_path, "aie2p")
+    assert len(calls) == 3
 
 
 def test_prebuilt_object_can_be_shared():

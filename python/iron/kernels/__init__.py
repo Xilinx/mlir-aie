@@ -31,6 +31,7 @@ references. :func:`factories` lists the factory names.
 
 import inspect
 import sys
+from typing import get_type_hints
 
 from aie.iron.kernel import ExternalFunction
 
@@ -323,7 +324,7 @@ __all__ = [
 def factories() -> list[str]:
     """Names of the exported kernel factories, in ``__all__`` order.
 
-    A factory is a function declared to return an ``ExternalFunction``. The
+    A factory returns ``ExternalFunction`` or one of its subclasses. The
     ``*_ref`` references, query helpers such as ``mm_stream_dims`` and the
     contract classes are exported too, so anything that walks the library
     (the contract test, the static-check sweep) reads this rather than
@@ -335,7 +336,8 @@ def factories() -> list[str]:
         if not inspect.isfunction(f):
             return False
         declared = inspect.signature(f).return_annotation
-        # The string form is what a module with postponed annotations declares.
-        return declared is ExternalFunction or declared == ExternalFunction.__name__
+        if isinstance(declared, str):
+            declared = get_type_hints(f).get("return")
+        return inspect.isclass(declared) and issubclass(declared, ExternalFunction)
 
     return [name for name in __all__ if builds_a_kernel(getattr(module, name))]

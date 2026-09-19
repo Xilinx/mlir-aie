@@ -15,14 +15,17 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+#ifndef RELU_ELEMS
+#define RELU_ELEMS TILE_SIZE
+#endif
+
 void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
   const int v_factor = 32;
   v32bfloat16 zeroes = broadcast_zero_bfloat16();
 
   event0();
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(32)
-  for (size_t i = 0; i < TILE_SIZE; i += v_factor) {
+  for (size_t i = 0; i < RELU_ELEMS; i += v_factor) {
     v32bfloat16 input = *(v32bfloat16 *)(a + i);
     v32bfloat16 output = max(input, zeroes);
     *(v32bfloat16 *)(c + i) = output;

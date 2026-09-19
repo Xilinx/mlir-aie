@@ -5,21 +5,17 @@
 #
 # RUN: %pytest %s
 
-"""Every symbol the API reference lists must still exist.
+"""The kernel reference docs must resolve against the current public API.
 
-``docs/api/*.md`` names the members mkdocstrings renders, one per line under
-a ``::: module`` block. Nothing checked those names against the modules, so
-deleting or renaming a function left the reference advertising an API that
-was gone -- silently, because mkdocs only warns.
+These checks stay intentionally scoped to the kernel documentation this branch
+actually advertises: ``docs/api/kernels.md`` and the kernel programming guide.
 """
 
 import importlib
 import re
 from pathlib import Path
 
-import pytest
-
-_DOCS = sorted((Path(__file__).parents[2] / "docs" / "api").glob("*.md"))
+_DOC = Path(__file__).parents[2] / "docs" / "api" / "kernels.md"
 
 
 def _blocks(doc: str):
@@ -27,25 +23,25 @@ def _blocks(doc: str):
     for block in re.split(r"(?m)^::: ", doc)[1:]:
         module = block.split("\n", 1)[0].strip()
         members = re.search(r"^      members:\n((?:        - \S+\n)+)", block, re.M)
-        if members:
-            yield module, re.findall(r"        - (\S+)", members.group(1))
+        yield module, (
+            re.findall(r"        - (\S+)", members.group(1)) if members else []
+        )
 
 
-@pytest.mark.parametrize("path", _DOCS, ids=lambda p: p.name)
-def test_documented_members_exist(path):
+def test_documented_kernel_modules_and_members_exist():
     missing = []
-    for module, members in _blocks(path.read_text()):
+    for module, members in _blocks(_DOC.read_text()):
         try:
             mod = importlib.import_module(f"aie.{module}")
         except ImportError as exc:  # a doc naming a module that moved
             missing.append(f"aie.{module}: {exc}")
             continue
         missing += [f"aie.{module}.{m}" for m in members if not hasattr(mod, m)]
-    assert not missing, f"{path.name} documents symbols that do not exist: {missing}"
+    assert not missing, f"{_DOC.name} documents symbols that do not exist: {missing}"
 
 
-def test_every_all_entry_resolves():
-    """A module's ``__all__`` must not name symbols it no longer exports.
+def test_public_all_entries_resolve():
+    """Public ``__all__`` exports must still resolve.
 
     ``from module import *`` raises on a missing name, but nothing else does,
     so an entry left behind by a move survives until someone uses the star

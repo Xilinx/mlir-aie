@@ -945,7 +945,13 @@ class CompilableDesign:
 
         return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
-    def validate_tensor_args(self, tensor_args: list) -> None:
+    def validate_tensor_args(
+        self,
+        tensor_args: list,
+        *,
+        num_host_bos: int | None = None,
+        implicit_tensor_count: int = 0,
+    ) -> None:
         """Validate that *tensor_args* cover the bits the compiled kernel expects.
 
         Compared in bits, not elements: a host buffer and the design's memref
@@ -959,10 +965,25 @@ class CompilableDesign:
 
         Zero-sized entries are skipped.
 
+        ``implicit_tensor_count`` accounts for trailing trace/control buffers
+        supplied by the runtime, not the caller. ``num_host_bos`` preserves count
+        validation on an in-process kernel-cache hit without recompiling.
+
         No-op when expected sizes are unavailable (e.g. offline compilation
-        or when ``input_with_addresses.mlir`` was not produced).
+        or when ``input_with_addresses.mlir`` was not produced), unless
+        ``num_host_bos`` is known.
         """
-        if not self._expected_tensor_sizes:
+        if num_host_bos is None and self._expected_tensor_sizes is not None:
+            num_host_bos = len(self._expected_tensor_sizes)
+        if num_host_bos is not None:
+            expected_count = num_host_bos - implicit_tensor_count
+            if len(tensor_args) != expected_count:
+                raise RuntimeError(
+                    f"Design {self.generator_name!r} expects {expected_count} "
+                    f"tensor argument(s), but received {len(tensor_args)} "
+                    f"({implicit_tensor_count} buffer(s) supplied by the runtime)."
+                )
+        if self._expected_tensor_sizes is None:
             return
         import numpy as np
 
@@ -1226,7 +1247,7 @@ class CompilableDesign:
         ExternalFunction._instances.clear()
         _EXTERN_CACHE.clear()
 
-        _tensor_placeholders = {
+        _tensor_placeholders: dict[str, _TensorPlaceholder | tuple[()]] = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
         if self.variadic_tensor_param is not None:

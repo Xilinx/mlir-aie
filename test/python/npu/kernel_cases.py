@@ -80,12 +80,41 @@ CASES: list[Case] = [
     Case("passthrough", dict(tile_size=2048), calls=256),
     Case("passthrough", dict(dtype=np.int16), calls=16, smoke=True),
     Case("passthrough", dict(dtype=np.uint8), calls=16, smoke=True),
-    # 96 int32 = 384 bytes = exactly the 6 vector copies passThrough.cc's
-    # loop assumes, so this pins the smallest tile the kernel supports.
-    Case("passthrough", dict(tile_size=96), calls=4, tag="edge-tiny", perf=False),
+    # Four iterations hung with the old runtime-bound minimum-trip promise.
+    Case(
+        "passthrough",
+        dict(tile_size=64),
+        calls=4,
+        tag="edge-tiny",
+        smoke=True,
+        perf=False,
+    ),
+    Case(
+        "passthrough",
+        dict(tile_size=128, dtype=np.int16),
+        calls=4,
+        tag="edge-tiny",
+        perf=False,
+    ),
+    Case(
+        "passthrough",
+        dict(tile_size=256, dtype=np.uint8),
+        calls=4,
+        tag="edge-tiny",
+        perf=False,
+    ),
+    Case("passthrough", dict(tile_size=16), calls=4, tag="edge-one-vector", perf=False),
     Case("scale", dict(dtype=np.int16), calls=16, smoke=True),
     Case("scale", dict(dtype=np.int16), calls=256),
     Case("scale", dict(dtype=np.int32), calls=16, smoke=True),
+    Case("scale", dict(tile_size=64), calls=4, tag="edge-tiny", perf=False),
+    Case(
+        "scale",
+        dict(tile_size=32, dtype=np.int16),
+        calls=4,
+        tag="edge-one-vector",
+        perf=False,
+    ),
     # No int16 overflow case: scale.cc stores acc32 with to_vector(0) and no
     # set_sat, so whether a product beyond int16 wraps or saturates is a core
     # setting the source leaves open (overflow="undefined"); the judge refuses
@@ -108,12 +137,30 @@ CASES: list[Case] = [
     Case("reduce_add", calls=16, smoke=True),
     Case("reduce_add", calls=256),
     Case("reduce_add", calls=1, tag="edge-single", perf=False),
+    Case(
+        "reduce_add",
+        dict(tile_size=64),
+        calls=4,
+        tag="edge-tiny",
+        smoke=True,
+        perf=False,
+    ),
+    Case("reduce_add", dict(tile_size=16), calls=4, tag="edge-one-vector", perf=False),
     Case("reduce_min", calls=16, smoke=True),
     Case("reduce_min", calls=256),
+    Case("reduce_min", dict(tile_size=16), calls=4, tag="edge-one-vector", perf=False),
     Case("reduce_max", calls=16, smoke=True),
     Case("reduce_max", calls=256),
     Case("reduce_max", _bf16, calls=16, smoke=True),
     Case("reduce_max", _bf16, calls=256),
+    Case("reduce_max", dict(tile_size=16), calls=4, tag="edge-one-vector", perf=False),
+    Case(
+        "reduce_max",
+        dict(tile_size=32, dtype=bfloat16),
+        calls=4,
+        tag="edge-one-vector",
+        perf=False,
+    ),
     # activation
     Case("gelu", calls=16, smoke=True),
     Case("gelu", calls=256),
@@ -131,12 +178,23 @@ CASES: list[Case] = [
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     Case("exp2f_vec", calls=16, devices=("npu2",), smoke=True),
     Case("exp2f_vec", calls=256, devices=("npu2",)),
-    # the same kernels reading their element count at run time
+    # Sized kernels retaining their runtime-count ABI.
     Case("add_sized", calls=16, smoke=True, perf=False),
     Case("mul_sized", calls=16, smoke=True, perf=False),
     Case("relu_sized", calls=16, smoke=True, perf=False),
     Case("silu_sized", calls=16, smoke=True, perf=False),
     Case("gelu_sized", calls=16, smoke=True, perf=False),
+    *[
+        Case(
+            name,
+            dict(tile_size=32),
+            calls=4,
+            tag="edge-tiny",
+            smoke=True,
+            perf=False,
+        )
+        for name in ("add_sized", "mul_sized", "relu_sized", "silu_sized", "gelu_sized")
+    ],
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
     Case("axpy", calls=256, scalars=(2.5,), data_cases=IEEE_FLOAT),
@@ -231,6 +289,23 @@ CASES: list[Case] = [
         smoke=True,
         perf=False,
     ),
+    *[
+        Case(
+            "mv",
+            dict(
+                dim_m=4,
+                dim_k=dim_k,
+                input_dtype=bfloat16,
+                output_dtype=bfloat16,
+                vec_size=64,
+            ),
+            calls=4,
+            tag=tag,
+            smoke=True,
+            perf=False,
+        )
+        for dim_k, tag in ((64, "edge-one-chunk"), (128, "edge-two-chunks"))
+    ],
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
@@ -247,8 +322,31 @@ CASES: list[Case] = [
     ),
     Case("bitwise_or", calls=16, smoke=True),
     Case("bitwise_and", calls=16, smoke=True),
+    Case("bitwise_or", dict(line_width=64), calls=4, tag="edge-one-vector", perf=False),
+    Case(
+        "bitwise_and", dict(line_width=64), calls=4, tag="edge-one-vector", perf=False
+    ),
+    *[
+        Case(
+            "threshold",
+            dict(line_width=64),
+            calls=4,
+            scalars=(100, 255, mode),
+            tag=f"edge-one-vector-mode-{mode}",
+            perf=False,
+        )
+        for mode in range(5)
+    ],
     # alpha = beta = 0.5 in Q2.14; gamma = 0, where the kernel's two paths agree.
     Case("add_weighted", calls=16, scalars=(8192, 8192, 0), smoke=True),
+    Case(
+        "add_weighted",
+        dict(line_width=32),
+        calls=4,
+        scalars=(8192, 8192, 0),
+        tag="edge-one-vector",
+        perf=False,
+    ),
     Case("filter2d", calls=16, smoke=True),
     Case("rgba2hue", calls=16, smoke=True),
     # conv: full-range int8 data (the kernels saturate, so `input_limit` only
@@ -439,7 +537,7 @@ CASES += [
             input_dtype=np.int16,
             output_dtype=np.int32,
             b_col_maj=True,
-            c_col_maj=True
+            c_col_maj=True,
         ),
         calls=3,
         smoke=True,

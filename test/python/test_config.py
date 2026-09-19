@@ -69,7 +69,9 @@ def test_host_cxx_skips_peano_on_path(tmp_path, monkeypatch):
     monkeypatch.setattr(config.config, "peano_install_dir", str(peano))
     monkeypatch.delenv("CXX", raising=False)
     monkeypatch.setenv("PATH", os.pathsep.join([str(peano / "bin"), str(host)]))
-    assert config.host_cxx_path() == str(host / config._executable_name("clang++"))
+    assert os.path.samefile(
+        config.host_cxx_path(), host / config._executable_name("clang++")
+    )
 
     monkeypatch.setenv("PATH", str(peano / "bin"))
     with pytest.raises(RuntimeError, match="Could not find a host C\\+\\+ compiler"):

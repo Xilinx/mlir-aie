@@ -130,6 +130,25 @@ def test_factories_lists_every_exported_builder():
     ]
 
 
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        ExternalFunction,
+        kernels.MatrixKernel,
+        "ExternalFunction",
+        "kernels.MatrixKernel",
+    ],
+)
+def test_factories_accept_subclasses_and_postponed_annotations(monkeypatch, annotation):
+    def builder():
+        raise AssertionError("discovery must not construct kernels")
+
+    builder.__annotations__["return"] = annotation
+    monkeypatch.setattr(kernels, "__all__", ["zero"])
+    monkeypatch.setattr(kernels, "zero", builder)
+    assert kernels.factories() == ["zero"]
+
+
 def _first_kwargs(name: str) -> dict:
     """Keyword arguments that build ``name``: none, or its first case's."""
     signature = inspect.signature(getattr(kernels, name))
@@ -208,6 +227,7 @@ def test_contract_coverage_constructs_required_case_arguments(monkeypatch):
 
     monkeypatch.setattr(kernels, "__all__", ["zero"])
     monkeypatch.setattr(kernels, "zero", required)
+    monkeypatch.setattr(sys.modules[__name__], "NOT_JUDGED", {})
     monkeypatch.setitem(CASES, "zero", ({"tile_size": 64}, {}))
     test_contract_coverage_is_explicit()
     assert sizes == [64]
@@ -282,7 +302,8 @@ def test_matrix_design_defaults_to_one_tile(factory):
     fn = factory()
     inputs = kd.sample_inputs(fn)
     ref = fn.expected(inputs)
-    assert ref.shape == (1, kd.elems(fn.arg_types()[fn.contract.out_index]))
+    out_index = fn.contract.out_index
+    assert ref.shape == (1, np.prod(fn.contract.layouts[out_index].shape))
     assert [a.n_elements for a in kd.host_args(fn)][-1] == kd.output_size(fn)
     assert "func.call" in str(kd.design(factory).as_mlir())
 
@@ -630,7 +651,7 @@ def test_designs_for_different_kernels_do_not_share_a_cache_key():
     p3 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])])
     p5 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])])
     assert h(p3) != h(p5)
-    with pytest.raises(ValueError, match="need values at design time"):
+    with pytest.raises(ValueError, match=r"expected 1 param value\(s\)"):
         kd.design(kernels.scale, calls=4, dtype=np.int32)
 
 
@@ -1034,7 +1055,13 @@ def test_mha_binds_its_translation_unit_as_one_object():
         assert sib.name == f"{p}_{symbol}"
         assert sib.object_file is fn.object_file
     # Its own matmul symbols cannot collide with a real mm in one design.
-    mm = kernels.mm(dim_m=64, dim_k=64, dim_n=64, input_dtype=bfloat16)
+    mm = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=64,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+    )
     assert mm.name != fn.name
     # The wrapper is mm.cc's bf16 product with its gate bound open, so it is
     # declared, sampled and judged exactly like mm.
@@ -1042,8 +1069,9 @@ def test_mha_binds_its_translation_unit_as_one_object():
     assert (fn.mac_dims, fn.stream_dims) == (mm.mac_dims, mm.stream_dims)
     assert dict(fn.contract.parameter_bindings)[3].tolist() == [0, 0]
     a, b = kd.sample_inputs(fn, calls=2)
-    assert np.allclose(
-        fn.expected([a, b]), kernels.mm_tile_ref(a, b, dim_m=64, dim_k=64, dim_n=64)
+    assert np.array_equal(
+        fn.expected([a, b]),
+        kernels.mm_tile_ref(a, b, dim_m=64, dim_k=64, dim_n=64).astype(bfloat16),
     )
     assert fn.name in str(kd.design(kernels.mha, calls=2).as_mlir())
     with pytest.raises(ValueError, match="multiple of"):
@@ -1110,7 +1138,7 @@ def test_sibling_symbols_follow_the_parameterization_prefix():
             sib.name.startswith(f"{cp}_")
             and sib.object_file_name == casc.object_file_name
         )
-    # reduce_max / compute_max pin one shared object, so they stay unprefixed.
+    # Only the unspecialized compute_max pins an unprefixed shared object.
     assert not getattr(kernels.compute_max(), "_symbol_prefix", None)
 
 
@@ -1464,8 +1492,9 @@ def test_declared_dtype_combinations_build(name, combo):
     if any(bfp.is_bfp(v) for v in combo.values()):
         return  # block-floating-point operands are not numpy dtypes
     tensor_dts = {
-        np.dtype(kd.shape_dtype(t)[1]) for t in fn.arg_types() if hasattr(t, "__args__")
+        kd.shape_dtype(t)[1] for t in fn.arg_types() if hasattr(t, "__args__")
     }
+    tensor_dts = {np.dtype(dt) for dt in tensor_dts if not bfp.is_bfp(dt)}
     for v in combo.values():
         if isinstance(v, type):  # a dtype, not a shape or a flag
             assert np.dtype(v) in tensor_dts, f"{name}: {v} not among {tensor_dts}"
@@ -1592,60 +1621,70 @@ def test_bf16_exp_clamp_matches_the_kernel_headers():
     assert checked, "no lut_based_ops.h found to check the clamp against"
 
 
-@pytest.mark.parametrize(
-    "tile_size,dtype,reason",
-    [
-        (64, np.int32, "iterations"),  # 256 B: 4 vector copies, below the 6 assumed
-        (128, np.int16, "iterations"),  # 256 B again, via a different dtype
-        (80, np.int32, "iterations"),  # 320 B: 5 copies, still short
-        (100, np.int32, "vector"),  # 400 B: not a whole number of 64-B copies
+_CONSTANT_BOUND_KERNELS = [
+    ("passthrough", np.int32, 16, "tile_size", "PASSTHROUGH_ELEMS", 2),
+    ("passthrough", np.int16, 32, "tile_size", "PASSTHROUGH_ELEMS", 2),
+    ("passthrough", np.uint8, 64, "tile_size", "PASSTHROUGH_ELEMS", 2),
+    ("reduce_add", np.int32, 16, "tile_size", "REDUCE_ADD_ELEMS", 2),
+    ("reduce_min", np.int32, 16, "tile_size", "REDUCE_MIN_ELEMS", 2),
+    ("reduce_max", np.int32, 16, "tile_size", "REDUCE_MAX_ELEMS", 2),
+    ("reduce_max", bfloat16, 32, "tile_size", "REDUCE_MAX_ELEMS", 2),
+    ("scale", np.int16, 32, "tile_size", "SCALE_ELEMS", 3),
+    ("scale", np.int32, 16, "tile_size", "SCALE_ELEMS", 3),
+    *[
+        (name, dtype, width, "line_width", macro, count_arg)
+        for name, macro, count_arg in (
+            ("bitwise_and", "BITWISE_ELEMS", 3),
+            ("bitwise_or", "BITWISE_ELEMS", 3),
+            ("threshold", "THRESHOLD_ELEMS", 2),
+        )
+        for dtype, width in ((np.uint8, 64), (np.int16, 32), (np.int32, 16))
     ],
-)
-def test_passthrough_rejects_tiles_its_loop_cannot_handle(tile_size, dtype, reason):
-    """A tile below passThrough.cc's assumed trip count is refused, not run.
-
-    The loop declares AIE_LOOP_MIN_ITERATION_COUNT(6) and steps by a whole
-    64-byte vector. Violating either is undefined: a 4-iteration tile hangs
-    the core on Phoenix rather than returning wrong data, so the factory has
-    to reject it up front.
-    """
-    with pytest.raises(ValueError, match="passthrough"):
-        kernels.passthrough(tile_size=tile_size, dtype=dtype)
+    ("add_weighted", np.uint8, 32, "line_width", "ADD_WEIGHTED_ELEMS", 3),
+    ("add_weighted", np.int16, 16, "line_width", "ADD_WEIGHTED_ELEMS", 3),
+]
 
 
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+@pytest.mark.parametrize("iterations", [1, 4, 5, 128])
 @pytest.mark.parametrize(
-    "tile_size,dtype",
-    [(96, np.int32), (192, np.int16), (384, np.uint8), (4096, np.int32)],
+    "name,dtype,width,param,macro,count_arg", _CONSTANT_BOUND_KERNELS
 )
-def test_passthrough_accepts_its_smallest_legal_tile(tile_size, dtype):
-    """384 bytes -- exactly 6 vector copies -- is the smallest tile that builds."""
-    assert kernels.passthrough(tile_size=tile_size, dtype=dtype) is not None
+def test_kernel_bounds_are_specialized_without_iteration_promises(
+    arch, iterations, name, dtype, width, param, macro, count_arg
+):
+    set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1())
+    count = width * iterations
+    fn = getattr(kernels, name)(dtype=dtype, **{param: count})
+    assert f"-D{macro}={count}" in fn.compile_flags
+    # Keep the runtime count operand and contract binding for existing designs.
+    assert (count_arg, count) in fn.contract.parameter_bindings
+    assert fn.arg_types()[count_arg] == np.int32
+    src = Path(fn.source_file).read_text()
+    assert f"#ifndef {macro}" in src
+    assert "AIE_LOOP_MIN_ITERATION_COUNT" not in src
+    assert "AIE_LOOP_RANGE" not in src
+    other = getattr(kernels, name)(dtype=dtype, **{param: count + width})
+    assert fn.object_file_name != other.object_file_name
+    assert fn._symbol_prefix != other._symbol_prefix
 
 
+@pytest.mark.parametrize("bad_size", [0, -1, 1, 65])
 @pytest.mark.parametrize(
-    "factory,kwargs",
-    [
-        (kernels.reduce_add, dict(tile_size=64)),  # 4 iterations, min 8
-        (kernels.reduce_min, dict(tile_size=64)),
-        (kernels.reduce_max, dict(tile_size=64)),
-        (kernels.reduce_max, dict(tile_size=128, dtype=bfloat16)),  # 32-lane
-        (kernels.reduce_add, dict(tile_size=100)),  # not a whole vector
-    ],
+    "name,dtype,width,param,macro,count_arg", _CONSTANT_BOUND_KERNELS
 )
-def test_reduce_rejects_tiles_below_its_declared_trip_count(factory, kwargs):
-    """reduce_*.cc declares AIE_LOOP_MIN_ITERATION_COUNT(8); reduce_add hangs below it.
-
-    reduce_max.cc says the same thing as ``assert(input_size / VECTOR_SIZE >=
-    8)``, which the -DNDEBUG build drops -- so the factory is the only place
-    the precondition can still be enforced.
-    """
-    with pytest.raises(ValueError, match="reduce_"):
-        factory(**kwargs)
+def test_constant_bound_vector_kernels_still_require_whole_vectors(
+    bad_size, name, dtype, width, param, macro, count_arg
+):
+    with pytest.raises(ValueError, match="positive|vector"):
+        getattr(kernels, name)(dtype=dtype, **{param: bad_size})
 
 
-def test_reduce_scalar_path_has_no_trip_count_floor():
-    """Only the vectorized path carries the pragma, so the scalar one stays free."""
-    assert kernels.reduce_add(tile_size=64, vectorized=False) is not None
+@pytest.mark.parametrize("name", ["reduce_add", "reduce_min", "reduce_max", "scale"])
+def test_scalar_bounds_are_specialized_without_vector_alignment(name):
+    fn = getattr(kernels, name)(tile_size=3, vectorized=False)
+    macro = f"{name.upper()}_ELEMS"
+    assert f"-D{macro}=3" in fn.compile_flags
 
 
 @pytest.mark.parametrize(

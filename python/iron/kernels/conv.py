@@ -3,7 +3,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Convolution kernel factories: conv2dk1/3/14, bottleneck (bn_*) variants."""
+"""Convolution kernel factories: conv2dk1/3/14, bottleneck (bn_*) variants.
+
+The conv2dk1, conv2dk1_i8, conv2dk1_skip, conv2dk3 and conv2dk14 factories
+specialize their dimensions at compile time. Their runtime dimension arguments
+remain in the ABI and must match the factory dimensions; scales, region checks
+and channel offsets remain runtime values.
+"""
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
@@ -25,6 +31,15 @@ from ._common import (
 def _i32s(n: int) -> list:
     """Return a list of *n* ``np.int32`` types — for trailing scalar conv args."""
     return [np.int32] * n
+
+
+def _conv_dimensions(input_width, input_channels, output_channels):
+    """Specialize loop bounds while retaining the runtime scalar ABI."""
+    return [
+        f"-DCONV_INPUT_WIDTH={input_width}",
+        f"-DCONV_INPUT_CHANNELS={input_channels}",
+        f"-DCONV_OUTPUT_CHANNELS={output_channels}",
+    ]
 
 
 def _requant(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8):
@@ -364,7 +379,8 @@ def conv2dk1(
         func_name,
         _default_source_path("conv2dk1.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
-        compile_flags=flags,
+        compile_flags=flags
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             stack_bytes=2752,  # aiecc measured_stack_size (Peano 22)
             roles=(In, Param, Out, Param, Param, Param, Param),
@@ -422,7 +438,9 @@ def conv2dk3(
         func_name,
         _default_source_path("conv2dk3.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
-        compile_flags=flags,
+        compile_flags=flags
+        + _conv_dimensions(input_width, input_channels, output_channels)
+        + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
             stack_bytes=4736,  # aiecc measured_stack_size (Peano 22)
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
@@ -479,7 +497,8 @@ def conv2dk1_skip(
         func_name,
         _default_source_path("conv2dk1_skip.cc", subdir="aie2"),
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
-        compile_flags=flags,
+        compile_flags=flags
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             stack_bytes=2752,  # aiecc measured_stack_size (Peano 22, uint8)
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
@@ -517,7 +536,8 @@ def conv2dk1_i8(
         "conv2dk1_i8",
         _default_source_path("conv2dk1_i8.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
-        compile_flags=["-DINT8_ACT"],
+        compile_flags=["-DINT8_ACT"]
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             stack_bytes=1504,  # aiecc measured_stack_size
             roles=(In, Param, Out, Param, Param, Param, Param),
@@ -564,6 +584,8 @@ def conv2dk14(
         "conv2dk14_i8",
         _default_source_path("conv2dk14.cc", subdir="aie2p"),
         [in_ty, wt_ty, out_ty, *_i32s(5)],
+        compile_flags=_conv_dimensions(input_width, input_channels, output_channels)
+        + [f"-DCONV_KERNEL_WIDTH={kernel_width}"],
         contract=KernelContract(
             roles=(In, Param, Out, *((Param,) * 5)),
             reference=conv2dk14_ref,

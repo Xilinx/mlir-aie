@@ -174,6 +174,46 @@ def test_path_generator_has_empty_param_lists():
     assert d.scalar_params == []
 
 
+@pytest.mark.parametrize("actual_count", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize("implicit_count", [0, 1, 2])
+@pytest.mark.parametrize("cache_hit", [False, True])
+def test_runtime_tensor_count_matches_compiled_signature(
+    tmp_path, actual_count, implicit_count, cache_hit
+):
+    signature = ["%out: memref<4xi32>", "%a: memref<4xi32>", "%b: memref<4xi32>"]
+    signature += ["%scale: i32"]
+    signature += [f"%trace{i}: memref<1024xi8>" for i in range(implicit_count)]
+    (tmp_path / "input_with_addresses.mlir").write_text(
+        "module { aie.device(npu1) { aie.runtime_sequence("
+        + ", ".join(signature)
+        + ") { } } }"
+    )
+    sizes = parse_dma_sizes(tmp_path)
+    assert sizes == [128] * 3 + [8192] * implicit_count
+    design = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 4})
+    if not cache_hit:
+        design._expected_tensor_sizes = sizes
+    tensors = [np.zeros(4, np.int32) for _ in range(actual_count)]
+    kwargs = dict(num_host_bos=len(sizes), implicit_tensor_count=implicit_count)
+    if actual_count == 3:
+        design.validate_tensor_args(tensors, **kwargs)
+    else:
+        with pytest.raises(
+            RuntimeError, match=f"expects 3 tensor argument.*received {actual_count}"
+        ):
+            design.validate_tensor_args(tensors, **kwargs)
+
+
+def test_runtime_tensor_count_distinguishes_empty_and_unavailable_signature():
+    design = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 0})
+    tensor = np.zeros(1, np.int32)
+    design.validate_tensor_args([tensor])
+    design._expected_tensor_sizes = []
+    design.validate_tensor_args([])
+    with pytest.raises(RuntimeError, match="expects 0 tensor argument"):
+        design.validate_tensor_args([tensor])
+
+
 # ---------------------------------------------------------------------------
 # Construction: paths normalised to Path objects
 # ---------------------------------------------------------------------------

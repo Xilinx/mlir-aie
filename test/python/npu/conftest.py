@@ -13,6 +13,9 @@ import pytest
 # runtime is HRX. Keyed by a substring of the pytest node id -> reason. These
 # are HRX backend gaps worth a follow-up, not test bugs.
 _HRX_UNSUPPORTED = {
+    "test_variadic_tensor_count_checked_before_dispatch[65536]": (
+        "HRX does not support trace capture; the untraced case still runs"
+    ),
     "test_trace_config_without_enable_trace_raises": (
         "HRX rejects any trace_config up front, before the host-buffer argument "
         "validation this test asserts on"
