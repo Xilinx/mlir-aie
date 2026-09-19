@@ -654,6 +654,8 @@ class ExternalFunction(Kernel):
         from aie.utils.verify import Tolerance, Verdict, compare
 
         c = self._require_contract()
+        if c.output_spans_calls:
+            calls = 1  # one tile for the whole sequence
         multiple = len(c.out_indices) > 1
         actuals, references = (got, ref) if multiple else ((got,), (ref,))
         if (

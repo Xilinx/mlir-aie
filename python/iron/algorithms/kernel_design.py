@@ -27,7 +27,7 @@ from aie.iron.buffer import Buffer
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import CascadeFlow, ObjectFifo
 from aie.iron.device import Tile
-from aie.iron.kernels._common import Param, _is_tensor_type
+from aie.iron.kernels._common import CallIndex, Param, _is_tensor_type
 from aie.iron.program import Program
 from aie.iron.runtime import Runtime, TaskGroup
 from aie.iron.worker import Worker
@@ -194,6 +194,7 @@ class _Stage:
         c = self.fn.contract
         ni, no, np_ = len(self.groups), len(self.outs), len(self.buffers)
         n_init = len(self.initializers)
+        spans = c.output_spans_calls
 
         def body(*args):
             f_in, f_out = args[:ni], args[ni : ni + no]
@@ -202,22 +203,38 @@ class _Stage:
             init_kernels = args[ni + no + np_ + 1 : ni + no + np_ + 1 + n_init]
             if self.setter is not None:
                 args[-1]()
-            for _ in range_(calls) if calls > 1 else range(1):
+            outputs = {}
+
+            def acquire_outputs():
+                for i, fifo in zip(self.outs, f_out):
+                    outputs[i] = fifo.acquire(1)
+                for (i, _), initialize in zip(self.initializers, init_kernels):
+                    initialize(outputs[i])
+
+            if spans:
+                acquire_outputs()
+            for call in range_(calls) if calls > 1 else range(1):
                 values = dict(held)
                 values.update(self.bound)
+                values.update(
+                    {i: call for i, v in self.bound.items() if v is CallIndex}
+                )
                 for fifo, group in zip(f_in, self.groups):
                     got = fifo.acquire(len(group))
                     values.update(
                         (i, got if len(group) == 1 else got[j])
                         for j, i in enumerate(group)
                     )
-                for i, fifo in zip(self.outs, f_out):
-                    values[i] = fifo.acquire(1)
-                for (i, _), initialize in zip(self.initializers, init_kernels):
-                    initialize(values[i])
+                if not spans:
+                    acquire_outputs()
+                values.update(outputs)
                 kernel(*(values[i] for i in range(len(c.roles))))
                 for fifo, group in zip(f_in, self.groups):
                     fifo.release(len(group))
+                if not spans:
+                    for fifo in f_out:
+                        fifo.release(1)
+            if spans:
                 for fifo in f_out:
                     fifo.release(1)
 
@@ -259,7 +276,12 @@ def _stage(fn, k, calls, scalars, params):
     if len(params) != len(param_pos):
         raise ValueError(f"{fn.name}: expected {len(param_pos)} param values")
     initializers = [(i, init(fn)) for i, init in c.initializers]
-    if any(r is InOut and i not in dict(initializers) for i, r in enumerate(c.roles)):
+    # An InOut read back on every independent call needs a declared
+    # initializer; one that spans the sequence is the kernel's own to
+    # initialize on its first call.
+    if not c.output_spans_calls and any(
+        r is InOut and i not in dict(initializers) for i, r in enumerate(c.roles)
+    ):
         raise ValueError(f"{fn.name}: every InOut requires a declared initializer")
     setter = c.setup() if c.setup else None
 
@@ -345,7 +367,7 @@ def _build_stream(
         ]
 
     host_types = [host_ty(s, g[0], calls * len(g)) for s in stages for g in s.groups]
-    host_types += [host_ty(get, i, calls) for i in get.outs]
+    host_types += [host_ty(get, i, _output_calls(get.fn, calls)) for i in get.outs]
     fifos_in = [f for s in stages for f in s.fifos_in]
     ni, no = len(fifos_in), len(get.fifos_out)
 
@@ -566,6 +588,11 @@ _STREAM = {
 }
 
 
+def _output_calls(fn, calls):
+    """Return how many output tiles ``calls`` calls produce: one when the output spans them."""
+    return 1 if _contract(fn).output_spans_calls else calls
+
+
 def _host_groups(fn):
     """Every half's input fifo groups, in the order the host tensors take."""
     return [(half, g) for half in _halves(fn) for g in _fifo_plan(half)[0]]
@@ -682,7 +709,7 @@ def host_layout(fn, inputs):
 
 def output_size(fn, *, calls=1, shape=None):
     """Storage elements per output; a tuple for multiple outputs."""
-    calls = _calls(calls, shape)
+    calls = _output_calls(fn, _calls(calls, shape))
     types = fn.arg_types()
     sizes = tuple(
         elems(types[i])
@@ -715,16 +742,18 @@ def host_args(fn, *, calls=1, shape=None):
     """
     calls = _calls(calls, shape)
     result = []
-    entries = [(In, half, g) for half, g in _host_groups(fn)]
-    entries += [(Out, fn, [i]) for i in _contract(fn).out_indices]
-    for direction, half, indices in entries:
+    entries = [(In, half, g, calls) for half, g in _host_groups(fn)]
+    entries += [
+        (Out, fn, [i], _output_calls(fn, calls)) for i in _contract(fn).out_indices
+    ]
+    for direction, half, indices, reps in entries:
         types = half.arg_types()
         i = indices[0]
         dt = shape_dtype(types[i])[1]
         n = elems(types[i])
         if bfp.is_bfp(dt):
             n, dt = n * bfp.BLOCK_BYTES, np.uint8
-        s = (calls, n) if len(indices) == 1 else (calls, len(indices), n)
+        s = (reps, n) if len(indices) == 1 else (reps, len(indices), n)
         result.append(_HostBuffer(direction, s, dt))
     return result
 

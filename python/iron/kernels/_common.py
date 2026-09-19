@@ -35,6 +35,15 @@ class Param:
 _ROLES = (In, Out, InOut, Param)
 
 
+class CallIndex:
+    """Bind a scalar ``Param`` to the 0-based number of the current call.
+
+    ``parameter_bindings=((i, CallIndex),)`` hands argument ``i`` the loop
+    counter of the design's call sequence: a kernel that is called once per
+    row of a map and keys its behaviour on which row this is.
+    """
+
+
 def _is_tensor_type(arg_type):
     return get_origin(arg_type) is np.ndarray
 
@@ -119,9 +128,15 @@ class KernelContract:
         unsupported: Why the builder cannot run this kernel, or ``None``.
         layouts: A :class:`TensorLayout` per argument; ``None`` is identity.
         parameter_bindings: ``(index, value)`` pairs fixing ``Param``
-            operands, counts included; the rest come from the caller.
+            operands, counts included, or :class:`CallIndex` for a scalar
+            that takes the call number; the rest come from the caller.
         initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
             ``factory(fn)`` returns the kernel that initializes the buffer.
+        output_spans_calls: The outputs are one tile for the whole call
+            sequence: acquired before the first call, read back by later
+            ones, released after the last. The kernel initializes them on
+            its first call, so no initializer is needed, and the reference
+            sees every call's inputs and returns that one tile.
         trace_cycles: Whether one event0/event1 pair brackets a whole call
             and nothing else does; False unless audited.
 
@@ -144,6 +159,7 @@ class KernelContract:
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
+    output_spans_calls: bool = False
     trace_cycles: bool = False
 
     def __post_init__(self):
@@ -274,7 +290,9 @@ class KernelContract:
                     raise ValueError(
                         f"argument {i}: tensor parameter must contain {shape} elements"
                     )
-            elif not isinstance(value, (int, float, np.integer, np.floating)):
+            elif value is not CallIndex and not isinstance(
+                value, (int, float, np.integer, np.floating)
+            ):
                 raise ValueError(f"argument {i}: expected scalar parameter")
 
 

@@ -511,6 +511,37 @@ class CallableDesign:
             pdi_path=pdi_path,
         )
 
+    def measure_compile(self, workdir) -> tuple[float, int, int, int]:
+        """Force a rebuild into ``workdir``, time it, and size the artifacts.
+
+        ``compile`` with explicit ``xclbin_path`` and ``inst_path`` bypasses
+        the on-disk cache by contract and keeps its intermediates in
+        ``<stem>.prj/`` next to the xclbin, so nothing about the cache layout
+        has to be guessed or deleted; a cached build this design uses
+        elsewhere is untouched.
+
+        Returns ``(seconds, xclbin_bytes, insts_bytes, sum_core_elf_bytes)``.
+        """
+        import time
+
+        build = Path(workdir) / "compile"
+        build.mkdir(parents=True, exist_ok=True)
+        t0 = time.perf_counter()
+        xclbin, insts = self.compile(
+            xclbin_path=build / "final.xclbin", inst_path=build / "insts.bin"
+        )
+        secs = time.perf_counter() - t0
+        # With --get-core-elfs aiecc writes one ELF per core, each in its own
+        # directory: "elfs_<core>/elfs_<core>.elf".
+        prj = build / "final.prj"
+        elf = (
+            sum(p.stat().st_size for p in prj.glob("elfs_*/*.elf"))
+            if prj.is_dir()
+            else 0
+        )
+        insts_bytes = Path(insts).stat().st_size if insts else 0
+        return secs, Path(xclbin).stat().st_size, insts_bytes, elf
+
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
         """Return one cache-directory PDI, or ``None`` if none is present.
 

@@ -35,6 +35,7 @@ import sys
 from aie.iron.kernel import ExternalFunction
 
 from ._common import (
+    CallIndex,
     KernelContract,
     Param,
     TensorLayout,
@@ -189,6 +190,7 @@ from .vision import (
 from .zero import zero
 
 __all__ = [
+    "CallIndex",
     "KernelContract",
     "MatrixKernel",
     "TensorLayout",

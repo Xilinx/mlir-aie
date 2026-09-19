@@ -132,3 +132,4 @@ transpose/1024x16/bfloat16/subtile=8
 transpose/1024x16/uint32/subtile=8
 transpose/1024x16/uint8/subtile=4
 cascade_mm/64x64x64x4/int16
+bn_conv2dk1_relu_xy_pool_padded/112x7/int8_uint16/input_channels=16/output_channels=64

@@ -460,13 +460,14 @@ without judging them; their numbers are checked through the composed
 [`mobilenet/bottleneck/cascade.py`](../programming_examples/ml/mobilenet/bottleneck/cascade.py)
 design and its MobileNet tests until a pair reference is written.
 
-Two contracts still explain why the builder cannot run them; `design()`
-refuses them with that reason:
+A kernel called once per row of a map, keying on which row this is and
+accumulating into one output, declares that too: `CallIndex` binds a
+scalar `Param` to the call number and `contract.output_spans_calls` keeps
+the output tile across the sequence (`bn_conv2dk1_relu_xy_pool_padded`).
 
-| Factory | Why |
-| --- | --- |
-| `mha` | a multi-core attention dataflow with a running softmax |
-| `bn_conv2dk1_relu_xy_pool_padded` | accumulates across calls through its output, one row per `y_index` |
+One contract still explains why the builder cannot run it, and `design()`
+refuses it with that reason: `mha`, a multi-core attention dataflow with a
+running softmax, is validated through the MHA operator's own tests.
 
 `bn_conv2dk3_dw_out_split` is not a cascade half: it has two observable
 outputs and is supported by the generic builder, with a reference for each

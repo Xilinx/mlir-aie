@@ -129,7 +129,9 @@ the add-a-kernel procedure and the test tiers built on it.
 first, then cycles, wall time and build size, gated by a device preflight
 and a measurement-sanity test. It is an ordinary pytest module, so `-k`
 selects cases and the session's exit status decides whether any numbers are
-written. What it measures with lives here:
+written. Build time and artifact sizes come from
+[`CallableDesign.measure_compile`][iron.CallableDesign], so any design can
+report them; the timing helpers live here:
 
 ::: utils.benchmark
     options:
@@ -140,7 +142,6 @@ written. What it measures with lives here:
         - Preflight
         - run_iters
         - preflight
-        - measure_compile
         - provenance
 
 ## Static checks

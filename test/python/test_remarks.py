@@ -22,7 +22,6 @@ from pathlib import Path
 
 import pytest
 from aie.iron import kernels
-from aie.iron.device import NPU2Col1
 from aie.utils import config
 from aie.utils.compile import remarks
 from aie.utils.compile.remarks import (
@@ -119,10 +118,8 @@ def report(tmp_path) -> StaticReport:
 
 
 @pytest.fixture(autouse=True)
-def _aie2p_device():
-    set_current_device(NPU2Col1())
+def _aie2p_device(npu2_device):
     yield
-    set_current_device(None)
 
 
 def _peano_available() -> bool:

@@ -447,6 +447,16 @@ CASES += [
     Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
     # The GET half names its PUT partner; the builder runs the pair.
     Case("cascade_mm", calls=4, smoke=True, perf=False),
+    # One call per row of the 7x7 map the kernel hard-codes (calls = rows);
+    # scalars: width, in ch, out ch, padded out ch, scale, split, weight index.
+    Case(
+        "bn_conv2dk1_relu_xy_pool_padded",
+        dict(input_channels=16, output_channels=64),
+        calls=7,
+        scalars=(7, 16, 64, 64, 8, 1, 0),
+        smoke=True,
+        perf=False,
+    ),
     Case(
         "mm_bfp",
         _mm_bfp,

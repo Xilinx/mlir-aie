@@ -14,6 +14,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    CallIndex,
     KernelContract,
     Param,
     _conv_act_dtype_info,
@@ -493,15 +494,15 @@ def bn_conv2dk1_relu_xy_pool_padded_ref(
     output_channels,
     output_channels_padd,
     scale,
-    y_index,
     output_split,
     weight_index,
 ):
     """Numpy reference for [`bn_conv2dk1_relu_xy_pool_padded`][iron.kernels.conv.bn_conv2dk1_relu_xy_pool_padded]: 1x1 conv, ReLU, global average pool.
 
-    The kernel is called once per row ``y_index`` of a ``W x W`` feature map
-    and accumulates into its output, so this reference takes the whole map:
-    ``x`` is ``[H][IC/8][W][8]`` ``int8`` (``H`` rows of ``input_width *
+    The kernel is called once per row of a ``W x W`` feature map (its
+    ``y_index`` argument is the call number) and accumulates into one
+    output, so this reference takes the whole map: ``x`` is
+    ``[H][IC/8][W][8]`` ``int8`` (``H`` rows of ``input_width *
     input_channels``), weights ``[OC/8][IC/8][ic8][oc8]`` ``int8``. Per row
     and pixel the 1x1 conv is ``sat_u8(srs_even(sum, scale))``; those are
     summed over the map and divided by **49** -- the kernel hard-codes the
@@ -510,9 +511,7 @@ def bn_conv2dk1_relu_xy_pool_padded_ref(
     select the ``OC / output_split`` channel tile this call computes; the
     returned ``(output_channels_padd,)`` ``uint16`` vector holds that tile,
     zeros for the padding channels ``[OC, OCp)`` and zeros elsewhere.
-    ``y_index`` is accepted for the signature.
     """
-    del y_index
     W, IC, OC, OCp = (
         int(input_width),
         int(input_channels),
@@ -1193,8 +1192,12 @@ def bn_conv2dk1_relu_xy_pool_padded(
         [in_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
         contract=KernelContract(
-            # The output is read back on every row after the first (y_index).
+            # One call per row: y_index is the call number, and the output
+            # is read back on every row after the first, so it is one tile
+            # for the whole map. The kernel zeroes it on row 0 itself.
             roles=(In, Param, InOut, *((Param,) * 8)),
+            parameter_bindings=((8, CallIndex),),
+            output_spans_calls=True,
             reference=bn_conv2dk1_relu_xy_pool_padded_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
@@ -1205,11 +1208,6 @@ def bn_conv2dk1_relu_xy_pool_padded(
                 "rounding at a tie is not pinned",
             ),
             ops_per_call=2 * input_width * input_channels * output_channels,
-            unsupported=(
-                "accumulates across calls through its output (one row per "
-                "y_index); the single-Worker design hands the kernel a fresh "
-                "output tile on every call"
-            ),
         ),
     )
 

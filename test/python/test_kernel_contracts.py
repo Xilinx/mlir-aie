@@ -206,15 +206,10 @@ def _factory(case_id: str):
 
 
 @pytest.fixture(autouse=True)
-def _aie2p_device():
+def _aie2p_device(npu2_device):
     # Factories pick sources and mac_dims from the current device; a few
     # (exp2f_vec, convert_copy) exist only for aie2p.
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU2Col1())
-    try:
-        yield
-    finally:
-        set_current_device(previous)
+    yield
 
 
 def test_every_case_names_an_exported_factory():
@@ -223,9 +218,12 @@ def test_every_case_names_an_exported_factory():
 
 
 def test_device_fixture_restores_previous_device():
+    from conftest import npu2_device
+
     previous = get_current_device(probe_runtime=False)
-    binding = _aie2p_device.__wrapped__()
+    binding = npu2_device.__wrapped__()
     next(binding)
+    assert isinstance(get_current_device(probe_runtime=False), NPU2Col1)
     binding.close()
     assert get_current_device(probe_runtime=False) is previous
 
@@ -567,6 +565,29 @@ def test_bottleneck_cascade_halves_name_each_other(factory):
             fn.halves()
         with pytest.raises(ValueError, match="GET half"):
             kd.design(factory)
+
+
+def test_pooled_conv_spans_its_calls_and_takes_the_row_index():
+    """One call per row, y_index bound to the call number, one output for the map."""
+    fn = kernels.bn_conv2dk1_relu_xy_pool_padded(input_channels=16, output_channels=64)
+    c = fn.contract
+    assert c.unsupported is None and c.output_spans_calls
+    assert dict(c.parameter_bindings)[8] is kernels.CallIndex
+    assert 8 not in c.reference_indices()
+    # Seven rows in, one 64-channel vector out, sized once for the sequence.
+    assert kd.output_size(fn, calls=7) == 64
+    ins, wts, out = kd.host_args(fn, calls=7)
+    assert (ins.shape, wts.direction, out.shape) == ((7, 112), In, (1, 64))
+    x, w = kd.sample_inputs(fn, calls=7)
+    assert x.shape == (7, 112) and w.shape == (16 * 64,)
+    ref = fn.expected([x, w], scalars=(7, 16, 64, 64, 8, 1, 0))
+    assert ref.shape == (64,) and ref.dtype == np.uint16
+    # A sequence-spanning output is judged as one tile whatever calls says.
+    assert fn.judge(ref, ref, calls=7)
+    assert not fn.judge(ref + 1, ref, calls=7)
+    with pytest.raises(ValueError, match="expected scalar parameter"):
+        KernelContract(roles=(In, Out, Param), parameter_bindings=((2, "x"),))
+    KernelContract(roles=(In, Out, Param), parameter_bindings=((2, kernels.CallIndex),))
 
 
 def test_cascade_mm_pair_is_built_and_judged_from_the_get_half():
@@ -1061,7 +1082,7 @@ def test_post_stage_references_follow_the_sources():
     W, C = 7, 8
     x = np.ones((W, W * C), np.int8)
     ident = np.eye(8, dtype=np.int8).ravel()
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, 16, 0, 0, 1, 0)
+    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, 16, 0, 1, 0)
     assert out.dtype == np.uint16 and out.shape == (16,)
     assert out.tolist() == [1] * 8 + [0] * 8
     # A per-pixel value of 2 (x = 2) makes the sum 98 and the average 2.0;
@@ -1070,11 +1091,11 @@ def test_post_stage_references_follow_the_sources():
     # ties-to-even on the integer part -> 0.
     x = np.zeros((W, W * C), np.int8)
     x.reshape(W, W, C)[:, :, 0].flat[:25] = 1
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, C, 0, 0, 1, 0)
+    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, C, 0, 1, 0)
     assert out[0] == 0
     x.reshape(W, W, C)[:, :, 0].flat[:] = 1
     x.reshape(W, W, C)[:, :, 0].flat[:2] = 0  # 47 / 49 = 0.959 -> 1
-    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, C, 0, 0, 1, 0)
+    out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(x, ident, W, C, C, C, 0, 1, 0)
     assert out[0] == 1
     # output_split = 2, weight_index = 1: the call carries the weights of
     # its own 8-channel tile and writes only channels [8, 16).
@@ -1082,7 +1103,7 @@ def test_post_stage_references_follow_the_sources():
     wt = np.zeros((OC // 2 // 8, IC // 8, 8, 8), np.int8)
     wt[0, 1] = np.eye(8, dtype=np.int8)  # tile 1 passes input channels 8..15
     out = kernels.bn_conv2dk1_relu_xy_pool_padded_ref(
-        np.ones((W, W * IC), np.int8), wt.ravel(), W, IC, OC, OC, 0, 0, 2, 1
+        np.ones((W, W * IC), np.int8), wt.ravel(), W, IC, OC, OC, 0, 2, 1
     )
     assert out.tolist() == [0] * 8 + [1] * 8
 

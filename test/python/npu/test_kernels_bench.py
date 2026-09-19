@@ -33,7 +33,7 @@ import numpy as np
 import pytest
 from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
-from aie.utils.benchmark import measure_compile, preflight, provenance, run_iters
+from aie.utils.benchmark import preflight, provenance, run_iters
 from cases import Case, inputs_for
 from kernel_cases import CASES
 
@@ -88,7 +88,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         # object that already exists in its directory, so a shared directory
         # would let one case's leftovers make another's "cold" build look
         # faster than it is.
-        measured["compile"] = measure_compile(design, workdir / case.name)
+        measured["compile"] = design.measure_compile(workdir / case.name)
 
     design(*ins, *outputs)
     got = tuple(o.numpy() for o in outputs)
