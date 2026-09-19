@@ -75,7 +75,7 @@ def _run_case(case, data_case: str, seed: int):
         **case.kwargs,
     )
     ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kd.output_size(fn, calls=case.calls, shape=case.shape)
+    out_n = kd.output_size(fn, calls=case.calls)
     out_dt = fn.output_dtype()
     # The output is poisoned so a kernel that writes nothing cannot pass.
     got = _run(design, fn, inputs, out_n, out_dt)

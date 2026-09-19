@@ -76,7 +76,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     )
 
     ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kd.output_size(fn, calls=case.calls, shape=case.shape)
+    out_n = kd.output_size(fn, calls=case.calls)
     out_dt = fn.output_dtype()
     ins, out = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
     outputs = out if isinstance(out, tuple) else (out,)

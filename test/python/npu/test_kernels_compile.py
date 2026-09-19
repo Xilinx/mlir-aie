@@ -42,7 +42,7 @@ def _distinct_designs():
     for case in CASES:
         if not case.supported_on(_DEVICE):
             continue
-        key = f"{case.factory}{sorted(case.kwargs.items())!r}{case.shape}{case.calls}"
+        key = f"{case.factory}{sorted(case.kwargs.items())!r}{case.calls}"
         if key in seen:
             continue
         seen.add(key)

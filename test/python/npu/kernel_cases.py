@@ -9,7 +9,8 @@ One table, three readers: ``test_kernels_e2e.py`` runs the ``smoke`` cases on
 every pull request and every case x edge-data case x seed under the
 ``extensive`` marker; ``test_kernels_bench.py`` times the ``perf`` cases. What a kernel
 computes, and how close the device must come, is the factory's
-``KernelContract``; a case only says which shape to run.
+``KernelContract``; a case only says which tile to build and how many
+independent calls to make.
 
 Tile sizes are chosen so two sets of tiles (ping-pong) plus the stack fit a
 core's 64 KB: a 64x32x64 matmul tile set is 8 KB + 8 KB + 16 KB of C. The

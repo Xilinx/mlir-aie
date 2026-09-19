@@ -3,12 +3,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""One kernel at one shape: what a test checks and a benchmark times.
+"""One kernel at one tile size: what a test checks and a benchmark times.
 
 A :class:`Case` names a factory, its keyword arguments and the harness
-options (call count or matrix shape, runtime scalars, ``param`` values). What
-the kernel computes stays on the factory's ``KernelContract``; a case only
-says *which* shape to run and which edge data it must survive.
+options (call count, runtime scalars, ``Param`` values). What the kernel
+computes stays on the factory's ``KernelContract``; a case only says *which*
+tile to build, how many independent calls to make, and which edge data it
+must survive.
 
 The case tables themselves live with the tests
 (``test/python/npu/kernel_cases.py``): the device smoke test, the extensive
@@ -55,13 +56,13 @@ def device_for(devices: tuple[str, ...]):
 
 @dataclass
 class Case:
-    """One (kernel, shape) the suite builds, checks and times.
+    """One (kernel, tile, call count) the suite builds, checks and times.
 
-    ``calls`` independent tile invocations of any kernel. ``shape`` is retained
-    for diagnostics of old callers, but whole-problem shapes are rejected by
-    the builder. ``params`` overrides the value
-    of unbound tensor ``Param`` arguments (``scale``'s factor); ``scalars``
-    supplies unbound scalar ``Param`` arguments in ABI order.
+    ``calls`` independent tile invocations of any kernel; the tile itself is
+    fixed by the factory kwargs, since the builder validates kernels one
+    tile at a time and rejects a whole-problem shape. ``params`` overrides
+    the value of unbound tensor ``Param`` arguments (``scale``'s factor);
+    ``scalars`` supplies unbound scalar ``Param`` arguments in ABI order.
     ``devices`` restricts a case to the NPU
     generations whose kernels exist (``("npu2",)``), as IRON's
     ``supported_devices`` marker does; empty means every device.
@@ -72,7 +73,6 @@ class Case:
     factory: str
     kwargs: dict = field(default_factory=dict)
     calls: int = 1
-    shape: tuple | None = None
     scalars: tuple = ()
     params: tuple = ()
     tag: str = ""
@@ -86,7 +86,7 @@ class Case:
             return getattr(kernels, self.factory)(**self.kwargs)
 
     def harness_opts(self) -> dict:
-        return dict(calls=self.calls, shape=self.shape, scalars=self.scalars)
+        return dict(calls=self.calls, scalars=self.scalars)
 
     # Factory kwargs that the dims / dtype segments of the name already encode.
     # skip_dtype is absent on purpose: it types neither the first input nor
@@ -240,18 +240,17 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     """Host inputs for ``case`` under one data case, in contract order."""
     fn = case.fn()
     c = fn.contract
-    inputs = kd.sample_inputs(fn, calls=case.calls, shape=case.shape, rng=rng)
+    inputs = kd.sample_inputs(fn, calls=case.calls, rng=rng)
     tensor_pos = kd._tensor_positions(fn)[0]
     if data_case != "random":
         if c.sample is not None:
             raise ValueError(
                 f"{case.factory}: structured inputs have no '{data_case}' variant"
             )
-        # Edge data is about the streamed inputs; a `param` (scale's factor,
+        # Edge data is about the streamed inputs; a Param (scale's factor,
         # filter2d's kernel) keeps its value, so one design serves every case.
         # Integer extremes stay inside what the kernel's accumulator admits,
         # so "max" tests the datapath, not an overflow the source leaves open.
-        k_total = case.shape[1] if case.shape else None
         inputs = [
             (
                 a
@@ -261,7 +260,7 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
                     a.dtype,
                     rng,
                     data_case,
-                    fn.input_limit(a.dtype, reduction=k_total),
+                    fn.input_limit(a.dtype),
                 )
             )
             for a, i in zip(inputs, tensor_pos)
