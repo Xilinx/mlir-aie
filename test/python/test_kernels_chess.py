@@ -16,6 +16,8 @@ The npu2_device fixture used by the bf16-emulated tests comes from
 conftest.py at this directory level.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from ml_dtypes import bfloat16
@@ -109,7 +111,7 @@ def test_kernels_mm_selects_combo_with_independent_zero(
     zero = ef.contract.initializers[0][1](ef)
     assert zero.use_chess == use_chess
     assert zero.object_file is not ef.object_file
-    assert zero.source_file.endswith("generic/zero.cc")
+    assert Path(zero.source_file).parts[-2:] == ("generic", "zero.cc")
 
 
 def test_external_function_rejects_inline_with_chess():
