@@ -5,26 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @repeatCount {
 // CHECK:   aie.device(npu1) {
-// CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
-// CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_1_3, 0) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_3, 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:     %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
+// CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
+// CHECK-DAG:     %{{.*}}tile_1_3 = aie.tile(1, 3)
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
+// CHECK-DAG:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK-DAG:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK-DAG:     %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK-DAG:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
 // CHECK:     func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:       return
 // CHECK:     }
 // CHECK:     %core_1_2 = aie.core(%{{.*}}tile_1_2) {
-// CHECK:       %c0 = arith.constant 0 : index
-// CHECK:       %c1 = arith.constant 1 : index
-// CHECK:       %c12 = arith.constant 12 : index
+// CHECK-DAG:       %c0 = arith.constant 0 : index
+// CHECK-DAG:       %c1 = arith.constant 1 : index
+// CHECK-DAG:       %c12 = arith.constant 12 : index
 // CHECK:       scf.for %arg0 = %c0 to %c12 step %c1 {
 // CHECK:         aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %{{.*}})
 // CHECK:         func.call @some_work(%[[VAL_3]]) : (memref<16xi32>) -> ()
@@ -72,8 +72,7 @@ module @repeatCount {
       %height = arith.constant 12 : index
 
       scf.for %indexInHeight = %c0 to %height step %c1 {
-         %subview = aie.objectfifo.acquire @of1 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-         %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+         %elem0 = aie.objectfifo.acquire @of1 (Produce, 1) : memref<16xi32>
          func.call @some_work(%elem0) : (memref<16xi32>) -> ()
          aie.objectfifo.release @of1 (Produce, 1)
       }

@@ -130,3 +130,72 @@ module {
     }
   }
 }
+
+
+// -----
+
+// Test 5: AXCACHE — every member of a sliced chain must inherit the template's
+// shim-only attributes. The first chunk is rewritten in place (so it keeps them
+// for free); the rest are freshly built and have to copy them explicitly, or a
+// single logical transfer ends up issuing AXI bursts under two different cache
+// attributes.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=AXCACHE
+
+// AXCACHE-LABEL: @axcache_slice_task_bd
+// AXCACHE:         aie.dma_bd
+// AXCACHE-SAME:        sizes = [1, 1, 1023, 2]
+// AXCACHE-SAME:        axcache = 15 : i32
+// AXCACHE:         aie.next_bd
+// AXCACHE:         aie.dma_bd
+// AXCACHE-SAME:        sizes = [1, 1, 8, 2]
+// AXCACHE-SAME:        axcache = 15 : i32
+// AXCACHE:         aie.end
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @axcache_slice_task_bd(%in: memref<4096xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 2062 sizes = [1, 1, 1031, 2] strides = [0, 0, 3, 1])
+          {burst_length = 0 : i32, axcache = 15 : i32}
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+
+// -----
+
+// Test 6: OOO_FACTOR — oversized out-of-order task BD whose extent factors
+// into hardware-legal dimensions (2046 = 2 x 1023) is rewritten to a single BD
+// that keeps out_of_order_id and packet header.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=OOO-FACTOR
+
+// OOO-FACTOR-LABEL: @factor_ooo_task
+// OOO-FACTOR:         aie.dma_bd
+// OOO-FACTOR-SAME:        sizes = [1, 2, 1023, 2]
+// OOO-FACTOR-SAME:        out_of_order_id = 5
+// OOO-FACTOR-SAME:        packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>
+// OOO-FACTOR-NOT:     aie.next_bd
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @factor_ooo_task(%in: memref<8192xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 4092 sizes = [1, 1, 2046, 2] strides = [0, 0, 3, 1])
+          {burst_length = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>, out_of_order_id = 5 : i32}
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

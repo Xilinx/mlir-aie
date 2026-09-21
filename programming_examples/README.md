@@ -39,4 +39,4 @@ MLIR-based reference designs expressed in the MLIR-AIE dialect intermediate repr
 
 ## [utils](./utils)
 
-Utilty functions leveraged in the programming examples. 
+Utility functions leveraged in the programming examples. 

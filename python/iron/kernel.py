@@ -22,9 +22,78 @@ from .resolvable import Resolvable
 logger = logging.getLogger(__name__)
 
 
+class ObjectFile:
+    """Shared reference to one linkable artifact and its symbol namespace.
+
+    Several MLIR ``func.func`` declarations can link against the same object
+    file while binding different exported symbols from it.  This object keeps
+    the shared metadata in one place and can materialize per-symbol
+    [`Kernel`][iron.Kernel] wrappers with [`bind`][iron.kernel.ObjectFile.bind].
+    """
+
+    def __init__(
+        self,
+        object_file_name: str,
+        *,
+        symbol_prefix: str | None = None,
+        link_with_mode: str | None = None,
+    ) -> None:
+        if not object_file_name:
+            raise ValueError("Object file name cannot be empty.")
+        self._object_file_name = object_file_name
+        self._symbol_prefix = symbol_prefix
+        self._link_with_mode = link_with_mode
+
+    @property
+    def object_file_name(self) -> str:
+        """Filename of the linked artifact."""
+        return self._object_file_name
+
+    @property
+    def symbol_prefix(self) -> str | None:
+        """Optional prefix applied to symbols exported from this object file."""
+        return self._symbol_prefix
+
+    @property
+    def link_with_mode(self) -> str | None:
+        """Default link policy for kernels bound from this object file."""
+        return self._link_with_mode
+
+    def resolve_symbol(self, name: str) -> str:
+        """Return ``name`` qualified into this object's symbol namespace."""
+        if not name:
+            raise ValueError("Kernel name cannot be empty.")
+        return f"{self._symbol_prefix}_{name}" if self._symbol_prefix else name
+
+    def bind(
+        self,
+        name: str,
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        *,
+        link_with_mode: str | None = None,
+        stack_size_override: int | None = None,
+    ) -> "Kernel":
+        """Create a [`Kernel`][iron.Kernel] binding to ``name`` in this object.
+
+        The returned Kernel shares this exact ObjectFile instance, so sibling
+        bindings all refer back to the same underlying artifact metadata.
+        """
+        return Kernel(
+            self.resolve_symbol(name),
+            self,
+            arg_types,
+            link_with_mode=(
+                self._link_with_mode if link_with_mode is None else link_with_mode
+            ),
+            stack_size_override=stack_size_override,
+        )
+
+
 def _is_contiguous_row_major(mr):
-    """True iff ``mr`` is fully-static row-major contiguous at offset 0;
-    required before ``memref.collapse_shape`` (UB on non-contiguous dims)."""
+    """Return True iff ``mr`` is fully-static row-major contiguous at offset 0.
+
+    Required before ``memref.collapse_shape`` (UB on non-contiguous dims).
+    """
     if any(d < 0 for d in mr.shape):
         return False
     try:
@@ -43,13 +112,15 @@ def _is_contiguous_row_major(mr):
 
 
 def _maybe_collapse_to_match(arg, expected_ty):
-    """Bridge an N-D contiguous memref arg to a 1-D kernel signature via
-    ``memref.collapse_shape``. Iron L1 buffers are multi-dim (e.g.
+    """Bridge an N-D contiguous memref arg to a 1-D kernel signature.
+
+    Uses ``memref.collapse_shape``. Iron L1 buffers are multi-dim (e.g.
     ``memref<64x64xi16>``) but ``aie.iron.kernels.X`` helpers declare
     flat 1-D args; without this adapter MLIR rejects the call even though
     bytes line up. Aliases storage — no copy emitted. Returns ``arg``
     unchanged for any case that isn't safely collapsible, so real bugs
-    still surface in MLIR verification."""
+    still surface in MLIR verification.
+    """
     if not isinstance(arg, ir.Value):
         return arg
     arg_ty = arg.type
@@ -92,7 +163,8 @@ class BaseKernel(Resolvable):
         name: str,
         arg_types: list[type[np.ndarray] | np.dtype] | None = None,
     ):
-        """
+        """Construct a BaseKernel.
+
         Args:
             name: Symbol name of the function.
             arg_types: Type signature of the function arguments.  Defaults to None (empty list).
@@ -237,25 +309,45 @@ class Kernel(BaseKernel):
     def __init__(
         self,
         name: str,
-        object_file_name: str,
+        object_file_name: str | ObjectFile,
         arg_types: list[type[np.ndarray] | np.dtype] | None = None,
         *,
         link_with_mode: str | None = None,
+        stack_size_override: int | None = None,
     ) -> None:
-        """
+        """Construct a Kernel backed by a pre-compiled object file.
+
         Args:
             name: Symbol name of the function as it appears in the object file.
             object_file_name: Filename of the pre-compiled object file
-                (e.g. ``"add_one.o"``).  Must be on the linker search path
-                at compile time.
+                (e.g. ``"add_one.o"``), or an [`ObjectFile`][iron.ObjectFile]
+                describing a shared linkable artifact. Must be on the linker
+                search path at compile time.
             arg_types: Type signature of the function arguments.  Defaults to None (empty list).
             link_with_mode: Optional link policy emitted alongside
                 ``link_with``.  ``"merge"`` routes the artifact through aiecc's
                 ``llvm-link`` merge path; None (the default) object-links it.
+            stack_size_override: Declared upper bound, in bytes, on the stack
+                that this kernel's call subtree uses. Set it for recursion, for
+                an indirect call, or for a ``link_with_mode="merge"`` kernel,
+                which aiecc's stack analysis reads as part of the core rather
+                than as a separate object. See
+                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
         """
         super().__init__(name, arg_types)
-        self._object_file_name = object_file_name
+        if isinstance(object_file_name, ObjectFile):
+            self._object_file = object_file_name
+            self._object_file_name = object_file_name.object_file_name
+            if link_with_mode is None:
+                link_with_mode = object_file_name.link_with_mode
+        else:
+            self._object_file = ObjectFile(
+                object_file_name,
+                link_with_mode=link_with_mode,
+            )
+            self._object_file_name = object_file_name
         self._link_with_mode = link_with_mode
+        self._stack_size_override = stack_size_override
 
     @property
     def object_file_name(self) -> str:
@@ -263,9 +355,25 @@ class Kernel(BaseKernel):
         return self._object_file_name
 
     @property
+    def object_file(self) -> ObjectFile:
+        """Shared object-file metadata for this kernel binding."""
+        return self._object_file
+
+    @property
     def link_with_mode(self) -> str | None:
         """Link policy emitted with ``link_with``, or None for object linking."""
         return self._link_with_mode
+
+    @property
+    def stack_size_override(self) -> int | None:
+        """Declared upper bound on the stack that this kernel's call subtree uses.
+
+        With ``None``, aiecc's analysis computes the bound. An explicit value
+        replaces that computed bound, even when it is smaller: it is a
+        declaration, and ``0`` is legal. See
+        [Core Data Memory](../../programming_guide/core_data_memory.md).
+        """
+        return self._stack_size_override
 
     def resolve(
         self,
@@ -278,6 +386,7 @@ class Kernel(BaseKernel):
                 inputs=self._arg_types,
                 link_with=self._object_file_name,
                 link_with_mode=self._link_with_mode,
+                stack_size_override=self._stack_size_override,
             )
 
 
@@ -318,8 +427,10 @@ class ExternalFunction(Kernel):
         symbol_prefix: str | None = None,
         use_chess: bool = False,
         inline: bool = False,
+        stack_size_override: int | None = None,
     ) -> None:
-        """
+        """Construct an ExternalFunction compiled from C/C++ source at JIT time.
+
         Args:
             name: Symbol name of the function as it will appear in the object
                 file.
@@ -356,6 +467,12 @@ class ExternalFunction(Kernel):
                 object-linking a separate ``.o``. Removes the ``func.call``
                 boundary and the separate object. Peano path only (the
                 Chess/xchesscc toolchain cannot llvm-link).
+            stack_size_override: Declared upper bound, in bytes, on the stack
+                that this kernel's call subtree uses. See
+                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
+                With ``inline=True``, the merged kernel has no separate object,
+                so this bound is the one input aiecc's stack analysis reads for
+                this kernel.
         """
         if inline and use_chess:
             raise ValueError(
@@ -401,6 +518,7 @@ class ExternalFunction(Kernel):
             object_file_name,
             arg_types,
             link_with_mode="merge" if inline else None,
+            stack_size_override=stack_size_override,
         )
 
         if source_file is not None:
@@ -416,6 +534,7 @@ class ExternalFunction(Kernel):
         self._compile_flags = compile_flags if compile_flags is not None else []
         self._use_chess = use_chess
         self._compiled = False
+        self._compiled_dir = None
         self._cached_digest: str | None = None
 
         # Two same-name EFs with default object_file_name would collide on the
@@ -445,6 +564,11 @@ class ExternalFunction(Kernel):
                 )
                 self._object_file_name = object_file_name
                 break
+        self._object_file = ObjectFile(
+            self._object_file_name,
+            symbol_prefix=self._symbol_prefix,
+            link_with_mode=self._link_with_mode,
+        )
         ExternalFunction._instances.add(self)
 
     def __call__(self, *args, **kwargs):

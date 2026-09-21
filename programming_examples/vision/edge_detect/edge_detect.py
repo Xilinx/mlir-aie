@@ -15,9 +15,8 @@ map with the original RGBA input (forwarded via ``inOF_L2L1``).
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -31,14 +30,14 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit
 def edge_detect(
     in_tensor: In,
     _b_unused: In,
@@ -74,7 +73,7 @@ def edge_detect(
         ObjectFifo(line_ty, depth=intermediate_depths[i], name=f"OF_{i + 2}to{i + 3}")
         for i in range(3)
     ]
-    of_local = ObjectFifo(line_bytes_ty, depth=1, name="OF_local")
+    rgba_line = Buffer(line_bytes_ty, name="rgba_line")
 
     # Laplacian edge-detect kernel: cross stencil with -16384 center, 4096 edges.
     v0, v1, v_minus4 = 0, 4096, -16384
@@ -183,25 +182,21 @@ def edge_detect(
     def gray2rgba_add_weight_fn(
         of_in,
         of_in2,
-        of_out_self,
-        of_in_self,
+        rgba_line,
         of_out,
         gray2rgba_line,
         add_weighted_line,
     ):
         elem_in = of_in.acquire(1)
-        elem_out = of_out_self.acquire(1)
-        gray2rgba_line(elem_in, elem_out, line_width)
+        gray2rgba_line(elem_in, rgba_line, line_width)
         of_in.release(1)
-        of_out_self.release(1)
 
-        elem_in1 = of_in_self.acquire(1)
         elem_in2 = of_in2.acquire(1)
         elem_out2 = of_out.acquire(1)
 
         alpha, beta, gamma = 16384, 16384, 0
         add_weighted_line(
-            elem_in1,
+            rgba_line,
             elem_in2,
             elem_out2,
             line_width_in_bytes,
@@ -209,7 +204,6 @@ def edge_detect(
             beta,
             gamma,
         )
-        of_in_self.release(1)
         of_in2.release(1)
         of_out.release(1)
 
@@ -219,8 +213,7 @@ def edge_detect(
             [
                 of_intermediates[2].cons(),
                 in_of_l2l1.cons(),
-                of_local.prod(),
-                of_local.cons(),
+                rgba_line,
                 out_of_l1l2.prod(),
                 gray2rgba_line_kernel,
                 add_weighted_line_kernel,
@@ -246,7 +239,7 @@ def edge_detect(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Edge Detect")
-    add_compile_args(p)
+    add_compile_args(p, with_emit_mlir=True)
     p.add_argument("-W", "--width", type=int, default=1920)
     p.add_argument("-H", "--height", type=int, default=1080)
     return p

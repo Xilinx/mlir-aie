@@ -31,8 +31,12 @@
 
 // LD02: MEMORY
 // LD02-NEXT: {
-// LD02-NEXT:    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
-// LD02-NEXT:    data (!RX) : ORIGIN = 0x74000, LENGTH = 0x4000
+// LD02-NEXT:    program (RX) : ORIGIN = 0, LENGTH = 0x4000
+// LD02-NEXT:    data (!RX) : ORIGIN = [[DATA:MAX\(0x74000, .*SIZEOF\(\.aie.bank1\).*\)]], LENGTH = 0x78000 - [[DATA]]
+// LD02-NEXT:    bank0 (!RX) : ORIGIN = 0x70400, LENGTH = 0x1C00
+// LD02-NEXT:    bank1 (!RX) : ORIGIN = 0x74000, LENGTH = 0x4000
+// LD02-NEXT:    bank2 (!RX) : ORIGIN = 0x78000, LENGTH = 0x0
+// LD02-NEXT:    bank3 (!RX) : ORIGIN = 0x7C000, LENGTH = 0x0
 // LD02-NEXT: }
 
 module @test_mmap_data_region_gap {

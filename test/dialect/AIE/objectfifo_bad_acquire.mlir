@@ -15,12 +15,12 @@ aie.device(xcve2302) {
 
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-   %subview = aie.objectfifo.acquire @of_0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+   %subview_obj0 = aie.objectfifo.acquire @of_0 (Produce, 1) : memref<16xi32>
 }
 
 // -----
 
-// CHECK: 'aie.objectfifo.acquire' op ObjectFifo element and ObjectFifoSubview element must match.
+// CHECK: 'aie.objectfifo.acquire' op acquired object type 'memref<2x2xi32>' does not match the objectFifo's 'memref<16xi32>'
 
 aie.device(xcve2302) {
    %tile12 = aie.tile(1, 2)
@@ -29,7 +29,7 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core12 = aie.core(%tile12) {
-      %subview = aie.objectfifo.acquire @of_0 (Produce, 1) : !aie.objectfifosubview<memref<2x2xi32>>
+      %subview_obj0 = aie.objectfifo.acquire @of_0 (Produce, 1) : memref<2x2xi32>
          
       aie.end
    }
@@ -46,7 +46,7 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core23 = aie.core(%tile23) {
-      %subview = aie.objectfifo.acquire @of_0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+      %subview_obj0 = aie.objectfifo.acquire @of_0 (Produce, 1) : memref<16xi32>
          
       aie.end
    }
@@ -63,8 +63,44 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core12 = aie.core(%tile12) {
-      %subview = aie.objectfifo.acquire @of_0 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+      %subview_obj0 = aie.objectfifo.acquire @of_0 (Consume, 1) : memref<16xi32>
          
+      aie.end
+   }
+}
+
+// -----
+
+// CHECK: 'aie.objectfifo.acquire' op acquires 3 objects from an objectFifo that holds 2
+
+aie.device(xcve2302) {
+   %tile12 = aie.tile(1, 2)
+   %tile23 = aie.tile(2, 3)
+
+   aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+   %core23 = aie.core(%tile23) {
+      %obj0, %obj1, %obj2 = aie.objectfifo.acquire @of_0 (Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
+
+      aie.end
+   }
+}
+
+// -----
+
+// A fifo may state a depth per endpoint; the consumer's own depth is the bound.
+
+// CHECK: 'aie.objectfifo.acquire' op acquires 4 objects from an objectFifo that holds 3
+
+aie.device(xcve2302) {
+   %tile12 = aie.tile(1, 2)
+   %tile23 = aie.tile(2, 3)
+
+   aie.objectfifo @of_0 (%tile12, {%tile23}, [2, 3]) : !aie.objectfifo<memref<16xi32>>
+
+   %core23 = aie.core(%tile23) {
+      %obj0, %obj1, %obj2, %obj3 = aie.objectfifo.acquire @of_0 (Consume, 4) : memref<16xi32>, memref<16xi32>, memref<16xi32>, memref<16xi32>
+
       aie.end
    }
 }

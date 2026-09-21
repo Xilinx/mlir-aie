@@ -7,5 +7,6 @@
 #define AIE_VERSION_H
 
 #define AIE_GIT_COMMIT "@AIE_GIT_COMMIT@"
+#define AIE_PEANO_VERSION "@AIE_PEANO_VERSION@"
 
 #endif

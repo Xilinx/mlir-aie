@@ -47,12 +47,13 @@ init / bn0 (the unique 2-layer skip block) / post_l1 / post_l2 — blocks for
 which no per-bn brevitas fixture exists in this repo.
 """
 
-import os
 import json
+import os
 
 import numpy as np
 
-from .network_spec import NETWORK, block as nsblock
+from .network_spec import NETWORK
+from .network_spec import block as nsblock
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +359,6 @@ def _run_regular_block(blk, x, sf, data_dir):
     """
     name = blk.name
     sf_blk = sf[name.upper()]
-    x_in = x
 
     # Slice + decode weights per layer.
     ws = _load_block_weights(blk, data_dir)
@@ -563,6 +563,7 @@ def _main():
     inp = _load_input_image(data_dir, in_h, in_w, in_c)
     print(f"Input: shape={inp.shape}, range=[{inp.min()}, {inp.max()}]\n")
     out, inter = run(inp, data_dir, scales, return_intermediates=True)
+    assert isinstance(inter, dict)
     print(f"\nFinal: shape={out.shape}, dtype={out.dtype}")
 
     # Compare against both references: brevitas golden + actual AIE output.

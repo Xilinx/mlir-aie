@@ -48,7 +48,7 @@ using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-llvm::json::Value attrToJSON(Attribute &attr) {
+static llvm::json::Value attrToJSON(Attribute &attr) {
   if (auto a = llvm::dyn_cast<StringAttr>(attr))
     return {a.getValue().str()};
 
@@ -99,7 +99,7 @@ static void registerDialects(DialectRegistry &registry) {
 
 // Output the buffer map for the given buffer operations, with the given offset.
 // The offset is different depending on where the buffers are accessed from.
-void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
+static void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
@@ -160,12 +160,18 @@ void registerAIETranslations() {
   static llvm::cl::opt<bool> npuFoldDDRAddrOffset(
       "aie-npu-fold-ddr-addr-offset", llvm::cl::init(true),
       llvm::cl::desc(
-          "For aie-npu-to-binary: fold the AIE DDR-aperture offset into the "
-          "arg_plus of DDR address patches for host arguments beyond the "
-          "firmware-translated set. Required for the xclbin + "
-          "instruction-buffer "
-          "runtime; must be false for the full-ELF (xrt.ext.kernel) runtime, "
-          "which translates all host buffer addresses itself."));
+          "For aie-npu-to-binary and aie-npu-to-cpp: fold the AIE "
+          "DDR-aperture offset into the arg_plus of DDR address patches for "
+          "host arguments beyond the firmware-translated set. Required for "
+          "the xclbin + instruction-buffer runtime; must be false for the "
+          "full-ELF (xrt.ext.kernel) runtime and for HRX, which translate "
+          "every host buffer address themselves."));
+  static llvm::cl::opt<bool> npuEmitDispatchShim(
+      "aie-npu-emit-dispatch-shim", llvm::cl::init(false),
+      llvm::cl::desc(
+          "For aie-npu-to-cpp: also emit the extern \"C\" dispatch_abi() and "
+          "dispatch_generate() entry points the JIT dispatch bridge loads via "
+          "ctypes. Requires exactly one aie.runtime_sequence."));
   static llvm::cl::opt<std::string> deviceName(
       "aie-device-name", llvm::cl::init(""),
       llvm::cl::desc("Specify which device to translate"));
@@ -409,7 +415,8 @@ void registerAIETranslations() {
       "aie-npu-to-cpp",
       "Translate npu instructions to a C++ TXN-builder function",
       [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateNpuToCpp(module, output);
+        return AIETranslateNpuToCpp(module, output, npuFoldDDRAddrOffset,
+                                    npuEmitDispatchShim);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationCtrlPkt(

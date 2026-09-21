@@ -10,27 +10,32 @@ problem dimensions M/K/N instead of Python-unrolled ``TensorTiler2D`` taps. The
 DMAs use ``fifo.fill``/``fifo.drain`` with runtime-valued sizes / strides /
 offsets, so a single body serves both lowerings.
 
-One design, two lowerings, selected by whether M/K/N are bound:
+One design, two lowerings, selected by explicit specialization:
 
-* **static** — pass Python ints for M/K/N. The ``range_`` bounds are constant, so
+* **static** — call ``specialize(M=..., K=..., N=...)``. The bounds are constant, so
   ``aie-unroll-runtime-sequence-loops`` flattens the loops and everything folds
   to the same BDs the ``TensorTiler2D`` version emits (binary TXN path).
-* **dynamic** — pass M/K/N as runtime ``i32`` arguments. The ``scf.for`` loops
+* **dynamic** — bind compile-time K, and pass M/N at execution time. The ``scf.for`` loops
   survive to the EmitC path (``--aie-npu-to-cpp``), so one xclbin runs many
-  shapes; the C++ builder assembles the TXN per call.
+  shapes; the C++ builder assembles the TXN per call. K is fixed because the
+  workers' reduction depth is compiled into their programs.
 
 The BD size/stride/offset formulas match the explicit-math form of the design
 (see the module docstring in ``whole_array.py`` for the tiling picture).
 """
 
 import argparse
-import sys
-
-import numpy as np
 
 import aie.iron as iron
+import numpy as np
+from aie.extras.dialects import arith
+from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
+    CompileTime,
+    DispatchTime,
+    In,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     TaskGroup,
@@ -40,14 +45,12 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import from_name
-from aie.extras.dialects import arith
-from aie.helpers.util import np_dtype_to_mlir_type
+from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_close_with_benchmark
-from aie.utils.benchmark import run_iters
 
-# Fixed tiling constants (compile-time). M/K/N are the runtime problem dims.
+# Fixed tiling constants (compile-time).
 N_AIE_ROWS = 4
 
 
@@ -55,15 +58,48 @@ def _device_for(dev_str, n_aie_cols):
     return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
 
 
-def _build_design(
-    dev, M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, dynamic=True
+@iron.jit
+def whole_array_dynamic(
+    A: In,
+    B: In,
+    C: Out,
+    *,
+    M: DispatchTime[np.int32],
+    N: DispatchTime[np.int32],
+    K: CompileTime[int],
+    A_elements: CompileTime[int],
+    B_elements: CompileTime[int],
+    C_elements: CompileTime[int],
+    m: CompileTime[int] = 64,
+    k: CompileTime[int] = 64,
+    n: CompileTime[int] = 32,
+    n_aie_cols: CompileTime[int] = 4,
+    dtype_in_str: CompileTime[str] = "i16",
+    dtype_out_str: CompileTime[str] = "i16",
 ):
-    """Build the whole-array matmul with a range_-based runtime sequence.
+    """One generator: prebind M/N for static lowering, pass them per call otherwise.
 
-    dynamic=True  -> M/K/N are runtime i32 args (scf survives, EmitC path).
-    dynamic=False -> M/K/N fold to constants (loops unroll, binary path).
-    The same runtime-sequence body is used for both.
+    A_elements/B_elements/C_elements describe physical host-buffer capacities,
+    not additional problem dimensions. In/Out tensors are execution-time values,
+    so their allocation sizes must be supplied separately for MLIR generation.
+    K is compile-time because the workers' reduction depth is fixed. M/N can vary
+    within those capacities, using packed prefixes of the host buffers.
     """
+    if any(size <= 0 for size in (A_elements, B_elements, C_elements)):
+        raise ValueError("Host-buffer element capacities must be positive.")
+    if K <= 0 or K % k:
+        raise ValueError("K must be positive and divisible by k.")
+    if isinstance(M, (int, np.integer)) and not (
+        0 < M and int(M) * int(K) <= A_elements and M % (m * N_AIE_ROWS) == 0
+    ):
+        raise ValueError("M must fit the capacity and be divisible by m * N_AIE_ROWS.")
+    if isinstance(N, (int, np.integer)) and not (
+        0 < N and int(K) * int(N) <= B_elements and N % (n * n_aie_cols) == 0
+    ):
+        raise ValueError("N must fit the capacity and be divisible by n * n_aie_cols.")
+    if isinstance(M, (int, np.integer)) and isinstance(N, (int, np.integer)):
+        if int(M) * int(N) > C_elements:
+            raise ValueError("M * N must fit the output buffer capacity.")
     dtype_in = str_to_dtype(dtype_in_str)
     dtype_out = str_to_dtype(dtype_out_str)
 
@@ -83,9 +119,9 @@ def _build_design(
 
     # L3 host tensors are flat (the runtime sequence indexes them via BD
     # sizes/strides). Max-capacity sized so one xclbin serves many shapes.
-    A_ty = np.ndarray[(M * K,), np.dtype[dtype_in]]
-    B_ty = np.ndarray[(K * N,), np.dtype[dtype_in]]
-    C_ty = np.ndarray[(M * N,), np.dtype[dtype_out]]
+    A_ty = np.ndarray[(A_elements,), np.dtype[dtype_in]]
+    B_ty = np.ndarray[(B_elements,), np.dtype[dtype_in]]
+    C_ty = np.ndarray[(C_elements,), np.dtype[dtype_out]]
     # A L2 buffer carries one (m x k) tile per compute row; per column a shim
     # feeds all n_aie_rows rows (A is broadcast to every column), split into
     # per-row L1 tiles.
@@ -164,7 +200,7 @@ def _build_design(
     def core_fn(in_a, in_b, out_c, zero, matmul):
         elem_out = out_c.acquire(1)
         zero(elem_out)
-        for _ in range_(K // k):
+        for _ in range_(int(K) // k):
             elem_in_a = in_a.acquire(1)
             elem_in_b = in_b.acquire(1)
             matmul(elem_in_a, elem_in_b, elem_out)
@@ -191,9 +227,10 @@ def _build_design(
 
     # --- Runtime sequence: range_ + fill/drain, one body for both lowerings ---
     # The body's M/K/N are declared as inputs to Runtime(seq, [...]):
-    #   dynamic=True : passed as np.int32 types -> runtime i32 block args, so the
+    # K is always constant; only M/N can remain runtime inputs.
+    #   unbound: passed as symbolic parameters -> runtime i32 block args, so the
     #                  scf.for survives to the EmitC path; one xclbin, many shapes.
-    #   dynamic=False: passed as the Python ints M/K/N -> folded arith.constant, so
+    #   specialized: passed as Python ints -> folded arith.constant, so
     #                  the range_ bounds are constant, aie-unroll-runtime-sequence-
     #                  loops flattens the loops, and everything folds to the static
     #                  binary path.
@@ -278,62 +315,23 @@ def _build_design(
 
                 tg.finish()
 
-    # dynamic -> declare M/K/N as runtime i32 types; static -> pass the ints.
-    mkn = [np.int32, np.int32, np.int32] if dynamic else [M, K, N]
+    # dynamic -> the three runtime scalars (i32 block args); static -> the ints,
+    # which fold to arith.constant so the range_ bounds are compile-time.
     # fifos the body drives, one prod/cons handle per column, passed as fn_args.
     A_prods = [f.prod() for f in A_l3l2]
     B_prods = [f.prod() for f in B_l3l2]
     C_conses = [f.cons() for f in C_l2l3]
     rt = Runtime(
         seq,
-        [A_ty, B_ty, C_ty, *mkn, A_prods, B_prods, C_conses],
+        [A_ty, B_ty, C_ty, M, K, N, A_prods, B_prods, C_conses],
     )
 
-    return Program(dev, rt, workers=workers).resolve_program()
-
-
-# Static @iron.jit entry: M/K/N are CompileTime, so the range_ loops unroll and
-# the design compiles to the binary path (recompiles per shape). This is the
-# runnable-on-HW form today; the dynamic (runtime-M/K/N) form lowers to a C++
-# TXN builder (verified at the MLIR level) and awaits an end-to-end dynamic
-# dispatch driver.
-from aie.iron import CompileTime, In, Out  # noqa: E402
-
-
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
-def whole_array_dynamic(
-    A: In,
-    B: In,
-    C: Out,
-    *,
-    M: CompileTime[int],
-    K: CompileTime[int],
-    N: CompileTime[int],
-    m: CompileTime[int],
-    k: CompileTime[int],
-    n: CompileTime[int],
-    n_aie_cols: CompileTime[int],
-    dtype_in_str: CompileTime[str],
-    dtype_out_str: CompileTime[str],
-):
-    return _build_design(
-        iron.get_current_device(),
-        M,
-        K,
-        N,
-        m,
-        k,
-        n,
-        n_aie_cols,
-        dtype_in_str,
-        dtype_out_str,
-        dynamic=False,
-    )
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="Whole-array matmul (dynamic runtime seq)")
-    add_compile_args(p, short_dev=None)
+    add_compile_args(p, short_dev=None, with_emit_mlir=True)
     p.add_argument("-M", type=int, default=512)
     p.add_argument("-K", type=int, default=512)
     p.add_argument("-N", type=int, default=512)
@@ -343,15 +341,6 @@ def _make_argparser():
     p.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
     p.add_argument("--dtype_in", type=str, choices=["i16"], default="i16")
     p.add_argument("--dtype_out", type=str, choices=["i16", "i32"], default="i16")
-    p.add_argument(
-        "-o",
-        "--emit-dynamic-mlir",
-        type=str,
-        default=None,
-        help="Write the dynamic (runtime M/K/N) MLIR to this file and exit. "
-        "aiecc consumes it to build the xclbin for end-to-end HW dispatch "
-        "(the C++ TXN builder path, no @iron.jit).",
-    )
     add_benchmark_args(p)
     return p
 
@@ -372,19 +361,10 @@ def _run_and_verify(opts):
     C_t = iron.zeros((opts.M, opts.N), dtype=dtype_out, device="npu")
 
     bench = run_iters(
-        whole_array_dynamic,
+        whole_array_dynamic.specialize(**_compile_kwargs(opts)),
         A_t,
         B_t,
         C_t,
-        M=opts.M,
-        K=opts.K,
-        N=opts.N,
-        m=opts.m,
-        k=opts.k,
-        n=opts.n,
-        n_aie_cols=opts.n_aie_cols,
-        dtype_in_str=opts.dtype_in,
-        dtype_out_str=opts.dtype_out,
         warmup=opts.warmup,
         iters=opts.iters,
     )
@@ -402,6 +382,9 @@ def _run_and_verify(opts):
 
 def _compile_kwargs(opts):
     return dict(
+        A_elements=opts.M * opts.K,
+        B_elements=opts.K * opts.N,
+        C_elements=opts.M * opts.N,
         M=opts.M,
         K=opts.K,
         N=opts.N,
@@ -416,28 +399,6 @@ def _compile_kwargs(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.emit_dynamic_mlir:
-        dev = _device_for(opts.dev, opts.n_aie_cols)
-        # Set the device so kernels.mm() resolves the correct arch (aie2p for
-        # npu2); otherwise arch detection falls back to aie2 and the emitted
-        # link_with names a kernel .o built for the wrong architecture.
-        iron.set_current_device(dev)
-        module = _build_design(
-            dev,
-            opts.M,
-            opts.K,
-            opts.N,
-            opts.m,
-            opts.k,
-            opts.n,
-            opts.n_aie_cols,
-            opts.dtype_in,
-            opts.dtype_out,
-            dynamic=True,
-        )
-        with open(opts.emit_dynamic_mlir, "w") as f:
-            f.write(str(module))
-        return
     run_design_cli(
         whole_array_dynamic,
         opts,

@@ -22,10 +22,9 @@ Two invocation modes:
 import argparse
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -39,10 +38,10 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.helpers.util import np_ndarray_type_get_shape
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 @iron.jit
@@ -76,7 +75,7 @@ def vector_reduce_max(
 
     of_in = ObjectFifo(mem_ty, name="of_in")
     of_a_offsets = [
-        (np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
+        int(np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
         for i in range(n_cores)
     ]
     in_fifos = of_in.cons().split(

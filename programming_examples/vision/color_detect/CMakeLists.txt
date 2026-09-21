@@ -16,7 +16,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 include(../../mlir_aie_init.cmake)
 mlir_aie_init_example()
 
-if(NOT WSL)
+if(NOT CMAKE_HOST_WIN32)
     set(OpenCV_DIR /usr/include/opencv4 CACHE STRING "Path to OpenCV install")
 else()
     set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
@@ -31,7 +31,7 @@ include(../../common.cmake)
 
 # Find packages
 find_package(OpenCV REQUIRED)
-message("opencv library paht: ${OpenCV_LIB_PATH}")
+message("opencv library path: ${OpenCV_LIB_PATH}")
 message("opencv libs: ${OpenCV_LIBS}")
 
 add_executable(${currentTarget}

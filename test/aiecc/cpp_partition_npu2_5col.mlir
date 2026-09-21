@@ -10,7 +10,7 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --get-xclbin %s
+// RUN: aiecc --get-xclbin %s
 // RUN: FileCheck %s --input-file=cpp_partition_npu2_5col.mlir.prj/partition_main.json
 
 // CHECK: "column_width": 5
@@ -27,6 +27,8 @@ module {
     %tile_0_2 = aie.tile(0, 2)
     aie.objectfifo @of(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     %core = aie.core(%tile_0_2) {
+      %object = aie.objectfifo.acquire @of (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @of (Consume, 1)
       aie.end
     }
     aie.runtime_sequence(%arg0 : memref<16xi32>) {

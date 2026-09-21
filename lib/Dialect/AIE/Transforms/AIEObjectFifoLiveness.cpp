@@ -274,7 +274,7 @@ struct AIEObjectFifoLivenessPass
           T = std::max(T, fifos[i].repeat);
       long demand = g.fan * T;
       long slack = 2 * g.depth;
-      if (!(g.depth > 0 && T >= 2 && demand > slack))
+      if (g.depth <= 0 || T < 2 || demand <= slack)
         continue;
       long reqDepth = (demand + 1) / 2; // ceil(demand / 2)
       fifos[g.rep].op->emitError()

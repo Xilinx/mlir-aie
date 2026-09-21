@@ -6,11 +6,12 @@
 """Activation kernel factories + numpy reference implementations.
 
 Factories (each returns an [`ExternalFunction`][iron.ExternalFunction]):
-  softmax, gelu, silu, swiglu, bf16_exp.
+  softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu.
 
 Companion numpy reference implementations for host-side verification:
   [`relu_ref`][iron.kernels.activation.relu_ref], [`silu_ref`][iron.kernels.activation.silu_ref], [`gelu_ref`][iron.kernels.activation.gelu_ref],
-  [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref], [`softmax_ref`][iron.kernels.activation.softmax_ref].  These compute the AIE
+  [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref], [`softmax_ref`][iron.kernels.activation.softmax_ref],
+  [`exp2f_vec_ref`][iron.kernels.activation.exp2f_vec_ref].  These compute the AIE
   kernel's op in float32 so designs don't each reimplement the math
   in their verify path.  Pair with
   `count_mismatches` (rtol=0.128 is the
@@ -25,9 +26,11 @@ from aie.iron.kernel import ExternalFunction
 from ml_dtypes import bfloat16
 
 from ._common import (
+    _default_source_path,
     _detect_arch,
     _include_dirs,
     _kernel_source,
+    _make_extern,
     _require_fixed_tile_size,
 )
 
@@ -119,6 +122,26 @@ def silu(tile_size: int = 1024) -> ExternalFunction:
     return _bf16_lut_factory("silu", "silu_bf16", "silu.cc", tile_size, arg_arity=2)
 
 
+def silu_sized(tile_size: int = 1024) -> ExternalFunction:
+    """SiLU (Swish) for bf16 tiles, element count read at runtime.
+
+    Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
+    passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel("silu_bf16_size", "silu.cc", [tile_ty, tile_ty, np.int32])
+
+
+def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
+    """GELU (tanh approx) for bf16 tiles, element count read at runtime.
+
+    Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
+    passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel("gelu_bf16_size", "gelu.cc", [tile_ty, tile_ty, np.int32])
+
+
 def swiglu(tile_size: int = 1024) -> ExternalFunction:
     """SwiGLU gated activation kernel for bf16 tiles (must be 1024)."""
     return _bf16_lut_factory(
@@ -133,6 +156,98 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
+def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
+    """Software f32 ``2**x`` kernel: a degree-5 minimax poly, not a LUT.
+
+    An accuracy-tradeoff alternative to the LUT-based [`bf16_exp`]
+    [iron.kernels.activation.bf16_exp] path for callers (softmax, sigmoid)
+    that need better than the LUT's domain-dependent error (worst on
+    negative inputs, which is exactly softmax's range). See
+    ``aie_kernels/aie2p/exp2f_vec.cc`` for the accuracy rationale and the
+    ``noinline`` codegen hazard this kernel carries.
+
+    aie2p only for now; not characterized on aie2.
+
+    Args:
+        tile_size: Number of elements per tile; must be a multiple of 16
+            (the kernel's vector width).
+        min_x: Input is clamped to this before evaluation. The default
+            -111 is the lowest exponent that still holds the kernel's
+            8.9e-5 relative error; -126 is the hard floor (one f32
+            exponent field), reachable at up to 6.5e-3. See
+            ``aie_kernels/aie2p/exp2f_vec.cc`` for the measured table.
+
+    Returns:
+        ExternalFunction configured for the exp2f_vec kernel.
+
+    Raises:
+        NotImplementedError: On aie2 (this kernel has not been ported).
+        ValueError: If tile_size is not a multiple of 16, or min_x is
+            below -126.
+    """
+    if tile_size % 16 != 0:
+        raise ValueError(
+            f"exp2f_vec: tile_size must be a multiple of 16, got {tile_size}"
+        )
+    if min_x < -126.0:
+        raise ValueError(
+            f"exp2f_vec: min_x must be >= -126 (the kernel builds 2**k in the "
+            f"f32 exponent field, whose smallest normal exponent is -126), "
+            f"got {min_x}"
+        )
+    arch = _detect_arch()
+    if arch != "aie2p":
+        raise NotImplementedError(
+            "exp2f_vec is aie2p-only for now; it has not been characterized "
+            "or ported to aie2"
+        )
+    source = _default_source_path("exp2f_vec.cc")
+    tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
+    return _make_extern(
+        "exp2f_vec_f32",
+        source,
+        [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
+    )
+
+
+def tanh(tile_size: int = 1024) -> ExternalFunction:
+    """Tanh activation kernel for bf16 tiles (must be 1024).
+
+    The kernel takes the element count at runtime, so the design must pass
+    ``tile_size`` as a trailing ``int`` argument (e.g. via
+    ``transform_parallel(pass_size_to_kernel=True)``).
+    """
+    _require_fixed_tile_size("tanh", tile_size, _LUT_FIXED_TILE)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel("tanh_bf16", "tanh.cc", [tile_ty, tile_ty, np.int32])
+
+
+def sigmoid(tile_size: int = 1024) -> ExternalFunction:
+    """Sigmoid activation kernel for bf16 tiles (must be 1024).
+
+    Runtime element count — pass ``tile_size`` as a trailing ``int`` argument.
+    """
+    _require_fixed_tile_size("sigmoid", tile_size, _LUT_FIXED_TILE)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "sigmoid_bf16", "sigmoid.cc", [tile_ty, tile_ty, np.int32]
+    )
+
+
+def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
+    """Leaky ReLU activation kernel for bf16 tiles (must be 1024).
+
+    Takes the element count and the ``alpha`` slope at runtime, so the design
+    must pass ``(tile_size, alpha)`` as trailing ``int``/``bfloat16`` arguments.
+    """
+    _require_fixed_tile_size("leaky_relu", tile_size, _LUT_FIXED_TILE)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "leaky_relu_bf16", "leaky_relu.cc", [tile_ty, tile_ty, np.int32, bfloat16]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Reference (numpy) implementations
 # ---------------------------------------------------------------------------
@@ -144,7 +259,7 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
 
 
 def relu_ref(x):
-    """numpy reference for a ReLU kernel — element-wise `max(x, 0)`.
+    """Numpy reference for a ReLU kernel — element-wise `max(x, 0)`.
 
     Exact; tolerance comparison is not needed.  See `aie.utils.verify`
     for the relaxed bf16/LUT-style comparators most kernels here want.
@@ -153,7 +268,7 @@ def relu_ref(x):
 
 
 def silu_ref(x):
-    """numpy reference for [`silu`][iron.kernels.activation.silu] (Swish) — ``x * sigmoid(x)``.
+    """Numpy reference for [`silu`][iron.kernels.activation.silu] (Swish) — ``x * sigmoid(x)``.
 
     LUT-approximation territory; pair with ``rtol=0.128`` (the default
     in `count_mismatches`) when verifying.
@@ -163,9 +278,9 @@ def silu_ref(x):
 
 
 def gelu_ref(x):
-    """numpy reference for [`gelu`][iron.kernels.activation.gelu] — tanh approximation
-    ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
+    """Numpy reference for [`gelu`][iron.kernels.activation.gelu].
 
+    Tanh approximation ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
     Matches the C++ kernel's tanh-GELU formula; pair with ``rtol=0.128,
     atol=0.05`` when verifying.
     """
@@ -177,8 +292,36 @@ def gelu_ref(x):
     ).astype(x.dtype)
 
 
+def tanh_ref(x):
+    """Numpy reference for [`tanh`][iron.kernels.activation.tanh] — element-wise ``tanh(x)``.
+
+    LUT/native-approximation territory; pair with ``rtol=0.128`` when verifying.
+    """
+    return np.tanh(x.astype(np.float32)).astype(x.dtype)
+
+
+def sigmoid_ref(x):
+    """Numpy reference for [`sigmoid`][iron.kernels.activation.sigmoid] — ``1 / (1 + exp(-x))``.
+
+    LUT-approximation territory; pair with ``rtol=0.128`` when verifying.
+    """
+    xf = x.astype(np.float32)
+    return (1.0 / (1.0 + np.exp(-xf))).astype(x.dtype)
+
+
+def leaky_relu_ref(x, alpha=0.01):
+    """Numpy reference for [`leaky_relu`][iron.kernels.activation.leaky_relu].
+
+    ``x if x > 0 else alpha * x``.  ``alpha`` must match the slope the design
+    passes to the kernel at runtime.  Exact up to bf16 rounding; pair with a
+    small ``rtol`` when verifying.
+    """
+    xf = x.astype(np.float32)
+    return np.where(xf > 0.0, xf, alpha * xf).astype(x.dtype)
+
+
 def bf16_exp_ref(x):
-    """numpy reference for [`bf16_exp`][iron.kernels.activation.bf16_exp] — element-wise ``exp(x)``.
+    """Numpy reference for [`bf16_exp`][iron.kernels.activation.bf16_exp] — element-wise ``exp(x)``.
 
     LUT approximation territory; the AIE kernel saturates on large inputs.
     Pair with the canonical 12.8% relative tolerance and ``stop_at_
@@ -190,8 +333,21 @@ def bf16_exp_ref(x):
         return np.exp(xf).astype(x.dtype)
 
 
+def exp2f_vec_ref(x):
+    """Numpy reference for [`exp2f_vec`][iron.kernels.activation.exp2f_vec]: exact ``2**x``.
+
+    Unlike the LUT-based refs above, this is float64 ``2**x`` (not a
+    reimplementation of the on-device poly): the kernel targets ~8.9e-5
+    relative error by design, several orders tighter than the LUT-based
+    kernels' 12.8% default, so pair with a correspondingly tight
+    tolerance (e.g. ``rtol=1e-3``) rather than the LUT default.
+    """
+    xf = x.astype(np.float64)
+    return np.exp2(xf).astype(x.dtype)
+
+
 def softmax_ref(x, *, tile_size: int = 1024):
-    """numpy reference for [`softmax`][iron.kernels.activation.softmax].
+    """Numpy reference for [`softmax`][iron.kernels.activation.softmax].
 
     The AIE kernel computes softmax independently per ``tile_size``-element
     tile (no cross-tile reduction), so the reference splits ``x`` the same

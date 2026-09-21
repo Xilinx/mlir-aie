@@ -26,6 +26,7 @@ declare_mlir_python_sources(AIEPythonSources.Util
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     __init__.py
+    doctor.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Tools
@@ -41,6 +42,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/_log_setup.py
     utils/benchmark.py
     utils/config.py
+    utils/probe.py
     utils/tensor_factory.py
     utils/test.py
     utils/ml.py
@@ -56,6 +58,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/tensor_class.py
     utils/hostruntime/torch_interop.py
     utils/hostruntime/xrtruntime/__init__.py
+    utils/hostruntime/xrtruntime/device.py
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/parameter_scratchpad.py
     utils/hostruntime/xrtruntime/tensor.py
@@ -65,14 +68,23 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/hrxruntime/discovery.py
     utils/hostruntime/hrxruntime/hostruntime.py
     utils/hostruntime/hrxruntime/tensor.py
+    utils/hostruntime/hsaruntime/__init__.py
+    utils/hostruntime/hsaruntime/_bindings.py
+    utils/hostruntime/hsaruntime/context.py
+    utils/hostruntime/hsaruntime/discovery.py
+    utils/hostruntime/hsaruntime/hostruntime.py
+    utils/hostruntime/hsaruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
     utils/compile/cache/utils.py
     utils/compile/jit/__init__.py
     utils/compile/jit/compilabledesign.py
+    utils/compile/jit/_dispatch_bridge.py
+    utils/compile/jit/_dispatch_compile.py
     utils/compile/jit/_dma_size_parser.py
     utils/compile/jit/_hash.py
     utils/compile/jit/_introspect.py
+    utils/compile/jit/_manifest.py
     utils/compile/jit/_serialization.py
     utils/compile/jit/markers.py
     utils/compile/jit/context.py

@@ -17,14 +17,14 @@ to ship pre-compiled binaries — without having to change how the design
 is decorated.
 """
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
-    Out,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     TaskGroup,
@@ -32,7 +32,6 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.verify import assert_pass
 
 # Tile size moved to/from the compute cores via mem tiles.
@@ -104,7 +103,7 @@ def matrix_multiplication_single_core(
         strides=[r * n, t, r * t, 1],
     )
     fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-        dims_to_stream=tap_C_L1L2.transformation_dims, name="C_L2L3"
+        dims_to_stream=list(tap_C_L1L2.transformation_dims), name="C_L2L3"
     )
 
     def core_fn(of_a, of_b, of_c, matmul):
@@ -191,23 +190,24 @@ def run_and_verify(M: int, K: int, N: int, element_type) -> None:
 
 
 def main():
-    shapes = [
-        dict(M=256, K=256, N=256, element_type=np.int16),
-        dict(M=512, K=512, N=512, element_type=np.int16),
+    shapes: list[tuple[int, int, int]] = [
+        (256, 256, 256),
+        (512, 512, 512),
     ]
+    element_type = np.int16
 
     # AOT phase: pre-compile both shapes upfront so the artifacts exist on
     # disk before any kernel runs.  This is purely opt-in — the @iron.jit
     # decorator above means callers who skip this step would simply pay the
     # compile cost on first invocation instead.
     print("=== AOT pre-compile phase ===")
-    for kw in shapes:
-        aot_compile(**kw)
+    for M, K, N in shapes:
+        aot_compile(M, K, N, element_type)
 
     # Runtime dispatch.  Each call uses the same JIT-decorated function and
     # finds its compiled artifact already in the on-disk cache.
-    for kw in shapes:
-        run_and_verify(**kw)
+    for M, K, N in shapes:
+        run_and_verify(M, K, N, element_type)
 
     print("\nAll variants PASS!")
 

@@ -23,10 +23,9 @@ Two invocation modes:
 import argparse
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -40,11 +39,14 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.argparse import (
+    add_compile_args,
+    add_trace_arg,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 # cores_per_col=2 is baked into the neighbor-FIFO wiring below; pass the
@@ -146,7 +148,7 @@ def vector_reduce_max(
 
     my_workers = []
     for i in range(num_cores):
-        fifo_args = [of_in1s[i].cons(), of_outs[i].prod()]
+        fifo_args: list = [of_in1s[i].cons(), of_outs[i].prod()]
         if cores_per_col - 1 < i:
             fifo_args.append(of_outs[i - cores_per_col].cons())
             if num_cores - cores_per_col < i:

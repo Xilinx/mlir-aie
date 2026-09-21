@@ -20,11 +20,20 @@ add_mlir_dialect_library(
   AIECoreToStandard.cpp
   AIECanonicalizeDevice.cpp
   AIELocalizeLocks.cpp
+  AIENormalizeDmaBdDims.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorToPointerLoops.cpp
   AIEVectorTransferLowering.cpp
   AIEHoistVectorTransferPointers.cpp
-  AIEObjectFifoStatefulTransform.cpp
+  AIEDMAChannelAnalysis.cpp
+  AIEObjectFifoAllocate.cpp
+  AIEObjectFifoLowerDMAs.cpp
+  AIEObjectFifoLowerCores.cpp
+  AIEObjectFifoErasePools.cpp
+  AIEObjectFifoPipeline.cpp
+  AIEObjectFifoSplit.cpp
+  AIEObjectFifoVerify.cpp
+  AIEObjectFifoUnroll.cpp
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp
   AIETraceToConfig.cpp
@@ -46,5 +55,6 @@ add_mlir_dialect_library(
   MLIRIR
   MLIRPass
   MLIRSupport
+  MLIRSCFTransforms
   MLIRTransformUtils
   MLIRFuncDialect)

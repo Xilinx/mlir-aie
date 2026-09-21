@@ -86,7 +86,7 @@ def npu_sync(column, row, direction, channel, column_num=1, row_num=1, **kwargs)
 
 
 def npu_address_patch(addr, arg_idx, arg_plus, **kwargs):
-    return _npu_address_patch(addr, arg_idx, _as_i32(arg_plus), **kwargs)
+    return _npu_address_patch(addr, _as_i32(arg_plus), arg_idx=arg_idx, **kwargs)
 
 
 def npu_rtp_write(buffer, index, value, **kwargs):
@@ -133,6 +133,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
+        axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
+            omitted, the target model's default AxCACHE value is used.
 
     Note:
         Contiguous row-major access patterns are automatically folded to canonical linear form
@@ -162,6 +164,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         strides: MixedValues | None = None,
         issue_token: bool | None = None,
         burst_length: int = 0,
+        axcache: int | None = None,
         packet: tuple[int] | None = None,
         offset_parameter: str | None = None,
     ):
@@ -203,6 +206,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             bd_id,
             issue_token=issue_token,
             burst_length=burst_length,
+            axcache=axcache,
             packet=packet,
             offset_parameter=offset_parameter,
         )
@@ -273,6 +277,7 @@ def shim_dma_bd(
     strides: MixedValues | None = None,
     transfer_len: int | None = None,
     burst_length: int = 0,
+    axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
 ):
@@ -305,6 +310,7 @@ def shim_dma_bd(
         offset=offset,
         transfer_len=transfer_len,
         burst_length=burst_length,
+        axcache=axcache,
         packet=packet,
         offset_parameter=offset_parameter,
     )
@@ -320,6 +326,7 @@ def shim_dma_single_bd_task(
     transfer_len: int | None = None,
     issue_token: bool = False,
     burst_length: int = 0,
+    axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
 ):
@@ -328,7 +335,7 @@ def shim_dma_single_bd_task(
     DMA tasks operations do not require to specify a BD number and are capable of chaining BD operations.
 
     Args:
-        alloc: The alloc argument associates the DMA task with an ObjectFIFO. This argument is called alloc becuase the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
+        alloc: The alloc argument associates the DMA task with an ObjectFIFO. This argument is called alloc because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
         mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
         tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
         offset (optional): Starting point for the data transfer. Default values is 0.
@@ -336,6 +343,8 @@ def shim_dma_single_bd_task(
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
+        axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
+            omitted, the target model's default AxCACHE value is used.
         packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
 
     Example:
@@ -411,6 +420,7 @@ def shim_dma_single_bd_task(
                 strides=strides,
                 transfer_len=transfer_len,
                 burst_length=burst_length,
+                axcache=axcache,
                 packet=packet,
                 offset_parameter=offset_parameter,
             )

@@ -11,13 +11,13 @@
 // REQUIRES: peano
 
 // Test ELF generation
-// RUN: aiecc --no-xchesscc --no-xbridge --get-elf --verbose %s 2>&1 | FileCheck %s --check-prefix=ELF
+// RUN: aiecc --get-elf --verbose %s 2>&1 | FileCheck %s --check-prefix=ELF
 
 // ELF: ({{[0-9]+}}/{{[0-9]+}}) design.elf
 // ELF: wrote edge 'design.elf'
 
 // Test PDI generation
-// RUN: aiecc --no-xchesscc --no-xbridge --get-cdo --get-pdi --verbose %s 2>&1 | FileCheck %s --check-prefix=PDI
+// RUN: aiecc --get-cdo --get-pdi --verbose %s 2>&1 | FileCheck %s --check-prefix=PDI
 
 // PDI: ({{[0-9]+}}/{{[0-9]+}}) cdo_{{.*}}
 // PDI: ({{[0-9]+}}/{{[0-9]+}}) {{.*}}.pdi
@@ -37,11 +37,9 @@ module {
       %c16 = arith.constant 16 : index
       %c1_i32 = arith.constant 1 : i32
 
-      %subview_in = aie.objectfifo.acquire @of_in(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_in = aie.objectfifo.subview.access %subview_in[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_in = aie.objectfifo.acquire @of_in(Consume, 1) : memref<16xi32>
 
-      %subview_out = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_out = aie.objectfifo.subview.access %subview_out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_out = aie.objectfifo.acquire @of_out(Produce, 1) : memref<16xi32>
 
       scf.for %i = %c0 to %c16 step %c1 {
         %val = memref.load %elem_in[%i] : memref<16xi32>

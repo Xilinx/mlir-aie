@@ -18,7 +18,8 @@
 // CHECK-LABEL: @for_in_if
 // CHECK: scf.if %{{.*}} {
 // CHECK:   %[[INIT:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
-// CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) bd_id %[[INIT]] : i32
+// CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
+// CHECK:     aie.dma_bd(%{{.*}} : memref<1024xi32> offset = 0 len = 256) bd_id_val %[[INIT]] : i32
 // CHECK:   %[[LOOP:.*]]:2 = scf.for {{.*}} iter_args({{.*}}, %[[PID:.*]] = %[[INIT]]) -> (index, i32)
 // CHECK:     aiex.dma_bd_pool_push(0, 0) bd_id %[[PID]] : i32
 // CHECK:   aiex.dma_bd_pool_push(0, 0) bd_id %[[LOOP]]#1 : i32

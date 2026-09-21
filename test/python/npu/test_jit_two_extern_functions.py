@@ -1,0 +1,174 @@
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+
+# RUN: %run_on_npu1_xrt% %pytest %s
+# RUN: %run_on_npu2_xrt% %pytest %s
+# RUN: %run_on_npu2_hrx% %pytest %s
+# REQUIRES: xrt_python_bindings || hrx_python_bindings
+
+# End-to-end test for the core new capability: a single Worker calling TWO
+# distinct ExternalFunction instances, each compiled to its own object file.
+# This exercises the full multi-.o JIT pipeline:
+#   1. Two separate source compilations (two .o files in the cache dir)
+#   2. aie-assign-core-link-files traces both func.call ops and emits
+#      link_files = ["add_one.o", "scale_by_two.o"] on the CoreOp
+#   3. Two INPUT() directives in the linker script (Peano path)
+#   4. Successful lld link with both object files
+#   5. Core executes both functions: output[i] = (input[i] + 1) * 2
+
+import numpy as np
+import pytest
+
+import aie.iron as iron
+from aie.iron import CompileTime, ExternalFunction, In, Out, jit
+from aie.iron import ObjectFifo, Worker, Runtime, Program
+
+from aie.iron.controlflow import range_
+
+
+@jit
+def add_then_scale(
+    input: In,
+    output: Out,
+    *,
+    add_func: CompileTime[object],
+    scale_func: CompileTime[object],
+    num_elements: CompileTime[int] = 32,
+    dtype: CompileTime[object] = np.int32,
+):
+    """Apply add_func then scale_func sequentially on each tile."""
+    tile_size = add_func.tile_size(0)
+    num_tiles = num_elements // tile_size
+
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
+
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_out = ObjectFifo(tile_ty, name="out")
+
+    def core_body(of_in, of_out, add_fn, scale_fn):
+        for _ in range_(num_tiles):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            # Apply add_fn first, writing result into elem_out as a temporary,
+            # then apply scale_fn in-place on elem_out.
+            add_fn(elem_in, elem_out, tile_size)
+            scale_fn(elem_out, elem_out, tile_size)
+            of_in.release(1)
+            of_out.release(1)
+
+    worker = Worker(
+        core_body,
+        fn_args=[of_in.cons(), of_out.prod(), add_func, scale_func],
+    )
+
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+def test_two_external_functions_different_objects():
+    """
+    One core calls two ExternalFunctions compiled to separate object files.
+    Expected result: output[i] = (input[i] + 1) * 2.
+    """
+    add_one = ExternalFunction(
+        "add_one",
+        source_string="""extern "C" {
+            void add_one(int* in, int* out, int n) {
+                for (int i = 0; i < n; i++) out[i] = in[i] + 1;
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    scale_by_two = ExternalFunction(
+        "scale_by_two",
+        source_string="""extern "C" {
+            void scale_by_two(int* in, int* out, int n) {
+                for (int i = 0; i < n; i++) out[i] = in[i] * 2;
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+    output_tensor = iron.zeros((32,), dtype=np.int32)
+
+    add_then_scale(
+        input_tensor, output_tensor, add_func=add_one, scale_func=scale_by_two
+    )
+
+    expected = (np.arange(32, dtype=np.int32) + 1) * 2
+    np.testing.assert_array_equal(output_tensor.numpy(), expected)
+
+
+def test_two_external_functions_same_object():
+    """
+    One core calls two ExternalFunctions that share the same compiled object
+    file. The aie-assign-core-link-files pass must deduplicate the .o path
+    so it appears only once in link_files and is linked exactly once.
+    Expected result: output[i] = (input[i] + 1) * 2 (same computation, shared .o).
+    """
+    # Both functions come from the same translation unit / object file name.
+    add_one = ExternalFunction(
+        "add_one_shared",
+        object_file_name="shared_kernel.o",
+        source_string="""extern "C" {
+            void add_one_shared(int* in, int* out, int n) {
+                for (int i = 0; i < n; i++) out[i] = in[i] + 1;
+            }
+            void scale_by_two_shared(int* in, int* out, int n) {
+                for (int i = 0; i < n; i++) out[i] = in[i] * 2;
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    scale_by_two = ExternalFunction(
+        "scale_by_two_shared",
+        object_file_name="shared_kernel.o",
+        source_string="""extern "C" {
+            void add_one_shared(int* in, int* out, int n) {
+                for (int i = 0; i < n; i++) out[i] = in[i] + 1;
+            }
+            void scale_by_two_shared(int* in, int* out, int n) {
+                for (int i = 0; i < n; i++) out[i] = in[i] * 2;
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+    output_tensor = iron.zeros((32,), dtype=np.int32)
+
+    add_then_scale(
+        input_tensor, output_tensor, add_func=add_one, scale_func=scale_by_two
+    )
+
+    expected = (np.arange(32, dtype=np.int32) + 1) * 2
+    np.testing.assert_array_equal(output_tensor.numpy(), expected)

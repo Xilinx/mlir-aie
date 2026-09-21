@@ -29,9 +29,19 @@ Invocation:
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+    DMAChannelDir,
+    WireBundle,
+)
+from aie.dialects.aiex import (
+    dma_await_task,
+    dma_free_task,
+    dma_start_task,
+    shim_dma_single_bd_task,
+)
 from aie.iron import (
     Acquire,
     Bd,
@@ -50,15 +60,7 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
-from aie.dialects.aiex import (
-    dma_await_task,
-    dma_free_task,
-    dma_start_task,
-    shim_dma_single_bd_task,
-)
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 
 
@@ -71,7 +73,7 @@ class PreInitializedConstantBuffer(Buffer):
 
     def __init__(self, value: np.ndarray, name: str | None = None):
         super().__init__(
-            type=np.ndarray[value.shape, np.dtype[value.dtype]],
+            type=np.ndarray[value.shape, np.dtype[value.dtype.type]],
             name=name,
             initial_value=value,
         )
@@ -84,7 +86,6 @@ def vector_vector_add(
     *,
     col: CompileTime[int] = 0,
 ):
-    dev = iron.get_current_device()
     N = 256
     n = 16
     N_div_n = N // n
@@ -224,7 +225,7 @@ def vector_vector_add(
         rt.add_lock(lk)
     rt.add_tile_dma(compute_dma)
 
-    return Program(dev, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

@@ -14,10 +14,13 @@ from . import (
 from .hostruntime import set_current_device
 from .hostruntime.hostruntime import HostRuntime as HostRuntime
 from .npukernel import NPUKernel as NPUKernel
-from .tensor_factory import _NPU_RUNTIME, _probe_hrx, _probe_xrt
+from .tensor_factory import _NPU_RUNTIME, _probe_hrx, _probe_hsa, _probe_xrt
 from .tensor_factory import arange as arange
 from .tensor_factory import ceildiv as ceildiv
 from .tensor_factory import full as full
+from .tensor_factory import (
+    npu_runtime_folds_ddr_addr_offset as npu_runtime_folds_ddr_addr_offset,
+)
 from .tensor_factory import ones as ones
 from .tensor_factory import rand as rand
 from .tensor_factory import randint as randint
@@ -38,6 +41,10 @@ def _get_default_npu_runtime():
         from .hostruntime.hrxruntime.hostruntime import CachedHRXRuntime
 
         _DefaultNPURuntime = CachedHRXRuntime()
+    elif _NPU_RUNTIME == "hsa":
+        from .hostruntime.hsaruntime.hostruntime import CachedHSAHostRuntime
+
+        _DefaultNPURuntime = CachedHSAHostRuntime()
     elif _NPU_RUNTIME == "xrt" and _probe_xrt():
         from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
 
@@ -48,9 +55,10 @@ def _get_default_npu_runtime():
 def cleanup_npu_runtime() -> None:
     """Release cached NPU runtime resources without initializing the runtime.
 
-    Works for both backends: ``CachedXRTRuntime`` releases hw contexts/insts
-    BOs and ``CachedHRXRuntime`` releases loaded XADX executables. If the
-    default runtime was never created, this is a no-op (it never forces
+    Works for every backend: ``CachedXRTRuntime`` releases hw contexts/insts
+    BOs, ``CachedHRXRuntime`` releases loaded XADX executables, and
+    ``CachedHSAHostRuntime`` releases its cached device-heap allocations. If
+    the default runtime was never created, this is a no-op (it never forces
     initialization).
     """
     runtime = globals().get("DefaultNPURuntime", _DefaultNPURuntime)
@@ -61,15 +69,25 @@ def cleanup_npu_runtime() -> None:
 def __getattr__(name: str) -> Any:
     # Return type is ``Any`` deliberately: this serves attributes of unrelated
     # types (the NPU runtime object for ``DefaultNPURuntime`` vs ``bool`` for the
-    # ``has_xrt``/``has_hrx`` probes), so a single concrete annotation would
+    # ``has_xrt``/``has_hrx``/``has_hsa`` probes), so a single concrete annotation would
     # mistype callers (e.g. treating ``DefaultNPURuntime`` as possibly ``bool``).
     if name == "DefaultNPURuntime":
         return _get_default_npu_runtime()
-    # Public capability flags, probed on first access (see _probe_xrt/_probe_hrx).
+    # Public capability flags, probed on first access
+    # (see _probe_xrt/_probe_hrx/_probe_hsa).
     if name == "has_xrt":
         return _probe_xrt()
     if name == "has_hrx":
         return _probe_hrx()
+    if name == "has_hsa":
+        return _probe_hsa()
+    # The active default tensor class lives in tensor_factory (and may be swapped
+    # at runtime via set_tensor_class); serve it dynamically so callers reading
+    # aie.utils.DEFAULT_TENSOR_CLASS always see the current backend selection.
+    if name == "DEFAULT_TENSOR_CLASS":
+        from . import tensor_factory
+
+        return tensor_factory.DEFAULT_TENSOR_CLASS
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

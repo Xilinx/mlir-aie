@@ -5,26 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Dynamic (runtime SSA size/stride) shim-NOC dma_memcpy_nd lowering: a static-
-// template blockwrite plus per-word npu.write32 overrides computed from the
-// runtime operands, with a host-side bounds guard for a runtime size landing in
-// a narrow BD field.
+// Dynamic (runtime SSA size/stride) shim-NOC dma_memcpy_nd lowering: the whole
+// BD register block is computed from the runtime operands and packed into one
+// npu.blockwrite_values, with a host-side bounds guard for a runtime size
+// landing in a narrow BD field.
 
 // RUN: aie-opt --split-input-file --aie-dma-to-npu %s | FileCheck %s
 
 // A non-contiguous transfer with a runtime d1 size. d1 lands in the 10-bit
-// wrap field, so a guard is emitted; the BD size/stride words become write32
-// overrides after the template blockwrite. The override addresses pin the shim
-// BD-word layout: buffer_length is word 0 (BD base 118784), d0 word 3 (+12),
-// d1 word 4 (+16), d2 word 5 (+20), iteration word 6 (+24).
+// wrap field, so a guard is emitted; the guards precede the block-write that
+// consumes the guarded words. The block-write address is the BD register base
+// (bd 0 on shim 0,0 = 118784) and it covers the word the address patch targets.
 // CHECK-LABEL: @seq
-// CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 1023 : i32}
-// CHECK: aiex.npu.write32(%c118784{{.*}})
-// CHECK: aiex.npu.write32(%c118796{{.*}})
-// CHECK: aiex.npu.write32(%c118800{{.*}})
-// CHECK: aiex.npu.write32(%c118804{{.*}})
-// CHECK: aiex.npu.write32(%c118808{{.*}})
+// CHECK: aiex.npu.blockwrite_values(%c118784{{.*}} : i32) values
 // CHECK: aiex.npu.address_patch
 module {
   aie.device(npu1) {
@@ -39,12 +33,10 @@ module {
 // -----
 
 // A contiguous transfer with a runtime size takes linear mode: the count goes
-// into buffer_length (word 0, full width) and no d0/d1 guard is needed. Only
-// word 0 (buffer_length) and word 6 (iteration) are overridden.
+// into buffer_length (word 0, full width) and no d0/d1 guard is needed.
 // CHECK-LABEL: @lin
-// CHECK: aiex.npu.blockwrite
 // CHECK-NOT: aiex.npu.assert_bd_field
-// CHECK: aiex.npu.write32
+// CHECK: aiex.npu.blockwrite_values
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -80,7 +72,7 @@ module {
 // type (int32) no realizability guard is needed.
 // CHECK-LABEL: @rt_inner_i32
 // CHECK-NOT: aiex.npu.assert_bd_divisible
-// CHECK: aiex.npu.blockwrite
+// CHECK: aiex.npu.blockwrite_values
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)
@@ -170,7 +162,7 @@ module {
 // only requires positive strides on d0..d2). This is the whole-array GEMM
 // A/B-tile fetch pattern with a runtime tile size.
 // CHECK-LABEL: @const_repeat_rt_size
-// CHECK: aiex.npu.blockwrite
+// CHECK: aiex.npu.blockwrite_values
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 0)

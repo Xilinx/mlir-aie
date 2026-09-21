@@ -21,10 +21,9 @@ Two invocation modes:
 import argparse
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -38,11 +37,14 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.argparse import (
+    add_compile_args,
+    add_trace_arg,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 @iron.jit

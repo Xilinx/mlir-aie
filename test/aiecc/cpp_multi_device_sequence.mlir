@@ -10,14 +10,14 @@
 // Test device and sequence filtering (mirrors test/npu-xrt/add_one_two pattern).
 // Each device is compiled separately with --device-name.
 
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --get-scratchpad-parameters --verbose --tmpdir=%t.dev1 %s 2>&1 | FileCheck %s --check-prefix=DEV1
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --get-scratchpad-parameters --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --get-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
-// RUN: aiecc --no-xchesscc --no-xbridge --get-scratchpad-parameters --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
-// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --no-xchesscc --no-xbridge --device-name=device1 --get-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --get-xclbin --tmpdir=%t.count_a %s
+// RUN: aiecc --device-name=device1 --get-scratchpad-parameters --verbose --tmpdir=%t.dev1 %s 2>&1 | FileCheck %s --check-prefix=DEV1
+// RUN: aiecc --device-name=device2 --get-scratchpad-parameters --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
+// RUN: aiecc --device-name=device1 --sequence-name=seq_a --get-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
+// RUN: aiecc --get-scratchpad-parameters --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
+// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --device-name=device1 --get-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
+// RUN: aiecc --device-name=device1 --sequence-name=seq_a --get-xclbin --tmpdir=%t.count_a %s
 // RUN: FileCheck %s --check-prefix=COUNT_A --input-file=%t.count_a/kernels_device1.json
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_b --get-xclbin --tmpdir=%t.count_b %s
+// RUN: aiecc --device-name=device1 --sequence-name=seq_b --get-xclbin --tmpdir=%t.count_b %s
 // RUN: FileCheck %s --check-prefix=COUNT_B --input-file=%t.count_b/kernels_device1.json
 
 // The driver filters devices/sequences silently (no per-device progress logs).
@@ -55,6 +55,10 @@ module {
     aie.objectfifo @out1(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
     %core = aie.core(%tile02) {
+      %input = aie.objectfifo.acquire @in1 (Consume, 1) : memref<16xi32>
+      %output = aie.objectfifo.acquire @out1 (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in1 (Consume, 1)
+      aie.objectfifo.release @out1 (Produce, 1)
       aie.end
     }
 
@@ -89,6 +93,10 @@ module {
     aie.objectfifo @out2(%tile12, {%tile10}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
     %core = aie.core(%tile12) {
+      %input = aie.objectfifo.acquire @in2 (Consume, 1) : memref<16xi32>
+      %output = aie.objectfifo.acquire @out2 (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in2 (Consume, 1)
+      aie.objectfifo.release @out2 (Produce, 1)
       aie.end
     }
 

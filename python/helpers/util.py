@@ -25,8 +25,8 @@ from ..ir import (  # pyright: ignore[reportMissingImports]
 
 # Custom types
 class v8bfp16ebs8(np.generic):
-    """
-    Custom type to be used in IRON that is translated to a generic blockFloatType.
+    """Custom type to be used in IRON that is translated to a generic blockFloatType.
+
     Represents a vector of 8 scalar elements that share exponent with a total
     bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
     """
@@ -37,8 +37,8 @@ class v8bfp16ebs8(np.generic):
 
 
 class v16bfp16ebs16(np.generic):
-    """
-    Custom type to be used in IRON that is translated to a generic blockFloatType
+    """Custom type to be used in IRON that is translated to a generic blockFloatType.
+
     Represents a vector of 16 scalar elements that share exponent with a total
     bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
     """
@@ -139,6 +139,8 @@ def infer_mlir_type(
 
     Args:
       py_val: Python value that's either a numerical value or numpy array.
+      memref: If True, map a numpy array to a MemRefType. Defaults to False.
+      vector: If True, map a numpy array to a VectorType. Defaults to False.
 
     Returns:
       MLIR type corresponding to py_val.
@@ -196,8 +198,19 @@ def memref_type_to_np_dtype(memref_type):
     return _memref_type_to_np_dtype.get(memref_type)
 
 
+def ceildiv(a, b):
+    """Ceiling division: smallest integer >= a/b."""
+    return -(a // -b)
+
+
 def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
     shape = get_args(ndarray_type)[0]
+    # Imported lazily: JIT type introspection itself uses this module.
+    from ..utils.compile.jit.markers import _DispatchParameter
+
+    for elem in shape if isinstance(shape, tuple) else (shape,):
+        if isinstance(elem, _DispatchParameter):
+            elem._misuse()
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
     for elem in shape:
         assert isinstance(
@@ -216,6 +229,25 @@ def np_ndarray_type_to_memref_type(ndarray_type: type[np.ndarray]):
     return T.memref(*shape, element_type=np_dtype_to_mlir_type(dtype))
 
 
+def pack_pad_value(value: int, elem_bytes: int) -> int:
+    """Pack a per-element pad value into the 32-bit CONSTANT_PAD_VALUE stream word."""
+    bits = elem_bytes * 8
+    if bits > 32:
+        raise ValueError(
+            f"pad_value is not supported for {elem_bytes}-byte elements: the "
+            "32-bit CONSTANT_PAD_VALUE register cannot hold a wider value."
+        )
+    v = value & 0xFFFFFFFF
+    if bits == 32:
+        return v
+    mask = (1 << bits) - 1
+    v &= mask
+    out = 0
+    for shift in range(0, 32, bits):
+        out |= v << shift
+    return out
+
+
 def try_convert_np_type_to_mlir_type(input_type):
     if get_origin(input_type) == np.ndarray:
         output_type = np_ndarray_type_to_memref_type(input_type)
@@ -230,7 +262,10 @@ _E = TypeVar("_E")
 
 
 def single_elem_or_list_to_list(val: "list[_E] | _E") -> "list[_E]":
-    """does not work for list of lists but still useful"""
+    """Wrap a single element in a list, returning existing lists unchanged.
+
+    Does not work for a list of lists but still useful.
+    """
     if not isinstance(val, list):
         return [val]
     return val
@@ -281,7 +316,8 @@ def fold_constant_operand(operand):
     Returns the int, or None if the operand is not an arith.constant (e.g. a
     block argument or a runtime-sequence value); callers decide whether that is
     an error in their context. This is the Python analog of the AIEX dialect's
-    getConstantIntOperand."""
+    getConstantIntOperand.
+    """
     defining = operand.owner
     if defining is None:
         return None

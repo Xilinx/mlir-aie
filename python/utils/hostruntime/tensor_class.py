@@ -6,7 +6,7 @@
 """The host tensor: a shaped, typed view over a coherence-managed allocation.
 
 The allocation itself, its residency bookkeeping, and the torch bridge live in
-:mod:`buffer`, :mod:`coherence` and :mod:`torch_interop`. Each is re-exported
+`buffer`, `coherence` and `torch_interop`. Each is re-exported
 here, so ``from .tensor_class import Storage`` and friends keep resolving.
 """
 
@@ -54,6 +54,23 @@ def _as_shape(shape):
         if extent < 0:
             raise ValueError(f"shape extents must not be negative, got {extents}")
     return extents
+
+
+def _unsupported_device_message(cls, device) -> str:
+    """Explain a device rejection, not just report it.
+
+    A class-attribute check can only see the string it rejected, so asking for
+    "npu" from a CPU-only tensor used to surface as a bare "Unsupported device"
+    -- indistinguishable from a typo. The reason the CPU-only class was selected
+    lives in aie.utils.probe; quote it here.
+    """
+    message = f"Unsupported device: {device}"
+    if device != "npu" or "npu" in cls.DEVICES:
+        return message
+    from ..probe import npu_unavailable_reason
+
+    reason = npu_unavailable_reason()
+    return f"{message} ({cls.__name__} is in use: {reason})" if reason else message
 
 
 class _WriteBorrow:
@@ -109,33 +126,32 @@ class _WriteBorrow:
 
 
 class NpuTensor(ABC):
-    """
-    A host-mapped, device-resident buffer of fixed shape and dtype.
+    """A host-mapped, device-resident buffer of fixed shape and dtype.
 
     This is a buffer with a residency state machine, not a general array. Its
     invariant is host/device coherence: the host and the device each hold a view
     of the same storage, and the two are reconciled only at the points this class
     defines. Everything else it offers (indexing, filling, the numpy and torch
-    bridges, :meth:`subview`) exists to keep that reconciliation correct while
+    bridges, `subview`) exists to keep that reconciliation correct while
     still letting callers treat the buffer as data.
 
     The invariant in full:
 
-    * Writes through the declared paths (:meth:`__setitem__`, :meth:`fill_`, and
+    * Writes through the declared paths (`__setitem__`, `fill_`, and
       the factories) are reconciled: the factories transfer as they construct,
-      and the in-place writes record the region so the next :meth:`to` sends it.
+      and the in-place writes record the region so the next `to` sends it.
       A write through the raw ``data`` array does neither, and is the one way to
       leave host and device disagreeing.
     * A method that spans regions in different states reconciles per region.
       Asking a whole tensor where it lives collapses a mixed extent to one
-      answer, which is the right answer for :meth:`to` and the wrong one to
+      answer, which is the right answer for `to` and the wrong one to
       transfer by.
-    * :meth:`to` moves residency and is a no-op when the buffer is already on the
+    * `to` moves residency and is a no-op when the buffer is already on the
       target device, so a caller that has written through a declared path never
       pays for a redundant transfer, and a caller that has bypassed one gets no
       transfer at all.
     * Reconciliation is not byte-granular. It acts on whole cache lines, which is
-      why :meth:`subview` requires its regions to be granule-aligned.
+      why `subview` requires its regions to be granule-aligned.
 
     Subclasses supply the storage and the two transfer primitives; the invariant
     itself lives here so every backend states it the same way.
@@ -150,10 +166,16 @@ class NpuTensor(ABC):
     DEFAULT_INT_DTYPE = np.int64  # torch has default int64
     DEFAULT_FLOAT_DTYPE = np.float32  # torch has default float32
 
-    # Alignment :meth:`subview` requires of a sub-region, in bytes. Left unset
+    # Whether this backend expects the AIE DDR aperture offset folded into the
+    # compiled insts.bin. True for the XRT firmware ABI (and the CPU default);
+    # HRX overrides this to False and adds the aperture offset for every arg
+    # itself. Read by the JIT compile/cache path to pick the DDR-patch ABI.
+    FOLDS_DDR_ADDR_OFFSET = True
+
+    # Alignment `subview` requires of a sub-region, in bytes. Left unset
     # so the module-level default is resolved per call rather than frozen into
     # the class at import; a backend whose host/device reconciliation has a
-    # different granularity sets its own. See :data:`COHERENCE_GRANULE`.
+    # different granularity sets its own. See `COHERENCE_GRANULE`.
     _coherence_granule: int | None = None
 
     # Set on views by the backend hook. Declared here rather than conjured onto
@@ -174,7 +196,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def _resolve_coherence_granule(cls):
-        """Alignment :meth:`subview` enforces for this backend, in bytes."""
+        """Alignment `subview` enforces for this backend, in bytes."""
         return (
             COHERENCE_GRANULE
             if cls._coherence_granule is None
@@ -251,7 +273,7 @@ class NpuTensor(ABC):
     @device.setter
     def device(self, value):
         if value not in self.__class__.DEVICES:
-            raise ValueError(f"Unsupported device: {value}")
+            raise ValueError(_unsupported_device_message(self.__class__, value))
         start, end = self._extent
         self._coherence().set(start, end, value)
 
@@ -259,7 +281,7 @@ class NpuTensor(ABC):
     def base(self):
         """The buffer that owns this one's storage, or None if it owns it itself.
 
-        Mirrors :attr:`numpy.ndarray.base`, including collapsing a chain of
+        Mirrors `numpy.ndarray.base`, including collapsing a chain of
         views: the base of a view of a view is the buffer that actually owns the
         storage, not the intermediate view. The intermediate is still referenced
         internally, so the whole chain stays alive for as long as any view of it
@@ -280,18 +302,17 @@ class NpuTensor(ABC):
 
     @property
     def storage_offset(self):
-        """Where this buffer starts within :attr:`base`'s storage, in bytes.
+        """Where this buffer starts within `base`'s storage, in bytes.
 
         Zero for a buffer that owns its storage. Accumulated through nesting, so
         it is always measured from the owner rather than from the view this one
-        was carved out of. Compare :meth:`torch.Tensor.storage_offset`, which is
+        was carved out of. Compare `torch.Tensor.storage_offset`, which is
         in elements; this is in bytes because a view may reinterpret the dtype.
         """
         return self._offset_bytes
 
     def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
-        """
-        Initialize the tensor.
+        """Initialize the tensor.
 
         Args:
             shape_or_data (tuple or array-like):
@@ -301,15 +322,14 @@ class NpuTensor(ABC):
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
         if device not in self.__class__.DEVICES:
-            raise ValueError(f"Unsupported device: {device}")
+            raise ValueError(_unsupported_device_message(self.__class__, device))
         self._initial_device = device
         self.dtype = dtype
 
     @property
     @abstractmethod
     def data(self) -> np.ndarray:
-        """
-        Subclasses must implement a data property.
+        """Subclasses must implement a data property.
 
         Returns:
             np.ndarray: The underlying data of the tensor.
@@ -319,8 +339,7 @@ class NpuTensor(ABC):
     @property
     @abstractmethod
     def shape(self) -> tuple[int, ...]:
-        """
-        Subclasses must implement a shape property.
+        """Subclasses must implement a shape property.
 
         Returns:
             tuple: The shape of the tensor.
@@ -328,8 +347,7 @@ class NpuTensor(ABC):
         pass
 
     def __repr__(self):
-        """
-        Return a string representation of the tensor.
+        """Return a string representation of the tensor.
 
         Note: This method may implicitly trigger data synchronization to devices.
         """
@@ -338,8 +356,7 @@ class NpuTensor(ABC):
         return f"{self.__class__.__name__}({array_str}, device='{self.device}')"
 
     def __array__(self, dtype=None):
-        """
-        NumPy protocol method to convert the tensor to a NumPy array.
+        """NumPy protocol method to convert the tensor to a NumPy array.
 
         This allows the tensor to be used in NumPy functions or explicitly converted via np.array(tensor).
 
@@ -359,8 +376,7 @@ class NpuTensor(ABC):
         return self.data
 
     def __getitem__(self, index):
-        """
-        Retrieves the value at a specific index in the tensor.
+        """Retrieve the value at a specific index in the tensor.
 
         Args:
             index (int): The index of the value to retrieve.
@@ -375,8 +391,7 @@ class NpuTensor(ABC):
         return self.data[index]
 
     def __setitem__(self, index, value):
-        """
-        Sets the value at a specific index in the tensor.
+        """Set the value at a specific index in the tensor.
 
         Args:
             index (int): The index of the value to set.
@@ -384,14 +399,13 @@ class NpuTensor(ABC):
 
         Note: this reconciles before the write so the untouched elements keep
         their current contents, and records the write rather than flushing it,
-        so a run of assignments costs one transfer at the next :meth:`to`.
+        so a run of assignments costs one transfer at the next `to`.
         """
         with self.mutate() as array:
             array[index] = value
 
     def __len__(self):
-        """
-        Return the length of the tensor.
+        """Return the length of the tensor.
 
         Returns:
             int: The length of the tensor (size of the first dimension).
@@ -405,16 +419,12 @@ class NpuTensor(ABC):
 
     @cached_property
     def nbytes(self) -> int:
-        """
-        Number of bytes consumed by elements in the tensor
-        """
+        """Number of bytes consumed by elements in the tensor."""
         return self.numel() * self.element_size
 
     @cached_property
     def element_size(self) -> int:
-        """
-        Number of bytes per element
-        """
+        """Number of bytes per element."""
         return np.dtype(self.dtype).itemsize
 
     def _reconcile_for_read(self):
@@ -439,8 +449,7 @@ class NpuTensor(ABC):
             self.storage.sync_from_device(lo, hi - lo)
 
     def to(self, target_device: str):
-        """
-        Moves the tensor to a specified target device.
+        """Move the tensor to a specified target device.
 
         Args:
             target_device (str): The target device.
@@ -492,28 +501,27 @@ class NpuTensor(ABC):
     def overwrite(self):
         """Borrow for a write that replaces every byte of this tensor.
 
-        The same as :meth:`mutate` without the reconcile on entry, which nothing
+        The same as `mutate` without the reconcile on entry, which nothing
         can observe if all of it is about to be replaced. Filling a buffer this
         way costs one transfer rather than two.
 
         The caller is promising to write the whole region. Bytes left unwritten
         keep whatever the host last had there and are sent to the device with
-        the rest, so use :meth:`mutate` for a partial update. This is the one
+        the rest, so use `mutate` for a partial update. This is the one
         promise here that cannot be checked; it is still narrower than reaching
         for ``data``, which makes the same promise and does not record the write.
         """
         return _WriteBorrow(self, reconcile=False)
 
     def subview(self, offset, shape, dtype=None):
-        """
-        Return a tensor viewing a sub-region of this tensor's underlying storage.
+        """Return a tensor viewing a sub-region of this tensor's underlying storage.
 
         The returned tensor shares this tensor's buffer (no new allocation, no
         copy), holds a reference to this tensor so the storage outlives the view,
         and synchronizes its own slice. It is a plain tensor of the same backend
         class, not a distinct type.
 
-        The region must be aligned to :data:`COHERENCE_GRANULE`, because host and
+        The region must be aligned to `COHERENCE_GRANULE`, because host and
         device are reconciled a cache line at a time, not a byte at a time. Two
         views sharing a line are not independent: synchronizing one acts on the
         other's bytes in that line, so a view whose host copy is stale can be
@@ -549,7 +557,7 @@ class NpuTensor(ABC):
         array's own dtype and torch reports ``storage_offset`` in elements.
         Bytes because that is the unit the thing being carved is measured in: a
         buffer has no dtype, the alignment rule below is in bytes, and
-        :attr:`storage_offset` reports bytes, so the argument going in and the
+        `storage_offset` reports bytes, so the argument going in and the
         value reported back are the same number. ``shape`` stays in elements of
         the view's dtype, since it describes the tensor rather than the region.
 
@@ -565,7 +573,7 @@ class NpuTensor(ABC):
 
         Raises:
             ValueError: If the region falls outside this tensor's buffer, or is
-                not aligned to :data:`COHERENCE_GRANULE`.
+                not aligned to `COHERENCE_GRANULE`.
         """
         if type(self)._subview is NpuTensor._subview:
             # Answer the capability question before complaining about a region
@@ -609,8 +617,7 @@ class NpuTensor(ABC):
 
     @abstractmethod
     def _sync_to_device(self):
-        """
-        Syncs the tensor data from the host to the device memory.
+        """Sync the tensor data from the host to the device memory.
 
         This method should be implemented by subclasses to handle device-specific synchronization.
         """
@@ -618,16 +625,14 @@ class NpuTensor(ABC):
 
     @abstractmethod
     def _sync_from_device(self):
-        """
-        Syncs the tensor data from the device to the host memory.
+        """Sync the tensor data from the device to the host memory.
 
         This method should be implemented by subclasses to handle device-specific synchronization.
         """
         ...
 
     def _subview(self, offset_bytes, shape, dtype):
-        """
-        Backend hook for :meth:`subview`.
+        """Backend hook for `subview`.
 
         Build and return a tensor of the same backend class that shares this
         tensor's underlying storage starting at ``offset_bytes`` with the given
@@ -651,8 +656,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def __check_or_create(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """
-        Internal helper to check an output tensor or create a new one.
+        """Check an output tensor or create a new one.
 
         Args:
             *size: Shape of the tensor.
@@ -688,8 +692,7 @@ class NpuTensor(ABC):
         return t
 
     def numpy(self):
-        """
-        Returns a NumPy view of the tensor data on host memory.
+        """Return a NumPy view of the tensor data on host memory.
 
         This method ensures that data is first synchronized from the device
         (e.g., NPU) to the host before returning the array.
@@ -704,8 +707,7 @@ class NpuTensor(ABC):
         return self.data
 
     def to_torch(self):
-        """
-        Returns a torch tensor sharing the data in this tensor if possible.
+        """Return a torch tensor sharing the data in this tensor if possible.
 
         Syncs from device first if the tensor is on the NPU.
 
@@ -718,8 +720,7 @@ class NpuTensor(ABC):
         return _array_to_torch(self.numpy())
 
     def torch_view(self):
-        """
-        Returns a torch tensor sharing this buffer's host memory without syncing from device.
+        """Return a torch tensor sharing this buffer's host memory without syncing from device.
 
         Unlike to_torch(), this does NOT sync from the NPU first. Marks the buffer as
         CPU-resident so that a subsequent .to("npu") call (or the NPU operator's implicit
@@ -737,8 +738,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def from_torch(cls, torch_tensor, device=None, **kwargs):
-        """
-        Returns a tensor with a copy of the data in the torch_tensor.
+        """Return a tensor with a copy of the data in the torch_tensor.
 
         Args:
             torch_tensor (torch.Tensor): The source torch tensor.
@@ -778,8 +778,7 @@ class NpuTensor(ABC):
         )
 
     def fill_(self, value):
-        """
-        Fills the tensor with a scalar value (in-place operation).
+        """Fill the tensor with a scalar value (in-place operation).
 
         Args:
             value: The scalar value to fill the tensor with.
@@ -792,8 +791,7 @@ class NpuTensor(ABC):
             array.fill(value)
 
     def numel(self):
-        """
-        Calculates the number of elements in the tensor.
+        """Calculate the number of elements in the tensor.
 
         Returns:
             int: The total number of elements in the tensor.
@@ -802,8 +800,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def ones(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """
-        Returns a tensor filled with ones, with shape defined by size.
+        """Return a tensor filled with ones, with shape defined by size.
 
         Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
@@ -821,8 +818,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def zeros(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """
-        Returns a tensor filled with zeros, with shape defined by size.
+        """Return a tensor filled with zeros, with shape defined by size.
 
         Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
@@ -840,8 +836,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def full(cls, size, fill_value, *, out=None, dtype=None, device=None, **kwargs):
-        """
-        Returns a tensor of shape `size` filled with `fill_value`.
+        """Return a tensor of shape `size` filled with `fill_value`.
 
         Args:
             size (int or tuple/list of int): Shape of the returned tensor.
@@ -871,8 +866,7 @@ class NpuTensor(ABC):
         generator=None,
         **kwargs,
     ):
-        """
-        Returns a tensor filled with random integers uniformly sampled from [low, high).
+        """Return a tensor filled with random integers uniformly sampled from [low, high).
 
         Args:
             low (int): Lowest integer to be drawn (inclusive).
@@ -906,8 +900,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def rand(cls, *size, out=None, dtype=None, device=None, generator=None, **kwargs):
-        """
-        Returns a tensor filled with random numbers from a uniform distribution on [0, 1).
+        """Return a tensor filled with random numbers from a uniform distribution on [0, 1).
 
         Args:
             *size (int...): Variable number of integers or a single tuple defining the shape.
@@ -966,8 +959,7 @@ class NpuTensor(ABC):
         device=None,
         **kwargs,
     ):
-        """
-        Returns a tensor with values from the interval [start, end) with spacing `step`.
+        """Return a tensor with values from the interval [start, end) with spacing `step`.
 
         Args:
             start (number): Start of interval. Defaults to 0.
@@ -978,11 +970,11 @@ class NpuTensor(ABC):
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
             out (NpuTensor, optional): Optional tensor to write output to (must match shape and dtype).
             device (str, optional): Target device. Defaults to 'npu'.
+            **kwargs: Additional keyword arguments forwarded to the underlying tensor constructor.
 
         Returns:
             NpuTensor: A tensor containing the sequence (1-D by default, or `shape` if given).
         """
-
         if end is None:
             start, end = 0, start
 
@@ -1025,8 +1017,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def zeros_like(cls, other, dtype=None, device=None, **kwargs):
-        """
-        Creates a new tensor with the same shape as `other`, filled with zeros.
+        """Create a new tensor with the same shape as `other`, filled with zeros.
 
         Args:
             other (NpuTensor): The reference tensor to copy shape from.
@@ -1049,17 +1040,17 @@ class NpuTensor(ABC):
 
 
 class CPUOnlyTensor(NpuTensor):
-    """
-    This class exists primarily for testing purposes, to test tensor operations without assuming
-    access to a host runtime (e.g., xrt).
+    """A tensor backed only by host memory, used mainly for testing.
+
+    It exists primarily for testing purposes, to test tensor operations without
+    assuming access to a host runtime (e.g., xrt).
     """
 
     DEVICES = ["cpu"]
     DEFAULT_DEVICE = "cpu"
 
     def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="cpu"):
-        """
-        Initialize the CPUOnlyTensor.
+        """Initialize the CPUOnlyTensor.
 
         Args:
             shape_or_data (tuple or array-like):
@@ -1089,10 +1080,9 @@ class CPUOnlyTensor(NpuTensor):
 
     @property
     def data(self):
-        """
-        Get the underlying numpy array.
+        """Get the underlying numpy array.
 
-        Writes through this array are not reconciled; use :meth:`mutate` for a
+        Writes through this array are not reconciled; use `mutate` for a
         write that is. Kept as the unmediated handle for callers that manage
         their own synchronization.
 
@@ -1103,8 +1093,7 @@ class CPUOnlyTensor(NpuTensor):
 
     @property
     def shape(self):
-        """
-        Get the shape of the tensor.
+        """Get the shape of the tensor.
 
         Returns:
             tuple: The shape of the tensor.
@@ -1112,16 +1101,16 @@ class CPUOnlyTensor(NpuTensor):
         return self._shape
 
     def _sync_to_device(self):
-        """
-        Syncs the tensor data from the host to the device memory.
+        """Sync the tensor data from the host to the device memory.
+
         For CPUOnlyTensor, this is a no-op.
         """
         # Nothing to do for CPU only
         pass
 
     def _sync_from_device(self):
-        """
-        Syncs the tensor data from the device to the host memory.
+        """Sync the tensor data from the device to the host memory.
+
         For CPUOnlyTensor, this is a no-op.
         """
         # Nothing to do for CPU only

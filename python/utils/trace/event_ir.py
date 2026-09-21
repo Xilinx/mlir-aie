@@ -596,7 +596,7 @@ def convert_event_ir_to_json(trace_events, lines, pid_events):
                     trace_event["args"] = {}
                     trace_events.append(trace_event)
                 except ValueError:
-                    # TODO Need to check this becuase we get this for event 161
+                    # TODO Need to check this because we get this for event 161
                     logger.debug("event %s not found.", event)
                 check_time = True
             else:

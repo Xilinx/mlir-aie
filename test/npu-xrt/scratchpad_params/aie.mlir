@@ -29,8 +29,7 @@ module {
             // Calculate result: foo * bar in bf16
             %val_bf16 = arith.mulf %foo, %bar : bf16
 
-            %out_view = aie.objectfifo.acquire @objfifo_out (Produce, 1) : !aie.objectfifosubview<memref<2xbf16>>
-            %out_buf = aie.objectfifo.subview.access %out_view[0] : !aie.objectfifosubview<memref<2xbf16>> -> memref<2xbf16>
+            %out_buf = aie.objectfifo.acquire @objfifo_out (Produce, 1) : memref<2xbf16>
             memref.store %val_bf16, %out_buf[%c0] : memref<2xbf16>
             aie.objectfifo.release @objfifo_out (Produce, 1)
 
@@ -53,7 +52,7 @@ module {
 
             aiex.dma_start_task(%t_out)
             aiex.dma_await_task(%t_out)
-        } 
+        }
 
     }
 }

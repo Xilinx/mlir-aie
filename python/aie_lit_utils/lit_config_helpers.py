@@ -63,7 +63,15 @@ class LitConfigHelper:
     # Maps generation name to list of model strings that may appear in xrt-smi
     NPU_MODELS = {
         "npu1": ["npu1", "Phoenix"],
-        "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
+        "npu2": [
+            "npu4",
+            "Strix",
+            "npu5",
+            "Strix Halo",
+            "npu6",
+            "Krackan",
+            "Gorgon Point",
+        ],
     }
 
     PATH_ENV_VARS = {"PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"}
@@ -105,18 +113,58 @@ class LitConfigHelper:
         )
 
     @staticmethod
+    def _run_with_test_cache_wrap(aie_src_root: str, test_key: str = "%s") -> str:
+        """Build the cross-platform per-test cache wrapper command."""
+        wrapper = os.path.join(aie_src_root, "utils", "run_with_test_cache.py")
+        return " ".join(
+            [
+                LitConfigHelper._quote_lit_arg(sys.executable),
+                LitConfigHelper._quote_lit_arg(wrapper),
+                LitConfigHelper._quote_lit_arg(test_key),
+            ]
+        )
+
+    @staticmethod
     def add_makefile_examples_feature(config_obj) -> None:
         """Enable Make-based example tests on POSIX hosts."""
         if os.name != "nt" and shutil.which("make"):
             config_obj.available_features.add("makefile_examples")
 
+    # Matches cmake_minimum_required() in the example CMakeLists.
+    CMAKE_EXAMPLES_MIN_VERSION = (3, 30)
+
     @staticmethod
     def add_cmake_examples_feature(config_obj) -> None:
         """Enable CMake-based example tests (works on Windows, unlike Make).
 
-        Requires cmake, ctest and ninja — what run_cmake.lit actually invokes."""
-        if all(shutil.which(tool) for tool in ("cmake", "ctest", "ninja")):
-            config_obj.available_features.add("cmake_examples")
+        Requires cmake, ctest and ninja — what run_cmake.lit actually invokes —
+        and a cmake new enough for the examples' cmake_minimum_required. Without
+        the version check the lits hard-FAIL on a host whose cmake is too old
+        (Ubuntu 24.04 ships 3.28) instead of being reported UNSUPPORTED."""
+        if not all(shutil.which(tool) for tool in ("cmake", "ctest", "ninja")):
+            return
+        version = LitConfigHelper._cmake_version()
+        if version < LitConfigHelper.CMAKE_EXAMPLES_MIN_VERSION:
+            logger.info("cmake %s is too old for the CMake-based examples", version)
+            return
+        config_obj.available_features.add("cmake_examples")
+
+    @staticmethod
+    def _cmake_version() -> tuple:
+        """(major, minor) of the cmake on PATH, or (0, 0) if it can't be read."""
+        try:
+            out = subprocess.run(
+                ["cmake", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return (0, 0)
+        match = re.search(r"cmake version (\d+)\.(\d+)", out)
+        if not match:
+            return (0, 0)
+        return (int(match.group(1)), int(match.group(2)))
 
     @staticmethod
     def _find_xrt_smi(xrt_bin_dir: str) -> Optional[str]:
@@ -193,9 +241,10 @@ class LitConfigHelper:
             HardwareConfig contains:
                 - found: True if XRT is detected and valid
                 - flags: Compiler/linker flags for XRT (includes -I, -L, and libraries)
-                - substitutions: Dictionary with "%xrt_flags", "%run_on_npu1%", "%run_on_npu2%",
-                                 "%run_on_npu%" (whichever of the above is real), and
-                                 "%aie_npu_device%" (detected "npu1"/"npu2", or "" if none)
+                - substitutions: Dictionary with "%xrt_flags", "%run_on_npu1%",
+                                 "%run_on_npu2%", and "%aie_cmake_device%"
+                                 ("npu2" when a Strix NPU is detected, else "npu";
+                                 what the run_cmake lits pass as -DAIE_DEVICE)
                 - features: List of features including "ryzen_ai", "ryzen_ai_npu1", or "ryzen_ai_npu2"
                            based on detected NPU hardware and available Vitis components
         """
@@ -213,6 +262,7 @@ class LitConfigHelper:
         run_on_npu2 = "echo"
         # Whichever generation is actually detected, so device-agnostic tests
         # (single lit file, no npu1/npu2 duplication) can target it directly.
+        # Consumed by %aie_cmake_device% below.
         detected_npu_device = ""
 
         if not xrt_lib_dir:
@@ -227,8 +277,6 @@ class LitConfigHelper:
 
             config.substitutions["%run_on_npu1%"] = run_on_npu1
             config.substitutions["%run_on_npu2%"] = run_on_npu2
-            config.substitutions["%run_on_npu%"] = run_on_npu1
-            config.substitutions["%aie_npu_device%"] = detected_npu_device
             config.substitutions["%aie_cmake_device%"] = "npu"
             return config
 
@@ -391,11 +439,6 @@ class LitConfigHelper:
 
         config.substitutions["%run_on_npu1%"] = run_on_npu1
         config.substitutions["%run_on_npu2%"] = run_on_npu2
-        config.substitutions["%aie_npu_device%"] = detected_npu_device
-        # Device-agnostic alias: whichever of run_on_npu1/run_on_npu2 is real.
-        config.substitutions["%run_on_npu%"] = (
-            run_on_npu2 if detected_npu_device == "npu2" else run_on_npu1
-        )
         # add_aie_design/add_aie_run_test's -DAIE_DEVICE takes "npu" (not
         # "npu1") for the first-gen device -- map the detected generation.
         config.substitutions["%aie_cmake_device%"] = (
@@ -602,31 +645,66 @@ class LitConfigHelper:
             return aie_host_target, ""
 
     @staticmethod
+    def _is_functional_cxx_compiler(path: str) -> bool:
+        """Check that `path` is a compiler binary that actually runs.
+
+        Vitis prepends its aietools/bin (device-target tooling) onto PATH;
+        some Vitis installs ship a clang++ there that is a wrapper script
+        shelling out to a peano clang++ binary that does not exist in that
+        install. Such a wrapper still passes an `os.path.exists`/`which`
+        check, so it must be invoked to confirm it works.
+        """
+        try:
+            subprocess.run(
+                [path, "--version"], capture_output=True, timeout=10, check=True
+            )
+            return True
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    @staticmethod
     def setup_host_compiler_substitutions(config_obj) -> None:
         """Add host compiler substitutions for tests that build host executables.
 
         AIE/Peano tool directories are added to PATH for device-side tools, so
-        host-side tests should not rely on a bare ``clang`` resolving to the
+        host-side tests should not rely on a bare ``clang++`` resolving to the
         host LLVM compiler. This substitution keeps host compilation explicit
-        and preserves Windows executable suffix handling.
+        and preserves Windows executable suffix handling. Using ``clang++``
+        means ``-lstdc++`` need not be listed explicitly in link flags, but
+        run.lit files must still pass an explicit ``-std=c++XX``: clang++'s
+        default language standard varies across supported Clang versions.
         """
-        host_clang = os.path.join(
-            config_obj.llvm_tools_dir, f"clang{config_obj.llvm_exe_ext}"
+        host_clangxx = os.path.join(
+            config_obj.llvm_tools_dir, f"clang++{config_obj.llvm_exe_ext}"
         )
-        if not os.path.exists(host_clang):
-            host_clang = shutil.which("clang") or "clang"
+        if not (
+            os.path.exists(host_clangxx)
+            and LitConfigHelper._is_functional_cxx_compiler(host_clangxx)
+        ):
+            which_clangxx = shutil.which("clang++")
+            if which_clangxx and LitConfigHelper._is_functional_cxx_compiler(
+                which_clangxx
+            ):
+                host_clangxx = which_clangxx
+            elif os.path.exists(
+                "/usr/bin/clang++"
+            ) and LitConfigHelper._is_functional_cxx_compiler("/usr/bin/clang++"):
+                host_clangxx = "/usr/bin/clang++"
+            else:
+                host_clangxx = "clang++"
         config_obj.substitutions.append(
-            ("%host_clang", LitConfigHelper._quote_lit_arg(host_clang))
+            ("%host_clang", LitConfigHelper._quote_lit_arg(host_clangxx))
         )
 
     @staticmethod
     def setup_host_link_substitution(config_obj) -> None:
         """Add host linker flags for tests that build XRT host executables.
 
-        Linux-hosted tests link librt, libstdc++, and libm explicitly because
-        the host compiler substitution resolves to clang rather than clang++.
-        Windows-hosted tests link against CMake-built dynamic MSVC libraries,
-        matching CMake's default /MD runtime selection.
+        Linux-hosted tests link librt and libm explicitly; libstdc++ is omitted
+        because the host compiler substitution now resolves to ``clang++``,
+        which links the C++ standard library automatically. Windows-hosted tests
+        link against CMake-built dynamic MSVC libraries, matching CMake's
+        default /MD runtime selection.
         """
         if os.name == "nt":
             host_link_flags = " ".join(
@@ -639,7 +717,7 @@ class LitConfigHelper:
                 ]
             )
         else:
-            host_link_flags = "-lrt -lstdc++ -lm"
+            host_link_flags = "-lrt -lm"
         config_obj.substitutions.append(("%host_link_flags", host_link_flags))
 
     @staticmethod

@@ -10,7 +10,7 @@ from aie.dialects.aie import (
     transaction_binary_to_mlir,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.ir import (  # pyright: ignore[reportMissingImports]
-    Context,
+    Context,  # pyright: ignore[reportAttributeAccessIssue]
 )
 
 

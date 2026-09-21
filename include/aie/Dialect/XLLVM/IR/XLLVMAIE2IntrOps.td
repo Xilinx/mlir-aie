@@ -231,6 +231,18 @@ def SubACC2048AccFloatAIE2pIntrOp :
                    VectorOfLengthAndType<[64], [F32]>:$rhs,
                    I32:$conf)>;
 
+// ----- NEG -----
+
+def NegACC512AccFloatAIE2IntrOp
+    : AIEVec2_IntrOp<"ACC512.accfloat.neg.conf",
+                     [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+      Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$source, I32:$conf)>;
+
+def NegACC2048AccFloatAIE2pIntrOp
+    : AIEVec2p_IntrOp<"ACC2048.accfloat.neg.conf",
+                      [TypeIs<"res", VectorOfLengthAndType<[64], [F32]>>]>,
+      Arguments<(ins VectorOfLengthAndType<[64], [F32]>:$source, I32:$conf)>;
+
 // ----- SET -----
 
 def VectorSetI512I128IntrOp :

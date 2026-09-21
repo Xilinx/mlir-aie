@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -187,7 +188,7 @@ bool RegisterDatabase::loadFromJSON(StringRef registerPath,
       // Store with module::name as key for uniqueness (lowercase for
       // case-insensitive lookup)
       std::string key = moduleName.lower() + "::" + regInfo.name;
-      std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+      llvm::transform(key, key.begin(), ::tolower);
       registers_[key] = regInfo;
     }
   }
@@ -243,7 +244,7 @@ bool RegisterDatabase::loadFromJSON(StringRef registerPath,
 
       // Store with module::name as key (lowercase for case-insensitive lookup)
       std::string key = moduleName.str() + "::" + eventInfo.name;
-      std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+      llvm::transform(key, key.begin(), ::tolower);
       events_[key] = eventInfo;
     }
   }
@@ -254,7 +255,7 @@ bool RegisterDatabase::loadFromJSON(StringRef registerPath,
 const RegisterInfo *RegisterDatabase::lookupRegister(StringRef name,
                                                      StringRef module) const {
   std::string key = module.str() + "::" + name.str();
-  std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+  llvm::transform(key, key.begin(), ::tolower);
   auto it = registers_.find(key);
   return it != registers_.end() ? &it->second : nullptr;
 }
@@ -264,8 +265,7 @@ void RegisterDatabase::buildOffsetIndex() {
   for (const auto &entry : registers_) {
     const RegisterInfo &info = entry.second;
     std::string moduleKey = info.module;
-    std::transform(moduleKey.begin(), moduleKey.end(), moduleKey.begin(),
-                   ::tolower);
+    llvm::transform(moduleKey, moduleKey.begin(), ::tolower);
     registersByOffset_[moduleKey][info.offset] = &info;
   }
 }
@@ -286,7 +286,7 @@ RegisterDatabase::lookupRegisterByOffset(uint32_t offset,
 std::optional<uint32_t> RegisterDatabase::lookupEvent(StringRef name,
                                                       StringRef module) const {
   std::string key = module.str() + "::" + name.str();
-  std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+  llvm::transform(key, key.begin(), ::tolower);
   auto it = events_.find(key);
   if (it != events_.end()) {
     return it->second.number;

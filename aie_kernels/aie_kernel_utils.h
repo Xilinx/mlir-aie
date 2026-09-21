@@ -28,11 +28,20 @@ Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 #define AIE_TRY_INITIATION_INTERVAL(x)
 #define AIE_PREPARE_FOR_POSTPIPELINING
 #define AIE_LOOP_FLATTEN chess_flatten_loop
+#define AIE_LOOP_HINT(k, v)
+#define AIE_LOOP_GPR_REALLOC
 
 #elif defined(__AIECC__)
 #ifndef __STRINGIFY
 #define __STRINGIFY(a) #a
 #endif
+#define AIE_PRAGMA_STR(x) _Pragma(#x)
+#define AIE_PRAGMA(x) AIE_PRAGMA_STR(x)
+#define AIE_LOOP_HINT(k, v) AIE_PRAGMA(clang loop hint(k, v))
+// clang-format off: aie-gpr-realloc is a single pragma hint token, not an
+// arithmetic expression.
+#define AIE_LOOP_GPR_REALLOC AIE_LOOP_HINT(aie-gpr-realloc, 1)
+// clang-format on
 #define AIE_LOOP_UNROLL(x) _Pragma(__STRINGIFY(clang loop unroll_count(x)))
 #define AIE_LOOP_UNROLL_FULL _Pragma("clang loop unroll(full)")
 #define AIE_LOOP_NO_UNROLL _Pragma("clang loop unroll(disable)")
@@ -74,6 +83,31 @@ Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 #define AIE_TRY_INITIATION_INTERVAL(x)
 #define AIE_PREPARE_FOR_POSTPIPELINING
 #define AIE_LOOP_FLATTEN
+#define AIE_LOOP_HINT(k, v)
+#define AIE_LOOP_GPR_REALLOC
 #endif
+
+// Runs `body` (a zero-arg lambda) `count` times. `body` cannot reference the
+// internal loop index. When count >= MinIters the loop is eligible for software
+// pipelining (extra pragma macros may be passed after `body`, e.g.
+// AIE_PREPARE_FOR_POSTPIPELINING); otherwise a plain no-unroll loop is emitted,
+// avoiding invalid pipeliner assumptions for tiny trip counts.
+#define VERSIONED_LOOP(MinIters, count, body, ...)                             \
+  do {                                                                         \
+    if ((count) >= (MinIters)) {                                               \
+      __VA_ARGS__                                                              \
+      AIE_LOOP_RANGE(MinIters, )                                               \
+      for (int _vl_i = 0; _vl_i < (count); _vl_i++) {                          \
+        (body)();                                                              \
+      }                                                                        \
+    } else {                                                                   \
+      AIE_NO_PREPARE_FOR_PIPELINING                                            \
+      AIE_LOOP_RANGE(1, )                                                      \
+      AIE_LOOP_NO_UNROLL                                                       \
+      for (int _vl_i = 0; _vl_i < (count); _vl_i++) {                          \
+        (body)();                                                              \
+      }                                                                        \
+    }                                                                          \
+  } while (0)
 
 #endif

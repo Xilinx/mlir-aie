@@ -14,7 +14,8 @@ MLIR_AIE_DIR ?= $(shell python3 -c "from aie.utils.config import root_path; prin
 # npu2 the same way our lit tests do.
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
-WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw
+WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw \
+                --system-header-prefix=aie_api/ -Werror=undef
 
 # Pre-trip aie_api's aie_adf.hpp include guard so stock upstream aie_api never
 # pulls in <adf.h> (a Vitis-only header absent from Peano).  No mlir-aie kernel
@@ -30,8 +31,38 @@ CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
 CHESSCCWRAP1_FLAGS = aie -I ${AIETOOLS_DIR}/include
 CHESSCCWRAP2_FLAGS = aie2 -I ${AIETOOLS_DIR}/include
 CHESSCCWRAP2P_FLAGS = aie2p -I ${AIETOOLS_DIR}/include
-PEANOWRAP2_FLAGS = -O2 -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS}
-PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS}
+# -fstack-size-section gives a kernel object the stack accounting that the llc
+# invocation of aiecc produces for a core object. -ffunction-sections and
+# -fdata-sections give each symbol its own section, which the attribution in
+# StackSizeAnalysis.h needs.
+PEANOWRAP2_FLAGS = -O2 -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS} -ffunction-sections -fdata-sections -fstack-size-section
+PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS} -ffunction-sections -fdata-sections -fstack-size-section
+
+# aiecc's --check-lut-banks recovers which two tables an aie::lut reads from the
+# kernel's LLVM IR, which only the kernel compile can preserve. -fembed-bitcode
+# cannot be combined with the -ffunction-sections/-fdata-sections above, so the
+# IR is emitted separately and attached. Opt in with AIE_CHECK_LUT_BANKS=1 on
+# a clean build (or use make -B: make does not track flag changes). It costs a
+# second compile per kernel, which is why it is not the default.
+#
+# Append $(call attach_bitcode,<PEANOWRAP*_FLAGS>) to a Peano kernel rule to use
+# it. Peano only: chess emits IR from an LLVM aiecc cannot parse.
+AIE_CHECK_LUT_BANKS ?= 0
+ifeq (${AIE_CHECK_LUT_BANKS},1)
+# Bundled in a wheel install, on PATH in a from-source build. GNU binutils
+# objcopy cannot parse an AIE object, so this has to be the LLVM one.
+AIE_OBJCOPY ?= $(firstword $(wildcard ${MLIR_AIE_DIR}/bin/llvm-objcopy) \
+	$(shell command -v llvm-objcopy 2>/dev/null))
+# Keep the opt-in authoritative even with command-line AIECC_FLAGS, without
+# passing the same LLVM option twice.
+override AIECC_FLAGS := $(filter-out --check-lut-banks -check-lut-banks --check-lut-banks=% -check-lut-banks=%,${AIECC_FLAGS}) --check-lut-banks
+attach_bitcode = $(if ${AIE_OBJCOPY},,$(error AIE_CHECK_LUT_BANKS=1 requires llvm-objcopy; set AIE_OBJCOPY)) \
+	&& ( ${PEANO_INSTALL_DIR}/bin/clang $(1) -emit-llvm -c $(abspath $<) -o ${@F}.bc \
+	&& ${AIE_OBJCOPY} --add-section=.llvmbc=${@F}.bc ${@F} \
+	|| { rm -f ${@F} ${@F}.bc; exit 1; } )
+else
+attach_bitcode =
+endif
 
 TEST_POWERSHELL := $(shell command -v powershell.exe >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(TEST_POWERSHELL),yes)

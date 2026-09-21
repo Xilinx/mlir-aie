@@ -96,8 +96,8 @@ fi
 
 echo "Setting up XDNA driver repository..."
 # Clone or update the XDNA driver repository and initialize submodules
-XDNA_TAG=944ca35a395b7dfa37ac3f437f1da48feca7bffc
-# (1.7 tag as of 2026/05/27) 
+XDNA_SHA=31c01f2019e79e13603239478dad8291a27897a5
+# (1.8 tag as of 2026/09/02) 
 if [ -d "xdna-driver" ]; then
     echo "xdna-driver directory already exists. Removing and re-cloning to ensure clean state..."
     rm -rf xdna-driver
@@ -106,8 +106,8 @@ fi
 echo "Cloning the XDNA driver repository..."
 git clone https://github.com/amd/xdna-driver.git
 cd xdna-driver
-echo "Checking out tag $XDNA_TAG..."
-git checkout "$XDNA_TAG"
+echo "Checking out tag $XDNA_SHA..."
+git checkout "$XDNA_SHA"
 git submodule update --init --recursive
 cd ..
 export XDNA_SRC_DIR=$(realpath xdna-driver)

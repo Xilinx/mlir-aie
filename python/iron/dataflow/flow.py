@@ -58,9 +58,10 @@ def _emit_shim_dma_alloc(kind: str, shim_symbol, src, src_channel, dst, dst_chan
 
 
 class Flow(Resolvable):
-    """An explicit AXI-stream route between (src_tile, src_port, src_channel) and
-    (dst_tile, dst_port, dst_channel).
+    """An explicit AXI-stream route between a source and destination endpoint.
 
+    Connects ``(src_tile, src_port, src_channel)`` to
+    ``(dst_tile, dst_port, dst_channel)``.
     Lowers to a single `aie.flow` op. The user is responsible for
     arranging matching [`TileDma`][iron.TileDma] channels on the producer and
     consumer ends.
@@ -117,7 +118,7 @@ class Flow(Resolvable):
         return self._op
 
     def all_tiles(self):
-        """The tiles this Flow touches — Program uses this to resolve them."""
+        """Return the tiles this Flow touches — Program uses this to resolve them."""
         return [self._src, self._dst]
 
     def resolve(
@@ -147,9 +148,10 @@ class Flow(Resolvable):
 
 @dataclass
 class PacketDest:
-    """One destination endpoint of a [`PacketFlow`][iron.PacketFlow]. Held as a
-    small dataclass so the PacketFlow constructor's destination list reads
-    cleanly when there are multiple sinks (uncommon, but the underlying op
+    """One destination endpoint of a [`PacketFlow`][iron.PacketFlow].
+
+    Held as a small dataclass so the PacketFlow constructor's destination list
+    reads cleanly when there are multiple sinks (uncommon, but the underlying op
     supports it).
     """
 
@@ -159,18 +161,14 @@ class PacketDest:
 
 
 class PacketFlow(Resolvable):
-    """An explicit packet-switched route with caller-controlled `pkt_id`.
+    """An explicit packet-switched route from a source to one or more destinations.
 
-    Peer of [`Flow`][iron.Flow] for the packet-switched case. Unlike the
-    `--packet-sw-objFifos` global lowering (which auto-assigns sequential
-    packet IDs to every ObjectFifo in the design), `PacketFlow`
-    exposes the packet ID directly so the same ID can be reused across
-    stages and used as a routing decision (e.g. memtile dispatch by
-    `pkt_id` to one of several compute cores).
-
-    Lowers to a single `aie.packetflow` op containing one
-    `aie.packet_source` and one or more `aie.packet_dest` ops in its
-    region.
+    Connects ``(src_tile, src_port, src_channel)`` to each destination
+    endpoint, tagging the stream with `pkt_id`. Lowers to a single
+    `aie.packetflow` op holding one `aie.packet_source` and one
+    `aie.packet_dest` per destination. The user is responsible for
+    arranging matching [`TileDma`][iron.TileDma] channels on the producer and
+    consumer ends.
     """
 
     def __init__(

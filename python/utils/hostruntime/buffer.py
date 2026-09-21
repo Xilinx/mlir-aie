@@ -7,7 +7,7 @@
 
 The allocation is one class. What differs between backends is not the allocation
 but the two things layered under it: where the host's bytes come from, and what
-reconciling a range actually does. Those are the :class:`Transport`.
+reconciling a range actually does. Those are the `Transport`.
 """
 
 from abc import ABC, abstractmethod
@@ -26,7 +26,7 @@ class Transport(ABC):
     A backend is a transport, not a kind of allocation.
 
     Ranges are part of the contract rather than a hint. A transport that cannot
-    honour them says so in its name (see :class:`WholeExtentTransport`) instead
+    honour them says so in its name (see `WholeExtentTransport`) instead
     of taking the arguments and ignoring them, which is a promise the caller has
     no way to check, and is the reason this is a strategy rather than a subclass
     of the allocation.
@@ -46,7 +46,7 @@ class Transport(ABC):
         """Make the device's writes to ``[offset, offset+nbytes)`` visible to the host."""
 
     def handle(self, offset, nbytes):
-        """A handle a runtime can bind for this region, if the backend has one.
+        """Return a handle a runtime can bind for this region, if the backend has one.
 
         Returning None is a legitimate answer, not a stub: a design where the
         host writes at offsets into a whole allocation and the kernel addresses
@@ -112,14 +112,14 @@ class Storage:
 
     Storage owns bytes and the record of which agent holds each range of them.
     It has no shape and no dtype: those are interpretations, and interpretations
-    are what :class:`NpuTensor` is for. Many tensors may name one storage, which
+    are what `NpuTensor` is for. Many tensors may name one storage, which
     is why the coherence state lives here. Kept per tensor, two names for the
     same bytes could disagree and nothing would reconcile them.
 
     This is the split torch draws between ``UntypedStorage`` and ``Tensor``, and
     is where ``storage_offset`` comes from.
 
-    Not subclassed. A backend supplies a :class:`Transport`, so the reconcile
+    Not subclassed. A backend supplies a `Transport`, so the reconcile
     mechanism is data this class holds rather than an identity a subclass
     carries. That is the same argument made one level up about coherence
     belonging to the memory rather than to whichever tensor names it, and it is
@@ -145,5 +145,5 @@ class Storage:
         self._transport.from_device(offset, nbytes)
 
     def binding_handle(self, offset, nbytes):
-        """A handle a runtime can bind for this region, or None."""
+        """Return a handle a runtime can bind for this region, or None."""
         return self._transport.handle(offset, nbytes)

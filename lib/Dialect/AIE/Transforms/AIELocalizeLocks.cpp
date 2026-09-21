@@ -53,7 +53,7 @@ struct AIELocalizeLocksPass
         int dstRow = tile.rowIndex();
 
         const auto &targetModel = getTargetModel(tile);
-        for (auto user : tile.getResult().getUsers())
+        for (auto *user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
             // At this point, we are iterating over all locks that are
             // accessible from within the current core coreOp. We only need to

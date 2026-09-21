@@ -76,8 +76,8 @@ struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
     Value assertVal =
         createConstantI32(rewriter, loc, tm.encodeFieldValue(*resetField, 1));
     Value assertMask = createConstantI32(rewriter, loc, *resetMask);
-    rewriter.create<NpuMaskWrite32Op>(loc, assertAddr, assertVal, assertMask,
-                                      nullptr, colAttr, rowAttr);
+    NpuMaskWrite32Op::create(rewriter, loc, assertAddr, assertVal, assertMask,
+                             nullptr, colAttr, rowAttr);
 
     Value clearAddr = createConstantI32(rewriter, loc, ctrlReg->offset);
     Value clearVal = createConstantI32(rewriter, loc, 0u);

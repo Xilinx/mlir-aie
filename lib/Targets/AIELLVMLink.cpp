@@ -61,10 +61,11 @@ static std::unique_ptr<Module> loadFile(std::unique_ptr<MemoryBuffer> Buffer,
   return Result;
 }
 
-mlir::LogicalResult linkFiles(std::vector<std::string> Files,
-                              LLVMContext &Context, Linker &L, unsigned Flags,
-                              bool DisableDITypeMap, bool NoVerify,
-                              bool Internalize, bool Verbose) {
+static mlir::LogicalResult linkFiles(const std::vector<std::string> &Files,
+                                     LLVMContext &Context, Linker &L,
+                                     unsigned Flags, bool DisableDITypeMap,
+                                     bool NoVerify, bool Internalize,
+                                     bool Verbose) {
   // Filter out flags that don't apply to the first file we load.
   unsigned ApplicableFlags = Flags & Linker::Flags::OverrideFromSrc;
   // Similar to some flags, internalization doesn't apply to the first file.
@@ -117,11 +118,10 @@ mlir::LogicalResult linkFiles(std::vector<std::string> Files,
   return mlir::success();
 }
 
-mlir::LogicalResult
-xilinx::AIE::AIELLVMLink(llvm::raw_ostream &output,
-                         std::vector<std::string> Files, bool DisableDITypeMap,
-                         bool NoVerify, bool Internalize, bool OnlyNeeded,
-                         bool PreserveAssemblyUseListOrder, bool Verbose) {
+mlir::LogicalResult xilinx::AIE::AIELLVMLink(
+    llvm::raw_ostream &output, const std::vector<std::string> &Files,
+    bool DisableDITypeMap, bool NoVerify, bool Internalize, bool OnlyNeeded,
+    bool PreserveAssemblyUseListOrder, bool Verbose) {
   LLVMContext Context;
 
   if (!DisableDITypeMap)

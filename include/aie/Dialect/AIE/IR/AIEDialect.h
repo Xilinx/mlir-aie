@@ -10,6 +10,7 @@
 #define MLIR_AIE_DIALECT_H
 
 #include "AIEEnums.h"
+#include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
@@ -19,9 +20,13 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 
 namespace xilinx::AIE {
 
@@ -44,6 +49,65 @@ template <typename ConcreteType>
 struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
+// Supplies `Symbol`'s visibility accessors for ops that keep visibility in a
+// plain `sym_visibility` attribute rather than in a tablegen-declared argument
+// (which is what upstream's `SymbolVisibility` trait requires).
+template <typename ConcreteType>
+struct AttrBasedSymbolVisibility
+    : mlir::OpTrait::TraitBase<ConcreteType, AttrBasedSymbolVisibility> {
+  static constexpr llvm::StringRef getVisibilityAttrName() {
+    return "sym_visibility";
+  }
+
+  // `mlir::detail::verifySymbol` only checks the inherent attribute, so it
+  // never sees ours.
+  static mlir::LogicalResult verifyTrait(mlir::Operation *op) {
+    mlir::Attribute vis = op->getAttr(getVisibilityAttrName());
+    if (!vis)
+      return mlir::success();
+    auto visStrAttr = llvm::dyn_cast<mlir::StringAttr>(vis);
+    if (!visStrAttr)
+      return op->emitOpError()
+             << "requires visibility attribute '" << getVisibilityAttrName()
+             << "' to be a string attribute, but got " << vis;
+    if (!llvm::is_contained(
+            llvm::ArrayRef<llvm::StringRef>{"public", "private", "nested"},
+            visStrAttr.getValue()))
+      return op->emitOpError()
+             << "visibility expected to be one of [\"public\", \"private\", "
+                "\"nested\"], but got "
+             << visStrAttr;
+    return mlir::success();
+  }
+
+  mlir::SymbolTable::Visibility getVisibility() {
+    mlir::StringAttr vis =
+        this->getOperation()->template getAttrOfType<mlir::StringAttr>(
+            getVisibilityAttrName());
+    if (!vis)
+      return mlir::SymbolTable::Visibility::Public;
+    return llvm::StringSwitch<mlir::SymbolTable::Visibility>(vis.getValue())
+        .Case("private", mlir::SymbolTable::Visibility::Private)
+        .Case("nested", mlir::SymbolTable::Visibility::Nested)
+        .Default(mlir::SymbolTable::Visibility::Public);
+  }
+
+  void setVisibility(mlir::SymbolTable::Visibility vis) {
+    mlir::Operation *op = this->getOperation();
+    if (vis == mlir::SymbolTable::Visibility::Public) {
+      op->removeAttr(getVisibilityAttrName());
+      return;
+    }
+    assert((vis == mlir::SymbolTable::Visibility::Private ||
+            vis == mlir::SymbolTable::Visibility::Nested) &&
+           "unknown symbol visibility kind");
+    llvm::StringRef visName =
+        vis == mlir::SymbolTable::Visibility::Private ? "private" : "nested";
+    op->setAttr(getVisibilityAttrName(),
+                mlir::StringAttr::get(op->getContext(), visName));
+  }
+};
+
 // Marker trait for operations that can be flow endpoints (e.g., TileOp, CoreOp,
 // MemOp)
 template <typename ConcreteType>
@@ -56,6 +120,28 @@ uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
                                  uint32_t burstLength);
 uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                     uint32_t burstLength);
+
+// Looks up a name, falling back to a scan for the `sym_name` attribute.
+// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` are referred to
+// by name but define an SSA value, so they cannot be `Symbol` ops and
+// `mlir::SymbolTable` does not find them.
+mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
+                                 mlir::StringAttr name);
+mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
+                                 llvm::StringRef name);
+// Looks in the symbol table nearest to (or at) `from`.
+mlir::Operation *lookupNamedOp(mlir::Operation *from, mlir::StringAttr name);
+mlir::Operation *lookupNamedOp(mlir::Operation *from, llvm::StringRef name);
+
+template <typename OpTy, typename NameT>
+OpTy lookupNamedOpIn(mlir::Operation *symbolTableOp, NameT name) {
+  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOpIn(symbolTableOp, name));
+}
+
+template <typename OpTy, typename NameT>
+OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
+  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
+}
 
 // Generate a symbol name guaranteed to be unique within the symbol table of
 // `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
@@ -71,9 +157,6 @@ mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
 } // namespace xilinx::AIE
-
-// Include the generated interface declarations.
-#include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
 
 namespace xilinx::AIE {
 mlir::LogicalResult
@@ -116,6 +199,9 @@ void registerAIETranslations();
 
 #define GET_ATTRDEF_CLASSES
 #include "aie/Dialect/AIE/IR/AIEAttrs.h.inc"
+
+// Interfaces come after the attributes and types their methods traffic in.
+#include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
 
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////// Custom Operations for the Dialect /////////////////////////
@@ -189,14 +275,34 @@ using DMAChannel = struct DMAChannel {
 const AIETargetModel &getTargetModel(mlir::Operation *op);
 const AIETargetModel &getTargetModel(AIEDevice device);
 
+/// Which of `a`'s and `b`'s memory modules both tiles can address.
+AIETargetModel::SharedMemory sharedMemory(TileOp a, TileOp b);
+
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
                             mlir::OpAsmParser::UnresolvedOperand &operand,
                             BDDimLayoutArrayAttr &dimensions);
 
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
-                                 mlir::Operation *op, mlir::Value tile,
+                                 mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
+
+mlir::ParseResult
+parseObjectFifoAcquireObjects(mlir::OpAsmParser &parser,
+                              ObjectFifoPortAttr &port,
+                              llvm::SmallVectorImpl<mlir::Type> &objects);
+
+void printObjectFifoAcquireObjects(mlir::OpAsmPrinter &printer,
+                                   mlir::Operation *op, ObjectFifoPortAttr port,
+                                   mlir::TypeRange objects);
+
+mlir::ParseResult parseObjectFifoReleaseCount(mlir::OpAsmParser &parser,
+                                              ObjectFifoPortAttr &port,
+                                              mlir::IntegerAttr &size);
+
+void printObjectFifoReleaseCount(mlir::OpAsmPrinter &printer,
+                                 mlir::Operation *op, ObjectFifoPortAttr port,
+                                 mlir::IntegerAttr size);
 
 mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
@@ -205,7 +311,7 @@ mlir::ParseResult parseObjectFifoConsumerTiles(
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
-                                  BDDimLayoutArrayArrayAttr dimensions);
+                                  BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
@@ -236,22 +342,28 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
+// Validate the sender-side out_of_order_id field on a single BD. Callable from
+// the AIEX dialect, whose runtime-sequence task BDs skip DMABDOp::verify.
+mlir::LogicalResult
+verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
+
+// Validate an out-of-order S2MM channel and its receive BDs.
+mlir::LogicalResult
+verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
+                        llvm::ArrayRef<DMABDOp> bds,
+                        bool packetEnabledByContext = false);
+
+// BD ids already assigned within a tile's static DMA program (the
+// aie.dma_bd chain(s) inside one DmaBody-implementing op: aie.mem,
+// aie.memtile_dma, aie.shim_dma).
+llvm::SmallVector<uint32_t> getAssignedBdIds(DmaBody program);
+
 } // namespace xilinx::AIE
 
 namespace llvm {
 // Functions hash just like pointers.
 template <>
 struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
-  static xilinx::AIE::ObjectFifoAcquireOp getEmptyKey() {
-    auto *pointer = DenseMapInfo<void *>::getEmptyKey();
-    return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
-  }
-
-  static xilinx::AIE::ObjectFifoAcquireOp getTombstoneKey() {
-    auto *pointer = DenseMapInfo<void *>::getTombstoneKey();
-    return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
-  }
-
   static unsigned getHashValue(xilinx::AIE::ObjectFifoAcquireOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
@@ -267,16 +379,6 @@ namespace llvm {
 // Functions hash just like pointers.
 template <>
 struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
-  static xilinx::AIE::ObjectFifoCreateOp getEmptyKey() {
-    auto *pointer = DenseMapInfo<void *>::getEmptyKey();
-    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
-  }
-
-  static xilinx::AIE::ObjectFifoCreateOp getTombstoneKey() {
-    auto *pointer = DenseMapInfo<void *>::getTombstoneKey();
-    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
-  }
-
   static unsigned getHashValue(xilinx::AIE::ObjectFifoCreateOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
@@ -291,14 +393,6 @@ template <>
 struct DenseMapInfo<xilinx::AIE::DMAChannel> {
   using FirstInfo = DenseMapInfo<xilinx::AIE::DMAChannelDir>;
   using SecondInfo = DenseMapInfo<int>;
-
-  static xilinx::AIE::DMAChannel getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static xilinx::AIE::DMAChannel getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
 
   static unsigned getHashValue(const xilinx::AIE::DMAChannel &d) {
     return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
@@ -315,14 +409,6 @@ template <>
 struct DenseMapInfo<xilinx::AIE::Port> {
   using FirstInfo = DenseMapInfo<xilinx::AIE::WireBundle>;
   using SecondInfo = DenseMapInfo<int>;
-
-  static xilinx::AIE::Port getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static xilinx::AIE::Port getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
 
   static unsigned getHashValue(const xilinx::AIE::Port &d) {
     return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),

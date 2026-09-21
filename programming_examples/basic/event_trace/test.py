@@ -15,9 +15,8 @@ sibling ``test.py`` files like ``vector_scalar_mul/test.py``).
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.test import create_npu_kernel

@@ -33,6 +33,62 @@ Perform some operations on the buffer in the core
 
 ```
 
+## LUT tables and memory banks
+
+The two tables used by an `aie::lut<4>` gather must occupy different memory
+banks. For AIE2/AIE2P C++ kernels, include `aie_bank_placement.h` from the
+runtime-library include directory and annotate static table definitions with
+`AIE_BANK_A`, `AIE_BANK_B`, `AIE_BANK_C`, or `AIE_BANK_D`. Peano uses
+`.aie.bank0` through `.aie.bank3` sections; Chess uses `chess_storage`.
+MLIR buffers can instead request a bank with `mem_bank`.
+
+For Peano, a probe link measures each core's live bank-pinned sections and
+ordinary static data before buffer placement. The allocator reserves aligned
+space for the pinned sections in their requested banks. If `data_size` is
+absent, it also materializes an exact aligned reservation for measured ordinary
+data, so buffers are placed with that demand accounted for. Set `data_size` on
+the core (or `Worker(..., data_size=...)` in IRON) to choose an explicit
+ordinary-data reservation instead; it must cover the measured requirement.
+Bank overflow is an error, not permission to place a table in another bank.
+
+Without an ordinary-data measurement or an explicit reservation, ordinary data
+falls back to the largest aligned free run, starting after pinned sections
+that intersect it. This includes Peano builds using `--no-measure-data-size`,
+which still measure and reserve bank-pinned sections. Chess does not use the
+probe; declare `data_size` to reserve ordinary static data before placement.
+
+By default, `aiecc` checks explicit bank requests against linked symbol
+addresses and complete nonzero extents, for both Peano and Chess. It reads
+objects and archive members, but skips absent or ambiguous symbols; it is not
+a proof of LUT-pair separation. Disable it with `--no-check-bank-placement`.
+
+Enable `--check-lut-banks` to check table separation against the linked ELF.
+IRON preserves kernel IR automatically when this aiecc flag is enabled.
+Makefile examples that use the bitcode-attachment recipes can opt in with
+`AIE_CHECK_LUT_BANKS=1`. Manually built object-linked kernels must retain
+readable LLVM IR in their `.llvmbc` section; merge-mode kernels are checked
+through the optimized core IR. The check is Peano-only and off by default.
+The opt-in check does not support archive inputs or prebuilt `elf_file` cores.
+Parameter bindings and stack-local placement produce an error rather than a
+successful verification, as does a table address the analysis cannot trace to
+an object. An in-bounds offset into a table is traced to the table itself,
+which is what `aie::linear_approx` produces when given a nonzero bias. Prefer bank-pinned static tables
+when separately compiling a kernel. Merged kernels can also use bank-pinned
+buffers on the core's own tile when optimization resolves the table arguments.
+
+`stack_bank` requests a stack allocation contained in that bank; `stack_address`
+specifies a tile-relative byte address. Without an explicit address, the allocator
+chooses an aligned free run in the requested bank. An address-only placement may
+span banks, but must remain within local memory and must not overlap buffers or
+static-data reservations. Moving the stack out
+of bank A in aiecc requires Peano and merge-mode kernels: separately compiled
+objects and Chess compilation/linking are rejected because their stack-bank
+assumptions cannot be verified. With no placement attributes, the existing
+stack-at-zero behavior is unchanged.
+
+See [Core Data Memory](../programming_guide/core_data_memory.md) for placement
+examples, Peano/Chess support, measurement boundaries and diagnostic guidance.
+
 ## Single-buffered Communication
 [Single-buffer DMA example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/05_tiledma/aie.mlir)
 
@@ -364,7 +420,7 @@ AIE.objectfifo @of0 (%tile12, {tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32
 After subsequent conversion passes, each of the objectFifo elements is instantiated as an AIE.buffer with an AIE.lock.
 
 objectFIFO operations have a 'port' attribute which indicates whether a tile is a 'producer' or a 'consumer' of that objectFIFO.
-Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO and accessed via an AIE.objectfifosubview type, then released: 
+Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO, which returns one memref per element, then released: 
 ```
 %core12 = AIE.core(%tile12) {
 	%c0 = arith.constant 0 : index
@@ -372,8 +428,7 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c1 {
-		%subview = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-		%elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+		%elem0 = AIE.objectfifo.acquire @of0 (Produce, 1) : memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Produce, 1)
 	}
@@ -387,8 +442,7 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c1 { 
-		%subview = AIE.objectfifo.acquire @of0 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
-		%elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+		%elem0 = AIE.objectfifo.acquire @of0 (Consume, 1) : memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Consume, 1)
 	}
@@ -407,13 +461,11 @@ In the default lowering, loops that contain objectFIFO operations are unrolled b
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c2 {
-		%subview0 = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-		%elem00 = AIE.objectfifo.subview.access %subview0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+		%elem00 = AIE.objectfifo.acquire @of0 (Produce, 1) : memref<16xi32>
 		call @some_work(%elem00) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Produce, 1)
 
-		%subview1 = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-		%elem10 = AIE.objectfifo.subview.access %subview1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+		%elem10 = AIE.objectfifo.acquire @of0 (Produce, 1) : memref<16xi32>
 		call @some_work(%elem10) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Produce, 1)
 	}
@@ -461,7 +513,7 @@ Another lowering technique generates MLIR operations that ensure the acquire / r
 	aie.end
 }
 ```
-This lowering can be enabled for each core by setting the `dynamic_objfifo_lowering` attribute of the CoreOp to true, or enabled for all the cores in the design at once by setting the `dynamic-objFifos` flag of aiecc (which is then passed to the --aie-objectFifo-stateful-transform lowering pass).
+This lowering can be made the default for every core by passing the `--dynamic-objFifos` flag of aiecc (forwarded to the `default-dynamic` option of the `--aie-objectFifo-unroll` pass). Individual cores override that default in either direction by setting the `dynamic_objfifo_lowering` attribute of the CoreOp: `true` keeps the core's loops rolled (dynamic), `false` unrolls them (static).
 
 ObjectFIFOs can be established between tiles on the shim row and AIE tiles in order to bring data in from or out to external memory locations. These external memory locations are pointed to using AIE.external_buffer operations and they need to be explicitly registered to an objectFIFO so that it knows where the data has been allocated externally (in this case, the objectFIFO lowering will only allocate memory elements required by AIE tiles):
 ```

@@ -376,9 +376,9 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   std::vector<std::string> chains;
   llvm::StringSet<> emittedGlobals;
 
-  text.push_back("\n;\n; Code\n;\n\n");
-  data.push_back("\n;\n; Data\n;\n\n");
-  chains.push_back("\n;\n; Data (chains)\n;\n\n");
+  text.emplace_back("\n;\n; Code\n;\n\n");
+  data.emplace_back("\n;\n; Data\n;\n\n");
+  chains.emplace_back("\n;\n; Data (chains)\n;\n\n");
 
   auto &tm = deviceOp.getTargetModel();
   text[0] += ".partition " + std::to_string(tm.columns()) + "column\n";
@@ -418,9 +418,9 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   int group_id = 0;
   for (auto &groupOp : groups) {
     if (group_id) {
-      text.push_back("\n;\n; Code\n;\n\n");
-      data.push_back("\n;\n; Data\n;\n\n");
-      chains.push_back("\n;\n; Data (chains)\n;\n\n");
+      text.emplace_back("\n;\n; Code\n;\n\n");
+      data.emplace_back("\n;\n; Data\n;\n\n");
+      chains.emplace_back("\n;\n; Data (chains)\n;\n\n");
     }
     if (failed(emitAttachToGroupOp(groupOp, text[group_id], data[group_id],
                                    outputPath)))
@@ -432,15 +432,15 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
     return result;
 
   for (auto const &[t, c, d] : llvm::zip(text, chains, data)) {
-    if (t.size()) {
+    if (!t.empty()) {
       assembly += t;
       // Add final EOF after all code (sections emit their own EOF before .endl)
       assembly += "EOF\n";
     }
-    if (c.size()) {
+    if (!c.empty()) {
       assembly += c;
     }
-    if (d.size())
+    if (!d.empty())
       assembly += "\n" + d;
   }
   return success();

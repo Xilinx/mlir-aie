@@ -87,7 +87,7 @@ jobs:
           large-packages: true
           swap-storage: false
 
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
           fetch-depth: 0
@@ -227,7 +227,7 @@ jobs:
           python -m twine check --strict wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Set up Python (host) for smoke test
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -242,7 +242,7 @@ jobs:
 
       - name: Generate build provenance attestation
         if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
           subject-path: wheelhouse/repaired_wheel/mlir_aie*whl
 
@@ -263,6 +263,8 @@ jobs:
     # nightly still get full from-source NPU coverage via buildAndTestRyzenAI.
     needs: build-repo
     runs-on: ${{ matrix.runner_type }}
+    # Normal exec is ~1 min; cap well below the sibling smoke job's 192.6-min hang.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -281,7 +283,7 @@ jobs:
       SMOKE_PYTHON_VERSION: "3.12"
       SMOKE_ENABLE_RTTI: "ON"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 
@@ -383,14 +385,14 @@ jobs:
             ENABLE_RTTI: OFF
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
           fetch-depth: 0
           fetch-tags: true
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -575,7 +577,7 @@ jobs:
 
       - name: Generate build provenance attestation
         if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
           subject-path: wheelhouse/repaired_wheel/mlir_aie*whl
 
@@ -614,7 +616,7 @@ jobs:
             ENABLE_RTTI: OFF
     steps:
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -642,12 +644,14 @@ jobs:
     # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
     needs: build-windows
     runs-on: [self-hosted, windows, ryzenai, npu2]
+    # Normal exec is 3-6 min; observed hang 192.6 min on this job (2026-08-04).
+    timeout-minutes: 20
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
       MPLBACKEND: Agg
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 
@@ -715,7 +719,7 @@ jobs:
       actions: read
     steps:
       - name: Checkout rehearsal script + ci-tools.lock
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           sparse-checkout: |
             utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh
@@ -748,7 +752,7 @@ jobs:
           find wheels_off -name 'mlir_aie*whl' -exec cp -f {} wheels_off_flat/ \;
 
       - name: Set up Python (host) for rehearsal
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 

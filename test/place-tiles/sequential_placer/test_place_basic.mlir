@@ -20,11 +20,11 @@ module @simple_worker {
 
 // -----
 
-// CHECK-LABEL: @allocation_scheme_copied
-module @allocation_scheme_copied {
+// CHECK-LABEL: @controller_id_copied
+module @controller_id_copied {
   aie.device(npu1) {
-    // CHECK: %[[TILE:.*]] = aie.tile(0, 2) {allocation_scheme = "bank_aware"}
-    %logical_core = aie.logical_tile<CoreTile>(?, ?) {allocation_scheme = "bank_aware"}
+    // CHECK: %[[TILE:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 3, pkt_id = 4>}
+    %logical_core = aie.logical_tile<CoreTile>(?, ?) {controller_id = #aie.packet_info<pkt_type = 3, pkt_id = 4>}
     // CHECK: aie.core(%[[TILE]])
     aie.core(%logical_core) { aie.end }
     // CHECK-NOT: aie.logical_tile

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectFifo-stateful-transform %s
 
 // -----
 
@@ -20,8 +20,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
         // expected-error@+1 {{cannot release more elements than are already acquired}}
-        %0 = aie.objectfifo.acquire @fifo_in(Consume, 1) : !aie.objectfifosubview<memref<32x32xi32>>
-        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<32x32xi32>> -> memref<32x32xi32>
+        %1 = aie.objectfifo.acquire @fifo_in(Consume, 1) : memref<32x32xi32>
         aie.objectfifo.release @fifo_in(Consume, 1)
         aie.objectfifo.release @fifo_in(Consume, 1)
       }

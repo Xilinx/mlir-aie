@@ -6,21 +6,28 @@
 
 import os
 import sys
+from typing import TYPE_CHECKING, Any
 
 # Add shared AIE lit utilities to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
-import lit.formats
+import lit.formats  # pyright: ignore[reportMissingImports]
+from aie_lit_utils import LitConfigHelper  # pyright: ignore[reportMissingImports]
+from lit.llvm import llvm_config  # pyright: ignore[reportMissingImports]
 
-from lit.llvm import llvm_config
-from aie_lit_utils import LitConfigHelper
+# ``config`` and ``lit_config`` are injected into this file's namespace by the
+# lit runner at execution time; declare them under TYPE_CHECKING only so the
+# type checker doesn't flag every reference as undefined.
+if TYPE_CHECKING:
+    config: Any = None
+    lit_config: Any = None
 
 # Configuration file for the 'lit' test runner.
 
 # name: The name of this test suite.
 config.name = "AIE_PROGRAMMING_EXAMPLES"
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".lit"]
@@ -168,7 +175,3 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
-
-# Opt-in serialization group for chess builds whose peak RSS is large enough
-# to OOM the CI runner under -j4. Tests opt in via a lit.local.cfg.
-lit_config.parallelism_groups["atb_chess"] = 1

@@ -8,5 +8,6 @@ mlir_tablegen(Passes.capi.cpp.inc -gen-pass-capi-impl -prefix Conversion)
 mlir_tablegen(PassesEnums.h.inc -gen-enum-decls)
 mlir_tablegen(PassesEnums.cpp.inc -gen-enum-defs)
 add_public_tablegen_target(MLIRAIEConversionPassIncGen)
+add_dependencies(aie-headers MLIRAIEConversionPassIncGen)
 
 add_mlir_doc(Passes MLIRAIEConversionPasses ./ -gen-pass-doc)

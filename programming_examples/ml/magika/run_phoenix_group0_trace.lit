@@ -1,0 +1,16 @@
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, peano, torch
+// REQUIRES: makefile_examples
+//
+// group0 routes the trace of two cores into one shim channel, and the capture
+// holds no data: parse.py reports "No valid trace data found". group2 traces
+// one core and its trace run passes, so the shared channel is the open problem.
+// XFAIL: *
+//
+// RUN: mkdir -p test_placed_group0_trace
+// RUN: cd test_placed_group0_trace
+// RUN: cp -r %S/data .
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu1% make -f %S/Makefile trace_py

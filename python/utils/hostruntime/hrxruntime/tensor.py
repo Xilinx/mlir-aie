@@ -3,9 +3,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""HRX-backed Tensor: a device-visible, host-coherent buffer mapped once and
-kept mapped (persistent), with explicit flush/invalidate for coherence.
+"""HRX-backed Tensor: a device-visible, host-coherent, persistent buffer.
 
+The buffer is mapped once and kept mapped (persistent), with explicit
+flush/invalidate for coherence.
 The buffer is an HRX persistent mapping: the engine reads/writes the mapping
 directly, so there is no host staging copy. Coherence around device work is
 maintained with cheap cache ops:
@@ -26,13 +27,18 @@ class HRXTensor(NpuTensor):
     """Tensor backed by an HRX persistent-mapped device buffer.
 
     Each tensor allocates its buffer through the process-wide
-    :class:`~.context.HRXContext`. Buffers are therefore isolated per process:
+    `.context.HRXContext`. Buffers are therefore isolated per process:
     separate processes (including different users) never share buffer handles,
     and the amdxdna driver isolates each process's device memory. See
-    :class:`~.context.HRXContext` for the full concurrency / multi-tenancy model
+    `.context.HRXContext` for the full concurrency / multi-tenancy model
     (process isolation, the finite system-wide hardware-context pool, and the
     single-threaded-dispatch expectation within a process).
     """
+
+    # HRX consumes the producer-independent (unfolded) insts.bin and adds the
+    # AIE DDR aperture offset for every arg itself, so the compiler must NOT
+    # fold it in (overrides the folded XRT/CPU default on the base Tensor).
+    FOLDS_DDR_ADDR_OFFSET = False
 
     def __init__(self, shape_or_data, dtype=np.uint32, device="npu", **kwargs):
         """Allocate an HRX persistent-mapped buffer and wrap it as a tensor.

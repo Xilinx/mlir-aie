@@ -143,6 +143,21 @@ uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel, int col, int row) {
   return unwrap(targetModel).getNumBDs(col, row);
 }
 
+uint32_t aieTargetModelGetDmaBdWrapBits(AieTargetModel targetModel, int col,
+                                        int row) {
+  return unwrap(targetModel).getDmaBdWrapBits(col, row);
+}
+
+uint32_t aieTargetModelGetDmaBdStepBits(AieTargetModel targetModel, int col,
+                                        int row) {
+  return unwrap(targetModel).getDmaBdStepBits(col, row);
+}
+
+uint32_t aieTargetModelGetDmaBdIterBits(AieTargetModel targetModel, int col,
+                                        int row) {
+  return unwrap(targetModel).getDmaBdIterBits(col, row);
+}
+
 uint32_t aieTargetModelGetNumMemTileRows(AieTargetModel targetModel) {
   return unwrap(targetModel).getNumMemTileRows();
 }
@@ -154,12 +169,6 @@ uint32_t aieTargetModelGetMemTileSize(AieTargetModel targetModel) {
 uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
                                    int row) {
   return unwrap(targetModel).getNumBanks(col, row);
-}
-
-uint32_t
-aieTargetModelGetMaxChannelNumForAdjacentMemTile(AieTargetModel targetModel,
-                                                 int col, int row) {
-  return unwrap(targetModel).getMaxChannelNumForAdjacentMemTile(col, row);
 }
 
 uint32_t aieTargetModelGetNumDestSwitchboxConnections(

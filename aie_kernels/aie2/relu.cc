@@ -35,4 +35,9 @@ extern "C" {
 
 void bf16_relu(bfloat16 *a_in, bfloat16 *c_out) { relu(a_in, c_out, 1024); }
 
+void relu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
+                    int32_t input_size) {
+  relu(input, output, input_size);
+}
+
 } // extern "C"

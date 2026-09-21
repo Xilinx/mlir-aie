@@ -170,6 +170,11 @@ class CallableDesign:
 
         compile_param_names = set(self.compilable.compile_params)
         for name, val in runtime_kwargs.items():
+            if name in self.compilable.bound_dispatch_params:
+                raise TypeError(
+                    f"DispatchTime parameter {name!r} is specialized; use "
+                    "specialize() to create a design with a different constant."
+                )
             if name in compile_param_names:
                 call_compile_kwargs[name] = val
             else:
@@ -242,6 +247,8 @@ class CallableDesign:
                 kernel_name="MLIR_AIE",
                 trace_config=trace_config,
                 num_host_bos=num_host_bos,
+                dispatch_params=compilable.dispatch_params,
+                dispatch_lib_path=compilable.get_dispatch_lib_path(),
             )
         if compilable.use_cache:
             self._kernel_cache[cache_key] = kernel
@@ -289,14 +296,17 @@ class CallableDesign:
 
         # Guard 3-C: too many positional args.
         if callable(self.compilable.mlir_generator):
-            max_positional = len(self.compilable.tensor_params) + len(
-                self.compilable.scalar_params
+            max_positional = (
+                len(self.compilable.tensor_params)
+                + len(self.compilable.dispatch_params)
+                + len(self.compilable.scalar_params)
             )
             if len(runtime_args) > max_positional:
                 raise TypeError(
                     f"{self.compilable.generator_name!r} takes at most "
                     f"{max_positional} positional argument(s) "
                     f"(tensor: {len(self.compilable.tensor_params)}, "
+                    f"dispatch: {len(self.compilable.dispatch_params)}, "
                     f"scalar: {len(self.compilable.scalar_params)}) "
                     f"but {len(runtime_args)} were given.\n"
                     f"  CompileTime[T] parameters {self.compilable.compile_params} "
@@ -335,9 +345,15 @@ class CallableDesign:
         else:
             cache_fn = self._path_cache_fn
 
+        # Tensor args are the whole runtime half of the key: a DispatchTime[T]
+        # value is not part of the compiled artifact, so keying on it would
+        # build one kernel per distinct value.
+        tensor_args, remaining_scalars = compilable.split_runtime_args(
+            runtime_args, scalar_runtime_kwargs
+        )
         cache_key = _create_function_cache_key(
             cache_fn,
-            runtime_args,
+            tuple(tensor_args),
             cache_compile_kwargs,
             extra_key=compilable._generation_cache_key(),
         )
@@ -346,6 +362,16 @@ class CallableDesign:
         if kernel is not None:
             if compilable.full_elf:
                 artifacts_present = Path(kernel.elf_path).is_file()
+            elif compilable.dispatch_params:
+                # A dispatch design has no insts.bin at all -- the instruction
+                # stream is rebuilt per call from its bridge, so that is the
+                # artifact whose disappearance has to invalidate the kernel.
+                lib = kernel.dispatch_lib_path
+                artifacts_present = (
+                    Path(kernel.xclbin_path).is_file()
+                    and lib is not None
+                    and Path(lib).is_file()
+                )
             else:
                 artifacts_present = (
                     Path(kernel.xclbin_path).is_file()
@@ -357,9 +383,7 @@ class CallableDesign:
         if kernel is None:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
 
-        tensor_args, remaining_scalars = compilable.split_runtime_args(
-            runtime_args, scalar_runtime_kwargs
-        )
+        # After compile(): validation reads _expected_tensor_sizes.
         compilable.validate_tensor_args(tensor_args)
 
         try:
@@ -410,7 +434,7 @@ class CallableDesign:
         ``design.specialize(full_elf=True)`` re-aims an existing design at the
         full-ELF path, symmetric with ``@iron.jit(full_elf=True)``.
 
-        Use together with :meth:`compile` to perform ahead-of-time compilation
+        Use together with `compile` to perform ahead-of-time compilation
         of a JIT-decorated design at known shapes::
 
             @iron.jit
@@ -450,8 +474,11 @@ class CallableDesign:
         With both ``xclbin_path`` and ``inst_path`` set, writes artifacts
         directly to those paths and bypasses the cache — useful for build
         systems (e.g. Makefiles) that manage their own dependency tracking.
-        Mixed (only one of ``xclbin_path`` / ``inst_path`` given) raises
-        ``ValueError``.
+        Static designs require both paths or neither. Active ``DispatchTime[T]``
+        designs accept ``xclbin_path`` alone, return ``(xclbin_path, None)``, and
+        reject ``inst_path`` and ``elf_path`` (there is no static instruction
+        stream). The immutable dispatch library remains in
+        ``<xclbin stem>.prj``; use ``get_dispatch_lib_path()``.
 
         ``elf_path`` is optional: when set, aiecc also wraps the NPU
         instructions into an ELF (via ``aiebu-asm``) at that path.  Needed by
@@ -463,8 +490,8 @@ class CallableDesign:
         xclbin + insts pair, and the return value is ``(elf_path, None)``.
 
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
-        Device Image to that path.  Requires explicit ``xclbin_path`` +
-        ``inst_path``.  In cache mode, use :meth:`get_pdi_path` to locate the
+        Device Image to that path. Requires explicit ``xclbin_path`` (and
+        ``inst_path`` for static designs). In cache mode, use `get_pdi_path` to locate the
         ``main.pdi`` aiecc emits into the cache directory.
         """
         return self.compilable.compile(
@@ -478,16 +505,20 @@ class CallableDesign:
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
         """Return one cache-directory PDI, or ``None`` if none is present.
 
-        Thin passthrough to :meth:`CompilableDesign.get_pdi_path`; pass
+        Thin passthrough to `CompilableDesign.get_pdi_path`; pass
         ``device_name`` to pick a specific ``aie.device``'s PDI in a
         multi-device design.
         """
         return self.compilable.get_pdi_path(device_name)
 
+    def get_dispatch_lib_path(self) -> Path | None:
+        """Return the immutable dispatch library after compile(), or ``None``."""
+        return self.compilable.get_dispatch_lib_path()
+
     def get_pdi_paths(self) -> list[Path]:
         """Return every cache-directory PDI aiecc emitted, sorted by name.
 
-        Thin passthrough to :meth:`CompilableDesign.get_pdi_paths` — use this
+        Thin passthrough to `CompilableDesign.get_pdi_paths` — use this
         for a multi-device design where a single return is ambiguous.
         """
         return self.compilable.get_pdi_paths()
@@ -508,6 +539,7 @@ class CallableDesign:
             runtime_kwargs
         )
         compilable = self._build_compilable(call_compile_kwargs)
+        compilable.split_runtime_args(runtime_args, _scalar_runtime_kwargs)
         return str(compilable.generate_mlir())
 
     def __repr__(self) -> str:

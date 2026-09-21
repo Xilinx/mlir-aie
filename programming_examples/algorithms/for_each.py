@@ -12,9 +12,8 @@ single 1-D int32 tensor in place.  The design body delegates to
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, InOut
 from aie.utils.verify import assert_pass
 

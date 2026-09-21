@@ -1,0 +1,54 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Exercise both Peano's merged .data/.rodata and Chess's separate output
+// sections without either cross compiler. Pinned sections do not contribute
+// to the ordinary data reservation, even when they have greater alignment.
+// REQUIRES: system-linux
+// RUN: split-file %s %t
+// RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -I%S/../../tools/aiecc %S/data_section_demand.cpp %S/../../tools/aiecc/StackSizeAnalysis.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags --libs object irreader core support --system-libs) %host_link_flags -o %t/measure'
+// RUN: %host_clang -x c -c %t/globals.c -o %t/globals.o
+// RUN: %host_clang -nostdlib -no-pie -Wl,--build-id=none,-e,0,-T,%t/peano.ld %t/globals.o -o %t/peano.elf
+// RUN: %t/measure %t/peano.elf | FileCheck %s --check-prefix=PEANO
+// RUN: %host_clang -nostdlib -no-pie -Wl,--build-id=none,-e,0,-T,%t/chess.ld %t/globals.o -o %t/chess.elf
+// RUN: %t/measure %t/chess.elf | FileCheck %s --check-prefix=CHESS
+// RUN: %t/measure %t/peano.elf | FileCheck %s --check-prefix=BANK
+// RUN: %t/measure %t/chess.elf | FileCheck %s --check-prefix=BANK
+// RUN: not %t/measure %t/missing.elf
+//
+// Both demands include the gap before the 4096-aligned BSS, not just the
+// section bytes. Moving the reservation requires retaining its alignment.
+// PEANO: size: 4100, alignment: 4096, section bytes: 1032
+// CHESS: size: 4100, alignment: 4096, section bytes: 12
+// BANK: bank 0: size: 16388, alignment: 16384
+// BANK-NEXT: bank 1: size: 4096, alignment: 4096
+// BANK-NEXT: bank 2: size: 0, alignment: 1
+// BANK-NEXT: bank 3: size: 0, alignment: 1
+//
+//--- globals.c
+__attribute__((aligned(256))) int initialized = 1;
+__attribute__((aligned(1024))) const int constant = 2;
+__attribute__((aligned(4096))) int zero;
+__attribute__((section(".aie.bank0"), aligned(8192))) int pinned[2048] = {3};
+__attribute__((section(".bss.DM_bankA"), aligned(16384))) int pinned_zero;
+__attribute__((section(".aie.bank1"), aligned(4096))) int pinned_exact[1024] = {4};
+//--- peano.ld
+SECTIONS {
+  . = 0;
+  .aie.bank0 : { *(.aie.bank0) *(.bss.DM_bankA) }
+  .aie.bank1 : { *(.aie.bank1) }
+  . = 0x11040;
+  .data : { *(.data*) *(.rodata*) }
+  .bss : { *(.bss*) }
+}
+//--- chess.ld
+SECTIONS {
+  . = 0;
+  .data.DM_bankA : { *(.aie.bank0) }
+  .bss.DM_bankA : { *(.bss.DM_bankA) }
+  .data.DM_bankB : { *(.aie.bank1) }
+  . = 0x11040;
+  .data : { *(.data*) }
+  .rodata : { *(.rodata*) }
+  .bss : { *(.bss*) }
+}

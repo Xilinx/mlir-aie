@@ -101,12 +101,12 @@ def test_kwargs_decorator_propagates_source_files():
 
 
 def test_kwargs_decorator_propagates_aiecc_flags():
-    @compileconfig(aiecc_flags=["--verbose", "--no-xchesscc"])
+    @compileconfig(aiecc_flags=["--verbose", "--xchesscc"])
     def gen(a: In):
         pass
 
     assert "--verbose" in gen.aiecc_flags
-    assert "--no-xchesscc" in gen.aiecc_flags
+    assert "--xchesscc" in gen.aiecc_flags
 
 
 def test_kwargs_decorator_propagates_compile_flags():

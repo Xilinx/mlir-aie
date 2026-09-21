@@ -33,11 +33,11 @@ target_link_libraries(${currentTarget} PUBLIC
 
 target_link_test_utils(${currentTarget})
 
-# Build the design and register the NPU run; -DAIE_DEVICE=npu2 targets Strix.
+# Build the design and register the NPU run. Both default to the AIE_DEVICE
+# cache variable set in common.cmake; -DAIE_DEVICE=npu2 targets Strix.
 # ELF/USE_ELF: test.cpp loads the instruction stream with xrt::elf + xrt::module,
 # so it needs final.elf, not insts.bin -- matching the Makefile, which uses
-# jit_xclbin_elf and runs with `-i ${elf_target}`.
-set(AIE_DEVICE npu CACHE STRING "NPU device family for the example (npu|npu2)")
-add_aie_design(TARGET ${currentTarget} PY vector_scalar_add.py DEVICE ${AIE_DEVICE} ELF)
-add_dependencies(${currentTarget} ${currentTarget}_xclbin)
-add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} EXE ${currentTarget} USE_ELF)
+# jit_xclbin_elf and runs with `-i ${elf_target}`. add_aie_run_test rejects
+# USE_ELF unless the design above declared ELF.
+add_aie_design(TARGET ${currentTarget} PY vector_scalar_add.py ELF)
+add_aie_run_test(NAME ${currentTarget} EXE ${currentTarget} USE_ELF)

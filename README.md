@@ -9,6 +9,7 @@
 [![Latest tag](https://img.shields.io/github/v/tag/Xilinx/mlir-aie?sort=semver&label=release&cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/tags)
 [![License](https://img.shields.io/badge/license-Apache%202.0%20with%20LLVM%20exception-blue)](LICENSE)
 [![Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie?cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/graphs/contributors)
+[![Discord](https://img.shields.io/badge/Discord-ROCm--NPU-5865F2?logo=discord&logoColor=white)](https://discord.gg/UbXzGdXsR5)
 
 📖 **[Documentation](https://xilinx.github.io/mlir-aie/)** &nbsp;·&nbsp; 🚀 **[Programming Guide](programming_guide/)** &nbsp;·&nbsp; 🐍 **[Python API](https://xilinx.github.io/mlir-aie/api/)** &nbsp;·&nbsp; 💡 **[Examples](programming_examples/)**
 
@@ -273,7 +274,7 @@ Below steps replicate what the install script does.
    python3 -m pip install -r python/requirements_dev.txt
 
    # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
-   # (pre-push runs clang-format/black to catch formatting issues before CI)
+   # (pre-push runs clang-format/black/ruff to catch formatting and lint issues before CI)
    pre-commit install
    ```
 
@@ -329,6 +330,8 @@ Examples with a separate native host, explicit artifact builds, or multi-stage w
 1. AIE API header library documentation for single-core AIE programming in C++ is available [here](https://xilinx.github.io/aie_api/topics.html)
 
 1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please contact the [AMD University Program](mailto:aup@amd.com)
+
+1. Have a question or want to talk with the team and other users? Join the [ROCm Discord](https://discord.gg/UbXzGdXsR5) and look for the **ROCm-NPU** channel
 
 ## Optional: Install AIETools
 
@@ -408,6 +411,10 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 [IRON AIE Application Programming Guide](programming_guide)
 
 [Device Descriptions](docs/Devices.md)
+
+[AMD XDNA NPU Architecture Cheatsheet](skills/aie-code-creator/references/architecture.md) — device/tile layout, memory hierarchy, vector register widths, MMUL shapes and divisibility constraints, routing/placement limits, and per-tile performance ballparks
+
+[AIE C++ Kernel Intrinsics Cheatsheet](skills/aie-code-creator/references/kernel_intrinsics.md) — AIE API boilerplate, loop-pipelining annotations, vector load/store, MMUL usage, and common intrinsic quick-reference tables
 
 [Building mlir-aie tools from source](docs/Building.md)
 

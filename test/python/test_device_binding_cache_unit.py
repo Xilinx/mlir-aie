@@ -15,6 +15,7 @@ from aie.iron.device import NPU1Col1, NPU2Col1, NPU2Col2
 from aie.utils import set_current_device
 from aie.utils.compile.jit import CompileTime, In, Out
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.compile.jit import _manifest
 
 
 def _gemm_gen():
@@ -131,6 +132,7 @@ def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact(
         kernel_dir.mkdir()
         (kernel_dir / "final.xclbin").touch()
         (kernel_dir / "insts.bin").touch()
+        _manifest.write_for_test(kernel_dir, [])
 
     cd = CompilableDesign(gen)
     hashes = iter(("npu1", "npu2", "npu1"))
@@ -193,6 +195,7 @@ def test_python_compile_binds_before_cache_lookup(monkeypatch, tmp_path):
     cache_dir.mkdir()
     (cache_dir / "final.xclbin").touch()
     (cache_dir / "insts.bin").touch()
+    _manifest.write_for_test(cache_dir, [])
 
     monkeypatch.setattr(utils, "ensure_current_device", fake_ensure_current_device)
     monkeypatch.setattr(cd, "_compute_cache_hash", fake_cache_hash)

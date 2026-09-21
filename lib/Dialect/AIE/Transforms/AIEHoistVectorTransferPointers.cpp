@@ -62,7 +62,7 @@ static bool dependsOnLoopIVForHoist(Value val, Value loopIV,
   bool result = false;
   if (val == loopIV) {
     result = true;
-  } else if (auto defOp = val.getDefiningOp()) {
+  } else if (auto *defOp = val.getDefiningOp()) {
     // Check for operations that use the loop IV in their operands
     for (Value operand : defOp->getOperands()) {
       if (dependsOnLoopIVForHoist(operand, loopIV, cache)) {
@@ -103,7 +103,7 @@ static Value cloneOpAndOperands(Operation *op, Value loopIV, OpBuilder &builder,
   // Clone operands recursively
   SmallVector<Value> newOperands;
   for (Value operand : op->getOperands()) {
-    if (auto defOp = operand.getDefiningOp()) {
+    if (auto *defOp = operand.getDefiningOp()) {
       Value clonedOperand = cloneOpAndOperands(defOp, loopIV, builder, mapping);
       if (!clonedOperand)
         return Value(); // Failed to clone an operand
@@ -315,7 +315,7 @@ struct HoistVectorTransferPointersPattern
           }
         } else {
           // Index doesn't depend on IV, clone it
-          if (auto defOp = idx.getDefiningOp()) {
+          if (auto *defOp = idx.getDefiningOp()) {
             Value clonedIdx =
                 cloneOpAndOperands(defOp, loopIV, rewriter, indexMapping);
             if (clonedIdx)
@@ -488,8 +488,7 @@ struct HoistVectorTransferPointersPattern
 
       // Process each transfer operation with IV-dependent indices
       size_t iterArgIdx = 0;
-      for (size_t i = 0; i < transferOps.size(); ++i) {
-        const auto &info = transferOps[i];
+      for (const auto &info : transferOps) {
         if (!info.hasIVDependentIndices)
           continue;
 

@@ -29,11 +29,26 @@ emitted for the equivalent two ``aie.flow`` s; we just write them out.
 """
 
 import argparse
-import sys
-
-import numpy as np
 
 import aie.iron as iron
+import numpy as np
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+    DMAChannelDir,
+    WireBundle,
+)
+from aie.dialects.aie import (
+    EndOp,  # pyright: ignore[reportAttributeAccessIssue]
+    connect,  # pyright: ignore[reportAttributeAccessIssue]
+    shim_mux,
+    switchbox,
+)
+from aie.dialects.aiex import (
+    npu_address_patch,
+    npu_push_queue,
+    npu_sync,
+    npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron import (
     Acquire,
     Bd,
@@ -46,27 +61,14 @@ from aie.iron import (
     Program,
     Release,
     Runtime,
-    Worker,
     TileDma,
+    Worker,
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
-from aie.dialects.aie import (
-    EndOp,
-    connect,
-    shim_mux,
-    switchbox,
-)
-from aie.dialects.aiex import (
-    npu_address_patch,
-    npu_push_queue,
-    npu_sync,
-    npu_writebd,
-)
 
 N = 64  # elements per transfer (int32)
 

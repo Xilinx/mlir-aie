@@ -52,7 +52,9 @@ def aie_trace(A: In, F: In, C: Out, *, tensor_size: CompileTime[int] = 4096, ...
         [tensor_ty, scalar_ty, tensor_ty, of_in.prod(), of_factor.prod(), of_out.cons()],
     )
 
-    prog = Program(iron.get_current_device(), rt, workers=[worker])
+    device = iron.get_current_device()
+    assert device is not None
+    prog = Program(device, rt, workers=[worker])
     prog.enable_trace(
         trace_size=8192,
         workers=[worker],

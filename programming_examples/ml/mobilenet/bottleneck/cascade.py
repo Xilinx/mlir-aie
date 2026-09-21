@@ -25,13 +25,15 @@ Tile placement is either passed explicitly via the placement dict
 """
 
 import numpy as np
-
 from aie.iron import Buffer, ObjectFifo, Worker, kernels
-from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.controlflow import range_
+from aie.iron.dataflow.cascadeflow import CascadeFlow
+from aie.iron.device import Tile
 
-from ._common import load_wts, layer_sf as _layer_sf, skip_sf as _skip_sf
 from ..network_spec import block as nsblock
+from ._common import layer_sf as _layer_sf
+from ._common import load_wts
+from ._common import skip_sf as _skip_sf
 
 # ---------------------------------------------------------------------------
 # Algorithm dimensions — derived from network_spec (bn13 and bn14 share shape)
@@ -339,7 +341,9 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir, tiles=None):
     )
 
     # Streaming weight fifos (Shim → MemTile → split → put/get tiles)
-    t = tiles.get if tiles else lambda k: None
+    def t(k) -> Tile | None:
+        return tiles.get(k) if tiles else None
+
     wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1)
     wts_l1_put_h, wts_l1_get_h = wts_l1_full.cons().split(
         offsets=[0, _l1_full_wts_sz // 2],

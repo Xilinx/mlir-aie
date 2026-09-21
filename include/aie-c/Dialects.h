@@ -18,6 +18,7 @@ extern "C" {
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIE, aie);
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIEVec, aievec);
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIEX, aiex);
+MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(XLLVM, xllvm);
 
 //===---------------------------------------------------------------------===//
 // ObjectFifoType
@@ -25,13 +26,6 @@ MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIEX, aiex);
 
 MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoType(MlirType type);
 MLIR_CAPI_EXPORTED MlirType aieObjectFifoTypeGet(MlirType type);
-
-//===---------------------------------------------------------------------===//
-// ObjectFifoSubviewType
-//===---------------------------------------------------------------------===//
-
-MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoSubviewType(MlirType type);
-MLIR_CAPI_EXPORTED MlirType aieObjectFifoSubviewTypeGet(MlirType type);
 
 //===---------------------------------------------------------------------===//
 // BlockFloatType
@@ -51,6 +45,22 @@ MLIR_CAPI_EXPORTED bool aieTileLikeIsMemTile(MlirOperation op);
 MLIR_CAPI_EXPORTED bool aieTileLikeIsShimNOCTile(MlirOperation op);
 MLIR_CAPI_EXPORTED bool aieTileLikeIsShimPLTile(MlirOperation op);
 MLIR_CAPI_EXPORTED bool aieTileLikeIsShimNOCorPLTile(MlirOperation op);
+
+//===---------------------------------------------------------------------===//
+// TraceBufferAttr / TraceSliceAttr
+//===---------------------------------------------------------------------===//
+
+MLIR_CAPI_EXPORTED bool aieAttrIsTraceBuffer(MlirAttribute attr);
+MLIR_CAPI_EXPORTED uint32_t aieTraceBufferGetArgIndex(MlirAttribute attr);
+MLIR_CAPI_EXPORTED uint32_t aieTraceBufferGetOffset(MlirAttribute attr);
+MLIR_CAPI_EXPORTED uint32_t aieTraceBufferGetSize(MlirAttribute attr);
+MLIR_CAPI_EXPORTED bool aieTraceBufferGetDedicated(MlirAttribute attr);
+
+MLIR_CAPI_EXPORTED bool aieAttrIsTraceSlice(MlirAttribute attr);
+MLIR_CAPI_EXPORTED MlirStringRef aieTraceSliceGetDevice(MlirAttribute attr);
+MLIR_CAPI_EXPORTED MlirStringRef aieTraceSliceGetSequence(MlirAttribute attr);
+MLIR_CAPI_EXPORTED uint32_t aieTraceSliceGetOffset(MlirAttribute attr);
+MLIR_CAPI_EXPORTED uint32_t aieTraceSliceGetSize(MlirAttribute attr);
 
 #ifdef __cplusplus
 }

@@ -79,7 +79,7 @@ struct RedundantLoadStoreOptimizationPass
     : public PassWrapper<RedundantLoadStoreOptimizationPass, OperationPass<>> {
 
   void runOnOperation() override {
-    auto op = getOperation();
+    auto *op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 

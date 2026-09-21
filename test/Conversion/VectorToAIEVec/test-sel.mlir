@@ -7,11 +7,10 @@
 // CHECK-SAME: %[[LHS:.*]]: vector<16xi32>,
 // CHECK-SAME: %[[RHS:.*]]: vector<16xi32>)
 func.func @vecsel_i32(%arg0: vector<16xi32>, %arg1: vector<16xi32>) -> vector<16xi32> {
-  // CHECK: %[[CMP:.*]] = aievec.cmp %[[LHS]], %[[RHS]] {pred = "sgt"} : vector<16xi32>, vector<16xi32>, ui32
-  // CHECK: %[[SEL:.*]] = aievec.sel %[[RHS]], %[[LHS]], %[[CMP]] : vector<16xi32>, vector<16xi32>, ui32, vector<16xi32>
+  // CHECK: %[[MAX:.*]] = aievec.max %[[LHS]], %[[RHS]] : vector<16xi32>
   %0 = arith.cmpi sgt, %arg0, %arg1 : vector<16xi32>
   %1 = arith.select %0, %arg0, %arg1 : vector<16xi1>, vector<16xi32>
-  // CHECK: return %[[SEL]] : vector<16xi32>
+  // CHECK: return %[[MAX]] : vector<16xi32>
   return %1 : vector<16xi32> 
 }
 
@@ -31,11 +30,10 @@ func.func @vecsel_i32_unsigned_cmp(%arg0: vector<16xi32>, %arg1: vector<16xi32>)
 // CHECK-SAME: %[[LHS:.*]]: vector<32xi16>,
 // CHECK-SAME: %[[RHS:.*]]: vector<32xi16>)
 func.func @vecsel_i16(%arg0: vector<32xi16>, %arg1: vector<32xi16>) -> vector<32xi16> {
-  // CHECK: %[[CMP:.*]] = aievec.cmp %[[LHS]], %[[RHS]] {pred = "slt"} : vector<32xi16>, vector<32xi16>, ui32
-  // CHECK: %[[SEL:.*]] = aievec.sel %[[RHS]], %[[LHS]], %[[CMP]] : vector<32xi16>, vector<32xi16>, ui32, vector<32xi16>
+  // CHECK: %[[MIN:.*]] = aievec.min %[[LHS]], %[[RHS]] : vector<32xi16>
   %0 = arith.cmpi slt, %arg0, %arg1 : vector<32xi16>
   %1 = arith.select %0, %arg0, %arg1 : vector<32xi1>, vector<32xi16>
-  // CHECK: return %[[SEL]] : vector<32xi16>
+  // CHECK: return %[[MIN]] : vector<32xi16>
   return %1 : vector<32xi16>
 }
 
@@ -55,11 +53,10 @@ func.func @vecsel_i16_unsigned_cmp(%arg0: vector<32xi16>, %arg1: vector<32xi16>)
 // CHECK-SAME: %[[LHS:.*]]: vector<64xi8>,
 // CHECK-SAME: %[[RHS:.*]]: vector<64xi8>)
 func.func @vecsel_i8(%arg0: vector<64xi8>, %arg1: vector<64xi8>) -> vector<64xi8> {
-  // CHECK: %[[CMP:.*]] = aievec.cmp %[[LHS]], %[[RHS]] {pred = "sge"} : vector<64xi8>, vector<64xi8>, ui64
-  // CHECK: %[[SEL:.*]] = aievec.sel %[[RHS]], %[[LHS]], %[[CMP]] : vector<64xi8>, vector<64xi8>, ui64, vector<64xi8>
+  // CHECK: %[[MAX:.*]] = aievec.max %[[LHS]], %[[RHS]] : vector<64xi8>
   %0 = arith.cmpi sge, %arg0, %arg1 : vector<64xi8>
   %1 = arith.select %0, %arg0, %arg1 : vector<64xi1>, vector<64xi8>
-  // CHECK: return %[[SEL]] : vector<64xi8>
+  // CHECK: return %[[MAX]] : vector<64xi8>
   return %1 : vector<64xi8>
 }
 
@@ -67,7 +64,7 @@ func.func @vecsel_i8(%arg0: vector<64xi8>, %arg1: vector<64xi8>) -> vector<64xi8
 // CHECK-SAME: %[[LHS:.*]]: vector<64xi8>,
 // CHECK-SAME: %[[RHS:.*]]: vector<64xi8>)
 func.func @vecsel_i8_unsigned_cmp(%arg0: vector<64xi8>, %arg1: vector<64xi8>) -> vector<64xi8> {
-  // CHECK: %[[CMP:.*]] = aievec.cmp %[[LHS]], %[[RHS]] {pred = "uge"} : vector<64xi8>, vector<64xi8>, ui64
+  // CHECK: %[[CMP:.*]] = aievec.cmp %[[LHS]], %[[RHS]] {pred = "ugt"} : vector<64xi8>, vector<64xi8>, ui64
   // CHECK: %[[SEL:.*]] = aievec.sel %[[RHS]], %[[LHS]], %[[CMP]] : vector<64xi8>, vector<64xi8>, ui64, vector<64xi8>
   %0 = arith.cmpi uge, %arg0, %arg1 : vector<64xi8>
   %1 = arith.select %0, %arg0, %arg1 : vector<64xi1>, vector<64xi8>
