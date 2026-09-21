@@ -91,7 +91,8 @@ AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow,
-                                           llvm::StringRef deviceName = "");
+                                           llvm::StringRef deviceName = "",
+                                           bool probe = false);
 mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
                                       llvm::raw_ostream &output, int tileCol,
                                       int tileRow,

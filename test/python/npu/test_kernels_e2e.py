@@ -21,6 +21,8 @@ like the bfloat16 ``reduce_max`` output that this test pins.
 These tests compile + run each covered factory and verify output.
 """
 
+import pathlib
+
 import numpy as np
 import pytest
 from ml_dtypes import bfloat16
@@ -709,6 +711,104 @@ def test_mv_bf16_e2e():
     expected = (mat.astype(np.float32) @ vec.astype(np.float32)).astype(bfloat16)
     frac = _bf16_close(ct.numpy(), expected)
     assert frac < 0.02, f"mv matvec mismatch fraction {frac:.4f}"
+
+
+_LUT_PAIR_SRC = """#include <aie_api/aie.hpp>
+#include <stdint.h>
+__attribute__((section(".aie.bank1"), aligned(32))) int16 tbl_ab[512];
+__attribute__((section(".aie.bank2"), aligned(32))) int16 tbl_cd[512];
+extern "C" void lut_pair(uint8_t *out) {
+  using lut_t = aie::lut<4, bfloat16, bfloat16>;
+  lut_t l(256, (bfloat16 *)tbl_ab, (bfloat16 *)tbl_cd);
+  aie::parallel_lookup<uint16, lut_t, aie::lut_oor_policy::truncate> lk(l, 0);
+  aie::vector<int16, 16> idx = aie::load_v<16>((int16 *)out);
+  *(v16bfloat16 *)out = lk.fetch(idx.cast_to<uint16>());
+}
+"""
+
+
+def _lut_pair_object(tmp_path, aiecc_flags):
+    """Compile a design whose kernel builds an aie::lut, returning its object."""
+    from aie.iron import ExternalFunction
+    from aie.utils.config import cxx_header_path
+
+    src = tmp_path / f"lut_pair_{len(aiecc_flags)}.cc"
+    src.write_text(_LUT_PAIR_SRC)
+
+    @iron.jit(aiecc_flags=aiecc_flags)
+    def design(out_tensor: Out):
+        ty = np.ndarray[(64,), np.dtype[np.uint8]]
+        of_out = ObjectFifo(ty, name="lpo")
+        kern = ExternalFunction(
+            "lut_pair",
+            source_file=str(src),
+            arg_types=[ty],
+            include_dirs=[cxx_header_path()],
+        )
+
+        def core(of_out, k):
+            e = of_out.acquire(1)
+            k(e)
+            of_out.release(1)
+
+        # data_size bounds the unpinned region, which otherwise takes the
+        # largest free run on the tile -- here, a bank the tables are pinned to.
+        w = Worker(
+            core,
+            fn_args=[of_out.prod(), kern],
+            while_true=False,
+            stack_size=2048,
+            data_size=4096,
+        )
+
+        def seq(c, cons):
+            cons.drain(c, wait=True)
+
+        rt = Runtime(seq, [ty, of_out.cons()])
+        return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
+
+    design.compile()
+    # The cache root is resolved at import, so read back where the compile
+    # actually put the kernel rather than trying to redirect it.
+    kernel_dir = design.compilable._kernel_dir
+    objects = list(pathlib.Path(kernel_dir).glob("lut_pair*.o"))
+    assert objects, f"kernel object not found in {kernel_dir}"
+    return objects[0]
+
+
+def _carries_bitcode(obj):
+    import os
+    import subprocess
+    import tempfile
+
+    from aie.utils import config
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ret = subprocess.run(
+            [
+                config.objcopy_path(),
+                f"--dump-section=.llvmbc={os.path.join(tmpdir, 'kernel.bc')}",
+                str(obj),
+                os.devnull,
+            ],
+            capture_output=True,
+        )
+    return ret.returncode == 0
+
+
+def test_check_lut_banks_is_one_switch(tmp_path):
+    """Asking aiecc for the LUT check is what makes the kernel keep its IR.
+
+    The check reads bitcode that only the kernel compile can preserve, so the
+    two are derived from one flag and cannot disagree. Preserving it is not
+    free, which is why it stays off until asked for.
+    """
+    from aie.iron.kernels._common import _detect_arch
+
+    if _detect_arch() != "aie2p":
+        pytest.skip("the LUT gather this reads is aie2p")
+    assert _carries_bitcode(_lut_pair_object(tmp_path, ["--check-lut-banks"]))
+    assert not _carries_bitcode(_lut_pair_object(tmp_path, []))
 
 
 # ---------------------------------------------------------------------------

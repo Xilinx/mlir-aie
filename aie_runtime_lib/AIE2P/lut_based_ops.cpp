@@ -9,14 +9,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie_api/aie.hpp"
+#include "aie_bank_placement.h"
 
-// The tables _ab and _cd are copies of each other
-// Also, each table has a copy of data separated by 256-bit
-// This effectively creates 4 copies of the table (located in 4 (256-bit) banks)
-// This allows the user to use the "gather" read feature and read 4 values from
-// 4 different banks at once Tables entries are in BF16
-//
-alignas(aie::vector_decl_align) int16 exp_ilut_ab[512] = {
+// BF16 entries repeat every 256 bits; see aie_bank_placement.h for bank rules.
+AIE_BANK_A alignas(aie::vector_decl_align) int16 exp_ilut_ab[512] = {
     16256, 16430, 16620, 16801, 16986, 17172, 17354, 17545, 17722, 17917, 18092,
     18282, 18463, 18648, 18835, 19016, 16256, 16430, 16620, 16801, 16986, 17172,
     17354, 17545, 17722, 17917, 18092, 18282, 18463, 18648, 18835, 19016, 19208,
@@ -65,7 +61,7 @@ alignas(aie::vector_decl_align) int16 exp_ilut_ab[512] = {
     16060, 13298, 13476, 13663, 13848, 14030, 14220, 14398, 14593, 14768, 14959,
     15138, 15325, 15510, 15692, 15883, 16060};
 
-alignas(aie::vector_decl_align) int16 exp_ilut_cd[512] = {
+AIE_BANK_B alignas(aie::vector_decl_align) int16 exp_ilut_cd[512] = {
     16256, 16430, 16620, 16801, 16986, 17172, 17354, 17545, 17722, 17917, 18092,
     18282, 18463, 18648, 18835, 19016, 16256, 16430, 16620, 16801, 16986, 17172,
     17354, 17545, 17722, 17917, 18092, 18282, 18463, 18648, 18835, 19016, 19208,
@@ -114,7 +110,7 @@ alignas(aie::vector_decl_align) int16 exp_ilut_cd[512] = {
     16060, 13298, 13476, 13663, 13848, 14030, 14220, 14398, 14593, 14768, 14959,
     15138, 15325, 15510, 15692, 15883, 16060};
 
-alignas(aie::vector_decl_align) int16 exp_flut_ab[512] = {
+AIE_BANK_A alignas(aie::vector_decl_align) int16 exp_flut_ab[512] = {
     16256, 16257, 16257, 16258, 16258, 16259, 16259, 16260, 16260, 16261, 16261,
     16262, 16262, 16263, 16263, 16264, 16256, 16257, 16257, 16258, 16258, 16259,
     16259, 16260, 16260, 16261, 16261, 16262, 16262, 16263, 16263, 16264, 16264,
@@ -163,7 +159,7 @@ alignas(aie::vector_decl_align) int16 exp_flut_ab[512] = {
     16429, 16419, 16420, 16421, 16421, 16422, 16423, 16423, 16424, 16425, 16425,
     16426, 16427, 16427, 16428, 16429, 16429};
 
-alignas(aie::vector_decl_align) int16 exp_flut_cd[512] = {
+AIE_BANK_B alignas(aie::vector_decl_align) int16 exp_flut_cd[512] = {
     16256, 16257, 16257, 16258, 16258, 16259, 16259, 16260, 16260, 16261, 16261,
     16262, 16262, 16263, 16263, 16264, 16256, 16257, 16257, 16258, 16258, 16259,
     16259, 16260, 16260, 16261, 16261, 16262, 16262, 16263, 16263, 16264, 16264,
@@ -225,7 +221,7 @@ alignas(aie::vector_decl_align) unsigned char m_inv_lut[128] = {
 
 // Tanh look up tables: Divides into 32 segments between [-4,4], bank size:
 // (32*2*2*4)*2=1k, one lut=512B
-alignas(aie::vector_decl_align) float tanh_lut_ab[128] = {
+AIE_BANK_A alignas(aie::vector_decl_align) float tanh_lut_ab[128] = {
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
     0.00283813476562500000000000000000, -0.98828125000000000000000000000000,
     0.00509643554687500000000000000000, -0.98046875000000000000000000000000,
@@ -291,7 +287,7 @@ alignas(aie::vector_decl_align) float tanh_lut_ab[128] = {
     0.00283813476562500000000000000000, 0.98828125000000000000000000000000,
     0.00000000000000000000000000000000, 1.00000000000000000000000000000000};
 
-alignas(aie::vector_decl_align) float tanh_lut_cd[128] = {
+AIE_BANK_B alignas(aie::vector_decl_align) float tanh_lut_cd[128] = {
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
     0.00283813476562500000000000000000, -0.98828125000000000000000000000000,
     0.00509643554687500000000000000000, -0.98046875000000000000000000000000,

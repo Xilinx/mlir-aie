@@ -20,7 +20,7 @@
 
 // RUN: rm -rf %t && mkdir -p %t
 // RUN: aiecc --tmpdir %t %s
-// RUN: FileCheck %s --check-prefix=LINKED --input-file %t/peano-linked_main_core_0_2.ll --implicit-check-not=nocreateundeforpoison
+// RUN: FileCheck %s --check-prefix=LINKED --input-file %t/peano-linked_main_core_0_2.ll --implicit-check-not=nocreateundeforpoison --implicit-check-not=target_mem
 // RUN: FileCheck %s --check-prefix=OPTED --input-file %t/opted_main_core_0_2.ll --implicit-check-not=@merge_kernel
 
 // The kernel arrived, and the merged text is back in a dialect Peano parses: no
@@ -42,6 +42,7 @@
 // LINKED-DAG: alloca [4 x float], align 64
 // LINKED-DAG: store float %{{.*}}, ptr %{{.*}}, align 64
 // LINKED-DAG: load float, ptr %{{.*}}, align 64
+// LINKED-DAG: memory(read, argmem: readwrite)
 
 // Peano's opt then folds the alwaysinline kernel in and dead-strips the
 // linkonce_odr definition: no `@merge_kernel` survives (--implicit-check-not

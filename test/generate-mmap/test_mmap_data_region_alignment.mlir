@@ -19,7 +19,7 @@
 
 // RUN: aie-translate --tilecol=0 --tilerow=2 --aie-generate-ldscript %s | FileCheck --check-prefix=LD02 %s
 
-// LD02: data (!RX) : ORIGIN = 0x70420, LENGTH = 0xFBE0
+// LD02: data (!RX) : ORIGIN = [[DATA:MAX\(.*0x70420.*\)]], LENGTH = 0x80000 - [[DATA]]
 
 module @test_mmap_data_region_alignment {
  aie.device(npu1_1col) {
