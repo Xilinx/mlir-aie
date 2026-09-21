@@ -364,7 +364,11 @@ def dma_compression(
 
         of_a = ObjectFifo(line_ty, name="a_shim_to_ct")
         of_b = ObjectFifo(line_ty, name="b_ct_to_consumer")
-        of_c = of_b.cons().forward(tile=link_consumer, name="c_consumer_to_shim")
+        of_c = of_b.cons().forward(
+            tile=link_consumer,
+            name="c_consumer_to_shim",
+            stream_len_decoupled=out_tap_rt is not None,
+        )
 
         def ct_core(of_in, of_out, copy_fn):
             for _ in range_(N // LINE_SIZE):
@@ -411,8 +415,17 @@ def dma_compression(
         link_s2mm_ctrl = CT_S2MM0_CTRL
         link_mm2s_ctrl = CT_MM2S0_CTRL
 
-    of_in = ObjectFifo(line_ty, name="in")
-    of_out = of_in.cons().forward(tile=link_tile, name="out")
+    # Strip "core_"/"memtile_" prefix to get the cmp/dcmp/both suffix.
+    suffix = (
+        config.split("_", 1)[1] if config.startswith(("core_", "memtile_")) else config
+    )
+    has_mm2s_cmp = suffix in ("cmp_only", "both")
+    has_s2mm_dcmp = suffix in ("dcmp_only", "both")
+
+    of_in = ObjectFifo(line_ty, name="in", stream_len_decoupled=has_s2mm_dcmp)
+    of_out = of_in.cons().forward(
+        tile=link_tile, name="out", stream_len_decoupled=has_mm2s_cmp
+    )
 
     # `core_*` configs spawn a Worker on the link tile that calls the peano
     # `write_tm` kernel functions to flip compression registers from inside
@@ -463,12 +476,6 @@ def dma_compression(
 
         core_worker = Worker(core_body, list(enables), tile=link_tile)
 
-    # Strip "core_"/"memtile_" prefix to get the cmp/dcmp/both suffix.
-    suffix = (
-        config.split("_", 1)[1] if config.startswith(("core_", "memtile_")) else config
-    )
-    has_mm2s_cmp = suffix in ("cmp_only", "both")
-    has_s2mm_dcmp = suffix in ("dcmp_only", "both")
     # Ratio-size each shim BD whose channel is doing (de)compression.
     in_tap = _linear_tap(RATIOED_N) if has_s2mm_dcmp else None
     out_tap = _linear_tap(RATIOED_N) if has_mm2s_cmp else None
