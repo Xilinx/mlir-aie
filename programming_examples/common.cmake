@@ -307,9 +307,10 @@ endmacro()
 
 # add_aie_design(TARGET <t> PY <design.py> [DEVICE <npu|npu2>] [ELF] [ARGS ...])
 #   JITs the design into final.xclbin/insts.bin (+ final.elf with ELF) in the
-#   build dir. Creates target <t>_xclbin, and makes <t> depend on it when <t> is
-#   an existing target (pure-Python designs have no host exe, so that is
-#   optional). DEVICE defaults to ${AIE_DEVICE}.
+#   build dir. TARGET is required. Creates target <t>_xclbin, and makes <t>
+#   depend on it when <t> is an existing target; <t> need not be one, since
+#   pure-Python designs have no host exe, and then no dependency is added.
+#   DEVICE defaults to ${AIE_DEVICE}.
 #
 # The design is only built when AIE_BUILD_DESIGN is ON. This matters because
 # makefile-common's build_host_exe configures and builds this same CMakeLists to
@@ -341,8 +342,6 @@ function(add_aie_design)
     set_property(DIRECTORY PROPERTY AIE_DESIGN_HAS_ELF TRUE)
   endif()
 
-  _aie_require_python()
-
   # Still define the target so callers' add_dependencies() stays valid; it just
   # has nothing to do.
   if(NOT AIE_BUILD_DESIGN)
@@ -352,6 +351,10 @@ function(add_aie_design)
     endif()
     return()
   endif()
+
+  # Probed here, past the early return: the interpreter is only needed for the
+  # JIT command below.
+  _aie_require_python()
   set(_out "${CMAKE_CURRENT_BINARY_DIR}")
   set(_xclbin "${_out}/final.xclbin")
   set(_insts "${_out}/insts.bin")
