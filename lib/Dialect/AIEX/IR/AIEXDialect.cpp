@@ -497,20 +497,7 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
 // lowerDynamic) can lower; runtime values are never silently masked.
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
     const AIE::AIETargetModel &targetModel, mlir::BaseMemRefType buffer) {
-  // Shim NOC only.
-  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
-      dev, getMetadata().getRootReference());
-  if (!allocOp)
-    return emitOpError(
-        "runtime sizes/strides require a shim_dma_allocation to resolve the "
-        "tile; none found.");
-  AIE::TileOp tile = allocOp.getTileOp();
-  if (!tile)
-    return emitOpError("shim DMA allocation must reference a valid TileOp");
-  if (!targetModel.isShimNOCTile(tile.getCol(), tile.getRow()))
-    return emitOpError(
-        "runtime sizes/strides are only supported for shim NOC tile DMAs.");
+  // The shim-NOC-tile requirement is checked in verifySymbolUses.
 
   // No zero-padding with runtime sizes/strides.
   if (getD0ZeroBefore() || getD1ZeroBefore() || getD2ZeroBefore() ||
@@ -631,18 +618,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   if (!allStridesConstant || !allSizesConstant || !allOffsetsConstant)
     return verifyDynamicSizesStrides(targetModel, buffer);
 
-  llvm::SmallVector<int64_t, 4> inputSizes =
-      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
-  llvm::SmallVector<int64_t, 4> inputStrides =
-      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
-  llvm::SmallVector<int64_t, 4> hardwareSizes(4);
-  llvm::SmallVector<int64_t, 4> hardwareStrides(4);
-  getHardwareStridesWraps(targetModel, getOperation(), buffer, inputSizes,
-                          inputStrides, hardwareSizes, hardwareStrides);
   int64_t offset = getOffsetInBytes();
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
@@ -659,47 +634,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
-  // dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
-  // specify any data layout transformation, but simply express a contiguous
-  // transfer of `len`. For backwards compatibility, we allow this to proceed
-  // even if it exceeds the maximum stride/wrap size of any one dimension,
-  // and simply do not lower any data layout transformations, since there is
-  // no other way to express this at the dma_memcpy_nd interface otherwise.
-  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
-          dev, getMetadata().getRootReference())) {
-    AIE::TileOp tile = allocOp.getTileOp();
-    if (!tile) {
-      return emitOpError("shim DMA allocation must reference a valid TileOp");
-    }
-    int col = tile.getCol();
-    int row = tile.getRow();
-    // A contiguous row-major ND access is also exempt from the ND wrap-size
-    // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
-    // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
-    bool skipTransformationChecks =
-        isLinearTransferWithoutTransformation() ||
-        (targetModel.isShimNOCTile(col, row) &&
-         AIEX::isContiguousTransfer(inputSizes, inputStrides));
-    // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
-    // split into hardware-legal sub-transfers is also allowed to verify: the
-    // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
-    // oversized strides) still fail below. isDecomposableNdDmaPattern
-    // suppresses its own diagnostics, so no stray error is emitted for the
-    // accepted case.
-    llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
-        llvm::reverse(getMixedOffsets()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    if (AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
-                                         col, row, inputOffsets, inputSizes,
-                                         inputStrides)) {
-      // ok: will be decomposed before lowering
-    } else if (failed(verifyStridesWraps(
-                   *this, buffer, col, row, inputSizes, inputStrides,
-                   hardwareSizes, hardwareStrides, skipTransformationChecks))) {
-      return failure();
-    }
-  }
+  // The ND wrap-size check is in verifySymbolUses.
 
   // packet header
   if (auto packetInfo = getPacket()) {
@@ -710,6 +645,86 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   }
 
   return success();
+}
+
+// See DMAConfigureTaskForOp::verifySymbolUses for why this is not in verify().
+LogicalResult
+AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbols) {
+  BaseMemRefType buffer = getMemref().getType();
+  const auto &targetModel = AIE::getTargetModel(*this);
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  auto allocOp = symbols.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
+      dev, getMetadata().getRootReference());
+
+  bool allStridesConstant = llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allSizesConstant = llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allOffsetsConstant = llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+
+  if (!allStridesConstant || !allSizesConstant || !allOffsetsConstant) {
+    if (!allocOp)
+      return emitOpError(
+          "runtime sizes/strides require a shim_dma_allocation to resolve "
+          "the tile; none found.");
+    AIE::TileOp tile = allocOp.getTileOp();
+    if (!tile)
+      return emitOpError("shim DMA allocation must reference a valid TileOp");
+    if (!targetModel.isShimNOCTile(tile.getCol(), tile.getRow()))
+      return emitOpError(
+          "runtime sizes/strides are only supported for shim NOC tile DMAs.");
+    return success();
+  }
+
+  // An unresolved allocation is not an error: a later pass may still resolve
+  // it.
+  if (!allocOp)
+    return success();
+  AIE::TileOp tile = allocOp.getTileOp();
+  if (!tile)
+    return emitOpError("shim DMA allocation must reference a valid TileOp");
+  int col = tile.getCol();
+  int row = tile.getRow();
+
+  llvm::SmallVector<int64_t, 4> inputSizes =
+      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> inputStrides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> hardwareSizes(4);
+  llvm::SmallVector<int64_t, 4> hardwareStrides(4);
+  getHardwareStridesWraps(targetModel, getOperation(), buffer, inputSizes,
+                          inputStrides, hardwareSizes, hardwareStrides);
+
+  // A contiguous row-major ND access is also exempt from the ND wrap-size
+  // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0), and
+  // LinearizeContiguousTransfer canonicalizes it to explicit linear form.
+  bool skipTransformationChecks =
+      isLinearTransferWithoutTransformation() ||
+      (targetModel.isShimNOCTile(col, row) &&
+       AIEX::isContiguousTransfer(inputSizes, inputStrides));
+  // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
+  // split into hardware-legal sub-transfers is also allowed to verify: the
+  // pass rewrites it before BD lowering. isDecomposableNdDmaPattern
+  // suppresses its own diagnostics, so no stray error is emitted here.
+  llvm::SmallVector<int64_t, 4> inputOffsets =
+      llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  if (AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel, col,
+                                       row, inputOffsets, inputSizes,
+                                       inputStrides))
+    return success(); // will be decomposed before lowering
+  return verifyStridesWraps(*this, buffer, col, row, inputSizes, inputStrides,
+                            hardwareSizes, hardwareStrides,
+                            skipTransformationChecks);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1294,14 +1309,20 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
-LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
+// verifySymbolUses rather than verify(): it receives the SymbolTableCollection
+// that mlir::detail::verifySymbolTable builds once per device, where
+// ShimDMAAllocationOp::getForSymbol rescans the device per op. The collection
+// is not shared across verify() calls, so there is no cache lifetime to get
+// wrong.
+LogicalResult
+AIEX::DMAConfigureTaskForOp::verifySymbolUses(SymbolTableCollection &symbols) {
   // Recover the shim tile through the referenced shim DMA allocation symbol so
   // the per-BD dimension limit can be enforced on the runtime-sequence path
   // before the allocation is substituted into a concrete DMAConfigureTaskOp.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  AIE::ShimDMAAllocationOp allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+  auto allocOp = symbols.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getAlloc().getRootReference());
   if (!allocOp)
     return success(); // symbol resolved during a later pass; defer the check
