@@ -1,4 +1,4 @@
-// RUN: aie-opt --split-input-file --aie-objectfifo-allocate --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-objectfifo-allocate --aie-assign-buffer-addresses %s | FileCheck %s
 // RUN: aie-opt --split-input-file --aie-objectfifo-allocate --aie-assign-buffer-addresses %s -o /dev/null
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
@@ -18,8 +18,8 @@ module @alignment_spill {
 // CHECK-LABEL: module @alignment_spill
 // CHECK-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEXT:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[NEXT]]) {address = 0 : i32, sym_name = "p_buff_0"}
-// CHECK-DAG: aie.buffer(%[[HOME]]) {address = 0 : i32, sym_name = "fixed"}
+// CHECK-DAG: aie.buffer(%[[NEXT]]) {address = 0 : i32, {{.*}}sym_name = "p_buff_0"}
+// CHECK-DAG: aie.buffer(%[[HOME]]) {address = 0 : i32, {{.*}}sym_name = "fixed"}
 
 // -----
 
@@ -36,8 +36,8 @@ module @per_object_alignment {
 // CHECK-LABEL: module @per_object_alignment
 // CHECK-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEXT:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[HOME]]) {address = 524284 : i32, sym_name = "p_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEXT]]) {address = 0 : i32, sym_name = "p_buff_1"}
+// CHECK-DAG: aie.buffer(%[[HOME]]) {address = 524284 : i32, {{.*}}sym_name = "p_buff_0"}
+// CHECK-DAG: aie.buffer(%[[NEXT]]) {address = 0 : i32, {{.*}}sym_name = "p_buff_1"}
 
 // -----
 
@@ -54,7 +54,7 @@ module @pinned_extent {
 }
 // CHECK-LABEL: module @pinned_extent
 // CHECK: %[[NEXT:.*]] = aie.tile(1, 1)
-// CHECK: aie.buffer(%[[NEXT]]) {address = 0 : i32, sym_name = "p_buff_0"}
+// CHECK: aie.buffer(%[[NEXT]]) {address = 0 : i32, {{.*}}sym_name = "p_buff_0"}
 
 // -----
 
@@ -70,7 +70,7 @@ module @pinned_hole_exact_fit {
   }
 }
 // CHECK-LABEL: module @pinned_hole_exact_fit
-// CHECK: aie.buffer({{.*}}) {address = 0 : i32, sym_name = "p_buff_0"}
+// CHECK: aie.buffer({{.*}}) {address = 0 : i32, {{.*}}sym_name = "p_buff_0"}
 
 // -----
 
@@ -87,5 +87,5 @@ module @unaligned_exact_fit {
   }
 }
 // CHECK-LABEL: module @unaligned_exact_fit
-// CHECK: aie.buffer({{.*}}) {address = 524284 : i32, sym_name = "p_buff_0"}
-// CHECK: aie.buffer({{.*}}) {address = 524286 : i32, aligned = false, sym_name = "fixed"}
+// CHECK: aie.buffer({{.*}}) {address = 524284 : i32, {{.*}}sym_name = "p_buff_0"}
+// CHECK: aie.buffer({{.*}}) {address = 524286 : i32, aligned = false, {{.*}}sym_name = "fixed"}

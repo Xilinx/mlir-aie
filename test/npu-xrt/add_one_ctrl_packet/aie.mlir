@@ -17,7 +17,8 @@ module {
 
     %input_buffer = aie.buffer(%tile_0_2) {sym_name = "input_buffer"} : memref<8xi32>
     %output_buffer = aie.buffer(%tile_0_2) {sym_name = "output_buffer"} : memref<8xi32>
-    %other_buffer = aie.buffer(%tile_0_2) {sym_name = "other_buffer"} : memref<8xi32>
+    // The host's control packets read this buffer at tile-relative address 0x440.
+    %other_buffer = aie.buffer(%tile_0_2) {sym_name = "other_buffer", address = 0x440 : i32} : memref<8xi32>
 
     aie.packet_flow(0x1) {
       aie.packet_source<%tile_0_0, DMA : 0>

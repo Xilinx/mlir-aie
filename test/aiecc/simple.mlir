@@ -9,12 +9,12 @@
 // REQUIRES: peano
 
 // RUN: %aiecc --get-core-elfs -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o simple.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=PEANO
-// The NOCOMPILE runs assert that no core compiler is invoked; they request
-// input_with_addresses so the driver still produces (compiler-free) output for
-// FileCheck to scan instead of an empty graph.
-// RUN: %aiecc --get-input-with-addresses -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o simple.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
+// The NOCOMPILE runs assert that no core compiler is invoked. They request
+// input_with_symbols, which is the module before buffer placement: placement
+// now follows the core compile, so input_with_addresses would pull one in.
+// RUN: %aiecc --get-input-with-symbols -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o simple.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
 // RUN: %aiecc --no-unified --get-core-elfs -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o simple.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=PEANO
-// RUN: %aiecc --no-unified --get-input-with-addresses -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o simple.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
+// RUN: %aiecc --no-unified --get-input-with-symbols -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o simple.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
 
 // Note that llc determines the architecture from the llvm IR.
 

@@ -12,20 +12,25 @@
 //
 // See AIETargetModel::getComputeTileMaxVectorAlignBits and aie_api's
 // vector_ldst_align (aie_api/detail/ld_st.hpp).
+//
+// The cases below pin both buffers to one bank. Padding only happens when a
+// buffer is placed after another, and the allocator is free to spread them over
+// separate banks; sharing a bank is what makes the alignment the thing under
+// test rather than the bank policy.
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // AIE2P (npu2): `pad` is 144B, so without the fix the following 64B buffer
 // lands at 1184 (32-aligned but 32 mod 64) and a 512-bit store to it is torn.
 // It must be bumped to 1216.
 // CHECK-LABEL: module @aie2p_core_needs_64B
-// CHECK: aie.buffer({{.*}}) {address = 1024 : i32, sym_name = "pad"} : memref<72xbf16>
-// CHECK: aie.buffer({{.*}}) {address = 1216 : i32, sym_name = "vec"} : memref<32xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "pad"} : memref<72xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1216 : i32, mem_bank = 0 : i32, sym_name = "vec"} : memref<32xbf16>
 module @aie2p_core_needs_64B {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %pad = aie.buffer(%t) { sym_name = "pad" } : memref<72xbf16>   // 144 B
-    %vec = aie.buffer(%t) { sym_name = "vec" } : memref<32xbf16>   //  64 B
+    %pad = aie.buffer(%t) { sym_name = "pad", mem_bank = 0 : i32 } : memref<72xbf16>   // 144 B
+    %vec = aie.buffer(%t) { sym_name = "vec", mem_bank = 0 : i32 } : memref<32xbf16>   //  64 B
     aie.core(%t) {
       aie.end
     } { stack_size = 1024 : i32 }
@@ -38,13 +43,13 @@ module @aie2p_core_needs_64B {
 // without going out of bounds, so they keep the cheaper 32B bus alignment and
 // cost no extra padding.
 // CHECK-LABEL: module @aie2p_small_buffers_unpadded
-// CHECK: aie.buffer({{.*}}) {address = 1024 : i32, sym_name = "s0"} : memref<8xbf16>
-// CHECK: aie.buffer({{.*}}) {address = 1056 : i32, sym_name = "s1"} : memref<8xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "s0"} : memref<8xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1056 : i32, mem_bank = 0 : i32, sym_name = "s1"} : memref<8xbf16>
 module @aie2p_small_buffers_unpadded {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %s0 = aie.buffer(%t) { sym_name = "s0" } : memref<8xbf16>      // 16 B
-    %s1 = aie.buffer(%t) { sym_name = "s1" } : memref<8xbf16>      // 16 B
+    %s0 = aie.buffer(%t) { sym_name = "s0", mem_bank = 0 : i32 } : memref<8xbf16>      // 16 B
+    %s1 = aie.buffer(%t) { sym_name = "s1", mem_bank = 0 : i32 } : memref<8xbf16>      // 16 B
     aie.core(%t) {
       aie.end
     } { stack_size = 1024 : i32 }
@@ -56,13 +61,13 @@ module @aie2p_small_buffers_unpadded {
 // AIE2 (npu1) keeps 32B alignment: its widest vector access is 256 bits, so
 // this change must not perturb existing AIE2 layouts.
 // CHECK-LABEL: module @aie2_unchanged
-// CHECK: aie.buffer({{.*}}) {address = 1024 : i32, sym_name = "pad"} : memref<72xbf16>
-// CHECK: aie.buffer({{.*}}) {address = 1184 : i32, sym_name = "vec"} : memref<32xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "pad"} : memref<72xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1184 : i32, mem_bank = 0 : i32, sym_name = "vec"} : memref<32xbf16>
 module @aie2_unchanged {
   aie.device(npu1) {
     %t = aie.tile(0, 2)
-    %pad = aie.buffer(%t) { sym_name = "pad" } : memref<72xbf16>
-    %vec = aie.buffer(%t) { sym_name = "vec" } : memref<32xbf16>
+    %pad = aie.buffer(%t) { sym_name = "pad", mem_bank = 0 : i32 } : memref<72xbf16>
+    %vec = aie.buffer(%t) { sym_name = "vec", mem_bank = 0 : i32 } : memref<32xbf16>
     aie.core(%t) {
       aie.end
     } { stack_size = 1024 : i32 }
@@ -74,13 +79,13 @@ module @aie2_unchanged {
 // MemTile buffers are reached by DMA, not by core vector load/stores, so they
 // keep the 4B DMA alignment and gain no padding.
 // CHECK-LABEL: module @aie2p_memtile_unchanged
-// CHECK: aie.buffer({{.*}}) {address = 0 : i32, sym_name = "m0"} : memref<72xbf16>
-// CHECK: aie.buffer({{.*}}) {address = 144 : i32, sym_name = "m1"} : memref<32xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "m0"} : memref<72xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 144 : i32, mem_bank = 0 : i32, sym_name = "m1"} : memref<32xbf16>
 module @aie2p_memtile_unchanged {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %m0 = aie.buffer(%t) { sym_name = "m0" } : memref<72xbf16>
-    %m1 = aie.buffer(%t) { sym_name = "m1" } : memref<32xbf16>
+    %m0 = aie.buffer(%t) { sym_name = "m0", mem_bank = 0 : i32 } : memref<72xbf16>
+    %m1 = aie.buffer(%t) { sym_name = "m1", mem_bank = 0 : i32 } : memref<32xbf16>
   }
 }
 
@@ -91,13 +96,13 @@ module @aie2p_memtile_unchanged {
 // following buffer 32-aligned, silently breaking aie::load_v / aie::store_v.
 // The alignment must not depend on the stack size.
 // CHECK-LABEL: module @aie2p_unaligned_stack_size
-// CHECK: aie.buffer({{.*}}) {address = 1088 : i32, sym_name = "bufin"} : memref<32xi32>
-// CHECK: aie.buffer({{.*}}) {address = 1216 : i32, sym_name = "bufout"} : memref<32xi32>
+// CHECK: aie.buffer({{.*}}) {address = 1088 : i32, mem_bank = 0 : i32, sym_name = "bufin"} : memref<32xi32>
+// CHECK: aie.buffer({{.*}}) {address = 1216 : i32, mem_bank = 0 : i32, sym_name = "bufout"} : memref<32xi32>
 module @aie2p_unaligned_stack_size {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %in = aie.buffer(%t) { sym_name = "bufin" } : memref<32xi32>
-    %out = aie.buffer(%t) { sym_name = "bufout" } : memref<32xi32>
+    %in = aie.buffer(%t) { sym_name = "bufin", mem_bank = 0 : i32 } : memref<32xi32>
+    %out = aie.buffer(%t) { sym_name = "bufout", mem_bank = 0 : i32 } : memref<32xi32>
     aie.core(%t) {
       aie.end
     } { stack_size = 1028 : i32 }
@@ -111,7 +116,7 @@ module @aie2p_unaligned_stack_size {
 // only to the bus width, so pinning a 64B buffer at a 32-mod-64 address stays
 // legal; only addresses this pass *chooses* get the stricter vector alignment.
 // CHECK-LABEL: module @aie2p_pinned_address_not_vetoed
-// CHECK: aie.buffer({{.*}}) {address = 55328 : i32, sym_name = "rtp"} : memref<16xi32>
+// CHECK: aie.buffer({{.*}}) {address = 55328 : i32, {{.*}}sym_name = "rtp"} : memref<16xi32>
 module @aie2p_pinned_address_not_vetoed {
   aie.device(npu2) {
     %t = aie.tile(0, 2)

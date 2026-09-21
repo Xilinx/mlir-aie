@@ -83,3 +83,24 @@ def reset_iron_state():
     ExternalFunction._instances.clear()
     yield
     ExternalFunction._instances.clear()
+
+
+@pytest.fixture(autouse=True)
+def bind_current_device():
+    """Bind the device before each test so arch guards can read it.
+
+    ``_detect_arch()`` reads the current device without probing, which is right
+    where kernel factories call it -- inside a generator, by which point
+    compilation has bound one. A test body runs before that, so an arch guard
+    at the top of one saw no device and read ``aie2``, silently skipping every
+    aie2p test on an aie2p board. Probing once here gives the guards the same
+    answer the generator would get.
+    """
+    from aie.utils import get_current_device, set_current_device
+
+    if get_current_device(probe_runtime=False) is None:
+        try:
+            set_current_device(get_current_device(probe_runtime=True))
+        except (RuntimeError, ValueError, AttributeError):
+            pass  # No device to probe; arch guards fall back as before.
+    yield

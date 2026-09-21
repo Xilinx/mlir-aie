@@ -12,7 +12,6 @@
 // The two 24576-byte buffers are larger than a bank, so each straddles into
 // the next; the smaller ones fill what is left, packing the tile tight enough
 // to exhaust it.
-// CHECK: warning: Failed to allocate buffer "_anonymous5", which needs 4096 bytes.
 // CHECK: warning: Not all requested buffers fit in the available memory.
 // CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
 // CHECK: (no stack allocated)
@@ -25,9 +24,8 @@
 // CHECK:                 _anonymous2     : 0xC000-0xD7FF          (6144 bytes)
 // CHECK:                 _anonymous3     : 0xD800-0xEFFF          (6144 bytes)
 // CHECK:                 _anonymous4     : 0xF000-0xFFFF          (4096 bytes)
-// CHECK: warning: Bank-aware allocation failed, trying basic sequential allocation.
-// CHECK: error: 'aie.tile' op allocated buffers exceeded available memory
-// CHECK: error: 'aie.tile' op basic-sequential allocation failed
+
+// CHECK: error: {{.*}}could not be placed: buffer "_anonymous5" needs 4096 bytes and this tile has no room left for it
 
 module {
   aie.device(npu1_2col) {
