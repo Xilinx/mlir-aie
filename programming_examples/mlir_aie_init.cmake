@@ -45,6 +45,16 @@ macro(mlir_aie_init_example)
       set(CMAKE_CXX_COMPILER g++-13)
     endif()
   else()
+    # Default to Release, matching the `cmake --build . --config Release` that
+    # makefile-common has always used. Without this, project() takes MSVC's
+    # CMAKE_BUILD_TYPE_INIT (Debug) on single-config generators like Ninja and
+    # links the host exe against the debug CRT. The runner has no debug CRT, so
+    # the exe dies in the loader with STATUS_DLL_NOT_FOUND -- no output, no
+    # message, just a nonzero exit a fraction of a second in.
+    if(NOT CMAKE_BUILD_TYPE)
+      set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type (single-config generators)")
+    endif()
+
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
 
     # Default the host compiler to MSVC. Otherwise CMake takes the first
