@@ -1,7 +1,0 @@
-<map id="include/aie/Dialect/AIE/Transforms/AIEBufferAllocation.h" name="include/aie/Dialect/AIE/Transforms/AIEBufferAllocation.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="76,5,340,45"/>
-<area shape="rect" id="Node000002" href="$AIEAssignBuffers_8cpp.html" title=" " alt="" coords="5,93,195,133"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="175,56,126,95,122,91,172,52"/>
-<area shape="rect" id="Node000003" href="$AIEObjectFifoAllocate_8cpp.html" title=" " alt="" coords="219,93,413,133"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="244,52,294,91,290,95,241,56"/>
-</map>

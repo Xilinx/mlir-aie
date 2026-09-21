@@ -2231,6 +2231,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The stack: stack_size">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stack-placement-stack_bank-and-stack_address" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack placement: stack_bank and stack_address
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2267,11 +2284,28 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#cores-built-ahead-of-time" class="md-nav__link">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bank-pinned-static-tables-and-lut-checks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Cores built ahead of time
+        Bank-pinned static tables and LUT checks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bank-pinned static tables and LUT checks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-allocator-reserves-these-banks-for-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The allocator reserves these banks for you
       
     </span>
   </a>
@@ -2284,10 +2318,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#escape-hatches-and-allocation-control" class="md-nav__link">
+  <a href="#cores-built-ahead-of-time" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Escape hatches and allocation control
+        Cores built ahead of time
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#escape-hatches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Escape hatches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-placement-chooses-addresses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How placement chooses addresses
       
     </span>
   </a>
@@ -3591,6 +3647,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The stack: stack_size">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stack-placement-stack_bank-and-stack_address" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack placement: stack_bank and stack_address
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3627,11 +3700,28 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#cores-built-ahead-of-time" class="md-nav__link">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bank-pinned-static-tables-and-lut-checks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Cores built ahead of time
+        Bank-pinned static tables and LUT checks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bank-pinned static tables and LUT checks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-allocator-reserves-these-banks-for-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The allocator reserves these banks for you
       
     </span>
   </a>
@@ -3644,10 +3734,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#escape-hatches-and-allocation-control" class="md-nav__link">
+  <a href="#cores-built-ahead-of-time" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Escape hatches and allocation control
+        Cores built ahead of time
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#escape-hatches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Escape hatches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-placement-chooses-addresses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How placement chooses addresses
       
     </span>
   </a>
@@ -3762,25 +3874,30 @@
 <p>Every AIE compute tile has one small block of local data memory, 64 kB on npu2
 for example. Three things share that block:</p>
 <ul>
-<li>the <strong>stack</strong>, at the bottom;</li>
+<li>the <strong>stack</strong>, at offset zero by default;</li>
 <li>the <strong><code>aie.buffer</code>s</strong> that the buffer allocator places on the tile: the L1
   storage behind ObjectFifos, and any hand-declared buffer;</li>
-<li>the core's <strong>own compiled sections</strong> (<code>.data</code>, <code>.rodata</code>, <code>.bss</code>): the
+<li>the core's <strong>own compiled sections</strong> (<code>.data</code>, <code>.rodata</code>, <code>.bss</code>, and
+  bank-pinned sections): the
   globals, the constants and the zero-initialized statics of the code that
   runs on the core, including its kernels.</li>
 </ul>
-<p>The buffer allocator places the <code>aie.buffer</code>s above the stack reservation. The
-core compiler, Peano or Chess, then places the core's own sections into one
-contiguous run that the buffers leave. Buffer placement therefore governs
-whether the core links.</p>
-<p>This page covers the <strong>stack</strong> and the <strong>core's own sections</strong>: how each is
-sized, which attributes and flags control them, and what to do when a
-diagnostic fires.</p>
+<p>The buffer allocator keeps the <code>aie.buffer</code>s clear of the stack reservation.
+Ordinary static data needs one contiguous run that the buffers leave. On
+Peano, bank-pinned static tables instead use separate bank-specific linker
+regions; Chess uses its native storage constraints. Buffer and stack placement
+therefore govern whether the core links.</p>
+<p>Placement runs <em>after</em> each core is compiled, so how much of each bank that
+core's own sections want is measured first and reserved. See
+<a href="#the-allocator-reserves-these-banks-for-you">The allocator reserves these banks for you</a>.</p>
+<p>This page covers the <strong>stack</strong> and the <strong>core's own sections</strong>: sizing,
+bank placement, the attributes and flags that control them, and what to do
+when a diagnostic fires.</p>
 <p>One rule governs both checks: <em>the compiler measures and reports, you declare
 and rebuild.</em> <code>aiecc</code> never writes <code>stack_size</code> or <code>data_size</code>. A value you set
-explicitly, an explicit <code>0</code> included, stays as you wrote it. When the measured
-requirement exceeds the declared value, the build reports the number to set and
-stops.</p>
+explicitly stays as you wrote it (<code>data_size = 0</code> is legal; <code>stack_size</code> must
+be positive). When the measured requirement exceeds the declared value, the
+build reports the number to set and stops.</p>
 <h2 id="the-stack-stack_size">The stack: <code>stack_size</code><a class="headerlink" href="#the-stack-stack_size" title="Permanent link">&para;</a></h2>
 <p><code>stack_size</code> is a per-core attribute on <code>aie.core</code>. A core that leaves it
 absent uses the target default from
@@ -3788,8 +3905,8 @@ absent uses the target default from
 it on the <code>Worker</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Worker</span><span class="p">(</span><span class="n">core_fn</span><span class="p">,</span> <span class="p">[</span><span class="n">args</span><span class="p">],</span> <span class="n">stack_size</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 </code></pre></div>
-<p>The stack sits directly below the buffers with no clearance, so a core whose
-frames exceed the reservation overwrites the buffers above it. <code>aiecc</code>
+<p>The stack grows upward from its assigned address. A core whose frames exceed
+the reservation can overwrite buffers or static data beyond it. <code>aiecc</code>
 therefore measures each core's stack requirement and checks <code>stack_size</code>
 against that number. It measures the <strong>linked core ELF</strong>: the linker decides
 which objects a core contains, so its output covers the kernels and the
@@ -3810,7 +3927,40 @@ inspect it:</p>
 </code></pre></div>
 <p>Pass <code>--get=measured_stack_sizes.mlir</code> to dump that module. A <code>stack_size</code>
 below <code>measured_stack_size</code> fails the build. <code>measured_stack_size</code> stays absent
-when <code>aiecc</code> cannot measure the core; the next section lists those cases.</p>
+when <code>aiecc</code> cannot measure the core; see the stack-contribution overrides below.</p>
+<h3 id="stack-placement-stack_bank-and-stack_address">Stack placement: <code>stack_bank</code> and <code>stack_address</code><a class="headerlink" href="#stack-placement-stack_bank-and-stack_address" title="Permanent link">&para;</a></h3>
+<p>These optional attributes on <code>aie.core</code> control placement, independently of
+<code>stack_size</code>:</p>
+<ul>
+<li><strong><code>stack_address</code></strong> is a byte offset within the tile's local data memory,
+  not an absolute ELF address.</li>
+<li><strong><code>stack_bank</code></strong> selects bank 0–3 (A–D) on AIE2/AIE2P. With no address, the
+  allocator chooses an aligned free run in that bank and writes
+  <code>stack_address</code>, accounting for fixed-address buffers first.</li>
+<li>With both attributes, the address must lie in the requested bank.</li>
+</ul>
+<p>For example, on npu2, bank B starts at tile-relative offset <code>0x4000</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aie.core(%tile_0_2) { ... } {stack_size = 2048 : i32, stack_bank = 1 : i32, stack_address = 16384 : i32}
+</code></pre></div>
+<p>An explicitly placed stack must stay within local memory and not overlap a
+buffer or static-data reservation. The address must satisfy the stack ABI
+alignment: 32 bytes on AIE1/AIE2, 64 bytes on AIE2P/AIE2PS. Omitting both
+attributes retains the legacy stack at offset zero.</p>
+<p>A <code>stack_address</code> may cross bank boundaries, as the legacy stack always could.
+What such a stack cannot do is claim a bank: <code>-aie-stack-addrspace</code> names one,
+so aiecc leaves it at Peano's unrestricted default rather than promise the
+bank-conflict model something untrue. <code>stack_bank</code> is the attribute that names
+a bank, and it must hold the whole stack -- a <code>stack_bank</code> whose stack runs
+past it is an error, because the two would disagree.</p>
+<p>Moving within bank A works with both Peano and Chess. Moving to banks B–D
+through <code>aiecc</code> requires Peano compilation and linking, with no separately
+linked kernel inputs (<code>link_files</code>). Use LLVM IR kernels with
+<code>link_with_mode = "merge"</code> instead: <code>aiecc</code> passes the selected stack address
+space to Peano when compiling the combined core. Separately compiled kernels
+may still assume bank A, and equivalent Chess assumptions cannot be verified,
+so those combinations are rejected.</p>
+<p>These placement attributes currently belong to the MLIR <code>aie.core</code> API;
+IRON's <code>Worker</code> exposes <code>stack_size</code>, but not <code>stack_bank</code> or <code>stack_address</code>.</p>
 <h2 id="overriding-a-kernels-stack-contribution-stack_size_override">Overriding a kernel's stack contribution: <code>stack_size_override</code><a class="headerlink" href="#overriding-a-kernels-stack-contribution-stack_size_override" title="Permanent link">&para;</a></h2>
 <p>The analysis cannot size some symbols:</p>
 <ul>
@@ -3831,21 +3981,22 @@ requirement of that kernel's whole call subtree and stops the walk there. The
 value is a declaration, not a clamp: an explicit value replaces the computed
 one, even when it is smaller. An explicit <code>0</code> is legal.</p>
 <p>IRON spells it as a keyword on the kernel declaration:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">Kernel</span><span class="p">(</span><span class="s2">&quot;recursive_kernel&quot;</span><span class="p">,</span> <span class="s2">&quot;recursive.o&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">],</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">ExternalFunction</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">external_func</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">Kernel</span><span class="p">(</span><span class="s2">&quot;recursive_kernel&quot;</span><span class="p">,</span> <span class="s2">&quot;recursive.o&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">],</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">ExternalFunction</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">external_func</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="the-cores-own-sections-data_size">The core's own sections: <code>data_size</code><a class="headerlink" href="#the-cores-own-sections-data_size" title="Permanent link">&para;</a></h2>
-<p><code>.data</code>, <code>.rodata</code> and <code>.bss</code> do not go wherever there is room. The generated
-linker script grants the core compiler exactly <strong>one</strong> contiguous region, so the
-number that matters is the largest single free run on the tile, not the total
-free memory.</p>
+<p>Ordinary, unpinned <code>.data</code>, <code>.rodata</code> and <code>.bss</code> do not go wherever there is
+room. Peano's generated linker script grants them <strong>one</strong> contiguous <code>data</code>
+region, so the number that matters is the largest single free run on the tile,
+not the total free memory. Bank-pinned sections have separate regions,
+described below.</p>
 <p><code>data_size</code> is a per-core attribute that reserves that run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>aie.core(%tile_0_2) { ... } {data_size = 8192 : i32}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aie.core(%tile_0_2) { ... } {data_size = 8192 : i32}
 </code></pre></div>
 <p><code>aie-assign-buffer-addresses</code> turns the reservation into an <code>aie.buffer</code> marked
 <code>core_data</code> and places it alongside the tile's other buffers:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>%core_data_0_2 = aie.buffer(%tile_0_2) {address = 49152 : i32, core_data, sym_name = &quot;core_data_0_2&quot;} : memref&lt;8192xi8&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>%core_data_0_2 = aie.buffer(%tile_0_2) {address = 49152 : i32, core_data, sym_name = &quot;core_data_0_2&quot;} : memref&lt;8192xi8&gt;
 </code></pre></div>
 <p><code>aie-translate</code> emits that buffer's extent as the <code>data</code> MEMORY region of the
 linker script. The buffer names no symbol, so nothing else refers to it.</p>
@@ -3854,9 +4005,16 @@ allocator packs the buffers around a declared reservation, and a packing that
 leaves 8192 contiguous bytes often exists where the unconstrained placement
 leaves two runs of 4096. A reservation the allocator cannot satisfy fails buffer
 allocation and names the core.</p>
-<p>A core that leaves <code>data_size</code> absent gets whatever contiguous run the buffers
-leave. That is enough for most cores, until a link reports the <code>data</code> region
-overflowing.</p>
+<p>On Peano, a core that leaves <code>data_size</code> absent normally gets an exact aligned
+<code>core_data</code> reservation from the probe's <code>measured_data_size</code> and
+<code>measured_data_alignment</code>, before buffer placement. No explicit <code>data_size</code> is
+needed to make the allocator account for this ordinary static data.</p>
+<p>Without that measurement or an explicit reservation, ordinary data uses the
+largest aligned free run left by the stack and buffers. This fallback applies
+when measurement is disabled or unavailable, including the Chess flow. On
+Peano, any nonempty bank-pinned sections intersecting that run move the
+ordinary-data start past them; the end stays fixed. This can leave unused gaps
+rather than packing data into every hole.</p>
 <p>The allocator caps the leftover run it aims for. Free space beyond the bytes
 still to place serves nothing, so the ranking counts a run only up to that
 amount. Within the cap it prefers layouts that spread buffers across banks,
@@ -3864,36 +4022,162 @@ which limits DMA contention.</p>
 <h3 id="measured_data_size"><code>measured_data_size</code><a class="headerlink" href="#measured_data_size" title="Permanent link">&para;</a></h3>
 <p><code>aiecc</code> counts the allocated <code>.data</code>, <code>.rodata</code> and <code>.bss</code> of each <strong>linked core
 ELF</strong> and writes the total to <code>measured_data_size</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aie.core(%tile_0_2) { ... } {data_size = 8192 : i32, measured_data_size = 6144 : i32}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>aie.core(%tile_0_2) { ... } {data_size = 8192 : i32, measured_data_size = 6144 : i32}
 </code></pre></div>
 <p>The count comes from the linked ELF because <code>--gc-sections</code> runs during the
 link. A kernel header that defines a large lookup table no code reads adds to
 the object files and drops out of the ELF. A count taken from the objects would
 reject designs that fit.</p>
-<p>Pass <code>--get=measured_stack_sizes.mlir</code> to dump the module carrying both measured
-attributes. A <code>data_size</code> below <code>measured_data_size</code> fails the build and reports
-the number to set.</p>
-<h3 id="cores-built-ahead-of-time">Cores built ahead of time<a class="headerlink" href="#cores-built-ahead-of-time" title="Permanent link">&para;</a></h3>
-<p>A core that carries an <code>elf_file</code> attribute comes linked, and its <code>.data</code> and
-<code>.bss</code> sit at the addresses that link chose. <code>aiecc</code> reads nothing back out of
-that ELF, so nothing tells the buffer allocator which bytes of the tile the ELF
-holds, and a buffer can land on top of them.</p>
-<p><code>data_size</code> does not express this. It is a size, and what the ELF needs
-is a specific range. Declare that range as a buffer at a fixed address on the
-same tile:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>%prebaked = aie.buffer(%tile_0_3) {sym_name = &quot;prebaked_data&quot;, address = 8192 : i32} : memref&lt;4096xi8&gt;
+<p>Before placement, the probe measurement also includes padding between output
+sections and records their maximum alignment as <code>measured_data_alignment</code>.
+The allocator preserves this alignment for the core-data reservation, including
+an explicitly declared <code>data_size</code>, so over-aligned globals do not consume
+unreserved leading padding at the final link.
+Bank-pinned reservations likewise retain their per-bank start alignment in
+<code>measured_bank_alignments</code>; rounding only their sizes cannot cover that padding.</p>
+<p>On Peano, this count excludes the separate <code>.aie.bank0</code>–<code>.aie.bank3</code> output
+sections. It is not a total of all static storage on the tile: pinned sections
+must fit their own regions, independently of <code>data_size</code>. Chess sections whose
+names start with <code>.data</code>, <code>.rodata</code> or <code>.bss</code> are included in the count.</p>
+<p>Pass <code>--get=measured_data_sizes.mlir</code> to dump the module carrying both measured
+attributes (when both measurements are enabled). A <code>data_size</code> below
+<code>measured_data_size</code> fails the build and reports the number to set.</p>
+<h2 id="bank-pinned-static-tables-and-lut-checks">Bank-pinned static tables and LUT checks<a class="headerlink" href="#bank-pinned-static-tables-and-lut-checks" title="Permanent link">&para;</a></h2>
+<p>For AIE2/AIE2P, include the installed <code>aie_bank_placement.h</code> in a kernel and
+annotate tables with <code>AIE_BANK_A</code> through <code>AIE_BANK_D</code>. For example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;aie_bank_placement.h&quot;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">alignas</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">table_ab</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="n">AIE_BANK_A</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">alignas</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">table_cd</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="n">AIE_BANK_B</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">};</span>
 </code></pre></div>
-<p>The allocator treats a fixed-address buffer as occupied space, keeps every
+<p>The table contents, sizes and alignment must still match the LUT operation.
+These annotations place static storage; they do not move automatic,
+stack-local arrays. The AIE2/AIE2P runtime exp and tanh table pairs use these
+macros to select banks A and B.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Peano</th>
+<th>Chess</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIE_BANK_A</code>–<code>AIE_BANK_D</code></td>
+<td>Emit <code>.aie.bank0</code>–<code>.aie.bank3</code> sections; Peano does not honor <code>chess_storage</code>.</td>
+<td>Use native <code>chess_storage(DM_bankA)</code>–<code>DM_bankD</code> constraints.</td>
+</tr>
+<tr>
+<td>Bank-specific linker regions</td>
+<td>One aligned contiguous reservation per measured bank, excluding buffers, the stack and ordinary-data reservations; falls back to a free run when unmeasured.</td>
+<td>Not used; placement uses the Chess/BCF flow.</td>
+</tr>
+<tr>
+<td>Default bank-placement check</td>
+<td>Supported; reads object sections and linked ELF symbols.</td>
+<td>Supported; recognizes native <code>DM_bankX</code> section names, without needing LLVM IR.</td>
+</tr>
+<tr>
+<td>Opt-in <code>--check-lut-banks</code></td>
+<td>Supported for recognized gather patterns with readable LLVM IR.</td>
+<td>Rejected with <code>--xchesscc</code> or <code>--xbridge</code>; Chess IR is incompatible with the analyzer.</td>
+</tr>
+</tbody>
+</table>
+<p>A Peano bank region never spills into a neighboring bank. An explicit
+<code>data_size</code> reservation competes with pinned tables for memory; increasing it
+can leave less space in the requested banks, not more. Without an explicit
+<code>data_size</code>, the probe normally supplies the ordinary-data reservation. Only
+the unmeasured fallback adjusts the leftover <code>data</code> region around pinned
+sections as described above.</p>
+<h3 id="the-allocator-reserves-these-banks-for-you">The allocator reserves these banks for you<a class="headerlink" href="#the-allocator-reserves-these-banks-for-you" title="Permanent link">&para;</a></h3>
+<p>Nothing above needs declaring. <code>aiecc</code> compiles each core, links it once
+against permissive regions to see how large its <code>.aie.bank&lt;N&gt;</code> sections
+actually are, and records the answer in <code>measured_bank_sizes</code> on the
+<code>aie.core</code>. Buffer placement then holds that much room in each of those banks
+before it places anything unconstrained, so a buffer cannot take a bank a
+kernel's tables need.</p>
+<p>This is why placement runs after the core compile rather than before it: the
+sections only exist once the object is built. A consequence worth knowing is
+that <code>input_with_addresses.mlir</code> now costs a core compile. Use
+<code>--get-input-with-symbols</code> for the same module before placement, which does
+not.</p>
+<p>The measurement is the linked size, so <code>--gc-sections</code> has already run and a
+pinned table the kernel never reads reserves nothing. Reservations appear in a
+tile's memory map as <code>(bank-pinned static data)</code>. Chess places bank-pinned
+statics through its own storage constraints rather than linker regions, so none
+of this applies there.</p>
+<p>A table larger than its bank still cannot be placed, and is now reported while
+reserving rather than by the linker:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>error: &#39;aie.buffer&#39; op this core&#39;s static data pinned to bank 1 requires 32768
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>bytes, which cannot fit in bank 1 (16384 bytes total)
+</code></pre></div>
+<p>The <strong>default placement check</strong> compares each unambiguous bank-annotated
+definition with its linked address and complete nonzero symbol extent. It
+reads native objects and static-archive members, including thin archives.
+Absent or ambiguous symbols are skipped, and bank assumptions expressed only
+by pointer casts inside a kernel are not visible to this check. It is not a
+proof that every LUT pair occupies different banks.</p>
+<p>The stronger <strong><code>--check-lut-banks</code></strong> check recovers pairs from LLVM IR and
+requires the two tables to occupy different banks. Object-linked kernels need
+readable embedded <code>.llvmbc</code>; merged kernels and generated core code use the
+optimized core IR. The check can resolve parameters bound to bank-pinned MLIR
+buffers on the core's own tile. Missing IR, unresolved operands or parameter
+bindings, and stack-local tables fail rather than silently passing. Archive
+inputs and prebuilt <code>elf_file</code> cores are unsupported by this opt-in check.
+Native functions known to have been removed by linker garbage collection are
+omitted; analysis stays conservative about inlined or renamed functions.</p>
+<p>The option is off by default because preserving IR adds compilation cost:</p>
+<ul>
+<li>For source-backed kernels built through IRON, use
+  <code>@iron.jit(aiecc_flags=["--check-lut-banks"])</code>.</li>
+<li>Direct <code>compile_mlir_module(..., options=["--check-lut-banks"],
+  device=..., work_dir=...)</code> calls also retain IR when auto-building
+  source-backed external kernels.</li>
+<li>When compiling a kernel separately with <code>compile_cxx_core_function</code>, request
+  <code>embed_bitcode=True</code> and pass <code>--check-lut-banks</code> to the later <code>aiecc</code> call.
+  Precompiled objects are not retroactively given IR.</li>
+<li>Participating Make recipes using <code>attach_bitcode</code> opt in with
+  <code>AIE_CHECK_LUT_BANKS=1</code>; that variable does not modify arbitrary build
+  recipes.</li>
+</ul>
+<p>For LLVM IR kernel compilation, see the
+<a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/inline_kernel/README.md">merge-mode example</a>.</p>
+<h2 id="cores-built-ahead-of-time">Cores built ahead of time<a class="headerlink" href="#cores-built-ahead-of-time" title="Permanent link">&para;</a></h2>
+<p>A core that carries an <code>elf_file</code> attribute comes linked, and its <code>.data</code>,
+<code>.bss</code> and any <code>.aie.bank&lt;N&gt;</code> tables sit at the addresses that link chose.
+<code>aiecc</code> reads those extents back out of the ELF and records them on the core as
+<code>measured_data_ranges</code>, address/size pairs relative to the tile. Placement pins
+a buffer over each one, so the tile's own buffers are kept clear of memory the
+image already holds.</p>
+<p>This is the same measurement a compiled core gets, read from the same sections;
+only what is taken from it differs. A compiled core is probed for <em>sizes</em>,
+because its addresses are chosen afterwards. A prebaked core is read for its
+<em>addresses</em>, because they are already final.</p>
+<p><code>data_size</code> cannot express this: it is a size, and what a prebaked ELF occupies
+is a specific range. Declaring the range yourself still works, and is worth
+doing when the ELF is not where <code>aiecc</code> can read it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>%prebaked = aie.buffer(%tile_0_3) {sym_name = &quot;prebaked_data&quot;, address = 8192 : i32} : memref&lt;4096xi8&gt;
+</code></pre></div>
+<p>Either way the allocator treats the extent as occupied space, keeps every
 buffer it places clear of it, reports a collision against it by name, and lists
 it in the memory map when a tile runs out of room.</p>
 <p>With <code>--xchesscc</code>/<code>--xbridge</code>, <code>aiecc</code> compiles and links an <code>elf_file</code> core, so
 that core gets a <code>data</code> region like any other.</p>
-<h2 id="escape-hatches-and-allocation-control">Escape hatches and allocation control<a class="headerlink" href="#escape-hatches-and-allocation-control" title="Permanent link">&para;</a></h2>
-<p>One flag disables a measurement, for a build that has to skip it and for
-debugging the analysis:</p>
+<h2 id="escape-hatches">Escape hatches<a class="headerlink" href="#escape-hatches" title="Permanent link">&para;</a></h2>
+<p>Separate flags disable measurements and checks, for debugging or a build that
+has to skip them:</p>
 <ul>
 <li><strong><code>--no-measure-stack-size</code></strong> drops the stack measurement and its check, so no
   <code>measured_stack_size</code> reaches the IR.</li>
+<li><strong><code>--no-measure-data-size</code></strong> drops ordinary static-data measurement before
+  placement and after linking, including its <code>data_size</code> check. Per-bank
+  measurements and reservations remain enabled. Explicit <code>data_size</code>
+  reservations and linker capacity limits still apply.</li>
+<li><strong><code>--no-check-bank-placement</code></strong> drops the default annotation-placement
+  check, but does not relax linker bank regions or disable an explicitly
+  requested <code>--check-lut-banks</code>.</li>
 </ul>
 <p>A design-wide stand-in for the built-in default covers any core that leaves
 <code>stack_size</code> absent:</p>
@@ -3904,21 +4188,43 @@ debugging the analysis:</p>
   <code>stack_size</code> explicitly, and the diagnostics call the value assumed. A core
   with an explicit <code>stack_size</code> keeps it.</li>
 </ul>
-<p>Separate flags control the allocation strategy:</p>
+<h2 id="how-placement-chooses-addresses">How placement chooses addresses<a class="headerlink" href="#how-placement-chooses-addresses" title="Permanent link">&para;</a></h2>
+<p>One allocator places every extent on a tile: the stack, each buffer, the core's
+own sections, and the bank reservations described above. It is bank-aware
+throughout — there is no second, bank-oblivious scheme to select or fall back
+to, because "succeeding" by ignoring a <code>mem_bank</code> request is not success.</p>
+<p>Extents are placed most-constrained first: those with an explicit <code>address</code>,
+then those pinned to a bank, then the rest, largest first. Each candidate
+address is ranked by</p>
+<ol>
+<li>banks touched, fewest first — a spanned bank costs DMA bandwidth;</li>
+<li>the largest free run left behind, biggest first, capped by the bytes still
+   to place;</li>
+<li>distance from a round-robin cursor, which spreads buffers over banks;</li>
+<li>tightness of fit, then lowest address for determinism.</li>
+</ol>
+<p>A buffer larger than one bank must span banks, and any unpinned buffer may span
+if that is what fits; the memory map marks it <code>(straddles into bank N)</code>. A
+<code>mem_bank</code> pin is a hard single-bank constraint, so a pinned buffer larger than
+its bank is an error rather than a straddle — the pin exists to tell Peano's
+bank-conflict model which bank the accesses hit, and a straddling buffer would
+make that untrue.</p>
+<p><strong>Placement backtracks.</strong> Ranking alone is not enough: the placement that
+touches the fewest banks can strand the free run a later buffer needs. When a
+buffer has nowhere to go, the allocator undoes an earlier choice and tries that
+buffer's next-best address. It explores in rank order, so the first arrangement
+it tries is the one the ranking prefers and most designs never backtrack at all.</p>
+<p>The search is bounded at 20000 placements per tile — packing around fixed
+obstacles is NP-hard, and the bound is a count rather than a time limit so
+builds stay reproducible. Reaching it is reported (see the diagnostics below)
+rather than passed off as "no such layout exists".</p>
 <ul>
-<li><strong><code>--alloc-scheme=&lt;basic-sequential|bank-aware&gt;</code></strong> picks the scheme for the
-  whole design. Without it, the allocator runs bank-aware first and falls back
-  to basic-sequential when bank-aware runs out of memory. Bank-aware spreads
-  buffers across banks to limit DMA contention, up to the point where the spread
-  costs a core the contiguous run it still needs.</li>
-<li>The per-tile <strong><code>allocation_scheme</code></strong> attribute picks the scheme for one tile
-  and overrides <code>--alloc-scheme</code> there. IRON spells it
-  <code>Worker(allocation_scheme="basic-sequential")</code>.</li>
-<li><strong><code>Buffer(mem_bank=...)</code></strong> pins a buffer to a bank. Under bank-aware the pin
-  is a hard constraint: the allocator reports an error when the bank cannot
-  hold the buffer. Basic-sequential has no notion of banks, ignores the pin and
-  warns that it dropped it, so a design that depends on <code>mem_bank</code> must not
-  select that scheme.</li>
+<li><strong><code>Buffer(mem_bank=...)</code></strong> pins a buffer to a bank. The pin is honored or the
+  build fails; it is never silently dropped.</li>
+<li><strong><code>Buffer(address=...)</code></strong> pins an exact address, for a buffer an external ABI
+  fixes — an RTP buffer a host writes at a known location, say. A pinned
+  address is held only to the bus width, not the stricter vector alignment the
+  allocator applies to addresses it chooses itself.</li>
 </ul>
 <h2 id="what-to-do-when-you-hit-a-diagnostic">What to do when you hit a diagnostic<a class="headerlink" href="#what-to-do-when-you-hit-a-diagnostic" title="Permanent link">&para;</a></h2>
 <p><strong><code>cannot determine this core's stack requirement: ...</code> (error).</strong> The call
@@ -3949,26 +4255,60 @@ requirement. Increase it to <code>N</code> and rebuild.</p>
 proven overflow. Reach for it only when you believe the measurement itself is
 wrong, and please file an issue in that case.</p>
 <p><strong><code>section '.bss' will not fit in region 'data'</code> from the linker, followed by
-<code>core X needs space for N bytes of static data</code>.</strong> The core's own sections do
-not fit the run left for them. <code>aiecc</code> adds the linker's shortfall to the size
-of the region to state <code>N</code>, the number to reserve. Set <code>data_size = N</code> on the
-core, or <code>Worker(data_size=N)</code> in IRON, and rebuild: the allocator then packs
-the tile's buffers around the reservation. Shrinking or moving buffers, or
-lowering <code>stack_size</code>, frees the bytes when <code>N</code> does not fit.</p>
+<code>core X needs space for up to N bytes of static data</code>.</strong> The core's own
+sections do not fit the run left for them, and the linker rather than the
+allocator noticed. A core whose sections were measured usually fails earlier,
+while placing, with the <code>could not be placed</code> error above; this is the residual
+case — a <code>--xbridge</code> build, or a core whose measurement was skipped. <code>aiecc</code>
+adds the linker's shortfall to the size of the region to state <code>N</code>. Set
+<code>data_size = N</code> on the core, or <code>Worker(data_size=N)</code> in IRON, and rebuild.
+Shrinking or moving buffers, or lowering <code>stack_size</code>, frees the bytes when <code>N</code>
+does not fit.</p>
 <p><strong><code>will not fit in region 'program'</code>, followed by <code>this core's code exceeds
 the tile's program memory</code>.</strong> Program memory is fixed and the region covers all
 of it, so only the code can shrink. Split the work across more cores, remove
 unused kernels from <code>link_files</code>, or lower the optimization level.</p>
+<p><strong><code>will not fit in region 'bankN'</code> from the Peano linker.</strong> Pinned sections
+cannot fit the contiguous free run in that bank. Shrink or repin the tables,
+or move buffers, the stack or an explicit <code>data_size</code> reservation out of it.
+Increasing <code>data_size</code> does not enlarge a pinned region.</p>
+<p><strong>A bank-placement violation or LUT-pair separation error.</strong> Check the final
+symbol addresses, their complete extents, and the requested banks. Put the two
+tables in distinct banks using the portable annotations or bank-pinned MLIR
+buffers. If the opt-in check cannot recover placement, supply readable kernel
+IR and resolvable table bindings rather than treating the result as a
+same-bank diagnosis.</p>
+<p><strong><code>requires a N-byte stack in bank B, but no contiguous aligned space remains
+after address-pinned buffers</code> (error).</strong> <code>stack_bank</code> names a bank whose free
+space is already broken up by buffers pinned to exact addresses, which cannot
+move. Repin those buffers, choose another bank, or give the stack an explicit
+aligned <code>stack_address</code>. Moving outside bank A also requires the Peano
+merge-mode restrictions described above.</p>
 <p><strong><code>data_size M is smaller than the N bytes this core's linked sections occupy</code>
 (error).</strong> <code>aiecc</code> measured the linked ELF and the reservation does not cover
 it. Set <code>data_size = N</code> and rebuild.</p>
-<p><strong><code>bank-aware allocation failed. Core (X, Y) reserves N bytes for its static
-data</code> (error).</strong> The tile cannot hold its buffers and the reservation together.
-The message lists the tile's memory map. Lower <code>data_size</code>, or shrink or move
-the buffers.</p>
-<p><strong><code>basic-sequential allocation ignores mem_bank; dropping the pin on: "b"</code>
-(warning).</strong> That scheme has no notion of banks. Either remove the <code>mem_bank</code>
-request or let the tile use bank-aware allocation.</p>
+<p><strong><code>could not be placed: &lt;what&gt; needs N bytes and this tile has no room left for
+it</code> (error).</strong> Everything the tile must hold does not fit. The message lists
+the tile's memory map, showing the closest arrangement the allocator reached,
+and <code>&lt;what&gt;</code> names the one extent left over — a buffer, <code>this core's data
+sections (data_size)</code>, or <code>this core's static data pinned to bank B</code>. The bytes
+may well exist while being too fragmented to use, so shrinking any extent can
+help, not only the one named. Lower <code>data_size</code>, shrink or move buffers, or
+lower <code>stack_size</code>.</p>
+<p><strong><code>the search hit its 20000-placement budget with arrangements still untried</code>
+(note, attached to the error above).</strong> The allocator gave up rather than proved
+the design infeasible, so a layout may exist that it did not reach. This is
+rare and worth reporting: please file an issue with the design. Pinning a
+buffer or two with <code>mem_bank</code> cuts the search down and often gets a build
+through in the meantime.</p>
+<p><strong><code>&lt;what&gt; requires N bytes, which cannot fit in bank B (C bytes total)</code>
+(error).</strong> A <code>mem_bank</code> pin, or a kernel's bank-pinned static data, asks for
+more than a whole bank holds. Nothing about the rest of the design can fix
+this: shrink the extent, or drop the pin and let it span banks.</p>
+<p><strong><code>&lt;what&gt; requires N bytes in bank B, but only M of C bytes are free there</code>
+(error).</strong> The bank would hold it on its own, but the stack, address-pinned
+buffers, or another pin already in that bank leave too little. Repin to a
+different bank, or move what is in the way.</p>
 
 
 

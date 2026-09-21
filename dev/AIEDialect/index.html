@@ -11284,13 +11284,22 @@ At its usage sites, the abstract BD chain will be concretized with the given inp
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  %buf = aie.buffer(%tile33) : memref&lt;256xi64&gt;
 </code></pre></div>
 This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.</p>
-<p><code>mem_bank</code> pins the buffer to one memory bank of that tile. The bank-aware
-allocation scheme treats the pin as a hard constraint and reports an error
-when the bank cannot hold the buffer. The basic-sequential scheme has no
-notion of banks and ignores the pin.</p>
+<p><code>mem_bank</code> pins the buffer to one memory bank of that tile. The pin is a
+hard constraint: if the bank cannot hold the buffer, the allocator reports
+an error rather than placing it elsewhere.</p>
 <p><code>core_data</code> marks the extent that holds the core's own .data, .rodata and
 .bss, which <code>aie-assign-buffer-addresses</code> creates from the core's
-<code>data_size</code>. It names no symbol.</p>
+<code>data_size</code>. It names no symbol, and a core has at most one: the region is
+one extent.</p>
+<p><code>bank_reserved</code> marks space held in the bank named by <code>mem_bank</code> for the
+static data a kernel pins there. It too names no symbol, but unlike
+<code>core_data</code> there is one per bank the core pins to, created from the
+core's <code>measured_bank_sizes</code>.</p>
+<p><code>measured_data_ranges</code> holds the tile-relative extents a prebaked
+<code>elf_file</code> core already occupies, as address/size pairs. A compiled core
+records sizes instead, because its addresses are chosen after the measure;
+a prebaked one has them already, so the pass pins buffers around the
+extents rather than reserving room of its own.</p>
 <p>Interfaces: <code>BufferLike</code>, <code>OpAsmOpInterface</code>, <code>TileElement</code></p>
 <h4 id="attributes_2">Attributes:<a class="headerlink" href="#attributes_2" title="Permanent link">&para;</a></h4>
 <table>
@@ -11300,6 +11309,7 @@ notion of banks and ignores the pin.</p>
 <tr><td><code>initial_value</code></td><td>::mlir::ElementsAttr</td><td>constant vector/tensor attribute</td></tr>
 <tr><td><code>mem_bank</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>core_data</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
+<tr><td><code>bank_reserved</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 <tr><td><code>aligned</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
@@ -11451,9 +11461,24 @@ reserved for the stack.  When absent the target's default is used
 (<code>AIETargetModel::getDefaultCoreStackSize()</code>).  The stack (and other data allocations)
 are always stored in the local core memory, to avoid conflicts with static data
 allocations in other cores.</p>
-<p>The stack sits directly below the buffers with no clearance, so a <code>stack_size</code>
-below the core's use overwrites those buffers. <code>aiecc</code> measures the stack this
-core needs, writes it to the <code>measured_stack_size</code> attribute, and fails the build
+<p>Optional <code>stack_address</code> sets the tile-relative byte offset of the stack.
+Optional <code>stack_bank</code> constrains its bank; bank-aware allocation resolves a
+bank-only constraint into <code>stack_address</code>. Basic-sequential allocation
+requires an address for a bank constraint. An explicitly placed stack must
+fit entirely inside one bank, matching its bank-specific stack address space.
+Its address must satisfy the stack ABI alignment: 32 bytes on AIE1/AIE2,
+64 bytes on AIE2P/AIE2PS.
+Omitting both attributes retains legacy placement at offset zero, including
+stacks larger than one bank.</p>
+<p>Stacks outside bank A are unsupported with Chess. For Peano, moving the stack
+outside bank A requires recompiling the kernels with the matching stack
+address space; <code>aiecc</code> rejects this with ordinary precompiled <code>link_files</code>
+or deprecated core <code>link_with</code> inputs. LLVM IR merged through
+<code>link_merge_files</code> can instead be compiled with the core's stack model.</p>
+<p>By default the stack sits directly below the buffers with no clearance, so a
+<code>stack_size</code> below the core's use overwrites those buffers. <code>aiecc</code> measures
+the stack this core needs, writes it to the <code>measured_stack_size</code> attribute,
+and fails the build
 when <code>stack_size</code> is smaller. <code>aiecc</code> measures the whole live call chain. That
 chain starts above the core body: the runtime enters at <code>__start</code> (crt0), which
 calls <code>_main_init</code> (crt1), which calls the core body, which calls its kernels.
@@ -11519,15 +11544,21 @@ removed).  Specifying both <code>link_with</code> and either <code>link_files</c
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
+<tr><td><code>stack_address</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>stack_bank</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>measured_stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>data_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>measured_data_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>measured_bank_sizes</code></td><td>::mlir::DenseI32ArrayAttr</td><td>i32 dense array attribute</td></tr>
+<tr><td><code>measured_data_ranges</code></td><td>::mlir::DenseI32ArrayAttr</td><td>i32 dense array attribute</td></tr>
 <tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>link_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
 <tr><td><code>link_merge_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
 <tr><td><code>elf_file</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>dynamic_objfifo_lowering</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>emit_parameter_sync_preamble</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>measured_data_alignment</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
+<tr><td><code>measured_bank_alignments</code></td><td>::mlir::DenseI32ArrayAttr</td><td>i32 dense array attribute</td></tr>
 </table>
 
 <h4 id="operands_3">Operands:<a class="headerlink" href="#operands_3" title="Permanent link">&para;</a></h4>
@@ -12178,7 +12209,6 @@ Use <code>?</code> for unspecified coordinates.</p>
 <tr><td><code>tile_type</code></td><td>xilinx::AIE::AIETileTypeAttr</td><td>Type of AIE Tile</td></tr>
 <tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
-<tr><td><code>allocation_scheme</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 </table>
 
 <h4 id="results_9">Results:<a class="headerlink" href="#results_9" title="Permanent link">&para;</a></h4>
@@ -13531,8 +13561,7 @@ by code in its region, representing various connections</p>
 <p>Syntax:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-98-1" name="__codelineno-98-1" href="#__codelineno-98-1"></a>operation ::= `aie.tile` `(` $col `,` $row `)` attr-dict
 </code></pre></div>
-<p>This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
-Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).</p>
+<p>This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.</p>
 <p>A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
 memory buffer (BufferOp), and lock (LockOp).</p>
 <p>A tile is a logical abstraction. We use a tile to establish ownership of a hardware entity.</p>
@@ -13546,7 +13575,6 @@ the AIE array proper and the PL. The South-West/Lower Right most core exists in 
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
-<tr><td><code>allocation_scheme</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 </table>
 
 <h4 id="results_18">Results:<a class="headerlink" href="#results_18" title="Permanent link">&para;</a></h4>
