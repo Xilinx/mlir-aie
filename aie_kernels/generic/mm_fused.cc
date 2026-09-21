@@ -29,19 +29,11 @@
 #error "design.py must pass -DMM_FUSED_OUT_CHUNK / -DMM_FUSED_C_DEPTH"
 #endif
 
-// Epilogue selection. 0 = none, 1 = gelu, 2 = silu, 3 = sigmoid, matching
-// Epilogue.mode in design.py.
-#ifndef MM_FUSED_EPILOGUE_MODE
-#define MM_FUSED_EPILOGUE_MODE 0
-#endif
-#ifndef MM_FUSED_CLAMP
-#define MM_FUSED_CLAMP 0
-#endif
-#ifndef MM_FUSED_CLAMP_MIN
-#define MM_FUSED_CLAMP_MIN 0.0f
-#endif
-#ifndef MM_FUSED_CLAMP_MAX
-#define MM_FUSED_CLAMP_MAX 0.0f
+// Which epilogue modes to compile in, as a bitmask over 1 << mode: 0 = none,
+// 1 = gelu, 2 = silu, 3 = sigmoid, matching Epilogue.mode in design.py. The
+// mode itself is a runtime argument; the mask only bounds program memory.
+#ifndef MM_FUSED_EPILOGUE_MODE_MASK
+#define MM_FUSED_EPILOGUE_MODE_MASK 0xF
 #endif
 
 namespace {
@@ -93,6 +85,42 @@ constexpr aie::rounding_mode round_mode = aie::rounding_mode::conv_even;
 #else
 constexpr aie::rounding_mode round_mode = aie::rounding_mode::floor;
 #endif
+
+// One activation's inner loop. Templated so each mode compiles branch-free;
+// mm_fused_epilogue_chunk selects between them once per chunk.
+//
+// The clamp is unconditional. An unclamped caller sends (-inf, +inf), which
+// leaves every finite value bit-identical, so there is no unclamped
+// instantiation to compile and no clamped-versus-not fork in the build.
+template <int MODE>
+static inline void epilogue_body(bfloat16 *__restrict y_out,
+                                 const float *__restrict src, float clamp_min,
+                                 float clamp_max) {
+  const aie::vector<float, V> lo = aie::broadcast<float, V>(clamp_min);
+  const aie::vector<float, V> hi = aie::broadcast<float, V>(clamp_max);
+
+  AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
+  for (int j = 0; j < CHUNK / V; j++) {
+    // The accumulator stays f32 through the activation and the clamp, and
+    // is converted to bf16 exactly once, on the store. Converting first
+    // would round twice and let the activation's slope amplify the first
+    // rounding -- see activations.h.
+    aie::vector<float, V> f = aie::load_v<V>(src + j * V);
+    if constexpr (MODE == 1)
+      f = gelu_vec<V>(f);
+    else if constexpr (MODE == 2)
+      f = silu_vec<V>(f);
+    else if constexpr (MODE == 3)
+      f = sigmoid_vec<V>(f);
+    f = aie::max(aie::min(f, hi), lo);
+    aie::accum<accfloat, V> out;
+    out.from_vector(f);
+    // The assignment is the conversion: to_v16bfloat16 yields a raw
+    // v16bfloat16, not an aie::vector.
+    aie::vector<bfloat16, V> v = to_v16bfloat16(out);
+    aie::store_v(y_out + j * V, v);
+  }
+}
 } // namespace
 
 extern "C" {
@@ -126,47 +154,49 @@ void mm_fused_k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
 }
 
 // Output stage: convert chunk (outer * C_DEPTH + half) of the f32 accumulator
-// to a bf16 C object, optionally with activation and clamp. Fusing here is the
-// point -- the values are already in registers, so the activation costs one
-// more vector op per 16 elements instead of a separate pass over L1. Mode and
-// clamp are compile-time, so the inner loop is branch-free. The chunk index is
-// split (outer, half) because the core body unrolls the drain by the C fifo
-// depth to keep the acquired buffer index a compile-time constant.
+// to a bf16 C object, applying an activation and clamp on the way out. Fusing
+// here is the point -- the values are already in registers, so the activation
+// costs one more vector op per 16 elements instead of a separate pass over L1.
+//
+// The mode is runtime, tested once per chunk so the inner loops stay
+// branch-free; the cost is program memory, since every mode in the mask is
+// compiled in. The bounds arrive as raw int32 because npu_write_rtp only
+// writes i32 words. The chunk index is split (outer, half) because the core
+// body unrolls the drain by the C fifo depth to keep the acquired buffer index
+// a compile-time constant.
 void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
-                             int32_t half) {
+                             int32_t half, int32_t mode, int32_t clamp_min_bits,
+                             int32_t clamp_max_bits) {
   // The store below is a conversion, so it obeys the same rounding mode the
   // mmul does and must agree with it.
   ::aie::set_rounding(round_mode);
   const float *__restrict src = y_acc + (outer * C_DEPTH + half) * CHUNK;
+  // __builtin_bit_cast, not memcpy: memcpy leaves an unresolved external
+  // call here rather than folding to a register move.
+  const float clamp_min = __builtin_bit_cast(float, clamp_min_bits);
+  const float clamp_max = __builtin_bit_cast(float, clamp_max_bits);
 
-#if MM_FUSED_CLAMP
-  const aie::vector<float, V> lo = aie::broadcast<float, V>(MM_FUSED_CLAMP_MIN);
-  const aie::vector<float, V> hi = aie::broadcast<float, V>(MM_FUSED_CLAMP_MAX);
+  switch (mode) {
+#if MM_FUSED_EPILOGUE_MODE_MASK & 2
+  case 1:
+    epilogue_body<1>(y_out, src, clamp_min, clamp_max);
+    return;
 #endif
-
-  AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
-  for (int j = 0; j < CHUNK / V; j++) {
-    // The accumulator stays f32 through the activation and the clamp, and
-    // is converted to bf16 exactly once, on the store. Converting first
-    // would round twice and let the activation's slope amplify the first
-    // rounding -- see activations.h.
-    aie::vector<float, V> f = aie::load_v<V>(src + j * V);
-#if MM_FUSED_EPILOGUE_MODE == 1
-    f = gelu_vec<V>(f);
-#elif MM_FUSED_EPILOGUE_MODE == 2
-    f = silu_vec<V>(f);
-#elif MM_FUSED_EPILOGUE_MODE == 3
-    f = sigmoid_vec<V>(f);
+#if MM_FUSED_EPILOGUE_MODE_MASK & 4
+  case 2:
+    epilogue_body<2>(y_out, src, clamp_min, clamp_max);
+    return;
 #endif
-#if MM_FUSED_CLAMP
-    f = aie::max(aie::min(f, hi), lo);
+#if MM_FUSED_EPILOGUE_MODE_MASK & 8
+  case 3:
+    epilogue_body<3>(y_out, src, clamp_min, clamp_max);
+    return;
 #endif
-    aie::accum<accfloat, V> out;
-    out.from_vector(f);
-    // The assignment is the conversion: to_v16bfloat16 yields a raw
-    // v16bfloat16, not an aie::vector.
-    aie::vector<bfloat16, V> v = to_v16bfloat16(out);
-    aie::store_v(y_out + j * V, v);
+  // Mode 0 is always compiled, so a mode the mask leaves out yields an
+  // unactivated result rather than an unwritten buffer.
+  default:
+    epilogue_body<0>(y_out, src, clamp_min, clamp_max);
+    return;
   }
 }
 }
