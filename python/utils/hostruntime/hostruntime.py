@@ -1,6 +1,8 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 import logging
 import sys
 from abc import ABC, abstractmethod
@@ -13,7 +15,8 @@ from ..tensor_factory import tensor
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
-from ..npukernel import NPUKernel
+
+    from ..npukernel import NPUKernel
 from ..trace import TraceConfig
 from ..trace.utils import create_ctrl_pkt, extract_tile
 from . import bfloat16_safe_allclose
@@ -23,31 +26,27 @@ logger = logging.getLogger(__name__)
 
 
 class HostRuntimeError(Exception):
-    """
-    Error raised when a NPU kernel encounters an error during runtime operations.
-    """
+    """Error raised when a NPU kernel encounters an error during runtime operations."""
 
     pass
 
 
 class KernelHandle(ABC):
-    """
-    Abstract representation that represents a kernel already registered/loaded with a runtime.
-    """
+    """Abstract representation that represents a kernel already registered/loaded with a runtime."""
 
-    ...
+    def __init__(self, *, needs_dispatch_insts: bool = False):
+        self.needs_dispatch_insts = needs_dispatch_insts
 
 
 class KernelResult(ABC):
-    """A wrapper around data produced as the result of running a kernel"""
+    """A wrapper around data produced as the result of running a kernel."""
 
     def __init__(
         self,
         npu_time: int,
         trace_config: TraceConfig | None = None,
     ):
-        """
-        Initialize the KernelResult.
+        """Initialize the KernelResult.
 
         Args:
             npu_time (int): The execution time on the NPU in nanoseconds.
@@ -58,8 +57,7 @@ class KernelResult(ABC):
 
     @property
     def npu_time(self) -> int:
-        """
-        Get the NPU execution time.
+        """Get the NPU execution time.
 
         Returns:
             int: The execution time in nanoseconds.
@@ -68,8 +66,7 @@ class KernelResult(ABC):
 
     @property
     def trace_config(self) -> TraceConfig | None:
-        """
-        Get the trace configuration.
+        """Get the trace configuration.
 
         Returns:
             TraceConfig | None: The trace configuration if available, else None.
@@ -77,8 +74,7 @@ class KernelResult(ABC):
         return self._trace_config
 
     def has_trace(self) -> bool:
-        """
-        Check if trace data is available.
+        """Check if trace data is available.
 
         Returns:
             bool: True if trace configuration is present, False otherwise.
@@ -87,8 +83,7 @@ class KernelResult(ABC):
 
     @abstractmethod
     def is_success(self) -> bool:
-        """
-        Check if the kernel execution was successful.
+        """Check if the kernel execution was successful.
 
         Returns:
             bool: True if successful, False otherwise.
@@ -97,11 +92,10 @@ class KernelResult(ABC):
 
 
 class HostRuntime(ABC):
-    """An abstract class for a generic host runtime"""
+    """An abstract class for a generic host runtime."""
 
     def check_device_consistency(self):
-        """
-        Check if the overridden device is loadable on the runtime device.
+        """Check if the overridden device is loadable on the runtime device.
 
         A 1- or N-column variant of a generation (e.g. NPU1Col1) is loadable
         on a wider device of the same generation (e.g. a 4-column NPU1), so we
@@ -147,8 +141,7 @@ class HostRuntime(ABC):
 
     @abstractmethod
     def load(self, npu_kernel: NPUKernel, **kwargs) -> KernelHandle:
-        """
-        Load an NPU kernel into the runtime.
+        """Load an NPU kernel into the runtime.
 
         Args:
             npu_kernel (NPUKernel): The NPU kernel to load.
@@ -167,10 +160,10 @@ class HostRuntime(ABC):
         trace_config: TraceConfig | None = None,
         fail_on_error: bool = True,
         only_if_loaded=False,
+        dispatch_insts: np.ndarray | None = None,
         **kwargs,
     ) -> KernelResult:
-        """
-        Run a loaded kernel.
+        """Run a loaded kernel.
 
         Args:
             kernel_handle (KernelHandle): The handle to the loaded kernel.
@@ -178,6 +171,8 @@ class HostRuntime(ABC):
             trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
+            dispatch_insts (np.ndarray | None, optional): Per-call instruction
+                words for a DispatchTime[T] design. None uses static instructions.
             **kwargs: Additional arguments.
 
         Returns:
@@ -185,18 +180,43 @@ class HostRuntime(ABC):
         """
         pass
 
+    @staticmethod
+    def _resolve_insts_path(npu_kernel) -> Path | None:
+        """Validate the static instruction path, if present."""
+        if not npu_kernel.insts_path:
+            return None
+        insts_path = Path(npu_kernel.insts_path).resolve()
+        if not insts_path.is_file():
+            raise HostRuntimeError(
+                f"insts {insts_path} does not exist or is not a file."
+            )
+        return insts_path
+
+    @staticmethod
+    def _require_dispatch_insts(kernel_handle: KernelHandle, dispatch_insts) -> None:
+        """Reject direct runs of dynamic designs without generated instructions."""
+        if kernel_handle.needs_dispatch_insts and dispatch_insts is None:
+            raise HostRuntimeError(
+                "this kernel declares DispatchTime[T] parameter(s), so it has "
+                "no static instruction stream and run() cannot submit it "
+                "directly. Call the kernel (or load_and_run) with the "
+                "DispatchTime[T] value(s) so the stream is built for this call."
+            )
+
     def load_and_run(
         self,
         npu_kernel: NPUKernel,
         run_args: list,
+        dispatch_scalars: dict | None = None,
         **kwargs,
     ) -> tuple[KernelHandle, KernelResult]:
-        """
-        Load and run an NPU kernel.
+        """Load and run an NPU kernel.
 
         Args:
             npu_kernel (NPUKernel): The NPU kernel to load and run.
             run_args (list): Arguments to pass to the kernel.
+            dispatch_scalars (dict | None, optional): DispatchTime[T] scalar
+                values for this call, keyed by parameter name.
             **kwargs: Additional arguments passed to load.
 
         Returns:
@@ -204,6 +224,7 @@ class HostRuntime(ABC):
         """
         trace_config = npu_kernel.trace_config
         handle = self.load(npu_kernel, **kwargs)
+        dispatch_insts = npu_kernel._generate_dispatch_insts(dispatch_scalars)
         if trace_config:
             if trace_config.reuse_output_buffer and len(run_args) > 0:
                 trace_config.last_tensor_shape = run_args[-1].shape
@@ -228,7 +249,12 @@ class HostRuntime(ABC):
                     f"land."
                 )
 
-        ret = self.run(handle, list(run_args), trace_config=trace_config)
+        ret = self.run(
+            handle,
+            list(run_args),
+            trace_config=trace_config,
+            dispatch_insts=dispatch_insts,
+        )
 
         if trace_config:
             trace_buffer, ctrl_buffer = self.extract_trace_from_args(
@@ -240,8 +266,7 @@ class HostRuntime(ABC):
 
     @abstractmethod
     def device(self) -> "Device":
-        """
-        Get the device associated with this runtime.
+        """Get the device associated with this runtime.
 
         Returns:
             Device: The device object.
@@ -252,8 +277,7 @@ class HostRuntime(ABC):
     # instruction buffer for the xrt.kernel call
     @classmethod
     def read_insts_binary(cls, insts_path: Path):
-        """
-        Reads instructions from a binary file.
+        """Read instructions from a binary file.
 
         Args:
             insts_path (Path): Path to the binary instruction file.
@@ -268,8 +292,7 @@ class HostRuntime(ABC):
 
     @classmethod
     def read_insts(cls, insts_path: Path):
-        """
-        Reads instructions from the given file.
+        """Read instructions from the given file.
 
         If the file extension is .bin, uses binary read.
         If the file extension is .txt, uses sequence (text) read.
@@ -295,8 +318,7 @@ class HostRuntime(ABC):
     def prepare_args_for_trace(
         cls, args: list[NpuTensor], trace_config: TraceConfig
     ) -> list[NpuTensor]:
-        """
-        Prepare arguments for tracing by appending necessary buffers.
+        """Prepare arguments for tracing by appending necessary buffers.
 
         Args:
             args (list[NpuTensor]): List of input/output tensors.
@@ -347,8 +369,7 @@ class HostRuntime(ABC):
     def extract_trace_from_args(
         cls, args: list[NpuTensor], trace_config: TraceConfig
     ) -> tuple[np.ndarray, np.ndarray | None]:
-        """
-        Extract trace and control buffers from the arguments.
+        """Extract trace and control buffers from the arguments.
 
         Args:
             args (list[NpuTensor]): List of tensors used in execution.
@@ -380,8 +401,7 @@ class HostRuntime(ABC):
 
     @classmethod
     def _extract_prefix(cls, tensor, prefix_shape, prefix_dtype):
-        """
-        Separate output data and trace data from a single output buffer stream.
+        """Separate output data and trace data from a single output buffer stream.
 
         Args:
             tensor (NpuTensor | np.ndarray): The combined tensor.
@@ -404,8 +424,7 @@ class HostRuntime(ABC):
 
     @classmethod
     def process_trace(cls, trace_buffer, ctrl_buffer, trace_config, verbosity=0):
-        """
-        Process the trace buffer and control buffer.
+        """Process the trace buffer and control buffer.
 
         Args:
             trace_buffer (np.ndarray): The trace data buffer.
@@ -433,8 +452,7 @@ class HostRuntime(ABC):
 
     @classmethod
     def verify_results(cls, io_args, refs=None, verbosity=0):
-        """
-        Verify the results of the kernel execution against reference data.
+        """Verify the results of the kernel execution against reference data.
 
         Args:
             io_args (list[NpuTensor]): List of input/output tensors.
@@ -472,8 +490,7 @@ class HostRuntime(ABC):
         verify: bool = True,
         verbosity: int = 0,
     ) -> int:
-        """
-        Run a test for the given NPU kernel.
+        """Run a test for the given NPU kernel.
 
         Args:
             npu_kernel (NPUKernel): The NPU kernel to test.

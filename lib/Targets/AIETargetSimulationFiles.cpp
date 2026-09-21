@@ -183,9 +183,8 @@ mlir::LogicalResult AIE::AIETranslateShimSolution(mlir::ModuleOp module,
 
         // Generate a Logical Instance line
         output << "    {\n"
-               << "      \"LogicalInstance\" : { \"InstanceName\" : "
-               << "\"aie_engine_0\", \"PortName\" : \"" << port_name
-               << "\"},\n";
+               << R"(      "LogicalInstance" : { "InstanceName" : )"
+               << R"("aie_engine_0", "PortName" : ")" << port_name << "\"},\n";
 
         std::string col = std::to_string(shimOp.colIndex());
         int ch = startOp.getChannelIndex();
@@ -196,9 +195,9 @@ mlir::LogicalResult AIE::AIETranslateShimSolution(mlir::ModuleOp module,
         physical_name.append("M_AXI_ch").append(channel);
 
         // Generate a Physical Instance line
-        output << "      \"PhysicalInstance\" : [{ \"name\" : \""
-               << physical_name << "\", \"column\" : " << col
-               << ", \"channel\" : " << channel << " }],\n"
+        output << R"(      "PhysicalInstance" : [{ "name" : ")" << physical_name
+               << R"(", "column" : )" << col << ", \"channel\" : " << channel
+               << " }],\n"
                << "      \"IsSoft\" : true\n    }";
       }
     }
@@ -257,10 +256,10 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
   int num_tiles = std::distance(module_tile_ops.begin(), module_tile_ops.end());
   // TODO: clk_freq only 1150 for AIE2
   if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
-    output << "    <AIE_MODULE name=\"graph\" num_tiles=\""
+    output << R"(    <AIE_MODULE name="graph" num_tiles=")"
            << std::to_string(num_tiles) << "\" clk_freq=\"1150\">\n";
   } else {
-    output << "    <AIE_MODULE name=\"graph\" num_tiles=\""
+    output << R"(    <AIE_MODULE name="graph" num_tiles=")"
            << std::to_string(num_tiles) << "\" clk_freq=\"1250\">\n";
   }
 
@@ -293,7 +292,7 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
              // CR coordinates ignores shim and 1 mem row, hence row-2
              // AIE2 - xcve2302
              // std::to_string(col) << "," << std::to_string(row - 2) << ")\" "
-             << "type=\"int16\" int_core_load=\"1.0\" fp_core_load=\"0\" "
+             << R"(type="int16" int_core_load="1.0" fp_core_load="0" )"
              << "mem_banks=\"0\" mem_rw_rate=\"0.2\" stream_util=\"0.0\" "
                 "coordinates=\""
              <<
@@ -309,7 +308,7 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
       output << "      <TILE name=\"CR(" <<
           // CR coordinates ignores shim, hence row-1
           std::to_string(col) << "," << std::to_string(row - 1) << ")\" "
-             << "type=\"int16\" int_core_load=\"1.0\" fp_core_load=\"0\" "
+             << R"(type="int16" int_core_load="1.0" fp_core_load="0" )"
              << "mem_banks=\"0\" mem_rw_rate=\"0.2\" stream_util=\"0.0\" "
                 "coordinates=\""
              <<
@@ -335,18 +334,18 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
   // For each ShimOp in the module, generate a <SHIM> section
   for (ShimDMAOp shimOp : targetOp.getOps<ShimDMAOp>()) {
     if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
-      auto noc_label = (targetOp.getTargetModel().isShimNOCTile(
-                           shimOp.colIndex(), shimOp.rowIndex()))
-                           ? "AIE_PL_NOC_SIM"
-                           : "AIE_PL_SHIM";
+      const auto *noc_label = (targetOp.getTargetModel().isShimNOCTile(
+                                  shimOp.colIndex(), shimOp.rowIndex()))
+                                  ? "AIE_PL_NOC_SIM"
+                                  : "AIE_PL_SHIM";
       output << "      <SHIM name=\"SHIM(" << std::to_string(shimOp.colIndex())
              << ", " << std::to_string(shimOp.rowIndex())
              << ")\" "
                 // TODO: stream_util can be 0 for aiesim purposes?
                 "type=\""
-             << noc_label << "\" stream_util=\"0\" num_pl_streams=\"0\" " <<
+             << noc_label << R"(" stream_util="0" num_pl_streams="0" )" <<
           // TODO: how to get num_aximm_connections from mlir?
-          "num_aximm_connections=\"1\" coordinates=\""
+          R"(num_aximm_connections="1" coordinates=")"
              << std::to_string(shimOp.colIndex()) << ","
              << std::to_string(shimOp.rowIndex()) << "\" "
              << "></SHIM>\n";
@@ -354,9 +353,10 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
       output << "      <SHIM name=\"SHIM(" << std::to_string(shimOp.colIndex())
              << ", " << std::to_string(shimOp.rowIndex()) << ")\" " <<
           // TODO: stream_util can be 0 for aiesim purposes?
-          "type=\"AIE_PL_NOC_SHIM\" stream_util=\"0\" num_pl_streams=\"0\" " <<
+          R"(type="AIE_PL_NOC_SHIM" stream_util="0" num_pl_streams="0"
+        )" <<
           // TODO: how to get num_aximm_connections from mlir?
-          "num_aximm_connections=\"1\" coordinates=\""
+          R"(num_aximm_connections="1" coordinates=")"
              << std::to_string(shimOp.colIndex()) << ","
              << std::to_string(shimOp.rowIndex()) << "\" "
              << "></SHIM>\n";
@@ -379,7 +379,7 @@ mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
              << ")\" "
                 // TODO: stream_util can be 0 for aiesim purposes?
                 "type=\"AIE_MEM\" mem_banks=\"0\" mme_rw_rate=\"0.1\" "
-             << "stream_util=\"0.1\" coordinates=\"" << std::to_string(col)
+             << R"(stream_util="0.1" coordinates=")" << std::to_string(col)
              << "," << std::to_string(row - 1) << "\" "
              << "></MEM>\n";
     }

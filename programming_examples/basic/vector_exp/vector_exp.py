@@ -12,13 +12,12 @@ Demonstrates the IRON kernel library's LUT-backed bf16 exp kernel
 
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.utils.verify import count_mismatches
+from ml_dtypes import bfloat16
 
 _TILE = 1024  # hard-coded by kernels.bf16_exp's underlying C++ kernel
 _N_CORES = 4

@@ -18,17 +18,19 @@ to select which entry point gets exported.
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
-from aie.extras.dialects import arith
+import numpy as np
+from aie.extras.dialects import arith  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
 from aie.utils.config import cxx_header_path
-from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.argparse import (
+    add_compile_args,
+    add_trace_arg,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 
 _THIS_DIR = Path(__file__).parent
@@ -70,7 +72,13 @@ def group0(
         source_file=str(_KERNEL_SRC),
         compile_flags=["-DGROUPA"],
         include_dirs=[str(_KERNEL_INC), cxx_header_path()],
-        arg_types=[din_ty, data_int_ty, lut0a_ty, np.int32, np.int32],
+        arg_types=[
+            din_ty,
+            data_int_ty,
+            lut0a_ty,
+            np.dtype(np.int32),
+            np.dtype(np.int32),
+        ],
         object_file_name="group0a.o",
     )
 
@@ -118,6 +126,7 @@ def group0(
         group0a_body,
         fn_args=[of_din_L2L1.cons(), of_int.prod(), lut0a_buf, group0a_kernel],
         stack_size=4096,
+        trace=1 if trace_size > 0 else 0,
     )
 
     def group0b_body(of_di, of_do, lut_a, lut_b, kernel):
@@ -137,6 +146,7 @@ def group0(
             lut0b_b_buf,
             group0b_kernel,
         ],
+        trace=1 if trace_size > 0 else 0,
     )
 
     # ----- Runtime ----------------------------------------------------------
@@ -160,7 +170,7 @@ def group0(
         workers=[group0a_worker, group0b_worker],
     )
     if trace_size > 0:
-        prog.enable_trace(trace_size)
+        prog.enable_trace(trace_size, workers=[group0a_worker, group0b_worker])
 
     return prog.resolve_program()
 

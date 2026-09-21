@@ -76,7 +76,6 @@ ln -sf ../build/final_mobilenet.prj/*.o . 2>/dev/null || true
 ln -sf "${SRCDIR}/build/final_mobilenet.prj/"*.o . 2>/dev/null || true
 aiecc --get-xclbin \
     --xclbin-name="${TAG}.xclbin" \
-    --no-xchesscc --no-xbridge \
     --dynamic-objFifos=false \
     --get-npu-insts --npu-insts-name="${TAG}_insts.bin" \
     "${TAG}.mlir"

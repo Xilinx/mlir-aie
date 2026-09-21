@@ -2,16 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-from ml_dtypes import bfloat16
-import numpy as np
-
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out
-from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer, kernels
-from aie.iron.controlflow import range_
+import numpy as np
+from aie.helpers.dialects.scf import else_, if_
 from aie.helpers.util import np_ndarray_type_get_shape
-from aie.helpers.dialects.scf import if_, else_
+from aie.iron import (
+    Buffer,
+    CompileTime,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+    kernels,
+)
+from aie.iron.controlflow import range_
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 # JIT decorator for IRON
@@ -56,7 +64,7 @@ def vector_reduce_max(
 
     if n_cores > 1:
         of_a_offsets = [
-            (np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
+            int(np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
             for i in range(n_cores)
         ]
     else:
@@ -100,7 +108,7 @@ def vector_reduce_max(
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_fn(elem_in, tmp_buffer, elems_per_core)
-            with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
+            with if_(nextC_buffer[0] < tmp_buffer[0]):
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
         elem_out[0] = nextC_buffer[0]
@@ -179,7 +187,6 @@ def vector_reduce_max(
 def main():
     # Define tensor shapes and data types
     in_size = 524288
-    out_size = 4
     element_type = bfloat16
 
     in_tensor_size = in_size // element_type(0).nbytes

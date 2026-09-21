@@ -25,7 +25,7 @@ from .objectfifo import (
     PadDims,
     StreamDims,
 )
-from .tile_dma import Acquire, Bd, DmaChannel, Release, TileDma
+from .tile_dma import Acquire, Bd, BdIteration, DmaChannel, Release, TileDma
 
 __all__ = [
     "ObjectFifo",
@@ -40,6 +40,7 @@ __all__ = [
     "PacketFlow",
     "Acquire",
     "Bd",
+    "BdIteration",
     "DmaChannel",
     "Release",
     "TileDma",

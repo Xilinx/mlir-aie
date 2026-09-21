@@ -56,7 +56,7 @@ llvm::CallInst *createExternalLLVMIntrinsicCall(
   }
   auto operands = moduleTranslation.lookupValues(intrOp->getOperands());
   SmallVector<llvm::Type *> types;
-  for (auto op : operands)
+  for (auto *op : operands)
     types.push_back(op->getType());
   llvm::Module *module = builder.GetInsertBlock()->getModule();
   llvm::Function *llvmIntr =

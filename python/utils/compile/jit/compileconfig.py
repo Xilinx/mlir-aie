@@ -30,7 +30,7 @@ def compileconfig(
     aiecc_flags: list[str] | None = None,
     object_files: list[str | Path] | None = None,
 ):
-    """Decorator that attaches compile configuration to a generator function.
+    """Attach compile configuration to a generator function.
 
     Can be used bare (``@iron.compileconfig``) or with keyword arguments
     (``@iron.compileconfig(source_files=[...])``).  All configuration options
@@ -44,7 +44,7 @@ def compileconfig(
             when used as a bare decorator).
         use_cache: Enable file-system caching. Defaults to True.
         compile_flags: Extra flags for the Peano C++ compiler.
-        source_files: C++ kernel source files whose mtimes invalidate the cache.
+        source_files: C++ kernel source files whose content invalidates the cache.
         include_paths: Extra ``-I`` paths for the C++ compiler.
         aiecc_flags: Extra flags for ``aiecc``.
         object_files: Pre-compiled ``.o`` files to link with.

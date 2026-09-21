@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --verify-diagnostics %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --verify-diagnostics %s
 
 module @bad_acquire {
  aie.device(xcve2302) {
@@ -16,7 +16,7 @@ module @bad_acquire {
 
     %core12 = aie.core(%tile12) {
       // expected-error@+1 {{'aie.objectfifo.acquire' op cannot acquire from objectfifo stream port}}
-      %subview0 = aie.objectfifo.acquire @of_stream (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+      %subview0_obj0 = aie.objectfifo.acquire @of_stream (Produce, 1) : memref<16xi32>
       aie.end
     }
   }

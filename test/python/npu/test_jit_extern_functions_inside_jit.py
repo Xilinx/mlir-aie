@@ -1,0 +1,292 @@
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+
+# RUN: %run_on_npu1_xrt% %pytest %s
+# RUN: %run_on_npu2_xrt% %pytest %s
+# RUN: %run_on_npu2_hrx% %pytest %s
+# REQUIRES: xrt_python_bindings || hrx_python_bindings
+
+import numpy as np
+import tempfile
+
+import aie.iron as iron
+from aie.iron import CompileTime, ExternalFunction, In, Out, jit
+from aie.iron import ObjectFifo, Worker, Runtime, Program
+
+from aie.iron.controlflow import range_
+
+
+@jit
+def transform_with_internal_func_with_options(
+    input: In,
+    output: Out,
+    *,
+    num_elements: CompileTime[int] = 1024,
+    dtype: CompileTime[object] = np.int32,
+):
+    """Transform kernel that creates ExternalFunction internally with compiler options."""
+    # Create ExternalFunction inside the transform with compiler options
+    internal_func = ExternalFunction(
+        "internal_add_value",
+        source_string="""extern "C" {
+            void internal_add_value(int* input, int* output, int tile_size) {
+                for (int i = 0; i < tile_size; i++) {
+                    output[i] = input[i] + ADD_VALUE;
+                }
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+        compile_flags=["-DADD_VALUE=1"],
+    )
+
+    # Extract tile size from ExternalFunction
+    tile_size = internal_func.tile_size(0)
+
+    if num_elements % tile_size != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
+        )
+    num_tiles = num_elements // tile_size
+
+    # Define tensor types
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
+
+    # AIE-array data movement with object fifos
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_out = ObjectFifo(tile_ty, name="out")
+
+    # Define a task that will run on a compute tile
+    def core_body(of_in, of_out, func_to_apply):
+        # Extract tile size from ExternalFunction
+        tile_size = func_to_apply.tile_size(0)
+
+        # Number of sub-vector "tile" iterations
+        for i in range_(num_tiles):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            func_to_apply(elem_in, elem_out, tile_size)
+            of_in.release(1)
+            of_out.release(1)
+
+    # Create a worker to run the task on a compute tile
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), internal_func])
+
+    # Runtime operations to move data to/from the AIE-array
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
+    )
+
+    # Place program components and generate an MLIR module
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@jit
+def transform_with_internal_func_from_file(
+    input: In,
+    output: Out,
+    *,
+    num_elements: CompileTime[int] = 1024,
+    dtype: CompileTime[object] = np.int32,
+):
+    """Transform kernel that creates ExternalFunction internally from a file."""
+
+    # Create a temporary file with the source code inside the function
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".cc", delete=False) as f:
+        f.write("""extern "C" {
+            void internal_add_from_file(int* input, int* output, int tile_size) {
+                for (int i = 0; i < tile_size; i++) {
+                    output[i] = input[i] + 42;
+                }
+            }
+        }""")
+        temp_file_path = f.name
+
+    # Create ExternalFunction inside the transform from a file
+    internal_func = ExternalFunction(
+        "internal_add_from_file",
+        source_file=temp_file_path,
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    # Extract tile size from ExternalFunction
+    tile_size = internal_func.tile_size(0)
+
+    if num_elements % tile_size != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
+        )
+    num_tiles = num_elements // tile_size
+
+    # Define tensor types
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
+
+    # AIE-array data movement with object fifos
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_out = ObjectFifo(tile_ty, name="out")
+
+    # Define a task that will run on a compute tile
+    def core_body(of_in, of_out, func_to_apply):
+        # Extract tile size from ExternalFunction
+        tile_size = func_to_apply.tile_size(0)
+
+        # Number of sub-vector "tile" iterations
+        for i in range_(num_tiles):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            func_to_apply(elem_in, elem_out, tile_size)
+            of_in.release(1)
+            of_out.release(1)
+
+    # Create a worker to run the task on a compute tile
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), internal_func])
+
+    # Runtime operations to move data to/from the AIE-array
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
+    )
+
+    # Place program components and generate an MLIR module
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@jit
+def transform_with_internal_func(
+    input: In,
+    output: Out,
+    *,
+    num_elements: CompileTime[int] = 1024,
+    dtype: CompileTime[object] = np.int32,
+):
+    """Transform kernel that creates ExternalFunction internally."""
+
+    # Create ExternalFunction inside the transform
+    internal_func = ExternalFunction(
+        "internal_add_one",
+        source_string="""extern "C" {
+            void internal_add_one(int* input, int* output, int tile_size) {
+                for (int i = 0; i < tile_size; i++) {
+                    output[i] = input[i] + 1;
+                }
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    # Extract tile size from ExternalFunction
+    tile_size = internal_func.tile_size(0)
+
+    if num_elements % tile_size != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
+        )
+    num_tiles = num_elements // tile_size
+
+    # Define tensor types
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
+
+    # AIE-array data movement with object fifos
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_out = ObjectFifo(tile_ty, name="out")
+
+    # Define a task that will run on a compute tile
+    def core_body(of_in, of_out, func_to_apply):
+        # Extract tile size from ExternalFunction
+        tile_size = func_to_apply.tile_size(0)
+
+        # Number of sub-vector "tile" iterations
+        for i in range_(num_tiles):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            func_to_apply(elem_in, elem_out, tile_size)
+            of_in.release(1)
+            of_out.release(1)
+
+    # Create a worker to run the task on a compute tile
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), internal_func])
+
+    # Runtime operations to move data to/from the AIE-array
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
+    )
+
+    # Place program components and generate an MLIR module
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+def test_transform_with_internal_func_with_options_inside():
+    """Test transform function that creates ExternalFunction internally with compiler options."""
+    # Create input and output tensors
+    input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
+    initial_tensor = input_tensor.numpy().copy()
+
+    # Apply the transform (ExternalFunction is created inside with hardcoded compiler options)
+    transform_with_internal_func_with_options(input_tensor, output_tensor)
+
+    # Verify results
+    expected = initial_tensor + 1
+    actual = output_tensor.numpy()
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_transform_with_internal_func_inside():
+    """Test transform function that creates ExternalFunction internally."""
+    # Create input and output tensors
+    input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
+    initial_tensor = input_tensor.numpy().copy()
+
+    # Apply the transform (ExternalFunction is created inside)
+    transform_with_internal_func(input_tensor, output_tensor)
+
+    # Verify results
+    expected = initial_tensor + 1
+    actual = output_tensor.numpy()
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_transform_with_internal_func_from_file():
+    """Test transform function that creates ExternalFunction from a file."""
+    # Create input and output tensors
+    input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
+    initial_tensor = input_tensor.numpy().copy()
+
+    # Apply the transform (ExternalFunction is created inside from file)
+    transform_with_internal_func_from_file(input_tensor, output_tensor)
+
+    # Verify results
+    expected = initial_tensor + 42
+    actual = output_tensor.numpy()
+    np.testing.assert_array_equal(actual, expected)

@@ -6,9 +6,8 @@
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.test import create_npu_kernel
@@ -30,7 +29,6 @@ def main(opts):
     # --------------------------------------------------------------------------
 
     in1_volume = in1_size // np.dtype(in1_dtype).itemsize
-    in2_volume = in2_size // np.dtype(in2_dtype).itemsize
     out_volume = out_size // np.dtype(out_dtype).itemsize
 
     # --------------------------------------------------------------------------

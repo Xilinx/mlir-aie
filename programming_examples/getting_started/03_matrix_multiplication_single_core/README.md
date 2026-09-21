@@ -50,7 +50,7 @@ a single vector register of the AI Engine. The AI Engine provides dedicated
 fused multiply-add instructions, called `VMAC`, that are capable of multiplying
 one of these smallest sub-tiles in each clock cycle. We call this smallest tile
 size the intrinsic size, and the hardware dictates which tile sizes are
-available. The availalbe sizes for different architectures are documented 
+available. The available sizes for different architectures are documented 
 [here](https://xilinx.github.io/aie_api/group__group__mmul.html).
 
 ## Data Movement and Matrix Tiling
@@ -148,7 +148,7 @@ fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
 The above tensor access patterns tile the input matrices into the smallest
 tiles used in our design -- the intrinsic-sized tiles. The computation kernel
 expects data to be tiled into these small vector-sized dimensions. The
-tensor access pattern for the ouptut C then undoes this tiling to produce a 
+tensor access pattern for the output C then undoes this tiling to produce a 
 regular row-major tile as the output moves out of the computation core.
 Note that all of these tiles are arranged in row-major order.
 

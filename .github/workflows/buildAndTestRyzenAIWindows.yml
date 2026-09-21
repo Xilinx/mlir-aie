@@ -7,9 +7,16 @@ permissions:
   contents: read
 
 on:
+  # No `push` on main: the merge queue already tests the exact commit that
+  # merging pushes there, so a postsubmit run re-tests an identical SHA. main is
+  # admin-enforced with a required merge queue and no force pushes, so nothing
+  # can reach it without a merge_group run having tested it first. The nightly
+  # schedule below still covers main for environment drift.
+  #
+  # test-ryzen-ai is kept: it is a manual push target that does not go through
+  # the queue, so it has no merge_group run to inherit.
   push:
     branches:
-      - main
       - test-ryzen-ai
   pull_request:
     types: [opened, synchronize, reopened]
@@ -43,6 +50,8 @@ jobs:
     # in python/aie_lit_utils/lit_config_helpers.py); JIT-style Python
     # examples (@iron.jit) still run and cover the NPU end to end.
     runs-on: [self-hosted, windows, ryzenai, npu2]
+    # Normal exec is 19-21 min; observed hang on this job 71.4 min (2026-08-04).
+    timeout-minutes: 90
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
@@ -51,7 +60,7 @@ jobs:
       # no DISPLAY, so it already falls back to Agg).
       MPLBACKEND: Agg
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 

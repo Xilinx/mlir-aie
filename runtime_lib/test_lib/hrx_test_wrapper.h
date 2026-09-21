@@ -102,7 +102,8 @@ public:
   Buffer(hrx_stream_t stream, size_t nbytes) : nbytes_(nbytes) {
     size_t alloc = nbytes ? nbytes : 1; // HRX rejects 0-size allocations
     hrx_check(hrx_buffer_allocate(stream, alloc,
-                                  HRX_MEMORY_TYPE_HOST_LOCAL |
+                                  HRX_MEMORY_TYPE_HOST_VISIBLE |
+                                      HRX_MEMORY_TYPE_HOST_CACHED |
                                       HRX_MEMORY_TYPE_DEVICE_VISIBLE,
                                   HRX_BUFFER_USAGE_DEFAULT |
                                       HRX_BUFFER_USAGE_MAPPING_PERSISTENT,

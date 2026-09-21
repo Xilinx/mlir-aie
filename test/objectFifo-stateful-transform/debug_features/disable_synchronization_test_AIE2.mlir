@@ -5,19 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @disable_sync {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
-// CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK:     %{{.*}}tile_3_3 = aie.tile(3, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
-// CHECK:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_1"} : memref<16xi32>
-// CHECK:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_0"} : memref<16xi32>
-// CHECK:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_3_3, DMA : 0)
+// CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
+// CHECK-DAG:     %{{.*}}tile_3_3 = aie.tile(3, 3)
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_1"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_0"} : memref<16xi32>
+// CHECK-DAG:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_3_3, DMA : 0)
 // CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2

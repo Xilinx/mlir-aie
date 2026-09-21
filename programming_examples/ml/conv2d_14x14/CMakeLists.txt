@@ -29,7 +29,7 @@ include(../../common.cmake)
 
 # Find packages
 find_package(OpenCV REQUIRED)
-message("opencv library paht: ${OpenCV_LIB_PATH}")
+message("opencv library path: ${OpenCV_LIB_PATH}")
 message("opencv libs: ${OpenCV_LIBS}")
 
 add_executable(${currentTarget}

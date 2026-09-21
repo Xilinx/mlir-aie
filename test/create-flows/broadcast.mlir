@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows=remove-lifted=false %s -o %t.opt
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
 // RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
@@ -38,7 +38,7 @@
 // CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T22]], DMA : 1)
 // CHECK1: aie.flow(%[[T60]], DMA : 0, %[[T02]], DMA : 1)
 
-// CHECK2: "total_path_length": 27
+// CHECK2: "total_path_length": 26
 
 module {
     aie.device(xcvc1902) {
@@ -72,4 +72,3 @@ module {
         aie.flow(%t60, DMA : 0, %t31, DMA : 1)
     }
 }
-

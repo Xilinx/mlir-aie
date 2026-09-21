@@ -41,9 +41,14 @@ values and every HRX environment variable
 
 ## Provisioning `libhrx`
 
-Fetch, checksum-verify, and extract the pinned HRX release (coordinates in
-`utils/hrx-release.env`) with the helper script, then source the environment it
-prints:
+A pip-installed package that ships `libhrx` in the conventional layout
+(`<package>/lib/libhrx.so*` on Linux, `<package>/bin/hrx.dll` on Windows) is
+enough for the Python host. Discovery finds it without importing the package and
+without `HRX_*` variables. CMake does not search site-packages.
+
+For a source/release tree, fetch, checksum-verify, and extract the pinned HRX
+release (coordinates in `utils/hrx-release.env`) with the helper script, then
+source the environment it prints:
 
 ```bash
 source "$(utils/fetch-hrx-release.sh)"

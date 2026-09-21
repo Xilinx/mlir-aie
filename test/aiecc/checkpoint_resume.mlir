@@ -17,23 +17,23 @@
 // RUN: rm -rf %t && mkdir -p %t
 
 // Straight-through reference build.
-// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --npu-insts-name=%t/ref_insts.bin --xclbin-name=%t/ref.xclbin --tmpdir=%t/ref.prj %s
+// RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/ref_insts.bin --xclbin-name=%t/ref.xclbin --tmpdir=%t/ref.prj %s
 
 // Cut 1: per-core objects. Checkpoint at the object compile edge, drop the
 // produced insts, then resume to completion and compare.
-// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --npu-insts-name=%t/obj_insts.bin --xclbin-name=%t/obj.xclbin --tmpdir=%t/obj.prj --cut='objects_{0}.o' --checkpoint=%t/obj.ckpt %s
+// RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/obj_insts.bin --xclbin-name=%t/obj.xclbin --tmpdir=%t/obj.prj --cut='objects_{0}.o' --checkpoint=%t/obj.ckpt %s
 // RUN: rm -f %t/obj_insts.bin
 // RUN: aiecc --resume=%t/obj.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/obj_insts.bin
 
 // Cut 2: linked core ELFs.
-// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --npu-insts-name=%t/elf_insts.bin --xclbin-name=%t/elf.xclbin --tmpdir=%t/elf.prj --cut='elfs_{0}.elf' --checkpoint=%t/elf.ckpt %s
+// RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/elf_insts.bin --xclbin-name=%t/elf.xclbin --tmpdir=%t/elf.prj --cut='elfs_{0}.elf' --checkpoint=%t/elf.ckpt %s
 // RUN: rm -f %t/elf_insts.bin
 // RUN: aiecc --resume=%t/elf.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/elf_insts.bin
 
 // Cut 3: PDI (immediately before xclbin assembly).
-// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --npu-insts-name=%t/pdi_insts.bin --xclbin-name=%t/pdi.xclbin --tmpdir=%t/pdi.prj --cut='{0}.pdi' --checkpoint=%t/pdi.ckpt %s
+// RUN: aiecc --get-npu-insts --get-xclbin --npu-insts-name=%t/pdi_insts.bin --xclbin-name=%t/pdi.xclbin --tmpdir=%t/pdi.prj --cut='{0}.pdi' --checkpoint=%t/pdi.ckpt %s
 // RUN: rm -f %t/pdi_insts.bin
 // RUN: aiecc --resume=%t/pdi.ckpt/manifest.json
 // RUN: cmp %t/ref_insts.bin %t/pdi_insts.bin
@@ -50,8 +50,7 @@ module {
       %c1 = arith.constant 1 : index
       %c64 = arith.constant 64 : index
 
-      %subview = aie.objectfifo.acquire @data(Consume, 1) : !aie.objectfifosubview<memref<64xi32>>
-      %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<64xi32>> -> memref<64xi32>
+      %elem = aie.objectfifo.acquire @data(Consume, 1) : memref<64xi32>
 
       scf.for %i = %c0 to %c64 step %c1 {
         %val = memref.load %elem[%i] : memref<64xi32>

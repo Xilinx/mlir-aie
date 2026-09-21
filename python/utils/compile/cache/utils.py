@@ -277,8 +277,8 @@ def _wait_for_lock(lock_file_path, timeout_seconds):
 
 @contextlib.contextmanager
 def file_lock(lock_file_path, timeout_seconds=60):
-    """
-    Context manager for file locking using flock to prevent race conditions.
+    """Context manager for file locking using flock to prevent race conditions.
+
     Args:
         lock_file_path (str): Path to the lock file
         timeout_seconds (int): Maximum time to wait for lock acquisition in seconds

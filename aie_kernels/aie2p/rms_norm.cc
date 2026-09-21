@@ -11,9 +11,9 @@
 #include <stdlib.h>
 
 template <typename T, int N>
-void rms_norm(const T *restrict input, T *restrict output, int32_t cols) {
+void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
+              float epsilon = 1e-5f) {
   event0();
-  constexpr float epsilon = 1e-5f;
   const float gamma = 1.0f;
   ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
   ::aie::vector<float, N> add_res = ::aie::zeros<float, N>();
@@ -68,6 +68,13 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols) {
 
 extern "C" {
 void rms_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
-  rms_norm<bfloat16, 16>(input, output, cols);
+  // N=32 bf16 = 512 bits = one AIE2P vector register; the tail loop handles a
+  // cols not divisible by 32.
+  rms_norm<bfloat16, 32>(input, output, cols);
+}
+
+void rms_norm_eps(bfloat16 *input, bfloat16 *output, int32_t cols,
+                  float epsilon) {
+  rms_norm<bfloat16, 32>(input, output, cols, epsilon);
 }
 }

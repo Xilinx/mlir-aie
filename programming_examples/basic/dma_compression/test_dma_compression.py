@@ -14,21 +14,20 @@ import hashlib
 import sys
 import time
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.utils import cleanup_npu_runtime
-
-from dma_compression import dma_compression, CONFIGS, RATIOED_N
+from dma_compression import CONFIGS, RATIOED_N, dma_compression
 
 
 def _detect_arch() -> str:
     from aie.utils import _get_default_npu_runtime
 
     rt = _get_default_npu_runtime()
-    if rt is None or not getattr(rt, "npu_str", None):
+    npu_str = getattr(rt, "npu_str", None)
+    if rt is None or not npu_str:
         raise RuntimeError("could not determine NPU arch from XRT runtime")
-    return rt.npu_str
+    return npu_str
 
 
 def _reset_runtime_for_next_config():

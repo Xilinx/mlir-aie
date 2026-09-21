@@ -18,19 +18,28 @@ NETWORK and dispatches to the right builder per block.
 """
 
 import numpy as np
-
+from aie.extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
+    view as memref_view,
+)
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
-from aie.extras.dialects.memref import view as memref_view
 
+from ..network_spec import block as nsblock
 from ._common import (
     i8 as _i8,
-    u8 as _u8,
+)
+from ._common import (
     layer_sf as _layer_sf,
+)
+from ._common import (
     skip_sf as _skip_sf,
+)
+from ._common import (
+    u8 as _u8,
+)
+from ._common import (
     wts_buffer as _wts_buffer,
 )
-from ..network_spec import block as nsblock
 
 
 # ---------------------------------------------------------------------------
@@ -55,13 +64,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
     l2_sz = 9 * dw_ch
     l3_sz = dw_ch * out_c
     wts_sz = l1_sz + l2_sz + l3_sz
-    dw_obj = "dw_stride2" if stride == 2 else "dw_stride1"
 
     wts_buf = _wts_buffer(data_dir, f"{name}_chain.txt", wts_sz)
 
-    l1_in_ty = _i8((in_w, 1, in_c))
-    l1_out_ty = _u8((in_w, 1, dw_ch))
-    l2_out_ty = _u8((out_w, 1, dw_ch))
     l3_out_ty = _i8((out_w, 1, out_c))
 
     k_1x1_relu = kernels.bn_conv2dk1_relu(
@@ -96,7 +101,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
     if has_skip:
         assert stride == 1, f"{name}: skip+stride-2 not implemented"
 
-        def worker_fn(act_in_fifo, wts, out_f, p12, c12, p23, c23, k_pw, k_dw, k_skip):
+        def worker_fn(  # pyright: ignore[reportRedeclaration]
+            act_in_fifo, wts, out_f, p12, c12, p23, c23, k_pw, k_dw, k_skip
+        ):
             # Sliding-window 3-layer pipeline (stride-1, with skip add).
             # Phases — preamble (rows 0,1) → middle (rows 2..in_h-2) → postamble (last row).
             wts_l1 = memref_view(wts.op, [l1_sz], shift=0)
@@ -288,7 +295,6 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
 
     wts_buf = _wts_buffer(data_dir, f"{name}_chain.txt", wts_sz)
 
-    in_ty = _u8((in_w, 1, in_c))
     dw_out_ty = _u8((in_w, 1, dw_ch))
     out_ty = _i8((in_w, 1, out_c))
 

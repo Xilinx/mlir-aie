@@ -12,8 +12,7 @@ from .resolvable import Resolvable
 
 
 class ScratchpadParameter(Resolvable):
-    """A named runtime parameter communicated from host to AIE cores via the
-    scratchpad mechanism.
+    """A named runtime parameter communicated from host to AIE cores via the scratchpad mechanism.
 
     Declare a `ScratchpadParameter` at design time. Pass it to a
     [`Worker`][iron.Worker] via `fn_args` and call

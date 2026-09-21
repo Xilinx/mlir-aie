@@ -154,7 +154,7 @@ static SmallVector<Value> forceCastOperandsToSignature(OpBuilder &builder,
 static LLVM::LLVMFuncOp getOrCreateScalarHelperFunc(
     ModuleOp module, OpBuilder &rewriter, StringRef opName, StringRef device,
     TypeRange argTypes, Type resultType,
-    std::function<void(OpBuilder &, Location, ValueRange)> bodyBuilder) {
+    const std::function<void(OpBuilder &, Location, ValueRange)> &bodyBuilder) {
 
   // Build function name: __<device>_scalar_<opName>
   std::string funcName = "__" + device.str() + "_scalar_" + opName.str();
@@ -230,8 +230,8 @@ static inline int aiev2_vmac_compute_control(int sgn_x, int sgn_y, int amode,
          ((unsigned)zero_acc << 0);
 }
 
-std::string getVectorTypeString(VectorType type, bool abbrev = false,
-                                bool acc = false) {
+static std::string getVectorTypeString(VectorType type, bool abbrev = false,
+                                       bool acc = false) {
   std::stringstream ss;
   auto size = getVectorLaneSize(type);
   ss << "v" << size;
@@ -243,7 +243,7 @@ std::string getVectorTypeString(VectorType type, bool abbrev = false,
   return ss.str();
 }
 
-std::string getMulOrFMAIntrinsicName(Operation *op) {
+static std::string getMulOrFMAIntrinsicName(Operation *op) {
   std::string baseName;
   Value lhs, result;
   if (auto mulOp = dyn_cast<aievec::aie1::MulOp>(op)) {
@@ -271,7 +271,7 @@ std::string getMulOrFMAIntrinsicName(Operation *op) {
 
 // Squashes the easy-to-read 16-bit square encoding into
 // the 8-bit encoding the configuration register uses
-uint32_t encodeSquare(uint32_t square) {
+static uint32_t encodeSquare(uint32_t square) {
   uint32_t out = 0;
   out |= ((square >> 0) & 0x3) << 0;
   out |= ((square >> 4) & 0x3) << 2;
@@ -282,8 +282,8 @@ uint32_t encodeSquare(uint32_t square) {
 
 // Encode the configuration register with buffer parameters and options
 // TODO: struct to handle this?
-void encodeConf(uint32_t conf[2], const BufferParams &x, const BufferParams &z,
-                bool sub) {
+static void encodeConf(uint32_t conf[2], const BufferParams &x,
+                       const BufferParams &z, bool sub) {
   conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
   conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
   conf[1] |= sub << 17;
@@ -323,13 +323,12 @@ public:
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 32) {
-        // FP32 add_elem
-        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
-      }
+    } // Float types
+    if (lhsBitWidth == 32) {
+      // FP32 add_elem
+      return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
     }
+
     return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -394,13 +393,12 @@ public:
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 32) {
-        // FP32 sub_elem
-        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
-      }
+    } // Float types
+    if (lhsBitWidth == 32) {
+      // FP32 sub_elem
+      return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
     }
+
     return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -470,17 +468,17 @@ public:
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 32) {
-        // FP32 add_elem
-        if (laneSize == 16) {
-          return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
-        } else if (laneSize == 32) {
-          return {DecodedAddElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
-        }
+    } // Float types
+    if (lhsBitWidth == 32) {
+      // FP32 add_elem
+      if (laneSize == 16) {
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+      }
+      if (laneSize == 32) {
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
       }
     }
+
     return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -615,17 +613,17 @@ public:
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 32) {
-        // FP32 sub_elem
-        if (laneSize == 16) {
-          return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
-        } else if (laneSize == 32) {
-          return {DecodedSubElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
-        }
+    } // Float types
+    if (lhsBitWidth == 32) {
+      // FP32 sub_elem
+      if (laneSize == 16) {
+        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+      }
+      if (laneSize == 32) {
+        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
       }
     }
+
     return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -731,6 +729,106 @@ public:
 
     op.emitWarning() << "aievec.sub_elem conversion is not supported.\n";
     return failure();
+  }
+};
+
+// AIE2 version of NegOp conversion.
+//
+// aievec.neg operates on an accumulator. For floats the accumulator is
+// v16accfloat, which is carried as vector<16xf32> in AIEVec and as <8 x i64>
+// at the intrinsic boundary, so this maps directly onto the ACC512 accfloat
+// negate.
+class NegOpAIE2Conversion : public mlir::ConvertOpToLLVMPattern<aievec::NegOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::NegOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::NegOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto srcVecTy = cast<VectorType>(adaptor.getSource().getType());
+    auto srcScaTy = srcVecTy.getElementType();
+
+    // Only the float accumulator (v16accfloat) is wired up. Integer
+    // accumulators would need the ACC1024 acc32/acc64 negates instead.
+    if (!isa<FloatType>(srcScaTy) || srcScaTy.getIntOrFloatBitWidth() != 32 ||
+        srcVecTy.getNumElements() != 16) {
+      op.emitWarning() << "aievec.neg conversion is not supported.\n";
+      return failure();
+    }
+
+    auto v8i64Ty = VectorType::get({8}, rewriter.getI64Type());
+    // conf selects the fp32 accumulator datapath. Matches the AIE API's
+    // neg(v16accfloat): aiev2_compute_control(0, 0, /*amode=*/2, /*bmode=*/3,
+    // 0, 0, 0, 0, 0, 0, 0) == (2 << 1) | (3 << 3) == 28.
+    auto confCst = LLVM::ConstantOp::create(
+        rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(28));
+    SmallVector<Value> operands({adaptor.getSource(), confCst});
+
+    auto negOp = xllvm::NegACC512AccFloatAIE2IntrOp::create(
+        rewriter, loc, v8i64Ty,
+        forceCastOperandsToSignature(rewriter, loc, operands,
+                                     {v8i64Ty, rewriter.getI32Type()}));
+
+    auto resultVal =
+        forceCastValueToType(rewriter, loc, negOp, op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
+    return success();
+  }
+};
+
+// AIE2p version of NegOp conversion.
+//
+// AIE2p only exposes the negate on the 2048-bit accumulator, so a
+// v16accfloat operand is widened to <64 x float>, negated, and the low 16
+// lanes extracted back out. This mirrors AddElemOpAIE2pConversion.
+class NegOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::NegOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::NegOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::NegOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto srcVecTy = cast<VectorType>(adaptor.getSource().getType());
+    auto srcScaTy = srcVecTy.getElementType();
+    unsigned laneSize = srcVecTy.getNumElements();
+
+    if (!isa<FloatType>(srcScaTy) || srcScaTy.getIntOrFloatBitWidth() != 32 ||
+        (laneSize != 16 && laneSize != 32)) {
+      op.emitWarning() << "aievec.neg conversion is not supported.\n";
+      return failure();
+    }
+
+    auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
+
+    // Widen the accumulator to ACC2048, filling the unused lanes with poison.
+    SmallVector<int64_t> expandMask;
+    for (unsigned i = 0; i < laneSize; ++i)
+      expandMask.push_back(i);
+    for (unsigned i = laneSize; i < 64; ++i)
+      expandMask.push_back(-1);
+    auto srcExpanded = vector::ShuffleOp::create(
+        rewriter, loc, adaptor.getSource(), adaptor.getSource(), expandMask);
+
+    // conf selects the fp32 accumulator datapath, matching the ACC2048
+    // accfloat add/sub lowerings and the AIE API's neg(v64accfloat):
+    // aie2p_compute_control(0, 0, /*amode=*/2, /*bmode=*/3, /*variant=*/1,
+    // 0, 0, 0, 0, 0, 0) == (2 << 1) | (3 << 3) | (1 << 5) == 60.
+    auto confCst = LLVM::ConstantOp::create(
+        rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(60));
+    auto negResult = xllvm::NegACC2048AccFloatAIE2pIntrOp::create(
+        rewriter, loc, v64f32Ty, srcExpanded, confCst);
+
+    SmallVector<int64_t> extractMask;
+    for (unsigned i = 0; i < laneSize; ++i)
+      extractMask.push_back(i);
+    auto finalResult = vector::ShuffleOp::create(rewriter, loc, negResult,
+                                                 negResult, extractMask);
+
+    rewriter.replaceOp(op, finalResult);
+    return success();
   }
 };
 
@@ -946,14 +1044,16 @@ public:
                     /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
-      } else if (lhsBitWidth == 16) {
+      }
+      if (lhsBitWidth == 16) {
         return {DecodedMulElemOp::Kind::I16_I16_I32_32x1x1x1,
                 aiev2_vmac_compute_control(
                     /*sgn_x=*/1, /*sgn_y=*/1, /*amode=*/0, /*bmode=*/3,
                     /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
-      } else if (lhsBitWidth == 32) {
+      }
+      if (lhsBitWidth == 32) {
         // emulated I32 mul_elem
         return {DecodedMulElemOp::Kind::I32_I32_I64_32x1x2x1, -1};
       }
@@ -966,7 +1066,8 @@ public:
                     /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
-      } else if (lhsBitWidth == 32) {
+      }
+      if (lhsBitWidth == 32) {
         // emulated FP32 mul_elem
         return {DecodedMulElemOp::Kind::FP32_FP32_FP32_16x1x1x1, -1};
       }
@@ -1297,8 +1398,9 @@ public:
     // Handle the emulated I32/FP32 mul_elem
     if (decodedMulElemOp.kind == DecodedMulElemOp::Kind::I32_I32_I64_32x1x2x1) {
       return convertToEmulatedI32MulElem(op, adaptor, rewriter);
-    } else if (decodedMulElemOp.kind ==
-               DecodedMulElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
+    }
+    if (decodedMulElemOp.kind ==
+        DecodedMulElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
       return convertToEmulatedFP32MulElem(op, adaptor, rewriter);
     }
 
@@ -1395,22 +1497,23 @@ public:
     // Integer types - not supported for AIE2p elementwise mul
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedMulElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 16) {
-        // BF16 mul_elem
-        if (lhsLanes == 16) {
-          // 16-lane bfloat16 uses I512.I512.ACC512 intrinsic
-          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x1x1, /*conf*/ 60};
-        } else if (lhsLanes == 32) {
-          // 32-lane bfloat16 uses I512.I512.ACC1024 intrinsic
-          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_32x1x2x1, /*conf*/ 60};
-        } else if (lhsLanes == 64) {
-          // 64-lane bfloat16 uses I1024.I1024.ACC2048 intrinsic
-          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_64x1x2x1, /*conf*/ 60};
-        }
+    } // Float types
+    if (lhsBitWidth == 16) {
+      // BF16 mul_elem
+      if (lhsLanes == 16) {
+        // 16-lane         bfloat16 uses I512.I512.ACC512 intrinsic
+        return {DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x1x1, /*conf*/ 60};
+      }
+      if (lhsLanes == 32) {
+        // 32-lane         bfloat16 uses I512.I512.ACC1024 intrinsic
+        return {DecodedMulElemOp::Kind::BF16_BF16_FP32_32x1x2x1, /*conf*/ 60};
+      }
+      if (lhsLanes == 64) {
+        // 64-lane         bfloat16 uses I1024.I1024.ACC2048 intrinsic
+        return {DecodedMulElemOp::Kind::BF16_BF16_FP32_64x1x2x1, /*conf*/ 60};
       }
     }
+
     return {DecodedMulElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -4239,12 +4342,89 @@ public:
   }
 };
 
+// Look through vector.shape_cast ops to find the defining op. The
+// VectorToAIEVec pass inserts shape_casts (via reshapeLeadingUnitDims) between
+// the extension ops and the matmul, which would otherwise hide the signedness.
+static Value lookThroughShapeCasts(Value v) {
+  while (auto castOp = v.getDefiningOp<vector::ShapeCastOp>())
+    v = castOp.getSource();
+  return v;
+}
+
+// If `v` is defined by a signedness-carrying unrealized_conversion_cast --
+// which is how VectorToAIEVec attaches si*/ui* to an otherwise signless
+// operand -- return the signedness it carries and advance `v` past it, so the
+// intrinsic consumes the signless input and the cast is left dead for
+// canonicalization rather than leaking to LLVM translation.
+//
+// A cast whose result element type is not explicitly signed or unsigned is
+// left in place: it is some other type conversion, and dropping it would
+// silently change the operand.
+static std::optional<bool> peelSignednessCast(Value &v) {
+  auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>();
+  if (!castOp)
+    return std::nullopt;
+  auto vecTy = dyn_cast<VectorType>(v.getType());
+  auto intTy =
+      vecTy ? dyn_cast<IntegerType>(vecTy.getElementType()) : IntegerType();
+  if (!intTy || intTy.isSignless())
+    return std::nullopt;
+  v = castOp.getInputs()[0];
+  return intTy.isSigned();
+}
+
+// The result of resolving one integer matmul operand.
+struct ResolvedMatMulOperand {
+  // The value the MAC intrinsic should consume, with any widening op and any
+  // signedness-carrying cast peeled off.
+  Value narrowed;
+  // Whether that value is to be treated as signed, i.e. whether the MAC
+  // configuration word's signX (lhs) / signY (rhs) bit should be set.
+  bool isSigned;
+};
+
+// Recover the signedness of an integer matmul operand. MLIR integers are
+// signless, so it has to come from context; in priority order:
+//
+//   1. an arith.extsi / arith.extui feeding the operand -- peel it and take
+//      its signedness;
+//   2. an unrealized_conversion_cast to a signed/unsigned element type, which
+//      is how VectorToAIEVec carries signedness across the peel it performs.
+//      Peel it too, so the intrinsic consumes the signless value and the cast
+//      is left dead for canonicalization rather than leaking to LLVM;
+//   3. an explicitly signed or unsigned element type;
+//   4. otherwise the element type is signless -- treat it as signed.
+//
+// Case 4 matches the conventional reading of a signless integer, and is the
+// more useful default: the shapes that reach it are the ones whose operand
+// type is already a legal AIE2 narrow type (so nothing was extended), which in
+// practice means i16/i32 operands carrying signed data.
+//
+// Both aievec.matmul and aievec.matmul_aie2p resolve signedness through this
+// function. They previously each had their own copy and had drifted apart.
+static ResolvedMatMulOperand resolveMatMulOperand(Value v) {
+  std::optional<bool> castSigned = peelSignednessCast(v);
+
+  Value orig = lookThroughShapeCasts(v);
+  if (auto extSIOp = orig.getDefiningOp<arith::ExtSIOp>())
+    return {lookThroughShapeCasts(extSIOp.getIn()), true};
+  if (auto extUIOp = orig.getDefiningOp<arith::ExtUIOp>())
+    return {lookThroughShapeCasts(extUIOp.getIn()), false};
+  if (castSigned)
+    return {v, *castSigned};
+
+  auto vecTy = dyn_cast<VectorType>(v.getType());
+  auto intTy =
+      vecTy ? dyn_cast<IntegerType>(vecTy.getElementType()) : IntegerType();
+  return {v, !(intTy && intTy.isUnsigned())};
+}
+
 class MatMulOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp> {
   using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
 
   struct DecodedMatMulOp {
-    typedef enum { I32, I64, BF16 } Kind;
+    using Kind = enum { I32, I64, BF16 };
 
     Kind kind;
     Value lhs;
@@ -4257,6 +4437,10 @@ class MatMulOpConversion
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
     Value acc = op.getAcc();
+
+    // Recover operand signedness, and narrow each operand to the value the MAC
+    // should consume. Deferred until after the bf16 case below, which has no
+    // signedness to speak of.
     auto accVecTy = cast<VectorType>(acc.getType());
     if (isa<Float32Type>(accVecTy.getElementType()))
       // <4x8xbf16> x <8x4xbf16> + <4x4xf32>
@@ -4267,55 +4451,19 @@ class MatMulOpConversion
                   /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                   /*sub_mask=*/0)};
 
-    // Helper: look through vector.shape_cast ops to find the defining op.
-    // The VectorToAIEVec pass inserts shape_casts (via reshapeLeadingUnitDims)
-    // between the extension ops and the matmul, which hides the signedness.
-    auto lookThroughShapeCasts = [](Value v) -> Value {
-      while (auto castOp = v.getDefiningOp<vector::ShapeCastOp>())
-        v = castOp.getSource();
-      return v;
-    };
+    ResolvedMatMulOperand lhsResolved = resolveMatMulOperand(lhs);
+    ResolvedMatMulOperand rhsResolved = resolveMatMulOperand(rhs);
+    lhs = lhsResolved.narrowed;
+    rhs = rhsResolved.narrowed;
+    int signX = lhsResolved.isSigned ? 1 : 0;
+    int signY = rhsResolved.isSigned ? 1 : 0;
 
-    int signX = 0, signY = 0;
     auto lhsVecTy = cast<VectorType>(lhs.getType());
     auto lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-    Value lhsOrig = lookThroughShapeCasts(lhs);
-    if (auto extSIOp = lhsOrig.getDefiningOp<arith::ExtSIOp>()) {
-      lhs = lookThroughShapeCasts(extSIOp.getIn());
-      lhsVecTy = cast<VectorType>(lhs.getType());
-      lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-      signX = 1;
-    } else if (auto extUIOp = lhsOrig.getDefiningOp<arith::ExtUIOp>()) {
-      lhs = lookThroughShapeCasts(extUIOp.getIn());
-      lhsVecTy = cast<VectorType>(lhs.getType());
-      lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-    } else {
-      // Default to unsigned for lhs (activation input is typically uint8).
-      // The VectorToAIEVec pass strips extsi/extui before creating
-      // aievec.matmul, so sign info is not available here. Using unsigned
-      // for A matches the common use case of uint8 activations × int8 weights.
-      if (lhsScaTy.isUnsigned())
-        signX = 0;
-    }
     auto lhsShape = lhsVecTy.getShape();
 
     auto rhsVecTy = cast<VectorType>(rhs.getType());
     auto rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-    Value rhsOrig = lookThroughShapeCasts(rhs);
-    if (auto extSIOp = rhsOrig.getDefiningOp<arith::ExtSIOp>()) {
-      rhs = lookThroughShapeCasts(extSIOp.getIn());
-      rhsVecTy = cast<VectorType>(rhs.getType());
-      rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-      signY = 1;
-    } else if (auto extUIOp = rhsOrig.getDefiningOp<arith::ExtUIOp>()) {
-      rhs = lookThroughShapeCasts(extUIOp.getIn());
-      rhsVecTy = cast<VectorType>(rhs.getType());
-      rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-    } else {
-      // NOTE: We're choosing 'signed' by default
-      if (!rhsScaTy.isUnsigned())
-        signY = 1;
-    }
 
     unsigned lhsBitWidth = lhsScaTy.getWidth();
     unsigned rhsBitWidth = rhsScaTy.getWidth();
@@ -4332,37 +4480,32 @@ class MatMulOpConversion
                       /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
                       /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                       /*sub_mask=*/0)};
-        } else {
-          // <4x8xi8> x <8x8xi8> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
-                  aiev2_vmac_compute_control(
-                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
-                      /*bmode=*/1,
-                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
-                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
-                      /*sub_mask=*/0)};
-        }
-      } else {
-        if (rhsBitWidth == 8) {
-          // <4x4xi16> x <4x8xi8> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
-                  aiev2_vmac_compute_control(
-                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
-                      /*bmode=*/2,
-                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
-                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
-                      /*sub_mask=*/0)};
-        } else {
-          // <4x2xi16> x <2x8xi16> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
-                  aiev2_vmac_compute_control(
-                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
-                      /*bmode=*/3,
-                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
-                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
-                      /*sub_mask=*/0)};
-        }
+        } // <4x8xi8> x <8x8xi8> + <4x8xi32>
+        return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+                aiev2_vmac_compute_control(
+                    /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                    /*bmode=*/1,
+                    /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
       }
+      if (rhsBitWidth == 8) {
+        // <4x4xi16> x <4x8xi8> + <4x8xi32>
+        return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+                aiev2_vmac_compute_control(
+                    /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                    /*bmode=*/2,
+                    /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
+      } // <4x2xi16> x <2x8xi16> + <4x8xi32>
+      return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+              aiev2_vmac_compute_control(
+                  /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                  /*bmode=*/3,
+                  /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                  /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                  /*sub_mask=*/0)};
     }
 
     if (lhsBitWidth == 16) {
@@ -4687,7 +4830,7 @@ class MatMulOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P> {
   using ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P>::ConvertOpToLLVMPattern;
   struct DecodedMatMulOp {
-    typedef enum {
+    using Kind = enum {
       BF16_8x8x8_I1024_ACC2048,
       BF16_4x8x8_I1024_ACC1024,
       BF16_8x1x8_I512_ACC2048,
@@ -4696,7 +4839,7 @@ class MatMulOpAIE2pConversion
       I8_8x8x8_I512_ACC2048,
       I16_8x2x8_I1024_ACC2048,
       UNSUPPORTED
-    } Kind;
+    };
     Kind kind;
     Value lhs;
     Value rhs;
@@ -4708,8 +4851,18 @@ class MatMulOpAIE2pConversion
     Value rhs = op.getRhs();
     Value acc = op.getAcc();
 
-    auto lhsVecTy = cast<VectorType>(lhs.getType());
-    auto rhsVecTy = cast<VectorType>(rhs.getType());
+    // Signedness follows the same rule as aievec.matmul; see
+    // resolveMatMulOperand. Only the signedness is taken from it here -- the
+    // shape checks below match on the original operand types, so the operand
+    // values are only advanced past a signedness-carrying cast, not past a
+    // widening op.
+    bool lhsIsSigned = resolveMatMulOperand(lhs).isSigned;
+    bool rhsIsSigned = resolveMatMulOperand(rhs).isSigned;
+    peelSignednessCast(lhs);
+    peelSignednessCast(rhs);
+
+    auto lhsVecTy = cast<VectorType>(op.getLhs().getType());
+    auto rhsVecTy = cast<VectorType>(op.getRhs().getType());
     auto accVecTy = cast<VectorType>(acc.getType());
 
     // Check for AIE2p integer matmul
@@ -4729,9 +4882,14 @@ class MatMulOpAIE2pConversion
       if (lhsIntTy.getWidth() == 8 && rhsIntTy.getWidth() == 8 &&
           accIntTy.getWidth() == 32 && lhsLanes == 64 && rhsLanes == 64 &&
           accLanes == 64) {
-        // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32)
+        // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32).
+        // Base conf for amode=0/bmode=1 is bmode<<3 = 8; signedness lives in
+        // signX (bit 9) / signY (bit 8).
+        int signX = lhsIsSigned ? 1 : 0;
+        int signY = rhsIsSigned ? 1 : 0;
+        int conf = 8 | (signX << 9) | (signY << 8);
         return {DecodedMatMulOp::Kind::I8_8x8x8_I512_ACC2048, lhs, rhs, acc,
-                776};
+                conf};
       }
 
       // Check for <8x2xi16> x <2x8xi16> + <8x8xi32>
@@ -4763,26 +4921,28 @@ class MatMulOpAIE2pConversion
                 60};
       }
       // Special case for 8x8x4 matmul: <8x8xbf16> x <8x4xbf16> + <8x4xf32>
-      else if (lhsLanes == 64 && rhsLanes == 32 && accLanes == 32) {
+      if (lhsLanes == 64 && rhsLanes == 32 && accLanes == 32) {
         // Uses I512.I512.ACC1024 for each MAC operation
         return {DecodedMatMulOp::Kind::BF16_8x8x4_I512_ACC1024, lhs, rhs, acc,
                 60};
       }
-      // Special case for 4x8x8 matmul: <4x8xbf16> x <8x8xbf16> + <4x8xf32>
-      else if (lhsLanes == 32 && rhsLanes == 64 && accLanes == 32) {
+      // Special case for 4x8x8 matmul: <4x8xbf16>         x <8x8xbf16> +
+      // <4x8xf32>
+      if (lhsLanes == 32 && rhsLanes == 64 && accLanes == 32) {
         // Uses BFP16 format via mac_8x8_8x8T_conf
         return {DecodedMatMulOp::Kind::BF16_4x8x8_I1024_ACC1024, lhs, rhs, acc,
                 780};
       }
-      // Special case for 8x1x8 matmul: <8x1xbf16> x <1x8xbf16> + <8x8xf32>
-      else if (lhsLanes == 8 && rhsLanes == 8 && accLanes == 64) {
-        // Outer product: transpose+replicate LHS, replicate RHS, use
+      // Special case for 8x1x8 matmul:         <8x1xbf16> x <1x8xbf16> +
+      // <8x8xf32>
+      if (lhsLanes == 8 && rhsLanes == 8 && accLanes == 64) {
+        // Outer product: transpose+replicate         LHS, replicate RHS, use
         // mac_elem_64_conf
         return {DecodedMatMulOp::Kind::BF16_8x1x8_I512_ACC2048, lhs, rhs, acc,
                 60};
       }
-      // I1024 inputs (64 lanes each)
-      else if (lhsLanes == 64 && rhsLanes == 64 && accLanes == 64) {
+      // I1024 inputs (64         lanes each)
+      if (lhsLanes == 64 && rhsLanes == 64 && accLanes == 64) {
         // Uses I1024.I1024.ACC2048 (64 lanes of f32)
         return {DecodedMatMulOp::Kind::BF16_8x8x8_I1024_ACC2048, lhs, rhs, acc,
                 60};
@@ -5582,11 +5742,12 @@ void populateAIEVecToLLVMCommonConversionPatterns(
   // clang-format on
 }
 
-void populateAIEVecToLLVMAIE2ConversionPatterns(
+static void populateAIEVecToLLVMAIE2ConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
     Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // Patterns specific to AIE2 backend
   patterns.add<AddElemOpAIE2Conversion, SubElemOpAIE2Conversion>(converter);
+  patterns.add<NegOpAIE2Conversion>(converter);
   patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   patterns.add<UPSOpAIE2Conversion, SRSOpAIE2Conversion>(converter);
   patterns.add<ShiftOpConversion>(converter);
@@ -5686,6 +5847,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
   // Patterns specific to AIE2p backend
   patterns.add<AddElemOpAIE2pConversion, SubElemOpAIE2pConversion>(converter);
+  patterns.add<NegOpAIE2pConversion>(converter);
   patterns.add<MulElemOpAIE2pConversion>(converter);
   patterns.add<FMAElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);

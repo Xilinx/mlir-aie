@@ -48,17 +48,65 @@ def merge_raw_profiles(host_llvm_profdata, profile_data_dir, preserve_profiles):
     return profdata_path
 
 
-def prepare_html_report(
-    host_llvm_cov, profile, report_dir, binaries, restricted_dirs, compilation_dir
-):
-    print(":: Preparing html report for {0}...".format(binaries), end="")
-    sys.stdout.flush()
+def cov_objects(binaries):
+    # llvm-cov takes the first binary positionally and the rest as -object args.
     objects = []
     for i, binary in enumerate(binaries):
         if i == 0:
             objects.append(binary)
         else:
             objects.extend(("-object", binary))
+    return objects
+
+
+def warn_if_restrict_ineffective(lcov_path, restricted_dirs):
+    """llvm-cov's SOURCES filter silently reports on every file instead of
+    erroring if none of the given paths match anything in its coverage
+    mapping. Warn loudly here, at the source, instead of only masking the
+    symptom in whatever later consumes this lcov file."""
+    if not restricted_dirs:
+        return
+    restricted = [os.path.normpath(d) for d in restricted_dirs]
+    unexpected = set()
+    with open(lcov_path) as lcov:
+        for line in lcov:
+            if line.startswith("SF:"):
+                path = os.path.normpath(line[len("SF:") :].strip())
+                if not any(
+                    path == r or path.startswith(r + os.sep) for r in restricted
+                ):
+                    unexpected.add(path)
+    if unexpected:
+        print(
+            "::warning::--restrict was given {0} path(s), but the lcov "
+            "export still includes {1} file(s) outside them -- llvm-cov's "
+            "SOURCES filter may have silently no-opped. Examples: "
+            "{2}".format(len(restricted), len(unexpected), sorted(unexpected)[:5]),
+            file=sys.stderr,
+        )
+
+
+def export_lcov(host_llvm_cov, profile, lcov_path, binaries, restricted_dirs):
+    print(":: Exporting lcov to {0}...".format(lcov_path), end="")
+    sys.stdout.flush()
+    with open(lcov_path, "wb") as lcov:
+        subprocess.check_call(
+            [host_llvm_cov, "export", "-format", "lcov"]
+            + cov_objects(binaries)
+            + ["-instr-profile", profile]
+            + restricted_dirs,
+            stdout=lcov,
+        )
+    warn_if_restrict_ineffective(lcov_path, restricted_dirs)
+    print("Done!")
+
+
+def prepare_html_report(
+    host_llvm_cov, profile, report_dir, binaries, restricted_dirs, compilation_dir
+):
+    print(":: Preparing html report for {0}...".format(binaries), end="")
+    sys.stdout.flush()
+    objects = cov_objects(binaries)
     invocation = (
         [host_llvm_cov, "show"]
         + objects
@@ -156,6 +204,13 @@ if __name__ == "__main__":
         help="Emit a unified report for all binaries",
     )
     parser.add_argument(
+        "--emit-lcov",
+        metavar="PATH",
+        type=str,
+        default="",
+        help="Also export coverage as an lcov file at PATH (for diff coverage)",
+    )
+    parser.add_argument(
         "--restrict",
         metavar="R",
         type=str,
@@ -198,3 +253,11 @@ if __name__ == "__main__":
             args.restrict,
             args.compilation_dir,
         )
+        if args.emit_lcov:
+            export_lcov(
+                args.host_llvm_cov,
+                profdata_path,
+                args.emit_lcov,
+                args.binaries,
+                args.restrict,
+            )

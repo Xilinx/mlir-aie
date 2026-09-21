@@ -55,16 +55,12 @@ combined tradeoff) see Sections 3 – 5 of the paper.
 
 ## Examples
 
-These designs use IRON and currently require the **chess** compiler (each
-`config*/n32_core.py` declares its bfp16 mac kernel with `use_chess=True`
-on the `ExternalFunction`).  Peano's AIE2P backend still crashes on the
-bfp16 matmul kernels — verified June 2026 with `llvm-aie 21.0.0.2026052701+9e603b76`:
-
-```
-fatal error: error in backend: unable to legalize instruction:
-  %242:_(<8 x s8>) = G_BUILD_VECTOR %243:_(s8), %243:_(s8), ...
-  (in function: matmul_vectorized_bfp16)
-```
+These designs use IRON and build with the **Peano** compiler (the default
+`ExternalFunction` path). The kernels make the register placement behind the
+asymmetric buffering explicit via DM-bank annotations
+(`__aie_dm_resource_a/b/c/d`) on the tile pointers and buffer streams, and
+tune software pipelining with the loop-hint macros from
+[`aie_kernels/aie_kernel_utils.h`](../../../../aie_kernels/aie_kernel_utils.h).
 
 Build any of them with:
 
@@ -116,20 +112,20 @@ make devicename=npu2 run M=4096 K=4096 N=2048
 
 ## Performance
 
-All three examples build and run end-to-end against `mlir-aie` HEAD (May 2026
-wheel) with the **chess** compiler.
+All three examples build and run end-to-end against `mlir-aie` HEAD (August 2025) with the Peano compiler.
 
 Peak throughput at the paper-scale shapes, using `sudo xrt-smi configure
---pmode turbo` and 20 warmup + 20 iters (min NPU time across iters):
+--pmode turbo` and 20 warmup + 20 iters (min NPU time across iters), measured
+on Strix Point (Ryzen AI MAX+ 395, ASUS ROG Flow Z13):
 
-| Config | Shape (M × K × N) | L1 tile `m × k × n` | ρ | Strix Point NPU | Krackan Point NPU |
-|---|---|---|---|---|---|
-| 1 | 4096 × 4096 × 2048 | 128 × 64 × 128 | 4 | 24.3 TFLOPS | 27.33 TFLOPS |
-| 2 | 3072 × 4096 × 1536 | 192 × 128 × 96 | 6 | 31.3 TFLOPS | 31.58 TFLOPS |
-| 3 | 4096 × 4096 × 2048 | 128 × 64 × 128 | 4 | 28.5 TFLOPS | 28.60 TFLOPS |
+| Config | Shape (M × K × N) | L1 tile `m × k × n` | ρ | Strix Point NPU |
+|---|---|---|---|---|
+| 1 | 4096 × 4096 × 2048 | 128 × 64 × 128 | 4 | 24.2 TFLOPS |
+| 2 | 3072 × 4096 × 1536 | 192 × 128 × 96 | 6 | 32.5 TFLOPS |
+| 3 | 4096 × 4096 × 2048 | 128 × 64 × 128 | 4 | 30.3 TFLOPS |
 
-Strix Point column: Ryzen AI 9 HX 370. Krackan Point column: Ryzen AI 7,
-ASUS Vivobook.
+For reference, the paper reports 24.3 / 31.3 / 28.5 TFLOPS for configs
+1 / 2 / 3 on a Strix Point laptop.
 
 ## Reference
 

@@ -152,9 +152,13 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         slice.offsets[d] = pattern.offsets[d] + i * chunkSize;
 
         auto sub = decomposeRecursive(forOp, bufType, tm, col, row, slice);
+        // failed() above already guards this deref; the checker just doesn't
+        // associate FailureOr's failed()/succeeded() with its optional base.
         if (failed(sub))
           return failure();
-        combined.append(sub->begin(), sub->end());
+        SmallVector<NdDmaPattern> &subPatterns =
+            *sub; // NOLINT(bugprone-unchecked-optional-access)
+        combined.append(subPatterns.begin(), subPatterns.end());
       }
       return combined;
     }
@@ -210,7 +214,13 @@ bool AIEX::isDecomposableNdDmaPattern(Operation *forOp,
 
   auto decomposed = decomposeNdDmaPattern(forOp, referencedBufType, pattern,
                                           targetModel, tileCol, tileRow);
-  return succeeded(decomposed) && !decomposed->empty();
+  // failed() above already guards this deref; the checker just doesn't
+  // associate FailureOr's failed()/succeeded() with its optional base.
+  if (failed(decomposed))
+    return false;
+  SmallVector<NdDmaPattern> &bds =
+      *decomposed; // NOLINT(bugprone-unchecked-optional-access)
+  return !bds.empty();
 }
 
 FailureOr<SmallVector<NdDmaPattern>>

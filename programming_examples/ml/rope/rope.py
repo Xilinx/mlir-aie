@@ -5,8 +5,6 @@
 #
 """Row-wise bf16 RoPE (Rotary Position Embedding) — IRON API design.
 
-NPU2-only: ``rope.cc`` lives under ``aie_kernels/aie2p/`` only.
-
 Four cores process ``sequence_length // 4`` rows each.  Per row, on
 even/odd element pairs::
 
@@ -20,28 +18,31 @@ host-side from ``theta = 10000`` per the canonical RoPE formula.
 import argparse
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
-from aie.utils.hostruntime.argparse import device_from_args
+import numpy as np
+from aie.helpers.taplib import TensorTiler2D
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib import TensorTiler2D
 from aie.utils import config
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/rope.cc"
+_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/generic/rope.cc"
 
 
 def _rope_extern(chunk_type):
     return ExternalFunction(
         "rope",
         source_file=str(_KERNEL_SRC),
-        arg_types=[chunk_type, chunk_type, chunk_type, np.int32],
+        arg_types=[
+            chunk_type,
+            chunk_type,
+            chunk_type,
+            np.int32,  # pyright: ignore[reportArgumentType]
+        ],
         include_dirs=[config.cxx_header_path()],
     )
 
@@ -55,7 +56,6 @@ def rope(
     sequence_length: CompileTime[int] = 64,
     embedding_dim: CompileTime[int] = 4096,
 ):
-    device = iron.get_current_device()
     n_cores = 4
 
     if sequence_length % n_cores != 0:
@@ -117,7 +117,7 @@ def rope(
         ],
     )
 
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

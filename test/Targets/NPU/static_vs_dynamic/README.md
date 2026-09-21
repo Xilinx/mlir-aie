@@ -43,13 +43,13 @@ target npu1. Device info is baked into the TXN header words, so equivalence is
 checked per generation.
 
 Between them the tests exercise every op the C++ TXN target supports: `write32`,
-`maskwrite32`, `blockwrite`, `address_patch`, and `sync`.
+`maskwrite32`, `blockwrite`, `blockwrite_values`, `address_patch`, and `sync`.
 
-Only `rtp_write` carries the runtime value: it is the most a runtime argument
-can drive without pushing the BD onto the per-register `write32` path, which
-would make the static and dynamic streams differ structurally rather than in
-value. Genuinely runtime-valued DMA sizes/strides arrive with the Phase-2
-dynamic BD-word encoder, which will extend this harness.
+`rtp_write` is the only runtime value in the byte-exact tests: anything more
+puts the BD on the dynamic path, whose block-write payload is assembled at
+TXN-build time, so the static and dynamic streams differ structurally rather
+than in value. Those are covered by the `*_dynamic_*.mlir` tests, which compare
+replayed register state (`-DDYN_STRUCTURAL`) instead of bytes.
 
 ## Adding a new size
 

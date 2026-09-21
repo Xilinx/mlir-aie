@@ -27,26 +27,27 @@ import argparse
 import os
 import sys
 
-import numpy as np
-
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, TaskGroup
-from aie.utils.hostruntime.argparse import device_from_args
+import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from aie.utils.hostruntime import set_current_device
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.iron import In, ObjectFifo, Out, Program, Runtime, TaskGroup
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
+
+from . import mb_utils
+from .bottleneck.cascade import cascade_bottlenecks
 
 # Sibling imports below resolve via the script's parent dir (auto-added
 # to sys.path[0] when invoked as ``python3 .../aie2_mobilenet_iron.py``).
 from .bottleneck.init import init_conv
-from .bottleneck.regular import regular_bottlenecks
 from .bottleneck.pipeline import pipeline_bottlenecks
-from .bottleneck.cascade import cascade_bottlenecks
 from .bottleneck.post_l1 import post_l1
 from .bottleneck.post_l2 import post_l2
+from .bottleneck.regular import regular_bottlenecks
 from .network_spec import block as nsblock
-from . import mb_utils
+
+# Physical tile placement lives in placement.py (algorithm/mapping split).
+from .placement import PLACEMENT
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -65,10 +66,6 @@ tensorInW, tensorInH, tensorInC = nsblock("init").layers[0].in_shape
 post_L1_OutW, post_L1_OutH, _ = nsblock("post_l1").layers[0].out_shape
 post_L2_InC = nsblock("post_l2").layers[0].in_shape[2]
 post_L2_OutC = nsblock("post_l2").layers[-1].out_shape[2]
-
-
-# Physical tile placement lives in placement.py (algorithm/mapping split).
-from .placement import PLACEMENT
 
 
 # ---------------------------------------------------------------------------

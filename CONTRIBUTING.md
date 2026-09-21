@@ -12,7 +12,9 @@ below before contributing.
 We use GitHub to host code, collaborate, and manage version control. All changes
 go through pull requests; [GitHub issues](https://github.com/Xilinx/mlir-aie/issues)
 track known bugs, and [GitHub Discussions](https://github.com/Xilinx/mlir-aie/discussions)
-are the place for usage questions and feature ideas.
+are the place for usage questions and feature ideas. For more informal, real-time
+chat with the team and other users, join the [ROCm Discord](https://discord.gg/UbXzGdXsR5)
+and look for the **ROCm-NPU** channel.
 
 ## Issue tracking
 
@@ -71,10 +73,12 @@ update (this repository holds its own docs; there is no separate docs repo).
 
 ## Formatting and hooks
 
-Formatting is enforced by [pre-commit](https://pre-commit.com/), installed by
-`utils/env_install.sh --dev`. The hooks run automatically — validators on every
-commit, and the formatters on `git push` — so CI should never be the first place
-you find out about a formatting issue. To run them by hand:
+Formatting and linting are enforced by [pre-commit](https://pre-commit.com/),
+installed by `utils/env_install.sh --dev`. The hooks run automatically —
+lightweight validators (REUSE, merge-conflict markers, etc.) on every commit,
+and the heavier formatting/lint checks (`clang-format`, `black`, `ruff check`)
+on `git push` — so CI should never be the first place you find out about a
+formatting or lint issue. To run them by hand:
 
 ```shell
 pre-commit run --all-files
@@ -82,22 +86,100 @@ pre-commit run --all-files
 
 The hooks cover:
 
-- **C++** — [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html)
+- **C++ and TableGen (`*.td`)** — [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html)
   (LLVM style; config in `.clang-format`).
-- **Python and notebooks** — [`black`](https://black.readthedocs.io/), plus
-  `nbstripout` to scrub notebook output before it is committed.
+- **Python and notebooks** — [`black`](https://black.readthedocs.io/) for
+  formatting, plus `nbstripout` to scrub notebook output before it is
+  committed.
+- **Python lint** — [`ruff check`](https://docs.astral.sh/ruff/) (see
+  [Linting Python](#linting-python) below).
+- **C++ static analysis** — [`clang-tidy`](https://clang.llvm.org/extra/clang-tidy/),
+  scoped to a growing list of files (see
+  [Static analysis for C++](#static-analysis-for-c-clang-tidy) below).
 - **Baseline hygiene** — trailing whitespace, end-of-file, merge-conflict
   markers, and [REUSE](https://reuse.software/) license-header compliance.
 
-If you would rather not install the hooks, you can run `clang-format -i <file>`
-and `black <file>` directly, but the hooks are the supported path.
+If you would rather not install the hooks, you can run `clang-format -i <file>`,
+`black <file>`, and `ruff check --fix <file>` directly, but the hooks are the
+supported path.
+
+## Linting Python
+
+Python style and common bugs are checked with
+[ruff](https://docs.astral.sh/ruff/), scoped to `python/{iron,utils,helpers,
+compiler}` and a growing set of `programming_examples/` directories —
+`ruff.toml`'s `include` list at the repo root is the source of truth for
+exactly which paths are covered. The pre-push hook runs `ruff check` and
+blocks the push on any violation; run it by hand with:
+
+```shell
+ruff check
+```
+
+Rules enabled: pyflakes/pycodestyle errors (`E`, `F`), import sorting (`I`), a
+narrow pep8-naming subset (`N802`, `N816`), and pydocstyle (`D`, Google
+convention, `python/{iron,utils,helpers,compiler}` only for now) for docstring
+*style* — see [Documenting your code](#documenting-your-code). `ruff.toml`
+documents, rule by rule, why anything is excluded from the default rule set;
+per-file exceptions live in `[lint.per-file-ignores]`, each with an inline
+justification. Follow that pattern if you need a new one — an unexplained
+exception won't pass review.
+
+## Static analysis for C++ (clang-tidy)
+
+C++ is checked with [clang-tidy](https://clang.llvm.org/extra/clang-tidy/)
+(config in `.clang-tidy`), scoped to an explicit, growing list of files
+rather than the whole repo at once — currently just
+`lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp`. Unlike
+clang-format, clang-tidy needs a real compile database
+(`compile_commands.json`) and the tablegen'd headers a file includes to parse
+anything, so it can't run as a bare per-file text check the way the
+formatting hooks do.
+
+If you already have a build (see [Building from source](docs/Building.md)),
+point the pre-push hook and CI at it — any build works, clang or GCC:
+
+```shell
+# If your build wasn't configured with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON,
+# generate compile_commands.json in place:
+ninja -C build -t compdb > build/compile_commands.json
+
+# Defaults to build/ at the repo root; override if yours lives elsewhere:
+export MLIR_AIE_BUILD_DIR=/path/to/build
+```
+
+The pre-push hook then runs it automatically on enabled files you've
+touched, via `utils/run_clang_tidy.sh` — a pinned `clang-tidy==20.1.0`
+(matching clang-format's pinned version, via `python/requirements_dev.txt`)
+rather than a bare `apt install clang-tidy`, so the version doesn't silently
+drift between your machine and CI. If there's no compile database yet, the
+hook fails with the setup hint above instead of silently skipping. To run it
+by hand:
+
+```shell
+utils/run_clang_tidy.sh <file>...
+```
+
+CI mirrors this exactly (see the `clang-tidy` step in
+`.github/workflows/lintAndFormat.yml`), scoped to whichever enabled files a
+given PR actually touched — not the full enabled list every time, the way
+`pyright`/`ruff check` operate below. A PR that doesn't touch any enabled
+file passes trivially.
+
+Growing the enabled file list is the same three-part motion as extending
+ruff/pyright coverage: add the path to `CLANG_TIDY_FILES` in
+`lintAndFormat.yml`'s clang-tidy step, add it to the `files:` regex on the
+`clang-tidy` pre-commit hook (`.pre-commit-config.yaml` — the two must stay
+in sync, same convention `ruff-check` uses for `ruff.toml`'s `include`), and
+fix that file's findings.
 
 ## Type checking Python
 
-The pure-Python package (`python/{iron,utils,helpers,compiler}`) is type-checked
-with [pyright](https://github.com/microsoft/pyright) in `standard` mode, and CI
-fails on any error. Configuration lives in `pyrightconfig.json` at the repo root.
-After a normal build/install you can run:
+The pure-Python package (`python/{iron,utils,helpers,compiler}`) and a growing
+set of `programming_examples/` directories (`pyrightconfig.json`'s `include`
+list at the repo root is the source of truth) are type-checked with
+[pyright](https://github.com/microsoft/pyright) in `standard` mode, and CI
+fails on any error. After a normal build/install you can run:
 
 ```shell
 pyright
@@ -119,9 +201,16 @@ disable rules.
 
 ## Documenting your code
 
-- **Python** — document public functions, classes, and modules with docstrings.
+- **Python** — document public functions, classes, and modules with
+  docstrings, using the Google convention (`Args:`/`Returns:`/`Raises:`
+  sections, one arg per line as `name (type[, optional]): description`).
   These are rendered into the [API reference](docs/api/index.md) via
-  mkdocstrings, so a good docstring is also good published documentation.
+  mkdocstrings, so a good docstring is also good published documentation. In
+  `python/{iron,utils,helpers,compiler}`, ruff's pydocstyle rules enforce the
+  *style* of a docstring once you've written one (blank-line placement,
+  imperative first line, terminal punctuation) — see
+  [Linting Python](#linting-python). Writing a docstring in the first place is
+  still expected for anything public-facing, just not yet machine-enforced.
 - **C++** — use Doxygen-style triple-slash comments (`///`, with `\brief`,
   `\param`, `\returns` as needed) on public declarations in headers. These feed
   the [C++ API reference](docs/api/cpp_doxygen.md).

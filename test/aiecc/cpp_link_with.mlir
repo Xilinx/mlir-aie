@@ -9,7 +9,7 @@
 
 // Test external object file linking via link_with attribute
 
-// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --get-npu-insts --verbose %s 2>&1 | FileCheck %s
 
 // Coverage: parse -> resource allocation (placed) -> routing (input_physical)
 // -> completion. The npu-insts path does not pull core compilation; link_with
@@ -30,11 +30,9 @@ module {
     func.func private @external_func(memref<16xi32>, memref<16xi32>) attributes {link_with = "external.o"}
 
     %core_0_2 = aie.core(%tile_0_2) {
-      %subview_in = aie.objectfifo.acquire @of_in(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_in = aie.objectfifo.subview.access %subview_in[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_in = aie.objectfifo.acquire @of_in(Consume, 1) : memref<16xi32>
 
-      %subview_out = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_out = aie.objectfifo.subview.access %subview_out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_out = aie.objectfifo.acquire @of_out(Produce, 1) : memref<16xi32>
 
       func.call @external_func(%elem_in, %elem_out) : (memref<16xi32>, memref<16xi32>) -> ()
 

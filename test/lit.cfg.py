@@ -25,7 +25,7 @@ from aie_lit_utils import LitConfigHelper
 # name: The name of this test suite.
 config.name = "AIE_TEST"
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir", ".py", ".test"]
@@ -52,18 +52,31 @@ llvm_config.with_system_environment(
         "HRX_LIBHRX",
         "LIBHRX_DIR",
         "LD_LIBRARY_PATH",
+        "ROCM_PATH",
+        "IRON_HSA_DEVICE",
+        "IRON_HSA_TIMEOUT",
     ]
 )
 
 # Basic substitutions
-config.substitutions.append(("%PYTHON", config.python_executable))
+# lit runs many Python/JIT tests in one suite; give each test file its own
+# NPU cache namespace so cache state cannot leak between unrelated tests while
+# still allowing multiple RUN lines from one test to share that test-local cache.
+_python_with_test_cache = LitConfigHelper._run_with_test_cache_wrap(config.aie_src_root)
+config.substitutions.append(
+    (
+        "%PYTHON",
+        f"{_python_with_test_cache} "
+        f"{LitConfigHelper._quote_lit_arg(config.python_executable)}",
+    )
+)
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
 config.substitutions.append(
     ("%aie_runtime_lib%", os.path.join(config.aie_obj_root, "aie_runtime_lib"))
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # Show only failures
-config.substitutions.append(("%pytest", "pytest -rA"))
+config.substitutions.append(("%pytest", f"{_python_with_test_cache} pytest -rA"))
 
 # Setup test library substitutions
 LitConfigHelper.setup_test_lib_substitutions(
@@ -82,6 +95,7 @@ config.substitutions.append(("%HSA_DIR%", ""))
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 LitConfigHelper.setup_host_compiler_substitutions(config)
+LitConfigHelper.add_makefile_examples_feature(config)
 
 # Detect Peano before XRT feature gating for systems without Chess/AIETOOLS.
 early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
@@ -211,6 +225,37 @@ if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
 if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
     config.available_features.add("hrxxclbinutil")
 
+# aiebu ELF packager: gate tests that feed a runtime-assembled TXN blob to the
+# real `aiebu-asm` (the downstream tool that enforces invariants plain XRT
+# dispatch does not, e.g. block-write-covers-patch). It ships with XRT. Prefer
+# the configured XRT bin dir (config.xrt_bin_dir, also prepended to PATH above),
+# then PATH, then the standard install location so the feature still fires on a
+# host that has XRT installed but was not built with it wired into cmake. The
+# %aiebu_asm substitution wraps the binary with the LD_LIBRARY_PATH its shared
+# libaiebu needs so RUN lines invoke it directly. Tests carry
+# `// REQUIRES: aiebu` so they skip (not silently pass) where the tool is
+# absent, e.g. on a CI runner without XRT installed.
+_aiebu_asm = None
+for _cand_dir in [config.xrt_bin_dir, None, "/opt/xilinx/xrt/bin"]:
+    if _cand_dir == "":
+        continue
+    _aiebu_asm = shutil.which("aiebu-asm", path=_cand_dir)
+    if _aiebu_asm is not None:
+        break
+if _aiebu_asm is not None:
+    config.available_features.add("aiebu")
+    # libaiebu lives next to the bin dir; use the configured XRT lib dir when
+    # cmake provided one, else derive it from the located binary.
+    _aiebu_libdir = config.xrt_lib_dir or os.path.join(
+        os.path.dirname(os.path.dirname(_aiebu_asm)), "lib"
+    )
+    config.substitutions.append(
+        (
+            "%aiebu_asm",
+            f"env LD_LIBRARY_PATH={_aiebu_libdir}:$LD_LIBRARY_PATH {_aiebu_asm}",
+        )
+    )
+
 # HRX Python runtime: gate the HRX-only Python tests (test/python/npu-hrx) on
 # libhrx being locatable, so they only run where the HRX backend can load. This
 # checks a runtime value (aie.utils.has_hrx), not just importability.
@@ -227,6 +272,20 @@ if hrx_npu:
         lit_config.fatal(f"AIE_HRX_NPU must be 'npu1' or 'npu2', got {hrx_npu!r}")
     config.available_features.add(f"hrx_{hrx_npu}")
     if hrx_npu == "npu2":
+        llvm_config.with_environment("NPU2", "1")
+
+# HSA hardware is explicitly provisioned, independently of the XRT probe.
+# Finding ROCm alone is insufficient: GPU-only hosts also have libhsa.
+hsa_npu = os.environ.get("AIE_HSA_NPU")
+if hsa_npu:
+    if hsa_npu not in {"npu1", "npu2"}:
+        lit_config.fatal(f"AIE_HSA_NPU must be 'npu1' or 'npu2', got {hsa_npu!r}")
+    if not LitConfigHelper.python_expr_is_true(
+        config, config.python_executable, "__import__('aie.utils').utils.has_hsa"
+    ):
+        lit_config.fatal("AIE_HSA_NPU requires an AIE-capable HSA/ROCR installation")
+    config.available_features.add("hsa_npu")
+    if hsa_npu == "npu2":
         llvm_config.with_environment("NPU2", "1")
 
 if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
@@ -246,6 +305,36 @@ if config.has_mlir_runtime_libraries:
 
 if config.pytorch:
     config.available_features.add("pytorch")
+
+# Per-backend, per-RUN-line device runners for the runtime-agnostic on-device
+# Python tests (test/python/npu). lit's REQUIRES is file-level, but those tests
+# carry both XRT and HRX RUN lines, and the two backends run on separate CI
+# runners with mutually exclusive Python bindings (the pure-HRX runner has no
+# pyxrt). So gate each RUN line via a dedicated substitution instead:
+#   * %run_on_npu1_xrt% / %run_on_npu2_xrt% -> the XRT device wrapper only when
+#     pyxrt is importable, else a no-op "echo" (so the XRT lines skip cleanly on
+#     an XRT-free HRX host rather than dispatching CPU tensors on the NPU);
+#   * %run_on_npu2_hrx% -> plain "env NPU_RUNTIME=hrx" when libhrx is locatable,
+#     else a no-op "echo".
+# The HRX substitution deliberately does NOT reuse the XRT %run_on_npu2% device
+# wrapper: that wrapper probes for an *XRT* NPU and collapses to "echo" on the
+# XRT-free pure-HRX runner, which would silently turn every HRX RUN line into a
+# no-op (the tests would appear to pass without ever dispatching). The HRX
+# hardware job instead declares its device explicitly via AIE_HRX_NPU (the
+# hrx_npu2 feature above), matching the device-decoupled gating the pure-HRX
+# npu-hrx tests use, so this line only needs the libhrx capability check.
+_xrt_ok = "xrt_python_bindings" in config.available_features
+_hrx_ok = "hrx_python_bindings" in config.available_features
+_run_on_npu1 = xrt_config.substitutions.get("%run_on_npu1%", "echo")
+_run_on_npu2 = xrt_config.substitutions.get("%run_on_npu2%", "echo")
+config.substitutions.append(("%run_on_npu1_xrt%", _run_on_npu1 if _xrt_ok else "echo"))
+config.substitutions.append(("%run_on_npu2_xrt%", _run_on_npu2 if _xrt_ok else "echo"))
+config.substitutions.append(
+    ("%run_on_npu2_hrx%", "env NPU_RUNTIME=hrx" if _hrx_ok else "echo")
+)
+config.substitutions.append(
+    ("%run_on_npu_hsa%", "env NPU_RUNTIME=hsa" if hsa_npu else "echo")
+)
 
 if "LIT_AVAILABLE_FEATURES" in os.environ:
     for feature in os.environ["LIT_AVAILABLE_FEATURES"].split():

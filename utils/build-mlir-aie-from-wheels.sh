@@ -133,8 +133,16 @@ if [ -x "$(command -v lld)" ]; then
   CMAKE_CONFIGS+=(-DLLVM_USE_LINKER=lld)
 fi
 
+# LLVM_CCACHE_BUILD is declared and acted on in llvm/CMakeLists.txt, LLVM's
+# top-level project file, not in HandleLLVMOptions.cmake, which is what a
+# standalone consumer includes.  Building mlir-aie against the MLIR wheels never
+# reaches that file, so the option was silently dropped and CMake said so on
+# every build ("Manually-specified variables were not used by the project:
+# LLVM_CCACHE_BUILD").  Set the launcher directly, which is the portable
+# spelling and the one this repo's own workflows already use.
 if [ -x "$(command -v ccache)" ]; then
-  CMAKE_CONFIGS+=(-DLLVM_CCACHE_BUILD=ON)
+  CMAKE_CONFIGS+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache)
+  CMAKE_CONFIGS+=(-DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
 fi
 
 # Do not use LLVM_PARALLEL_{COMPILE,LINK}_JOBS: HandleLLVMOptions is included

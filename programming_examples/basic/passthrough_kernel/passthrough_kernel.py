@@ -8,9 +8,8 @@
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import (
     CompileTime,
     In,

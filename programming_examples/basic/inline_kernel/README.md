@@ -94,4 +94,3 @@ surviving calls and no separate `add_one.o`.
 - `inline=True` is incompatible with `symbol_prefix` (an inline kernel is emitted
   as LLVM IR and cannot be symbol-renamed); combining them raises an error.
 - With `inline=True`, an explicit `object_file_name` must end in `.ll` or `.bc`.
-

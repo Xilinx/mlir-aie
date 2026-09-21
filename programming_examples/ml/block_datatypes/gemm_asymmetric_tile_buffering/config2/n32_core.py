@@ -8,18 +8,16 @@
 
 All-bfp16 variant of the config1 design: A, B, and C are
 ``v8bfp16ebs8``; each AIE2P core's L1 A-tile is (m//DIV, k//8) with
-asymmetry ratio DIV=6. Strix-only; chess-built kernel.
+asymmetry ratio DIV=6. Strix-only; Peano-built kernel.
 """
 
 import argparse
 from pathlib import Path
 
+import aie.iron as iron
 import numpy as np
-
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
-
-import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -33,8 +31,8 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -44,7 +42,7 @@ _AIE_KERNELS_INC = Path(__file__).resolve().parents[5] / "aie_kernels"
 DIV = 6
 
 
-@iron.jit(aiecc_flags=["--dynamic-objFifos", "--alloc-scheme=basic-sequential"])
+@iron.jit(aiecc_flags=["--dynamic-objFifos"])
 def n32_core_gemm(
     A: In,
     B: In,
@@ -69,9 +67,6 @@ def n32_core_gemm(
     C_l1_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
     kernel_flags = [
-        f"-DDIM_M={m}",
-        f"-DDIM_K={k}",
-        f"-DDIM_N={n}",
         f"-I{_AIE_KERNELS_INC}",
     ]
 
@@ -80,54 +75,57 @@ def n32_core_gemm(
         source_file=str(_KERNEL_SRC),
         arg_types=[C_l1_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
+    # The flat pipelined block loop in the matmul kernel has ResMII=68, which
+    # exceeds the post-RA pipeliner's default max II (60); raise the cap and
+    # the retry budget for this TU.
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
+        compile_flags=kernel_flags
+        + [
+            "-DMATMUL_ONLY",
+            "-mllvm",
+            "-aie-postpipeliner-maxii=120",
+            "-mllvm",
+            "-aie-postpipeliner-maxtry-ii=50",
+        ],
     )
 
-    A_l3l2_fifos = [None] * n_aie_rows
-    A_l2l1_fifos = [None] * n_aie_rows
-    B_l3l2_fifos = [None] * n_aie_cols
-    B_l2l1_fifos = [None] * n_aie_cols
-    C_l1l2_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
-    C_l2l3_fifos = [None] * n_aie_cols
+    A_l3l2_fifos: list[ObjectFifo] = []
+    A_l2l1_fifos: list[ObjectFifo] = []
+    B_l3l2_fifos: list[ObjectFifo] = []
+    B_l2l1_fifos: list[ObjectFifo] = []
+    C_l1l2_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
+    C_l2l3_fifos: list[ObjectFifo] = []
 
     for row in range(n_aie_rows):
-        A_l3l2_fifos[row] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{row}", depth=2)
-        A_l2l1_fifos[row] = (
-            A_l3l2_fifos[row]
-            .cons()
-            .forward(obj_type=A_l1_ty, name=f"A_L2L1_{row}", depth=2)
+        a_l3l2 = ObjectFifo(A_l2_ty, name=f"A_L3L2_{row}", depth=2)
+        A_l3l2_fifos.append(a_l3l2)
+        A_l2l1_fifos.append(
+            a_l3l2.cons().forward(obj_type=A_l1_ty, name=f"A_L2L1_{row}", depth=2)
         )
 
     for col in range(n_aie_cols):
-        B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=2)
-        B_l2l1_fifos[col] = (
-            B_l3l2_fifos[col]
-            .cons()
-            .forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2)
+        b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=2)
+        B_l3l2_fifos.append(b_l3l2)
+        B_l2l1_fifos.append(
+            b_l3l2.cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2)
         )
 
     for col in range(n_aie_cols):
-        C_l2l3_fifos[col] = ObjectFifo(C_l2_ty, name=f"C_L2L3_{col}", depth=2)
+        c_l2l3 = ObjectFifo(C_l2_ty, name=f"C_L2L3_{col}", depth=2)
+        C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n // 8 * i for i in range(n_aie_rows)]
-        c_tmp_fifos = (
-            C_l2l3_fifos[col]
-            .prod()
-            .join(
-                of_offsets,
-                obj_types=[C_l1_ty] * n_aie_rows,
-                names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
-                depths=[1] * n_aie_rows,
-            )
+        c_tmp_fifos = c_l2l3.prod().join(
+            of_offsets,
+            obj_types=[C_l1_ty] * n_aie_rows,
+            names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
+            depths=[1] * n_aie_rows,
         )
         for j in range(n_aie_rows):
-            C_l1l2_fifos[j][col] = c_tmp_fifos[j]
+            C_l1l2_fifos[j].append(c_tmp_fifos[j])
 
     tiles_per_core = (M // m) * (N // n) // (n_aie_cols * n_aie_rows)
 
@@ -156,7 +154,7 @@ def n32_core_gemm(
                 zero_kernel,
                 matmul_kernel,
             ],
-            stack_size=0xD00,
+            stack_size=0x400,
         ),
     )
 
@@ -175,7 +173,13 @@ def n32_core_gemm(
     num_groups = num_row_tile * num_col_tile
 
     def sequence(a, b, c, A_prods, B_prods, C_conses):
-        slots = [None] * tb_max_n_rows
+        slots: list[TaskGroup | None] = [None] * tb_max_n_rows
+
+        def finish_slot(idx: int):
+            slot = slots[idx]
+            assert slot is not None
+            slot.finish()
+
         for group_idx in range(num_groups):
             slot_idx = group_idx % tb_max_n_rows
             tg = TaskGroup()
@@ -207,14 +211,14 @@ def n32_core_gemm(
                 )
 
             if slot_idx == 1 and group_idx != 1:
-                slots[2].finish()
-                slots[3].finish()
+                finish_slot(2)
+                finish_slot(3)
             if slot_idx == 3:
-                slots[0].finish()
-                slots[1].finish()
+                finish_slot(0)
+                finish_slot(1)
 
-        slots[2].finish()
-        slots[3].finish()
+        finish_slot(2)
+        finish_slot(3)
 
     rt = Runtime(
         sequence,

@@ -33,10 +33,8 @@ module {
       %n  = arith.constant 8 : i32
 
       scf.for %i = %c0 to %c8 step %c1 {
-        %sub_in  = aie.objectfifo.acquire @of_in(Consume, 1)  : !aie.objectfifosubview<memref<8xi32>>
-        %elem_in = aie.objectfifo.subview.access %sub_in[0]   : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
-        %sub_out = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %elem_out = aie.objectfifo.subview.access %sub_out[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
+        %elem_in = aie.objectfifo.acquire @of_in(Consume, 1) : memref<8xi32>
+        %elem_out = aie.objectfifo.acquire @of_out(Produce, 1) : memref<8xi32>
 
         func.call @add_one(%elem_in, %elem_out, %n) : (memref<8xi32>, memref<8xi32>, i32) -> ()
 

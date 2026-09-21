@@ -24,8 +24,9 @@
 using namespace llvm;
 using namespace mlir;
 
-void version_printer(raw_ostream &os) {
+static void version_printer(raw_ostream &os) {
   os << "aie-opt " << AIE_GIT_COMMIT << "\n";
+  os << "  peano: " << AIE_PEANO_VERSION << "\n";
 }
 
 int main(int argc, char **argv) {
@@ -33,6 +34,7 @@ int main(int argc, char **argv) {
   registerAllPasses();
   xilinx::registerConversionPasses();
   xilinx::AIE::registerAIEPasses();
+  xilinx::AIE::registerAIEObjectFifoPipeline();
   xilinx::AIEX::registerAIEXPasses();
   xilinx::aievec::registerAIEVecAnalysisPasses();
   xilinx::aievec::registerAIEVecPasses();

@@ -12,18 +12,17 @@ per-tile kernel is selected by the ``op`` CompileTime parameter and pulled from
 
 import argparse
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel_binary
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 _KERNEL_FACTORIES = {"add": kernels.add, "mul": kernels.mul}
 _NP_OPS = {"add": np.add, "mul": np.multiply}

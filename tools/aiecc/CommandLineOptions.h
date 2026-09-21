@@ -99,6 +99,9 @@ inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::init(true));
 inline cl::opt<bool> packetSwObjFifos("packet-sw-objFifos",
                                       cl::desc("Packet-switched objectFIFOs"));
+inline cl::opt<bool> skipObjectFifoVerify(
+    "skip-objectFifo-verify",
+    cl::desc("Skip structural verification of split objectFifo IR"));
 inline cl::opt<bool>
     ctrlPktOverlay("generate-ctrl-pkt-overlay",
                    cl::desc("Route shim-to-tile control overlay"));
@@ -127,33 +130,43 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
              "with --expand-load-pdis)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
-    cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of "
-             "Peano"),
-    cl::init(true));
-inline cl::opt<bool> noXchesscc(
-    "no-xchesscc",
-    cl::desc("Compile cores with Peano instead of the Chess toolchain "
-             "(implies --no-xbridge)"));
+    cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
+             "default Peano; implies --xbridge unless that is stated too; "
+             "requires Vitis AIE Essentials"));
 inline cl::opt<bool> xbridge(
     "xbridge",
-    cl::desc("Link cores with the Chess toolchain (xbridge/BCF) instead of "
-             "Peano lld"),
-    cl::init(true));
-inline cl::opt<bool> noXbridge(
-    "no-xbridge",
-    cl::desc("Link cores with Peano lld instead of the Chess toolchain "
-             "(xbridge/BCF)"));
+    cl::desc("Link cores with the Chess toolchain (xbridge/BCF) instead of the "
+             "default Peano lld; implies --xchesscc unless that is stated too; "
+             "requires Vitis AIE Essentials"));
 inline cl::opt<std::string> aietoolsDir(
     "aietools",
     cl::desc("Path to the aietools (Vitis AIE) install dir; auto-discovered "
              "from $AIETOOLS_ROOT or xchesscc on PATH when unset"));
 inline cl::opt<bool> unified(
     "unified",
-    cl::desc("Compile all cores of a device together into one shared object; "
-             "link each core separately against it."));
+    cl::desc("Lower all cores of a device together, then carve the result into "
+             "one module per core; each core still compiles and links its "
+             "own object."));
 inline cl::opt<bool> noUnified(
     "no-unified",
-    cl::desc("Compile cores independently (negates --unified; the default)"));
+    cl::desc("Lower each core independently, against its own clone of the "
+             "design (negates --unified; the default)"));
+inline cl::opt<bool> noMeasureStackSize(
+    "no-measure-stack-size",
+    cl::desc("Skip the measurement of each core's stack requirement and the "
+             "check of stack_size against it"));
+inline cl::opt<bool> noMeasureDataSize(
+    "no-measure-data-size",
+    cl::desc("Skip the measurement of each core's static data (.data, .rodata "
+             "and .bss) in its linked ELF and the check of data_size against "
+             "it"));
+inline cl::opt<int> defaultStackSize(
+    "default-stack-size",
+    cl::desc("Stack size in bytes to assume for any core that leaves "
+             "stack_size absent, in place of the target's built-in default "
+             "(AIETargetModel::getDefaultCoreStackSize()). A core with an "
+             "explicit stack_size keeps it."),
+    cl::init(0));
 
 //===----------------------------------------------------------------------===//
 // Runtime sequence to compile (empty = all). Filters the per-sequence NPU
@@ -221,10 +234,33 @@ inline std::vector<std::string> hostPassthroughArgs;
 // artifact's filename template ({0} expands to the device / sequence key).
 
 inline bool generateNpuInsts = false;
+inline bool generateNpuCpp = false;
+inline cl::opt<std::string> npuCppName(
+    "npu-cpp-name",
+    cl::desc("Output C++ transaction builder filename template (use {0} for "
+             "device/sequence)"),
+    cl::init("npu_{0}.cpp"));
+inline cl::opt<bool> npuCppEmitDispatchShim(
+    "npu-cpp-emit-dispatch-shim",
+    cl::desc("Emit dispatch_abi/dispatch_generate C entry points in each NPU "
+             "C++ builder"),
+    cl::init(false));
 inline cl::opt<std::string> npuInstsName(
     "npu-insts-name",
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
     cl::init("insts_{0}.bin"));
+
+// DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+// the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+// offset for every arg itself. cl::opt defaults to true, so only pass the
+// flag when unfolding is requested.
+inline cl::opt<bool> foldDDRAddrOffsetOpt(
+    "fold-ddr-addr-offset",
+    cl::desc("Fold the AIE DDR-aperture offset into arg_plus for args >= 5 "
+             "(xclbin/instruction-buffer runtime ABI). Set false for the "
+             "producer-independent HRX ABI (raw offsets; runtime adds the "
+             "aperture offset for all args)."),
+    cl::init(true));
 
 // Emit the per-core ELFs as an output. Cores are still compiled on demand for
 // any artifact that embeds them (e.g. --get-xclbin); this flag additionally
@@ -350,6 +386,7 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
       {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
       {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
       {"npu-insts", "insts_{0}.bin", &generateNpuInsts},
+      {"npu-cpp", "npu_{0}.cpp", &generateNpuCpp},
       {"elf", "design.elf", &generateElf},
       {"cdo", "cdo_{0}", &generateCdo},
       {"pdi", "{0}.pdi", &generatePdi},
@@ -478,27 +515,18 @@ inline bool doCompileHost = false;
 // Returns false (after a diagnostic) if the requested combination is
 // impossible.
 inline bool resolveOptions() {
-  if (noXchesscc) {
-    xchesscc = false;
-    xbridge = false;
-  }
-  if (noXbridge)
-    xbridge = false;
-  if ((xchesscc || xbridge) && !noXchesscc && !noXbridge) {
-    xchesscc = true;
+  // Each Chess flag implies the other, so that a bare --xchesscc does not hand
+  // Chess-compiled objects to Peano's linker. State both to mix the two.
+  if (xchesscc && !xbridge.getNumOccurrences())
     xbridge = true;
-  }
+  if (xbridge && !xchesscc.getNumOccurrences())
+    xchesscc = true;
 
   wantAiesim = generateAiesim;
-  if (wantAiesim && !xbridge) {
-    if (noXbridge || noXchesscc) {
-      llvm::errs()
-          << "aiecc: --get-aiesim requires --xbridge (the AIE simulator "
-             "consumes Chess-compiled cores)\n";
-      return false;
-    }
-    xchesscc = true;
-    xbridge = true;
+  if (wantAiesim && !(xchesscc && xbridge)) {
+    llvm::errs() << "aiecc: --get-aiesim requires --xchesscc and --xbridge "
+                    "(the AIE simulator consumes Chess-compiled cores)\n";
+    return false;
   }
 
   doUnified = unified && !noUnified;

@@ -12,8 +12,10 @@
 
 // RUN: aiecc --xchesscc --xbridge --get-aiesim -n --verbose %s 2>&1 | FileCheck %s
 
-// Verify aiesim requires xbridge
-// RUN: not aiecc --no-xbridge --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NOXBRIDGE
+// The negative --get-aiesim flag-interaction cases live in
+// cpp_aiesim_negated.mlir: they fire in resolveOptions() before any
+// toolchain is touched, so they don't need Chess and shouldn't be gated on
+// it.
 
 // The sim/ work folder is assembled from declarative graph edges: the
 // graph/shim/scsim descriptors and routed flows are emitted in-process, and
@@ -22,12 +24,9 @@
 // CHECK-DAG: graph.xpe
 // CHECK-DAG: aieshim_solution.aiesol
 // CHECK-DAG: scsim_config.json
-// CHECK-DAG: flows_physical.json
 // CHECK-DAG: -D__AIESIM__
 // CHECK-DAG: genwrapper_for_ps.cpp
 // CHECK-DAG: {{.*}}ps.so
-
-// NOXBRIDGE: --get-aiesim requires --xbridge
 
 module {
   aie.device(npu1_1col) {
@@ -43,11 +42,9 @@ module {
       %c16 = arith.constant 16 : index
       %c1_i32 = arith.constant 1 : i32
 
-      %subview_in = aie.objectfifo.acquire @of_in(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_in = aie.objectfifo.subview.access %subview_in[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_in = aie.objectfifo.acquire @of_in(Consume, 1) : memref<16xi32>
 
-      %subview_out = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_out = aie.objectfifo.subview.access %subview_out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_out = aie.objectfifo.acquire @of_out(Produce, 1) : memref<16xi32>
 
       scf.for %i = %c0 to %c16 step %c1 {
         %val = memref.load %elem_in[%i] : memref<16xi32>

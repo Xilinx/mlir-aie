@@ -22,18 +22,19 @@ forward graphs and stay separate.
 from __future__ import annotations
 
 import math
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn as nn
-
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
 from aie.utils.ml import DataShaper
-
-from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
-from brevitas.quant.fixed_point import (
+from brevitas.nn import (  # pyright: ignore[reportMissingImports]
+    QuantConv2d,
+    QuantIdentity,
+    QuantReLU,
+)
+from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports]
     Int8ActPerTensorFixedPoint,
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
@@ -169,11 +170,13 @@ def _calibrate_with_imagenet(model, expand_to_channels: int) -> None:
     Matches the original scripts bit-for-bit: same transforms, same
     ImageFolder path, same DataLoader settings.
     """
+    import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
+    import torchvision  # pyright: ignore[reportMissingImports]
+    from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
+        calibrate,
+    )
     from mb_utils import ExpandChannels
-    from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
-    import torchvision
-    import torch.utils.data as data_utils
-    from torchvision import transforms
+    from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
     transform = transforms.Compose(
         [

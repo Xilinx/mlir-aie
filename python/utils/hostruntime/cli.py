@@ -13,8 +13,7 @@ Almost every basic/ design's ``main()`` is the same skeleton:
         if opts.emit_mlir:
             print(design.specialize(**_compile_kwargs(opts)).as_mlir()); return
         if opts.xclbin_path:
-            _compile_only(opts)
-            return
+            _compile_only(opts); return
         _run_and_verify(opts)
 
 …where ``_compile_only`` always does the same ``--insts-path`` check +
@@ -96,7 +95,7 @@ def run_design_cli(
     emit_mlir: Callable[[Any], None] | None = None,
     validate: Callable[[Any], None] | None = None,
 ) -> None:
-    """Standard 3-mode CLI dispatcher for basic/ designs.
+    """Dispatch the standard 3-mode CLI for basic/ designs.
 
     The standard branch tree (in order):
 

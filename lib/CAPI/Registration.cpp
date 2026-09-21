@@ -28,6 +28,7 @@ using namespace mlir;
 void aieRegisterAllPasses() {
   xilinx::registerConversionPasses();
   xilinx::AIE::registerAIEPasses();
+  xilinx::AIE::registerAIEObjectFifoPipeline();
   xilinx::AIEX::registerAIEXPasses();
   xilinx::aievec::registerAIEVecAnalysisPasses();
   xilinx::aievec::registerAIEVecPasses();

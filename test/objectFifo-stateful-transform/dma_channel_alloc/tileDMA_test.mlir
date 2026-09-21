@@ -8,34 +8,33 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(3, 3)
-// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
-// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
-// CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]], 3) {init = 0 : i32, sym_name = "objfifo_lock_0"}
-// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_0]], 4) {init = 0 : i32, sym_name = "objfifo_lock_1"}
-// CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_0]]) : memref<16xi32>
-// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_0]], 0)
-// CHECK:           %[[VAL_12:.*]] = aie.buffer(%[[VAL_0]]) : memref<16xi32>
-// CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_0]], 1)
-// CHECK:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_0]]) : memref<16xi32>
-// CHECK:           %[[VAL_15:.*]] = aie.lock(%[[VAL_0]], 2)
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(3, 3)
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_0"}
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_1"}
+// CHECK-DAG:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_0]]) : memref<16xi32>
+// CHECK-DAG:           %[[VAL_11:.*]] = aie.lock(%[[VAL_0]], 0)
+// CHECK-DAG:           %[[VAL_12:.*]] = aie.buffer(%[[VAL_0]]) : memref<16xi32>
+// CHECK-DAG:           %[[VAL_13:.*]] = aie.lock(%[[VAL_0]], 1)
+// CHECK-DAG:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_0]]) : memref<16xi32>
+// CHECK-DAG:           %[[VAL_15:.*]] = aie.lock(%[[VAL_0]], 2)
+// CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           func.func @some_work(%[[VAL_16:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_17:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_18:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_19:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_20:.*]] = arith.constant 12 : index
-// CHECK:             %[[VAL_21:.*]] = arith.constant 2 : index
+// CHECK-DAG:             %[[VAL_18:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[VAL_20:.*]] = arith.constant 12 : index
+// CHECK-DAG:             %[[VAL_21:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[VAL_22:.*]] = %[[VAL_18]] to %[[VAL_20]] step %[[VAL_21]] {
 // CHECK:               aie.use_lock(%[[VAL_8]], Acquire, %{{.*}})
 // CHECK:               func.call @some_work(%[[VAL_6]]) : (memref<16xi32>) -> ()
@@ -121,8 +120,7 @@ module @tileDMA_channels {
             %height = arith.constant 12 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
-                %subview = aie.objectfifo.acquire @objfifo (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-                %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %elem0 = aie.objectfifo.acquire @objfifo (Produce, 1) : memref<16xi32>
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
                 aie.objectfifo.release @objfifo (Produce, 1)
             }

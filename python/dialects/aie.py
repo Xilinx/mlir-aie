@@ -27,7 +27,6 @@ from array import array
 
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._aie import (
-    ObjectFifoSubviewType,
     ObjectFifoType,
     get_target_model,
     aie_llvm_link,
@@ -204,6 +203,10 @@ class external_func(FuncOp):
             the core's LLVM module with ``llvm-link`` before codegen instead of
             object-linking it.  Requires ``link_with``.  When omitted, the
             artifact is object-linked, whatever its suffix.
+        stack_size_override: Declared upper bound, in bytes, on the stack that
+            this function's call subtree uses. It replaces the number aiecc's
+            analysis computes, even when it is smaller. See
+            `programming_guide/core_data_memory.md` for when to set it.
     """
 
     def __init__(
@@ -214,6 +217,7 @@ class external_func(FuncOp):
         visibility="private",
         link_with=None,
         link_with_mode=None,
+        stack_size_override=None,
     ):
         # Validate before building the op so a rejected declaration never lands
         # in the IR at the current insertion point.
@@ -227,6 +231,27 @@ class external_func(FuncOp):
                 raise ValueError(
                     f"external_func '{name}': invalid link_with_mode "
                     f"'{link_with_mode}'; the only supported value is 'merge'."
+                )
+        if stack_size_override is not None:
+            if not isinstance(stack_size_override, int) or isinstance(
+                stack_size_override, bool
+            ):
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must be an int, "
+                    f"got {type(stack_size_override).__name__}."
+                )
+            if stack_size_override < 0:
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must be >= 0, "
+                    f"got {stack_size_override}."
+                )
+            # The attribute is a signless i32. A larger value wraps and turns
+            # the override into an undercount.
+            if stack_size_override > 2**31 - 1:
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must fit in a "
+                    f"signed 32-bit integer (<= {2**31 - 1}), got "
+                    f"{stack_size_override}."
                 )
         if outputs is None:
             outputs = []
@@ -245,6 +270,10 @@ class external_func(FuncOp):
             self.operation.attributes["link_with"] = StringAttr.get(link_with)
         if link_with_mode is not None:
             self.operation.attributes["link_with_mode"] = StringAttr.get(link_with_mode)
+        if stack_size_override is not None:
+            self.operation.attributes["stack_size_override"] = IntegerAttr.get(
+                IntegerType.get_signless(32), stack_size_override
+            )
 
     def __call__(self, *call_args):
         return call(self, call_args)
@@ -267,6 +296,15 @@ def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     assert (isinstance(tups, list) or isinstance(tups, Tuple)) and len(tups) == 2
     return Attribute.parse(
         f"#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>", context=context
+    )
+
+
+@register_attribute_builder("BDIterationAttr")
+def bd_iteration_attr_builder(tup: Tuple[int] | List[int], context=None):
+    assert (isinstance(tup, list) or isinstance(tup, tuple)) and len(tup) == 3
+    return Attribute.parse(
+        f"#aie.bd_iteration<size = {tup[0]}, stride = {tup[1]}, current = {tup[2]}>",
+        context=context,
     )
 
 
@@ -381,7 +419,7 @@ class ContextManagedBlock:
 
 
 """
-A dictionary of ContextManagedBlocks, a specialization of ir.Block, keyed by arbitrary values, which automatically appends a new block at the end of `root_block_list` whenever a non-existant block is attempted to be accessed.
+A dictionary of ContextManagedBlocks, a specialization of ir.Block, keyed by arbitrary values, which automatically appends a new block at the end of `root_block_list` whenever a non-existent block is attempted to be accessed.
 """
 
 
@@ -417,7 +455,12 @@ Device = DeviceOp
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
     def __init__(
-        self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
+        self,
+        tile,
+        link_with=None,
+        dynamic_objfifo_lowering=None,
+        stack_size=None,
+        data_size=None,
     ):
         if link_with is not None:
             raise TypeError(
@@ -429,6 +472,7 @@ class Core(CoreOp):
             result=T.index(),
             tile=tile,
             stack_size=stack_size,
+            data_size=data_size,
             link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
@@ -448,6 +492,7 @@ class buffer(BufferOp):
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
         address=None,
+        mem_bank=None,
         initial_value: np.ndarray | None = None,
         use_write_rtp: bool = False,
         loc=None,
@@ -467,6 +512,7 @@ class buffer(BufferOp):
             tile=tile,
             sym_name=name,
             address=address,
+            mem_bank=mem_bank,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
@@ -584,9 +630,12 @@ class object_fifo(ObjectFifoCreateOp):
         via_DMA=None,
         plio=None,
         padDimensions=None,
+        padValue=None,
         disable_synchronization=None,
         iter_count=None,
         consumer_datatype=None,
+        packet=None,
+        packet_id=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         self.consumer_datatype = (
@@ -623,9 +672,12 @@ class object_fifo(ObjectFifoCreateOp):
             via_DMA=via_DMA,
             plio=plio,
             padDimensions=padDimensions,
+            padValue=padValue,
             disable_synchronization=disable_synchronization,
             initValues=initValues,
             iter_count=iter_count,
+            packet=packet,
+            packet_id=packet_id,
         )
         if consumerElemType is not None:
             self.attributes["consumerElemType"] = consumerElemType
@@ -635,18 +687,13 @@ class object_fifo(ObjectFifoCreateOp):
         dt = self.datatype
         if self.consumer_datatype is not None and port == ObjectFifoPort.Consume:
             dt = self.consumer_datatype
-        subview_t = ObjectFifoSubviewType.get(dt)
-        acq = ObjectFifoAcquireOp(subview_t, port, self.sym_name.value, num_elem)
-
-        objects = []
-        if acq.size.value == 1:
-            return ObjectFifoSubviewAccessOp(dt, acq.subview, acq.size.value - 1).result
-        for i in range(acq.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(dt, acq.subview, i).result)
-        return objects
+        acq = ObjectFifoAcquireOp([dt] * num_elem, self.sym_name.value, port=port)
+        if num_elem == 1:
+            return acq.objects[0]
+        return list(acq.objects)
 
     def release(self, port, num_elem):
-        return objectfifo_release(port, self.sym_name.value, num_elem)
+        return objectfifo_release(self.sym_name.value, num_elem, port=port)
 
     def register_external_buffers(self, tile, external_buffers):
         return objectfifo_register_external_buffers(
@@ -842,7 +889,9 @@ def dma(
     num_blocks=1,
     loop=None,
     repeat_count=None,
+    out_of_order=False,
     sym_name=None,
+    pad_value: int = 0,
     loc=None,
     ip=None,
 ):
@@ -855,7 +904,9 @@ def dma(
         num_bds=num_blocks,
         loop=loop,
         repeat_count=repeat_count,
+        out_of_order=out_of_order,
         sym_name=sym_name,
+        pad_value=pad_value or None,
         loc=loc,
         ip=ip,
     )
@@ -882,6 +933,8 @@ class DMAStartOp(DMAStartOp):
         dest: Successor | Block | None = None,
         chain: Successor | Block | None = None,
         repeat_count: int | None = None,
+        pad_value: int | None = None,
+        out_of_order: bool = False,
         loc=None,
         ip=None,
     ):
@@ -899,6 +952,8 @@ class DMAStartOp(DMAStartOp):
             dest,
             chain,
             repeat_count=repeat_count,
+            pad_value=pad_value,
+            out_of_order=out_of_order,
             loc=loc,
             ip=ip,
         )
@@ -919,6 +974,8 @@ def dma_start(
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
     repeat_count: int = 0,
+    pad_value: int = 0,
+    out_of_order: bool = False,
     loc=None,
     ip=None,
 ):
@@ -932,6 +989,8 @@ def dma_start(
         loc=loc,
         ip=ip,
         repeat_count=repeat_count,
+        pad_value=pad_value or None,
+        out_of_order=out_of_order,
     )
     return op.dest, op.chain
 
@@ -1221,8 +1280,24 @@ class TileOp(TileOp):
         return tile_like_is_shim_tile(self.operation)
 
 
-def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+def tile(
+    col,
+    row,
+    *,
+    loc=None,
+    ip=None,
+    allocation_scheme=None,
+    packet_type=0,
+    packet_id=None,
+):
+    tile_op = TileOp(
+        col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme
+    )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 @_cext.register_operation(_Dialect, replace=True)
@@ -1250,9 +1325,17 @@ class LogicalTileOp(LogicalTileOp):
 
 
 def logical_tile(
-    tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None
+    tile_type,
+    *,
+    col=None,
+    row=None,
+    allocation_scheme=None,
+    loc=None,
+    ip=None,
+    packet_type=0,
+    packet_id=None,
 ):
-    return LogicalTileOp(
+    tile_op = LogicalTileOp(
         tile_type=tile_type,
         col=col,
         row=row,
@@ -1260,6 +1343,11 @@ def logical_tile(
         loc=loc,
         ip=ip,
     )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 # BDChainOp

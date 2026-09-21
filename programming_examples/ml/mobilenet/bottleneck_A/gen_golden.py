@@ -2,28 +2,29 @@
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-import torch
-import torch.nn as nn
-import sys
 import math
-from aie.utils.ml import DataShaper
-import time
 import os
 from pathlib import Path
-import numpy as np
 
-from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
-from brevitas.quant.fixed_point import (
+import numpy as np
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
+from aie.utils.ml import DataShaper
+from brevitas.nn import (  # pyright: ignore[reportMissingImports]
+    QuantConv2d,
+    QuantIdentity,
+    QuantReLU,
+)
+from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports]
     Int8ActPerTensorFixedPoint,
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
 )
 
+from .. import mb_utils
+
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
-
-
-from .. import mb_utils
 
 log_dir = str(Path(__file__).parent / "log") + "/"
 data_dir = str(Path(__file__).parent / "data") + "/"
@@ -314,10 +315,8 @@ def main():
     )
 
     print("total weights:::", shape_total_wts)
-    shape_in_act = (tensorInH, InC_vec, tensorInW, vectorSize)  #'YCXC8' , 'CYX'
     shape_out = (tensorOutH, OutC_vec, tensorOutW, vectorSize)  # HCWC8
     size_out = tensorOutH * OutC_vec * tensorOutW * vectorSize
-    shape_out_final = (OutC_vec * vectorSize, tensorOutH, tensorOutW)  # CHW
 
     # ------------------------------------------------------
     # Initialize activation, weights, scaling factor for int8 model
@@ -513,8 +512,10 @@ def main():
             )
 
             # force alignment between scales going into add
-            # self.bn2_quant_id.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl = self.bn1_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
-            # self.bn2_quant_id.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl = self.bn1_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+            # self.bn2_quant_id.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            #   = self.bn1_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            # self.bn2_quant_id.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+            #   = self.bn1_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
 
             # bn3
             self.bn3_quant_conv1 = QuantConv2d(
@@ -994,11 +995,13 @@ def main():
         bn9_project=bneck_9_OutC3,
     )
 
+    import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
+    import torchvision  # pyright: ignore[reportMissingImports]
+    from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
+        calibrate,
+    )
     from mb_utils import ExpandChannels
-    from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
-    import torchvision
-    import torch.utils.data as data_utils
-    from torchvision import transforms
+    from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
     # # Define the image preprocessing pipeline
     transform = transforms.Compose(
@@ -1022,9 +1025,9 @@ def main():
     # # calib_loader = torch.utils.data.DataLoader(dataset=val_sub, batch_size=32, shuffle=False)
 
     src_data = "/group/xrlabs2/imagenet/calibration"
-    datset = torchvision.datasets.ImageFolder(src_data, transform)
+    dataset = torchvision.datasets.ImageFolder(src_data, transform)
     indices = torch.arange(4)
-    val_sub = data_utils.Subset(datset, indices)
+    val_sub = data_utils.Subset(dataset, indices)
     calib_loader = torch.utils.data.DataLoader(
         dataset=val_sub, batch_size=32, shuffle=False
     )

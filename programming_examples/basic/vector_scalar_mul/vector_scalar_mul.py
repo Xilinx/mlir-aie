@@ -21,17 +21,16 @@ mode.
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
     add_compile_args,
     add_trace_arg,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_close_with_benchmark

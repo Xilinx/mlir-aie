@@ -14,9 +14,8 @@ import argparse
 import sys
 
 import numpy as np
-import torch
-import torch.nn as nn
-
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
 from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.ml import run_conv_torch_test
 
@@ -81,7 +80,7 @@ def main(opts):
         out_shape_final=(co, height, width),
         out_scale=out_scale,
         atol=2 * out_scale,
-        dtype_out=out_dtype,
+        dtype_out=out_dtype,  # pyright: ignore[reportArgumentType]
         trace_size=opts.trace_size,
         trace_file="log/trace_conv2d.txt" if opts.trace_size else None,
     ):

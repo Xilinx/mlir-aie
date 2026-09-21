@@ -55,14 +55,25 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
+  // Mark every BD id a static DMA already took on `tile`, so this allocator
+  // doesn't hand the same id to a runtime-sequence task.
+  static void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
+                                BdIdGenerator &gen) {
+    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+      if (program.getTileID() == tile.getTileID())
+        for (uint32_t id : AIE::getAssignedBdIds(program))
+          if (!gen.bdIdAlreadyAssigned(id))
+            gen.assignBdId(id);
+  }
+
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
     auto it = gens.find(tile);
     if (it == gens.end()) {
-      const AIETargetModel &targetModel =
-          tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+      AIE::DeviceOp device = tile->getParentOfType<AIE::DeviceOp>();
       it = gens.insert({tile, BdIdGenerator(tile.getCol(), tile.getRow(),
-                                            targetModel)})
+                                            device.getTargetModel())})
                .first;
+      seedFromStaticBds(device, tile, it->second);
     }
     return it->second;
   }
@@ -192,7 +203,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                    "reuse BDs.";
             return WalkResult::interrupt();
           }
-          bd_op.setBdId(*next_id);
+          bd_op.setBdId(next_id);
           return WalkResult::advance();
         });
     if (result.wasInterrupted())
@@ -272,8 +283,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       // dma_bd_pool_pop and keep their scf.for rolled, which the static
       // straight-line allocator neither needs to touch nor can validate.
       bool dynamicPool = false;
-      seq.walk([&](DMABdPoolPopOp) { dynamicPool = true; });
-      if (dynamicPool)
+      bool hasTasks = false;
+      seq.walk([&](Operation *op) {
+        dynamicPool |= isa<DMABdPoolPopOp>(op);
+        hasTasks |=
+            isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, DMAStartBdChainOp,
+                DMAStartTaskOp, DMAAwaitTaskOp, DMAFreeTaskOp>(op);
+      });
+      // Already-lowered instruction-only control flow needs no BD allocation.
+      if (dynamicPool || !hasTasks)
         return WalkResult::advance();
 
       if (failed(validate(seq)))

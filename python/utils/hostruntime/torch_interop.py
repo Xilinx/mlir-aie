@@ -49,8 +49,7 @@ _UINT_VIEW_DTYPE = {
 
 
 def _array_to_torch(array: np.ndarray):
-    """
-    Convert a numpy array to a torch tensor, zero-copy.
+    """Convert a numpy array to a torch tensor, zero-copy.
 
     For native numpy dtypes (float32, float16, int32, …) torch.from_numpy is used directly
     (fastest path for these types).

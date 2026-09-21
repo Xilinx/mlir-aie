@@ -12,9 +12,8 @@ element-wise lambda.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform_binary
 from aie.utils.verify import assert_pass

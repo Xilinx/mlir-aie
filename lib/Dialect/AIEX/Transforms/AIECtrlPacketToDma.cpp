@@ -63,7 +63,7 @@ struct AIECtrlPacketToDmaPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();
-    auto ctx = device->getContext();
+    auto *ctx = device->getContext();
     auto loc = device->getLoc();
 
     if (targetModel.getTargetArch() == AIEArch::AIE1)
@@ -82,7 +82,8 @@ struct AIECtrlPacketToDmaPass
       IRMapping mapping;
 
       auto newSeq = AIE::RuntimeSequenceOp::create(
-          builder, loc, f.getSymNameAttr(), BoolAttr{});
+          builder, loc, f.getSymNameAttr(), BoolAttr{}, f.getTraceBufferAttr(),
+          f.getTraceSlicesAttr());
       newSeq.getBody().push_back(new Block);
 
       // Copy the arguments from the old sequence to the new one.
@@ -97,7 +98,7 @@ struct AIECtrlPacketToDmaPass
 
       // Using dynamic shape for ctrl pkt stream.
       auto ctrlPktMemrefType = MemRefType::get(
-          ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, 0);
+          ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, nullptr);
       auto newBlockArg = newSeq.getBody().addArgument(ctrlPktMemrefType, loc);
 
       builder.setInsertionPointToStart(&newSeq.getBody().front());
@@ -132,10 +133,11 @@ struct AIECtrlPacketToDmaPass
         // Calculate control packet size
         int64_t ctrlPktSize = 0;
         auto data = ctrlPktOp.getData();
+        auto length = ctrlPktOp.getLength();
         if (data)
           ctrlPktSize = data->size();
-        else if (ctrlPktOp.getLength())
-          ctrlPktSize = *ctrlPktOp.getLength();
+        else if (length)
+          ctrlPktSize = *length;
         ctrlPktSize++; // Ctrl info word
         ctrlPktSize++; // Packet header
 
@@ -196,6 +198,7 @@ struct AIECtrlPacketToDmaPass
                                  ArrayRef(staticSizes), ArrayRef(staticStrides),
                                  nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0,
                                  /*burst_length=*/0,
+                                 /*axcache=*/IntegerAttr(),
                                  /*offset_parameter=*/FlatSymbolRefAttr(),
                                  /*offset_state_table_idx=*/IntegerAttr());
 
@@ -213,7 +216,7 @@ struct AIECtrlPacketToDmaPass
       erased.push_back(f);
     }
 
-    for (auto e : erased)
+    for (auto *e : erased)
       e->erase();
   }
 };

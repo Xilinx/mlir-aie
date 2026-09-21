@@ -21,7 +21,7 @@ Subdirectories in this directory contain example designs that implement matrix m
 This directory contains verification code that ensures the designs in the subdirectories produce the correct output.
 
 The designs can be configured to work on different input and output data types, based on the Makefile variables `dtype_in` and `dtype_out`.
-In the default configuration, all designs consume integer intputs and produce integer outputs.
+In the default configuration, all designs consume integer inputs and produce integer outputs.
 For this case, the verification checks for strict equivalence between the reference output computed on the host CPU and the output calculated on the AI Engine.
 That is, verification will only pass for integer data types if the output is equivalent bit-by-bit.
 

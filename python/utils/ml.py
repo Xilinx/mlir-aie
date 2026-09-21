@@ -3,8 +3,7 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""
-ML related utilties
+"""ML related utilities.
 
 * class `CSVLogger`
 * `load_class_label`
@@ -379,7 +378,8 @@ def run_conv_torch_test(
     ``int_weights``, then delegating here.
 
     Args:
-        xclbin_path, insts_path: paths from the Makefile (``--xclbin`` / ``--instr``).
+        xclbin_path: path to the ``xclbin`` from the Makefile (``--xclbin``).
+        insts_path: path to the instruction file from the Makefile (``--instr``).
         golden_model: ``torch.nn.Module`` instance with weights already loaded;
             called as ``golden_model(int_inp)`` to produce the reference output.
         int_inp: ``torch.Tensor`` with shape ``(1, ci, h, w)`` of integer-valued
@@ -394,14 +394,17 @@ def run_conv_torch_test(
             (e.g. ``(co, h, w)``).
         out_scale: float multiplier applied to the AIE int output before comparison.
         atol: ``np.allclose`` absolute tolerance.
-        kernel_name: name passed to :class:`NPUKernel`; default ``None`` lets
+        kernel_name: name passed to `NPUKernel`; default ``None`` lets
             the runtime pick the first kernel in the xclbin.
-        in_layout, wts_layout, out_reorder: ``(order, defOrder)`` token pairs
-            passed positionally to :meth:`DataShaper.reorder_mat`.  Defaults
-            match the standard conv2d harness shapes (``YCXC8 / CYX``,
-            ``OIYXI8O8 / OIYX``, ``CDYX / YCXD``).
-        dtype_in, dtype_wts, dtype_out: numpy dtypes for the NPU buffers.
-            Default int8 / int8 / int8.
+        in_layout: input ``(order, defOrder)`` token pair passed positionally
+            to `DataShaper.reorder_mat`.  Defaults to ``YCXC8 / CYX``.
+        wts_layout: weights ``(order, defOrder)`` token pair passed positionally
+            to `DataShaper.reorder_mat`.  Defaults to ``OIYXI8O8 / OIYX``.
+        out_reorder: output ``(order, defOrder)`` token pair passed positionally
+            to `DataShaper.reorder_mat`.  Defaults to ``CDYX / YCXD``.
+        dtype_in: numpy dtype for the input NPU buffer. Default int8.
+        dtype_wts: numpy dtype for the weights NPU buffer. Default int8.
+        dtype_out: numpy dtype for the output NPU buffer. Default int8.
         trace_size: when >0, enables the trace shim and writes a trace file.
             Default 0 (off).
         trace_file: path to write the trace text; required when ``trace_size > 0``.
@@ -441,7 +444,9 @@ def run_conv_torch_test(
 
     in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
     in2 = iron.tensor(total_wts, dtype=dtype_wts)
-    out_size = int(np.prod(out_shape_in_layout) * dtype_out.itemsize)
+    # zeros() takes a shape in elements, and out is reshaped to
+    # out_shape_in_layout below, so this must not be scaled by itemsize.
+    out_size = int(np.prod(out_shape_in_layout))
     out = iron.zeros(out_size, dtype=dtype_out)
     buffers = [in1, in2, out]
 

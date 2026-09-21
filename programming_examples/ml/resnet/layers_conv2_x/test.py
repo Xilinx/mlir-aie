@@ -4,19 +4,16 @@
 #
 
 import argparse
-import math
 import os
 import sys
 
-import numpy as np
-import torch
-import torch.nn as nn
-
 import aie.iron as iron
+import numpy as np
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args
 from aie.utils.ml import DataShaper
-
 from resnet import resnet_conv2_x
 
 torch.use_deterministic_algorithms(True)
@@ -34,8 +31,6 @@ def main(opts):
     dtype_wts = np.dtype("int8")
     dtype_out = np.dtype("uint8")
 
-    shape_in_act = (32, 8, 32, 8)
-    shape_total_wts = (212992, 1)
     shape_out = (32, 32, 32, 8)
 
     # ------------------------------------------------------
@@ -84,7 +79,6 @@ def main(opts):
     block_1_weight_scale1 = 0.5
     block_1_weight_scale2 = 0.5
     block_1_weight_scale3 = 0.5
-    block_1_quant_add_1 = 0.5
 
     block_2_relu_1 = 0.5
     block_2_relu_2 = 0.5
@@ -93,49 +87,6 @@ def main(opts):
     block_2_weight_scale1 = 0.5
     block_2_weight_scale2 = 0.5
     block_2_weight_scale3 = 0.5
-    block_2_quant_add_1 = 0.5
-
-    block_0_combined_scale1 = -math.log2(
-        init_scale * block_0_weight_scale1 / block_0_relu_1
-    )  # RHS after first conv1x1 | clip 0-->255
-    block_0_combined_scale2 = -math.log2(
-        block_0_relu_1 * block_0_weight_scale2 / block_0_relu_2
-    )  # RHS after second conv3x3 | clip 0-->255
-    block_0_combined_scale3 = -math.log2(
-        block_0_relu_2 * block_0_weight_scale3 / init_scale
-    )  # RHS after third conv1x1 | clip -128-->+127
-    block_0_combined_scale_skip = -math.log2(
-        init_scale * block_0_weight_scale_skip / init_scale
-    )  # LHS after conv1x1 | clip -128-->+127
-    block_0_combined_scale4 = -math.log2(
-        init_scale / block_0_relu_3
-    )  # After addition | clip 0-->255
-
-    block_1_combined_scale1 = -math.log2(
-        block_0_relu_3 * block_1_weight_scale1 / block_1_relu_1
-    )  # RHS after first conv1x1 | clip 0-->255
-    block_1_combined_scale2 = -math.log2(
-        block_1_relu_1 * block_1_weight_scale2 / block_1_relu_2
-    )  # RHS after second conv3x3 | clip 0-->255
-    block_1_combined_scale3 = -math.log2(
-        block_1_relu_2 * block_1_weight_scale3 / block_1_quant_add_1
-    )  # RHS after third conv1x1 | clip -128-->+127
-    block_1_combined_scale4 = -math.log2(
-        block_1_quant_add_1 / block_1_relu_3
-    )  # After addition | clip 0-->255
-
-    block_2_combined_scale1 = -math.log2(
-        block_1_relu_3 * block_2_weight_scale1 / block_2_relu_1
-    )  # RHS after first conv1x1 | clip 0-->255
-    block_2_combined_scale2 = -math.log2(
-        block_2_relu_1 * block_2_weight_scale2 / block_2_relu_2
-    )  # RHS after second conv3x3 | clip 0-->255
-    block_2_combined_scale3 = -math.log2(
-        block_2_relu_2 * block_2_weight_scale3 / block_2_quant_add_1
-    )  # RHS after third conv1x1 | clip -128-->+127
-    block_2_combined_scale4 = -math.log2(
-        block_2_quant_add_1 / block_2_relu_3
-    )  # After addition | clip 0-->255
 
     min = 0
     max = 255

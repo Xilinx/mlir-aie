@@ -68,9 +68,10 @@ def for_each(func, tensor_ty, tile_size=16):
 
 
 def _for_each_real(func, tensor, *params, tile_size=16):
-    """
-    In-place transform. Internally uses separate input/output ObjectFifos,
-    but fills and drains to same tensor.
+    """In-place transform.
+
+    Internally uses separate input/output ObjectFifos, but fills and drains to
+    same tensor.
 
     Args:
         func: Function to apply, either a lambda/callable or ExternalFunction.

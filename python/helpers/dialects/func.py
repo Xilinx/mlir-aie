@@ -24,7 +24,7 @@ from ...extras.util import (  # pyright: ignore[reportMissingImports]
     get_user_code_loc,
     make_maybe_no_args_decorator,
 )
-from ...ir import (  # pyright: ignore[reportMissingImports]  # pyright: ignore[reportMissingImports]
+from ...ir import (  # pyright: ignore[reportMissingImports]
     Context,
     FlatSymbolRefAttr,
     FunctionType,
@@ -204,7 +204,7 @@ class FuncBase:
 
         self.body_builder = body_builder
         self.func_name = self.body_builder.__name__
-        self.func_op_ctor = func_op_ctor
+        self.func_op_ctor: Any = func_op_ctor
         self.return_op_ctor = return_op_ctor
         self.call_op_ctor = call_op_ctor
         self.arg_attrs = arg_attrs

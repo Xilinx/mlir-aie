@@ -86,7 +86,7 @@ class TraceConfig:
         return buf
 
     def trace_to_json(self, mlir_file: str, output_name: str = "trace.json"):
-        """Wrapper over parse_trace.py utility."""
+        """Wrap the parse_trace.py utility to write trace JSON."""
         trace_buffer = self.read_trace()
 
         with open(mlir_file, "r") as f:

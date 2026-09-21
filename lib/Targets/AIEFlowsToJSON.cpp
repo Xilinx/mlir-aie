@@ -29,7 +29,7 @@ using namespace xilinx::AIE;
 namespace xilinx::AIE {
 
 // returns coordinates in the direction indicated by bundle
-TileID getNextCoords(int col, int row, WireBundle bundle) {
+static TileID getNextCoords(int col, int row, WireBundle bundle) {
   switch (bundle) {
   case WireBundle::North:
     return {col, row + 1};
@@ -44,7 +44,7 @@ TileID getNextCoords(int col, int row, WireBundle bundle) {
   }
 }
 
-void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
+static void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
   // count flow sources and destinations
   std::map<TileID, int> sourceCounts;
   std::map<TileID, int> destinationCounts;
@@ -151,8 +151,8 @@ void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
   output << "\"total_path_length\": " << totalPathLength << ",\n";
 }
 
-void translateCircuitFlows(DeviceOp targetOp, int &flowCount,
-                           raw_ostream &output) {
+static void translateCircuitFlows(DeviceOp targetOp, int &flowCount,
+                                  raw_ostream &output) {
   // for each flow, trace it through switchboxes and write the route to JSON
   std::set<std::pair<TileOp, Port>> flowSources;
   for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
@@ -271,8 +271,8 @@ void translateCircuitFlows(DeviceOp targetOp, int &flowCount,
   }
 }
 
-void translatePacketFlows(DeviceOp targetOp, int &flowCount,
-                          raw_ostream &output) {
+static void translatePacketFlows(DeviceOp targetOp, int &flowCount,
+                                 raw_ostream &output) {
   // for each flow, trace it through switchboxes and write the route to JSON
   std::set<std::pair<TileOp, Port>> flowSources;
   for (PacketFlowOp pktFlowOp : targetOp.getOps<PacketFlowOp>()) {

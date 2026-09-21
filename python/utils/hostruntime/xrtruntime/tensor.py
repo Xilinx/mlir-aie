@@ -12,6 +12,7 @@ from aie.helpers.util import np_ndarray_type_get_shape
 
 from ..buffer import Storage, Transport
 from ..tensor_class import NpuTensor
+from .device import acquire_device
 
 
 class XrtTransport(Transport):
@@ -62,8 +63,7 @@ class XrtTransport(Transport):
 
 
 class XRTTensor(NpuTensor):
-    """
-    Tensor object backed by memory accessble from the 'npu' and 'cpu' devices, managed using PyXRT.
+    """Tensor object backed by memory accessible from the 'npu' and 'cpu' devices, managed using PyXRT.
 
     The class provides common tensor operations such as creation,
     filling with values, and accessing data.
@@ -79,8 +79,7 @@ class XRTTensor(NpuTensor):
         group_id=0,
         xrt_device=None,
     ):
-        """
-        Initialize the XRTTensor.
+        """Initialize the XRTTensor.
 
         Args:
             shape_or_data (tuple or array-like):
@@ -91,10 +90,12 @@ class XRTTensor(NpuTensor):
             flags (optional): XRT buffer object flags. Defaults to xrt.bo.host_only.
             group_id (int, optional): XRT buffer object group ID. Defaults to 0.
             xrt_device (optional): Existing PyXRT device handle to use for BO allocation.
-                When omitted, a new handle for device index 0 is opened for this tensor.
+                When omitted, the process's handle on device 0 is used. Opening
+                one per tensor instead closes and reopens the device as tensors
+                come and go; see `.device`.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
-        self.xrt_device = xrt_device if xrt_device is not None else xrt.device(0)
+        self.xrt_device = xrt_device if xrt_device is not None else acquire_device()
 
         np_data = None
         # Extract the shape
@@ -141,10 +142,9 @@ class XRTTensor(NpuTensor):
 
     @property
     def data(self):
-        """
-        Get the underlying numpy array.
+        """Get the underlying numpy array.
 
-        Writes through this array are not reconciled; use :meth:`mutate` for a
+        Writes through this array are not reconciled; use `mutate` for a
         write that is. Kept as the unmediated handle for callers that manage
         their own synchronization.
 
@@ -155,8 +155,7 @@ class XRTTensor(NpuTensor):
 
     @property
     def shape(self):
-        """
-        Get the shape of the tensor.
+        """Get the shape of the tensor.
 
         Returns:
             tuple: The shape of the tensor.
@@ -164,22 +163,17 @@ class XRTTensor(NpuTensor):
         return self._shape
 
     def _sync_to_device(self):
-        """
-        Syncs the tensor data from the host to the device memory.
-        """
+        """Sync the tensor data from the host to the device memory."""
         start, end = self._extent
         return self.storage.sync_to_device(start, end - start)
 
     def _sync_from_device(self):
-        """
-        Syncs the tensor data from the device to the host memory.
-        """
+        """Sync the tensor data from the device to the host memory."""
         start, end = self._extent
         return self.storage.sync_from_device(start, end - start)
 
     def __del__(self):
-        """
-        Destructor for NpuTensor.
+        """Destructor for NpuTensor.
 
         Releases associated device memory (e.g., XRT buffer object).
         """
@@ -188,8 +182,7 @@ class XRTTensor(NpuTensor):
             self._bo = None
 
     def buffer_object(self):
-        """
-        Returns the XRT buffer object associated with this tensor.
+        """Return the XRT buffer object associated with this tensor.
 
         Returns:
             buffer_object: The XRT buffer object associated with this tensor.

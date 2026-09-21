@@ -11,15 +11,16 @@
 // rtp value is runtime and the DMA sizes stay constant.
 //
 // A runtime size does NOT produce a byte-identical stream: the static path
-// bakes the size into one blockwrite, while the dynamic path emits a
-// zero-template blockwrite + per-word write32 overrides. They program the SAME
-// final BD registers, so the comparator replays both streams into a register
-// map and compares that (compiled with -DDYN_STRUCTURAL) rather than diffing
-// bytes. golden-vs-static stays byte-exact.
+// bakes the size into a blockwrite over a compile-time-constant payload, while
+// the dynamic path assembles the payload at TXN-build time
+// (npu.blockwrite_values). They program the SAME final BD registers, so the
+// comparator replays both streams into a register map and compares that
+// (compiled with -DDYN_STRUCTURAL) rather than diffing bytes. golden-vs-static
+// stays byte-exact.
 //
 // @nd_static bakes the outer (d2) size N=4; @nd_dynamic takes it as %n. The
 // transfer is non-contiguous (d1 stride 512 != inner product 32), so it stays
-// ND mode and the d1/d2 size/stride words become write32 overrides.
+// ND mode and the d1/d2 size/stride words carry runtime values.
 //
 //===----------------------------------------------------------------------===//
 

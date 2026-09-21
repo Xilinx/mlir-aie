@@ -234,3 +234,31 @@ aie.device(npu1_2col) {
   %tile_1_0 = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
   %tile_1_1 = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 7>}
 }
+
+// -----
+
+// two occupied columns with a gap: flows between column 0 and column 2 route
+// through column 1's stream switches, so column 1's switchboxes get configured
+// by control packets and need a shim dma allocation of their own. Column 2
+// reaches row 5, which maps to the second shim channel, so column 1 has to
+// cover both channels and not just the one its own shim row maps to.
+
+// Only the control-packet path covers the gap. Without
+// route-shim-to-tile-ctrl the pass runs on every aiecc invocation for every
+// target, so it must not reach into a column the design never declared: doing
+// so gave such columns routes they previously had none of and left designs
+// that used to route with no legal routing at all.
+// CHECK-LABEL: module {
+// CHECK-NOT: aie.tile(1, {{[0-9]+}})
+// CTRLPKT-LABEL: module {
+// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
+// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0
+// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan1
+// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan0
+// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan1
+
+aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
+  %tile_2_1 = aie.tile(2, 1)
+  %tile_2_5 = aie.tile(2, 5)
+}

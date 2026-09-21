@@ -24,7 +24,7 @@ namespace xilinx::aievec {
 
 static std::optional<int64_t> getLowerBoundValue(Value idx) {
   if (auto blkArg = dyn_cast<BlockArgument>(idx)) {
-    auto parentOp = blkArg.getOwner()->getParentOp();
+    auto *parentOp = blkArg.getOwner()->getParentOp();
     return TypeSwitch<Operation *, std::optional<int64_t>>(parentOp)
         .Case<affine::AffineForOp>([&blkArg](affine::AffineForOp forOp) {
           if (forOp.getInductionVar() == blkArg &&

@@ -63,7 +63,15 @@ class LitConfigHelper:
     # Maps generation name to list of model strings that may appear in xrt-smi
     NPU_MODELS = {
         "npu1": ["npu1", "Phoenix"],
-        "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
+        "npu2": [
+            "npu4",
+            "Strix",
+            "npu5",
+            "Strix Halo",
+            "npu6",
+            "Krackan",
+            "Gorgon Point",
+        ],
     }
 
     PATH_ENV_VARS = {"PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"}
@@ -101,6 +109,18 @@ class LitConfigHelper:
                 LitConfigHelper._quote_lit_arg(sys.executable),
                 LitConfigHelper._quote_lit_arg(wrapper),
                 LitConfigHelper._quote_lit_arg(npu_kind),
+            ]
+        )
+
+    @staticmethod
+    def _run_with_test_cache_wrap(aie_src_root: str, test_key: str = "%s") -> str:
+        """Build the cross-platform per-test cache wrapper command."""
+        wrapper = os.path.join(aie_src_root, "utils", "run_with_test_cache.py")
+        return " ".join(
+            [
+                LitConfigHelper._quote_lit_arg(sys.executable),
+                LitConfigHelper._quote_lit_arg(wrapper),
+                LitConfigHelper._quote_lit_arg(test_key),
             ]
         )
 
@@ -602,31 +622,66 @@ class LitConfigHelper:
             return aie_host_target, ""
 
     @staticmethod
+    def _is_functional_cxx_compiler(path: str) -> bool:
+        """Check that `path` is a compiler binary that actually runs.
+
+        Vitis prepends its aietools/bin (device-target tooling) onto PATH;
+        some Vitis installs ship a clang++ there that is a wrapper script
+        shelling out to a peano clang++ binary that does not exist in that
+        install. Such a wrapper still passes an `os.path.exists`/`which`
+        check, so it must be invoked to confirm it works.
+        """
+        try:
+            subprocess.run(
+                [path, "--version"], capture_output=True, timeout=10, check=True
+            )
+            return True
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    @staticmethod
     def setup_host_compiler_substitutions(config_obj) -> None:
         """Add host compiler substitutions for tests that build host executables.
 
         AIE/Peano tool directories are added to PATH for device-side tools, so
-        host-side tests should not rely on a bare ``clang`` resolving to the
+        host-side tests should not rely on a bare ``clang++`` resolving to the
         host LLVM compiler. This substitution keeps host compilation explicit
-        and preserves Windows executable suffix handling.
+        and preserves Windows executable suffix handling. Using ``clang++``
+        means ``-lstdc++`` need not be listed explicitly in link flags, but
+        run.lit files must still pass an explicit ``-std=c++XX``: clang++'s
+        default language standard varies across supported Clang versions.
         """
-        host_clang = os.path.join(
-            config_obj.llvm_tools_dir, f"clang{config_obj.llvm_exe_ext}"
+        host_clangxx = os.path.join(
+            config_obj.llvm_tools_dir, f"clang++{config_obj.llvm_exe_ext}"
         )
-        if not os.path.exists(host_clang):
-            host_clang = shutil.which("clang") or "clang"
+        if not (
+            os.path.exists(host_clangxx)
+            and LitConfigHelper._is_functional_cxx_compiler(host_clangxx)
+        ):
+            which_clangxx = shutil.which("clang++")
+            if which_clangxx and LitConfigHelper._is_functional_cxx_compiler(
+                which_clangxx
+            ):
+                host_clangxx = which_clangxx
+            elif os.path.exists(
+                "/usr/bin/clang++"
+            ) and LitConfigHelper._is_functional_cxx_compiler("/usr/bin/clang++"):
+                host_clangxx = "/usr/bin/clang++"
+            else:
+                host_clangxx = "clang++"
         config_obj.substitutions.append(
-            ("%host_clang", LitConfigHelper._quote_lit_arg(host_clang))
+            ("%host_clang", LitConfigHelper._quote_lit_arg(host_clangxx))
         )
 
     @staticmethod
     def setup_host_link_substitution(config_obj) -> None:
         """Add host linker flags for tests that build XRT host executables.
 
-        Linux-hosted tests link librt, libstdc++, and libm explicitly because
-        the host compiler substitution resolves to clang rather than clang++.
-        Windows-hosted tests link against CMake-built dynamic MSVC libraries,
-        matching CMake's default /MD runtime selection.
+        Linux-hosted tests link librt and libm explicitly; libstdc++ is omitted
+        because the host compiler substitution now resolves to ``clang++``,
+        which links the C++ standard library automatically. Windows-hosted tests
+        link against CMake-built dynamic MSVC libraries, matching CMake's
+        default /MD runtime selection.
         """
         if os.name == "nt":
             host_link_flags = " ".join(
@@ -639,7 +694,7 @@ class LitConfigHelper:
                 ]
             )
         else:
-            host_link_flags = "-lrt -lstdc++ -lm"
+            host_link_flags = "-lrt -lm"
         config_obj.substitutions.append(("%host_link_flags", host_link_flags))
 
     @staticmethod

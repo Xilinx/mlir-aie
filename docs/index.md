@@ -47,6 +47,12 @@ with full control over tile placement, data movement, and vectorized compute.
 <span class="iron-card-desc">Agent Skills that teach a coding agent to port and optimize IRON designs.</span>
 </a>
 
+<a class="iron-card" href="https://discord.gg/UbXzGdXsR5" markdown>
+<span class="iron-card-icon">💬</span>
+<span class="iron-card-title">Join us on Discord</span>
+<span class="iron-card-desc">Chat with the team and other users in the ROCm Discord's ROCm-NPU channel.</span>
+</a>
+
 </div>
 
 ---

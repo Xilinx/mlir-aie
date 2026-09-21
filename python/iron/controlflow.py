@@ -11,15 +11,18 @@ from aie.iron.runtime.dmataskhandle import Task
 
 
 def _unwrap(x):
-    """A Task carries its SSA handle across scf boundaries; everything else
-    (plain Values) passes through unchanged."""
+    """Unwrap a Task to its SSA handle; pass everything else through unchanged.
+
+    A Task carries its SSA handle across scf boundaries; plain Values are
+    returned as-is.
+    """
     return x.handle if isinstance(x, Task) else x
 
 
 def range_(*args, iter_args=None, insert_yield=True, **kwargs):
-    """``scf.for`` for IRON bodies, with [`Task`][iron.runtime.dmataskhandle.Task]
-    support in ``iter_args``.
+    """``scf.for`` for IRON bodies, with ``Task`` support in ``iter_args``.
 
+    See [`Task`][iron.runtime.dmataskhandle.Task].
     Identical to the low-level ``_for`` helper, except a ``Task`` passed as an
     ``iter_args`` entry is carried across iterations by its SSA handle: the loop
     body and the loop results receive it re-wrapped as a ``Task`` (so ``.free()``/
@@ -53,6 +56,8 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
 
 
 def yield_(values):
-    """``scf.yield`` that accepts [`Task`][iron.runtime.dmataskhandle.Task] entries,
-    yielding each Task's SSA handle."""
+    """``scf.yield`` that accepts ``Task`` entries, yielding each Task's SSA handle.
+
+    See [`Task`][iron.runtime.dmataskhandle.Task].
+    """
     _yield_([_unwrap(v) for v in values])

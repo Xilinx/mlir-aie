@@ -14,12 +14,12 @@
 // memtile BD chain. The downstream consumer's own split-fifo locks on the
 // core tile are unaffected.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL: module @init_values_no_link_skips_source_locks {
 // CHECK:   aie.device(npu1_1col) {
-// CHECK:     %[[MEM_TILE:.*]] = aie.tile(0, 1)
-// CHECK:     %[[CT:.*]] = aie.tile(0, 2)
+// CHECK-DAG:     %[[MEM_TILE:.*]] = aie.tile(0, 1)
+// CHECK-DAG:     %[[CT:.*]] = aie.tile(0, 2)
 // CHECK-NOT: aie.lock(%[[MEM_TILE]]
 // CHECK-NOT: sym_name = "of_prod_lock_
 // CHECK-NOT: sym_name = "of_cons_lock_
