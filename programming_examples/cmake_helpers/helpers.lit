@@ -96,8 +96,10 @@
 // RUN:   | FileCheck %s --check-prefix=E_DESIGN_DEV
 // E_DESIGN_DEV: add_aie_design: DEVICE must be
 //
-// A bad -DAIE_DEVICE is caught where it is set, not at each use.
-// RUN: not cmake -G Ninja -S %S -B %t.err -DAIE_DEVICE=npu9 2>&1 \
+// A bad -DAIE_DEVICE is caught where it is set, not at each use. This one gets
+// its own build dir: -D writes npu9 into the cache, so reusing %t.err would
+// make every later case fail on the device check instead of the case under test.
+// RUN: not cmake -G Ninja -S %S -B %t.errdev -DPython3_EXECUTABLE=%python -DAIE_DEVICE=npu9 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=E_CACHE_DEV
 // E_CACHE_DEV: -DAIE_DEVICE: DEVICE must be
 //
