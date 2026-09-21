@@ -5,6 +5,12 @@
 // lowering pipeline. The static builder must match --get-npu-insts byte for
 // byte; the dynamic builder must program the same registers (its BD writes can
 // have a different encoding). Reuse the target's existing replay comparator.
+//
+// The %PYTHON line below uses %/t: a path pasted into a Python string literal
+// has its backslashes read as escapes, so a Windows %t turns \actions-runner
+// into \x07ctions-runner. %/t yields forward slashes, which Windows accepts.
+// -DGEN_HDR needs no such care -- #include re-lexes its argument as a
+// header-name, where escapes are not processed.
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: aiecc --get-npu-cpp --output-dir=%t.d --tmpdir=%t.d/work %S/../Targets/NPU/static_vs_dynamic/memcpy_nd_dynamic_size.mlir
 // RUN: aiecc --get-npu-insts --sequence-name=nd_static --output-dir=%t.d --tmpdir=%t.d/static %S/../Targets/NPU/static_vs_dynamic/memcpy_nd_dynamic_size.mlir
