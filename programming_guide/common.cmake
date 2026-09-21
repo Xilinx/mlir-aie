@@ -71,8 +71,9 @@ if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
 
     # Fall back to legacy/default paths if still unset
     if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
-        find_program(WSL NAMES powershell.exe)
-        if(NOT WSL)
+        # See programming_examples/mlir_aie_init.cmake for why this is
+        # CMAKE_HOST_WIN32 and not a powershell.exe probe.
+        if(NOT CMAKE_HOST_WIN32)
             if(NOT DEFINED XRT_INC_DIR)
                 set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
             endif()

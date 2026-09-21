@@ -12,7 +12,7 @@
 #
 #   cmake_minimum_required(VERSION 3.30)
 #   include(<path-to>/mlir_aie_init.cmake)
-#   mlir_aie_init_example()       # WSL + compilers + ProjectName/currentTarget
+#   mlir_aie_init_example()       # host detect + compilers + ProjectName/currentTarget
 #   project(${ProjectName})       # MUST be a literal call in the top-level
 #                                 # CMakeLists.txt (CMake requirement)
 #   include(<path-to>/common.cmake)
@@ -29,9 +29,15 @@
 # if the value is already in the cache.
 
 macro(mlir_aie_init_example)
-  find_program(WSL NAMES powershell.exe)
-
-  if(NOT WSL)
+  # CMAKE_HOST_WIN32, not find_program(WSL NAMES powershell.exe): the examples
+  # reach a Windows host either natively or, from a WSL shell, through
+  # `powershell.exe cmake` -- both are a Windows-native CMake, so
+  # CMAKE_HOST_WIN32 is TRUE for both. The old powershell probe additionally
+  # fired for a *Linux* cmake run from a WSL shell, where powershell.exe is on
+  # PATH via WSL interop; that configure then selected cl.exe and C:/ XRT paths
+  # and could not work. CMAKE_HOST_WIN32 is set before project(), so it is
+  # available this early.
+  if(NOT CMAKE_HOST_WIN32)
     if(NOT DEFINED CMAKE_C_COMPILER)
       set(CMAKE_C_COMPILER gcc-13)
     endif()
