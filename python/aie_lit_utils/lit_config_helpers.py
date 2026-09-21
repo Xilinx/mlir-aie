@@ -130,13 +130,41 @@ class LitConfigHelper:
         if os.name != "nt" and shutil.which("make"):
             config_obj.available_features.add("makefile_examples")
 
+    # Matches cmake_minimum_required() in the example CMakeLists.
+    CMAKE_EXAMPLES_MIN_VERSION = (3, 30)
+
     @staticmethod
     def add_cmake_examples_feature(config_obj) -> None:
         """Enable CMake-based example tests (works on Windows, unlike Make).
 
-        Requires cmake, ctest and ninja — what run_cmake.lit actually invokes."""
-        if all(shutil.which(tool) for tool in ("cmake", "ctest", "ninja")):
-            config_obj.available_features.add("cmake_examples")
+        Requires cmake, ctest and ninja — what run_cmake.lit actually invokes —
+        and a cmake new enough for the examples' cmake_minimum_required. Without
+        the version check the lits hard-FAIL on a host whose cmake is too old
+        (Ubuntu 24.04 ships 3.28) instead of being reported UNSUPPORTED."""
+        if not all(shutil.which(tool) for tool in ("cmake", "ctest", "ninja")):
+            return
+        version = LitConfigHelper._cmake_version()
+        if version < LitConfigHelper.CMAKE_EXAMPLES_MIN_VERSION:
+            logger.info("cmake %s is too old for the CMake-based examples", version)
+            return
+        config_obj.available_features.add("cmake_examples")
+
+    @staticmethod
+    def _cmake_version() -> tuple:
+        """(major, minor) of the cmake on PATH, or (0, 0) if it can't be read."""
+        try:
+            out = subprocess.run(
+                ["cmake", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return (0, 0)
+        match = re.search(r"cmake version (\d+)\.(\d+)", out)
+        if not match:
+            return (0, 0)
+        return (int(match.group(1)), int(match.group(2)))
 
     @staticmethod
     def _find_xrt_smi(xrt_bin_dir: str) -> Optional[str]:
@@ -213,9 +241,10 @@ class LitConfigHelper:
             HardwareConfig contains:
                 - found: True if XRT is detected and valid
                 - flags: Compiler/linker flags for XRT (includes -I, -L, and libraries)
-                - substitutions: Dictionary with "%xrt_flags", "%run_on_npu1%", "%run_on_npu2%",
-                                 "%run_on_npu%" (whichever of the above is real), and
-                                 "%aie_npu_device%" (detected "npu1"/"npu2", or "" if none)
+                - substitutions: Dictionary with "%xrt_flags", "%run_on_npu1%",
+                                 "%run_on_npu2%", and "%aie_cmake_device%"
+                                 ("npu2" when a Strix NPU is detected, else "npu";
+                                 what the run_cmake lits pass as -DAIE_DEVICE)
                 - features: List of features including "ryzen_ai", "ryzen_ai_npu1", or "ryzen_ai_npu2"
                            based on detected NPU hardware and available Vitis components
         """
@@ -233,6 +262,7 @@ class LitConfigHelper:
         run_on_npu2 = "echo"
         # Whichever generation is actually detected, so device-agnostic tests
         # (single lit file, no npu1/npu2 duplication) can target it directly.
+        # Consumed by %aie_cmake_device% below.
         detected_npu_device = ""
 
         if not xrt_lib_dir:
@@ -247,8 +277,6 @@ class LitConfigHelper:
 
             config.substitutions["%run_on_npu1%"] = run_on_npu1
             config.substitutions["%run_on_npu2%"] = run_on_npu2
-            config.substitutions["%run_on_npu%"] = run_on_npu1
-            config.substitutions["%aie_npu_device%"] = detected_npu_device
             config.substitutions["%aie_cmake_device%"] = "npu"
             return config
 
@@ -411,11 +439,6 @@ class LitConfigHelper:
 
         config.substitutions["%run_on_npu1%"] = run_on_npu1
         config.substitutions["%run_on_npu2%"] = run_on_npu2
-        config.substitutions["%aie_npu_device%"] = detected_npu_device
-        # Device-agnostic alias: whichever of run_on_npu1/run_on_npu2 is real.
-        config.substitutions["%run_on_npu%"] = (
-            run_on_npu2 if detected_npu_device == "npu2" else run_on_npu1
-        )
         # add_aie_design/add_aie_run_test's -DAIE_DEVICE takes "npu" (not
         # "npu1") for the first-gen device -- map the detected generation.
         config.substitutions["%aie_cmake_device%"] = (
