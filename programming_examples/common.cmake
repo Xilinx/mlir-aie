@@ -112,8 +112,9 @@ if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
 
     # Fall back to legacy/default paths if still unset
     if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
-        find_program(WSL NAMES powershell.exe)
-        if(NOT WSL)
+        # See mlir_aie_init.cmake for why this is CMAKE_HOST_WIN32 and not a
+        # powershell.exe probe.
+        if(NOT CMAKE_HOST_WIN32)
             if(NOT DEFINED XRT_INC_DIR)
                 set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
             endif()
@@ -224,12 +225,67 @@ endfunction()
 # -----------------------------------------------------------------------------
 # CMake equivalents of makefile-common's jit_xclbin and the per-example `run:`
 # target: build the xclbin/insts and run on the NPU via cmake + ctest.
+#
+# A converted example needs exactly two calls after its add_executable():
+#
+#   add_aie_design(TARGET <exe> PY <design>.py [ELF] [ARGS ...])
+#   add_aie_run_test(NAME <test> EXE <exe> [USE_ELF] ...)
+#
+# Both default DEVICE to the AIE_DEVICE cache variable below, and
+# add_aie_design() wires the host exe's dependency on the JIT itself, so
+# per-example boilerplate stays at those two lines.
+#
+# The helpers validate their arguments and FATAL_ERROR on misuse. That is
+# deliberate: the failure modes here are quiet ones. A typo'd keyword, a design
+# declared without ELF but run with USE_ELF, or a missing PY all used to
+# configure cleanly and then either abort inside XRT or -- worse -- register no
+# test at all, which ctest reports as success.
 
 # Must be at directory scope: enable_testing() inside a function does NOT write
 # CTestTestfile.cmake, so add_test() calls silently vanish and `ctest` reports
 # "No tests were found!!!" -- and still exits 0, so the lit test passes without
 # ever running on the NPU. This file is always included at directory scope.
 enable_testing()
+
+# Device family every example targets unless it overrides DEVICE explicitly.
+# run_cmake.lit passes -DAIE_DEVICE=%aie_cmake_device%, resolved from the NPU lit
+# actually detected on the machine.
+set(AIE_DEVICE npu CACHE STRING "NPU device family for the examples (npu|npu2)")
+set_property(CACHE AIE_DEVICE PROPERTY STRINGS npu npu2)
+
+# Default wall-clock limit for a generated ctest, overridable per test with the
+# TIMEOUT keyword. Without it a wedged NPU run is killed by lit's suite-wide
+# timeout, which reports the whole lit test as timed out rather than naming the
+# ctest that hung.
+set(AIE_TEST_TIMEOUT 300 CACHE STRING "Default TIMEOUT (seconds) for generated NPU ctests")
+
+# Reject unknown/typo'd keywords and keywords given without a value, then check
+# that every argument in ARGN is set. Reads the caller's parsed variables
+# directly -- CMake functions inherit the calling scope for reads.
+function(_aie_validate_args _fn _prefix)
+  if(DEFINED ${_prefix}_UNPARSED_ARGUMENTS)
+    list(JOIN ${_prefix}_UNPARSED_ARGUMENTS " " _bad)
+    message(FATAL_ERROR "${_fn}: unrecognized argument(s): ${_bad}")
+  endif()
+  if(DEFINED ${_prefix}_KEYWORDS_MISSING_VALUES)
+    list(JOIN ${_prefix}_KEYWORDS_MISSING_VALUES " " _bad)
+    message(FATAL_ERROR "${_fn}: keyword(s) given without a value: ${_bad}")
+  endif()
+  foreach(_arg IN LISTS ARGN)
+    if(NOT ${_prefix}_${_arg})
+      message(FATAL_ERROR "${_fn}: ${_arg} is required")
+    endif()
+  endforeach()
+endfunction()
+
+function(_aie_validate_device _fn _device)
+  if(NOT _device MATCHES "^(npu|npu2)$")
+    message(FATAL_ERROR
+      "${_fn}: DEVICE must be 'npu' (Phoenix/Hawk) or 'npu2' (Strix), got '${_device}'")
+  endif()
+endfunction()
+
+_aie_validate_device("-DAIE_DEVICE" "${AIE_DEVICE}")
 
 # Required only by the helpers below, so host-only consumers don't need Python.
 #
@@ -249,9 +305,11 @@ macro(_aie_require_python)
   endif()
 endmacro()
 
-# add_aie_design(TARGET <t> PY <design.py> DEVICE <npu|npu2> [ELF] [ARGS ...])
+# add_aie_design(TARGET <t> PY <design.py> [DEVICE <npu|npu2>] [ELF] [ARGS ...])
 #   JITs the design into final.xclbin/insts.bin (+ final.elf with ELF) in the
-#   build dir. Creates target <t>_xclbin for the host exe to depend on.
+#   build dir. Creates target <t>_xclbin, and makes <t> depend on it when <t> is
+#   an existing target (pure-Python designs have no host exe, so that is
+#   optional). DEVICE defaults to ${AIE_DEVICE}.
 #
 # The design is only built when AIE_BUILD_DESIGN is ON. This matters because
 # makefile-common's build_host_exe configures and builds this same CMakeLists to
@@ -263,12 +321,35 @@ endmacro()
 option(AIE_BUILD_DESIGN "Build the example's AIE design (off when make drives the build)" ON)
 
 function(add_aie_design)
-  _aie_require_python()
   cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE" "ARGS" ${ARGN})
+  _aie_validate_args("add_aie_design" D TARGET PY)
+  if(NOT D_DEVICE)
+    set(D_DEVICE "${AIE_DEVICE}")
+  endif()
+  _aie_validate_device("add_aie_design" "${D_DEVICE}")
+  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}")
+    message(FATAL_ERROR
+      "add_aie_design: design script not found: ${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}")
+  endif()
+
+  # Record whether this directory produces final.elf, so add_aie_run_test can
+  # reject USE_ELF against a design that never emits one. Set before the
+  # AIE_BUILD_DESIGN early-return: under make the JIT happens outside CMake, but
+  # the ELF keyword still describes the artifacts that will be there.
+  set_property(DIRECTORY APPEND PROPERTY AIE_DESIGNS "${D_TARGET}")
+  if(D_ELF)
+    set_property(DIRECTORY PROPERTY AIE_DESIGN_HAS_ELF TRUE)
+  endif()
+
+  _aie_require_python()
+
   # Still define the target so callers' add_dependencies() stays valid; it just
   # has nothing to do.
   if(NOT AIE_BUILD_DESIGN)
     add_custom_target(${D_TARGET}_xclbin)
+    if(TARGET ${D_TARGET})
+      add_dependencies(${D_TARGET} ${D_TARGET}_xclbin)
+    endif()
     return()
   endif()
   set(_out "${CMAKE_CURRENT_BINARY_DIR}")
@@ -290,24 +371,58 @@ function(add_aie_design)
     COMMENT "JIT-compiling ${D_PY} for ${D_DEVICE}"
     VERBATIM)
   add_custom_target(${D_TARGET}_xclbin ALL DEPENDS ${_outs})
+  if(TARGET ${D_TARGET})
+    add_dependencies(${D_TARGET} ${D_TARGET}_xclbin)
+  endif()
 endfunction()
 
-# add_aie_run_test(NAME <t> DEVICE <npu|npu2> [EXE <host_target>] [PY <test.py>]
-#                  [KERNEL <name>] [PY_STANDALONE] [USE_ELF]
+# add_aie_run_test(NAME <t> [DEVICE <npu|npu2>] [EXE <host_target>] [PY <test.py>]
+#                  [KERNEL <name>] [PY_STANDALONE] [USE_ELF] [TIMEOUT <secs>]
 #                  [RUN_ARGS ...] [ENVIRONMENT ...])
-#   Registers a ctest that runs on the NPU via utils/run_on_npu.py.
+#   Registers a ctest that runs on the NPU via utils/run_on_npu.py. Exactly one
+#   of EXE or PY selects the host side:
 #     EXE            => run the host binary against final.xclbin/insts.bin
 #     PY             => run a Python host test against those artifacts (run_py)
-#     PY_STANDALONE  => run the script alone (@iron.jit self-running designs)
+#     PY_STANDALONE  => with PY, run the script alone (@iron.jit self-running
+#                       designs) instead of passing it the built artifacts
 #     USE_ELF        => pass final.elf instead of insts.bin as -i (xrt::elf +
-#                       xrt::module testbenches; pair with add_aie_design's ELF)
+#                       xrt::module testbenches; requires add_aie_design's ELF)
 #     RUN_ARGS       => extra args appended to the host command, mirroring the
 #                       Makefile `run:` recipe (e.g. -l 4096 --op add)
 #     ENVIRONMENT    => "VAR=value" entries set for the test (e.g. NORM_OP=rms)
+#     TIMEOUT        => seconds, default ${AIE_TEST_TIMEOUT}
+#   DEVICE defaults to ${AIE_DEVICE}.
 function(add_aie_run_test)
-  _aie_require_python()
-  cmake_parse_arguments(R "PY_STANDALONE;USE_ELF" "NAME;DEVICE;EXE;PY;KERNEL"
+  cmake_parse_arguments(R "PY_STANDALONE;USE_ELF" "NAME;DEVICE;EXE;PY;KERNEL;TIMEOUT"
                           "RUN_ARGS;ENVIRONMENT" ${ARGN})
+  _aie_validate_args("add_aie_run_test" R NAME)
+
+  # Exactly one host side. Guarding this is what keeps a missing/empty PY from
+  # silently falling through to the run_py branch and generating
+  # `run_on_npu.py npu1 python <srcdir>/ --xclbin ...`, which fails far from
+  # its cause.
+  if(R_EXE AND R_PY)
+    message(FATAL_ERROR "add_aie_run_test(${R_NAME}): EXE and PY are mutually exclusive")
+  elseif(NOT R_EXE AND NOT R_PY)
+    message(FATAL_ERROR "add_aie_run_test(${R_NAME}): one of EXE or PY is required")
+  endif()
+  if(R_EXE AND NOT TARGET ${R_EXE})
+    message(FATAL_ERROR
+      "add_aie_run_test(${R_NAME}): EXE '${R_EXE}' is not a target. "
+      "Declare it with add_executable() before calling this.")
+  endif()
+  if(R_PY AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}")
+    message(FATAL_ERROR
+      "add_aie_run_test(${R_NAME}): host script not found: ${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}")
+  endif()
+  if(R_PY_STANDALONE AND NOT R_PY)
+    message(FATAL_ERROR "add_aie_run_test(${R_NAME}): PY_STANDALONE requires PY")
+  endif()
+
+  if(NOT R_DEVICE)
+    set(R_DEVICE "${AIE_DEVICE}")
+  endif()
+  _aie_validate_device("add_aie_run_test" "${R_DEVICE}")
   if(R_DEVICE STREQUAL "npu2")
     set(_kind npu2)
   else()
@@ -317,13 +432,30 @@ function(add_aie_run_test)
   if(R_KERNEL)
     set(_k ${R_KERNEL})
   endif()
+
   # The instruction stream is either the raw insts.bin or the ELF-wrapped form.
+  # USE_ELF without a matching add_aie_design(... ELF) would hand the testbench
+  # a file nothing ever writes; this is the reverse of the mismatch that made
+  # vector_scalar_add abort inside XRT.
   if(R_USE_ELF)
+    get_directory_property(_has_elf AIE_DESIGN_HAS_ELF)
+    if(NOT _has_elf)
+      message(FATAL_ERROR
+        "add_aie_run_test(${R_NAME}): USE_ELF requires a preceding "
+        "add_aie_design(... ELF) in this directory to emit final.elf")
+    endif()
     set(_instr "${CMAKE_CURRENT_BINARY_DIR}/final.elf")
   else()
     set(_instr "${CMAKE_CURRENT_BINARY_DIR}/insts.bin")
   endif()
+
+  _aie_require_python()
+
+  # Artifacts the test consumes, asserted via REQUIRED_FILES below so a missing
+  # xclbin is reported by ctest instead of aborting inside XRT.
+  set(_required "")
   if(R_EXE)
+    set(_required "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin" "${_instr}")
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
               $<TARGET_FILE:${R_EXE}>
@@ -337,12 +469,21 @@ function(add_aie_run_test)
               ${R_RUN_ARGS})
   else()
     # `run_py` flow: a Python host test driven against the built artifacts.
+    set(_required "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin" "${_instr}")
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
               ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}"
               --xclbin "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
               --instr "${_instr}"
               -k ${_k} ${R_RUN_ARGS})
+  endif()
+
+  if(NOT R_TIMEOUT)
+    set(R_TIMEOUT "${AIE_TEST_TIMEOUT}")
+  endif()
+  set_tests_properties(${R_NAME} PROPERTIES TIMEOUT ${R_TIMEOUT})
+  if(_required)
+    set_tests_properties(${R_NAME} PROPERTIES REQUIRED_FILES "${_required}")
   endif()
   if(R_ENVIRONMENT)
     set_tests_properties(${R_NAME} PROPERTIES ENVIRONMENT "${R_ENVIRONMENT}")
