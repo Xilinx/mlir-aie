@@ -20,6 +20,7 @@ exceptions, so what is exercised is the recovery path the build actually takes.
 These compile only; no NPU is required.
 """
 
+import json
 import os
 import shutil
 import stat
@@ -185,6 +186,196 @@ def test_prefixing_is_literal_and_repeatable(kernel_object):
     compile_utils.prefix_symbols_in_object(str(kernel_object), "op0_")
     compile_utils.prefix_symbols_in_object(str(kernel_object), "op0_")
     assert _symbols(kernel_object) == ["op0_op0_add_one", "op0_op0_helper_fn"]
+
+
+def _embedded_ir(obj, tmp_path):
+    bitcode = tmp_path / "extracted.bc"
+    subprocess.run(
+        [
+            config.objcopy_path(),
+            f"--dump-section=.llvmbc={bitcode}",
+            str(obj),
+            os.devnull,
+        ],
+        check=True,
+        capture_output=True,
+    )
+    opt = os.path.join(
+        os.path.dirname(config.peano_cxx_path()),
+        "opt.exe" if os.name == "nt" else "opt",
+    )
+    return (
+        bitcode,
+        subprocess.run(
+            [opt, "-S", str(bitcode), "-o", "-"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout,
+    )
+
+
+def test_ir_renaming_preserves_local_and_metadata_identifiers():
+    ir = """
+@table = global i32 0
+define i32 @kernel() {
+$kernel:
+  %$table = load i32, ptr @table
+  %foo$table = add i32 %$table, 1
+  ret i32 %foo$table
+}
+!foo$table = !{!0}
+!0 = !{!"table"}
+"""
+    opt = os.path.join(
+        os.path.dirname(config.peano_cxx_path()),
+        "opt.exe" if os.name == "nt" else "opt",
+    )
+    renamed = compile_utils._rename_ir_symbols(ir, ["table", "kernel"], "op0_")
+    for text in (ir, renamed):
+        subprocess.run(
+            [opt, "-disable-output"],
+            input=text,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+    assert '@"op0_table"' in renamed
+    assert '@"op0_kernel"' in renamed
+    for identifier in ("%$table", "%foo$table", "!foo$table", "$kernel:"):
+        assert identifier in renamed
+
+
+@pytest.mark.parametrize("prefix_count", [1, 2])
+def test_embedded_bitcode_uses_native_symbol_names(tmp_path, func, prefix_count):
+    func._source_string = """
+extern "C" {
+int table[4] = {1, 2, 3, 4};
+int external_fn(int);
+int helper_fn(int i) { return external_fn(table[i]); }
+int add_one(int i) { return helper_fn(i) + 1; }
+}
+"""
+    func._compile_flags = ["-O0"]
+    obj = tmp_path / func.object_file_name
+    compile_utils.compile_external_kernel(
+        func, str(tmp_path), "aie2p", embed_bitcode=True
+    )
+    if prefix_count == 2:
+        compile_utils.prefix_symbols_in_object(str(obj), "op0_")
+    bitcode, ir = _embedded_ir(obj, tmp_path)
+    prefix = "op0_" * prefix_count
+    assert (
+        _symbols(obj)
+        == _symbols(bitcode)
+        == [f"{prefix}add_one", f"{prefix}helper_fn", f"{prefix}table"]
+    )
+    assert f"@{prefix}helper_fn(" in ir
+    assert f"@{prefix}table" in ir
+    assert "@external_fn(" in ir
+    assert "@op0_external_fn(" not in ir
+
+
+def test_embedded_bitcode_preserves_aliases_and_comdats(tmp_path, func):
+    func._source_string = """
+template <typename T> __attribute__((noinline)) T helper(T i) { return i + 1; }
+extern "C" int add_one(int i) { return helper(i); }
+extern "C" int alias(int i) __attribute__((alias("add_one")));
+"""
+    func._compile_flags = ["-O0"]
+    obj = tmp_path / func.object_file_name
+    compile_utils.compile_external_kernel(
+        func, str(tmp_path), "aie2p", embed_bitcode=True
+    )
+    bitcode, ir = _embedded_ir(obj, tmp_path)
+    assert (
+        _symbols(obj)
+        == _symbols(bitcode)
+        == ["op0__Z6helperIiET_S0_", "op0_add_one", "op0_alias"]
+    )
+    assert "$op0__Z6helperIiET_S0_ = comdat any" in ir
+    assert "@op0_alias = " in ir
+    assert "ptr @op0_add_one" in ir
+
+
+@pytest.mark.parametrize("stamp_version", [1, 2, 3])
+def test_bitcode_prefix_cache_version(tmp_path, func, stamp_version):
+    obj = tmp_path / func.object_file_name
+    compile_utils.compile_external_kernel(
+        func, str(tmp_path), "aie2p", embed_bitcode=True
+    )
+    stamp = tmp_path / os.path.basename(
+        compile_utils._symbol_prefix_stamp_path(str(obj), "op0_")
+    )
+    if stamp_version < 3:
+        # Recreate the legacy bug: native names were prefixed, IR was untouched.
+        subprocess.run(
+            [
+                config.objcopy_path(),
+                f"--update-section=.llvmbc={obj}.bc",
+                str(obj),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        stamp.write_text(
+            json.dumps(
+                {
+                    "version": stamp_version,
+                    "prefix": "op0_",
+                    "object_sha256": compile_utils._sha256_file(str(obj)),
+                }
+            )
+        )
+    before = obj.read_bytes()
+    untouched = obj.stat().st_mtime_ns
+    func._compiled = False
+    func._compiled_dir = None
+    compile_utils.compile_external_kernel(
+        func, str(tmp_path), "aie2p", embed_bitcode=True
+    )
+    bitcode, _ = _embedded_ir(obj, tmp_path)
+    assert _symbols(obj) == _symbols(bitcode) == ["op0_add_one", "op0_helper_fn"]
+    assert compile_utils._has_current_symbol_prefix_stamp(str(obj), "op0_")
+    if stamp_version == 3:
+        assert obj.read_bytes() == before
+        assert obj.stat().st_mtime_ns == untouched
+    else:
+        assert obj.read_bytes() != before
+
+
+@pytest.mark.parametrize("embed_bitcode", [False, True])
+def test_bitcode_detection_preserves_object(tmp_path, embed_bitcode):
+    source = tmp_path / "kernel.cc"
+    source.write_text(_KERNEL_SOURCE)
+    obj = tmp_path / "kernel.o"
+    compile_utils.compile_cxx_core_function(
+        str(source), "aie2p", str(obj), embed_bitcode=embed_bitcode
+    )
+    before = obj.read_bytes()
+    mtime = obj.stat().st_mtime_ns
+    assert compile_utils._object_has_bitcode(obj) == embed_bitcode
+    assert obj.read_bytes() == before
+    assert obj.stat().st_mtime_ns == mtime
+
+
+def test_bad_embedded_bitcode_leaves_native_object_untouched(tmp_path, kernel_object):
+    invalid = tmp_path / "invalid.bc"
+    invalid.write_bytes(b"not LLVM bitcode")
+    subprocess.run(
+        [
+            config.objcopy_path(),
+            f"--add-section=.llvmbc={invalid}",
+            str(kernel_object),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    before = kernel_object.read_bytes()
+    with pytest.raises(RuntimeError, match="Embedded bitcode symbol prefixing failed"):
+        compile_utils.prefix_symbols_in_object(str(kernel_object), "op0_")
+    assert kernel_object.read_bytes() == before
+    assert not list(tmp_path.glob("aie-symbol-map-*"))
 
 
 def test_listing_failure_leaves_the_object_untouched(tmp_path):

@@ -33,7 +33,8 @@ logger = logging.getLogger(__name__)
 _UMASK = os.umask(0o022)
 os.umask(_UMASK)
 _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
-_SYMBOL_PREFIX_STAMP_VERSION = 1
+# Versions 1/2 could leave embedded bitcode unprefixed (v2 on Windows).
+_SYMBOL_PREFIX_STAMP_VERSION = 3
 
 
 SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
@@ -42,9 +43,23 @@ SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
 
 def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[str]:
     """Build a host shared library with the project's C++17 ABI."""
+    compiler = config.host_cxx_path()
+    link_flags = []
+    if SHARED_LIB_SUFFIX == ".dll":
+        target = subprocess.run(
+            [compiler, "-dumpmachine"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        # PE timestamps must not give identical dispatch builds different hashes.
+        link_flags.append(
+            "-Wl,/Brepro" if "msvc" in target else "-Wl,--no-insert-timestamp"
+        )
     return [
-        config.host_cxx_path(),
+        compiler,
         *SHARED_LIB_FLAGS,
+        *link_flags,
         opt,
         "-std=c++17",
         *(f"-I{inc}" for inc in includes),
@@ -144,6 +159,70 @@ def _end_of_parameter_list(line: str, open_paren: int) -> int:
                 return i + 1
         i += 1
     return -1
+
+
+def _check_lut_banks_enabled(options) -> bool:
+    """Recognize LLVM boolean option spellings, not just the bare flag."""
+    enabled = False
+    for option in options:
+        if option == "--":
+            break
+        name, _, value = option.partition("=")
+        if name in ("--check-lut-banks", "-check-lut-banks"):
+            enabled = value in ("", "1", "true", "True", "TRUE")
+    return enabled
+
+
+def _object_has_bitcode(output_path) -> bool:
+    """Inspect the actual cached object without rewriting it or a sidecar."""
+    # objcopy cannot open NUL for both outputs concurrently on Windows.
+    with tempfile.TemporaryDirectory(prefix="aie-bitcode-") as tmpdir:
+        ret = subprocess.run(
+            [
+                config.objcopy_path(),
+                f"--dump-section=.llvmbc={os.path.join(tmpdir, 'kernel.bc')}",
+                str(output_path),
+                os.devnull,
+            ],
+            check=False,
+            capture_output=True,
+        )
+    return ret.returncode == 0
+
+
+def _attach_bitcode(compile_cmd: list[str], output_path: str, cwd) -> None:
+    """Put the kernel's LLVM IR in a `.llvmbc` section of its object.
+
+    aiecc's --check-lut-banks recovers which two tables an aie::lut reads from
+    the IR, which nothing else preserves: address spaces are gone by codegen and
+    the pairing never reaches the symbol table.
+
+    Emitted separately and attached rather than compiled with -fembed-bitcode,
+    which clang rejects alongside the -ffunction-sections/-fdata-sections the
+    object needs for stack-size attribution.
+    """
+    bitcode_path = f"{output_path}.bc"
+    drop = {"-c", "-ffunction-sections", "-fdata-sections", "-fstack-size-section"}
+    cmd = [a for a in compile_cmd if a not in drop]
+    cmd[cmd.index("-o") + 1] = bitcode_path
+    cmd += ["-emit-llvm", "-c"]
+
+    ret = subprocess.run(cmd, cwd=cwd, check=False, capture_output=True)
+    if ret.returncode != 0:
+        raise RuntimeError(
+            "Could not emit bitcode for --check-lut-banks:\n" + ret.stderr.decode()
+        )
+
+    ret = subprocess.run(
+        [config.objcopy_path(), f"--add-section=.llvmbc={bitcode_path}", output_path],
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+    )
+    if ret.returncode != 0:
+        raise RuntimeError(
+            "Could not attach bitcode for --check-lut-banks:\n" + ret.stderr.decode()
+        )
 
 
 def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
@@ -266,6 +345,7 @@ def compile_cxx_core_function(
     use_chess: bool = False,
     inline: bool = False,
     symbol_name: str | None = None,
+    embed_bitcode: bool = False,
 ):
     """Compile a C++ core function via either Peano or the Chess compiler.
 
@@ -293,11 +373,19 @@ def compile_cxx_core_function(
             LLVM ``define`` for the kernel that ``_make_ir_inlinable`` rewrites
             to ``alwaysinline`` / ``linkonce_odr``. Must match the symbol as it
             appears in the freshly emitted IR.
+        embed_bitcode (bool): Preserve Peano LLVM IR in the object's ``.llvmbc``
+            section for ``--check-lut-banks``. Inline kernels already retain IR.
+            Not supported with Chess.
     """
     if inline and use_chess:
         raise ValueError(
             "inline=True requires the Peano toolchain and cannot be combined "
             "with use_chess=True"
+        )
+    if embed_bitcode and use_chess:
+        raise ValueError(
+            "embed_bitcode=True requires the Peano toolchain and cannot be "
+            "combined with use_chess=True (--check-lut-banks needs Peano LLVM IR)"
         )
     if inline and not symbol_name:
         raise ValueError("symbol_name is required when inline=True")
@@ -396,6 +484,18 @@ def compile_cxx_core_function(
         if ret.stderr:
             raise RuntimeError(f"[{tool}] compilation failed:\n{ret.stderr.decode()}")
         raise RuntimeError(f"[{tool}] compilation failed")
+
+    if embed_bitcode and not inline:
+        try:
+            _attach_bitcode(cmd, output_path, cwd)
+        except BaseException:
+            # An object without its requested IR must never become a cache hit.
+            failed_output = Path(output_path)
+            if cwd is not None and not failed_output.is_absolute():
+                failed_output = Path(cwd) / failed_output
+            failed_output.unlink(missing_ok=True)
+            Path(f"{failed_output}.bc").unlink(missing_ok=True)
+            raise
 
     if inline:
         assert symbol_name is not None
@@ -585,6 +685,7 @@ def compile_mlir_module(
             ],
             str(work_dir),
             target_arch,
+            embed_bitcode=_check_lut_banks_enabled(options or []),
         )
 
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
@@ -608,6 +709,73 @@ def compile_mlir_module(
             os.unlink(mlir_file)
 
 
+def _rename_ir_symbols(ir: str, symbols: list[str], prefix: str) -> str:
+    """Apply the native rename map to IR globals and their COMDAT groups."""
+    names = {symbol.encode() for symbol in symbols}
+    # Consume comments and ordinary strings too: @name in a string constant,
+    # inline assembly, or debug metadata is not an LLVM global reference.
+    tokens = re.compile(
+        r"(?<![-a-zA-Z$._0-9%!])[@$]"
+        r'(?:"(?:[^"\\]|\\[0-9a-fA-F]{2})*"|[-a-zA-Z$._0-9]+)'
+        r"(?![-a-zA-Z$._0-9:])"
+        r'|"(?:[^"\\]|\\.)*"|;[^\n]*'
+    )
+
+    def rename(match):
+        token = match.group()
+        if token[0] not in "@$":
+            return token
+        name = token[1:]
+        if name.startswith('"'):
+            name = re.sub(
+                rb"\\([0-9a-fA-F]{2})",
+                lambda m: bytes([int(m[1], 16)]),
+                name[1:-1].encode(),
+            )
+        else:
+            name = name.encode()
+        # LLVM's \01 suppresses target mangling and is absent from llvm-nm.
+        unmangled = name.startswith(b"\x01")
+        native_name = name[1:] if unmangled else name
+        if native_name not in names:
+            return token
+        renamed = (b"\x01" if unmangled else b"") + prefix.encode() + native_name
+        escaped = "".join(
+            chr(c) if 32 <= c < 127 and c not in (34, 92) else f"\\{c:02X}"
+            for c in renamed
+        )
+        return f'{token[0]}"{escaped}"'
+
+    return tokens.sub(rename, ir)
+
+
+def _prefix_embedded_bitcode(object_path, bitcode_path, symbols, prefix):
+    """Stage renamed bitcode without changing the object on any failure."""
+    opt = os.path.join(
+        os.path.dirname(config.peano_cxx_path()),
+        "opt.exe" if os.name == "nt" else "opt",
+    )
+    commands = [
+        [
+            config.objcopy_path(),
+            f"--dump-section=.llvmbc={bitcode_path}",
+            str(object_path),
+            os.devnull,
+        ],
+        [opt, "-S", str(bitcode_path), "-o", "-"],
+        [opt, "-o", str(bitcode_path)],
+    ]
+    ir = None
+    for command in commands:
+        result = subprocess.run(command, input=ir, capture_output=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Embedded bitcode symbol prefixing failed: {result.stderr.decode()}"
+            )
+        if command == commands[1]:
+            ir = _rename_ir_symbols(result.stdout.decode(), symbols, prefix).encode()
+
+
 def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     """Prefix every defined, external symbol in a compiled object file.
 
@@ -624,6 +792,8 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     runs: silently ignoring an nm failure would produce an empty rename map,
     turning this into a silent no-op that only surfaces later as a
     confusing "undefined symbol: <prefix><sym>" at final link time.
+    Embedded ``.llvmbc`` IR receives the same rename map before that pass, so
+    native definitions and the IR used by ``--check-lut-banks`` stay in sync.
 
     This operation is intentionally literal: every defined external symbol is
     renamed to ``{prefix}{symbol}``, even if the original spelling already
@@ -647,14 +817,21 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     ]
 
     objcopy = config.objcopy_path()
-    with tempfile.TemporaryDirectory(prefix="aie-symbol-map-") as tmpdir:
+    with tempfile.TemporaryDirectory(
+        prefix="aie-symbol-map-", dir=os.path.dirname(object_path) or "."
+    ) as tmpdir:
         map_file = os.path.join(tmpdir, "symbols.map")
         with open(map_file, "w") as f:
             for symbol in symbols:
                 f.write(f"{symbol} {prefix}{symbol}\n")
 
+        command = [objcopy, f"--redefine-syms={map_file}"]
+        if _object_has_bitcode(object_path):
+            bitcode_path = os.path.join(tmpdir, "renamed.bc")
+            _prefix_embedded_bitcode(object_path, bitcode_path, symbols, prefix)
+            command.append(f"--update-section=.llvmbc={bitcode_path}")
         result = subprocess.run(
-            [objcopy, f"--redefine-syms={map_file}", str(object_path)],
+            [*command, str(object_path)],
             capture_output=True,
             check=False,
         )
@@ -787,7 +964,7 @@ def _copy_object_files(object_files, work_dir):
         _copy_source(str(dest), str(source))
 
 
-def _compiled_into(func, kernel_dir) -> bool:
+def _compiled_into(func, kernel_dir, embed_bitcode=False) -> bool:
     """Report whether ``func``'s object was already built into this ``kernel_dir``.
 
     One ExternalFunction can be compiled by several designs, each into its own
@@ -797,10 +974,17 @@ def _compiled_into(func, kernel_dir) -> bool:
     compiled_dir = getattr(func, "_compiled_dir", None)
     if not getattr(func, "_compiled", False) or compiled_dir is None:
         return False
+    if embed_bitcode and (
+        not getattr(func, "_compiled_embed_bitcode", False)
+        or not os.path.exists(os.path.join(kernel_dir, func.object_file_name))
+    ):
+        return False
     return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
 
 
-def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
+def compile_external_kernels(
+    funcs, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
     Kernels are separate translation units with separate outputs, so they
@@ -822,7 +1006,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     without the intrinsics PCH), so the bound is cores rather than memory on an
     ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
     """
-    pending = [f for f in funcs if not _compiled_into(f, kernel_dir)]
+    pending = [f for f in funcs if not _compiled_into(f, kernel_dir, embed_bitcode)]
     if not pending:
         return
 
@@ -830,7 +1014,9 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     # per-invocation state there, so the Chess path runs serially.
     if any(getattr(f, "_use_chess", False) for f in pending):
         for f in pending:
-            compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
+            compile_external_kernel(
+                f, kernel_dir, target_arch, include_dirs, embed_bitcode
+            )
         return
 
     groups: dict[str, list] = {}
@@ -848,12 +1034,16 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     if jobs == 1:
         for group in groups.values():
             for f in group:
-                compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
+                compile_external_kernel(
+                    f, kernel_dir, target_arch, include_dirs, embed_bitcode
+                )
         return
 
     def _run(group):
         for f in group:
-            compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
+            compile_external_kernel(
+                f, kernel_dir, target_arch, include_dirs, embed_bitcode
+            )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         # list() re-raises the first failure, after the others have finished --
@@ -861,13 +1051,17 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
         list(pool.map(_run, groups.values()))
 
 
-def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
+def compile_external_kernel(
+    func, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
     Existing objects are reused, except that prefixed objects require a matching
     content stamp. Unstamped or modified prefixed objects are rebuilt from source:
     their symbol names cannot establish whether prefixing has already happened.
+    A cached object is also rejected when ``embed_bitcode`` requests IR retention
+    and the object has no ``.llvmbc`` section.
 
     Args:
         func: ExternalFunction instance to compile.
@@ -878,8 +1072,11 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
         target_arch: Peano target architecture string (e.g., "aie2", "aie2p").
         include_dirs: Design-wide include directories appended after the
             ExternalFunction's own include directories.
+        embed_bitcode: Preserve Peano kernel LLVM IR for ``--check-lut-banks``.
     """
-    if _compiled_into(func, kernel_dir):
+    if embed_bitcode and getattr(func, "_use_chess", False):
+        raise ValueError("--check-lut-banks requires Peano kernels, not Chess")
+    if _compiled_into(func, kernel_dir, embed_bitcode):
         return
 
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
@@ -902,11 +1099,23 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     prefix = (
         f"{func._symbol_prefix}_" if getattr(func, "_symbol_prefix", None) else None
     )
-    if os.path.exists(output_file) and (
-        prefix is None or _has_current_symbol_prefix_stamp(output_file, prefix)
+    # The bitcode test inspects the object itself, not its .bc sidecar, which can
+    # survive a failed attach. An object built before bitcode was requested
+    # cannot serve a request that needs it.
+    if (
+        os.path.exists(output_file)
+        and (prefix is None or _has_current_symbol_prefix_stamp(output_file, prefix))
+        and (
+            not embed_bitcode
+            or getattr(func, "_inline", False)
+            or _object_has_bitcode(output_file)
+        )
     ):
+        # Same three fields the post-compile tail sets, so a cache hit and a
+        # fresh build leave the function in the same state.
         func._compiled = True
         func._compiled_dir = os.path.abspath(kernel_dir)
+        func._compiled_embed_bitcode = embed_bitcode
         return
 
     # Invalidate before any writes, so a failed compile, rename, or stamp write
@@ -932,6 +1141,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
             cwd=str(kernel_dir),
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
+            embed_bitcode=embed_bitcode,
         )
 
     elif func._source_file is not None:
@@ -970,6 +1180,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
             cwd=kernel_dir,
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
+            embed_bitcode=embed_bitcode,
         )
     else:
         raise ValueError("Neither source_string nor source_file is provided")
@@ -985,6 +1196,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
 
     func._compiled = True
     func._compiled_dir = os.path.abspath(kernel_dir)
+    func._compiled_embed_bitcode = embed_bitcode
 
 
 def _is_dispatch_library_name(name: str) -> bool:

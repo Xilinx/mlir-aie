@@ -24,6 +24,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <map>
 #include <optional>
@@ -2243,9 +2244,6 @@ LogicalResult LogicalTileOp::verify() {
     }
   }
 
-  if (isShimNOCorPLTile() && getAllocationScheme())
-    return emitOpError("Shim tiles cannot have an allocation scheme");
-
   return success();
 }
 
@@ -2431,9 +2429,6 @@ LogicalResult TileOp::verify() {
       found = true;
     }
   }
-
-  if (isShimNOCorPLTile() && getAllocationScheme())
-    return emitOpError("Shim tiles cannot have an allocation scheme");
 
   return success();
 }
@@ -2675,20 +2670,79 @@ LogicalResult CoreOp::verify() {
                     "artifact must be either merged or linked, not both";
     }
   // The core's own sections live in a `core_data` aie.buffer, so the buffer
-  // verifier covers their placement. Only the size belongs here.
+  // verifier covers their placement. Size and measured alignment belong here.
   if (auto measured = getMeasuredDataSize())
     if (auto declared = getDataSize(); declared && *declared < *measured)
       return emitOpError("data_size ")
              << *declared << " is smaller than the " << *measured
              << " bytes this core's linked sections occupy";
-  // Checked last so it does not pre-empt the diagnostics above on an op with
-  // more than one defect.
-  if (uint32_t stackSize = getEffectiveStackSize(),
-      localMem = getTargetModel(*this).getLocalMemorySize();
-      stackSize >= localMem)
+  // Where the stack sits. A pin the allocator could never honor is a user
+  // constraint, so it is rejected here rather than at placement.
+  const auto &targetModel = getTargetModel(*this);
+  int64_t localMem = targetModel.getLocalMemorySize();
+  auto validAlignment = [localMem](int64_t alignment) {
+    return alignment > 0 && alignment <= localMem &&
+           llvm::isPowerOf2_64(alignment);
+  };
+  if (auto alignment = getMeasuredDataAlignment();
+      alignment && !validAlignment(*alignment))
+    return emitOpError("measured_data_alignment must be a power of two between "
+                       "1 and ")
+           << localMem << " bytes";
+  if (auto alignments = getMeasuredBankAlignments())
+    if (!llvm::all_of(*alignments, validAlignment))
+      return emitOpError("measured_bank_alignments must contain only powers of "
+                         "two between 1 and ")
+             << localMem << " bytes";
+  MemoryRun stackRun = getStackRun();
+  auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  int64_t numBanks =
+      tile ? targetModel.getNumBanks(tile.getCol(), tile.getRow()) : 0;
+  int64_t bankSize =
+      numBanks > 0 ? targetModel.getLocalMemorySize() / numBanks : 0;
+  if (auto bank = getStackBank()) {
+    if (tile && *bank >= numBanks)
+      return emitOpError("stack_bank ")
+             << *bank << " does not exist; this tile has " << numBanks
+             << " banks";
+    // Bank-specific stack accesses must stay inside the selected bank.
+    if (bankSize > 0 && stackRun.size > bankSize)
+      return emitOpError("stack_bank pins a ")
+             << stackRun.size << "-byte stack to bank " << *bank
+             << ", which holds " << bankSize
+             << " bytes; omit stack_bank and stack_address for legacy "
+                "placement";
+    if (getStackAddress() && bankSize > 0 && stackRun.start / bankSize != *bank)
+      return emitOpError("stack_address 0x")
+             << llvm::utohexstr(stackRun.start) << " lies in bank "
+             << stackRun.start / bankSize << ", but stack_bank requests bank "
+             << *bank;
+    if (getStackAddress() && bankSize > 0 &&
+        stackRun.end() > (*bank + 1) * bankSize)
+      return emitOpError("a ")
+             << stackRun.size << "-byte stack at 0x"
+             << llvm::utohexstr(stackRun.start) << " runs past stack_bank "
+             << *bank << " (ending at 0x"
+             << llvm::utohexstr((*bank + 1) * bankSize) << ")";
+  }
+  // Checked last so they do not pre-empt the diagnostics above on an op with
+  // more than one defect. Size and placement are separate faults: a stack can
+  // fit the tile yet be placed so it runs off the end.
+  if (stackRun.size >= localMem)
     return emitOpError("stack_size ")
-           << stackSize << " leaves no local memory for this tile's buffers ("
-           << localMem << " bytes total)";
+           << stackRun.size
+           << " leaves no local memory for this tile's buffers (" << localMem
+           << " bytes total)";
+  if (stackRun.end() > localMem)
+    return emitOpError("a ") << stackRun.size << "-byte stack at 0x"
+                             << llvm::utohexstr(stackRun.start)
+                             << " runs past this tile's local memory ("
+                             << localMem << " bytes total)";
+  if (getStackAddress() &&
+      stackRun.start % targetModel.getCoreStackAlignment() != 0)
+    return emitOpError("stack_address must be aligned to ")
+           << targetModel.getCoreStackAlignment()
+           << " bytes for this target's stack ABI";
   return success();
 }
 
@@ -2706,6 +2760,10 @@ TileOp CoreOp::getTileOp() {
 uint32_t CoreOp::getEffectiveStackSize() {
   return getStackSize().value_or(
       getTargetModel(*this).getDefaultCoreStackSize());
+}
+
+MemoryRun CoreOp::getStackRun() {
+  return {getStackAddress().value_or(0), getEffectiveStackSize()};
 }
 
 //===----------------------------------------------------------------------===//
