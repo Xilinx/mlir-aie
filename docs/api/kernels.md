@@ -114,6 +114,10 @@ kernel needs no test harness. See
 [Kernel Library](../programming_guide/kernels_library.md#adding-a-kernel) for
 the add-a-kernel procedure and the test tiers built on it.
 
+Import the builder with `from aie.iron.algorithms import kernel_design as kd`
+and call `kd.design(...)`, or import `design` directly from `aie.iron.algorithms`.
+The former `aie.utils.kernel_harness` module has been removed.
+
 ::: iron.algorithms.kernel_design
     options:
       show_root_heading: false
@@ -147,6 +151,9 @@ report them; the timing helpers live here:
         - provenance
 
 ## Static checks
+
+These compiler-remark checks are available on demand through
+`python -m aie.utils.compile.remarks`; there is no static-check CI workflow.
 
 ::: utils.compile.remarks
     options:

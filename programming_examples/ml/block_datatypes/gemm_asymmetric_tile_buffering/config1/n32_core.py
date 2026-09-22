@@ -15,6 +15,7 @@ import argparse
 from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
@@ -69,7 +70,7 @@ def n32_core_gemm(
 
     kernel_flags = [f"-I{_AIE_KERNELS_INC}"]
 
-    zero_kernel = iron.kernels.zero((m, n), bfloat16)
+    zero_kernel = kernels.zero((m, n), bfloat16)
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_different_datatypes",
         source_file=str(_KERNEL_SRC),

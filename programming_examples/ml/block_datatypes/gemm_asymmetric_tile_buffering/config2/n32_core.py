@@ -15,6 +15,7 @@ import argparse
 from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
@@ -70,7 +71,7 @@ def n32_core_gemm(
         f"-I{_AIE_KERNELS_INC}",
     ]
 
-    zero_kernel = iron.kernels.zero((m, n // 8), v8bfp16ebs8)
+    zero_kernel = kernels.zero((m, n // 8), v8bfp16ebs8)
     # The flat pipelined block loop in the matmul kernel has ResMII=68, which
     # exceeds the post-RA pipeliner's default max II (60); raise the cap and
     # the retry budget for this TU.

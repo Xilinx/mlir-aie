@@ -443,12 +443,15 @@ optimization-record flags, and turns the records into per-kernel series:
 each loop's II and whether it is a zero-overhead loop, program memory,
 missing-bank loads and dropped `#pragma`s. The record shapes and the
 regression rules are documented on the module
-([API](../api/kernels.md#static-checks)). A dropped pragma is a
-kernel-source bug and is annotated on the pull request's file and line;
-a kernel that fails to compile is an error annotation. With
+([API](../api/kernels.md#static-checks)). These checks run on demand; there
+is no static-check CI workflow. When invoked in GitHub Actions, the tool
+emits a warning annotation for a dropped pragma and an error annotation
+for a kernel that fails to compile. With
 `MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
-`aie_kernels/` is compiled against an installed wheel, which is how the
-workflow runs on a pull request.
+`aie_kernels/` is compiled against an installed wheel. The separate
+`benchmarkKernels.yml` workflow runs hardware correctness and benchmarks
+nightly, on demand, and on Peano-pin pull requests; it does not run these
+static checks.
 
 ### Kernels the generic builder cannot run
 

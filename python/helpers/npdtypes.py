@@ -16,18 +16,18 @@ from ml_dtypes import bfloat16
 
 
 class v8bfp16ebs8(np.generic):
-    """Block floating point: 8 elements sharing an exponent, 16 bits each.
+    """Block floating point: 8 eight-bit mantissas sharing one eight-bit exponent.
 
-    A marker for the type an ndarray annotation carries;
-    ``aie.helpers.util`` maps it to the MLIR block-float type.
+    Each block occupies 72 bits (9 bytes). A marker for the type an ndarray
+    annotation carries; ``aie.helpers.util`` maps it to the MLIR block-float type.
     """
 
 
 class v16bfp16ebs16(np.generic):
-    """Block floating point: 16 elements sharing an exponent, 16 bits each.
+    """Block floating point: 16 eight-bit mantissas sharing one eight-bit exponent.
 
-    A marker for the type an ndarray annotation carries;
-    ``aie.helpers.util`` maps it to the MLIR block-float type.
+    Each block occupies 136 bits (17 bytes). A marker for the type an ndarray
+    annotation carries; ``aie.helpers.util`` maps it to the MLIR block-float type.
     """
 
 
