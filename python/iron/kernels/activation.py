@@ -3,23 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Activation kernel factories + numpy reference implementations.
-
-Factories (each returns an [`ExternalFunction`][iron.ExternalFunction]):
-  softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu.
-
-Runtime-sized calls must satisfy the C++ kernel's vector-loop constraints.
-
-Companion numpy reference implementations for host-side verification:
-  [`relu_ref`][iron.kernels.activation.relu_ref], [`silu_ref`][iron.kernels.activation.silu_ref], [`gelu_ref`][iron.kernels.activation.gelu_ref],
-  [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref], [`softmax_ref`][iron.kernels.activation.softmax_ref],
-  [`exp2f_vec_ref`][iron.kernels.activation.exp2f_vec_ref].  These compute the AIE
-  kernel's op in float32 so designs don't each reimplement the math
-  in their verify path.  Pair with
-  `count_mismatches` (rtol=0.128 is the
-  canonical LUT-tolerance default; see each ref's docstring for
-  per-op recommendations).
-"""
+"""Activation kernel factories and NumPy reference implementations."""
 
 from pathlib import Path
 
@@ -37,6 +21,15 @@ from ._common import (
 )
 
 _LUT_FIXED_TILE = 1024
+_RUNTIME_VECTOR_WIDTH = 32
+
+
+def _require_runtime_tile_size(factory_name: str, tile_size: int) -> None:
+    if tile_size < _LUT_FIXED_TILE or tile_size % _RUNTIME_VECTOR_WIDTH:
+        raise ValueError(
+            f"{factory_name}: tile_size must be a multiple of "
+            f"{_RUNTIME_VECTOR_WIDTH} and at least {_LUT_FIXED_TILE}, got {tile_size}"
+        )
 
 
 def _create_lut_kernel(
@@ -214,21 +207,15 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
 
 
 def tanh(tile_size: int = 1024) -> ExternalFunction:
-    """Tanh activation kernel for bf16 tiles.
-
-    The kernel takes the element count at runtime, so the design must pass
-    ``tile_size`` as a trailing ``int`` argument (e.g. via
-    ``transform_parallel(pass_size_to_kernel=True)``).
-    """
+    """Tanh for bf16 tiles of at least 1024 elements, in multiples of 32."""
+    _require_runtime_tile_size("tanh", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel("tanh_bf16", "tanh.cc", [tile_ty, tile_ty, np.int32])
 
 
 def sigmoid(tile_size: int = 1024) -> ExternalFunction:
-    """Sigmoid activation kernel for bf16 tiles.
-
-    Runtime element count — pass ``tile_size`` as a trailing ``int`` argument.
-    """
+    """Sigmoid for bf16 tiles of at least 1024 elements, in multiples of 32."""
+    _require_runtime_tile_size("sigmoid", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "sigmoid_bf16", "sigmoid.cc", [tile_ty, tile_ty, np.int32]

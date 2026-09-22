@@ -529,6 +529,7 @@ class CompilableDesign:
                 )
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
+                self._elf_path = None
                 self._dispatch_lib_path = companion_path if has_dispatch else None
                 self._kernel_dir = kernel_dir
                 # The active artifact may have changed since the previous
@@ -647,6 +648,7 @@ class CompilableDesign:
 
         self._xclbin_path = xclbin_path
         self._inst_path = inst_path
+        self._elf_path = elf_path
         self._dispatch_lib_path = dispatch_so_path
         self._kernel_dir = kernel_dir
         # Parse expected tensor sizes for runtime validation.
@@ -1152,6 +1154,8 @@ class CompilableDesign:
             "include_paths": [p.as_posix() for p in self.include_paths],
             "aiecc_flags": self.aiecc_flags,
             "object_files": [of.as_posix() for of in self.object_files],
+            "full_elf": self.full_elf,
+            "insts_only": self.insts_only,
             "cache_hash": self._compute_cache_hash(),
         }
         return json.dumps(data)
@@ -1189,6 +1193,8 @@ class CompilableDesign:
             include_paths=data.get("include_paths", []),
             aiecc_flags=data.get("aiecc_flags", []),
             object_files=data.get("object_files", []),
+            full_elf=data.get("full_elf", False),
+            insts_only=data.get("insts_only", False),
         )
 
     # ------------------------------------------------------------------

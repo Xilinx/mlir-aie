@@ -252,8 +252,8 @@ def mv(
         output_dtype: Output element type. Only ``np.int32`` is supported.
         vectorized: If ``True`` use the vectorized variant.
         use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
-            instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level
-            constraint (all EFs in one design must agree).
+            instead of Peano. All kernels in one design must use the same
+            toolchain.
 
     Returns:
         ExternalFunction configured for the matvec kernel.

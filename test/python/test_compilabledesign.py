@@ -952,6 +952,7 @@ def test_to_json_contains_all_fields():
         source_files=["kernel.cc"],
         include_paths=["/opt/inc"],
         object_files=["add.o"],
+        insts_only=True,
     )
     data = json.loads(d.to_json())
     assert data["use_cache"] is False
@@ -965,6 +966,8 @@ def test_to_json_contains_all_fields():
     assert "kernel.cc" in data["source_files"][0]
     assert "opt/inc" in data["include_paths"][0].replace("\\", "/")
     assert "add.o" in data["object_files"][0]
+    assert data["full_elf"] is False
+    assert data["insts_only"] is True
     assert "generator_name" in data
     assert "cache_hash" in data
 
@@ -1002,6 +1005,15 @@ def test_from_json_restores_flags():
     d2 = CompilableDesign.from_json(d.to_json(), generator=gen)
     assert d2.aiecc_flags == ("--verbose",)
     assert d2.compile_flags == ("-O3",)
+
+
+@pytest.mark.parametrize("mode", ["full_elf", "insts_only"])
+def test_from_json_restores_compilation_mode(mode):
+    gen = _gemm_gen()
+    d2 = CompilableDesign.from_json(
+        CompilableDesign(gen, **{mode: True}).to_json(), generator=gen
+    )
+    assert getattr(d2, mode) is True
 
 
 def test_from_json_restores_source_and_include_paths():
@@ -1570,6 +1582,8 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
         else:
             Path(kwargs["xclbin_path"]).touch()
             Path(kwargs["insts_path"]).touch()
+            if kwargs["elf_path"] is not None:
+                Path(kwargs["elf_path"]).touch()
 
     monkeypatch.setattr(
         compilabledesign_module,
@@ -1596,7 +1610,9 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
         design.compile(
             xclbin_path=tmp_path / "design.xclbin",
             inst_path=tmp_path / "insts.bin",
+            elf_path=tmp_path / "design.elf",
         )
+        assert design.get_cache_entry().elf == (tmp_path / "design.elf").resolve()
 
     assert calls == [([], (include_path,))]
 

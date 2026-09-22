@@ -337,7 +337,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="tanh_bf16",
         source_kind="string_or_file",
         source_substring="tanh.cc",
-        tile_size_checks=[(dict(tile_size=512), 512), (dict(tile_size=2048), 2048)],
+        invalid_kwargs=[
+            (dict(tile_size=512), "multiple of 32 and at least 1024"),
+            (dict(tile_size=1000), "multiple of 32 and at least 1024"),
+        ],
+        tile_size_checks=[(dict(tile_size=2048), 2048)],
     ),
     KernelSpec(
         name="sigmoid",
@@ -347,7 +351,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="sigmoid_bf16",
         source_kind="string_or_file",
         source_substring="sigmoid.cc",
-        tile_size_checks=[(dict(tile_size=512), 512), (dict(tile_size=2048), 2048)],
+        invalid_kwargs=[
+            (dict(tile_size=512), "multiple of 32 and at least 1024"),
+            (dict(tile_size=1000), "multiple of 32 and at least 1024"),
+        ],
+        tile_size_checks=[(dict(tile_size=2048), 2048)],
     ),
     KernelSpec(
         name="leaky_relu",

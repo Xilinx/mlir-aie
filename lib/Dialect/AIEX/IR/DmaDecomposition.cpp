@@ -175,8 +175,10 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         NdDmaPattern slice = pattern;
         slice.sizes[d] = std::min(chunkSize, n - i * chunkSize);
         slice.offsets[d] = pattern.offsets[d] + i * chunkSize;
-        if (slice.sizes[d] == 1)
+        if (slice.sizes[d] == 1) {
+          slice.offsets[d] *= pattern.strides[d];
           slice.strides[d] = 1; // never applied; keep the slice verifiable
+        }
 
         auto sub = decomposeRecursive(forOp, bufType, tm, col, row, slice);
         // failed() above already guards this deref; the checker just doesn't

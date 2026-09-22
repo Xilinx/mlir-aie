@@ -14,9 +14,9 @@
 
 // CHECK-LABEL: aie.runtime_sequence @strided_blocks
 // CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 0][1, 1, 64, 512][1, 0, 8192, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[1, 0, 0, 0][1, 1, 64, 512][1, 0, 8192, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[2, 0, 0, 0][1, 1, 64, 512][1, 0, 8192, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[3, 0, 0, 0][1, 1, 64, 512][1, 0, 8192, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[4194304, 0, 0, 0][1, 1, 64, 512][1, 0, 8192, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[8388608, 0, 0, 0][1, 1, 64, 512][1, 0, 8192, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[12582912, 0, 0, 0][1, 1, 64, 512][1, 0, 8192, 1])
 // CHECK-NOT: aiex.npu.dma_memcpy_nd
 module {
   aie.device(npu2_1col) {
