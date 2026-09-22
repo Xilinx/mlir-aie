@@ -394,3 +394,66 @@ def test_runtime_sized_factories_carry_use_chess(factory, use_chess):
 )
 def test_runtime_sized_factories_default_to_peano(factory):
     assert factory(1024)._use_chess is False
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [kernels.activation.tanh, kernels.activation.sigmoid],
+    ids=lambda f: f.__name__,
+)
+@pytest.mark.parametrize("use_chess", [False, True])
+def test_runtime_sized_activations_carry_use_chess(factory, use_chess):
+    ef = factory(1024, use_chess=use_chess)
+    assert ef._use_chess is use_chess
+
+
+def test_leaky_relu_carries_use_chess():
+    assert kernels.activation.leaky_relu(1024, use_chess=True)._use_chess is True
+    assert kernels.activation.leaky_relu(1024)._use_chess is False
+
+
+# ---------------------------------------------------------------------------
+# The runtime-sized activations take the tile their inner loop can step
+# through, not just 1024. The vector width is a hard requirement; the
+# pipeliner's minimum trip count is a promise xchesscc takes as a contract,
+# so it binds only under use_chess.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("factory", [kernels.activation.tanh, kernels.activation.sigmoid])
+@pytest.mark.parametrize("tile_size", [32, 64, 256, 512, 2048, 8192])
+def test_runtime_sized_activations_accept_any_multiple_of_the_vector_width(
+    factory, tile_size
+):
+    ef = factory(tile_size)
+    assert ef.tile_size() == tile_size
+
+
+@pytest.mark.parametrize("factory", [kernels.activation.tanh, kernels.activation.sigmoid])
+@pytest.mark.parametrize("tile_size", [30, 100, 1000])
+def test_runtime_sized_activations_reject_a_tile_the_loop_overruns(factory, tile_size):
+    with pytest.raises(ValueError, match="multiple of 32"):
+        factory(tile_size)
+
+
+@pytest.mark.parametrize("factory", [kernels.activation.tanh, kernels.activation.sigmoid])
+def test_runtime_sized_activations_hold_the_pipeliner_promise_under_chess(factory):
+    # 1024 = 32 iterations of 32 elements, which is what the kernel promises.
+    assert factory(1024, use_chess=True).tile_size() == 1024
+    with pytest.raises(ValueError, match="at least 1024"):
+        factory(512, use_chess=True)
+    # Peano emits the low-trip guard regardless, so a shorter tile is fine.
+    assert factory(512).tile_size() == 512
+
+
+def test_leaky_relu_tile_bounds_follow_its_own_loop():
+    from aie.iron.kernels._common import _detect_arch
+
+    width = 16 if _detect_arch() == "aie2" else 32
+    assert kernels.activation.leaky_relu(width).tile_size() == width
+    with pytest.raises(ValueError, match=f"multiple of {width}"):
+        kernels.activation.leaky_relu(width + 1)
+    # Both architectures promise 64 elements, by different routes.
+    assert kernels.activation.leaky_relu(64, use_chess=True).tile_size() == 64
+    with pytest.raises(ValueError, match="at least 64"):
+        kernels.activation.leaky_relu(32, use_chess=True)

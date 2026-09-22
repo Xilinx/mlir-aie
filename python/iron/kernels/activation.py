@@ -8,6 +8,11 @@
 Factories (each returns an [`ExternalFunction`][iron.ExternalFunction]):
   softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu.
 
+The ones whose element count is a runtime argument -- tanh, sigmoid,
+leaky_relu, and the ``*_sized`` siblings -- take any tile their inner loop
+can step through, not just 1024; ``_require_runtime_tile_size`` says what
+that means.
+
 Companion numpy reference implementations for host-side verification:
   [`relu_ref`][iron.kernels.activation.relu_ref], [`silu_ref`][iron.kernels.activation.silu_ref], [`gelu_ref`][iron.kernels.activation.gelu_ref],
   [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref], [`softmax_ref`][iron.kernels.activation.softmax_ref],
@@ -35,6 +40,49 @@ from ._common import (
 )
 
 _LUT_FIXED_TILE = 1024
+
+# The kernels whose element count is a runtime argument, and what their inner
+# loop is compiled with per architecture: (vector width, minimum trip count).
+#
+# The width is a hard requirement -- the loop steps by it and loads a full
+# vector, so a tile that is not a multiple of it runs off the end of the
+# buffer. The trip count is AIE_LOOP_MIN_ITERATION_COUNT, a promise to the
+# pipeliner: advisory under Peano, which emits the low-trip guard anyway, and
+# a contract under xchesscc, which may drop it. So the minimum is enforced
+# only for use_chess=True, and a shorter tile is allowed on Peano.
+_RUNTIME_SIZED_LOOPS = {
+    "tanh_bf16": {"aie2": (32, 32), "aie2p": (32, 32)},
+    "sigmoid_bf16": {"aie2": (32, 32), "aie2p": (32, 32)},
+    "leaky_relu_bf16": {"aie2": (16, 4), "aie2p": (32, 2)},
+}
+
+
+def _require_runtime_tile_size(
+    factory_name: str, func_name: str, tile_size: int, use_chess: bool
+) -> None:
+    """Check a runtime-sized kernel's tile against its inner loop.
+
+    These kernels take the element count as an argument, so the tile is not
+    fixed at 1024 the way a size-baked-in kernel's is; what it must satisfy
+    is the loop itself. See ``_RUNTIME_SIZED_LOOPS``.
+    """
+    arch = _detect_arch()
+    width, min_iterations = _RUNTIME_SIZED_LOOPS[func_name][arch]
+    if tile_size % width:
+        raise ValueError(
+            f"{factory_name}() tile_size must be a multiple of {width} on "
+            f"{arch} -- {func_name}'s loop steps by {width} and loads a full "
+            f"vector -- got {tile_size}."
+        )
+    floor = width * min_iterations
+    if use_chess and tile_size < floor:
+        raise ValueError(
+            f"{factory_name}() tile_size must be at least {floor} under "
+            f"use_chess=True: {func_name} promises the pipeliner "
+            f"{min_iterations} iterations of {width} elements "
+            f"(AIE_LOOP_MIN_ITERATION_COUNT), which xchesscc takes as a "
+            f"contract. Got {tile_size}."
+        )
 
 
 def _create_lut_kernel(
@@ -218,40 +266,52 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
     )
 
 
-def tanh(tile_size: int = 1024) -> ExternalFunction:
-    """Tanh activation kernel for bf16 tiles (must be 1024).
+def tanh(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
+    """Tanh activation kernel for bf16 tiles.
 
     The kernel takes the element count at runtime, so the design must pass
     ``tile_size`` as a trailing ``int`` argument (e.g. via
-    ``transform_parallel(pass_size_to_kernel=True)``).
+    ``transform_parallel(pass_size_to_kernel=True)``), and any multiple of
+    32 is a legal tile. Under ``use_chess`` the tile must also be at least
+    1024; see ``_require_runtime_tile_size``.
     """
-    _require_fixed_tile_size("tanh", tile_size, _LUT_FIXED_TILE)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel("tanh_bf16", "tanh.cc", [tile_ty, tile_ty, np.int32])
-
-
-def sigmoid(tile_size: int = 1024) -> ExternalFunction:
-    """Sigmoid activation kernel for bf16 tiles (must be 1024).
-
-    Runtime element count — pass ``tile_size`` as a trailing ``int`` argument.
-    """
-    _require_fixed_tile_size("sigmoid", tile_size, _LUT_FIXED_TILE)
+    _require_runtime_tile_size("tanh", "tanh_bf16", tile_size, use_chess)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
-        "sigmoid_bf16", "sigmoid.cc", [tile_ty, tile_ty, np.int32]
+        "tanh_bf16", "tanh.cc", [tile_ty, tile_ty, np.int32], use_chess=use_chess
     )
 
 
-def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
-    """Leaky ReLU activation kernel for bf16 tiles (must be 1024).
+def sigmoid(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
+    """Sigmoid activation kernel for bf16 tiles.
 
-    Takes the element count and the ``alpha`` slope at runtime, so the design
-    must pass ``(tile_size, alpha)`` as trailing ``int``/``bfloat16`` arguments.
+    Runtime element count — pass ``tile_size`` as a trailing ``int``
+    argument. Any multiple of 32 is a legal tile; under ``use_chess`` it
+    must also be at least 1024. See ``_require_runtime_tile_size``.
     """
-    _require_fixed_tile_size("leaky_relu", tile_size, _LUT_FIXED_TILE)
+    _require_runtime_tile_size("sigmoid", "sigmoid_bf16", tile_size, use_chess)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
-        "leaky_relu_bf16", "leaky_relu.cc", [tile_ty, tile_ty, np.int32, bfloat16]
+        "sigmoid_bf16", "sigmoid.cc", [tile_ty, tile_ty, np.int32], use_chess=use_chess
+    )
+
+
+def leaky_relu(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
+    """Leaky ReLU activation kernel for bf16 tiles.
+
+    Takes the element count and the ``alpha`` slope at runtime, so the design
+    must pass ``(tile_size, alpha)`` as trailing ``int``/``bfloat16``
+    arguments. The tile must be a multiple of the architecture's vector
+    width (16 on aie2, 32 on aie2p), and under ``use_chess`` at least 64.
+    See ``_require_runtime_tile_size``.
+    """
+    _require_runtime_tile_size("leaky_relu", "leaky_relu_bf16", tile_size, use_chess)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "leaky_relu_bf16",
+        "leaky_relu.cc",
+        [tile_ty, tile_ty, np.int32, bfloat16],
+        use_chess=use_chess,
     )
 
 
