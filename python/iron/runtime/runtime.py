@@ -343,8 +343,7 @@ class Runtime(Resolvable):
         """
         for registered in self._tile_dmas:
             if registered.tile is tile_dma.tile:
-                for channel in tile_dma.channels:
-                    registered.add_channel(channel)
+                registered.add_channels(tile_dma.channels)
                 return
             if _shares_coordinates(registered.tile, tile_dma.tile):
                 raise IronRuntimeError(

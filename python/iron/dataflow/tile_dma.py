@@ -246,7 +246,8 @@ class TileDma(Resolvable):
 
     def __init__(self, tile: Tile, channels: Iterable[DmaChannel]):
         self._tile = tile
-        self._channels: list[DmaChannel] = list(channels)
+        self._channels: list[DmaChannel] = []
+        self.add_channels(channels)
         self._resolved = False
 
     @property
@@ -264,7 +265,21 @@ class TileDma(Resolvable):
         time needs somewhere to put the second channel it wants on a tile it has
         already reached.
         """
-        self._channels.append(channel)
+        self.add_channels([channel])
+
+    def add_channels(self, channels: Iterable[DmaChannel]) -> None:
+        """Add channels after checking all hardware channel keys."""
+        channels = list(channels)
+        keys = {(channel.direction, channel.channel) for channel in self._channels}
+        for channel in channels:
+            key = (channel.direction, channel.channel)
+            if key in keys:
+                raise ValueError(
+                    f"TileDma for {self._tile} already has "
+                    f"{channel.direction} channel {channel.channel}."
+                )
+            keys.add(key)
+        self._channels.extend(channels)
 
     def all_tiles(self):
         return [self._tile]

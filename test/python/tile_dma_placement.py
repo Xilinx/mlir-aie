@@ -91,6 +91,33 @@ def distinct_tiles_at_one_coordinate_are_rejected():
 # CHECK: IronRuntimeError: Two TileDma programs name Tile(0, 2)
 
 
+def duplicate_channels_are_rejected():
+    print("\nTEST: duplicate_channels_are_rejected")
+    tile = Tile(0, 2)
+    buf = Buffer(tile=tile, type=vector_ty, name="duplicate")
+    try:
+        TileDma(tile=tile, channels=[channel(buf), channel(buf)])
+    except ValueError as e:
+        print(f"initial: {e}")
+
+    rt = Runtime(lambda: None, [])
+    registered = TileDma(tile=tile, channels=[channel(buf)])
+    rt.add_tile_dma(registered)
+    try:
+        rt.add_tile_dma(
+            TileDma(tile=tile, channels=[channel(buf, index=1), channel(buf)])
+        )
+    except ValueError as e:
+        print(f"merged: {e}")
+    print(f"channels after rejection: {len(registered.channels)}")
+
+# CHECK-LABEL: duplicate_channels_are_rejected
+# CHECK: initial: TileDma for Tile(0, 2) already has MM2S channel 0.
+# CHECK: merged: TileDma for Tile(0, 2) already has MM2S channel 0.
+# CHECK: channels after rejection: 1
+
+
 region_op_follows_the_resolved_tile()
 one_dma_program_per_tile()
 distinct_tiles_at_one_coordinate_are_rejected()
+duplicate_channels_are_rejected()
