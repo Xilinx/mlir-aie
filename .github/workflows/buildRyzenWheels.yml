@@ -643,7 +643,7 @@ jobs:
     # designs on the self-hosted Windows NPU. Only npu2 Windows runners exist.
     # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
     needs: build-windows
-    runs-on: [self-hosted, windows, ryzenai, npu2]
+    runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
     # Normal exec is 3-6 min; observed hang 192.6 min on this job (2026-08-04).
     timeout-minutes: 20
     env:
