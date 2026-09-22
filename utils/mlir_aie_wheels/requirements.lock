@@ -37,7 +37,7 @@ nanobind==2.12.0 \
     --hash=sha256:0ae77c1a88f27153fa57045ee00f7b0a7b06b1cd3df942e95a34b38c5d0a5bee \
     --hash=sha256:a10d3d88e691dcdf22696f9acd893fda3c5a05635763aea238829d274fcad480
     # via -r requirements.txt
-ninja==1.11.1.4 ; sys_platform == 'win32' \
+ninja==1.11.1.4 \
     --hash=sha256:055f386fb550c2c9d6157e45e20a84d29c47968876b9c5794ae2aec46f952306 \
     --hash=sha256:096487995473320de7f65d622c3f1d16c3ad174797602218ca8c967f51ec38a0 \
     --hash=sha256:2ab67a41c90bea5ec4b795bab084bc0b3b3bb69d3cd21ca0294fc0fc15a111eb \
