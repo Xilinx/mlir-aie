@@ -637,14 +637,13 @@ jobs:
 
   smoke-test-wheels-npu-windows:
     name: Smoke-Test Wheel on Ryzen AI (Windows)
-    # Windows analogue of smoke-test-npu: install the same-commit 3.13/RTTI-ON
+    # Windows analogue of smoke-test-npu: install the same-commit 3.12/RTTI-ON
     # build-windows wheel via iron_setup.py (runtime mode, so the installed
     # wheel is exercised, not a from-source build) and run a few @iron.jit
     # designs on the self-hosted Windows NPU. Only npu2 Windows runners exist.
-    # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
+    # 3.12 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
     needs: build-windows
     runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
-    # Normal exec is 3-6 min; observed hang 192.6 min on this job (2026-08-04).
     timeout-minutes: 20
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
@@ -658,7 +657,7 @@ jobs:
       - name: Download same-commit mlir_aie wheel
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          name: mlir_aie_windows_rtti_ON-3.13
+          name: mlir_aie_windows_rtti_ON-3.12
           path: wheelhouse
 
       - name: Install wheel and run an example on the NPU
@@ -680,7 +679,7 @@ jobs:
           REM resolves the device via iron.get_current_device(), so they target
           REM this npu2 runner.
           REM Use the venv interpreter explicitly: bare "python" picked up the
-          REM system 3.13, which has no numpy.
+          REM system 3.12, which has no numpy.
           set "IRON_PY=%CD%\ironenv\Scripts\python.exe"
 
           echo ===== basic/passthrough_kernel =====
