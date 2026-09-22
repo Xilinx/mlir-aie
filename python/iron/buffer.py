@@ -63,10 +63,9 @@ class Buffer(Resolvable):
                 for host-written RTP buffers the runtime pokes at a hardcoded address.
                 Defaults to None (compiler-assigned).
             mem_bank (int | None, optional): Pin the buffer to a specific L1 memory bank.
-                Bank-aware allocation treats the pin as a hard constraint and reports an
-                error when the bank cannot hold the buffer. The basic-sequential scheme
-                has no notion of banks and ignores the pin. Defaults to None
-                (compiler-assigned).
+                The pin is a hard constraint: if the bank cannot hold the buffer, the
+                compiler reports an error rather than placing it elsewhere. Defaults to
+                None (compiler-assigned).
 
         Raises:
             ValueError: If neither ``type`` nor ``initial_value`` is provided, or if

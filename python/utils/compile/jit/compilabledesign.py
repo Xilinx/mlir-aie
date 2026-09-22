@@ -53,7 +53,10 @@ from aie.utils.compile import (
     compile_mlir_module,
 )
 from aie.utils.compile.cache.utils import file_lock
-from aie.utils.compile.utils import _cleanup_failed_compilation
+from aie.utils.compile.utils import (
+    _check_lut_banks_enabled,
+    _cleanup_failed_compilation,
+)
 
 from . import _manifest
 from ._dispatch_compile import (
@@ -542,6 +545,11 @@ class CompilableDesign:
                     kernel_dir,
                     target_arch,
                     include_dirs=self.include_paths,
+                    # aiecc's LUT bank check reads IR that only the kernel
+                    # compile can preserve, so asking for the check is what
+                    # turns it on. Deriving it here keeps the two from
+                    # disagreeing, and aiecc_flags is already in the cache key.
+                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
                 )
 
                 compiler_options = list(self.aiecc_flags)
@@ -695,6 +703,11 @@ class CompilableDesign:
                     kernel_dir,
                     target_arch,
                     include_dirs=self.include_paths,
+                    # aiecc's LUT bank check reads IR that only the kernel
+                    # compile can preserve, so asking for the check is what
+                    # turns it on. Deriving it here keeps the two from
+                    # disagreeing, and aiecc_flags is already in the cache key.
+                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
                 )
 
                 compile_mlir_module(

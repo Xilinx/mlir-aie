@@ -6,7 +6,7 @@
 // Compile and link a real multi-bank frame, not just an unused reservation.
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2-none-unknown-elf -O2 -ffunction-sections -fdata-sections -fstack-size-section -mllvm -print-all-options -c %S/large_stack_kernel.cc -o %t.d/large_stack_kernel.o 2>&1 | FileCheck %s --check-prefix=OPTIONS
-// RUN: cd %t.d && aiecc --alloc-scheme=bank-aware --get-core-elfs --get=measured_stack_sizes.mlir --output-dir=%t.out --tmpdir=%t.prj -v %S/large_stack.mlir 2>&1 | FileCheck %s --check-prefix=COMPILE --implicit-check-not="aie-stack-addrspace"
+// RUN: cd %t.d && aiecc --get-core-elfs --get=measured_stack_sizes.mlir --output-dir=%t.out --tmpdir=%t.prj -v %S/large_stack.mlir 2>&1 | FileCheck %s --check-prefix=COMPILE --implicit-check-not="aie-stack-addrspace"
 
 // Peano's default 0 is unrestricted. Values 5-8 promise a single bank and
 // are unsafe for this stack; neither the kernel nor aiecc may assume one.

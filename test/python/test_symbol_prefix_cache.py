@@ -33,6 +33,7 @@ def tools(monkeypatch):
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(compile_utils, "compile_cxx_core_function", compile_object)
+    monkeypatch.setattr(compile_utils, "_object_has_bitcode", lambda _: False)
     monkeypatch.setattr(compile_utils.config, "nm_path", lambda: "nm")
     monkeypatch.setattr(compile_utils.config, "objcopy_path", lambda: "objcopy")
     monkeypatch.setattr(compile_utils.subprocess, "run", run)

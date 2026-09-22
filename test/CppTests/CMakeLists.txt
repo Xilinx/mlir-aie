@@ -32,7 +32,7 @@ add_executable(stack_size_analysis stack_size_analysis.cpp
                ${CMAKE_CURRENT_SOURCE_DIR}/../../tools/aiecc/StackSizeAnalysis.cpp)
 target_include_directories(stack_size_analysis PRIVATE
                            ${CMAKE_CURRENT_SOURCE_DIR}/../../tools/aiecc)
-llvm_map_components_to_libnames(stack_size_analysis_libs Object Support)
+llvm_map_components_to_libnames(stack_size_analysis_libs Object IRReader Core Support)
 target_link_libraries(stack_size_analysis PRIVATE ${stack_size_analysis_libs})
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)

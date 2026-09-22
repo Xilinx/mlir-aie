@@ -1283,13 +1283,10 @@ def tile(
     *,
     loc=None,
     ip=None,
-    allocation_scheme=None,
     packet_type=0,
     packet_id=None,
 ):
-    tile_op = TileOp(
-        col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme
-    )
+    tile_op = TileOp(col=col, row=row, loc=loc, ip=ip)
     if packet_id is not None:
         tile_op.attributes["controller_id"] = packet_info_attr_builder(
             (packet_type, packet_id)
@@ -1326,7 +1323,6 @@ def logical_tile(
     *,
     col=None,
     row=None,
-    allocation_scheme=None,
     loc=None,
     ip=None,
     packet_type=0,
@@ -1336,7 +1332,6 @@ def logical_tile(
         tile_type=tile_type,
         col=col,
         row=row,
-        allocation_scheme=allocation_scheme,
         loc=loc,
         ip=ip,
     )

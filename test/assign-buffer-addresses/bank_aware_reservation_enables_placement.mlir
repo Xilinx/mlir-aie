@@ -14,7 +14,7 @@
 // bytes fails. The declaration turns those bytes into a buffer the allocator
 // places, which packs two buffers per bank and clears bank 3.
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // CHECK-LABEL: module @no_reservation
 // CHECK: %b0 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "b0"} : memref<8192xi8>
