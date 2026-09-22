@@ -89,7 +89,7 @@ module {
       %t9 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%buf_b : memref<40960xbf16> offset = 16384 len = 4096)
         aie.end
-      }
+      } {issue_token = true}
       aiex.dma_start_task(%t9)
 
       // Await last task (guarantees all prior sequential tasks completed),
@@ -174,7 +174,7 @@ module {
       %t19 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%buf_b : memref<40960xbf16> offset = 36864 len = 4096)
         aie.end
-      }
+      } {issue_token = true}
       aiex.dma_start_task(%t19)
 
       aiex.dma_await_task(%t19)
