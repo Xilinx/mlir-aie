@@ -72,7 +72,8 @@ def check_builder(builder, name, constants=0):
     emitted = emitted_by(builder, names)
     loc = emitted[-1].operation.location
     # Check the actual user filename and line, not just a non-unknown location.
-    assert f'"{__file__}":{builder.__code__.co_firstlineno}:' in str(loc), loc
+    assert loc.filename == __file__, loc
+    assert loc.start_line == builder.__code__.co_firstlineno, loc
     for op in emitted:
         assert_location(op.operation, loc)
 
