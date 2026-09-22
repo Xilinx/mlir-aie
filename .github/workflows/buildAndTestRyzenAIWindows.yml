@@ -49,7 +49,7 @@ jobs:
     # automatically skipped by lit (see the "makefile_examples" feature gate
     # in python/aie_lit_utils/lit_config_helpers.py); JIT-style Python
     # examples (@iron.jit) still run and cover the NPU end to end.
-    runs-on: [self-hosted, windows, ryzenai, npu2]
+    runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
     # Normal exec is 19-21 min; observed hang on this job 71.4 min (2026-08-04).
     timeout-minutes: 90
     env:
