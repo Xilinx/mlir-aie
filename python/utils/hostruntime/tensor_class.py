@@ -719,6 +719,21 @@ class NpuTensor(ABC):
         """
         return _array_to_torch(self.numpy())
 
+    def numpy_view(self):
+        """Return a NumPy view of this buffer's host memory without syncing from device.
+
+        The write-path peer of :meth:`numpy`, which syncs from the NPU first.
+        This does not, and marks the buffer CPU-resident so that a later
+        ``.to("npu")`` (or an NPU operator's implicit sync) pushes what was
+        written. Use it where the caller is about to overwrite the contents
+        and reading the device's current bytes would be wasted work.
+
+        Returns:
+            np.ndarray: A zero-copy NumPy view of the host-side buffer.
+        """
+        self.device = "cpu"  # mark dirty so next to("npu") will actually sync
+        return self.data
+
     def torch_view(self):
         """Return a torch tensor sharing this buffer's host memory without syncing from device.
 
