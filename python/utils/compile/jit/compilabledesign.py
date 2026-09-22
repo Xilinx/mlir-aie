@@ -353,6 +353,7 @@ class CompilableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
+        objects_dir: Path | str | None = None,
     ) -> tuple[Path, Path | None]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
@@ -390,6 +391,14 @@ class CompilableDesign:
         path. It requires an explicit ``xclbin_path`` (and ``inst_path`` for
         static designs). In default cache mode aiecc still emits a ``main.pdi``
         into the cache directory — use `get_pdi_path` to locate it.
+
+        ``objects_dir`` names a kernel-object cache shared with other designs.
+        A design normally builds its kernels into its own work directory, so a
+        sweep over many designs pays the Peano compile of a kernel once per
+        design that links it. Point several designs at one ``objects_dir`` and
+        each distinct kernel is built once and copied in. The directory holds
+        only ``.o``/``.ll`` artifacts, never the per-design ``aie.mlir`` or CDO,
+        so designs still cannot read each other's intermediates.
         """
         from aie.iron.kernel import ExternalFunction
 
@@ -409,7 +418,7 @@ class CompilableDesign:
                 "design with DispatchTime[T] parameters."
             )
         if full_elf:
-            return self._compile_full_elf(ExternalFunction, full_elf_path)
+            return self._compile_full_elf(ExternalFunction, full_elf_path, objects_dir)
 
         if has_dispatch and (inst_path is not None or elf_path is not None):
             raise ValueError(
@@ -541,16 +550,8 @@ class CompilableDesign:
 
                 use_chess = self._resolve_use_chess(external_kernels)
 
-                compile_external_kernels(
-                    external_kernels,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs=self.include_paths,
-                    # aiecc's LUT bank check reads IR that only the kernel
-                    # compile can preserve, so asking for the check is what
-                    # turns it on. Deriving it here keeps the two from
-                    # disagreeing, and aiecc_flags is already in the cache key.
-                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
+                self._build_external_kernels(
+                    external_kernels, kernel_dir, target_arch, objects_dir
                 )
                 _copy_object_files(self.object_files, kernel_dir)
 
@@ -631,10 +632,44 @@ class CompilableDesign:
         self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
         return xclbin_path, inst_path
 
+    def _build_external_kernels(
+        self, external_kernels, kernel_dir, target_arch, objects_dir
+    ):
+        """Build this design's kernels, into ``objects_dir`` when one is given.
+
+        The objects are what a sweep over many designs rebuilds: a kernel costs
+        seconds of Peano per design that links it, and a design owns its work
+        directory, so nothing is shared. Building into a common directory and
+        copying the objects in lets ``compile_external_kernels`` skip the ones
+        another design already built -- it tracks which directories hold a
+        current object, so the second design is a file copy.
+        """
+        build_dir = Path(objects_dir) if objects_dir is not None else kernel_dir
+        build_dir.mkdir(parents=True, exist_ok=True)
+        compile_external_kernels(
+            external_kernels,
+            build_dir,
+            target_arch,
+            include_dirs=self.include_paths,
+            # aiecc's LUT bank check reads IR that only the kernel compile can
+            # preserve, so asking for the check is what turns it on. Deriving
+            # it here keeps the two from disagreeing, and aiecc_flags is
+            # already in the cache key.
+            embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
+        )
+        if build_dir != kernel_dir:
+            # aiecc resolves link_with relative to its cwd, which is the
+            # design's own directory.
+            _copy_object_files(
+                [build_dir / f.object_file_name for f in external_kernels],
+                kernel_dir,
+            )
+
     def _compile_full_elf(
         self,
         ExternalFunction,
         full_elf_path: Path | str | None,
+        objects_dir: Path | str | None = None,
     ) -> tuple[Path, None]:
         """Compile to a single self-contained full ELF (PDIs + TXN control code).
 
@@ -700,16 +735,8 @@ class CompilableDesign:
                 ExternalFunction._instances.clear()
 
                 use_chess = self._resolve_use_chess(external_kernels)
-                compile_external_kernels(
-                    external_kernels,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs=self.include_paths,
-                    # aiecc's LUT bank check reads IR that only the kernel
-                    # compile can preserve, so asking for the check is what
-                    # turns it on. Deriving it here keeps the two from
-                    # disagreeing, and aiecc_flags is already in the cache key.
-                    embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
+                self._build_external_kernels(
+                    external_kernels, kernel_dir, target_arch, objects_dir
                 )
                 _copy_object_files(self.object_files, kernel_dir)
 

@@ -69,11 +69,28 @@ jobs:
       - name: Install Peano and build dependencies
         run: source ./utils/env_install.sh aie-venv --dev --extras
 
+      - name: Ccache for C++ compilation
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          # The two targets build the same tree, so they would race on one key
+          # and each store a full cache every run.
+          key: static-kernel-checks-${{ runner.os }}-${{ matrix.target }}
+          max-size: 1G
+
+      # ccache compares the compiler by mtime by default, and GitHub-hosted
+      # runners reinstall it every run, so every object would miss even on a
+      # restored cache. Matches buildAndTestPythons.yml.
+      - name: Configure ccache
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=sloppiness=locale,time_macros
+
       - name: Build from source
         run: |
           source aie-venv/bin/activate
           export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) \
-            -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF"
+            -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
           ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
 
       - name: Use built package without XRT

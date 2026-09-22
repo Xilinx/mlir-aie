@@ -50,9 +50,22 @@ def _distinct_designs():
         yield pytest.param(case, id=case.name)
 
 
+@pytest.fixture(scope="session")
+def objects_dir(tmp_path_factory):
+    """One kernel-object cache for the whole sweep.
+
+    The cases share far more kernels than they have designs -- most of a
+    factory's cases differ only in call count, and the ``conv_even`` setup
+    kernel is named by nearly every contract -- so a private work directory
+    per design pays the same Peano compile dozens of times. Only objects live
+    here; each design still gets its own ``tmp_path`` for MLIR and CDO.
+    """
+    return tmp_path_factory.mktemp("kernel-objects")
+
+
 @pytest.mark.extensive
 @pytest.mark.parametrize("case", list(_distinct_designs()))
-def test_design_compiles_through_cdo(case, tmp_path):
+def test_design_compiles_through_cdo(case, tmp_path, objects_dir):
     with device_for((_DEVICE,)):
         fn = case.fn()
         inputs = inputs_for(case, "random", np.random.default_rng(0))
@@ -66,6 +79,7 @@ def test_design_compiles_through_cdo(case, tmp_path):
             design.compile(
                 xclbin_path=str(tmp_path / "d.xclbin"),
                 inst_path=str(tmp_path / "d.bin"),
+                objects_dir=objects_dir,
             )
         except RuntimeError as ex:
             msg = str(ex)
