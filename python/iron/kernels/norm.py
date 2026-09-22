@@ -14,7 +14,9 @@ from ml_dtypes import bfloat16
 from ._common import _default_source_path, _detect_arch, _include_dirs
 
 
-def _norm_extern(func_name: str, filename: str, arg_types: list) -> ExternalFunction:
+def _norm_extern(
+    func_name: str, filename: str, arg_types: list, use_chess: bool = False
+) -> ExternalFunction:
     """Norm kernel with aie_runtime_lib (the arch's vec_math.h) on the include path."""
     from aie.utils import config
 
@@ -27,6 +29,7 @@ def _norm_extern(func_name: str, filename: str, arg_types: list) -> ExternalFunc
         source_file=str(_default_source_path(filename)),
         arg_types=arg_types,
         include_dirs=include,
+        use_chess=use_chess,
     )
 
 
@@ -36,18 +39,25 @@ def rms_norm(tile_size: int = 1024) -> ExternalFunction:
     return _norm_extern("rms_norm", "rms_norm.cc", [tile_ty, tile_ty, np.int32])
 
 
-def rms_norm_eps(tile_size: int = 1024) -> ExternalFunction:
+def rms_norm_eps(
+    tile_size: int = 1024, use_chess: bool = False
+) -> ExternalFunction:
     """RMS-norm a bf16 row (gamma=1); design passes ``(in, out, cols, epsilon)``."""
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _norm_extern(
-        "rms_norm_eps", "rms_norm.cc", [tile_ty, tile_ty, np.int32, np.float32]
+        "rms_norm_eps",
+        "rms_norm.cc",
+        [tile_ty, tile_ty, np.int32, np.float32],
+        use_chess=use_chess,
     )
 
 
-def layer_norm(tile_size: int = 1024) -> ExternalFunction:
+def layer_norm(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
     """Layer-norm a bf16 row (gamma=1, beta=0); design passes ``(in, out, cols)``, eps=1e-5."""
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _norm_extern("layer_norm", "layer_norm.cc", [tile_ty, tile_ty, np.int32])
+    return _norm_extern(
+        "layer_norm", "layer_norm.cc", [tile_ty, tile_ty, np.int32], use_chess=use_chess
+    )
 
 
 def rms_norm_ref(x, *, eps: float = 1e-5):

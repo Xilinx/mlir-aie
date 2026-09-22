@@ -159,7 +159,7 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-def add_sized(tile_size: int = 1024) -> ExternalFunction:
+def add_sized(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
     """Element-wise bf16 addition, element count read at runtime.
 
     Runtime-size sibling of [`add`][iron.kernels.eltwise.add]; design passes
@@ -170,10 +170,11 @@ def add_sized(tile_size: int = 1024) -> ExternalFunction:
         "eltwise_add_bf16_vector_size",
         _default_source_path("add.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
+        use_chess=use_chess,
     )
 
 
-def mul_sized(tile_size: int = 1024) -> ExternalFunction:
+def mul_sized(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
     """Element-wise bf16 multiplication, element count read at runtime.
 
     Runtime-size sibling of [`mul`][iron.kernels.eltwise.mul]; design passes
@@ -184,10 +185,11 @@ def mul_sized(tile_size: int = 1024) -> ExternalFunction:
         "eltwise_mul_bf16_vector_size",
         _default_source_path("mul.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
+        use_chess=use_chess,
     )
 
 
-def relu_sized(tile_size: int = 1024) -> ExternalFunction:
+def relu_sized(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
     """Element-wise bf16 ReLU, element count read at runtime.
 
     Runtime-size sibling of [`relu`][iron.kernels.eltwise.relu]; design passes
@@ -198,4 +200,5 @@ def relu_sized(tile_size: int = 1024) -> ExternalFunction:
         "relu_bf16_size",
         _default_source_path("relu.cc"),
         [tile_ty, tile_ty, np.int32],
+        use_chess=use_chess,
     )

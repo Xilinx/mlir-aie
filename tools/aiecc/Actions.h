@@ -21,7 +21,10 @@
 #include "Graph.h"
 #include "Utils.h"
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallString.h"
@@ -134,14 +137,66 @@ struct PassPipeline {
   }
 };
 
+// pruneSplitClone — drop from a per-item clone what its consumer never
+// reads, keeping symbol resolution intact.
+//
+// A split clones the whole module once per matched op, and the graph keeps
+// every item. On a fused build that is one clone per core (hundreds), per
+// device and per runtime sequence, each carrying the main runtime sequence
+// after it has been materialized -- tens of thousands of DMA tasks -- so
+// memory is clones times module size. A consumer of a per-sequence item
+// reads that sequence and its device; a per-device item reads its device's
+// static configuration; a per-core item reads its core, its device's tiles,
+// buffers, locks and object fifos, and the kernels it links. None of them
+// reads another sequence, and none but the sequence's own consumer reads a
+// sequence at all.
+//
+// So: erase every runtime sequence other than the one containing `keep`
+// (for a per-core or per-device split, every one), then every device other
+// than the one containing `keep`, in each case only when nothing left in the
+// module still references its symbol. The verifier never sees a dangling
+// reference, and an item whose consumer does read across devices (the main
+// device's sequence configuring the others) keeps them, since its `configure`
+// ops are those references.
+inline void pruneSplitClone(mlir::ModuleOp module, mlir::Operation *keep) {
+  auto keepDevice = keep->getParentOfType<xilinx::AIE::DeviceOp>();
+  if (!keepDevice)
+    keepDevice = llvm::dyn_cast<xilinx::AIE::DeviceOp>(keep);
+  auto keepSeq = keep->getParentOfType<xilinx::AIEX::RuntimeSequenceOp>();
+  if (!keepSeq)
+    keepSeq = llvm::dyn_cast<xilinx::AIEX::RuntimeSequenceOp>(keep);
+
+  llvm::SmallVector<mlir::Operation *> victims;
+  module.walk([&](xilinx::AIEX::RuntimeSequenceOp seq) {
+    if (seq != keepSeq)
+      victims.push_back(seq);
+  });
+  for (mlir::Operation *seq : victims) {
+    if (mlir::SymbolTable::symbolKnownUseEmpty(seq, module))
+      seq->erase();
+  }
+  victims.clear();
+  for (auto dev : module.getOps<xilinx::AIE::DeviceOp>()) {
+    if (dev != keepDevice)
+      victims.push_back(dev);
+  }
+  for (mlir::Operation *dev : victims) {
+    if (mlir::SymbolTable::symbolKnownUseEmpty(dev, module))
+      dev->erase();
+  }
+}
+
 // SplitIRAction — walks a ModuleOp for KeyOp instances; clones the module
-// once per match. Use `.filter` downstream to skip matches.
+// once per match, pruned to what the item's consumer reads
+// (pruneSplitClone). Use `.filter` downstream to skip matches.
 template <typename KeyOp>
 struct SplitIRAction {
   using KeyFn = std::function<std::string(KeyOp)>;
   KeyFn keyFn;
+  bool prune = true;
 
-  SplitIRAction(KeyFn fn) : keyFn(std::move(fn)) {}
+  SplitIRAction(KeyFn fn, bool prune = true)
+      : keyFn(std::move(fn)), prune(prune) {}
 
   mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
   operator()(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item) const {
@@ -168,6 +223,8 @@ struct SplitIRAction {
         clonedOp = op;
         return mlir::WalkResult::interrupt();
       });
+      if (prune)
+        pruneSplitClone(*clone, clonedOp.getOperation());
       out.emplace_back(std::move(key),
                        OpInModule<KeyOp>{std::move(clone), clonedOp});
     }
