@@ -24,6 +24,7 @@ from .aie import (
     TileOp,
     bds,
     dma_bd,
+    _as_bd_i32,
     _as_i32,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
@@ -400,11 +401,8 @@ def shim_dma_single_bd_task(
                 repeat_count = int(s0) - 1
         else:
             # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
-            # sizes may be i64 (DynamicIndexList); truncate before subtracting.
-            s0_i32 = s0
-            if s0.type != T.i32():
-                s0_i32 = arith.trunci(T.i32(), s0)
-            repeat_count_val = s0_i32 - _as_i32(1)
+            # sizes may be i64 (DynamicIndexList); narrow before subtracting.
+            repeat_count_val = _as_bd_i32(s0) - _as_i32(1)
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -424,6 +422,103 @@ def shim_dma_single_bd_task(
                 packet=packet,
                 offset_parameter=offset_parameter,
             )
+            EndOp()
+    return task
+
+
+def tile_dma_single_bd_task(
+    tile,
+    direction,
+    channel,
+    buffer,
+    offset: int | None = None,
+    sizes: MixedValues | None = None,
+    strides: MixedValues | None = None,
+    transfer_len=None,
+    issue_token: bool = False,
+    packet: tuple[int] | None = None,
+    bd_id: int | None = None,
+    acquire: tuple = (),
+    release: tuple = (),
+):
+    """Configure and return a DMA task on a mem tile or core tile channel.
+
+    The non-shim sibling of
+    [`shim_dma_single_bd_task`][aiex.shim_dma_single_bd_task]. Where that one
+    reaches its shim channel through an objectFIFO's shim DMA allocation and
+    moves a host buffer, this one names a tile and channel directly and moves a
+    buffer that lives on that tile -- only a shim BD can address DDR.
+
+    ``sizes``/``strides``/``offset``/``transfer_len`` entries may be runtime
+    SSA values, which is what lets a mem tile descriptor be rebuilt per
+    dispatch. ``transfer_len`` is required when any of them is runtime: unlike
+    the static path, the dynamic encoder cannot infer a length from the
+    buffer's shape.
+
+    ``acquire``/``release`` take ``(lock, action, value)`` tuples emitted
+    around the BD, for handing the buffer to or from a compute tile.
+
+    Args:
+        tile: the tile whose DMA channel this task runs on.
+        direction: ``DMAChannelDir.S2MM`` or ``DMAChannelDir.MM2S``.
+        channel: hardware channel index. On a mem tile this also decides which
+            half of the BD pool ``bd_id`` may come from -- an even channel
+            reaches only the low half, an odd channel only the high half.
+        buffer: an ``aie.buffer`` on ``tile``.
+        issue_token: issue a completion token, so ``dma_await_task`` may wait
+            on the returned task.
+        bd_id: pin the buffer descriptor id instead of letting
+            ``aie-assign-runtime-sequence-bd-ids`` choose one.
+    """
+    if sizes is not None:
+        if len(sizes) > 4:
+            raise ValueError(
+                f"A DMA BD supports at most 4 dimensions, got {len(sizes)}"
+            )
+        while len(sizes) < 4:
+            sizes = [1] + list(sizes)
+            if strides is not None:
+                strides = [0] + list(strides)
+
+    # The outer (sizes[0]) dimension is the queue-push repeat_count rather than
+    # a transferred extent, exactly as on the shim path.
+    repeat_count = 0
+    repeat_count_val = None
+    if sizes:
+        s0 = sizes[0]
+        if isinstance(s0, (int, np.integer)):
+            if s0 > 1:
+                repeat_count = int(s0) - 1
+        else:
+            repeat_count_val = _as_bd_i32(s0) - _as_i32(1)
+
+    task = dma_configure_task(
+        tile,
+        direction,
+        channel,
+        repeat_count=repeat_count,
+        repeat_count_val=repeat_count_val,
+        issue_token=issue_token,
+    )
+    bd_kwargs = {}
+    if bd_id is not None:
+        bd_kwargs["bd_id"] = bd_id
+    if packet is not None:
+        bd_kwargs["packet"] = packet
+    with bds(task) as bd:
+        with bd[0]:
+            if acquire:
+                aie.use_lock(acquire[0], acquire[1], value=acquire[2])
+            dma_bd(
+                buffer,
+                sizes=sizes,
+                strides=strides,
+                offset=offset if offset is not None else 0,
+                transfer_len=transfer_len,
+                **bd_kwargs,
+            )
+            if release:
+                aie.use_lock(release[0], release[1], value=release[2])
             EndOp()
     return task
 

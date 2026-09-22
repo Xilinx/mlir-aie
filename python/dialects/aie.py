@@ -15,7 +15,7 @@ from ._ods_common import _cext
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
-from ..extras.dialects.arith import ScalarValue, constant
+from ..extras.dialects.arith import ScalarValue, constant, trunci
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
     MemRefValue,
@@ -124,6 +124,16 @@ def _as_i32(v):
     if isinstance(v, (int, np.integer)):
         return constant(int(v), T.i32())
     return v
+
+
+def _as_bd_i32(v):
+    """Narrow a runtime integer Value to i32 for a BD's offset, len or queue
+    repeat_count. Those fields are i32 while sizes and strides are i64, so one
+    dispatch-time scalar feeding both needs narrowing on this side. Ints,
+    already-i32 Values and None pass through."""
+    if v is None or isinstance(v, (int, np.integer)) or v.type == T.i32():
+        return v
+    return trunci(T.i32(), v)
 
 
 def _split_i32_scalar(v):

@@ -282,6 +282,7 @@ class Runtime(Resolvable):
         self._flows = []
         self._locks = []
         self._tile_dmas = []
+        self._buffers = []
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
@@ -321,6 +322,20 @@ class Runtime(Resolvable):
     def add_tile_dma(self, tile_dma) -> None:
         """Register an explicit [`TileDma`][iron.TileDma] program."""
         self._tile_dmas.append(tile_dma)
+
+    def add_buffer(self, buffer) -> None:
+        """Register a [`Buffer`][iron.Buffer] the sequence body addresses directly.
+
+        A buffer reaches the Program through whatever uses it -- a Worker's
+        fn_args, or a [`TileDma`][iron.TileDma]'s BD chain. One touched only by
+        [`tile_dma_task`][iron.tile_dma_task] has neither, and the sequence body
+        runs last, so it must be registered here to exist by then.
+        """
+        self._buffers.append(buffer)
+
+    @property
+    def buffers(self):
+        return list(self._buffers)
 
     @property
     def flows(self):
