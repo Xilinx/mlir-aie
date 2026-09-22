@@ -562,12 +562,13 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   int64_t d1Hw = hwSize(sizesRev[1]);
   int64_t iterRaw = hwSize(sizesRev[3]);
   int64_t iterHw = iterRaw > 1 ? iterRaw - 1 : 0;
-  if (failed(checkSize(sizesRev[0], d0Hw, ShimBdFieldWidths::d0WrapMax(),
-                       "d0 size")) ||
-      failed(checkSize(sizesRev[1], d1Hw, ShimBdFieldWidths::d1WrapMax(),
-                       "d1 size")) ||
-      failed(checkSize(sizesRev[3], iterHw, ShimBdFieldWidths::iterWrapMax(),
-                       "iteration size")))
+  int64_t wrapMax =
+      (1ll << targetModel.getDmaBdWrapBits(tile.getCol(), tile.getRow())) - 1;
+  int64_t iterMax =
+      (1ll << targetModel.getDmaBdIterBits(tile.getCol(), tile.getRow())) - 1;
+  if (failed(checkSize(sizesRev[0], d0Hw, wrapMax, "d0 size")) ||
+      failed(checkSize(sizesRev[1], d1Hw, wrapMax, "d1 size")) ||
+      failed(checkSize(sizesRev[3], iterHw, iterMax, "iteration size")))
     return failure();
 
   // Realizability of the CONSTANT size/stride operands (divisibility +

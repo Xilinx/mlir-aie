@@ -622,11 +622,11 @@ public:
     // returns the hw repeat_count for the queue push.
     SmallVector<Value> words;
     Value repeatCount;
-    if (failed(buildShimBdWords(
-            rewriter, loc, targetModel, fields, op.getMixedSizes(),
-            op.getMixedStrides(), op.getElementTypeBitwidth(),
-            op.getBurstLength(), op.getAxcacheOrDefault(),
-            /*bufLenOverride=*/Value(), repeatCount, words)))
+    if (failed(buildBdWords(rewriter, loc, targetModel, tileCol, tileRow,
+                            fields, op.getMixedSizes(), op.getMixedStrides(),
+                            op.getElementTypeBitwidth(), op.getBurstLength(),
+                            op.getAxcacheOrDefault(),
+                            /*bufLenOverride=*/Value(), repeatCount, words)))
       return failure();
     Value bdBase =
         getBdRegisterBase(rewriter, loc, targetModel, tileCol, tileRow,

@@ -6,18 +6,22 @@
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-dma-tasks-to-npu %s
 
 // Rejected cases for the dynamic (runtime SSA size/stride/len) dma_task path.
-// The dynamic BD-word encoder only covers the shim-NOC layout with an inner
-// contiguous scan and no padding; anything else stays a clean diagnostic.
+// The dynamic BD-word encoder covers every tile type that has a BD register
+// layout -- shim NOC, mem tile and core tile -- but not padding. The positive
+// cases live in runtime-len.mlir, runtime-len-memtile.mlir and
+// runtime-stride-field-widths.mlir.
 
-// A runtime size/stride/len on a non-shim (memtile) tile is not encodable.
+// Zero padding is a mem tile MM2S feature. Its fields are always compile-time
+// constants, but the dynamic packer does not write them, so the combination is
+// rejected rather than silently dropping the padding.
 module {
   aie.device(npu2) {
     %tile = aie.tile(1, 1)
-    %buf = aie.buffer(%tile) {sym_name = "b"} : memref<4096xi32>
+    %buf = aie.buffer(%tile) {sym_name = "b", address = 4096 : i32} : memref<4096xi8>
     aie.runtime_sequence(%len: i32) {
       %t = aiex.dma_configure_task(%tile, MM2S, 0) {
-          // expected-error@+1 {{runtime-valued BD size/stride/len/bd_id is only supported on shim NOC tiles}}
-          aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = %len sizes = [1, 8, 16, 32] strides = [4096, 512, 32, 1]) {bd_id = 0 : i32}
+          // expected-error@+1 {{zero padding is not supported with runtime sizes/strides/len}}
+          aie.dma_bd(%buf : memref<4096xi8> offset = 0 len = %len sizes = [2, 2, 4] strides = [4, 8, 1] pad [<const_pad_before=2, const_pad_after=1>]) {bd_id = 0 : i32}
           aie.end
       }
     }
