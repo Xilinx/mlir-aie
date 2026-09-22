@@ -1,0 +1,24 @@
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Build+run via CMake + ctest (no make; works on Windows). Mirrors
+// run_phoenix_group2.lit, which runs group2 twice: once plain, once with
+// tracing. Those are two configures here rather than two designs in one
+// directory, matching the `make clean` between the Makefile's run_py and
+// trace_py targets.
+//
+// REQUIRES: ryzen_ai_npu1, peano, torch, cmake_examples
+//
+// RUN: cmake -G Ninja -S %S -B %t.run -DAIE_DEVICE=npu -DGROUP=group2 -DPython3_EXECUTABLE=%python
+// RUN: cmake --build %t.run
+// RUN: ctest --test-dir %t.run --output-on-failure --no-tests=error
+//
+// RUN: cmake -G Ninja -S %S -B %t.trace -DAIE_DEVICE=npu -DGROUP=group2 -DTRACE_SIZE=16384 -DPython3_EXECUTABLE=%python
+// RUN: cmake --build %t.trace
+// RUN: ctest --test-dir %t.trace --output-on-failure --no-tests=error
+//
+// The post-processing the Makefile's trace_py recipe does after the run.
+// parse.py exits nonzero when the capture held no trace data, so this is the
+// assertion, exactly as upstream.
+// RUN: %python %S/../../../python/utils/trace/parse.py --input %t.trace/log/trace_magika.txt --mlir %t.trace/input_with_addresses.mlir --output %t.trace/trace_group2.json
+// RUN: %python %S/../../../python/utils/trace/get_trace_summary.py --input %t.trace/trace_group2.json
