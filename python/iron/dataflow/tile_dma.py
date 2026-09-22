@@ -151,13 +151,20 @@ class DmaChannel:
         channel: hardware channel index.
         bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
             (in-order) or n-way merge (out-of-order).
-        loop: whether the last BD chains back to the first, making the chain
-            endless. An endless chain is one task that never completes, so it
-            runs for as long as its locks let it and `repeat_count` has nothing
-            to count -- set `loop=False` to end the chain after its last BD,
-            which is what lets `repeat_count` re-run it a fixed number of times.
         repeat_count: extra repeats of the task (0 = run once), where the task
-            is the BD chain (in-order) or a merge round (out-of-order).
+            is the BD chain (in-order) or a merge round (out-of-order). Only
+            meaningful on a chain that ends -- see `loop`.
+        loop: whether the last BD chains back to the first (the default),
+            making the chain endless. An endless chain is one task that never
+            completes: it runs for as long as its locks let it, which is how
+            [`ObjectFifo`][iron.ObjectFifo] expresses the same thing, and
+            `repeat_count` has nothing to count and is ignored. `loop=False`
+            ends the chain after its last BD, making it a task that completes
+            and can be re-run -- which is what gives `repeat_count` meaning,
+            and what a design reproducing a specific descriptor layout wants.
+            Note a chain that ends runs exactly `repeat_count + 1` times, so a
+            `loop=False` channel expected to move more than one buffer needs a
+            matching count; left at 0 it moves one and stops.
         out_of_order: put the channel into out-of-order mode (S2MM only).
             Each BD receives the packet with `bd.bd_id == pkt.out_of_order_id`,
             and the BD chain (next bd) is ignored. Each BD receives its own
@@ -172,10 +179,13 @@ class DmaChannel:
     direction: DMAChannelDir
     channel: int
     bds: list[Bd]
-    loop: bool = True
     pad_value: int = 0
     repeat_count: int = 0
     out_of_order: bool = False
+    # Appended rather than grouped with the chain fields above: inserting a
+    # field ahead of the existing optional ones would silently rebind any
+    # positional caller's argument.
+    loop: bool = True
 
 
 def _channel_pad_word(ch: "DmaChannel") -> int | None:
@@ -243,6 +253,19 @@ class TileDma(Resolvable):
     def tile(self):
         return self._tile
 
+    @property
+    def channels(self) -> list[DmaChannel]:
+        return list(self._channels)
+
+    def add_channel(self, channel: DmaChannel) -> None:
+        """Add a channel to this tile's DMA program.
+
+        A tile has one DMA program, so a helper that wires transfers one at a
+        time needs somewhere to put the second channel it wants on a tile it has
+        already reached.
+        """
+        self._channels.append(channel)
+
     def all_tiles(self):
         return [self._tile]
 
@@ -263,8 +286,13 @@ class TileDma(Resolvable):
         return seen_buffers, seen_locks
 
     def _region_decorator(self):
-        """Pick the right ``aie`` region-opening decorator for the tile type."""
-        tt = self._tile.tile_type
+        """Pick the right ``aie`` region-opening decorator for the tile type.
+
+        Asks the tile what kind it effectively is rather than reading its
+        ``tile_type`` hint, which may be unset: taking that at face value
+        quietly emits an ``aie.mem`` for a shim tile.
+        """
+        tt = self._tile.effective_tile_type
         if tt == AIETileType.MemTile:
             return memtile_dma(self._tile.op)
         if tt in (AIETileType.ShimNOCTile, AIETileType.ShimPLTile):

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
+# RUN: %python %s | FileCheck %s --check-prefix=PAIR
 
 """Test DmaChannel.loop, which decides where the last BD in a chain points.
 
@@ -24,6 +25,8 @@ def emit_chains():
     compute_tile = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
     looping_buf = Buffer(tile=compute_tile, type=vector_ty, name="looping_buf")
     ending_buf = Buffer(tile=compute_tile, type=vector_ty, name="ending_buf")
+    pair_a = Buffer(tile=compute_tile, type=vector_ty, name="pair_a")
+    pair_b = Buffer(tile=compute_tile, type=vector_ty, name="pair_b")
 
     tile_dma = TileDma(
         tile=compute_tile,
@@ -39,6 +42,13 @@ def emit_chains():
                 loop=False,
                 repeat_count=3,
                 bds=[Bd(buffer=ending_buf, length=n)],
+            ),
+            # Two BDs and no explicit `next`: each should link to the one after
+            # it, and the last should follow `loop` like a single-BD chain does.
+            DmaChannel(
+                direction=DMAChannelDir.S2MM,
+                channel=0,
+                bds=[Bd(buffer=pair_a, length=n), Bd(buffer=pair_b, length=n)],
             ),
         ],
     )
@@ -65,4 +75,15 @@ def emit_chains():
 # CHECK:        aie.next_bd ^[[END:.*]]
 # CHECK:      ^[[END]]:
 # CHECK-NEXT:   aie.end
+
+# The two-BD chain links a -> b, and b wraps to a because the channel loops.
+# Checked under its own prefix: the aie.end block lands between the two BD
+# blocks, so these do not interleave with the checks above in scan order.
+# PAIR:      aie.dma_start(S2MM, 0, ^[[A:.*]], ^{{.*}})
+# PAIR:      ^[[A]]:
+# PAIR:        aie.dma_bd(%pair_a
+# PAIR:        aie.next_bd ^[[B:.*]]
+# PAIR:      ^[[B]]:
+# PAIR:        aie.dma_bd(%pair_b
+# PAIR:        aie.next_bd ^[[A]]
 print(emit_chains())
