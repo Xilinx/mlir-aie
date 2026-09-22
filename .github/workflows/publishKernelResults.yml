@@ -117,6 +117,20 @@ jobs:
         shell: bash
         run: |
           # Cache exactly the commit just published, not a later remote update.
+          #
+          # A series only exists once a run has published it, and `bench/` is
+          # created by the first one. Until then `git show` has nothing to
+          # read, and under `-o pipefail` that would fail the publish that is
+          # busy creating it. Skip instead: the comparison steps are guarded
+          # on the baseline file existing, so they sit out the same run.
+          save_series() {
+            if git cat-file -e "gh-pages:$1" 2>/dev/null; then
+              git show "gh-pages:$1" \
+                | sed -e 's/^window\.BENCHMARK_DATA = //' -e 's/;\s*$//' > "$2"
+            else
+              echo "no gh-pages:$1 yet -- nothing to cache as a baseline"
+            fi
+          }
           for npu in npu1 npu2; do
             if [[ "$npu" == npu1 ]]; then
               data_dir="$DATA_DIR_1"
@@ -126,13 +140,11 @@ jobs:
               target=aie2p
             fi
             mkdir -p "baselines/$npu/baseline"
-            git show "gh-pages:$data_dir/data.js" \
-              | sed -e 's/^window\.BENCHMARK_DATA = //' -e 's/;\s*$//' \
-              > "baselines/$npu/baseline/benchmark-data.json"
+            save_series "$data_dir/data.js" \
+              "baselines/$npu/baseline/benchmark-data.json"
             if [[ "$STATIC" == true ]]; then
-              git show "gh-pages:bench/static-pm/$target/data.js" \
-                | sed -e 's/^window\.BENCHMARK_DATA = //' -e 's/;\s*$//' \
-                > "baselines/$npu/baseline/benchmark-data-pm.json"
+              save_series "bench/static-pm/$target/data.js" \
+                "baselines/$npu/baseline/benchmark-data-pm.json"
             fi
           done
       # Cache paths must match the compute jobs' restore path ("baseline").

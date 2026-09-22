@@ -166,13 +166,19 @@ def provenance(**extra: str | None) -> str:
     ``llvm-aie`` (Peano) and ``mlir_aie`` versions, and any ``extra`` fields
     (``device="NPU Strix"``, ``pmode="performance"``) as ``key value`` pairs.
     A benchmark row records it so a number can be traced to a toolchain.
+
+    A package that is not installed is left out rather than recorded as
+    unknown. CI builds ``mlir_aie`` from source and puts it on ``PYTHONPATH``,
+    so there is no distribution to read a version from, and every published
+    row would otherwise carry a word that reads like a lookup failure. The
+    commit already identifies that build.
     """
 
-    def pkg(name: str) -> str:
+    def pkg(name: str) -> str | None:
         try:
             return _pkg_version(name)
         except PackageNotFoundError:
-            return "unknown"
+            return None
 
     commit = os.environ.get("GITHUB_SHA")
     if not commit:
@@ -182,13 +188,13 @@ def provenance(**extra: str | None) -> str:
             ).stdout.strip()
         except (OSError, subprocess.CalledProcessError):
             commit = "unknown"
-    parts = [
-        f"commit {commit[:10]}",
-        f"peano {pkg('llvm-aie')}",
-        f"mlir_aie {pkg('mlir_aie')}",
-    ]
-    parts += [f"{k} {v}" for k, v in extra.items() if v]
-    return " | ".join(parts)
+    fields = {
+        "commit": commit[:10],
+        "peano": pkg("llvm-aie"),
+        "mlir_aie": pkg("mlir_aie"),
+        **extra,
+    }
+    return " | ".join(f"{k} {v}" for k, v in fields.items() if v)
 
 
 @dataclass(frozen=True)
