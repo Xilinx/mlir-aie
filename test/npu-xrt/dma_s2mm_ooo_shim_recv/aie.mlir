@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 module {
-  aie.device(npu2) {
+  aie.device(NPUDEVICE) {
     %shim = aie.tile(0, 0)
     %s2 = aie.tile(0, 2)
     %s3 = aie.tile(0, 3)

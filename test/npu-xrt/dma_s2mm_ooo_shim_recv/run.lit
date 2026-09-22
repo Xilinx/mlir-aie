@@ -1,17 +1,20 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai_npu2, peano
+// REQUIRES: ryzen_ai, peano
 //
 // RUN: mkdir -p %t.prj
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
 // RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
 // RUN:   --output-dir=%t.prj \
-// RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
+// RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj aie_arch.mlir
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
 // RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \
 // RUN:   -I%S/../../../include %xrt_flags %host_link_flags
 //
-// RUN: %run_on_npu2% %t.exe | FileCheck %s
+// RUN: %run_on_npu1% %t.exe
+// RUN: %run_on_npu2% %t.exe
 //
-// CHECK: PASS!
