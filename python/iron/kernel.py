@@ -23,6 +23,12 @@ from .resolvable import Resolvable
 
 logger = logging.getLogger(__name__)
 
+# One declared argument: a tensor type, or a scalar. Numpy spells a scalar as a
+# type rather than a dtype instance (``np.int32``, not ``np.dtype(np.int32)``),
+# and that is the form `_validate_arg` branches on to check an SSA operand's
+# MLIR type -- so it belongs in the annotation, not just in the runtime.
+ArgType = type[np.ndarray] | type[np.generic] | np.dtype
+
 
 def _as_dtype(dt):
     """``np.dtype(dt)``, or ``dt`` itself for a block type numpy has no dtype for.
@@ -151,7 +157,7 @@ class KernelObject:
     def bind(
         self,
         name: str,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        arg_types: list[ArgType] | None = None,
         *,
         link_with_mode: str | None = None,
         stack_size_override: int | None = None,
@@ -200,7 +206,7 @@ class Kernel(Resolvable):
         self,
         name: str,
         object_file_name: str | KernelObject,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        arg_types: list[ArgType] | None = None,
         *,
         link_with_mode: str | None = None,
         stack_size_override: int | None = None,
@@ -292,7 +298,7 @@ class Kernel(Resolvable):
     def _init_identity(
         self,
         name: str,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        arg_types: list[ArgType] | None = None,
     ) -> None:
         """Set the symbol name and declared signature, without an artifact.
 
@@ -667,7 +673,7 @@ class ExternalFunction(Kernel):
         object_file_name: str | None = None,
         source_file: str | None = None,
         source_string: str | None = None,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        arg_types: list[ArgType] | None = None,
         include_dirs: list[str] | None = None,
         compile_flags: list[str] | None = None,
         *,
