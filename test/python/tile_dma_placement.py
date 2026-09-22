@@ -111,6 +111,7 @@ def duplicate_channels_are_rejected():
         print(f"merged: {e}")
     print(f"channels after rejection: {len(registered.channels)}")
 
+
 # CHECK-LABEL: duplicate_channels_are_rejected
 # CHECK: initial: TileDma for Tile(0, 2) already has MM2S channel 0.
 # CHECK: merged: TileDma for Tile(0, 2) already has MM2S channel 0.

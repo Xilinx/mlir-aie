@@ -171,7 +171,7 @@ class Flow(Resolvable):
                 # Emit the allocation now instead, at device scope beside the
                 # flow it belongs to -- a symbol is position-independent, only
                 # its scope matters.
-                with ir.InsertionPoint.before(self._op.operation):
+                with ir.InsertionPoint(self._op.operation.parent):
                     _emit_shim_dma_alloc(
                         kind,
                         self._shim_symbol,
