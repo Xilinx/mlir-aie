@@ -5,10 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s 2>&1 | FileCheck %s
-// CHECK:   warning: Failed to allocate buffer "a", which needs 528000 bytes.
-// CHECK:   %b1 = aie.buffer(%0) { sym_name = "a" } : memref<132000xi32>
-// CHECK: note: see current operation: %a = aie.buffer(%mem_tile_3_1) {sym_name = "a"} : memref<132000xi32>
+// RUN: not aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // CHECK: warning: Not all requested buffers fit in the available memory.
 // CHECK: note: see current operation: %mem_tile_3_1 = aie.tile(3, 1)
 // CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
@@ -21,7 +18,8 @@
 // CHECK:         bank : 5        0x50000-0x5FFFF
 // CHECK:         bank : 6        0x60000-0x6FFFF
 // CHECK:         bank : 7        0x70000-0x7FFFF
-// CHECK: error: 'aie.tile' op bank-aware allocation failed
+
+// CHECK: error: {{.*}}could not be placed: buffer "a" needs 528000 bytes and this tile has no room left for it
 
 module @test {
   aie.device(xcve2302) {

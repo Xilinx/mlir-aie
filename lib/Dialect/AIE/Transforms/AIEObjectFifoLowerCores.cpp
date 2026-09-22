@@ -122,7 +122,7 @@ struct LoweringContext {
   }
 
   LockOp lockOf(FlatSymbolRefAttr name) {
-    return SymbolTable::lookupNearestSymbolFrom<LockOp>(device, name);
+    return lookupNamedOp<LockOp>(device, name.getAttr());
   }
 };
 

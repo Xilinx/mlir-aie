@@ -207,3 +207,16 @@ func.func @test_negf(%a: vector<16xf32>) -> vector<16xf32> {
   %0 = arith.negf %a : vector<16xf32>
   return %0 : vector<16xf32>
 }
+
+// -----
+
+// Test: a round trip through some other pair of float types is left alone
+// CHECK-LABEL: func @test_unrelated_round_trip_unchanged
+// CHECK: %[[EXT:.*]] = arith.extf %{{.*}} : vector<16xf16> to vector<16xf64>
+// CHECK: %[[TRUNC:.*]] = arith.truncf %[[EXT]] : vector<16xf64> to vector<16xf16>
+// CHECK: return %[[TRUNC]]
+func.func @test_unrelated_round_trip_unchanged(%a: vector<16xf16>) -> vector<16xf16> {
+  %0 = arith.extf %a : vector<16xf16> to vector<16xf64>
+  %1 = arith.truncf %0 : vector<16xf64> to vector<16xf16>
+  return %1 : vector<16xf16>
+}

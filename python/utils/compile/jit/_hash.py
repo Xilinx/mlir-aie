@@ -37,6 +37,8 @@ from pathlib import Path
 from types import CodeType
 from typing import Any, Callable, Mapping
 
+from ._introspect import _introspect_generator
+
 logger = logging.getLogger(__name__)
 
 # Read granularity for content digests.  Bounded so a large input is streamed
@@ -142,10 +144,24 @@ def _compute_recipe_hash(
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
-        # A CompileTime[T] left to its Python default never reaches
-        # compile_kwargs, and the default lives outside the code object.
-        h.update(repr(getattr(generator, "__defaults__", None)).encode())
-        h.update(repr(getattr(generator, "__kwdefaults__", None)).encode())
+        hints, sig, (_, _, dispatch_params, _) = _introspect_generator(generator)
+        # Dispatch defaults are call-time values; explicitly bound defaults are
+        # unused. Neither changes the compiled program.
+        h.update(
+            repr(
+                [
+                    param.replace(
+                        annotation=hints.get(name, param.annotation),
+                        default=(
+                            param.empty
+                            if name in dispatch_params or name in compile_kwargs
+                            else param.default
+                        ),
+                    )
+                    for name, param in sig.parameters.items()
+                ]
+            ).encode()
+        )
 
     def _kwarg_repr(v):
         if callable(v) and hasattr(v, "__code__"):
@@ -181,11 +197,23 @@ def _compute_recipe_hash(
     return h.hexdigest()
 
 
+def _tool_identity(name: str, resolve: Callable[[], str | Path]) -> str:
+    """Identify a resolved compiler component without probing an executable."""
+    try:
+        path = Path(resolve()).resolve()
+        stat = path.stat()
+        return f"{path}:{stat.st_mtime_ns}:{stat.st_size}"
+    except (ImportError, AttributeError, OSError, RuntimeError) as exc:
+        logger.warning("_compute_artifact_hash: %s absent (%s)", name, exc)
+        return "absent"
+
+
 def _compute_artifact_hash(
     generator: Callable | Path,
     source_files: list[Path] | tuple[Path, ...],
     object_files: list[Path] | tuple[Path, ...],
     fold_ddr_addr_offset: bool,
+    has_dispatch_params: bool = False,
 ) -> str:
     """Hash of the "artifacts": source/object content + tool mtimes + device.
 
@@ -197,6 +225,10 @@ def _compute_artifact_hash(
     a folded ``insts.bin`` and HRX an unfolded one, so the two must never share a
     cache entry. It is resolved once by the caller and passed in explicitly (no
     silent default) so the cache key and the compilation can never disagree.
+
+    ``has_dispatch_params`` additionally hashes the host C++ compiler used to
+    build the dispatch library. Its generated source is covered by aiecc's
+    identity above; Python does not run a separate translation pipeline.
     """
     h = hashlib.sha256()
 
@@ -209,7 +241,6 @@ def _compute_artifact_hash(
         h.update(_content_digest(of).encode())
 
     h.update(f"fold_ddr_addr_offset={fold_ddr_addr_offset}".encode())
-
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
     # Missing components collapse to a constant + WARNING log so cross-target
     # cache collisions surface instead of silently aliasing.
@@ -229,52 +260,17 @@ def _compute_artifact_hash(
             target_arch = "unknown"
             target_device = ("unknown", "", "", "")
 
-        try:
-            from aie.utils import config as _config
+        h.update(f"target_arch={target_arch}|target_device={target_device!r}".encode())
+        from aie.utils import config as _config
 
-            peano_cxx = _config.peano_cxx_path()
-            peano_mtime = str(Path(peano_cxx).stat().st_mtime)
-        except (
-            ImportError,
-            AttributeError,
-            FileNotFoundError,
-            OSError,
-            RuntimeError,
-        ) as exc:
-            try:
-                from aie.utils import config as _config
-
-                peano_mtime = f"path:{_config.peano_install_dir()}"
-                logger.warning(
-                    "_compute_artifact_hash: peano cxx unavailable (%s); "
-                    "keying on install dir path only",
-                    exc,
-                )
-            except (ImportError, AttributeError, RuntimeError) as exc2:
-                logger.warning("_compute_artifact_hash: peano absent (%s)", exc2)
-                peano_mtime = "absent"
-
-        try:
-            from aie.utils import config as _config
-
-            # Resolve aiecc the way the compile does.  Probing PATH instead
-            # misses the bundled bin/aiecc that _run_aiecc actually invokes,
-            # and then every aiecc aliases onto the constant below.
-            aiecc_mtime = str(Path(_config.aiecc_path()).stat().st_mtime)
-        except (
-            ImportError,
-            AttributeError,
-            FileNotFoundError,
-            OSError,
-            RuntimeError,
-        ) as exc:
-            logger.warning("_compute_artifact_hash: aiecc absent (%s)", exc)
-            aiecc_mtime = "absent"
-
-        h.update(
-            f"target_arch={target_arch}|target_device={target_device!r}|"
-            f"peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
-        )
+        tools = {
+            "peano": _config.peano_cxx_path,
+            "aiecc": _config.aiecc_path,
+        }
+        if has_dispatch_params:
+            tools["host_cxx"] = _config.host_cxx_path
+        for name, resolve in tools.items():
+            h.update(f"{name}={_tool_identity(name, resolve)}".encode())
 
     return h.hexdigest()
 
@@ -288,6 +284,7 @@ def _compute_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     fold_ddr_addr_offset: bool = True,
+    has_dispatch_params: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
@@ -295,6 +292,10 @@ def _compute_hash(
         generator, compile_kwargs, aiecc_flags, compile_flags, full_elf, include_paths
     )
     artifact = _compute_artifact_hash(
-        generator, source_files, object_files, fold_ddr_addr_offset
+        generator,
+        source_files,
+        object_files,
+        fold_ddr_addr_offset,
+        has_dispatch_params,
     )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

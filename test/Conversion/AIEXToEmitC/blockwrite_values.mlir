@@ -40,7 +40,7 @@ module {
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_bd_pool(int32_t [[BD:v[0-9]+]]) {
 // CHECK:   uint32_t [[ARR:v[0-9]+]][2] = {};
 // CHECK:   aie_runtime::txn_append_blockwrite(txn, [[BASE:v[0-9]+]], [[ARR]],
-// CHECK:   aie_runtime::txn_append_address_patch(txn,
+// CHECK:   aie_runtime::txn_append_arg_patch(txn,
 module {
   aie.device(npu1_1col) {
     aie.runtime_sequence @bd_pool(%arg0: memref<8xi32>, %bd_id: i32) {

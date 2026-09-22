@@ -426,7 +426,7 @@ def AIE_BPDestOp: AIEX_Op<"bp_dest", [HasParent<"BPIDOp">]> {
   }];
 }
 
-def AIE_TokenOp: AIEX_Op<"token", [Symbol]> {
+def AIE_TokenOp : AIEX_Op<"token", [AIESymbol]> {
   let summary = "Declare a token (a logical lock)";
   let description = [{
     This operation creates a logical lock. We use Symbol so that it can be referenced globally.
@@ -448,7 +448,7 @@ def AIE_TokenOp: AIEX_Op<"token", [Symbol]> {
       AIE.useToken @token0("Release", 5) // release token0 and set its value to 5
 
   }];
-  let arguments = (ins AIEI32Attr:$value);
+  let arguments = (ins AIEI32Attr:$value, SymbolNameAttr:$sym_name);
   let assemblyFormat = [{ `(` $value `)` attr-dict }];
   let extraClassDeclaration = [{
     int getTokenValue() { return getValue(); }
@@ -1815,7 +1815,7 @@ def AIEX_DmaChannelResetForOp: AIEX_Op<"dma_channel_reset_for", [HasParent<"AIE:
 // ScratchpadParameter ops
 //===----------------------------------------------------------------------===//
 
-def AIEX_ScratchpadParameterOp: AIEX_Op<"scratchpad_parameter", [Symbol]> {
+def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
   let summary = "Declare a scratchpad runtime parameter";
   let description = [{
     Declares a named runtime parameter that uses the scratchpad mechanism.
