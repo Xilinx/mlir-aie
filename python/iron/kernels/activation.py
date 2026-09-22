@@ -8,6 +8,8 @@
 Factories (each returns an [`ExternalFunction`][iron.ExternalFunction]):
   softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu.
 
+Runtime-sized calls must satisfy the C++ kernel's vector-loop constraints.
+
 Companion numpy reference implementations for host-side verification:
   [`relu_ref`][iron.kernels.activation.relu_ref], [`silu_ref`][iron.kernels.activation.silu_ref], [`gelu_ref`][iron.kernels.activation.gelu_ref],
   [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref], [`softmax_ref`][iron.kernels.activation.softmax_ref],
@@ -126,7 +128,7 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
     """SiLU (Swish) for bf16 tiles, element count read at runtime.
 
     Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
-    passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
+    passes ``(in, out, size)``.
     """
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel("silu_bf16_size", "silu.cc", [tile_ty, tile_ty, np.int32])
@@ -136,7 +138,7 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
     """GELU (tanh approx) for bf16 tiles, element count read at runtime.
 
     Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
-    passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
+    passes ``(in, out, size)``.
     """
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel("gelu_bf16_size", "gelu.cc", [tile_ty, tile_ty, np.int32])
