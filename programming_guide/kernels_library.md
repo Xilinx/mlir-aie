@@ -361,10 +361,13 @@ what a kernel computes.
 | Tier | What | Where | When |
 | --- | --- | --- | --- |
 | host | contract vs. factory; design lowers to MLIR | `test/python/test_kernel_contracts.py` | every PR (lit) |
-| host, compile | every distinct design through aiecc to CDO | `test/python/npu/test_kernels_compile.py` (`-m extensive`) | static workflow |
 | device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
 | device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
-| host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | nightly and kernel or toolchain PRs |
+| host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | on demand |
+
+There is no compile-only tier: a design that will not build fails the tier
+that runs it. The smoke run builds every factory's design on both
+architectures each PR, and the nightly builds every case's.
 
 ```bash
 pytest test/python/test_kernel_contracts.py                        # host

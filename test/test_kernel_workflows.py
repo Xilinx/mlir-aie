@@ -32,7 +32,6 @@ def benchmark_steps(job):
     "filename,compute,static",
     [
         ("benchmarkKernels.yml", "bench", "false"),
-        ("staticKernelChecks.yml", "static", "true"),
     ],
 )
 def test_parallel_compute_has_one_main_only_publisher(filename, compute, static):
@@ -129,7 +128,7 @@ def test_dispatch_filter_is_passed_as_data_not_shell_source():
 
 @pytest.mark.parametrize(
     "filename,compute",
-    [("benchmarkKernels.yml", "bench"), ("staticKernelChecks.yml", "static")],
+    [("benchmarkKernels.yml", "bench")],
 )
 def test_source_builds_initialize_submodules(filename, compute):
     steps = workflow(filename)["jobs"][compute]["steps"]
@@ -143,43 +142,6 @@ def test_source_builds_initialize_submodules(filename, compute):
     assert steps.index(checkout) < steps.index(build)
 
 
-@pytest.mark.parametrize("existing", ["", "/existing"])
-def test_static_package_setup_without_xrt(tmp_path, existing):
-    steps = workflow("staticKernelChecks.yml")["jobs"]["static"]["steps"]
-    setup = next(
-        step for step in steps if step.get("name") == "Use built package without XRT"
-    )
-    env_file = tmp_path / "github-env"
-    path_file = tmp_path / "github-path"
-    # Set path inputs inside Bash: MSYS rewrites empty Windows environment values.
-    script = 'export PYTHONPATH="$1" LD_LIBRARY_PATH="$1"\n'
-    script += setup["run"] + '\nprintf "%s" "$PWD"'
-    result = subprocess.run(
-        ["bash", "-e", "-o", "pipefail", "-c", script, "workflow-env-test", existing],
-        cwd=tmp_path,
-        env={
-            **os.environ,
-            "GITHUB_ENV": env_file.as_posix(),
-            "GITHUB_PATH": path_file.as_posix(),
-        },
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    root = result.stdout
-    suffix = f":{existing}" if existing else ""
-    exported = dict(line.split("=", 1) for line in env_file.read_text().splitlines())
-    assert exported == {
-        "PYTHONPATH": f"{root}/mlir_aie/python{suffix}",
-        "LD_LIBRARY_PATH": f"{root}/mlir_aie/lib{suffix}",
-        "MLIR_AIE_INSTALL_DIR": f"{root}/mlir_aie",
-    }
-    assert path_file.read_text().splitlines() == [
-        f"{root}/aie-venv/bin",
-        f"{root}/mlir_aie/bin",
-    ]
-
-
 @pytest.mark.parametrize("step_id", ["correctness", "bench"])
 def test_benchmark_uses_built_package(step_id):
     steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
@@ -188,31 +150,6 @@ def test_benchmark_uses_built_package(step_id):
         run.index("source aie-venv/bin/activate")
         < run.index("source utils/env_setup.sh mlir_aie")
         < run.index("python -m pytest")
-    )
-
-
-def test_static_compiles_fused_sources_for_the_matrix_device():
-    job = workflow("staticKernelChecks.yml")["jobs"]["static"]
-    step = next(
-        step
-        for step in job["steps"]
-        if "test_kernels_compile.py" in step.get("run", "")
-    )
-    assert "test/python/npu/test_fused_mm_compile.py" in step["run"]
-    assert "-m extensive" in step["run"]
-    assert step["run"].count("python -m pytest") == 1
-    assert step["env"]["KERNEL_TEST_DEVICE"] == "${{ matrix.device }}"
-    # Serially this sweep is the longest step in the job by a wide margin and
-    # uses one of the runner's four cores. Losing the flag would not fail
-    # anything, it would just quietly cost ten minutes a run.
-    assert "-n auto" in step["run"]
-
-
-def test_static_checks_include_q4nx_reference_tests():
-    job = workflow("staticKernelChecks.yml")["jobs"]["static"]
-    assert any(
-        "test/python/test_q4nx_dequant.py" in step.get("run", "")
-        for step in job["steps"]
     )
 
 

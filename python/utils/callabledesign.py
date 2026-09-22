@@ -487,7 +487,6 @@ class CallableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
-        objects_dir: Path | str | None = None,
     ) -> tuple[Path, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
@@ -517,9 +516,6 @@ class CallableDesign:
         Device Image to that path. Requires explicit ``xclbin_path`` (and
         ``inst_path`` for static designs). In cache mode, use `get_pdi_path` to locate the
         ``main.pdi`` aiecc emits into the cache directory.
-
-        ``objects_dir`` is a kernel-object cache shared with other designs, so
-        a sweep builds each distinct kernel once rather than once per design.
         """
         return self.compilable.compile(
             xclbin_path=xclbin_path,
@@ -527,7 +523,6 @@ class CallableDesign:
             elf_path=elf_path,
             full_elf_path=full_elf_path,
             pdi_path=pdi_path,
-            objects_dir=objects_dir,
         )
 
     def measure_compile(self, workdir) -> tuple[float, int, int, int]:
