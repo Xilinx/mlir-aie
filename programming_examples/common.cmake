@@ -353,9 +353,12 @@ function(_aie_resolve_artifact _fn _keyword _name _var)
     if(NOT _listed)
       set(_listed "(none -- this directory declares no design)")
     endif()
+    # "Declared artifacts:" gets its own line: message() re-wraps running text
+    # at a width we do not control, and it split that phrase across two lines.
     message(FATAL_ERROR
       "${_fn}: ${_keyword} '${_name}' is not emitted by any add_aie_design() or "
-      "add_aie_mlir_design() in this directory. Declared artifacts:\n    ${_listed}")
+      "add_aie_mlir_design() in this directory."
+      "\nDeclared artifacts:\n    ${_listed}")
   endif()
   set(${_var} "${_path}" PARENT_SCOPE)
 endfunction()
