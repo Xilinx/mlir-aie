@@ -149,6 +149,11 @@ class CompilableDesign:
         include_paths: Extra ``-I`` paths forwarded to the C++ compiler.
         aiecc_flags: Extra flags forwarded to ``aiecc``.
         object_files: Pre-compiled ``.o`` files to link with.
+        insts_only: When ``True``, `compile` lowers only the design's runtime
+            sequence to an instruction stream (``aiecc --get-npu-insts``),
+            against an image built elsewhere: a foreign xclbin, or one
+            configuration's image that many shapes share. No core is
+            compiled, so the kernels the design declares are not built.
         full_elf: When ``True``, `compile` emits a single self-contained
             "full" ELF (PDIs + TXN control code) instead of an
             ``xclbin`` + ``insts.bin`` pair.  The ELF is loaded standalone by
@@ -167,10 +172,12 @@ class CompilableDesign:
         aiecc_flags: list[str] | None = None,
         object_files: list[str | Path] | None = None,
         full_elf: bool = False,
+        insts_only: bool = False,
     ):
         self.mlir_generator = mlir_generator
         self.use_cache = use_cache
         self.full_elf = full_elf
+        self.insts_only = insts_only
         # Freeze all inputs so callers can't mutate config after construction
         # (which would silently invalidate the cache hash). MappingProxyType +
         # tuples are read-only views; equality with plain dict/list still works.
@@ -409,6 +416,18 @@ class CompilableDesign:
             )
         if full_elf:
             return self._compile_full_elf(ExternalFunction, full_elf_path)
+        if self.insts_only:
+            if has_dispatch:
+                raise NotImplementedError(
+                    "insts_only=True with DispatchTime[T] parameters: an "
+                    "instructions-only design has no static stream to emit."
+                )
+            if xclbin_path is not None or elf_path is not None or pdi_path is not None:
+                raise ValueError(
+                    "compile(): an insts_only design takes inst_path alone "
+                    "(or nothing, for the JIT cache); it builds no image."
+                )
+            return self._compile_insts_only(ExternalFunction, inst_path)
 
         if has_dispatch and (inst_path is not None or elf_path is not None):
             raise ValueError(
@@ -730,6 +749,81 @@ class CompilableDesign:
         self._full_elf_kernel_name = self._parse_full_elf_kernel_name(ExternalFunction)
         self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
         return elf_path, None
+
+    def _compile_insts_only(
+        self, ExternalFunction, inst_path: Path | str | None
+    ) -> tuple[None, Path]:
+        """Lower the runtime sequence alone to an instruction stream.
+
+        With ``inst_path`` the stream is written there (cache bypassed, the
+        work directory beside it); otherwise it lands in the JIT cache as
+        ``<hash>/insts.bin``. Returns ``(None, inst_path)``: there is no image.
+        """
+        if not isinstance(self.mlir_generator, Path):
+            self._bind_generation_device()
+
+        explicit_path = inst_path is not None
+        cache_hash = None
+        if explicit_path:
+            inst_path = Path(inst_path).resolve()
+            kernel_dir = inst_path.parent / f"{inst_path.stem}.prj"
+        else:
+            cache_hash = self._compute_cache_hash()
+            kernel_dir = NPU_CACHE_HOME / cache_hash
+            inst_path = kernel_dir / "insts.bin"
+        lock_file_path = kernel_dir / ".lock"
+
+        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
+            os.makedirs(kernel_dir, exist_ok=True)
+
+            if (
+                not explicit_path
+                and self.use_cache
+                and inst_path.exists()
+                and not _manifest.is_valid(kernel_dir)
+            ):
+                logger.debug(
+                    "Inputs changed for '%s'; discarding insts-only cache entry",
+                    self.generator_name,
+                )
+                _cleanup_failed_compilation(kernel_dir)
+
+            if not explicit_path and self.use_cache and inst_path.exists():
+                logger.debug(
+                    "Insts-only cache hit for '%s' (hash=%s)",
+                    self.generator_name,
+                    cache_hash,
+                )
+                self._inst_path = inst_path
+                self._kernel_dir = kernel_dir
+                return None, inst_path
+
+            try:
+                mlir_module = self._generate_mlir(ExternalFunction)
+                # No core is compiled here, so the kernels the design declared
+                # are not built; the registry is cleared so one process's
+                # designs do not collide on a kernel name.
+                ExternalFunction._instances.clear()
+                compile_mlir_module(
+                    mlir_module=mlir_module,
+                    insts_path=inst_path,
+                    work_dir=kernel_dir,
+                    options=list(self.aiecc_flags) if self.aiecc_flags else None,
+                )
+                if not inst_path.exists():
+                    raise RuntimeError(
+                        "[aiecc] Instructions-only compilation appeared to "
+                        "succeed (exit code 0) but the expected output file was "
+                        f"not created: {inst_path}"
+                    )
+                _manifest.record(kernel_dir, [], self.source_files)
+            except Exception:
+                _cleanup_failed_compilation(kernel_dir)
+                raise
+
+        self._inst_path = inst_path
+        self._kernel_dir = kernel_dir
+        return None, inst_path
 
     def _resolve_use_chess(self, external_kernels: list) -> bool:
         """Return whether to drive aiecc with the Chess front-end.
@@ -1106,6 +1200,7 @@ class CompilableDesign:
             self.compile_flags,
             self.full_elf,
             self.include_paths,
+            self.insts_only,
         )
 
     @staticmethod
@@ -1148,6 +1243,7 @@ class CompilableDesign:
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
             self.include_paths,
+            self.insts_only,
         )
 
     def _bind_generation_device(self):
