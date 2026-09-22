@@ -165,9 +165,15 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
     int64_t n = pattern.sizes[d];
     int64_t chunkSize =
         maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
-    if (n > 1 && pattern.strides[d] > 0 &&
-        !strideFitsStepField(tm, forOp, bufType, col, row, pattern, d))
-      chunkSize = 1;
+    bool oversizedStride =
+        !strideFitsStepField(tm, forOp, bufType, col, row, pattern, d);
+    // Peel outer dimensions until an oversized inner stride can be folded.
+    for (unsigned i = 0; i <= d; ++i)
+      if (pattern.sizes[i] > 1 && pattern.strides[i] > 0 &&
+          !strideFitsStepField(tm, forOp, bufType, col, row, pattern, i)) {
+        chunkSize = 1;
+        break;
+      }
     if (chunkSize > 0 && chunkSize < n) {
       int64_t numChunks = (n + chunkSize - 1) / chunkSize;
       SmallVector<NdDmaPattern> combined;
@@ -175,7 +181,7 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         NdDmaPattern slice = pattern;
         slice.sizes[d] = std::min(chunkSize, n - i * chunkSize);
         slice.offsets[d] = pattern.offsets[d] + i * chunkSize;
-        if (slice.sizes[d] == 1) {
+        if (slice.sizes[d] == 1 && oversizedStride) {
           slice.offsets[d] *= pattern.strides[d];
           slice.strides[d] = 1; // never applied; keep the slice verifiable
         }

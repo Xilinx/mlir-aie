@@ -365,7 +365,16 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="leaky_relu_bf16",
         source_kind="string_or_file",
         source_substring="leaky_relu.cc",
-        tile_size_checks=[(dict(tile_size=512), 512), (dict(tile_size=2048), 2048)],
+        invalid_kwargs=[
+            (dict(tile_size=size), "multiple of 32 and at least 64")
+            for size in (-32, 0, 32, 33, 63, 65, 1000)
+        ],
+        tile_size_checks=[
+            (dict(tile_size=64), 64),
+            (dict(tile_size=96), 96),
+            (dict(tile_size=512), 512),
+            (dict(tile_size=2048), 2048),
+        ],
     ),
     KernelSpec(
         name="exp2f_vec",

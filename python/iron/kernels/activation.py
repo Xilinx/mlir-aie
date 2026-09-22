@@ -223,11 +223,16 @@ def sigmoid(tile_size: int = 1024) -> ExternalFunction:
 
 
 def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
-    """Leaky ReLU activation kernel for bf16 tiles.
+    """Leaky ReLU for bf16 tiles of at least 64 elements, in multiples of 32.
 
     Takes the element count and the ``alpha`` slope at runtime, so the design
     must pass ``(tile_size, alpha)`` as trailing ``int``/``bfloat16`` arguments.
     """
+    if tile_size < 64 or tile_size % _RUNTIME_VECTOR_WIDTH:
+        raise ValueError(
+            "leaky_relu: tile_size must be a multiple of "
+            f"{_RUNTIME_VECTOR_WIDTH} and at least 64, got {tile_size}"
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "leaky_relu_bf16", "leaky_relu.cc", [tile_ty, tile_ty, np.int32, bfloat16]

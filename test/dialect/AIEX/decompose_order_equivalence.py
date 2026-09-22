@@ -38,11 +38,14 @@ def emit(offset, sizes, strides):
     return out
 
 
-def module(rows, cols, pitch, nelem):
+def module(offsets, sizes, strides, nelem):
+    pattern = "".join(
+        "[" + ",".join(map(str, values)) + "]" for values in (offsets, sizes, strides)
+    )
     return f"""module {{
   aie.device(npu2_1col) {{
     aie.runtime_sequence(%in : memref<{nelem}xi32>) {{
-      aiex.npu.dma_memcpy_nd (%in[0,0,0,0][1,1,{rows},{cols}][0,0,{pitch},1])
+      aiex.npu.dma_memcpy_nd (%in{pattern})
         {{ metadata = @a, id = 0 : i64 }} : memref<{nelem}xi32>
     }}
     %t = aie.tile(0, 0)
@@ -52,9 +55,10 @@ def module(rows, cols, pitch, nelem):
 """
 
 
-def run_case(rows, cols, pitch):
-    nelem = (rows - 1) * pitch + cols
-    src = module(rows, cols, pitch, nelem)
+def run_case(offsets, sizes, strides):
+    offset = sum(o * s for o, s in zip(offsets, strides))
+    nelem = offset + sum((n - 1) * s for n, s in zip(sizes, strides)) + 1
+    src = module(offsets, sizes, strides, nelem)
     r = subprocess.run(
         [
             AIE_OPT,
@@ -75,7 +79,7 @@ def run_case(rows, cols, pitch):
         ops.append((flat, szs, strs))
     if not ops:
         return None
-    orig = emit(0, [1, 1, rows, cols], [0, 0, pitch, 1])
+    orig = emit(offset, sizes, strides)
     dec = []
     for flat, szs, strs in ops:
         dec += emit(flat, szs, strs)
@@ -89,15 +93,26 @@ CASES = [
     (3, 1500, 2000),
     (2, 3000, 3001),  # large inner (factored)
     (1031, 2, 3),  # prime outer -> slicing / chain
+    (4093, 2, 3),  # prime outer -> four full chunks and a singleton tail
     (7, 1024, 1100),
     (16, 2048, 2049),
 ]
 
 all_ok = True
 for rows, cols, pitch in CASES:
-    ok = run_case(rows, cols, pitch)
+    ok = run_case([0, 0, 0, 0], [1, 1, rows, cols], [0, 0, pitch, 1])
     all_ok = all_ok and (ok is True)
     print(f"rows={rows} cols={cols} pitch={pitch} -> order_equivalent={ok}")
+
+for offsets, sizes, strides in [
+    ([1, 0, 2, 3], [2, 1, 2, 2], [64, 0, 2097152, 1]),
+    ([1, 2, 3, 4], [2, 2, 2, 2], [64, 32, 2097152, 1]),
+    ([1, 0, 2, 3], [2, 1, 2, 2], [2097152, 0, 4194304, 1]),
+    ([0, 0, 0, 0], [65, 1, 1, 2], [3, 0, 0, 1]),
+]:
+    ok = run_case(offsets, sizes, strides)
+    all_ok = all_ok and (ok is True)
+    print(f"offsets={offsets} sizes={sizes} strides={strides} -> order_equivalent={ok}")
 
 print(f"ALL ORDER-EQUIVALENT: {all_ok}")
 sys.exit(0 if all_ok else 1)
