@@ -333,12 +333,11 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
     std::vector<Item<OpInModule<KeyOp>>> items;
     if (!entries)
       return items;
+    SharedModule shared{std::move(parsed)};
     for (const llvm::json::Value &e : *entries) {
       const llvm::json::Object *eo = e.getAsObject();
       int64_t walkIdx = eo->getInteger("walkIdx").value_or(-1);
-      // Each item owns its own module (matching the split); clone per item.
-      mlir::OwningOpRef<mlir::ModuleOp> clone(parsed.get().clone());
-      KeyOp op = opAtWalkIndex<KeyOp>(clone.get(), walkIdx);
+      KeyOp op = opAtWalkIndex<KeyOp>(shared.get(), walkIdx);
       if (!op) {
         llvm::errs() << "aiecc: cannot resume: focus op index " << walkIdx
                      << " out of range\n";
@@ -346,7 +345,7 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
       }
       Item<OpInModule<KeyOp>> it;
       it.key = eo->getString("key").value_or("").str();
-      it.value = OpInModule<KeyOp>{std::move(clone), op};
+      it.value = OpInModule<KeyOp>{shared, op};
       items.push_back(std::move(it));
     }
     return items;
