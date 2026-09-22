@@ -1625,6 +1625,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#the-dma-task-queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The DMA Task Queue
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3767,6 +3778,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#the-dma-task-queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The DMA Task Queue
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3898,8 +3920,8 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">npu_dma_memcpy_nd</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="n">bd_id</span><span class="p">,</span> <span class="n">mem</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sizes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">strides</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
 </code></pre></div>
 - <strong><code>metadata</code></strong>: This is a reference to the ObjectFifo or the string name of an ObjectFifo that records a Shim Tile and one of its DMA channels allocated for the host-side memory transfer. In order to associate the memcpy operation with an ObjectFifo, this metadata string needs to match the ObjectFifo name string.
-- <strong><code>bd_id</code></strong>: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below. 
-- <strong><code>mem</code></strong>: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
+- <strong><code>bd_id</code></strong>: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below.
+- <strong><code>mem</code></strong>: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
 - <strong><code>tap</code></strong> (optional): A <code>TensorAccessPattern</code> is an alternative method of specifying <code>offset</code>/<code>sizes</code>/<code>strides</code> for determining an access pattern over the <code>mem</code> buffer.
 - <strong><code>offsets</code></strong> (optional): Start points for data transfer in each dimension. There is a maximum of four offset dimensions.
 - <strong><code>sizes</code></strong>: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
@@ -3924,7 +3946,7 @@
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">sizes</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1"># Strides set to &#39;0&#39; in the higher (unused) dimensions and to &#39;100&#39; (length of a row in 4B or &quot;i32s&quot;) in the minor dimension</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">strides</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">100</span><span class="p">]</span>  
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">strides</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">100</span><span class="p">]</span>
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="c1"># Offsets set to zero since we start from the beginning</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="n">offsets</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
@@ -3947,7 +3969,7 @@
 <a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="c1"># &#39;2000&#39; for the next row of tile below the last (200 x 20 x 2B / 4B),</span>
 <a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="c1"># &#39;10&#39; for the next tile to the &#39;right&#39; of the last [20, 20] tile,</span>
 <a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="c1"># and &#39;100&#39; (length of a row in 4B or &quot;i32s&quot;) in dimension 0.</span>
-<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="n">strides</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2000</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">100</span><span class="p">]</span>  
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="n">strides</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2000</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">100</span><span class="p">]</span>
 <a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>
 <a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="c1"># Offsets set to zero since we start from the beginning</span>
 <a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="n">offsets</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
@@ -3963,10 +3985,10 @@
 <p><strong>Example Usage</strong>:</p>
 <p>Waiting on DMAs associated with one ObjectFifo:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Waits for the output data to transfer from the output ObjectFifo to the host</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">dma_wait</span><span class="p">(</span><span class="n">of_out</span><span class="p">)</span>  
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">dma_wait</span><span class="p">(</span><span class="n">of_out</span><span class="p">)</span>
 </code></pre></div></p>
 <p>Waiting on DMAs associated with more than one ObjectFifo:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">dma_wait</span><span class="p">(</span><span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span><span class="p">)</span>  
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">dma_wait</span><span class="p">(</span><span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span><span class="p">)</span>
 </code></pre></div></p>
 <h5 id="automatic-linearization-of-contiguous-accesses"><strong>Automatic Linearization of Contiguous Accesses</strong><a class="headerlink" href="#automatic-linearization-of-contiguous-accesses" title="Permanent link">&para;</a></h5>
 <p>A contiguous row-major access—one where <code>strides[0] == 1</code> and each outer stride equals the product of the inner sizes—is automatically folded to canonical linear form by the compiler. This means you can always write the natural multidimensional form and let the compiler handle it.</p>
@@ -3988,7 +4010,7 @@
 <p>As an alternative to <code>npu_dma_memcpy_nd</code> and <code>dma_wait</code>, there is a series of operations around <strong>DMA tasks</strong> that can serve a similar purpose.</p>
 <p>There are two advantages of using the DMA task operations over using <code>npu_dma_memcpy_nd</code>:
 * The user does not have to specify a BD number
-* DMA task operations are capable of <em>chaining</em> BD operations; however, this is an advance use-case beyond the scope of this guide. </p>
+* DMA task operations are capable of <em>chaining</em> BD operations; however, this is an advance use-case beyond the scope of this guide.</p>
 <p>The dialect-direct lowering used by DMA task operations can be inspected for any <code>@iron.jit</code>-decorated design via <code>design.as_mlir(...)</code> (or by examining <code>aiecc</code>'s intermediate <code>input_with_addresses.mlir</code> under the build's <code>.prj/</code> directory).</p>
 <p><strong>Function Signature and Parameters</strong>:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">shim_dma_single_bd_task</span><span class="p">(</span>
@@ -4003,7 +4025,7 @@
 <a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="p">)</span>
 </code></pre></div>
 - <strong><code>alloc</code></strong>: The <code>alloc</code> argument associates the DMA task with an ObjectFifo. This argument is called <code>alloc</code> because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFifo is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFifo is automatically generated.
-- <strong><code>mem</code></strong>: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
+- <strong><code>mem</code></strong>: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
 - <strong><code>tap</code></strong> (optional): A <code>TensorAccessPattern</code> is an alternative method of specifying <code>offset</code>/<code>sizes</code>/<code>strides</code> for determining an access pattern over the <code>mem</code> buffer.
 - <strong><code>offset</code></strong> (optional): Starting point for the data transfer. Default values is <code>0</code>.
 - <strong><code>sizes</code></strong>: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
@@ -4024,11 +4046,11 @@
 <p><strong>Example Usage</strong>:</p>
 <p>Waiting on task completion of one DMA task:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Waits for the output task to complete</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">dma_await_task</span><span class="p">(</span><span class="n">out_task</span><span class="p">)</span>  
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">dma_await_task</span><span class="p">(</span><span class="n">out_task</span><span class="p">)</span>
 </code></pre></div></p>
 <p>Waiting on task completion of more than one DMA task:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Waits for the input task and then the output task to complete</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">dma_await_task</span><span class="p">(</span><span class="n">in_task</span><span class="p">,</span> <span class="n">out_task</span><span class="p">)</span>  
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">dma_await_task</span><span class="p">(</span><span class="n">in_task</span><span class="p">,</span> <span class="n">out_task</span><span class="p">)</span>
 </code></pre></div></p>
 <h4 id="free-bds-without-waiting-with-dma_free_task"><strong>Free BDs without Waiting with <code>dma_free_task</code></strong><a class="headerlink" href="#free-bds-without-waiting-with-dma_free_task" title="Permanent link">&para;</a></h4>
 <p><code>dma_await_task</code> can only be called on a task created with <code>issue_token=True</code>. If <code>issue_token=False</code> (which is default), then <code>dma_free_task</code> should be called when the programmer knows that task if complete. <code>dma_free_task</code> allows the compiler to reuse the BDs of a task without synchronization. Using <code>dma_free_task(X)</code> before task <code>X</code> has completed will lead to a race condition and unpredictable behavior. Only use <code>dma_free_task(X)</code> in conjunction with some other means of synchronization. For example, you may issue <code>dma_free_task(X)</code> after a call to <code>dma_await_task(Y)</code> if you can reason that task <code>Y</code> can only complete after task <code>X</code> has completed.</p>
@@ -4039,19 +4061,29 @@
 <p><strong>Example Usage</strong>:</p>
 <p>Release BDs belonging to DMAs associated with one task:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Allow compiler to reuse BDs of a a task. Should only be called if the programmer is sure the task is completed.</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">dma_free_task</span><span class="p">(</span><span class="n">out_task</span><span class="p">)</span>  
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">dma_free_task</span><span class="p">(</span><span class="n">out_task</span><span class="p">)</span>
 </code></pre></div></p>
 <p>Release BDs belonging to DMAs associated with more than one task:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Allow compiler to reuse BDs of more than one task. Should only be called if the programmer is sure all tasks are completed.</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="n">dma_free_task</span><span class="p">(</span><span class="n">in_task</span><span class="p">,</span> <span class="n">out_task</span><span class="p">)</span>  
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="n">dma_free_task</span><span class="p">(</span><span class="n">in_task</span><span class="p">,</span> <span class="n">out_task</span><span class="p">)</span>
 </code></pre></div></p>
 <h4 id="best-practices-for-data-movement-and-synchronization-with-dma_task-operations"><strong>Best Practices for Data Movement and Synchronization with <code>dma_task</code> Operations</strong><a class="headerlink" href="#best-practices-for-data-movement-and-synchronization-with-dma_task-operations" title="Permanent link">&para;</a></h4>
 <ul>
-<li><strong>Await or Free to Reuse Buffer Descriptors</strong>: While the exact buffer descriptor (BD) used for each operation is not visible to the user with the <code>dma_task</code> operations, there are still a finite number (maximum of <code>16</code> on a Shim Tile). Thus, it is important to use <code>dma_await_task</code> or <code>dma_free_task</code> before the number of BDs are exhausted so that they may be reused. </li>
+<li><strong>Await or Free to Reuse Buffer Descriptors</strong>: While the exact buffer descriptor (BD) used for each operation is not visible to the user with the <code>dma_task</code> operations, there are still a finite number (maximum of <code>16</code> on a Shim Tile). Thus, it is important to use <code>dma_await_task</code> or <code>dma_free_task</code> before the number of BDs are exhausted so that they may be reused.</li>
 <li><strong>Note Non-blocking Transfers</strong>: Overlap data transfers with computation by leveraging the non-blocking nature of <code>dma_start_task</code>.</li>
 <li><strong>Minimize Synchronization Overhead</strong>: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.</li>
 </ul>
 <h4 id="conclusion"><strong>Conclusion</strong><a class="headerlink" href="#conclusion" title="Permanent link">&para;</a></h4>
+<h4 id="the-dma-task-queue"><strong>The DMA Task Queue</strong><a class="headerlink" href="#the-dma-task-queue" title="Permanent link">&para;</a></h4>
+<p>Each DMA channel has a <em>task queue</em> holding a bounded number of outstanding transfers -- 4 on AIE2. Starting a task pushes onto that channel's queue; the transfer leaves the queue as the DMA runs it.</p>
+<p>The queue does <strong>not</strong> backpressure. A push that arrives when the queue is full is dropped, the transfer never runs, and anything waiting on it (a <code>dma_await_task</code>, or a downstream receive) blocks forever. Nothing reports this at the time it happens.</p>
+<p>Whether it happens depends on how fast the consumer drains, not on the program. Measured on a Strix NPU, 14 back-to-back pushes on one shim channel time out every run, while the same 14 pushes behind a faster consumer complete -- identical instructions, opposite outcomes. Eight pushes of 1KB are fine; eight of 8KB behind a slow consumer overflow.</p>
+<p>Two things follow. First, keep the number of started-but-not-awaited tasks on any one channel at or below the queue depth; a <code>dma_await_task</code> on a channel consumes the oldest outstanding completion token and retires its task and everything queued ahead of it, not necessarily the task named by its operand. Second, where you cannot bound it by construction, the compiler does it for you: by default it inserts a poll of the channel's live queue occupancy before any push that could find it full, so the sequence waits for a free slot instead of racing.</p>
+<p>That wait costs nothing where the queue was going to drain anyway -- the occupancy check passes immediately -- and it only stalls where the alternative is a dropped transfer. To turn it off and get a warning instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>aiecc --no-enforce-dma-queue-depth
+</code></pre></div>
+<p>The relevant passes take an <code>enforce-queue-depth</code> option directly, should you need it: <code>aie-assign-runtime-sequence-bd-ids</code> for static <code>dma_start_task</code> sequences, <code>aie-lower-dynamic-bd-pool</code> for dynamic-pool tasks (including runtime-bound loops), and <code>aie-dma-to-npu</code> for the final combined queue accounting of task pushes and <code>npu_dma_memcpy_nd</code>.</p>
+<p>Enforcement needs a pollable occupancy register, and not every target reports one. Where it cannot be applied the compiler warns and the build succeeds, with a note saying so.</p>
 <p>Both the <code>npu_dma_memcpy_nd</code>/<code>dma_wait</code> interface and the <code>shim_dma_single_bd_task</code>/<code>dma_await_task</code>/<code>dma_free_task</code> interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.</p>
 <hr />
 <p><a href="../">Up</a></p>
