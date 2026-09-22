@@ -1407,14 +1407,13 @@ def AIE_DMAConfigureTaskForOp
                                          DeclareOpInterfaceMethods<
                                              SymbolUserOpInterface>]>,
       Results<(outs Index:$result)> {
-  let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
+  let summary = "As dma_configure_task, but specify tile, direction and "
+                "channel by reference to a Shim DMA allocation op";
 
-  let arguments = (
-    ins SymbolRefAttr:$alloc,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-        Optional<I32>:$repeat_count_val
-  );
+  let arguments = (ins SymbolRefAttr:$alloc,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      Optional<I32>:$repeat_count_val);
 
   let regions = (region AnyRegion:$body);
 
