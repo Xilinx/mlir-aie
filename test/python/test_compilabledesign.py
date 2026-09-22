@@ -1703,6 +1703,39 @@ def test_get_pdi_paths_empty_before_compile():
     assert cd.get_pdi_paths() == []
 
 
+def test_get_cache_entry_none_before_compile():
+    def gen():
+        pass
+
+    assert CompilableDesign(gen).get_cache_entry() is None
+
+
+def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
+    """The entry lists each output by path and leaves out what is absent,
+    whether the directory is a JIT-cache entry or a caller's <stem>.prj."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    cd._kernel_dir = tmp_path
+    cd._elf_path = tmp_path / "design.elf"
+    cd._xclbin_path = tmp_path / "final.xclbin"  # never written: left out
+    for name in ("design.elf", "params.txt", "input_with_addresses.mlir", "main.pdi"):
+        (tmp_path / name).write_bytes(b"x")
+    (tmp_path / "op0_kernel.o").write_bytes(b"o")
+
+    entry = cd.get_cache_entry()
+    assert entry.directory == tmp_path
+    assert entry.elf == tmp_path / "design.elf" and entry.xclbin is None
+    assert entry.insts is None and entry.dispatch_library is None
+    assert entry.pdis == (tmp_path / "main.pdi",)
+    assert entry.params == tmp_path / "params.txt"
+    assert entry.lowered_mlir == tmp_path / "input_with_addresses.mlir"
+    assert entry.objects == (tmp_path / "op0_kernel.o",)
+    assert entry.manifest is None
+
+
 # ---------------------------------------------------------------------------
 # compile(): DispatchTime[T] guards -- these raise before any subprocess runs
 # ---------------------------------------------------------------------------

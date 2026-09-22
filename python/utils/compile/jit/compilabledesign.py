@@ -35,6 +35,7 @@ import operator
 import os
 import sys
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
@@ -104,6 +105,27 @@ def config_param_names(cls) -> frozenset[str]:
         for name in inspect.signature(cls).parameters
         if name not in ("mlir_generator", "compile_kwargs")
     )
+
+
+@dataclass(frozen=True)
+class CacheEntry:
+    """What one ``CompilableDesign.compile()`` produced, by path.
+
+    Every field but ``directory`` is ``None`` (or empty) when that output
+    was not requested or has not been produced. See
+    :meth:`CompilableDesign.get_cache_entry`.
+    """
+
+    directory: Path
+    xclbin: Path | None
+    insts: Path | None
+    elf: Path | None
+    pdis: tuple[Path, ...]
+    params: Path | None
+    lowered_mlir: Path | None
+    objects: tuple[Path, ...]
+    manifest: Path | None
+    dispatch_library: Path | None
 
 
 class CompilableDesign:
@@ -755,6 +777,40 @@ class CompilableDesign:
         if self._xclbin_path is None or self._inst_path is None:
             return None
         return self._xclbin_path, self._inst_path
+
+    def get_cache_entry(self) -> "CacheEntry | None":
+        """Everything the last ``compile()`` left in its directory, by path.
+
+        One accessor for the whole entry, whether it sits in the JIT cache
+        (``<NPU_CACHE_HOME>/<hash>/``) or beside caller-supplied outputs
+        (``<stem>.prj/``): the image (xclbin or full ELF) and its
+        instructions, the PDIs, the kernel objects, the manifest, and the
+        two graph outputs aiecc writes into the work directory when asked
+        for them -- ``params.txt`` (``--get-scratchpad-parameters``) and
+        ``input_with_addresses.mlir`` (``--get-input-with-addresses``).
+        A caller that keeps its own record of what it built refers to these
+        rather than re-deriving the directory layout. ``None`` before the
+        first compile.
+        """
+        if self._kernel_dir is None:
+            return None
+        directory = Path(self._kernel_dir)
+
+        def present(path: Path | None) -> Path | None:
+            return path if path is not None and Path(path).exists() else None
+
+        return CacheEntry(
+            directory=directory,
+            xclbin=present(self._xclbin_path),
+            insts=present(self._inst_path),
+            elf=present(self._elf_path),
+            pdis=tuple(self.get_pdi_paths()),
+            params=present(directory / "params.txt"),
+            lowered_mlir=present(directory / "input_with_addresses.mlir"),
+            objects=tuple(sorted(directory.glob("*.o"))),
+            manifest=present(directory / _manifest.MANIFEST_NAME),
+            dispatch_library=present(self._dispatch_lib_path),
+        )
 
     def get_dispatch_lib_path(self) -> Path | None:
         """Return the immutable dispatch library selected by the last compile().
