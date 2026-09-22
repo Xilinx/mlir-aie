@@ -67,11 +67,11 @@ class RuntimeData:
     def __getitem__(self, key) -> TensorAccessPattern:
         """Return the access pattern for a numpy-style slice of this buffer.
 
-        Lets a transfer say which part of the buffer moves in the notation the
-        data is already thought about -- ``flow.fill(a, tap=a[0::2, 1::2, ...])``
-        -- instead of hand-deriving the offset, sizes and strides that slice
-        implies. Nothing is allocated: the geometry is read off a zero-storage
-        numpy view (see ``TensorAccessPattern.from_slice``).
+        For example, ``flow.fill(a, tap=a[0::2, 1::2, ...])`` selects a transfer
+        region. ``TensorAccessPattern.from_slice`` computes element offsets,
+        sizes and strides directly from the shape and key, assuming C-order.
+        This returns metadata, not a numpy view or runtime values; indexing
+        cannot read the buffer's contents.
         """
         return TensorAccessPattern.from_slice(self.shape, key)
 

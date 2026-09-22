@@ -52,23 +52,10 @@ class TensorAccessPattern:
 
     @classmethod
     def from_slice(cls, tensor_dims: Sequence[int], key: Any) -> "TensorAccessPattern":
-        """Build an access pattern from numpy basic-slice notation.
+        """Build element-granular geometry from a C-contiguous tensor's slice.
 
-        Lets a transfer be described the way the data is thought about --
-        ``tap = TensorAccessPattern.from_slice(t.shape, np.s_[0::2, 1::2, ...])``
-        -- instead of by hand-deriving the offset, wraps and steps that slice
-        implies.
-
-        The key is read directly rather than applied to a stand-in array: an
-        ellipsis expands to the axes it covers, a slice contributes its start
-        to the offset and its step to the stride, an integer contributes to the
-        offset and drops its axis, and ``None`` adds a dimension nothing steps
-        along. That is the definition of a strided walk, so the arithmetic is
-        the answer rather than something read back off one.
-
-        No dtype is needed. An access pattern is element-granular and every
-        term here is in elements, so the same key yields the same pattern
-        whatever the tensor's element type.
+        Computes offset, sizes and strides directly from the shape and key,
+        without allocating or reading tensor storage.
 
         Args:
             tensor_dims (Sequence[int]): Dimensions of the tensor being sliced.
@@ -80,13 +67,10 @@ class TensorAccessPattern:
             TensorAccessPattern: The access pattern the key describes.
 
         Raises:
-            TypeError: If the key uses advanced (fancy or boolean) indexing,
-                which reaches elements a strided walk cannot.
+            TypeError: If the key uses advanced (fancy or boolean) indexing.
             IndexError: If the key has more entries than the tensor has
                 dimensions, more than one ellipsis, or an out-of-range integer.
-            ValueError: If the key implies a negative stride. Reverse steps are
-                expressible in numpy but not in a buffer descriptor, which only
-                steps forward.
+            ValueError: If the slice is empty or has a nonpositive step.
         """
         dims = tuple(tensor_dims)
         entries = key if isinstance(key, tuple) else (key,)
@@ -127,7 +111,7 @@ class TensorAccessPattern:
                 # operator.index is the protocol numpy itself uses to decide
                 # whether something is an integer index. A bool is excluded
                 # because numpy reads it as a mask, which adds an axis.
-                if isinstance(entry, bool):
+                if isinstance(entry, (bool, np.bool_)):
                     raise TypeError
                 i = operator.index(entry)
             except TypeError:

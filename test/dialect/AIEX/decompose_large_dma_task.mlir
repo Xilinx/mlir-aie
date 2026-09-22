@@ -249,3 +249,30 @@ module {
     }
   }
 }
+
+// -----
+
+// Scaling 32 executions by 8 reaches the target's maximum repeat count.
+// REPEAT-LEN-LABEL: @max_repeat_task_bd
+// REPEAT-LEN:         aie.dma_bd
+// REPEAT-LEN-SAME:        len = 32768
+// REPEAT-LEN:         repeat_count = 255 : i32
+// REPEAT-LOWER-LABEL: @max_repeat_task_bd
+// REPEAT-LOWER:         %[[MAX_REPEAT:.*]] = arith.constant 255 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[MAX_REPEAT]]
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @max_repeat_task_bd(%in: memref<16x16x4096xi8>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
+          {burst_length = 0 : i32}
+        aie.end
+      } {issue_token = true, repeat_count = 31 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

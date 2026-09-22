@@ -739,10 +739,12 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
+  uint32_t maxRepeat = targetModel.getMaxRepeatCount();
   if (std::optional<uint32_t> repeatCount =
           getConstantIntOperand(getRepeatCount());
-      repeatCount && *repeatCount > 255)
-    return emitOpError("Repeat count exceeds the [0:255] range.");
+      repeatCount && *repeatCount > maxRepeat)
+    return emitOpError("Repeat count exceeds the [0:")
+           << maxRepeat << "] range.";
   return success();
 }
 

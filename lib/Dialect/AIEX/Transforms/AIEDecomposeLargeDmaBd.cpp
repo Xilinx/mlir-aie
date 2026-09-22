@@ -23,9 +23,6 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/DenseSet.h"
 
-// Matches NpuPushQueueOp::verify's bound on the queue's repeat field.
-static constexpr int64_t kMaxQueueRepeat = 255;
-
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEDECOMPOSELARGEDMABD
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -175,14 +172,8 @@ static AIE::DMABDOp createTaskBd(PatternRewriter &rewriter, Location loc,
   return bd;
 }
 
-// Extent parked in the fourth dimension is not carried by a single BD
-// execution: the hardware advances the BD's iteration state once per execution,
-// and the executions themselves come from the task's queue-push repeat count.
-// Decomposition can shift a factor into that dimension (factoring an overlong
-// inner run adds a dimension, displacing the outermost one), so the repeat
-// count has to grow by the same factor. Left alone, the BD fires too few times
-// and delivers only its share of the transfer, and whatever is downstream waits
-// forever for the rest.
+// Each BD execution advances the fourth (iteration) dimension once. If
+// decomposition grows it, scale the task's execution count to match.
 static int32_t getTaskRepeatCount(Operation *taskOp) {
   if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp))
     return cfg.getRepeatCount();
@@ -471,14 +462,13 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
         // Widen before multiplying: the accessor returns int32_t, so the
         // addition alone would overflow in int and wrap past any later check.
         runs = (static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1) * *growth;
-        // NpuPushQueueOp::verify caps the queue's repeat field at 255, which is
-        // the bound that actually exists; saying so here names the scale factor
-        // that got us there, rather than failing later pointing at the push.
-        if (runs - 1 > kMaxQueueRepeat)
-          return op.emitOpError() << "decomposition scales the repeat count by "
-                                  << *growth << " to " << (runs - 1)
-                                  << ", beyond the [0:" << kMaxQueueRepeat
-                                  << "] a queue push can carry";
+        // Diagnose the scale factor here rather than failing at the queue push.
+        uint32_t maxRepeat = targetModel.getMaxRepeatCount();
+        if (runs - 1 > maxRepeat)
+          return op.emitOpError()
+                 << "decomposition scales the repeat count by " << *growth
+                 << " to " << (runs - 1) << ", beyond the [0:" << maxRepeat
+                 << "] a queue push can carry";
       }
 
       rewriter.modifyOpInPlace(op, [&]() {

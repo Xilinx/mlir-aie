@@ -36,6 +36,10 @@ KEYS = [
     np.s_[:, 0],
     np.s_[-2:],
     np.s_[100:],
+    np.s_[-100:100:3],
+    np.s_[..., None, -1],
+    np.s_[None, ..., None],
+    (np.int64(-1),),
 ]
 
 
@@ -57,11 +61,20 @@ def from_slice_matches_numpy():
             try:
                 selected = flat[key]
             except IndexError:
-                continue  # numpy rejects it for this shape; so should we
-            try:
-                tap = TensorAccessPattern.from_slice(shape, key)
-            except ValueError:
-                continue  # expressible in numpy, not in a buffer descriptor
+                try:
+                    TensorAccessPattern.from_slice(shape, key)
+                    raise AssertionError(f"{shape} {key}: expected IndexError")
+                except IndexError:
+                    pass
+                continue
+            if np.size(selected) == 0:
+                try:
+                    TensorAccessPattern.from_slice(shape, key)
+                    raise AssertionError(f"{shape} {key}: empty slice accepted")
+                except ValueError:
+                    pass
+                continue
+            tap = TensorAccessPattern.from_slice(shape, key)
             assert walked(tap) == list(
                 np.asarray(selected).reshape(-1)
             ), f"{shape} {key}: {tap} walks the wrong elements"
@@ -77,7 +90,15 @@ def from_slice_matches_numpy():
 @construct_test
 def from_slice_rejects_what_it_cannot_walk():
     # Advanced indexing selects elements no strided walk reaches.
-    for key in (np.array([0, 2]), [0, 2], np.array([True, False] * 8)):
+    for key in (
+        np.array([0, 2]),
+        [0, 2],
+        np.array([True, False] * 8),
+        True,
+        False,
+        np.bool_(True),
+        np.bool_(False),
+    ):
         try:
             TensorAccessPattern.from_slice((16,), key)
             raise AssertionError(f"{key!r} should be rejected")
@@ -85,11 +106,12 @@ def from_slice_rejects_what_it_cannot_walk():
             pass
 
     # A buffer descriptor steps forward only.
-    try:
-        TensorAccessPattern.from_slice((16,), np.s_[::-1])
-        raise AssertionError("reverse slice should be rejected")
-    except ValueError:
-        pass
+    for key in (np.s_[::-1], np.s_[::0], np.s_[3:3]):
+        try:
+            TensorAccessPattern.from_slice((16,), key)
+            raise AssertionError(f"{key!r} should be rejected")
+        except ValueError:
+            pass
 
     # Malformed keys report the way numpy reports them.
     for shape, key in (((4, 3), np.s_[0, 0, 0]), ((4, 3), 9), ((4, 3), (..., ...))):

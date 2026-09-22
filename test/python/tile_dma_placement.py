@@ -18,7 +18,7 @@ Tile(0, 0) is covered through Flow instead, in flow_fill_drain.py.
 """
 
 import numpy as np
-from aie.dialects._aie_enum_gen import DMAChannelDir
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 from aie.iron import (
     Bd,
     Buffer,
@@ -26,6 +26,7 @@ from aie.iron import (
     Program,
     Runtime,
     TileDma,
+    Worker,
 )
 from aie.iron.device import NPU2Col1, Tile
 
@@ -59,13 +60,19 @@ def region_op_follows_the_resolved_tile():
 # CHECK-LABEL: one_dma_program_per_tile
 def one_dma_program_per_tile():
     print("\nTEST: one_dma_program_per_tile")
-    rt = Runtime(lambda: None, [])
-    tile = Tile(0, 2)
+    rt = Runtime(lambda: rt.resolve_tile_dmas(), [])
+    tile = Tile(0, 2, tile_type=AIETileType.CoreTile)
     buf = Buffer(tile=tile, type=vector_ty, name="shared")
     # Registered separately, as a helper wiring one transfer at a time would.
-    rt.add_tile_dma(TileDma(tile=tile, channels=[channel(buf, index=0)]))
-    rt.add_tile_dma(TileDma(tile=tile, channels=[channel(buf, index=1)]))
-    print(Program(NPU2Col1(), rt).resolve_program())
+    first = TileDma(tile=tile, channels=[channel(buf, index=0)])
+    second = TileDma(tile=tile, channels=[channel(buf, index=1)])
+    rt.add_tile_dma(first)
+    rt.add_tile_dma(second)
+    worker = Worker(lambda *_: None, [first, second], tile=tile, while_true=False)
+    module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program()
+    assert len(first.channels) == len(second.channels) == 1
+    assert str(module).count("aie.mem(") == 1
+    print(module)
 
 
 # One region, holding both channels.
@@ -82,10 +89,13 @@ def distinct_tiles_at_one_coordinate_are_rejected():
     for i in range(2):
         tile = Tile(0, 2)  # same place, different object -- cannot be merged
         buf = Buffer(tile=tile, type=vector_ty, name=f"b{i}")
-        try:
-            rt.add_tile_dma(TileDma(tile=tile, channels=[channel(buf, index=i)]))
-        except Exception as e:  # noqa: BLE001 - the message is the assertion
-            print(f"{type(e).__name__}: {e}")
+        rt.add_tile_dma(TileDma(tile=tile, channels=[channel(buf, index=i)]))
+    try:
+        Program(NPU2Col1(), rt).resolve_program()
+    except Exception as e:  # noqa: BLE001 - the message is the assertion
+        print(f"{type(e).__name__}: {e}")
+    else:
+        raise AssertionError("Expected conflicting TileDma registrations to fail")
 
 
 # CHECK: IronRuntimeError: Two TileDma programs name Tile(0, 2)
@@ -99,16 +109,19 @@ def duplicate_channels_are_rejected():
         TileDma(tile=tile, channels=[channel(buf), channel(buf)])
     except ValueError as e:
         print(f"initial: {e}")
+    else:
+        raise AssertionError("Expected duplicate initial channels to fail")
 
     rt = Runtime(lambda: None, [])
     registered = TileDma(tile=tile, channels=[channel(buf)])
     rt.add_tile_dma(registered)
+    rt.add_tile_dma(TileDma(tile=tile, channels=[channel(buf, index=1), channel(buf)]))
     try:
-        rt.add_tile_dma(
-            TileDma(tile=tile, channels=[channel(buf, index=1), channel(buf)])
-        )
+        Program(NPU2Col1(), rt).resolve_program()
     except ValueError as e:
         print(f"merged: {e}")
+    else:
+        raise AssertionError("Expected duplicate registered channels to fail")
     print(f"channels after rejection: {len(registered.channels)}")
 
 
@@ -118,7 +131,28 @@ def duplicate_channels_are_rejected():
 # CHECK: channels after rejection: 1
 
 
+def repeated_registration_is_rejected():
+    print("\nTEST: repeated_registration_is_rejected")
+    tile = Tile(0, 2)
+    buf = Buffer(tile=tile, type=vector_ty, name="repeated")
+    registered = TileDma(tile=tile, channels=[channel(buf)])
+    rt = Runtime(lambda: None, [])
+    rt.add_tile_dma(registered)
+    rt.add_tile_dma(registered)
+    try:
+        Program(NPU2Col1(), rt).resolve_program()
+    except ValueError as e:
+        print(e)
+    else:
+        raise AssertionError("Expected repeated registration to fail")
+
+
+# CHECK-LABEL: repeated_registration_is_rejected
+# CHECK: TileDma for Tile(0, 2) already has MM2S channel 0.
+
+
 region_op_follows_the_resolved_tile()
 one_dma_program_per_tile()
 distinct_tiles_at_one_coordinate_are_rejected()
 duplicate_channels_are_rejected()
+repeated_registration_is_rejected()

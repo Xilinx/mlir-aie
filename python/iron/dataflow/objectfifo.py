@@ -27,7 +27,7 @@ from ...helpers.util import (
     pack_pad_value,
     single_elem_or_list_to_list,
 )
-from ..device import AnyMemTile, Tile
+from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
 from .endpoint import ObjectFifoEndpoint
 
@@ -1173,22 +1173,16 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             d.endpoint = self
         if tile is None:
             tile = AnyMemTile
-        # A link normally lives on a mem tile, but forward() documents
-        # forwarding through a compute tile as a valid override. Take an
-        # explicit tile_type as given; take a tile placed by coordinates as
-        # given too, since the Device infers the kind from those and stamping
-        # MemTile over them would contradict it. Only a tile that says neither
-        # gets the default.
-        #
-        # Copy either way: the tile-type-only defaults (AnyMemTile and peers)
-        # are module-level singletons, and the placer writes coordinates into
-        # whichever object a link keeps. Two links sharing one would land on
-        # the same tile -- and the shared object would outlive the design.
+        # Isolate singleton defaults, but retain user tiles shared with Workers
+        # or other links so they resolve to the same logical tile.
+        if any(
+            tile is default for default in (AnyMemTile, AnyComputeTile, AnyShimTile)
+        ):
+            tile = tile.copy()
+        # Respect explicit types and let the device infer fully placed tiles.
         placed = tile.col is not None and tile.row is not None
         if tile.tile_type is None and not placed:
-            tile = tile.with_type(AIETileType.MemTile)
-        else:
-            tile = tile.copy()
+            tile.tile_type = AIETileType.MemTile
         ObjectFifoEndpoint.__init__(self, tile)
 
     def resolve(

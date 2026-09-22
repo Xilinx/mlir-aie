@@ -16,19 +16,20 @@ where it happens.
 """
 
 import numpy as np
-from aie.iron import Flow, Program, Runtime
+from aie.dialects._aie_enum_gen import AIETileType
+from aie.iron import Flow, Program, Runtime, Worker
 from aie.iron.device import NPU2Col1, Tile
 
 devmem_ty = np.ndarray[(16, 16, 512), np.dtype[np.int8]]
 back_ty = np.ndarray[(8, 8, 512), np.dtype[np.int8]]
 
 
-def build(register=True, body=None):
+def build(register=True, body=None, symbols=(None, None), worker_args=False):
     # No tile_type on either tile: the Device infers both from coordinates, and
     # fill/drain have to follow that rather than the unset hint.
     shim, core = Tile(0, 0), Tile(0, 2)
-    into = Flow(shim, core, src_channel=0, dst_channel=1)
-    out = Flow(core, shim, src_channel=0, dst_channel=1)
+    into = Flow(shim, core, src_channel=0, dst_channel=1, shim_symbol=symbols[0])
+    out = Flow(core, shim, src_channel=0, dst_channel=1, shim_symbol=symbols[1])
 
     def sequence(a, c):
         (body or _move)(into, out, a, c)
@@ -37,7 +38,13 @@ def build(register=True, body=None):
     if register:
         rt.add_flow(into)
         rt.add_flow(out)
-    return Program(NPU2Col1(), rt).resolve_program()
+    workers = []
+    if worker_args:
+        worker_tile = Tile(0, 3, tile_type=AIETileType.CoreTile)
+        workers.append(
+            Worker(lambda *_: None, [into, out], tile=worker_tile, while_true=False)
+        )
+    return Program(NPU2Col1(), rt, workers=workers).resolve_program()
 
 
 def _move(into, out, a, c):
@@ -48,8 +55,7 @@ def _move(into, out, a, c):
 print("\nTEST: names_its_own_shim_channels")
 print(build())
 
-# Named after the channel each route ends at, and declared for both. The lazy
-# declarations follow the runtime sequence; symbols are position-independent.
+# Flows and allocations resolve after the sequence; symbols are position-independent.
 # CHECK-LABEL: names_its_own_shim_channels
 # The slice reaches the descriptor as the offset and steps it describes.
 # CHECK: aiex.dma_configure_task_for @shim_0_0_mm2s_0
@@ -65,12 +71,66 @@ try:
     build(register=False)
 except ValueError as e:
     print(f"unregistered: {e}")
+else:
+    raise AssertionError("Expected an unregistered Flow to fail")
 
 try:
     build(body=lambda into, out, a, c: out.fill(a))
 except ValueError as e:
     print(f"wrong direction: {e}")
+else:
+    raise AssertionError("Expected fill() on a non-shim source to fail")
+
+try:
+    build(body=lambda into, out, a, c: into.drain(c))
+except ValueError as e:
+    print(f"wrong direction: {e}")
+else:
+    raise AssertionError("Expected drain() on a non-shim destination to fail")
 
 # CHECK-LABEL: rejects_what_would_not_be_emitted
 # CHECK: unregistered: Flow must be registered with rt.add_flow(flow)
 # CHECK: wrong direction: fill() sends data into the array
+# CHECK: wrong direction: drain() reads results back out of the array
+
+
+print("\nTEST: rejects_shim_to_shim_transfers")
+for symbol in (None, "explicit_shim"):
+    for verb in ("fill", "drain"):
+        shim = Tile(0, 0)
+        flow = Flow(shim, shim, src_channel=0, dst_channel=1, shim_symbol=symbol)
+
+        def sequence(a):
+            getattr(flow, verb)(a, tap=a[...])
+
+        rt = Runtime(sequence, [back_ty])
+        rt.add_flow(flow)
+        try:
+            Program(NPU2Col1(), rt).resolve_program()
+        except ValueError as e:
+            assert "require exactly one shim endpoint" in str(e)
+        else:
+            raise AssertionError(f"Expected shim-to-shim {verb}() to fail")
+print("rejected fill and drain with automatic and explicit symbols")
+
+# CHECK-LABEL: rejects_shim_to_shim_transfers
+# CHECK: rejected fill and drain with automatic and explicit symbols
+
+
+print("\nTEST: one_allocation_per_flow")
+
+
+def repeat_transfers(into, out, a, c):
+    _move(into, out, a, c)
+    _move(into, out, a, c)
+
+
+for symbols in ((None, None), ("input", "output")):
+    module = build(body=repeat_transfers, symbols=symbols, worker_args=True)
+    text = str(module)
+    assert text.count("aie.shim_dma_allocation ") == 2
+    assert text.count("aiex.dma_configure_task_for ") == 4
+print("repeated transfers reuse automatic and explicit allocations")
+
+# CHECK-LABEL: one_allocation_per_flow
+# CHECK: repeated transfers reuse automatic and explicit allocations

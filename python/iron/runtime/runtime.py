@@ -53,12 +53,6 @@ from .taskgroup import TaskGroup
 logger = logging.getLogger(__name__)
 
 
-def _shares_coordinates(a, b) -> bool:
-    """Whether two distinct Tiles name the one physical tile."""
-    placed = a.col is not None and a.row is not None
-    return a is not b and placed and (a.col, a.row) == (b.col, b.row)
-
-
 class IronRuntimeError(Exception):
     """Raised by the IRON Runtime when resolution encounters an unrecoverable state."""
 
@@ -288,6 +282,7 @@ class Runtime(Resolvable):
         self._flows = []
         self._locks = []
         self._tile_dmas = []
+        self._resolved_tile_dmas = None
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
@@ -325,33 +320,38 @@ class Runtime(Resolvable):
         self._locks.append(lock)
 
     def add_tile_dma(self, tile_dma) -> None:
-        """Register an explicit [`TileDma`][iron.TileDma] program.
-
-        A tile has one DMA program, so registering a second one for a tile
-        already registered merges its channels into the first. Keeping both
-        would emit two `aie.mem` regions for the one tile -- which is wrong, and
-        wrong quietly, since nothing downstream rejects it.
-
-        Merging is by Tile identity. Two separate Tile objects at the same
-        coordinates hit the same problem -- `--aie-place-tiles` merges logical
-        tiles by coordinate -- but merging those would strand whatever else
-        refers to the discarded one, so they are rejected instead.
-
-        Raises:
-            IronRuntimeError: If a different Tile object names a tile already
-                registered.
-        """
-        for registered in self._tile_dmas:
-            if registered.tile is tile_dma.tile:
-                registered.add_channels(tile_dma.channels)
-                return
-            if _shares_coordinates(registered.tile, tile_dma.tile):
-                raise IronRuntimeError(
-                    f"Two TileDma programs name {tile_dma.tile}, via different "
-                    "Tile objects. A tile has one DMA program: share one Tile "
-                    "object between them so their channels can be merged."
-                )
+        """Register a TileDma; channels sharing a Tile are combined at resolution."""
+        if self._resolved_tile_dmas is not None:
+            raise IronRuntimeError("Cannot register TileDma after DMA resolution.")
         self._tile_dmas.append(tile_dma)
+
+    def resolve_tile_dmas(self) -> None:
+        """Validate and emit one DMA region per Tile without changing registrations."""
+        from ..dataflow.tile_dma import TileDma
+
+        if self._resolved_tile_dmas is None:
+            programs = {}
+            coordinates = {}
+            for tile_dma in self._tile_dmas:
+                tile = tile_dma.tile
+                if tile.col is not None and tile.row is not None:
+                    key = (tile.col, tile.row)
+                    if key in coordinates and coordinates[key] is not tile:
+                        raise IronRuntimeError(
+                            f"Two TileDma programs name {tile}, via different "
+                            "Tile objects. Share one Tile object for their channels."
+                        )
+                    coordinates[key] = tile
+                if tile in programs:
+                    programs[tile] = TileDma(
+                        tile, [*programs[tile].channels, *tile_dma.channels]
+                    )
+                else:
+                    programs[tile] = tile_dma
+            self._resolved_tile_dmas = list(programs.values())
+        # Placement coalesces tile ops, not their DMA regions or channel chains.
+        for program in self._resolved_tile_dmas:
+            program.resolve()
 
     @property
     def flows(self):

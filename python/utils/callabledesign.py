@@ -527,15 +527,10 @@ class CallableDesign:
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.
 
-        Accepts the same arguments as ``__call__`` so the two can be called
-        alike. Positional arguments are only split into tensor and scalar
-        params -- the tensor contents are never read, since a generator never
-        sees its ``In``/``Out`` tensors (they arrive as a placeholder that
-        refuses attribute access). Shape and dtype therefore have to come from
-        ``CompileTime[T]`` parameters, which is what the compile kwargs here
-        carry, and passing ``None`` in a tensor position is equivalent to
-        passing a real one. Scalars do matter: a ``DispatchTime[T]`` value is
-        read out of this split.
+        Accepts the same arguments as ``__call__``. Tensor arguments may be
+        ``None``: their contents are not read, and shape/dtype must come from
+        ``CompileTime[T]`` parameters. ``DispatchTime[T]`` scalar values are
+        still used during generation.
 
         Returns:
             The MLIR module as a string (suitable for inspection, debugging,
