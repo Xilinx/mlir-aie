@@ -1463,8 +1463,12 @@ def AIE_DMABdPoolPopOp
   let summary = "Pop a free Buffer Descriptor ID from the runtime free-list "
                 "pool for a tile";
   let description = [{
-    Draws a buffer-descriptor ID from the per-tile runtime free-list pool and
-    returns it as an SSA value. This is the dynamic counterpart to the static
+    Draws a buffer-descriptor ID from the runtime free-list pool for a tile's
+    channel and returns it as an SSA value. The pool is per (tile, channel)
+    rather than per tile because a mem tile partitions its BD table by channel
+    parity -- an even channel can only submit ids from the low half and an odd
+    channel from the high half -- so two channels of opposite parity on one
+    tile draw from disjoint sets. Channels that share a partition share a pool. This is the dynamic counterpart to the static
     BD-ID allocator: inside a runtime-bound `scf.for` the ID is chosen at
     runtime rather than baked at compile time.
 
@@ -1475,10 +1479,10 @@ def AIE_DMABdPoolPopOp
     (`std::nullopt`).
   }];
 
-  let arguments = (ins I32Attr:$column, I32Attr:$row);
+  let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$channel);
 
   let assemblyFormat = [{
-    `(` $column `,` $row `)` attr-dict `:` type($bd_id)
+    `(` $column `,` $row `,` $channel `)` attr-dict `:` type($bd_id)
   }];
 }
 
@@ -1488,8 +1492,8 @@ def AIE_DMABdPoolPushOp
       "Return a Buffer Descriptor ID to the runtime free-list pool for a tile";
   let description = [{
     Returns a buffer-descriptor ID previously obtained from
-    `aiex.dma_bd_pool_pop` to the per-tile runtime free-list pool, making it
-    available for reuse. This is the dynamic counterpart to the static
+    `aiex.dma_bd_pool_pop` to the free-list pool for that tile's channel,
+    making it available for reuse. This is the dynamic counterpart to the static
     allocator's free/await recycling.
 
     Only meaningful on the dynamic EmitC lowering path. The
@@ -1497,10 +1501,12 @@ def AIE_DMABdPoolPushOp
     `dma_free_task` / the recycling half of a `dma_await_task`.
   }];
 
-  let arguments = (ins I32Attr:$column, I32Attr:$row, I32:$bd_id);
+  let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$channel,
+      I32:$bd_id);
 
   let assemblyFormat = [{
-    `(` $column `,` $row `)` `bd_id` $bd_id attr-dict `:` type($bd_id)
+    `(` $column `,` $row `,` $channel `)` `bd_id` $bd_id attr-dict `:`
+    type($bd_id)
   }];
 }
 

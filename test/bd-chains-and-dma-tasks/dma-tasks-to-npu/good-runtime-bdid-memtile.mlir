@@ -21,7 +21,7 @@
 // happened to name.
 
 // CHECK-LABEL: @runtime_bdid_memtile
-// CHECK: %[[POP:.*]] = aiex.dma_bd_pool_pop(0, 1) : i32
+// CHECK: %[[POP:.*]] = aiex.dma_bd_pool_pop(0, 1, 0) : i32
 // The register block base, 0x1A0000 + bd_id*32, carrying all 8 mem tile words.
 // CHECK: %[[MUL:.*]] = arith.muli %[[POP]], %{{.*}} : i32
 // CHECK: %[[BASE:.*]] = arith.addi %{{.*}}, %[[MUL]] : i32
@@ -40,13 +40,13 @@ aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
   %buf = aie.buffer(%tile_0_1) : memref<1024xi32>
   aie.runtime_sequence @runtime_bdid_memtile() {
-    %bd = aiex.dma_bd_pool_pop(0, 1) : i32
+    %bd = aiex.dma_bd_pool_pop(0, 1, 0) : i32
     %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256) bd_id_val %bd : i32
       aie.end
     } {issue_token = true}
     aiex.dma_start_task(%t)
     aiex.dma_await_task(%t)
-    aiex.dma_bd_pool_push(0, 1) bd_id %bd : i32
+    aiex.dma_bd_pool_push(0, 1, 0) bd_id %bd : i32
   }
 }

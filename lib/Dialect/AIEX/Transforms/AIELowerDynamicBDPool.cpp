@@ -153,9 +153,10 @@ struct AIELowerDynamicBDPoolPass
 
     AIE::TileOp tile = cfg.getTileOp();
     OpBuilder b(cfg);
-    Value bdId = DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(),
-                                        tile.getCol(), tile.getRow())
-                     .getBdId();
+    Value bdId =
+        DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(), tile.getCol(),
+                               tile.getRow(), cfg.getChannel())
+            .getBdId();
     theBd.getBdIdValMutable().assign(bdId);
     pairedId[cfg.getResult()] = bdId;
     return success();
@@ -434,8 +435,12 @@ struct AIELowerDynamicBDPoolPass
           "does not resolve to a task allocated from the runtime pool; cannot "
           "return its buffer descriptor ID");
     auto tile = tileForTask.lookup(task);
+    // The pool is per (tile, channel): the originating configure names the
+    // channel this id came from, and it must go back to that same pool.
+    DMAConfigureTaskOp origin = originConfigure.lookup(task);
     OpBuilder b(op);
-    DMABdPoolPushOp::create(b, op->getLoc(), tile.first, tile.second, id);
+    DMABdPoolPushOp::create(b, op->getLoc(), tile.first, tile.second,
+                            origin.getChannel(), id);
     return success();
   }
 
