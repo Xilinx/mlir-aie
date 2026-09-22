@@ -337,10 +337,11 @@ def _include_dirs() -> list[str]:
 
 
 def _runtime_lib_include(arch: str | None = None) -> str:
-    """Return ``aie_runtime_lib/<ARCH>``, which holds the LUT sources and
-    ``aie_bank_placement.h`` (the portable ``AIE_BANK_A``-``AIE_BANK_D`` macros).
+    """Return the ``aie_runtime_lib/<ARCH>`` include directory.
 
-    A kernel that pins a static to a bank needs this on its include path.
+    It holds the LUT sources and ``aie_bank_placement.h``, whose portable
+    ``AIE_BANK_A``-``AIE_BANK_D`` macros a kernel needs to pin a static to a
+    bank.
     """
     from aie.utils import config
 
