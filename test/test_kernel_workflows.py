@@ -202,6 +202,10 @@ def test_static_compiles_fused_sources_for_the_matrix_device():
     assert "-m extensive" in step["run"]
     assert step["run"].count("python -m pytest") == 1
     assert step["env"]["KERNEL_TEST_DEVICE"] == "${{ matrix.device }}"
+    # Serially this sweep is the longest step in the job by a wide margin and
+    # uses one of the runner's four cores. Losing the flag would not fail
+    # anything, it would just quietly cost ten minutes a run.
+    assert "-n auto" in step["run"]
 
 
 def test_static_checks_include_q4nx_reference_tests():

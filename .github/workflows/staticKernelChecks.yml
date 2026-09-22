@@ -135,9 +135,15 @@ jobs:
         # The same aiecc pipeline the device runs, minus xclbin packaging
         # (needs XRT). Catches tile sets that overflow core memory and DMA
         # patterns the hardware cannot express, plus fused epilogue sources.
+        #
+        # The designs are independent and each compile is CPU-bound, so this
+        # was using one of the runner's four cores for ten minutes. `-n auto`
+        # measured 309s -> 107s on four cores, at 264 MB peak. Each xdist
+        # worker gets its own tmp_path_factory base, so the shared
+        # kernel-object directory stays one per worker rather than a race.
         run: |
           python -m pytest test/python/npu/test_kernels_compile.py \
-            test/python/npu/test_fused_mm_compile.py -m extensive -q -x
+            test/python/npu/test_fused_mm_compile.py -m extensive -q -x -n auto
         env:
           KERNEL_TEST_DEVICE: ${{ matrix.device }}
       - name: Upload the records

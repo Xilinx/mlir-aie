@@ -43,6 +43,10 @@ numpy>=2.5.2; python_version >= "3.12"
 matplotlib
 psutil
 pytest
+# staticKernelChecks.yml compiles every kernel case's design; the sweep is
+# CPU-bound and per-design independent, so `-n auto` takes it from 309s to
+# 107s on the four cores a GitHub runner has.
+pytest-xdist
 pyyaml
 cloudpickle # required by eudsl when it is vendored instead of installed
 reuse[charset-normalizer]==6.2.0
