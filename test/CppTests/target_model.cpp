@@ -52,6 +52,19 @@ void test() {
     throw std::runtime_error("Failed xcvc1902 rows");
   }
   checkControllerTopology(AIE::AIEDevice::xcvc1902, 0, 0);
+  if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902).getMaxRepeatCount() != 0) {
+    throw std::runtime_error("Failed xcvc1902 getMaxRepeatCount");
+  }
+
+  for (auto dev : {AIE::AIEDevice::xcve2302, AIE::AIEDevice::xcve2802,
+                   AIE::AIEDevice::xcve3858, AIE::AIEDevice::npu1,
+                   AIE::AIEDevice::npu1_1col, AIE::AIEDevice::npu2,
+                   AIE::AIEDevice::npu2_1col}) {
+    if (AIE::getTargetModel(dev).getMaxRepeatCount() != 255) {
+      throw std::runtime_error("Failed getMaxRepeatCount for " +
+                               stringifyAIEDevice(dev).str());
+    }
+  }
 
   // AIEDevice::xcve2302
   if (!AIE::getTargetModel(AIE::AIEDevice::xcve2302)
