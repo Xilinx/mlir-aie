@@ -3908,12 +3908,12 @@ destination tiles.</p>
 <td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/dataflow/tile_dma.py"><code>python/iron/dataflow/tile_dma.py</code></a></td>
 </tr>
 <tr>
-<td><code>DmaChannel(direction, channel, bds=[Bd(...)])</code></td>
+<td><code>DmaChannel(direction, channel, bds=[Bd(...)], loop=True)</code></td>
 <td>One <code>@dma(dir, ch)</code> chain inside the TileDma's region</td>
 <td>same</td>
 </tr>
 <tr>
-<td><code>Bd(buffer, offset=0, length=None, acquires=[...], releases=[...], next="self"\|int\|None, packet=None)</code></td>
+<td><code>Bd(buffer, offset=0, length=None, sizes=[], strides=[], acquires=[...], releases=[...], next=None\|"self"\|int, packet=None)</code></td>
 <td>One BD block: acquires + <code>aie.dma_bd</code> + releases + <code>aie.next_bd</code></td>
 <td>same</td>
 </tr>
@@ -3931,12 +3931,23 @@ destination tiles.</p>
 </table>
 <p><code>Bd.next</code> mirrors the dialect's <code>aie.next_bd</code> chain wiring:</p>
 <ul>
-<li><code>"self"</code> (default) — loop back to this BD (the common "keep streaming"
-  pattern).</li>
+<li><code>None</code> (default) — follow the channel.  The BD points at the next entry
+  in <code>bds</code>, and the last entry either loops back to the first or leaves the
+  chain, per <code>DmaChannel.loop</code>.  This is the common case, so most BDs say
+  nothing about <code>next</code> at all.</li>
+<li><code>"self"</code> — loop back to this BD regardless of what the channel says.</li>
 <li>an <code>int</code> <code>i</code> — point at the i-th BD in this <code>DmaChannel</code>'s <code>bds</code> list
   (zero-based).  Useful for explicit cycles in multi-BD chains.</li>
-<li><code>None</code> — emit no <code>next_bd</code>.  Rarely useful; the basic block ends up
-  without a terminator and the caller takes responsibility.</li>
+</ul>
+<p><code>DmaChannel.loop</code> decides what the end of the chain does:</p>
+<ul>
+<li><code>True</code> (default) — the last BD chains back to the first, so the channel
+  streams forever.  A single-BD channel therefore self-chains, which is the
+  "keep streaming" pattern.</li>
+<li><code>False</code> — the last BD chains to the region's <code>aie.end</code>, which the dialect
+  reads as "the chain ends here".  Only then is the chain a task the channel
+  can finish, which is what makes a queue-push <code>repeat_count</code> mean anything:
+  an endless chain never completes, so there is nothing to repeat.</li>
 </ul>
 <p><code>Bd.packet = (pkt_type, pkt_id)</code> stamps a packet header on every
 transfer this BD emits — pair it with a <code>PacketFlow</code> carrying the same
@@ -4005,15 +4016,15 @@ no protocol assumptions baked in.</p>
 <a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    <span class="n">dst_port</span><span class="o">=</span><span class="n">WireBundle</span><span class="o">.</span><span class="n">DMA</span><span class="p">,</span> <span class="n">dst_channel</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="p">)</span>
 <a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="c1"># Per-tile DMA programs.  Each has one channel with one self-looping BD.</span>
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="n">dma_a</span> <span class="o">=</span> <span class="n">TileDma</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">channels</span><span class="o">=</span><span class="p">[</span>
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>    <span class="n">DmaChannel</span><span class="p">(</span>
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>        <span class="n">direction</span><span class="o">=</span><span class="n">DMAChannelDir</span><span class="o">.</span><span class="n">MM2S</span><span class="p">,</span> <span class="n">channel</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>        <span class="n">bds</span><span class="o">=</span><span class="p">[</span><span class="n">Bd</span><span class="p">(</span>
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>            <span class="n">buffer</span><span class="o">=</span><span class="n">buff_a</span><span class="p">,</span>
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>            <span class="n">acquires</span><span class="o">=</span><span class="p">[</span><span class="n">Acquire</span><span class="p">(</span><span class="n">cons_lock_a</span><span class="p">)],</span>   <span class="c1"># wait for &quot;data ready&quot;</span>
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>            <span class="n">releases</span><span class="o">=</span><span class="p">[</span><span class="n">Release</span><span class="p">(</span><span class="n">prod_lock_a</span><span class="p">)],</span>   <span class="c1"># signal &quot;buffer free&quot;</span>
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>            <span class="nb">next</span><span class="o">=</span><span class="s2">&quot;self&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="c1"># Per-tile DMA programs.  Each has one channel with one BD, which the</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="c1"># default loop=True chains back to itself so it keeps streaming.</span>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="n">dma_a</span> <span class="o">=</span> <span class="n">TileDma</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">channels</span><span class="o">=</span><span class="p">[</span>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>    <span class="n">DmaChannel</span><span class="p">(</span>
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>        <span class="n">direction</span><span class="o">=</span><span class="n">DMAChannelDir</span><span class="o">.</span><span class="n">MM2S</span><span class="p">,</span> <span class="n">channel</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>        <span class="n">bds</span><span class="o">=</span><span class="p">[</span><span class="n">Bd</span><span class="p">(</span>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>            <span class="n">buffer</span><span class="o">=</span><span class="n">buff_a</span><span class="p">,</span>
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>            <span class="n">acquires</span><span class="o">=</span><span class="p">[</span><span class="n">Acquire</span><span class="p">(</span><span class="n">cons_lock_a</span><span class="p">)],</span>   <span class="c1"># wait for &quot;data ready&quot;</span>
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>            <span class="n">releases</span><span class="o">=</span><span class="p">[</span><span class="n">Release</span><span class="p">(</span><span class="n">prod_lock_a</span><span class="p">)],</span>   <span class="c1"># signal &quot;buffer free&quot;</span>
 <a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>        <span class="p">)],</span>
 <a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>    <span class="p">),</span>
 <a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a><span class="p">])</span>
@@ -4024,20 +4035,19 @@ no protocol assumptions baked in.</p>
 <a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a>            <span class="n">buffer</span><span class="o">=</span><span class="n">buff_b</span><span class="p">,</span>
 <a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a>            <span class="n">acquires</span><span class="o">=</span><span class="p">[</span><span class="n">Acquire</span><span class="p">(</span><span class="n">prod_lock_b</span><span class="p">)],</span>   <span class="c1"># wait for &quot;buffer free&quot;</span>
 <a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a>            <span class="n">releases</span><span class="o">=</span><span class="p">[</span><span class="n">Release</span><span class="p">(</span><span class="n">cons_lock_b</span><span class="p">)],</span>   <span class="c1"># signal &quot;data ready&quot;</span>
-<a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a>            <span class="nb">next</span><span class="o">=</span><span class="s2">&quot;self&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-49" name="__codelineno-2-49" href="#__codelineno-2-49"></a>        <span class="p">)],</span>
-<a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a>    <span class="p">),</span>
-<a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a><span class="p">])</span>
-<a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a>
-<a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
-<a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a>    <span class="k">pass</span>  <span class="c1"># data flow is driven entirely by the tile DMA programs below</span>
-<a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a>
-<a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">vec_ty</span><span class="p">,</span> <span class="n">vec_ty</span><span class="p">])</span>
-<a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a><span class="k">for</span> <span class="n">lk</span> <span class="ow">in</span> <span class="p">(</span><span class="n">prod_lock_a</span><span class="p">,</span> <span class="n">cons_lock_a</span><span class="p">,</span> <span class="n">prod_lock_b</span><span class="p">,</span> <span class="n">cons_lock_b</span><span class="p">):</span>
-<a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">add_lock</span><span class="p">(</span><span class="n">lk</span><span class="p">)</span>
-<a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_flow</span><span class="p">(</span><span class="n">a_to_b</span><span class="p">)</span>
-<a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">dma_a</span><span class="p">)</span>
-<a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">dma_b</span><span class="p">)</span>
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a>        <span class="p">)],</span>
+<a id="__codelineno-2-49" name="__codelineno-2-49" href="#__codelineno-2-49"></a>    <span class="p">),</span>
+<a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a><span class="p">])</span>
+<a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a>
+<a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a>    <span class="k">pass</span>  <span class="c1"># data flow is driven entirely by the tile DMA programs below</span>
+<a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a>
+<a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">vec_ty</span><span class="p">,</span> <span class="n">vec_ty</span><span class="p">])</span>
+<a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a><span class="k">for</span> <span class="n">lk</span> <span class="ow">in</span> <span class="p">(</span><span class="n">prod_lock_a</span><span class="p">,</span> <span class="n">cons_lock_a</span><span class="p">,</span> <span class="n">prod_lock_b</span><span class="p">,</span> <span class="n">cons_lock_b</span><span class="p">):</span>
+<a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">add_lock</span><span class="p">(</span><span class="n">lk</span><span class="p">)</span>
+<a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_flow</span><span class="p">(</span><span class="n">a_to_b</span><span class="p">)</span>
+<a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">dma_a</span><span class="p">)</span>
+<a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">dma_b</span><span class="p">)</span>
 </code></pre></div>
 <p>The locks follow AIE-ML semantics: each <code>Lock</code> starts at <code>init</code>, an
 <code>Acquire</code> waits until the value is <code>&gt;= value</code> (default 1) and
@@ -4048,7 +4058,7 @@ With <code>prod_a = 1</code> and <code>cons_a = 0</code>, <code>tile_a</code>'s 
 <code>AcquireGreaterEqual</code> / <code>Release</code>.</p>
 <h3 id="multi-bd-chains-ping-pong">Multi-BD chains (ping-pong)<a class="headerlink" href="#multi-bd-chains-ping-pong" title="Permanent link">&para;</a></h3>
 <p>Extending the channel above to a ping-pong pair is two BDs with two
-buffers, with <code>next="self"</code> on each so the BD repeats, plus a second
+buffers, chained to each other rather than to themselves, plus a second
 producer-lock token so both buffers can be in flight at once:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">buff_ping</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">tile_a</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">vec_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;buff_ping&quot;</span><span class="p">)</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">buff_pong</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">tile_a</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">vec_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;buff_pong&quot;</span><span class="p">)</span>
@@ -4074,6 +4084,10 @@ producer-lock token so both buffers can be in flight at once:</p>
 <p><code>Bd.next=1</code> points the first BD at the second; <code>next=0</code> on the second
 points back at the first.  The pair behaves the same way as the
 ObjectFifo lowering for a double-buffered fifo.</p>
+<p>Both are spelled out here to show the wiring, but this particular chain is
+what the defaults already do: leaving <code>next</code> off each BD walks <code>bds</code> in
+order, and <code>loop=True</code> closes the cycle.  Reach for explicit indices when
+the cycle is not simply "in order, then back to the start".</p>
 <p><img src="../../assets/DMA_BDs.png" height=300 width="400"></p>
 <h3 id="canonical-end-to-end-demo">Canonical end-to-end demo<a class="headerlink" href="#canonical-end-to-end-demo" title="Permanent link">&para;</a></h3>
 <p>The runnable example for this whole surface is
