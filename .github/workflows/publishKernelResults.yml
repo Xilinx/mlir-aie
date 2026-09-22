@@ -10,6 +10,14 @@ on:
         description: Publish static checks instead of hardware benchmarks
         required: true
         type: boolean
+      branch:
+        description: >
+          Branch to publish the series to. Overridable so the publish path can
+          be rehearsed against a scratch branch; nothing but a rehearsal should
+          pass anything other than the default.
+        required: false
+        default: gh-pages
+        type: string
 
 permissions:
   contents: write
@@ -19,13 +27,15 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # Lock the whole batch, not matrix legs, keeping compute parallel.
-    # Queue up to 100 publications instead of replacing pending runs.
+    # Queue up to 100 publications instead of replacing pending runs. The docs
+    # workflow takes this same lock, so it stays a constant both can name.
     concurrency:
       group: gh-pages-publish
       cancel-in-progress: false
       queue: max
     env:
       RESULT_FILE: ${{ inputs.static && 'static.json' || 'bench.json' }}
+      BRANCH: ${{ inputs.branch }}
       DATA_DIR_1: ${{ inputs.static && 'bench/static/aie2' || 'bench/npu1' }}
       DATA_DIR_2: ${{ inputs.static && 'bench/static/aie2p' || 'bench/npu2' }}
     steps:
@@ -40,9 +50,9 @@ jobs:
           path: results/npu2
 
       - name: Fetch publication branch
-        run: git fetch origin gh-pages:gh-pages --depth=1
+        run: git fetch origin "$BRANCH:$BRANCH" --depth=1
 
-      # The action commits to the local gh-pages branch and switches back.
+      # The action commits to the local publication branch and switches back.
       # Fetch once under the lock, accumulate every series, then push once.
       - name: Record npu1 results
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
@@ -51,7 +61,7 @@ jobs:
           tool: customSmallerIsBetter
           output-file-path: results/npu1/${{ env.RESULT_FILE }}
           benchmark-data-dir-path: ${{ env.DATA_DIR_1 }}
-          gh-pages-branch: gh-pages
+          gh-pages-branch: ${{ inputs.branch }}
           skip-fetch-gh-pages: true
           auto-push: false
           alert-threshold: ${{ inputs.static && '101%' || '103%' }}
@@ -66,7 +76,7 @@ jobs:
           tool: customSmallerIsBetter
           output-file-path: results/npu2/${{ env.RESULT_FILE }}
           benchmark-data-dir-path: ${{ env.DATA_DIR_2 }}
-          gh-pages-branch: gh-pages
+          gh-pages-branch: ${{ inputs.branch }}
           skip-fetch-gh-pages: true
           auto-push: false
           alert-threshold: ${{ inputs.static && '101%' || '103%' }}
@@ -82,7 +92,7 @@ jobs:
           tool: customSmallerIsBetter
           output-file-path: results/npu1/static-pm.json
           benchmark-data-dir-path: bench/static-pm/aie2
-          gh-pages-branch: gh-pages
+          gh-pages-branch: ${{ inputs.branch }}
           skip-fetch-gh-pages: true
           auto-push: false
           # Program memory needs more slack than integer II/ZOL/count metrics.
@@ -99,7 +109,7 @@ jobs:
           tool: customSmallerIsBetter
           output-file-path: results/npu2/static-pm.json
           benchmark-data-dir-path: bench/static-pm/aie2p
-          gh-pages-branch: gh-pages
+          gh-pages-branch: ${{ inputs.branch }}
           skip-fetch-gh-pages: true
           auto-push: false
           alert-threshold: '103%'
@@ -109,7 +119,7 @@ jobs:
           max-items-in-chart: 400
 
       - name: Publish all series
-        run: git push origin gh-pages:gh-pages
+        run: git push origin "$BRANCH:$BRANCH"
 
       - name: Save baselines for PR comparisons
         env:
@@ -124,11 +134,11 @@ jobs:
           # busy creating it. Skip instead: the comparison steps are guarded
           # on the baseline file existing, so they sit out the same run.
           save_series() {
-            if git cat-file -e "gh-pages:$1" 2>/dev/null; then
-              git show "gh-pages:$1" \
+            if git cat-file -e "$BRANCH:$1" 2>/dev/null; then
+              git show "$BRANCH:$1" \
                 | sed -e 's/^window\.BENCHMARK_DATA = //' -e 's/;\s*$//' > "$2"
             else
-              echo "no gh-pages:$1 yet -- nothing to cache as a baseline"
+              echo "no $BRANCH:$1 yet -- nothing to cache as a baseline"
             fi
           }
           for npu in npu1 npu2; do
@@ -151,6 +161,7 @@ jobs:
       - name: Select npu1 baseline
         run: cp -r baselines/npu1/baseline baseline
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        if: inputs.branch == 'gh-pages'
         with:
           path: baseline
           key: ${{ inputs.static && 'static-baseline-aie2' || 'kernel-bench-baseline-npu1' }}-${{ github.run_id }}
@@ -159,6 +170,7 @@ jobs:
           rm -rf baseline
           cp -r baselines/npu2/baseline baseline
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        if: inputs.branch == 'gh-pages'
         with:
           path: baseline
           key: ${{ inputs.static && 'static-baseline-aie2p' || 'kernel-bench-baseline-npu2' }}-${{ github.run_id }}
