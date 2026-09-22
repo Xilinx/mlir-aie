@@ -1643,12 +1643,14 @@ def test_compile_mixed_explicit_paths_raises():
 
 
 @pytest.mark.parametrize("full_elf", [False, True])
-def test_mlir_path_compile_forwards_include_paths_with_no_kernels(
+def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
     tmp_path, monkeypatch, npu2_device, full_elf
 ):
     mlir_path = tmp_path / "design.mlir"
     mlir_path.write_text("module {}")
     include_path = tmp_path / "include"
+    object_file = tmp_path / "kernel.o"
+    object_file.write_bytes(b"precompiled object")
     calls = []
 
     def fake_compile_external_kernels(
@@ -1658,6 +1660,9 @@ def test_mlir_path_compile_forwards_include_paths_with_no_kernels(
         calls.append((list(funcs), include_dirs))
 
     def fake_compile_mlir_module(**kwargs):
+        assert (Path(kwargs["work_dir"]) / object_file.name).read_bytes() == (
+            object_file.read_bytes()
+        )
         if full_elf:
             Path(kwargs["full_elf_path"]).touch()
         else:
@@ -1677,7 +1682,9 @@ def test_mlir_path_compile_forwards_include_paths_with_no_kernels(
     )
     monkeypatch.setattr(compilabledesign_module, "parse_dma_sizes", lambda *args: [])
 
-    design = CompilableDesign(mlir_path, include_paths=[include_path])
+    design = CompilableDesign(
+        mlir_path, include_paths=[include_path], object_files=[object_file]
+    )
     if full_elf:
         monkeypatch.setattr(
             design, "_parse_full_elf_kernel_name", lambda *args: "main:sequence"

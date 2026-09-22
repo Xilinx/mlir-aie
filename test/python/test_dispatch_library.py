@@ -33,7 +33,9 @@ def test_compile_mlir_module_requests_cpp_with_device_outputs(
         compile_utils.config, "peano_install_dir", lambda: tmp_path / "peano"
     )
     monkeypatch.setattr(
-        compile_utils, "_run_aiecc", lambda path, args: calls.append((path, args))
+        compile_utils,
+        "_run_aiecc",
+        lambda path, args, *, cwd: calls.append((path, args, cwd)),
     )
     cpp = tmp_path / "dispatch_gen.cpp"
     xclbin = tmp_path / "design.xclbin"
@@ -47,7 +49,8 @@ def test_compile_mlir_module_requests_cpp_with_device_outputs(
         options=["--get=npu_lowered.mlir"],
     )
     assert len(calls) == 1
-    _, args = calls[0]
+    _, args, cwd = calls[0]
+    assert Path(cwd) == tmp_path
     assert "--get-xclbin" in args
     assert f"--xclbin-name={xclbin}" in args
     assert "--get-npu-cpp" in args

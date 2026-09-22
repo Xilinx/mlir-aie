@@ -837,8 +837,19 @@ matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (4 * t) == 0);
 
-  return matmul_vectorized_4x4<bfloat16, bfloat16, (m / r), (k / s), (n / t), r,
-                               s, t, is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+  // The core powers up in rounding_mode::floor, which biases every bf16
+  // conversion toward negative infinity, so the error accumulates over the K
+  // reduction rather than cancelling. Under ROUND_CONV_EVEN, select
+  // round-to-nearest-even for the duration and restore the caller's mode.
+#ifdef ROUND_CONV_EVEN
+  aie::rounding_mode saved_rounding =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
+#endif
+  matmul_vectorized_4x4<bfloat16, bfloat16, (m / r), (k / s), (n / t), r, s, t,
+                        is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+#ifdef ROUND_CONV_EVEN
+  aie::set_rounding(saved_rounding);
+#endif
 }
 
 template <unsigned m, unsigned k, unsigned n>
@@ -854,8 +865,17 @@ matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (4 * t) == 0);
 
-  return matmul_vectorized_4x4<bfloat16, float, (m / r), (k / s), (n / t), r, s,
-                               t, is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+  // See matmul_vectorized_4x8x4_bf16_bf16: the A and B conversions bias the
+  // same way whether the accumulator is bf16 or f32.
+#ifdef ROUND_CONV_EVEN
+  aie::rounding_mode saved_rounding =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
+#endif
+  matmul_vectorized_4x4<bfloat16, float, (m / r), (k / s), (n / t), r, s, t,
+                        is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+#ifdef ROUND_CONV_EVEN
+  aie::set_rounding(saved_rounding);
+#endif
 }
 
 template <unsigned m, unsigned k, unsigned n>

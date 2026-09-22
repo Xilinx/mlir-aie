@@ -1560,6 +1560,32 @@ def test_saturating_kernels_saturate_in_their_reference():
 
 _SET_ROUNDING_CALL = re.compile(r"^\s*(?!//)[^/\n]*\bset_rounding\s*\(", re.M)
 _NARROWS = re.compile(r"to_vector<|\.srs\(|srs<|to_fixed|to_float")
+_IFDEF = re.compile(r"^\s*#\s*(ifdef|ifndef)\s+(\w+)|^\s*#\s*(else|endif)\b", re.M)
+
+
+def _active_source(src: str, compile_flags) -> str:
+    """Drop the ``#ifdef`` regions this kernel's flags leave out.
+
+    ``aie2/mm.cc`` guards its rounding swap on ``ROUND_CONV_EVEN``, which only
+    downstream IRON defines; reading the text alone would credit the in-tree
+    build with a call it never compiles.
+    """
+    defined = {f[2:].split("=")[0] for f in compile_flags or () if f.startswith("-D")}
+    out, keep, depth = [], [True], 0
+    for line in src.splitlines(keepends=True):
+        m = _IFDEF.match(line)
+        if m and m.group(1):
+            depth += 1
+            live = (m.group(2) in defined) == (m.group(1) == "ifdef")
+            keep.append(keep[-1] and live)
+        elif m and m.group(3) == "else" and depth:
+            keep[-1] = keep[-2] and not keep[-1]
+        elif m and m.group(3) == "endif" and depth:
+            depth -= 1
+            keep.pop()
+        elif keep[-1]:
+            out.append(line)
+    return "".join(out)
 
 
 @pytest.mark.parametrize("arch", ["aie2", "aie2p"])
@@ -1579,6 +1605,7 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
             assert name in NOT_JUDGED, f"{name}: no contract"
             continue
         src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
+        src = _active_source(src, ef.compile_flags)
         sets_own = bool(_SET_ROUNDING_CALL.search(src))
         if sets_own:
             assert c.setup is None, f"{name}: source sets the mode and names a setup"

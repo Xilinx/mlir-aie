@@ -14,6 +14,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     _EXTERN_CACHE,
     KernelContract,
+    Param,
     TensorLayout,
     _default_source_path,
     _detect_arch,
@@ -135,17 +136,18 @@ def fused_mm(
         "T": t,
         "OUT_CHUNK": out_chunk,
         "C_DEPTH": 2,
-        "EPILOGUE_MODE": modes[epilogue],
+        # The kernel selects the activation at runtime; the mask only decides
+        # which bodies are compiled in. Admitting just this one keeps the
+        # program memory of a single-activation design at its old size.
+        "EPILOGUE_MODE_MASK": 1 << modes[epilogue],
     }
     compile_flags = ["-DROUND_CONV_EVEN"] + [
         f"-DMM_FUSED_{name}={value}" for name, value in flags.items()
     ]
-    if clamp is not None:
-        compile_flags += [
-            "-DMM_FUSED_CLAMP=1",
-            f"-DMM_FUSED_CLAMP_MIN={clamp[0]}f",
-            f"-DMM_FUSED_CLAMP_MAX={clamp[1]}f",
-        ]
+    # An absent clamp is (-inf, +inf), which leaves every finite value
+    # untouched, so there is no unclamped path to select between.
+    bounds = clamp if clamp is not None else (-np.inf, np.inf)
+    clamp_bits = tuple(int(np.float32(v).view(np.int32)) for v in bounds)
     source = _default_source_path("fused_mm_tile.cc", "generic")
     include_dirs = _include_dirs()
     if arch == "aie2":
@@ -163,18 +165,33 @@ def fused_mm(
         False,
         arch,
         device.default_core_stack_bytes,
+        # The clamp is no longer a compile flag, so two clamps of the same
+        # kernel share compile_flags. They still need their own bindings,
+        # reference and tolerance, so the bounds belong in the key.
+        clamp_bits,
     )
     if key in _EXTERN_CACHE:
         return _EXTERN_CACHE[key]
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
     contract = KernelContract(
-        roles=(In, In, Out),
+        roles=(In, In, Out, Param, Param, Param),
         # The operands are held on the core in this blocking; nothing is
         # streamed transformed, the host packs them (block, no stream).
         layouts=(
             TensorLayout((dim_m, dim_k), pack_a, unpack_a, block=(r, s)),
             TensorLayout((dim_k, dim_n), pack_b, unpack_b, block=(s, t)),
             TensorLayout((dim_m, dim_n), pack_c, unpack_c, block=(r, t)),
+            None,
+            None,
+            None,
+        ),
+        # Bound here rather than left to the caller: `epilogue` and `clamp`
+        # stay factory arguments, so `reference` below closes over the same
+        # values the core is given.
+        parameter_bindings=(
+            (3, modes[epilogue]),
+            (4, clamp_bits[0]),
+            (5, clamp_bits[1]),
         ),
         reference=reference,
         tolerance=Tolerance.relative(
@@ -200,6 +217,9 @@ def fused_mm(
             np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
             np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]],
             np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
+            np.int32,
+            np.int32,
+            np.int32,
         ],
         include_dirs=include_dirs,
         compile_flags=compile_flags,
