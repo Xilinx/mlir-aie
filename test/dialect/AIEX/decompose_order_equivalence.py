@@ -122,7 +122,9 @@ for offsets, sizes, strides in [
 ]:
     ok = run_case(offsets, sizes, strides, dtype="bf16")
     all_ok = all_ok and (ok is True)
-    print(f"bf16 offsets={offsets} sizes={sizes} strides={strides} -> order_equivalent={ok}")
+    print(
+        f"bf16 offsets={offsets} sizes={sizes} strides={strides} -> order_equivalent={ok}"
+    )
 
 print(f"ALL ORDER-EQUIVALENT: {all_ok}")
 sys.exit(0 if all_ok else 1)
