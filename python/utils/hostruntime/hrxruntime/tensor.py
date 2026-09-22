@@ -61,7 +61,7 @@ class HRXTensor(NpuTensor):
 
         np_data = None
         if isinstance(shape_or_data, tuple):
-            np_type = np.ndarray[shape_or_data, np.dtype[self.dtype]]
+            np_type = np.ndarray[shape_or_data, np.dtype]
             self._shape = np_ndarray_type_get_shape(np_type)
         elif hasattr(shape_or_data, "shape"):
             self._shape = shape_or_data.shape

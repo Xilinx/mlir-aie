@@ -16,39 +16,6 @@ from aie.iron.worker import Worker
 from aie.utils import get_current_device
 
 
-# Shim DMA channels per direction per column, on AIE2 (Phoenix) and AIE2p
-# (Strix) alike.  The C++ target model (Device._tm) does not yet expose this;
-# if a future arch breaks the invariant these checks should read off the
-# device model instead.
-_SHIM_CHANNELS_PER_DIRECTION = 2
-
-
-def _check_num_channels(num_channels: int, num_inputs: int = 1) -> None:
-    """Validate the user-supplied ``num_channels=`` kwarg against the shim.
-
-    One worker per (column, channel) fills ``num_inputs`` fifos from the shim
-    and drains one, so a column needs ``num_inputs * num_channels`` MM2S
-    channels and ``num_channels`` S2MM.  A binary transform therefore has room
-    for one channel, not two: asking for two is caught here rather than as a
-    placement failure ("no ShimNOCTile ... has 1 input DMA channel free")
-    thirteen lowering stages later.
-    """
-    if num_channels not in (1, 2):
-        raise ValueError(
-            f"num_channels must be 1 or 2 (shim DMA has "
-            f"{_SHIM_CHANNELS_PER_DIRECTION} channels per direction per column "
-            f"on AIE2 / AIE2p); got {num_channels}"
-        )
-    needed = num_inputs * num_channels
-    if needed > _SHIM_CHANNELS_PER_DIRECTION:
-        raise ValueError(
-            f"num_channels={num_channels} with {num_inputs} inputs needs "
-            f"{needed} shim MM2S channels per column, and a column has "
-            f"{_SHIM_CHANNELS_PER_DIRECTION}. Use num_channels="
-            f"{_SHIM_CHANNELS_PER_DIRECTION // num_inputs}."
-        )
-
-
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
     """General tiled transform to apply a function on inputs and obtain a single output.
 
@@ -251,13 +218,8 @@ def _transform_parallel_gen(
 
     Distributes work across multiple AIE tiles for parallel execution.
 
-    With ``num_channels=2`` (and no extra ``*params``), the design also drives
-    both shim DMA channels per column — one worker per (column, channel) pair
-    — which is the right shape for DDR-bandwidth-bound element-wise kernels
-    like ReLU/GELU/SiLU.  A binary transform has two inputs per worker and so
-    has room for one channel per column, not two; ``_check_num_channels`` says
-    so.  The single-channel default (``num_channels=1``)
-    reproduces the original one-worker-per-column behaviour bit-for-bit.
+    Creates one worker per (column, channel). The compiler validates DMA
+    channel availability against the target model during placement.
 
     Args:
         func: Function to apply, either a lambda/callable or ExternalFunction.
@@ -271,20 +233,19 @@ def _transform_parallel_gen(
         trace_size: When > 0, enable per-column-Worker core trace and a
             ``trace_size``-byte runtime trace buffer (default: 0).  Same
             event0()/event1() expectation as `_transform_gen`.
-        num_channels: Shim DMA channels per column to drive, 1 or 2 (default: 1).
-            With 2, two workers per column run in parallel on disjoint
-            sub-ranges, doubling DDR throughput.  Not compatible with shared
-            tensor ``*params`` (each per-(col, chan) worker would need its own
-            param OF) — use ``num_channels=1`` if you need ``*params``.
+        num_channels: Workers per column operating on disjoint sub-ranges
+            (default: 1). Values above 1 are not compatible with shared
+            ``*params``.
         pass_size_to_kernel: When True (default), the kernel receives an extra
             trailing ``int`` argument equal to ``tile_size``.  Set False for
             kernels whose signature is just ``(*in_tiles, out_tile)`` (e.g.
             ``iron.kernels.relu``, ``iron.kernels.add``).
     """
-    _check_num_channels(num_channels, len(inputs))
+    if num_channels < 1:
+        raise ValueError("num_channels must be positive")
     if num_channels > 1 and params:
         raise ValueError(
-            "num_channels=2 is not supported together with shared *params; "
+            "num_channels > 1 is not supported together with shared *params; "
             "use num_channels=1 instead."
         )
     is_external_func = isinstance(func, ExternalFunction)
@@ -717,10 +678,9 @@ def transform_parallel(
         trace_size (int, optional): When > 0, enable per-column Worker core
             trace and a ``trace_size``-byte runtime trace buffer.
             Defaults to 0 (off).
-        num_channels (int, optional): Shim DMA channels per column to drive,
-            1 or 2.  ``num_channels=2`` runs one worker per (column, channel),
-            doubling DDR throughput for bandwidth-bound element-wise kernels.
-            Not compatible with shared tensor ``*params``.  Defaults to 1.
+        num_channels (int, optional): Workers per column. The compiler checks
+            target DMA capacity. Values above 1 are not compatible with shared
+            ``*params``. Defaults to 1.
         pass_size_to_kernel (bool, optional): Append ``tile_size`` as a
             trailing ``int`` argument on every kernel call.  Defaults to True;
             set False for kernels with bare ``(in, out)`` signatures.
@@ -765,8 +725,8 @@ def transform_parallel_binary(
         trace_size (int, optional): When > 0, enable per-column Worker core
             trace and a ``trace_size``-byte runtime trace buffer.
             Defaults to 0 (off).
-        num_channels (int, optional): Shim DMA channels per column to drive,
-            1 or 2.  Defaults to 1.  See [`transform_parallel`][iron.algorithms._transform.transform_parallel].
+        num_channels (int, optional): Workers per column. The compiler checks
+            target DMA capacity. Defaults to 1.
         pass_size_to_kernel (bool, optional): Append ``tile_size`` as a
             trailing ``int`` argument on every kernel call.  Defaults to True.
 

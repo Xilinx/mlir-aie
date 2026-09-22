@@ -973,28 +973,11 @@ def compile_external_kernels(
 ):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
-    Kernels are separate translation units with separate outputs, so they
-    compile concurrently.  Their source files are not always separate --
-    several ExternalFunctions can share one .cc -- so ``_staged`` makes each
-    write atomic rather than ordering the compiles behind it.
-
-    The grouping below (:func:`_kernel_compile_groups`) is still load-bearing,
-    for two cases ``_staged`` cannot cover. Two ExternalFunctions can share an
-    ``_original_name`` while carrying different ``source_string``s, because
-    ``ExternalFunction.__init__`` auto-suffixes a defaulted ``object_file_name``
-    on collision but never the original name.  Both write ``<_original_name>.cc``
-    and the bytes differ, so an atomic swap is not enough and they have to run
-    one after the other.  And two entry points of one source share an
-    ``object_file_name``: under a symbol prefix each visit compiles, renames
-    and stamps that one path, and two threads visiting it can leave an object
-    with unprefixed symbols under a valid stamp, which then fails to link.
-    Not covered either way: two ``source_file``s with the same basename in
-    different directories land on one path with different bytes but different
-    ``_original_name``s, so nothing orders them.
-
-    Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
-    without the intrinsics PCH), so the bound is cores rather than memory on an
-    ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
+    Independent kernels compile concurrently. `_kernel_compile_groups` orders
+    kernels sharing source names or object files to avoid staging and symbol
+    renaming races. Source files with the same basename but different entry
+    names must currently be supplied in separate batches.
+    Set AIE_KERNEL_COMPILE_JOBS to override the default CPU-count job limit.
     """
     pending = [f for f in funcs if not _compiled_into(f, kernel_dir, embed_bitcode)]
     if not pending:
@@ -1042,13 +1025,8 @@ def compile_external_kernels(
 def _kernel_compile_groups(funcs):
     """Partition ``funcs`` into lists that must compile one after the other.
 
-    Two kernels are ordered when they share an ``_original_name`` (they write
-    the same ``<name>.cc``, see :func:`compile_external_kernels`) or an
-    ``object_file_name``: entry points of one source share an object, and
-    with a symbol prefix each visit is a compile, a rename and a stamp on that
-    one path, so two threads visiting it interleave into an object whose
-    symbols are unprefixed under a stamp that says they are. The relation is
-    closed transitively; order within a group and across groups is the input's.
+    Kernels sharing an ``_original_name`` or ``object_file_name`` are grouped
+    transitively, preserving input order within each group.
     """
     parent = list(range(len(funcs)))
 

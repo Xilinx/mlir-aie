@@ -103,7 +103,7 @@ class XRTTensor(NpuTensor):
         # Extract the shape
         if isinstance(shape_or_data, tuple):
             # If this is a shape, check for it "ShapeLike"-ness using numpy ndarray types.
-            np_type = np.ndarray[shape_or_data, np.dtype[self.dtype]]
+            np_type = np.ndarray[shape_or_data, np.dtype]
             self._shape = np_ndarray_type_get_shape(np_type)
         elif hasattr(shape_or_data, "shape"):
             # If this is a shaped thing, we will trust it.

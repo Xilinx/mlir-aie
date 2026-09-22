@@ -137,37 +137,18 @@ struct PassPipeline {
   }
 };
 
-// pruneSplitClone — drop from a per-item clone what its consumer never
-// reads, keeping symbol resolution intact.
-//
-// A split clones the whole module once per matched op, and the graph keeps
-// every item. On a fused build that is one clone per core (hundreds), per
-// device and per runtime sequence, each carrying the main runtime sequence
-// after it has been materialized -- tens of thousands of DMA tasks -- so
-// memory is clones times module size. A consumer of a per-sequence item
-// reads that sequence and its device; a per-device item reads its device's
-// static configuration; a per-core item reads its core, its device's tiles,
-// buffers, locks and object fifos, and the kernels it links. None of them
-// reads another sequence, and none but the sequence's own consumer reads a
-// sequence at all.
-//
-// So: erase every runtime sequence other than the one containing `keep`
-// (for a per-core or per-device split, every one), then every device other
-// than the one containing `keep`, in each case only when nothing left in the
-// module still references its symbol. The verifier never sees a dangling
-// reference, and an item whose consumer does read across devices (the main
-// device's sequence configuring the others) keeps them, since its `configure`
-// ops are those references.
+// Avoid retaining unrelated runtime sequences and devices in every split
+// clone. Preserve referenced symbols, including cross-device configuration.
 inline void pruneSplitClone(mlir::ModuleOp module, mlir::Operation *keep) {
   auto keepDevice = keep->getParentOfType<xilinx::AIE::DeviceOp>();
   if (!keepDevice)
     keepDevice = llvm::dyn_cast<xilinx::AIE::DeviceOp>(keep);
-  auto keepSeq = keep->getParentOfType<xilinx::AIEX::RuntimeSequenceOp>();
+  auto keepSeq = keep->getParentOfType<xilinx::AIE::RuntimeSequenceOp>();
   if (!keepSeq)
-    keepSeq = llvm::dyn_cast<xilinx::AIEX::RuntimeSequenceOp>(keep);
+    keepSeq = llvm::dyn_cast<xilinx::AIE::RuntimeSequenceOp>(keep);
 
   llvm::SmallVector<mlir::Operation *> victims;
-  module.walk([&](xilinx::AIEX::RuntimeSequenceOp seq) {
+  module.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
     if (seq != keepSeq)
       victims.push_back(seq);
   });

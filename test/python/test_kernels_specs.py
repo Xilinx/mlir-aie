@@ -337,9 +337,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="tanh_bf16",
         source_kind="string_or_file",
         source_substring="tanh.cc",
-        # The element count is a runtime argument, so 512 is a legal tile;
-        # what the loop cannot step through is a non-multiple of its width.
-        invalid_kwargs=[(dict(tile_size=500), "multiple of 32")],
+        tile_size_checks=[(dict(tile_size=512), 512), (dict(tile_size=2048), 2048)],
     ),
     KernelSpec(
         name="sigmoid",
@@ -349,9 +347,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="sigmoid_bf16",
         source_kind="string_or_file",
         source_substring="sigmoid.cc",
-        # The element count is a runtime argument, so 512 is a legal tile;
-        # what the loop cannot step through is a non-multiple of its width.
-        invalid_kwargs=[(dict(tile_size=500), "multiple of 32")],
+        tile_size_checks=[(dict(tile_size=512), 512), (dict(tile_size=2048), 2048)],
     ),
     KernelSpec(
         name="leaky_relu",
@@ -361,9 +357,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="leaky_relu_bf16",
         source_kind="string_or_file",
         source_substring="leaky_relu.cc",
-        # Runtime element count, so 512 is legal; 500 is not a whole number
-        # of vectors on either architecture.
-        invalid_kwargs=[(dict(tile_size=500), "multiple of")],
+        tile_size_checks=[(dict(tile_size=512), 512), (dict(tile_size=2048), 2048)],
     ),
     KernelSpec(
         name="exp2f_vec",
@@ -1023,9 +1017,6 @@ def test_arg_dtype_out_of_range_raises():
         ef.arg_dtype(99)
 
 
-# mm.mac_dims: the geometry without the kernel
-
-
 @pytest.mark.parametrize(
     "arch,dtypes,expected",
     [
@@ -1041,26 +1032,17 @@ def test_mm_mac_dims_reads_the_table(arch, dtypes, expected):
 
 def test_mm_mac_dims_follows_the_bf16_emulation_toggle():
     """The toggle moves the AIE2P micro-kernel to 8x8x8; nothing else moves."""
-    assert (
-        kernels.mm.mac_dims(
-            bfloat16, bfloat16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
-        )
-        == (8, 8, 8)
-    )
+    assert kernels.mm.mac_dims(
+        bfloat16, bfloat16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
+    ) == (8, 8, 8)
     # Not on aie2, which has no emulation path.
-    assert (
-        kernels.mm.mac_dims(
-            bfloat16, bfloat16, arch="aie2", emulate_bf16_mmul_with_bfp16=True
-        )
-        == (4, 8, 4)
-    )
+    assert kernels.mm.mac_dims(
+        bfloat16, bfloat16, arch="aie2", emulate_bf16_mmul_with_bfp16=True
+    ) == (4, 8, 4)
     # Not for integer inputs.
-    assert (
-        kernels.mm.mac_dims(
-            np.int16, np.int16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
-        )
-        == (4, 4, 8)
-    )
+    assert kernels.mm.mac_dims(
+        np.int16, np.int16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
+    ) == (4, 4, 8)
 
 
 def test_mm_mac_dims_rejects_a_dtype_pair_with_no_kernel():
@@ -1068,20 +1050,55 @@ def test_mm_mac_dims_rejects_a_dtype_pair_with_no_kernel():
         kernels.mm.mac_dims(np.float32, np.float32, arch="aie2")
 
 
-def test_mm_mac_dims_resolves_an_arch_from_a_device():
-    """The idiomatic spelling: callers hold a device, not an arch string."""
+@pytest.mark.parametrize(
+    "factory,expected",
+    [
+        (kernels.mm, ((4, 8, 4), (4, 8, 8))),
+        (kernels.cascade_mm, ((1, 1, 1), (1, 1, 1))),
+    ],
+)
+def test_mac_dims_resolves_an_arch_from_a_device(factory, expected):
     from aie.iron.device import NPU1, NPU2
 
-    assert kernels.mm.mac_dims(bfloat16, bfloat16, device=NPU1()) == (4, 8, 4)
-    assert kernels.mm.mac_dims(bfloat16, bfloat16, device=NPU2()) == (4, 8, 8)
+    assert factory.mac_dims(bfloat16, bfloat16, device=NPU1()) == expected[0]
+    assert factory.mac_dims(bfloat16, bfloat16, device=NPU2()) == expected[1]
 
 
-def test_the_factory_and_the_instance_agree():
-    """mm.mac_dims(...) is the family's answer, mm(...).mac_dims one build's."""
-    built = kernels.mm(64, 64, 64, bfloat16, bfloat16)
-    assert built.mac_dims == kernels.mm.mac_dims(bfloat16, bfloat16)
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
+def test_the_factory_and_the_instance_agree(factory):
+    built = factory(64, 64, 64, bfloat16, bfloat16)
+    assert isinstance(built, ExternalFunction)
+    assert built.mac_dims == factory.mac_dims(bfloat16, bfloat16)
 
 
 def test_cascade_mm_carries_the_same_accessor():
-    """The shape generalises: each factory answers for its own table."""
     assert kernels.cascade_mm.mac_dims(bfloat16, bfloat16, arch="aie2") == (1, 1, 1)
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+def test_mac_dims_does_not_construct_or_register_a_kernel(factory, arch, monkeypatch):
+    from aie.iron.kernels import _common, linalg
+
+    def unexpected_construction(*args, **kwargs):
+        pytest.fail("Geometry queries must not construct kernels")
+
+    monkeypatch.setattr(linalg, "_make_extern", unexpected_construction)
+    instances = list(ExternalFunction._instances)
+    cache = dict(_common._EXTERN_CACHE)
+    assert isinstance(type(factory).__dict__["mac_dims"], classmethod)
+    assert len(factory.mac_dims(bfloat16, bfloat16, arch=arch)) == 3
+    assert list(ExternalFunction._instances) == instances
+    assert _common._EXTERN_CACHE == cache
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
+def test_mac_dims_rejects_an_unsupported_arch(factory):
+    with pytest.raises(ValueError, match="unsupported"):
+        factory.mac_dims(bfloat16, bfloat16, arch="unsupported")
+
+
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+def test_cascade_mac_dims_rejects_an_unsupported_dtype_pair(arch):
+    with pytest.raises(ValueError, match="unsupported"):
+        kernels.cascade_mm.mac_dims(np.int8, np.int8, arch=arch)

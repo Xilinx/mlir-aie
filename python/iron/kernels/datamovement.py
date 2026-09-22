@@ -21,9 +21,7 @@ from ._common import _default_source_path, _make_extern
 _AXPY_VEC = 64  # saxpy processes 64 bf16/iteration
 
 
-def axpy(
-    tile_size: int = 1024, vectorized: bool = True, use_chess: bool = False
-) -> ExternalFunction:
+def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
     """SAXPY kernel: ``z = a * x + y`` over bf16 tiles.
 
     The scalar ``a`` and element count are passed to the kernel at runtime, so a
@@ -53,7 +51,6 @@ def axpy(
         func,
         _default_source_path("axpy.cc"),
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
-        use_chess=use_chess,
     )
 
 

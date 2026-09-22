@@ -57,13 +57,7 @@ def _as_shape(shape):
 
 
 def _unsupported_device_message(cls, device) -> str:
-    """Explain a device rejection, not just report it.
-
-    A class-attribute check can only see the string it rejected, so asking for
-    "npu" from a CPU-only tensor used to surface as a bare "Unsupported device"
-    -- indistinguishable from a typo. The reason the CPU-only class was selected
-    lives in aie.utils.probe; quote it here.
-    """
+    """Include the probe failure when the CPU-only backend rejects an NPU."""
     message = f"Unsupported device: {device}"
     if device != "npu" or "npu" in cls.DEVICES:
         return message
@@ -123,24 +117,6 @@ class _WriteBorrow:
         start, end = tensor._extent
         tensor._coherence().set(start, end, "cpu")
         return False
-
-
-def _dtype_for(shape_or_data, dtype):
-    """The element type a tensor is built with.
-
-    A shape carries no type, and neither does a plain sequence, so both keep
-    the documented ``np.uint32`` -- the control-packet and instruction-stream
-    paths are built that way.
-
-    An array carries its own, and adopting it is the only safe reading:
-    casting to uint32 does not reinterpret the bytes, it rounds every value,
-    so a float buffer passed without an explicit dtype was being destroyed
-    silently ([0.5, 1.5, -3.25] became [0, 1, 4294967293]).
-    """
-    if dtype is not None:
-        return dtype
-    own = getattr(shape_or_data, "dtype", None)
-    return np.uint32 if own is None else own
 
 
 class NpuTensor(ABC):
@@ -344,7 +320,9 @@ class NpuTensor(ABC):
         if device not in self.__class__.DEVICES:
             raise ValueError(_unsupported_device_message(self.__class__, device))
         self._initial_device = device
-        self.dtype = _dtype_for(shape_or_data, dtype)
+        if dtype is None:
+            dtype = getattr(shape_or_data, "dtype", None)
+        self.dtype = np.uint32 if dtype is None else dtype
 
     @property
     @abstractmethod

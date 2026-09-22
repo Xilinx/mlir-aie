@@ -112,11 +112,9 @@ def config_param_names(cls) -> frozenset[str]:
 
 @dataclass(frozen=True)
 class CacheEntry:
-    """What one ``CompilableDesign.compile()`` produced, by path.
+    """Paths returned by `CompilableDesign.get_cache_entry`.
 
-    Every field but ``directory`` is ``None`` (or empty) when that output
-    was not requested or has not been produced. See
-    :meth:`CompilableDesign.get_cache_entry`.
+    Unavailable outputs are ``None`` or empty tuples.
     """
 
     directory: Path
@@ -362,7 +360,7 @@ class CompilableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
-    ) -> tuple[Path, Path | None]:
+    ) -> tuple[Path | None, Path | None]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
         When both ``xclbin_path`` and ``inst_path`` are given, artifacts are
@@ -399,6 +397,8 @@ class CompilableDesign:
         path. It requires an explicit ``xclbin_path`` (and ``inst_path`` for
         static designs). In default cache mode aiecc still emits a ``main.pdi``
         into the cache directory — use `get_pdi_path` to locate it.
+
+        Instructions-only designs return ``(None, inst_path)``.
         """
         from aie.iron.kernel import ExternalFunction
 
