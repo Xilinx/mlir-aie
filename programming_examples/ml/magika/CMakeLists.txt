@@ -47,10 +47,13 @@ endif()
 
 set(TRACE_SIZE 0 CACHE STRING "Trace buffer size in bytes, 0 to disable")
 
-# makefile-common:58 forces --check-lut-banks into AIECC_FLAGS for every
-# Makefile-built design, and this Makefile's aiecc lines pass ${AIECC_FLAGS} -v.
-# The check matters here: magika's cores are mostly LUT lookups.
-set(_aiecc_args --check-lut-banks -v)
+# The Makefile's aiecc lines pass ${AIECC_FLAGS} -v, and AIECC_FLAGS is empty
+# unless AIE_CHECK_LUT_BANKS=1 (makefile-common:50). That opt-in is what adds
+# --check-lut-banks, and it is also what makes the flag usable: it appends
+# attach_bitcode to each kernel rule so the object keeps the LLVM IR the check
+# reads. The flag alone fails here -- "'group0a.o' carries no readable LLVM IR".
+# Mirror the default, which is the configuration upstream actually tests.
+set(_aiecc_args -v)
 
 # group0 links two objects built from one source under different -D, which is
 # why these are spelled out per group rather than globbed. The object names are
