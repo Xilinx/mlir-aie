@@ -800,6 +800,12 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   if (static_cast<uint32_t>(getIterationStride()) > maxStep)
     return emitOpError() << "Iteration Stride exceeds the [0:" << maxStep
                          << "] range.";
+  // buffer_length is the full 32-bit word on a shim NOC tile but only 17 bits
+  // on a mem tile and 14 on a core tile, where the packer masks it.
+  uint64_t maxLen = targetModel.getDmaBdMaxLen(tileType);
+  if (getBufferLength() > maxLen)
+    return emitOpError() << "Buffer length exceeds the [0:" << maxLen
+                         << "] range.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
   if (targetModel.isShimNOCTile(getColumn(), getRow()) &&

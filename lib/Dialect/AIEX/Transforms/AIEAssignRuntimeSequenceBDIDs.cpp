@@ -237,9 +237,24 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::TileOp tile = op.getTileOp();
     BdIdGenerator &gen = getGeneratorForTile(tile);
 
+    const AIETargetModel &targetModel =
+        tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+
     // First, honor all the user-specified BD IDs.
     WalkResult result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
       if (bd_op.getBdId().has_value()) {
+        if (!targetModel.isBdChannelAccessible(tile.getCol(), tile.getRow(),
+                                               bd_op.getBdId().value(),
+                                               op.getChannel())) {
+          bd_op.emitOpError("Buffer descriptor ID ")
+              << bd_op.getBdId().value() << " cannot be submitted on channel "
+              << op.getChannel() << " of tile (" << tile.getCol() << ","
+              << tile.getRow()
+              << "), which partitions its buffer descriptors by channel "
+                 "parity: an even channel reaches only the low half of the "
+                 "ids and an odd channel only the high half.";
+          return WalkResult::interrupt();
+        }
         if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
           op.emitOpError("Specified buffer descriptor ID ")
               << bd_op.getBdId().value()
@@ -264,20 +279,17 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
           if (bd_op.getBdId().has_value())
             return WalkResult::advance();
-          // channelIndex only affects allocation on MemTiles, where the AIE2
-          // model partitions BDs by channel parity (isBdChannelAccessible).
-          // Runtime sequences configure BDs on shim (and compute) tiles only,
-          // which are channel-agnostic (always accessible), so passing 0 is
-          // correct here.
-          std::optional<int32_t> next_id = gen.nextBdId(/*channelIndex=*/0);
+          // channelIndex matters on a MemTile, where the AIE2 model partitions
+          // BDs by channel parity (isBdChannelAccessible: an even channel can
+          // only submit ids below 24, an odd channel only 24 and above).
+          std::optional<int32_t> next_id = gen.nextBdId(op.getChannel());
           if (!next_id) {
-            const AIETargetModel &tm =
-                tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
             op.emitOpError()
                 << "Too many simultaneously active buffer descriptors on tile ("
                 << tile.getCol() << "," << tile.getRow()
                 << "), which supports up to "
-                << tm.getNumBDs(tile.getCol(), tile.getRow())
+                << targetModel.getNumBDsForChannel(tile.getCol(), tile.getRow(),
+                                                   op.getChannel())
                 << ". Emit an aiex.dma_await_task to free BDs for reuse; it "
                    "waits for hardware completion, so the recycled ids are no "
                    "longer in flight. aiex.dma_free_task also recycles ids but "
