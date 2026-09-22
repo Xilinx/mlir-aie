@@ -127,6 +127,12 @@ void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (2 * t) == 0);
 
+  // A is converted to bfp16 on the core, and that conversion follows the
+  // core's rounding mode rather than being fixed here: conv_even keeps the K
+  // reduction unbiased, where floor costs a 64x64x64 tile of large inputs
+  // 2791 mismatching outputs against 10. The caller owns the mode --
+  // kernels.mm_bfp names conv_even as its contract's setup -- so setting it
+  // here too would be the design and the kernel fighting over it.
   matmul_vectorized_2x2_bfp16_bf16<m / r, k / s, n / t, r, s, t>(pA, pB, pC);
 }
 }

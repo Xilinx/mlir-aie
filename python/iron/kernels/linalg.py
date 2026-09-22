@@ -153,21 +153,22 @@ def mm_bfp_ref(a, b):
 def mm_bfp_mixed_ref(a, b):
     """Numpy reference for [`mm_bfp`][iron.kernels.linalg.mm_bfp] with ``mixed=True``.
 
-    ``a`` (bf16) is used as is, as ``mixed_test.cpp`` does -- the core
-    converts it to bfp16 itself, with a rounding the reference does not
-    model, which is why the mixed tolerance is twice the plain one; ``b``
-    is quantized as in [`mm_bfp_ref`][iron.kernels.linalg.mm_bfp_ref].
+    ``a`` arrives bf16 and the core converts it, under the rounding mode
+    ``mm_bfp_mixed.cc`` pins, so it is quantized ``conv_even`` here. ``b`` is
+    encoded by the host, which truncates, so it keeps the default as in
+    [`mm_bfp_ref`][iron.kernels.linalg.mm_bfp_ref].
 
-    Quantizing ``a`` here with ``bfp.quantize`` is measurably wrong, not
-    merely redundant: it moves the device further from the reference on both
-    random and large data (mismatches on a 64x64x64 large tile went 1369 ->
-    2790), so whatever the core does to ``a`` keeps more of it than one
-    shared exponent per 8 values would.
+    Pairing A with the wrong mode is the difference between 10 mismatching
+    outputs and 2791, on a 64x64x64 tile of large inputs; leaving A
+    unquantized altogether gives 1369.
     """
     from aie.utils import bfp
 
+    aq = bfp.quantize(np.asarray(a, dtype=np.float32), rounding="conv_even").astype(
+        np.float64
+    )
     bq = bfp.quantize(np.ascontiguousarray(np.asarray(b, dtype=np.float32).T)).T
-    return np.asarray(a).astype(np.float64) @ bq.astype(np.float64)
+    return aq @ bq.astype(np.float64)
 
 
 # The references above take a whole (M, K) x (K, N) problem, which is what a
@@ -211,7 +212,7 @@ def mm_bfp_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int, mixed: bool = F
     a = np.asarray(a).reshape(-1, dim_m, dim_k)
     b = np.asarray(b).reshape(-1, dim_k, dim_n)
     aq = (
-        a.astype(np.float64)
+        bfp.quantize(a.astype(np.float32), rounding="conv_even").astype(np.float64)
         if mixed
         else bfp.quantize(a.astype(np.float32)).astype(np.float64)
     )
@@ -287,6 +288,11 @@ def _zero_output(fn):
 _BFP_TOLERANCE = Tolerance.relative(
     0.05, 1.5, note="bfp_test.cpp: bf16 rel_tol, 3x abs_tol for the bfp16 C"
 )
+# The doubled relative term dates from a reference that did not model the
+# in-core conversion at all. It does now, under the conv_even the contract's
+# setup selects, which took a 64x64x64 large tile from 1369 mismatching
+# outputs to 10 -- so this is slack the reference no longer needs, and
+# tightening it is a separate measurement rather than an edit.
 _BFP_MIXED_TOLERANCE = Tolerance.relative(
     0.1, 0.5, note="mixed_test.cpp: 2x bf16 rel_tol for the in-core bf16->bfp16 A"
 )
