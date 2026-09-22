@@ -1402,23 +1402,24 @@ def AIE_DMAConfigureTaskOp
     }]>];
 }
 
-def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
-  let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
+def AIE_DMAConfigureTaskForOp
+    : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                         DeclareOpInterfaceMethods<
+                                             SymbolUserOpInterface>]>,
+      Results<(outs Index:$result)> {
+  let summary = "As dma_configure_task, but specify tile, direction and "
+                "channel by reference to a Shim DMA allocation op";
 
-  let arguments = (
-    ins SymbolRefAttr:$alloc,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-        Optional<I32>:$repeat_count_val
-  );
+  let arguments = (ins SymbolRefAttr:$alloc,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      Optional<I32>:$repeat_count_val);
 
   let regions = (region AnyRegion:$body);
 
   let assemblyFormat = [{
     $alloc (`repeat` $repeat_count_val^ `:` type($repeat_count_val))? regions attr-dict
   }];
-
-  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // The repeat count as an OpFoldResult: runtime operand if present, else the
