@@ -1023,7 +1023,7 @@ def test_arg_dtype_out_of_range_raises():
         ef.arg_dtype(99)
 
 
-# mm_mac_dims: the geometry without the kernel
+# mm.mac_dims: the geometry without the kernel
 
 
 @pytest.mark.parametrize(
@@ -1036,27 +1036,27 @@ def test_arg_dtype_out_of_range_raises():
     ],
 )
 def test_mm_mac_dims_reads_the_table(arch, dtypes, expected):
-    assert kernels.mm_mac_dims(*dtypes, arch=arch) == expected
+    assert kernels.mm.mac_dims(*dtypes, arch=arch) == expected
 
 
 def test_mm_mac_dims_follows_the_bf16_emulation_toggle():
     """The toggle moves the AIE2P micro-kernel to 8x8x8; nothing else moves."""
     assert (
-        kernels.mm_mac_dims(
+        kernels.mm.mac_dims(
             bfloat16, bfloat16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
         )
         == (8, 8, 8)
     )
     # Not on aie2, which has no emulation path.
     assert (
-        kernels.mm_mac_dims(
+        kernels.mm.mac_dims(
             bfloat16, bfloat16, arch="aie2", emulate_bf16_mmul_with_bfp16=True
         )
         == (4, 8, 4)
     )
     # Not for integer inputs.
     assert (
-        kernels.mm_mac_dims(
+        kernels.mm.mac_dims(
             np.int16, np.int16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
         )
         == (4, 4, 8)
@@ -1065,4 +1065,23 @@ def test_mm_mac_dims_follows_the_bf16_emulation_toggle():
 
 def test_mm_mac_dims_rejects_a_dtype_pair_with_no_kernel():
     with pytest.raises(ValueError, match="unsupported"):
-        kernels.mm_mac_dims(np.float32, np.float32, arch="aie2")
+        kernels.mm.mac_dims(np.float32, np.float32, arch="aie2")
+
+
+def test_mm_mac_dims_resolves_an_arch_from_a_device():
+    """The idiomatic spelling: callers hold a device, not an arch string."""
+    from aie.iron.device import NPU1, NPU2
+
+    assert kernels.mm.mac_dims(bfloat16, bfloat16, device=NPU1()) == (4, 8, 4)
+    assert kernels.mm.mac_dims(bfloat16, bfloat16, device=NPU2()) == (4, 8, 8)
+
+
+def test_the_factory_and_the_instance_agree():
+    """mm.mac_dims(...) is the family's answer, mm(...).mac_dims one build's."""
+    built = kernels.mm(64, 64, 64, bfloat16, bfloat16)
+    assert built.mac_dims == kernels.mm.mac_dims(bfloat16, bfloat16)
+
+
+def test_cascade_mm_carries_the_same_accessor():
+    """The shape generalises: each factory answers for its own table."""
+    assert kernels.cascade_mm.mac_dims(bfloat16, bfloat16, arch="aie2") == (1, 1, 1)

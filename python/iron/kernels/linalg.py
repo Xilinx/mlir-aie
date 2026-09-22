@@ -9,6 +9,8 @@ import numpy as np
 from aie.iron.kernel import ExternalFunction
 from ml_dtypes import bfloat16
 
+from aie.utils.compile.utils import resolve_target_arch
+
 from ._common import _default_source_path, _detect_arch, _make_extern
 
 _CASCADE_COMBOS = {
@@ -103,27 +105,35 @@ _ZERO_SUFFIX = {
 }
 
 
-def mm_mac_dims(
+def _mm_mac_dims(
     input_dtype,
     output_dtype,
     *,
+    device=None,
     arch: str | None = None,
     emulate_bf16_mmul_with_bfp16: bool = False,
 ) -> tuple[int, int, int]:
-    """The ``aie::mmul`` geometry ``(r, s, t)`` that :func:`mm` would compile to.
+    """The ``aie::mmul`` geometry ``(r, s, t)`` :func:`mm` compiles to.
 
-    The same lookup ``mm(...).mac_dims`` performs, without building the
-    kernel. A design that needs the geometry to *choose* its tiles needs it
-    before it knows the flags it will finally bind with, and constructing an
-    ExternalFunction just to read an attribute is how a stray default-flag
-    ``mm()`` call ended up beside the real one in the whole_array port --
-    two differently-flagged kernels whose object files then collided (see
-    ``_EXTERN_CACHE``).
+    Reached as ``kernels.mm.mac_dims(...)``: the geometry belongs to the
+    kernel family, not to one build of it, since it turns on the arch, the
+    dtype pair and the bf16 toggle and not on ``dim_m``/``dim_k``/``dim_n``.
+    ``mm(...).mac_dims`` is the same answer read off a kernel you are
+    building anyway.
+
+    A design that needs the geometry to *choose* its tiles needs it before
+    it knows the flags it will bind with, and asking the factory then leaves
+    a second, differently-flagged ExternalFunction in the ``@jit``'s
+    registry, whose object file collides with the real one -- what the
+    whole_array port hit (see ``_EXTERN_CACHE``).
 
     Args:
         input_dtype: Element type of A and B.
         output_dtype: Element type of C.
-        arch: ``"aie2"`` or ``"aie2p"``; the active device's when omitted.
+        device: Whose arch to answer for; the active one when omitted.
+        arch: ``"aie2"`` or ``"aie2p"`` directly, when the caller knows the
+            kernel source but has no device -- a construction-time check,
+            say. Wins over ``device``.
         emulate_bf16_mmul_with_bfp16: The AIE2P bf16 toggle, which moves the
             micro-kernel to 8x8x8.
 
@@ -136,13 +146,35 @@ def mm_mac_dims(
     key = (input_dtype, output_dtype)
     if key not in _MM_COMBOS:
         raise ValueError(
-            f"mm_mac_dims(): unsupported (input_dtype, output_dtype) = {key}. "
+            f"mm.mac_dims(): unsupported (input_dtype, output_dtype) = {key}. "
             f"Supported: {list(_MM_COMBOS.keys())}"
         )
-    arch = arch or _detect_arch()
+    arch = arch or (resolve_target_arch(device) if device is not None else _detect_arch())
     if emulate_bf16_mmul_with_bfp16 and arch == "aie2p" and input_dtype is bfloat16:
         return _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
     return _MM_MAC_DIMS[arch][key]
+
+
+def _cascade_mm_mac_dims(
+    input_dtype,
+    output_dtype,
+    *,
+    device=None,
+    arch: str | None = None,
+) -> tuple[int, int, int]:
+    """The scalar-block geometry ``(r, s, t)`` :func:`cascade_mm` compiles to.
+
+    The factory-level peer of ``cascade_mm(...).mac_dims``; see
+    :func:`_mm_mac_dims`.
+    """
+    key = (input_dtype, output_dtype)
+    arch = arch or (resolve_target_arch(device) if device is not None else _detect_arch())
+    if arch not in _CASCADE_MM_MAC_DIMS or key not in _CASCADE_MM_MAC_DIMS[arch]:
+        raise ValueError(
+            f"cascade_mm.mac_dims(): unsupported (arch, dtypes) = "
+            f"({arch}, {key}). Supported: {sorted(_CASCADE_MM_MAC_DIMS)}"
+        )
+    return _CASCADE_MM_MAC_DIMS[arch][key]
 
 
 def mm(
@@ -227,7 +259,7 @@ def mm(
         compile_flags=compile_flags,
         use_chess=use_chess,
     )
-    extern.mac_dims = mm_mac_dims(
+    extern.mac_dims = _mm_mac_dims(
         input_dtype,
         output_dtype,
         arch=arch,
@@ -372,3 +404,11 @@ def cascade_mm(
         )
     extern.mac_dims = _CASCADE_MM_MAC_DIMS[arch][key]
     return extern
+
+
+# The geometry hangs off the factory it describes, so the family-level
+# question reads like the instance-level one: mm.mac_dims(bf16, bf16) beside
+# mm(...).mac_dims. Attached rather than defined inside because a plain
+# function is the factory here, not a class.
+mm.mac_dims = _mm_mac_dims
+cascade_mm.mac_dims = _cascade_mm_mac_dims
