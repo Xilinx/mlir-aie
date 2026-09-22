@@ -1790,6 +1790,61 @@ def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
     assert entry.manifest is None
 
 
+def test_compile_mode_switch_replaces_artifact_state(
+    tmp_path, monkeypatch, npu2_device
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module {}")
+
+    def fake_compile_mlir_module(**kwargs):
+        for name in ("xclbin_path", "insts_path", "full_elf_path"):
+            if path := kwargs.get(name):
+                Path(path).touch()
+
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_external_kernels",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+    )
+    monkeypatch.setattr(
+        compilabledesign_module._manifest, "record", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(compilabledesign_module, "parse_dma_sizes", lambda *args: [])
+
+    design = CompilableDesign(mlir_path)
+    design.compile(
+        xclbin_path=tmp_path / "design.xclbin",
+        inst_path=tmp_path / "insts.bin",
+    )
+    assert design.get_artifacts() is not None
+
+    monkeypatch.setattr(
+        design, "_parse_full_elf_kernel_name", lambda *args: "main:sequence"
+    )
+    design.compile(full_elf_path=tmp_path / "design.elf")
+
+    entry = design.get_cache_entry()
+    assert entry is not None
+    assert entry.elf == (tmp_path / "design.elf").resolve()
+    assert entry.xclbin is None and entry.insts is None
+    assert design.get_artifacts() is None
+
+    design.compile(
+        xclbin_path=tmp_path / "design.xclbin",
+        inst_path=tmp_path / "insts.bin",
+    )
+
+    entry = design.get_cache_entry()
+    assert entry is not None
+    assert entry.xclbin == (tmp_path / "design.xclbin").resolve()
+    assert entry.insts == (tmp_path / "insts.bin").resolve()
+    assert entry.elf is None
+    assert design._full_elf_kernel_name is None
+
+
 # ---------------------------------------------------------------------------
 # compile(): DispatchTime[T] guards -- these raise before any subprocess runs
 # ---------------------------------------------------------------------------

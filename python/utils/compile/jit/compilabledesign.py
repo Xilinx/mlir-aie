@@ -527,14 +527,12 @@ class CompilableDesign:
                 logger.debug(
                     "Cache hit for '%s' (hash=%s)", self.generator_name, cache_hash
                 )
-                self._xclbin_path = xclbin_path
-                self._inst_path = inst_path
-                self._elf_path = None
-                self._dispatch_lib_path = companion_path if has_dispatch else None
-                self._kernel_dir = kernel_dir
-                # The active artifact may have changed since the previous
-                # compile(), so refresh its validation metadata on every hit.
-                self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+                self._record_artifacts(
+                    kernel_dir,
+                    xclbin=xclbin_path,
+                    insts=inst_path,
+                    dispatch_library=companion_path if has_dispatch else None,
+                )
                 return xclbin_path, inst_path
 
             if explicit_paths:
@@ -646,13 +644,13 @@ class CompilableDesign:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
 
-        self._xclbin_path = xclbin_path
-        self._inst_path = inst_path
-        self._elf_path = elf_path
-        self._dispatch_lib_path = dispatch_so_path
-        self._kernel_dir = kernel_dir
-        # Parse expected tensor sizes for runtime validation.
-        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+        self._record_artifacts(
+            kernel_dir,
+            xclbin=xclbin_path,
+            insts=inst_path,
+            elf=Path(elf_path) if elf_path is not None else None,
+            dispatch_library=dispatch_so_path,
+        )
         return xclbin_path, inst_path
 
     def _compile_full_elf(
@@ -703,12 +701,13 @@ class CompilableDesign:
                     self.generator_name,
                     cache_hash,
                 )
-                self._elf_path = elf_path
-                self._kernel_dir = kernel_dir
-                self._full_elf_kernel_name = self._parse_full_elf_kernel_name(
-                    ExternalFunction
+                self._record_artifacts(
+                    kernel_dir,
+                    elf=elf_path,
+                    full_elf_kernel_name=self._parse_full_elf_kernel_name(
+                        ExternalFunction
+                    ),
                 )
-                self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
                 return elf_path, None
 
             try:
@@ -762,10 +761,11 @@ class CompilableDesign:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
 
-        self._elf_path = elf_path
-        self._kernel_dir = kernel_dir
-        self._full_elf_kernel_name = self._parse_full_elf_kernel_name(ExternalFunction)
-        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+        self._record_artifacts(
+            kernel_dir,
+            elf=elf_path,
+            full_elf_kernel_name=self._parse_full_elf_kernel_name(ExternalFunction),
+        )
         return elf_path, None
 
     def _compile_insts_only(
@@ -812,8 +812,7 @@ class CompilableDesign:
                     self.generator_name,
                     cache_hash,
                 )
-                self._inst_path = inst_path
-                self._kernel_dir = kernel_dir
+                self._record_artifacts(kernel_dir, insts=inst_path)
                 return None, inst_path
 
             try:
@@ -839,9 +838,26 @@ class CompilableDesign:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
 
-        self._inst_path = inst_path
-        self._kernel_dir = kernel_dir
+        self._record_artifacts(kernel_dir, insts=inst_path)
         return None, inst_path
+
+    def _record_artifacts(
+        self,
+        kernel_dir: Path,
+        *,
+        xclbin: Path | None = None,
+        insts: Path | None = None,
+        elf: Path | None = None,
+        dispatch_library: Path | None = None,
+        full_elf_kernel_name: str | None = None,
+    ) -> None:
+        self._kernel_dir = kernel_dir
+        self._xclbin_path = xclbin
+        self._inst_path = insts
+        self._elf_path = elf
+        self._dispatch_lib_path = dispatch_library
+        self._full_elf_kernel_name = full_elf_kernel_name
+        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
 
     def _resolve_use_chess(self, external_kernels: list) -> bool:
         """Return whether to drive aiecc with the Chess front-end.
