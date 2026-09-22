@@ -380,6 +380,13 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
                                   pattern))
       return failure();
 
+    // Iteration uses the outermost ND slot, so there is no free dimension to
+    // factor into, and chain-slicing has no defined iteration semantics.
+    if (op.getIteration())
+      return op.emitOpError()
+             << "buffer descriptor with the iteration attribute is too large "
+                "to lower and cannot be decomposed";
+
     auto decomposed =
         decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
     // failed() already guards both dereferences below via short-circuit /
