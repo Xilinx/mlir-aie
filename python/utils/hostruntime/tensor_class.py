@@ -125,6 +125,24 @@ class _WriteBorrow:
         return False
 
 
+def _dtype_for(shape_or_data, dtype):
+    """The element type a tensor is built with.
+
+    A shape carries no type, and neither does a plain sequence, so both keep
+    the documented ``np.uint32`` -- the control-packet and instruction-stream
+    paths are built that way.
+
+    An array carries its own, and adopting it is the only safe reading:
+    casting to uint32 does not reinterpret the bytes, it rounds every value,
+    so a float buffer passed without an explicit dtype was being destroyed
+    silently ([0.5, 1.5, -3.25] became [0, 1, 4294967293]).
+    """
+    if dtype is not None:
+        return dtype
+    own = getattr(shape_or_data, "dtype", None)
+    return np.uint32 if own is None else own
+
+
 class NpuTensor(ABC):
     """A host-mapped, device-resident buffer of fixed shape and dtype.
 
@@ -311,20 +329,22 @@ class NpuTensor(ABC):
         """
         return self._offset_bytes
 
-    def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
+    def __init__(self, shape_or_data, dtype: npt.DTypeLike | None = None, device="npu"):
         """Initialize the tensor.
 
         Args:
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
-            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            dtype (np.dtype, optional): Element type. Taken from the data when
+                that is a typed array and this is omitted; ``np.uint32`` when
+                the tensor is built from a shape.
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
         if device not in self.__class__.DEVICES:
             raise ValueError(_unsupported_device_message(self.__class__, device))
         self._initial_device = device
-        self.dtype = dtype
+        self.dtype = _dtype_for(shape_or_data, dtype)
 
     @property
     @abstractmethod
@@ -1064,21 +1084,22 @@ class CPUOnlyTensor(NpuTensor):
     DEVICES = ["cpu"]
     DEFAULT_DEVICE = "cpu"
 
-    def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="cpu"):
+    def __init__(self, shape_or_data, dtype: npt.DTypeLike | None = None, device="cpu"):
         """Initialize the CPUOnlyTensor.
 
         Args:
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
-            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            dtype (np.dtype, optional): Element type. Taken from the data when
+                that is a typed array and this is omitted.
             device (str, optional): Device string identifier. Defaults to 'cpu'.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
         if not isinstance(shape_or_data, tuple):
-            self._data = np.array(shape_or_data, dtype=dtype)
+            self._data = np.array(shape_or_data, dtype=self.dtype)
         else:
-            self._data = np.zeros(shape_or_data, dtype=dtype)
+            self._data = np.zeros(shape_or_data, dtype=self.dtype)
         self._shape = self._data.shape
         # Re-home the bytes in a buffer so views share one allocation and one
         # coherence map, then keep a typed view of the whole of it.

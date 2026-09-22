@@ -66,3 +66,39 @@ def test_numpy_view_and_torch_view_share_one_buffer():
     tensor = CPUOnlyTensor((3,), dtype=np.float32)
     tensor.numpy_view()[:] = [5.0, 6.0, 7.0]
     assert torch.equal(tensor.torch_view(), torch.tensor([5.0, 6.0, 7.0]))
+
+
+# A typed array keeps its dtype; a shape and a plain sequence take the default
+
+
+def test_a_typed_array_keeps_its_dtype():
+    """Casting to the uint32 default would round the values, not reinterpret
+    them: [0.5, 1.5, 2.5, -3.25] came back as [0, 1, 2, 4294967293]."""
+    from ml_dtypes import bfloat16
+
+    values = np.array([0.5, 1.5, 2.5, -3.25], dtype=bfloat16)
+    tensor = CPUOnlyTensor(values)
+    assert tensor.data.dtype == bfloat16
+    assert np.array_equal(tensor.numpy(), values)
+
+
+def test_a_float32_array_keeps_its_dtype():
+    values = np.array([1.5, -2.5], dtype=np.float32)
+    tensor = CPUOnlyTensor(values)
+    assert tensor.data.dtype == np.float32
+    assert np.array_equal(tensor.numpy(), values)
+
+
+def test_a_shape_still_takes_the_uint32_default():
+    """The control-packet and instruction-stream paths build tensors this way."""
+    assert CPUOnlyTensor((4,)).data.dtype == np.uint32
+
+
+def test_a_plain_sequence_still_takes_the_uint32_default():
+    """A list carries no dtype, and the docstring promises the default here."""
+    assert CPUOnlyTensor([1, 2, 3]).data.dtype == np.uint32
+
+
+def test_an_explicit_dtype_still_wins_over_the_array():
+    values = np.array([1.5, 2.5], dtype=np.float32)
+    assert CPUOnlyTensor(values, dtype=np.uint32).data.dtype == np.uint32
