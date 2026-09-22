@@ -17,7 +17,7 @@
 // clang-format off
 #include <aie_api/aie.hpp>
 #include "../aie_kernel_utils.h"
-#include "lut_inv_8b.h"
+#include "lut_inv.h"
 // clang-format on
 
 const int32_t SRS_SHIFT = 12;

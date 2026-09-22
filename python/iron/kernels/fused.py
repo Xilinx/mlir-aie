@@ -185,6 +185,8 @@ def fused_mm(
         acc_dtype=np.float32,
         reduction=dim_k,
         ops_per_call=2 * dim_m * dim_k * dim_n,
+        # The aie2 epilogue reaches getTanhBf16; aie2p has no table.
+        uses_lut=True,
         # Reserve the f32 accumulator plus call frames and epilogue spills:
         # AIE2P SiLU with clamp needs 1600 bytes beyond the accumulator.
         # aiecc still checks the measured linked stack.

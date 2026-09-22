@@ -311,6 +311,12 @@ def design(
     if any(bfp.is_bfp(shape_dtype(t)[1]) for t in fn.arg_types() if _is_tensor_type(t)):
         if "--dynamic-objFifos" not in flags:
             flags.append("--dynamic-objFifos")
+    # A gather reads its two tables at once, so they have to sit in different
+    # banks. Chess cannot be checked (the flag needs Peano LLVM IR), and an
+    # arch whose path has no LUT just finds nothing to check.
+    if c.uses_lut and not fn.use_chess:
+        if not any(f.startswith("--check-lut-banks") for f in flags):
+            flags.append("--check-lut-banks")
     return _stream.specialize(
         factory=factory,
         factory_kwargs=factory_kwargs,

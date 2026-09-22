@@ -119,6 +119,10 @@ class KernelContract:
             ``factory(fn)`` returns the kernel that initializes the buffer.
         trace_cycles: Whether one event0/event1 pair brackets a whole call
             and nothing else does; False unless audited.
+        uses_lut: Whether the kernel gathers through an ``aie::lut<4>`` table
+            pair, so a build should verify the two tables land in different
+            banks. Set it on the contract, not per source file: the LUT often
+            comes in through a header (``lut_based_ops.h``, ``lut_inv.h``).
 
     Overflow, rounding and NaN handling are not declared twice: the
     reference is the arithmetic model and the tolerance the slack against it.
@@ -139,6 +143,7 @@ class KernelContract:
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
     trace_cycles: bool = False
+    uses_lut: bool = False
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -329,6 +334,17 @@ def _include_dirs() -> list[str]:
     from aie.utils import config
 
     return [config.cxx_header_path()]
+
+
+def _runtime_lib_include(arch: str | None = None) -> str:
+    """Return ``aie_runtime_lib/<ARCH>``, which holds the LUT sources and
+    ``aie_bank_placement.h`` (the portable ``AIE_BANK_A``-``AIE_BANK_D`` macros).
+
+    A kernel that pins a static to a bank needs this on its include path.
+    """
+    from aie.utils import config
+
+    return str(Path(config.aie_runtime_lib_dir()) / (arch or _detect_arch()).upper())
 
 
 _DTYPE_BIT_WIDTHS = {

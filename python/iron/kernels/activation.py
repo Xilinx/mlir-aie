@@ -81,6 +81,7 @@ def _unary_lut_contract(
         tolerance=tolerance,
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
         setup=setup,
+        uses_lut=True,
     )
 
 
@@ -276,6 +277,7 @@ def swiglu(tile_size: int = 1024) -> ExternalFunction:
             acc_dtype=bfloat16,
             tolerance=_LUT_TOLERANCE,
             ops_per_call=6 * tile_size,
+            uses_lut=True,
         ),
     )
 

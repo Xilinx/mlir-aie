@@ -17,6 +17,7 @@ from ._common import (
     _dtype_to_bit_width,
     _make_extern,
     _require_vector_alignment,
+    _runtime_lib_include,
     dtypes,
 )
 
@@ -27,6 +28,7 @@ def _color_convert_kernel(
     in_size: int,
     out_size: int,
     use_chess: bool = False,
+    compile_flags: list[str] | None = None,
     contract: KernelContract | None = None,
 ) -> ExternalFunction:
     """Shared implementation for color-space conversion line kernels."""
@@ -36,6 +38,7 @@ def _color_convert_kernel(
         func_name,
         _default_source_path(filename),
         [in_ty, out_ty, np.int32],
+        compile_flags=compile_flags,
         use_chess=use_chess,
         contract=contract,
     )
@@ -73,6 +76,8 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
         line_width * 4,
         line_width,
         use_chess=use_chess,
+        # lut_inv.h pins its gather pair with AIE_BANK_A/AIE_BANK_B.
+        compile_flags=[f"-I{_runtime_lib_include()}"],
         contract=KernelContract(
             roles=(In, Out, Param),
             parameter_bindings=((2, line_width),),
@@ -80,6 +85,7 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
             acc_dtype=np.int32,
             reduction=1,
             tolerance=Tolerance.exact(note="integer reciprocal, no rounding slack"),
+            uses_lut=True,
         ),
     )
 
