@@ -5,7 +5,10 @@
 #
 
 import os
+import re
 import shutil
+import subprocess
+from pathlib import Path
 
 import aie.utils.configure as config  # pyright: ignore[reportMissingImports]
 
@@ -52,25 +55,23 @@ def root_path():
 def aiecc_path():
     """Return the aiecc executable used by JIT compilation.
 
-    Resolution order: the AIECC_PATH environment variable (for consumers,
-    e.g. IRON, that need to point at a specific aiecc without relying on
-    PATH search order), then the MLIR-AIE bin directory, then PATH.
+    Resolution order: AIECC_PATH, then the MLIR-AIE bin directory, then PATH.
     """
-    env_aiecc = os.environ.get("AIECC_PATH")
-    if env_aiecc:
-        if not os.path.isfile(env_aiecc):
+    override = os.environ.get("AIECC_PATH")
+    if override:
+        if not os.path.isfile(override):
             raise RuntimeError(
-                f"AIECC_PATH is set to {env_aiecc}, but no such file exists."
+                f"AIECC_PATH is set to {override}, but no such file exists."
             )
-        return env_aiecc
+        return override
 
-    bundled_aiecc = os.path.join(root_path(), "bin", _executable_name("aiecc"))
-    if os.path.isfile(bundled_aiecc):
-        return bundled_aiecc
+    bundled = os.path.join(root_path(), "bin", _executable_name("aiecc"))
+    if os.path.isfile(bundled):
+        return bundled
 
-    path_aiecc = shutil.which(_executable_name("aiecc"))
-    if path_aiecc:
-        return path_aiecc
+    found = shutil.which(_executable_name("aiecc"))
+    if found:
+        return found
 
     raise RuntimeError(
         "Could not find aiecc. Resolves in the order of the AIECC_PATH "
@@ -78,27 +79,172 @@ def aiecc_path():
     )
 
 
+def host_cxx_path():
+    """Return a host C++ compiler: ``CXX``, then ``c++``/``g++``/``clang++``.
+
+    Exclude Peano's bin directory from automatic discovery: lit prepends it
+    to PATH, but its bundled headers do not support host compilation.
+    """
+    env_cxx = os.environ.get("CXX")
+    if env_cxx:
+        found = shutil.which(env_cxx)
+        if not found:
+            raise RuntimeError(f"CXX is set to {env_cxx!r}, but it was not found.")
+        return found
+
+    peano_bin = os.path.realpath(os.path.join(config.peano_install_dir, "bin"))
+    host_path = os.pathsep.join(
+        entry
+        for entry in os.get_exec_path()
+        if os.path.normcase(os.path.realpath(entry)) != os.path.normcase(peano_bin)
+    )
+    for candidate in ("c++", "g++", "clang++"):
+        found = shutil.which(candidate, path=host_path)
+        if found:
+            return found
+
+    raise RuntimeError(
+        "Could not find a host C++ compiler (checked CXX env var, then "
+        "c++/g++/clang++ on PATH). Required to compile the dynamic dispatch "
+        "bridge for DispatchTime[T] designs."
+    )
+
+
+def _tool_runs(path):
+    """Return True if the binary at ``path`` actually executes.
+
+    Guards against a tool that is present on disk but cannot run -- e.g. one
+    whose shared-library dependency fails to load, so it exits nonzero and
+    emits nothing. Such a binary is worse than a missing one: a caller reading
+    its output sees an empty symbol listing rather than a broken toolchain.
+    """
+    try:
+        return (
+            subprocess.run(
+                [path, "--version"], capture_output=True, timeout=5
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _llvm_tool_dirs():
+    """Return the bundled bin directories that may hold LLVM binutils.
+
+    The MLIR-AIE and Peano installs are complementary rather than redundant:
+    the MLIR-AIE wheel bundles llvm-objcopy, while the Peano (llvm-aie) wheel
+    ships llvm-ar and llvm-nm. Searching only one of them leaves a stock
+    install unable to find a tool that is sitting on disk in the other.
+    """
+    dirs = []
+    for get_dir in (root_path, peano_install_dir):
+        try:
+            dirs.append(os.path.join(get_dir(), "bin"))
+        except RuntimeError:
+            # A source or dev install may configure only one of the two.
+            continue
+    return dirs
+
+
+def _path_candidates(name):
+    """Yield every PATH match for ``name``, unsuffixed spellings first.
+
+    All bare-name matches are yielded, in PATH order, rather than just the
+    first: an earlier entry may be present yet unable to run, in which case a
+    later one is the right answer. Distros also package LLVM binutils with a
+    release suffix (``llvm-nm-18``), so those follow, highest version first.
+    They are still LLVM tools, so they read AIE objects fine.
+    """
+    exe = _executable_name(name)
+    suffix = ".exe" if os.name == "nt" else ""
+    pattern = re.compile(rf"{re.escape(name)}-(\d+){re.escape(suffix)}$")
+
+    directories = list(
+        dict.fromkeys(directory or os.curdir for directory in os.get_exec_path())
+    )
+    for directory in directories:
+        candidate = os.path.join(directory, exe)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            yield candidate
+
+    versioned = []
+    for directory in directories:
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    match = pattern.fullmatch(entry.name)
+                    if match and entry.is_file() and os.access(entry.path, os.X_OK):
+                        versioned.append((int(match.group(1)), entry.path))
+        except OSError:
+            # PATH routinely names directories that do not exist.
+            continue
+
+    for _, candidate in sorted(versioned, key=lambda item: -item[0]):
+        yield candidate
+
+
+def _find_llvm_tool(name, env_var):
+    """Resolve an LLVM binutil, preferring a candidate that actually runs.
+
+    Resolution order: ``env_var``, the bundled MLIR-AIE and Peano bin
+    directories, then PATH. Candidates that fail to execute are passed over in
+    favour of a later one; if every candidate is broken the first is returned
+    anyway, so the caller surfaces that tool's own error rather than a
+    misleading "not found".
+    """
+    override = os.environ.get(env_var)
+    if override:
+        if not os.path.isfile(override):
+            raise RuntimeError(
+                f"{env_var} is set to {override}, but no such file exists."
+            )
+        return override
+
+    searched = []
+    broken = None
+    for directory in _llvm_tool_dirs():
+        candidate = os.path.join(directory, _executable_name(name))
+        searched.append(candidate)
+        if os.path.isfile(candidate):
+            if _tool_runs(candidate):
+                return candidate
+            broken = broken or candidate
+
+    for candidate in _path_candidates(name):
+        if _tool_runs(candidate):
+            return candidate
+        broken = broken or candidate
+
+    if broken is not None:
+        return broken
+
+    raise RuntimeError(
+        f"Could not find {name}. Resolves in the order of the {env_var} "
+        f"environment variable, the MLIR-AIE and Peano bin directories, then "
+        f"PATH (including versioned spellings such as {name}-18). Searched: "
+        + (", ".join(searched) if searched else "(no bundled bin directories)")
+        + ". PATH directories: "
+        + ", ".join(directory or os.curdir for directory in os.get_exec_path())
+    )
+
+
 def objcopy_path():
     """Return the llvm-objcopy used to rename symbols in compiled objects.
 
-    AIE objects use the AIEngine ELF e_machine, which GNU binutils objcopy
-    cannot parse; llvm-objcopy renames symbols structurally regardless of
-    target. The wheel bundles llvm-objcopy under the MLIR-AIE bin directory;
-    fall back to one on PATH for source/dev installs.
+    The objects themselves are well formed -- plain ELF32/little-endian
+    relocatables -- but they carry the AIEngine e_machine (0x108), which no GNU
+    BFD backend claims. GNU binutils 2.42 objcopy therefore declines to pick an
+    input target and fails with "Unable to recognise the format of the input
+    file", while its own nm, ar and objdump read the same object fine: those
+    tolerate an unknown architecture, objcopy insists on a definite one.
+
+    GNU objcopy can be coerced with an explicit ``-I elf32-little``, but that
+    pins a BFD target name from the outside and silently assumes the object is
+    32-bit little-endian. llvm-objcopy needs no such hint, so it is what we
+    resolve here.
     """
-    bundled_objcopy = os.path.join(root_path(), "bin", _executable_name("llvm-objcopy"))
-    if os.path.isfile(bundled_objcopy):
-        return bundled_objcopy
-
-    path_objcopy = shutil.which(_executable_name("llvm-objcopy"))
-    if path_objcopy:
-        return path_objcopy
-
-    raise RuntimeError(
-        "Could not find llvm-objcopy. Expected it under the MLIR-AIE bin "
-        "directory or on PATH. GNU binutils objcopy cannot process AIE "
-        "objects, so an LLVM objcopy is required."
-    )
+    return _find_llvm_tool("llvm-objcopy", "AIE_OBJCOPY_PATH")
 
 
 def nm_path():
@@ -106,23 +252,26 @@ def nm_path():
 
     Paired with objcopy_path() to bulk-rename symbols in a compiled object: list
     every defined external symbol with nm, then bulk-``--redefine-syms`` with
-    objcopy. AIE objects use the AIEngine ELF e_machine, which GNU binutils nm
-    cannot parse; llvm-nm reads it structurally regardless of target, same as
-    llvm-objcopy.
+    objcopy.
+
+    Unlike objcopy, this is a preference rather than a hard requirement -- a
+    symbol table is machine-agnostic, and GNU nm does list AIE objects. Pinning
+    the LLVM spelling keeps the listing format matched to the parser that reads
+    it, and keeps the pair on one toolchain, since the objcopy half has no GNU
+    equivalent that works at all.
     """
-    bundled_nm = os.path.join(root_path(), "bin", _executable_name("llvm-nm"))
-    if os.path.isfile(bundled_nm):
-        return bundled_nm
+    return _find_llvm_tool("llvm-nm", "AIE_NM_PATH")
 
-    path_nm = shutil.which(_executable_name("llvm-nm"))
-    if path_nm:
-        return path_nm
 
-    raise RuntimeError(
-        "Could not find llvm-nm. Expected it under the MLIR-AIE bin "
-        "directory or on PATH. GNU binutils nm cannot process AIE "
-        "objects, so an LLVM nm is required."
-    )
+def ar_path():
+    """Return the llvm-ar used to bundle compiled objects into a static archive.
+
+    As with nm_path(), a preference rather than a hard requirement: archiving
+    only indexes the ELF symbol table, so GNU ar handles AIE objects too.
+    Resolved here so a build draws its archiver from the same toolchain as the
+    compiler that produced the objects.
+    """
+    return _find_llvm_tool("llvm-ar", "AIE_AR_PATH")
 
 
 def cxx_header_path():
@@ -131,3 +280,29 @@ def cxx_header_path():
     if not os.path.isdir(include_dir):
         raise RuntimeError(f"MLIR-AIE C++ headers not found in {include_dir}")
     return include_dir
+
+
+def runtime_header_path():
+    """Return the include directory holding ``aie/Runtime/TxnEncoding.h``.
+
+    Installed headers (including wheel headers) always take precedence. Only a
+    CMake build tree may fall back to its source headers; installed packages do
+    not retain or consult paths from the machine that built them.
+    """
+    sentinel = os.path.join("aie", "Runtime", "TxnEncoding.h")
+    root = Path(root_path())
+    candidates = [root / "include"]
+    if (candidates[0] / sentinel).is_file():
+        return str(candidates[0])
+    cache = root / "CMakeCache.txt"
+    if cache.is_file():
+        for line in cache.read_text().splitlines():
+            if line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL="):
+                candidates.append(Path(line.split("=", 1)[1]) / "include")
+                break
+    for include_dir in candidates:
+        if os.path.isfile(os.path.join(include_dir, sentinel)):
+            return str(include_dir)
+    raise RuntimeError(
+        f"Could not find {sentinel} in any of: {', '.join(map(str, candidates))}."
+    )

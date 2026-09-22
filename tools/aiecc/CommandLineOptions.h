@@ -102,8 +102,6 @@ inline cl::opt<int>
     saSeed("sa-seed",
            cl::desc("Random seed for SA placer (0 = non-deterministic)"),
            cl::init(1));
-inline cl::opt<std::string> allocScheme("alloc-scheme",
-                                        cl::desc("Buffer allocation scheme"));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));
@@ -170,6 +168,18 @@ inline cl::opt<bool> noMeasureDataSize(
     cl::desc("Skip the measurement of each core's static data (.data, .rodata "
              "and .bss) in its linked ELF and the check of data_size against "
              "it"));
+inline cl::opt<bool> noCheckBankPlacement(
+    "no-check-bank-placement",
+    cl::desc("Skip the check that a symbol a core places for a memory bank (a "
+             "chess_storage / __aie_dm_resource_* request) was linked into "
+             "that bank"));
+inline cl::opt<bool> checkLutBanks(
+    "check-lut-banks",
+    cl::desc("Check that the two tables of each aie::lut<4> are in different "
+             "memory banks. Requires embedded LLVM IR in object-linked "
+             "kernels; also checks merge-mode and generated core IR. Fails "
+             "when table placement cannot be verified. Off "
+             "by default because preserving that IR costs compile time"));
 inline cl::opt<int> defaultStackSize(
     "default-stack-size",
     cl::desc("Stack size in bytes to assume for any core that leaves "
@@ -244,6 +254,17 @@ inline std::vector<std::string> hostPassthroughArgs;
 // artifact's filename template ({0} expands to the device / sequence key).
 
 inline bool generateNpuInsts = false;
+inline bool generateNpuCpp = false;
+inline cl::opt<std::string> npuCppName(
+    "npu-cpp-name",
+    cl::desc("Output C++ transaction builder filename template (use {0} for "
+             "device/sequence)"),
+    cl::init("npu_{0}.cpp"));
+inline cl::opt<bool> npuCppEmitDispatchShim(
+    "npu-cpp-emit-dispatch-shim",
+    cl::desc("Emit dispatch_abi/dispatch_generate C entry points in each NPU "
+             "C++ builder"),
+    cl::init(false));
 inline cl::opt<std::string> npuInstsName(
     "npu-insts-name",
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
@@ -268,6 +289,10 @@ inline cl::opt<bool> foldDDRAddrOffsetOpt(
 inline bool generateCoreElfs = false;
 
 inline bool generateInputWithAddresses = false;
+
+// The same module before placement, which unlike input_with_addresses.mlir
+// needs no core compiler. See the placement edge in aiecc.cpp.
+inline bool generateInputWithSymbols = false;
 
 inline bool generateScratchpadParams = false;
 
@@ -382,9 +407,12 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
   static const OutputSelector table[] = {
       {"input-with-addresses", "input_with_addresses.mlir",
        &generateInputWithAddresses},
+      {"input-with-symbols", "input_with_symbols.mlir",
+       &generateInputWithSymbols},
       {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
       {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
       {"npu-insts", "insts_{0}.bin", &generateNpuInsts},
+      {"npu-cpp", "npu_{0}.cpp", &generateNpuCpp},
       {"elf", "design.elf", &generateElf},
       {"cdo", "cdo_{0}", &generateCdo},
       {"pdi", "{0}.pdi", &generatePdi},

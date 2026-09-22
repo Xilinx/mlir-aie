@@ -57,16 +57,19 @@ class LintDependencySyncTests(unittest.TestCase):
             "github.event.repository.default_branch || 'main' }}",
             self.workflow,
         )
-        self.assertIn('git fetch origin "${CLANG_FORMAT_BASE_REF}"', self.workflow)
         self.assertIn(
-            '--from-ref "origin/${CLANG_FORMAT_BASE_REF}"',
+            'git fetch --depth=1 origin "refs/heads/${CLANG_FORMAT_BASE_REF}:$BASE_REF"',
             self.workflow,
         )
+        self.assertIn('git fetch --deepen="$depth" origin', self.workflow)
+        self.assertIn('BASE_SHA="$(git merge-base HEAD "$BASE_REF")"', self.workflow)
+        self.assertIn('--from-ref "$BASE_SHA"', self.workflow)
         self.assertIn("--to-ref HEAD", self.workflow)
         self.assertNotIn("git clang-format origin/main", self.workflow)
         self.assertNotIn("--from-ref origin/main", self.workflow)
 
     def test_pre_commit_pin_remains_the_clang_format_source_of_truth(self):
+        self.assertNotIn("pip install clang-format", self.workflow)
         self.assertIsNotNone(
             re.search(
                 r"repo: https://github\.com/pre-commit/mirrors-clang-format\n\s+rev: .*?# frozen: v([0-9][^\s]*)",

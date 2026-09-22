@@ -54,10 +54,10 @@ def logicalTileOpControlPacket():
 
 
 # CHECK-LABEL: tileOpAllocationScheme
-# CHECK: aie.tile(2, 2) {allocation_scheme = "basic-sequential"}
+# CHECK: aie.tile(2, 2)
 @construct_and_print_module
 def tileOpAllocationScheme():
-    t = tile(col=2, row=2, allocation_scheme="basic-sequential")
+    t = tile(col=2, row=2)
 
 
 # CHECK-LABEL: coreOp

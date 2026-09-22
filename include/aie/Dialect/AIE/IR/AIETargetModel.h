@@ -315,6 +315,13 @@ public:
   /// exceed this corrupts them instead of faulting.
   virtual uint32_t getDefaultCoreStackSize() const { return 0x400; }
 
+  /// Stack-pointer alignment in bytes, matching Peano's AIE frame lowering:
+  /// AIE1/AIE2 require 32B; AIE2P/AIE2PS require 64B, not their 32B data bus.
+  uint32_t getCoreStackAlignment() const {
+    AIEArch arch = getTargetArch();
+    return arch == AIEArch::AIE2p || arch == AIEArch::AIE2ps ? 64 : 32;
+  }
+
   /// Return the data bus width (in bits) for load/store operations of a compute
   /// core.
   virtual uint32_t getComputeTileLoadStoreBusWidth() const = 0;
@@ -1198,6 +1205,13 @@ public:
            model->getKind() < TK_AIE2_NPU2_Last;
   }
 };
+
+/// \brief Device generation ID written into the TXN header
+/// (aie_runtime::TxnDeviceInfo::devGen). Both the static binary emitter and the
+/// generated-C++ builder read it from here, so a new device family is one edit.
+inline uint8_t txnDeviceGen(const AIETargetModel &tm) {
+  return llvm::isa<BaseNPU2TargetModel>(tm) ? 4 : 3;
+}
 
 } // namespace xilinx::AIE
 

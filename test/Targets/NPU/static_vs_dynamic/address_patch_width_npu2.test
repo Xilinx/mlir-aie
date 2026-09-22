@@ -1,0 +1,16 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Exercise the same signed-i32 and full-i64 offsets as the NPU1 test with NPU2
+// device metadata. Both tests need only aie-translate and a host C++ compiler,
+// not Peano, an NPU runtime, or hardware.
+// RUN: mkdir -p %t.d
+// RUN: %PYTHON -c "import pathlib,sys; pathlib.Path(sys.argv[2]).write_text(pathlib.Path(sys.argv[1]).read_text().replace('aie.device(npu1_1col)', 'aie.device(npu2_1col)'))" "%S/address_patch_width.mlir" "%t.d/npu2.mlir"
+// RUN: aie-translate %t.d/npu2.mlir --aie-npu-to-cpp > %t.d/fold.h
+// RUN: aie-translate %t.d/npu2.mlir --aie-npu-to-cpp --aie-npu-fold-ddr-addr-offset=false > %t.d/nofold.h
+// RUN: aie-translate %t.d/npu2.mlir --aie-npu-to-binary -aie-output-binary=false -aie-sequence-name=static > %t.d/fold.hex
+// RUN: aie-translate %t.d/npu2.mlir --aie-npu-to-binary -aie-output-binary=false -aie-sequence-name=static --aie-npu-fold-ddr-addr-offset=false > %t.d/nofold.hex
+// RUN: %host_clang -std=c++17 -I%S/../../../../include -DGEN_HDR='"%t.d/fold.h"' -DSTATIC_FN=generate_txn_main_static -DDYN_FN=generate_txn_main_dynamic -DARGVAL=-2147483648 %S/Inputs/compare_main.cpp %host_link_flags -o %t.d/fold.exe
+// RUN: %t.d/fold.exe %t.d/fold.hex
+// RUN: %host_clang -std=c++17 -I%S/../../../../include -DGEN_HDR='"%t.d/nofold.h"' -DSTATIC_FN=generate_txn_main_static -DDYN_FN=generate_txn_main_dynamic -DARGVAL=-2147483648 %S/Inputs/compare_main.cpp %host_link_flags -o %t.d/nofold.exe
+// RUN: %t.d/nofold.exe %t.d/nofold.hex

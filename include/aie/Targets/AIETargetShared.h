@@ -66,6 +66,17 @@ denseAttrToBytes(mlir::DenseElementsAttr denseInit);
 /// diagnostic about the region names the bytes the script grants.
 MemoryRun coreDataRegion(TileOp tile, llvm::ArrayRef<BufferOp> buffers);
 
+/// One extent per memory bank for the core's bank-pinned statics, tile-relative
+/// and indexed by bank. Each is the largest run that bank has left once the
+/// stack, the buffers and `dataRun` are accounted for, so a bank with nothing
+/// spare yields a zero-sized extent rather than dropping out.
+///
+/// Pass an empty `dataRun` when no data reservation exists; the linker then
+/// bounds ordinary data using the actual bank-section extents.
+llvm::SmallVector<MemoryRun> coreBankRegions(TileOp tile,
+                                             llvm::ArrayRef<BufferOp> buffers,
+                                             MemoryRun dataRun);
+
 } // namespace AIE
 } // namespace xilinx
 
