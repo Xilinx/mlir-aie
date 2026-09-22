@@ -157,6 +157,12 @@ def mm_bfp_mixed_ref(a, b):
     converts it to bfp16 itself, with a rounding the reference does not
     model, which is why the mixed tolerance is twice the plain one; ``b``
     is quantized as in [`mm_bfp_ref`][iron.kernels.linalg.mm_bfp_ref].
+
+    Quantizing ``a`` here with ``bfp.quantize`` is measurably wrong, not
+    merely redundant: it moves the device further from the reference on both
+    random and large data (mismatches on a 64x64x64 large tile went 1369 ->
+    2790), so whatever the core does to ``a`` keeps more of it than one
+    shared exponent per 8 values would.
     """
     from aie.utils import bfp
 
@@ -197,7 +203,8 @@ def mm_bfp_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int, mixed: bool = F
     Blocks of 8 run along K for both operands, so B is quantized transposed.
     With ``mixed`` the A tile stays bf16 and the core converts it itself, with
     a rounding this does not model -- which is what the wider mixed tolerance
-    covers.
+    covers. See [`mm_bfp_mixed_ref`][iron.kernels.linalg.mm_bfp_mixed_ref] for
+    why modelling it as a host-side quantize is worse, not better.
     """
     from aie.utils import bfp
 
