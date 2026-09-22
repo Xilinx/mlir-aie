@@ -7,8 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "cxxopts.hpp"
-#include <bits/stdc++.h>
+#include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
