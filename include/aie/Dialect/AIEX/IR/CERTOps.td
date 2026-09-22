@@ -24,16 +24,15 @@ def AIE_CertUcDmaChainOp
       }
     ```
   }];
-  let arguments = (
-    ins OptionalAttr<SymbolNameAttr>:$sym_name
-  );
+  let arguments = (ins OptionalAttr<SymbolNameAttr>:$sym_name);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{
     ($sym_name^)? $body attr-dict
   }];
 }
 
-def AIE_CertUcDmaBdOp : AIEX_Op<"cert.uc_dma_bd", [HasParent<"CertUcDmaChainOp">]> {
+def AIE_CertUcDmaBdOp
+    : AIEX_Op<"cert.uc_dma_bd", [HasParent<"CertUcDmaChainOp">]> {
   let summary = "A DMA Buffer Descriptor for uC-DMA";
   let description = [{
     Defines a uC-DMA buffer descriptor within a chain. The descriptor specifies
@@ -54,21 +53,18 @@ def AIE_CertUcDmaBdOp : AIEX_Op<"cert.uc_dma_bd", [HasParent<"CertUcDmaChainOp">
       }
     ```
   }];
-  let arguments = (
-    ins FlatSymbolRefAttr:$remote_address,
-        I32Attr:$local_address,
-        I32Attr:$length,
-        BoolAttr:$next_bd
-  );
+  let arguments = (ins FlatSymbolRefAttr:$remote_address,
+      I32Attr:$local_address, I32Attr:$length, BoolAttr:$next_bd);
   let results = (outs);
   let assemblyFormat = [{
     $remote_address `,` $local_address `,` $length `,` $next_bd  attr-dict
   }];
 }
 
-def AIE_CertPageOp: AIEX_Op<"cert.page",
-                            [ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp", "CertSectionOp"]>,
-                             SingleBlockImplicitTerminator<"AIE::EndOp">]> {
+def AIE_CertPageOp
+    : AIEX_Op<"cert.page", [ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp",
+                                         "CertSectionOp"]>,
+                            SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "A control code page";
   let description = [{
     This operation represents a page of control code. Pages are the basic unit
@@ -86,15 +82,14 @@ def AIE_CertPageOp: AIEX_Op<"cert.page",
       }
     ```
   }];
-  let regions = (region
-    AnyRegion:$body
-  );
+  let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ $body attr-dict }];
 }
 
-def AIE_CertJobOp: AIEX_Op<"cert.job", [ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp",
-                                                      "CertPageOp", "CertSectionOp"]>,
-                                        SingleBlockImplicitTerminator<"AIE::EndOp">]> {
+def AIE_CertJobOp
+    : AIEX_Op<"cert.job", [ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp",
+                                        "CertPageOp", "CertSectionOp"]>,
+                           SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Start a job with a given job ID";
   let description = [{
     This operation starts a job identified by the given job ID. The job ID is an
@@ -107,19 +102,15 @@ def AIE_CertJobOp: AIEX_Op<"cert.job", [ParentOneOf<["AIE::DeviceOp", "CertAttac
       }
     ```
   }];
-  let arguments = (
-    ins I32Attr:$job_id
-  );
-  let regions = (region
-    AnyRegion:$body
-  );
+  let arguments = (ins I32Attr:$job_id);
+  let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $job_id `)` $body attr-dict }];
   let extraClassDeclaration = [{
     int getJobID() { return getJobId(); }
   }];
 }
 
-def AIE_CertWrite32Op: AIEX_Op<"cert.write32", [HasParent<"CertJobOp">]> {
+def AIE_CertWrite32Op : AIEX_Op<"cert.write32", [HasParent<"CertJobOp">]> {
   let summary = "Write a 32-bit value to a specified address";
   let description = [{
     This operation writes a 32-bit value to a specified address.
@@ -129,16 +120,14 @@ def AIE_CertWrite32Op: AIEX_Op<"cert.write32", [HasParent<"CertJobOp">]> {
       cert.write32(0x1000, 42)
     ```
   }];
-  let arguments = (
-    ins UI32Attr:$address,
-        UI32Attr:$value
-  );
+  let arguments = (ins UI32Attr:$address, UI32Attr:$value);
   let assemblyFormat = [{
     `(` $address `,` $value `)` attr-dict
   }];
 }
 
-def AIE_CertMaskWrite32Op: AIEX_Op<"cert.maskwrite32", [HasParent<"CertJobOp">]> {
+def AIE_CertMaskWrite32Op
+    : AIEX_Op<"cert.maskwrite32", [HasParent<"CertJobOp">]> {
   let summary = "Write a masked 32-bit value to a specified address";
   let description = [{
     This operation writes a masked 32-bit value to a specified address.
@@ -148,17 +137,34 @@ def AIE_CertMaskWrite32Op: AIEX_Op<"cert.maskwrite32", [HasParent<"CertJobOp">]>
       cert.maskwrite32(0x1000, 0xFF, 42)
     ```
   }];
-  let arguments = (
-    ins UI32Attr:$address,
-        UI32Attr:$mask,
-        UI32Attr:$value
-  );
+  let arguments = (ins UI32Attr:$address, UI32Attr:$mask, UI32Attr:$value);
   let assemblyFormat = [{
     `(` $address `,` $mask `,` $value `)` attr-dict
   }];
 }
 
-def AIE_CertApplyOffset57Op: AIEX_Op<"cert.apply_offset_57", [HasParent<"CertJobOp">]> {
+def AIE_CertMaskPoll32Op
+    : AIEX_Op<"cert.maskpoll32", [HasParent<"CertJobOp">]> {
+  let summary = "Wait until a masked 32-bit register matches a value";
+  let description = [{
+    Blocks the current job until `(read32(address) & mask) == value`.
+    Lowers to the CERT ISA `MASK_POLL_32` instruction (opcode 0x14),
+    with constant 32-bit operands in address, mask, value order.
+    No timeout operand is encoded; polling behavior is controlled by firmware.
+
+    Example:
+    ```
+      cert.maskpoll32(0x1D220, 0x1000000, 0)
+    ```
+  }];
+  let arguments = (ins UI32Attr:$address, UI32Attr:$mask, UI32Attr:$value);
+  let assemblyFormat = [{
+    `(` $address `,` $mask `,` $value `)` attr-dict
+  }];
+}
+
+def AIE_CertApplyOffset57Op
+    : AIEX_Op<"cert.apply_offset_57", [HasParent<"CertJobOp">]> {
   let summary = "Apply offset 57 operation";
   let description = [{
     This operation adds a 57-bit offset to Shim DMA BD base address fields.
@@ -175,17 +181,14 @@ def AIE_CertApplyOffset57Op: AIEX_Op<"cert.apply_offset_57", [HasParent<"CertJob
       cert.apply_offset_57(@bd_table, 1, 2)
     ```
   }];
-  let arguments = (
-    ins FlatSymbolRefAttr:$symbol,
-        I16Attr:$num_entries,
-        I16Attr:$offset
-  );
+  let arguments = (ins FlatSymbolRefAttr:$symbol, I16Attr:$num_entries,
+      I16Attr:$offset);
   let assemblyFormat = [{
     `(` $symbol `,` $num_entries `,` $offset `)` attr-dict
   }];
 }
 
-def AIE_CertWaitTCTSOp: AIEX_Op<"cert.wait_tcts", [HasParent<"CertJobOp">]> {
+def AIE_CertWaitTCTSOp : AIEX_Op<"cert.wait_tcts", [HasParent<"CertJobOp">]> {
   let summary = "Wait for a specified number of TCTs (Task Completion Tokens)";
   let description = [{
     This operation waits for a specified number of Task Completion Tokens (TCTs)
@@ -196,18 +199,15 @@ def AIE_CertWaitTCTSOp: AIEX_Op<"cert.wait_tcts", [HasParent<"CertJobOp">]> {
       cert.wait_tcts(1, 2, 3) // Wait for 3 TCTs on shim column 1, channel 2
     ```
   }];
-  let arguments = (
-    ins I32Attr:$tile_id,
-        I32Attr:$channel_id,
-        I32Attr:$target_tcts
-  );
+  let arguments = (ins I32Attr:$tile_id, I32Attr:$channel_id,
+      I32Attr:$target_tcts);
   let assemblyFormat = [{
     `(` $tile_id `,` $channel_id `,` $target_tcts `)` attr-dict
   }];
 }
 
-def AIE_CertUcDmaWriteDesSyncOp: AIEX_Op<"cert.uc_dma_write_des_sync",
-                                        [HasParent<"CertJobOp">]> {
+def AIE_CertUcDmaWriteDesSyncOp
+    : AIEX_Op<"cert.uc_dma_write_des_sync", [HasParent<"CertJobOp">]> {
   let summary = "uC DMA Write Descriptor Sync operation";
   let description = [{
     This operation enqueues a uC DMA transfer. The symbol operand refers to a
@@ -218,15 +218,14 @@ def AIE_CertUcDmaWriteDesSyncOp: AIEX_Op<"cert.uc_dma_write_des_sync",
       cert.uc_dma_write_des_sync(@dma_descriptor)
     ```
   }];
-  let arguments = (
-    ins FlatSymbolRefAttr:$symbol
-  );
+  let arguments = (ins FlatSymbolRefAttr:$symbol);
   let assemblyFormat = [{
     `(` $symbol `)` attr-dict
   }];
 }
 
-def AIE_CertLocalBarrierOp: AIEX_Op<"cert.local_barrier", [HasParent<"CertJobOp">]> {
+def AIE_CertLocalBarrierOp
+    : AIEX_Op<"cert.local_barrier", [HasParent<"CertJobOp">]> {
   let summary = "Local barrier operation";
   let description = [{
     This operation represents a local barrier that synchronizes execution based on a barrier ID and the number of participants.
@@ -236,16 +235,14 @@ def AIE_CertLocalBarrierOp: AIEX_Op<"cert.local_barrier", [HasParent<"CertJobOp"
       cert.local_barrier(1, 2)
     ```
   }];
-  let arguments = (
-    ins I32Attr:$local_barrier_id,
-        I32Attr:$num_participants
-  );
+  let arguments = (ins I32Attr:$local_barrier_id, I32Attr:$num_participants);
   let assemblyFormat = [{
     `(` $local_barrier_id `,` $num_participants `)` attr-dict
   }];
 }
 
-def AIE_CertRemoteBarrierOp: AIEX_Op<"cert.remote_barrier", [HasParent<"CertJobOp">]> {
+def AIE_CertRemoteBarrierOp
+    : AIEX_Op<"cert.remote_barrier", [HasParent<"CertJobOp">]> {
   let summary = "Remote barrier operation";
   let description = [{
     This operation represents a remote barrier that synchronizes execution
@@ -257,16 +254,13 @@ def AIE_CertRemoteBarrierOp: AIEX_Op<"cert.remote_barrier", [HasParent<"CertJobO
       cert.remote_barrier(1, 0x3)
     ```
   }];
-  let arguments = (
-    ins I32Attr:$remote_barrier_id,
-        I32Attr:$party_mask
-  );
+  let arguments = (ins I32Attr:$remote_barrier_id, I32Attr:$party_mask);
   let assemblyFormat = [{
     `(` $remote_barrier_id `,` $party_mask `)` attr-dict
   }];
 }
 
-def AIE_CertPreemptOp: AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
+def AIE_CertPreemptOp : AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
   let summary = "Preemption point with save/restore control code references";
   let description = [{
     This operation defines a preemption point in control code. If preemption is
@@ -284,17 +278,14 @@ def AIE_CertPreemptOp: AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
       cert.preempt(0, @save0, @restore0)
     ```
   }];
-  let arguments = (
-    ins I32Attr:$id,
-        FlatSymbolRefAttr:$save_section,
-        FlatSymbolRefAttr:$restore_section
-  );
+  let arguments = (ins I32Attr:$id, FlatSymbolRefAttr:$save_section,
+      FlatSymbolRefAttr:$restore_section);
   let assemblyFormat = [{
     `(` $id `,` $save_section `,` $restore_section `)` attr-dict
   }];
 }
 
-def AIE_CertNopOp: AIEX_Op<"cert.nop", []> {
+def AIE_CertNopOp : AIEX_Op<"cert.nop", []> {
   let summary = "No operation (NOP)";
   let description = [{
     This operation represents a no-op instruction. It does nothing.
@@ -333,18 +324,14 @@ def AIE_CertSectionOp
       }
     ```
   }];
-  let arguments = (
-    ins SymbolNameAttr:$sym_name
-  );
-  let regions = (region
-    AnyRegion:$body
-  );
+  let arguments = (ins SymbolNameAttr:$sym_name);
+  let regions = (region AnyRegion:$body);
   let assemblyFormat = [{
     $sym_name $body attr-dict
   }];
 }
 
-def AIE_CertLoadPdiOp: AIEX_Op<"cert.load_pdi", [HasParent<"CertJobOp">]> {
+def AIE_CertLoadPdiOp : AIEX_Op<"cert.load_pdi", [HasParent<"CertJobOp">]> {
   let summary = "Load PDI (Platform Device Image)";
   let description = [{
     This operation loads a PDI (Platform Device Image), which is a piece of control code.
@@ -360,16 +347,15 @@ def AIE_CertLoadPdiOp: AIEX_Op<"cert.load_pdi", [HasParent<"CertJobOp">]> {
       cert.load_pdi(0, @pdi_section)
     ```
   }];
-  let arguments = (
-    ins UI32Attr:$pdi_id,
-        FlatSymbolRefAttr:$symbol
-  );
+  let arguments = (ins UI32Attr:$pdi_id, FlatSymbolRefAttr:$symbol);
   let assemblyFormat = [{
     `(` $pdi_id `,` $symbol `)` attr-dict
   }];
 }
 
-def AIE_CertAttachToGroupOp: AIEX_Op<"cert.attach_to_group", [SingleBlockImplicitTerminator<"AIE::EndOp">]> {
+def AIE_CertAttachToGroupOp
+    : AIEX_Op<"cert.attach_to_group", [SingleBlockImplicitTerminator<
+                                          "AIE::EndOp">]> {
   let summary = "Attach to a group operation";
   let description = [{
     This operation attaches enclosed jobs to a specified group identified by an
@@ -389,9 +375,7 @@ def AIE_CertAttachToGroupOp: AIEX_Op<"cert.attach_to_group", [SingleBlockImplici
       }
     ```
   }];
-  let arguments = (
-    ins I32Attr:$group_id
-  );
+  let arguments = (ins I32Attr:$group_id);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $group_id `)` $body attr-dict }];
   let extraClassDeclaration = [{

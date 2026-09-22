@@ -11,9 +11,11 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include <algorithm>
@@ -99,6 +101,28 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
     Value addressVal =
         createConstantI32(rewriter, op->getLoc(), *absoluteAddress);
     rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
+        op, addressVal, adaptor.getValue(), adaptor.getMask(), nullptr, nullptr,
+        nullptr);
+    return success();
+  }
+};
+
+struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(NpuMaskPollOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!op.getBuffer())
+      return failure();
+
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    if (!absoluteAddress)
+      return failure();
+
+    Value addressVal =
+        createConstantI32(rewriter, op->getLoc(), *absoluteAddress);
+    rewriter.replaceOpWithNewOp<NpuMaskPollOp>(
         op, addressVal, adaptor.getValue(), adaptor.getMask(), nullptr, nullptr,
         nullptr);
     return success();
@@ -878,7 +902,36 @@ public:
   }
 };
 
+// Count all task starts at their common representation, after memcpy lowering
+// but before pushes become register writes. This includes starts lowered by
+// dma-tasks-to-npu and compiler-generated channel rearm pushes.
+static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
+  const AIE::AIETargetModel &tm = device.getTargetModel();
+  auto effectOf = [&](Operation *op) -> QueueEffect {
+    if (auto push = dyn_cast<NpuPushQueueOp>(op))
+      return QueueEffect::push({static_cast<int>(push.getColumn()),
+                                static_cast<int>(push.getRow()),
+                                static_cast<int>(push.getDirection()),
+                                static_cast<int>(push.getChannel())},
+                               push.getIssueToken());
+    if (auto sync = dyn_cast<NpuSyncOp>(op))
+      if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
+        return QueueEffect::await(*key);
+    return {};
+  };
+
+  device.walk([&](AIE::RuntimeSequenceOp seq) {
+    DmaQueueModel queue;
+    guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
+                            effectOf);
+    seq->removeAttr(queueDiagnosedAttr);
+  });
+}
+
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
+  using Base = xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass>;
+  AIEDmaToNpuPass() = default;
+  AIEDmaToNpuPass(const AIEDmaToNpuOptions &options) : Base(options) {}
 
   void runOnOperation() override {
 
@@ -894,7 +947,6 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
     target.addIllegalOp<NpuDmaMemcpyNdOp>();
     target.addIllegalOp<NpuDmaWaitOp>();
-    target.addIllegalOp<NpuPushQueueOp>();
     target.addIllegalOp<NpuWriteRTPOp>();
     target.addIllegalOp<NpuWriteBdOp>();
     target.addDynamicallyLegalOp<NpuWrite32Op>(
@@ -903,6 +955,8 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
         [&](NpuBlockWriteOp op) { return !op.getBuffer(); });
     target.addDynamicallyLegalOp<NpuMaskWrite32Op>(
         [&](NpuMaskWrite32Op op) { return !op.getBuffer(); });
+    target.addDynamicallyLegalOp<NpuMaskPollOp>(
+        [&](NpuMaskPollOp op) { return !op.getBuffer(); });
 
     // Seed, from the device's existing globals, a dedup cache (initial-value ->
     // global) and the next free "blockwrite_data_<n>" name index (one past the
@@ -928,13 +982,23 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     patterns.insert<DmaToNpuPattern>(&getContext());
     patterns.insert<DmaWaitToSyncPattern>(&getContext());
     patterns.insert<MaskWrite32SymToAddr>(&getContext());
-    patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
+    patterns.insert<MaskPollSymToAddr>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());
     patterns.insert<Write32SymToAddr>(&getContext());
     patterns.insert<WriteBdToBlockWritePattern>(&getContext(), &dataMemrefCache,
                                                 &nextBlockwriteId);
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+      signalPassFailure();
+      return;
+    }
+
+    checkQueueDepth(device, enforceQueueDepth);
+
+    target.addIllegalOp<NpuPushQueueOp>();
+    RewritePatternSet pushPatterns(&getContext());
+    pushPatterns.insert<PushQueuetoWrite32Pattern>(&getContext());
+    if (failed(applyPartialConversion(device, target, std::move(pushPatterns))))
       signalPassFailure();
   }
 };
@@ -943,4 +1007,9 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToNpuPass() {
   return std::make_unique<AIEDmaToNpuPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIEDmaToNpuPass(const AIEDmaToNpuOptions &options) {
+  return std::make_unique<AIEDmaToNpuPass>(options);
 }
