@@ -270,6 +270,9 @@ def main() -> int:
             returncode, recent_output = run_command(launched_command)
         if returncode == 0:
             return 0
+        # A failure that prints nothing -- a Windows loader error, for one --
+        # is otherwise a blank ctest log with no hint of what was even run.
+        log(f"Exited {returncode}: {subprocess.list2cmdline(launched_command)}")
         if not any(text in recent_output for text in TRANSIENT_FAILURE_TEXT):
             return returncode
         emit_failure_diagnostics(xrt_dir, attempt)
