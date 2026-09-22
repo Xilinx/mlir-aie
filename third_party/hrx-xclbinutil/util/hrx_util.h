@@ -751,11 +751,9 @@ private:
   container m_children;
 
   static void splitPath(const std::string &path, std::list<std::string> &out) {
-    // An empty path names the node itself, as in boost: put("", v) sets this
-    // node's value and get_child("") returns *this. Splitting "" into one
-    // empty key would instead create (or look up) a child keyed "", which
-    // is how the array-element idiom `ptElement.put("", v); arr.push_back({"",
-    // ptElement})` came out one level too deep on every dump.
+    // An empty path denotes the node itself, as in boost. Otherwise the loop
+    // below pushes an empty segment and put("", v) lands one level deeper than
+    // as_vector_simple reads.
     if (path.empty())
       return;
     size_t start = 0, dot;

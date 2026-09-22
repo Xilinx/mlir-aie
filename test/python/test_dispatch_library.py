@@ -5,6 +5,7 @@
 """Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
 from pathlib import Path
+import time
 
 import numpy as np
 import pytest
@@ -199,10 +200,38 @@ def test_identical_rebuild_does_not_replace_mapped_generation(tmp_path):
     path = _compile(tmp_path)
     bridge = DispatchBridge(path, ["param", "n"])
     before = path.stat()
+    # PE linker timestamps have one-second resolution.
+    time.sleep(1.1)
     assert _compile(tmp_path) == path
     after = path.stat()
     assert (before.st_ino, before.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
     assert _words(bridge).size > 0
+    assert not list(tmp_path.glob("dispatch.staging.*"))
+
+
+def test_failed_compile_cleans_linker_companions(tmp_path, monkeypatch):
+    import subprocess
+    from aie.utils.compile.jit import _dispatch_compile
+
+    path = _compile(tmp_path)
+    before = path.read_bytes()
+
+    def fail_compile(command, **kwargs):
+        staging = Path(command[command.index("-o") + 1])
+        for suffix in (".dll", ".lib", ".exp"):
+            staging.with_suffix(suffix).write_bytes(b"partial link")
+        raise subprocess.CalledProcessError(1, command, stderr="link failed")
+
+    monkeypatch.setattr(
+        _dispatch_compile,
+        "host_shared_lib_cmd",
+        lambda src, out, **kwargs: ["compiler", str(src), "-o", str(out)],
+    )
+    monkeypatch.setattr(_dispatch_compile.subprocess, "run", fail_compile)
+    with pytest.raises(DispatchCompileError, match="link failed"):
+        compile_dispatch_bridge(tmp_path, ["param", "n"], [np.int32, np.uintp])
+    assert path.read_bytes() == before
+    assert not list(tmp_path.glob("dispatch.staging.*"))
 
 
 def test_abi_failure_preserves_loaded_generation(tmp_path):

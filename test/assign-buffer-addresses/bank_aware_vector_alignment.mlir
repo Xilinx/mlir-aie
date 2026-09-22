@@ -12,7 +12,7 @@
 // See AIETargetModel::getComputeTileMaxVectorAlignBits and aie_api's
 // vector_ldst_align (aie_api/detail/ld_st.hpp).
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // The 144B `pad` ends at 1168, so the buffer behind it lands at 1184 (32 mod
 // 64), where a 512-bit vector store is torn. It is bumped to 1216. Round-robin

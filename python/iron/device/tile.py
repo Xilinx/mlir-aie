@@ -39,14 +39,12 @@ class Tile:
         row: int | None = None,
         *,
         tile_type: AIETileType | None = None,
-        allocation_scheme: str | None = None,
         packet_type: int = 0,
         packet_id: int | None = None,
     ) -> None:
         self.col: int | None = col
         self.row: int | None = row
         self.tile_type: AIETileType | None = tile_type
-        self.allocation_scheme: str | None = allocation_scheme
         self.packet_type: int = packet_type
         self.packet_id: int | None = packet_id
         self._op: LogicalTileOp | None = None
@@ -57,7 +55,6 @@ class Tile:
             self.col,
             self.row,
             tile_type=self.tile_type,
-            allocation_scheme=self.allocation_scheme,
             packet_type=self.packet_type,
             packet_id=self.packet_id,
         )
@@ -66,7 +63,6 @@ class Tile:
         self,
         tile_type: AIETileType,
         *,
-        allocation_scheme: str | None = None,
         mismatch_msg: str | None = None,
     ) -> Tile:
         """Return a fresh Tile with ``tile_type`` stamped, preserving col/row.
@@ -83,11 +79,6 @@ class Tile:
             self.col,
             self.row,
             tile_type=tile_type,
-            allocation_scheme=(
-                allocation_scheme
-                if allocation_scheme is not None
-                else self.allocation_scheme
-            ),
             packet_type=self.packet_type,
             packet_id=self.packet_id,
         )
