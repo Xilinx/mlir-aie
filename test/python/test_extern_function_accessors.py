@@ -133,6 +133,7 @@ def test_prefixing_renames_every_defined_symbol(tmp_path, monkeypatch):
 
     monkeypatch.setattr(utils.config, "nm_path", lambda: "nm")
     monkeypatch.setattr(utils.config, "objcopy_path", lambda: "objcopy")
+    monkeypatch.setattr(utils, "_object_has_bitcode", lambda _: False)
 
     obj = tmp_path / "k.o"
     obj.write_bytes(b"")
