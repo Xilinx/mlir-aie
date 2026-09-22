@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from collections import defaultdict
-from typing import Any, Sequence, TypeVar, get_args, get_origin
+from typing import Any, Sequence, get_args, get_origin
 
 import numpy as np
 from aie._mlir_libs import (
@@ -21,31 +21,18 @@ from ..ir import (  # pyright: ignore[reportMissingImports]
     Value,
     VectorType,
 )
+from .npdtypes import (
+    NpuDType,
+    np_ndarray_type_get_dtype,
+    np_ndarray_type_get_shape,
+    v8bfp16ebs8,
+    v16bfp16ebs16,
+)
 
 
-# Custom types
-class v8bfp16ebs8(np.generic):
-    """Custom type to be used in IRON that is translated to a generic blockFloatType.
-
-    Represents a vector of 8 scalar elements that share exponent with a total
-    bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
-    """
-
-    @staticmethod
-    def get():
-        return CustomTypes.blockFloatType.get("v8bfp16ebs8")
-
-
-class v16bfp16ebs16(np.generic):
-    """Custom type to be used in IRON that is translated to a generic blockFloatType.
-
-    Represents a vector of 16 scalar elements that share exponent with a total
-    bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
-    """
-
-    @staticmethod
-    def get():
-        return CustomTypes.blockFloatType.get("v16bfp16ebs16")
+def _block_float(name: str):
+    """Return the MLIR block-float type behind a ``v*bfp*`` marker."""
+    return lambda: CustomTypes.blockFloatType.get(name)
 
 
 _np_dtype_to_mlir_type_ctor = defaultdict(
@@ -68,8 +55,8 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float64: T.f64,
         bfloat16: T.bf16,
         # Block floating point types
-        v8bfp16ebs8: v8bfp16ebs8.get,
-        v16bfp16ebs16: v16bfp16ebs16.get,
+        v8bfp16ebs8: _block_float("v8bfp16ebs8"),
+        v16bfp16ebs16: _block_float("v16bfp16ebs16"),
         # Index Types
         # Not strictly correct, but numpy casts Python scalars to these types by
         # default, so we map them to index type to support passing lists of ints.
@@ -80,26 +67,6 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
 # np.longlong aliases np.int64 on Windows. Keep the explicit i64 mapping
 # authoritative there while preserving the distinct index mapping elsewhere.
 _np_dtype_to_mlir_type_ctor.setdefault(np.longlong, T.index)
-
-NpuDType = (
-    np.int8
-    | np.int16
-    | np.int32
-    | np.intc
-    | np.int64
-    | np.uint8
-    | np.uint16
-    | np.uint32
-    | np.uint64
-    | np.float16
-    | np.float32
-    | np.float64
-    | np.longlong
-    | np.uintp
-    | bfloat16
-    | v8bfp16ebs8
-    | v16bfp16ebs16
-)
 
 
 def _mlir_type_ctor_to_np_dtype():
@@ -198,54 +165,10 @@ def memref_type_to_np_dtype(memref_type):
     return _memref_type_to_np_dtype.get(memref_type)
 
 
-def ceildiv(a, b):
-    """Ceiling division: smallest integer >= a/b."""
-    return -(a // -b)
-
-
-def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
-    shape = get_args(ndarray_type)[0]
-    # Imported lazily: JIT type introspection itself uses this module.
-    from ..utils.compile.jit.markers import _DispatchParameter
-
-    for elem in shape if isinstance(shape, tuple) else (shape,):
-        if isinstance(elem, _DispatchParameter):
-            elem._misuse()
-    assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
-    for elem in shape:
-        assert isinstance(
-            elem, (int, np.integer)
-        ), "np.ndarray shape must be a tuple of Python or numpy integer types"
-    return shape
-
-
-def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> type[NpuDType]:
-    return get_args(get_args(ndarray_type)[1])[0]
-
-
 def np_ndarray_type_to_memref_type(ndarray_type: type[np.ndarray]):
     shape = np_ndarray_type_get_shape(ndarray_type)
     dtype = np_ndarray_type_get_dtype(ndarray_type)
     return T.memref(*shape, element_type=np_dtype_to_mlir_type(dtype))
-
-
-def pack_pad_value(value: int, elem_bytes: int) -> int:
-    """Pack a per-element pad value into the 32-bit CONSTANT_PAD_VALUE stream word."""
-    bits = elem_bytes * 8
-    if bits > 32:
-        raise ValueError(
-            f"pad_value is not supported for {elem_bytes}-byte elements: the "
-            "32-bit CONSTANT_PAD_VALUE register cannot hold a wider value."
-        )
-    v = value & 0xFFFFFFFF
-    if bits == 32:
-        return v
-    mask = (1 << bits) - 1
-    v &= mask
-    out = 0
-    for shift in range(0, 32, bits):
-        out |= v << shift
-    return out
 
 
 def try_convert_np_type_to_mlir_type(input_type):
@@ -256,19 +179,6 @@ def try_convert_np_type_to_mlir_type(input_type):
     else:
         output_type = input_type
     return output_type
-
-
-_E = TypeVar("_E")
-
-
-def single_elem_or_list_to_list(val: "list[_E] | _E") -> "list[_E]":
-    """Wrap a single element in a list, returning existing lists unchanged.
-
-    Does not work for a list of lists but still useful.
-    """
-    if not isinstance(val, list):
-        return [val]
-    return val
 
 
 def flatten_fn_args(args):

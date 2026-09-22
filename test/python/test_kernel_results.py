@@ -6,7 +6,7 @@
 
 import numpy as np
 import pytest
-from aie.helpers.util import v8bfp16ebs8
+from aie.helpers.npdtypes import v8bfp16ebs8
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import Param
 from aie.iron.kernels._common import KernelContract, TensorLayout

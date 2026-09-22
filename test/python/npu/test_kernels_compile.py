@@ -30,6 +30,7 @@ import numpy as np
 import pytest
 from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
+from aie.utils.compile.utils import aiecc_diagnostics
 from cases import device_for, inputs_for
 from kernel_cases import CASES
 
@@ -69,4 +70,11 @@ def test_design_compiles_through_cdo(case, tmp_path):
         except RuntimeError as ex:
             msg = str(ex)
             reached_packaging = "cdo_" in msg and "xclbinutil" in msg
-            assert reached_packaging, msg[-3000:]
+            # Report the diagnostics, not a slice of the log: the tail of an
+            # aiecc failure is the middle of an MLIR operation dump.
+            assert reached_packaging, "\n".join(
+                [
+                    f"{case.name} failed to compile for {_DEVICE}:",
+                    *aiecc_diagnostics(msg),
+                ]
+            )

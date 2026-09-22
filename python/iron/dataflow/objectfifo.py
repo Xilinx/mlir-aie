@@ -19,14 +19,14 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     ObjectFifoCreateOp,
 )
 from ...dialects.aie import object_fifo, object_fifo_link
-from ...helpers.util import (
+from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
-    np_ndarray_type_to_memref_type,
     pack_pad_value,
     single_elem_or_list_to_list,
 )
+from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyMemTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
 from .endpoint import ObjectFifoEndpoint

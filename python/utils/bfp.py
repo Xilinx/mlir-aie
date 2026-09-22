@@ -30,7 +30,7 @@ float input, and what a reference should multiply.
 from __future__ import annotations
 
 import numpy as np
-from aie.helpers.util import v8bfp16ebs8
+from aie.helpers.npdtypes import v8bfp16ebs8
 
 BLOCK = 8  # values per block
 _BLOCK_DTYPE = np.dtype([("exponent", np.uint8), ("mantissas", np.int8, (BLOCK,))])

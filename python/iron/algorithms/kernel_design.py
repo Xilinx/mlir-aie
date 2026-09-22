@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
-from aie.helpers.util import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernels._common import Param, _is_tensor_type

@@ -41,7 +41,7 @@ from ...dialects.aie import (
     shim_mem,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from ...helpers.util import pack_pad_value
+from ...helpers.npdtypes import pack_pad_value
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock

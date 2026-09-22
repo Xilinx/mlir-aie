@@ -14,7 +14,7 @@ hooks are no-ops.
 import ctypes
 
 import numpy as np
-from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 
 from ..tensor_class import Tensor
 from .context import HSAContext

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
 
 import numpy as np
-from aie.helpers.util import (
+from aie.helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,

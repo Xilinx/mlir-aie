@@ -30,7 +30,7 @@ def _as_dtype(dt):
     Older numpy versions coerce custom ``np.generic`` subclasses to void rather
     than rejecting them, so preserve the block formats before conversion.
     """
-    from ..helpers.util import v8bfp16ebs8, v16bfp16ebs16
+    from ..helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
 
     if dt is v8bfp16ebs8 or dt is v16bfp16ebs16:
         return dt
@@ -99,158 +99,6 @@ def _maybe_collapse_to_match(arg, expected_ty):
     # All N input dims collapse into the single output dim.
     reassociation = [list(range(arg_mr.rank))]
     return memref.collapse_shape(exp_mr, arg, reassociation)
-
-
-class BaseKernel(Resolvable):
-    """Base class for AIE core functions that resolve to a func.func declaration.
-
-    Subclasses:
-        Kernel: wraps a pre-compiled object file.
-        ExternalFunction: compiles C/C++ source at JIT time.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
-    ):
-        """Construct a BaseKernel.
-
-        Args:
-            name: Symbol name of the function.
-            arg_types: Type signature of the function arguments.  Defaults to None (empty list).
-        """
-        if not name:
-            raise ValueError("Kernel name cannot be empty.")
-        self._name = name
-        # The declaration as written (numpy shapes and dtypes). Resolving the
-        # kernel builds MLIR types from it without disturbing it, so this stays
-        # readable before and after a build.
-        self._arg_types = list(arg_types) if arg_types is not None else []
-        self._op: FuncOp | None = None
-
-    @property
-    def name(self) -> str:
-        """Symbol name of the function as it appears in the object file."""
-        return self._name
-
-    def _resolve_arg(self, arg_index: int):
-        """Validate ``arg_index`` and return the underlying type entry."""
-        if not self._arg_types:
-            raise ValueError("No argument types defined.")
-        if arg_index >= len(self._arg_types):
-            raise ValueError(
-                f"Argument index {arg_index} out of range "
-                f"(max: {len(self._arg_types) - 1})"
-            )
-        return self._arg_types[arg_index]
-
-    def arg_shape(self, arg_index: int = 0) -> tuple[int, ...]:
-        """Return the shape tuple of the array argument at `arg_index`.
-
-        Works for both `np.ndarray[(...,), np.dtype[T]]` parameterized
-        types (the canonical IRON kernel signature) and MLIR MemRefType
-        operands.
-
-        Args:
-            arg_index: Index into `arg_types`. Defaults to 0.
-
-        Raises:
-            ValueError: When `arg_index` is out of range or the
-                argument at that index is not an array type.
-        """
-        arg = self._resolve_arg(arg_index)
-        type_args = getattr(arg, "__args__", None)
-        if type_args is not None and len(type_args) > 0:
-            shape_arg = type_args[0]
-            if isinstance(shape_arg, tuple):
-                return shape_arg
-        shape = getattr(arg, "shape", None)
-        if shape is not None:
-            return tuple(shape)
-        raise ValueError(
-            f"Argument {arg_index} does not have a shape or is not an array type."
-        )
-
-    def arg_dtype(self, arg_index: int = 0):
-        """Return the numpy dtype of the array argument at `arg_index`.
-
-        Args:
-            arg_index: Index into `arg_types`. Defaults to 0.
-
-        Raises:
-            ValueError: When `arg_index` is out of range or the
-                argument at that index is not an array type.
-        """
-        arg = self._resolve_arg(arg_index)
-        type_args = getattr(arg, "__args__", None)
-        if type_args is not None and len(type_args) >= 2:
-            dt = type_args[1]
-            dt_args = getattr(dt, "__args__", None)
-            return _as_dtype(dt_args[0] if dt_args is not None else dt)
-        dtype = getattr(arg, "dtype", None)
-        if dtype is not None:
-            return _as_dtype(dtype)
-        raise ValueError(
-            f"Argument {arg_index} does not have a dtype or is not an array type."
-        )
-
-    def tile_size(self, arg_index: int = 0) -> int:
-        """Return the first dimension of the array argument at `arg_index`.
-
-        Convenience wrapper over
-        [`arg_shape`][iron.kernel.BaseKernel.arg_shape] for the common case of
-        a 1-D buffer argument. `tile_size(i)` is equivalent to
-        `arg_shape(i)[0]`.
-
-        Args:
-            arg_index: Index into `arg_types`. Defaults to 0.
-        """
-        shape = self.arg_shape(arg_index)
-        if len(shape) == 0:
-            raise ValueError(
-                f"Argument {arg_index} does not have a shape or is not an array type."
-            )
-        return shape[0]
-
-    def arg_types(self) -> list:
-        """Return the argument types as declared: ``np.ndarray[shape, dtype]`` / scalars.
-
-        A copy, and stable: resolving the kernel builds MLIR types from these
-        without replacing them, so a memoized kernel describes itself the same
-        way before and after a build.
-        """
-        return self._arg_types.copy()
-
-    def __call__(self, *args, **kwargs):
-        """Emit a func.call to this kernel, validating argument count.
-
-        Each argument is passed through `_maybe_collapse_to_match`
-        before the call. This silently inserts a `memref.collapse_shape`
-        when an N-D contiguous memref arg is being fed into a 1-D kernel
-        signature with the same element count and dtype — the typical case
-        when an IRON design holds 2-D ObjectFifo elements but the
-        `iron.kernels.X` helper declares a flat 1-D arg. See that
-        helper's docstring for the full set of conditions. Real shape /
-        dtype mismatches still fail at MLIR verification time.
-
-        `**kwargs` are forwarded to the underlying `func.call` builder
-        (typically `loc=`, `ip=` for MLIR location / insertion point).
-        """
-        if not self._op:
-            raise ValueError("Kernel must be resolved before it can be called.")
-        if len(args) != len(self._arg_types):
-            raise ValueError(
-                f"Kernel '{self._name}' expects {len(self._arg_types)} "
-                f"argument(s), but {len(args)} were provided."
-            )
-        arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
-        expected_input_types = self._op.function_type.value.inputs
-        adapted = [
-            _maybe_collapse_to_match(a, expected_ty)
-            for a, expected_ty in zip(arg_ops, expected_input_types)
-        ]
-        call(self._op, adapted, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -331,7 +179,7 @@ class ObjectFile(KernelObject):
         super().__init__(object_file_name, link_with_mode, _symbol_prefix=symbol_prefix)
 
 
-class Kernel(BaseKernel):
+class Kernel(Resolvable):
     """An AIE core function backed by a pre-compiled object file.
 
     Use [`ExternalFunction`][iron.ExternalFunction] instead when you want to
@@ -375,7 +223,7 @@ class Kernel(BaseKernel):
                 than as a separate object. See
                 [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
         """
-        super().__init__(name, arg_types)
+        self._init_identity(name, arg_types)
         if isinstance(object_file_name, KernelObject):
             if (
                 link_with_mode is not None
@@ -441,6 +289,148 @@ class Kernel(BaseKernel):
                 stack_size_override=self._stack_size_override,
             )
 
+    def _init_identity(
+        self,
+        name: str,
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+    ) -> None:
+        """Set the symbol name and declared signature, without an artifact.
+
+        Split out because a discovery binding is built with ``__new__`` and
+        adopts an existing artifact rather than constructing one.
+        """
+        if not name:
+            raise ValueError("Kernel name cannot be empty.")
+        self._name = name
+        # The declaration as written (numpy shapes and dtypes). Resolving the
+        # kernel builds MLIR types from it without disturbing it, so this stays
+        # readable before and after a build.
+        self._arg_types = list(arg_types) if arg_types is not None else []
+        self._op: FuncOp | None = None
+
+    @property
+    def name(self) -> str:
+        """Symbol name of the function as it appears in the object file."""
+        return self._name
+
+    def _resolve_arg(self, arg_index: int):
+        """Validate ``arg_index`` and return the underlying type entry."""
+        if not self._arg_types:
+            raise ValueError("No argument types defined.")
+        if arg_index >= len(self._arg_types):
+            raise ValueError(
+                f"Argument index {arg_index} out of range "
+                f"(max: {len(self._arg_types) - 1})"
+            )
+        return self._arg_types[arg_index]
+
+    def arg_shape(self, arg_index: int = 0) -> tuple[int, ...]:
+        """Return the shape tuple of the array argument at `arg_index`.
+
+        Works for both `np.ndarray[(...,), np.dtype[T]]` parameterized
+        types (the canonical IRON kernel signature) and MLIR MemRefType
+        operands.
+
+        Args:
+            arg_index: Index into `arg_types`. Defaults to 0.
+
+        Raises:
+            ValueError: When `arg_index` is out of range or the
+                argument at that index is not an array type.
+        """
+        arg = self._resolve_arg(arg_index)
+        type_args = getattr(arg, "__args__", None)
+        if type_args is not None and len(type_args) > 0:
+            shape_arg = type_args[0]
+            if isinstance(shape_arg, tuple):
+                return shape_arg
+        shape = getattr(arg, "shape", None)
+        if shape is not None:
+            return tuple(shape)
+        raise ValueError(
+            f"Argument {arg_index} does not have a shape or is not an array type."
+        )
+
+    def arg_dtype(self, arg_index: int = 0):
+        """Return the numpy dtype of the array argument at `arg_index`.
+
+        Args:
+            arg_index: Index into `arg_types`. Defaults to 0.
+
+        Raises:
+            ValueError: When `arg_index` is out of range or the
+                argument at that index is not an array type.
+        """
+        arg = self._resolve_arg(arg_index)
+        type_args = getattr(arg, "__args__", None)
+        if type_args is not None and len(type_args) >= 2:
+            dt = type_args[1]
+            dt_args = getattr(dt, "__args__", None)
+            return _as_dtype(dt_args[0] if dt_args is not None else dt)
+        dtype = getattr(arg, "dtype", None)
+        if dtype is not None:
+            return _as_dtype(dtype)
+        raise ValueError(
+            f"Argument {arg_index} does not have a dtype or is not an array type."
+        )
+
+    def tile_size(self, arg_index: int = 0) -> int:
+        """Return the first dimension of the array argument at `arg_index`.
+
+        Convenience wrapper over
+        [`arg_shape`][iron.kernel.Kernel.arg_shape] for the common case of
+        a 1-D buffer argument. `tile_size(i)` is equivalent to
+        `arg_shape(i)[0]`.
+
+        Args:
+            arg_index: Index into `arg_types`. Defaults to 0.
+        """
+        shape = self.arg_shape(arg_index)
+        if len(shape) == 0:
+            raise ValueError(
+                f"Argument {arg_index} does not have a shape or is not an array type."
+            )
+        return shape[0]
+
+    def arg_types(self) -> list:
+        """Return the argument types as declared: ``np.ndarray[shape, dtype]`` / scalars.
+
+        A copy, and stable: resolving the kernel builds MLIR types from these
+        without replacing them, so a memoized kernel describes itself the same
+        way before and after a build.
+        """
+        return self._arg_types.copy()
+
+    def __call__(self, *args, **kwargs):
+        """Emit a func.call to this kernel, validating argument count.
+
+        Each argument is passed through `_maybe_collapse_to_match`
+        before the call. This silently inserts a `memref.collapse_shape`
+        when an N-D contiguous memref arg is being fed into a 1-D kernel
+        signature with the same element count and dtype — the typical case
+        when an IRON design holds 2-D ObjectFifo elements but the
+        `iron.kernels.X` helper declares a flat 1-D arg. See that
+        helper's docstring for the full set of conditions. Real shape /
+        dtype mismatches still fail at MLIR verification time.
+
+        `**kwargs` are forwarded to the underlying `func.call` builder
+        (typically `loc=`, `ip=` for MLIR location / insertion point).
+        """
+        if not self._op:
+            raise ValueError("Kernel must be resolved before it can be called.")
+        if len(args) != len(self._arg_types):
+            raise ValueError(
+                f"Kernel '{self._name}' expects {len(self._arg_types)} "
+                f"argument(s), but {len(args)} were provided."
+            )
+        arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
+        expected_input_types = self._op.function_type.value.inputs
+        adapted = [
+            _maybe_collapse_to_match(a, expected_ty)
+            for a, expected_ty in zip(arg_ops, expected_input_types)
+        ]
+        call(self._op, adapted, **kwargs)
+
 
 class ExternalFunction(Kernel):
     """An AIE core function compiled from C/C++ source at JIT time.
@@ -467,7 +457,7 @@ class ExternalFunction(Kernel):
         # A discovery binding references the existing owner; it does not rebuild
         # the recipe or retain the ExternalFunction that originally created it.
         binding = cls.__new__(cls)
-        BaseKernel.__init__(binding, kernel.name, kernel.arg_types())
+        binding._init_identity(kernel.name, kernel.arg_types())
         binding._object_file = kernel.object_file
         binding._stack_size_override = kernel.stack_size_override
         recipe = binding._recipe
@@ -550,7 +540,7 @@ class ExternalFunction(Kernel):
 
     def expected(self, inputs: list, *, scalars: tuple = ()):
         """Return reference output(s), cast to each output argument's dtype."""
-        from aie.helpers.util import v8bfp16ebs8
+        from aie.helpers.npdtypes import v8bfp16ebs8
 
         from .kernels._common import _is_tensor_type
 
@@ -591,7 +581,7 @@ class ExternalFunction(Kernel):
         for compatibility. Multiple outputs return a tuple in argument order.
         """
         import numpy as np
-        from aie.helpers.util import v8bfp16ebs8
+        from aie.helpers.npdtypes import v8bfp16ebs8
 
         outputs = self._require_contract().out_indices
         multiple = len(outputs) > 1
@@ -908,7 +898,7 @@ class ExternalFunction(Kernel):
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.
 
-        ``**kwargs`` are forwarded to the base ``BaseKernel.__call__``
+        ``**kwargs`` are forwarded to the base ``Kernel.__call__``
         and ultimately to the MLIR ``func.call`` builder.
         """
         if len(args) != len(self._arg_types):

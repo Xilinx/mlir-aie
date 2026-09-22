@@ -473,6 +473,52 @@ def compile_cxx_core_function(
                 raise RuntimeError(f"[Peano] LLVM bitcode assembly failed{detail}")
 
 
+_PROGRESS_RE = re.compile(r"^\(\d+/\d+\)\s*")
+_GLUED_EDGE_RE = re.compile(r"^(?P<edge>\S+?\.mlir)(?=/)")
+
+
+def _readable_diagnostic(line: str) -> str:
+    """One aiecc log line with its progress bar separated from the diagnostic.
+
+    aiecc redraws progress in place, so a diagnostic arrives appended to the
+    edge that emitted it and the two read as one malformed path:
+    ``(28/40) measured_stack_sizes.mlir/tmp/x/aie.mlir:9:10: error: ...``
+    """
+    line = _PROGRESS_RE.sub("", line.rstrip())
+    edge = _GLUED_EDGE_RE.match(line)
+    return f"[{edge['edge']}] {line[edge.end():]}" if edge else line.strip()
+
+
+def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
+    """Return the compiler diagnostics in an aiecc log, without the MLIR dumps.
+
+    aiecc prints a progress line per build edge, and a failing MLIR pass
+    prints the whole operation it failed on. That buries the one diagnostic
+    naming the fix hundreds of lines from either end of the log, so neither
+    the head nor the tail of a failure is worth showing on its own. Keep the
+    ``error:`` and ``warning:`` lines and the edge aiecc gave up on, in order
+    and without repeats.
+    """
+    lines = log.splitlines()
+    kept: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        if "error: " in line or "warning: " in line:
+            keep = _readable_diagnostic(line)
+        elif line.startswith("aiecc: ") and line.rstrip().endswith("failed"):
+            keep = line.rstrip()
+        else:
+            continue
+        if keep in seen:
+            continue
+        seen.add(keep)
+        kept.append(keep)
+        if len(kept) == limit:
+            kept.append(f"... truncated, see the full log ({len(lines)} lines)")
+            break
+    return kept
+
+
 def _run_aiecc(mlir_file: str, args: list[str]):
     aiecc_bin = config.aiecc_path()
     cmd = [aiecc_bin, mlir_file] + args
@@ -484,9 +530,13 @@ def _run_aiecc(mlir_file: str, args: list[str]):
         logger.debug("%s", result.stderr)
     if result.returncode != 0:
         error_msg = result.stderr if result.stderr else result.stdout
+        summary = "\n".join(aiecc_diagnostics(error_msg))
+        # Lead with the diagnostics so a truncated traceback still names the
+        # fix; keep the whole log after them for everything they leave out.
+        detail = f"{summary}\n\n--- full aiecc log ---\n{error_msg}"
         raise RuntimeError(
             f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
-            f"{error_msg}"
+            f"{detail if summary else error_msg}"
         )
 
 

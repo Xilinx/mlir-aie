@@ -145,7 +145,10 @@ def q4nx_dequant(
             f"-DQ4NX_{name.upper()}={value}" for name, value in geometry.items()
         ],
         contract=KernelContract(
-            stack_bytes=1216,  # aiecc measured_stack_size (Peano 22)
+            # aiecc measured_stack_size (Peano 22). A group size that is not a
+            # power of two makes the `/ GROUP` in the inner loop call __muldi3,
+            # which needs 64 bytes more than the power-of-two geometries.
+            stack_bytes=1280,
             roles=(In, Out),
             reference=partial(q4nx_dequant_ref, **geometry),
             sample=partial(_q4nx_sample, **geometry),

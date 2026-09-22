@@ -47,6 +47,7 @@ writes nothing.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import re
@@ -534,6 +535,12 @@ def main(argv=None) -> int:
     ap.add_argument("--target", default="aie2p", choices=["aie2", "aie2p"])
     ap.add_argument("--only", help="regex on kernel names")
     ap.add_argument(
+        "--jobs",
+        type=int,
+        default=os.cpu_count() or 1,
+        help="concurrent Peano compiles; the records do not depend on it",
+    )
+    ap.add_argument(
         "--annotate",
         action="store_true",
         default=os.environ.get("GITHUB_ACTIONS") == "true",
@@ -556,10 +563,27 @@ def main(argv=None) -> int:
     meta: dict = {"kernels": {}}
     annotated: set[tuple] = set()
 
-    for name, ef in kernel_builds():
-        if a.only and not re.search(a.only, name):
-            continue
-        rep, detail = analyze(ef, a.target, workdir)
+    builds = [
+        (name, ef)
+        for name, ef in kernel_builds()
+        if not (a.only and not re.search(a.only, name))
+    ]
+
+    def compile_one(indexed):
+        index, (_, ef) = indexed
+        # A directory per build: the outputs are named after the kernel symbol,
+        # and nothing guarantees two builds of one factory do not share it.
+        cell = workdir / f"build{index}"
+        cell.mkdir(exist_ok=True)
+        return analyze(ef, a.target, cell)
+
+    # Each build is an independent Peano subprocess, so these fan out; the
+    # results are consumed in list order and the records do not depend on
+    # how many ran at once.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as pool:
+        analyzed = list(pool.map(compile_one, enumerate(builds)))
+
+    for (name, ef), (rep, detail) in zip(builds, analyzed):
         if rep is None:
             failed.append(f"{name}: {detail}")
         else:

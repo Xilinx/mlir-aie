@@ -11,12 +11,12 @@ import numpy as np
 from ...extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     MemRefValue,
 )
-from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
-from ...helpers.util import (
+from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
+from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
 
 
 class RuntimeData:
