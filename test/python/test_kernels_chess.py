@@ -344,3 +344,53 @@ def test_kernels_mm_emulated_bf16_distinct_cache_from_default(npu2_device):
     )
     assert ef_default is not ef_emulated
     assert ef_default.object_file_name != ef_emulated.object_file_name
+
+
+# ---------------------------------------------------------------------------
+# The element-wise, activation and norm factories take use_chess too.
+#
+# A design's kernels must agree on the toolchain -- aiecc rejects a mixed
+# peano/chess build -- so a caller that builds one kernel with chess needs
+# every factory it uses to accept the flag. Without it a design that asked
+# for chess silently gets peano for these kernels and the build is rejected
+# far from its cause, or (with one kernel) quietly built with the wrong
+# front-end.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        kernels.eltwise.add_sized,
+        kernels.eltwise.mul_sized,
+        kernels.eltwise.relu_sized,
+        kernels.activation.gelu_sized,
+        kernels.activation.silu_sized,
+        kernels.norm.layer_norm,
+        kernels.norm.rms_norm_eps,
+        kernels.datamovement.axpy,
+    ],
+    ids=lambda f: f.__name__,
+)
+@pytest.mark.parametrize("use_chess", [False, True])
+def test_runtime_sized_factories_carry_use_chess(factory, use_chess):
+    ef = factory(1024, use_chess=use_chess)
+    assert ef._use_chess is use_chess
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        kernels.eltwise.add_sized,
+        kernels.eltwise.mul_sized,
+        kernels.eltwise.relu_sized,
+        kernels.activation.gelu_sized,
+        kernels.activation.silu_sized,
+        kernels.norm.layer_norm,
+        kernels.norm.rms_norm_eps,
+        kernels.datamovement.axpy,
+    ],
+    ids=lambda f: f.__name__,
+)
+def test_runtime_sized_factories_default_to_peano(factory):
+    assert factory(1024)._use_chess is False

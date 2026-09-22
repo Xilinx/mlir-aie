@@ -42,6 +42,7 @@ def _create_lut_kernel(
     kernel_filename: str,
     arg_types: list,
     compile_flags: list[str] | None = None,
+    use_chess: bool = False,
 ) -> ExternalFunction:
     """Create an ExternalFunction for a LUT-dependent kernel.
 
@@ -71,6 +72,7 @@ def _create_lut_kernel(
             arg_types=arg_types,
             include_dirs=include,
             compile_flags=flags,
+            use_chess=use_chess,
         )
     return ExternalFunction(
         func_name,
@@ -78,6 +80,7 @@ def _create_lut_kernel(
         arg_types=arg_types,
         include_dirs=include,
         compile_flags=flags,
+        use_chess=use_chess,
     )
 
 
@@ -122,24 +125,28 @@ def silu(tile_size: int = 1024) -> ExternalFunction:
     return _bf16_lut_factory("silu", "silu_bf16", "silu.cc", tile_size, arg_arity=2)
 
 
-def silu_sized(tile_size: int = 1024) -> ExternalFunction:
+def silu_sized(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
     """SiLU (Swish) for bf16 tiles, element count read at runtime.
 
     Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
     passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
     """
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel("silu_bf16_size", "silu.cc", [tile_ty, tile_ty, np.int32])
+    return _create_lut_kernel(
+        "silu_bf16_size", "silu.cc", [tile_ty, tile_ty, np.int32], use_chess=use_chess
+    )
 
 
-def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
+def gelu_sized(tile_size: int = 1024, use_chess: bool = False) -> ExternalFunction:
     """GELU (tanh approx) for bf16 tiles, element count read at runtime.
 
     Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
     passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
     """
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel("gelu_bf16_size", "gelu.cc", [tile_ty, tile_ty, np.int32])
+    return _create_lut_kernel(
+        "gelu_bf16_size", "gelu.cc", [tile_ty, tile_ty, np.int32], use_chess=use_chess
+    )
 
 
 def swiglu(tile_size: int = 1024) -> ExternalFunction:
