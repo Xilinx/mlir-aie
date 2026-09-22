@@ -110,8 +110,9 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   // (a, b*s) inserted at position d+1, shifting the higher dims outward. The
   // factored pair stays adjacent so the sub-traversal of dim d is contiguous
   // and its place in the overall nesting is unchanged => element order is
-  // preserved. Requires the outermost slot to be free so no dim is dropped.
-  if (pattern.sizes[3] == 1) {
+  // preserved. The outermost slot must be free and carry no base offset.
+  bool outerSlotHasOffset = pattern.offsets[3] != 0 && pattern.strides[3] != 0;
+  if (pattern.sizes[3] == 1 && !outerSlotHasOffset) {
     for (unsigned d = 0; d < 3; ++d) {
       int64_t n = pattern.sizes[d];
       if (n <= 1)
@@ -165,6 +166,9 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
     int64_t n = pattern.sizes[d];
     int64_t chunkSize =
         maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
+    // An offset-bearing singleton cannot be reused by factoring; slice instead.
+    if (pattern.sizes[3] == 1 && outerSlotHasOffset && n <= chunkSize)
+      chunkSize = 1;
     bool oversizedStride =
         !strideFitsStepField(tm, forOp, bufType, col, row, pattern, d);
     // Peel outer dimensions until an oversized inner stride can be folded.
@@ -182,8 +186,11 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         slice.sizes[d] = std::min(chunkSize, n - i * chunkSize);
         slice.offsets[d] = pattern.offsets[d] + i * chunkSize;
         if (slice.sizes[d] == 1 && oversizedStride) {
-          slice.offsets[d] *= pattern.strides[d];
-          slice.strides[d] = 1; // never applied; keep the slice verifiable
+          int64_t stride = bdGranuleDivisor(elemWidth, gran);
+          if (pattern.strides[d] % stride != 0)
+            return failure();
+          slice.offsets[d] *= pattern.strides[d] / stride;
+          slice.strides[d] = stride; // keep the singleton granule-aligned
         }
 
         auto sub = decomposeRecursive(forOp, bufType, tm, col, row, slice);

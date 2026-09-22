@@ -38,15 +38,15 @@ def emit(offset, sizes, strides):
     return out
 
 
-def module(offsets, sizes, strides, nelem):
+def module(offsets, sizes, strides, nelem, dtype):
     pattern = "".join(
         "[" + ",".join(map(str, values)) + "]" for values in (offsets, sizes, strides)
     )
     return f"""module {{
   aie.device(npu2_1col) {{
-    aie.runtime_sequence(%in : memref<{nelem}xi32>) {{
+    aie.runtime_sequence(%in : memref<{nelem}x{dtype}>) {{
       aiex.npu.dma_memcpy_nd (%in{pattern})
-        {{ metadata = @a, id = 0 : i64 }} : memref<{nelem}xi32>
+        {{ metadata = @a, id = 0 : i64 }} : memref<{nelem}x{dtype}>
     }}
     %t = aie.tile(0, 0)
     aie.shim_dma_allocation @a (%t, MM2S, 0)
@@ -55,10 +55,10 @@ def module(offsets, sizes, strides, nelem):
 """
 
 
-def run_case(offsets, sizes, strides):
+def run_case(offsets, sizes, strides, dtype="i32"):
     offset = sum(o * s for o, s in zip(offsets, strides))
     nelem = offset + sum((n - 1) * s for n, s in zip(sizes, strides)) + 1
-    src = module(offsets, sizes, strides, nelem)
+    src = module(offsets, sizes, strides, nelem, dtype)
     r = subprocess.run(
         [
             AIE_OPT,
@@ -106,13 +106,23 @@ for rows, cols, pitch in CASES:
 
 for offsets, sizes, strides in [
     ([1, 0, 2, 3], [2, 1, 2, 2], [64, 0, 2097152, 1]),
+    ([1, 0, 2, 3], [2, 1, 2, 4], [64, 0, 2097152, 1]),
+    ([1, 0, 2, 3], [2, 1, 2, 1024], [2097152, 0, 2048, 1]),
     ([1, 2, 3, 4], [2, 2, 2, 2], [64, 32, 2097152, 1]),
     ([1, 0, 2, 3], [2, 1, 2, 2], [2097152, 0, 4194304, 1]),
-    ([0, 0, 0, 0], [65, 1, 1, 2], [3, 0, 0, 1]),
+    ([0, 0, 0, 0], [65, 1, 1, 2], [3, 0, 0, 2]),
 ]:
     ok = run_case(offsets, sizes, strides)
     all_ok = all_ok and (ok is True)
     print(f"offsets={offsets} sizes={sizes} strides={strides} -> order_equivalent={ok}")
+
+for offsets, sizes, strides in [
+    ([0, 0, 0, 0], [4, 1, 64, 512], [4194304, 0, 8192, 1]),
+    ([1, 0, 2, 4], [2, 1, 2, 4], [64, 0, 4194304, 1]),
+]:
+    ok = run_case(offsets, sizes, strides, dtype="bf16")
+    all_ok = all_ok and (ok is True)
+    print(f"bf16 offsets={offsets} sizes={sizes} strides={strides} -> order_equivalent={ok}")
 
 print(f"ALL ORDER-EQUIVALENT: {all_ok}")
 sys.exit(0 if all_ok else 1)
