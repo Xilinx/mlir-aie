@@ -11,7 +11,7 @@
 // RUN: rm -rf %t && mkdir -p %t
 // RUN: not %aiecc --get-core-elfs --enable-repeater-scripts --repeater-output-dir=%t/ckpt %s 2>&1 | FileCheck %s
 // RUN: cat %t/ckpt/manifest.json | FileCheck --check-prefix=MANIFEST %s
-// RUN: cat %t/ckpt/*/input_with_addresses.mlir | FileCheck --check-prefix=MLIR %s
+// RUN: cat %t/ckpt/*/input_with_symbols.mlir | FileCheck --check-prefix=MLIR %s
 
 // The routing failure is reported and a resumable checkpoint is written.
 // CHECK: slave port packet rules exceed the 4-slot limit
@@ -23,7 +23,7 @@
 // MANIFEST: "argv"
 // MANIFEST: "--get=input_physical.mlir"
 // MANIFEST: "frontier"
-// MANIFEST: "input_with_addresses.mlir"
+// MANIFEST: "input_with_symbols.mlir"
 
 // The captured frontier IR is the pre-routing module holding the unroutable flow.
 // MLIR: aie.packet_flow(20)

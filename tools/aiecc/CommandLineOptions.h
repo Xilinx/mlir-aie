@@ -60,6 +60,16 @@ inline cl::opt<std::string>
     workDir("tmpdir",
             cl::desc("Intermediate workdir (default: <input>.prj in cwd)"),
             cl::init(""));
+// A DMA task queue does not backpressure: a push onto a full one is dropped and
+// its transfer never runs. By default the compiler waits for a free slot before
+// any push that could find the queue full, which stalls only where the DMA
+// cannot drain ahead of the pushes -- exactly where the alternative is a lost
+// transfer. This reverts to reporting the hazard as a warning.
+inline cl::opt<bool> noEnforceDmaQueueDepth(
+    "no-enforce-dma-queue-depth",
+    cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
+             "slot"));
+
 inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));
@@ -92,8 +102,6 @@ inline cl::opt<int>
     saSeed("sa-seed",
            cl::desc("Random seed for SA placer (0 = non-deterministic)"),
            cl::init(1));
-inline cl::opt<std::string> allocScheme("alloc-scheme",
-                                        cl::desc("Buffer allocation scheme"));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));
@@ -160,6 +168,18 @@ inline cl::opt<bool> noMeasureDataSize(
     cl::desc("Skip the measurement of each core's static data (.data, .rodata "
              "and .bss) in its linked ELF and the check of data_size against "
              "it"));
+inline cl::opt<bool> noCheckBankPlacement(
+    "no-check-bank-placement",
+    cl::desc("Skip the check that a symbol a core places for a memory bank (a "
+             "chess_storage / __aie_dm_resource_* request) was linked into "
+             "that bank"));
+inline cl::opt<bool> checkLutBanks(
+    "check-lut-banks",
+    cl::desc("Check that the two tables of each aie::lut<4> are in different "
+             "memory banks. Requires embedded LLVM IR in object-linked "
+             "kernels; also checks merge-mode and generated core IR. Fails "
+             "when table placement cannot be verified. Off "
+             "by default because preserving that IR costs compile time"));
 inline cl::opt<int> defaultStackSize(
     "default-stack-size",
     cl::desc("Stack size in bytes to assume for any core that leaves "
@@ -269,6 +289,10 @@ inline cl::opt<bool> foldDDRAddrOffsetOpt(
 inline bool generateCoreElfs = false;
 
 inline bool generateInputWithAddresses = false;
+
+// The same module before placement, which unlike input_with_addresses.mlir
+// needs no core compiler. See the placement edge in aiecc.cpp.
+inline bool generateInputWithSymbols = false;
 
 inline bool generateScratchpadParams = false;
 
@@ -383,6 +407,8 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
   static const OutputSelector table[] = {
       {"input-with-addresses", "input_with_addresses.mlir",
        &generateInputWithAddresses},
+      {"input-with-symbols", "input_with_symbols.mlir",
+       &generateInputWithSymbols},
       {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
       {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
       {"npu-insts", "insts_{0}.bin", &generateNpuInsts},
@@ -448,10 +474,11 @@ inline bool applyOutputSelectorFlags(std::vector<std::string> &args) {
 inline cl::opt<bool> showVersion("aie-version",
                                  cl::desc("Show version information and exit"));
 inline cl::opt<bool> dryRun("n", cl::desc("Dry run"));
-// Print the wall-clock time each edge took to execute at the end of the run.
-inline cl::opt<bool>
-    profile("profile",
-            cl::desc("Print a per-edge execution-time summary at the end"));
+// Print the wall-clock time and resident-memory cost of each edge at the end
+// of the run.
+inline cl::opt<bool> profile(
+    "profile",
+    cl::desc("Print a per-edge time and resident-memory summary at the end"));
 inline cl::opt<bool> progress(
     "progress",
     cl::desc("Show single-line execution progress: overwrite one status line "

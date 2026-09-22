@@ -13,7 +13,7 @@
 // tile(0, 2) on npu2 has 65536 bytes. The 1024-byte stack plus "a"'s 64512
 // unaligned bytes cover all of them.
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
 // CHECK: %a = aie.buffer(%tile_0_2) {address = 1024 : i32, aligned = false, mem_bank = 0 : i32, sym_name = "a"} : memref<64512xi8>
 // The core reserves nothing, so the allocator creates no core_data buffer and

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIECoreMemory.h"
+#include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Targets/AIETargetShared.h"
 #include "aie/Targets/AIETargets.h"
@@ -65,7 +66,8 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
                                                   raw_ostream &output,
                                                   int tileCol, int tileRow,
-                                                  llvm::StringRef deviceName) {
+                                                  llvm::StringRef deviceName,
+                                                  bool probe) {
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
@@ -87,26 +89,52 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       // is one contiguous region, so its size bounds what the core can link,
       // and the total free memory on the tile does not.
       const auto &targetModel = getTargetModel(tile);
-      MemoryRun dataRun = coreDataRegion(tile, buffers[tiles[srcCoord]]);
+      MemoryRun stackRun;
+      if (auto core = tile.getCoreOp()) {
+        if (!probe && core.getStackBank() && !core.getStackAddress())
+          return core.emitOpError(
+              "stack_bank has no assigned stack_address; run "
+              "--aie-assign-buffer-addresses with bank-aware allocation");
+        stackRun = core.getStackRun();
+      }
+      MemoryRun dataRun =
+          probe ? MemoryRun{stackRun.end(),
+                            targetModel.getLocalMemorySize() - stackRun.end()}
+                : coreDataRegion(tile, buffers[tiles[srcCoord]]);
+      // The checks below all ask whether placement is stale. A probe link runs
+      // before placement, so there is nothing yet to be stale.
+      if (!probe) {
+        if (dataRun.start < 0 ||
+            dataRun.end() > targetModel.getLocalMemorySize())
+          return tile.emitOpError(
+              "data region runs past this tile's local memory; the buffer "
+              "allocator's placement is stale. Re-run "
+              "--aie-assign-buffer-addresses");
+        if (dataRun.size > 0 && stackRun.size > 0 &&
+            dataRun.start < stackRun.end() && stackRun.start < dataRun.end())
+          return tile.emitOpError(
+              "data region overlaps the stack; the buffer allocator's "
+              "placement is stale. Re-run --aie-assign-buffer-addresses");
 
-      // A pass that adds or moves a buffer after the allocator ran leaves the
-      // region aliasing it, and the core compiler and that buffer would then
-      // write over each other. Report the alias here.
-      for (auto buf : buffers[tiles[srcCoord]]) {
-        if (buf.getCoreData() || buf.getAllocationSize() == 0 ||
-            dataRun.size == 0) {
-          continue;
-        }
-        int64_t bufStart = getBufferBaseAddress(buf);
-        int64_t bufEnd = bufStart + buf.getAllocationSize();
-        if (bufStart < dataRun.end() && dataRun.start < bufEnd) {
-          return tile.emitOpError("data region 0x")
-                 << llvm::utohexstr(dataRun.start) << "-0x"
-                 << llvm::utohexstr(dataRun.end() - 1) << " overlaps buffer '"
-                 << buf.name().getValue() << "' at 0x"
-                 << llvm::utohexstr(bufStart)
-                 << "; the buffer allocator's placement is stale. Re-run "
-                    "--aie-assign-buffer-addresses";
+        // A pass that adds or moves a buffer after the allocator ran leaves the
+        // region aliasing it, and the core compiler and that buffer would then
+        // write over each other. Report the alias here.
+        for (auto buf : buffers[tiles[srcCoord]]) {
+          if (buf.getCoreData() || buf.getAllocationSize() == 0 ||
+              dataRun.size == 0) {
+            continue;
+          }
+          int64_t bufStart = getBufferBaseAddress(buf);
+          int64_t bufEnd = bufStart + buf.getAllocationSize();
+          if (bufStart < dataRun.end() && dataRun.start < bufEnd) {
+            return tile.emitOpError("data region 0x")
+                   << llvm::utohexstr(dataRun.start) << "-0x"
+                   << llvm::utohexstr(dataRun.end() - 1) << " overlaps buffer '"
+                   << buf.name().getValue() << "' at 0x"
+                   << llvm::utohexstr(bufStart)
+                   << "; the buffer allocator's placement is stale. Re-run "
+                      "--aie-assign-buffer-addresses";
+          }
         }
       }
 
@@ -116,16 +144,70 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       int origin =
           targetModel.getMemInternalBaseAddress(srcCoord) + dataRun.start;
       int length = dataRun.size;
+      bool reservedData =
+          !probe && llvm::any_of(buffers[tiles[srcCoord]], [](BufferOp buf) {
+            return buf.getCoreData();
+          });
+      llvm::SmallVector<MemoryRun> bankRuns;
+      if (probe) {
+        // A probe measures; it does not judge. Section sizes come from the
+        // objects and the garbage collection, never from how much room a region
+        // offers, so every region is given the whole tile and the regions are
+        // allowed to overlap. A design too big to link still probes cleanly,
+        // and the real link reports it with the diagnostic that belongs there.
+        int numBanks = targetModel.getNumBanks(srcCoord.col, srcCoord.row);
+        int64_t bankSize =
+            numBanks > 0 ? targetModel.getLocalMemorySize() / numBanks : 0;
+        for (int bank = 0; bank < numBanks; ++bank)
+          bankRuns.push_back(
+              MemoryRun{bankSize * bank, targetModel.getLocalMemorySize()});
+      } else {
+        bankRuns = coreBankRegions(tile, buffers[tiles[srcCoord]],
+                                   reservedData ? dataRun : MemoryRun{});
+      }
+      std::string dataOrigin = "0x" + llvm::utohexstr(origin);
+      std::string dataEnd = "0x" + llvm::utohexstr(origin + length);
+      if (!reservedData) {
+        // Bank sections have fixed regions. LLD resolves their sizes before
+        // assigning ordinary data, including BSS-only cores and empty banks.
+        for (auto [bank, run] : llvm::enumerate(bankRuns)) {
+          int64_t bankStart =
+              targetModel.getMemInternalBaseAddress(srcCoord) + run.start;
+          if (run.size == 0 || bankStart >= origin + length ||
+              bankStart + run.size <= origin) {
+            continue;
+          }
+          std::string sec = bankSectionName(bank);
+          std::string end = "(ADDR(" + sec + ") + SIZEOF(" + sec + "))";
+          dataOrigin = "MAX(" + dataOrigin + ", (SIZEOF(" + sec +
+                       ") != 0 ? MIN(" + dataEnd + ", " + end + ") : 0))";
+        }
+      }
       output << R"THESCRIPT(
 MEMORY
 {
 )THESCRIPT";
       output << "   program (RX) : ORIGIN = 0, LENGTH = 0x"
              << llvm::utohexstr(targetModel.getProgramMemorySize()) << "\n";
-      output << "   data (!RX) : ORIGIN = 0x" << llvm::utohexstr(origin)
-             << ", LENGTH = 0x" << llvm::utohexstr(length);
-      output << R"THESCRIPT(
-}
+      output << "   data (!RX) : ORIGIN = " << dataOrigin << ", LENGTH = ";
+      if (reservedData) {
+        output << "0x" << llvm::utohexstr(length);
+      } else {
+        output << dataEnd << " - " << dataOrigin;
+      }
+      output << "\n";
+      // One region per bank, for statics a kernel pins with a bank attribute.
+      // A bank with nothing spare gets a zero-length region rather than being
+      // left out, so a section aimed at it overflows by name instead of
+      // becoming an orphan.
+      for (auto [bank, run] : llvm::enumerate(bankRuns)) {
+        output << "   " << bankRegionName(bank) << " (!RX) : ORIGIN = 0x"
+               << llvm::utohexstr(
+                      targetModel.getMemInternalBaseAddress(srcCoord) +
+                      run.start)
+               << ", LENGTH = 0x" << llvm::utohexstr(run.size) << "\n";
+      }
+      output << R"THESCRIPT(}
 ENTRY(__start)
 SECTIONS
 {
@@ -142,7 +224,17 @@ SECTIONS
      _dtors_end = .;
      *(.text*)
   } > program
-  .data : {
+)THESCRIPT";
+      // Ahead of .data and .bss: lld assigns an input section to the first
+      // description that matches it, and the wildcards below would otherwise
+      // take the bank-pinned ones.
+      for (auto [bank, run] : llvm::enumerate(bankRuns)) {
+        std::string sec = bankSectionName(bank);
+        output << "  " << sec << " : { *(" << sec << " " << sec << ".*)"
+               << " *(*.DM_bank" << bankLetter(bank) << "*) } > "
+               << bankRegionName(bank) << "\n";
+      }
+      output << R"THESCRIPT(  .data : {
      *(.data*)
      *(.rodata*)
   } > data
@@ -161,12 +253,21 @@ SECTIONS
   .stack_sizes : {
      *(.stack_sizes)
   }
+  /* Bitcode an object carries for aiecc's own analysis. It describes the core
+     rather than running on it, and --orphan-handling=error rejects any section
+     with no home, so name it here to drop it. */
+  /DISCARD/ : {
+     *(.llvmbc)
+     *(.llvmcmd)
+  }
 
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           const std::string &dir) {
         if (tile) {
-          if (tiles.count(*tile)) {
+          // A probe has no addresses to write; --defsym stands the symbols up
+          // so the link resolves without claiming where anything lives.
+          if (tiles.count(*tile) && !probe) {
             for (auto buf : buffers[tiles[*tile]]) {
               if (!buf.getCoreData()) {
                 writeLDScriptMap(output, buf, offset);
@@ -182,15 +283,22 @@ SECTIONS
       };
 
       // Stack
-      output << ". = 0x"
-             << llvm::utohexstr(targetModel.getMemInternalBaseAddress(srcCoord))
-             << ";\n";
-      output << "_sp_start_value_DM_stack = .;\n";
-
       if (auto core = tile.getCoreOp()) {
-        output << ". += 0x" << llvm::utohexstr(core.getEffectiveStackSize())
+        MemoryRun stackRun = core.getStackRun();
+        output << ". = 0x"
+               << llvm::utohexstr(
+                      targetModel.getMemInternalBaseAddress(srcCoord) +
+                      stackRun.start)
+               << ";\n";
+        output << "_sp_start_value_DM_stack = .;\n";
+        output << ". += 0x" << llvm::utohexstr(stackRun.size)
                << "; /* stack */\n";
       } else {
+        output << ". = 0x"
+               << llvm::utohexstr(
+                      targetModel.getMemInternalBaseAddress(srcCoord))
+               << ";\n";
+        output << "_sp_start_value_DM_stack = .;\n";
         output << "/* no stack allocated */\n";
       }
 

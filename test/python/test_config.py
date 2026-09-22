@@ -70,7 +70,9 @@ def test_host_cxx_skips_peano_on_path(tmp_path, monkeypatch):
     monkeypatch.setattr(config.config, "peano_install_dir", str(peano))
     monkeypatch.delenv("CXX", raising=False)
     monkeypatch.setenv("PATH", os.pathsep.join([str(peano / "bin"), str(host)]))
-    assert config.host_cxx_path() == str(host / config._executable_name("clang++"))
+    assert os.path.samefile(
+        config.host_cxx_path(), host / config._executable_name("clang++")
+    )
 
     monkeypatch.setenv("PATH", str(peano / "bin"))
     with pytest.raises(RuntimeError, match="Could not find a host C\\+\\+ compiler"):
@@ -86,6 +88,38 @@ def test_host_cxx_honors_explicit_override(tmp_path, monkeypatch):
     monkeypatch.setenv("CXX", str(tmp_path / "missing"))
     with pytest.raises(RuntimeError, match="CXX is set"):
         config.host_cxx_path()
+
+
+@pytest.mark.parametrize(
+    "suffix,target,flag",
+    [
+        (".dll", "x86_64-pc-windows-msvc", "-Wl,/Brepro"),
+        (".dll", "x86_64-w64-windows-gnu", "-Wl,--no-insert-timestamp"),
+        (".dll", "x86_64-w64-mingw32", "-Wl,--no-insert-timestamp"),
+        (".so", None, None),
+    ],
+)
+def test_host_shared_library_link_flags(monkeypatch, tmp_path, suffix, target, flag):
+    from aie.utils.compile import utils as compile_utils
+
+    calls = []
+
+    def query_target(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=target + "\n")
+
+    monkeypatch.setattr(compile_utils, "SHARED_LIB_SUFFIX", suffix)
+    monkeypatch.setattr(config, "host_cxx_path", lambda: "host-cxx")
+    monkeypatch.setattr(compile_utils.subprocess, "run", query_target)
+    command = compile_utils.host_shared_lib_cmd(
+        tmp_path / "source.cpp", tmp_path / f"dispatch{suffix}", opt="-O2"
+    )
+    if flag:
+        assert flag in command
+        assert calls == [["host-cxx", "-dumpmachine"]]
+    else:
+        assert not any(arg.startswith("-Wl,") for arg in command)
+        assert not calls
 
 
 def _write_tool(directory, name, exit_code=0):

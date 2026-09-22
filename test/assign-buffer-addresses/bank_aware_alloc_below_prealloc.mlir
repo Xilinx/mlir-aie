@@ -13,7 +13,7 @@
 // buffer, so nothing here is alignment-driven: a buffer only rounds up to the
 // tile's load/store bus width.
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // Core tile on npu2: 64 kB of L1 as 4 banks of 16 kB. Banks 1, 2 and 3 are
 // pinned full. Bank 0 holds the 1024-byte stack, a 32-byte buffer pinned at
