@@ -57,6 +57,7 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import (
     _check_lut_banks_enabled,
     _cleanup_failed_compilation,
+    _copy_object_files,
 )
 
 from . import _manifest
@@ -573,6 +574,7 @@ class CompilableDesign:
                     # disagreeing, and aiecc_flags is already in the cache key.
                     embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
                 )
+                _copy_object_files(self.object_files, kernel_dir)
 
                 compiler_options = list(self.aiecc_flags)
                 if has_dispatch:
@@ -731,6 +733,7 @@ class CompilableDesign:
                     # disagreeing, and aiecc_flags is already in the cache key.
                     embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
                 )
+                _copy_object_files(self.object_files, kernel_dir)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
