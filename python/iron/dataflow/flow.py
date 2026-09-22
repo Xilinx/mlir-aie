@@ -48,14 +48,16 @@ _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 def _default_shim_symbol(kind: str, src, src_channel, dst, dst_channel) -> str:
     """Name the shim channel this route ends at.
 
-    A shim channel carries at most one allocation, so naming it after the
-    channel itself is unique by construction -- which is what lets ``fill`` /
-    ``drain`` work without the caller inventing a symbol and repeating it at
-    both ends.
+    Named after the channel, which is what lets ``fill`` / ``drain`` work
+    without the caller inventing a symbol and repeating it at both ends.
+
+    That names the channel, not the route: two routes sharing one shim channel
+    (a broadcast off a single MM2S, say) derive the same name and collide at
+    symbol definition. Pass an explicit ``shim_symbol`` for those.
     """
-    if src.tile_type in _SHIM_TILE_TYPES:
+    if src.effective_tile_type in _SHIM_TILE_TYPES:
         shim, direction, channel = src, "mm2s", src_channel
-    elif dst.tile_type in _SHIM_TILE_TYPES:
+    elif dst.effective_tile_type in _SHIM_TILE_TYPES:
         shim, direction, channel = dst, "s2mm", dst_channel
     else:
         raise ValueError(
@@ -71,9 +73,9 @@ def _default_shim_symbol(kind: str, src, src_channel, dst, dst_channel) -> str:
 
 
 def _emit_shim_dma_alloc(kind: str, shim_symbol, src, src_channel, dst, dst_channel):
-    if src.tile_type in _SHIM_TILE_TYPES:
+    if src.effective_tile_type in _SHIM_TILE_TYPES:
         shim_dma_allocation(shim_symbol, src.op, DMAChannelDir.MM2S, src_channel)
-    elif dst.tile_type in _SHIM_TILE_TYPES:
+    elif dst.effective_tile_type in _SHIM_TILE_TYPES:
         shim_dma_allocation(shim_symbol, dst.op, DMAChannelDir.S2MM, dst_channel)
     else:
         raise ValueError(
@@ -180,6 +182,21 @@ class Flow(Resolvable):
                     )
         return emit_shim_transfer(self._shim_symbol, rt_data, **kwargs)
 
+    def _require_registered(self) -> None:
+        """Refuse to drive a route the Program will not emit.
+
+        A Program resolves its flows before it runs the sequence body, so one
+        never registered is never emitted -- and the transfer would name a shim
+        allocation that nothing declares, which lowers to a symbol error far
+        from its cause.
+        """
+        if self._op is None:
+            raise ValueError(
+                f"{type(self).__name__} must be registered with "
+                "rt.add_flow(flow) before the runtime sequence fills or drains "
+                "it, or neither the route nor its shim allocation is emitted."
+            )
+
     def fill(self, source, **kwargs):
         """Send data from the ``source`` runtime buffer into this route.
 
@@ -188,7 +205,8 @@ class Flow(Resolvable):
         arguments; returns a [`Task`][iron.runtime.dmataskhandle.Task] handle to
         the transfer.
         """
-        if self._src.tile_type not in _SHIM_TILE_TYPES:
+        self._require_registered()
+        if self._src.effective_tile_type not in _SHIM_TILE_TYPES:
             raise ValueError(
                 f"fill() sends data into the array, so it needs a Flow whose "
                 f"src is a shim tile; this one's src is {self._src}. To read "
@@ -204,7 +222,8 @@ class Flow(Resolvable):
         keyword arguments; returns a [`Task`][iron.runtime.dmataskhandle.Task]
         handle to the transfer.
         """
-        if self._dst.tile_type not in _SHIM_TILE_TYPES:
+        self._require_registered()
+        if self._dst.effective_tile_type not in _SHIM_TILE_TYPES:
             raise ValueError(
                 f"drain() reads results back out of the array, so it needs a "
                 f"Flow whose dst is a shim tile; this one's dst is "
