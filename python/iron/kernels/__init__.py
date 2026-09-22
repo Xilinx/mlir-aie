@@ -13,7 +13,9 @@ Submodules:
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `datamovement` — axpy, convert_copy, expand, rope, transpose
 - `norm` — rms_norm, rms_norm_eps, layer_norm
-- `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel)
+- `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill
+  kernel; mm/cascade_mm expose ``.mac_dims(...)`` to read the micro-kernel geometry
+  without building one)
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 

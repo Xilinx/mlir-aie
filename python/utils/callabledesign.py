@@ -464,7 +464,7 @@ class CallableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
-    ) -> tuple[Path, Path | None]:
+    ) -> tuple[Path | None, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
         With no arguments, pre-warms the on-disk cache so subsequent calls with
@@ -492,8 +492,7 @@ class CallableDesign:
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
         Device Image to that path. Requires explicit ``xclbin_path`` (and
         ``inst_path`` for static designs). In cache mode, use ``get_pdi_path``
-        to locate the
-        ``main.pdi`` aiecc emits into the cache directory.
+        to locate the ``main.pdi`` aiecc emits.
         """
         return self.compilable.compile(
             xclbin_path=xclbin_path,

@@ -952,6 +952,7 @@ def test_to_json_contains_all_fields():
         source_files=["kernel.cc"],
         include_paths=["/opt/inc"],
         object_files=["add.o"],
+        insts_only=True,
     )
     data = json.loads(d.to_json())
     assert data["use_cache"] is False
@@ -965,6 +966,8 @@ def test_to_json_contains_all_fields():
     assert "kernel.cc" in data["source_files"][0]
     assert "opt/inc" in data["include_paths"][0].replace("\\", "/")
     assert "add.o" in data["object_files"][0]
+    assert data["full_elf"] is False
+    assert data["insts_only"] is True
     assert "generator_name" in data
     assert "cache_hash" in data
 
@@ -1002,6 +1005,15 @@ def test_from_json_restores_flags():
     d2 = CompilableDesign.from_json(d.to_json(), generator=gen)
     assert d2.aiecc_flags == ("--verbose",)
     assert d2.compile_flags == ("-O3",)
+
+
+@pytest.mark.parametrize("mode", ["full_elf", "insts_only"])
+def test_from_json_restores_compilation_mode(mode):
+    gen = _gemm_gen()
+    d2 = CompilableDesign.from_json(
+        CompilableDesign(gen, **{mode: True}).to_json(), generator=gen
+    )
+    assert getattr(d2, mode) is True
 
 
 def test_from_json_restores_source_and_include_paths():
@@ -1570,6 +1582,8 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
         else:
             Path(kwargs["xclbin_path"]).touch()
             Path(kwargs["insts_path"]).touch()
+            if kwargs["elf_path"] is not None:
+                Path(kwargs["elf_path"]).touch()
 
     monkeypatch.setattr(
         compilabledesign_module,
@@ -1596,7 +1610,9 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
         design.compile(
             xclbin_path=tmp_path / "design.xclbin",
             inst_path=tmp_path / "insts.bin",
+            elf_path=tmp_path / "design.elf",
         )
+        assert design.get_cache_entry().elf == (tmp_path / "design.elf").resolve()
 
     assert calls == [([], (include_path,))]
 
@@ -1618,6 +1634,7 @@ def test_config_param_names_matches_construction():
         "aiecc_flags",
         "object_files",
         "full_elf",
+        "insts_only",
     }
 
 
@@ -1709,6 +1726,123 @@ def test_get_pdi_paths_empty_before_compile():
 
     cd = CompilableDesign(gen)
     assert cd.get_pdi_paths() == []
+
+
+def test_insts_only_lowers_the_sequence_into_its_own_cache_entry(tmp_path, monkeypatch):
+    """An insts_only design produces an instruction stream and no image, in
+    a cache entry keyed apart from the same generator's xclbin build; the
+    second compile is a hit, and get_cache_entry names the stream."""
+    from unittest.mock import Mock
+
+    def gen():
+        pass
+
+    design = CompilableDesign(gen, insts_only=True)
+    assert design._compute_cache_hash() != CompilableDesign(gen)._compute_cache_hash()
+    monkeypatch.setattr(compilabledesign_module, "NPU_CACHE_HOME", tmp_path)
+    monkeypatch.setattr(design, "_generate_mlir", lambda *args: None)
+    lower = Mock(side_effect=lambda **kwargs: kwargs["insts_path"].touch())
+    monkeypatch.setattr(compilabledesign_module, "compile_mlir_module", lower)
+
+    image, insts = design.compile()
+    assert image is None and insts.parent.parent == tmp_path
+    assert lower.call_count == 1
+    assert "xclbin_path" not in lower.call_args.kwargs
+    entry = design.get_cache_entry()
+    assert entry.insts == insts and entry.xclbin is None and entry.elf is None
+
+    design.compile()
+    assert lower.call_count == 1, "the second compile is a cache hit"
+    with pytest.raises(ValueError, match="inst_path alone"):
+        design.compile(xclbin_path=tmp_path / "x.xclbin", inst_path=insts)
+
+
+def test_get_cache_entry_none_before_compile():
+    def gen():
+        pass
+
+    assert CompilableDesign(gen).get_cache_entry() is None
+
+
+def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
+    """The entry lists each output by path and leaves out what is absent,
+    whether the directory is a JIT-cache entry or a caller's <stem>.prj."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    cd._kernel_dir = tmp_path
+    cd._elf_path = tmp_path / "design.elf"
+    cd._xclbin_path = tmp_path / "final.xclbin"  # never written: left out
+    for name in ("design.elf", "params.txt", "input_with_addresses.mlir", "main.pdi"):
+        (tmp_path / name).write_bytes(b"x")
+    (tmp_path / "op0_kernel.o").write_bytes(b"o")
+
+    entry = cd.get_cache_entry()
+    assert entry.directory == tmp_path
+    assert entry.elf == tmp_path / "design.elf" and entry.xclbin is None
+    assert entry.insts is None and entry.dispatch_library is None
+    assert entry.pdis == (tmp_path / "main.pdi",)
+    assert entry.params == tmp_path / "params.txt"
+    assert entry.lowered_mlir == tmp_path / "input_with_addresses.mlir"
+    assert entry.objects == (tmp_path / "op0_kernel.o",)
+    assert entry.manifest is None
+
+
+def test_compile_mode_switch_replaces_artifact_state(
+    tmp_path, monkeypatch, npu2_device
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module {}")
+
+    def fake_compile_mlir_module(**kwargs):
+        for name in ("xclbin_path", "insts_path", "full_elf_path"):
+            if path := kwargs.get(name):
+                Path(path).touch()
+
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_external_kernels",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+    )
+    monkeypatch.setattr(
+        compilabledesign_module._manifest, "record", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(compilabledesign_module, "parse_dma_sizes", lambda *args: [])
+
+    design = CompilableDesign(mlir_path)
+    design.compile(
+        xclbin_path=tmp_path / "design.xclbin",
+        inst_path=tmp_path / "insts.bin",
+    )
+    assert design.get_artifacts() is not None
+
+    monkeypatch.setattr(
+        design, "_parse_full_elf_kernel_name", lambda *args: "main:sequence"
+    )
+    design.compile(full_elf_path=tmp_path / "design.elf")
+
+    entry = design.get_cache_entry()
+    assert entry is not None
+    assert entry.elf == (tmp_path / "design.elf").resolve()
+    assert entry.xclbin is None and entry.insts is None
+    assert design.get_artifacts() is None
+
+    design.compile(
+        xclbin_path=tmp_path / "design.xclbin",
+        inst_path=tmp_path / "insts.bin",
+    )
+
+    entry = design.get_cache_entry()
+    assert entry is not None
+    assert entry.xclbin == (tmp_path / "design.xclbin").resolve()
+    assert entry.insts == (tmp_path / "insts.bin").resolve()
+    assert entry.elf is None
+    assert design._full_elf_kernel_name is None
 
 
 # ---------------------------------------------------------------------------
