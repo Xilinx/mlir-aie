@@ -103,6 +103,48 @@ _ZERO_SUFFIX = {
 }
 
 
+def mm_mac_dims(
+    input_dtype,
+    output_dtype,
+    *,
+    arch: str | None = None,
+    emulate_bf16_mmul_with_bfp16: bool = False,
+) -> tuple[int, int, int]:
+    """The ``aie::mmul`` geometry ``(r, s, t)`` that :func:`mm` would compile to.
+
+    The same lookup ``mm(...).mac_dims`` performs, without building the
+    kernel. A design that needs the geometry to *choose* its tiles needs it
+    before it knows the flags it will finally bind with, and constructing an
+    ExternalFunction just to read an attribute is how a stray default-flag
+    ``mm()`` call ended up beside the real one in the whole_array port --
+    two differently-flagged kernels whose object files then collided (see
+    ``_EXTERN_CACHE``).
+
+    Args:
+        input_dtype: Element type of A and B.
+        output_dtype: Element type of C.
+        arch: ``"aie2"`` or ``"aie2p"``; the active device's when omitted.
+        emulate_bf16_mmul_with_bfp16: The AIE2P bf16 toggle, which moves the
+            micro-kernel to 8x8x8.
+
+    Returns:
+        ``(r, s, t)``.
+
+    Raises:
+        ValueError: When the dtype combination has no kernel.
+    """
+    key = (input_dtype, output_dtype)
+    if key not in _MM_COMBOS:
+        raise ValueError(
+            f"mm_mac_dims(): unsupported (input_dtype, output_dtype) = {key}. "
+            f"Supported: {list(_MM_COMBOS.keys())}"
+        )
+    arch = arch or _detect_arch()
+    if emulate_bf16_mmul_with_bfp16 and arch == "aie2p" and input_dtype is bfloat16:
+        return _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
+    return _MM_MAC_DIMS[arch][key]
+
+
 def mm(
     dim_m: int = 64,
     dim_k: int = 64,
@@ -185,10 +227,12 @@ def mm(
         compile_flags=compile_flags,
         use_chess=use_chess,
     )
-    if bf16_emulated:
-        extern.mac_dims = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
-    else:
-        extern.mac_dims = _MM_MAC_DIMS[arch][key]
+    extern.mac_dims = mm_mac_dims(
+        input_dtype,
+        output_dtype,
+        arch=arch,
+        emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
+    )
     # mm.cc emits both matmul_* and zero_* symbols; expose the zero binding
     # as another symbol bound from the same object-file handle so the design
     # does `matmul = kernels.mm(...); zero = matmul.zero` instead of a

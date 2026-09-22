@@ -13,7 +13,8 @@ Submodules:
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `datamovement` — axpy, convert_copy, expand, rope, transpose
 - `norm` — rms_norm, rms_norm_eps, layer_norm
-- `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel)
+- `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel;
+  ``mm_mac_dims`` reads the micro-kernel geometry without building a kernel)
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 
@@ -70,7 +71,7 @@ from .eltwise import (
     relu_sized,
     scale,
 )
-from .linalg import cascade_mm, mm, mv
+from .linalg import cascade_mm, mm, mm_mac_dims, mv
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .reduce import compute_max, reduce_add, reduce_max, reduce_min
 from .vision import (
@@ -136,6 +137,7 @@ __all__ = [
     "sigmoid_ref",
     "leaky_relu_ref",
     "mm",
+    "mm_mac_dims",
     "mv",
     "cascade_mm",
     "conv2dk1",

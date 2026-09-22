@@ -1021,3 +1021,48 @@ def test_arg_dtype_out_of_range_raises():
     ef = kernels.passthrough(tile_size=64, dtype=np.int32)
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_dtype(99)
+
+
+# mm_mac_dims: the geometry without the kernel
+
+
+@pytest.mark.parametrize(
+    "arch,dtypes,expected",
+    [
+        ("aie2", (bfloat16, bfloat16), (4, 8, 4)),
+        ("aie2p", (bfloat16, bfloat16), (4, 8, 8)),
+        ("aie2", (np.int8, np.int8), (4, 8, 8)),
+        ("aie2p", (np.int16, np.int16), (4, 4, 8)),
+    ],
+)
+def test_mm_mac_dims_reads_the_table(arch, dtypes, expected):
+    assert kernels.mm_mac_dims(*dtypes, arch=arch) == expected
+
+
+def test_mm_mac_dims_follows_the_bf16_emulation_toggle():
+    """The toggle moves the AIE2P micro-kernel to 8x8x8; nothing else moves."""
+    assert (
+        kernels.mm_mac_dims(
+            bfloat16, bfloat16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
+        )
+        == (8, 8, 8)
+    )
+    # Not on aie2, which has no emulation path.
+    assert (
+        kernels.mm_mac_dims(
+            bfloat16, bfloat16, arch="aie2", emulate_bf16_mmul_with_bfp16=True
+        )
+        == (4, 8, 4)
+    )
+    # Not for integer inputs.
+    assert (
+        kernels.mm_mac_dims(
+            np.int16, np.int16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
+        )
+        == (4, 4, 8)
+    )
+
+
+def test_mm_mac_dims_rejects_a_dtype_pair_with_no_kernel():
+    with pytest.raises(ValueError, match="unsupported"):
+        kernels.mm_mac_dims(np.float32, np.float32, arch="aie2")
