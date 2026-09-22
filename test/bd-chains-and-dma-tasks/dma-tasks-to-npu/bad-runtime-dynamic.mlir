@@ -46,3 +46,25 @@ module {
     }
   }
 }
+
+// -----
+
+// A constant zero stride paired with a RUNTIME size. The size being unknown is
+// exactly why this cannot be waved through: the encoder scales a stride to
+// `stride * elemWidth / granularity - 1`, so zero becomes -1 and the packer
+// masks it into an all-ones step field. On hardware that walks the BD out of
+// its buffer and hangs the channel (observed on a mem tile, NPU1), rather than
+// behaving like the "repeat the same block" the stride suggests.
+module {
+  aie.device(npu2) {
+    %tile_0_1 = aie.tile(0, 1)
+    %buf = aie.buffer(%tile_0_1) {sym_name = "b2", address = 0 : i32} : memref<4096xi32>
+    aie.runtime_sequence(%len: i32, %n: i64) {
+      %t = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
+          // expected-error@+1 {{stride 1 must be positive unless its size is statically 1}}
+          aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = %len sizes = [1, 1, %n, 512] strides = [0, 0, 0, 1]) {bd_id = 0 : i32}
+          aie.end
+      }
+    }
+  }
+}

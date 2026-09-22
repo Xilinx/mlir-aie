@@ -106,17 +106,25 @@ verifyConstBdRealizability(mlir::Operation *op,
   // by the queue push), matching verifyStridesWraps' dim-3 `< 0` rule. Lists
   // are innermost-first, so d3 is index 3 (present only for a full 4D
   // descriptor). Runtime strides are trusted (the caller controls them).
+  //
+  // A RUNTIME size does NOT excuse the stride. The encoder scales a stride as
+  // stride * elemWidth / granularity - 1, so a zero stride becomes -1 and the
+  // packer masks that into an all-ones field -- a huge bogus step, which on
+  // hardware walks the BD out of its buffer and hangs the channel. The
+  // dimension is only safe when the size is a compile-time 1, the one case
+  // where the stride is never applied.
   constexpr int kIterDim = 3;
   for (int i = 0; i < (int)sizes.size() && i < (int)strides.size(); i++) {
     auto sz = mlir::getConstantIntValue(sizes[i]);
     auto st = mlir::getConstantIntValue(strides[i]);
-    if (!sz || !st || *sz <= 1)
+    if (!st || (sz && *sz <= 1))
       continue;
     if (i == kIterDim ? *st < 0 : *st < 1)
       return op->emitOpError("stride ")
              << i
-             << (i == kIterDim ? " must be non-negative when size > 1."
-                               : " must be positive when size > 1.");
+             << (i == kIterDim
+                     ? " must be non-negative unless its size is statically 1."
+                     : " must be positive unless its size is statically 1.");
   }
   return mlir::success();
 }
