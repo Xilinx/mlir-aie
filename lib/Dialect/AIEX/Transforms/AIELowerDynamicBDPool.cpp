@@ -23,6 +23,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -43,6 +44,11 @@ namespace {
 
 struct AIELowerDynamicBDPoolPass
     : xilinx::AIEX::impl::AIELowerDynamicBDPoolBase<AIELowerDynamicBDPoolPass> {
+  using Base =
+      xilinx::AIEX::impl::AIELowerDynamicBDPoolBase<AIELowerDynamicBDPoolPass>;
+  AIELowerDynamicBDPoolPass() = default;
+  AIELowerDynamicBDPoolPass(const AIELowerDynamicBDPoolOptions &options)
+      : Base(options) {}
 
   // Maps a task value (the Index result of a configure, or any Index the carry
   // propagates it into) to the i32 pool id available at that same program
@@ -433,6 +439,46 @@ struct AIELowerDynamicBDPoolPass
     return success();
   }
 
+  // Guard pushes that can land on a full task queue.
+  //
+  // A sequence lowered here keeps its scf.for rolled, so the static allocator
+  // skips it. Guard while task metadata is available; aie-dma-to-npu later
+  // checks the combined pushes from tasks, memcpy and channel rearm operations.
+  void guardQueueDepth(AIE::RuntimeSequenceOp seq) {
+    const AIE::AIETargetModel &tm =
+        seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
+
+    auto effectOf = [&](Operation *op) -> QueueEffect {
+      DMAConfigureTaskOp cfg;
+      bool isPush = false;
+      if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
+        cfg = originConfigure.lookup(start.getTask());
+        isPush = true;
+      } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
+        cfg = originConfigure.lookup(await.getTask());
+        // Only a token-issuing await retires anything.
+        if (cfg && !cfg.getIssueToken())
+          return {};
+      } else {
+        return {};
+      }
+      if (!cfg)
+        return {};
+      AIE::TileOp tile = cfg.tryGetTileOp();
+      if (!tile)
+        return {};
+      DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
+                                    static_cast<int>(cfg.getDirection()),
+                                    static_cast<int>(cfg.getChannel())};
+      return isPush ? QueueEffect::push(key, cfg.getIssueToken())
+                    : QueueEffect::await(key);
+    };
+
+    DmaQueueModel queue;
+    guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
+                            effectOf);
+  }
+
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
@@ -540,6 +586,9 @@ struct AIELowerDynamicBDPoolPass
         return WalkResult::interrupt();
       for (Operation *op : toErase)
         op->erase();
+      // Only once this sequence has lowered cleanly: guarding or reporting a
+      // queue on a design that is already being rejected just buries the error.
+      guardQueueDepth(seq);
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())
@@ -552,4 +601,10 @@ struct AIELowerDynamicBDPoolPass
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 AIEX::createAIELowerDynamicBDPoolPass() {
   return std::make_unique<AIELowerDynamicBDPoolPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIELowerDynamicBDPoolPass(
+    const AIELowerDynamicBDPoolOptions &options) {
+  return std::make_unique<AIELowerDynamicBDPoolPass>(options);
 }
