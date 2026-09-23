@@ -24,7 +24,12 @@ from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
 from aie.iron import CompileTime, In, Out
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
-from aie.utils.compile.utils import compile_external_kernel, _symbol_prefix_stamp_path
+from aie.utils.compile.utils import (
+    compile_external_kernel,
+    compile_external_kernels,
+    _kernel_compile_groups,
+    _symbol_prefix_stamp_path,
+)
 from aie.utils.compile.cache.utils import _create_function_cache_key
 
 # ---------------------------------------------------------------------------
@@ -327,6 +332,63 @@ def _defined_extern_symbols(object_path):
         check=True,
     )
     return {line.split()[-1] for line in result.stdout.decode().splitlines() if line}
+
+
+def test_kernel_compile_groups_join_shared_objects_and_shared_names():
+    """Entry points of one object compile one after the other, as do kernels
+    writing one ``<_original_name>.cc``; the relation is transitive and the
+    input order is kept."""
+    from types import SimpleNamespace
+
+    def k(name, original, obj):
+        return SimpleNamespace(
+            _name=name, _original_name=original, object_file_name=obj
+        )
+
+    funcs = [
+        k("op1_matmul", "matmul", "op1_mm.o"),
+        k("rope", "rope", "rope.o"),
+        k("op1_zero", "zero", "op1_mm.o"),
+        k("rope2", "rope", "rope_1a2b3c4d.o"),
+        k("silu", "silu", "silu.o"),
+        k("op2_zero", "zero", "op2_mm.o"),
+    ]
+    groups = [[f._name for f in g] for g in _kernel_compile_groups(funcs)]
+    assert groups == [
+        ["op1_matmul", "op1_zero", "op2_zero"],
+        ["rope", "rope2"],
+        ["silu"],
+    ]
+
+
+def test_compile_external_kernels_prefixed_entry_points_sharing_an_object(
+    npu_target_arch,
+):
+    """Two prefixed entry points of one source share an object file. Compiled
+    concurrently, one visit's compile could overwrite the other's renamed
+    object and leave unprefixed symbols under a valid stamp; grouped, the
+    object comes out prefixed."""
+    with (
+        tempfile.TemporaryDirectory() as src_dir,
+        tempfile.TemporaryDirectory() as kernel_dir,
+    ):
+        src = os.path.join(src_dir, "mm.cc")
+        with open(src, "w") as f:
+            f.write("""extern "C" {
+                void zero_kernel(int* a) {}
+                void matmul_kernel(int* a) {}
+            }""")
+        funcs = [
+            ExternalFunction(
+                name, source_file=src, object_file_name="op3_mm.o", symbol_prefix="op3"
+            )
+            for name in ("matmul_kernel", "zero_kernel")
+        ]
+        compile_external_kernels(funcs, kernel_dir, npu_target_arch)
+        symbols = _defined_extern_symbols(os.path.join(kernel_dir, "op3_mm.o"))
+        assert "op3_matmul_kernel" in symbols and "op3_zero_kernel" in symbols
+        assert "matmul_kernel" not in symbols and "zero_kernel" not in symbols
+        assert all(f._compiled for f in funcs)
 
 
 def test_compile_external_kernel_symbol_prefix_renames_every_defined_symbol(

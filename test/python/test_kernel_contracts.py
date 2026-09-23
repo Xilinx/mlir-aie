@@ -125,6 +125,7 @@ def test_factories_lists_every_exported_builder():
     not_builders = {n for n in exported if n.endswith("_ref")}
     not_builders |= {"mm_stream_dims", "mm_acc_dtype"}
     assert set(kernels.factories()) == exported - not_builders
+    assert {"mm", "mv", "cascade_mm", "cascade_mm_put"} <= set(kernels.factories())
     assert kernels.factories() == [
         n for n in kernels.__all__ if n in exported - not_builders
     ]

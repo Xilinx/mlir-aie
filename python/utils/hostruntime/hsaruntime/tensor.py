@@ -48,16 +48,16 @@ class _VmemMapping:
 class HSATensor(Tensor):
     """Tensor backed by an HSA vmem allocation (CPU+AIE coherent)."""
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device="npu", **kwargs):
+    def __init__(self, shape_or_data, dtype=None, device="npu", **kwargs):
         """Allocate a coherent vmem buffer and wrap it as a tensor.
 
         Args:
             shape_or_data: Either a shape ``tuple`` to allocate a zero-filled
                 buffer, or an array-like (anything with a ``shape``, or something
                 ``numpy.asarray`` accepts) whose contents are copied in.
-            dtype (numpy.dtype, optional): Element type used when
-                ``shape_or_data`` is a shape or a plain sequence. Defaults to
-                ``numpy.uint32``.
+            dtype (numpy.dtype, optional): Element type. Taken from the data
+                when that is a typed array and this is omitted; ``numpy.uint32``
+                when the tensor is built from a shape.
             device (str, optional): Initial residency. Defaults to ``"npu"``.
             **kwargs: Accepted and ignored, for API compatibility with the other
                 tensor backends -- the tensor factories forward backend-specific
@@ -75,14 +75,14 @@ class HSATensor(Tensor):
             # unresolvable backend imports leave pyright with Unknown types.
             np_type = np.ndarray[
                 shape_or_data,
-                np.dtype[dtype],  # pyright: ignore[reportInvalidTypeArguments]
+                np.dtype[self.dtype],  # pyright: ignore[reportInvalidTypeArguments]
             ]
             self._shape = np_ndarray_type_get_shape(np_type)
         elif hasattr(shape_or_data, "shape"):
             self._shape = shape_or_data.shape
             np_data = shape_or_data
         else:
-            np_data = np.asarray(shape_or_data, dtype=dtype)
+            np_data = np.asarray(shape_or_data, dtype=self.dtype)
             self._shape = np_data.shape
 
         # vmem rejects zero-size; keep a 1-byte floor (designs never use 0-size IO).

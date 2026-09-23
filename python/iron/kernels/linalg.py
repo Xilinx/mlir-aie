@@ -13,6 +13,7 @@ from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.dataflow import StreamDims
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
+from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
@@ -320,7 +321,17 @@ class StreamDimsABC(NamedTuple):
     C: StreamDims | None
 
 
-class MatrixKernel(ExternalFunction):
+class _ZeroInitializedKernel(ExternalFunction):
+    @property
+    def zero(self) -> ExternalFunction:
+        """Build the contract's independent initializer only when requested."""
+        initializers = self.contract.initializers
+        if len(initializers) != 1:
+            raise AttributeError("This kernel does not have a single zero initializer")
+        return initializers[0][1](self)
+
+
+class MatrixKernel(_ZeroInitializedKernel):
     """A kernel whose first three operands are the A, B and C of a product.
 
     The blocking and the DMA transforms are declared once, on the contract's
@@ -392,6 +403,57 @@ def mm_stream_dims(
     return StreamDimsABC(A=a, B=b, C=c)
 
 
+class _MatMulFactory:
+    @classmethod
+    def mac_dims(
+        cls,
+        input_dtype,
+        output_dtype,
+        *,
+        device=None,
+        arch: str | None = None,
+        emulate_bf16_mmul_with_bfp16: bool = False,
+        vectorized: bool = True,
+    ) -> tuple[int, int, int]:
+        """Query geometry without constructing a kernel; ``arch`` overrides ``device``."""
+        key = (input_dtype, output_dtype)
+        arch = arch or (
+            resolve_target_arch(device) if device is not None else _detect_arch()
+        )
+        if arch not in _MM_MAC_DIMS or key not in _MM_MAC_DIMS[arch]:
+            raise ValueError(
+                f"mm.mac_dims(): unsupported (arch, dtypes) = ({arch}, {key})."
+            )
+        if not vectorized:
+            return (1, 1, 1)
+        if emulate_bf16_mmul_with_bfp16 and arch == "aie2p" and input_dtype is bfloat16:
+            return _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
+        return _MM_MAC_DIMS[arch][key]
+
+
+class _CascadeMatMulFactory:
+    @classmethod
+    def mac_dims(
+        cls,
+        input_dtype,
+        output_dtype,
+        *,
+        device=None,
+        arch: str | None = None,
+    ) -> tuple[int, int, int]:
+        """Query scalar geometry without constructing a kernel; ``arch`` overrides ``device``."""
+        key = (input_dtype, output_dtype)
+        arch = arch or (
+            resolve_target_arch(device) if device is not None else _detect_arch()
+        )
+        if arch not in _CASCADE_MM_MAC_DIMS or key not in _CASCADE_MM_MAC_DIMS[arch]:
+            raise ValueError(
+                f"cascade_mm.mac_dims(): unsupported (arch, dtypes) = "
+                f"({arch}, {key}). Supported: {sorted(_CASCADE_MM_MAC_DIMS)}"
+            )
+        return _CASCADE_MM_MAC_DIMS[arch][key]
+
+
 @dtypes(
     tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
 )
@@ -409,8 +471,9 @@ def mm(
 ) -> MatrixKernel:
     """Matrix-multiply kernel: C += A * B.
 
-    Initialize the accumulator with ``kernels.zero(dim_m * dim_n, output_dtype)``.
-    The contract declares this independent initializer for the generic harness.
+    ``.zero`` initializes the accumulator using the independent, reusable
+    ``kernels.zero(dim_m * dim_n, output_dtype)`` kernel. The contract declares
+    the same initializer for the generic harness.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -470,12 +533,13 @@ def mm(
         compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
     # The scalar kernel walks its operands element by element in row-major
     # order: its micro-tile is 1x1x1 and nothing is streamed transformed.
-    if not vectorized:
-        r, s, t = 1, 1, 1
-    elif bf16_emulated:
-        r, s, t = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
-    else:
-        r, s, t = _MM_MAC_DIMS[arch][key]
+    r, s, t = _MatMulFactory.mac_dims(
+        input_dtype,
+        output_dtype,
+        arch=arch,
+        emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
+        vectorized=vectorized,
+    )
     streams = mm_stream_dims(
         dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj, c_col_maj=c_col_maj
     )
@@ -523,6 +587,9 @@ def mm(
     )
 
 
+mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
+
+
 @dtypes(
     (
         {"input_dtype": np.int16, "output_dtype": np.int32},
@@ -544,8 +611,9 @@ def mv(
 
     ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``; its
     vectorized path reads A word-transposed, which A's layout carries
-    (``contract.layouts[0].stream``). Initialize C with
-    ``kernels.zero(dim_m, output_dtype)``. ``(bfloat16, bfloat16)`` builds
+    (``contract.layouts[0].stream``). Its ``.zero`` companion initializes C
+    with the independent ``kernels.zero(dim_m, output_dtype)``.
+    ``(bfloat16, bfloat16)`` builds
     ``aie_kernels/generic/mv.cc``, IRON's ``GEMV`` kernel, whose signature
     is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
     ``c`` so one core can fill several output blocks; A is row-major.
@@ -594,6 +662,7 @@ def mv(
         [a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
         use_chess=use_chess,
+        cls=_ZeroInitializedKernel,
         contract=KernelContract(
             roles=(In, In, InOut),
             layouts=(
@@ -917,11 +986,13 @@ def cascade_mm(
     r"""Build the GET half of a cascade matrix multiply: ``C += A * B + cascade``.
 
     cascade_mm.cc emits all three cascade variants (``get_only``,
-    ``put_only``, ``put_get``) in one object. This binds ``get_only``;
+    ``put_only``, ``put_get``) in one object. This binds ``get_only`` (also
+    available as ``.get_only``), with ``.put_only`` and ``.put_get`` siblings;
     [`cascade_mm_put`][iron.kernels.linalg.cascade_mm_put] is the PUT half
     that feeds it, and ``put_get`` serves longer chains:
     ``fn.object_file.bind("matmul_scalar_cascade_put_get_<dtype>", fn.arg_types())``.
-    Initialize accumulators with ``kernels.zero``. The pair is a two-tile
+    ``.zero`` initializes accumulators using independent ``kernels.zero``.
+    The pair is a two-tile
     design, which the generic builder does not run; the device test builds
     and judges it (``test/python/npu/test_kernels_e2e.py``). The partial sum
     crosses the cascade as a 32-bit integer lane: with a floating-point
@@ -949,13 +1020,8 @@ def cascade_mm(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-    arch = _detect_arch()
-    if arch not in _CASCADE_MM_MAC_DIMS:
-        raise ValueError(
-            f"cascade_mm(): unsupported arch {arch!r}; cascade_mm.cc only ships for {sorted(_CASCADE_MM_MAC_DIMS)}."
-        )
-    r, s, t = _CASCADE_MM_MAC_DIMS[arch][key]
-    return _make_extern(
+    r, s, t = _CascadeMatMulFactory.mac_dims(input_dtype, output_dtype)
+    extern = _make_extern(
         f"matmul_scalar_cascade_get_only_{suffix}",
         _default_source_path("cascade_mm.cc"),
         [a_ty, b_ty, c_ty],
@@ -987,6 +1053,19 @@ def cascade_mm(
             ops_per_call=2 * dim_m * (2 * dim_k) * dim_n,
         ),
     )
+    extern.get_only = extern
+    extern.put_only = extern.object_file.bind(
+        f"matmul_scalar_cascade_put_only_{suffix}", [a_ty, b_ty, c_ty]
+    )
+    extern.put_get = extern.object_file.bind(
+        f"matmul_scalar_cascade_put_get_{suffix}", [a_ty, b_ty, c_ty]
+    )
+    return extern
+
+
+cascade_mm.mac_dims = (  # pyright: ignore[reportFunctionMemberAccess]
+    _CascadeMatMulFactory.mac_dims
+)
 
 
 def cascade_mm_put(
@@ -1013,7 +1092,7 @@ def cascade_mm_put(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-    r, s, t = _CASCADE_MM_MAC_DIMS[_detect_arch()][key]
+    r, s, t = _CascadeMatMulFactory.mac_dims(input_dtype, output_dtype)
     return _make_extern(
         f"matmul_scalar_cascade_put_only_{suffix}",
         _default_source_path("cascade_mm.cc"),

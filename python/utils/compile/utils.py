@@ -1104,7 +1104,7 @@ def compile_external_kernels(
 ):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
-    Symbols sharing an object are grouped together. Compilation also locks
+    Symbols sharing an entry name or object are grouped together. Compilation also locks
     actual output and staged-source paths, including across concurrent batches
     and direct calls, so unrelated symbol names cannot race on either file.
 
@@ -1122,13 +1122,13 @@ def compile_external_kernels(
     if not pending:
         return
 
-    groups: dict[str, list] = {}
+    outputs: dict[str, list] = {}
     for f in pending:
         output = os.path.normcase(
             os.path.realpath(os.path.join(kernel_dir, f.object_file_name))
         )
-        groups.setdefault(output, []).append(f)
-    for output, group in groups.items():
+        outputs.setdefault(output, []).append(f)
+    for output, group in outputs.items():
         recipes = {
             f.object_file._source for f in group if getattr(f, "object_file", None)
         }
@@ -1144,6 +1144,8 @@ def compile_external_kernels(
             )
         return
 
+    groups = _kernel_compile_groups(pending)
+
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
     except ValueError:
@@ -1153,7 +1155,7 @@ def compile_external_kernels(
     jobs = min(jobs, len(groups))
 
     if jobs == 1:
-        for group in groups.values():
+        for group in groups:
             for f in group:
                 compile_external_kernel(
                     f, kernel_dir, target_arch, include_dirs, embed_bitcode
@@ -1169,7 +1171,37 @@ def compile_external_kernels(
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         # list() re-raises the first failure, after the others have finished --
         # a compile error must not be swallowed by a sibling that succeeded.
-        list(pool.map(_run, groups.values()))
+        list(pool.map(_run, groups))
+
+
+def _kernel_compile_groups(funcs):
+    """Partition ``funcs`` into lists that must compile one after the other.
+
+    Kernels sharing an ``_original_name`` or ``object_file_name`` are grouped
+    transitively, preserving input order within each group.
+    """
+    parent = list(range(len(funcs)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    seen: dict[tuple, int] = {}
+    for i, f in enumerate(funcs):
+        for key in (
+            ("name", getattr(f, "_original_name", f._name)),
+            ("object", f.object_file_name),
+        ):
+            if key in seen:
+                parent[find(i)] = find(seen[key])
+            else:
+                seen[key] = i
+    groups: dict[int, list] = {}
+    for i, f in enumerate(funcs):
+        groups.setdefault(find(i), []).append(f)
+    return list(groups.values())
 
 
 _compile_locks = weakref.WeakValueDictionary()

@@ -336,7 +336,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="tanh_bf16",
         lut_source="tanh.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        invalid_kwargs=[
+            (dict(tile_size=512), "multiple of 32 and at least 1024"),
+            (dict(tile_size=1000), "multiple of 32 and at least 1024"),
+        ],
+        tile_size_checks=[(dict(tile_size=2048), 2048)],
     ),
     KernelSpec(
         name="sigmoid",
@@ -345,7 +349,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="sigmoid_bf16",
         lut_source="sigmoid.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        invalid_kwargs=[
+            (dict(tile_size=512), "multiple of 32 and at least 1024"),
+            (dict(tile_size=1000), "multiple of 32 and at least 1024"),
+        ],
+        tile_size_checks=[(dict(tile_size=2048), 2048)],
     ),
     KernelSpec(
         name="leaky_relu",
@@ -354,7 +362,16 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=4,  # in, out, size (int32), alpha (bfloat16)
         expected_name="leaky_relu_bf16",
         lut_source="leaky_relu.cc",
-        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+        invalid_kwargs=[
+            (dict(tile_size=size), "multiple of 32 and at least 64")
+            for size in (-32, 0, 32, 33, 63, 65, 1000)
+        ],
+        tile_size_checks=[
+            (dict(tile_size=64), 64),
+            (dict(tile_size=96), 96),
+            (dict(tile_size=512), 512),
+            (dict(tile_size=2048), 2048),
+        ],
     ),
     KernelSpec(
         name="exp2f_vec",
@@ -1195,3 +1212,223 @@ def test_relu_sized_requires_whole_vectors(kernel_arch):
 def test_fixed_activations_compile_their_count(name, kernel_arch):
     fn = getattr(kernels, name)()
     assert f"-D{name.upper()}_ELEMS=1024" in fn.compile_flags
+
+
+@pytest.mark.parametrize(
+    "name,tile_size",
+    [
+        ("tanh", 1056),
+        ("tanh", 2048),
+        ("sigmoid", 1056),
+        ("sigmoid", 2048),
+        ("leaky_relu", 64),
+        ("leaky_relu", 96),
+        ("leaky_relu", 2048),
+    ],
+)
+def test_runtime_activation_sizes_preserve_contract(name, tile_size, kernel_arch):
+    from aie.iron.kernels import Param
+
+    fn = getattr(kernels, name)(tile_size=tile_size)
+    assert fn.arg_shape(0) == fn.arg_shape(1) == (tile_size,)
+    assert fn.contract.roles[2] is Param
+    assert fn.contract.parameter_bindings == ((2, tile_size),)
+    assert f"-D{name.upper()}_ELEMS={tile_size}" in fn.compile_flags
+    if name == "leaky_relu":
+        assert fn.contract.roles[3] is Param
+        values = np.array([-2, 0, 2], dtype=bfloat16)
+        np.testing.assert_array_equal(
+            fn.contract.reference(values, 0.5), kernels.leaky_relu_ref(values, 0.5)
+        )
+
+
+@pytest.mark.parametrize(
+    "arch,dtypes,expected",
+    [
+        ("aie2", (bfloat16, bfloat16), (4, 8, 4)),
+        ("aie2p", (bfloat16, bfloat16), (4, 8, 8)),
+        ("aie2", (np.int8, np.int8), (4, 8, 8)),
+        ("aie2p", (np.int16, np.int16), (4, 4, 8)),
+    ],
+)
+def test_mm_mac_dims_reads_the_table(arch, dtypes, expected):
+    assert kernels.mm.mac_dims(*dtypes, arch=arch) == expected
+
+
+def test_mm_mac_dims_follows_the_bf16_emulation_toggle():
+    """The toggle moves the AIE2P micro-kernel to 8x8x8; nothing else moves."""
+    assert kernels.mm.mac_dims(
+        bfloat16, bfloat16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
+    ) == (8, 8, 8)
+    # Not on aie2, which has no emulation path.
+    assert kernels.mm.mac_dims(
+        bfloat16, bfloat16, arch="aie2", emulate_bf16_mmul_with_bfp16=True
+    ) == (4, 8, 4)
+    # Not for integer inputs.
+    assert kernels.mm.mac_dims(
+        np.int16, np.int16, arch="aie2p", emulate_bf16_mmul_with_bfp16=True
+    ) == (4, 4, 8)
+
+
+def test_mm_mac_dims_rejects_a_dtype_pair_with_no_kernel():
+    with pytest.raises(ValueError, match="unsupported"):
+        kernels.mm.mac_dims(np.float32, np.float32, arch="aie2")
+
+
+@pytest.mark.parametrize(
+    "factory,expected",
+    [
+        (kernels.mm, ((4, 8, 4), (4, 8, 8))),
+        (kernels.cascade_mm, ((1, 1, 1), (1, 1, 1))),
+    ],
+)
+def test_mac_dims_resolves_an_arch_from_a_device(factory, expected):
+    from aie.iron.device import NPU1, NPU2
+
+    assert factory.mac_dims(bfloat16, bfloat16, device=NPU1()) == expected[0]
+    assert factory.mac_dims(bfloat16, bfloat16, device=NPU2()) == expected[1]
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
+def test_the_factory_and_the_instance_agree(factory):
+    built = factory(64, 64, 64, bfloat16, bfloat16)
+    assert isinstance(built, ExternalFunction)
+    assert built.mac_dims == factory.mac_dims(bfloat16, bfloat16)
+
+
+def test_cascade_mm_carries_the_same_accessor():
+    assert kernels.cascade_mm.mac_dims(bfloat16, bfloat16, arch="aie2") == (1, 1, 1)
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+def test_mac_dims_does_not_construct_or_register_a_kernel(factory, arch, monkeypatch):
+    from aie.iron.kernels import _common, linalg
+
+    def unexpected_construction(*args, **kwargs):
+        pytest.fail("Geometry queries must not construct kernels")
+
+    monkeypatch.setattr(linalg, "_make_extern", unexpected_construction)
+    instances = list(ExternalFunction._instances)
+    cache = dict(_common._EXTERN_CACHE)
+    assert callable(factory.mac_dims)
+    assert len(factory.mac_dims(bfloat16, bfloat16, arch=arch)) == 3
+    assert list(ExternalFunction._instances) == instances
+    assert _common._EXTERN_CACHE == cache
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
+def test_mac_dims_rejects_an_unsupported_arch(factory):
+    with pytest.raises(ValueError, match="unsupported"):
+        factory.mac_dims(bfloat16, bfloat16, arch="unsupported")
+
+
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+def test_cascade_mac_dims_rejects_an_unsupported_dtype_pair(arch):
+    with pytest.raises(ValueError, match="unsupported"):
+        kernels.cascade_mm.mac_dims(np.int8, np.int8, arch=arch)
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
+def test_matrix_factory_preserves_discovery_metadata(factory):
+    import inspect
+
+    from aie.iron.kernels.linalg import MatrixKernel
+
+    assert inspect.isfunction(factory)
+    assert factory.__name__ in kernels.factories()
+    assert inspect.signature(factory).return_annotation is MatrixKernel
+    assert inspect.signature(factory).parameters["dim_m"].default == 64
+    if factory is kernels.mm:
+        assert len(factory.dtypes) == 7
+        assert {"input_dtype": np.int16, "output_dtype": np.int16} in factory.dtypes
+
+
+@pytest.mark.parametrize("kwargs", kernels.mm.dtypes)
+@pytest.mark.parametrize("vectorized", [False, True])
+@pytest.mark.parametrize("emulate", [False, True])
+def test_mm_geometry_matches_contract_for_every_variant(
+    kwargs, vectorized, emulate, kernel_arch
+):
+    from aie.iron.kernels.linalg import MatrixKernel
+
+    options = dict(
+        **kwargs,
+        vectorized=vectorized,
+        emulate_bf16_mmul_with_bfp16=emulate,
+    )
+    fn = kernels.mm(16, 16, 16, **options)
+    assert isinstance(fn, MatrixKernel)
+    assert fn.mac_dims == kernels.mm.mac_dims(**options, arch=kernel_arch)
+    a, b, c = fn.contract.layouts
+    r, s, t = fn.mac_dims
+    assert (a.block, b.block, c.block) == ((r, s), (s, t), (r, t))
+    if not vectorized:
+        assert fn.mac_dims == (1, 1, 1)
+        assert fn.stream_dims == (None, None, None)
+    else:
+        assert all(dims is not None for dims in fn.stream_dims)
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
+def test_matrix_geometry_explicit_arch_overrides_device(factory):
+    # An invalid device must never be consulted when arch is explicit.
+    assert factory.mac_dims(bfloat16, bfloat16, arch="aie2", device=object()) == (
+        factory.mac_dims(bfloat16, bfloat16, arch="aie2")
+    )
+
+
+@pytest.mark.parametrize(
+    "factory", [kernels.mm, kernels.cascade_mm, kernels.cascade_mm_put]
+)
+def test_matrix_construction_rejects_unsupported_arch(factory, monkeypatch):
+    from aie.iron.kernels import linalg
+
+    monkeypatch.setattr(linalg, "_detect_arch", lambda: "unsupported")
+    with pytest.raises(ValueError, match="unsupported"):
+        factory()
+
+
+@pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.cascade_mm])
+@pytest.mark.parametrize("use_chess", [False, True])
+def test_matrix_zero_companion_uses_contract_initializer(
+    factory, use_chess, kernel_arch
+):
+    fn = factory(use_chess=use_chess)
+    # Constructing a product must not register an unused independent initializer.
+    instances = list(ExternalFunction._instances)
+    assert instances == [fn]
+    initializer = fn.zero
+    assert initializer is fn.contract.initializers[0][1](fn)
+    assert initializer is fn.zero
+    assert initializer.object_file is not fn.object_file
+    assert initializer.use_chess == use_chess
+    assert initializer.arg_types() == [fn.arg_types()[2]]
+    assert Path(initializer.source_file).parts[-2:] == ("generic", "zero.cc")
+
+
+def test_cascade_siblings_share_artifact_and_preserve_contract(kernel_arch):
+    from aie.iron.kernels.linalg import MatrixKernel
+
+    fn = kernels.cascade_mm()
+    assert isinstance(fn, MatrixKernel)
+    assert fn.get_only is fn
+    assert fn.contract.unsupported
+    assert fn.mac_dims == (1, 1, 1)
+    assert fn.stream_dims == (None, None, None)
+    for mode in ("put_only", "put_get"):
+        sibling = getattr(fn, mode)
+        assert sibling.object_file is fn.object_file
+        assert sibling.arg_types() == fn.arg_types()
+        assert sibling._name == fn.object_file.resolve_symbol(
+            f"matmul_scalar_cascade_{mode}_i16_i16"
+        )
+
+
+def test_bf16_mv_retains_output_contract_without_accumulator(kernel_arch):
+    from aie.utils.compile.jit.markers import Out
+
+    fn = kernels.mv(input_dtype=bfloat16, output_dtype=bfloat16, dim_k=256)
+    assert fn.contract.roles[-1] is Out
+    assert fn.contract.initializers == ()
+    assert not hasattr(fn, "zero")
