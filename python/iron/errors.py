@@ -26,6 +26,7 @@ away for anyone debugging IRON itself.
 """
 
 import functools
+import linecache
 import os
 import re
 import types
@@ -65,7 +66,15 @@ def _synthesize_frame(filename: str, lineno: int, name: str):
     what puts the offending code in the message rather than just its address.
     """
     try:
-        source = "\n" * (lineno - 1) + "raise __hop__"
+        # Python draws carets from the *synthesized* statement's columns, which
+        # would underline an arbitrary 13-character prefix of the real line. It
+        # omits them entirely when the statement spans the whole line, so pad
+        # the raise out to that width -- MLIR gives a start column but no end,
+        # so there is no honest sub-range to point at anyway.
+        real = linecache.getline(filename, lineno).rstrip("\n").strip()
+        pad = max(0, (len(real) - len("raise __hop__")) // 2)
+        statement = "raise " + "(" * pad + "__hop__" + ")" * pad
+        source = "\n" * (lineno - 1) + statement
         code = compile(source, filename, "exec").replace(co_name=name)
     except (SyntaxError, ValueError):  # pragma: no cover - defensive
         return None
