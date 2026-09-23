@@ -68,8 +68,8 @@ EXPECTED = [
     ("func.func", None, "passthrough = kernels.passthrough("),
     ("aie.core", None, "worker = Worker(core_fn"),
     ("func.call", None, "kernel(elem_in, elem_out, LINE_SIZE)"),
-    ("aie.objectfifo.acquire", None, "def core_fn("),
-    ("aie.objectfifo.release", None, "def core_fn("),
+    ("aie.objectfifo.acquire", None, "acquire(1)"),
+    ("aie.objectfifo.release", None, "release(1)"),
     ("aie.runtime_sequence", None, "rt = Runtime(sequence"),
     ("aiex.dma_start_task", None, "in_handle.fill(a_in)"),
     ("aiex.dma_await_task", None, "out_handle.drain(b_out, wait=True)"),
@@ -138,6 +138,22 @@ def main():
         if op.name == "aie.objectfifo"
     }
     assert len(fifo_lines) == 2, f"ObjectFifos collapsed onto lines {fifo_lines}"
+
+    # 5. Statements inside a traced body get their own location, not the
+    #    enclosing `def`. Two acquires on consecutive lines is the case that
+    #    distinguishes statement precision from function-level attribution.
+    acquire_lines = {
+        int(FILE_LOC.search(str(op.location)).group(2))
+        for op in ops
+        if op.name == "aie.objectfifo.acquire"
+    }
+    assert (
+        len(acquire_lines) == 2
+    ), f"acquires collapsed onto {acquire_lines}; expected one line each"
+    for line_no in acquire_lines:
+        assert (
+            "acquire(1)" in SOURCE[line_no - 1]
+        ), f"acquire attributed to {line_no}: {SOURCE[line_no - 1].strip()}"
 
     print(f"PASS: {len(ops)} ops attributed, {len(EXPECTED)} constructs verified")
 

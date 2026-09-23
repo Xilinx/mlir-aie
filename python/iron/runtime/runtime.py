@@ -45,7 +45,8 @@ from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow import ObjectFifoHandle
 from ..resolvable import Resolvable
-from ...helpers.sourceloc import site_location, site_of_function
+from ...helpers.astloc import with_statement_locations
+from ...helpers.sourceloc import site_location, site_of_function, traced_body
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence, active_sequence_scope
 from .data import RuntimeData
@@ -425,6 +426,7 @@ class Runtime(Resolvable):
         # run, so point the ambient location at seq_fn rather than letting
         # its ops default to unknown.
         body_loc = site_location(site_of_function(self._seq_fn), "sequence") or loc
+        traced_seq_fn = with_statement_locations(self._seq_fn)
         seq_op = RuntimeSequenceOp(sym_name="sequence", loc=loc)
         # Block arguments carry their own locations; without arg_locs they
         # print as loc(unknown) even though every op in the body is attributed.
@@ -500,8 +502,8 @@ class Runtime(Resolvable):
 
             with active_sequence_scope(active), (
                 body_loc if body_loc is not None else contextlib.nullcontext()
-            ):
-                self._seq_fn(*body_args)
+            ), traced_body(self._seq_fn.__name__, self._source_site):
+                traced_seq_fn(*body_args)
                 active.finalize()
 
         self._dedup_runtime_consumers()

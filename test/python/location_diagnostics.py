@@ -74,20 +74,22 @@ def main():
     # It must name this file...
     assert THIS_FILE in message, f"diagnostic does not name {THIS_FILE}:\n{message}"
 
-    # ...and point inside the core body that contains the mistake. The op is
-    # built by running core_fn, so it is attributed to that function rather
-    # than to the individual statement; assert the cited line is the enclosing
-    # `def`, which is what the current mechanism can promise.
-    def_line = next(
-        i + 1 for i, text in enumerate(SOURCE) if text.strip().startswith("def core_fn")
+    # ...and point at the offending statement itself, not merely the enclosing
+    # function. The core body's statements each scope their own location (see
+    # helpers/astloc.py), so anything coarser is a regression.
+    mistake_line = next(
+        i + 1 for i, text in enumerate(SOURCE) if text.strip().startswith(MISTAKE)
     )
-    expected = f'"{THIS_FILE}":{def_line}'
-    assert expected in message, (
-        f"diagnostic should cite {expected} (the body holding "
-        f"{MISTAKE!r}), got:\n{message}"
-    )
+    expected = f'"{THIS_FILE}":{mistake_line}'
+    assert (
+        expected in message
+    ), f"diagnostic should cite {expected} ({MISTAKE!r}), got:\n{message}"
 
-    print(f"PASS: diagnostic cites {THIS_FILE}:{def_line}")
+    # The Python function it came from is named too, which is what connects the
+    # op back to the user's code rather than to a bare file offset.
+    assert '"core_fn"' in message, f"diagnostic does not name core_fn:\n{message}"
+
+    print(f"PASS: diagnostic cites {THIS_FILE}:{mistake_line} in core_fn")
 
 
 main()

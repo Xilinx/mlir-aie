@@ -20,8 +20,10 @@ then turns those coordinates into an `ir.Location` at resolve time, when a
 Context does exist.
 """
 
+import contextlib
 import inspect
 import sys
+import threading
 from pathlib import Path
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
@@ -103,3 +105,50 @@ def site_of_function(fn) -> SourceSite | None:
 def site_location(site: SourceSite | None, name: str | None = None):
     """Materialize `site`, or return None so the caller keeps MLIR's default."""
     return site.to_location(name) if site is not None else None
+
+
+# ---------------------------------------------------------------------------
+# Traced bodies
+#
+# A Worker's core_fn and a Runtime's sequence body become MLIR by being *run*.
+# While they run, the user's own frame is live and carries the line currently
+# executing, so ops built in that window can be attributed statement by
+# statement rather than to the enclosing `def`.
+#
+# Everywhere else -- resolving a Buffer declared long ago -- the nearest user
+# frame is whoever called `resolve_program`, which is the wrong answer. A
+# marker around the body is what tells the two apart.
+# ---------------------------------------------------------------------------
+
+_state = threading.local()
+
+
+def _body_stack() -> list:
+    stack = getattr(_state, "bodies", None)
+    if stack is None:
+        stack = _state.bodies = []
+    return stack
+
+
+@contextlib.contextmanager
+def traced_body(name: str | None = None, declared_at: "SourceSite | None" = None):
+    """Mark the dynamic extent in which a user-supplied body is executing.
+
+    Args:
+        name (str | None, optional): The body's function name.
+        declared_at (SourceSite | None, optional): Where the object owning this
+            body -- the Worker, the Runtime -- was declared. Carried into the
+            op's location as a caller frame so an error inside a core body can
+            be reported with the declaration that put it there.
+    """
+    _body_stack().append((name, declared_at))
+    try:
+        yield
+    finally:
+        _body_stack().pop()
+
+
+def current_body() -> tuple:
+    """(name, declaration site) of the body being traced, or (None, None)."""
+    stack = _body_stack()
+    return stack[-1] if stack else (None, None)

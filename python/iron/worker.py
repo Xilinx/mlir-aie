@@ -31,7 +31,8 @@ from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import AnyComputeTile, Tile
 from .resolvable import Resolvable
 from .scratchpad_parameter import ScratchpadParameter
-from ..helpers.sourceloc import site_location, site_of_function
+from ..helpers.astloc import with_statement_locations
+from ..helpers.sourceloc import site_location, site_of_function, traced_body
 
 
 class Worker(ObjectFifoEndpoint, Resolvable):
@@ -300,6 +301,9 @@ class Worker(ObjectFifoEndpoint, Resolvable):
         # whichever location is ambient; point that at core_fn rather than
         # letting them default to unknown.
         body_loc = site_location(self._body_site, self.core_fn.__name__) or loc
+        # The body is traced by running it, so wrapping each of its statements
+        # in a location scope is what gives its ops statement precision.
+        traced_core_fn = with_statement_locations(self.core_fn)
 
         @core(
             my_tile,
@@ -314,9 +318,11 @@ class Worker(ObjectFifoEndpoint, Resolvable):
             # bound=1 for single-shot workers). Using Python range(1) here would
             # emit the body inline with no scf.for wrapper, which the dataflow
             # lowerer treats differently and can cause runtime hangs.
-            with body_loc if body_loc is not None else contextlib.nullcontext():
+            with (
+                body_loc if body_loc is not None else contextlib.nullcontext()
+            ), traced_body(self.core_fn.__name__, self._source_site):
                 for _ in range_(sys.maxsize if self._while_true else 1):
-                    self.core_fn(*self.fn_args)
+                    traced_core_fn(*self.fn_args)
 
 
 class WorkerRuntimeBarrier:
