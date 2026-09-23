@@ -146,34 +146,6 @@ inline void assignLoadPdiIds(mlir::ModuleOp module) {
 // Clone-and-mutate helpers
 //===----------------------------------------------------------------------===//
 
-// Clone `src` and absolutize the `(col, row)` CoreOp's `link_files` so
-// the emitted ld script's INPUT() entries are cwd-independent.
-inline mlir::OwningOpRef<mlir::ModuleOp>
-absolutizeLinkFiles(mlir::ModuleOp src, int col, int row,
-                    llvm::StringRef inputFile, llvm::StringRef workDir) {
-  mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
-  cloned->walk([&](xilinx::AIE::CoreOp coreOp) {
-    auto tileOp =
-        mlir::dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-    if (!tileOp || tileOp.getCol() != col || tileOp.getRow() != row) {
-      return;
-    }
-    auto filesAttr = coreOp.getLinkFiles();
-    if (!filesAttr) {
-      return;
-    }
-    llvm::SmallVector<mlir::Attribute> absFiles;
-    for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
-      absFiles.push_back(mlir::StringAttr::get(
-          cloned->getContext(),
-          resolveExternalPath(f.getValue(), inputFile, workDir)));
-    }
-    coreOp.setLinkFilesAttr(
-        mlir::ArrayAttr::get(cloned->getContext(), absFiles));
-  });
-  return cloned;
-}
-
 // Collect `coreOp`'s merge-mode link artifacts -- the entries of
 // `link_merge_files`, populated by aie-assign-core-link-files from
 // `link_with_mode = "merge"` on the func.func declaration -- resolved to

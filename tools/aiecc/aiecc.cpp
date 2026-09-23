@@ -947,13 +947,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                               Item<std::string> &out) -> mlir::LogicalResult {
         CoreOp op = item.get().op;
         auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
-        auto rewritten =
-            absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
-                                tile.getRow(), inputFile, workDirStr);
         llvm::raw_string_ostream os(out.value.emplace());
         return xilinx::AIE::AIETranslateToLdScript(
-            rewritten.get(), os, tile.getCol(), tile.getRow(),
-            op->getParentOfType<DeviceOp>().getSymName(), /*probe=*/true);
+            item.get().module.get(), os, tile.getCol(), tile.getRow(),
+            op->getParentOfType<DeviceOp>().getSymName(), /*probe=*/true,
+            [&](llvm::StringRef f) {
+              return resolveExternalPath(f, inputFile, workDirStr);
+            });
       });
 
   // The probe link. Same objects, same garbage collection and the same script
@@ -1086,13 +1086,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 }
               }
             }
-            auto rewritten =
-                absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
-                                    tile.getRow(), inputFile, workDirStr);
             llvm::raw_string_ostream os(out.value.emplace());
             return xilinx::AIE::AIETranslateToLdScript(
-                rewritten.get(), os, tile.getCol(), tile.getRow(),
-                op->getParentOfType<DeviceOp>().getSymName());
+                item.get().module.get(), os, tile.getCol(), tile.getRow(),
+                op->getParentOfType<DeviceOp>().getSymName(), /*probe=*/false,
+                [&](llvm::StringRef f) {
+                  return resolveExternalPath(f, inputFile, workDirStr);
+                });
           });
 
   // Link each core's object into its .elf; user can chose between
