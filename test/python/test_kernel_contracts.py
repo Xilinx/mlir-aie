@@ -21,6 +21,7 @@ of which is silent until a device run otherwise:
 import inspect
 import re
 import sys
+import typing
 from pathlib import Path
 
 import numpy as np
@@ -1102,6 +1103,39 @@ def test_mha_binds_its_translation_unit_as_one_object():
         kernels.mha(dim_m=17)
 
 
+_C_ELEMENT_NAMES = {bfloat16: "bf16", np.float32: "float", np.int32: "int"}
+
+
+def _extern_c_signatures(source_file: str) -> dict[str, list[tuple[str, bool]]]:
+    """Parameters of every ``void`` entry point in a C++ translation unit.
+
+    Each parameter comes back as ``(element type, is a pointer)``, qualifiers
+    dropped -- the two facts one ``arg_types`` entry carries.
+    """
+    body = Path(source_file).read_text()
+    signatures = {}
+    for name, params in re.findall(r"\bvoid\s+(\w+)\(([^)]*)\)\s*\{", body):
+        parsed = []
+        for param in params.split(","):
+            tokens = [
+                token
+                for token in param.replace("*", " * ").split()
+                if token not in ("const", "__restrict", "restrict")
+            ]
+            parsed.append((tokens[0], "*" in tokens))
+        signatures[name] = parsed
+    return signatures
+
+
+def _arg_type_facts(arg_type) -> tuple[str, bool]:
+    """The same ``(element type, is a pointer)`` pair for one arg_types entry."""
+    args = typing.get_args(arg_type)
+    if not args:
+        return _C_ELEMENT_NAMES[arg_type], False
+    (dtype,) = typing.get_args(args[1])
+    return _C_ELEMENT_NAMES[dtype], True
+
+
 def test_prefill_binds_its_translation_unit_as_one_object():
     """flash_attn_prefill.cc's five entry points bind through one artifact owner."""
     fn = kernels.prefill_fv(head_dim=512)
@@ -1127,7 +1161,15 @@ def test_prefill_binds_its_translation_unit_as_one_object():
         ],
         "prefill_epilogue": [bf(64), f32(8), bf(8), f32(8 * 512), np.int32],
     }
+    # bind() is pure string qualification -- it consults neither the symbol
+    # table nor the signature -- so the loop below alone would pass against a
+    # table naming entry points that no longer exist. Read them off the C++,
+    # and a renamed symbol or a changed parameter list fails here instead.
+    declared = _extern_c_signatures(fn.source_file)
+    assert set(declared) == set(expected) | {"prefill_fv_step"}
+    assert [_arg_type_facts(t) for t in fn.arg_types()] == declared["prefill_fv_step"]
     for symbol, arg_types in expected.items():
+        assert [_arg_type_facts(t) for t in arg_types] == declared[symbol]
         sib = fn.object_file.bind(symbol, arg_types)
         assert sib.name == f"{p}_{symbol}"
         assert sib.object_file is fn.object_file
