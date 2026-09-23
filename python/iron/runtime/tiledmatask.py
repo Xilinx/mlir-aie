@@ -76,17 +76,22 @@ def tile_dma_task(
         channel: hardware channel index. On a mem tile the channel's parity
             also decides which half of the BD pool ``bd_id`` may come from.
         buffer: the [`Buffer`][iron.Buffer] this descriptor reads or writes.
-        sizes: access-pattern sizes, outermost dimension first. The outermost
-            entry becomes the queue repeat count rather than a transferred
+        sizes (Sequence[int | Value], optional): access-pattern sizes, outermost
+            dimension first. The outermost entry becomes the queue repeat count
+            rather than a transferred
             extent, matching ``fill``/``drain``.
-        strides: access-pattern strides, paired with ``sizes``.
-        transfer_len: elements transferred. Required when any of
-            ``sizes``/``strides``/``offset`` is a dispatch-time value: unlike
+        strides (Sequence[int | Value], optional): access-pattern strides,
+            paired with ``sizes``.
+        offset (int | Value, optional): starting element offset in ``buffer``.
+            Defaults to zero.
+        transfer_len (int | Value, optional): elements transferred. Required when
+            any of ``sizes``/``strides``/``offset`` is a dispatch-time value: unlike
             the compile-time path, the lowering cannot infer a length from the
             buffer's shape. A dispatch-time scalar is i64, matching
             ``sizes``/``strides``; it is narrowed here to the i32 the length
             and offset fields take.
         wait: issue a completion token, so the returned task can be awaited.
+        packet: optional packet header as ``(packet_type, packet_id)``.
         bd_id: pin the buffer descriptor id rather than letting the compiler
             allocate one.
         acquire: an [`Acquire`][iron.Acquire] emitted before the descriptor,

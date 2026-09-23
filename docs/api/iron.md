@@ -218,6 +218,10 @@ Lower-level runtime task types scheduled by the
     options:
       show_root_heading: false
 
+::: iron.runtime.tiledmatask
+    options:
+      show_root_heading: false
+
 ::: iron.runtime.dmataskhandle
     options:
       show_root_heading: false
