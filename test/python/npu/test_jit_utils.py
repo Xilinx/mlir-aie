@@ -388,7 +388,8 @@ def test_compile_external_kernels_prefixed_entry_points_sharing_an_object(
         symbols = _defined_extern_symbols(os.path.join(kernel_dir, "op3_mm.o"))
         assert "op3_matmul_kernel" in symbols and "op3_zero_kernel" in symbols
         assert "matmul_kernel" not in symbols and "zero_kernel" not in symbols
-        assert all(f._compiled for f in funcs)
+        assert funcs[0].object_file is funcs[1].object_file
+        assert os.path.realpath(kernel_dir) in funcs[0].object_file._compiled_dirs
 
 
 def test_compile_external_kernel_symbol_prefix_renames_every_defined_symbol(
