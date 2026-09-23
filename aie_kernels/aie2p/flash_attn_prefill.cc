@@ -55,8 +55,7 @@ void prefill_fv_step(float *y, bf16 *s, bf16 *__restrict v, const int j) {
   fv_step_impl<PREFILL_HEAD_DIM>(y, s, v, j);
 }
 
-/// One 64-element output chunk of o = y/l. c == 0 first inverts l in place, so
-/// a round needs no closing call -- and so l is read-write, not read-only.
+/// Chunk c of the output; see epilogue_impl for why l is read-write.
 void prefill_epilogue(bf16 *__restrict o, float *l, float *y, const int c) {
   epilogue_impl<PREFILL_HEAD_DIM>(o, l, y, c);
 }

@@ -24,24 +24,15 @@
 
 using bf16 = bfloat16;
 
-// The softmax runs on exp2, so scores are scaled by log2(e). As a bf16 that
-// constant is 1.4453125 -- 0.18% high -- which looks like something worth
-// fixing and is not, for a reason specific to softmax.
+// log2(e), for the exp2 the softmax runs on. As a bf16 it is 1.4453125, 0.18%
+// high -- which a raw exponential could not afford (aie2p/bf16_exp.cc takes an
+// exact float one, x = 88 being a real input there) and a softmax can.
 //
-// The scale multiplies s - m, never s. So the weight comes out as
-// 2^(1.0018*(s-m)) instead of 2^(s-m), an error of 2^(0.0018*(s-m)) that grows
-// as s - m goes negative -- which is exactly where the weight itself is
-// vanishing. At s - m = -20 the weight is 2.5% wrong and worth 2^-20 of the
-// output. Near the row max, where the output actually comes from, s - m is
-// small and so is the error. The bias is largest where it counts least.
-//
-// Measured rather than assumed: scaling in the float domain with an exact
-// log2(e) instead -- following aie2p/bf16_exp.cc, which does need that, being
-// a raw exponential where x = 88 is a real input -- moved the end-to-end error
-// by nothing (max 2.62 -> 2.75 bf16 steps at head_dim 512, 1.75 -> 1.50 at
-// 256; mean unchanged to three digits) and cost ~110 instructions of program
-// memory, in the loop that runs 128 times per key block. So this stays bf16,
-// as aie2p/softmax.cc's does.
+// The scale multiplies s - m, never s, so the weight error 2^(0.0018*(s-m))
+// grows only as s - m goes negative -- exactly where the weight itself is
+// vanishing. At s - m = -20 it is 2.5% wrong and worth 2^-20 of the output.
+// Near the row max, where the output comes from, both are small. Measured, not
+// assumed: an exact float log2(e) moves the end-to-end error by nothing.
 constexpr bf16 exp_scale = (bf16)1.4426950408889634f;
 
 // bf16 -inf, the mask fill value.
@@ -159,8 +150,7 @@ void calculate_y(float *y, float *c) {
   }
 }
 
-/// o = y * l for one 64-element output chunk. l arrives already inverted, from
-/// finalize_impl.
+/// o = y * l over 64 elements, l arriving already inverted.
 ///
 /// Both operands stay float to the last moment. o is bf16 and so must round
 /// once; rounding y and 1/l on the way in as well would spend three roundings
@@ -631,22 +621,20 @@ fv_step_impl(float *y, bf16 *s, bf16 *__restrict v, const int j) {
   G::attn_fv(y, s + j * G::LQ * G::LK, v);
 }
 
-/// End of the round: l becomes 1/l in place, consumed by the scaling below.
-/// Folded into epilogue_impl's first output chunk rather than exposed as its
-/// own entry point.
+/// l becomes 1/l in place; epilogue_impl below says when.
 ///
-/// The reciprocal stays float. It used to land in a bf16 side buffer, which
-/// cost a rounding on every output element -- and it is a rounding the output
-/// does not get to absorb, because o rounds to bf16 anyway afterwards. Two
-/// roundings where one is owed, for a buffer the round does not otherwise need.
+/// The reciprocal stays float rather than landing in a bf16 side buffer, which
+/// would cost a rounding the output cannot absorb -- o rounds to bf16 anyway
+/// afterwards -- for a buffer nothing else wants.
 template <int DH>
 __attribute__((always_inline)) inline void finalize_impl(float *l) {
   using G = PrefillGeom<DH>;
   aie::store_v(l, aie::inv(aie::load_v<G::LQ>(l)));
 }
 
-/// One 64-element output chunk of o = y/l. c == 0 first inverts l in place
-/// (what finalize was), so the round needs no separate closing call.
+/// One 64-element output chunk of o = y/l. c == 0 runs finalize_impl first, so
+/// the round needs no separate closing call -- which is what makes l
+/// read-write here, and why c must ascend from 0.
 template <int DH>
 __attribute__((always_inline)) inline void
 epilogue_impl(bf16 *__restrict o, float *l, float *y, const int c) {
