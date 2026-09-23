@@ -137,9 +137,9 @@ def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
     assert "EXAMINE=$(xrt-smi examine)" in run
     assert "printf '%s\\n' \"$EXAMINE\"" in run
     assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
-    assert "sudo xrt-smi configure -d \"$BDF\" --pmode \"$BENCH_PMODE\"" in run
-    assert "xrt-smi examine -d \"$BDF\" --report platform" in run
-    assert 'xrt-smi examine | grep -oE' not in run
+    assert 'sudo xrt-smi configure -d "$BDF" --pmode "$BENCH_PMODE"' in run
+    assert 'xrt-smi examine -d "$BDF" --report platform' in run
+    assert "xrt-smi examine | grep -oE" not in run
 
 
 @pytest.mark.parametrize(
