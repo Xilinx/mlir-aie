@@ -29,12 +29,21 @@ _RELU_FIXED_TILE = 1024
 # passThrough.cc copies one 64-byte vector per loop iteration.
 _PASSTHROUGH_VEC_BYTES = 64
 
-# Tighten toward Tolerance.bf16_ulps(1) once a nightly has shown the margin.
-_BF16_ROUNDTRIP = Tolerance.relative(
-    0.03,
-    0.05,
-    max_mismatch_frac=0.02,
-    note="fp32 accumulate, one bf16 rounding; tolerance measured by test_kernels_e2e",
+# These kernels accumulate in fp32 and round once, on the store, so a single
+# ulp is the whole of what they may lose. Measured on npu2: every element of
+# every data case meets it, bar one.
+#
+# That one is the device flushing subnormals to zero where numpy does not -- an
+# expected 3.5e-39 comes back as 0, which is 38 bf16 ulps and a full 100%
+# relative, so nothing but an absolute floor covers it. At the smallest normal
+# bf16 the floor admits exactly the flushed values and nothing above them.
+_BF16_SMALLEST_NORMAL = 2.0**-126
+
+_BF16_ROUNDTRIP = Tolerance.bf16_ulps(
+    1,
+    atol=_BF16_SMALLEST_NORMAL,
+    note="fp32 accumulate, one bf16 rounding on the store; atol is the "
+    "smallest normal bf16, for the device's subnormal flush to zero",
 )
 
 

@@ -239,7 +239,11 @@ class Tolerance:
     * **exact** -- no field set: bit-equal after casting the reference to
       the output dtype. Integers, selections (relu, max), lossless copies.
     * **ulps** -- ``ulps`` set: bf16 outputs within ``ulps`` units in the
-      last place of the correctly rounded reference.
+      last place of the correctly rounded reference. ``atol`` may be set
+      alongside as a floor, admitting an element that meets *either* -- what a
+      kernel needs when the device flushes subnormals to zero, since a flushed
+      value is a full 100% relative and dozens of ulps from the reference but
+      absolutely negligible. ``rtol`` stays unset, or the kind is relative.
     * **relative** -- ``rtol``/``atol`` set: the canonical
       ``|a - b| < max(atol, rtol * (|a| + |b|))`` of :func:`nearly_equal`.
       Integer outputs are compared with the same formula in exact integer
@@ -276,9 +280,21 @@ class Tolerance:
 
     @classmethod
     def bf16_ulps(
-        cls, n: int = 1, *, max_mismatch_frac: float = 0.0, note: str = ""
+        cls,
+        n: int = 1,
+        *,
+        atol: float | None = None,
+        max_mismatch_frac: float = 0.0,
+        note: str = "",
     ) -> "Tolerance":
-        return cls(ulps=n, max_mismatch_frac=max_mismatch_frac, note=note)
+        """bf16 outputs within ``n`` ulps of the correctly rounded reference.
+
+        ``atol`` is an optional floor an element may meet instead of the ulp
+        bound. Use it for the device's subnormal flush to zero, set to the
+        smallest normal bf16 so it admits the flushed values and nothing above
+        them.
+        """
+        return cls(ulps=n, atol=atol, max_mismatch_frac=max_mismatch_frac, note=note)
 
     @classmethod
     def relative(
@@ -446,7 +462,10 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         ulp[finite] = bf16_ulp_distance(a[finite], e_bf[finite])
         err[finite] = np.abs(a32[finite] - e_bf[finite].astype(np.float32))
         max_ulps = tol.ulps if tol.ulps is not None else 0
-        bad = nonfinite_bad | (finite & (ulp > max_ulps))
+        within = ulp <= max_ulps
+        if tol.atol is not None:
+            within |= err <= tol.atol
+        bad = nonfinite_bad | (finite & ~within)
         return _verdict(bad, err, ulp, tol, n, nonfinite_bad)
 
     if tol.kind == "exact":

@@ -170,6 +170,22 @@ def test_bf16_negative_ulp_direction():
     assert bf16_ulp_distance(*zeros)[0] == 0
 
 
+def test_ulps_atol_floor_admits_a_flushed_subnormal():
+    """A subnormal the device flushed to zero meets the floor, not the ulps."""
+    smallest_normal = 2.0**-126
+    ref = np.array([smallest_normal / 8, 1.0], np.float32)
+    got = np.array([0.0, 1.0], bfloat16)  # the subnormal came back flushed
+
+    assert not compare(got, ref, Tolerance.bf16_ulps(1)).ok
+    assert compare(got, ref, Tolerance.bf16_ulps(1, atol=smallest_normal)).ok
+    # The floor is not a blanket pass: a normal value still owes its ulp.
+    assert not compare(
+        np.array([0.0, 2.0], bfloat16),
+        ref,
+        Tolerance.bf16_ulps(1, atol=smallest_normal),
+    ).ok
+
+
 def test_ulps_tolerance_rejects_non_bf16_output():
     with pytest.raises(ValueError, match="bfloat16"):
         compare(np.zeros(2, np.float32), np.zeros(2), Tolerance.bf16_ulps(1))
