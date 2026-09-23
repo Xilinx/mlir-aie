@@ -574,6 +574,8 @@ setup(
     ],
     entry_points={
         "console_scripts": [
+            "aie-hsaco = aie.compiler.hsaco.pack:main",
+            "aie-hsaco-dump = aie.compiler.hsaco.dump:main",
             "aie-opt = aie.tools:aie_opt",
             "aie-reset = aie.tools:aie_reset",
             "aie-translate = aie.tools:aie_translate",
