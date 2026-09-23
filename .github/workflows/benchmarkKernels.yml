@@ -102,7 +102,16 @@ jobs:
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
           # `performance` = max DPM, clock gating on. `turbo` is refused
           # while any hwctx is open, so it is not used on shared hosts.
-          sudo "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"
+          # Some runners can read the device state but cannot elevate
+          # non-interactively to change it; in that case the pytest preflight
+          # below still enforces BENCH_PMODE and turns a true misconfigured
+          # runner into an ordinary test failure instead of an infrastructure
+          # failure here.
+          if sudo -n true 2>/dev/null; then
+            sudo "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"
+          else
+            echo "::warning::Skipping xrt-smi power-mode configure; sudo requires a password on this runner"
+          fi
           "$XRT_SMI" examine -d "$BDF" --report platform
 
       - name: Run kernel correctness suite
