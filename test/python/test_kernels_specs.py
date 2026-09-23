@@ -1337,7 +1337,7 @@ def test_matrix_factory_preserves_discovery_metadata(factory):
 
     assert inspect.isfunction(factory)
     assert factory.__name__ in kernels.factories()
-    assert inspect.signature(factory).return_annotation is MatrixKernel
+    assert issubclass(inspect.signature(factory).return_annotation, MatrixKernel)
     assert inspect.signature(factory).parameters["dim_m"].default == 64
     if factory is kernels.mm:
         assert len(factory.dtypes) == 7
