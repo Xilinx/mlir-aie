@@ -66,9 +66,11 @@ without needing each one attached at build time.
 Some `aie.iron.kernels` factories pick a different MMUL geometry per
 arch — `kernels.mm(int16, int16)` is `(r, s, t) = (4, 4, 4)` on AIE2
 (Phoenix) but `(4, 4, 8)` on AIE2P (Strix).  The chosen geometry is
-exposed on the returned `ExternalFunction` as `.mac_dims`, so designs
-can drive their DMA-layout transforms from the kernel itself instead
-of hardcoding for one arch:
+declared on the contract's operand layouts (`fn.contract.layouts[i].block`)
+and read back as `.mac_dims` on the returned `MatrixKernel`, with the
+matching DMA transforms as `.stream_dims`, so designs can drive their
+DMA-layout transforms from the kernel itself instead of hardcoding for one
+arch:
 
 ```python
 import aie.iron as iron
@@ -385,3 +387,36 @@ generator body.
 Prefer explicit `CompileTime[T]` parameters when you can; reserve
 `compile_context` for the cases where threading the value through every
 helper signature would obscure the design.
+
+## Kernel sources (`MLIR_AIE_KERNEL_SOURCES`)
+
+The kernel factories compile from the installed tree's `aie_kernels/` and
+`aie_runtime_lib/`. Point `MLIR_AIE_KERNEL_SOURCES` at a checkout to compile
+that checkout's kernel sources instead, against an otherwise-installed wheel:
+
+```bash
+MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python3 my_design.py
+```
+
+This is how `aie.utils.compile.remarks` reads a checkout's kernels without
+building the rest of it.
+
+## Kernel compile parallelism (`AIE_KERNEL_COMPILE_JOBS`)
+
+External kernels are compiled in parallel, one process per distinct kernel,
+defaulting to `os.cpu_count()`. Set `AIE_KERNEL_COMPILE_JOBS` to cap that — on
+a shared machine, or to serialize the build when a compiler error is easier to
+read one at a time. Values below 1 mean the default.
+
+## Peano location (`PEANO_INSTALL_DIR`)
+
+Where the Peano (`llvm-aie`) toolchain lives. Set at build time, and
+overridable here for a Peano built or installed somewhere else. When neither
+resolves to an existing directory, the install area's own copy is used.
+
+## Expected NPU for the test suite (`AIE_EXPECTED_NPU`)
+
+`npu1` or `npu2`. lit normally discovers the attached device; setting this
+asserts which one the suite is meant to run against, so a machine that comes
+up as the other generation fails loudly instead of silently skipping every
+device test.

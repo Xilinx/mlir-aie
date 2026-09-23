@@ -8,17 +8,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-template <typename T, int M, int N>
-void zero_vectorized(T *__restrict c) {
-  constexpr int r = 512 / (sizeof(T) * 8);
-  static_assert((M * N) % r == 0);
-  const aie::vector<T, r> zeros = aie::zeros<T, r>();
-  const T *__restrict c_end = c + M * N;
-  for (; c < c_end; c += r) {
-    aie::store_v(c, zeros);
-  }
-}
-
 // This kernel is a variation of the conventional matrix multiplications in the
 // repo that uses different datatypes for the A and B and performs a conversion
 // for the A matrix. This kernel should be followed along with the equivalent on
@@ -122,14 +111,6 @@ extern "C" {
 #define DIM_N 64
 #endif
 
-// MATMUL_ONLY / ZERO_ONLY gates — see mm_bfp.cc for the rationale.
-// Without any macro, both symbols are emitted (legacy behaviour).
-#if !defined(MATMUL_ONLY) && !defined(ZERO_ONLY)
-#define MATMUL_ONLY
-#define ZERO_ONLY
-#endif
-
-#ifdef MATMUL_ONLY
 void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA,
                                            bfp16ebs8 *__restrict pB,
                                            bfloat16 *__restrict pC) {
@@ -146,13 +127,12 @@ void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (2 * t) == 0);
 
+  // A is converted to bfp16 on the core, and that conversion follows the
+  // core's rounding mode rather than being fixed here: conv_even keeps the K
+  // reduction unbiased, where floor costs a 64x64x64 tile of large inputs
+  // 2791 mismatching outputs against 10. The caller owns the mode --
+  // kernels.mm_bfp names conv_even as its contract's setup -- so setting it
+  // here too would be the design and the kernel fighting over it.
   matmul_vectorized_2x2_bfp16_bf16<m / r, k / s, n / t, r, s, t>(pA, pB, pC);
 }
-#endif
-
-#ifdef ZERO_ONLY
-void zero_kernel_bf16(bfloat16 *__restrict cOut) {
-  zero_vectorized<bfloat16, DIM_M, DIM_N>(cOut);
-}
-#endif
 }

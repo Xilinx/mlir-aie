@@ -11,6 +11,10 @@
 
 using namespace aie;
 
+#ifndef TANH_ELEMS
+#define TANH_ELEMS vector_size
+#endif
+
 // 32 bf16 elements per iteration.  The native tanh intrinsic works on 16 float
 // lanes, so each 32-wide input is split into two halves and re-concatenated.
 void tanh_bf16_vectorized(bfloat16 *restrict input_vector,
@@ -18,12 +22,11 @@ void tanh_bf16_vectorized(bfloat16 *restrict input_vector,
                           const int32_t vector_size) {
   event0();
 
-  int num_elems = vector_size;
+  const int num_elems = TANH_ELEMS;
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
 
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(32)
   for (int i = 0; i < num_elems; i += 32) {
     auto input = *it_in++;
 

@@ -10,7 +10,9 @@ import os
 import subprocess
 import tempfile
 
+import numpy as np
 import pytest
+from ml_dtypes import bfloat16
 
 import aie.utils.config as config
 from aie.iron import kernels
@@ -173,7 +175,7 @@ def test_prefix_symbols_in_object_renames_symbols_even_if_already_prefixed():
 
 @pytest.mark.parametrize("arch", ["aie2", "aie2p"])
 @pytest.mark.parametrize("input_dtype,output_dtype", linalg._MM_COMBOS)
-def test_mm_object_exports_matmul_and_zero(
+def test_mm_object_exports_matmul_without_zero(
     tmp_path, monkeypatch, arch, input_dtype, output_dtype
 ):
     monkeypatch.setattr(_common, "_detect_arch", lambda: arch)
@@ -183,13 +185,69 @@ def test_mm_object_exports_matmul_and_zero(
 
     symbols = _defined_extern_symbols(str(tmp_path / matmul.object_file_name))
     suffix, _ = linalg._MM_COMBOS[(input_dtype, output_dtype)]
-    zero_suffix = linalg._ZERO_SUFFIX[output_dtype]
     assert {
         matmul._name,
-        matmul.zero._name,
         matmul.object_file.resolve_symbol(f"matmul_scalar_{suffix}"),
-        matmul.object_file.resolve_symbol(f"zero_scalar_{zero_suffix}"),
     } <= symbols
+    assert not any("zero" in symbol for symbol in symbols)
+
+
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int8,
+        np.uint8,
+        np.int16,
+        np.uint16,
+        np.int32,
+        np.uint32,
+        np.float32,
+        bfloat16,
+    ],
+)
+@pytest.mark.parametrize("vectorized", [False, True])
+def test_standalone_zero_compiles(tmp_path, monkeypatch, arch, dtype, vectorized):
+    monkeypatch.setattr(_common, "_detect_arch", lambda: arch)
+    # An odd count covers the native-vector loop and its scalar tail.
+    fn = kernels.zero(133, dtype, vectorized=vectorized)
+    compile_external_kernel(fn, tmp_path, arch)
+    symbols = _defined_extern_symbols(str(tmp_path / fn.object_file_name))
+    assert fn.name in symbols
+
+
+def test_bfp_zero_compiles_as_packed_bytes(tmp_path, npu2_device):
+    from aie.dialects.aiex import v8bfp16ebs8
+
+    fn = kernels.zero(64, v8bfp16ebs8)
+    compile_external_kernel(fn, tmp_path, "aie2p")
+    assert "-DTILE_SIZE=576" in fn.compile_flags
+    assert fn.name in _defined_extern_symbols(str(tmp_path / fn.object_file_name))
+
+
+@pytest.mark.parametrize(
+    "factory,kwargs",
+    [
+        (kernels.mv, {}),
+        (kernels.cascade_mm, {}),
+        (kernels.mm_bfp, {}),
+        (kernels.mm_bfp, {"mixed": True}),
+        (kernels.mha, {}),
+    ],
+)
+def test_matrix_families_compile_without_zero_entrypoints(
+    tmp_path, npu2_device, factory, kwargs
+):
+    fn = factory(**kwargs)
+    compile_external_kernel(fn, tmp_path, "aie2p")
+    obj = str(tmp_path / fn.object_file_name)
+    symbols = _defined_extern_symbols(obj)
+    assert fn.name in symbols
+    assert not any("zero" in symbol for symbol in symbols)
+    undefined = subprocess.check_output(
+        [config.nm_path(), "--undefined-only", obj], text=True
+    )
+    assert "zero" not in undefined
 
 
 def test_prefix_symbols_in_object_raises_on_nm_failure():

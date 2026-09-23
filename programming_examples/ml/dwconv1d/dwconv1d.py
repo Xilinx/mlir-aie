@@ -25,40 +25,17 @@ construction and this file's own test input.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
-
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/dwconv1d.cc"
-_TAIL_SLACK = 16  # matches the kernel's fixed aligned-load window, see dwconv1d.cc
-
-
-def _dwconv1d_extern(chunk_in_ty, w_ty, chunk_out_ty, kernel_size, bias):
-    return ExternalFunction(
-        "dwconv1d_bf16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            chunk_in_ty,
-            w_ty,
-            chunk_out_ty,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-        compile_flags=[
-            f"-DDWCONV_K={kernel_size}",
-            f"-DDWCONV_BIAS={int(bias)}",
-        ],
-    )
 
 
 @iron.jit
@@ -89,7 +66,7 @@ def dwconv1d(
 
     device = iron.get_current_device()
     channels_per_core = channels // n_cores
-    in_row = seq_len + _TAIL_SLACK
+    in_row = seq_len + kernels.DWCONV1D_TAIL
     # w_row is always kernel_size + 1, even when bias=False: kernel_size is
     # required odd (see the check above), so kernel_size alone gives an odd
     # bf16 row width, i.e. 2*kernel_size bytes, not a multiple of 4, which
@@ -115,7 +92,7 @@ def dwconv1d(
     of_ws = [ObjectFifo(w_row_ty, name=f"w_{i}") for i in range(n_cores)]
     of_outs = [ObjectFifo(y_row_ty, name=f"y_{i}") for i in range(n_cores)]
 
-    dwconv_fn = _dwconv1d_extern(x_row_ty, w_row_ty, y_row_ty, kernel_size, bias)
+    dwconv_fn = kernels.dwconv1d(seq_len=seq_len, kernel_size=kernel_size, bias=bias)
 
     def core_fn(of_x, of_w, of_y, kernel):
         for _ in range_(channels_per_core):
@@ -174,7 +151,7 @@ def _pad_input(x_np, kernel_size):
     file docstring and dwconv1d.cc's header comment for why."""
     channels, seq_len = x_np.shape
     pad = (kernel_size - 1) // 2
-    out = np.zeros((channels, seq_len + _TAIL_SLACK), dtype=x_np.dtype)
+    out = np.zeros((channels, seq_len + kernels.DWCONV1D_TAIL), dtype=x_np.dtype)
     out[:, pad : pad + seq_len] = x_np
     return out
 

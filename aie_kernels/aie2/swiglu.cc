@@ -8,6 +8,10 @@
 
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
+
+#ifndef SWIGLU_ELEMS
+#define SWIGLU_ELEMS vector_size
+#endif
 #include <lut_based_ops.h>
 #include <stdint.h>
 
@@ -20,7 +24,7 @@ void swiglu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                              const int32_t vector_size) {
   event0();
 
-  int num_elems = vector_size;
+  const int num_elems = SWIGLU_ELEMS;
   auto it_in = aie::begin_restrict_vector<16>((bfloat16 *)input_vector);
   auto it_wt_1 = aie::begin_restrict_vector<16>((bfloat16 *)weight_vector_1);
   auto it_wt_2 = aie::begin_restrict_vector<16>((bfloat16 *)weight_vector_2);
@@ -33,7 +37,6 @@ void swiglu_tanh_approx_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
   aie::vector<bfloat16, 16> register_1 = aie::broadcast<bfloat16, 16>(1.0f);
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(16)
   for (int i = 0; i < num_elems; i += 16) {
     // Load input vector
     input = *it_in++;

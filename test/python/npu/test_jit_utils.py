@@ -24,7 +24,12 @@ from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
 from aie.iron import CompileTime, In, Out
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
-from aie.utils.compile.utils import compile_external_kernel, _symbol_prefix_stamp_path
+from aie.utils.compile.utils import (
+    compile_external_kernel,
+    compile_external_kernels,
+    _kernel_compile_groups,
+    _symbol_prefix_stamp_path,
+)
 from aie.utils.compile.cache.utils import _create_function_cache_key
 
 # ---------------------------------------------------------------------------
@@ -227,29 +232,71 @@ def test_compile_external_kernel_source_file_already_in_kernel_dir(npu_target_ar
         assert os.path.getsize(obj) > 0
 
 
-def test_compile_external_kernel_marks_compiled(npu_target_arch):
-    """compile_external_kernel must set func._compiled = True on success."""
+def test_compile_external_kernel_writes_the_object(npu_target_arch):
+    """The object lands in the directory the call was given."""
     func = ExternalFunction(
         "add_one",
         source_string='extern "C" void add_one(int* a, int* b, int n) {}',
     )
     with tempfile.TemporaryDirectory() as kernel_dir:
-        assert not func._compiled
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
-        assert func._compiled
+        assert os.path.exists(os.path.join(kernel_dir, func.object_file_name))
 
 
-def test_compile_external_kernel_skip_is_per_kernel_dir(npu_target_arch):
-    """The skip covers the directory already built into, not the function."""
+def test_compile_external_kernel_skips_an_object_already_there(npu_target_arch):
+    """An object already in that directory is left alone, not rebuilt."""
     func = ExternalFunction(
         "add_one",
-        source_string='extern "C" void add_one() {}',
+        source_string='extern "C" void add_one(int* a, int* b, int n) {}',
     )
     with tempfile.TemporaryDirectory() as kernel_dir:
-        func._compiled = True
-        func._compiled_dir = kernel_dir
+        obj = os.path.join(kernel_dir, func.object_file_name)
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
-        assert not os.path.exists(os.path.join(kernel_dir, "add_one.o"))
+        first = os.stat(obj).st_mtime_ns
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        assert os.stat(obj).st_mtime_ns == first
+
+
+def test_compile_external_kernel_skip_is_per_kernel_dir(npu_target_arch, monkeypatch):
+    """The in-memory skip covers the directory already built into, not the function."""
+    func = ExternalFunction(
+        "add_one",
+        source_string='extern "C" void add_one(int* a, int* b, int n) {}',
+    )
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        assert os.path.exists(os.path.join(kernel_dir, func.object_file_name))
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                "aie.utils.compile.utils._compile_external_kernel",
+                lambda *args, **kwargs: pytest.fail(
+                    "already compiled in this directory"
+                ),
+            )
+            compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+
+    with tempfile.TemporaryDirectory() as other_dir:
+        compile_external_kernel(func, other_dir, target_arch=npu_target_arch)
+        assert os.path.exists(os.path.join(other_dir, func.object_file_name))
+
+
+def test_compile_external_kernel_serves_two_directories(npu_target_arch):
+    """One kernel built into two directories has to land in both.
+
+    A design built twice in one process -- the benchmark driver times a cold
+    build and then dispatches the cached one -- used to get its object in the
+    first directory only, and the second build failed to link against a file
+    that was never written.
+    """
+    func = ExternalFunction(
+        "add_one",
+        source_string='extern "C" void add_one(int* a, int* b, int n) {}',
+    )
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        compile_external_kernel(func, a, target_arch=npu_target_arch)
+        compile_external_kernel(func, b, target_arch=npu_target_arch)
+        assert os.path.exists(os.path.join(a, func.object_file_name))
+        assert os.path.exists(os.path.join(b, func.object_file_name))
 
     with tempfile.TemporaryDirectory() as other_dir:
         compile_external_kernel(func, other_dir, target_arch=npu_target_arch)
@@ -269,8 +316,7 @@ def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
         with open(obj, "rb") as f:
             assert f.read() == b"placeholder"
-        assert func._compiled
-        assert func._compiled_dir == os.path.abspath(kernel_dir)
+        assert os.path.realpath(kernel_dir) in func.object_file._compiled_dirs
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +332,64 @@ def _defined_extern_symbols(object_path):
         check=True,
     )
     return {line.split()[-1] for line in result.stdout.decode().splitlines() if line}
+
+
+def test_kernel_compile_groups_join_shared_objects_and_shared_names():
+    """Entry points of one object compile one after the other, as do kernels
+    writing one ``<_original_name>.cc``; the relation is transitive and the
+    input order is kept."""
+    from types import SimpleNamespace
+
+    def k(name, original, obj):
+        return SimpleNamespace(
+            _name=name, _original_name=original, object_file_name=obj
+        )
+
+    funcs = [
+        k("op1_matmul", "matmul", "op1_mm.o"),
+        k("rope", "rope", "rope.o"),
+        k("op1_zero", "zero", "op1_mm.o"),
+        k("rope2", "rope", "rope_1a2b3c4d.o"),
+        k("silu", "silu", "silu.o"),
+        k("op2_zero", "zero", "op2_mm.o"),
+    ]
+    groups = [[f._name for f in g] for g in _kernel_compile_groups(funcs)]
+    assert groups == [
+        ["op1_matmul", "op1_zero", "op2_zero"],
+        ["rope", "rope2"],
+        ["silu"],
+    ]
+
+
+def test_compile_external_kernels_prefixed_entry_points_sharing_an_object(
+    npu_target_arch,
+):
+    """Two prefixed entry points of one source share an object file. Compiled
+    concurrently, one visit's compile could overwrite the other's renamed
+    object and leave unprefixed symbols under a valid stamp; grouped, the
+    object comes out prefixed."""
+    with (
+        tempfile.TemporaryDirectory() as src_dir,
+        tempfile.TemporaryDirectory() as kernel_dir,
+    ):
+        src = os.path.join(src_dir, "mm.cc")
+        with open(src, "w") as f:
+            f.write("""extern "C" {
+                void zero_kernel(int* a) {}
+                void matmul_kernel(int* a) {}
+            }""")
+        funcs = [
+            ExternalFunction(
+                name, source_file=src, object_file_name="op3_mm.o", symbol_prefix="op3"
+            )
+            for name in ("matmul_kernel", "zero_kernel")
+        ]
+        compile_external_kernels(funcs, kernel_dir, npu_target_arch)
+        symbols = _defined_extern_symbols(os.path.join(kernel_dir, "op3_mm.o"))
+        assert "op3_matmul_kernel" in symbols and "op3_zero_kernel" in symbols
+        assert "matmul_kernel" not in symbols and "zero_kernel" not in symbols
+        assert funcs[0].object_file is funcs[1].object_file
+        assert os.path.realpath(kernel_dir) in funcs[0].object_file._compiled_dirs
 
 
 def test_compile_external_kernel_symbol_prefix_renames_every_defined_symbol(
@@ -342,16 +446,14 @@ def test_compile_external_kernel_symbol_prefix_cache_hit_is_idempotent(
             with open(obj, "ab") as f:
                 f.write(b"\0")
 
-        # Simulate a fresh process: _compiled reset, object file already on disk.
-        func._compiled = False
-        func._compiled_dir = None
+        # Simulate a fresh process while retaining the on-disk object.
+        func.object_file._compiled_dirs.clear()
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
 
         assert _defined_extern_symbols(obj) == symbols_after_first_compile
         assert "op0_add_one" in symbols_after_first_compile
         assert "op0_op0_add_one" not in _defined_extern_symbols(obj)
-        assert func._compiled
-        assert func._compiled_dir == os.path.abspath(kernel_dir)
+        assert os.path.realpath(kernel_dir) in func.object_file._compiled_dirs
 
 
 # ---------------------------------------------------------------------------

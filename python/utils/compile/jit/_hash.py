@@ -118,6 +118,7 @@ def _compute_recipe_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
+    insts_only: bool = False,
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
@@ -193,6 +194,10 @@ def _compute_recipe_hash(
     h.update(repr(sorted(compile_flags)).encode())
     h.update(f"full_elf={full_elf}".encode())
     h.update(repr([str(p) for p in include_paths]).encode())
+    if insts_only:
+        # An instruction stream alone is a different artifact from the
+        # xclbin + insts pair the same generator would otherwise produce.
+        h.update(b"insts_only=True")
 
     return h.hexdigest()
 
@@ -286,10 +291,17 @@ def _compute_hash(
     fold_ddr_addr_offset: bool = True,
     has_dispatch_params: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
+    insts_only: bool = False,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
-        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf, include_paths
+        generator,
+        compile_kwargs,
+        aiecc_flags,
+        compile_flags,
+        full_elf,
+        include_paths,
+        insts_only,
     )
     artifact = _compute_artifact_hash(
         generator,

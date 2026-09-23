@@ -9,10 +9,8 @@ import numpy as np
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
-from aie.iron.program import Program
-from aie.iron.runtime import Runtime
-from aie.iron.worker import Worker
-from aie.utils import get_current_device
+
+from ._pipeline import Stage, kernel_params, pipeline
 
 
 def for_each(func, tensor_ty, tile_size=16):
@@ -115,117 +113,30 @@ def _for_each_real(func, tensor, *params, tile_size=16):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(n,), np.dtype[dtype]]
 
-    # Create ObjectFifos for input and output
     of_in = ObjectFifo(tile_ty, name="in")
     of_out = ObjectFifo(tile_ty, name="out")
+    kparams = kernel_params(func, params, 2)
 
-    # Handle params for ExternalFunction
-    tensor_params = []  # params that need ObjectFifos
-    scalar_params = []  # params passed directly as MLIR constants
-    param_of_list = []
-    param_tensor_types = []
+    def body(ins, outs, held, constants, _):
+        if is_external_func:
+            constants[0](ins[0], outs[0], *kparams.resolve(held), n)
+        else:
+            # Lambda/callable: apply element-wise. Without this explicit
+            # loop, only the first element of each tile would be processed.
+            for j in range_(n):
+                outs[0][j] = constants[0](ins[0][j])
 
-    if is_external_func:
-        arg_types = func.arg_types()
-        # Skip input and output tile types
-        param_arg_types = arg_types[2:]
-
-        for i, (param, arg_type) in enumerate(zip(params, param_arg_types)):
-            if isinstance(arg_type, type) and issubclass(arg_type, np.generic):
-                scalar_params.append((i, param))
-            else:
-                tensor_params.append((i, param))
-
-        # Create ObjectFifos only for tensor params
-        for i, param in tensor_params:
-            param_ty = np.ndarray[param.shape, np.dtype[param.dtype]]
-            param_tensor_types.append(param_ty)
-            param_of_list.append(ObjectFifo(param_ty, name=f"param{i}"))
-
-    def core_body(*of_args):
-        # of_args = [of_in_cons, of_out_prod, func, *param_of_cons]
-        of_input = of_args[0]
-        of_output = of_args[1]
-        func_to_apply = of_args[2]
-        of_params = of_args[3:]
-
-        # For ExternalFunction: acquire params once (constant for all iterations)
-        all_params = []
-        if is_external_func and params:
-            elem_tensor_params = [of_param.acquire(1) for of_param in of_params]
-
-            # Build the full param list in correct order
-            all_params = [None] * len(params)
-            for (orig_idx, _), elem in zip(tensor_params, elem_tensor_params):
-                all_params[orig_idx] = elem
-            for orig_idx, param in scalar_params:
-                all_params[orig_idx] = param
-
-        # Tile iteration loop
-        for _ in range_(N_div_n):
-            elem_in = of_input.acquire(1)
-            elem_out = of_output.acquire(1)
-
-            if is_external_func:
-                func_to_apply(elem_in, elem_out, *all_params, n)
-            else:
-                # Lambda/callable: apply element-wise
-                # Without this explicit loop, only the
-                # first element of each tile would be processed.
-                for j in range_(n):
-                    elem_out[j] = func_to_apply(elem_in[j])
-
-            of_input.release(1)
-            of_output.release(1)
-
-        # Release tensor params (ExternalFunction only)
-        for of_param in of_params:
-            of_param.release(1)
-
-    # Create worker with all ObjectFifos
-    worker_args = [of_in.cons(), of_out.prod(), func] + [
-        of.cons() for of in param_of_list
-    ]
-    worker = Worker(core_body, fn_args=worker_args)
-
-    # Runtime operations
-    all_types = [tensor_ty] + param_tensor_types
-    n_params = len(param_tensor_types)
-
-    def sequence(*args):
-        # args = tensor_arg, *param_args, in_h, out_h, *param_prods
-        tensor_arg = args[0]
-        param_seq_args = args[1 : 1 + n_params]
-        in_h = args[1 + n_params]
-        out_h = args[2 + n_params]
-        param_prods = args[3 + n_params :]
-
-        # Fill input ObjectFifo from tensor
-        in_h.fill(tensor_arg)
-
-        # Fill tensor param ObjectFifos (ExternalFunction only)
-        for of_param_prod, param_arg in zip(param_prods, param_seq_args):
-            of_param_prod.fill(param_arg)
-
-        # Drain output ObjectFifo back to same tensor
-        out_h.drain(tensor_arg, wait=True)
-
-    rt = Runtime(
-        sequence,
-        [
-            *all_types,
-            of_in.prod(),
-            of_out.cons(),
-            *[p.prod() for p in param_of_list],
-        ],
+    stage = Stage(
+        body,
+        inputs=[(of_in, 1)],
+        outputs=[of_out],
+        held=kparams.fifos,
+        constants=[func],
+        iterations=N_div_n,
     )
-
-    # Place program components and generate an MLIR module
-    device = get_current_device()
-    if device is None:
-        raise RuntimeError(
-            "iron.algorithms.for_each requires an active NPU device. "
-            "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
-            "before calling for_each."
-        )
-    return Program(device, rt, workers=[worker]).resolve_program()
+    # The one tensor is filled into "in" and drained from "out"; the tensor
+    # params follow it.
+    transfers = [(of_in, "fill", 0)]
+    transfers += [(of, "fill", 1 + i) for i, of in enumerate(kparams.fifos)]
+    transfers.append((of_out, "drain", 0))
+    return pipeline([stage], [tensor_ty] + kparams.types, transfers)

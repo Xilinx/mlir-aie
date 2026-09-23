@@ -12,6 +12,10 @@
 
 using namespace aie;
 
+#ifndef SILU_ELEMS
+#define SILU_ELEMS vector_size
+#endif
+
 // Processes 32 bf16 elements per iteration.  The bf16 tanh intrinsic works on
 // 16-wide vectors, so each 32-wide input is split into two 16-wide halves for
 // the tanh and re-concatenated; everything else stays 32-wide.
@@ -20,7 +24,7 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                            const int32_t vector_size) {
   event0();
 
-  int num_elems = vector_size;
+  const int num_elems = SILU_ELEMS;
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
 
@@ -29,7 +33,6 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, 32> register_0_5_wide =
       aie::broadcast<bfloat16, 32>(0.5f);
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(32)
   for (int i = 0; i < num_elems; i += 32) {
     auto input = *it_in++;
 

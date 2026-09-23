@@ -134,6 +134,11 @@ ShimTilePortEvent(ShimTileEvent.PORT_RUNNING_0, WireBundle.South, channel=2, mas
 
 Once the trace units are configured and routed, we want the host code to read the trace data from DDR and write it out to a text file for post-run processing. To give a better sense of how this comes together, this section provides an example design that is again a simplifed version of the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/).
 
+For the JIT path, pass `TraceConfig(trace_size=N)` as the example's
+`trace_config` argument. The design uses its size in `prog.enable_trace`, while
+the host runtime allocates the extra trace buffer and writes `trace.txt`.
+Enabling trace in the design alone does not allocate that host buffer.
+
 ### <u>AIE structural design code ([vector_scalar_mul.py](./vector_scalar_mul.py))</u>
 In order to write the DDR data to a text file, we need to know where in DDR the trace data is stored and then read from that location. This starts inside the [vector_scalar_mul.py](./vector_scalar_mul.py) file where the `enable_trace` function under the hood expands to calls to configure the trace units and program the shimDMA to write to one of XRT inout buffers. It is helpful to have a more in-depth understanding about the *XRT buffer objects* described in [section 3](../../section-3). There we had described that our XRT supports up to 5 inout buffer objects. Common usage patterns include 1 input/ 1 output and 2 input/ 1 output. These patterns then map in the following way where the *group_id* is listed next to each XRT buffer object, `inoutN (group_id)`.
 

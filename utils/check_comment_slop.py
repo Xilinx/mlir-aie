@@ -46,10 +46,6 @@ POINTER_RE = re.compile(r"\bsee\s+\S", re.IGNORECASE)
 # explains the same mechanism.
 TEST_PATH_RE = re.compile(r"(^|/)tests?(/|_|\.)|(^|/)testing(/|_)|_tests?\.|(^|/)test_")
 
-# The SPDX/copyright license header is mandatory boilerplate (reuse-lint requires
-# it verbatim), so every new file repeats it -- that is compliance, not slop.
-LICENSE_RE = re.compile(r"SPDX-\w+|Copyright", re.IGNORECASE)
-
 STOPWORDS = {
     "about",
     "after",
@@ -116,13 +112,20 @@ STOPWORDS = {
     "your",
 }
 
-# In C and C++ a leading `#` opens a preprocessor directive, not a comment, and a
-# leading `*` is a block-comment continuation only when nothing follows it -- `*ptr`
-# is a dereference. Classifying either as a comment counts an ordinary include block
-# as prose, which is how an alphabetised #include added to three files gets reported
-# as a repeated explanation.
+# A leading `#` in C is a directive, not a comment, and a leading `*` continues
+# a block comment only when nothing follows it -- `*ptr` is a dereference.
+# Counting either as prose reports an alphabetized #include block as a repeated
+# explanation.
 COMMENT_RE_PY = re.compile(r"^\s*#")
 COMMENT_RE_CISH = re.compile(r"^\s*(//|/\*|\*/|\*(?=\s|$))")
+
+# The license header is policy, not an explanation anyone wrote twice, so
+# counting it would report any commit adding three files as repeating a concept.
+# Anchored so a comment that merely mentions "copyright" is not mistaken for it.
+LICENSE_RE = re.compile(r"^(copyright\b|spdx-license-identifier:)", re.IGNORECASE)
+# The blank separators, the mode line and the LLVM banner that wrap the two
+# lines above in this repo's header conventions.
+_HEADER_FILLER_RE = re.compile(r"^(\s*|\S*\s*-\*-.*-\*-\s*|={2,}.*={2,}/{0,2})$")
 SOURCE_SUFFIXES = (
     ".c",
     ".cc",
@@ -306,6 +309,9 @@ def collect(diff):
 
         if is_comment:
             stripped = strip_comment_markers(text)
+            if LICENSE_RE.match(stripped):
+                current = None
+                continue
             if (
                 current
                 and current.path == path
@@ -319,7 +325,14 @@ def collect(diff):
             current = None
             if text.strip():
                 code += 1
-    return blocks, code
+    # Drop the remaining header wrappers, not adjacent explanations.
+    return [
+        b
+        for b in blocks
+        if not all(
+            LICENSE_RE.match(line) or _HEADER_FILLER_RE.match(line) for line in b.lines
+        )
+    ], code
 
 
 def find_duplicates(blocks):
@@ -338,7 +351,9 @@ def find_duplicates(blocks):
         if len(b.terms) >= SHARED_TERMS_THRESHOLD
         and not TEST_PATH_RE.search(b.path)
         and not POINTER_RE.search(b.text)
-        and not LICENSE_RE.search(b.text)
+        and not all(
+            LICENSE_RE.match(line) or _HEADER_FILLER_RE.match(line) for line in b.lines
+        )
     ]
 
     groups = []  # [members, terms common to every member]
