@@ -128,6 +128,19 @@ def test_dispatch_filter_is_passed_as_data_not_shell_source():
     assert '${ONLY:+-k "$ONLY"}' in step["run"]
 
 
+def test_benchmark_preflight_retries_xrt_smi_and_reuses_one_examine():
+    job = workflow("benchmarkKernels.yml")["jobs"]["bench"]
+    step = next(step for step in job["steps"] if step.get("id") == "preflight")
+    run = step["run"]
+    assert "run_with_retry() {" in run
+    assert "EXAMINE=$(run_with_retry xrt-smi examine)" in run
+    assert "printf '%s\\n' \"$EXAMINE\"" in run
+    assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
+    assert "run_with_retry sudo xrt-smi configure -d \"$BDF\" --pmode \"$BENCH_PMODE\"" in run
+    assert "run_with_retry xrt-smi examine -d \"$BDF\" --report platform" in run
+    assert 'xrt-smi examine | grep -oE' not in run
+
+
 @pytest.mark.parametrize(
     "filename,compute",
     [("benchmarkKernels.yml", "bench")],
