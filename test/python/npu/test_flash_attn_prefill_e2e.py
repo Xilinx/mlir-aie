@@ -56,9 +56,17 @@ I32 = np.dtype[np.int32]
 
 # The softmax runs on exp2, and flash_attn_prefill.h holds log2(e) in a bf16
 # constant, so the curve the kernel exponentiates is exp(x * 1.0018...), not
-# exp(x). That is a property of the kernel, not an error in it, so the
-# reference below carries the same constant.
+# exp(x). That is a property of the kernel and not an error in it -- the header
+# records the measurement, and the assertion below checks the cost directly --
+# so the reference carries the same constant.
 _EXP_SCALE = np.float32(bfloat16(1.4426950408889634))
+
+# Tolerance, in bf16 steps at the top of the output range; see the assertion
+# for why the unit is absolute. Measured, not guessed. The worst of the four
+# cases runs at 2.62 steps and the weakest bug class this test is built to
+# catch -- a mask closing one key early -- moves the output by 6.62, so the
+# bound sits between them with room on both sides.
+_ATOL_ULP = 4
 
 # PrefillGeom<DH>: head_dim -> (query chunk, key chunk).
 _GEOM = {512: (8, 8), 256: (16, 16)}
@@ -98,8 +106,9 @@ def _attention(q, k, v, *, q_pos, k_pos, window, exp_scale):
     """Masked attention, rounded where the kernel rounds.
 
     S and the softmax weights are bf16 stores on the device and float32
-    everywhere else, and ``exp_scale`` says which exponential is being taken.
-    Pass ``log2(e)`` for the mathematical one.
+    everywhere else. ``exp_scale`` says which exponential is being taken; it is
+    a parameter rather than ``log2(e)`` so that the diagnostics below can ask
+    what a differently-rounded constant would have cost.
     """
     scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
     keep = (k_pos[None, :] <= q_pos[:, None]) & (
@@ -157,7 +166,7 @@ def prefill_round(
         "prefill_block_mid", [s_ty, m_ty, lq_bf, lq_bf, lq_f32, lq_f32, y_ty]
     )
     fv = obj.bind("prefill_fv_step", [y_ty, s_ty, kv_ty, np.int32])
-    epilogue = obj.bind("prefill_epilogue", [o_ty, lq_f32, lq_bf, y_ty, np.int32])
+    epilogue = obj.bind("prefill_epilogue", [o_ty, lq_f32, y_ty, np.int32])
 
     # Q is acquired once and held for the whole round, so one slot is all it
     # can ever use -- and at head_dim 512 with a second column it is 16 KB.
@@ -175,7 +184,6 @@ def prefill_round(
         Buffer(lq_bf, name="new_m"),
         Buffer(lq_f32, name="c"),
         Buffer(lq_f32, name="l"),
-        Buffer(lq_bf, name="l_bf16"),
         Buffer(y_ty, name="y"),
         Buffer(scalar_ty, name="l_begin", initial_value=np.array([block_q], np.int32)),
         Buffer(scalar_ty, name="window", initial_value=np.array([window], np.int32)),
@@ -183,7 +191,7 @@ def prefill_round(
 
     def core(
         of_q, of_kv, of_o, rb, qk, bm, fv, ep,
-        s, m, prev_m, new_m, c, l, l_bf16, y, l_begin, window_size,
+        s, m, prev_m, new_m, c, l, y, l_begin, window_size,
     ):  # fmt: skip
         i32 = np_dtype_to_mlir_type(np.int32)
         q = of_q.acquire(1)
@@ -202,7 +210,7 @@ def prefill_round(
                 fv(y, s, of_kv.acquire(1), arith.index_cast(chunk, to=i32))
                 of_kv.release(1)
         for out_chunk in range_(out_chunks):
-            ep(of_o.acquire(1), l, l_bf16, y, arith.index_cast(out_chunk, to=i32))
+            ep(of_o.acquire(1), l, y, arith.index_cast(out_chunk, to=i32))
             of_o.release(1)
         of_q.release(1)
 
@@ -245,6 +253,45 @@ def _dyadic(rng, shape, scale):
     return (rng.integers(-2, 3, size=shape) * scale).astype(bfloat16)
 
 
+def case_data(head_dim, block_q, n_blocks, window, row, col):
+    """Inputs for one case, as the mathematical operands and as device buffers."""
+    lq, lk = _GEOM[head_dim]
+    chunks = n_blocks * (_BLOCK_KEYS // lk)
+    q_pos = _inner_q(head_dim, block_q, row, col) + np.arange(lq)
+    k_start = max(block_q - window, 0)
+    k_pos = k_start + np.arange(chunks * lk)
+    assert k_pos[-1] >= q_pos[-1], "the key stream must reach the last query"
+
+    rng = np.random.default_rng(20260923 + head_dim + block_q)
+    q = _dyadic(rng, (lq, head_dim), 0.25)
+    k = _dyadic(rng, (len(k_pos), head_dim), 0.125)
+    v = _dyadic(rng, (len(k_pos), head_dim), 0.25)
+    # Aim each query at the last key its mask admits, at a quarter the strength
+    # that would make the softmax a delta. Two things follow. That key sits in
+    # the final block, so the running row max rises there and the online
+    # rescale has to correct what the earlier blocks accumulated. And it draws
+    # enough of the softmax mass that a mask closing one key early changes the
+    # answer outright -- otherwise it is one key in 129, a change the kernel's
+    # own bf16 rounding would hide.
+    for r, pos in enumerate(q_pos):
+        k[pos - k_start] = (q[r].astype(np.float32) * 0.0625).astype(bfloat16)
+
+    q_host = np.zeros((col + 1, lq * head_dim), bfloat16)
+    q_host[col] = _pack_q(q)
+    # One stream, in consumption order: each block's key chunks, then its value
+    # chunks.
+    per_block = _BLOCK_KEYS // lk
+    kv_host = np.concatenate(
+        [
+            _pack_kv(mat[(b * per_block + c) * lk :][:lk])
+            for b in range(n_blocks)
+            for mat in (k, v)
+            for c in range(per_block)
+        ]
+    )
+    return q, k, v, q_pos, k_pos, q_host.reshape(-1), kv_host
+
+
 @pytest.mark.parametrize(
     "head_dim,block_q,n_blocks,window,row,col",
     [
@@ -267,45 +314,14 @@ def _dyadic(rng, shape, scale):
 def test_prefill_round_matches_masked_attention(
     head_dim, block_q, n_blocks, window, row, col
 ):
-    lq, lk = _GEOM[head_dim]
-    chunks = n_blocks * (_BLOCK_KEYS // lk)
-    q_pos = _inner_q(head_dim, block_q, row, col) + np.arange(lq)
-    k_start = max(block_q - window, 0)
-    k_pos = k_start + np.arange(chunks * lk)
-    assert k_pos[-1] >= q_pos[-1], "the key stream must reach the last query"
-
-    rng = np.random.default_rng(20260923 + head_dim + block_q)
-    q = _dyadic(rng, (lq, head_dim), 0.25)
-    k = _dyadic(rng, (len(k_pos), head_dim), 0.125)
-    v = _dyadic(rng, (len(k_pos), head_dim), 0.25)
-    # Aim each query at the last key its mask admits, at a quarter the strength
-    # that would make the softmax a delta. Two things follow. That key sits in
-    # the final block, so the running row max rises there and the online
-    # rescale has to correct what the earlier blocks accumulated. And it draws
-    # enough of the softmax mass that a mask closing one key early changes the
-    # answer outright -- otherwise it is one key in 129, a change the kernel's
-    # own bf16 rounding would hide.
-    for r, pos in enumerate(q_pos):
-        k[pos - k_start] = (q[r].astype(np.float32) * 0.0625).astype(bfloat16)
-
-    q_slots = col + 1
-    q_host = np.zeros((q_slots, lq * head_dim), bfloat16)
-    q_host[col] = _pack_q(q)
-    # One stream, in consumption order: each block's key chunks, then its value
-    # chunks.
-    per_block = _BLOCK_KEYS // lk
-    kv_host = np.concatenate(
-        [
-            _pack_kv(mat[(b * per_block + c) * lk :][:lk])
-            for b in range(n_blocks)
-            for mat in (k, v)
-            for c in range(per_block)
-        ]
+    lq, _ = _GEOM[head_dim]
+    q, k, v, q_pos, k_pos, q_host, kv_host = case_data(
+        head_dim, block_q, n_blocks, window, row, col
     )
 
     o_t = iron.zeros((lq * head_dim,), dtype=bfloat16)
     prefill_round(
-        iron.tensor(q_host.reshape(-1), dtype=bfloat16),
+        iron.tensor(q_host, dtype=bfloat16),
         iron.tensor(kv_host, dtype=bfloat16),
         o_t,
         head_dim=head_dim,
@@ -327,11 +343,15 @@ def test_prefill_round_matches_masked_attention(
     # and its relative error is unbounded -- 180x in the worst element -- while
     # the absolute error stays flat.
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
-    np.testing.assert_allclose(got, ref, rtol=0, atol=4 * ulp)
+    np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
-    # The reference above carries the kernel's bf16 log2(e). Against the
-    # mathematical exponential the answer barely moves, which is what says the
-    # round computes attention and not merely what the model says it does.
+    # The reference above carries the kernel's bf16 log2(e), so on its own it
+    # would pass a round that computed a systematically sharpened softmax.
+    # Against the mathematical exponential the answer barely moves -- that is
+    # what says the round computes attention, and not merely what the model
+    # says it does. It is also the check that keeps the bf16 constant honest:
+    # the header argues the 0.18% lands where the weights vanish, and this is
+    # where that argument would fail if it were wrong.
     exact = _attention(
         q, k, v, q_pos=q_pos, k_pos=k_pos, window=window, exp_scale=np.log2(np.e)
     ).astype(np.float32)

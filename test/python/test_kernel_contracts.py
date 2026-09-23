@@ -1159,7 +1159,7 @@ def test_prefill_binds_its_translation_unit_as_one_object():
             f32(8),
             f32(8 * 512),
         ],
-        "prefill_epilogue": [bf(64), f32(8), bf(8), f32(8 * 512), np.int32],
+        "prefill_epilogue": [bf(64), f32(8), f32(8 * 512), np.int32],
     }
     # bind() is pure string qualification -- it consults neither the symbol
     # table nor the signature -- so the loop below alone would pass against a

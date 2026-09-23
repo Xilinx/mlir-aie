@@ -24,7 +24,24 @@
 
 using bf16 = bfloat16;
 
-// The softmax runs on exp2, so scores are pre-scaled by log2(e).
+// The softmax runs on exp2, so scores are scaled by log2(e). As a bf16 that
+// constant is 1.4453125 -- 0.18% high -- which looks like something worth
+// fixing and is not, for a reason specific to softmax.
+//
+// The scale multiplies s - m, never s. So the weight comes out as
+// 2^(1.0018*(s-m)) instead of 2^(s-m), an error of 2^(0.0018*(s-m)) that grows
+// as s - m goes negative -- which is exactly where the weight itself is
+// vanishing. At s - m = -20 the weight is 2.5% wrong and worth 2^-20 of the
+// output. Near the row max, where the output actually comes from, s - m is
+// small and so is the error. The bias is largest where it counts least.
+//
+// Measured rather than assumed: scaling in the float domain with an exact
+// log2(e) instead -- following aie2p/bf16_exp.cc, which does need that, being
+// a raw exponential where x = 88 is a real input -- moved the end-to-end error
+// by nothing (max 2.62 -> 2.75 bf16 steps at head_dim 512, 1.75 -> 1.50 at
+// 256; mean unchanged to three digits) and cost ~110 instructions of program
+// memory, in the loop that runs 128 times per key block. So this stays bf16,
+// as aie2p/softmax.cc's does.
 constexpr bf16 exp_scale = (bf16)1.4426950408889634f;
 
 // bf16 -inf, the mask fill value.
@@ -41,10 +58,11 @@ void apply_softmax(bf16 *__restrict pS, bf16 *__restrict new_m_local) {
   for (int b = 0; b < 128 / LK; b++) {
     for (int q = 0; q < LQ; q++) {
       aie::vector<bf16, LK> s_vec = aie::load_v<LK>(pS);
+      // The multiply doubles as the widening exp2 needs, so the scale is free
+      // here: the bf16 product lands in a float accumulator either way.
       aie::vector<bf16, LK> Vec = aie::sub(s_vec, *(new_m_local + q));
       aie::accum<accfloat, LK> Vec_acc = aie::mul(Vec, exp_scale);
-      Vec = aie::exp2<bf16>(Vec_acc.template to_vector<float>());
-      aie::store_v(pS, Vec);
+      aie::store_v(pS, aie::exp2<bf16>(Vec_acc.template to_vector<float>()));
       pS += LK;
     }
   }
@@ -95,33 +113,41 @@ void apply_mask_and_get_max(bf16 *__restrict pS, bf16 *__restrict m,
 }
 
 /// correct = exp(m_prev - m_new), one per query row.
-template <int LQ, int LK>
+///
+/// All LQ rows are one vector. They used to be a scalar loop that broadcast
+/// each row across an LK-wide vector, exponentiated it, and kept lane 0 --
+/// LQ exp2 calls, LK-1 lanes of each discarded.
+///
+/// exp2 lands in bf16 and widens: on XDNA2 aie::exp2 has no float result form
+/// (aie_api/aie.hpp:8107 admits one only on AIE_MLv2), so this rounding is the
+/// hardware's, not a choice. It is also the benign one -- c rescales y and l
+/// alike, and o = y/l divides most of it back out.
+template <int LQ>
 void calculate_c(float *c, bf16 *prev_m_local, bf16 *new_m_local) {
-  for (int i = 0; i < LQ; i++) {
-    bf16 inner_correct = aie::sub(*(prev_m_local + i), *(new_m_local + i));
-    inner_correct = aie::mul(inner_correct, exp_scale);
-    aie::vector<bf16, LK> correct_vec = aie::broadcast<bf16, LK>(inner_correct);
-    aie::accum<accfloat, LK> correct_acc;
-    correct_acc.from_vector(correct_vec);
-    correct_vec = aie::exp2<bf16>(correct_acc.template to_vector<float>());
-    *(c + i) = (float)correct_vec.get(0);
-  }
+  aie::vector<bf16, LQ> prev = aie::load_v<LQ>(prev_m_local);
+  aie::vector<bf16, LQ> next = aie::load_v<LQ>(new_m_local);
+  aie::accum<accfloat, LQ> arg = aie::mul(aie::sub(prev, next), exp_scale);
+  aie::accum<accfloat, LQ> e;
+  e.from_vector(aie::exp2<bf16>(arg.template to_vector<float>()));
+  aie::store_v(c, e.template to_vector<float>());
+}
+
+/// Broadcast eight consecutive floats across the eight 8-lane groups of one
+/// 64-lane vector: lane i takes p[i / 8]. Both callers pair the result with a
+/// 64-lane slice of an LQ x DH tile, which spans eight rows of eight columns,
+/// so "one value per group" is one value per query row.
+inline aie::vector<float, 64> broadcast_by_row(const float *p) {
+  aie::vector<float, 64> v;
+  for (int r = 0; r < 8; r++)
+    v.insert(r, aie::broadcast<float, 8>(p[r]));
+  return v;
 }
 
 /// Rescale the running y accumulator by the per-row correction factor.
 template <int LQ, int DH>
 void calculate_y(float *y, float *c) {
   for (int i = 0; i < LQ / 8; i++) {
-    aie::vector<float, 8> c0 = aie::broadcast<float, 8>(c[i * 8]);
-    aie::vector<float, 8> c1 = aie::broadcast<float, 8>(c[i * 8 + 1]);
-    aie::vector<float, 8> c2 = aie::broadcast<float, 8>(c[i * 8 + 2]);
-    aie::vector<float, 8> c3 = aie::broadcast<float, 8>(c[i * 8 + 3]);
-    aie::vector<float, 8> c4 = aie::broadcast<float, 8>(c[i * 8 + 4]);
-    aie::vector<float, 8> c5 = aie::broadcast<float, 8>(c[i * 8 + 5]);
-    aie::vector<float, 8> c6 = aie::broadcast<float, 8>(c[i * 8 + 6]);
-    aie::vector<float, 8> c7 = aie::broadcast<float, 8>(c[i * 8 + 7]);
-    aie::vector<float, 64> CORRECT =
-        aie::concat(c0, c1, c2, c3, c4, c5, c6, c7);
+    aie::vector<float, 64> CORRECT = broadcast_by_row(c + i * 8);
 
     float *pY = y + i * 8 * DH;
     for (unsigned j = 0; j < DH / 8; j += 1) {
@@ -135,25 +161,17 @@ void calculate_y(float *y, float *c) {
 
 /// o = y * l for one 64-element output chunk. l arrives already inverted, from
 /// finalize_impl.
-inline void scale_by_inv_l(bf16 *o, bf16 *l, float *y) {
+///
+/// Both operands stay float to the last moment. o is bf16 and so must round
+/// once; rounding y and 1/l on the way in as well would spend three roundings
+/// where one is owed, for no saving -- this is the same float multiply
+/// calculate_y already does, minus the two conversions.
+inline void scale_by_inv_l(bf16 *o, float *l, float *y) {
   constexpr int vec_factor = 64;
 
-  aie::vector<bf16, 8> L0 = aie::broadcast<bf16, 8>(l[0]);
-  aie::vector<bf16, 8> L1 = aie::broadcast<bf16, 8>(l[1]);
-  aie::vector<bf16, 8> L2 = aie::broadcast<bf16, 8>(l[2]);
-  aie::vector<bf16, 8> L3 = aie::broadcast<bf16, 8>(l[3]);
-  aie::vector<bf16, 8> L4 = aie::broadcast<bf16, 8>(l[4]);
-  aie::vector<bf16, 8> L5 = aie::broadcast<bf16, 8>(l[5]);
-  aie::vector<bf16, 8> L6 = aie::broadcast<bf16, 8>(l[6]);
-  aie::vector<bf16, 8> L7 = aie::broadcast<bf16, 8>(l[7]);
-
-  auto LL00 = aie::concat(L0, L1, L2, L3, L4, L5, L6, L7);
-
+  aie::vector<float, vec_factor> LL00 = broadcast_by_row(l);
   aie::vector<float, vec_factor> Y00 = aie::load_v<vec_factor>(y);
-  aie::accum<accfloat, vec_factor> Y00_acc;
-  Y00_acc.from_vector(Y00);
-  aie::accum<accfloat, vec_factor> AL00 =
-      aie::mul(Y00_acc.template to_vector<bf16>(), LL00);
+  aie::accum<accfloat, vec_factor> AL00 = aie::mul(LL00, Y00);
   aie::store_v(o, AL00.template to_vector<bf16>());
 }
 
@@ -566,7 +584,7 @@ block_mid_impl(bf16 *s, bf16 *m, bf16 *new_m, bf16 *prev_m, float *c, float *l,
     *(new_m + j) = (bf16)vm;
   }
   apply_softmax<G::LQ, G::LK>(s, new_m);
-  calculate_c<G::LQ, G::LK>(c, prev_m, new_m);
+  calculate_c<G::LQ>(c, prev_m, new_m);
   G::reorder_s(s);
   G::calculate_l(l, c, s);
   calculate_y<G::LQ, DH>(y, c);
@@ -613,38 +631,37 @@ fv_step_impl(float *y, bf16 *s, bf16 *__restrict v, const int j) {
   G::attn_fv(y, s + j * G::LQ * G::LK, v);
 }
 
-/// End of the round: 1/l, consumed by the scaling below. Folded into
-/// epilogue_impl's first output chunk rather than exposed as its own entry
-/// point.
+/// End of the round: l becomes 1/l in place, consumed by the scaling below.
+/// Folded into epilogue_impl's first output chunk rather than exposed as its
+/// own entry point.
+///
+/// The reciprocal stays float. It used to land in a bf16 side buffer, which
+/// cost a rounding on every output element -- and it is a rounding the output
+/// does not get to absorb, because o rounds to bf16 anyway afterwards. Two
+/// roundings where one is owed, for a buffer the round does not otherwise need.
 template <int DH>
-__attribute__((always_inline)) inline void finalize_impl(float *l,
-                                                         bf16 *l_bf16) {
+__attribute__((always_inline)) inline void finalize_impl(float *l) {
   using G = PrefillGeom<DH>;
-  aie::vector<float, G::LQ> l_vec = aie::load_v<G::LQ>(l);
-  l_vec = aie::inv(l_vec);
-  aie::accum<accfloat, G::LQ> l_acc;
-  l_acc.from_vector(l_vec);
-  aie::store_v(l_bf16, l_acc.template to_vector<bf16>());
+  aie::store_v(l, aie::inv(aie::load_v<G::LQ>(l)));
 }
 
-/// One 64-element output chunk of o = y/l. c == 0 first inverts l into l_bf16
+/// One 64-element output chunk of o = y/l. c == 0 first inverts l in place
 /// (what finalize was), so the round needs no separate closing call.
 template <int DH>
 __attribute__((always_inline)) inline void
-epilogue_impl(bf16 *__restrict o, float *l, bf16 *l_bf16, float *y,
-              const int c) {
+epilogue_impl(bf16 *__restrict o, float *l, float *y, const int c) {
   using G = PrefillGeom<DH>;
   if (c == 0) {
-    finalize_impl<DH>(l, l_bf16);
+    finalize_impl<DH>(l);
   }
   if constexpr (G::LQ == 8) {
     // A single row of 8 queries, so the row index is always 0 and the row/col
     // split below would be dead arithmetic.
-    scale_by_inv_l(o, l_bf16, y + c * 64);
+    scale_by_inv_l(o, l, y + c * 64);
   } else {
     const int o_row = c / (DH / 8);
     const int o_col = c % (DH / 8);
-    scale_by_inv_l(o, l_bf16 + o_row * 8, y + o_row * 8 * DH + o_col * 64);
+    scale_by_inv_l(o, l + o_row * 8, y + o_row * 8 * DH + o_col * 64);
   }
 }
 
