@@ -5,6 +5,7 @@
 #
 """Worker and WorkerRuntimeBarrier: compute-core tasks and runtime synchronization primitives."""
 
+import contextlib
 import sys
 from typing import Callable
 
@@ -30,9 +31,10 @@ from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import AnyComputeTile, Tile
 from .resolvable import Resolvable
 from .scratchpad_parameter import ScratchpadParameter
+from ..helpers.sourceloc import site_location, site_of_function
 
 
-class Worker(ObjectFifoEndpoint):
+class Worker(ObjectFifoEndpoint, Resolvable):
     """A task to be run on an AIE compute core.
 
     A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,
@@ -152,6 +154,13 @@ class Worker(ObjectFifoEndpoint):
         # CascadeFlow(src, dst).__init__ and consumed by Program.resolve()
         # to emit aie.cascade_flow ops after worker placement.
         self._outgoing_cascades: list = []
+        # The core body becomes MLIR by being run, so it has no declaration
+        # site of its own; fall back to this Worker's if core_fn is synthesized.
+        self._body_site = site_of_function(self.core_fn) or self._source_site
+        # AnyComputeTile and friends are declared inside IRON, so a clone of
+        # one carries no user site; this Worker is the nearest thing to one.
+        if self._tile is not None and self._tile._source_site is None:
+            self._tile._source_site = self._source_site
 
         # Check arguments to the core. Some information is saved for resolution.
         # fn_args may nest lists (e.g. one fifo per column); iterate the flattened
@@ -240,6 +249,10 @@ class Worker(ObjectFifoEndpoint):
         assert self._tile is not None
         return self._tile
 
+    def tiles(self) -> list:
+        """The compute tile this Worker occupies. See `Resolvable.tiles`."""
+        return [self._tile] if self._tile is not None else []
+
     @property
     def flat_fn_args(self) -> list:
         """fn_args with any nested lists/tuples flattened to their leaves.
@@ -275,18 +288,25 @@ class Worker(ObjectFifoEndpoint):
         if not self._tile:
             raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
+        loc = loc or site_location(self._source_site, self.core_fn.__name__)
 
         # Create the necessary locks for the core operation to synchronize with the runtime sequence
         # and register them in the corresponding barriers.
         for barrier in self._barriers:
-            barrier_lock = lock(my_tile)
+            barrier_lock = lock(my_tile, loc=loc)
             barrier._add_worker_lock(barrier_lock)
+
+        # Ops inside the body are emitted while core_fn runs, so they pick up
+        # whichever location is ambient; point that at core_fn rather than
+        # letting them default to unknown.
+        body_loc = site_location(self._body_site, self.core_fn.__name__) or loc
 
         @core(
             my_tile,
             stack_size=self.stack_size,
             data_size=self.data_size,
             dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
+            loc=loc,
         )
         def core_body():
             # Always wrap in an scf.for so the lowered MLIR matches expectations
@@ -294,8 +314,9 @@ class Worker(ObjectFifoEndpoint):
             # bound=1 for single-shot workers). Using Python range(1) here would
             # emit the body inline with no scf.for wrapper, which the dataflow
             # lowerer treats differently and can cause runtime hangs.
-            for _ in range_(sys.maxsize if self._while_true else 1):
-                self.core_fn(*self.fn_args)
+            with body_loc if body_loc is not None else contextlib.nullcontext():
+                for _ in range_(sys.maxsize if self._while_true else 1):
+                    self.core_fn(*self.fn_args)
 
 
 class WorkerRuntimeBarrier:

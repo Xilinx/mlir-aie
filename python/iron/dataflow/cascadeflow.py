@@ -62,4 +62,4 @@ class CascadeFlow(Resolvable):
 
     def resolve(self, loc=None, ip=None) -> None:
         """Emit ``aie.cascade_flow(src.tile, dst.tile)``."""
-        _cascade_flow_op(self._src.tile.op, self._dst.tile.op)
+        _cascade_flow_op(self._src.tile.op, self._dst.tile.op, loc=loc, ip=ip)

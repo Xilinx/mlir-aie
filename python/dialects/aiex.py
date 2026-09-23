@@ -43,7 +43,7 @@ from ..ir import (
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
 from ..extras.dialects import arith
-from ..extras.util import get_user_code_loc
+from .aie import _default_loc
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
 
@@ -55,7 +55,7 @@ def npu_write32(
     address, value, buffer=None, column=None, row=None, *, loc=None, ip=None, **kwargs
 ):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = _default_loc()
     return _npu_write32(
         _as_i32(address, loc=loc, ip=ip),
         _as_i32(value, loc=loc, ip=ip),
@@ -81,7 +81,7 @@ def npu_maskwrite32(
     **kwargs,
 ):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = _default_loc()
     return _npu_maskwrite32(
         _as_i32(address, loc=loc, ip=ip),
         _as_i32(value, loc=loc, ip=ip),
@@ -108,7 +108,7 @@ def npu_sync(
     **kwargs,
 ):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = _default_loc()
     return _npu_sync(
         _as_i32(column, loc=loc, ip=ip),
         _as_i32(row, loc=loc, ip=ip),
@@ -124,7 +124,7 @@ def npu_sync(
 
 def npu_address_patch(addr, arg_idx, arg_plus, *, loc=None, ip=None, **kwargs):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = _default_loc()
     return _npu_address_patch(
         addr,
         _as_i32(arg_plus, loc=loc, ip=ip),
@@ -137,7 +137,7 @@ def npu_address_patch(addr, arg_idx, arg_plus, *, loc=None, ip=None, **kwargs):
 
 def npu_rtp_write(buffer, index, value, *, loc=None, ip=None, **kwargs):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = _default_loc()
     return _npu_rtp_write(
         buffer, index, _as_i32(value, loc=loc, ip=ip), loc=loc, ip=ip, **kwargs
     )
@@ -157,7 +157,7 @@ def npu_push_queue(
     **kwargs,
 ):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = _default_loc()
     return _npu_push_queue(
         column,
         row,

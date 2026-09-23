@@ -54,11 +54,13 @@ from ..extras.util import (
     get_user_code_loc,
     region_adder,
 )
+from ..helpers.sourceloc import capture_source_site, site_location
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
 from ..ir import (
     Attribute,
     Block,
+    Location,
     BlockList,
     DenseElementsAttr,
     DenseI32ArrayAttr,
@@ -91,7 +93,7 @@ def use_lock(
     lock, action, value=None, *, blocking=None, acq_en=None, loc=None, ip=None
 ):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = _default_loc()
     if value is None:
         value = 1
     if isinstance(value, int):
@@ -108,7 +110,7 @@ from ._aiex_ops_gen import NpuWriteRTPOp
 class npu_write_rtp(NpuWriteRTPOp):
     def __init__(self, buffer, index, value, loc=None, ip=None):
         if loc is None:
-            loc = get_user_code_loc()
+            loc = _default_loc()
         buff_name = buffer
         if isinstance(buffer, BufferOp):
             buff_name = buffer.sym_name.value
@@ -117,6 +119,31 @@ class npu_write_rtp(NpuWriteRTPOp):
         if isinstance(value, int):
             value = constant(value, T.i32(), loc=loc, ip=ip)
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
+
+
+def _default_loc():
+    """Location for a builder whose caller passed none.
+
+    Two callers need different things. A direct user of these dialect builders
+    is on the stack right now, so their call site is the answer. IRON is not --
+    it declares objects in one place and emits ops much later, so it scopes an
+    ambient Location instead; recovering a location from the stack there would
+    name an IRON internal rather than the user's design.
+
+    Honoring a deliberately-set ambient location distinguishes the two: only
+    when it is unknown -- the plain ``mlir_mod_ctx`` case a direct user gets --
+    is there nothing better than walking the stack. Returning None leaves the
+    ambient location in place.
+    """
+    try:
+        if Location.current != Location.unknown():
+            return None
+    except (ValueError, RuntimeError):
+        pass  # no ambient location established
+    # Not get_user_code_loc(): it treats its immediate caller's file as the
+    # boundary, so routing through this helper would make every builder stop
+    # on whichever dialect module it lives in rather than on user code.
+    return site_location(capture_source_site())
 
 
 def _as_i32(v, *, loc=None, ip=None):
@@ -148,6 +175,8 @@ def dma_bd(
     strides: MixedValues | None = None,
     offset=None,
     transfer_len=None,
+    loc=None,
+    ip=None,
     **kwargs,
 ):
     """User-facing aie.dma_bd builder with a single interleaved list per
@@ -166,6 +195,8 @@ def dma_bd(
         aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
                    offset=0 len=%len)
     """
+    if loc is None:
+        loc = _default_loc()
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
 
@@ -183,6 +214,8 @@ def dma_bd(
         len=len_operand,
         static_offset=static_offset,
         static_len=static_len,
+        loc=loc,
+        ip=ip,
         **kwargs,
     )
 
@@ -222,7 +255,11 @@ class external_func(FuncOp):
         link_with=None,
         link_with_mode=None,
         stack_size_override=None,
+        loc=None,
+        ip=None,
     ):
+        if loc is None:
+            loc = _default_loc()
         # Validate before building the op so a rejected declaration never lands
         # in the IR at the current insertion point.
         if link_with_mode is not None:
@@ -268,7 +305,11 @@ class external_func(FuncOp):
             if new_type != ty:
                 outputs[i] = new_type
         super().__init__(
-            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
+            name=name,
+            type=FunctionType.get(inputs, outputs),
+            visibility=visibility,
+            loc=loc,
+            ip=ip,
         )
         if link_with is not None:
             self.operation.attributes["link_with"] = StringAttr.get(link_with)
@@ -279,8 +320,8 @@ class external_func(FuncOp):
                 IntegerType.get_signless(32), stack_size_override
             )
 
-    def __call__(self, *call_args):
-        return call(self, call_args)
+    def __call__(self, *call_args, loc=None, ip=None):
+        return call(self, call_args, loc=loc, ip=ip)
 
 
 @register_attribute_builder("BDDimLayoutAttr")
@@ -465,7 +506,11 @@ class Core(CoreOp):
         dynamic_objfifo_lowering=None,
         stack_size=None,
         data_size=None,
+        loc=None,
+        ip=None,
     ):
+        if loc is None:
+            loc = _default_loc()
         if link_with is not None:
             raise TypeError(
                 "Core() no longer accepts link_with. "
@@ -479,6 +524,8 @@ class Core(CoreOp):
             data_size=data_size,
             link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
+            loc=loc,
+            ip=ip,
         )
 
 
@@ -502,6 +549,8 @@ class buffer(BufferOp):
         loc=None,
         ip=None,
     ):
+        if loc is None:
+            loc = _default_loc()
         self.type = try_convert_np_type_to_mlir_type(datatype)
         self.use_write_rtp = use_write_rtp
         if not (initial_value is None):
@@ -536,7 +585,7 @@ class buffer(BufferOp):
         return self.result.owner
 
     def __getitem__(self, idx: tuple | ScalarValue) -> MemRefValue:
-        loc = get_user_code_loc()
+        loc = _default_loc()
 
         if not self.has_rank():
             raise ValueError("only ranked memref slicing/indexing supported")
@@ -561,7 +610,7 @@ class buffer(BufferOp):
             raise ValueError("Buffer slicing not supported, only indexing supported")
 
     def __setitem__(self, idx, source):
-        loc = get_user_code_loc()
+        loc = _default_loc()
 
         if not self.has_rank():
             raise ValueError("only ranked memref slicing/indexing supported")
@@ -640,7 +689,11 @@ class object_fifo(ObjectFifoCreateOp):
         consumer_datatype=None,
         packet=None,
         packet_id=None,
+        loc=None,
+        ip=None,
     ):
+        if loc is None:
+            loc = _default_loc()
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         self.consumer_datatype = (
             try_convert_np_type_to_mlir_type(consumer_datatype)
@@ -682,6 +735,8 @@ class object_fifo(ObjectFifoCreateOp):
             iter_count=iter_count,
             packet=packet,
             packet_id=packet_id,
+            loc=loc,
+            ip=ip,
         )
         if consumerElemType is not None:
             self.attributes["consumerElemType"] = consumerElemType
@@ -728,7 +783,11 @@ class object_fifo(ObjectFifoCreateOp):
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
 
-    def __init__(self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[]):
+    def __init__(
+        self, fifoIns, fifoOuts, srcOffsets=[], dstOffsets=[], loc=None, ip=None
+    ):
+        if loc is None:
+            loc = _default_loc()
         if not isinstance(fifoIns, List):
             fifoIns = [fifoIns]
         if not isinstance(fifoOuts, List):
@@ -744,6 +803,8 @@ class object_fifo_link(ObjectFifoLinkOp):
             fifoOuts=fifoOutRefs,
             src_offsets=srcOffsets,
             dst_offsets=dstOffsets,
+            loc=loc,
+            ip=ip,
         )
 
 
@@ -764,7 +825,7 @@ class packetflow(PacketFlowOp):
         ip=None,
     ):
         if loc is None:
-            loc = get_user_code_loc()
+            loc = _default_loc()
         super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header, loc=loc, ip=ip)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
@@ -775,13 +836,19 @@ class packetflow(PacketFlowOp):
             EndOp(loc=loc)
 
 
-core = region_op(Core, terminator=lambda *_: EndOp())
-device = region_op(Device, terminator=lambda *_: EndOp())
+def end(*, loc=None, ip=None):
+    if loc is None:
+        loc = _default_loc()
+    return EndOp(loc=loc, ip=ip)
+
+
+core = region_op(Core, terminator=lambda *_: EndOp(loc=_default_loc()))
+device = region_op(Device, terminator=lambda *_: EndOp(loc=_default_loc()))
 trace = region_op(
     lambda tile, sym_name, *, loc=None, ip=None: TraceOp(
         tile, sym_name, loc=loc, ip=ip
     ),
-    terminator=lambda *_: EndOp(),
+    terminator=lambda *_: EndOp(loc=_default_loc()),
 )
 
 
@@ -1012,7 +1079,7 @@ class NextBDOp(NextBDOp):
         if dest is None:
             dest = InsertionPoint.current.block
         if loc is None:
-            loc = get_user_code_loc()
+            loc = _default_loc()
         super().__init__(dest, loc=loc, ip=ip)
 
     @property
@@ -1036,6 +1103,8 @@ _lock = lock
 def lock(
     tile, *, lock_id=None, init=None, sym_name=None, annot=None, loc=None, ip=None
 ):
+    if loc is None:
+        loc = _default_loc()
     if sym_name is not None and not sym_name:
         sym_name = _get_sym_name(inspect.currentframe().f_back, "aie\\.lock|lock")
     l = _lock(
@@ -1069,7 +1138,7 @@ def flow(
     ip=None,
 ):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = _default_loc()
     assert dest is not None
     if source_bundle is None:
         source_bundle = WireBundle.DMA
@@ -1310,6 +1379,8 @@ def tile(
     packet_type=0,
     packet_id=None,
 ):
+    if loc is None:
+        loc = _default_loc()
     tile_op = TileOp(col=col, row=row, loc=loc, ip=ip)
     if packet_id is not None:
         tile_op.attributes["controller_id"] = packet_info_attr_builder(

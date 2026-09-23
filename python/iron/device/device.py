@@ -18,6 +18,7 @@ from ...dialects.aie import (
     logical_tile,
 )
 from ..resolvable import Resolvable
+from ...helpers.sourceloc import site_location
 from .tile import Tile
 
 
@@ -127,6 +128,10 @@ class Device(Resolvable):
                 raise ValueError(
                     f"Cannot resolve {tile}: tile_type must be set or inferred from coordinates."
                 )
+
+        # The op is created here rather than on Tile itself (tiles dedup by
+        # object identity), so the declaring site has to come off the Tile.
+        loc = loc or site_location(getattr(tile, "_source_site", None))
 
         op = logical_tile(
             tile_type,

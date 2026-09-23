@@ -21,6 +21,8 @@ import itertools
 import logging
 from typing import Callable, Sequence, get_origin
 
+import contextlib
+
 import numpy as np
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
@@ -43,6 +45,7 @@ from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow import ObjectFifoHandle
 from ..resolvable import Resolvable
+from ...helpers.sourceloc import site_location, site_of_function
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence, active_sequence_scope
 from .data import RuntimeData
@@ -98,19 +101,23 @@ class ActiveSequence:
         actions = tg._actions
         if not actions:
             return
-        wait_tasks = [(fn, a) for (fn, a) in actions if fn == dma_await_task]
-        free_tasks = [(fn, a) for (fn, a) in actions if fn == dma_free_task]
+        wait_tasks = [act for act in actions if act[0] == dma_await_task]
+        free_tasks = [act for act in actions if act[0] == dma_free_task]
         if len(wait_tasks) + len(free_tasks) != len(actions):
             unknown = [
-                (fn, a)
-                for (fn, a) in actions
-                if fn != dma_await_task and fn != dma_free_task
+                act
+                for act in actions
+                if act[0] != dma_await_task and act[0] != dma_free_task
             ]
             raise IronRuntimeError(
                 f"Unknown action type detected: {','.join(str(a) for a in unknown)}"
             )
-        for fn, a in wait_tasks + free_tasks:
-            fn(*a)
+        # These ops are emitted here, long after the fill()/drain() that queued
+        # them returned, so the transfer's own site is carried along rather than
+        # letting them inherit the enclosing sequence's location.
+        for fn, a, action_loc in wait_tasks + free_tasks:
+            with action_loc if action_loc is not None else contextlib.nullcontext():
+                fn(*a)
         tg._actions = []
 
     def emit_transfer(self, task: DMATask, task_group: TaskGroup | None) -> None:
@@ -130,9 +137,10 @@ class ActiveSequence:
         else:
             self._used_default = True
             group = self._default_task_group
+        action_loc = site_location(getattr(task, "_source_site", None))
         if task.will_wait():
-            group._actions.append((dma_await_task, [task.task]))
-        group._actions.append((dma_free_task, [task.task]))
+            group._actions.append((dma_await_task, [task.task], action_loc))
+        group._actions.append((dma_free_task, [task.task], action_loc))
 
     def finalize(self) -> None:
         """Close bookkeeping after the body runs."""
@@ -413,8 +421,17 @@ class Runtime(Resolvable):
         ]
         active = ActiveSequence(self)
 
-        seq_op = RuntimeSequenceOp(sym_name="sequence")
-        entry_block = seq_op.body.blocks.append(*rt_dtypes)
+        # Like a Worker core body, the sequence body becomes MLIR by being
+        # run, so point the ambient location at seq_fn rather than letting
+        # its ops default to unknown.
+        body_loc = site_location(site_of_function(self._seq_fn), "sequence") or loc
+        seq_op = RuntimeSequenceOp(sym_name="sequence", loc=loc)
+        # Block arguments carry their own locations; without arg_locs they
+        # print as loc(unknown) even though every op in the body is attributed.
+        entry_block = seq_op.body.blocks.append(
+            *rt_dtypes,
+            arg_locs=[body_loc] * len(rt_dtypes) if body_loc is not None else None,
+        )
         with ir.InsertionPoint(entry_block):
             # Full-ELF designs configure the device themselves: no xclbin
             # pre-loads the PDI, so the sequence must start by loading it.
@@ -481,7 +498,9 @@ class Runtime(Resolvable):
                 else:
                     body_args.append(arg)
 
-            with active_sequence_scope(active):
+            with active_sequence_scope(active), (
+                body_loc if body_loc is not None else contextlib.nullcontext()
+            ):
                 self._seq_fn(*body_args)
                 active.finalize()
 
