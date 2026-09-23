@@ -2493,6 +2493,50 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#kernel-sources-mlir_aie_kernel_sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kernel sources (MLIR_AIE_KERNEL_SOURCES)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kernel-compile-parallelism-aie_kernel_compile_jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kernel compile parallelism (AIE_KERNEL_COMPILE_JOBS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#peano-location-peano_install_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Peano location (PEANO_INSTALL_DIR)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-npu-for-the-test-suite-aie_expected_npu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected NPU for the test suite (AIE_EXPECTED_NPU)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4097,6 +4141,50 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#kernel-sources-mlir_aie_kernel_sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kernel sources (MLIR_AIE_KERNEL_SOURCES)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kernel-compile-parallelism-aie_kernel_compile_jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kernel compile parallelism (AIE_KERNEL_COMPILE_JOBS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#peano-location-peano_install_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Peano location (PEANO_INSTALL_DIR)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-npu-for-the-test-suite-aie_expected_npu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected NPU for the test suite (AIE_EXPECTED_NPU)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4236,9 +4324,11 @@ without needing each one attached at build time.</p>
 <p>Some <code>aie.iron.kernels</code> factories pick a different MMUL geometry per
 arch — <code>kernels.mm(int16, int16)</code> is <code>(r, s, t) = (4, 4, 4)</code> on AIE2
 (Phoenix) but <code>(4, 4, 8)</code> on AIE2P (Strix).  The chosen geometry is
-exposed on the returned <code>ExternalFunction</code> as <code>.mac_dims</code>, so designs
-can drive their DMA-layout transforms from the kernel itself instead
-of hardcoding for one arch:</p>
+declared on the contract's operand layouts (<code>fn.contract.layouts[i].block</code>)
+and read back as <code>.mac_dims</code> on the returned <code>MatrixKernel</code>, with the
+matching DMA transforms as <code>.stream_dims</code>, so designs can drive their
+DMA-layout transforms from the kernel itself instead of hardcoding for one
+arch:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.device</span><span class="w"> </span><span class="kn">import</span> <span class="n">NPU2Col1</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
@@ -4655,6 +4745,28 @@ generator body.</p>
 <p>Prefer explicit <code>CompileTime[T]</code> parameters when you can; reserve
 <code>compile_context</code> for the cases where threading the value through every
 helper signature would obscure the design.</p>
+<h2 id="kernel-sources-mlir_aie_kernel_sources">Kernel sources (<code>MLIR_AIE_KERNEL_SOURCES</code>)<a class="headerlink" href="#kernel-sources-mlir_aie_kernel_sources" title="Permanent link">&para;</a></h2>
+<p>The kernel factories compile from the installed tree's <code>aie_kernels/</code> and
+<code>aie_runtime_lib/</code>. Point <code>MLIR_AIE_KERNEL_SOURCES</code> at a checkout to compile
+that checkout's kernel sources instead, against an otherwise-installed wheel:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nv">MLIR_AIE_KERNEL_SOURCES</span><span class="o">=</span>/path/to/mlir-aie<span class="w"> </span>python3<span class="w"> </span>my_design.py
+</code></pre></div>
+<p>This is how <code>aie.utils.compile.remarks</code> reads a checkout's kernels without
+building the rest of it.</p>
+<h2 id="kernel-compile-parallelism-aie_kernel_compile_jobs">Kernel compile parallelism (<code>AIE_KERNEL_COMPILE_JOBS</code>)<a class="headerlink" href="#kernel-compile-parallelism-aie_kernel_compile_jobs" title="Permanent link">&para;</a></h2>
+<p>External kernels are compiled in parallel, one process per distinct kernel,
+defaulting to <code>os.cpu_count()</code>. Set <code>AIE_KERNEL_COMPILE_JOBS</code> to cap that — on
+a shared machine, or to serialize the build when a compiler error is easier to
+read one at a time. Values below 1 mean the default.</p>
+<h2 id="peano-location-peano_install_dir">Peano location (<code>PEANO_INSTALL_DIR</code>)<a class="headerlink" href="#peano-location-peano_install_dir" title="Permanent link">&para;</a></h2>
+<p>Where the Peano (<code>llvm-aie</code>) toolchain lives. Set at build time, and
+overridable here for a Peano built or installed somewhere else. When neither
+resolves to an existing directory, the install area's own copy is used.</p>
+<h2 id="expected-npu-for-the-test-suite-aie_expected_npu">Expected NPU for the test suite (<code>AIE_EXPECTED_NPU</code>)<a class="headerlink" href="#expected-npu-for-the-test-suite-aie_expected_npu" title="Permanent link">&para;</a></h2>
+<p><code>npu1</code> or <code>npu2</code>. lit normally discovers the attached device; setting this
+asserts which one the suite is meant to run against, so a machine that comes
+up as the other generation fails loudly instead of silently skipping every
+device test.</p>
 
 
 

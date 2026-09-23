@@ -4119,7 +4119,9 @@ even across many <code>.compile()</code> / <code>__call__</code> / <code>.as_mli
 The first call:</p>
 <ol>
 <li>Opens a fresh MLIR <code>Context</code> and <code>Location</code> via <code>mlir_mod_ctx()</code>.</li>
-<li>Builds tensor placeholders for the <code>In</code>/<code>Out</code>/<code>InOut</code> parameters.</li>
+<li>Builds tensor placeholders for the <code>In</code>/<code>Out</code>/<code>InOut</code> parameters (a
+   variadic <code>*tensors: In</code> gets an empty tuple: the generator decides how
+   many tensors the design takes from its <code>CompileTime[T]</code> parameters).</li>
 <li>Calls the generator with <code>(**placeholders, **compile_kwargs)</code>.</li>
 <li>Captures the resulting <code>Module</code> (either the generator's return
    value, or <code>ctx.module</code> if it returned <code>None</code> — "placed" vs
@@ -4570,6 +4572,13 @@ baked in:</p>
 <p>A defaulted <em>and</em> call-time-overridden <code>CompileTime[T]</code> recompiles for the
 new value; the cache key includes the resolved value, not the source
 default.</p>
+<p>A generator whose tensor count follows from its compile-time parameters
+declares them as one variadic list, <code>def design(*tensors: In, *, N:
+CompileTime[int])</code>: every positional argument of a call is a tensor of
+that list, in the order the lowered <code>aie.runtime_sequence</code> takes them, and
+the runtime checks the count against the compiled design. Only a tensor
+parameter may be variadic; the generator body cannot read the list (it is
+empty at generation) any more than it can read a named placeholder.</p>
 <h2 id="related-reading">Related reading<a class="headerlink" href="#related-reading" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="https://github.com/Xilinx/mlir-aie/blob/main/tools/aiecc/README.md"><code>aiecc</code> compiler driver</a>
