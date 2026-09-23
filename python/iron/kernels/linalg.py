@@ -7,6 +7,7 @@
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.utils import resolve_target_arch
 from ml_dtypes import bfloat16
 
 from ._common import _default_source_path, _detect_arch, _make_extern
@@ -103,102 +104,135 @@ _ZERO_SUFFIX = {
 }
 
 
-def mm(
-    dim_m: int = 64,
-    dim_k: int = 64,
-    dim_n: int = 64,
-    input_dtype: type = np.int16,
-    output_dtype: type = np.int16,
-    vectorized: bool = True,
-    b_col_maj: bool = False,
-    c_col_maj: bool = False,
-    use_chess: bool = False,
-    emulate_bf16_mmul_with_bfp16: bool = False,
-) -> ExternalFunction:
-    """Matrix-multiply kernel: C += A * B.
+class _MatMulFactory:
+    """Callable matrix-multiply factory with registration-free geometry queries."""
 
-    The compiled ``.o`` exports both the ``matmul_*`` and ``zero_*`` symbols.
-    Use ``kernels.mm(...).zero`` to get a sibling Kernel binding the zero
-    symbol against the same .o, suitable for accumulator initialization.
+    @classmethod
+    def mac_dims(
+        cls,
+        input_dtype,
+        output_dtype,
+        *,
+        device=None,
+        arch: str | None = None,
+        emulate_bf16_mmul_with_bfp16: bool = False,
+    ) -> tuple[int, int, int]:
+        """Return ``(r, s, t)`` for the device without constructing a kernel.
 
-    Args:
-        dim_m: Number of rows of A / C.
-        dim_k: Number of columns of A / rows of B.
-        dim_n: Number of columns of B / C.
-        input_dtype: Input element type (``np.int8``, ``np.int16``, or ``bfloat16``).
-        output_dtype: Output element type.
-        vectorized: If ``True`` use the vectorized variant.
-        b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the kernel
-            consumes B laid out column-major.  Must agree with the
-            design's B ``dims_to_stream``.
-        c_col_maj: If ``True`` compile with ``-DC_COL_MAJ`` so the kernel
-            writes C laid out column-major.  Must agree with the design's
-            C output ``dims_to_stream``.
-        use_chess: If ``True`` build with ``xchesscc_wrapper`` instead of
-            Peano's ``clang++``.  All ExternalFunctions in a single
-            ``@iron.jit`` design must share the same toolchain.
-        emulate_bf16_mmul_with_bfp16: AIE2P only, bf16 inputs only.  When
-            ``True`` compile with ``-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16``
-            so the kernel uses BFP16-based emulation of the bf16 MMUL.
-            Changes the micro-kernel dims to (8, 8, 8); designs reading
-            ``.mac_dims`` will see the new geometry automatically.  Ignored
-            for non-bf16 inputs and on AIE2.
-
-    Returns:
-        ExternalFunction configured for the matmul kernel.
-
-    Raises:
-        ValueError: When ``(input_dtype, output_dtype)`` is not a supported combination.
-    """
-    key = (input_dtype, output_dtype)
-    if key not in _MM_COMBOS:
-        raise ValueError(
-            f"mm(): unsupported (input_dtype, output_dtype) = {key}. "
-            f"Supported: {list(_MM_COMBOS.keys())}"
+        Defaults to the active device; an explicit ``arch`` overrides ``device``.
+        BF16 emulation selects 8x8x8 geometry on AIE2P only.
+        """
+        key = (input_dtype, output_dtype)
+        arch = arch or (
+            resolve_target_arch(device) if device is not None else _detect_arch()
         )
+        if arch not in _MM_MAC_DIMS or key not in _MM_MAC_DIMS[arch]:
+            raise ValueError(
+                f"mm.mac_dims(): unsupported (arch, dtypes) = ({arch}, {key})."
+            )
+        if emulate_bf16_mmul_with_bfp16 and arch == "aie2p" and input_dtype is bfloat16:
+            return _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
+        return _MM_MAC_DIMS[arch][key]
 
-    suffix, only_flag = _MM_COMBOS[key]
-    prefix = "matmul" if vectorized else "matmul_scalar"
-    a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
-    b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
-    c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-    compile_flags = [
-        f"-DDIM_M={dim_m}",
-        f"-DDIM_K={dim_k}",
-        f"-DDIM_N={dim_n}",
-        f"-D{only_flag}",
-    ]
-    if b_col_maj:
-        compile_flags.append("-DB_COL_MAJ")
-    if c_col_maj:
-        compile_flags.append("-DC_COL_MAJ")
-    arch = _detect_arch()
-    bf16_emulated = (
-        emulate_bf16_mmul_with_bfp16 and arch == "aie2p" and input_dtype is bfloat16
-    )
-    if bf16_emulated:
-        compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
-    extern = _make_extern(
-        f"{prefix}_{suffix}",
-        _default_source_path("mm.cc"),
-        [a_ty, b_ty, c_ty],
-        compile_flags=compile_flags,
-        use_chess=use_chess,
-    )
-    if bf16_emulated:
-        extern.mac_dims = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
-    else:
-        extern.mac_dims = _MM_MAC_DIMS[arch][key]
-    # mm.cc emits both matmul_* and zero_* symbols; expose the zero binding
-    # as another symbol bound from the same object-file handle so the design
-    # does `matmul = kernels.mm(...); zero = matmul.zero` instead of a
-    # separate kernels.mm_zero call (which would compile mm.cc a second time).
-    zero_prefix = "zero" if vectorized else "zero_scalar"
-    extern.zero = extern.object_file.bind(
-        f"{zero_prefix}_{_ZERO_SUFFIX[output_dtype]}",
-        [c_ty],
-    )
-    return extern
+    def __call__(
+        self,
+        dim_m: int = 64,
+        dim_k: int = 64,
+        dim_n: int = 64,
+        input_dtype: type = np.int16,
+        output_dtype: type = np.int16,
+        vectorized: bool = True,
+        b_col_maj: bool = False,
+        c_col_maj: bool = False,
+        use_chess: bool = False,
+        emulate_bf16_mmul_with_bfp16: bool = False,
+    ) -> ExternalFunction:
+        """Matrix-multiply kernel: C += A * B.
+
+        The compiled ``.o`` exports both the ``matmul_*`` and ``zero_*`` symbols.
+        Use ``kernels.mm(...).zero`` to get a sibling Kernel binding the zero
+        symbol against the same .o, suitable for accumulator initialization.
+
+        Args:
+            dim_m: Number of rows of A / C.
+            dim_k: Number of columns of A / rows of B.
+            dim_n: Number of columns of B / C.
+            input_dtype: Input element type (``np.int8``, ``np.int16``, or ``bfloat16``).
+            output_dtype: Output element type.
+            vectorized: If ``True`` use the vectorized variant.
+            b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the kernel
+                consumes B laid out column-major.  Must agree with the
+                design's B ``dims_to_stream``.
+            c_col_maj: If ``True`` compile with ``-DC_COL_MAJ`` so the kernel
+                writes C laid out column-major.  Must agree with the design's
+                C output ``dims_to_stream``.
+            use_chess: If ``True`` build with ``xchesscc_wrapper`` instead of
+                Peano's ``clang++``.  All ExternalFunctions in a single
+                ``@iron.jit`` design must share the same toolchain.
+            emulate_bf16_mmul_with_bfp16: AIE2P only, bf16 inputs only.  When
+                ``True`` compile with ``-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16``
+                so the kernel uses BFP16-based emulation of the bf16 MMUL.
+                Changes the micro-kernel dims to (8, 8, 8); designs reading
+                ``.mac_dims`` will see the new geometry automatically.  Ignored
+                for non-bf16 inputs and on AIE2.
+
+        Returns:
+            ExternalFunction configured for the matmul kernel.
+
+        Raises:
+            ValueError: When ``(input_dtype, output_dtype)`` is not a supported combination.
+        """
+        key = (input_dtype, output_dtype)
+        if key not in _MM_COMBOS:
+            raise ValueError(
+                f"mm(): unsupported (input_dtype, output_dtype) = {key}. "
+                f"Supported: {list(_MM_COMBOS.keys())}"
+            )
+
+        suffix, only_flag = _MM_COMBOS[key]
+        prefix = "matmul" if vectorized else "matmul_scalar"
+        a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
+        b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
+        c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
+        compile_flags = [
+            f"-DDIM_M={dim_m}",
+            f"-DDIM_K={dim_k}",
+            f"-DDIM_N={dim_n}",
+            f"-D{only_flag}",
+        ]
+        if b_col_maj:
+            compile_flags.append("-DB_COL_MAJ")
+        if c_col_maj:
+            compile_flags.append("-DC_COL_MAJ")
+        arch = _detect_arch()
+        bf16_emulated = (
+            emulate_bf16_mmul_with_bfp16 and arch == "aie2p" and input_dtype is bfloat16
+        )
+        if bf16_emulated:
+            compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
+        extern = _make_extern(
+            f"{prefix}_{suffix}",
+            _default_source_path("mm.cc"),
+            [a_ty, b_ty, c_ty],
+            compile_flags=compile_flags,
+            use_chess=use_chess,
+        )
+        extern.mac_dims = self.mac_dims(
+            input_dtype,
+            output_dtype,
+            arch=arch,
+            emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
+        )
+        # Bind the companion symbol from the same object file.
+        zero_prefix = "zero" if vectorized else "zero_scalar"
+        extern.zero = extern.object_file.bind(
+            f"{zero_prefix}_{_ZERO_SUFFIX[output_dtype]}",
+            [c_ty],
+        )
+        return extern
+
+
+mm = _MatMulFactory()
 
 
 def mv(
@@ -218,8 +252,8 @@ def mv(
         output_dtype: Output element type. Only ``np.int32`` is supported.
         vectorized: If ``True`` use the vectorized variant.
         use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
-            instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level
-            constraint (all EFs in one design must agree).
+            instead of Peano. All kernels in one design must use the same
+            toolchain.
 
     Returns:
         ExternalFunction configured for the matvec kernel.
@@ -251,80 +285,105 @@ def mv(
     return extern
 
 
-def cascade_mm(
-    dim_m: int = 64,
-    dim_k: int = 64,
-    dim_n: int = 64,
-    input_dtype: type = np.int16,
-    output_dtype: type = np.int16,
-    use_chess: bool = False,
-) -> ExternalFunction:
-    r"""Cascade matrix-multiply kernel for multi-core accumulation.
+class _CascadeMatMulFactory:
+    """Callable cascade factory with registration-free geometry queries."""
 
-    cascade_mm.cc emits all three cascade variants (``get_only``,
-    ``put_only``, ``put_get``) plus a ``zero`` companion in one .o.  The
-    returned ExternalFunction binds the ``get_only`` symbol; the other
-    three are sibling [`Kernel`][iron.Kernel]\\s available as attributes:
+    @classmethod
+    def mac_dims(
+        cls,
+        input_dtype,
+        output_dtype,
+        *,
+        device=None,
+        arch: str | None = None,
+    ) -> tuple[int, int, int]:
+        """Return scalar-block geometry without constructing a kernel.
 
-    * ``.get_only`` — same as the returned EF (top of the cascade chain).
-    * ``.put_only`` — bottom of the chain.
-    * ``.put_get`` — middle of the chain.
-    * ``.zero`` — accumulator initializer.
-
-    Designs typically use all four together, one per row of compute cores.
-
-    Args:
-        dim_m: Number of rows of A / C.
-        dim_k: Number of columns of A / rows of B.
-        dim_n: Number of columns of B / C.
-        input_dtype: Input element type.
-        output_dtype: Output element type.
-        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
-            instead of Peano.
-
-    Raises:
-        ValueError: When the dtype combination is not supported.
-    """
-    key = (input_dtype, output_dtype)
-    if key not in _CASCADE_COMBOS:
-        raise ValueError(
-            f"cascade_mm(): unsupported (input_dtype, output_dtype) = {key}. "
-            f"Supported: {list(_CASCADE_COMBOS.keys())}"
+        Defaults to the active device; an explicit ``arch`` overrides ``device``.
+        """
+        key = (input_dtype, output_dtype)
+        arch = arch or (
+            resolve_target_arch(device) if device is not None else _detect_arch()
         )
+        if arch not in _CASCADE_MM_MAC_DIMS or key not in _CASCADE_MM_MAC_DIMS[arch]:
+            raise ValueError(
+                f"cascade_mm.mac_dims(): unsupported (arch, dtypes) = "
+                f"({arch}, {key}). Supported: {sorted(_CASCADE_MM_MAC_DIMS)}"
+            )
+        return _CASCADE_MM_MAC_DIMS[arch][key]
 
-    suffix = _CASCADE_COMBOS[key]
-    a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
-    b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
-    c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-    extern = _make_extern(
-        f"matmul_scalar_cascade_get_only_{suffix}",
-        _default_source_path("cascade_mm.cc"),
-        [a_ty, b_ty, c_ty],
-        compile_flags=[
-            f"-DDIM_M={dim_m}",
-            f"-DDIM_K={dim_k}",
-            f"-DDIM_N={dim_n}",
-        ],
-        use_chess=use_chess,
-    )
-    extern.get_only = extern
-    extern.put_only = extern.object_file.bind(
-        f"matmul_scalar_cascade_put_only_{suffix}",
-        [a_ty, b_ty, c_ty],
-    )
-    extern.put_get = extern.object_file.bind(
-        f"matmul_scalar_cascade_put_get_{suffix}",
-        [a_ty, b_ty, c_ty],
-    )
-    extern.zero = extern.object_file.bind(
-        f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}",
-        [c_ty],
-    )
-    arch = _detect_arch()
-    if arch not in _CASCADE_MM_MAC_DIMS:
-        raise ValueError(
-            f"cascade_mm(): unsupported arch {arch!r}; "
-            f"cascade_mm.cc only ships for {sorted(_CASCADE_MM_MAC_DIMS)}."
+    def __call__(
+        self,
+        dim_m: int = 64,
+        dim_k: int = 64,
+        dim_n: int = 64,
+        input_dtype: type = np.int16,
+        output_dtype: type = np.int16,
+        use_chess: bool = False,
+    ) -> ExternalFunction:
+        r"""Cascade matrix-multiply kernel for multi-core accumulation.
+
+        cascade_mm.cc emits all three cascade variants (``get_only``,
+        ``put_only``, ``put_get``) plus a ``zero`` companion in one .o.  The
+        returned ExternalFunction binds the ``get_only`` symbol; the other
+        three are sibling [`Kernel`][iron.Kernel]\\s available as attributes:
+
+        * ``.get_only`` — same as the returned EF (top of the cascade chain).
+        * ``.put_only`` — bottom of the chain.
+        * ``.put_get`` — middle of the chain.
+        * ``.zero`` — accumulator initializer.
+
+        Designs typically use all four together, one per row of compute cores.
+
+        Args:
+            dim_m: Number of rows of A / C.
+            dim_k: Number of columns of A / rows of B.
+            dim_n: Number of columns of B / C.
+            input_dtype: Input element type.
+            output_dtype: Output element type.
+            use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
+                instead of Peano.
+
+        Raises:
+            ValueError: When the dtype combination is not supported.
+        """
+        key = (input_dtype, output_dtype)
+        if key not in _CASCADE_COMBOS:
+            raise ValueError(
+                f"cascade_mm(): unsupported (input_dtype, output_dtype) = {key}. "
+                f"Supported: {list(_CASCADE_COMBOS.keys())}"
+            )
+
+        suffix = _CASCADE_COMBOS[key]
+        a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
+        b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
+        c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
+        extern = _make_extern(
+            f"matmul_scalar_cascade_get_only_{suffix}",
+            _default_source_path("cascade_mm.cc"),
+            [a_ty, b_ty, c_ty],
+            compile_flags=[
+                f"-DDIM_M={dim_m}",
+                f"-DDIM_K={dim_k}",
+                f"-DDIM_N={dim_n}",
+            ],
+            use_chess=use_chess,
         )
-    extern.mac_dims = _CASCADE_MM_MAC_DIMS[arch][key]
-    return extern
+        extern.get_only = extern
+        extern.put_only = extern.object_file.bind(
+            f"matmul_scalar_cascade_put_only_{suffix}",
+            [a_ty, b_ty, c_ty],
+        )
+        extern.put_get = extern.object_file.bind(
+            f"matmul_scalar_cascade_put_get_{suffix}",
+            [a_ty, b_ty, c_ty],
+        )
+        extern.zero = extern.object_file.bind(
+            f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}",
+            [c_ty],
+        )
+        extern.mac_dims = self.mac_dims(input_dtype, output_dtype)
+        return extern
+
+
+cascade_mm = _CascadeMatMulFactory()

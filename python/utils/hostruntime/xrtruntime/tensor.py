@@ -73,7 +73,7 @@ class XRTTensor(NpuTensor):
     def __init__(
         self,
         shape_or_data,
-        dtype=np.uint32,
+        dtype=None,
         device="npu",
         flags=xrt.bo.host_only,
         group_id=0,
@@ -85,7 +85,9 @@ class XRTTensor(NpuTensor):
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
-            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            dtype (np.dtype, optional): Element type. Taken from the data when
+                that is a typed array and this is omitted; np.uint32 when the
+                tensor is built from a shape.
             device (str, optional): Device string identifier. Defaults to 'npu'.
             flags (optional): XRT buffer object flags. Defaults to xrt.bo.host_only.
             group_id (int, optional): XRT buffer object group ID. Defaults to 0.
@@ -101,7 +103,7 @@ class XRTTensor(NpuTensor):
         # Extract the shape
         if isinstance(shape_or_data, tuple):
             # If this is a shape, check for it "ShapeLike"-ness using numpy ndarray types.
-            np_type = np.ndarray[shape_or_data, np.dtype[dtype]]
+            np_type = np.ndarray[shape_or_data, np.dtype]
             self._shape = np_ndarray_type_get_shape(np_type)
         elif hasattr(shape_or_data, "shape"):
             # If this is a shaped thing, we will trust it.
@@ -113,7 +115,7 @@ class XRTTensor(NpuTensor):
             # `np.asarray` is the NumPy-2.x-safe form of the old
             # `np.array(..., copy=False)`: avoid copy when possible, copy
             # when necessary, identical semantics on both 1.x and 2.x.
-            np_data = np.asarray(shape_or_data, dtype=dtype)
+            np_data = np.asarray(shape_or_data, dtype=self.dtype)
             self._shape = np_data.shape
 
         # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currently.

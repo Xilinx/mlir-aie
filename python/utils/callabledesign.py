@@ -434,7 +434,7 @@ class CallableDesign:
         ``design.specialize(full_elf=True)`` re-aims an existing design at the
         full-ELF path, symmetric with ``@iron.jit(full_elf=True)``.
 
-        Use together with `compile` to perform ahead-of-time compilation
+        Use together with ``compile`` to perform ahead-of-time compilation
         of a JIT-decorated design at known shapes::
 
             @iron.jit
@@ -464,7 +464,7 @@ class CallableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
-    ) -> tuple[Path, Path | None]:
+    ) -> tuple[Path | None, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
         With no arguments, pre-warms the on-disk cache so subsequent calls with
@@ -491,8 +491,8 @@ class CallableDesign:
 
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
         Device Image to that path. Requires explicit ``xclbin_path`` (and
-        ``inst_path`` for static designs). In cache mode, use `get_pdi_path` to locate the
-        ``main.pdi`` aiecc emits into the cache directory.
+        ``inst_path`` for static designs). In cache mode, use ``get_pdi_path``
+        to locate the ``main.pdi`` aiecc emits.
         """
         return self.compilable.compile(
             xclbin_path=xclbin_path,
@@ -505,7 +505,7 @@ class CallableDesign:
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
         """Return one cache-directory PDI, or ``None`` if none is present.
 
-        Thin passthrough to `CompilableDesign.get_pdi_path`; pass
+        Thin passthrough to ``CompilableDesign.get_pdi_path``; pass
         ``device_name`` to pick a specific ``aie.device``'s PDI in a
         multi-device design.
         """
@@ -518,7 +518,7 @@ class CallableDesign:
     def get_pdi_paths(self) -> list[Path]:
         """Return every cache-directory PDI aiecc emitted, sorted by name.
 
-        Thin passthrough to `CompilableDesign.get_pdi_paths` — use this
+        Thin passthrough to ``CompilableDesign.get_pdi_paths`` — use this
         for a multi-device design where a single return is ambiguous.
         """
         return self.compilable.get_pdi_paths()
@@ -526,10 +526,10 @@ class CallableDesign:
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.
 
-        Accepts the same arguments as ``__call__``.  Tensor args may be real
-        tensors (shape and dtype are read from them) or ``None`` (in which case
-        the generator body must use ``CompileTime[T]`` params for all shape/dtype
-        info).
+        Accepts the same arguments as ``__call__``. Tensor arguments may be
+        ``None``: their contents are not read, and shape/dtype must come from
+        ``CompileTime[T]`` parameters. ``DispatchTime[T]`` scalar values are
+        still used during generation.
 
         Returns:
             The MLIR module as a string (suitable for inspection, debugging,

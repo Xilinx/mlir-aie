@@ -1003,24 +1003,11 @@ def compile_external_kernels(
 ):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
-    Kernels are separate translation units with separate outputs, so they
-    compile concurrently.  Their source files are not always separate --
-    several ExternalFunctions can share one .cc -- so ``_staged`` makes each
-    write atomic rather than ordering the compiles behind it.
-
-    The ``_original_name`` grouping below is still load-bearing, for a case
-    ``_staged`` cannot cover: two ExternalFunctions can share an
-    ``_original_name`` while carrying different ``source_string``s, because
-    ``ExternalFunction.__init__`` auto-suffixes a defaulted ``object_file_name``
-    on collision but never the original name.  Both write ``<_original_name>.cc``
-    and the bytes differ, so an atomic swap is not enough and they have to run
-    one after the other.  Not covered either way: two ``source_file``s with the
-    same basename in different directories land on one path with different bytes
-    but different ``_original_name``s, so nothing orders them.
-
-    Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
-    without the intrinsics PCH), so the bound is cores rather than memory on an
-    ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
+    Independent kernels compile concurrently. `_kernel_compile_groups` orders
+    kernels sharing source names or object files to avoid staging and symbol
+    renaming races. Source files with the same basename but different entry
+    names must currently be supplied in separate batches.
+    Set AIE_KERNEL_COMPILE_JOBS to override the default CPU-count job limit.
     """
     pending = [f for f in funcs if not _compiled_into(f, kernel_dir, embed_bitcode)]
     if not pending:
@@ -1035,9 +1022,7 @@ def compile_external_kernels(
             )
         return
 
-    groups: dict[str, list] = {}
-    for f in pending:
-        groups.setdefault(getattr(f, "_original_name", f._name), []).append(f)
+    groups = _kernel_compile_groups(pending)
 
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
@@ -1048,7 +1033,7 @@ def compile_external_kernels(
     jobs = min(jobs, len(groups))
 
     if jobs == 1:
-        for group in groups.values():
+        for group in groups:
             for f in group:
                 compile_external_kernel(
                     f, kernel_dir, target_arch, include_dirs, embed_bitcode
@@ -1064,7 +1049,37 @@ def compile_external_kernels(
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         # list() re-raises the first failure, after the others have finished --
         # a compile error must not be swallowed by a sibling that succeeded.
-        list(pool.map(_run, groups.values()))
+        list(pool.map(_run, groups))
+
+
+def _kernel_compile_groups(funcs):
+    """Partition ``funcs`` into lists that must compile one after the other.
+
+    Kernels sharing an ``_original_name`` or ``object_file_name`` are grouped
+    transitively, preserving input order within each group.
+    """
+    parent = list(range(len(funcs)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    seen: dict[tuple, int] = {}
+    for i, f in enumerate(funcs):
+        for key in (
+            ("name", getattr(f, "_original_name", f._name)),
+            ("object", f.object_file_name),
+        ):
+            if key in seen:
+                parent[find(i)] = find(seen[key])
+            else:
+                seen[key] = i
+    groups: dict[int, list] = {}
+    for i, f in enumerate(funcs):
+        groups.setdefault(find(i), []).append(f)
+    return list(groups.values())
 
 
 def compile_external_kernel(

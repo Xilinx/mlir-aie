@@ -40,15 +40,16 @@ class HRXTensor(NpuTensor):
     # fold it in (overrides the folded XRT/CPU default on the base Tensor).
     FOLDS_DDR_ADDR_OFFSET = False
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device="npu", **kwargs):
+    def __init__(self, shape_or_data, dtype=None, device="npu", **kwargs):
         """Allocate an HRX persistent-mapped buffer and wrap it as a tensor.
 
         Args:
             shape_or_data: Either a shape ``tuple`` to allocate a zero-filled
                 buffer, or an array-like (anything with a ``shape``, or something
                 ``numpy.asarray`` accepts) whose contents are copied in.
-            dtype (numpy.dtype, optional): Element type used when ``shape_or_data``
-                is a shape or a plain sequence. Defaults to ``numpy.uint32``.
+            dtype (numpy.dtype, optional): Element type. Taken from the data
+                when that is a typed array and this is omitted; ``numpy.uint32``
+                when the tensor is built from a shape.
             device (str, optional): Initial residency, ``"npu"`` or ``"cpu"``.
                 ``"npu"`` flushes the initial host contents to the device after
                 allocation. Defaults to ``"npu"``.
@@ -60,13 +61,13 @@ class HRXTensor(NpuTensor):
 
         np_data = None
         if isinstance(shape_or_data, tuple):
-            np_type = np.ndarray[shape_or_data, np.dtype[dtype]]
+            np_type = np.ndarray[shape_or_data, np.dtype]
             self._shape = np_ndarray_type_get_shape(np_type)
         elif hasattr(shape_or_data, "shape"):
             self._shape = shape_or_data.shape
             np_data = shape_or_data
         else:
-            np_data = np.asarray(shape_or_data, dtype=dtype)
+            np_data = np.asarray(shape_or_data, dtype=self.dtype)
             self._shape = np_data.shape
 
         nbytes = int(np.prod(self._shape) * np.dtype(self.dtype).itemsize)

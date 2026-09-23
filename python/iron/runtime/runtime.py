@@ -283,6 +283,7 @@ class Runtime(Resolvable):
         self._locks = []
         self._tile_dmas = []
         self._buffers = []
+        self._resolved_tile_dmas = None
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
@@ -320,7 +321,9 @@ class Runtime(Resolvable):
         self._locks.append(lock)
 
     def add_tile_dma(self, tile_dma) -> None:
-        """Register an explicit [`TileDma`][iron.TileDma] program."""
+        """Register a TileDma; channels sharing a Tile are combined at resolution."""
+        if self._resolved_tile_dmas is not None:
+            raise IronRuntimeError("Cannot register TileDma after DMA resolution.")
         self._tile_dmas.append(tile_dma)
 
     def add_buffer(self, buffer) -> None:
@@ -336,6 +339,34 @@ class Runtime(Resolvable):
     @property
     def buffers(self):
         return list(self._buffers)
+
+    def resolve_tile_dmas(self) -> None:
+        """Validate and emit one DMA region per Tile without changing registrations."""
+        from ..dataflow.tile_dma import TileDma
+
+        if self._resolved_tile_dmas is None:
+            programs = {}
+            coordinates = {}
+            for tile_dma in self._tile_dmas:
+                tile = tile_dma.tile
+                if tile.col is not None and tile.row is not None:
+                    key = (tile.col, tile.row)
+                    if key in coordinates and coordinates[key] is not tile:
+                        raise IronRuntimeError(
+                            f"Two TileDma programs name {tile}, via different "
+                            "Tile objects. Share one Tile object for their channels."
+                        )
+                    coordinates[key] = tile
+                if tile in programs:
+                    programs[tile] = TileDma(
+                        tile, [*programs[tile].channels, *tile_dma.channels]
+                    )
+                else:
+                    programs[tile] = tile_dma
+            self._resolved_tile_dmas = list(programs.values())
+        # Placement coalesces tile ops, not their DMA regions or channel chains.
+        for program in self._resolved_tile_dmas:
+            program.resolve()
 
     @property
     def flows(self):

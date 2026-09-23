@@ -150,7 +150,7 @@ class Program:
                 # Collect all fifos. Runtime-driven fifos already have their shim
                 # endpoints bound (Runtime registered its fn_args at construction),
                 # so they resolve here with both ends known -- the sequence body
-                # itself is emitted LAST (self._rt.resolve() below), after workers,
+                # is emitted after workers (self._rt.resolve() below),
                 # so body verbs that read worker-side state (barrier locks, worker
                 # Buffer placement) see it resolved.
                 all_fifos = set()
@@ -198,10 +198,6 @@ class Program:
                 for f in all_fifos:
                     f.resolve()
 
-                # Generate explicit Flows (peers of ObjectFifo)
-                for fl in self._rt.flows:
-                    fl.resolve()
-
                 # Generate explicit Locks (must come before TileDma + Worker
                 # bodies that reference them; Buffers attached to worker
                 # fn_args are still resolved in the worker loop below).
@@ -229,7 +225,11 @@ class Program:
                         if isinstance(arg, FuncBase):
                             arg.emit()
                         elif isinstance(arg, Resolvable):
-                            arg.resolve()
+                            if (
+                                arg not in self._rt.flows
+                                and arg not in self._rt.tile_dmas
+                            ):
+                                arg.resolve()
 
                 # Generate core programs
                 for w in self._workers:
@@ -243,8 +243,7 @@ class Program:
 
                 # Generate explicit per-tile DMA programs (lower-level peers
                 # of ObjectFifo, paired with Flow + Lock).
-                for td in self._rt.tile_dmas:
-                    td.resolve()
+                self._rt.resolve_tile_dmas()
 
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
@@ -270,8 +269,8 @@ class Program:
                         core_trace_mode=self._core_trace_mode,
                     )
 
-                # Emit the runtime sequence body LAST: workers, their locks, and
-                # worker Buffers are now resolved, so body verbs that read that
+                # Emit the runtime sequence body after workers, their locks, and
+                # worker Buffers are resolved, so body verbs that read that
                 # state (barrier.set, inline_ops over a worker Buffer) are valid.
                 # Its shim DMAs reference fifos by symbol name (forward ref), so
                 # emitting after the fifo ops is fine.
@@ -289,6 +288,11 @@ class Program:
                     egress_shim_col=self._egress_shim_col,
                     load_pdi_device_ref=load_pdi_device_ref,
                 )
+
+                # Flow transfers name their allocations while the sequence runs.
+                # Resolve both at device scope using those symbol references.
+                for fl in self._rt.flows:
+                    fl.resolve()
 
             # Resolve parameters only discoverable once the sequence body has
             # traced (offset_parameter= passed directly to fill()/drain(),

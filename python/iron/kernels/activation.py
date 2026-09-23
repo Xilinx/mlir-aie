@@ -3,21 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Activation kernel factories + numpy reference implementations.
-
-Factories (each returns an [`ExternalFunction`][iron.ExternalFunction]):
-  softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu.
-
-Companion numpy reference implementations for host-side verification:
-  [`relu_ref`][iron.kernels.activation.relu_ref], [`silu_ref`][iron.kernels.activation.silu_ref], [`gelu_ref`][iron.kernels.activation.gelu_ref],
-  [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref], [`softmax_ref`][iron.kernels.activation.softmax_ref],
-  [`exp2f_vec_ref`][iron.kernels.activation.exp2f_vec_ref].  These compute the AIE
-  kernel's op in float32 so designs don't each reimplement the math
-  in their verify path.  Pair with
-  `count_mismatches` (rtol=0.128 is the
-  canonical LUT-tolerance default; see each ref's docstring for
-  per-op recommendations).
-"""
+"""Activation kernel factories and NumPy reference implementations."""
 
 from pathlib import Path
 
@@ -35,6 +21,15 @@ from ._common import (
 )
 
 _LUT_FIXED_TILE = 1024
+_RUNTIME_VECTOR_WIDTH = 32
+
+
+def _require_runtime_tile_size(factory_name: str, tile_size: int) -> None:
+    if tile_size < _LUT_FIXED_TILE or tile_size % _RUNTIME_VECTOR_WIDTH:
+        raise ValueError(
+            f"{factory_name}: tile_size must be a multiple of "
+            f"{_RUNTIME_VECTOR_WIDTH} and at least {_LUT_FIXED_TILE}, got {tile_size}"
+        )
 
 
 def _create_lut_kernel(
@@ -126,7 +121,7 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
     """SiLU (Swish) for bf16 tiles, element count read at runtime.
 
     Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
-    passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
+    passes ``(in, out, size)``.
     """
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel("silu_bf16_size", "silu.cc", [tile_ty, tile_ty, np.int32])
@@ -136,7 +131,7 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
     """GELU (tanh approx) for bf16 tiles, element count read at runtime.
 
     Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
-    passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
+    passes ``(in, out, size)``.
     """
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel("gelu_bf16_size", "gelu.cc", [tile_ty, tile_ty, np.int32])
@@ -212,23 +207,15 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
 
 
 def tanh(tile_size: int = 1024) -> ExternalFunction:
-    """Tanh activation kernel for bf16 tiles (must be 1024).
-
-    The kernel takes the element count at runtime, so the design must pass
-    ``tile_size`` as a trailing ``int`` argument (e.g. via
-    ``transform_parallel(pass_size_to_kernel=True)``).
-    """
-    _require_fixed_tile_size("tanh", tile_size, _LUT_FIXED_TILE)
+    """Tanh for bf16 tiles of at least 1024 elements, in multiples of 32."""
+    _require_runtime_tile_size("tanh", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel("tanh_bf16", "tanh.cc", [tile_ty, tile_ty, np.int32])
 
 
 def sigmoid(tile_size: int = 1024) -> ExternalFunction:
-    """Sigmoid activation kernel for bf16 tiles (must be 1024).
-
-    Runtime element count — pass ``tile_size`` as a trailing ``int`` argument.
-    """
-    _require_fixed_tile_size("sigmoid", tile_size, _LUT_FIXED_TILE)
+    """Sigmoid for bf16 tiles of at least 1024 elements, in multiples of 32."""
+    _require_runtime_tile_size("sigmoid", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "sigmoid_bf16", "sigmoid.cc", [tile_ty, tile_ty, np.int32]
@@ -236,12 +223,16 @@ def sigmoid(tile_size: int = 1024) -> ExternalFunction:
 
 
 def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
-    """Leaky ReLU activation kernel for bf16 tiles (must be 1024).
+    """Leaky ReLU for bf16 tiles of at least 64 elements, in multiples of 32.
 
     Takes the element count and the ``alpha`` slope at runtime, so the design
     must pass ``(tile_size, alpha)`` as trailing ``int``/``bfloat16`` arguments.
     """
-    _require_fixed_tile_size("leaky_relu", tile_size, _LUT_FIXED_TILE)
+    if tile_size < 64 or tile_size % _RUNTIME_VECTOR_WIDTH:
+        raise ValueError(
+            "leaky_relu: tile_size must be a multiple of "
+            f"{_RUNTIME_VECTOR_WIDTH} and at least 64, got {tile_size}"
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "leaky_relu_bf16", "leaky_relu.cc", [tile_ty, tile_ty, np.int32, bfloat16]
