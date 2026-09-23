@@ -696,7 +696,7 @@ def compile_mlir_module(
         options (list[str]): List of additional options. Relative paths in these
             options are interpreted by aiecc from work_dir when provided.
         use_chess (bool): When True, drive aiecc with the Chess front-end
-            (``--unified``) instead of the Peano front-end.  Must agree
+            instead of the Peano front-end.  Must agree
             with the per-ExternalFunction ``_use_chess`` settings — the
             JIT compile orchestration in ``compilabledesign.py`` enforces
             agreement and raises on a mixed peano/chess design.
@@ -717,20 +717,16 @@ def compile_mlir_module(
     """
     if work_dir:
         work_dir = os.path.abspath(work_dir)
+    # --unified lowers each device once and carves out every core, where the
+    # default re-lowers a clone of the whole design per core. The objects are
+    # the same; the per-core form costs O(cores x design), which dominates
+    # multi-device designs. Chess must be named explicitly: aiecc no longer
+    # defaults to it.
+    args = ["--unified"]
     if use_chess:
-        # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
-        # in a single Chess process to amortise startup cost; matches the
-        # makefile-common ``aiecc_chess_flags=--unified`` recipe.  Chess must
-        # be named explicitly: aiecc no longer defaults to it.
-        args = [
-            "--unified",
-            "--xchesscc",
-            "--xbridge",
-        ]
+        args += ["--xchesscc", "--xbridge"]
     else:
-        args = [
-            f"--peano={os.path.abspath(config.peano_install_dir())}",
-        ]
+        args.append(f"--peano={os.path.abspath(config.peano_install_dir())}")
     if full_elf_path:
         # A full ELF is self-contained (bundles PDIs + TXN control code), so the
         # xclbin and raw-insts artifacts are neither needed nor emitted here.
