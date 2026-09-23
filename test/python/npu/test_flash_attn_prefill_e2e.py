@@ -227,10 +227,14 @@ def prefill_round(
             epilogue,
             *scratch,
         ],
-        # The contract's number is aiecc's measurement of the fv step alone;
-        # this core runs all five, and the deepest of them needs 64 bytes more
-        # in both geometries. Round that up to a 256-byte margin.
-        stack_size=fv_step.contract.stack_bytes + 256,
+        # The contract's number is aiecc's measurement of the fv step alone, and
+        # this core runs all five -- but the fv step is the deepest, so it is
+        # also the core's number: 960 bytes at head_dim 512, 5824 at 256, both
+        # exactly the contract's. No margin, deliberately. aiecc re-measures the
+        # linked core and fails the build naming the byte count it wanted, so a
+        # future step growing past the fv step's frame is a compile error here
+        # rather than something a margin would quietly absorb.
+        stack_size=fv_step.contract.stack_bytes,
     )
 
     host = [
