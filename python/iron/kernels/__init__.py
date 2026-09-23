@@ -92,8 +92,10 @@ from .conv import (
     conv2dk3_ref,
     conv2dk14,
     conv2dk14_ref,
-    dwconv1d,
-    dwconv1d_ref,
+    dwconv1d_channels_first,
+    dwconv1d_channels_first_ref,
+    dwconv1d_channels_last,
+    dwconv1d_channels_last_ref,
 )
 from .core import RoundingMode, conv_even, set_rounding
 from .datamovement import (
@@ -144,6 +146,8 @@ from .linalg import (
     mv_bf16_ref,
     mv_ref,
     mv_tile_ref,
+    prefill_fv,
+    prefill_fv_ref,
 )
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .quant import q4nx_dequant, q4nx_dequant_ref
@@ -285,6 +289,8 @@ __all__ = [
     "fused_mm",
     "mm_acc_dtype",
     "mha",
+    "prefill_fv",
+    "prefill_fv_ref",
     "mm_bfp",
     "mm_bfp_ref",
     "mm_bfp_mixed_ref",
@@ -297,8 +303,10 @@ __all__ = [
     "conv2dk1",
     "conv2dk1_ref",
     "conv2dk3",
-    "dwconv1d",
-    "dwconv1d_ref",
+    "dwconv1d_channels_first",
+    "dwconv1d_channels_first_ref",
+    "dwconv1d_channels_last",
+    "dwconv1d_channels_last_ref",
     "DWCONV1D_TAIL",
     "conv2dk3_ref",
     "conv2dk1_skip",

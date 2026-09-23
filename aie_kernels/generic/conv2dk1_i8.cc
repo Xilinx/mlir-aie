@@ -1,7 +1,6 @@
-//===- conv2dk1_i8.cc -------------------------------------------------*- C++
-//-*-===//
+//===- conv2dk1_i8.cc -------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
@@ -23,6 +22,15 @@
 #endif
 #ifndef CONV_OUTPUT_CHANNELS
 #define CONV_OUTPUT_CHANNELS runtime_output_channels
+#endif
+
+// Input width split across the MMUL; the product is 32 either way.
+#if __AIE_ARCH__ >= 21
+#define CONV2DK1_I8_NUM_ACC 4
+#define CONV2DK1_I8_MMUL_M 8
+#else
+#define CONV2DK1_I8_NUM_ACC 8
+#define CONV2DK1_I8_MMUL_M 4
 #endif
 
 #define REL_WRITE 0
@@ -105,8 +113,9 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
-  constexpr int NUM_ACC = 8; // Number of accumulators
-  constexpr int MMUL_M = 4;  // Matrix A M size in MxK (Input width)
+  constexpr int NUM_ACC = CONV2DK1_I8_NUM_ACC; // Number of accumulators
+  constexpr int MMUL_M =
+      CONV2DK1_I8_MMUL_M; // Matrix A M size in MxK (Input width)
   constexpr int MMUL_K = 8;
   constexpr int MMUL_N = 8;
   constexpr int CHANNEL_FACTOR = MMUL_K;
@@ -134,7 +143,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
   const int iw = input_width;
   const int iw_partial = (input_width / MMUL_M) / NUM_ACC;
 
-  // const int iw_partial_rem = (input_width / MMUL_M) % NUM_ACC;
+  // constexpr int iw_partial_rem = (input_width / MMUL_M) % NUM_ACC;
   // const int iw_partial_rem = (32 / MMUL_M) % NUM_ACC;
   assert((input_width / MMUL_M) % NUM_ACC == 0);
   const int iw_partial_rem = 0; // TODO - See restriction
@@ -154,7 +163,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
           aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
           kernels += MMUL_KN; // wts ic0..7(oc0..7)
 
-          for (int x = 0; x < NUM_ACC; x++) { // 8 acc
+          for (int x = 0; x < NUM_ACC; x++) {
             aie::vector<int8, MMUL_MK> in_a = aie::load_v<MMUL_MK>(input);
             input += MMUL_MK; // act oc0..3(ic0..7)
             acc_tmp[x].mac(in_a, in_b);

@@ -33,8 +33,8 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | Class | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|-|
 | basic | [zero.cc](./generic/zero.cc) | AIE API | Fill a tensor with zeroes | template |
-| basic | [add.cc](./aie2/add.cc) | AIE API | Pointwise addition of 2 tensors | `bfloat16` |
-| basic | [mul.cc](./aie2/mul.cc) | AIE API | Pointwise multiplication of 2 tensors | `bfloat16` |
+| basic | [add.cc](./generic/add.cc) | AIE API | Pointwise addition of 2 tensors (16-wide here, 32 on AIE2P) | `bfloat16` |
+| basic | [mul.cc](./generic/mul.cc) | AIE API | Pointwise multiplication of 2 tensors (16-wide here, 32 on AIE2P) | `bfloat16` |
 | basic | [scale.cc](./aie2/scale.cc) | AIE API | Scale all elements of a tensor with a scale factor | `int32_t` |
 | basic | [scale_shift.cc](./aie2/scale_shift.cc) | AIE API | Scale-and-shift | `int32_t` |
 | basic | [bitwiseOR.cc](./aie2/bitwiseOR.cc) | AIE API | Bitwise OR of fixed point tensors | `uint8_t`,`int16_t`,`int32_t`|
@@ -58,7 +58,7 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | activation | [bf16_exp.cc](./aie2/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | norm | [rms_norm.cc](./aie2/rms_norm.cc) | AIE API | RMS normalization — `rms_norm` (eps=1e-5) + `rms_norm_eps` (runtime eps) | `bfloat16` |
 | |
-| ml | [conv2dk1_i8.cc](./aie2/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
+| ml | [conv2dk1_i8.cc](./generic/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D (8 accumulators of M=4 here, 4 of M=8 on AIE2P) | `int8_t` |
 | ml | [conv2dk1.cc](./aie2/conv2dk1.cc) | AIE API | 1x1 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
 | ml | [conv2dk3.cc](./aie2/conv2dk3.cc) | AIE API | 3x3 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
 | ml | [conv2dk1_skip.cc](./aie2/conv2dk1_skip.cc) | AIE API| 1x1 Conv2D with fused skip addition | `int8_t`, `uint8_t` |
@@ -76,8 +76,8 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | Class | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|-|
 | basic | [zero.cc](./generic/zero.cc) | AIE API | Fill a tensor with zeroes (512-bit stores) | template |
-| basic | [add.cc](./aie2p/add.cc) | AIE API | Pointwise addition of 2 tensors (512-bit vectors) | `bfloat16` |
-| basic | [mul.cc](./aie2p/mul.cc) | AIE API | Pointwise multiplication of 2 tensors (512-bit vectors) | `bfloat16` |
+| basic | [add.cc](./generic/add.cc) | AIE API | Pointwise addition of 2 tensors (32-wide here, 16 on AIE2) | `bfloat16` |
+| basic | [mul.cc](./generic/mul.cc) | AIE API | Pointwise multiplication of 2 tensors (32-wide here, 16 on AIE2) | `bfloat16` |
 | gemm | [mm.cc](./aie2p/mm.cc) | AIE API | Matrix/Matrix multiplication | `int8_t`,`int16_t`,`bfloat16` |
 | gemm | [mm_bfp.cc](./aie2p/mm_bfp.cc) | AIE API | Block-floating-point matmul | `bfp16` |
 | gemm | [mm_bfp_mixed.cc](./aie2p/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul | `bfp16` |
@@ -98,8 +98,28 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | |
 | data movement | [cast_f32_bf16.cc](./aie2p/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
 | |
-| attention | [mha.cc](./aie2p/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …); composes `softmax.cc` + `mm.cc` | `bfloat16` |
+| attention | [mha.cc](./aie2p/mha.cc) | AIE API | Flash-attention **decode** toolkit (matmul_PV, partial_softmax, rescale_O, …); composes `softmax.cc` + `mm.cc` | `bfloat16` |
+| attention | [flash_attn_prefill.cc](./aie2p/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
 | |
-| ml | [conv2dk1_i8.cc](./aie2p/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
+| ml | [conv2dk1_i8.cc](./generic/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D (4 accumulators of M=8 here, 8 of M=4 on AIE2) | `int8_t` |
 | ml | [conv2dk14.cc](./aie2p/conv2dk14.cc) | AIE API | 1x14 / 14x1 Conv2D | `int8_t` |
-| ml | [dwconv1d.cc](./aie2p/dwconv1d.cc) | AIE API | Depthwise 1D convolution | `bfloat16` |
+| ml | [dwconv1d_channels_first.cc](./aie2p/dwconv1d_channels_first.cc) | AIE API | Depthwise 1D convolution, **channels-first** — one channel per call, vectorizes along time; runtime length, `'same'` padding, optional bias. The general-purpose one | `bfloat16` |
+| ml | [dwconv1d_channels_last.cc](./aie2p/dwconv1d_channels_last.cc) | AIE API | Depthwise 1D convolution, **channels-last** — one timestep per call, vectorizes across channels with per-channel taps and an optional clamp. See [_Choosing a depthwise conv1d_](#choosing-a-depthwise-conv1d) | `bfloat16` |
+
+## Choosing a depthwise conv1d
+
+The two `dwconv1d` kernels compute the same thing over transposed tensors, and the layout is the whole distinction: it picks the vectorization axis, the tap representation, and which one is faster.
+
+| | channels-first | channels-last |
+|-|-|-|
+| one call emits | one channel, all timesteps | one timestep, all channels |
+| contiguous axis | time | channels |
+| taps | `K` scalars, broadcast | `K` vectors of `C`, one per channel |
+| vectorizes over | time, via `sliding_mul` | channels, via plain `mac` |
+| `K` | runtime-templated, 1–17 | fixed per entry point (5 today) |
+| sequence length | runtime | n/a |
+| MACs per instruction slot | 4.2 | 12.2 |
+
+Channels-last retires nearly 3x the MACs per slot because `sliding_mul` spends half its vector on the window halo and then rebuilds each tap's operand with a `vshift`, while the channels-last form's operands are already aligned and every lane is a real MAC.
+
+**That is not a reason to prefer it.** It only pays when the data is already channels-last — transposing to reach it costs more than it saves — and it wants `C * K` resident weights, a compile-time `C`, and program memory linear in `C`. Reach for channels-first by default; reach for channels-last when the producer already emits that layout.

@@ -488,10 +488,18 @@ CASES: list[Case] = [
     ),
     # depthwise 1-D conv (aie2p): 1024 outputs per call from a padded row
     Case(
-        "dwconv1d",
+        "dwconv1d_channels_first",
         dict(seq_len=1024, kernel_size=9),
         calls=16,
         scalars=(1024,),
+        devices=("npu2",),
+        smoke=True,
+    ),
+    # the transposed layout: one timestep across 256 channels, 5 per-channel taps
+    Case(
+        "dwconv1d_channels_last",
+        dict(channels=256),
+        calls=16,
         devices=("npu2",),
         smoke=True,
     ),
@@ -546,6 +554,12 @@ CASES += [
     Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, devices=("npu2",), smoke=True, perf=False),
+    # The prefill toolkit's S*V accumulate, one case per geometry. Each
+    # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
+    # the 512 one has a degenerate k-block term and so cannot tell a wrong V
+    # order from a right one, which is why both are smoke cases.
+    Case("prefill_fv", dict(head_dim=512), calls=4, devices=("npu2",), smoke=True),
+    Case("prefill_fv", dict(head_dim=256), calls=4, devices=("npu2",), smoke=True),
     Case(
         "mm_bfp",
         _mm_bfp,
