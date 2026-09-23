@@ -91,33 +91,22 @@ jobs:
       - name: NPU preflight and performance mode
         id: preflight
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
-          run_with_retry() {
-            local attempt
-            for attempt in 1 2 3; do
-              if "$@"; then
-                return 0
-              fi
-              if [ "$attempt" -eq 3 ]; then
-                echo "Command failed after ${attempt} attempts: $*" >&2
-                return 1
-              fi
-              sleep $((attempt * 5))
-            done
-          }
-          EXAMINE=$(run_with_retry xrt-smi examine)
+          EXAMINE=$(xrt-smi examine)
           printf '%s\n' "$EXAMINE"
           BDF=$(printf '%s\n' "$EXAMINE" | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
           [ -n "$BDF" ]
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
           # `performance` = max DPM, clock gating on. `turbo` is refused
           # while any hwctx is open, so it is not used on shared hosts.
-          run_with_retry sudo xrt-smi configure -d "$BDF" --pmode "$BENCH_PMODE"
-          run_with_retry xrt-smi examine -d "$BDF" --report platform
+          sudo xrt-smi configure -d "$BDF" --pmode "$BENCH_PMODE"
+          xrt-smi examine -d "$BDF" --report platform
 
       - name: Run kernel correctness suite
         id: correctness
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
@@ -135,6 +124,7 @@ jobs:
         env:
           ONLY: ${{ github.event.inputs.only }}
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
