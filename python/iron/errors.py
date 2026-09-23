@@ -112,9 +112,11 @@ def filter_internal_frames(exc: BaseException) -> BaseException:
             kept.append(tb)
         tb = tb.tb_next
     if not kept:
-        # Nothing but internals: an IRON bug, not a design error. Keep the
-        # whole trace rather than reporting an exception with no frames.
-        return exc
+        # Caught inside a constructor, the traceback runs from the guard that
+        # raised down to the entry wrapper and is internal end to end -- the
+        # caller's frame is only appended when this is re-raised. Dropping the
+        # lot leaves exactly that frame, which is the declaration at fault.
+        return exc.with_traceback(None)
 
     rebuilt = None
     for entry in reversed(kept):

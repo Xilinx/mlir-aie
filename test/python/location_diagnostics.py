@@ -94,6 +94,23 @@ def guard_failure():
     return Program(NPU1Col1(), rt, workers=[worker]).resolve_program()
 
 
+def constructor_failure():
+    """Two Workers sharing one consumer handle -- rejected during construction."""
+    of_in = ObjectFifo(line_type, name="in3")
+    of_out = ObjectFifo(line_type, name="out3")
+    shared_consumer = of_in.cons()
+
+    def core_fn(a, b):
+        elem_out = b.acquire(1)
+        elem_in = a.acquire(1)
+        elem_out[0] = elem_in[0]
+        a.release(1)
+        b.release(1)
+
+    Worker(core_fn, [shared_consumer, of_out.prod()])
+    Worker(core_fn, [shared_consumer, of_out.prod()])
+
+
 def frames_of(exc):
     return [
         (os.path.abspath(f.filename), f.lineno, f.name, f.line or "")
@@ -159,11 +176,47 @@ def check_guard_failure():
     return f"{len(frames)} frames, {len(internal)} internal"
 
 
+def check_constructor_failure():
+    """A constructor rejects a design before resolve_program can wrap it.
+
+    Its traceback is internal end to end when caught, so the frames have to be
+    dropped rather than filtered -- the declaration at fault is only appended
+    on re-raise. Getting that wrong leaves the user staring at IRON's guts.
+    """
+    try:
+        constructor_failure()
+    except ValueError as exc:
+        frames = frames_of(exc)
+        message = str(exc)
+    else:
+        raise AssertionError("expected the shared consumer handle to be rejected")
+
+    internal = [f for f in frames if "aie/iron" in f[0] or "aie/dialects" in f[0]]
+    assert len(internal) <= 1, "IRON frames not filtered:\n" + "\n".join(
+        f"  {f[0]}:{f[1]} in {f[2]}" for f in internal
+    )
+
+    user_frames = [f for f in frames if f[0] == THIS_FILE]
+    assert user_frames, f"no frame in {THIS_FILE}:\n{frames}"
+    assert "Worker(core_fn" in user_frames[-1][3], (
+        f"innermost frame should be the Worker declaration, got "
+        f"{user_frames[-1][3]!r}"
+    )
+
+    # The Workers must be identifiable: the default object repr names neither.
+    assert message.count(THIS_FILE) == 2, (
+        "both Workers should be named by where they were declared:\n" + message
+    )
+    return f"{len(frames)} frames, {len(internal)} internal"
+
+
 def main():
     where = check_verifier_failure()
     guard = check_guard_failure()
+    ctor = check_constructor_failure()
     print(f"PASS: verifier failure reported at {where}")
     print(f"PASS: guard failure filtered to {guard}")
+    print(f"PASS: constructor failure filtered to {ctor}")
 
 
 main()

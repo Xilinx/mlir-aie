@@ -254,6 +254,12 @@ class Worker(ObjectFifoEndpoint, Resolvable):
         """The compute tile this Worker occupies. See `Resolvable.tiles`."""
         return [self._tile] if self._tile is not None else []
 
+    def __repr__(self) -> str:
+        # Diagnostics name Workers when two of them collide over a tile or a
+        # fifo handle; the default object repr identifies neither one.
+        where = f" declared at {self._source_site}" if self._source_site else ""
+        return f"Worker({self.core_fn.__name__} on {self._tile}{where})"
+
     @property
     def flat_fn_args(self) -> list:
         """fn_args with any nested lists/tuples flattened to their leaves.

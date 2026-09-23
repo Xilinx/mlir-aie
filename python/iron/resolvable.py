@@ -10,6 +10,7 @@ from typing import Protocol, runtime_checkable
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..helpers.sourceloc import capture_source_site, site_location
+from .errors import filter_internal_frames
 
 
 def _site_name(obj) -> str | None:
@@ -40,7 +41,13 @@ def _attach_source_site(cls) -> None:
         @functools.wraps(init)
         def __init__(self, *args, **kwargs):
             self._source_site = capture_source_site()
-            return init(self, *args, **kwargs)
+            try:
+                return init(self, *args, **kwargs)
+            except Exception as exc:
+                # A constructor rejects a design long before resolve_program
+                # gets a boundary around it, so its frames are filtered here or
+                # not at all.
+                raise filter_internal_frames(exc) from None
 
         __init__._iron_located = True
         cls.__init__ = __init__
