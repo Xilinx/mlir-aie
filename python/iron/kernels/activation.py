@@ -45,10 +45,6 @@ def _require_runtime_tile_size(factory_name: str, tile_size: int) -> None:
 # the device actually computes. Keep the two in step.
 _EXP_BF16_CLAMP = 88.0
 
-# The LUT-approximated kernels document rtol=0.128 (the canonical C++ testbench
-# default) on their *_ref functions below; the absolute floor and the mismatch
-# budget are what test/python/npu/test_kernels_e2e.py measured on device for
-# tanh, sigmoid and bf16_exp.
 # The 32-entry piecewise-linear tanh table of aie_runtime_lib/*/lut_based_ops.cpp,
 # de-duplicated from its 4-way bank replication. getTanhBf16 computes
 # slope[e] * x + offset[e] for e = clamp(floor(4x), -16, 15) + 16, i.e. 0.25-wide
@@ -146,13 +142,6 @@ _VTANH_TOLERANCE = Tolerance.relative(
     "x=0.5 (0.0394 rel). Use tanh(use_lut=True) for 7.5x tighter",
 )
 
-_LUT_TOLERANCE = Tolerance.relative(
-    0.128,
-    0.05,
-    max_mismatch_frac=0.02,
-    note="LUT approximation: rtol documented on the *_ref; atol/budget from test_kernels_e2e",
-)
-
 
 # Per-kernel bounds for the vtanh build, measured on npu2 over the 256-call
 # random case (262144 elements) plus the other data cases the harness runs.
@@ -176,6 +165,29 @@ _VTANH_FAMILY_BOUNDS = {
 }
 
 
+# aie2p's bf16_exp.cc evaluates a range-reduced polynomial rather than reading
+# getExpBf16's tables, so the LUT model does not describe it. Measured on npu2
+# over the harness's data cases; no mismatch budget.
+_EXP_POLY_TOLERANCE = Tolerance.relative(
+    0.005,
+    1e-38,
+    note="AIE2P exp2_poly range reduction, measured on npu2; aie2 uses the "
+    "LUT and is judged against bf16_exp_lut_ref instead",
+)
+
+
+# gelu's tanh approximation is its own, and split per architecture; it is not
+# the sigmoid-identity family above. Measured on npu2: 1.56e-2 absolute, and a
+# required relative bound of 1.0 -- gelu(x) goes to zero for negative x while
+# the approximation error does not, so this needs the absolute floor.
+_GELU_TOLERANCE = Tolerance.relative(
+    0.05,
+    0.020,
+    note="gelu tanh approximation, measured on npu2: 1.56e-2 abs at a "
+    "near-zero expected value",
+)
+
+
 def _vtanh_family_tolerance(name: str) -> Tolerance:
     """The measured vtanh bound for a kernel that reaches tanh through sigmoid."""
     rtol, atol = _VTANH_FAMILY_BOUNDS[name]
@@ -191,12 +203,18 @@ def _unary_lut_contract(
     ref,
     *,
     count: int | None,
-    tolerance: Tolerance = _LUT_TOLERANCE,
+    tolerance: Tolerance,
     setup: Callable[[], object] | None = conv_even,
     use_lut: bool = False,
     elementwise: Callable | None = None,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
+
+    ``tolerance`` is required. It used to default to a shared 12.8%-relative
+    bound carrying a 2% budget of arbitrarily-wrong elements -- a C++
+    testbench default that several kernels inherited without anyone deriving
+    it. Every bound here is now measured or modelled per kernel, and a new
+    one has to say which.
 
     The LUT kernels store bf16 from wider vector math without setting the
     core's rounding mode, so they are judged in ``conv_even``, the mode
@@ -329,12 +347,12 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
             # covers the exp LUT's underflow on the far tail, while an
             # unwritten tile mismatches on most elements.
             tolerance=Tolerance.relative(
-                0.128,
+                0.04,
                 0.1 / tile_size,
-                max_mismatch_frac=0.02,
-                note="LUT rtol from softmax_ref; atol = 0.1 / tile_size so an "
-                "unwritten (all-zero) tile fails, since every softmax output is "
-                "below the generic LUT atol",
+                note="AIE2P exp instruction through the softmax normalisation, "
+                "measured on npu2 at 2.94e-2 relative; atol = 0.1 / tile_size "
+                "so an unwritten (all-zero) tile fails, since every softmax "
+                "output is below a generic absolute floor",
             ),
             # aie2p/softmax.cc sets conv_even itself; the aie2 LUT path does not.
             setup=None if _detect_arch() == "aie2p" else conv_even,
@@ -350,7 +368,7 @@ def gelu(tile_size: int = 1024) -> ExternalFunction:
         "gelu.cc",
         tile_size,
         arg_arity=2,
-        contract=_unary_lut_contract(gelu_ref, count=False),
+        contract=_unary_lut_contract(gelu_ref, count=False, tolerance=_GELU_TOLERANCE),
     )
 
 
@@ -395,7 +413,9 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
         "silu.cc",
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DSILU_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(silu_ref, count=tile_size),
+        contract=_unary_lut_contract(
+            silu_ref, count=tile_size, tolerance=_vtanh_family_tolerance("silu")
+        ),
     )
 
 
@@ -416,7 +436,9 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
         "gelu.cc",
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DGELU_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(gelu_ref, count=tile_size),
+        contract=_unary_lut_contract(
+            gelu_ref, count=tile_size, tolerance=_GELU_TOLERANCE
+        ),
     )
 
 
@@ -462,7 +484,17 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
         "bf16_exp.cc",
         tile_size,
         arg_arity=2,
-        contract=_unary_lut_contract(bf16_exp_ref, count=False),
+        contract=_unary_lut_contract(
+            bf16_exp_ref,
+            count=False,
+            # Only aie2 reaches getExpBf16. aie2p's bf16_exp.cc computes a
+            # range-reduced polynomial (exp2_poly.h) instead, which this model
+            # does not describe, so it keeps the true-function reference and a
+            # measured bound.
+            elementwise=bf16_exp_lut_ref,
+            use_lut=_detect_arch() == "aie2",
+            tolerance=_EXP_POLY_TOLERANCE,
+        ),
     )
 
 
@@ -611,11 +643,14 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
             parameter_bindings=((2, tile_size),),
             reference=leaky_relu_ref,
             acc_dtype=bfloat16,
-            tolerance=Tolerance.relative(
-                0.03,
-                0.05,
-                max_mismatch_frac=0.02,
-                note="exact up to bf16 rounding of alpha*x; measured by test_kernels_e2e",
+            # max(x, alpha*x) introduces exactly one rounding, on alpha*x.
+            # Measured bit-exact on npu2 over 262144 elements at alpha=0.5,
+            # which is a power of two and so rounds trivially; one ulp covers
+            # an alpha that does not. The 0.03/0.05 with a 2% budget this
+            # replaces was three orders of magnitude looser than the
+            # arithmetic allows.
+            tolerance=Tolerance.bf16_ulps(
+                1, note="one rounding, on alpha*x; measured bit-exact at alpha=0.5"
             ),
         ),
     )
@@ -663,6 +698,34 @@ def gelu_ref(x):
     return (
         0.5 * xf * (1.0 + np.tanh(_math.sqrt(2.0 / _math.pi) * (xf + 0.044715 * xf**3)))
     ).astype(x.dtype)
+
+
+def bf16_exp_lut_ref(x):
+    """Model of ``getExpBf16``, the LUT exponential the bf16_exp kernel uses.
+
+    The kernel clamps to ``+/-_EXP_BF16_CLAMP``, converts to Q8 with a floor
+    (``bfloat16_to_int(x, 8)``), then reads the byte halves of that fixed-point
+    key as two table indices and multiplies: ``exp(x) = exp(int) * exp(frac)``.
+    Both tables hold exactly ``bfloat16(exp(.))``, so they are written here as
+    that rule rather than as 512 opaque floats -- the unreachable middle of the
+    integer table (keys the clamp cannot produce) is the only part that is not
+    an exponential, and it is never read.
+
+    The product is exact in f32 (two bf16 operands), so the model differs from
+    the device only where the hardware flushes the one subnormal table entry,
+    ``bfloat16(exp(-88))``.
+    """
+    xf = np.clip(np.asarray(x).astype(np.float32), -_EXP_BF16_CLAMP, _EXP_BF16_CLAMP)
+    key = np.floor(xf * 256.0).astype(np.int32).astype(np.int16).astype(np.uint16)
+    i = np.arange(256)
+    ilut = np.where(
+        i <= 88,
+        np.exp(np.minimum(i, 88.0)),
+        np.where(i >= 168, np.exp(i - 256.0), np.exp(88.0)),
+    )
+    ilut = np.asarray(ilut, np.float32).astype(bfloat16).astype(np.float32)
+    flut = np.exp(np.arange(256) / 256.0).astype(np.float32).astype(bfloat16)
+    return (ilut[key >> 8] * flut.astype(np.float32)[key & 255]).astype(np.float32)
 
 
 def _bf16(v):

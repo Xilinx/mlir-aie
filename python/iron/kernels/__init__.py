@@ -45,6 +45,7 @@ from ._common import (
 )
 from .activation import (
     bf16_exp,
+    bf16_exp_lut_ref,
     bf16_exp_ref,
     exp2f_vec,
     exp2f_vec_ref,
@@ -283,6 +284,7 @@ __all__ = [
     "relu_ref",
     "silu_ref",
     "gelu_ref",
+    "bf16_exp_lut_ref",
     "bf16_exp_ref",
     "exp2f_vec_ref",
     "softmax_ref",
