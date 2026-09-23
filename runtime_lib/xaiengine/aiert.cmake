@@ -9,9 +9,67 @@ function(apply_aie_rt_vendor_patches AIE_RT_ROOT PATCH_DIR)
   file(GLOB _patches ${PATCH_DIR}/*.patch)
   list(SORT _patches)
   find_package(Git REQUIRED)
+
+  # A later patch may rewrite context lines of an earlier one, which then no
+  # longer reverse-applies on its own. Replay the series onto HEAD in a scratch
+  # index and find the longest prefix the patched files already match.
+  set(_scratch_index ${CMAKE_CURRENT_BINARY_DIR}/aie-rt-patches.index)
+  set(_git ${CMAKE_COMMAND} -E env GIT_INDEX_FILE=${_scratch_index}
+    ${GIT_EXECUTABLE})
+  set(_patched_paths)
+  if(_patches)
+    execute_process(
+      COMMAND ${GIT_EXECUTABLE} apply --numstat ${_patches}
+      WORKING_DIRECTORY ${AIE_RT_ROOT}
+      OUTPUT_VARIABLE _numstat
+      ERROR_QUIET)
+    string(REGEX MATCHALL "[^\n]+" _numstat_lines "${_numstat}")
+    foreach(_line ${_numstat_lines})
+      string(REGEX REPLACE "^[^\t]*\t[^\t]*\t" "" _path "${_line}")
+      list(APPEND _patched_paths ${_path})
+    endforeach()
+    list(REMOVE_DUPLICATES _patched_paths)
+  endif()
+  execute_process(
+    COMMAND ${_git} read-tree HEAD
+    WORKING_DIRECTORY ${AIE_RT_ROOT}
+    RESULT_VARIABLE _replay_result
+    OUTPUT_QUIET ERROR_QUIET)
+  set(_replayed 0)
+  set(_applied_prefix 0)
   foreach(_patch ${_patches})
-    # Idempotent per patch: skip any patch that is already applied (a clean
-    # reverse-apply check succeeds only when the tree already contains it).
+    if(NOT _replay_result EQUAL 0)
+      break()
+    endif()
+    execute_process(
+      COMMAND ${_git} apply --cached ${_patch}
+      WORKING_DIRECTORY ${AIE_RT_ROOT}
+      RESULT_VARIABLE _replay_result
+      OUTPUT_QUIET ERROR_QUIET)
+    if(_replay_result EQUAL 0)
+      math(EXPR _replayed "${_replayed} + 1")
+      execute_process(
+        COMMAND ${_git} diff --quiet --no-ext-diff -- ${_patched_paths}
+        WORKING_DIRECTORY ${AIE_RT_ROOT}
+        RESULT_VARIABLE _tree_differs
+        OUTPUT_QUIET ERROR_QUIET)
+      if(_tree_differs EQUAL 0)
+        set(_applied_prefix ${_replayed})
+      endif()
+    endif()
+  endforeach()
+  file(REMOVE ${_scratch_index})
+
+  set(_position 0)
+  foreach(_patch ${_patches})
+    math(EXPR _position "${_position} + 1")
+    if(_position LESS_EQUAL _applied_prefix)
+      message(STATUS "Vendored aie-rt patch already applied, skipping: ${_patch}")
+      continue()
+    endif()
+    # Past the matched prefix (or if the tree has other local edits), check
+    # per patch: a clean reverse-apply check succeeds only when the tree
+    # already contains it.
     execute_process(
       COMMAND ${GIT_EXECUTABLE} apply --reverse --check ${_patch}
       WORKING_DIRECTORY ${AIE_RT_ROOT}
