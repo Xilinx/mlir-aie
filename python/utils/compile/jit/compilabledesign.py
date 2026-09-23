@@ -45,9 +45,6 @@ from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImpo
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.ir import (  # pyright: ignore[reportMissingImports]
-    StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
-)
 from aie.utils.compile import (
     NPU_CACHE_HOME,
     compile_external_kernels,
@@ -726,9 +723,7 @@ class CompilableDesign:
                 self._record_artifacts(
                     kernel_dir,
                     elf=elf_path,
-                    full_elf_kernel_name=self._parse_full_elf_kernel_name(
-                        ExternalFunction
-                    ),
+                    full_elf_kernel_name=self._parse_full_elf_kernel_name(kernel_dir),
                 )
                 return elf_path, None
 
@@ -787,7 +782,7 @@ class CompilableDesign:
         self._record_artifacts(
             kernel_dir,
             elf=elf_path,
-            full_elf_kernel_name=self._parse_full_elf_kernel_name(ExternalFunction),
+            full_elf_kernel_name=self._parse_full_elf_kernel_name(kernel_dir),
         )
         return elf_path, None
 
@@ -901,27 +896,21 @@ class CompilableDesign:
             )
         return chess_uses == {True}
 
-    def _parse_full_elf_kernel_name(self, ExternalFunction) -> str:
+    @staticmethod
+    def _parse_full_elf_kernel_name(kernel_dir: Path) -> str:
         """Return the ``"<device>:<sequence>"`` XRT kernel name for the full ELF.
 
         The full-ELF runtime addresses the kernel by the device symbol name and
-        runtime-sequence symbol name (e.g. ``main:sequence``), so walk the
-        generated module for the first ``aie.device`` and its first
-        ``aie.runtime_sequence``.
+        runtime-sequence symbol name (e.g. ``main:sequence``). Both are read from
+        ``full_elf_config.json``, the config aiecc assembles the ELF from, so a
+        cache hit needs no MLIR and the name is one the ELF actually holds.
         """
-        module = self._generate_mlir(ExternalFunction)
-        for op in module.body.operations:
-            if op.operation.name != "aie.device":
-                continue
-            device_sym = StringAttr(op.operation.attributes["sym_name"]).value
-            for inner in op.regions[0].blocks[0].operations:
-                if inner.operation.name == "aie.runtime_sequence":
-                    seq_sym = StringAttr(inner.operation.attributes["sym_name"]).value
-                    return f"{device_sym}:{seq_sym}"
-        raise RuntimeError(
-            f"Could not find an aie.device + aie.runtime_sequence in "
-            f"'{self.generator_name}' to derive the full-ELF kernel name."
-        )
+        config_path = kernel_dir / "full_elf_config.json"
+        config = json.loads(config_path.read_text())
+        for kernel in config["xrt-kernels"]:
+            for instance in kernel["instance"]:
+                return f"{kernel['name']}:{instance['id']}"
+        raise RuntimeError(f"{config_path} names no runtime sequence.")
 
     def get_artifacts(self) -> tuple[Path, Path] | None:
         """Return cached artifact paths without recompiling, or ``None``."""
