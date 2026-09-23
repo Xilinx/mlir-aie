@@ -213,8 +213,14 @@ whatever else is in the file.
 
 ### The full-ELF input
 
-A full ELF is a self-contained AIE program. The packer does not interpret its
-contents; it only enumerates the kernels inside, from the COMDAT groups:
+A full ELF is a self-contained AIE program, and it is an **ELF32** — not
+incidentally, but because that is the class ROCR's nested-ELF reader requires
+(`core/runtime/amd_aie_elf.cpp` rejects anything but `ELFCLASS32`). So the two
+ELFs in play differ in class: an ELF32 payload embedded in an ELF64 container.
+`elf.py` reads both.
+
+The packer does not interpret the payload's contents; it only enumerates the
+kernels inside, from the COMDAT groups:
 
 ```
 COMDAT group section [    4] `.group' [inst_a] contains 0 sections:

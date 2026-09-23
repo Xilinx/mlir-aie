@@ -49,6 +49,16 @@ _SYM = "<IBBHQQ"
 _SYM_SIZE = struct.calcsize(_SYM)
 _EHDR_SIZE = 64
 
+# The ELF32 layout, stated just as literally. Elf32_Shdr keeps Elf64_Shdr's
+# field order with narrower members, but Elf32_Sym *reorders* them: st_value
+# and st_size come before st_info/st_other/st_shndx, where in Elf64_Sym they
+# follow. A reader that only narrows the widths reads st_shndx out of st_size.
+_SHDR32 = "<IIIIIIIIII"
+_SHDR32_SIZE = struct.calcsize(_SHDR32)
+_SYM32 = "<IIIBBH"
+_SYM32_SIZE = struct.calcsize(_SYM32)
+_EHDR32_SIZE = 52
+
 
 def _strtab(names):
     """Return (blob, {name: offset}) for a NUL-separated string table."""
@@ -60,13 +70,23 @@ def _strtab(names):
     return bytes(blob), offsets
 
 
-def make_full_elf(pairs):
-    """Return a synthetic full ELF64 with one COMDAT group per (kernel, instance).
+def make_full_elf(pairs, elf_class=64):
+    """Return a synthetic full ELF with one COMDAT group per (kernel, instance).
 
     The instance symbol signs the group (``sh_info``), and its ``st_shndx``
     holds the symbol index of the kernel symbol -- the encoding the real AIE
     full-ELF producer uses.
+
+    ``elf_class`` picks ELF64 or ELF32. Both are needed: a real AIE full ELF is
+    ELF32 (which is the class ROCr's nested-ELF reader requires), while the
+    hsaco it gets packed into is ELF64, and one reader handles both.
     """
+    is_64 = elf_class == 64
+    shdr_fmt = _SHDR if is_64 else _SHDR32
+    shdr_size = _SHDR_SIZE if is_64 else _SHDR32_SIZE
+    sym_size = _SYM_SIZE if is_64 else _SYM32_SIZE
+    ehdr_size = _EHDR_SIZE if is_64 else _EHDR32_SIZE
+
     section_names = [".shstrtab", ".strtab", ".symtab"] + [".group"] * len(pairs)
     shstrtab, sh_off = _strtab([".shstrtab", ".strtab", ".symtab", ".group"])
 
@@ -83,26 +103,32 @@ def make_full_elf(pairs):
         symbols.append((st_off[kernel], 0))
         signature_indices.append(len(symbols))
         symbols.append((st_off[instance], kernel_index))
-    symtab = b"".join(
-        struct.pack(_SYM, name, 0, 0, shndx, 0, 0) for name, shndx in symbols
-    )
+    if is_64:
+        symtab = b"".join(
+            struct.pack(_SYM, name, 0, 0, shndx, 0, 0) for name, shndx in symbols
+        )
+    else:
+        symtab = b"".join(
+            struct.pack(_SYM32, name, 0, 0, 0, 0, shndx) for name, shndx in symbols
+        )
 
     # One 4-byte GRP_COMDAT flag word per group; contents are not read.
     group = struct.pack("<I", 0x1)
     bodies = [shstrtab, strtab, symtab] + [group] * len(pairs)
 
-    offset = _EHDR_SIZE
+    offset = ehdr_size
     offsets = []
     for body in bodies:
         offsets.append(offset)
         offset += len(body)
     shoff = offset
 
-    headers = [struct.pack(_SHDR, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)]
+    headers = [struct.pack(shdr_fmt, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)]
     for i, (name, body, off) in enumerate(zip(section_names, bodies, offsets)):
         index = i + 1
         if name == ".symtab":
-            sh_type, link, info, entsize, align = 2, 2, 1, _SYM_SIZE, 8
+            sh_type, link, info, entsize = 2, 2, 1, sym_size
+            align = 8 if is_64 else 4
         elif name == ".group":
             # SHT_GROUP holds 4-byte words, and llvm-objcopy rejects any other
             # alignment on one outright -- so this must match real ELFs.
@@ -117,7 +143,7 @@ def make_full_elf(pairs):
             sh_type, link, info, entsize, align = 3, 0, 0, 0, 1
         headers.append(
             struct.pack(
-                _SHDR,
+                shdr_fmt,
                 sh_off[name],
                 sh_type,
                 0,
@@ -132,10 +158,11 @@ def make_full_elf(pairs):
         )
 
     ehdr = (
-        b"\x7fELF\x02\x01\x01\x00"
+        b"\x7fELF"
+        + bytes([2 if is_64 else 1, 1, 1, 0])
         + b"\x00" * 8
         + struct.pack(
-            "<HHIQQQIHHHHHH",
+            "<HHIQQQIHHHHHH" if is_64 else "<HHIIIIIHHHHHH",
             1,  # ET_REL
             224,  # EM_AMDGPU
             1,
@@ -143,10 +170,10 @@ def make_full_elf(pairs):
             0,
             shoff,
             0,
-            _EHDR_SIZE,
+            ehdr_size,
             0,
             0,
-            _SHDR_SIZE,
+            shdr_size,
             len(headers),
             1,  # .shstrtab is section 1
         )
@@ -378,6 +405,30 @@ def test_full_elf_image_is_embedded_once(tmp_path):
     assert all(not k["has_pdi"] for k in info["kernels"])
     # One copy of the ELF plus table/strings, not three copies.
     assert len(section) < 2 * len(blob)
+
+
+def test_full_elf32_names_every_comdat_group(tmp_path):
+    """A real AIE full ELF is ELF32, not ELF64.
+
+    aiecc's --get-full-elf emits ELFCLASS32, and ROCr's nested-ELF reader
+    (core/runtime/amd_aie_elf.cpp) requires it, so an ELF64-only reader here
+    rejects every artifact the packer exists to pack.
+    """
+    blob = make_full_elf([("_Z4mainPcPcPc", "sequence")], elf_class=32)
+    path = _write(tmp_path / "aie.elf", blob)
+
+    kernels = pack.kernels_from_full_elf(path, kernarg_size=32, num_cols=1)
+    assert [k["name"] for k in kernels] == ["main:sequence"]
+    assert all(k["insts"] == blob for k in kernels)
+
+
+def test_elf_with_an_unrecognised_class_is_rejected(tmp_path):
+    """EI_CLASS is the one byte that picks the layout; a third value has none."""
+    blob = bytearray(make_full_elf([("k", "i")], elf_class=32))
+    blob[4] = 7
+    path = _write(tmp_path / "weird.elf", bytes(blob))
+    with pytest.raises(ValueError, match="not an ELF32 or ELF64 file"):
+        pack.kernels_from_full_elf(path)
 
 
 def test_elf_without_comdat_groups_is_rejected(tmp_path):
