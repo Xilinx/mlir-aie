@@ -18,6 +18,7 @@ from .conv_pipeline import (
     sliding_3row,
 )
 from .for_each import for_each
+from .kernel_design import design
 from .reduce import reduce
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "transform_binary",
     "transform_parallel",
     "transform_parallel_binary",
+    "design",
 ]

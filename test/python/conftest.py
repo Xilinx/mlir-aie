@@ -11,7 +11,6 @@ own conftest.py).
 """
 
 import pytest
-
 from aie.iron.device import NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import _common as _kernels_common
@@ -32,11 +31,30 @@ def _isolate_extern_state():
 
 @pytest.fixture
 def npu2_device():
-    """Set the iron current device to NPU2Col1 for the test, then clear it.
+    """Bind NPU2Col1 as the current device for the test, then restore what was bound.
 
     Safer than per-test try/finally: pytest unwinds the fixture even when
-    the test body crashes mid-assertion.
+    the test body crashes mid-assertion. Modules whose every test needs it
+    wrap this in an autouse fixture rather than restating it.
     """
+    from aie.utils import get_current_device
+
+    previous = get_current_device(probe_runtime=False)
     set_current_device(NPU2Col1())
-    yield
-    set_current_device(None)
+    try:
+        yield
+    finally:
+        set_current_device(previous)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "extensive: the full sweep (every case x edge data x seed); deselect with "
+        '-m "not extensive"',
+    )
+    config.addinivalue_line(
+        "markers",
+        "supported_devices(*devices): the NPU generations a test's kernels exist "
+        'for ("npu1", "npu2"); skipped elsewhere (see test/python/npu/conftest.py)',
+    )

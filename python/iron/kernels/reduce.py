@@ -7,14 +7,61 @@
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import In, Out
+from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import _default_source_path, _make_extern, _min_dma_aligned_elems
+from ._common import (
+    KernelContract,
+    Param,
+    _default_source_path,
+    _make_extern,
+    _min_dma_aligned_elems,
+    _require_vector_alignment,
+    dtypes,
+)
 
-# reduce_max_*() and compute_max() both live in reduce_max.cc; pin the
-# output object name so multiple factory calls in the same design share
-# one compile (no duplicate-symbol link errors).
+# The unspecialized pairwise max can share an object across dtypes.
+# Size-specialized reductions use separate, symbol-prefixed objects.
 _REDUCE_MAX_OBJ = "reduce_max.cc.o"
+
+# reduce_{add,min,max}.cc step a 16-element int32 vector (32 for bfloat16).
+_REDUCE_VEC_ELEMS = 16
+_REDUCE_VEC_ELEMS_BF16 = 32
+
+
+def reduce_add_ref(x):
+    """Numpy reference for [`reduce_add`][iron.kernels.reduce.reduce_add]: per-tile sum in int64."""
+    return x.astype(np.int64).sum(axis=-1, keepdims=True)
+
+
+def reduce_min_ref(x):
+    """Numpy reference for [`reduce_min`][iron.kernels.reduce.reduce_min]: per-tile minimum."""
+    return x.min(axis=-1, keepdims=True)
+
+
+def reduce_max_ref(x):
+    """Numpy reference for [`reduce_max`][iron.kernels.reduce.reduce_max]: per-tile maximum."""
+    return x.max(axis=-1, keepdims=True)
+
+
+_REDUCE_REFS = {"add": reduce_add_ref, "min": reduce_min_ref, "max": reduce_max_ref}
+
+
+def _reduce_contract(op: str, tile_size: int) -> KernelContract:
+    # A reduction writes one value into a DMA-aligned output tile (the rest
+    # is padding), so only element 0 of each output tile is compared. Every
+    # reduction here is exact: integer arithmetic, or a selection in bf16.
+    return KernelContract(
+        roles=(In, Out, Param),
+        parameter_bindings=((2, tile_size),),
+        reference=_REDUCE_REFS[op],
+        acc_dtype=np.int32 if op == "add" else None,
+        reduction=tile_size if op == "add" else None,
+        tolerance=Tolerance.exact(note="integer sum, or an exact selection"),
+        ops_per_call=tile_size,
+        out_valid=1,
+    )
 
 
 def _reduce_kernel(
@@ -27,6 +74,9 @@ def _reduce_kernel(
             "Only the int32 variant is available in the installed aie_kernels."
         )
 
+    if vectorized:
+        _require_vector_alignment(f"reduce_{op}", tile_size, _REDUCE_VEC_ELEMS)
+
     in_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
     out_ty = np.ndarray[(_min_dma_aligned_elems(np.int32),), np.dtype[np.int32]]
     func_variant = "vector" if vectorized else "scalar"
@@ -34,6 +84,8 @@ def _reduce_kernel(
         f"reduce_{op}_{func_variant}",
         _default_source_path(f"reduce_{op}.cc"),
         [in_ty, out_ty, np.int32],
+        compile_flags=[f"-DREDUCE_{op.upper()}_ELEMS={tile_size}"],
+        contract=_reduce_contract(op, tile_size),
     )
 
 
@@ -75,6 +127,7 @@ def reduce_min(
     return _reduce_kernel("min", tile_size, dtype, vectorized)
 
 
+@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
 def reduce_max(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -99,6 +152,12 @@ def reduce_max(
         )
 
     actual_dtype = bfloat16 if is_bf16 else np.int32
+    if vectorized:
+        _require_vector_alignment(
+            "reduce_max",
+            tile_size,
+            _REDUCE_VEC_ELEMS_BF16 if is_bf16 else _REDUCE_VEC_ELEMS,
+        )
     in_ty = np.ndarray[(tile_size,), np.dtype[actual_dtype]]
     # The C++ kernel writes one scalar; the output tile must still be at least
     # 4 bytes for shim-DMA alignment, so bfloat16 callers get out_size=2 even
@@ -111,19 +170,20 @@ def reduce_max(
         f"reduce_max_{func_variant}{suffix}",
         _default_source_path("reduce_max.cc"),
         [in_ty, out_ty, np.int32],
-        shared_object_file_name=_REDUCE_MAX_OBJ,
+        compile_flags=[f"-DREDUCE_MAX_ELEMS={tile_size}"],
+        contract=_reduce_contract("max", tile_size),
     )
 
 
+@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
 def compute_max(dtype: type = np.int32) -> ExternalFunction:
     """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].
 
     Used for multi-core reductions where each core produces a partial max and a
     final tree reduces them pairwise.
 
-    Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max]; sharing the
-    output ``.o`` (via ``shared_object_file_name``) means both factories
-    in the same design compile the source exactly once.
+    Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max],
+    but uses an unspecialized object independent of reduction tile sizes.
 
     Args:
         dtype: Element data type (``np.int32`` or ``bfloat16``).
@@ -150,5 +210,22 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
         f"compute_max{suffix}",
         _default_source_path("reduce_max.cc"),
         [out_ty, out_ty, out_ty],
-        shared_object_file_name=_REDUCE_MAX_OBJ,
+        object_file_name=_REDUCE_MAX_OBJ,
+        contract=KernelContract(
+            roles=(In, In, Out),
+            reference=compute_max_ref,
+            tolerance=Tolerance.exact(note="selection"),
+            ops_per_call=1,
+            out_valid=1,
+        ),
     )
+
+
+def compute_max_ref(a, b):
+    """Numpy reference for [`compute_max`][iron.kernels.reduce.compute_max].
+
+    The kernel compares only element 0 of each (DMA-padded) input tile and
+    writes element 0 of the output; the reference does the same, returning
+    ``max(a[..., 0], b[..., 0])`` with a trailing axis of length 1.
+    """
+    return np.maximum(np.asarray(a)[..., :1], np.asarray(b)[..., :1])

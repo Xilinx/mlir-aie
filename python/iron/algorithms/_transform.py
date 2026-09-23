@@ -15,6 +15,8 @@ from aie.iron.runtime import Runtime, TaskGroup
 from aie.iron.worker import Worker
 from aie.utils import get_current_device
 
+from ._pipeline import Stage, kernel_params, pipeline
+
 
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
     """General tiled transform to apply a function on inputs and obtain a single output.
@@ -75,133 +77,40 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(n,), np.dtype[dtype]]
 
-    # Create inputs/output ObjectFifo
     of_inputs = [ObjectFifo(tile_ty, name=f"in{i}") for i in range(num_inputs)]
     of_out = ObjectFifo(tile_ty, name="out")
+    kparams = kernel_params(func, params, num_inputs + 1)
 
-    # Handle params for ExternalFunction
-    tensor_params = []  # params that need ObjectFifos
-    scalar_params = []  # params passed directly as MLIR constants
-    param_of_list = []
-    param_tensor_types = []
+    def body(ins, outs, held, constants, _):
+        if is_external_func:
+            constants[0](*ins, outs[0], *kparams.resolve(held), n)
+        else:
+            # Lambda/callable: apply element-wise. Without this explicit
+            # loop, only the first element of each tile would be processed.
+            for j in range_(n):
+                outs[0][j] = constants[0](*(elem[j] for elem in ins))
 
-    if is_external_func:
-        arg_types = func.arg_types()
-        # Skip input and output tile types (num_inputs + output)
-        param_arg_types = arg_types[num_inputs + 1 :]
-
-        for i, (param, arg_type) in enumerate(zip(params, param_arg_types)):
-            if isinstance(arg_type, type) and issubclass(arg_type, np.generic):
-                scalar_params.append((i, param))
-            else:
-                tensor_params.append((i, param))
-
-        # Create ObjectFifos only for tensor params
-        for i, param in tensor_params:
-            param_ty = np.ndarray[param.shape, np.dtype[param.dtype]]
-            param_tensor_types.append(param_ty)
-            param_of_list.append(ObjectFifo(param_ty, name=f"param{i}"))
-
-    def core_body(*of_args):
-        # of_args = [*of_inputs_cons, *param_of_cons, of_out_prod, func]
-        of_ins = of_args[:num_inputs]
-        func_to_apply = of_args[-1]  # Last element is func
-        of_output = of_args[-2]  # Second to last is output
-        of_params = of_args[num_inputs:-2]
-
-        # For ExternalFunction: acquire params once (constant for all iterations)
-        all_params = []
-        if is_external_func and params:
-            elem_tensor_params = [of_param.acquire(1) for of_param in of_params]
-
-            # Build the full param list in correct order
-            all_params = [None] * len(params)
-            for (orig_idx, _), elem in zip(tensor_params, elem_tensor_params):
-                all_params[orig_idx] = elem
-            for orig_idx, param in scalar_params:
-                all_params[orig_idx] = param
-
-        # Tile iteration loop
-        for _ in range_(N_div_n):
-            elem_ins = [of_in.acquire(1) for of_in in of_ins]
-            elem_out = of_output.acquire(1)
-
-            if is_external_func:
-                func_to_apply(*elem_ins, elem_out, *all_params, n)
-            else:
-                # Lambda/callable: apply element-wise
-                # Without this explicit loop, only the
-                # first element of each tile would be processed.
-                for j in range_(n):
-                    in_elems = [elem_in[j] for elem_in in elem_ins]
-                    elem_out[j] = func_to_apply(*in_elems)
-
-            # Release inputs and output
-            for of_in in of_ins:
-                of_in.release(1)
-            of_output.release(1)
-
-        # Release tensor params (ExternalFunction only)
-        for of_param in of_params:
-            of_param.release(1)
-
-    # Create worker with all ObjectFifos
-    worker_args = (
-        [of.cons() for of in of_inputs]
-        + [of.cons() for of in param_of_list]
-        + [of_out.prod()]
-        + [func]
+    stage = Stage(
+        body,
+        inputs=[(of, 1) for of in of_inputs],
+        outputs=[of_out],
+        held=kparams.fifos,
+        constants=[func],
+        iterations=N_div_n,
+        trace=trace_size > 0,
     )
-    worker = Worker(core_body, fn_args=worker_args, trace=(1 if trace_size > 0 else 0))
-
-    # Runtime operations to move data to/from the AIE-array
-    # Sequence order: [inputs, output, params]
-    all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
-    num_params = len(param_tensor_types)
-
-    def sequence(*args):
-        # args = *inputs, output, *params, *in_prods, out_cons, *param_prods
-        input_seq_args = args[:num_inputs]
-        output_seq_arg = args[num_inputs]
-        param_seq_args = args[num_inputs + 1 : num_inputs + 1 + num_params]
-        rest = args[num_inputs + 1 + num_params :]
-        in_prods = rest[:num_inputs]
-        out_cons = rest[num_inputs]
-        param_prods = rest[num_inputs + 1 :]
-
-        # Fill all input ObjectFifos
-        for in_prod, input_arg in zip(in_prods, input_seq_args):
-            in_prod.fill(input_arg)
-
-        # Fill tensor param ObjectFifos (ExternalFunction only)
-        for param_prod, param_arg in zip(param_prods, param_seq_args):
-            param_prod.fill(param_arg)
-
-        # Drain output ObjectFifo
-        out_cons.drain(output_seq_arg, wait=True)
-
-    rt = Runtime(
-        sequence,
-        [
-            *all_types,
-            *[of_in.prod() for of_in in of_inputs],
-            of_out.cons(),
-            *[p.prod() for p in param_of_list],
-        ],
+    # Host buffers: inputs, output, then the tensor params.
+    transfers = [(of, "fill", i) for i, of in enumerate(of_inputs)]
+    transfers += [
+        (of, "fill", num_inputs + 1 + i) for i, of in enumerate(kparams.fifos)
+    ]
+    transfers.append((of_out, "drain", num_inputs))
+    return pipeline(
+        [stage],
+        [tensor_ty] * (num_inputs + 1) + kparams.types,
+        transfers,
+        trace_size=trace_size,
     )
-
-    # Place program components and generate an MLIR module
-    device = get_current_device()
-    if device is None:
-        raise RuntimeError(
-            "iron.algorithms.transform requires an active NPU device. "
-            "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
-            "before calling transform functions."
-        )
-    prog = Program(device, rt, workers=[worker])
-    if trace_size > 0:
-        prog.enable_trace(trace_size)
-    return prog.resolve_program()
 
 
 def _transform_parallel_gen(

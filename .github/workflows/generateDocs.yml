@@ -7,14 +7,12 @@ name: Generate GitHub Pages
 permissions:
   contents: read
 
-# Serialize deploys instead of racing them: mike and the Doxygen-copy step
-# both push to gh-pages, so two runs overlapping (e.g. back-to-back pushes
-# to main) can have the second's push rejected as non-fast-forward.
-# cancel-in-progress is false so a queued run still deploys rather than
-# being dropped.
+# All gh-pages writers share this lock, including kernel result publishers.
+# Preserve active and queued deploys (up to GitHub's 100-run queue limit).
 concurrency:
-  group: generate-docs-${{ github.ref }}
+  group: gh-pages-publish
   cancel-in-progress: false
+  queue: max
 
 on:
   push:
@@ -229,7 +227,7 @@ jobs:
 
           # Remove legacy Jekyll/CMake detritus from the gh-pages root. mike
           # owns versioned subdirs (dev/, 1.x.y/, versions.json, index.html);
-          # everything else at the root is carry-over from the old Jekyll setup.
+          # bench/ belongs to the kernel workflows and must survive deployment.
           cd ../gh-pages-wt
           # Keep the versioned dirs (dev/, 1.x.y/) plus the bare "latest"
           # alias mike writes as a symlink (a file literally named "latest",
@@ -239,6 +237,7 @@ jobs:
             | grep -zv '^\.nojekyll$' \
             | grep -zv '^index\.html$' \
             | grep -zv '^versions\.json$' \
+            | grep -zv '^bench/' \
             | grep -zvE '^(dev|latest)(/|$)' \
             | grep -zvE '^[0-9]+\.' \
             | xargs -0 -r git rm -rf --ignore-unmatch -q

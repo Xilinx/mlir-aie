@@ -72,6 +72,13 @@ def _dispatch_gen():
     return f
 
 
+def _variadic_gen():
+    def stream(out: Out, *tensors: In, N: CompileTime[int]):
+        pass
+
+    return stream
+
+
 # ---------------------------------------------------------------------------
 # Construction defaults
 # ---------------------------------------------------------------------------
@@ -132,12 +139,79 @@ def test_dispatch_params_classified():
     assert d.compile_params == ["N"]
 
 
+def test_variadic_tensor_list_takes_the_remaining_positionals():
+    """``*tensors: In`` is one tensor parameter for every positional the named ones leave."""
+    d = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 4})
+    assert d.tensor_params == ["out", "tensors"]
+    assert d.variadic_tensor_param == "tensors"
+    kernel = Kernel("k", "k.o")
+    assert d.split_runtime_args(("o", "a", kernel, "b"), {}) == (["o", "a", "b"], {})
+    assert d.split_runtime_args(("o",), {}) == (["o"], {})
+    assert [d._tensor_arg_name(i) for i in range(3)] == [
+        "out",
+        "tensors[0]",
+        "tensors[1]",
+    ]
+    d._expected_tensor_sizes = [32, 32, 32]
+    ok, bad = np.zeros(1, np.int32), np.zeros(2, np.int32)
+    d.validate_tensor_args([ok, ok, ok])
+    with pytest.raises(RuntimeError, match=r"'tensors\[1\]' covers 8 bytes"):
+        d.validate_tensor_args([ok, ok, bad])
+    assert CompilableDesign(_gemm_gen()).variadic_tensor_param is None
+
+    def scalars(a: In, *args, N: CompileTime[int]):
+        pass
+
+    with pytest.raises(TypeError, match=r"\*args must be annotated In, Out or InOut"):
+        CompilableDesign(scalars, compile_kwargs={"N": 4})
+
+
 def test_path_generator_has_empty_param_lists():
     d = CompilableDesign(Path("/nonexistent/design.mlir"))
     assert d.compile_params == []
     assert d.tensor_params == []
     assert d.dispatch_params == []
     assert d.scalar_params == []
+
+
+@pytest.mark.parametrize("actual_count", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize("implicit_count", [0, 1, 2])
+@pytest.mark.parametrize("cache_hit", [False, True])
+def test_runtime_tensor_count_matches_compiled_signature(
+    tmp_path, actual_count, implicit_count, cache_hit
+):
+    signature = ["%out: memref<4xi32>", "%a: memref<4xi32>", "%b: memref<4xi32>"]
+    signature += ["%scale: i32"]
+    signature += [f"%trace{i}: memref<1024xi8>" for i in range(implicit_count)]
+    (tmp_path / "input_with_addresses.mlir").write_text(
+        "module { aie.device(npu1) { aie.runtime_sequence("
+        + ", ".join(signature)
+        + ") { } } }"
+    )
+    sizes = parse_dma_sizes(tmp_path)
+    assert sizes == [128] * 3 + [8192] * implicit_count
+    design = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 4})
+    if not cache_hit:
+        design._expected_tensor_sizes = sizes
+    tensors = [np.zeros(4, np.int32) for _ in range(actual_count)]
+    kwargs = dict(num_host_bos=len(sizes), implicit_tensor_count=implicit_count)
+    if actual_count == 3:
+        design.validate_tensor_args(tensors, **kwargs)
+    else:
+        with pytest.raises(
+            RuntimeError, match=f"expects 3 tensor argument.*received {actual_count}"
+        ):
+            design.validate_tensor_args(tensors, **kwargs)
+
+
+def test_runtime_tensor_count_distinguishes_empty_and_unavailable_signature():
+    design = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 0})
+    tensor = np.zeros(1, np.int32)
+    design.validate_tensor_args([tensor])
+    design._expected_tensor_sizes = []
+    design.validate_tensor_args([])
+    with pytest.raises(RuntimeError, match="expects 0 tensor argument"):
+        design.validate_tensor_args([tensor])
 
 
 # ---------------------------------------------------------------------------
@@ -1307,7 +1381,31 @@ module {
     mlir_path = tmp_path / "input_with_addresses.mlir"
     mlir_path.write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024, 1024], f"Expected [1024, 1024], got {sizes}"
+    assert sizes == [1024 * 32, 1024 * 32], f"Expected i32 bits, got {sizes}"
+
+
+def test_parse_dma_sizes_counts_a_block_type_by_its_block(tmp_path):
+    """A block float memref holds one element per block, not per value.
+
+    The host holds that buffer as bytes, so only a footprint in bits makes the
+    two comparable; counting elements made a bfp16ebs8 argument look nine times
+    smaller than the host tensor covering exactly the same memory.
+    """
+    sample_mlir = """\
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence(%arg0: memref<2048x!aiex.bfp<"v8bfp16ebs8">>) {
+      aie.end
+    }
+  }
+}
+"""
+    mlir_path = tmp_path / "input_with_addresses.mlir"
+    mlir_path.write_text(sample_mlir)
+    sizes = parse_dma_sizes(tmp_path)
+    # 2048 blocks, 9 bytes each: the 18432 bytes the host encodes for 128x128.
+    assert sizes == [2048 * 72], f"Expected block bits, got {sizes}"
+    assert sizes[0] // 8 == 18432
 
 
 @pytest.mark.parametrize(
@@ -1316,7 +1414,7 @@ module {
         (
             "%n: i32, %a: memref<16x32xi16>, %offset: index, "
             "%b: memref<1024xi32>, %flags: ui64",
-            [512, 1024],
+            [512 * 16, 1024 * 32],
         ),
         (
             "%a: memref<512xi32>, %unsupported: f32, %b: memref<1024xi32>",
@@ -1362,7 +1460,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024], f"Expected [1024] (signature-based), got {sizes}"
+    assert sizes == [1024 * 32], f"Expected i32 bits (signature-based), got {sizes}"
 
 
 def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
@@ -1391,7 +1489,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024], f"Expected [1024] (union), got {sizes}"
+    assert sizes == [1024 * 32], f"Expected i32 bits (union), got {sizes}"
 
 
 def test_parse_dma_sizes_picks_uncalled_root_when_helper_present(tmp_path):
@@ -1422,7 +1520,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024, 1024], f"Expected main's args [1024, 1024], got {sizes}"
+    assert sizes == [1024 * 32, 1024 * 32], f"Expected main's args in bits, got {sizes}"
 
 
 def test_parse_dma_sizes_returns_none_when_multi_device_has_multiple_roots(tmp_path):

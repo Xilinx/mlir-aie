@@ -114,7 +114,7 @@ def whole_array_dynamic(
         output_dtype=dtype_out,
         vectorized=True,
     )
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = kernels.zero(m * n, dtype_out)
     r, s, t = matmul_kernel.mac_dims
 
     # L3 host tensors are flat (the runtime sequence indexes them via BD

@@ -300,6 +300,115 @@ $helper:
         compile_kernel.assert_called_once()
         self.assertTrue(compile_kernel.call_args.kwargs["embed_bitcode"])
 
+    def _shared_object_functions(self):
+        from aie.iron.kernel import ExternalFunction
+
+        registry = patch.object(ExternalFunction, "_instances", set())
+        registry.start()
+        self.addCleanup(registry.stop)
+        funcs = [
+            ExternalFunction(
+                name,
+                source_file=str(self.source),
+                compile_flags=["-DGROUPA"],
+                object_file_name="kernel.o",
+            )
+            for name in ("kernel", "helper")
+        ]
+        self.assertIs(funcs[0].object_file, funcs[1].object_file)
+        return funcs
+
+    def test_shared_owner_bitcode_upgrade_is_per_object_and_directory(self):
+        funcs = self._shared_object_functions()
+        other_work = self.work / "other"
+        other_work.mkdir()
+        self.has_bitcode.side_effect = (
+            lambda path: Path(path).read_bytes() == b"object with IR"
+        )
+
+        def fake_compile(output_path, embed_bitcode, **kwargs):
+            self.assertEqual(kwargs["compile_args"], ["-DGROUPA"])
+            Path(output_path).write_bytes(
+                b"object with IR" if embed_bitcode else b"object"
+            )
+
+        with patch.object(
+            compile_utils, "compile_cxx_core_function", side_effect=fake_compile
+        ) as compile_kernel:
+            compile_utils.compile_external_kernels(funcs, self.work, "aie2p")
+            self.assertEqual(compile_kernel.call_count, 1)
+            compile_utils.compile_external_kernels(
+                funcs, self.work, "aie2p", embed_bitcode=True
+            )
+            self.assertEqual(compile_kernel.call_count, 2)
+            compile_utils.compile_external_kernels(
+                funcs[::-1], self.work, "aie2p", embed_bitcode=True
+            )
+            self.assertEqual(compile_kernel.call_count, 2)
+
+            compile_utils.compile_external_kernels(funcs, other_work, "aie2p")
+            self.assertEqual(compile_kernel.call_count, 3)
+            compile_utils.compile_external_kernels(
+                funcs, self.work, "aie2p", embed_bitcode=True
+            )
+            self.assertEqual(compile_kernel.call_count, 3)
+            compile_utils.compile_external_kernels(
+                funcs, other_work, "aie2p", embed_bitcode=True
+            )
+            self.assertEqual(compile_kernel.call_count, 4)
+            self.assertEqual(
+                funcs[0].object_file._compiled_dirs,
+                {os.path.realpath(self.work), os.path.realpath(other_work)},
+            )
+
+            # Neither an old .bc sidecar nor ownership proves the object has IR.
+            Path(f"{self.output}.bc").write_bytes(b"stale IR")
+            self.output.write_bytes(b"replacement object without IR")
+            compile_utils.compile_external_kernel(
+                funcs[1], self.work, "aie2p", embed_bitcode=True
+            )
+            self.assertEqual(compile_kernel.call_count, 5)
+            self.output.unlink()
+            compile_utils.compile_external_kernel(
+                funcs[0], self.work, "aie2p", embed_bitcode=True
+            )
+            self.assertEqual(compile_kernel.call_count, 6)
+
+    def test_failed_shared_owner_upgrade_invalidates_cached_object(self):
+        funcs = self._shared_object_functions()
+        owner = funcs[0].object_file
+        owner._compiled_dirs.add(os.path.realpath(self.work))
+        self.output.write_bytes(b"cached object without IR")
+
+        def fail_compile(output_path, **kwargs):
+            Path(output_path).write_bytes(b"partial object")
+            Path(f"{output_path}.d").write_bytes(b"partial dependencies")
+            Path(f"{output_path}.bc").write_bytes(b"partial IR")
+            raise RuntimeError("failed upgrade")
+
+        with patch.object(
+            compile_utils, "compile_cxx_core_function", side_effect=fail_compile
+        ):
+            with self.assertRaisesRegex(RuntimeError, "failed upgrade"):
+                compile_utils.compile_external_kernel(
+                    funcs[0], self.work, "aie2p", embed_bitcode=True
+                )
+        self.assertNotIn(os.path.realpath(self.work), owner._compiled_dirs)
+        for path in (self.output, Path(f"{self.output}.d"), Path(f"{self.output}.bc")):
+            self.assertFalse(path.exists())
+        self.assertFalse(compile_utils._compiled_into(funcs[1], self.work))
+
+        with patch.object(
+            compile_utils,
+            "compile_cxx_core_function",
+            side_effect=lambda output_path, **kwargs: Path(output_path).write_bytes(
+                b"complete object"
+            ),
+        ) as compile_kernel:
+            compile_utils.compile_external_kernel(funcs[1], self.work, "aie2p")
+        compile_kernel.assert_called_once()
+        self.assertTrue(compile_utils._compiled_into(funcs[0], self.work))
+
 
 class ObjectBitcodeTest(unittest.TestCase):
     def test_bitcode_inspection_does_not_rewrite_cached_object(self):

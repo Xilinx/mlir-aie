@@ -10,11 +10,13 @@ for the aie.iron.kernels factory functions.
 
 Sibling files:
   test_kernels_specs.py        — spec-table-driven coverage of every factory
-  test_kernels_memoization.py  — memoization, .zero, auto-prefix-on-collision
+  test_kernels_memoization.py  — memoization, independent zero, auto-prefix-on-collision
 
 The npu2_device fixture used by the bf16-emulated tests comes from
 conftest.py at this directory level.
 """
+
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -84,7 +86,7 @@ def test_kernels_mm_default_use_chess_is_false():
         (bfloat16, np.float32, "bf16_f32", "f32"),
     ],
 )
-def test_kernels_mm_selects_combo_with_shared_zero(
+def test_kernels_mm_selects_combo_with_independent_zero(
     monkeypatch,
     arch,
     use_chess,
@@ -105,10 +107,11 @@ def test_kernels_mm_selects_combo_with_shared_zero(
         f"-D{suffix}_ONLY"
     ]
     matmul = "matmul" if vectorized else "matmul_scalar"
-    zero = "zero" if vectorized else "zero_scalar"
     assert ef._name == ef.object_file.resolve_symbol(f"{matmul}_{suffix}")
-    assert ef.zero._name == ef.object_file.resolve_symbol(f"{zero}_{zero_suffix}")
-    assert ef.zero.object_file is ef.object_file
+    zero = ef.contract.initializers[0][1](ef)
+    assert zero.use_chess == use_chess
+    assert zero.object_file is not ef.object_file
+    assert Path(zero.source_file).parts[-2:] == ("generic", "zero.cc")
 
 
 def test_external_function_rejects_inline_with_chess():
@@ -203,25 +206,13 @@ def test_other_matmul_factories_carry_use_chess(factory, kwargs):
     assert ef._use_chess is True
 
 
-def test_cascade_mm_exposes_all_modes_and_zero():
-    """kernels.cascade_mm returns a get_only EF with put_only / put_get / zero
-    sibling Kernels pointing at the same .o (one cascade_mm.cc compile, four
-    bindings)."""
+def test_cascade_mm_binds_modes_explicitly():
     ef = kernels.cascade_mm(dim_m=64, dim_k=64, dim_n=32)
-    assert ef.get_only is ef
-    assert isinstance(ef.put_only, Kernel)
-    assert isinstance(ef.put_get, Kernel)
-    assert isinstance(ef.zero, Kernel)
-    assert (
-        ef.put_only._name
-        == f"{ef._symbol_prefix}_matmul_scalar_cascade_put_only_i16_i16"
-    )
-    assert (
-        ef.put_get._name == f"{ef._symbol_prefix}_matmul_scalar_cascade_put_get_i16_i16"
-    )
-    assert ef.zero._name == f"{ef._symbol_prefix}_zero_scalar_i16"
-    # All four bindings reference the same .o.
-    for sibling in (ef.put_only, ef.put_get, ef.zero):
+    for mode in ("put_only", "put_get"):
+        symbol = f"matmul_scalar_cascade_{mode}_i16_i16"
+        sibling = ef.object_file.bind(symbol, ef.arg_types())
+        assert isinstance(sibling, Kernel)
+        assert sibling.name == ef.object_file.resolve_symbol(symbol)
         assert sibling.object_file_name == ef.object_file_name
         assert sibling.object_file is ef.object_file
 

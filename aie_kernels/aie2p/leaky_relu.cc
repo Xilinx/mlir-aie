@@ -11,6 +11,10 @@
 
 using namespace aie;
 
+#ifndef LEAKY_RELU_ELEMS
+#define LEAKY_RELU_ELEMS vector_size
+#endif
+
 // Leaky ReLU: f(x) = max(x, alpha * x).  For alpha < 1 this is x when x > 0 and
 // alpha * x otherwise.  32 bf16 elements per iteration.
 void leaky_relu_vectorized_bf16(bfloat16 *restrict a, bfloat16 *restrict c,
@@ -24,8 +28,7 @@ void leaky_relu_vectorized_bf16(bfloat16 *restrict a, bfloat16 *restrict c,
   vector<bfloat16, 32> alpha_vec = aie::broadcast<bfloat16, 32>(alpha);
 
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(2)
-  for (int i = 0; i < vector_size; i += 32) {
+  for (int i = 0; i < LEAKY_RELU_ELEMS; i += 32) {
     vector<bfloat16, 32> input = *it_in++;
     vector<bfloat16, 32> alpha_times_input = aie::mul(input, alpha_vec);
     vector<bfloat16, 32> output = aie::max(input, alpha_times_input);

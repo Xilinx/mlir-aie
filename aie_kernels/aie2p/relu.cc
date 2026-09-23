@@ -11,6 +11,10 @@
 
 using namespace aie;
 
+#ifndef RELU_ELEMS
+#define RELU_ELEMS vector_size
+#endif
+
 // ReLU: f(x) = max(x, 0).  32 bf16 elements per iteration (one 512-bit AIE2P
 // vector register).
 void relu_vectorized_bf16(bfloat16 *restrict a, bfloat16 *restrict c,
@@ -23,8 +27,7 @@ void relu_vectorized_bf16(bfloat16 *restrict a, bfloat16 *restrict c,
   vector<bfloat16, 32> zeroes = aie::zeros<bfloat16, 32>();
 
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(2)
-  for (int i = 0; i < vector_size; i += 32) {
+  for (int i = 0; i < RELU_ELEMS; i += 32) {
     vector<bfloat16, 32> input = *it_in++;
     vector<bfloat16, 32> output = aie::max(input, zeroes);
     *it_out++ = output;
