@@ -56,22 +56,27 @@ template <uint32_t r, uint32_t k>
 void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
                        const bfloat16 *__restrict b, bfloat16 *__restrict c) {
   static_assert(k % r == 0);
-  static_assert(k >= 2 * r);
+  static_assert(k >= r);
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
   bfloat16 *c_end = c + m;
   const bfloat16 *b_end = b + k;
   for (; c < c_end; c++) {
     aie::accum acc = aie::zeros<accfloat, r>();
-    // The following two pragmas enable pipelining the zero-overhead loop, but
-    // they do assume that there are at least two iterations of the loop, i.e. k
-    // >= 2*r. This pragma will break the code if that is not the case!
-    AIE_LOOP_MIN_ITERATION_COUNT(k / r)
-    for (const bfloat16 *__restrict b_cur = b; b_cur < b_end;
-         b_cur += r, a += r) {
+    if constexpr (k == r) {
       aie::vector<bfloat16, r> a_vec = aie::load_v<r>(a);
-      aie::vector<bfloat16, r> b_vec = aie::load_v<r>(b_cur);
+      aie::vector<bfloat16, r> b_vec = aie::load_v<r>(b);
       acc = aie::mac(acc, a_vec, b_vec);
+      a += r;
+    } else {
+      // Preserve the pipelined loop for two or more chunks.
+      AIE_LOOP_MIN_ITERATION_COUNT(k / r)
+      for (const bfloat16 *__restrict b_cur = b; b_cur < b_end;
+           b_cur += r, a += r) {
+        aie::vector<bfloat16, r> a_vec = aie::load_v<r>(a);
+        aie::vector<bfloat16, r> b_vec = aie::load_v<r>(b_cur);
+        acc = aie::mac(acc, a_vec, b_vec);
+      }
     }
     *c =
         static_cast<bfloat16>(aie::reduce_add(acc.template to_vector<float>()));

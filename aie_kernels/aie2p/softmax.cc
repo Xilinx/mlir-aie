@@ -47,7 +47,6 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, scaled_accum,
       exp_in_accum;
 
-  float max_val = std::numeric_limits<bfloat16>::lowest();
   float accum_exp_val = 0;
   bfloat16 col_sum_inv;
   const int elem_iters = vector_size / SM_VEC_LEN;
@@ -57,17 +56,29 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   log2e_vec = aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e);
 
   // First pass - Optimized: element-wise max + single final reduce_max
-  // Use vector max accumulation, then reduce once at the end
+  // Use vector max accumulation, then reduce once at the end.
+  //
+  // Take the max of the raw input, not of the scaled value. Scaling by log2e
+  // is monotonic, so the largest element is the same either way, and a bf16
+  // max over bf16 inputs is exact -- rounding the scaled value to bf16 first
+  // was not. When that rounding landed below the true maximum, the largest
+  // element's exponent argument came out positive instead of zero and exp2
+  // ran away with it.
   aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec =
       aie::broadcast<bfloat16, SM_VEC_LEN>(
           std::numeric_limits<bfloat16>::lowest());
   for (int i = 0; i < elem_iters; i++) {
-    input_bf16 = *it_log_in++;
-    scaled_accum = aie::mul(input_bf16, log2e_vec);
-    max_accum_vec = aie::max(max_accum_vec, scaled_accum.to_vector<bfloat16>());
+    max_accum_vec = aie::max(max_accum_vec, *it_log_in++);
   }
-  max_val = aie::reduce_max(max_accum_vec);
-  max_val_vec = aie::broadcast<bfloat16, SM_VEC_LEN>(max_val);
+  max_val_vec =
+      aie::broadcast<bfloat16, SM_VEC_LEN>(aie::reduce_max(max_accum_vec));
+  // Scale the maximum through the same multiply its element takes below, so
+  // the subtraction cancels exactly there. That is what the whole
+  // formulation rests on: the largest exponent argument is exactly 0 and
+  // every other one is negative, so exp2 <= 1, the sum is >= 1, and the
+  // reciprocal of the sum cannot overflow.
+  aie::vector<float, SM_VEC_LEN> max_scaled =
+      aie::mul(max_val_vec, log2e_vec).to_vector<float>();
 
   // Second pass
   for (int i = 0; i < elem_iters; i++) {
@@ -75,7 +86,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
     input_bf16 = *it_exp_in++;
 
     scaled_accum = aie::mul(input_bf16, log2e_vec);
-    exp_in_accum = aie::sub(scaled_accum, max_val_vec);
+    exp_in_accum = aie::sub(scaled_accum, max_scaled);
     exp_val = aie::exp2<bfloat16>(exp_in_accum.to_vector<float>());
     exp_val_accum = add(exp_val_accum, exp_val);
 

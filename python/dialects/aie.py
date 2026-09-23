@@ -253,18 +253,15 @@ class external_func(FuncOp):
                     f"signed 32-bit integer (<= {2**31 - 1}), got "
                     f"{stack_size_override}."
                 )
-        if outputs is None:
-            outputs = []
-        for i, ty in enumerate(inputs):
-            new_type = try_convert_np_type_to_mlir_type(ty)
-            if new_type != ty:
-                inputs[i] = new_type
-        for i, ty in enumerate(outputs):
-            new_type = try_convert_np_type_to_mlir_type(ty)
-            if new_type != ty:
-                outputs[i] = new_type
+        # Convert into new lists rather than in place: `inputs` belongs to the
+        # caller, and a Kernel holds on to it as the declaration it was built
+        # with (see Kernel.arg_types).
+        mlir_inputs = [try_convert_np_type_to_mlir_type(ty) for ty in inputs]
+        mlir_outputs = [try_convert_np_type_to_mlir_type(ty) for ty in outputs or []]
         super().__init__(
-            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
+            name=name,
+            type=FunctionType.get(mlir_inputs, mlir_outputs),
+            visibility=visibility,
         )
         if link_with is not None:
             self.operation.attributes["link_with"] = StringAttr.get(link_with)

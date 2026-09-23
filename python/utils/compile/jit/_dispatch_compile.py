@@ -20,7 +20,8 @@ import tempfile
 from pathlib import Path
 from typing import get_args
 
-from aie.helpers.util import NpuDType, try_convert_np_type_to_mlir_type
+from aie.helpers.npdtypes import NpuDType
+from aie.helpers.util import try_convert_np_type_to_mlir_type
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Context,  # pyright: ignore[reportAttributeAccessIssue]
     IndexType,  # pyright: ignore[reportAttributeAccessIssue]

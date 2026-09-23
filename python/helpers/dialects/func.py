@@ -38,7 +38,11 @@ from ...ir import (  # pyright: ignore[reportMissingImports]
     TypeAttr,
     Value,
 )
-from ..util import NpuDType, get_arg_types, try_convert_np_type_to_mlir_type
+from ..npdtypes import NpuDType
+from ..util import (
+    get_arg_types,
+    try_convert_np_type_to_mlir_type,
+)
 
 
 def call(

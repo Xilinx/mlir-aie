@@ -8,7 +8,7 @@ import math
 
 import numpy as np
 import pyxrt as xrt  # pyright: ignore[reportMissingImports]
-from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 
 from ..buffer import Storage, Transport
 from ..tensor_class import NpuTensor

@@ -28,6 +28,10 @@ enum _threshold_type {
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+#ifndef THRESHOLD_ELEMS
+#define THRESHOLD_ELEMS (img_height * img_width)
+#endif
+
 template <typename T, int N>
 __attribute__((noinline)) void
 threshold_aie(T *img_in, T *img_out, const int32_t img_width,
@@ -43,9 +47,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
   switch (thresholdType) {
   case XF_THRESHOLD_TYPE_TRUNC:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -57,9 +59,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     break;
   case XF_THRESHOLD_TYPE_BINARY:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -72,9 +72,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     break;
   case XF_THRESHOLD_TYPE_BINARY_INV:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -87,9 +85,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     break;
   case XF_THRESHOLD_TYPE_TOZERO:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -102,9 +98,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     break;
   case XF_THRESHOLD_TYPE_TOZERO_INV:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -117,9 +111,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
     break;
   default:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -161,9 +153,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
   switch (thresholdType) {
   case XF_THRESHOLD_TYPE_TRUNC:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -175,9 +165,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     break;
   case XF_THRESHOLD_TYPE_BINARY:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -190,9 +178,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     break;
   case XF_THRESHOLD_TYPE_BINARY_INV:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -205,9 +191,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     break;
   case XF_THRESHOLD_TYPE_TOZERO:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -220,9 +204,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     break;
   case XF_THRESHOLD_TYPE_TOZERO_INV:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
@@ -235,9 +217,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     break;
   default:
     AIE_PREPARE_FOR_PIPELINING
-    AIE_LOOP_MIN_ITERATION_COUNT(14)
-    for (int j = 0; j < (img_height * img_width);
-         j += N) // 16x samples per loop
+    for (int j = 0; j < THRESHOLD_ELEMS; j += N) // 16x samples per loop
     {
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
