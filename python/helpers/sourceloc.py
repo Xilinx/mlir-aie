@@ -35,11 +35,21 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 _AIE_ROOT = Path(__file__).parent.parent
 
 
-def _is_internal(filename: str) -> bool:
+def is_internal_file(filename: str) -> bool:
+    """Whether `filename` belongs to IRON or its dependencies rather than a user.
+
+    The same predicate decides which frames to skip when attributing an op and
+    which to hide when reporting an error -- if a frame is not worth pointing
+    at, it is not worth printing either.
+    """
     path = Path(filename)
     # sys.prefix covers the pip-installed case, where `aie` and its
     # dependencies all live under site-packages.
     return path.is_relative_to(_AIE_ROOT) or path.is_relative_to(sys.prefix)
+
+
+# Retained for readability at the call sites inside this module.
+_is_internal = is_internal_file
 
 
 class SourceSite:

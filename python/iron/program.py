@@ -19,6 +19,7 @@ from ..utils.compile.jit.context import get_compile_arg
 from .device import Device
 from .resolvable import Resolvable
 from ..helpers.sourceloc import capture_source_site, site_location
+from .errors import design_boundary
 from .runtime import Runtime
 from .scratchpad_parameter import ScratchpadParameter
 
@@ -124,6 +125,7 @@ class Program:
         self._core_trace_mode = core_trace_mode
         self._egress_shim_col = egress_shim_col
 
+    @design_boundary
     def resolve_program(self, device_name="main"):
         """Resolve the program components in order to generate MLIR.
 

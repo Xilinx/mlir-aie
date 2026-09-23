@@ -3,28 +3,34 @@
 
 # RUN: %PYTHON %s
 
-"""A compile error on a real IRON design must name the user's file and line.
+"""A compile error on a real IRON design must read like a Python error.
 
-Source locations are plumbing; this is the thing users actually experience.
-MLIR prints an op's location as the prefix of every diagnostic, so the payoff
-for attribution is automatic -- and so is the regression if attribution breaks.
-Before locations reached IRON, the design below reported:
+Source locations are plumbing; this is what users actually experience. Before
+this work the design below reported
 
     error: unknown: 'arith.addi' op operand #0 must be signless-...
 
-which names neither the file nor the line and is the same message for every
-mistake in every design.
+which names neither the file nor the line, and is the same message for every
+mistake in every design. It should instead arrive as an exception whose
+traceback walks the user's own code -- the Worker declaration, then the
+statement that failed -- with the source quoted, exactly as a TypeError would.
 
-This test is deliberately built on a genuine user error (`uint8` arithmetic is
-not supported) rather than a synthetic one, so it keeps testing a real
-diagnostic path.
+Both error kinds are covered: an MLIR verifier failure, which has to be rebuilt
+from a diagnostic string, and an IRON guard, which is already an exception but
+arrives buried under IRON's own frames.
+
+The mistakes are genuine (uint8 arithmetic is unsupported; a shim BD has four
+dimensions), so this keeps exercising real diagnostic paths rather than
+synthetic ones.
 """
 
 import os
+import traceback
 
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
+from aie.iron.errors import IronCompileError
 
 THIS_FILE = os.path.abspath(__file__)
 SOURCE = open(THIS_FILE).read().splitlines()
@@ -33,9 +39,19 @@ line_type = np.ndarray[(256,), np.dtype[np.uint8]]
 vector_type = np.ndarray[(1024,), np.dtype[np.uint8]]
 
 MISTAKE = "elem_out[0] = elem_in[0] + elem_in[1]  # unsupported on uint8"
+BAD_TRANSFER = "in_handle.fill(a_in, sizes=[2, 2, 2, 2, 2], strides=[1, 1, 1, 1, 1])"
 
 
-def build():
+def _line_of(fragment):
+    # Match the statement, not the constant above that spells it out: the
+    # declaration reads `NAME = "..."` and so never starts with the fragment.
+    return next(
+        i + 1 for i, text in enumerate(SOURCE) if text.lstrip().startswith(fragment)
+    )
+
+
+def verifier_failure():
+    """uint8 addition inside a core body -- rejected by the MLIR verifier."""
     of_in = ObjectFifo(line_type, name="in")
     of_out = ObjectFifo(line_type, name="out")
 
@@ -56,40 +72,98 @@ def build():
     return Program(NPU1Col1(), rt, workers=[worker]).resolve_program()
 
 
-def main():
+def guard_failure():
+    """A five-dimensional shim transfer -- rejected by an IRON guard."""
+    of_in = ObjectFifo(line_type, name="in2")
+    of_out = ObjectFifo(line_type, name="out2")
+
+    def core_fn(a, b):
+        elem_out = b.acquire(1)
+        elem_in = a.acquire(1)
+        elem_out[0] = elem_in[0]
+        a.release(1)
+        b.release(1)
+
+    worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
+
+    def sequence(a_in, b_out, in_handle, out_handle):
+        in_handle.fill(a_in, sizes=[2, 2, 2, 2, 2], strides=[1, 1, 1, 1, 1])
+        out_handle.drain(b_out, wait=True)
+
+    rt = Runtime(sequence, [vector_type, vector_type, of_in.prod(), of_out.cons()])
+    return Program(NPU1Col1(), rt, workers=[worker]).resolve_program()
+
+
+def frames_of(exc):
+    return [
+        (os.path.abspath(f.filename), f.lineno, f.name, f.line or "")
+        for f in traceback.extract_tb(exc.__traceback__)
+    ]
+
+
+def check_verifier_failure():
     try:
-        build()
-    except Exception as exc:  # MLIRError, but keep the assert independent of it
+        verifier_failure()
+    except IronCompileError as exc:
+        frames = frames_of(exc)
         message = str(exc)
     else:
         raise AssertionError("expected the uint8 addition to be rejected")
 
-    assert "arith.addi" in message, f"unexpected diagnostic:\n{message}"
+    assert "arith.addi" in message, message
+    # The location moved out of the message and into the traceback, which is
+    # what makes it print the offending source rather than just address it.
+    assert "unknown" not in message, message
 
-    # The whole point: the diagnostic must not say "unknown".
-    assert "unknown:" not in message, (
-        "diagnostic still reports an unknown location:\n" + message
+    user_frames = [f for f in frames if f[0] == THIS_FILE]
+    assert user_frames, f"no frame in {THIS_FILE}:\n{frames}"
+
+    # Innermost frame: the statement that failed, quoted from this file.
+    filename, lineno, name, text = user_frames[-1]
+    assert lineno == _line_of(MISTAKE), (
+        f"innermost frame is line {lineno} ({text!r}), expected the line "
+        f"holding {MISTAKE!r}"
+    )
+    assert name == "core_fn", f"frame should name the core body, got {name!r}"
+    assert "elem_in[0] + elem_in[1]" in text, f"source not quoted: {text!r}"
+
+    # Outer frame: the declaration that put that body on a core.
+    declaration = [f for f in user_frames if "Worker(core_fn" in f[3]]
+    assert declaration, f"Worker declaration missing from traceback:\n{user_frames}"
+
+    return f"{filename}:{lineno} in {name}"
+
+
+def check_guard_failure():
+    try:
+        guard_failure()
+    except ValueError as exc:
+        frames = frames_of(exc)
+    else:
+        raise AssertionError("expected the 5-dimensional transfer to be rejected")
+
+    internal = [f for f in frames if "aie/iron" in f[0] or "aie/dialects" in f[0]]
+    # One frame survives filtering: Python appends the raising frame, and the
+    # re-raise happens inside IRON. More than that means filtering regressed.
+    assert len(internal) <= 1, "IRON frames not filtered:\n" + "\n".join(
+        f"  {f[0]}:{f[1]} in {f[2]}" for f in internal
     )
 
-    # It must name this file...
-    assert THIS_FILE in message, f"diagnostic does not name {THIS_FILE}:\n{message}"
-
-    # ...and point at the offending statement itself, not merely the enclosing
-    # function. The core body's statements each scope their own location (see
-    # helpers/astloc.py), so anything coarser is a regression.
-    mistake_line = next(
-        i + 1 for i, text in enumerate(SOURCE) if text.strip().startswith(MISTAKE)
+    user_frames = [f for f in frames if f[0] == THIS_FILE]
+    assert user_frames, f"no frame in {THIS_FILE}:\n{frames}"
+    _, lineno, _, text = user_frames[-1]
+    assert lineno == _line_of(BAD_TRANSFER), (
+        f"innermost frame is line {lineno} ({text!r}), expected the line "
+        f"holding {BAD_TRANSFER!r}"
     )
-    expected = f'"{THIS_FILE}":{mistake_line}'
-    assert (
-        expected in message
-    ), f"diagnostic should cite {expected} ({MISTAKE!r}), got:\n{message}"
+    return f"{len(frames)} frames, {len(internal)} internal"
 
-    # The Python function it came from is named too, which is what connects the
-    # op back to the user's code rather than to a bare file offset.
-    assert '"core_fn"' in message, f"diagnostic does not name core_fn:\n{message}"
 
-    print(f"PASS: diagnostic cites {THIS_FILE}:{mistake_line} in core_fn")
+def main():
+    where = check_verifier_failure()
+    guard = check_guard_failure()
+    print(f"PASS: verifier failure reported at {where}")
+    print(f"PASS: guard failure filtered to {guard}")
 
 
 main()
