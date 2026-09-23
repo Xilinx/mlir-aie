@@ -154,6 +154,39 @@ _LUT_TOLERANCE = Tolerance.relative(
 )
 
 
+# Per-kernel bounds for the vtanh build, measured on npu2 over the 256-call
+# random case (262144 elements) plus the other data cases the harness runs.
+#
+# vtanh itself needs 0.0392 relative. The identity sigmoid(x) = (1+tanh(x/2))/2
+# roughly doubles that to 0.0787: it halves the absolute error but divides by a
+# value that shrinks faster. silu and swiglu inherit the same relative figure,
+# since the further steps are bf16 multiplies.
+#
+# swiglu needs an absolute floor instead. Its output xw1 * silu(xw2) goes to
+# zero when either factor does, while the error does not: silu(xw2) is off by
+# up to ~2e-2 and xw1 reaches ~16 for bf16 random inputs, so a near-zero
+# expected value can sit next to a 0.25 absolute error. No relative bound can
+# express that, which is what the measured requirement of rtol=1.0 means.
+#
+# No mismatch budget anywhere: every element must meet the bound.
+_VTANH_FAMILY_BOUNDS = {
+    "sigmoid": (0.08, 0.025),  # measured 0.0787 rel, 1.95e-2 abs (output <= 1)
+    "silu": (0.08, 0.035),  # measured 0.0784 rel, 3.12e-2 abs
+    "swiglu": (0.08, 0.350),  # measured 0.25 abs at a near-zero expected value
+}
+
+
+def _vtanh_family_tolerance(name: str) -> Tolerance:
+    """The measured vtanh bound for a kernel that reaches tanh through sigmoid."""
+    rtol, atol = _VTANH_FAMILY_BOUNDS[name]
+    return Tolerance.relative(
+        rtol,
+        atol,
+        note=f"AIE2P vtanh via sigmoid identity, measured on npu2 for {name}; "
+        f"use {name}(use_lut=True) to be judged against an exact model instead",
+    )
+
+
 def _unary_lut_contract(
     ref,
     *,
@@ -176,7 +209,9 @@ def _unary_lut_contract(
     a tolerance sized to the instruction's measured error -- a much weaker
     statement, and deliberately a different one.
     """
-    if use_lut and elementwise is not None:
+    # aie2 has no tanh instruction, so it is on the LUT path whatever the
+    # caller asked for, and gets the exact model too.
+    if (use_lut or _detect_arch() == "aie2") and elementwise is not None:
         ref, tolerance = elementwise, _LUT_MODEL_TOLERANCE
     return KernelContract(
         roles=(In, Out, Param) if count else (In, Out),
@@ -319,15 +354,29 @@ def gelu(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-def silu(tile_size: int = 1024) -> ExternalFunction:
-    """SiLU (Swish) activation kernel for bf16 tiles (must be 1024)."""
+def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
+    """SiLU (Swish) activation kernel for bf16 tiles (must be 1024).
+
+    Args:
+        tile_size: Elements per call (must be 1024).
+        use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
+            vtanh instruction, which makes this 7.5x closer to the true
+            function and judged against an exact model of it. Moot on aie2.
+    """
     return _bf16_lut_factory(
         "silu",
         "silu_bf16",
         "silu.cc",
         tile_size,
         arg_arity=2,
-        contract=_unary_lut_contract(silu_ref, count=False),
+        contract=_unary_lut_contract(
+            silu_ref,
+            count=False,
+            use_lut=use_lut,
+            elementwise=silu_lut_ref,
+            tolerance=_vtanh_family_tolerance("silu"),
+        ),
+        use_lut_tanh=use_lut,
     )
 
 
@@ -371,7 +420,7 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-def swiglu(tile_size: int = 1024) -> ExternalFunction:
+def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """SwiGLU gated activation kernel for bf16 tiles (must be 1024).
 
     ``out = (x * w1) * silu(x * w2)``; see [`swiglu_ref`][iron.kernels.activation.swiglu_ref].
@@ -385,12 +434,15 @@ def swiglu(tile_size: int = 1024) -> ExternalFunction:
         contract=KernelContract(
             setup=conv_even,
             roles=(In, In, In, Out),
-            reference=swiglu_ref,
+            reference=swiglu_lut_ref if use_lut else swiglu_ref,
             acc_dtype=bfloat16,
-            tolerance=_LUT_TOLERANCE,
+            tolerance=(
+                _LUT_MODEL_TOLERANCE if use_lut else _vtanh_family_tolerance("swiglu")
+            ),
             ops_per_call=6 * tile_size,
             uses_lut=True,
         ),
+        use_lut_tanh=use_lut,
     )
 
 
@@ -505,13 +557,15 @@ def tanh(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             count=tile_size,
             use_lut=use_lut,
             elementwise=tanh_lut_ref,
-            tolerance=_VTANH_TOLERANCE if _detect_arch() != "aie2" else _LUT_TOLERANCE,
+            # aie2 never reaches this: _unary_lut_contract swaps in the
+            # model tolerance there, since the LUT is its only tanh.
+            tolerance=_VTANH_TOLERANCE,
         ),
         use_lut_tanh=use_lut,
     )
 
 
-def sigmoid(tile_size: int = 1024) -> ExternalFunction:
+def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """Sigmoid for bf16 tiles of at least 1024 elements, in multiples of 32.
 
     The count is compiled in; retain ``tile_size`` as a trailing ABI argument.
@@ -523,7 +577,14 @@ def sigmoid(tile_size: int = 1024) -> ExternalFunction:
         "sigmoid.cc",
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DSIGMOID_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(sigmoid_ref, count=tile_size),
+        contract=_unary_lut_contract(
+            sigmoid_ref,
+            count=tile_size,
+            use_lut=use_lut,
+            elementwise=sigmoid_lut_ref,
+            tolerance=_vtanh_family_tolerance("sigmoid"),
+        ),
+        use_lut_tanh=use_lut,
     )
 
 
@@ -602,6 +663,49 @@ def gelu_ref(x):
     return (
         0.5 * xf * (1.0 + np.tanh(_math.sqrt(2.0 / _math.pi) * (xf + 0.044715 * xf**3)))
     ).astype(x.dtype)
+
+
+def _bf16(v):
+    """Round an f32 array to bf16 and back, as an accumulator store does."""
+    return np.asarray(v, np.float32).astype(bfloat16).astype(np.float32)
+
+
+def sigmoid_lut_ref(x):
+    """Model of [`sigmoid`][iron.kernels.activation.sigmoid] built with ``use_lut=True``.
+
+    Follows generic/sigmoid.cc step for step: ``x/2`` is exact (0.5 is a power
+    of two), the accumulator overload of ``tanh_bf16_v16`` narrows to bf16
+    before the table, and the ``+1`` and ``*0.5`` stay in the accumulator so
+    there is a single store rounding at the end.
+    """
+    xf = np.asarray(x).astype(np.float32)
+    t = np.asarray(tanh_lut_ref(_bf16(xf * 0.5)), np.float32)
+    return _bf16((t + 1.0) * 0.5).astype(np.asarray(x).dtype)
+
+
+def silu_lut_ref(x):
+    """Model of [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
+
+    generic/silu.cc narrows the sigmoid factor to bf16 before the final
+    multiply, so that rounding is modelled too, not folded away.
+    """
+    xf = np.asarray(x).astype(np.float32)
+    sig = np.asarray(sigmoid_lut_ref(xf), np.float32)
+    return _bf16(xf * sig).astype(np.asarray(x).dtype)
+
+
+def swiglu_lut_ref(x, w1, w2):
+    """Model of [`swiglu`][iron.kernels.activation.swiglu] built with ``use_lut=True``.
+
+    generic/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
+    sigmoid factor and the silu product each land in a bf16 register before
+    the next step -- which is what this reproduces.
+    """
+    xw1 = _bf16(np.asarray(x, np.float32) * np.asarray(w1, np.float32))
+    xw2 = _bf16(np.asarray(x, np.float32) * np.asarray(w2, np.float32))
+    sig = np.asarray(sigmoid_lut_ref(xw2), np.float32)
+    silu_out = _bf16(xw2 * sig)
+    return _bf16(xw1 * silu_out).astype(np.asarray(x).dtype)
 
 
 def tanh_lut_ref(x):

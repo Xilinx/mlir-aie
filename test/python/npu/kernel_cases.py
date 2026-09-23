@@ -165,6 +165,9 @@ CASES: list[Case] = [
     Case("gelu", calls=16, smoke=True),
     Case("gelu", calls=256),
     Case("silu", calls=16, smoke=True),
+    Case(
+        "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
+    ),
     Case("silu", calls=256),
     Case("bf16_exp", calls=16, smoke=True),
     Case("bf16_exp", calls=256),
@@ -183,6 +186,14 @@ CASES: list[Case] = [
         smoke=True,
     ),
     Case("sigmoid", calls=16, smoke=True),
+    Case(
+        "sigmoid",
+        dict(use_lut=True),
+        calls=16,
+        tag="lut",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("sigmoid", calls=256),
     Case("softmax", calls=16, smoke=True),
     Case("softmax", calls=256),
@@ -322,6 +333,9 @@ CASES: list[Case] = [
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
     Case("swiglu", calls=16, smoke=True),
+    Case(
+        "swiglu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
+    ),
     Case("swiglu", calls=256),
     # vision: uint8 lines of 1920 pixels
     Case("gray2rgba", calls=16, smoke=True),
