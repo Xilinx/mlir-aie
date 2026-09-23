@@ -170,6 +170,18 @@ CASES: list[Case] = [
     Case("bf16_exp", calls=256),
     Case("tanh", calls=16, smoke=True),
     Case("tanh", calls=256),
+    # The LUT tanh, which on aie2p is the alternative to the vtanh instruction
+    # and 7.5x closer to the true function. It is judged against an exact model
+    # of the table rather than against tanh itself, so this case is the tight
+    # one: one bf16 ulp, where the vtanh build needs 5% relative.
+    Case(
+        "tanh",
+        dict(use_lut=True),
+        calls=16,
+        tag="lut",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("sigmoid", calls=16, smoke=True),
     Case("sigmoid", calls=256),
     Case("softmax", calls=16, smoke=True),

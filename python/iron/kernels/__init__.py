@@ -64,6 +64,7 @@ from .activation import (
     swiglu,
     swiglu_ref,
     tanh,
+    tanh_lut_ref,
     tanh_ref,
 )
 from .conv import (
@@ -282,6 +283,7 @@ __all__ = [
     "bf16_exp_ref",
     "exp2f_vec_ref",
     "softmax_ref",
+    "tanh_lut_ref",
     "tanh_ref",
     "sigmoid_ref",
     "leaky_relu_ref",

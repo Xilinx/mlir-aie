@@ -14,18 +14,33 @@
 // identity (tanh(x/2)+1)/2; gelu uses x*sigmoid(1.702x), a DIFFERENT curve from
 // gelu.cc's tanh approximation, so results are not bit-identical to it.
 //
-// tanh is the one architecture-specific step: AIE2P has native f32 aie::tanh;
-// AIE2 falls back to the 16-lane getTanhBf16 LUT in aie_runtime_lib/AIE2, so
-// the AIE2 path is not bit-identical and carries the LUT error (test.py budgets
-// accuracy per arch).
+// tanh is the one architecture-specific step, and on AIE2P it is a choice.
+//
+//   ACTIVATIONS_TANH_LUT=0 (AIE2P default)  aie::tanh, one vtanh instruction.
+//   ACTIVATIONS_TANH_LUT=1                  getTanhBf16, the interpolated LUT.
+//
+// They are not equally accurate. vtanh returns its argument unchanged for
+// |x| <= 0.5 -- tanh's correct leading term, but carried far enough that
+// tanh(0.5) comes back as 0.5, 19 bf16 ulps out. The LUT interpolates 32
+// segments of width 0.25 over [-4, 4) and stays within 5.1e-3 absolute of
+// tanh everywhere. Reach for the LUT when accuracy matters and the extra
+// loads do not, which is why this is the caller's decision and not a fixed
+// per-architecture one.
+//
+// AIE2 has no tanh instruction, so the LUT is the only path there whatever
+// this is set to.
+#ifndef ACTIVATIONS_TANH_LUT
+#define ACTIVATIONS_TANH_LUT 0
+#endif
 
-#if __AIE_ARCH__ >= 21
+#if __AIE_ARCH__ >= 21 && !ACTIVATIONS_TANH_LUT
 #define ACTIVATIONS_NATIVE_TANH 1
 #else
 #define ACTIVATIONS_NATIVE_TANH 0
 // Supplies getTanhBf16. Resolved from the runtime-lib include directory the
-// build adds for the target arch (aie_runtime_lib/AIE2), not from this file's
-// own directory.
+// build adds for the target arch (aie_runtime_lib/AIE2[P]), not from this
+// file's own directory. Its tables need lut_based_ops.cpp linked in, which is
+// what aie2/lut_kernel.cc exists to do.
 #include "lut_based_ops.h"
 #endif
 

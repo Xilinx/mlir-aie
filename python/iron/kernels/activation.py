@@ -49,6 +49,103 @@ _EXP_BF16_CLAMP = 88.0
 # default) on their *_ref functions below; the absolute floor and the mismatch
 # budget are what test/python/npu/test_kernels_e2e.py measured on device for
 # tanh, sigmoid and bf16_exp.
+# The 32-entry piecewise-linear tanh table of aie_runtime_lib/*/lut_based_ops.cpp,
+# de-duplicated from its 4-way bank replication. getTanhBf16 computes
+# slope[e] * x + offset[e] for e = clamp(floor(4x), -16, 15) + 16, i.e. 0.25-wide
+# segments over [-4, 4) saturating to -1 / +1 outside. Modelling it exactly is
+# what lets the LUT build be judged at one bf16 ulp instead of a percentage.
+_TANH_LUT_SLOPE = (
+    0.0,
+    0.002838134765625,
+    0.005096435546875,
+    0.00750732421875,
+    0.0126953125,
+    0.021240234375,
+    0.035400390625,
+    0.056396484375,
+    0.091796875,
+    0.1455078125,
+    0.2294921875,
+    0.34765625,
+    0.50390625,
+    0.69140625,
+    0.8671875,
+    1.0,
+    1.0,
+    0.8671875,
+    0.69140625,
+    0.50390625,
+    0.34765625,
+    0.2294921875,
+    0.1455078125,
+    0.091796875,
+    0.056396484375,
+    0.035400390625,
+    0.021240234375,
+    0.0126953125,
+    0.00750732421875,
+    0.005096435546875,
+    0.002838134765625,
+    0.0,
+)
+_TANH_LUT_OFFSET = (
+    -1.0,
+    -0.98828125,
+    -0.98046875,
+    -0.97265625,
+    -0.95703125,
+    -0.93359375,
+    -0.8984375,
+    -0.8515625,
+    -0.78125,
+    -0.6875,
+    -0.5625,
+    -0.416015625,
+    -0.259765625,
+    -0.11962890625,
+    -0.03076171875,
+    0.0,
+    0.0,
+    0.03076171875,
+    0.11962890625,
+    0.259765625,
+    0.416015625,
+    0.5625,
+    0.6875,
+    0.78125,
+    0.8515625,
+    0.8984375,
+    0.93359375,
+    0.95703125,
+    0.97265625,
+    0.98046875,
+    0.98828125,
+    1.0,
+)
+
+# The LUT build is judged against the model above, which reproduces the
+# kernel's arithmetic step for step; only the final accumulator-to-bf16 store
+# can differ, and only by a rounding.
+_LUT_MODEL_TOLERANCE = Tolerance.bf16_ulps(
+    1,
+    note="exact model of getTanhBf16; measured bit-exact on npu2 over 4096 "
+    "values, one ulp left for the accfloat->bf16 store's rounding mode",
+)
+
+# The vtanh build cannot be judged this way: the instruction has no published
+# spec, and a model reverse-engineered from the device would pass by
+# construction. So it keeps the true-function reference, with a bound sized to
+# what vtanh actually costs -- measured on npu2 as 3.79e-2 absolute, worst at
+# x = 0.5 where vtanh still returns its argument (|a| + |b| = 0.962, so
+# 0.0394 relative). 0.05 is that with a little margin, and no mismatch budget:
+# every element must meet the bound.
+_VTANH_TOLERANCE = Tolerance.relative(
+    0.05,
+    0.001,
+    note="AIE2P vtanh approximation, measured on npu2: 3.79e-2 abs worst at "
+    "x=0.5 (0.0394 rel). Use tanh(use_lut=True) for 7.5x tighter",
+)
+
 _LUT_TOLERANCE = Tolerance.relative(
     0.128,
     0.05,
@@ -63,13 +160,24 @@ def _unary_lut_contract(
     count: int | None,
     tolerance: Tolerance = _LUT_TOLERANCE,
     setup: Callable[[], object] | None = conv_even,
+    use_lut: bool = False,
+    elementwise: Callable | None = None,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
 
     The LUT kernels store bf16 from wider vector math without setting the
     core's rounding mode, so they are judged in ``conv_even``, the mode
     numpy's reference rounds in.
+
+    ``use_lut`` selects the reference to match the tanh the kernel was built
+    with. The LUT is a documented 32-segment interpolation this package models
+    exactly, so that build is judged against the model at one bf16 ulp. vtanh
+    has no published spec, so that build keeps the true-function reference and
+    a tolerance sized to the instruction's measured error -- a much weaker
+    statement, and deliberately a different one.
     """
+    if use_lut and elementwise is not None:
+        ref, tolerance = elementwise, _LUT_MODEL_TOLERANCE
     return KernelContract(
         roles=(In, Out, Param) if count else (In, Out),
         parameter_bindings=((2, count),) if count else (),
@@ -87,12 +195,16 @@ def _create_lut_kernel(
     arg_types: list,
     compile_flags: list[str] | None = None,
     contract: KernelContract | None = None,
+    use_lut_tanh: bool = False,
 ) -> ExternalFunction:
     """Create an ExternalFunction for a LUT-dependent kernel.
 
-    Handles the aie2/aie2p split:
-    - aie2: selects a kernel in the LUT-linking source translation unit.
-    - aie2p: uses source_file directly (no LUT object linkage).
+    ``use_lut_tanh`` asks for getTanhBf16 over the vtanh instruction. It is
+    moot on aie2, which has no tanh instruction and always reads the tables.
+
+    A build that reads a table is compiled inside aie2/lut_kernel.cc, which is
+    what pulls lut_based_ops.cpp -- and therefore the tables -- into the
+    translation unit.
 
     ``contract`` is attached as ``.contract`` like ``_make_extern`` does.
     """
@@ -108,8 +220,10 @@ def _create_lut_kernel(
     include.append(str(runtime_dir))
 
     flags = list(compile_flags or [])
+    if use_lut_tanh and arch != "aie2":
+        flags.append("-DACTIVATIONS_TANH_LUT=1")
 
-    if arch == "aie2":
+    if arch == "aie2" or use_lut_tanh:
         flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
         kernel_path = _kernel_source(arch, arch, "lut_kernel.cc")
     if compile_flags:
@@ -137,6 +251,7 @@ def _bf16_lut_factory(
     tile_size: int,
     arg_arity: int,
     contract: KernelContract | None = None,
+    use_lut_tanh: bool = False,
 ) -> ExternalFunction:
     """Build a LUT-backed bf16 kernel whose arg list is N copies of the same tile type."""
     _require_fixed_tile_size(factory_name, tile_size, _LUT_FIXED_TILE)
@@ -151,6 +266,7 @@ def _bf16_lut_factory(
             else None
         ),
         contract=contract,
+        use_lut_tanh=use_lut_tanh,
     )
 
 
@@ -363,12 +479,19 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
     )
 
 
-def tanh(tile_size: int = 1024) -> ExternalFunction:
+def tanh(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     """Tanh for bf16 tiles of at least 1024 elements, in multiples of 32.
 
     The count is compiled in; retain
     ``tile_size`` as a trailing ``int`` argument (e.g. via
     ``transform_parallel(pass_size_to_kernel=True)``).
+
+    Args:
+        tile_size: Elements per call (multiple of 32, at least 1024).
+        use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
+            vtanh instruction. Moot on aie2, which only has the LUT. See
+            [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref] for what
+            the LUT computes and why it is the more accurate of the two.
     """
     _require_runtime_tile_size("tanh", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
@@ -377,7 +500,14 @@ def tanh(tile_size: int = 1024) -> ExternalFunction:
         "tanh.cc",
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DTANH_ELEMS={tile_size}"],
-        contract=_unary_lut_contract(tanh_ref, count=tile_size),
+        contract=_unary_lut_contract(
+            tanh_ref,
+            count=tile_size,
+            use_lut=use_lut,
+            elementwise=tanh_lut_ref,
+            tolerance=_VTANH_TOLERANCE if _detect_arch() != "aie2" else _LUT_TOLERANCE,
+        ),
+        use_lut_tanh=use_lut,
     )
 
 
@@ -472,6 +602,30 @@ def gelu_ref(x):
     return (
         0.5 * xf * (1.0 + np.tanh(_math.sqrt(2.0 / _math.pi) * (xf + 0.044715 * xf**3)))
     ).astype(x.dtype)
+
+
+def tanh_lut_ref(x):
+    """Numpy model of ``getTanhBf16``, the interpolated-LUT tanh.
+
+    The kernel evaluates ``slope[e] * x + offset[e]`` for
+    ``e = clamp(floor(4x), -16, 15) + 16``: 32 segments of width 0.25 over
+    ``[-4, 4)``, saturating to the end segments (the constants -1 and +1)
+    outside. The product is exact in f32 (bf16 carries 8 mantissa bits and
+    8 + 8 < 24), so the only rounding is the accumulator's store back to bf16,
+    which is why the build using this is judged at one ulp rather than a
+    percentage.
+
+    This is what [`tanh`][iron.kernels.activation.tanh] computes with
+    ``use_lut=True``, and what it always computes on aie2. The default aie2p
+    build uses the ``vtanh`` instruction instead, which is a coarser
+    approximation with no published spec, so it is judged against
+    [`tanh_ref`][iron.kernels.activation.tanh_ref] and a measured bound.
+    """
+    xf = np.asarray(x).astype(np.float32)
+    e = np.clip(np.floor(xf * 4.0).astype(np.int64), -16, 15) + 16
+    slope = np.asarray(_TANH_LUT_SLOPE, np.float32)[e]
+    offset = np.asarray(_TANH_LUT_OFFSET, np.float32)[e]
+    return (slope * xf + offset).astype(bfloat16).astype(np.asarray(x).dtype)
 
 
 def tanh_ref(x):
