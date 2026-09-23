@@ -64,19 +64,6 @@ def test_generated_cache_tracks_active_device():
     assert keyed_devices == {"NPU1Col1", "NPU2Col1"}
 
 
-def test_uncached_generation_clears_context_bound_external_functions():
-    """Fresh MLIR generation never reuses factory objects from another context."""
-    from aie.iron.kernels import _common as kernel_common
-
-    def gen():
-        pass
-
-    kernel_common._EXTERN_CACHE["stale"] = object()
-    CompilableDesign(gen)._generate_uncached()
-
-    assert not kernel_common._EXTERN_CACHE
-
-
 def test_generated_root_binds_runtime_device_before_cache_key(monkeypatch):
     """Direct MLIR generation binds the runtime device before cache lookup."""
     import aie.utils as utils

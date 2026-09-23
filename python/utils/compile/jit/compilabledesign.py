@@ -66,6 +66,7 @@ from ._dispatch_compile import (
     dispatch_scalar_c_type,
 )
 from ._dma_size_parser import parse_dma_sizes
+from ._object_cache import KernelObjectCache
 from ._hash import (
     _compute_artifact_hash,
     _compute_hash,
@@ -149,6 +150,7 @@ class CompilableDesign:
         source_files: Paths to C++ kernel source files.  Their content is
             included in the cache key so that edits correctly invalidate the cache.
         include_paths: Extra ``-I`` paths forwarded to the C++ compiler.
+            Relative paths resolve against the current directory at construction.
         aiecc_flags: Extra flags forwarded to ``aiecc``.
         object_files: Pre-compiled ``.o`` files to link with.
         insts_only: When ``True``, `compile` lowers only the design's runtime
@@ -191,7 +193,7 @@ class CompilableDesign:
             Path(sf) for sf in (source_files or ())
         )
         self.include_paths: tuple[Path, ...] = tuple(
-            Path(p) for p in (include_paths or ())
+            Path(p).absolute() for p in (include_paths or ())
         )
         self.aiecc_flags: tuple[str, ...] = tuple(aiecc_flags or ())
         self.object_files: tuple[Path, ...] = tuple(
@@ -591,6 +593,7 @@ class CompilableDesign:
                     # turns it on. Deriving it here keeps the two from
                     # disagreeing, and aiecc_flags is already in the cache key.
                     embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
+                    object_cache=self._kernel_object_cache(),
                 )
                 _copy_object_files(self.object_files, kernel_dir)
 
@@ -752,6 +755,7 @@ class CompilableDesign:
                     # turns it on. Deriving it here keeps the two from
                     # disagreeing, and aiecc_flags is already in the cache key.
                     embed_bitcode=_check_lut_banks_enabled(self.aiecc_flags),
+                    object_cache=self._kernel_object_cache(),
                 )
                 _copy_object_files(self.object_files, kernel_dir)
 
@@ -1339,6 +1343,14 @@ class CompilableDesign:
             self.insts_only,
         )
 
+    def _kernel_object_cache(self) -> KernelObjectCache | None:
+        """Share compiled kernel objects across designs unless caching is off."""
+        if not self.use_cache:
+            return None
+        return KernelObjectCache(
+            NPU_CACHE_HOME / "objects", _COMPILE_LOCK_TIMEOUT_SECONDS
+        )
+
     def _bind_generation_device(self):
         """Bind an available runtime device before target-sensitive work."""
         if isinstance(self.mlir_generator, Path):
@@ -1429,13 +1441,7 @@ class CompilableDesign:
                 f"compile_kwargs do not match CompileTime[T] parameters — {exc}"
             ) from exc
 
-        # Kernel factories cache ExternalFunction instances. Those instances
-        # retain MLIR operations after resolution, so every fresh generation
-        # must begin with a context-local factory cache.
-        from aie.iron.kernels._common import _EXTERN_CACHE
-
         ExternalFunction._instances.clear()
-        _EXTERN_CACHE.clear()
 
         _tensor_placeholders: dict[str, _TensorPlaceholder | tuple[()]] = {
             name: _TensorPlaceholder(name) for name in self.tensor_params

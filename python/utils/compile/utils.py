@@ -1100,7 +1100,12 @@ def _compiled_into(func, kernel_dir, embed_bitcode=False) -> bool:
 
 
 def compile_external_kernels(
-    funcs, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+    funcs,
+    kernel_dir,
+    target_arch,
+    include_dirs=None,
+    embed_bitcode=False,
+    object_cache=None,
 ):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
@@ -1111,6 +1116,9 @@ def compile_external_kernels(
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
     ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
+
+    ``object_cache`` (a ``KernelObjectCache``) shares compiled objects across
+    work directories; see ``compile_external_kernel``.
     """
     pending = []
     for f in funcs:
@@ -1140,7 +1148,7 @@ def compile_external_kernels(
     if any(getattr(f, "_use_chess", False) for f in pending):
         for f in pending:
             compile_external_kernel(
-                f, kernel_dir, target_arch, include_dirs, embed_bitcode
+                f, kernel_dir, target_arch, include_dirs, embed_bitcode, object_cache
             )
         return
 
@@ -1158,14 +1166,19 @@ def compile_external_kernels(
         for group in groups:
             for f in group:
                 compile_external_kernel(
-                    f, kernel_dir, target_arch, include_dirs, embed_bitcode
+                    f,
+                    kernel_dir,
+                    target_arch,
+                    include_dirs,
+                    embed_bitcode,
+                    object_cache,
                 )
         return
 
     def _run(group):
         for f in group:
             compile_external_kernel(
-                f, kernel_dir, target_arch, include_dirs, embed_bitcode
+                f, kernel_dir, target_arch, include_dirs, embed_bitcode, object_cache
             )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -1233,7 +1246,12 @@ def _lock_compile_paths(paths):
 
 
 def compile_external_kernel(
-    func, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+    func,
+    kernel_dir,
+    target_arch,
+    include_dirs=None,
+    embed_bitcode=False,
+    object_cache=None,
 ):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
@@ -1243,6 +1261,10 @@ def compile_external_kernel(
     their symbol names cannot establish whether prefixing has already happened.
     A cached object is also rejected when ``embed_bitcode`` requests IR retention
     and the object has no ``.llvmbc`` section.
+
+    With an ``object_cache``, a kernel it accepts is built once in the cache and
+    copied into ``kernel_dir``, so every work directory linking the same
+    object shares one compile. Kernels it declines compile in place.
 
     Args:
         func: ExternalFunction instance to compile.
@@ -1254,6 +1276,8 @@ def compile_external_kernel(
         include_dirs: Design-wide include directories appended after the
             ExternalFunction's own include directories.
         embed_bitcode: Preserve Peano kernel LLVM IR for ``--check-lut-banks``.
+        object_cache: Optional ``KernelObjectCache`` that shares the compiled
+            object across work directories.
     """
     if embed_bitcode and getattr(func, "_use_chess", False):
         raise ValueError("--check-lut-banks requires Peano kernels, not Chess")
@@ -1266,9 +1290,12 @@ def compile_external_kernel(
             return
         owner = getattr(func, "object_file", None)
         try:
-            _compile_external_kernel(
+            if object_cache is None or not object_cache.fetch(
                 func, kernel_dir, target_arch, include_dirs, embed_bitcode
-            )
+            ):
+                _compile_external_kernel(
+                    func, kernel_dir, target_arch, include_dirs, embed_bitcode
+                )
         except BaseException:
             # Rebuilding a cached object to retain IR can fail after overwriting
             # it. Neither its old ownership nor partial bytes remain reusable.
