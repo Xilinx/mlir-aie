@@ -236,6 +236,13 @@ public:
           rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
           createConstantI32(rewriter, loc, bdIdMask));
       cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
+      // The 0xFF mask would wrap a runtime repeat_count past the field (256
+      // pushes a task that runs once), so guard it as the verifier does a
+      // constant one.
+      if (!repeat_cnt)
+        NpuAssertBdFieldOp::create(
+            rewriter, loc, op.getRepeatCount(),
+            rewriter.getI32IntegerAttr(tm.getMaxRepeatCount()));
       Value masked =
           arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),
                                 createConstantI32(rewriter, loc, 0xFF));

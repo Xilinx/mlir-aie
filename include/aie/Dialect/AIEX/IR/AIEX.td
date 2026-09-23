@@ -805,7 +805,8 @@ def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
     descriptor field fits its hardware field: `0 <= value <= max`. Emitted by the
     dynamic DMA lowering for a runtime scalar landing in a narrow field (e.g. the
     10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
-    truncate an out-of-range value.
+    truncate an out-of-range value. The queue push's 8-bit repeat_count is
+    guarded the same way.
 
     This op only ever appears on the dynamic (runtime-value) DMA lowering path;
     a fully static sequence never produces it. When `value` is a constant, the

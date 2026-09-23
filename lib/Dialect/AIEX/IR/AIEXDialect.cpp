@@ -583,9 +583,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   // 6-bit) could exceed the field and silently truncate on hardware. The TXN
   // stream has no on-device trap, so the dynamic lowering emits a host-side
   // bounds guard (npu.assert_bd_field -> generated-C++ early return of nullopt)
-  // for exactly those fields. Nothing to reject here: wide fields
-  // (buffer_length via linear mode, repeat_count) need no guard, and narrow
-  // fields are guarded at lowering time.
+  // for exactly those fields. Nothing to reject here: buffer_length via linear
+  // mode is wide enough to need no guard, narrow fields are guarded at
+  // lowering time, and so is the 8-bit repeat_count, where the queue push is
+  // packed.
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value())
@@ -734,9 +735,9 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   // bd_id and repeat_count are SSA operands; range-check them only when they
-  // are compile-time constants. A runtime (non-constant) value is left
-  // unchecked here: bounds checking of runtime operands is not yet implemented
-  // (it belongs to the dynamic lowering path added in a later patch).
+  // are compile-time constants. A runtime repeat_count is guarded where
+  // aie-dma-to-npu packs it (npu.assert_bd_field); a runtime bd_id comes from
+  // the BD pool, which only hands out valid ids.
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
