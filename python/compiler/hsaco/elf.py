@@ -4,11 +4,16 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-"""Minimal ELF64 reading and writing for the hsaco tools.
+"""Minimal ELF reading and writing for the hsaco tools.
 
 Deliberately hand-rolled with :mod:`struct`: only three narrow things
 are needed here - look a section up by name, walk a full AIE ELF's COMDAT
 groups, and emit an empty container for the packer to inject into.
+
+Both ELF classes are read, because the tools need both: the hsaco container is
+ELF64, while a real AIE full ELF is ELF32 -- which is not incidental, it is the
+class ROCr's nested-ELF reader (``core/runtime/amd_aie_elf.cpp``) requires.
+Only ELF64 is *written*, by :func:`make_empty_elf64`.
 """
 
 import functools
@@ -16,6 +21,7 @@ import struct
 
 # e_ident indices and the values this reader accepts.
 _ELF_MAGIC = b"\x7fELF"
+_ELFCLASS32 = 1
 _ELFCLASS64 = 2
 _ELFDATA2LSB = 1
 
@@ -37,6 +43,28 @@ _SYM = "<IBBHQQ"
 _SYM_SIZE = struct.calcsize(_SYM)
 
 _EHDR_SIZE = 64
+
+# Elf32_Shdr: the same fields in the same order, 4 bytes each -- so one unpack
+# order serves both classes and Section needs no per-class code.
+_SHDR32 = "<IIIIIIIIII"
+
+# Elf32_Sym: st_name, st_value, st_size, st_info, st_other, st_shndx. The
+# value/size pair moves *ahead* of info/other/shndx, so unlike the section
+# header this is a genuine reordering, not just narrower members. Narrowing the
+# widths alone would read st_shndx out of what is really st_size.
+_SYM32 = "<IIIBBH"
+
+_EHDR32_SIZE = 52
+
+# Per-class layout, keyed by e_ident[EI_CLASS]:
+#   (shdr format, sym format, index of st_shndx within the unpacked symbol,
+#    file offset of e_shoff, format reading from e_shoff, ELF header size)
+# The "10x" in the e_shoff formats skips e_flags, e_ehsize, e_phentsize and
+# e_phnum -- 10 bytes in both classes -- to reach e_shentsize/e_shnum/e_shstrndx.
+_LAYOUTS = {
+    _ELFCLASS32: (_SHDR32, _SYM32, 5, 32, "<I10xHHH", _EHDR32_SIZE),
+    _ELFCLASS64: (_SHDR, _SYM, 3, 40, "<Q10xHHH", _EHDR_SIZE),
+}
 
 
 def _cstr(blob, offset, limit=None):
@@ -103,25 +131,40 @@ class Section:
 
 
 class ElfFile:
-    """Read-only view of a little-endian ELF64 image held in memory."""
+    """Read-only view of a little-endian ELF32 or ELF64 image held in memory."""
 
     def __init__(self, blob):
-        if len(blob) < _EHDR_SIZE:
-            raise ValueError("too small to be an ELF64 file")
+        # EI_CLASS picks the layout, so it has to be read before the header size
+        # it determines can be checked. 6 bytes covers e_ident up to EI_DATA.
+        if len(blob) < 6:
+            raise ValueError("too small to be an ELF file")
         if blob[:4] != _ELF_MAGIC:
             raise ValueError("not an ELF file (bad magic)")
-        if blob[4] != _ELFCLASS64:
-            raise ValueError("not an ELF64 file")
+        layout = _LAYOUTS.get(blob[4])
+        if layout is None:
+            raise ValueError("not an ELF32 or ELF64 file")
         if blob[5] != _ELFDATA2LSB:
             raise ValueError("not a little-endian ELF file")
+        (
+            self._shdr,
+            self._sym,
+            self._sym_shndx_index,
+            shoff_offset,
+            shoff_format,
+            ehdr_size,
+        ) = layout
+        self._shdr_size = struct.calcsize(self._shdr)
+        self._sym_size = struct.calcsize(self._sym)
+        if len(blob) < ehdr_size:
+            raise ValueError("too small to be an ELF file")
         self.blob = blob
 
-        # From e_shoff at byte 40: skip e_flags(4) + e_ehsize(2) +
-        # e_phentsize(2) + e_phnum(2) to reach e_shentsize/e_shnum/e_shstrndx.
-        shoff, shentsize, shnum, shstrndx = struct.unpack_from("<Q10xHHH", blob, 40)
+        shoff, shentsize, shnum, shstrndx = struct.unpack_from(
+            shoff_format, blob, shoff_offset
+        )
         if shoff == 0:
             raise ValueError("ELF has no section headers")
-        if shentsize < _SHDR_SIZE:
+        if shentsize < self._shdr_size:
             raise ValueError("section header entry size too small")
         self._shoff = shoff
         self._shentsize = shentsize
@@ -150,9 +193,9 @@ class ElfFile:
 
     def _read_shdr(self, index):
         offset = self._shoff + index * self._shentsize
-        if offset + _SHDR_SIZE > len(self.blob):
+        if offset + self._shdr_size > len(self.blob):
             raise ValueError(f"section header {index} out of bounds")
-        return struct.unpack_from(_SHDR, self.blob, offset)
+        return struct.unpack_from(self._shdr, self.blob, offset)
 
     @functools.cached_property
     def _by_name(self):
@@ -190,10 +233,10 @@ class ElfFile:
                 continue
             if section.link >= len(self.sections):
                 raise ValueError(f".symtab sh_link {section.link} out of range")
-            entsize = section.entsize or _SYM_SIZE
+            entsize = section.entsize or self._sym_size
             # A stride below one symbol would walk the table at a misaligned
             # step and yield overlapping garbage rather than failing.
-            if entsize < _SYM_SIZE:
+            if entsize < self._sym_size:
                 raise ValueError(f".symtab sh_entsize {entsize} too small")
             # symbol_at() unpacks straight out of the image, bypassing
             # Section.data's own extent check, so the extent is checked here.
@@ -216,9 +259,13 @@ class ElfFile:
         section, strtab_offset, strtab_end, entsize = self._symtab
         if index >= section.size // entsize:
             raise ValueError(f"symbol index {index} out of range")
-        st_name, _info, _other, st_shndx, _value, _size = struct.unpack_from(
-            _SYM, self.blob, section.offset + index * entsize
+        # Indexed rather than destructured: st_shndx sits at a different
+        # position in Elf32_Sym than in Elf64_Sym, so one tuple shape does not
+        # describe both.
+        fields = struct.unpack_from(
+            self._sym, self.blob, section.offset + index * entsize
         )
+        st_name, st_shndx = fields[0], fields[self._sym_shndx_index]
         return _cstr(self.blob, strtab_offset + st_name, strtab_end), st_shndx
 
     def group_signature_indices(self):
