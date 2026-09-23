@@ -948,7 +948,7 @@ _IRON_KERNEL_SPECS = {
     "mv": (
         dict(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16),
         "matvec_vectorized_bf16_bf16",
-        "mv.cc",
+        "mv_bf16.cc",
         ("-DDIM_K=256", "-DVEC_SIZE=64"),
     ),
     "mm": (

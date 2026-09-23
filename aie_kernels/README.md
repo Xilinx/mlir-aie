@@ -19,7 +19,8 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | basic | [passThrough.cc](./generic/passThrough.cc) | AIE API | A simple memcpy operation | `uint8_t`, `int16_t`, `int32_t` |
 | data movement | [transpose.cc](./generic/transpose.cc) | AIE API | Blocked matrix transpose (4×4 / 8×8 sub-tiles, VSHUFFLE) | `bfloat16` |
 | data movement | [expand.cc](./generic/expand.cc) | AIE API | uint4→bf16 dequant with per-group scale factors (zero-extended, no zero point) | `uint4`→`bfloat16` |
-| gemv | [mv.cc](./generic/mv.cc) | AIE API | Matrix/Vector multiply | `bfloat16` |
+| gemv | [mv_bf16.cc](./generic/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV) | `bfloat16` |
+| gemv | [mv_i16.cc](./generic/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
 | blas | [axpy.cc](./generic/axpy.cc) | AIE API | `z = a*x + y` (SAXPY) | `bfloat16` |
 | positional | [rope.cc](./generic/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
 | gemm | [mm_fused.cc](./generic/mm_fused.cc) | AIE API | Fused GEMM with in-L1 f32 accumulate and activation epilogue (`acc_init` / `k_step` / `epilogue_chunk`); tile geometry via `-DMM_FUSED_*`, activation mode and clamp bounds as runtime arguments to `epilogue_chunk` | `bfloat16` |
@@ -40,7 +41,6 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | basic | [bitwiseOR.cc](./aie2/bitwiseOR.cc) | AIE API | Bitwise OR of fixed point tensors | `uint8_t`,`int16_t`,`int32_t`|
 | basic | [bitwiseAND.cc](./aie2/bitwiseAND.cc) | AIE API | Bitwise AND of fixed point tensors | `uint8_t`,`int16_t`,`int32_t` |
 | gemm  | [mm.cc](./aie2/mm.cc) | AIE API | Matrix/Matrix multiplication | `int8_t`,`int16_t`,`bfloat16` |
-| gemm  | [mv.cc](./aie2/mv.cc) | AIE API | Matrix/Vector multiplication | `int16_t`→`int32_t` |
 | gemm  | [cascade_mm.cc](./aie2/cascade_mm.cc) | AIE API | Cascade Matrix/Matrix multiply (multi-core) | `int16_t`,`bfloat16` |
 | |
 | reduction | [reduce_add.cc](./aie2/reduce_add.cc) | Intrinsics | Sum of elements in a tensor | `int32_t` |
@@ -48,12 +48,12 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | reduction | [reduce_min.cc](./aie2/reduce_min.cc) | Intrinsics | Min value across a tensor | `int32_t` |
 | |
 | activation | [relu.cc](./aie2/relu.cc) | Intrinsics | ReLU activation | `bfloat16` |
-| activation | [leaky_relu.cc](./aie2/leaky_relu.cc) | AIE API | Leaky ReLU activation | `bfloat16` |
+| activation | [leaky_relu.cc](./generic/leaky_relu.cc) | AIE API | Leaky ReLU activation (16 lanes here, 32 on AIE2P) | `bfloat16` |
 | activation | [gelu.cc](./aie2/gelu.cc) | AIE API | GELU activation (tanh approx) | `bfloat16` |
-| activation | [silu.cc](./aie2/silu.cc) | AIE API | SiLU / Swish activation | `bfloat16` |
-| activation | [swiglu.cc](./aie2/swiglu.cc) | AIE API | SwiGLU gated activation | `bfloat16` |
-| activation | [tanh.cc](./aie2/tanh.cc) | AIE API | Tanh activation (LUT) | `bfloat16` |
-| activation | [sigmoid.cc](./aie2/sigmoid.cc) | AIE API | Sigmoid activation (LUT) | `bfloat16` |
+| activation | [silu.cc](./generic/silu.cc) | AIE API | SiLU / Swish activation (shared; tanh path from `activations.h`) | `bfloat16` |
+| activation | [swiglu.cc](./generic/swiglu.cc) | AIE API | SwiGLU gated activation (shared; tanh path from `activations.h`) | `bfloat16` |
+| activation | [tanh.cc](./generic/tanh.cc) | AIE API | Tanh activation (shared; tanh path from `activations.h`: LUT here, native on AIE2P) | `bfloat16` |
+| activation | [sigmoid.cc](./generic/sigmoid.cc) | AIE API | Sigmoid activation (shared; tanh path from `activations.h`) | `bfloat16` |
 | activation | [softmax.cc](./aie2/softmax.cc) | AIE API | Softmax | `bfloat16` |
 | activation | [bf16_exp.cc](./aie2/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | norm | [rms_norm.cc](./aie2/rms_norm.cc) | AIE API | RMS normalization — `rms_norm` (eps=1e-5) + `rms_norm_eps` (runtime eps) | `bfloat16` |
@@ -83,12 +83,12 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | gemm | [mm_bfp_mixed.cc](./aie2p/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul | `bfp16` |
 | gemm | [mm_activation_epilogue.cc](./aie2p/mm_activation_epilogue.cc) | AIE API | Matmul with fused activation epilogue | `bfloat16` |
 | |
-| activation | [gelu.cc](./aie2p/gelu.cc) | AIE API | GELU activation | `bfloat16` |
-| activation | [silu.cc](./aie2p/silu.cc) | AIE API | SiLU / Swish activation | `bfloat16` |
-| activation | [swiglu.cc](./aie2p/swiglu.cc) | AIE API | SwiGLU gated activation | `bfloat16` |
-| activation | [tanh.cc](./aie2p/tanh.cc) | AIE API | Tanh activation (native) | `bfloat16` |
-| activation | [sigmoid.cc](./aie2p/sigmoid.cc) | AIE API | Sigmoid activation | `bfloat16` |
-| activation | [leaky_relu.cc](./aie2p/leaky_relu.cc) | AIE API | Leaky ReLU activation | `bfloat16` |
+| activation | [gelu.cc](./aie2p/gelu.cc) | AIE API | GELU activation. Kept separate from the AIE2 copy: this one is MAC-fused with an `s*beta` precompute and post-RA pipelining (II=18), which is tuning, not an arch constant | `bfloat16` |
+| activation | [silu.cc](./generic/silu.cc) | AIE API | SiLU / Swish activation (shared; tanh path from `activations.h`) | `bfloat16` |
+| activation | [swiglu.cc](./generic/swiglu.cc) | AIE API | SwiGLU gated activation (shared; tanh path from `activations.h`) | `bfloat16` |
+| activation | [tanh.cc](./generic/tanh.cc) | AIE API | Tanh activation (shared; tanh path from `activations.h`: native here, LUT on AIE2) | `bfloat16` |
+| activation | [sigmoid.cc](./generic/sigmoid.cc) | AIE API | Sigmoid activation (shared; tanh path from `activations.h`) | `bfloat16` |
+| activation | [leaky_relu.cc](./generic/leaky_relu.cc) | AIE API | Leaky ReLU activation (32 lanes here, 16 on AIE2) | `bfloat16` |
 | activation | [softmax.cc](./aie2p/softmax.cc) | AIE API | Softmax + `partial_softmax` (flash-attn) + `mask` | `bfloat16` |
 | activation | [bf16_exp.cc](./aie2p/bf16_exp.cc) | AIE API | Element-wise `e^x` (LUT) | `bfloat16` |
 | activation | [exp2f_vec.cc](./aie2p/exp2f_vec.cc) | AIE API | Element-wise `2^x` (degree-5 minimax poly; higher accuracy on negatives) | `float32` |

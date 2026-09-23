@@ -29,6 +29,45 @@
 #include "lut_based_ops.h"
 #endif
 
+// tanh of 16 bf16 lanes, on whichever path this architecture has. This is the
+// whole of what separates the standalone bf16 activation kernels
+// (tanh/sigmoid/silu/swiglu/gelu.cc) between the two architectures, so they
+// share this rather than each carrying its own #if. 16 lanes because that is
+// what AIE2's LUT is fixed at; a 32-wide kernel splits and concatenates.
+//
+// Kept separate from tanh_vec below rather than either being written in terms
+// of the other: AIE2P's aie::tanh takes f32 directly, so routing tanh_vec
+// through here would add a narrowing to mm_fused's epilogue that it does not
+// pay today.
+// The accumulator overload is the primitive: a caller that has just multiplied
+// holds one, and where it narrows to bf16 is exactly what differs. AIE2P feeds
+// aie::tanh the f32; AIE2 must narrow first because its LUT is bf16-in. Taking
+// bf16 here instead would force that narrowing on AIE2P too and quietly cost
+// it accuracy.
+__attribute__((always_inline)) inline aie::vector<bfloat16, 16>
+tanh_bf16_v16(aie::accum<accfloat, 16> x) {
+#if ACTIVATIONS_NATIVE_TANH
+  return aie::tanh<bfloat16>(x.to_vector<float>());
+#else
+  return getTanhBf16(x.to_vector<bfloat16>());
+#endif
+}
+
+// For a caller whose input is already bf16 and has no accumulator to hand.
+// Carries its own #if rather than widening into the overload above: on AIE2
+// the LUT takes bf16 directly, and the bf16 -> accum -> bf16 round trip does
+// not fold away, costing three instructions per call in tanh.cc.
+__attribute__((always_inline)) inline aie::vector<bfloat16, 16>
+tanh_bf16_v16(aie::vector<bfloat16, 16> x) {
+#if ACTIVATIONS_NATIVE_TANH
+  aie::accum<accfloat, 16> acc;
+  acc.from_vector(x, 0);
+  return aie::tanh<bfloat16>(acc.to_vector<float>());
+#else
+  return getTanhBf16(x);
+#endif
+}
+
 // Stay in f32 until the single bf16 conversion at the end. Rounding to bf16
 // before the activation rounds twice and lets the activation slope amplify the
 // first rounding (measured 1.35x error on silu, 1.17x gelu, 1.08x sigmoid). The

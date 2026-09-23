@@ -620,12 +620,12 @@ def mv(
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
-    ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``; its
+    ``(np.int16, np.int32)`` builds ``aie_kernels/generic/mv_i16.cc``; its
     vectorized path reads A word-transposed, which A's layout carries
     (``contract.layouts[0].stream``). Its ``.zero`` companion initializes C
     with the independent ``kernels.zero(dim_m, output_dtype)``.
     ``(bfloat16, bfloat16)`` builds
-    ``aie_kernels/generic/mv.cc``, IRON's ``GEMV`` kernel, whose signature
+    ``aie_kernels/generic/mv_bf16.cc``, IRON's ``GEMV`` kernel, whose signature
     is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
     ``c`` so one core can fill several output blocks; A is row-major.
 
@@ -659,7 +659,7 @@ def mv(
     b_ty = np.ndarray[(dim_k,), np.dtype[np.int16]]
     c_ty = np.ndarray[(dim_m,), np.dtype[np.int32]]
     # The vectorized kernel reads A in a "32-bit-word transposed" layout (see
-    # aie_kernels/aie2/mv.cc): 2-byte elements are packed two per word, rows
+    # aie_kernels/generic/mv_i16.cc): 2-byte elements are packed two per word, rows
     # of each 2-column word slowly, m rows then the next 2-col word. A design
     # applies this as dims_from_stream on the hop into the core, reading it
     # from the layout (programming_examples/basic/matrix_multiplication/
@@ -669,7 +669,7 @@ def mv(
     )
     return _make_extern(
         f"{prefix}_i16_i32",
-        _default_source_path("mv.cc"),
+        _default_source_path("mv_i16.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
         use_chess=use_chess,
@@ -692,7 +692,7 @@ def mv(
 
 
 def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
-    """bf16 matvec from ``aie_kernels/generic/mv.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
+    """bf16 matvec from ``aie_kernels/generic/mv_bf16.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
         raise ValueError(
             f"mv(): dim_k ({dim_k}) must be a positive multiple of vec_size ({vec_size})"
@@ -703,7 +703,7 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
     c_ty = np.ndarray[(dim_m,), np.dtype[bfloat16]]
     return _make_extern(
         f"{prefix}_bf16_bf16",
-        _default_source_path("mv.cc", subdir="generic"),
+        _default_source_path("mv_bf16.cc", subdir="generic"),
         [np.int32, np.int32, a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"],
         use_chess=use_chess,
