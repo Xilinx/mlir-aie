@@ -91,9 +91,12 @@ jobs:
       - name: NPU preflight and performance mode
         id: preflight
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
-          xrt-smi examine
-          BDF=$(xrt-smi examine | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
+          EXAMINE=$(xrt-smi examine)
+          printf '%s\n' "$EXAMINE"
+          BDF=$(printf '%s\n' "$EXAMINE" | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
+          [ -n "$BDF" ]
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
           # `performance` = max DPM, clock gating on. `turbo` is refused
           # while any hwctx is open, so it is not used on shared hosts.
@@ -103,6 +106,7 @@ jobs:
       - name: Run kernel correctness suite
         id: correctness
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
@@ -120,6 +124,7 @@ jobs:
         env:
           ONLY: ${{ github.event.inputs.only }}
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
