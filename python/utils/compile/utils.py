@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aie.utils.config as config
+from aie.helpers.errors import compile_error_from_output
 
 if TYPE_CHECKING:
     from aie.ir import (  # pyright: ignore[reportMissingImports]
@@ -539,6 +540,57 @@ def compile_cxx_core_function(
                 raise RuntimeError(f"[Peano] LLVM bitcode assembly failed{detail}")
 
 
+def _module_text(mlir_module: "str | Module") -> str:
+    """Serialize `mlir_module` for aiecc, keeping its source locations.
+
+    `str()` on a Module prints none, which would leave every diagnostic aiecc
+    reports addressed to the generated `aie.mlir` rather than to the design
+    that produced it.
+    """
+    if isinstance(mlir_module, str):
+        return mlir_module
+    return mlir_module.operation.get_asm(enable_debug_info=True)
+
+
+def _diagnostic_lines(output: str) -> list[str]:
+    """The warning, error and note lines in a tool's output, in order.
+
+    Notes are the explanation, not decoration. A warning that queue-depth
+    enforcement could not be applied says why in an attached note, so dropping
+    notes leaves the generic overflow text with no hint that the target is the
+    reason. Diagnostics without a location print without the "file:line:"
+    prefix.
+    """
+    return [
+        line
+        for line in output.splitlines()
+        if any(
+            f": {severity}:" in line or line.startswith(f"{severity}:")
+            for severity in ("warning", "error", "note")
+        )
+    ]
+
+
+def _aiecc_failure(output: str, returncode: int) -> BaseException:
+    """The exception to raise for a failed aiecc run.
+
+    aiecc verifies in-process and reports through MLIR's SourceMgr handler, so
+    once the design it was handed carries locations its stderr names the user's
+    own file -- enough to report the failure as a Python error against that
+    line instead of as a wall of tool output. The rest of the diagnostic, the
+    notes that say *why*, is attached rather than dropped.
+    """
+    located = compile_error_from_output(output)
+    if located is None:
+        return RuntimeError(
+            f"[aiecc] Compilation failed with exit code {returncode}:\n{output}"
+        )
+    for line in _diagnostic_lines(output):
+        if ": note:" in line or line.startswith("note:"):
+            located.add_note(f"[aiecc] {line.strip()}")
+    return located
+
+
 def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
     aiecc_bin = os.path.abspath(config.aiecc_path())
     cmd = [aiecc_bin, os.path.abspath(mlir_file)] + args
@@ -552,23 +604,10 @@ def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
         # debug logging is off by default and the failure path below only runs
         # on a non-zero exit.
         if result.returncode == 0:
-            for line in result.stderr.splitlines():
-                # Notes are the explanation, not decoration. A warning that
-                # queue-depth enforcement could not be applied says why in an
-                # attached note, so dropping notes leaves the generic overflow
-                # text with no hint that the target is the reason. Diagnostics
-                # without a location print without the "file:line:" prefix.
-                if any(
-                    f": {severity}:" in line or line.startswith(f"{severity}:")
-                    for severity in ("warning", "error", "note")
-                ):
-                    print(f"[aiecc] {line}", file=sys.stderr)
+            for line in _diagnostic_lines(result.stderr):
+                print(f"[aiecc] {line}", file=sys.stderr)
     if result.returncode != 0:
-        error_msg = result.stderr if result.stderr else result.stdout
-        raise RuntimeError(
-            f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
-            f"{error_msg}"
-        )
+        raise _aiecc_failure(result.stderr or result.stdout, result.returncode)
 
 
 def compile_mlir_module(
@@ -713,11 +752,11 @@ def compile_mlir_module(
     if work_dir:
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
-            f.write(str(mlir_module))
+            f.write(_module_text(mlir_module))
         _run_aiecc(mlir_file, args, cwd=work_dir)
     else:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
-            f.write(str(mlir_module))
+            f.write(_module_text(mlir_module))
             mlir_file = f.name
         try:
             _run_aiecc(mlir_file, args)

@@ -5,10 +5,27 @@
 
 """Check diagnostic forwarding from successful and failed aiecc builds."""
 
+import os
 import subprocess
+import traceback
 
 import pytest
+from aie.helpers.errors import IronCompileError
+from aie.ir import Context, Module
 from aie.utils.compile import utils
+
+THIS_FILE = os.path.abspath(__file__)
+
+
+def _failing_aiecc(monkeypatch, stderr):
+    monkeypatch.setattr(utils.config, "aiecc_path", lambda: "aiecc")
+    monkeypatch.setattr(
+        utils.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args, 1, stdout="", stderr=stderr
+        ),
+    )
 
 
 @pytest.mark.parametrize("severity", ["warning", "error", "note"])
@@ -32,16 +49,70 @@ def test_successful_diagnostics(monkeypatch, capsys, severity, location):
 
 
 def test_failed_diagnostics(monkeypatch, capsys):
-    monkeypatch.setattr(utils.config, "aiecc_path", lambda: "aiecc")
-    monkeypatch.setattr(
-        utils.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args, 1, stdout="", stderr="error: compilation failed\nnote: reason\n"
-        ),
-    )
+    _failing_aiecc(monkeypatch, "error: compilation failed\nnote: reason\n")
 
     with pytest.raises(RuntimeError, match="error: compilation failed\nnote: reason"):
         utils._run_aiecc("input.mlir", [])
 
     assert capsys.readouterr().err == ""
+
+
+def test_located_failure_reports_against_the_design(monkeypatch):
+    """A located aiecc failure reads as a Python error against the user's line.
+
+    aiecc verifies in-process and reports through MLIR's SourceMgr handler, so
+    once the design it compiled carried locations, its stderr names a real
+    file -- which is the whole point: the failure should arrive as a traceback
+    into that file rather than as a wall of tool output.
+    """
+    _failing_aiecc(
+        monkeypatch,
+        f"{THIS_FILE}:1:1: error: 'aie.dma_bd' op exceeds the maximum\n"
+        f"{THIS_FILE}:1:1: note: see current operation\n",
+    )
+
+    with pytest.raises(IronCompileError) as caught:
+        utils._run_aiecc("input.mlir", [])
+
+    assert "exceeds the maximum" in str(caught.value)
+    frames = traceback.extract_tb(caught.value.__traceback__)
+    assert THIS_FILE in [os.path.abspath(f.filename) for f in frames], frames
+    # The note is the explanation, so it rides along rather than being dropped.
+    assert any("see current operation" in n for n in caught.value.__notes__)
+
+
+def test_glued_progress_output_still_locates(monkeypatch):
+    """aiecc writes progress with no trailing newline, gluing it to the path.
+
+    Fixed in aiecc itself, but an older binary on PATH must not silently cost
+    the user their location.
+    """
+    _failing_aiecc(
+        monkeypatch, f"(4/28) [0/1] input.mlir{THIS_FILE}:1:1: error: op rejected\n"
+    )
+
+    with pytest.raises(IronCompileError) as caught:
+        utils._run_aiecc("input.mlir", [])
+
+    frames = traceback.extract_tb(caught.value.__traceback__)
+    assert THIS_FILE in [os.path.abspath(f.filename) for f in frames], frames
+
+
+def test_unreadable_location_falls_back_to_raw_output(monkeypatch):
+    """A frame we cannot quote is worse than the tool's own text."""
+    _failing_aiecc(monkeypatch, "/nonexistent/design.py:1:1: error: op rejected\n")
+
+    with pytest.raises(RuntimeError, match="op rejected") as caught:
+        utils._run_aiecc("input.mlir", [])
+
+    assert not isinstance(caught.value, IronCompileError)
+
+
+def test_module_text_keeps_locations():
+    """str() prints no locations, so aiecc would lose them at the handoff."""
+    with Context():
+        module = Module.parse('func.func @f() { return loc("design.py":42:7) }')
+
+    assert "design.py" not in str(module)
+    assert "design.py" in utils._module_text(module)
+    assert utils._module_text("already text") == "already text"

@@ -23,6 +23,12 @@ knows how to print: frames the reader recognizes, and the source line quoted
 underneath. Frames are filtered rather than discarded, in the manner of JAX's
 `jax/_src/traceback_util.py`, and the full trace stays one environment variable
 away for anyone debugging IRON itself.
+
+This sits beside `sourceloc` rather than under `iron` because the two are
+halves of one story -- capture where the user wrote something, then report
+against it -- and because the failures arrive from both directions: `iron`
+builds the IR, but `utils.compile` is what runs aiecc over it, and `iron`
+imports `utils`, so only a layer below both can serve both.
 """
 
 import functools
@@ -32,12 +38,18 @@ import re
 import types
 
 from ..ir import MLIRError  # pyright: ignore[reportMissingImports]
-from ..helpers.sourceloc import is_internal_file
+from .sourceloc import is_internal_file
 
 # A diagnostic location, optionally named and optionally a callsite chain:
 #   "core_fn"(callsite("design.py":45:4 at "design.py":49:13))
 _FILE_LOC = re.compile(r'"([^"]+)":(\d+):(\d+)')
 _NAMED_LOC = re.compile(r'"([^"]+)"\(')
+
+# The same failure as a command-line tool prints it. The bindings quote the
+# location after `error:`; MLIR's SourceMgr handler, which is what aiecc
+# installs, leads with a bare one instead:
+#   /path/to/design.py:42:7: error: 'func.return' op has 0 operands
+_TOOL_ERROR = re.compile(r"^(.+?):(\d+):(\d+): error: (.*)$")
 
 _FULL_TRACEBACK_ENV = "IRON_FULL_TRACEBACK"
 
@@ -126,11 +138,51 @@ def filter_internal_frames(exc: BaseException) -> BaseException:
     return exc.with_traceback(rebuilt)
 
 
+def _tool_diagnostic(line: str):
+    """(path, line, message) for a tool-printed error, or None.
+
+    The path is confirmed to exist before it is believed. A synthesized frame
+    is only worth making if Python can read the line back out to quote it --
+    one pointing at a file that isn't there prints as a bare address, which is
+    what this module exists to stop. Returning None leaves the caller to report
+    the raw output, which is the honest answer when we can't place the failure.
+
+    Trimming to the longest suffix that exists also recovers a path that
+    arrived glued to other output, as happens when a tool writes progress with
+    no trailing newline.
+    """
+    match = _TOOL_ERROR.match(line)
+    if not match:
+        return None
+    path, lineno, message = match.group(1), int(match.group(2)), match.group(4)
+    # Longest first, and both sides of each separator: the real path may be
+    # absolute (keep the leading slash) or relative to the cwd (drop it).
+    starts = [0]
+    for i, char in enumerate(path):
+        if char in "/\\":
+            starts += [i, i + 1]
+    for start in starts:
+        if os.path.isfile(path[start:]):
+            return path[start:], lineno, message
+    return None
+
+
 def _parse_diagnostic(text: str):
-    """(message, frames innermost-first) for the first error in an MLIR diagnostic."""
+    """(message, frames innermost-first) for the first error in an MLIR diagnostic.
+
+    Both renderings are accepted, because the same failure reaches here two
+    ways: as a string built by the Python bindings when a verifier runs
+    in-process, and as a tool's stderr when it runs under aiecc.
+    """
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped.startswith("error:"):
+            tool = _tool_diagnostic(stripped)
+            # A tool prints one location, so there is no callsite chain to
+            # walk -- a single frame at the offending line is the whole trace.
+            if tool:
+                path, lineno, message = tool
+                return message, [(path, lineno, "<design>")]
             continue
         body = stripped[len("error:") :].strip()
         locations = _FILE_LOC.findall(body)
@@ -154,16 +206,28 @@ def _parse_diagnostic(text: str):
     return None, []
 
 
+def compile_error_from_output(output: str) -> BaseException | None:
+    """An `IronCompileError` for the first located error in a tool's output.
+
+    Returns None when nothing in `output` carries a location, leaving the
+    caller to report the failure however it already did -- a diagnostic we
+    cannot place is better raw than dressed up as a frame that points nowhere.
+    """
+    message, frames = _parse_diagnostic(output)
+    if not frames:
+        return None
+    return _rebuild(frames, IronCompileError(message))
+
+
 def mlir_error_to_python(exc: BaseException) -> BaseException:
     """Recast an MLIR diagnostic as an `IronCompileError` against user source.
 
     Returns `exc` unchanged when it carries no usable location, so a failure we
     cannot place is never made harder to read than it already was.
     """
-    message, frames = _parse_diagnostic(str(exc))
-    if not frames:
+    rebuilt = compile_error_from_output(str(exc))
+    if rebuilt is None:
         return exc
-    rebuilt = _rebuild(frames, IronCompileError(message))
     rebuilt.__cause__ = exc if _show_full_traceback() else None
     return rebuilt
 

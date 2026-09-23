@@ -10,7 +10,7 @@ from typing import Protocol, runtime_checkable
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..helpers.sourceloc import capture_source_site, site_location
-from .errors import filter_internal_frames
+from ..helpers.errors import filter_internal_frames
 
 
 def _site_name(obj) -> str | None:

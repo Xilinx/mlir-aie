@@ -30,7 +30,7 @@ import traceback
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
-from aie.iron.errors import IronCompileError
+from aie.helpers.errors import IronCompileError
 
 THIS_FILE = os.path.abspath(__file__)
 SOURCE = open(THIS_FILE).read().splitlines()
@@ -159,7 +159,11 @@ def check_guard_failure():
     else:
         raise AssertionError("expected the 5-dimensional transfer to be rejected")
 
-    internal = [f for f in frames if "aie/iron" in f[0] or "aie/dialects" in f[0]]
+    internal = [
+        f
+        for f in frames
+        if any(part in f[0] for part in ("aie/iron", "aie/dialects", "aie/helpers"))
+    ]
     # One frame survives filtering: Python appends the raising frame, and the
     # re-raise happens inside IRON. More than that means filtering regressed.
     assert len(internal) <= 1, "IRON frames not filtered:\n" + "\n".join(
@@ -191,7 +195,11 @@ def check_constructor_failure():
     else:
         raise AssertionError("expected the shared consumer handle to be rejected")
 
-    internal = [f for f in frames if "aie/iron" in f[0] or "aie/dialects" in f[0]]
+    internal = [
+        f
+        for f in frames
+        if any(part in f[0] for part in ("aie/iron", "aie/dialects", "aie/helpers"))
+    ]
     assert len(internal) <= 1, "IRON frames not filtered:\n" + "\n".join(
         f"  {f[0]}:{f[1]} in {f[2]}" for f in internal
     )
