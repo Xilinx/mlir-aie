@@ -102,15 +102,15 @@ jobs:
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
           # `performance` = max DPM, clock gating on. `turbo` is refused
           # while any hwctx is open, so it is not used on shared hosts.
-          # Some runners can read the device state but cannot elevate
-          # non-interactively to change it; in that case the pytest preflight
-          # below still enforces BENCH_PMODE and turns a true misconfigured
-          # runner into an ordinary test failure instead of an infrastructure
-          # failure here.
-          if sudo -n true 2>/dev/null; then
-            sudo "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"
+          # Setting the mode needs root (amdxdna refuses the ioctl otherwise).
+          # Ask sudo about this exact command rather than `sudo -n true`: a
+          # runner granted only `xrt-smi` (and `prlimit`) must still configure.
+          # Where it is not granted, the correctness suite still runs and the
+          # benchmark preflight reports the mode it found.
+          if sudo -n -l "$XRT_SMI" configure >/dev/null 2>&1; then
+            sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"
           else
-            echo "::warning::Skipping xrt-smi power-mode configure; sudo requires a password on this runner"
+            echo "::warning::Cannot set --pmode $BENCH_PMODE: this runner needs passwordless sudo for $XRT_SMI"
           fi
           "$XRT_SMI" examine -d "$BDF" --report platform
 

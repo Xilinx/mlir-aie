@@ -140,7 +140,9 @@ def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
     assert 'EXAMINE=$("$XRT_SMI" examine)' in run
     assert "printf '%s\\n' \"$EXAMINE\"" in run
     assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
-    assert 'sudo "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"' in run
+    # Runners grant NOPASSWD per command, so probe the command itself.
+    assert 'sudo -n -l "$XRT_SMI" configure' in run
+    assert 'sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"' in run
     assert '"$XRT_SMI" examine -d "$BDF" --report platform' in run
     assert "xrt-smi examine | grep -oE" not in run
 
