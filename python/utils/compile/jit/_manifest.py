@@ -30,8 +30,9 @@ manifest is a miss. A manifest is checked for shape rather than trusted, since a
 lookup that raises on a corrupt one fails neither open nor closed.
 
 Where a build path cannot report its inputs, the manifest says so -- an
-unreadable depfile and an undigestable input both record ``complete: false``,
-never nothing at all. Unverifiable is not uncacheable.
+unreadable depfile, a depfile naming something that is not a file, and an
+undigestable input all record ``complete: false``, never nothing at all.
+Unverifiable is not uncacheable.
 
 Recorded paths are absolute: an entry is written by one process and checked by
 another that need not share a working directory. Depfile tokens anchor against
@@ -67,7 +68,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
+import re
 from pathlib import Path
 
 from aie.utils.compile.utils import _is_dispatch_library_name, _staged
@@ -76,6 +77,13 @@ logger = logging.getLogger(__name__)
 
 MANIFEST_NAME = "deps.json"
 _VERSION = 1
+# clang writes a colon inside a target verbatim, so the targets end at the first
+# colon followed by whitespace, as ninja reads them.
+_DEPFILE_TARGET_END = re.compile(r":(?=\s|$)")
+# A token is a run of escaped characters, lone backslashes and non-space
+# characters; a backslash-newline belongs to no token, so it separates.
+_DEPFILE_TOKEN = re.compile(r"(?:\\[ #]|\\(?!\n)|[^\s\\])+")
+_DEPFILE_UNESCAPE = re.compile(r"\\([ #])|\$\$")
 
 
 def _digest(path: Path) -> str:
@@ -97,12 +105,15 @@ def _entry(path: Path) -> dict:
 
 
 def _absolute(base: Path, path: Path) -> Path:
-    """Anchor a possibly-relative path against `base`, keeping symlinks intact.
+    """Anchor a possibly-relative path against `base`, keeping the path opened.
 
-    Lexical, not ``resolve()``: keeping the path the compiler opened means
-    repointing a symlink is caught, since stat and the digest follow the link.
+    Not ``resolve()``: keeping the path the compiler opened means repointing a
+    symlink is caught, since stat and the digest follow the link. Not
+    ``normpath`` either: ``a/link/../h.h`` names what the compiler opened only
+    when ``..`` is taken after following ``link``, and collapsing it lexically
+    can name a different file.
     """
-    return Path(os.path.normpath(base / path))
+    return base / path
 
 
 def _parse_depfile(depfile: Path) -> list[Path]:
@@ -114,47 +125,13 @@ def _parse_depfile(depfile: Path) -> list[Path]:
     a manifest silently short while still calling itself complete.
     """
     text = depfile.read_text()
-    tokens: list[str] = []
-    current: list[str] = []
-    past_target = False
-    i = 0
-    while i < len(text):
-        c = text[i]
-        if c == "\\" and i + 1 < len(text):
-            nxt = text[i + 1]
-            if nxt == "\n":  # line continuation: a separator
-                i += 2
-                if current:
-                    tokens.append("".join(current))
-                    current = []
-                continue
-            if nxt in " #":  # escaped: the character itself
-                current.append(nxt)
-                i += 2
-                continue
-            current.append(c)  # lone backslash: a path separator, not quoting
-            i += 1
-            continue
-        if c == "$" and text[i : i + 2] == "$$":
-            current.append("$")
-            i += 2
-            continue
-        if not past_target and c == ":":
-            past_target = True
-            current = []
-            i += 1
-            continue
-        if c.isspace():
-            if current:
-                tokens.append("".join(current))
-                current = []
-            i += 1
-            continue
-        current.append(c)
-        i += 1
-    if current:
-        tokens.append("".join(current))
-    return [Path(tok) for tok in tokens] if past_target else []
+    colon = _DEPFILE_TARGET_END.search(text)
+    if not colon:
+        return []
+    return [
+        Path(_DEPFILE_UNESCAPE.sub(lambda m: m.group(1) or "$", tok))
+        for tok in _DEPFILE_TOKEN.findall(text, colon.end())
+    ]
 
 
 def record(
@@ -189,20 +166,28 @@ def record(
     for dep in depfiles:
         try:
             # Peano runs with cwd=kernel_dir, so that is what a relative token means.
-            found.update(_absolute(kernel_dir, p) for p in _parse_depfile(dep))
+            read = {_absolute(kernel_dir, p) for p in _parse_depfile(dep)}
         except OSError:
+            read = None
+        # The compiler opened every entry, so one that is not a file now cannot
+        # be checked: it has gone since, or was renamed in the writing -- clang
+        # writes a backslash in a path as a slash.
+        if read is None or not all(p.is_file() for p in read):
             # Unknowable, as for Chess. Writing nothing would instead read as a
             # miss, and the caller answers a miss by discarding the entry.
             logger.debug(
-                "cache manifest: %s could not be read; recording an incomplete "
-                "manifest, inputs will not be checked",
+                "cache manifest: %s could not be read or names an input that is "
+                "not a file; recording an incomplete manifest, inputs will not "
+                "be checked",
                 dep,
             )
             _write(kernel_dir, [], complete=False, dispatch_library=dispatch_library)
             return
+        found |= read
 
     # Declared paths are the caller's, read where the caller stands -- the same
-    # reading compile_external_kernel gives them.
+    # reading compile_external_kernel gives them. A missing one is already in
+    # the cache key, so it is left out rather than making the set incomplete.
     cwd = Path.cwd()
     for f in compiled:
         if getattr(f, "_source_file", None):
