@@ -1,0 +1,7 @@
+<map id="xilinx::AIEX::DmaQueueModel::ChannelState" name="xilinx::AIEX::DmaQueueModel::ChannelState">
+<area shape="rect" id="Node000001" title="The whole per&#45;channel queue, which is what the rolled&#45;loop fixed point below iterates on." alt="" coords="52,93,269,133"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,180,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="111,40,149,92,145,95,107,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="205,5,255,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="216,43,177,95,173,92,211,40"/>
+</map>
