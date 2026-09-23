@@ -33,6 +33,7 @@ import hashlib
 import json
 import logging
 import marshal
+from functools import partial
 from pathlib import Path
 from types import CodeType
 from typing import Any, Callable, Mapping
@@ -219,6 +220,8 @@ def _compute_artifact_hash(
     object_files: list[Path] | tuple[Path, ...],
     fold_ddr_addr_offset: bool,
     has_dispatch_params: bool = False,
+    full_elf: bool = False,
+    insts_only: bool = False,
 ) -> str:
     """Hash of the "artifacts": source/object content + tool mtimes + device.
 
@@ -234,6 +237,10 @@ def _compute_artifact_hash(
     ``has_dispatch_params`` additionally hashes the host C++ compiler used to
     build the dispatch library. Its generated source is covered by aiecc's
     identity above; Python does not run a separate translation pipeline.
+
+    The tool that packages the image is hashed too: ``aiebu-asm`` for a full
+    ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
+    alone.
     """
     h = hashlib.sha256()
 
@@ -274,6 +281,10 @@ def _compute_artifact_hash(
         }
         if has_dispatch_params:
             tools["host_cxx"] = _config.host_cxx_path
+        if full_elf:
+            tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
+        elif not insts_only:
+            tools["xclbinutil"] = partial(_config.aiecc_tool_path, "xclbinutil")
         for name, resolve in tools.items():
             h.update(f"{name}={_tool_identity(name, resolve)}".encode())
 
@@ -309,5 +320,7 @@ def _compute_hash(
         object_files,
         fold_ddr_addr_offset,
         has_dispatch_params,
+        full_elf,
+        insts_only,
     )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

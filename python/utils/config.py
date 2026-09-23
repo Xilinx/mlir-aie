@@ -79,6 +79,25 @@ def aiecc_path():
     )
 
 
+def aiecc_tool_path(name):
+    """Return the executable aiecc runs for ``name``, found the way aiecc finds it.
+
+    ``AIE_XCLBINUTIL`` overrides ``xclbinutil``. Otherwise Peano's bin directory
+    is searched ahead of PATH.
+    """
+    override = os.environ.get("AIE_XCLBINUTIL") if name == "xclbinutil" else None
+    if override:
+        found = shutil.which(override)
+    else:
+        search = os.pathsep.join(
+            [os.path.join(config.peano_install_dir, "bin"), *os.get_exec_path()]
+        )
+        found = shutil.which(_executable_name(name), path=search)
+    if not found:
+        raise RuntimeError(f"aiecc cannot find {override or name}.")
+    return found
+
+
 def host_cxx_path():
     """Return a host C++ compiler: ``CXX``, then ``c++``/``g++``/``clang++``.
 

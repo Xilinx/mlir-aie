@@ -1317,8 +1317,8 @@ class CompilableDesign:
     def artifact_hash(self) -> str:
         """Hash of the build environment: source/object content + tool mtimes + device.
 
-        Changes whenever a kernel ``.cc``, an ``.o``, Peano, aiecc, or the
-        target device changes; identifies the *with what* of compilation.
+        Changes whenever a kernel ``.cc``, an ``.o``, Peano, aiecc, the
+        packaging tool, or the target device changes; identifies the *with what* of compilation.
         """
         return _compute_artifact_hash(
             self.mlir_generator,
@@ -1326,6 +1326,8 @@ class CompilableDesign:
             self.object_files,
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
+            self.full_elf,
+            self.insts_only,
         )
 
     def _compute_cache_hash(self) -> str:
