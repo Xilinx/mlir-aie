@@ -103,8 +103,15 @@ def site_of_function(fn) -> SourceSite | None:
 
 
 def site_location(site: SourceSite | None, name: str | None = None):
-    """Materialize `site`, or return None so the caller keeps MLIR's default."""
-    return site.to_location(name) if site is not None else None
+    """Materialize `site`, or return None so the caller keeps MLIR's default.
+
+    Also returns None outside an MLIR Context. Not every `resolve` runs inside
+    one -- IRON walks some designs just to collect metadata -- and building a
+    location there would fail on a path that never wanted one.
+    """
+    if site is None or ir.Context.current is None:
+        return None
+    return site.to_location(name)
 
 
 # ---------------------------------------------------------------------------
