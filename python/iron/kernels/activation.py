@@ -128,13 +128,16 @@ _LUT_MODEL_TOLERANCE = Tolerance.bf16_ulps(
     "values, one ulp left for the accfloat->bf16 store's rounding mode",
 )
 
-# The vtanh build cannot be judged this way: the instruction has no published
-# spec, and a model reverse-engineered from the device would pass by
-# construction. So it keeps the true-function reference, with a bound sized to
-# what vtanh actually costs -- measured on npu2 as 3.79e-2 absolute, worst at
-# x = 0.5 where vtanh still returns its argument (|a| + |b| = 0.962, so
-# 0.0394 relative). 0.05 is that with a little margin, and no mismatch budget:
-# every element must meet the bound.
+# Every bound below is measured on npu2 over the harness's data cases (the
+# 256-call random case is 262144 elements), and none carries a mismatch
+# budget. Where one needs an absolute floor it is because the kernel's output
+# goes to zero while its error does not, so no relative bound can express the
+# requirement -- the measured rtol comes back as 1.0.
+
+# vtanh has no published spec, so a model reverse-engineered from the device
+# would pass by construction. It keeps the true-function reference instead,
+# bounded by what vtanh costs: worst at x = 0.5, where it still returns its
+# argument.
 _VTANH_TOLERANCE = Tolerance.relative(
     0.05,
     0.001,
@@ -143,21 +146,11 @@ _VTANH_TOLERANCE = Tolerance.relative(
 )
 
 
-# Per-kernel bounds for the vtanh build, measured on npu2 over the 256-call
-# random case (262144 elements) plus the other data cases the harness runs.
-#
-# vtanh itself needs 0.0392 relative. The identity sigmoid(x) = (1+tanh(x/2))/2
-# roughly doubles that to 0.0787: it halves the absolute error but divides by a
-# value that shrinks faster. silu and swiglu inherit the same relative figure,
-# since the further steps are bf16 multiplies.
-#
-# swiglu needs an absolute floor instead. Its output xw1 * silu(xw2) goes to
-# zero when either factor does, while the error does not: silu(xw2) is off by
-# up to ~2e-2 and xw1 reaches ~16 for bf16 random inputs, so a near-zero
-# expected value can sit next to a 0.25 absolute error. No relative bound can
-# express that, which is what the measured requirement of rtol=1.0 means.
-#
-# No mismatch budget anywhere: every element must meet the bound.
+# Kernels that reach vtanh through the sigmoid identity (1+tanh(x/2))/2, which
+# roughly doubles vtanh's 0.0392 relative to 0.0787: it halves the absolute
+# error but divides by a value that shrinks faster. silu and swiglu inherit
+# that figure, their further steps being bf16 multiplies. swiglu's output
+# xw1 * silu(xw2) is the one that goes to zero while its error does not.
 _VTANH_FAMILY_BOUNDS = {
     "sigmoid": (0.08, 0.025),  # measured 0.0787 rel, 1.95e-2 abs (output <= 1)
     "silu": (0.08, 0.035),  # measured 0.0784 rel, 3.12e-2 abs
@@ -166,8 +159,7 @@ _VTANH_FAMILY_BOUNDS = {
 
 
 # aie2p's bf16_exp.cc evaluates a range-reduced polynomial rather than reading
-# getExpBf16's tables, so the LUT model does not describe it. Measured on npu2
-# over the harness's data cases; no mismatch budget.
+# getExpBf16's tables, so the LUT model does not describe it.
 _EXP_POLY_TOLERANCE = Tolerance.relative(
     0.005,
     1e-38,
@@ -177,9 +169,8 @@ _EXP_POLY_TOLERANCE = Tolerance.relative(
 
 
 # gelu's tanh approximation is its own, and split per architecture; it is not
-# the sigmoid-identity family above. Measured on npu2: 1.56e-2 absolute, and a
-# required relative bound of 1.0 -- gelu(x) goes to zero for negative x while
-# the approximation error does not, so this needs the absolute floor.
+# the sigmoid-identity family above. gelu(x) goes to zero for negative x, so
+# this is one of the bounds that needs the floor.
 _GELU_TOLERANCE = Tolerance.relative(
     0.05,
     0.020,
@@ -189,7 +180,7 @@ _GELU_TOLERANCE = Tolerance.relative(
 
 
 def _vtanh_family_tolerance(name: str) -> Tolerance:
-    """The measured vtanh bound for a kernel that reaches tanh through sigmoid."""
+    """Return the measured vtanh bound for a kernel reaching tanh via sigmoid."""
     rtol, atol = _VTANH_FAMILY_BOUNDS[name]
     return Tolerance.relative(
         rtol,

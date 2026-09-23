@@ -19,16 +19,11 @@
 //   ACTIVATIONS_TANH_LUT=0 (AIE2P default)  aie::tanh, one vtanh instruction.
 //   ACTIVATIONS_TANH_LUT=1                  getTanhBf16, the interpolated LUT.
 //
-// They are not equally accurate. vtanh returns its argument unchanged for
-// |x| <= 0.5 -- tanh's correct leading term, but carried far enough that
-// tanh(0.5) comes back as 0.5, 19 bf16 ulps out. The LUT interpolates 32
-// segments of width 0.25 over [-4, 4) and stays within 5.1e-3 absolute of
-// tanh everywhere. Reach for the LUT when accuracy matters and the extra
-// loads do not, which is why this is the caller's decision and not a fixed
-// per-architecture one.
-//
-// AIE2 has no tanh instruction, so the LUT is the only path there whatever
-// this is set to.
+// They are not equally accurate: vtanh returns its argument unchanged for
+// |x| <= 0.5, so tanh(0.5) comes back 19 bf16 ulps out, where the LUT stays
+// within 5.1e-3 absolute everywhere. Whether that is worth the extra loads is
+// the caller's call, not a fixed per-architecture one. AIE2 has no tanh
+// instruction, so the LUT is its only path whatever this is set to.
 #ifndef ACTIVATIONS_TANH_LUT
 #define ACTIVATIONS_TANH_LUT 0
 #endif
@@ -50,15 +45,10 @@
 // share this rather than each carrying its own #if. 16 lanes because that is
 // what AIE2's LUT is fixed at; a 32-wide kernel splits and concatenates.
 //
-// Kept separate from tanh_vec below rather than either being written in terms
-// of the other: AIE2P's aie::tanh takes f32 directly, so routing tanh_vec
-// through here would add a narrowing to mm_fused's epilogue that it does not
-// pay today.
 // The accumulator overload is the primitive: a caller that has just multiplied
 // holds one, and where it narrows to bf16 is exactly what differs. AIE2P feeds
 // aie::tanh the f32; AIE2 must narrow first because its LUT is bf16-in. Taking
-// bf16 here instead would force that narrowing on AIE2P too and quietly cost
-// it accuracy.
+// bf16 here instead would force that narrowing on AIE2P too.
 __attribute__((always_inline)) inline aie::vector<bfloat16, 16>
 tanh_bf16_v16(aie::accum<accfloat, 16> x) {
 #if ACTIVATIONS_NATIVE_TANH
