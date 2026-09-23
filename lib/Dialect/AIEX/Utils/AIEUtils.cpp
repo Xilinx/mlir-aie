@@ -236,7 +236,7 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   // rather than leave the runtime path silent.
   if (elemBytes != 0 && elemBytes % 4 != 0) {
     uint32_t elemMultiple = 4 / std::gcd(4u, elemBytes);
-    bdOp->emitWarning()
+    mlir::emitWarning(bdOp->getLoc())
         << "runtime offset parameter on a " << (elemBytes * 8)
         << "-bit element type: the firmware masks the BD address register "
            "with 0xFFFFFFFC, so a value that is not a multiple of "
