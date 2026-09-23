@@ -129,7 +129,7 @@ and launch them onto a tile's DMA task queue.
 | `aiex.npu.writebd` | Write a complete buffer descriptor (all fields explicit: buffer length/offset, the `d0..d2` sizes/strides, iteration, lock acquire/release, packet header, next-BD) to a BD slot on a tile. The low-level form behind `dma_memcpy_nd`. | any tile with a DMA engine (shim, mem, core) | `aiex.npu.writebd {column = 0 : i32, row = 0 : i32, bd_id = 0 : i32, buffer_length = 1024 : i32, /* ... */}` |
 | `aiex.npu.push_queue` | Push a BD id onto a tile channel's task queue to launch it, with an outer-dimension `repeat_count` and optional completion token. | any tile channel; `MM2S` / `S2MM` | `aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %bd repeat %rep {issue_token = false} : i32, i32` |
 | `aiex.npu.address_patch` | Patch a runtime buffer address into the instruction stream: takes runtime argument `arg_idx` plus `arg_plus` offset and writes it into a BD address field. Used to bind host buffers whose address is only known at launch. | shim BD addresses | `aiex.npu.address_patch(%off : i32) {addr = 0 : ui32, arg_idx = 0 : i32}` |
-| `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`value <= max`); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
+| `aiex.npu.assert_bd_field` *(compiler-emitted)* | Guard a runtime BD-field value against its hardware field width (`0 <= value <= max`); emitted by the dynamic DMA lowering when a runtime scalar lands in a narrow BD field (e.g. a 10-bit wrap). On the host-C++ path it aborts stream generation for an out-of-range value; on the binary path `value` is a verified constant and it is a no-op. | dynamic-BD lowering path | `aiex.npu.assert_bd_field(%v) {max = 1023 : i32} : i32` |
 | `aiex.npu.assert_bd_divisible` *(compiler-emitted)* | Guard a runtime BD size/stride against the address-gen granule (`value % divisor == 0`, or `value == 1` when `allow_unit`); emitted by the dynamic DMA lowering. Same host-C++ / binary behavior as `assert_bd_field`. | dynamic-BD lowering path | `aiex.npu.assert_bd_divisible(%v) {divisor = 4 : i32} : i32` |
 
 See [Section 2d](programming_guide/section-2/section-2d/DMATasks.md) for a full
@@ -150,8 +150,8 @@ compiler allocates the BD ids for you.
 | `aiex.dma_free_task` | Tell the BD allocator the task's BD ids may be reused. Only safe once the task is known complete. | the task's tile/channel | `aiex.dma_free_task(%t)` |
 | `aiex.dma_start_bd_chain` | Materialize an abstract `aie.bd_chain` with concrete arguments as a task on `tile`/`direction`/`channel` and start it immediately. | any tile; `MM2S` / `S2MM` | `%t = aiex.dma_start_bd_chain @chain(%a) : (memref<32xi32>) on (%tile, MM2S, 0)` |
 | `aiex.dma_start_bd_chain_for` | As `dma_start_bd_chain`, but the endpoint is a referenced `aie.shim_dma_allocation` symbol. | shim (via allocation) | `%t = aiex.dma_start_bd_chain_for @chain(%a) : (memref<32xi32>) for @alloc` |
-| `aiex.dma_bd_pool_pop` *(compiler-emitted)* | Draw a free BD id from the per-tile runtime free-list pool and return it as an SSA value: the dynamic counterpart to the static BD-id allocator, inserted by the `aie-lower-dynamic-bd-pool` pass inside a runtime-bound `scf.for`. | any tile (dynamic-BD path) | `%bd = aiex.dma_bd_pool_pop(0, 0) : i32` |
-| `aiex.dma_bd_pool_push` *(compiler-emitted)* | Return a BD id obtained from `dma_bd_pool_pop` to the per-tile pool for reuse: the dynamic counterpart to `dma_free_task`. | any tile (dynamic-BD path) | `aiex.dma_bd_pool_push(0, 0) bd_id %bd : i32` |
+| `aiex.dma_bd_pool_pop` *(compiler-emitted)* | Draw a free BD id from the per-tile runtime free-list pool and return it as an SSA value: the dynamic counterpart to the static BD-id allocator, inserted by the `aie-lower-dynamic-bd-pool` pass inside a runtime-bound `scf.for`. | any tile (dynamic-BD path) | `%bd = aiex.dma_bd_pool_pop(0, 0, 0) : i32` |
+| `aiex.dma_bd_pool_push` *(compiler-emitted)* | Return a BD id obtained from `dma_bd_pool_pop` to the per-tile pool for reuse: the dynamic counterpart to `dma_free_task`. | any tile (dynamic-BD path) | `aiex.dma_bd_pool_push(0, 0, 0) bd_id %bd : i32` |
 
 ### 4. Synchronization (wait on a task-complete token)
 
@@ -802,19 +802,20 @@ def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
   }];
   let description = [{
     Asserts, at TXN-build time, that a runtime value assigned to a buffer-
-    descriptor field fits its hardware field: `value <= max`. Emitted by the
+    descriptor field fits its hardware field: `0 <= value <= max`. Emitted by the
     dynamic DMA lowering for a runtime scalar landing in a narrow field (e.g. the
     10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
     truncate an out-of-range value.
 
     This op only ever appears on the dynamic (runtime-value) DMA lowering path;
     a fully static sequence never produces it. When `value` is a constant, the
-    verifier hard-errors if it exceeds `max`, so it is caught at compile time.
+    verifier hard-errors if it is negative or exceeds `max`, so it is caught at
+    compile time.
 
     The TXN instruction stream has no on-device trap, so a runtime guard runs
     host-side in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op
-    to an early `if (value > max) return std::nullopt;` so the builder yields no
-    stream for an illegal value instead of a corrupt one. On the binary
+    to an early `if (value < 0 || value > max) return std::nullopt;` so the builder
+    yields no stream for an illegal value instead of a corrupt one. On the binary
     (--aie-npu-to-binary) path `value` is always a verified constant, so the op
     carries no runtime check and is emitted as a no-op (skipped, contributing no
     TXN words).

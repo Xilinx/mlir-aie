@@ -325,9 +325,10 @@ private:
           // BD field, the builder yields no stream (std::nullopt) rather than a
           // truncated one. Appends nothing, so not counted.
           emitc::VerbatimOp::create(b, loc,
-                                    "if ({} > " + std::to_string(g.getMax()) +
+                                    "if ({} < 0 || {} > " +
+                                        std::to_string(g.getMax()) +
                                         ") return std::nullopt;",
-                                    ValueRange{g.getValue()});
+                                    ValueRange{g.getValue(), g.getValue()});
         })
         .Case<AIEX::NpuAssertBdDivisibleOp>([&](auto g) {
           // Host-side realizability guard: a runtime size/stride whose byte

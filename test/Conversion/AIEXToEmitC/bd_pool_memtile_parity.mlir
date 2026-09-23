@@ -39,7 +39,7 @@ aie.device(npu2) {
 // halve the ids available to each.
 
 // CHECK: BdPool bd_pool_0_0_0 = aie_runtime::bd_pool_init_range(0, 16);
-// CHECK-NOT: bd_pool_0_0_
+// CHECK-NOT: BdPool bd_pool_0_0_
 // CHECK: bd_pool_pop(bd_pool_0_0_0,
 // CHECK: bd_pool_pop(bd_pool_0_0_0,
 

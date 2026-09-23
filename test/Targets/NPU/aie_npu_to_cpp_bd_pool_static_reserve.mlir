@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// bd_pool_init seeds the free list with every id on the tile, and pop hands
+// bd_pool_init_range seeds the free list with every accessible id, and pop hands
 // out id 0 first. But the BD table is one per tile, shared with whatever the
 // static allocator already placed there -- so on a tile carrying both a
 // static shim BD and this pool, an unreserved pop would hand out the static
@@ -23,10 +23,10 @@
 // RUN: | aie-translate --aie-npu-to-cpp | FileCheck %s
 
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_
-// CHECK: aie_runtime::BdPool bd_pool_0_0 = aie_runtime::bd_pool_init(16);
+// CHECK: aie_runtime::BdPool bd_pool_0_0_0 = aie_runtime::bd_pool_init_range(0, 16);
 // The static shim BD's id (0) is withheld right after the pool is seeded.
-// CHECK-NEXT: aie_runtime::bd_pool_reserve(bd_pool_0_0, 0);
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK-NEXT: aie_runtime::bd_pool_reserve(bd_pool_0_0_0, 0);
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0_0, bd_{{[0-9]+}})) return std::nullopt;
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)

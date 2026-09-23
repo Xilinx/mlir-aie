@@ -19,13 +19,13 @@
 
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_
 // The pool is declared once, sized from the target model (shim = 16 BDs).
-// CHECK: aie_runtime::BdPool bd_pool_0_0 = aie_runtime::bd_pool_init(16);
+// CHECK: aie_runtime::BdPool bd_pool_0_0_0 = aie_runtime::bd_pool_init_range(0, 16);
 // A pop into a fresh variable, failing the build (nullopt) if the pool is empty.
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0_0, bd_{{[0-9]+}})) return std::nullopt;
 // The BD register block is one block-write at the pool-derived runtime address.
 // CHECK: aie_runtime::txn_append_blockwrite
 // The id is returned to the pool.
-// CHECK: aie_runtime::bd_pool_push(bd_pool_0_0,
+// CHECK: aie_runtime::bd_pool_push(bd_pool_0_0_0,
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)

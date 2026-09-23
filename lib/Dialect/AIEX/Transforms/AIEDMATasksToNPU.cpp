@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <limits>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/AIEUtils.h"
@@ -318,10 +319,9 @@ struct AIEDMATasksToNPUPass
     auto buf = bd_op.getBuffer();
     auto col = tile.getCol();
     auto row = tile.getRow();
-    // The static register address uses the pinned bd_id attribute; on the
-    // runtime pool path the attribute is absent and runtimeRegisterAddr (below)
-    // supplies the address instead, so fall back to bd 0 for the constant.
-    uint32_t bd_id = bd_op.getBdId().value_or(0);
+    // A foldable SSA bd_id must name the same register as the block write.
+    auto constBdId = bdId ? getConstantIntValue(bdId) : std::nullopt;
+    uint32_t bd_id = constBdId ? *constBdId : bd_op.getBdId().value_or(0);
     uint64_t register_addr = target_model.getDmaBdAddress(col, row, bd_id) +
                              target_model.getDmaBdAddressOffset(col, row);
     // On the runtime-bd_id path the patched register (BD buffer-address word)
@@ -418,11 +418,24 @@ struct AIEDMATasksToNPUPass
       Value runtimeByteAddr;
       if (constOffset)
         buf_addr += bd_op.getOffsetInBytes();
-      else
+      else {
+        // Bound the element offset before i32 byte-address arithmetic can wrap.
+        uint64_t maxByteAddr = target_model.isCoreTile(col, row)  ? 0xffff
+                               : target_model.isMemTile(col, row) ? 0x1fffff
+                                                                  : 0xffffffff;
+        if (buf_addr > maxByteAddr)
+          return bd_op->emitOpError("buffer address exceeds the tile's DMA "
+                                    "address field.");
+        NpuAssertBdFieldOp::create(
+            builder, bd_op.getLoc(), bd_op.getOffset(),
+            builder.getI32IntegerAttr(
+                (maxByteAddr - buf_addr) /
+                bd_op.getBufferElementTypeWidthInBytes()));
         runtimeByteAddr = buildArgPlusValue(
             builder, bd_op.getLoc(), {OpFoldResult(bd_op.getOffset())},
             {OpFoldResult(builder.getI32IntegerAttr(1))},
             bd_op.getBufferElementTypeWidthInBytes(), (int64_t)buf_addr);
+      }
 
       // The BD's address field, scaled and positioned per tile type. An
       // all-constant address folds to the same literal the static path emits.
@@ -432,9 +445,16 @@ struct AIEDMATasksToNPUPass
           return createConstantI32(
               builder, loc, static_cast<uint32_t>((buf_addr / divisor) << shl));
         Value v = runtimeByteAddr;
-        if (divisor != 1)
+        if (divisor != 1) {
+          NpuAssertBdDivisibleOp::create(builder, loc, v, divisor,
+                                         /*allow_unit=*/false);
           v = arith::DivUIOp::create(builder, loc, v,
                                      createConstantI32(builder, loc, divisor));
+          NpuAssertBdFieldOp::create(
+              builder, loc, v,
+              builder.getI32IntegerAttr(
+                  target_model.isCoreTile(col, row) ? 0x3fff : 0x7ffff));
+        }
         if (shl != 0)
           v = arith::ShLIOp::create(builder, loc, v,
                                     createConstantI32(builder, loc, shl));
@@ -648,14 +668,35 @@ struct AIEDMATasksToNPUPass
       // BD can reach the dynamic path for its sizes alone, and leaving the
       // length as an unfolded arith chain would also cost it a runtime
       // narrow-field guard for a value already known to fit.
+      if (*constLen <= 0 || *constLen * elemWidth < gran ||
+          (*constLen * elemWidth) % gran != 0)
+        return bd_op->emitOpError(
+            "Transfer length must be a positive whole number of "
+            "address-generation granules.");
       bufLen = createConstantI32(builder, loc, *constLen * elemWidth / gran);
     } else {
       Value lenVal = getAsValue(builder, loc, lenOfr, i32ty);
-      bufLen = arith::DivUIOp::create(
+      uint64_t maxLen = std::min<uint64_t>(
+          std::numeric_limits<int32_t>::max(),
+          target_model.getDmaBdMaxLen(col, row) * gran / elemWidth);
+      NpuAssertBdFieldOp::create(builder, loc, lenVal,
+                                 builder.getI32IntegerAttr(maxLen));
+      Value tooSmall = arith::CmpIOp::create(
+          builder, loc, arith::CmpIPredicate::ult, lenVal,
+          createConstantI32(builder, loc, (gran + elemWidth - 1) / elemWidth));
+      NpuAssertBdFieldOp::create(
+          builder, loc, arith::ExtUIOp::create(builder, loc, i32ty, tooSmall),
+          builder.getI32IntegerAttr(0));
+      uint32_t divisor = bdGranuleDivisor(elemWidth, gran);
+      if (divisor > 1)
+        NpuAssertBdDivisibleOp::create(builder, loc, lenVal, divisor,
+                                       /*allow_unit=*/false);
+      // Divide before multiplying so valid large lengths cannot wrap in i32.
+      bufLen = arith::MulIOp::create(
           builder, loc,
-          arith::MulIOp::create(builder, loc, lenVal,
-                                createConstantI32(builder, loc, elemWidth)),
-          createConstantI32(builder, loc, gran));
+          arith::DivUIOp::create(builder, loc, lenVal,
+                                 createConstantI32(builder, loc, divisor)),
+          createConstantI32(builder, loc, elemWidth * divisor / gran));
     }
 
     // The BD-level repeat_count (encoder output) is unused here: the dma_task
