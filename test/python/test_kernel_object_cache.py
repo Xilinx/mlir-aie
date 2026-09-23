@@ -10,10 +10,15 @@ an object that was not rebuilt keeps its inode and mtime. No NPU is required.
 """
 
 import contextlib
+import os
 import subprocess
+import sys
+import textwrap
+import time
 
 import aie.utils.compile.utils as compile_utils
 import aie.utils.config as config
+import numpy as np
 import pytest
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit import _manifest
@@ -136,14 +141,166 @@ def test_header_edit_rebuilds_entry_and_reaches_design_manifest(
     assert (later / kernel.object_file_name).read_bytes() == rebuilt
 
 
-def test_distinct_recipes_get_distinct_entries(tmp_path, source, cache):
-    plain = _kernel(source, object_file_name="plain.o")
-    flagged = _kernel(source, object_file_name="flagged.o", compile_flags=["-O1"])
-    design = _design_dir(tmp_path, "design")
+def _build(tmp_path, cache, kernel, arch="aie2p", include_dirs=None, ir=False):
+    design = tmp_path / "designs" / str(len(list(tmp_path.glob("designs/*"))))
+    design.mkdir(parents=True)
     compile_utils.compile_external_kernels(
-        [plain, flagged], design, "aie2p", object_cache=cache
+        [kernel],
+        design,
+        arch,
+        include_dirs=include_dirs,
+        embed_bitcode=ir,
+        object_cache=cache,
     )
+    return design / kernel.object_file_name
+
+
+def _edit_source(source):
+    source.write_text(_SOURCE.replace("*p *= SCALE", "*p *= SCALE + 1"))
+    return {}
+
+
+def _extra_include(source):
+    extra = source.parent / "extra"
+    extra.mkdir()
+    return {"include_dirs": [str(extra)]}
+
+
+# Each changes one input of the object's bytes, keeping its file name.
+_KEY_INPUTS = {
+    "source": lambda source: (_edit_source(source), {}),
+    "compile_flags": lambda source: ({"compile_flags": ["-DUNUSED=1"]}, {}),
+    "kernel_include_dirs": lambda source: (_extra_include(source), {}),
+    "symbol_prefix": lambda source: ({"symbol_prefix": "op0"}, {}),
+    "object_file_name": lambda source: ({"object_file_name": "other.o"}, {}),
+    "target_arch": lambda source: ({}, {"arch": "aie2"}),
+    "design_include_dirs": lambda source: ({}, {"include_dirs": [str(source.parent)]}),
+    "retained_ir": lambda source: ({}, {"ir": True}),
+}
+
+# A key input need not change the output (an unused -D, an unread include
+# dir); these ones do, so the two entries must hold different objects.
+_CHANGES_OUTPUT = {"source", "symbol_prefix", "target_arch", "retained_ir"}
+
+# Each changes something the object's bytes do not depend on.
+_OTHER_INPUTS = {
+    "fresh_instance": {},
+    "arg_types": {"arg_types": [np.ndarray[(16,), np.dtype[np.int32]]]},
+    "stack_size_override": {"stack_size_override": 512},
+}
+
+
+@pytest.mark.parametrize("change", sorted(_KEY_INPUTS))
+def test_changing_a_key_input_misses(tmp_path, source, cache, change):
+    first = _build(tmp_path, cache, _kernel(source))
+    ExternalFunction._instances.clear()
+    kernel_kwargs, build_kwargs = _KEY_INPUTS[change](source)
+    second = _build(tmp_path, cache, _kernel(source, **kernel_kwargs), **build_kwargs)
     assert len(list(cache.root.iterdir())) == 2
+    if change in _CHANGES_OUTPUT:
+        assert first.read_bytes() != second.read_bytes()
+
+
+@pytest.mark.parametrize("change", sorted(_OTHER_INPUTS))
+def test_changing_another_input_hits(tmp_path, source, cache, change):
+    kernel = _kernel(source)
+    _build(tmp_path, cache, kernel)
+    before = _identity(_entry_object(cache, kernel))
+    ExternalFunction._instances.clear()
+    again = _kernel(source, **_OTHER_INPUTS[change])
+    assert again.object_file_name == kernel.object_file_name
+    with contextlib.chdir(source.parent):
+        _build(tmp_path, cache, again)
+    assert len(list(cache.root.iterdir())) == 1
+    assert _identity(_entry_object(cache, kernel)) == before
+
+
+def test_failed_compile_leaves_nothing_to_hit(tmp_path, source, cache):
+    header = source.parent / "scale.h"
+    header.write_text("#define SCALE 2 +\n")
+    kernel = _kernel(source)
+    with pytest.raises(Exception):
+        _build(tmp_path, cache, kernel)
+    (entry,) = cache.root.iterdir()
+    assert not (entry / kernel.object_file_name).exists()
+    assert not (entry / _manifest.MANIFEST_NAME).exists()
+
+    header.write_text("#define SCALE 2\n")
+    linked = _build(tmp_path, cache, kernel)
+    assert _symbols(linked) == ["helper_fn", "scale"]
+
+
+@pytest.mark.parametrize("lost", ["object", "manifest"])
+def test_incomplete_entry_is_rebuilt(tmp_path, source, cache, lost):
+    """An entry cut short (e.g. a killed process) is a miss, not a hit."""
+    kernel = _kernel(source)
+    _build(tmp_path, cache, kernel)
+    built = _entry_object(cache, kernel)
+    entry = built.parent
+    good = built.read_bytes()
+    if lost == "object":
+        built.unlink()
+    else:
+        (entry / _manifest.MANIFEST_NAME).unlink()
+    before = entry.stat().st_mtime_ns
+
+    linked = _build(tmp_path, cache, kernel)
+    assert (entry / _manifest.MANIFEST_NAME).is_file()
+    assert _manifest.is_valid(entry)
+    assert built.read_bytes() == good == linked.read_bytes()
+    assert entry.stat().st_mtime_ns != before
+
+
+_WORKER = textwrap.dedent("""
+    import logging, os, sys, time
+    from pathlib import Path
+    import aie.utils.compile.utils as compile_utils
+    from aie.iron.kernel import ExternalFunction
+    from aie.utils.compile.jit._object_cache import KernelObjectCache
+
+    source, root, design, ready, go = sys.argv[1:]
+    logging.basicConfig(level=logging.WARNING, stream=sys.stdout, format="%(message)s")
+    logging.getLogger("aie.utils.compile.jit._object_cache").setLevel(logging.DEBUG)
+    kernel = ExternalFunction("scale", source_file=source)
+    Path(design).mkdir()
+    Path(ready).touch()
+    while not Path(go).exists():
+        time.sleep(0.01)
+    compile_utils.compile_external_kernels(
+        [kernel], design, "aie2p", object_cache=KernelObjectCache(Path(root), 600)
+    )
+    """)
+
+
+def test_concurrent_processes_compile_a_shared_kernel_once(tmp_path, source, cache):
+    go = tmp_path / "go"
+    workers = []
+    for name in ("a", "b"):
+        ready = tmp_path / f"{name}.ready"
+        args = [source, cache.root, tmp_path / name, ready, go]
+        proc = subprocess.Popen(
+            [sys.executable, "-c", _WORKER, *map(str, args)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        workers.append((proc, ready))
+    deadline = time.monotonic() + 120
+    while not all(ready.exists() for _, ready in workers):
+        assert time.monotonic() < deadline, "workers never became ready"
+        assert all(proc.poll() is None for proc, _ in workers)
+        time.sleep(0.01)
+    go.touch()
+    logs = []
+    for proc, _ in workers:
+        out, _ = proc.communicate(timeout=600)
+        assert proc.returncode == 0, out
+        logs.append(out)
+    assert sum(log.count("cache miss") for log in logs) == 1
+    assert sum(log.count("cache hit") for log in logs) == 1
+    built = _entry_object(cache, ExternalFunction("scale", source_file=str(source)))
+    for name in ("a", "b"):
+        assert (tmp_path / name / "scale.o").read_bytes() == built.read_bytes()
 
 
 def test_prefixed_object_carries_its_stamp(tmp_path, source, cache):
