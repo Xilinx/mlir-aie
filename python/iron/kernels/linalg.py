@@ -11,7 +11,7 @@ from typing import NamedTuple, get_args
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.dataflow import StreamDims
-from aie.iron.kernel import ExternalFunction
+from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.verify import Tolerance
@@ -350,6 +350,12 @@ class MatrixKernel(_ZeroInitializedKernel):
         """The ``dims_to_stream`` a design applies to A, B and C; ``None`` streams as stored."""
         a, b, c = self.contract.layouts[:3]
         return StreamDimsABC(A=a.stream, B=b.stream, C=c.stream)
+
+
+class _CascadeMatrixKernel(MatrixKernel):
+    get_only: MatrixKernel
+    put_only: Kernel
+    put_get: Kernel
 
 
 def _blocked(rows: int, cols: int, tile_rows: int, tile_cols: int) -> list:
@@ -982,7 +988,7 @@ def cascade_mm(
     input_dtype: type = np.int16,
     output_dtype: type = np.int16,
     use_chess: bool = False,
-) -> MatrixKernel:
+) -> _CascadeMatrixKernel:
     r"""Build the GET half of a cascade matrix multiply: ``C += A * B + cascade``.
 
     cascade_mm.cc emits all three cascade variants (``get_only``,
@@ -1031,7 +1037,7 @@ def cascade_mm(
             f"-DDIM_N={dim_n}",
         ],
         use_chess=use_chess,
-        cls=MatrixKernel,
+        cls=_CascadeMatrixKernel,
         contract=KernelContract(
             roles=(In, In, InOut),
             # Scalar on both targets: row-major operands, nothing streamed

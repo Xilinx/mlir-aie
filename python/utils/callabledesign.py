@@ -544,6 +544,8 @@ class CallableDesign:
         xclbin, insts = self.compile(
             xclbin_path=build / "final.xclbin", inst_path=build / "insts.bin"
         )
+        if xclbin is None:
+            raise RuntimeError("measure_compile(): compilation returned no image")
         secs = time.perf_counter() - t0
         # With --get-core-elfs aiecc writes one ELF per core, each in its own
         # directory: "elfs_<core>/elfs_<core>.elf".
