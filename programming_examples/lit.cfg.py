@@ -4,7 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import hashlib
 import os
+import platform
 import sys
 from typing import TYPE_CHECKING, Any
 
@@ -34,6 +36,32 @@ config.suffixes = [".lit"]
 
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
+
+# Windows MAX_PATH (260) is the binding constraint for the cmake examples, and
+# only about a third of the budget is ours. lit mirrors the source tree under
+# test_exec_root, and CMake's compiler-ABI try-compile then appends ~92 fixed
+# characters:
+#
+#   CMakeFiles/CMakeScratch/TryCompile-xxxxxx/CMakeFiles/cmTC_xxxxx.dir/
+#   testCXXCompiler.cxx.obj
+#
+# Neither cl.exe nor rc.exe is long-path aware, so a deep-enough example fails
+# to configure at all -- "fatal error C1083: Cannot open compiler generated
+# file: ''" for CXX, "error RC2136" on manifest.rc for C. The deepest example
+# lands at 266 characters under the CI checkout path, and the next-deepest
+# clears the limit by two.
+#
+# The mirrored tree and CMake's tail are both fixed, so the only lever is the
+# prefix. Rehome it at a short path keyed by a hash of the real one, which
+# keeps concurrent build directories from colliding. That trades 68 characters
+# of CI checkout path for 19 and puts every cmake lit ~43 under the limit.
+if platform.system() == "Windows":
+    _tmp_root = os.environ.get("AIE_LIT_TMP_ROOT")
+    if not _tmp_root:
+        _digest = hashlib.sha1(config.test_exec_root.encode()).hexdigest()[:8]
+        _drive = os.path.splitdrive(config.test_exec_root)[0] or "C:"
+        _tmp_root = os.path.join(_drive + os.sep, "aie-lit", _digest)
+    config.test_exec_root = _tmp_root
 
 # Setup standard environment (PYTHONPATH, AIETOOLS, system env, etc.)
 LitConfigHelper.setup_standard_environment(
