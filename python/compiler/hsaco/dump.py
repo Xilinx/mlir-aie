@@ -59,9 +59,6 @@ def parse_section(section):
         )
     if kentry < ENTRY_SIZE:
         raise ValueError("kernel_entry_size too small")
-    # The table is indexed from the section's own header_size, so a value
-    # below the real header would overlap the table onto the header and
-    # fabricate a kernel out of it.
     if hdr_size < HDR_SIZE:
         raise ValueError("header_size smaller than the header")
     if hdr_size + kcount * kentry > len(section):
@@ -72,9 +69,10 @@ def parse_section(section):
         raise ValueError("blob pool out of bounds")
 
     def in_pool(off, ln):
-        # Bounded below by the pool, not just by the section: the header
-        # carries blob_pool_offset precisely so a blob cannot be made to point
-        # back at the header or the kernel table and be reported as valid.
+        # Every offset here comes from the section being validated, so none of
+        # them is taken on trust: a blob bounded only from above could point
+        # back at the metadata and still be reported as a valid kernel.
+        # blob_pool_offset exists to give the lower bound.
         return off >= pool_off and off + ln <= len(section)
 
     kernels = []
