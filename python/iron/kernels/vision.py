@@ -72,6 +72,7 @@ def _bitwise_kernel(
 
 def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
     """Convert a line of RGBA pixels to hue values (full-range, 0..255)."""
+    _require_vector_alignment("rgba2hue", line_width, 32, param="line_width")
     return _color_convert_kernel(
         "rgba2hueLine",
         "rgba2hue.cc",
@@ -311,10 +312,10 @@ def rgba2gray_ref(rgba):
 def rgba2hue_ref(rgba):
     """Numpy reference for [`rgba2hue`][iron.kernels.vision.rgba2hue]: full-range hue.
 
-    Both paths of ``rgba2hue.cc`` multiply by a Q7.9 reciprocal rather than
-    dividing, so with ``d = max - min`` of R, G, B and ``inv = 85 * 512 / d``
-    the hue is ``(offset * 512 + c * inv) >> 10`` for whichever channel holds
-    the max: ``c = G - B`` at offset 1, ``B - R`` at 171, ``R - G`` at 341.
+    ``rgba2hue.cc`` multiplies by a Q7.9 reciprocal rather than dividing, so
+    with ``d = max - min`` of R, G, B and ``inv = 85 * 512 / d`` the hue is
+    ``(offset * 512 + c * inv) >> 10`` for whichever channel holds the max:
+    ``c = G - B`` at offset 1, ``B - R`` at 171, ``R - G`` at 341.
     Each offset carries the ``+ 1`` that rounds the final halving, so there is
     one rounding step rather than two. The cast to ``uint8`` wraps, so a
     negative hue (R max, G < B) comes out as ``256 + h`` -- the right circular

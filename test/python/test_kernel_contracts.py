@@ -766,9 +766,9 @@ def test_rgba2hue_reference_matches_the_kernel():
 def test_rgba2hue_reference_is_within_one_lsb_of_exact_hue():
     """The reciprocal is truncated, so bound the error that can introduce.
 
-    ``rgba2hue_ref`` is bit-exact against both paths of the kernel by
-    construction; this pins the other half -- that the arithmetic the two of
-    them share stays within one LSB of the exact hue, over every RGB triple.
+    ``rgba2hue_ref`` is bit-exact against the kernel by construction; this
+    pins the other half -- that the arithmetic they share stays within one LSB
+    of the exact hue, over every RGB triple.
     """
     r, g, b = (
         x.ravel().astype(np.int64)

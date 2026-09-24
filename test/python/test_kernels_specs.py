@@ -395,6 +395,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(line_width=1920),
         arg_count=3,
         expected_name="rgba2hueLine",
+        invalid_kwargs=[(dict(line_width=1000), "not a multiple")],
         shape_checks=[
             (dict(line_width=640), 0, (640 * 4,)),
             (dict(line_width=640), 1, (640,)),

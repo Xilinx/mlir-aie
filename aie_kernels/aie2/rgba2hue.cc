@@ -51,8 +51,8 @@ comp_divisor_16b(::aie::vector<uint8_t, 32> divisor,
                  ::aie::vector<uint16_t, 32> &divisor_select) {
   const int step = 0;
   using lut_type_uint16 = aie::lut<4, uint16, uint16>;
-  lut_type_uint16 inv_lut_16b(num_entries_lut_inv_16b, lut_inv_16b_ab,
-                              lut_inv_16b_cd);
+  lut_type_uint16 inv_lut_16b(num_entries_lut_inv_16b, lut_inv_16b_ab.data(),
+                              lut_inv_16b_cd.data());
   aie::parallel_lookup<uint8, lut_type_uint16, aie::lut_oor_policy::truncate>
       lookup_inv_16b(inv_lut_16b, step);
 
@@ -130,68 +130,15 @@ __attribute__((noinline)) void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
   event1();
 }
 
-void rgba2hue_aie_scalar(uint8_t *rgba_in, uint8_t *hue_out,
-                         const int32_t height, const int32_t width) {
-  event0();
-  for (int i = 0; i < height; i++)
-    for (int j = 0; j < width; j++) {
-      int r = (int)rgba_in[i * (width * 4) + (j * 4)];
-      int g = (int)rgba_in[i * (width * 4) + (j * 4) + 1];
-      int b = (int)rgba_in[i * (width * 4) + (j * 4) + 2];
-      int h;
-      uint8_t rgbMin, rgbMax;
-
-      rgbMin = r < g ? (r < b ? r : b) : (g < b ? g : b);
-      rgbMax = r > g ? (r > b ? r : b) : (g > b ? g : b);
-
-      if (rgbMax == rgbMin) {
-        h = 0;
-      } else {
-        // Same arithmetic as rgba2hue_aie above, so the two paths agree bit
-        // for bit: inv is the Q7.9 reciprocal that lut_inv_16b holds, each
-        // half-turn offset carries the +1 that rounds the halving, and the
-        // single >>10 replaces a divide-then-(h+1)>>1 that rounded twice.
-        //
-        // Read that reciprocal out of the table the vector path already looks
-        // up rather than recomputing it: lut_inv_16b_ab[i] holds exactly
-        // (85*512)/d, so the result is unchanged while a __divsi3 call leaves
-        // the per-pixel loop. The table repeats each bank0 group of eight in
-        // bank1, so d sits at ((d>>3)<<4)|(d&7) -- shifts and a mask, which
-        // lower inline. d is a uint8_t difference and nonzero on this path,
-        // so the index stays within the table's 512 entries.
-        const uint32_t d = (uint32_t)(rgbMax - rgbMin);
-        int inv = (int)lut_inv_16b_ab[((d >> 3) << 4) | (d & 7)];
-        if (rgbMax == g)
-          h = (171 * 512 + (b - r) * inv) >> 10; // 170 + 42.5*(b-r)/d
-        else if (rgbMax == r)
-          h = (1 * 512 + (g - b) * inv) >> 10; //     0 + 42.5*(g-b)/d
-        else
-          h = (341 * 512 + (r - g) * inv) >> 10; // 340 + 42.5*(r-g)/d
-      }
-      hue_out[i * width + j] = (uint8_t)h;
-    }
-
-  event1();
-  return;
-}
-
 extern "C" {
 
 void rgba2hueLine(uint8_t *in, uint8_t *out, int32_t lineWidth) {
-#ifdef __AIE2__
-  // Vectorized path: correct and fast on AIE2 (npu1).
   rgba2hue_aie(in, out, 1, lineWidth);
-#else
-  // AIE2P (npu2): the vectorized path produces incorrect results due to
-  // differences in acc32 SRS behavior on AIE2P; use the scalar fallback,
-  // which computes the same values bit for bit.
-  rgba2hue_aie_scalar(in, out, 1, lineWidth);
-#endif
 }
 
 void rgba2hueTile(uint8_t *in, uint8_t *out, int32_t tileHeight,
                   int32_t tileWidth) {
-  rgba2hue_aie_scalar(in, out, tileHeight, tileWidth);
+  rgba2hue_aie(in, out, tileHeight, tileWidth);
 }
 
 } // extern "C"

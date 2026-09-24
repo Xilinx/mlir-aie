@@ -31,7 +31,7 @@ Finally, the output is sent from tile (0, 5) to the Mem tile and then back to th
 python3 color_detect.py
 ```
 
-`-d npu2` for Strix; `-W` / `-H` override the image dimensions.  Verifies the output against a per-stage numpy reference (rgba2hue scalar formula + threshold + bitwise OR/AND + gray2rgba) that mirrors `aie_kernels/aie2/rgba2hue.cc` `rgba2hue_aie_scalar` plus the other kernel sources.
+`-d npu2` for Strix; `-W` / `-H` override the image dimensions.  Verifies the output against a per-stage numpy reference (`kernels.rgba2hue_ref` + threshold + bitwise OR/AND + gray2rgba) that mirrors `aie_kernels/aie2/rgba2hue.cc` plus the other kernel sources.
 
 ### Makefile + C++ testbench (OpenCV)
 
