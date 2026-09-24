@@ -92,7 +92,14 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         # rehearsal cannot land half its series on the real one.
         assert options["gh-pages-branch"] == "${{ inputs.branch }}"
         assert options["comment-on-alert"] == "false"
-    assert [step["if"] for step in records[2:]] == ["inputs.static"] * 2
+    # Each NPU records only if its leg produced results, so one failed leg
+    # cannot hold back the other's publication.
+    assert [step["if"] for step in records] == [
+        "hashFiles(format('results/npu1/{0}', env.RESULT_FILE)) != ''",
+        "hashFiles(format('results/npu2/{0}', env.RESULT_FILE)) != ''",
+        "inputs.static && hashFiles('results/npu1/static-pm.json') != ''",
+        "inputs.static && hashFiles('results/npu2/static-pm.json') != ''",
+    ]
     pushes = [step for step in steps if "git push" in step.get("run", "")]
     assert len(pushes) == 1
     push_index = steps.index(pushes[0])
@@ -100,6 +107,10 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         i for i, step in enumerate(steps) if "git fetch" in step.get("run", "")
     )
     assert all(fetch_index < steps.index(step) < push_index for step in records)
+    page = next(step for step in steps if step.get("name") == "Install results page")
+    assert fetch_index < steps.index(page) < push_index
+    assert "utils/kernel_bench/index.html" in page["run"]
+    assert (WORKFLOWS.parents[1] / "utils/kernel_bench/index.html").is_file()
     baseline_index = next(
         i for i, step in enumerate(steps) if "git show" in step.get("run", "")
     )
@@ -119,6 +130,24 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         "results/npu1",
         "results/npu2",
     ]
+    # `name` fails on a missing artifact; `pattern` skips it.
+    assert all("name" not in step["with"] for step in downloads)
+    assert all("pattern" in step["with"] for step in downloads)
+
+
+def test_partial_results_are_benchmarked_and_published():
+    config = workflow("benchmarkKernels.yml")
+    assert config["concurrency"]["cancel-in-progress"] == (
+        "${{ github.event_name == 'pull_request' }}"
+    )
+    assert "github.event.pull_request.number" in config["concurrency"]["group"]
+    steps = {step.get("id"): step for step in config["jobs"]["bench"]["steps"]}
+    assert steps["bench"]["if"] == (
+        "${{ !cancelled() && steps.preflight.outcome == 'success' }}"
+    )
+    assert "--junitxml=correctness.xml" in steps["correctness"]["run"]
+    assert "--correctness-results correctness.xml" in steps["bench"]["run"]
+    assert config["jobs"]["publish"]["if"].startswith("${{ !cancelled() && ")
 
 
 def test_dispatch_filter_is_passed_as_data_not_shell_source():
@@ -126,7 +155,27 @@ def test_dispatch_filter_is_passed_as_data_not_shell_source():
     step = next(step for step in job["steps"] if step.get("id") == "bench")
     assert step["env"]["ONLY"] == "${{ github.event.inputs.only }}"
     assert "${{ github.event.inputs.only }}" not in step["run"]
-    assert '${ONLY:+-k "$ONLY"}' in step["run"]
+    assert '${ONLY:+-k "($ONLY) or test_measurement_is_sane"}' in step["run"]
+
+
+@pytest.mark.parametrize("only", ["", "softmax", "softmax and not large", "$(false)"])
+def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path):
+    steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "bench")
+    command = run[run.index("python -m pytest") :].split("2>&1", 1)[0]
+    result = subprocess.run(
+        ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
+        cwd=tmp_path,
+        env={**os.environ, "ONLY": only},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    args = result.stdout.splitlines()
+    if only:
+        assert args[-2:] == ["-k", f"({only}) or test_measurement_is_sane"]
+    else:
+        assert "-k" not in args
 
 
 def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
@@ -175,7 +224,7 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     assert "--pmode any" in run
     assert '--pmode "$BENCH_PMODE"' not in run
     read = next(step for step in steps if step.get("id") == "pmode")
-    assert read["if"] == "hashFiles('bench.json') != ''"
+    assert read["if"] == "${{ !cancelled() && hashFiles('bench.json') != '' }}"
     write_meta(tmp_path / "meta.json", "performance")
     assert run_step(read["run"], tmp_path) == {"pmode": "performance"}
     write_meta(tmp_path / "meta.json", None)
@@ -191,15 +240,59 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     assert read["if"] == "${{ !inputs.static }}"
     write_meta(tmp_path / "results/npu1/meta.json", "performance")
     write_meta(tmp_path / "results/npu2/meta.json", "turbo")
-    assert run_step(read["run"], tmp_path) == {"npu1": "performance", "npu2": "turbo"}
+    run = read["run"].replace("$RESULT_FILE", "bench.json")
+    # A leg with meta but no results (its NPU checks failed) is skipped.
+    assert run_step(run, tmp_path) == {}
+    (tmp_path / "results/npu1/bench.json").write_text("[]")
+    assert run_step(run, tmp_path) == {"npu1": "performance"}
+    (tmp_path / "results/npu2/bench.json").write_text("[]")
+    assert run_step(run, tmp_path) == {"npu1": "performance", "npu2": "turbo"}
     write_meta(tmp_path / "results/npu2/meta.json", None)
     with pytest.raises(subprocess.CalledProcessError):
-        run_step(read["run"], tmp_path)
+        run_step(run, tmp_path)
     names = [step["with"]["name"] for step in benchmark_steps(publisher)[:2]]
     for npu, name in zip(["npu1", "npu2"], names):
         assert (
             f"format('aie_kernels ({npu}, {{0}})', steps.pmode.outputs.{npu})" in name
         )
+
+
+def test_results_page_is_committed_to_the_publication_branch(tmp_path):
+    steps = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
+    page = next(step for step in steps if step.get("name") == "Install results page")
+    assert page["if"] == "${{ !inputs.static }}"
+    source = WORKFLOWS.parents[1] / "utils/kernel_bench/index.html"
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    (tmp_path / "utils/kernel_bench").mkdir(parents=True)
+    (tmp_path / "utils/kernel_bench/index.html").write_bytes(source.read_bytes())
+    git("add", ".")
+    git("commit", "-q", "-m", "main")
+    git("switch", "-q", "--orphan", "gh-pages")
+    git("commit", "-q", "--allow-empty", "-m", "pages")
+    git("switch", "-q", "main")
+
+    run = page["run"].replace("$RUNNER_TEMP", str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    for _ in range(2):  # The second run finds nothing to change.
+        subprocess.run(
+            ["bash", "-eo", "pipefail", "-c", run],
+            cwd=tmp_path,
+            env={**os.environ, "BRANCH": "gh-pages"},
+            check=True,
+        )
+        assert git("branch", "--show-current") == "main"
+    assert git("show", "gh-pages:bench/index.html") == source.read_text().strip()
+    assert git("rev-list", "--count", "gh-pages") == "2"
 
 
 @pytest.mark.parametrize(
