@@ -14,20 +14,64 @@
 // identity (tanh(x/2)+1)/2; gelu uses x*sigmoid(1.702x), a DIFFERENT curve from
 // gelu.cc's tanh approximation, so results are not bit-identical to it.
 //
-// tanh is the one architecture-specific step: AIE2P has native f32 aie::tanh;
-// AIE2 falls back to the 16-lane getTanhBf16 LUT in aie_runtime_lib/AIE2, so
-// the AIE2 path is not bit-identical and carries the LUT error (test.py budgets
-// accuracy per arch).
+// tanh is the one architecture-specific step, and on AIE2P it is a choice.
+//
+//   ACTIVATIONS_TANH_LUT=0 (AIE2P default)  aie::tanh, one vtanh instruction.
+//   ACTIVATIONS_TANH_LUT=1                  getTanhBf16, the interpolated LUT.
+//
+// They are not equally accurate: vtanh returns its argument unchanged for
+// |x| <= 0.5, so tanh(0.5) comes back 19 bf16 ulps out, where the LUT stays
+// within 5.1e-3 absolute everywhere. Whether that is worth the extra loads is
+// the caller's call, not a fixed per-architecture one. AIE2 has no tanh
+// instruction, so the LUT is its only path whatever this is set to.
+#ifndef ACTIVATIONS_TANH_LUT
+#define ACTIVATIONS_TANH_LUT 0
+#endif
 
-#if __AIE_ARCH__ >= 21
+#if __AIE_ARCH__ >= 21 && !ACTIVATIONS_TANH_LUT
 #define ACTIVATIONS_NATIVE_TANH 1
 #else
 #define ACTIVATIONS_NATIVE_TANH 0
 // Supplies getTanhBf16. Resolved from the runtime-lib include directory the
-// build adds for the target arch (aie_runtime_lib/AIE2), not from this file's
-// own directory.
+// build adds for the target arch (aie_runtime_lib/AIE2[P]), not from this
+// file's own directory. Its tables need lut_based_ops.cpp linked in, which is
+// what aie2/lut_kernel.cc exists to do.
 #include "lut_based_ops.h"
 #endif
+
+// tanh of 16 bf16 lanes, on whichever path this architecture has. This is the
+// whole of what separates the standalone bf16 activation kernels
+// (tanh/sigmoid/silu/swiglu/gelu.cc) between the two architectures, so they
+// share this rather than each carrying its own #if. 16 lanes because that is
+// what AIE2's LUT is fixed at; a 32-wide kernel splits and concatenates.
+//
+// The accumulator overload is the primitive: a caller that has just multiplied
+// holds one, and where it narrows to bf16 is exactly what differs. AIE2P feeds
+// aie::tanh the f32; AIE2 must narrow first because its LUT is bf16-in. Taking
+// bf16 here instead would force that narrowing on AIE2P too.
+__attribute__((always_inline)) inline aie::vector<bfloat16, 16>
+tanh_bf16_v16(aie::accum<accfloat, 16> x) {
+#if ACTIVATIONS_NATIVE_TANH
+  return aie::tanh<bfloat16>(x.to_vector<float>());
+#else
+  return getTanhBf16(x.to_vector<bfloat16>());
+#endif
+}
+
+// For a caller whose input is already bf16 and has no accumulator to hand.
+// Carries its own #if rather than widening into the overload above: on AIE2
+// the LUT takes bf16 directly, and the bf16 -> accum -> bf16 round trip does
+// not fold away, costing three instructions per call in tanh.cc.
+__attribute__((always_inline)) inline aie::vector<bfloat16, 16>
+tanh_bf16_v16(aie::vector<bfloat16, 16> x) {
+#if ACTIVATIONS_NATIVE_TANH
+  aie::accum<accfloat, 16> acc;
+  acc.from_vector(x, 0);
+  return aie::tanh<bfloat16>(acc.to_vector<float>());
+#else
+  return getTanhBf16(x);
+#endif
+}
 
 // Stay in f32 until the single bf16 conversion at the end. Rounding to bf16
 // before the activation rounds twice and lets the activation slope amplify the

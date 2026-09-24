@@ -48,3 +48,12 @@ upstream yet, applied automatically at CMake configure time (see
   field masks the wrapped value, which is why only the new check is affected.
   Clamp the checked value to 0 when interleaving is disabled. Reported
   upstream; drop this once it lands.
+- `0005-fix-txn-misaligned-header-writes.patch`: the `_XAie_Append*`
+  serializers in `xaie_txn.c` cast the transaction buffer cursor to a header
+  struct pointer and assign through it. Earlier ops advance the cursor by
+  4-byte multiples, so headers with a `u64` field (`Write32`, `MaskWrite32`,
+  `MaskPoll32`, `MaskPollBusy32`, `LoadPdi`, `CreateScratchpad`) land
+  misaligned, which is undefined behaviour (UBSan `alignment`). The patch
+  fills a zeroed stack header and `memcpy`s it into place, the same fix
+  upstream applied to `_XAie_AppendDDRPatch_opt` in aa07f57f. The buffer is
+  already zero-initialised, so the serialized bytes are unchanged.

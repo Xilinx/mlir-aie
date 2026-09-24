@@ -1,6 +1,6 @@
-//===- mul.cc -------------------------------------------------*- C++ -*-===//
+//===- add.cc -------------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
@@ -15,23 +15,28 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-#ifndef MUL_ELEMS
-#define MUL_ELEMS size
+#ifndef ADD_ELEMS
+#define ADD_ELEMS size
+#endif
+
+// One bf16 vector register: 512 bits on AIE2P, 256 on AIE2.
+#if __AIE_ARCH__ >= 21
+#define ADD_VEC_FACTOR 32
+#else
+#define ADD_VEC_FACTOR 16
 #endif
 
 template <typename T_in, typename T_out, const int N>
-void eltwise_mul(T_in *a, T_in *b, T_out *c) {
+void eltwise_add(T_in *a, T_in *b, T_out *c) {
   for (int i = 0; i < N; i++) {
-    c[i] = a[i] * b[i];
+    c[i] = a[i] + b[i];
   }
 }
 
 template <typename T_in, typename T_out, const int N>
-void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
+void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
 
-  // 32 bf16 = 512 bits = one AIE2P vector register (AIE2's is 256-bit and uses
-  // a 16-wide loop; see aie2/mul.cc).
-  constexpr int vec_factor = 32;
+  constexpr int vec_factor = ADD_VEC_FACTOR;
   event0();
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;
@@ -44,57 +49,54 @@ void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
     pA1 += vec_factor;
     aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
     pB1 += vec_factor;
-    // aie::mul on bf16 yields an accumulator (fp32 products); convert back to
-    // T_out explicitly.  Assigning the accumulator straight into a
-    // vector<T_out> produces garbage at this 32-wide width.
-    aie::vector<T_out, vec_factor> cout =
-        aie::mul(A0, B0).template to_vector<T_out>();
+    aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
     aie::store_v(pC1, cout);
     pC1 += vec_factor;
   }
   event1();
 }
 
-// Runtime size with a scalar tail.
+// Runtime size (need not divide vec_factor); scalar tail avoids the full-width
+// load_v/store_v reading/writing past the buffer on a short final vector.
 template <typename T_in, typename T_out>
-void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
-  constexpr int vec_factor = 32;
+void eltwise_vadd_size(T_in *a, T_in *b, T_out *c, int size) {
+  constexpr int vec_factor = ADD_VEC_FACTOR;
   event0();
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;
   T_out *__restrict pC1 = c;
-  const int F = MUL_ELEMS / vec_factor;
+  const int F = ADD_ELEMS / vec_factor;
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F; i++) {
     aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
     pA1 += vec_factor;
     aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
     pB1 += vec_factor;
-    aie::vector<T_out, vec_factor> cout =
-        aie::mul(A0, B0).template to_vector<T_out>();
+    aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
     aie::store_v(pC1, cout);
     pC1 += vec_factor;
   }
-  const int tail = MUL_ELEMS - F * vec_factor;
+  const int tail =
+      ADD_ELEMS - F * vec_factor; // pA1/pB1/pC1 point past vector body
   for (int i = 0; i < tail; i++) {
-    pC1[i] = pA1[i] * pB1[i];
+    pC1[i] = pA1[i] + pB1[i];
   }
   event1();
 }
 
 extern "C" {
 
-void eltwise_mul_bf16_scalar(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
-  eltwise_mul<bfloat16, bfloat16, 1024>(a_in, b_in, c_out);
+void eltwise_add_bf16_scalar(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
+  eltwise_add<bfloat16, bfloat16, 1024>(a_in, b_in, c_out);
 }
 
-void eltwise_mul_bf16_vector(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
-  eltwise_vmul<bfloat16, bfloat16, 1024>(a_in, b_in, c_out);
+void eltwise_add_bf16_vector(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
+  eltwise_vadd<bfloat16, bfloat16, 1024>(a_in, b_in, c_out);
 }
 
-void eltwise_mul_bf16_vector_size(bfloat16 *a_in, bfloat16 *b_in,
+void eltwise_add_bf16_vector_size(bfloat16 *a_in, bfloat16 *b_in,
                                   bfloat16 *c_out, int size) {
-  eltwise_vmul_size<bfloat16, bfloat16>(a_in, b_in, c_out, size);
+  eltwise_vadd_size<bfloat16, bfloat16>(a_in, b_in, c_out, size);
 }
 
 } // extern "C"
