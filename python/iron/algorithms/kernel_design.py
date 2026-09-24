@@ -136,7 +136,7 @@ def _encode_params(fn, params):
     return tuple(encoded)
 
 
-def _stage(fn, calls, scalars, params):
+def _stage(fn, calls, scalars, params, stack_bytes):
     """Plan the Worker: fifos per input group and output, buffers per Param, the call itself."""
     c = _contract(fn)
     types = fn.arg_types()
@@ -172,7 +172,7 @@ def _stage(fn, calls, scalars, params):
     # Two sets of tiles (ping-pong) when they fit beside the parameters and
     # the stack, one otherwise.
     tile_bytes = sum(nbytes(i) for i in [*ins, *outs])
-    fixed_bytes = sum(nbytes(i) for i in param_pos) + _stack_bytes(fn)
+    fixed_bytes = sum(nbytes(i) for i in param_pos) + stack_bytes
     core_bytes = _device().core_memory_bytes
     depth = next(
         (d for d in (2, 1) if d * tile_bytes + fixed_bytes <= core_bytes), None
@@ -227,15 +227,22 @@ def _stage(fn, calls, scalars, params):
         iterations=calls,
         prologue=(lambda constants: constants[-1]()) if setter else None,
         initialize=initialize if initializers else None,
-        stack_size=_stack_bytes(fn),
+        stack_size=stack_bytes,
     )
 
 
 def _build_stream(
-    *, factory, factory_kwargs, calls, scalars=(), params=(), trace_config=None
+    *,
+    factory,
+    factory_kwargs,
+    calls,
+    stack_bytes,
+    scalars=(),
+    params=(),
+    trace_config=None,
 ):
     fn = factory(**factory_kwargs)
-    stage = _stage(fn, calls, tuple(scalars), params)
+    stage = _stage(fn, calls, tuple(scalars), params, stack_bytes)
     stage.trace = trace_config is not None
     types = fn.arg_types()
 
@@ -270,6 +277,7 @@ def _stream(
     factory: CompileTime[Callable],
     factory_kwargs: CompileTime[dict],
     calls: CompileTime[int],
+    stack_bytes: CompileTime[int],
     scalars: CompileTime[tuple] = (),
     params: CompileTime[tuple] = (),
     trace_config: CompileTime[TraceConfig | None] = None,
@@ -278,6 +286,7 @@ def _stream(
         factory=factory,
         factory_kwargs=factory_kwargs,
         calls=calls,
+        stack_bytes=stack_bytes,
         scalars=scalars,
         params=params,
         trace_config=trace_config,
@@ -321,6 +330,9 @@ def design(
         factory=factory,
         factory_kwargs=factory_kwargs,
         calls=calls,
+        # A key of its own: the contract that sets it can change in a module
+        # the cache key never reads, and a stale stack overflows silently.
+        stack_bytes=_stack_bytes(fn),
         scalars=tuple(scalars),
         params=_encode_params(fn, params or ()),
         **({"aiecc_flags": flags} if flags else {}),

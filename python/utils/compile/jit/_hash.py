@@ -33,6 +33,7 @@ import hashlib
 import json
 import logging
 import marshal
+import os
 from pathlib import Path
 from types import CodeType
 from typing import Any, Callable, Mapping
@@ -276,6 +277,10 @@ def _compute_artifact_hash(
             tools["host_cxx"] = _config.host_cxx_path
         for name, resolve in tools.items():
             h.update(f"{name}={_tool_identity(name, resolve)}".encode())
+        # Library factories pick their sources from this tree when the
+        # generator runs, after the key is taken, so the key names the tree.
+        if kernel_tree := os.environ.get("MLIR_AIE_KERNEL_SOURCES"):
+            h.update(f"kernel_sources={kernel_tree}".encode())
 
     return h.hexdigest()
 
