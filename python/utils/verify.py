@@ -254,6 +254,17 @@ class Tolerance:
     Non-finite values are never skipped: NaN must meet NaN, and an infinity
     must meet an infinity of the same sign, under every kind.
 
+    ``range_frac`` adds a floor scaled to the reference's own range: an element
+    also passes at ``|a - b| <= range_frac * max|b|``. It is for a kernel whose
+    error is set by the magnitudes it worked from rather than by the magnitude
+    it produced -- a dot product whose terms cancel to near zero is no less
+    accurate than its neighbours, but an elementwise relative bound reads it as
+    100% wrong. The scale comes from ``expected``, never from ``actual``, so a
+    kernel cannot widen its own tolerance by returning something large. Unlike
+    ``atol`` it follows the data: the same fraction holds whether the outputs
+    run to 34 or to 3.4e9, where a fixed floor would be either dead or
+    permissive. Set it from a measured worst case, and say so in ``note``.
+
     ``max_mismatch_frac`` allows that fraction of elements to miss (LUT tails,
     saturation edges). ``note`` records where the number came from -- a
     docstring, a device run, a testbench default -- so a reviewer can tell an
@@ -263,8 +274,20 @@ class Tolerance:
     rtol: float | None = None
     atol: float | None = None
     ulps: int | None = None
+    range_frac: float | None = None
     max_mismatch_frac: float = 0.0
     note: str = ""
+
+    def __post_init__(self):
+        if self.range_frac is None:
+            return
+        if self.range_frac <= 0:
+            raise ValueError(f"range_frac must be positive, got {self.range_frac}")
+        if self.kind == "exact":
+            raise ValueError(
+                "range_frac needs a tolerance to be a floor under; set rtol, atol "
+                "or ulps as well, or drop it -- an exact comparison admits nothing"
+            )
 
     @property
     def kind(self) -> str:
@@ -302,10 +325,17 @@ class Tolerance:
         rtol: float = _DEFAULT_RTOL,
         atol: float | None = None,
         *,
+        range_frac: float | None = None,
         max_mismatch_frac: float = 0.0,
         note: str = "",
     ) -> "Tolerance":
-        return cls(rtol=rtol, atol=atol, max_mismatch_frac=max_mismatch_frac, note=note)
+        return cls(
+            rtol=rtol,
+            atol=atol,
+            range_frac=range_frac,
+            max_mismatch_frac=max_mismatch_frac,
+            note=note,
+        )
 
     @classmethod
     def lsb(
@@ -414,6 +444,15 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         )
     a, e, n = actual.ravel(), expected.ravel(), actual.size
 
+    def ref_scale(ref) -> float:
+        """max|ref| over its finite entries -- what ``range_frac`` is a fraction
+        of, and 0 when no range floor is in play."""
+        if tol.range_frac is None or not n:
+            return 0.0
+        mag = np.abs(np.asarray(ref, dtype=np.float64))
+        mag = mag[np.isfinite(mag)]
+        return float(mag.max()) if mag.size else 0.0
+
     # Integers: bit-exact under exact / ulps; under a relative tolerance the
     # nearly_equal formula in int64 (Tolerance.lsb sets atol = n + 0.5).
     if np.issubdtype(actual.dtype, np.integer) or actual.dtype == np.bool_:
@@ -425,14 +464,16 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         e_cast = e.astype(actual.dtype)
         a64, e64 = a.astype(np.int64), e_cast.astype(np.int64)
         err = np.abs(a64 - e64)
+        scale = ref_scale(e64)
         if tol.kind == "relative":
             bound = np.maximum(
-                tol.atol or 0.0, (tol.rtol or 0.0) * (np.abs(a64) + np.abs(e64))
+                max(tol.atol or 0.0, (tol.range_frac or 0.0) * scale),
+                (tol.rtol or 0.0) * (np.abs(a64) + np.abs(e64)),
             )
             bad = ~(err < bound)
         else:
             bad = a != e_cast
-        v = _verdict(bad, err, None, tol, n)
+        v = _verdict(bad, err, None, tol, n, ref_range=scale)
         if n_over and not v.ok:
             # Not a policy, a diagnostic: the reference left the output range,
             # so what the device did there says nothing about the kernel.
@@ -463,10 +504,12 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         err[finite] = np.abs(a32[finite] - e_bf[finite].astype(np.float32))
         max_ulps = tol.ulps if tol.ulps is not None else 0
         within = ulp <= max_ulps
-        if tol.atol is not None:
-            within |= err <= tol.atol
+        scale = ref_scale(e_bf.astype(np.float32))
+        floor = max(tol.atol or 0.0, (tol.range_frac or 0.0) * scale)
+        if floor:
+            within |= err <= floor
         bad = nonfinite_bad | (finite & ~within)
-        return _verdict(bad, err, ulp, tol, n, nonfinite_bad)
+        return _verdict(bad, err, ulp, tol, n, nonfinite_bad, ref_range=scale)
 
     if tol.kind == "exact":
         e_cast = e32.astype(actual.dtype).astype(np.float32)
@@ -475,12 +518,18 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         return _verdict(bad, err, None, tol, n, nonfinite_bad)
 
     err[finite] = np.abs(a32[finite].astype(np.float64) - e32[finite])
-    close = nearly_equal(a32, e32, rtol=tol.rtol or 0.0, atol=tol.atol)
+    scale = ref_scale(e32)
+    floor = max(tol.atol or 0.0, (tol.range_frac or 0.0) * scale)
+    close = nearly_equal(
+        a32, e32, rtol=tol.rtol or 0.0, atol=floor if floor or tol.atol else None
+    )
     bad = nonfinite_bad | (finite & ~close)
-    return _verdict(bad, err, None, tol, n, nonfinite_bad)
+    return _verdict(bad, err, None, tol, n, nonfinite_bad, ref_range=scale)
 
 
-def _verdict(bad, err, ulp, tol: Tolerance, n: int, nonfinite_bad=None) -> Verdict:
+def _verdict(
+    bad, err, ulp, tol: Tolerance, n: int, nonfinite_bad=None, ref_range: float = 0.0
+) -> Verdict:
     n_bad = int(np.count_nonzero(bad))
     # A non-finite mismatch must fail regardless of max_mismatch_frac: that
     # budget is for how close a finite value came, not for whether NaN/Inf
@@ -498,6 +547,13 @@ def _verdict(bad, err, ulp, tol: Tolerance, n: int, nonfinite_bad=None) -> Verdi
         detail = f"{n_bad}/{n} mismatches; first at flat index {first}; max_abs_err={max_err:.4g}"
         if max_ulp is not None:
             detail += f"; max_ulp={max_ulp}"
+        if ref_range > 0:
+            # The quantity range_frac is stated in, so a failure says directly
+            # whether the bound wants raising or the kernel is wrong.
+            detail += (
+                f"; max_abs_err/max|expected|={max_err / ref_range:.4g}"
+                f" vs range_frac={tol.range_frac:.4g}"
+            )
         if tol.note:
             detail += f" [{tol.kind}: {tol.note}]"
     return Verdict(ok, n, n_bad, max_err, max_ulp, first, detail)

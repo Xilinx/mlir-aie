@@ -186,6 +186,71 @@ def test_ulps_atol_floor_admits_a_flushed_subnormal():
     ).ok
 
 
+def test_range_frac_admits_an_output_its_own_terms_cancelled():
+    """The case the floor exists for: a dot product that cancelled to near zero.
+
+    Its error is set by the operands, not by the sum, so an elementwise
+    relative bound reads it as entirely wrong while its neighbours pass.
+    """
+    ref = np.array([1000.0, -1000.0, 0.01], np.float32)
+    got = np.array([1000.0, -1000.0, 0.31], np.float32)  # 0.3 absolute, everywhere
+
+    assert not compare(got, ref, Tolerance.relative(0.05)).ok
+    # 0.3 is 3e-4 of the 1000 range -- the same absolute error the two large
+    # outputs carry and are forgiven for.
+    assert compare(got, ref, Tolerance.relative(0.05, range_frac=1e-3)).ok
+
+
+def test_range_frac_follows_the_range_where_a_fixed_atol_cannot():
+    """One fraction holds at both scales; one atol can only suit one of them."""
+    tol = Tolerance.relative(0.0, range_frac=1e-3)
+    for scale in (34.0, 3.4e9):
+        ref = np.array([scale, 0.0], np.float32)
+        assert compare(np.array([scale, 5e-4 * scale], np.float32), ref, tol).ok
+        assert not compare(np.array([scale, 2e-3 * scale], np.float32), ref, tol).ok
+
+
+def test_range_frac_scales_to_the_reference_not_the_output():
+    """A kernel returning something large must not thereby widen its own bound.
+
+    One wild element is inside the mismatch budget, so what decides the verdict
+    is the second: under a bound scaled to ``got`` its 0.5 would sit far below
+    the floor and the run would pass on the strength of the wild element alone.
+    """
+    ref = np.array([1.0, 1.0, 0.0], np.float32)
+    got = np.array([1e6, 1.0, 0.5], np.float32)
+    tol = Tolerance.relative(0.0, range_frac=1e-3, max_mismatch_frac=1 / 3)
+
+    assert compare(got[1:], ref[1:], tol).ok is False  # 0.5 misses on its own
+    assert not compare(got, ref, tol).ok
+
+
+def test_range_frac_reports_the_fraction_it_measured():
+    ref = np.array([100.0, 0.0], np.float32)
+    got = np.array([100.0, 5.0], np.float32)
+    detail = compare(got, ref, Tolerance.relative(0.0, range_frac=1e-3)).detail
+    assert "max_abs_err/max|expected|=0.05" in detail
+    assert "range_frac=0.001" in detail
+
+
+def test_range_frac_applies_to_ulps_and_integer_kinds():
+    ref = np.array([256.0, 0.0], np.float32)
+    got = np.array([256.0, 1.0], bfloat16)  # 1.0 is many ulps from 0
+    assert not compare(got, ref, Tolerance.bf16_ulps(1)).ok
+    assert compare(got, ref, Tolerance(ulps=1, range_frac=0.01)).ok
+
+    ints = (np.array([256, 2], np.int32), np.array([256, 0], np.int32))
+    assert not compare(*ints, Tolerance.relative(0.0, 1.0)).ok
+    assert compare(*ints, Tolerance.relative(0.0, range_frac=0.01)).ok
+
+
+def test_range_frac_needs_a_tolerance_to_be_a_floor_under():
+    with pytest.raises(ValueError, match="admits nothing"):
+        Tolerance(range_frac=1e-3)
+    with pytest.raises(ValueError, match="must be positive"):
+        Tolerance(rtol=0.1, range_frac=0.0)
+
+
 def test_ulps_tolerance_rejects_non_bf16_output():
     with pytest.raises(ValueError, match="bfloat16"):
         compare(np.zeros(2, np.float32), np.zeros(2), Tolerance.bf16_ulps(1))
