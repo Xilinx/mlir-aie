@@ -18,15 +18,6 @@ passthrough (no core), so the read-back directly exposes the pad fill.
 import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
-from aie.dialects.aie import EndOp
-from aie.dialects.aiex import (
-    bds,
-    dma_await_task,
-    dma_configure_task,
-    dma_free_task,
-    dma_start_task,
-    shim_dma_bd,
-)
 from aie.iron import (
     Acquire,
     Bd,
@@ -57,6 +48,7 @@ def tile_dma_pad(a: In, c: Out):
     mem = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
     mem_buf = Buffer(type=mem_ty, tile=mem, name="mem_buf")
     p, cl = Lock(tile=mem, init=1, name="p"), Lock(tile=mem, init=0, name="c")
+    flow_in, flow_out = Flow(shim, mem), Flow(mem, shim)
 
     # Bd carries the per-BD pad geometry; DmaChannel carries the per-channel value.
     mem_dma = TileDma(
@@ -64,7 +56,7 @@ def tile_dma_pad(a: In, c: Out):
         channels=[
             DmaChannel(
                 direction=DMAChannelDir.S2MM,
-                channel=0,
+                channel=flow_in.endpoint(mem),
                 bds=[
                     Bd(
                         buffer=mem_buf,
@@ -76,7 +68,7 @@ def tile_dma_pad(a: In, c: Out):
             ),
             DmaChannel(
                 direction=DMAChannelDir.MM2S,
-                channel=0,
+                channel=flow_out.endpoint(mem),
                 pad_value=PAD_VALUE,
                 bds=[
                     Bd(
@@ -92,25 +84,10 @@ def tile_dma_pad(a: In, c: Out):
             ),
         ],
     )
-    flow_in = Flow(src=shim, dst=mem, src_channel=0, dst_channel=0)
-    flow_out = Flow(src=mem, dst=shim, src_channel=0, dst_channel=0)
 
     def seq(A, C):
-        a_task = dma_configure_task(shim.op, DMAChannelDir.MM2S, 0)
-        with bds(a_task) as bd:
-            with bd[0]:
-                shim_dma_bd(A.op, offset=0, sizes=[1, 1, 1, REAL], strides=[0, 0, 0, 1])
-                EndOp()
-        out_task = dma_configure_task(shim.op, DMAChannelDir.S2MM, 0, issue_token=True)
-        with bds(out_task) as bd:
-            with bd[0]:
-                shim_dma_bd(
-                    C.op, offset=0, sizes=[1, 1, 1, REGION], strides=[0, 0, 0, 1]
-                )
-                EndOp()
-        dma_start_task(a_task, out_task)
-        dma_await_task(out_task)
-        dma_free_task(a_task)
+        flow_in.fill(A)
+        flow_out.drain(C, wait=True)
 
     rt = Runtime(
         seq,

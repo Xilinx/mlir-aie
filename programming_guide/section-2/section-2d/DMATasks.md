@@ -243,7 +243,7 @@ dma_free_task(in_task, out_task)
 
 #### **The DMA Task Queue**
 
-Each DMA channel has a *task queue* holding a bounded number of outstanding transfers -- 4 on AIE2. Starting a task pushes onto that channel's queue; the transfer leaves the queue as the DMA runs it.
+Each DMA channel has a *task queue* holding a bounded number of outstanding transfers -- 4 on AIE2, read in IRON as `dev.dma_task_queue_depth`. Starting a task pushes onto that channel's queue; the transfer leaves the queue as the DMA runs it.
 
 The queue does **not** backpressure. A push that arrives when the queue is full is dropped, the transfer never runs, and anything waiting on it (a `dma_await_task`, or a downstream receive) blocks forever. Nothing reports this at the time it happens.
 

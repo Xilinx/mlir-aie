@@ -8,7 +8,7 @@
 # Core Data Memory
 
 Every AIE compute tile has one small block of local data memory, 64 kB on npu2
-for example. Three things share that block:
+for example; IRON reads the size as `dev.core_memory_bytes`. Three things share that block:
 
 - the **stack**, at offset zero by default;
 - the **`aie.buffer`s** that the buffer allocator places on the tile: the L1
@@ -42,8 +42,8 @@ build reports the number to set and stops.
 
 `stack_size` is a per-core attribute on `aie.core`. A core that leaves it
 absent uses the target default from
-`AIETargetModel::getDefaultCoreStackSize()`, currently 1024 bytes. IRON spells
-it on the `Worker`:
+`AIETargetModel::getDefaultCoreStackSize()`, currently 1024 bytes, which IRON
+reads as `dev.default_core_stack_bytes`. IRON spells it on the `Worker`:
 
 ```python
 Worker(core_fn, [args], stack_size=4096)

@@ -48,11 +48,9 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, LockAction
-from aie.dialects.aie import EndOp, bds, dma_bd, next_bd, use_lock
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 from aie.dialects.aiex import (
     dma_await_task,
-    dma_configure_task,
     dma_start_task,
     shim_dma_single_bd_task,
 )
@@ -73,6 +71,7 @@ from aie.iron import (
     Runtime,
     TileDma,
     Worker,
+    tile_dma_chain,
 )
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -80,8 +79,6 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 OOO_ID_MASK = 0x3F  # out-of-order id header field is 6-bit
-MAX_LOCK_VALUE = 0x3F  # AIE lock value is 6-bit
-MAX_REPEAT_FIELD = 0xFF  # DMA start-queue repeat field is 8-bit
 MAX_BD_ITER = 64  # BD iteration wrap (aie-rt IterWrapMax + 1)
 
 
@@ -104,7 +101,18 @@ def _chan_base(kc, r, lo, M, rounds):
     return lo + r * M + kc * rounds * M
 
 
-def _recv_bds(buf, ids, off, ms, tw, con):
+def _slot_walk(m, tw, runtime):
+    # A slot spreads its m packets over m tw-word sub-buffers. A runtime chain
+    # takes that iteration from the outermost sizes/strides dim, since it
+    # rejects Bd.iteration; a one-packet slot stays linear.
+    if not runtime:
+        return dict(iteration=BdIteration(size=m, stride=tw))
+    if m == 1:
+        return {}
+    return dict(sizes=[m, 1, 1, tw], strides=[tw, 0, 0, 1])
+
+
+def _recv_bds(buf, ids, off, ms, tw, con, runtime=False):
     return [
         Bd(
             buffer=buf,
@@ -112,8 +120,8 @@ def _recv_bds(buf, ids, off, ms, tw, con):
             length=tw,
             bd_id=ids[j],
             packet=(0, 0),
-            iteration=BdIteration(size=ms[j], stride=tw),
             releases=[Release(con, value=1)],
+            **_slot_walk(ms[j], tw, runtime),
         )
         for j in range(len(ids))
     ]
@@ -159,30 +167,33 @@ def dma_s2mm_ooo(
     k = repeat_count  # extra merge rounds; rounds = k + 1
     rounds = k + 1
 
+    dev = iron.get_current_device()
+    max_lock = dev.max_lock_value
+    max_repeat = dev.max_repeat_count
+    core_bds = dev.get_num_bds(AIETileType.CoreTile)
+
     # Guard the reusable API directly: an out-of-range config would otherwise hang
     # or lower silently wrong rather than raise. The CLI repeats these friendlier.
     if k < 0:
         raise ValueError("repeat_count must be >= 0")
-    if M > MAX_LOCK_VALUE:
+    if M > max_lock:
         raise ValueError(
-            f"total packets {M} exceeds the completion-lock ceiling "
-            f"{MAX_LOCK_VALUE} (an AIE lock value is 6-bit)"
+            f"total packets {M} exceeds the completion-lock ceiling {max_lock}"
         )
-    if M * rounds - 1 > MAX_REPEAT_FIELD:
+    if M * rounds - 1 > max_repeat:
         raise ValueError(
             f"total packets over all rounds (M*(k+1) = {M * rounds}) exceed the "
-            f"out-of-order repeat field, which encodes M*(k+1)-1 <= {MAX_REPEAT_FIELD}"
+            f"out-of-order repeat field, which encodes M*(k+1)-1 <= {max_repeat}"
         )
-    if k > 0 and c * max(ms) > MAX_LOCK_VALUE:
+    if k > 0 and c * max(ms) > max_lock:
         raise ValueError(
             f"per-round send credit c*max(ms) = {c * max(ms)} exceeds the "
-            f"6-bit lock ceiling {MAX_LOCK_VALUE} (the sender go credit is one lock)"
+            f"lock ceiling {max_lock} (the sender go credit is one lock)"
         )
-    if rounds > MAX_LOCK_VALUE:
+    if rounds > max_lock:
         raise ValueError(
-            f"rounds (k+1) = {rounds} exceeds the 6-bit lock ceiling "
-            f"{MAX_LOCK_VALUE} (each sender's token-credit lock is initialized to "
-            "rounds)"
+            f"rounds (k+1) = {rounds} exceeds the lock ceiling {max_lock} "
+            "(each sender's token-credit lock is initialized to rounds)"
         )
     if max(ms) * rounds > MAX_BD_ITER:
         raise ValueError(
@@ -190,15 +201,15 @@ def dma_s2mm_ooo(
             f"exceeds the BD iteration cap {MAX_BD_ITER} (the sender walks all "
             "rounds from one BD)"
         )
-    if k > 0 and recv_is_core and c == 2 and n > 6:
+    if k > 0 and recv_is_core and c == 2 and 2 * n + 3 > core_bds:
         raise ValueError(
-            f"core receiver, 2 channels, repeat_count>0 supports at most 6 senders "
-            f"(got n={n}): 2n receive + 3 drain/token BDs must fit the 16-BD core tile budget"
+            f"core receiver, 2 channels, repeat_count>0 (got n={n}): 2n receive + 3 "
+            f"drain/token BDs must fit the {core_bds}-BD core tile budget"
         )
-    if recv_is_core and c == 2 and n > 7:
+    if recv_is_core and c == 2 and 2 * (n + 1) > core_bds:
         raise ValueError(
-            f"core receiver with 2 channels supports at most 7 senders (got n={n}): "
-            "c*(n+1) receive+egress BDs must fit the 16-BD core tile budget"
+            f"core receiver with 2 channels (got n={n}): c*(n+1) receive+egress "
+            f"BDs must fit the {core_bds}-BD core tile budget"
         )
     if recv_backpressure:
         if n != 1:
@@ -212,11 +223,11 @@ def dma_s2mm_ooo(
             raise ValueError(
                 "recv_backpressure needs repeat_count>0 (it gates buffer reuse)"
             )
-        if M * rounds > MAX_LOCK_VALUE:
+        if M * rounds > max_lock:
             raise ValueError(
                 f"recv_backpressure launch credit M*(k+1) = {M * rounds} exceeds the "
-                f"6-bit lock ceiling {MAX_LOCK_VALUE} (the sender streams every round "
-                "from one credit)"
+                f"lock ceiling {max_lock} (the sender streams every round from one "
+                "credit)"
             )
 
     if recv_runtime:
@@ -472,7 +483,7 @@ def dma_s2mm_ooo(
         # its allocator already avoids the collision, so leave it alone.
         pin_ids = recv_runtime and recv_is_core
         recv_id_union = {x for kc2 in range(c) for x in _slot_ids(recv_is_core, kc2, n)}
-        free_ids = [i for i in range(16) if i not in recv_id_union]
+        free_ids = [i for i in range(core_bds) if i not in recv_id_union]
         for kc in range(c):
             ids = _slot_ids(recv_is_core, kc, n)
             recv_bds = _recv_bds(bufs[kc], ids, off, ms, tw, cons[kc])
@@ -628,43 +639,17 @@ def dma_s2mm_ooo(
 
     def sequence(c_h):
         # Runtime receiver path: arm each ooo S2MM merge channel from the host
-        # sequence with dma_configure_task {out_of_order}. The chain only configures
-        # the BDs; hardware ignores Use_Next_BD and places each packet by header id.
+        # sequence. The chain only configures the BDs; hardware ignores
+        # Use_Next_BD and places each packet by header id.
         for kc, ids in runtime_recv:
-            task = dma_configure_task(
-                receiver.op,
+            tile_dma_chain(
+                receiver,
                 DMAChannelDir.S2MM,
                 kc,
+                _recv_bds(bufs[kc], ids, off, ms, tw, cons[kc], runtime=True),
                 repeat_count=M * rounds - 1,
                 out_of_order=True,
             )
-            with bds(task) as bd:
-                for j in range(n):
-                    with bd[j]:
-                        # ms[j] packets per slot spread across ms[j] sub-buffers via
-                        # BD iteration. The runtime-sequence path takes iteration from
-                        # the outermost sizes/strides dim (repeat count), not the static
-                        # BdIteration attr (rejected here); the tw-word contiguous
-                        # transfer is the innermost dim. An ms[j]==1 slot stays linear.
-                        nd = (
-                            dict(sizes=[ms[j], 1, 1, tw], strides=[tw, 0, 0, 1])
-                            if ms[j] > 1
-                            else {}
-                        )
-                        dma_bd(
-                            bufs[kc].op,
-                            offset=off[j] * tw,
-                            transfer_len=tw,
-                            bd_id=ids[j],
-                            packet=(0, 0),
-                            **nd,
-                        )
-                        use_lock(cons[kc].op, LockAction.Release, value=1)
-                        if j + 1 < n:
-                            next_bd(bd[j + 1])
-                        else:
-                            EndOp()
-            dma_start_task(task)
 
         # Drain each channel's merged buffer round-major; each drain self-gates
         # on-chip on the channel's ooo_cons count.
@@ -692,7 +677,7 @@ def dma_s2mm_ooo(
     rt.add_tile_dma(recv_dma)
     for sd in sender_dmas:
         rt.add_tile_dma(sd)
-    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+    return Program(dev, rt, workers=workers).resolve_program()
 
 
 def _compile_kwargs(opts):
@@ -813,22 +798,30 @@ def main():
         "sender-side barrier (requires -n 1, --channels 1, --repeat-count > 0)",
     )
     opts = p.parse_args()
+    dev = device_from_args(opts, n_cols=None)
+    max_lock = dev.max_lock_value
+    max_repeat = dev.max_repeat_count
+    core_bds = dev.get_num_bds(AIETileType.CoreTile)
     if not (1 <= opts.sources <= 8):
         sys.exit("--sources must be between 1 and 8")
     if (
         opts.repeat_count > 0
         and opts.recv_tile == "core"
         and opts.channels == 2
-        and opts.sources > 6
+        and 2 * opts.sources + 3 > core_bds
     ):
         sys.exit(
-            "core receiver, 2 channels, --repeat-count > 0 supports at most 6 "
-            "senders: 2n receive + 3 drain/token BDs > the 16-BD core tile budget"
+            "core receiver, 2 channels, --repeat-count > 0: 2n receive + 3 "
+            f"drain/token BDs > the {core_bds}-BD core tile budget"
         )
-    if opts.recv_tile == "core" and opts.channels == 2 and opts.sources > 7:
+    if (
+        opts.recv_tile == "core"
+        and opts.channels == 2
+        and 2 * (opts.sources + 1) > core_bds
+    ):
         sys.exit(
-            "core receiver with 2 channels supports at most 7 senders: "
-            "c*(n+1) = 2*(8+1) = 18 > the 16-BD core tile budget"
+            "core receiver with 2 channels: c*(n+1) receive+egress BDs > "
+            f"the {core_bds}-BD core tile budget"
         )
     if opts.tile_words < 1:
         sys.exit("--tile-words must be >= 1")
@@ -841,31 +834,31 @@ def main():
         if opts.nonuniform
         else (opts.sources * opts.packets)
     )
-    if total > MAX_LOCK_VALUE:
+    if total > max_lock:
         sys.exit(
-            f"total packets must be <= {MAX_LOCK_VALUE} "
+            f"total packets must be <= {max_lock} "
             "(out-of-order completion-lock value ceiling)"
         )
     if opts.repeat_count < 0:
         sys.exit("--repeat-count must be >= 0")
     cnt_max = opts.sources if opts.nonuniform else opts.packets
-    if opts.repeat_count > 0 and opts.channels * cnt_max > MAX_LOCK_VALUE:
+    if opts.repeat_count > 0 and opts.channels * cnt_max > max_lock:
         sys.exit(
             f"per-round send credit channels*max(ms) = "
-            f"{opts.channels * cnt_max} must be <= {MAX_LOCK_VALUE} "
-            "(the sender go credit is a single 6-bit lock)"
+            f"{opts.channels * cnt_max} must be <= {max_lock} "
+            "(the sender go credit is a single lock)"
         )
     rounds = opts.repeat_count + 1
-    if rounds > MAX_LOCK_VALUE:
+    if rounds > max_lock:
         sys.exit(
             f"--repeat-count too large: rounds (k+1) = {rounds} must be <= "
-            f"{MAX_LOCK_VALUE} (each sender's token-credit lock is initialized to "
-            "rounds, a single 6-bit lock)"
+            f"{max_lock} (each sender's token-credit lock is initialized to "
+            "rounds, a single lock)"
         )
-    if total * rounds - 1 > MAX_REPEAT_FIELD:
+    if total * rounds - 1 > max_repeat:
         sys.exit(
-            f"total packets over all rounds ({total * rounds}) exceed the 8-bit "
-            f"repeat field (the out-of-order channel encodes M*(k+1)-1 <= {MAX_REPEAT_FIELD})"
+            f"total packets over all rounds ({total * rounds}) exceed the "
+            f"repeat field (the out-of-order channel encodes M*(k+1)-1 <= {max_repeat})"
         )
     if opts.repeat_count > 0 and cnt_max * rounds > MAX_BD_ITER:
         sys.exit(
@@ -884,10 +877,10 @@ def main():
             sys.exit(
                 "--recv-backpressure needs --repeat-count > 0 (it gates buffer reuse)"
             )
-        if total * rounds > MAX_LOCK_VALUE:
+        if total * rounds > max_lock:
             sys.exit(
                 f"--recv-backpressure launch credit M*(k+1) = {total * rounds} must "
-                f"be <= {MAX_LOCK_VALUE} (the sender streams every round from one credit)"
+                f"be <= {max_lock} (the sender streams every round from one credit)"
             )
     if opts.recv_config == "runtime":
         if opts.recv_backpressure:
@@ -897,7 +890,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: device_from_args(o, n_cols=None),
+        device=dev,
     )
 
 
