@@ -14,6 +14,7 @@
 // only moves bytes, so the unsigned integer of that width stands in for any
 // dtype: the library's bf16 transpose is BIT_WIDTH=16.
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <algorithm>
 #include <cstdint>
@@ -44,8 +45,11 @@ static_assert(OUTER_SIZE % COPY_VEC == 0);
 extern "C" {
 
 void copy(T *__restrict in_ptr, T *__restrict out_ptr) {
-  for (unsigned i = 0; i < OUTER_SIZE; i += COPY_VEC)
-    aie::store_v(out_ptr + i, aie::load_v<COPY_VEC>(in_ptr + i));
+  auto src = aie::begin_restrict_vector<COPY_VEC>(in_ptr);
+  auto dst = aie::begin_restrict_vector<COPY_VEC>(out_ptr);
+  AIE_LOOP_UNROLL(2)
+  for (unsigned i = 0; i < OUTER_SIZE / COPY_VEC; ++i)
+    *dst++ = *src++;
 }
 }
 
@@ -68,29 +72,45 @@ static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
   static_assert(H == 1 || R * BIT_WIDTH >= 128,
                 "chunks must fill a 128-bit vector");
 
-  for (unsigned row = 0; row < DIM_n; row += S) {
-    for (unsigned col = 0; col < DIM_m; col += W) {
-      aie::vector<T, R * W> strips[H];
-      for (unsigned h = 0; h < H; ++h) {
-        aie::vector<T, R * W> a;
-        for (unsigned i = 0; i < R; ++i) {
-          const T *src = in + (row + h * R + i) * DIM_m + col;
-          a.insert(i, aie::transpose(aie::load_v<W>(src), C, S));
-        }
-        strips[h] = aie::transpose(a, R, W);
+  // The row and column walks are fused into one counter so that the strip
+  // body is the innermost loop: as a nest the pipeliner declines the outer
+  // loops and schedules nothing, whereas the fused loop is a single body it
+  // pipelines. The strip's own loops all have compile-time trip counts of at
+  // most S and index the vectors with the counter, so unrolling them keeps
+  // `strips` in registers instead of on the stack.
+  unsigned row = 0, col = 0;
+  for (unsigned blk = 0; blk < (DIM_n / S) * (DIM_m / W); ++blk) {
+    aie::vector<T, R * W> strips[H];
+    AIE_LOOP_UNROLL_FULL
+    for (unsigned h = 0; h < H; ++h) {
+      aie::vector<T, R * W> a;
+      AIE_LOOP_UNROLL_FULL
+      for (unsigned i = 0; i < R; ++i) {
+        const T *src = in + (row + h * R + i) * DIM_m + col;
+        a.insert(i, aie::transpose(aie::load_v<W>(src), C, S));
       }
-      for (unsigned q = 0; q < S; ++q) {
-        T *dst = out + (row + q) * DIM_m + col;
-        if constexpr (H == 1) {
-          aie::store_v(dst, strips[0].template extract<W>(q));
-        } else {
-          aie::vector<T, W> o;
-          for (unsigned c = 0; c < C; ++c)
-            for (unsigned h = 0; h < H; ++h)
-              o.insert(c * H + h, strips[h].template extract<R>(q * C + c));
-          aie::store_v(dst, o);
+      strips[h] = aie::transpose(a, R, W);
+    }
+    AIE_LOOP_UNROLL_FULL
+    for (unsigned q = 0; q < S; ++q) {
+      T *dst = out + (row + q) * DIM_m + col;
+      if constexpr (H == 1) {
+        aie::store_v(dst, strips[0].template extract<W>(q));
+      } else {
+        aie::vector<T, W> o;
+        AIE_LOOP_UNROLL_FULL
+        for (unsigned c = 0; c < C; ++c) {
+          AIE_LOOP_UNROLL_FULL
+          for (unsigned h = 0; h < H; ++h)
+            o.insert(c * H + h, strips[h].template extract<R>(q * C + c));
         }
+        aie::store_v(dst, o);
       }
+    }
+    col += W;
+    if (col == DIM_m) {
+      col = 0;
+      row += S;
     }
   }
 }
