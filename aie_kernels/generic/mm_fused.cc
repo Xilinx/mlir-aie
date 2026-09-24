@@ -169,6 +169,7 @@ void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
                              int32_t clamp_max_bits) {
   // The store below is a conversion, so it obeys the same rounding mode the
   // mmul does and must agree with it.
+  event0();
   ::aie::set_rounding(round_mode);
   const float *__restrict src = y_acc + (outer * C_DEPTH + half) * CHUNK;
   // __builtin_bit_cast, not memcpy: memcpy leaves an unresolved external
@@ -180,23 +181,24 @@ void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
 #if MM_FUSED_EPILOGUE_MODE_MASK & 2
   case 1:
     epilogue_body<1>(y_out, src, clamp_min, clamp_max);
-    return;
+    break;
 #endif
 #if MM_FUSED_EPILOGUE_MODE_MASK & 4
   case 2:
     epilogue_body<2>(y_out, src, clamp_min, clamp_max);
-    return;
+    break;
 #endif
 #if MM_FUSED_EPILOGUE_MODE_MASK & 8
   case 3:
     epilogue_body<3>(y_out, src, clamp_min, clamp_max);
-    return;
+    break;
 #endif
   // Mode 0 is always compiled, so a mode the mask leaves out yields an
   // unactivated result rather than an unwritten buffer.
   default:
     epilogue_body<0>(y_out, src, clamp_min, clamp_max);
-    return;
+    break;
   }
+  event1();
 }
 }
