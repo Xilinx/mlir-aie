@@ -379,7 +379,7 @@ struct Engine {
         if (item->filePath.empty())
           continue;
         if (!seenPaths.insert(item->filePath).second) {
-          endProgressLine();
+          auto log = endProgressLine();
           llvm::errs() << "aiecc: edge '" << displayName(e)
                        << "' produced duplicate output path '" << item->filePath
                        << "'\n";

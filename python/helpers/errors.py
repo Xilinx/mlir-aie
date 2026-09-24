@@ -163,8 +163,9 @@ def _tool_diagnostic(line: str):
         if char in "/\\":
             starts += [i, i + 1]
     for start in starts:
-        if os.path.isfile(path[start:]):
-            return path[start:], lineno, message
+        candidate = path[start:]
+        if os.path.isfile(candidate) and linecache.getline(candidate, lineno):
+            return candidate, lineno, message
     return None
 
 

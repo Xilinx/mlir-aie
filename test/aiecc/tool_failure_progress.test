@@ -21,6 +21,8 @@
 // CHECK-NEXT: aiecc: aiebu_assembler_get_elf failed (code -1)
 // CHECK-NEXT: elf write progress
 // CHECK-NEXT: aiecc: cannot write ELF '{{.*}}': {{.*}}
+// CHECK-NEXT: atomic progress
+// CHECK-NEXT: atomic diagnostic
 //
 //--- aiebu/aiebu.h
 #include <cstddef>
@@ -53,7 +55,9 @@ inline int bootgen_generate_pdi(const char *, const char *, int, int, char *,
 }
 //--- test.cpp
 #include "Tools.h"
+#include <atomic>
 #include <cassert>
+#include <thread>
 
 using namespace xilinx::aiecc;
 
@@ -85,4 +89,21 @@ int main() {
   startProgress("elf write");
   assert(mlir::failed(assembleElf({}, {}, {}, out, false)));
   assert(!progressLineOpen());
+
+  startProgress("atomic");
+  auto log = endProgressLine();
+  std::atomic<bool> started = false;
+  std::atomic<bool> acquired = false;
+  std::thread waiter([&] {
+    started = true;
+    std::lock_guard<std::mutex> next(logMutex());
+    acquired = true;
+  });
+  while (!started)
+    std::this_thread::yield();
+  assert(!acquired);
+  llvm::errs() << "atomic diagnostic\n";
+  log.unlock();
+  waiter.join();
+  assert(acquired);
 }

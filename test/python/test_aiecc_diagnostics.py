@@ -8,8 +8,10 @@
 import os
 import subprocess
 import traceback
+import types
 
 import pytest
+from aie.helpers import sourceloc
 from aie.helpers.errors import IronCompileError
 from aie.ir import Context, Module
 from aie.utils.compile import utils
@@ -106,6 +108,31 @@ def test_unreadable_location_falls_back_to_raw_output(monkeypatch):
         utils._run_aiecc("input.mlir", [])
 
     assert not isinstance(caught.value, IronCompileError)
+
+
+@pytest.mark.parametrize("line", [0, 100_000])
+def test_invalid_source_line_falls_back_to_raw_output(monkeypatch, line):
+    _failing_aiecc(monkeypatch, f"{THIS_FILE}:{line}:1: error: op rejected\n")
+
+    with pytest.raises(RuntimeError, match="op rejected") as caught:
+        utils._run_aiecc("input.mlir", [])
+
+    assert not isinstance(caught.value, IronCompileError)
+
+
+def test_source_site_without_frame_positions(monkeypatch):
+    """Python 3.10 frame records do not expose exact source positions."""
+    monkeypatch.setattr(sourceloc, "_is_internal", lambda _: False)
+    monkeypatch.setattr(
+        sourceloc.inspect,
+        "getframeinfo",
+        lambda *_: types.SimpleNamespace(filename=THIS_FILE, lineno=1),
+    )
+
+    site = sourceloc.capture_source_site()
+
+    assert site is not None
+    assert (site.filename, site.line, site.col) == (THIS_FILE, 1, 0)
 
 
 def test_module_text_keeps_locations():

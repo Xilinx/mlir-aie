@@ -564,12 +564,13 @@ private:
     }
     int rc = llvm::sys::ExecuteAndWait(cmd[0], argv, std::nullopt, redirectRef,
                                        0, 0, &errMsg);
+    std::unique_lock<std::mutex> log;
     if (capture) {
       // Verbose replays a successful run too, in place of the live output the
       // capture suppressed.
       if ((rc != 0 && !failureIsEmpty) || verbose) {
         // Move off the live --progress status line before the tool's output.
-        endProgressLine();
+        log = endProgressLine();
         if (auto buf = llvm::MemoryBuffer::getFile(logPath)) {
           llvm::errs() << (*buf)->getBuffer();
           if (rc != 0 && failureHint) {
@@ -583,6 +584,8 @@ private:
       if (failureIsEmpty) {
         return mlir::success();
       }
+      if (!log.owns_lock())
+        log = endProgressLine();
       llvm::errs() << "aiecc: '" << cmd[0] << "' failed: " << errMsg << "\n";
       return mlir::failure();
     }

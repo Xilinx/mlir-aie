@@ -94,7 +94,8 @@ def capture_source_site() -> SourceSite | None:
         return None
     # context=0 skips reading the source file while still giving exact columns.
     info = inspect.getframeinfo(frame, 0)
-    col = info.positions.col_offset if info.positions else 0
+    positions = getattr(info, "positions", None)
+    col = positions.col_offset if positions else 0
     return SourceSite(info.filename, info.lineno, col or 0)
 
 
