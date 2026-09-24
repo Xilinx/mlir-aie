@@ -133,7 +133,11 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
   const int scaleT = scale;
 
+  // Every loop over acc_tmp is unrolled so the index is a constant: with a
+  // running index the accumulator array lives in memory and the mac loop
+  // spills round-trips through it, which costs both II and .text.
   MMUL8x8x8 acc_tmp[NUM_ACC];
+  AIE_LOOP_UNROLL_FULL
   for (int x = 0; x < NUM_ACC; x++) {
     acc_tmp[x] = aie::zeros<acc32, MMUL_MN>();
   }
@@ -163,6 +167,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
           aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
           kernels += MMUL_KN; // wts ic0..7(oc0..7)
 
+          AIE_LOOP_UNROLL_FULL
           for (int x = 0; x < NUM_ACC; x++) {
             aie::vector<int8, MMUL_MK> in_a = aie::load_v<MMUL_MK>(input);
             input += MMUL_MK; // act oc0..3(ic0..7)
@@ -173,6 +178,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
         }
         // input ptr just moves to next section
 
+        AIE_LOOP_UNROLL_FULL
         for (int xx = 0; xx < NUM_ACC; xx++) {
           aie::vector<int8, MMUL_MN> o1 = acc_tmp[xx].to_vector<int8>(scaleT);
           aie::store_v(out_ptr, o1);
