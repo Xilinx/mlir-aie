@@ -59,9 +59,9 @@ print(build())
 # CHECK-LABEL: names_its_own_shim_channels
 # The slice reaches the descriptor as the offset and steps it describes.
 # CHECK: aiex.dma_configure_task_for @shim_0_0_mm2s_0
-# CHECK:   aie.dma_bd({{.*}} offset = 512 len = 32768 sizes = [1, 8, 8, 512] strides = [0, 16384, 1024, 1])
+# CHECK:   aie.dma_bd({{.*}} offset = 512 len = 32768 sizes = [8, 8, 512] strides = [16384, 1024, 1])
 # CHECK: aiex.dma_configure_task_for @shim_0_0_s2mm_1
-# CHECK:   aie.dma_bd({{.*}} offset = 0 len = 32768 sizes = [1, 8, 8, 512] strides = [0, 4096, 512, 1])
+# CHECK:   aie.dma_bd({{.*}} offset = 0 len = 32768 sizes = [8, 8, 512] strides = [4096, 512, 1])
 # CHECK-DAG: aie.shim_dma_allocation @shim_0_0_mm2s_0(%{{.*}}, MM2S, 0)
 # CHECK-DAG: aie.shim_dma_allocation @shim_0_0_s2mm_1(%{{.*}}, S2MM, 1)
 

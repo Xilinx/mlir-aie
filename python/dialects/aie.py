@@ -156,6 +156,10 @@ def dma_bd(
     (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
     shadowing the builtin and matches ``shim_dma_bd``.)
 
+    ``iteration`` accepts either a 3-tuple of ints ``(size, stride, current)``
+    for the compile-time BDIterationAttr, or a 2-tuple of SSA Values
+    ``(size_val, stride_val)`` for runtime iteration operands.
+
     Example::
 
         %len = ...
@@ -167,6 +171,21 @@ def dma_bd(
 
     offset_operand, static_offset = _split_i32_scalar(offset)
     len_operand, static_len = _split_i32_scalar(transfer_len)
+
+    # Detect a runtime iteration pair (size_val, stride_val) — both SSA Values
+    # — and route to the new operands instead of the BDIterationAttr.
+    iteration = kwargs.pop("iteration", None)
+    if (
+        iteration is not None
+        and isinstance(iteration, (tuple, list))
+        and len(iteration) == 2
+        and isinstance(iteration[0], Value)
+    ):
+        kwargs["iteration_size_val"] = iteration[0]
+        kwargs["iteration_stride_val"] = iteration[1]
+        iteration = None
+    if iteration is not None:
+        kwargs["iteration"] = iteration
 
     # Leave the static arrays unset when there is no ND layout so they elide.
     return _DMABDOp(

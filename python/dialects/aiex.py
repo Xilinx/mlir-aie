@@ -280,6 +280,7 @@ def shim_dma_bd(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    iteration=None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -313,6 +314,7 @@ def shim_dma_bd(
         axcache=axcache,
         packet=packet,
         offset_parameter=offset_parameter,
+        iteration=iteration,
     )
 
 
@@ -391,20 +393,40 @@ def shim_dma_single_bd_task(
     # constant folds to the repeat_count attribute (static path, unchanged); a
     # runtime Value flows into the repeat_count_val operand so a dynamic tile
     # count is supported.
+    # When sizes has 4 dims, sizes[0] is the iteration/repeat dimension and
+    # is stripped before passing to the BD (see AIEOps.td ## BD iteration).
     repeat_count = 0
     repeat_count_val = None
+    iteration = None
     if sizes:
         s0 = sizes[0]
         if isinstance(s0, (int, np.integer)):
             if s0 > 1:
                 repeat_count = int(s0) - 1
+            if len(sizes) == 4:
+                st0 = strides[0] if strides is not None else 0
+                if isinstance(st0, (int, np.integer)) and int(st0) != 0:
+                    iteration = (int(s0), int(st0), 0)
+                if strides is None:
+                    strides = [0] * (len(sizes) - 1) + [1]
+                sizes = list(sizes[1:])
+                strides = list(strides[1:])
         else:
-            # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
-            # sizes may be i64 (DynamicIndexList); truncate before subtracting.
+            # Runtime SSA sizes[0]: same strip, but iteration via SSA operands.
             s0_i32 = s0
             if s0.type != T.i32():
                 s0_i32 = arith.trunci(T.i32(), s0)
             repeat_count_val = s0_i32 - _as_i32(1)
+            st0 = strides[0] if strides is not None else 0
+            if isinstance(st0, (int, np.integer)):
+                st0 = _as_i32(int(st0))
+            elif st0.type != T.i32():
+                st0 = arith.trunci(T.i32(), st0)
+            if strides is None:
+                strides = [0] * (len(sizes) - 1) + [1]
+            sizes = list(sizes[1:])
+            strides = list(strides[1:])
+            iteration = (s0_i32, st0)  # (size_val, stride_val) SSA pair
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -423,6 +445,7 @@ def shim_dma_single_bd_task(
                 axcache=axcache,
                 packet=packet,
                 offset_parameter=offset_parameter,
+                iteration=iteration,
             )
             EndOp()
     return task

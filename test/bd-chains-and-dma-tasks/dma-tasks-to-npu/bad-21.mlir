@@ -18,7 +18,7 @@ module {
         // `strides` operand backs it (operandSegmentSizes' 6th entry, for
         // $strides, is 0).
         // expected-error@+1 {{expected 1 dynamic strides values}}
-        "aie.dma_bd"(%arg0) <{bd_id = 0 : i32, operandSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>, static_len = 32 : i32, static_offset = 4 : i32, static_sizes = array<i64: 8, 2>, static_strides = array<i64: -9223372036854775808, 1>}> : (memref<32xi8>) -> ()
+        "aie.dma_bd"(%arg0) <{bd_id = 0 : i32, operandSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0, 0, 0>, static_len = 32 : i32, static_offset = 4 : i32, static_sizes = array<i64: 8, 2>, static_strides = array<i64: -9223372036854775808, 1>}> : (memref<32xi8>) -> ()
         aie.end
       }) : (index) -> index
     }
