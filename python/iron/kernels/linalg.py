@@ -734,11 +734,18 @@ def _mv_bf16(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[bfloat16]]
     c_ty = np.ndarray[(output_rows or dim_m,), np.dtype[bfloat16]]
+    flags = [f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"]
+    if not use_chess:
+        # Peano's outer-loop pointer optimizer (on since 22.0.0.2026090301)
+        # turns three of the second row group's offset loads into
+        # post-modify loads from the unoffset base, so rows 4-6 come out
+        # wrong. Drop the flag once llvm-aie fixes the pass.
+        flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
     return _make_extern(
         f"{prefix}_bf16_bf16",
         _default_source_path("mv_bf16.cc", subdir="generic"),
         [np.int32, np.int32, a_ty, b_ty, c_ty],
-        compile_flags=[f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"],
+        compile_flags=flags,
         use_chess=use_chess,
         contract=KernelContract(
             trace=Trace.whole_call(),
