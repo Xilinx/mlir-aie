@@ -229,6 +229,52 @@ module {
 
 // -----
 
+// A runtime parameter write between a split transfer and its counterpart does
+// not end the round: the counterpart still moves up to right after the first
+// slice, past the write, and the write stays ahead of it.
+// CHECK-LABEL: @past_parameters
+// CHECK:         %[[A0:.*]] = aiex.dma_configure_task_for @a
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 0 len
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    }{{$}}
+// CHECK-NEXT:    aiex.dma_start_task(%[[A0]])
+// CHECK:         aiex.npu.rtp_write(@rtp, 0, %{{.*}})
+// CHECK-NEXT:    %[[C:.*]] = aiex.dma_configure_task_for @c
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 0 len
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    } {issue_token = true}
+// CHECK-NEXT:    aiex.dma_start_task(%[[C]])
+// CHECK-NEXT:    %[[A1:.*]] = aiex.dma_configure_task_for @a
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 3069 len
+// CHECK-COUNT-4: aiex.dma_start_task
+// CHECK-NEXT:    aiex.dma_await_task(%[[C]])
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    %rtp = aie.buffer(%core) {sym_name = "rtp", address = 1024 : i32} : memref<4xi32>
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.shim_dma_allocation @c (%t, S2MM, 0)
+    aie.runtime_sequence @past_parameters(%in: memref<32768xi32>, %out: memref<32768xi32>) {
+      %a = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<32768xi32> offset = 0 len = 8198 sizes = [1, 1, 4099, 2] strides = [0, 0, 3, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%a)
+      %v = arith.constant 7 : i32
+      aiex.npu.rtp_write(@rtp, 0, %v) : i32
+      %c = aiex.dma_configure_task_for @c {
+        aie.dma_bd(%out : memref<32768xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%c)
+      aiex.dma_await_task(%c)
+    }
+  }
+}
+
+// -----
+
 // Transfers of 6 and 8 slices merge by fraction done: after the first slices,
 // a1 (1/8) c1 (1/6) a2 (2/8) c2 (2/6) a3 (3/8), then c3 and a4 tie at 1/2 and
 // keep program order, then a5 (5/8) c4 (4/6) a6 (6/8) c5 (5/6) a7 (7/8).

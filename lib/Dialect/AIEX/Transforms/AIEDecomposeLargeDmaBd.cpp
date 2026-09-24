@@ -512,7 +512,8 @@ static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
 // transfers side by side progress in proportion. A round also ends at anything
 // a push may not move past: an await, a sync or a poll, a push the pass does
 // not track, or a free of a slice still to be placed. Configures, register
-// writes and lock sets it moves past, which only delays the push.
+// and runtime parameter writes and lock sets it moves past, which only delays
+// the push.
 static void orderSlices(Block &block) {
   struct Pending {
     DMAStartTaskOp start;
@@ -580,7 +581,7 @@ static void orderSlices(Block &block) {
       continue;
     }
     if (isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, NpuWrite32Op,
-            NpuBlockWriteOp, SetLockOp>(op) ||
+            NpuBlockWriteOp, NpuWriteRTPOp, SetLockOp>(op) ||
         isMemoryEffectFree(&op))
       continue;
     flush();
