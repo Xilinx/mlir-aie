@@ -43,7 +43,8 @@ using namespace aie;
 // memory (II77 over 32 iterations at 576 bytes, against II269 over 8 at 1424).
 template <int lanes>
 static inline void silu_impl(bfloat16 *restrict input_vector,
-                             bfloat16 *restrict output_vector) {
+                             bfloat16 *restrict output_vector,
+                             const int32_t vector_size) {
   const int num_elems = SILU_ELEMS;
   auto it_in = aie::begin_restrict_vector<lanes>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<lanes>((bfloat16 *)output_vector);
@@ -84,7 +85,7 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                            bfloat16 *restrict output_vector,
                            const int32_t vector_size) {
   event0();
-  silu_impl<SILU_LANES>(input_vector, output_vector);
+  silu_impl<SILU_LANES>(input_vector, output_vector, vector_size);
   event1();
 
   return;
