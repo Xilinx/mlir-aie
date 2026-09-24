@@ -151,7 +151,16 @@ void rgba2hue_aie_scalar(uint8_t *rgba_in, uint8_t *hue_out,
         // for bit: inv is the Q7.9 reciprocal that lut_inv_16b holds, each
         // half-turn offset carries the +1 that rounds the halving, and the
         // single >>10 replaces a divide-then-(h+1)>>1 that rounded twice.
-        int inv = (85 * 512) / (rgbMax - rgbMin);
+        //
+        // Read that reciprocal out of the table the vector path already looks
+        // up rather than recomputing it: lut_inv_16b_ab[i] holds exactly
+        // (85*512)/d, so the result is unchanged while a __divsi3 call leaves
+        // the per-pixel loop. The table repeats each bank0 group of eight in
+        // bank1, so d sits at ((d>>3)<<4)|(d&7) -- shifts and a mask, which
+        // lower inline. d is a uint8_t difference and nonzero on this path,
+        // so the index stays within the table's 512 entries.
+        const uint32_t d = (uint32_t)(rgbMax - rgbMin);
+        int inv = (int)lut_inv_16b_ab[((d >> 3) << 4) | (d & 7)];
         if (rgbMax == g)
           h = (171 * 512 + (b - r) * inv) >> 10; // 170 + 42.5*(b-r)/d
         else if (rgbMax == r)
