@@ -133,12 +133,15 @@ def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
     step = next(step for step in job["steps"] if step.get("id") == "preflight")
     run = step["run"]
     assert "sudo prlimit -lunlimited --pid $$" in run
-    assert run.index("sudo prlimit -lunlimited --pid $$") < run.index("xrt-smi examine")
-    assert "EXAMINE=$(xrt-smi examine)" in run
+    assert run.index("sudo prlimit -lunlimited --pid $$") < run.index(
+        "XRT_SMI=$(command -v xrt-smi"
+    )
+    assert "XRT_SMI=$(command -v xrt-smi || command -v xrt-smi.exe)" in run
+    assert 'EXAMINE=$("$XRT_SMI" examine)' in run
     assert "printf '%s\\n' \"$EXAMINE\"" in run
     assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
-    assert 'sudo xrt-smi configure -d "$BDF" --pmode "$BENCH_PMODE"' in run
-    assert 'xrt-smi examine -d "$BDF" --report platform' in run
+    assert 'sudo "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"' in run
+    assert '"$XRT_SMI" examine -d "$BDF" --report platform' in run
     assert "xrt-smi examine | grep -oE" not in run
 
 
