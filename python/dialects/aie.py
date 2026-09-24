@@ -11,11 +11,11 @@ import numpy as np
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect, DMABDOp as _DMABDOp
-from ._ods_common import _cext
+from ._ods_common import _cext, get_op_result_or_value
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
-from ..extras.dialects.arith import ScalarValue, constant, trunci
+from ..extras.dialects.arith import ScalarValue, constant, extsi, index_cast, trunci
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
     MemRefValue,
@@ -65,6 +65,7 @@ from ..ir import (
     DictAttr,
     FlatSymbolRefAttr,
     FunctionType,
+    IndexType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
@@ -138,6 +139,53 @@ def _as_bd_i32(v):
     return trunci(T.i32(), v)
 
 
+def _as_bd_i64_dims(values, what, widen=True):
+    """Widen the runtime entries of a BD sizes/strides/offsets list to i64,
+    the operand type, so an i32 dispatch-time scalar or an index loop variable
+    can feed a dimension directly. Ints pass through as static entries;
+    anything that is not an integer raises a TypeError naming the entry.
+
+    Inside a BD block, which lowers only constants, pass ``widen=False``: a
+    narrower integer then raises instead, asking for the cast to be hoisted."""
+    if values is None:
+        return None
+    widened = []
+    for i, v in enumerate(values):
+        if isinstance(v, (int, np.integer)):
+            widened.append(int(v))
+            continue
+        given = type(v).__name__
+        try:
+            v = get_op_result_or_value(v)
+        except (AssertionError, ValueError):
+            v = None
+        if not isinstance(v, Value):
+            raise TypeError(
+                f"{what}[{i}] must be an int or an integer SSA value from the "
+                f"runtime sequence, got {given}."
+            )
+        if v.type == T.i64():
+            widened.append(v)
+            continue
+        is_index = isinstance(v.type, IndexType)
+        if not is_index and not (isinstance(v.type, IntegerType) and v.type.width < 64):
+            raise TypeError(
+                f"{what}[{i}] must be an int or an integer SSA value, "
+                f"got a value of type {v.type}."
+            )
+        if not widen:
+            raise TypeError(
+                f"{what}[{i}] is {v.type} but must be i64, and a BD block "
+                "cannot hold the cast. Widen it with arith.extsi (or "
+                "arith.index_cast) before the dma_configure_task."
+            )
+        if is_index:
+            widened.append(index_cast(v, to=T.i64()))
+        else:
+            widened.append(extsi(T.i64(), v))
+    return widened
+
+
 def _split_i32_scalar(v):
     """Split a dma_bd offset/len argument into (operand, static_attr): a Python
     int becomes the static attribute, an SSA Value becomes the runtime operand,
@@ -176,8 +224,12 @@ def dma_bd(
                offset=0 len=%len)
     ```
     """
-    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
-    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
+    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(
+        _as_bd_i64_dims(sizes, "dma_bd sizes", widen=False) or []
+    )
+    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(
+        _as_bd_i64_dims(strides, "dma_bd strides", widen=False) or []
+    )
 
     offset_operand, static_offset = _split_i32_scalar(offset)
     len_operand, static_len = _split_i32_scalar(transfer_len)

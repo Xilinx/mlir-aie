@@ -114,6 +114,63 @@ def emit_shared_length_drain():
 print(emit_shared_length_drain())
 
 
+def emit_i32_dims(tiles_dims=None, chain_dims=None):
+    buf_ty = np.ndarray[(4096,), np.dtype[np.int32]]
+    shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
+    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
+    buf = Buffer(tile=mem_tile, type=buf_ty, name="resident")
+    out = Flow(mem_tile, shim, src_channel=0, dst_channel=0)
+
+    def sequence(host, tiles):
+        dims = tiles_dims(tiles) if tiles_dims else [1, 1, tiles, 512]
+        if chain_dims:
+            tile_dma_chain(
+                mem_tile,
+                DMAChannelDir.MM2S,
+                0,
+                [Bd(buf, sizes=chain_dims(tiles), strides=[0, 0, 512, 1])],
+            )
+            return
+        tile_dma_task(
+            mem_tile,
+            DMAChannelDir.MM2S,
+            out.endpoint(mem_tile),
+            buf,
+            sizes=dims,
+            strides=[0, 0, 512, 1],
+        )
+        out.drain(host, sizes=dims, strides=[0, 0, 512, 1], wait=True)
+
+    rt = Runtime(sequence, [buf_ty, np.int32])
+    rt.add_flow(out)
+    rt.add_buffer(buf)
+    try:
+        return Program(NPU2Col1(), rt).resolve_program()
+    except TypeError as e:
+        return f"RAISED TypeError: {e}"
+
+
+# An i32 dispatch-time scalar feeds the i64 sizes directly, and the omitted
+# length defaults to their product: each task widens and multiplies before
+# opening, since a BD block admits no arithmetic.
+# CHECK: %[[T1:.*]] = arith.extsi %arg1 : i32 to i64
+# CHECK: %[[L1:.*]] = arith.trunci %{{.*}} : i64 to i32
+# CHECK-NEXT: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 len = %[[L1]] sizes = [1, 1, %[[T1]], 512]
+# CHECK: %[[T2:.*]] = arith.extsi %arg1 : i32 to i64
+# CHECK: %[[L2:.*]] = arith.trunci %{{.*}} : i64 to i32
+# CHECK-NEXT: aiex.dma_configure_task_for
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 len = %[[L2]] sizes = [1, 1, %[[T2]], 512]
+print(emit_i32_dims())
+
+# CHECK: RAISED TypeError: sizes[2] must be an int or an integer SSA value from the runtime sequence, got float.
+print(emit_i32_dims(tiles_dims=lambda tiles: [1, 1, 2.0, 512]))
+
+# A chain's Bds are built inside the BD block, so there is nowhere to widen.
+# CHECK: RAISED TypeError: dma_bd sizes[2] is i32 but must be i64, and a BD block cannot hold the cast.
+print(emit_i32_dims(chain_dims=lambda tiles: [1, 1, tiles, 512]))
+
+
 def emit_late_add_buffer():
     buf_ty = np.ndarray[(4096,), np.dtype[np.int32]]
     mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)

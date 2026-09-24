@@ -107,12 +107,13 @@ def tile_dma_task(
             paired with ``sizes``.
         offset (int | Value, optional): starting element offset in ``buffer``.
             Defaults to zero.
-        transfer_len (int | Value, optional): elements transferred. Required when
-            any of ``sizes``/``strides``/``offset`` is a dispatch-time value: unlike
-            the compile-time path, the lowering cannot infer a length from the
-            buffer's shape. A dispatch-time scalar is i64, matching
-            ``sizes``/``strides``; it is narrowed here to the i32 the length
-            and offset fields take.
+        transfer_len (int | Value, optional): elements transferred. When any
+            of ``sizes``/``strides``/``offset`` is a dispatch-time value the
+            lowering cannot infer a length from the buffer's shape, so it
+            defaults to the product of the last three ``sizes``. An i32 or i64
+            dispatch-time scalar may feed any of these: it is widened to the
+            i64 of ``sizes``/``strides`` or range-checked and narrowed to the
+            i32 of the length and offset fields.
         wait: issue a completion token, so the returned task can be awaited.
         packet: optional packet header as ``(packet_type, packet_id)``.
         bd_id: pin the buffer descriptor id rather than letting the compiler

@@ -18,6 +18,7 @@ handed to a compute tile.
 
 import aie.iron as iron
 import numpy as np
+import pytest
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
@@ -41,14 +42,7 @@ MAX_CHUNKS = 8
 MAX = CHUNK * MAX_CHUNKS
 
 
-@iron.jit
-def window(
-    a: In,
-    c: Out,
-    *,
-    start: DispatchTime[np.int64] = 0,
-    chunks: DispatchTime[np.int64] = 1,
-):
+def _window(start, chunks, dtype, explicit_len):
     host_ty = np.ndarray[(MAX,), np.dtype[np.int32]]
     shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
     mem = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
@@ -59,9 +53,8 @@ def window(
     out = Flow(mem, shim, src_channel=0, dst_channel=0)
 
     def seq(A, C, s, n):
-        i64 = np_dtype_to_mlir_type(np.int64)
-        chunk = arith.constant(CHUNK, i64)
-        length = n * chunk
+        chunk = arith.constant(CHUNK, np_dtype_to_mlir_type(dtype))
+        length = n * chunk if explicit_len else None
         into.fill(A)
         tile_dma_task(
             mem,
@@ -100,8 +93,33 @@ def window(
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def test_tile_dma_task_dispatch_window():
-    design = window.specialize()
+@iron.jit
+def window(
+    a: In,
+    c: Out,
+    *,
+    start: DispatchTime[np.int64] = 0,
+    chunks: DispatchTime[np.int64] = 1,
+):
+    return _window(start, chunks, np.int64, explicit_len=True)
+
+
+# i32 scalars are widened to the i64 sizes, and the omitted lengths default to
+# the product of the sizes.
+@iron.jit
+def window_i32(
+    a: In,
+    c: Out,
+    *,
+    start: DispatchTime[np.int32] = 0,
+    chunks: DispatchTime[np.int32] = 1,
+):
+    return _window(start, chunks, np.int32, explicit_len=False)
+
+
+@pytest.mark.parametrize("jitted", [window, window_i32], ids=["i64", "i32"])
+def test_tile_dma_task_dispatch_window(jitted):
+    design = jitted.specialize()
     a = iron.tensor(
         np.random.default_rng(0).integers(0, 2**16, size=(MAX,), dtype=np.int32),
         dtype=np.int32,

@@ -25,6 +25,7 @@ from .aie import (
     bds,
     dma_bd,
     _as_bd_i32,
+    _as_bd_i64_dims,
     _as_i32,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
@@ -187,11 +188,13 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             if strides is None:
                 strides = [0] * 3 + [1]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
-            offsets
+            _as_bd_i64_dims(offsets, "npu_dma_memcpy_nd offsets")
         )
-        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
+        dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(
+            _as_bd_i64_dims(sizes, "npu_dma_memcpy_nd sizes")
+        )
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
-            strides
+            _as_bd_i64_dims(strides, "npu_dma_memcpy_nd strides")
         )
         if isinstance(metadata, ObjectFifoCreateOp):
             metadata = metadata.sym_name.value
@@ -301,6 +304,9 @@ def _task_dims(sizes, strides):
         sizes = [1] + sizes
         if strides is not None:
             strides = [0] + strides
+    # The BD block lowers only constants, so widen to the i64 operand type here.
+    sizes = _as_bd_i64_dims(sizes, "sizes")
+    strides = _as_bd_i64_dims(strides, "strides")
 
     def constant(v):
         return isinstance(v, (int, np.integer))
@@ -419,6 +425,8 @@ def shim_dma_single_bd_task(
         offset = int(tap.offset)
 
     sizes, strides, repeat_count, repeat_count_val = _task_dims(sizes, strides)
+    if transfer_len is None and sizes is not None:
+        transfer_len = np.prod(sizes[-3:])
     offset, transfer_len = _as_bd_i32(offset), _as_bd_i32(transfer_len)
     task = dma_configure_task_for(
         alloc,
@@ -468,9 +476,9 @@ def tile_dma_single_bd_task(
 
     ``sizes``/``strides``/``offset``/``transfer_len`` entries may be runtime
     SSA values, which is what lets a mem tile descriptor be rebuilt per
-    dispatch. ``transfer_len`` is required when any of them is runtime: unlike
-    the static path, the dynamic encoder cannot infer a length from the
-    buffer's shape.
+    dispatch. The dynamic encoder cannot infer a length from the buffer's
+    shape, so when any of them is runtime an omitted ``transfer_len`` defaults
+    to the product of the last three ``sizes``, which must then be given.
 
     ``acquire``/``release`` take ``(lock, action, value)`` tuples emitted
     around the BD, for handing the buffer to or from a compute tile.
@@ -497,6 +505,14 @@ def tile_dma_single_bd_task(
             f"sizes={sizes} and strides={strides}"
         )
     sizes, strides, repeat_count, repeat_count_val = _task_dims(sizes, strides)
+    if (
+        transfer_len is None
+        and sizes is not None
+        and not all(
+            isinstance(v, (int, np.integer)) for v in [*sizes, *strides, offset or 0]
+        )
+    ):
+        transfer_len = _as_bd_i32(np.prod(sizes[-3:]))
     task_kwargs = dict(
         repeat_count=repeat_count,
         repeat_count_val=repeat_count_val,
