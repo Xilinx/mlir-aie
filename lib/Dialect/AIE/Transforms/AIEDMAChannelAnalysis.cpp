@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -33,6 +34,16 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
     }
   }
 
+  // A flow ending at a tile's DMA claims that channel's stream even when no
+  // DMA body here starts it: its BDs may come from the runtime sequence alone.
+  // First-free assignment must skip it, but a pinned request may name it --
+  // that is the DMA feeding or draining the flow, as when allocation reruns
+  // over flows it lowered itself.
+  auto streamDMA = [&](Value tile, DMAChannelDir dir, int channel,
+                       Operation *owner) {
+    streamedChannels.try_emplace(
+        std::make_tuple(getTileKey(tile), dir, channel), owner);
+  };
   for (auto flowOp : device.getOps<FlowOp>()) {
     if (flowOp.getSourceBundle() == WireBundle::Core) {
       usedStreams.insert({getTileKey(flowOp.getSource()), DMAChannelDir::MM2S,
@@ -42,7 +53,32 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
       usedStreams.insert({getTileKey(flowOp.getDest()), DMAChannelDir::S2MM,
                           flowOp.getDestChannel()});
     }
+    if (flowOp.getSourceBundle() == WireBundle::DMA)
+      streamDMA(flowOp.getSource(), DMAChannelDir::MM2S,
+                flowOp.getSourceChannel(), flowOp);
+    if (flowOp.getDestBundle() == WireBundle::DMA)
+      streamDMA(flowOp.getDest(), DMAChannelDir::S2MM, flowOp.getDestChannel(),
+                flowOp);
   }
+  for (auto packetFlow : device.getOps<PacketFlowOp>()) {
+    for (auto source : packetFlow.getOps<PacketSourceOp>())
+      if (source.getBundle() == WireBundle::DMA)
+        streamDMA(source.getTile(), DMAChannelDir::MM2S, source.getChannel(),
+                  packetFlow);
+    for (auto dest : packetFlow.getOps<PacketDestOp>())
+      if (dest.getBundle() == WireBundle::DMA)
+        streamDMA(dest.getTile(), DMAChannelDir::S2MM, dest.getChannel(),
+                  packetFlow);
+  }
+
+  // A task the runtime sequence configures on a channel by index programs that
+  // channel, as a DMA body would.
+  device.walk([&](AIEX::DMAConfigureTaskOp task) {
+    usedChannels.try_emplace(std::make_tuple(getTileKey(task.getTile()),
+                                             task.getDirection(),
+                                             (int)task.getChannel()),
+                             task.getOperation());
+  });
 
   // Shim allocations reserve channels outside the DMA bodies above.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
@@ -94,6 +130,8 @@ int DMAChannelAnalysis::getDMAChannelIndex(
     Operation *owner) {
   int limit = getDMAChannelLimit(tile, dir, requiresAdjacentTileAccessChannels);
   for (int i = 0; i < limit; i++) {
+    if (streamedChannels.contains({getTileKey(tile->getResult(0)), dir, i}))
+      continue;
     if (reservePinnedChannel(tile, dir, i, owner) >= 0) {
       return i;
     }
@@ -119,7 +157,10 @@ int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
 Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
                                                   DMAChannelDir dir,
                                                   int channel) {
-  return usedChannels.lookup({getTileKey(tile->getResult(0)), dir, channel});
+  auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
+  if (Operation *owner = usedChannels.lookup(key))
+    return owner;
+  return streamedChannels.lookup(key);
 }
 
 void DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile, DMAChannel chan) {
