@@ -686,6 +686,10 @@ CASES += [
     Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, devices=("npu2",), smoke=True, perf=False),
+    # ...and its P*V product, mha.cc's own 8x8x8 expansion. Same tile, but a
+    # different micro-tile and so a different blocked operand order, which is
+    # the part a shared case could not check.
+    Case("mha", dict(pv=True), calls=4, devices=("npu2",), smoke=True, perf=False),
     # The prefill toolkit's S*V accumulate, one case per geometry. Each
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V

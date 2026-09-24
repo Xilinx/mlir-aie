@@ -917,27 +917,37 @@ def mm_bfp_shuffle(
     return extern
 
 
-def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> MatrixKernel:
+def mha(
+    dim_m: int = 64, dim_k: int = 64, dim_n: int = 64, pv: bool = False
+) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/aie2p/mha.cc`` (aie2p only).
 
     One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
     exports the symbols an attention dataflow composes over one micro-tile.
-    The returned kernel is the ``QK^T`` matmul: ``mm.cc``'s bf16 product on
-    its 4x8x8 micro-tile, accumulating into ``C``, so it is a
+    The returned kernel is one of the toolkit's two matmuls, both
+    accumulating into ``C``, so it is a
     [`MatrixKernel`][iron.kernels.linalg.MatrixKernel] judged like
-    [`mm`][iron.kernels.linalg.mm]. Its ``idx_buffer`` gate (the call runs
-    when ``idx[0] <= idx[1]``) is bound to ``[0, 0]``. Bind the others from
-    the same object with ``fn.object_file.bind(symbol, arg_types)``:
-    ``matmul_bf16_bf16_wrapper_scalar``, ``matmul_bf16_bf16_rowmaj``,
-    ``partial_softmax``, ``matmul_PV``, ``rescale_O``,
-    ``init_scale_buffer``. It declares but does not define
-    ``passThroughLine``: take that from ``passthrough(dtype=np.int32)``, as
-    IRON's MHA operator does.
+    [`mm`][iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
+    ``matmul_bf16_bf16_wrapper``, ``mm.cc``'s bf16 product on its 4x8x8
+    micro-tile behind an ``idx_buffer`` gate (the call runs when
+    ``idx[0] <= idx[1]``) bound here to ``[0, 0]``. With ``pv`` it is the
+    ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
+    the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
+    product preceded by a row rescale, which needs the online softmax's
+    running state and so is exercised by ``test_mha_e2e.py`` instead.
+
+    Bind the others from the same object with
+    ``fn.object_file.bind(symbol, arg_types)``:
+    ``matmul_bf16_bf16_wrapper_scalar``, ``partial_softmax``,
+    ``matmul_PV``, ``rescale_O``, ``init_scale_buffer``. It declares but
+    does not define ``passThroughLine``: take that from
+    ``passthrough(dtype=np.int32)``, as IRON's MHA operator does.
 
     Args:
         dim_m: Rows of the micro-tile (multiple of 16).
         dim_k: Depth of the micro-tile (multiple of 8).
         dim_n: Columns of the micro-tile (multiple of 16).
+        pv: If ``True`` return the ``P*V`` product instead of ``QK^T``.
     """
     if _detect_arch() != "aie2p":
         raise NotImplementedError(
@@ -958,13 +968,15 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> MatrixKernel:
     idx = np.ndarray[(2,), np.dtype[np.int32]]
     flags = [f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}", f"-DDIM_N={dim_n}"]
     # mha.cc includes mm.cc without B_COL_MAJ or C_COL_MAJ: row-major
-    # operands on the native bf16 micro-tile.
-    r, s, t = _MM_MAC_DIMS["aie2p"][(bfloat16, bfloat16)]
+    # operands on the native bf16 micro-tile. matmul_bf16_bf16_rowmaj keeps
+    # that block order but expands aie::mmul<8, 8, 8, bf16, bf16> directly,
+    # not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.
+    r, s, t = (8, 8, 8) if pv else _MM_MAC_DIMS["aie2p"][(bfloat16, bfloat16)]
     streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t))
     return _make_extern(
-        "matmul_bf16_bf16_wrapper",
+        "matmul_bf16_bf16_rowmaj" if pv else "matmul_bf16_bf16_wrapper",
         _default_source_path("mha.cc", subdir="aie2p"),
-        [a_ty, b_ty, tile, idx],
+        [a_ty, b_ty, tile] if pv else [a_ty, b_ty, tile, idx],
         compile_flags=flags,
         cls=MatrixKernel,
         contract=KernelContract(
@@ -972,11 +984,11 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> MatrixKernel:
                 _tile_layout((dim_m, dim_k), streams.A, block=(r, s)),
                 _tile_layout((dim_k, dim_n), streams.B, block=(s, t)),
                 _tile_layout((dim_m, dim_n), streams.C, inverse=True, block=(r, t)),
-                None,
+                *(() if pv else (None,)),
             ),
             stack_bytes=0xD00,  # mm.cc's product: programming_examples/basic/matrix_multiplication
-            roles=(In, In, InOut, Param),
-            parameter_bindings=((3, np.array([0, 0], np.int32)),),
+            roles=(In, In, InOut) if pv else (In, In, InOut, Param),
+            parameter_bindings=(() if pv else ((3, np.array([0, 0], np.int32)),)),
             reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
             initializers=((2, _zero_output),),
             acc_dtype=np.float32,
