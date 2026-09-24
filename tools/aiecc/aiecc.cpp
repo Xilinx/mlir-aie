@@ -74,6 +74,19 @@ using namespace xilinx::aiecc::cli;
 
 namespace {
 
+class SynchronizedSourceMgrDiagnosticHandler
+    : public mlir::SourceMgrDiagnosticHandler {
+public:
+  SynchronizedSourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
+                                         mlir::MLIRContext *ctx)
+      : mlir::SourceMgrDiagnosticHandler(mgr, ctx) {
+    setHandler([this](mlir::Diagnostic &diag) {
+      auto log = endProgressLine();
+      emitDiagnostic(diag);
+    });
+  }
+};
+
 // Apply the process-wide parallelism cap only when the command line did not
 // select one explicitly. Keep the accepted syntax identical to -j: an
 // unsigned decimal value, including 0 for hardware auto-detection.
@@ -2326,16 +2339,7 @@ int main(int argc, char **argv) {
     inputBufferId =
         sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
   }
-  mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
-  // Close the live --progress status line before a diagnostic prints, so the
-  // `file:line:col:` prefix does not arrive glued to the tail of the status
-  // text. Handlers run most-recent-first, so registering after the one that
-  // prints puts this ahead of it; failure() then hands the diagnostic on
-  // unchanged.
-  context.getDiagEngine().registerHandler([](mlir::Diagnostic &) {
-    endProgressLine();
-    return mlir::failure();
-  });
+  SynchronizedSourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
   if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir)) {
     return 1;
   }
