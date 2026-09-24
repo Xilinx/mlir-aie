@@ -24,6 +24,13 @@ on:
     paths:
       - utils/peano-requirements.txt
 
+# A new push to a PR cancels that PR's older runs. Nightly runs never share a
+# group, so none is cancelled; the job-level group below still serializes the
+# NPU.
+concurrency:
+  group: kernel-bench-run-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 defaults:
   run:
     shell: bash
