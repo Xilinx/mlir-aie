@@ -214,8 +214,8 @@ class Program:
                         b.resolve()
 
                 # Buffers the sequence body addresses directly through
-                # tile_dma_task. The body is emitted last, so these have to
-                # exist by then, and nothing else reaches them.
+                # tile_dma_task/tile_dma_chain. The body is emitted last, so
+                # these have to exist by then, and nothing else reaches them.
                 for b in self._rt.buffers:
                     b.resolve()
 

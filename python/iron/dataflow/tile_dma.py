@@ -188,6 +188,38 @@ class DmaChannel:
     loop: bool = True
 
 
+def _emit_bd(bd: "Bd", bd_id: int | None) -> None:
+    """Emit one BD's body -- acquires, packet header, ``aie.dma_bd``, releases --
+    at the current insertion point. The caller supplies the block and the
+    ``next_bd``/``aie.end`` that closes it, and the ``bd_id`` to stamp (which on
+    an out-of-order channel is not ``bd.bd_id``)."""
+    for acq in bd.acquires:
+        acq.emit()
+    bd_kwargs: dict[str, Any] = dict(sizes=bd.sizes, strides=bd.strides)
+    if bd.offset:
+        bd_kwargs["offset"] = bd.offset
+    if bd.length is not None:
+        bd_kwargs["transfer_len"] = bd.length
+    if bd.pad_dimensions is not None:
+        bd_kwargs["pad_dimensions"] = bd.pad_dimensions
+    if bd.iteration is not None:
+        it = bd.iteration
+        bd_kwargs["iteration"] = (it.size, it.stride, it.current)
+    if bd_id is not None:
+        bd_kwargs["bd_id"] = bd_id
+    if bd.out_of_order_id is not None:
+        bd_kwargs["out_of_order_id"] = bd.out_of_order_id
+    # A packet header must be a distinct aie.dma_bd_packet op placed BEFORE the
+    # aie.dma_bd: the CDO/xclbin backends (AIERT / AIETargetXAIEV2) read the
+    # header only from that op, not from a `packet` attribute on the dma_bd.
+    if bd.packet is not None:
+        pkt_type, pkt_id = bd.packet
+        dma_bd_packet(pkt_type, pkt_id)
+    dma_bd(bd.buffer.op, **bd_kwargs)
+    for rel in bd.releases:
+        rel.emit()
+
+
 def _channel_pad_word(ch: "DmaChannel") -> int | None:
     """Resolve a channel's per-element pad_value into the raw 32-bit stream word.
 
@@ -428,36 +460,10 @@ class TileDma(Resolvable):
                 bd_block_idx = [chan_head_idx[i], *chan_extra_idx[i]]
                 for bd_pos, bd in enumerate(ch.bds):
                     with block[bd_block_idx[bd_pos]]:
-                        for acq in bd.acquires:
-                            acq.emit()
-                        bd_kwargs: dict[str, Any] = dict(
-                            sizes=bd.sizes, strides=bd.strides
+                        _emit_bd(
+                            bd,
+                            (_ooo_slot_id(bd, bd_pos) if ch.out_of_order else bd.bd_id),
                         )
-                        if bd.offset:
-                            bd_kwargs["offset"] = bd.offset
-                        if bd.length is not None:
-                            bd_kwargs["transfer_len"] = bd.length
-                        if bd.pad_dimensions is not None:
-                            bd_kwargs["pad_dimensions"] = bd.pad_dimensions
-                        if bd.iteration is not None:
-                            it = bd.iteration
-                            bd_kwargs["iteration"] = (it.size, it.stride, it.current)
-                        if ch.out_of_order:
-                            bd_kwargs["bd_id"] = _ooo_slot_id(bd, bd_pos)
-                        elif bd.bd_id is not None:
-                            bd_kwargs["bd_id"] = bd.bd_id
-                        if bd.out_of_order_id is not None:
-                            bd_kwargs["out_of_order_id"] = bd.out_of_order_id
-                        # A packet header must be a distinct aie.dma_bd_packet op
-                        # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
-                        # (AIERT / AIETargetXAIEV2) read the header only from that
-                        # op, not from a `packet` attribute on the dma_bd.
-                        if bd.packet is not None:
-                            pkt_type, pkt_id = bd.packet
-                            dma_bd_packet(pkt_type, pkt_id)
-                        dma_bd(bd.buffer.op, **bd_kwargs)
-                        for rel in bd.releases:
-                            rel.emit()
                         # next_bd target
                         if ch.out_of_order:
                             # Chain BDs only for configuration; the hardware

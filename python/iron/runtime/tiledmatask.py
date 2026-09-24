@@ -16,6 +16,10 @@ buffer stays put while the descriptor reading it is re-sized per dispatch. The
 shim-side verbs (``fifo.fill``/``fifo.drain``) cannot express this -- a shim
 BD is the only kind that can address host DDR, and correspondingly a tile BD
 can only address a buffer on its own tile.
+
+A [`tile_dma_chain`][iron.tile_dma_chain] does the same for a chain of
+descriptors walked as one task, e.g. one per slot of a ring buffer handed
+back and forth with a compute tile through locks.
 """
 
 from __future__ import annotations
@@ -27,10 +31,15 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_start_task,
 )
-from ...dialects.aie import _as_bd_i32
-from ...dialects.aiex import tile_dma_single_bd_task
+from ...dialects.aie import (  # pyright: ignore[reportAttributeAccessIssue]
+    EndOp,
+    _as_bd_i32,
+    next_bd,
+)
+from ...dialects.aie import bds as bd_blocks
+from ...dialects.aiex import dma_configure_task, tile_dma_single_bd_task
 from ..buffer import Buffer
-from ..dataflow.tile_dma import Acquire, Release
+from ..dataflow.tile_dma import Acquire, Bd, Release, _emit_bd
 from ..device import Tile
 from ._context import active_sequence
 from .dmataskhandle import Task
@@ -126,6 +135,84 @@ def tile_dma_task(
         acquire=_lock_triple(acquire),
         release=_lock_triple(release),
     )
+    if start:
+        dma_start_task(task)
+    return Task(task.result)
+
+
+def tile_dma_chain(
+    tile: Tile,
+    direction: DMAChannelDir,
+    channel: int,
+    bds: list[Bd],
+    repeat_count=0,
+    wait: bool = False,
+    start: bool = True,
+) -> Task:
+    """Configure and start a chain of DMA descriptors on ``tile``'s ``channel``.
+
+    Call from within a [`Runtime`][iron.Runtime] sequence body. The chain is one
+    task: its descriptors run in list order, the last one ends it, and the whole
+    chain runs ``repeat_count + 1`` times. Each entry is a
+    [`Bd`][iron.Bd], as in a [`TileDma`][iron.TileDma], so its locks, packet
+    header and access pattern are spelled the same way.
+
+    A count beyond what one queue push carries is issued as several pushes of
+    the same task by the compiler, and ``Task.start(repeat_count=...)`` pushes
+    the configured chain again with a different count.
+
+    Args:
+        tile: the tile whose DMA channel runs this chain. Every ``Bd``'s buffer
+            must live on it.
+        direction: ``DMAChannelDir.S2MM`` or ``DMAChannelDir.MM2S``.
+        channel: hardware channel index.
+        bds: the descriptors, in chain order. A ``Bd`` may not set ``next``
+            (the chain is linear) or ``iteration``.
+        repeat_count (int | Value): extra runs of the whole chain (0 = once).
+        wait: issue a completion token, so the returned task can be awaited.
+        start: push the task onto the channel queue. ``False`` configures it
+            without submitting; ``Task.start()`` submits it later.
+
+    Returns:
+        A [`Task`][iron.runtime.dmataskhandle.Task] carrying ``.start()``,
+        ``.await_()`` and ``.free()``.
+    """
+    active_sequence()  # ensure we're inside a sequence body
+    if not bds:
+        raise ValueError("tile_dma_chain needs at least one Bd")
+    for i, bd in enumerate(bds):
+        if bd.buffer.tile != tile:
+            raise ValueError(
+                f"tile_dma_chain on {tile} was given a buffer on {bd.buffer.tile} "
+                f"(Bd {i}); a tile's DMA can only address buffers on that tile "
+                "(only a shim BD reaches host memory)."
+            )
+        if bd.next is not None:
+            raise ValueError(
+                f"tile_dma_chain Bd {i} sets next={bd.next!r}; a runtime chain "
+                "runs its Bds in list order and ends after the last."
+            )
+        if bd.iteration is not None:
+            raise ValueError(
+                f"tile_dma_chain Bd {i} sets iteration; use the chain's "
+                "repeat_count or one Bd per sub-buffer instead."
+            )
+
+    if isinstance(repeat_count, int):
+        rc_kwargs = dict(repeat_count=repeat_count)
+    else:
+        rc_kwargs = dict(repeat_count_val=_as_bd_i32(repeat_count))
+    task = dma_configure_task(
+        tile.op, direction, channel, issue_token=wait, **rc_kwargs
+    )
+    with bd_blocks(task) as block:
+        for i, bd in enumerate(bds):
+            with block[i]:
+                _emit_bd(bd, bd.bd_id)
+                if i + 1 < len(bds):
+                    next_bd(block[i + 1])
+                else:
+                    EndOp()
     if start:
         dma_start_task(task)
     return Task(task.result)

@@ -550,13 +550,26 @@ def dma_free_task(*args: DMAConfigureTaskForOp):
 _orig_dma_start_task = dma_start_task
 
 
-def dma_start_task(*args: DMAConfigureTaskForOp):
+def dma_start_task(
+    *args: DMAConfigureTaskForOp,
+    repeat_count: int | None = None,
+    no_token: bool = False,
+):
+    """Push each task onto its channel's queue.
+
+    ``repeat_count`` replaces the task's own count for these starts only, and
+    ``no_token`` withholds the completion token the task would otherwise issue.
+    A count beyond what one queue push carries is issued as several pushes by
+    ``aie-assign-runtime-sequence-bd-ids``.
+    """
     if len(args) == 0:
         raise ValueError(
-            "dma_start_task must receive at least one DMAConfigureTaskForOp to free"
+            "dma_start_task must receive at least one DMAConfigureTaskForOp to start"
         )
     for dma_task in args:
-        _orig_dma_start_task(dma_task)
+        _orig_dma_start_task(
+            dma_task, repeat_count=repeat_count, no_token=no_token or None
+        )
 
 
 def set_lock_value(lock: aie.LockOp, value: int):

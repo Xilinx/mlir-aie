@@ -93,6 +93,7 @@ from .runtime import (
     Task,
     TaskGroup,
     sync_parameters,
+    tile_dma_chain,
     tile_dma_task,
 )
 from .scratchpad_parameter import ScratchpadParameter
@@ -113,6 +114,7 @@ __all__ = [
     "RuntimeData",
     "Task",
     "sync_parameters",
+    "tile_dma_chain",
     "tile_dma_task",
     "ObjectFifo",
     "PadDims",

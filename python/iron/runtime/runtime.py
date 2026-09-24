@@ -331,8 +331,9 @@ class Runtime(Resolvable):
 
         A buffer reaches the Program through whatever uses it -- a Worker's
         fn_args, or a [`TileDma`][iron.TileDma]'s BD chain. One touched only by
-        [`tile_dma_task`][iron.tile_dma_task] has neither, and the sequence body
-        runs last, so it must be registered here to exist by then.
+        [`tile_dma_task`][iron.tile_dma_task] or
+        [`tile_dma_chain`][iron.tile_dma_chain] has neither, and the sequence
+        body runs last, so it must be registered here to exist by then.
         """
         self._buffers.append(buffer)
 
