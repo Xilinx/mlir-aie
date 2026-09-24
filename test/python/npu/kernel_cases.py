@@ -307,6 +307,16 @@ CASES: list[Case] = [
     Case("mv", dict(dim_m=32, dim_k=32), calls=16),
     Case(
         "mv",
+        dict(
+            dim_m=6, dim_k=128, input_dtype=bfloat16, output_dtype=bfloat16, vec_size=64
+        ),
+        calls=4,
+        tag="edge-rows-not-multiple-of-4",
+        smoke=True,
+        perf=False,
+    ),
+    Case(
+        "mv",
         dict(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16),
         calls=4,
         smoke=True,

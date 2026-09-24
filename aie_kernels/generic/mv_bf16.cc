@@ -63,25 +63,42 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
   static_assert(k >= r);
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
-  bfloat16 *c_end = c + m;
-  const bfloat16 *b_end = b + k;
-  for (; c < c_end; c++) {
-    aie::accum acc = aie::zeros<accfloat, r>();
-    if constexpr (k == r) {
-      aie::vector<bfloat16, r> a_vec = aie::load_v<r>(a);
-      aie::vector<bfloat16, r> b_vec = aie::load_v<r>(b);
-      acc = aie::mac(acc, a_vec, b_vec);
-      a += r;
-    } else {
-      // Preserve the pipelined loop for two or more chunks.
-      AIE_LOOP_MIN_ITERATION_COUNT(k / r)
-      for (const bfloat16 *__restrict b_cur = b; b_cur < b_end;
-           b_cur += r, a += r) {
-        aie::vector<bfloat16, r> a_vec = aie::load_v<r>(a);
-        aie::vector<bfloat16, r> b_vec = aie::load_v<r>(b_cur);
-        acc = aie::mac(acc, a_vec, b_vec);
-      }
+  constexpr uint32_t chunks = k / r;
+
+  // Four rows at a time. One b chunk then feeds four macs instead of one, and
+  // reduce_add_v folds the four accumulators in a single pass where four
+  // separate reduction trees used to run -- the reduction, not the mac, is
+  // what a short row costs.
+  uint32_t row = 0;
+  for (; row + 4 <= m; row += 4, a += 4 * k, c += 4) {
+    aie::accum<accfloat, r> acc0 = aie::zeros<accfloat, r>();
+    aie::accum<accfloat, r> acc1 = acc0;
+    aie::accum<accfloat, r> acc2 = acc0;
+    aie::accum<accfloat, r> acc3 = acc0;
+    const bfloat16 *__restrict pa = a;
+    AIE_LOOP_MIN_ITERATION_COUNT(chunks)
+    for (uint32_t i = 0; i < chunks; i++, pa += r) {
+      aie::vector<bfloat16, r> b_vec = aie::load_v<r>(b + i * r);
+      acc0 = aie::mac(acc0, aie::load_v<r>(pa), b_vec);
+      acc1 = aie::mac(acc1, aie::load_v<r>(pa + k), b_vec);
+      acc2 = aie::mac(acc2, aie::load_v<r>(pa + 2 * k), b_vec);
+      acc3 = aie::mac(acc3, aie::load_v<r>(pa + 3 * k), b_vec);
     }
+    aie::vector<float, r> sums = aie::reduce_add_v(
+        acc0.template to_vector<float>(), acc1.template to_vector<float>(),
+        acc2.template to_vector<float>(), acc3.template to_vector<float>());
+    c[0] = static_cast<bfloat16>(sums[0]);
+    c[1] = static_cast<bfloat16>(sums[1]);
+    c[2] = static_cast<bfloat16>(sums[2]);
+    c[3] = static_cast<bfloat16>(sums[3]);
+  }
+
+  // m need not be a multiple of four.
+  for (; row < m; row++, c++) {
+    aie::accum<accfloat, r> acc = aie::zeros<accfloat, r>();
+    AIE_LOOP_MIN_ITERATION_COUNT(chunks)
+    for (uint32_t i = 0; i < chunks; i++, a += r)
+      acc = aie::mac(acc, aie::load_v<r>(a), aie::load_v<r>(b + i * r));
     *c =
         static_cast<bfloat16>(aie::reduce_add(acc.template to_vector<float>()));
   }
