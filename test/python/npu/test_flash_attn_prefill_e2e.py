@@ -17,7 +17,7 @@ against ordinary masked attention.
 The reference is deliberately single-pass: writing the online recurrence into
 it would only assert the kernel against itself. What that costs is a tolerance,
 because the kernel rounds to bf16 at each rescale and inside its polynomial
-exp2, and the reference models neither. Measured over the four cases below the
+exp2, and the reference models neither. Measured over the original four cases the
 worst deviation is 2.6 bf16 steps of the output's range; the bound allows 4.
 For scale, the bugs this test exists to catch -- a mask closing a key early, a
 query grid mapped to the wrong row, keys permuted inside a chunk, V off by a
@@ -54,7 +54,7 @@ F32 = np.dtype[np.float32]
 I32 = np.dtype[np.int32]
 
 # Tolerance, in bf16 steps at the top of the output range; see the assertion
-# for why the unit is absolute. Measured, not guessed. The worst of the four
+# for why the unit is absolute. Measured, not guessed. The worst of the original four
 # cases runs at 2.62 steps and the weakest bug class this test is built to
 # catch -- a mask closing one key early -- moves the output by 6.62, so the
 # bound sits between them with room on both sides.
@@ -142,7 +142,8 @@ def prefill_round(
     lq, lk = _GEOM[head_dim]
     chunks = n_blocks * (_BLOCK_KEYS // lk)
     out_chunks = lq * head_dim // 64
-    q_slots = col + 1
+    q_col = (col & 1) if head_dim == 512 else col
+    q_slots = q_col + 1
 
     q_ty = np.ndarray[(q_slots * lq * head_dim,), BF]
     kv_ty = np.ndarray[(lk * head_dim,), BF]
@@ -284,8 +285,9 @@ def case_data(head_dim, block_q, n_blocks, window, row, col):
     for r, pos in enumerate(q_pos):
         k[pos - k_start] = (q[r].astype(np.float32) * 0.0625).astype(bfloat16)
 
-    q_host = np.zeros((col + 1, lq * head_dim), bfloat16)
-    q_host[col] = _pack_q(q)
+    q_col = (col & 1) if head_dim == 512 else col
+    q_host = np.zeros((q_col + 1, lq * head_dim), bfloat16)
+    q_host[q_col] = _pack_q(q)
     # One stream, in consumption order: each block's key chunks, then its value
     # chunks.
     per_block = _BLOCK_KEYS // lk
@@ -310,10 +312,13 @@ def case_data(head_dim, block_q, n_blocks, window, row, col):
         # shifts the query positions the mask compares against, and a nonzero
         # column additionally shifts which Q tile the core reads.
         (512, 256, 3, 1 << 20, 1, 1),
+        (512, 256, 3, 1 << 20, 1, 2),
+        (512, 256, 3, 1 << 20, 1, 3),
         # Sliding window: the left edge bites, and one block is all a window
         # narrower than the block ever needs. The only case with few enough
         # keys visible to see the causal edge open one key too far.
         (256, 256, 1, 64, 0, 0),
+        (256, 256, 1, 64, 1, 1),
         # The sliding-window geometry with the window open, which is what
         # exercises its 2x2 decomposition against the rescale.
         (256, 128, 2, 1 << 20, 0, 0),

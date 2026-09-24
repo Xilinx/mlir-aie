@@ -490,6 +490,22 @@ def test_multi_output_contract_drives_design_and_reference():
     assert "split_outputs" in str(kd.design(lambda: fn, calls=3).as_mlir())
 
 
+def test_judge_scales_range_tolerance_per_call():
+    fn = kernels.add(tile_size=32)
+    ref = np.zeros((2, 32), bfloat16)
+    ref[:, 0] = [1024, 4]
+    got = ref.copy()
+    got[:, 1] = 1
+    tol = Tolerance.relative(0.0, range_frac=1 / 1024)
+    assert compare(got, ref, tol).ok
+    verdict = fn.judge(got.ravel(), ref, calls=2, tolerance=tol)
+    assert not verdict.ok
+    assert verdict.n_mismatch == 1
+    assert verdict.first_bad_index == 33
+    got[1, 1] = 0
+    assert fn.judge(got.ravel(), ref, calls=2, tolerance=tol).ok
+
+
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.mm_bfp])
 def test_matrix_layouts_are_reversible_per_argument(factory):
     fn = factory()
@@ -1750,6 +1766,11 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
             assert name in NOT_JUDGED, f"{name}: no contract"
             continue
         src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
+        if ef.source_file:
+            for include in re.findall(r'^#include "([^"]+)"', src, re.M):
+                header = Path(ef.source_file).parent / include
+                if header.is_file():
+                    src += "\n" + header.read_text()
         src = _active_source(src, ef.compile_flags)
         sets_own = bool(_SET_ROUNDING_CALL.search(src))
         if sets_own:
