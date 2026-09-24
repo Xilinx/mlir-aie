@@ -55,13 +55,18 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   constexpr unsigned sizeB = s * t;
   constexpr unsigned sizeC = r * t;
   event0();
+  // Each j trip loads and stores its four accumulators around a pipelined i
+  // loop, which Peano cannot overlap across trips of a rolled loop. Unrolled,
+  // one trip's C stores pair with the next one's C loads and ramp.
   AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
+  AIE_LOOP_UNROLL(2)
   for (unsigned z = 0; z < rowA; z += 2) {
     float *__restrict pC1 = pC + (z * colB) * sizeC;
     float *__restrict pC2 = pC + ((z + 1) * colB) * sizeC;
     const bfloat16 *__restrict pA_cur = pA + (z >> 1) * (2 * r * colA * s);
 
     AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+    AIE_LOOP_UNROLL(4)
     for (unsigned j = 0; j < colB; j += 2) {
       const bfloat16 *__restrict pA1 = pA_cur;
       const bfloat16 *__restrict pA2 = pA_cur + colA * sizeA;
