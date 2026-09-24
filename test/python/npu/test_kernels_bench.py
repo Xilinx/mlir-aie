@@ -99,7 +99,13 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     design(*ins, *outputs)
     # Copies: numpy() views the device buffer, which dies with this frame.
     got = tuple(o.numpy().copy() for o in outputs)
-    verdict = fn.judge(got if len(got) > 1 else got[0], ref, calls=case.calls)
+    verdict = fn.judge(
+        got if len(got) > 1 else got[0],
+        ref,
+        calls=case.calls,
+        inputs=inputs,
+        scalars=case.scalars,
+    )
     assert verdict, f"{case.name}: {verdict.detail}"
     measured["outputs"] = got
 

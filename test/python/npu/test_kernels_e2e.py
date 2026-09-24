@@ -76,7 +76,7 @@ def _run_case(case, data_case: str, seed: int):
     out_dt = fn.output_dtype()
     # The output is poisoned so a kernel that writes nothing cannot pass.
     got = _run(design, fn, inputs, out_n, out_dt)
-    verdict = fn.judge(got, ref, calls=case.calls)
+    verdict = fn.judge(got, ref, calls=case.calls, inputs=inputs, scalars=case.scalars)
     assert verdict, f"{case.name} [{data_case}, seed {seed}]: {verdict.detail}"
 
 

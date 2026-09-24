@@ -5,6 +5,7 @@
 #
 """Activation kernel factories and NumPy reference implementations."""
 
+import math
 from pathlib import Path
 from typing import Callable
 
@@ -178,6 +179,66 @@ _GELU_TOLERANCE = Tolerance.relative(
     note="gelu tanh approximation, measured on npu2: 1.56e-2 abs at a "
     "near-zero expected value",
 )
+
+
+# What AIE2P's vtanh returns, measured on npu2 through gelu over every finite
+# bf16 input: u itself up to |u| = 0.5, then a ramp that meets tanh by 0.8,
+# within 2.8 ulps of tanh from there (3.5 allowed), and exactly +/-1 from
+# |u| = 3 on.
+_VTANH_ARG_BAND = (0.5, 0.8)
+_VTANH_ULPS = 3.5
+_VTANH_SATURATES = 3.0
+
+
+def _bf16_ulp(v):
+    return np.exp2(np.floor(np.log2(np.maximum(np.abs(v), 2.0**-126))) - 7)
+
+
+def _vtanh_error(u):
+    """Bound on ``|vtanh(u) - tanh(u)|``, elementwise."""
+    a = np.abs(u)
+    t = np.tanh(a)
+    lo, hi = _VTANH_ARG_BAND
+    band = np.where(
+        a <= lo,
+        a - t,
+        (lo - math.tanh(lo)) * np.clip((hi - a) / (hi - lo), 0.0, 1.0),
+    )
+    return np.where(a >= _VTANH_SATURATES, 1.0 - t, band + _VTANH_ULPS * _bf16_ulp(t))
+
+
+def _gelu_vtanh_bound(x):
+    """Bound on AIE2P gelu.cc's error at ``x``, against bf16 of the true gelu.
+
+    The kernel's tanh argument ``u`` is off by sqrt(2/pi) stored in bf16 and
+    by the bf16 roundings of ``x*x`` and ``x*s_beta``; tanh's slope
+    ``1 - t*t`` carries that through. vtanh adds its own error, and
+    ``x/2 * (1 + t)`` scales the sum by ``|x|/2``. One output ulp covers the
+    final store, and the smallest normal covers a subnormal flushed to zero.
+    """
+    x = np.asarray(x, np.float64)
+    s = math.sqrt(2 / math.pi)
+    with np.errstate(over="ignore", invalid="ignore"):
+        cubic = 0.044715 * x**3
+        u = s * (x + cubic)
+        du = abs(s - float(bfloat16(s))) / s * np.abs(u) + 2.0**-7 * s * np.abs(cubic)
+        t = np.tanh(u)
+        et = _vtanh_error(u) + (1 - t * t) * du
+        return 0.5 * np.abs(x) * et + _bf16_ulp(0.5 * x * (1 + t)) + 2.0**-126
+
+
+# On AIE2P the per-input bound fails a 1.5% change to sqrt(2/pi), which no
+# single rtol/atol does while passing the kernel: at x = -0.6 vtanh's
+# identity band is 11 ulps off, more than the mutation moves anything.
+_GELU_VTANH_TOLERANCE = Tolerance.bounded(
+    _gelu_vtanh_bound,
+    note="gelu.cc's bf16 roundings plus vtanh's error, measured over every "
+    "finite bf16 input on npu2; fails a 1.5% change to sqrt(2/pi)",
+)
+
+
+def _gelu_tolerance() -> Tolerance:
+    return _GELU_TOLERANCE if _detect_arch() == "aie2" else _GELU_VTANH_TOLERANCE
 
 
 def _vtanh_family_tolerance(name: str) -> Tolerance:
@@ -365,7 +426,9 @@ def gelu(tile_size: int = 1024) -> ExternalFunction:
         "gelu.cc",
         tile_size,
         arg_arity=2,
-        contract=_unary_lut_contract(gelu_ref, count=False, tolerance=_GELU_TOLERANCE),
+        contract=_unary_lut_contract(
+            gelu_ref, count=False, tolerance=_gelu_tolerance()
+        ),
     )
 
 
@@ -434,7 +497,7 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DGELU_ELEMS={tile_size}"],
         contract=_unary_lut_contract(
-            gelu_ref, count=tile_size, tolerance=_GELU_TOLERANCE
+            gelu_ref, count=tile_size, tolerance=_gelu_tolerance()
         ),
     )
 
@@ -693,15 +756,13 @@ def gelu_ref(x):
     """Numpy reference for [`gelu`][iron.kernels.activation.gelu].
 
     Tanh approximation ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
-    Matches the C++ kernel's tanh-GELU formula; pair with ``rtol=0.128,
-    atol=0.05`` when verifying.
+    Matches the C++ kernel's tanh-GELU formula. It is evaluated in float64:
+    in float32, ``1 + tanh`` cancels for x below about -4.5 and leaves
+    values over ten times too large.
     """
-    import math as _math
-
-    xf = x.astype(np.float32)
-    return (
-        0.5 * xf * (1.0 + np.tanh(_math.sqrt(2.0 / _math.pi) * (xf + 0.044715 * xf**3)))
-    ).astype(x.dtype)
+    xf = x.astype(np.float64)
+    inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
+    return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
 
 
 def bf16_exp_lut_ref(x):
