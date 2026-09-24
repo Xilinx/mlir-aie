@@ -38,11 +38,12 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
 // One chain per iteration is latency-bound rather than issue-bound: the two
 // operand loads are both vlda.conv.fp32.bf16, which only exists on the a port,
 // so they serialize, and the vadd.f then waits out the load-to-use latency
-// with nothing to fill it -- three of the loop's seven bundles were nops.
-// Peano schedules the four-chain body into a loop of the same size, so the
-// extra chains land in stall slots that were already being paid for.  Going
-// wider is not free: x8 grows the body faster than the work it adds, and x16
-// runs out of accumulator registers.
+// with nothing to fill it -- only four of the one-chain loop's twelve bundles
+// did work.  Peano schedules the four-chain body into eighteen bundles, so four
+// vectors cost 18 cycles where one cost 12; most of the extra chains land in
+// stall slots that were already being paid for.  Going wider is not free: x8
+// grows the body faster than the work it adds, and x16 runs out of accumulator
+// registers.
 #define ADD_UNROLL 4
 
 template <typename T_in, typename T_out, const int N>
