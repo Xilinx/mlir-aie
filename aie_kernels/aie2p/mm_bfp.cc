@@ -285,6 +285,7 @@ extern "C" {
 #ifdef MATMUL_ONLY
 void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
                              bfp16ebs8 *__restrict pC) {
+  event0();
 
   constexpr int r = 8;
   constexpr int s = 8;
@@ -299,12 +300,14 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
   static_assert(n % (2 * t) == 0);
 
   matmul_vectorized_2x2_bfp16<m / r, k / s, n / t, r, s, t>(pA, pB, pC);
+  event1();
 }
 #endif
 
 #ifdef SHUFFLE_ONLY
 void scalar_shuffle(uint8_t *pA, uint8_t *pC, size_t tileWidth,
                     size_t tileHeight, bool unshuffle = false) {
+  event0();
   // A row is 9/8 bytes per element. Spelling that as *1.125 round-trips the
   // size_t through double, which on aie2p is three soft-float calls
   // (__floatunsidf, __muldf3, __fixunsdfsi) sitting in the address math;
@@ -318,6 +321,7 @@ void scalar_shuffle(uint8_t *pA, uint8_t *pC, size_t tileWidth,
     shuffleBfp16ebs8(blocksPerRow, tileHeight, pA, pC);
   else
     unshuffleBfp16ebs8(blocksPerRow, tileHeight, pA, pC);
+  event1();
 }
 #endif
 }
