@@ -426,8 +426,9 @@ the test, and a failed session writes no `--bench-out` file at all. Per case it 
 `cycles_per_kop`, `npu_us` / `e2e_us` from `aie.utils.benchmark`, and
 `compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced
 rebuild. Preflight reads the device and its power mode through the host
-runtime (`HostRuntime.power_mode()`) and refuses to run outside
-`--pmode`; a bit-exact `passthrough` smoke test inside a cycle band guards
+runtime (`HostRuntime.power_mode()`); the benchmark workflow tries to switch
+to `performance` first, but always records the active mode in the results. A
+bit-exact `passthrough` smoke test inside a cycle band guards
 the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
 at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
 and the sizes alert at 3 %, the wall times are advisory, and nothing
