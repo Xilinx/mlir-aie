@@ -38,6 +38,7 @@ extern "C" {
 // II 36, which is the rate mm.cc's own bf16 product runs at.  The mac order
 // per output tile is unchanged, so the result is unchanged too.
 void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
+  event0();
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
   constexpr unsigned r = 8, s = 8, t = 8;
@@ -78,6 +79,7 @@ void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
     }
   }
   ::aie::set_rounding(saved_rounding);
+  event1();
 }
 
 } // extern "C" (row-major wrappers)
@@ -157,6 +159,7 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, bfloat16 *out, bfloat16 *scale_buffer,
 
 void rescale_O(bfloat16 *O, bfloat16 *scale_buffer, int32_t B_q,
                int32_t *idx_buffer) {
+  event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   for (int32_t i = 0; i < B_q; i += VECTOR_LENGTH) {
@@ -172,6 +175,7 @@ void rescale_O(bfloat16 *O, bfloat16 *scale_buffer, int32_t B_q,
   // VJUNG: Scale O_{i} by 1/l_{i}
   scale_blocked_rows(O, scale_buffer + 2 * B_q);
   ::aie::set_rounding(saved_rounding);
+  event1();
 }
 
 void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
@@ -298,6 +302,7 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
 }
 
 void init_scale_buffer(bfloat16 *scale_buffer, int32_t size) {
+  event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
@@ -314,5 +319,6 @@ void init_scale_buffer(bfloat16 *scale_buffer, int32_t size) {
     aie::store_v(scale_buffer + 2 * size + i, zeros_vec);
   }
   ::aie::set_rounding(saved_rounding);
+  event1();
 }
 }
