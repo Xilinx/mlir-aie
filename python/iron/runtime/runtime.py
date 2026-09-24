@@ -36,7 +36,12 @@ from ...dialects.aiex import (
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from ...helpers.astloc import with_statement_locations
-from ...helpers.sourceloc import site_location, site_of_function, traced_body
+from ...helpers.sourceloc import (
+    SourceSite,
+    site_location,
+    site_of_function,
+    traced_body,
+)
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
@@ -173,6 +178,8 @@ class Runtime(Resolvable):
     constructor; its body reads the runtime buffers as parameters and moves
     data with ``fifo.fill(...)`` / ``fifo.drain(...)``.
     """
+
+    _source_site: SourceSite | None
 
     def __init__(
         self,
@@ -501,7 +508,9 @@ class Runtime(Resolvable):
 
             with active_sequence_scope(active), (
                 body_loc if body_loc is not None else contextlib.nullcontext()
-            ), traced_body(self._seq_fn.__name__, self._source_site):
+            ), traced_body(
+                getattr(self._seq_fn, "__name__", "sequence"), self._source_site
+            ):
                 traced_seq_fn(*body_args)
                 active.finalize()
 

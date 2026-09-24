@@ -39,7 +39,7 @@ from ..extras.ast.util import (  # pyright: ignore[reportMissingImports]
     set_lineno,
 )
 from ..ir import Context, Location  # pyright: ignore[reportMissingImports]
-from .sourceloc import current_body
+from .sourceloc import current_body, is_internal_file
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,8 @@ class _StatementLocations(StrictTransformer):
                 setattr(stmt, field, self._wrap_all(inner))
         for handler in getattr(stmt, "handlers", []):
             handler.body = self._wrap_all(handler.body)
+        for case in getattr(stmt, "cases", []):
+            case.body = self._wrap_all(case.body)
 
         if isinstance(stmt, _UNWRAPPABLE):
             return [stmt]
@@ -124,12 +126,15 @@ class _StatementLocations(StrictTransformer):
 def with_statement_locations(fn):
     """Return a copy of `fn` whose statements each scope an MLIR location.
 
-    Returns `fn` unchanged when it cannot be rewritten -- a builtin, a
+    Returns `fn` unchanged for internal bodies, which should keep the user's
+    ambient location, or when it cannot be rewritten -- a builtin, a
     `functools.partial`, or a body whose source is unavailable (a REPL). Losing
     statement precision is not worth failing a compile over, but the reason is
     logged rather than swallowed.
     """
     if not hasattr(fn, "__code__"):
+        return fn
+    if is_internal_file(fn.__code__.co_filename):
         return fn
     try:
         copy = copy_func(fn)

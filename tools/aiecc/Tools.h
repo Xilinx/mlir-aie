@@ -83,6 +83,7 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
     llvm::raw_fd_ostream os(out.filePath, ec);
     if (ec) {
       free(elfBuf);
+      endProgressLine();
       llvm::errs() << "aiecc: cannot write ELF '" << out.filePath
                    << "': " << ec.message() << "\n";
       return mlir::failure();
@@ -94,10 +95,9 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
   }
   if (elfBuf)
     free(elfBuf);
-  if (!captured.empty()) {
-    endProgressLine();
+  endProgressLine();
+  if (!captured.empty())
     llvm::errs() << captured;
-  }
   llvm::errs() << "aiecc: aiebu_assembler_get_elf failed (code " << result
                << ")\n";
   return mlir::failure();
@@ -126,10 +126,9 @@ inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
                               sizeof(errMsg));
   }
   if (rc != BOOTGEN_SUCCESS) {
-    if (!captured.empty()) {
-      endProgressLine();
+    endProgressLine();
+    if (!captured.empty())
       llvm::errs() << captured;
-    }
     llvm::errs() << "aiecc: bootgen_generate_pdi failed (code " << rc << ")";
     if (errMsg[0] != '\0')
       llvm::errs() << ": " << errMsg;

@@ -49,7 +49,7 @@ def _attach_source_site(cls) -> None:
                 # not at all.
                 raise filter_internal_frames(exc) from None
 
-        __init__._iron_located = True
+        setattr(__init__, "_iron_located", True)
         cls.__init__ = __init__
 
     resolve = cls.__dict__.get("resolve")
@@ -71,7 +71,7 @@ def _attach_source_site(cls) -> None:
             with loc:
                 return resolve(self, loc, *args, **kwargs)
 
-        resolve_wrapper._iron_located = True
+        setattr(resolve_wrapper, "_iron_located", True)
         cls.resolve = resolve_wrapper
 
 

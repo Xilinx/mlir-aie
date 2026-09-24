@@ -24,7 +24,7 @@ from ..dialects.aiex import (
 )
 from ..helpers.astloc import with_statement_locations
 from ..helpers.dialects.scf import _for as range_
-from ..helpers.sourceloc import site_location, site_of_function, traced_body
+from ..helpers.sourceloc import SourceSite, site_location, site_of_function, traced_body
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
@@ -42,6 +42,8 @@ class Worker(ObjectFifoEndpoint, Resolvable):
     Buffers, Kernels, etc.). Each Worker is placed on a single compute tile, either
     explicitly via ``tile`` or automatically by the ``--aie-place-tiles`` compiler pass.
     """
+
+    _source_site: SourceSite | None
 
     def __init__(
         self,
@@ -147,6 +149,9 @@ class Worker(ObjectFifoEndpoint, Resolvable):
             self.core_fn = do_nothing_core_fun
         else:
             self.core_fn = core_fn
+        self._core_fn_name = getattr(
+            self.core_fn, "__name__", type(self.core_fn).__name__
+        )
         self.fn_args = fn_args if fn_args is not None else []
         self._fifos = []
         self._buffers = []
@@ -258,7 +263,7 @@ class Worker(ObjectFifoEndpoint, Resolvable):
         # Diagnostics name Workers when two of them collide over a tile or a
         # fifo handle; the default object repr identifies neither one.
         where = f" declared at {self._source_site}" if self._source_site else ""
-        return f"Worker({self.core_fn.__name__} on {self._tile}{where})"
+        return f"Worker({self._core_fn_name} on {self._tile}{where})"
 
     @property
     def flat_fn_args(self) -> list:
@@ -295,7 +300,7 @@ class Worker(ObjectFifoEndpoint, Resolvable):
         if not self._tile:
             raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
-        loc = loc or site_location(self._source_site, self.core_fn.__name__)
+        loc = loc or site_location(self._source_site, self._core_fn_name)
 
         # Create the necessary locks for the core operation to synchronize with the runtime sequence
         # and register them in the corresponding barriers.
@@ -306,7 +311,7 @@ class Worker(ObjectFifoEndpoint, Resolvable):
         # Ops inside the body are emitted while core_fn runs, so they pick up
         # whichever location is ambient; point that at core_fn rather than
         # letting them default to unknown.
-        body_loc = site_location(self._body_site, self.core_fn.__name__) or loc
+        body_loc = site_location(self._body_site, self._core_fn_name) or loc
         # The body is traced by running it, so wrapping each of its statements
         # in a location scope is what gives its ops statement precision.
         traced_core_fn = with_statement_locations(self.core_fn)
@@ -326,7 +331,7 @@ class Worker(ObjectFifoEndpoint, Resolvable):
             # lowerer treats differently and can cause runtime hangs.
             with (
                 body_loc if body_loc is not None else contextlib.nullcontext()
-            ), traced_body(self.core_fn.__name__, self._source_site):
+            ), traced_body(self._core_fn_name, self._source_site):
                 for _ in range_(sys.maxsize if self._while_true else 1):
                     traced_core_fn(*self.fn_args)
 

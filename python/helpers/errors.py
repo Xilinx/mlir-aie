@@ -93,7 +93,8 @@ def _synthesize_frame(filename: str, lineno: int, name: str):
     try:
         exec(code, {"__hop__": _Hop()})
     except _Hop as hop:
-        return hop.__traceback__.tb_next
+        tb = hop.__traceback__
+        return tb.tb_next if tb is not None else None
     return None  # pragma: no cover - the exec above always raises
 
 
