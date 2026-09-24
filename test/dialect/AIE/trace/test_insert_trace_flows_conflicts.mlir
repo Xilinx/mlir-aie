@@ -86,3 +86,44 @@ module @secondary_channel_used {
     // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
   }
 }
+
+// -----
+
+// Test: An objectFifo that ends at the shim has no flow yet when this pass
+// runs, but its lowering will take S2MM channel 0. With distribute, that
+// leaves the traces a single channel, DMA:1, as in @secondary_channel_used.
+// CHECK-LABEL: module @objectfifo_claims_channel
+module @objectfifo_claims_channel {
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    %tile03 = aie.tile(0, 3)
+    %tile00 = aie.tile(0, 0)
+
+    aie.objectfifo @out(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    aie.trace @trace_a(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.trace @trace_b(%tile03) {
+      aie.trace.packet id=2 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      aie.trace.start_config @trace_a
+      aie.trace.start_config @trace_b
+    }
+
+    // CHECK: aiex.npu.writebd
+    // CHECK-NOT: aiex.npu.writebd
+    // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
+    // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
+  }
+}

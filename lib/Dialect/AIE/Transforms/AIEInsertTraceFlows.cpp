@@ -545,8 +545,9 @@ struct AIEInsertTraceFlowsPass
         // No lateral available -- emit error
         device.emitError()
             << "no S2MM channels available on shim tile at column " << shimCol
-            << " (both channels in use by existing flows); enable "
-               "lateral-routing to redirect to a spare column";
+            << " (both channels in use by existing flows or objectFifos); "
+               "set egress_shim_col to a column with a free channel, or "
+               "enable lateral-routing to redirect to a spare column";
         return signalPassFailure();
       }
 
@@ -1103,8 +1104,8 @@ private:
   }
 
   /// Scan the device for existing S2MM channel claims on shim tiles.
-  /// Checks aie.flow destinations, aie.packet_flow destinations, and
-  /// ShimDMAAllocationOp declarations.
+  /// Checks aie.flow destinations, aie.packet_flow destinations,
+  /// ShimDMAAllocationOp declarations, and objectFifos that end at a shim.
   std::map<int, std::set<int>> scanUsedS2MMChannels(DeviceOp device) {
     std::map<int, std::set<int>> used; // shimCol -> set of used S2MM channels
 
@@ -1130,6 +1131,22 @@ private:
       if (alloc.getChannelDir() == DMAChannelDir::S2MM) {
         auto tile = alloc.getTileOp();
         used[tile.getCol()].insert(alloc.getChannelIndex());
+      }
+    });
+
+    // This pass runs before objectFifo lowering, so an objectFifo that ends
+    // at a shim has no flow yet. Its lowering will take the lowest S2MM
+    // channel still free there; claim that one now.
+    device.walk([&](ObjectFifoCreateOp fifo) {
+      for (Value consumer : fifo.getConsumerTiles()) {
+        auto tile = dyn_cast_or_null<TileOp>(consumer.getDefiningOp());
+        if (!tile || !tile.isShimTile())
+          continue;
+        auto &channels = used[tile.getCol()];
+        int ch = 0;
+        while (channels.count(ch))
+          ++ch;
+        channels.insert(ch);
       }
     });
 

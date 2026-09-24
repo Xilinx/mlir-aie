@@ -186,5 +186,8 @@ def pipeline(stages, host_types, transfers, *, trace_size=0):
     rt = Runtime(sequence, list(host_types) + [e for e, _, _ in endpoints])
     prog = Program(device, rt, workers=workers)
     if trace_size > 0:
-        prog.enable_trace(trace_size)
+        # The placer fills shims from column 0, where a kernel with two
+        # outputs takes both S2MM channels; the far column leaves the trace
+        # one.
+        prog.enable_trace(trace_size, egress_shim_col=device.cols - 1)
     return prog.resolve_program()
