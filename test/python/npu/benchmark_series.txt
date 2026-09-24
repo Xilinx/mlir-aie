@@ -49,12 +49,16 @@ exp2f_vec/48x4/float32/vector-tail
 expand/576x16/uint8_bfloat16
 expand/576x256/uint8_bfloat16
 filter2d/1920x16/uint8
+fused_mm/16x64x16x4/bfloat16/band_m=16/bfp16_b=True/chunk_k=32/out_chunk=64
 fused_mm/32x32x16x4/bfloat16
 fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)
 fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)/epilogue=silu
 fused_mm/32x48x16x4/bfloat16/epilogue=gelu
 fused_mm/32x48x16x4/bfloat16/epilogue=sigmoid
 fused_mm/32x48x16x4/bfloat16/epilogue=silu
+fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512
+fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/out_chunk=512
+fused_mm/64x32x128x4/bfloat16/band_m=64/bfp16_b=True/chunk_k=32/out_chunk=512
 gelu/1024x16/bfloat16
 gelu/1024x256/bfloat16
 gelu_sized/1024x16/bfloat16
@@ -71,6 +75,7 @@ mha/64x64x64x4/bfloat16
 mha/64x64x64x4/bfloat16/pv=True
 mha_softmax/4096x4/bfloat16_bfloat16+bfloat16
 mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal
+mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded
 mm/32x32x32x16/bfloat16_float32/edge-small-tile
 mm/64x32x64x1/bfloat16_float32/edge-single-tile
 mm/64x32x64x16/bfloat16_float32
@@ -118,6 +123,7 @@ mv/4x2048x16/bfloat16/vec_size=64
 mv/4x64x16/bfloat16/vec_size=32
 mv/4x64x4/bfloat16/vec_size=64/edge-one-chunk
 mv/6x128x4/bfloat16/vec_size=64/edge-rows-not-multiple-of-4
+mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down
 passthrough/1024x16/int16
 passthrough/128x4/int16/edge-tiny
 passthrough/16x4/int32/edge-one-vector
