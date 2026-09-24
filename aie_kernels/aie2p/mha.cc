@@ -392,6 +392,10 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
     return;
   }
 
+  // Not at entry: zero_vectorized brackets itself, so a skipped block is
+  // timed by its own pair and every call still emits exactly one.
+  event0();
+
   using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
   Vec64bf16 lowest_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(
       std::numeric_limits<bfloat16>::lowest());
@@ -442,20 +446,22 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
       }
     }
 
+    // The alias form, not the partial_softmax_bf16 entry point, which brackets
+    // each row with markers of its own.
     int32_t i = 0;
     for (; i + 4 <= valid_q_rows; i += 4) {
-      partial_softmax_bf16(A + B_kv * i, P + B_kv * i, scale_buffer, B_kv, i,
-                           B_q, inv_scale);
-      partial_softmax_bf16(A + B_kv * (i + 1), P + B_kv * (i + 1), scale_buffer,
-                           B_kv, i + 1, B_q, inv_scale);
-      partial_softmax_bf16(A + B_kv * (i + 2), P + B_kv * (i + 2), scale_buffer,
-                           B_kv, i + 2, B_q, inv_scale);
-      partial_softmax_bf16(A + B_kv * (i + 3), P + B_kv * (i + 3), scale_buffer,
-                           B_kv, i + 3, B_q, inv_scale);
+      partial_softmax_alias_bf16(A + B_kv * i, P + B_kv * i, scale_buffer, B_kv,
+                                 i, B_q, inv_scale);
+      partial_softmax_alias_bf16(A + B_kv * (i + 1), P + B_kv * (i + 1),
+                                 scale_buffer, B_kv, i + 1, B_q, inv_scale);
+      partial_softmax_alias_bf16(A + B_kv * (i + 2), P + B_kv * (i + 2),
+                                 scale_buffer, B_kv, i + 2, B_q, inv_scale);
+      partial_softmax_alias_bf16(A + B_kv * (i + 3), P + B_kv * (i + 3),
+                                 scale_buffer, B_kv, i + 3, B_q, inv_scale);
     }
     for (; i < valid_q_rows; i++) {
-      partial_softmax_bf16(A + B_kv * i, P + B_kv * i, scale_buffer, B_kv, i,
-                           B_q, inv_scale);
+      partial_softmax_alias_bf16(A + B_kv * i, P + B_kv * i, scale_buffer, B_kv,
+                                 i, B_q, inv_scale);
     }
   }
   // Zero out P rows corresponding to padded Q rows, which are again a suffix
@@ -489,6 +495,7 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
     aie::store_v(scale_buffer + i, m_i);
   }
   ::aie::set_rounding(saved_rounding);
+  event1();
 }
 
 void init_scale_buffer(bfloat16 *scale_buffer, int32_t size) {

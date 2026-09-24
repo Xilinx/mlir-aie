@@ -1032,6 +1032,83 @@ def mha(
     )
 
 
+_MHA_BLOCK = 64  # partial_softmax's fast path needs 64 keys per block
+
+
+def mha_softmax() -> ExternalFunction:
+    """One 64x64 block of ``mha.cc``'s online softmax, ``partial_softmax`` (aie2p only).
+
+    Writes the block's unnormalized weights ``P = exp2(A * s - m)``, with
+    ``s = log2(e) / 8`` and ``m`` each query row's running maximum, and
+    updates the running state ``scale_buffer``: ``[m, m, l, exp2(m_prev -
+    m)]``, 64 rows each. The state is zeroed before every call, so each call
+    is a first key block against a running maximum of 0; the carry across
+    blocks is ``test_mha_e2e.py``'s. The kernel masks by overwriting
+    ``A``'s masked entries in place.
+
+    Which block it is stays a runtime operand, as in the kernel: ``idx`` is
+    ``(key block, query block)`` (equal on the causal diagonal, key block
+    past query block skipped), and ``S_q_eff``/``S_kv_eff`` are the
+    sequence lengths whose tails pad the block.
+    """
+    if _detect_arch() != "aie2p":
+        raise NotImplementedError(
+            "mha_softmax: mha.cc is an AIE2P kernel; select an NPU2 device"
+        )
+    b = _MHA_BLOCK
+    tile = np.ndarray[(b * b,), np.dtype[bfloat16]]
+    state = np.ndarray[(4 * b,), np.dtype[bfloat16]]
+    idx = np.ndarray[(2,), np.dtype[np.int32]]
+    scale = float(bfloat16(np.log2(np.e) / np.sqrt(b)))
+    return _make_extern(
+        "partial_softmax",
+        _default_source_path("mha.cc", subdir="aie2p"),
+        [tile, tile, state, idx, bfloat16, *([np.int32] * 4)],
+        compile_flags=[f"-DDIM_M={b}", f"-DDIM_K={b}", f"-DDIM_N={b}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, InOut, *([Param] * 6)),
+            parameter_bindings=((4, scale), (5, b), (6, b)),
+            initializers=((2, _zero_output),),
+            reference=partial(mha_softmax_ref, scale=scale),
+            # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
+            # by up to 6.15%, and two bf16 roundings bring it to 6.98%
+            # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
+            # |a| + |b|, so half of that; the floor is test_mha_e2e's
+            # 4 bf16 steps at 1, P's top.
+            tolerance=Tolerance.relative(
+                0.035,
+                4 * 2.0**-7,
+                note="aie::exp2 interpolant envelope, 6.98% (test_mha_e2e.py)",
+            ),
+        ),
+    )
+
+
+def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
+    """Numpy reference for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: ``(P, scale_buffer)``.
+
+    True ``exp2`` rather than the device's interpolant, from a zeroed
+    running state. ``m`` is rounded to bf16 before ``P`` uses it, as the
+    kernel stores it. A padded row keeps ``m = l = 0``; a skipped or wholly
+    padded block leaves the state untouched.
+    """
+    b = _MHA_BLOCK
+    kv, q = (int(i) for i in np.asarray(idx).ravel())
+    rows, cols = np.indices((b, b))
+    keep = (rows < s_q_eff - q * b) & (cols < s_kv_eff - kv * b)
+    if kv == q:
+        keep &= cols <= rows
+    if kv > q or not keep.any():
+        return np.zeros((len(a), b * b)), np.zeros((len(a), 4 * b))
+    scaled = a.astype(np.float32).reshape(-1, b, b) * np.float32(scale)
+    m = np.where(keep, scaled, -np.inf).max(axis=2)
+    m = np.maximum(m.astype(bfloat16).astype(np.float32), 0)
+    p = np.exp2(np.where(keep, scaled - m[..., None], -np.inf))
+    state = np.concatenate([m, m, p.sum(axis=2), np.exp2(-m)], axis=1)
+    return p.reshape(len(p), -1), state
+
+
 # head_dim -> (LQ, LK, stack_bytes) for flash_attn_prefill.h's PrefillGeom
 # specializations: 512 is global attention, 256 sliding-window. The stack is
 # aiecc's measured_stack_size under Peano 21: fv_step -> sv_row_block is the

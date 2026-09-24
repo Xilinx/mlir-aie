@@ -129,7 +129,6 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
                                 const int32_t vector_size,
                                 const int32_t row_idx, const int32_t num_rows,
                                 const bfloat16 scale) {
-  event0();
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
 
@@ -190,7 +189,6 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
 
   scale_buffer[3 * num_rows + row_idx] = accum_exp_val;
 
-  event1();
   ::aie::set_rounding(saved_rounding);
 
   return;
@@ -207,8 +205,12 @@ void partial_softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
                           bfloat16 *restrict scale_buffer,
                           const int32_t input_size, const int32_t row_idx,
                           const int32_t num_rows, const bfloat16 scale) {
+  // Here rather than in partial_softmax_alias_bf16, so mha.cc's
+  // partial_softmax can time a whole block around its rows.
+  event0();
   partial_softmax_alias_bf16(input, output, scale_buffer, input_size, row_idx,
                              num_rows, scale);
+  event1();
 }
 
 // Fill [unmasked_size, total_size) with -inf so a subsequent softmax drops the

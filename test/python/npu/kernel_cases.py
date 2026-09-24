@@ -905,6 +905,37 @@ CASES += [
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.
     Case("mha", dict(pv=True), calls=4, devices=("npu2",), smoke=True, perf=False),
+    # The toolkit's online softmax over one key block: params is (key block,
+    # query block), scalars the two sequence lengths. The padded diagonal
+    # block takes every branch the full one skips (the causal mask, masked
+    # tail keys, padded query rows), so the two smoke cases cover the kernel;
+    # the plain diagonal block is its own cycle series.
+    Case(
+        "mha_softmax",
+        calls=4,
+        params=((0, 1),),
+        scalars=(128, 64),
+        devices=("npu2",),
+        smoke=True,
+    ),
+    Case(
+        "mha_softmax",
+        calls=4,
+        params=((0, 0),),
+        scalars=(64, 64),
+        tag="diagonal",
+        devices=("npu2",),
+    ),
+    Case(
+        "mha_softmax",
+        calls=4,
+        params=((0, 0),),
+        scalars=(37, 37),
+        tag="diagonal-padded",
+        devices=("npu2",),
+        smoke=True,
+        perf=False,
+    ),
     # The prefill toolkit's S*V accumulate, one case per geometry. Each
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V
