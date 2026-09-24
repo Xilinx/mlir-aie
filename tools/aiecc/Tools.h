@@ -63,8 +63,7 @@ namespace xilinx::aiecc {
 inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
                                        llvm::ArrayRef<char> buffer2,
                                        llvm::StringRef patchJson,
-                                       Item<File> &out, bool verbose,
-                                       bool progress) {
+                                       Item<File> &out, bool verbose) {
   void *elfBuf = nullptr;
   int result;
   std::string captured;
@@ -96,8 +95,7 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
   if (elfBuf)
     free(elfBuf);
   if (!captured.empty()) {
-    if (progress)
-      llvm::errs() << '\n';
+    endProgressLine();
     llvm::errs() << captured;
   }
   llvm::errs() << "aiecc: aiebu_assembler_get_elf failed (code " << result
@@ -114,8 +112,7 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
 // Only compiled when the bootgen library is linked; otherwise a declarative
 // `bootgen` ShellCommand edge is used (see the `pdi` edge).
 inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
-                                       Item<File> &out, bool verbose,
-                                       bool progress) {
+                                       Item<File> &out, bool verbose) {
   char errMsg[1024] = {0};
   int rc;
   std::string captured;
@@ -130,8 +127,7 @@ inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
   }
   if (rc != BOOTGEN_SUCCESS) {
     if (!captured.empty()) {
-      if (progress)
-        llvm::errs() << '\n';
+      endProgressLine();
       llvm::errs() << captured;
     }
     llvm::errs() << "aiecc: bootgen_generate_pdi failed (code " << rc << ")";

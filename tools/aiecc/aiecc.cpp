@@ -1504,8 +1504,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                 out.value = File{};
                                 return mlir::success();
                               }
-                              return assemblePdi(bifItem, out, verbose,
-                                                 ShellCommand::progress);
+                              return assemblePdi(bifItem, out, verbose);
                             });
 #else
   auto &pdi = bif.map<File>(pdiName.getValue(), ShellCommand{"bootgen"}
@@ -1598,8 +1597,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                        std::string patch =
                            llvm::formatv("{0:2}", patchItem.get()).str();
                        return assembleElf(dmaSeqItem.get(), ctrlItem.get(),
-                                          llvm::StringRef(patch), out, verbose,
-                                          ShellCommand::progress);
+                                          llvm::StringRef(patch), out, verbose);
                      });
 #else
   auto &ctrlpktElf = bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
@@ -1854,8 +1852,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                          [](const Item<std::vector<char>> &item,
                             Item<File> &out) -> mlir::LogicalResult {
                            return assembleElf(item.get(), /*buffer2=*/{},
-                                              /*patchJson=*/{}, out, verbose,
-                                              ShellCommand::progress);
+                                              /*patchJson=*/{}, out, verbose);
                          });
 #else
   auto &instElf =
@@ -2330,6 +2327,15 @@ int main(int argc, char **argv) {
         sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
   }
   mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
+  // Close the live --progress status line before a diagnostic prints, so the
+  // `file:line:col:` prefix does not arrive glued to the tail of the status
+  // text. Handlers run most-recent-first, so registering after the one that
+  // prints puts this ahead of it; failure() then hands the diagnostic on
+  // unchanged.
+  context.getDiagEngine().registerHandler([](mlir::Diagnostic &) {
+    endProgressLine();
+    return mlir::failure();
+  });
   if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir)) {
     return 1;
   }
@@ -2452,7 +2458,6 @@ int main(int argc, char **argv) {
   // Progress is on by default; --no-progress turns it off, and --verbose
   // (line-per-edge logging) takes precedence over the single-line display.
   bool showProgress = !noProgress && !verbose;
-  ShellCommand::progress = showProgress;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile});
   // --cut stops the build at the cut point: only the prefix up to the cut

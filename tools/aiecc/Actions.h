@@ -219,12 +219,6 @@ struct ShellCommand {
 
   inline static bool verbose = false;
 
-  // True under --progress: the engine keeps a live single-line status (updated
-  // with '\r' and no trailing newline). Before this command replays any of a
-  // failed tool's captured output, terminate that line so the output starts
-  // fresh instead of being glued onto the status line.
-  inline static bool progress = false;
-
   // When true, an empty placeholder output is created so the engine's path
   // bookkeeping resolves; downstream edges that parse a tool's output won't
   // have real data.
@@ -575,9 +569,7 @@ private:
       // capture suppressed.
       if ((rc != 0 && !failureIsEmpty) || verbose) {
         // Move off the live --progress status line before the tool's output.
-        if (progress) {
-          llvm::errs() << '\n';
-        }
+        endProgressLine();
         if (auto buf = llvm::MemoryBuffer::getFile(logPath)) {
           llvm::errs() << (*buf)->getBuffer();
           if (rc != 0 && failureHint) {

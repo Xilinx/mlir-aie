@@ -81,6 +81,26 @@ inline std::mutex &logMutex() {
   return m;
 }
 
+// The --progress status line is written without a trailing newline so the next
+// update can overwrite it in place. Anything else that writes to stderr has to
+// move off it first, or its output arrives glued to the tail of the status
+// text. `endProgressLine` closes it at most once, so back-to-back diagnostics
+// don't each cost a blank line. Takes `logMutex()`; do not call while holding
+// it.
+inline bool &progressLineOpen() {
+  static bool open = false;
+  return open;
+}
+
+inline void endProgressLine() {
+  std::lock_guard<std::mutex> log(logMutex());
+  if (!progressLineOpen())
+    return;
+  progressLineOpen() = false;
+  llvm::errs() << '\n';
+  llvm::errs().flush();
+}
+
 //===----------------------------------------------------------------------===//
 // Items
 //===----------------------------------------------------------------------===//
