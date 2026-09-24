@@ -103,7 +103,10 @@ mm_bfp/64x64x64x16/bfloat16/mixed=True
 mm_bfp/64x64x64x16/bfp16ebs8
 mm_bfp/64x64x64x4/bfloat16/mixed=True
 mm_bfp/64x64x64x4/bfp16ebs8
+mm_bfp_shuffle/256x4/bfp16ebs8/unshuffle=False
+mm_bfp_shuffle/256x4/bfp16ebs8/unshuffle=True
 mm_bfp_shuffle/512x4/bfp16ebs8
+mm_bfp_shuffle/512x4/bfp16ebs8/unshuffle=True
 mul/1024x16/bfloat16
 mul/1024x256/bfloat16
 mul_add/1024x16/bfloat16
