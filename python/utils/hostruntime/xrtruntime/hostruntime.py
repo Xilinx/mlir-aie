@@ -145,6 +145,9 @@ class XRTHostRuntime(HostRuntime):
         m = re.search(r"(?i)\b(?:performance|power)\s*mode\s*:\s*(\S+)", out)
         return m.group(1).lower() if m else None
 
+    def device_name(self) -> str | None:
+        return self._device_type_str
+
     @classmethod
     def read_insts(cls, insts_path: Path):
         """Read instructions from the given file, with XRT-specific handling for ELF files.
