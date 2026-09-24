@@ -320,6 +320,29 @@ def test_prefixed_object_carries_its_stamp(tmp_path, source, cache):
     assert _identity(linked) == before
 
 
+def test_cached_kernels_sharing_a_name_compile_side_by_side(tmp_path, source, cache):
+    """Only a kernel compiled in place stages its source in the design directory.
+
+    So only those wait on another kernel of the same name. Kernels the cache
+    builds are grouped by object alone, as a graph's per-op instances are.
+    """
+    kernels = [_kernel(source, symbol_prefix=prefix) for prefix in ("op0", "op1")]
+    assert len(compile_utils._kernel_compile_groups(kernels)) == 1
+    groups = compile_utils._kernel_compile_groups(
+        kernels, in_place=lambda f: not cache.accepts(f)
+    )
+    assert groups == [[kernels[0]], [kernels[1]]]
+
+    design = _design_dir(tmp_path, "design")
+    compile_utils.compile_external_kernels(kernels, design, "aie2p", object_cache=cache)
+    for prefix, kernel in zip(("op0", "op1"), kernels):
+        assert _symbols(design / kernel.object_file_name) == [
+            f"{prefix}_helper_fn",
+            f"{prefix}_scale",
+        ]
+    assert not list(design.glob("*.cc"))
+
+
 def test_chess_kernel_is_declined(tmp_path, source, cache):
     kernel = _kernel(source, use_chess=True)
     design = _design_dir(tmp_path, "design")

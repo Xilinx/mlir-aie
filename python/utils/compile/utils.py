@@ -1105,9 +1105,11 @@ def compile_external_kernels(
 ):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
-    Symbols sharing an entry name or object are grouped together. Compilation also locks
-    actual output and staged-source paths, including across concurrent batches
-    and direct calls, so unrelated symbol names cannot race on either file.
+    Symbols sharing an object are grouped together, and so are those sharing an
+    entry name that compile in place, since they stage the same source file.
+    Compilation also locks actual output and staged-source paths, including
+    across concurrent batches and direct calls, so unrelated symbol names cannot
+    race on either file.
 
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
@@ -1148,7 +1150,10 @@ def compile_external_kernels(
             )
         return
 
-    groups = _kernel_compile_groups(pending)
+    groups = _kernel_compile_groups(
+        pending,
+        in_place=lambda f: object_cache is None or not object_cache.accepts(f),
+    )
 
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
@@ -1183,11 +1188,13 @@ def compile_external_kernels(
         list(pool.map(_run, groups))
 
 
-def _kernel_compile_groups(funcs):
+def _kernel_compile_groups(funcs, in_place=lambda f: True):
     """Partition ``funcs`` into lists that must compile one after the other.
 
-    Kernels sharing an ``_original_name`` or ``object_file_name`` are grouped
-    transitively, preserving input order within each group.
+    Kernels sharing an ``object_file_name``, or compiling ``in_place`` and
+    sharing an ``_original_name``, are grouped transitively, preserving input
+    order within each group. A kernel built elsewhere stages its source there,
+    so its name collides with nothing in the work directory.
     """
     parent = list(range(len(funcs)))
 
@@ -1199,10 +1206,10 @@ def _kernel_compile_groups(funcs):
 
     seen: dict[tuple, int] = {}
     for i, f in enumerate(funcs):
-        for key in (
-            ("name", getattr(f, "_original_name", f._name)),
-            ("object", f.object_file_name),
-        ):
+        keys = [("object", f.object_file_name)]
+        if in_place(f):
+            keys.append(("name", getattr(f, "_original_name", f._name)))
+        for key in keys:
             if key in seen:
                 parent[find(i)] = find(seen[key])
             else:
@@ -1260,7 +1267,9 @@ def compile_external_kernel(
 
     With an ``object_cache``, a kernel it accepts is built once in the cache and
     copied into ``kernel_dir``, so every work directory linking the same
-    object shares one compile. Kernels it declines compile in place.
+    object shares one compile, and only the output is locked here: the cache
+    stages the source and serializes the compile. Kernels it declines compile
+    in place.
 
     Args:
         func: ExternalFunction instance to compile.
@@ -1278,7 +1287,10 @@ def compile_external_kernel(
     if embed_bitcode and getattr(func, "_use_chess", False):
         raise ValueError("--check-lut-banks requires Peano kernels, not Chess")
     output = os.path.join(kernel_dir, func.object_file_name)
-    paths = [output, _source_destination(func, kernel_dir)]
+    cached = object_cache is not None and object_cache.accepts(func)
+    paths = [output]
+    if not cached:
+        paths.append(_source_destination(func, kernel_dir))
     if getattr(func, "_use_chess", False):
         paths.append(kernel_dir)
     with _lock_compile_paths(paths):
@@ -1286,9 +1298,11 @@ def compile_external_kernel(
             return
         owner = getattr(func, "object_file", None)
         try:
-            if object_cache is None or not object_cache.fetch(
-                func, kernel_dir, target_arch, include_dirs, embed_bitcode
-            ):
+            if cached:
+                object_cache.fetch(
+                    func, kernel_dir, target_arch, include_dirs, embed_bitcode
+                )
+            else:
                 _compile_external_kernel(
                     func, kernel_dir, target_arch, include_dirs, embed_bitcode
                 )

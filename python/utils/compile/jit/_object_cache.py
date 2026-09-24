@@ -63,14 +63,19 @@ class KernelObjectCache:
         self.root = Path(root).absolute()
         self.lock_timeout_seconds = lock_timeout_seconds
 
+    @staticmethod
+    def accepts(func) -> bool:
+        """Whether the cache holds ``func``: not a Chess kernel, nor one with no source recipe."""
+        recipe = getattr(getattr(func, "object_file", None), "_source", None)
+        return recipe is not None and not recipe.use_chess
+
     def fetch(self, func, kernel_dir, target_arch, include_dirs, embed_bitcode) -> bool:
         """Copy ``func``'s object into ``kernel_dir``, compiling it on a miss.
 
-        Returns False, touching nothing, for a kernel the cache does not hold:
-        a Chess kernel, or one with no source recipe.
+        Returns False, touching nothing, for a kernel the cache does not hold
+        (see ``accepts``).
         """
-        recipe = getattr(getattr(func, "object_file", None), "_source", None)
-        if recipe is None or recipe.use_chess:
+        if not self.accepts(func):
             return False
         entry = self.root / _key(func, target_arch, include_dirs, embed_bitcode)
         obj = entry / func.object_file_name
