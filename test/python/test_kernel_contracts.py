@@ -378,6 +378,10 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
     fn = kernels.bf16_exp()
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     assert str(runtime_dir) in fn.include_dirs
+    if arch == "aie2":
+        tolerance = fn.contract.tolerance
+        assert tolerance is not None
+        assert tolerance.atol == 2.0**-126
 
 
 @pytest.mark.parametrize(
@@ -1148,6 +1152,7 @@ def _arg_type_facts(arg_type) -> tuple[str, bool]:
 def test_prefill_binds_its_translation_unit_as_one_object():
     """flash_attn_prefill.cc's five entry points bind through one artifact owner."""
     fn = kernels.prefill_fv(head_dim=512)
+    assert fn.contract.setup is kernels.conv_even
     p = fn._symbol_prefix
     assert fn.name == f"{p}_prefill_fv_step"
     bf = lambda n: np.ndarray[(n,), np.dtype[bfloat16]]  # noqa: E731
@@ -1570,6 +1575,7 @@ def test_transformer_references_match_the_example_formulas():
     off = [np.zeros(32, np.float32).astype(bfloat16) for _ in range(4)]
     live = np.full(32, 2.0, np.float32).astype(bfloat16)
     cl_ref = kernels.dwconv1d_channels_last_ref
+    assert kernels.dwconv1d_channels_last(32).contract.setup is kernels.conv_even
     # Only plane 0 is non-zero, so the result is 2 * x_0 == 2.
     out = cl_ref(live, *off, *xs, lo=-6.0, hi=6.0, clamp=False).astype(np.float32)
     assert out.tolist() == [2.0] * 32

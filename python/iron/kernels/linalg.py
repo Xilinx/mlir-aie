@@ -1048,6 +1048,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
         compile_flags=[f"-DPREFILL_HEAD_DIM={head_dim}"],
         cls=_ZeroInitializedKernel,
         contract=KernelContract(
+            setup=conv_even,
             layouts=(
                 _tile_layout((lq, head_dim), streams.C, inverse=True, block=(r, t)),
                 _tile_layout((lq, lk), streams.A, block=(r, s)),

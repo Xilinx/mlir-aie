@@ -28,6 +28,7 @@ from ._common import (
     _make_extern,
     dtypes,
 )
+from .core import conv_even
 
 
 def _i32s(n: int) -> list:
@@ -431,6 +432,7 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
         ],
         contract=KernelContract(
             stack_bytes=1280,  # aiecc measured_stack_size
+            setup=conv_even,
             # lo/hi are buffers the design writes, so they are Param like
             # mha's idx gate: bound here rather than sampled, which also keeps
             # lo <= hi (aie::clamp does not define the inverted pair).

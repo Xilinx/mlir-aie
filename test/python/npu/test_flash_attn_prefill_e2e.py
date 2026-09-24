@@ -166,6 +166,9 @@ def prefill_round(
     )
     fv = obj.bind("prefill_fv_step", [y_ty, s_ty, kv_ty, np.int32])
     epilogue = obj.bind("prefill_epilogue", [o_ty, lq_f32, y_ty, np.int32])
+    setup = fv_step.contract.setup
+    assert setup is not None
+    setter = setup()
 
     # Q is acquired once and held for the whole round, so one slot is all it
     # can ever use -- and at head_dim 512 with a second column it is 16 KB.
@@ -189,10 +192,11 @@ def prefill_round(
     ]
 
     def core(
-        of_q, of_kv, of_o, rb, qk, bm, fv, ep,
+        of_q, of_kv, of_o, rb, qk, bm, fv, ep, setter,
         s, m, prev_m, new_m, c, l_sum, y, l_begin, window_size,
     ):  # fmt: skip
         i32 = np_dtype_to_mlir_type(np.int32)
+        setter()
         q = of_q.acquire(1)
         rb(prev_m, new_m, c, l_sum, y)
         for block in range_(n_blocks):
@@ -224,6 +228,7 @@ def prefill_round(
             block_mid,
             fv,
             epilogue,
+            setter,
             *scratch,
         ],
         # The contract's number is aiecc's measurement of the fv step alone, and
