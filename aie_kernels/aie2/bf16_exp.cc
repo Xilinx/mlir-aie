@@ -22,7 +22,9 @@ void exp_bf16_func(bfloat16 *restrict in, bfloat16 *restrict out) {
 extern "C" {
 
 void exp_bf16_1024(bfloat16 *a_in, bfloat16 *c_out) {
+  event0();
   exp_bf16_func<1024>(a_in, c_out);
+  event1();
 }
 
 } // extern "C"
