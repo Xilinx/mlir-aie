@@ -16,7 +16,7 @@ import textwrap
 import pytest
 
 _KEY = textwrap.dedent("""
-    import sys
+    import os, sys
     from pathlib import Path
     from aie.iron.device import NPU2Col1
     from aie.utils import set_current_device
@@ -27,6 +27,7 @@ _KEY = textwrap.dedent("""
 
     set_current_device(NPU2Col1())
     flow = sys.argv[1]
+    flags = sys.argv[3:]
     print(
         _compute_artifact_hash(
             Path("design.mlir") if sys.argv[2] == "path" else design,
@@ -35,6 +36,9 @@ _KEY = textwrap.dedent("""
             True,
             full_elf=flow == "full_elf",
             insts_only=flow == "insts_only",
+            aiecc_flags=flags,
+            emit_elf=flow == "xclbin+elf",
+            work_dir=Path(os.environ["KEY_WORK_DIR"]) if "KEY_WORK_DIR" in os.environ else None,
         )
     )
     """)
@@ -42,10 +46,12 @@ _KEY = textwrap.dedent("""
 _PACKAGERS = {"full_elf": "aiebu-asm", "xclbin": "xclbinutil"}
 
 
-def _key(flow, bin_dir, generator="callable", **env):
+def _key(flow, bin_dir, generator="callable", flags=(), work_dir=None, **env):
     path = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+    if work_dir is not None:
+        env["KEY_WORK_DIR"] = str(work_dir)
     result = subprocess.run(
-        [sys.executable, "-c", _KEY, flow, generator],
+        [sys.executable, "-c", _KEY, flow, generator, *flags],
         env={**os.environ, "PATH": path, **env},
         capture_output=True,
         text=True,
@@ -100,3 +106,51 @@ def test_aie_xclbinutil_picks_the_xclbinutil_the_key_follows(
     _install(tmp_path, "xclbinutil", "2.0")
     upgraded = _key("xclbin", bin_dir, generator, AIE_XCLBINUTIL=str(chosen))
     assert len({on_path, overridden, upgraded}) == 3
+
+
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_aiecc_flag_overrides_aie_xclbinutil(bin_dir, tmp_path, generator):
+    env_tool = _install(bin_dir, "xclbinutil", "env")
+    selected = _install(tmp_path, "xclbinutil", "selected")
+    flags = [f"--xclbinutil-path={selected}"]
+    before = _key(
+        "xclbin",
+        bin_dir,
+        generator,
+        flags=flags,
+        AIE_XCLBINUTIL=str(env_tool),
+    )
+    _install(tmp_path, "xclbinutil", "selected v2")
+    after = _key(
+        "xclbin",
+        bin_dir,
+        generator,
+        flags=flags,
+        AIE_XCLBINUTIL=str(env_tool),
+    )
+    assert before != after
+
+
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_relative_aiecc_override_resolves_from_work_dir(bin_dir, tmp_path, generator):
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    selected = _install(work_dir, "xclbinutil", "selected")
+    flags = ["--xclbinutil-path", "./xclbinutil"]
+    before = _key("xclbin", bin_dir, generator, flags=flags, work_dir=work_dir)
+    _install(work_dir, "xclbinutil", "selected v2")
+    after = _key("xclbin", bin_dir, generator, flags=flags, work_dir=work_dir)
+    assert selected.exists()
+    assert before != after
+
+
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_xclbin_and_elf_key_tracks_both_packagers(bin_dir, generator):
+    _install(bin_dir, "xclbinutil", "1")
+    _install(bin_dir, "aiebu-asm", "1")
+    before = _key("xclbin+elf", bin_dir, generator)
+    _install(bin_dir, "xclbinutil", "2")
+    xclbin_changed = _key("xclbin+elf", bin_dir, generator)
+    _install(bin_dir, "aiebu-asm", "2")
+    both_changed = _key("xclbin+elf", bin_dir, generator)
+    assert len({before, xclbin_changed, both_changed}) == 3

@@ -533,7 +533,11 @@ class CompilableDesign:
             inst_exists = companion_path is not None and companion_path.exists()
 
             if explicit_paths:
-                build_key = self._explicit_build_key(full_elf=False)
+                build_key = self._explicit_build_key(
+                    full_elf=False,
+                    emit_elf=elf_path is not None,
+                    work_dir=kernel_dir,
+                )
                 dispatch_library = companion_path if has_dispatch else None
                 outputs = {
                     role: Path(p)
@@ -752,7 +756,7 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
-                build_key = self._explicit_build_key(full_elf=True)
+                build_key = self._explicit_build_key(full_elf=True, work_dir=kernel_dir)
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"full_elf": elf_path}
                 ):
@@ -882,7 +886,9 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             if explicit_path:
-                build_key = self._explicit_build_key(full_elf=False)
+                build_key = self._explicit_build_key(
+                    full_elf=False, work_dir=kernel_dir
+                )
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"insts": inst_path}
                 ):
@@ -1399,9 +1405,16 @@ class CompilableDesign:
             bool(self.dispatch_params),
             self.full_elf,
             self.insts_only,
+            self.aiecc_flags,
         )
 
-    def _compute_cache_hash(self) -> str:
+    def _compute_cache_hash(
+        self,
+        *,
+        full_elf: bool | None = None,
+        emit_elf: bool = False,
+        work_dir: Path | None = None,
+    ) -> str:
         return _compute_hash(
             self.mlir_generator,
             self.compile_kwargs,
@@ -1409,14 +1422,22 @@ class CompilableDesign:
             self.object_files,
             self.aiecc_flags,
             self.compile_flags,
-            self.full_elf,
+            self.full_elf if full_elf is None else full_elf,
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
             self.include_paths,
             self.insts_only,
+            emit_elf,
+            work_dir,
         )
 
-    def _explicit_build_key(self, *, full_elf: bool) -> str:
+    def _explicit_build_key(
+        self,
+        *,
+        full_elf: bool,
+        emit_elf: bool = False,
+        work_dir: Path | None = None,
+    ) -> str:
         """Identify an explicit-path build by everything it reads but its recorded inputs.
 
         The cache hash names the recipe and tools but not what the generator
@@ -1426,7 +1447,11 @@ class CompilableDesign:
         """
         mlir_text, kernels = self._generated_for(full_elf=full_elf)
         h = hashlib.sha256()
-        h.update(self._compute_cache_hash().encode())
+        h.update(
+            self._compute_cache_hash(
+                full_elf=full_elf, emit_elf=emit_elf, work_dir=work_dir
+            ).encode()
+        )
         h.update(mlir_text.encode())
         for recipe in sorted(
             repr((f.object_file_name, f.object_file._source)) for f in kernels

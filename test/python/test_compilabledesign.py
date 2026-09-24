@@ -549,10 +549,11 @@ def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("generator_kind", ["callable", "path"])
 @pytest.mark.parametrize("tool", ["aiecc", "peano_cxx", "host_cxx"])
 @pytest.mark.parametrize("change", ["mtime", "size", "path"])
 def test_artifact_hash_tracks_active_compilers(
-    monkeypatch, tmp_path, dynamic, tool, change
+    monkeypatch, tmp_path, dynamic, generator_kind, tool, change
 ):
     import os
 
@@ -562,7 +563,11 @@ def test_artifact_hash_tracks_active_compilers(
     compiler = tmp_path / tool
     compiler.write_text("compiler")
     monkeypatch.setattr(config, f"{tool}_path", lambda: str(compiler))
-    generator = _gemm_gen()
+    generator = (
+        _gemm_gen() if generator_kind == "callable" else tmp_path / "design.mlir"
+    )
+    if isinstance(generator, Path):
+        generator.write_text("module {}")
 
     before = _compute_artifact_hash(generator, [], [], True, dynamic)
     stat = compiler.stat()
@@ -579,7 +584,9 @@ def test_artifact_hash_tracks_active_compilers(
         compiler = replacement
     after = _compute_artifact_hash(generator, [], [], True, dynamic)
 
-    assert (before != after) == (tool != "host_cxx" or dynamic)
+    assert (before != after) == (
+        tool != "host_cxx" or (dynamic and generator_kind == "callable")
+    )
 
 
 def test_hash_for_path_generator_uses_path_string():

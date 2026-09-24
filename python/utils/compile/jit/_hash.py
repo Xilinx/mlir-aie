@@ -214,6 +214,18 @@ def _tool_identity(name: str, resolve: Callable[[], str | Path]) -> str:
         return "absent"
 
 
+def _aiecc_option(flags: list[str] | tuple[str, ...], name: str) -> str | None:
+    """Return the value of a string-valued aiecc option."""
+    options = (f"--{name}", f"-{name}")
+    for index, flag in enumerate(flags):
+        for option in options:
+            if flag.startswith(f"{option}="):
+                return flag.split("=", 1)[1]
+            if flag == option and index + 1 < len(flags):
+                return flags[index + 1]
+    return None
+
+
 def _compute_artifact_hash(
     generator: Callable | Path,
     source_files: list[Path] | tuple[Path, ...],
@@ -222,6 +234,9 @@ def _compute_artifact_hash(
     has_dispatch_params: bool = False,
     full_elf: bool = False,
     insts_only: bool = False,
+    aiecc_flags: list[str] | tuple[str, ...] = (),
+    emit_elf: bool = False,
+    work_dir: Path | None = None,
 ) -> str:
     """Hash of the "artifacts": source/object content + tool mtimes + device.
 
@@ -238,14 +253,17 @@ def _compute_artifact_hash(
     build the dispatch library. Its generated source is covered by aiecc's
     identity above; Python does not run a separate translation pipeline.
 
-    The tool that packages the image is hashed too: ``aiebu-asm`` for a full
-    ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
+    Every tool that packages a requested image is hashed too: ``aiebu-asm`` for
+    an ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
     alone.
     """
     from aie.utils import config as _config
 
     h = hashlib.sha256()
-    tools = {}
+    tools = {
+        "peano": _config.peano_cxx_path,
+        "aiecc": _config.aiecc_path,
+    }
 
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
@@ -276,16 +294,19 @@ def _compute_artifact_hash(
             target_device = ("unknown", "", "", "")
 
         h.update(f"target_arch={target_arch}|target_device={target_device!r}".encode())
-        tools = {
-            "peano": _config.peano_cxx_path,
-            "aiecc": _config.aiecc_path,
-        }
         if has_dispatch_params:
             tools["host_cxx"] = _config.host_cxx_path
     if full_elf:
         tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
     elif not insts_only:
-        tools["xclbinutil"] = partial(_config.aiecc_tool_path, "xclbinutil")
+        tools["xclbinutil"] = partial(
+            _config.aiecc_tool_path,
+            "xclbinutil",
+            override=_aiecc_option(aiecc_flags, "xclbinutil-path"),
+            cwd=work_dir,
+        )
+        if emit_elf:
+            tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
     for name, resolve in tools.items():
         h.update(f"{name}={_tool_identity(name, resolve)}".encode())
 
@@ -304,6 +325,8 @@ def _compute_hash(
     has_dispatch_params: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
     insts_only: bool = False,
+    emit_elf: bool = False,
+    work_dir: Path | None = None,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
@@ -323,5 +346,8 @@ def _compute_hash(
         has_dispatch_params,
         full_elf,
         insts_only,
+        aiecc_flags,
+        emit_elf,
+        work_dir,
     )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]
