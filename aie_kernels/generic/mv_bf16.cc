@@ -116,16 +116,20 @@ void matvec_scalar_bf16_bf16(uint32_t m, uint32_t row_offset,
                              const bfloat16 *__restrict a_in,
                              const bfloat16 *__restrict b_in,
                              bfloat16 *__restrict c_out) {
+  event0();
   c_out += row_offset;
   matvec_scalar(m, DIM_K, a_in, b_in, c_out);
+  event1();
 }
 
 void matvec_vectorized_bf16_bf16(uint32_t m, uint32_t row_offset,
                                  const bfloat16 *__restrict a_in,
                                  const bfloat16 *__restrict b_in,
                                  bfloat16 *__restrict c_out) {
+  event0();
   c_out += row_offset;
   matvec_vectorized<VEC_SIZE, DIM_K>(m, a_in, b_in, c_out);
+  event1();
 }
 
 } // extern "C"
