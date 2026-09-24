@@ -171,90 +171,105 @@ inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
 
 // This kernel mirrors the one found in
 // https://xilinx.github.io/aie_api/group__group__mmul.html Go through them in
-// parallel to understand how the bfp datatype modifies accesses to memory Note
+// parallel to understand how the bfp datatype modifies accesses to memory. Note
 // that this kernel assumes that the B matrix is already transposed, which is
-// not the case for the example in the link. The equivalent transformations for
-// a non transposed B matrix are commented out below. Also note that assuming
-// the 8x8 tile are already transposed (the ones done during the shuffle), the
-// higher level tiling transposition should be free using data layout
-// transformations.
+// not the case for the example in the link. Also note that assuming the 8x8
+// tiles are already transposed (the ones done during the shuffle), the higher
+// level tiling transposition should be free using data layout transformations.
+//
+// Each block stream keeps its own FIFO state, and aie2p has two lf registers
+// to hold it. Four A/B streams plus two C streams per 2x2 group spilled that
+// state to the stack on every k step, so here A and B each get one stream that
+// hops between the group's two rows with pop_seek, and C gets one output stream
+// for the whole call. Popping two blocks per row before seeking halves the
+// FIFO refills. On hardware, a pop_seek that directly follows a plain pop
+// landed correctly only for even block strides, so an odd number of k blocks
+// seeks after every pop instead. The next group's C is read before this
+// group's is written, which lets those loads overlap the mac tail instead of
+// starting the next group cold.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
           unsigned t>
 void matmul_vectorized_2x2_bfp16(const bfp16ebs8 *__restrict pA,
                                  const bfp16ebs8 *__restrict pB,
                                  bfp16ebs8 *__restrict pC) {
-  const unsigned sizeA = r * s;
-  const unsigned sizeB = s * t;
   const unsigned sizeC = r * t;
+  using acc_t = aie::accum<accfloat, sizeC>;
 
-  AIE_PREPARE_FOR_PIPELINING
+  aie::block_vector_output_buffer_stream<bfp16ebs8, 64> pCOut(pC);
+
+  // Unlike the example mentioned above, we need to use a mac to take into
+  // account results from previous kernel calls, but this is completely
+  // unrelated to the block datatype.
+  aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pCIn0(pC);
+  acc_t accC00(pCIn0.pop());
+  acc_t accC01(pCIn0.pop_seek(colB - 2));
+  acc_t accC10(pCIn0.pop());
+  acc_t accC11(pCIn0.pop());
+
   AIE_LOOP_MIN_ITERATION_COUNT(4)
-  for (unsigned z = 0; z < rowA; z += 2) {
-    aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pC1In(pC);
-    pC1In.seek(z * colB);
-    aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pC2In(pC);
-    pC2In.seek((z + 1) * colB);
-    aie::block_vector_output_buffer_stream<bfp16ebs8, 64> pC1Out(pC);
-    pC1Out.seek(z * colB);
-    aie::block_vector_output_buffer_stream<bfp16ebs8, 64> pC2Out(pC);
-    pC2Out.seek((z + 1) * colB);
+  for (unsigned zj = 0; zj < (rowA / 2) * (colB / 2); ++zj) {
+    const unsigned z = 2 * (zj / (colB / 2));
+    const unsigned j = 2 * (zj % (colB / 2));
+    const unsigned nzj = zj + 1 < (rowA / 2) * (colB / 2) ? zj + 1 : 0;
+    const unsigned nz = 2 * (nzj / (colB / 2));
+    const unsigned nj = 2 * (nzj % (colB / 2));
 
-    for (unsigned j = 0; j < colB; j += 2)
-#ifdef OPT_PERF_ENABLED
-      AIE_LOOP_FLATTEN
-#endif
-      {
-        aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pA1bfp16(pA);
-        aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pA2bfp16(pA);
-        pA1bfp16.seek(z * colA);
-        pA2bfp16.seek((z + 1) * colA);
+    aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pAIn(pA);
+    pAIn.seek(z * colA);
+    aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pBIn(pB);
+    pBIn.seek(j * colA);
 
-        aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pB1bfp16(pB);
-        aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pB2bfp16(pB);
-        // For non transposed matrix
-        // pB1bfp16.seek(j);
-        // pB2bfp16.seek(j + 1);
-        pB1bfp16.seek(j * colA);
-        pB2bfp16.seek((j + 1) * colA);
-
-        aie::block_vector<bfp16ebs8, sizeA> A0;
-        aie::block_vector<bfp16ebs8, sizeA> A1;
-        aie::block_vector<bfp16ebs8, sizeB> B0;
-        aie::block_vector<bfp16ebs8, sizeB> B1;
-
-        // Note that unlike the example mentioned above, we need
-        // to use a mac to take into account results from previous kernel
-        // calls but this is completely unrelated to the block datatype.
-        aie::accum<accfloat, sizeC> accC00(pC1In.pop());
-        aie::accum<accfloat, sizeC> accC01(pC1In.pop());
-        aie::accum<accfloat, sizeC> accC10(pC2In.pop());
-        aie::accum<accfloat, sizeC> accC11(pC2In.pop());
-
-        for (unsigned i = 0; i < colA; ++i)
-#ifdef OPT_PERF_ENABLED
-          AIE_LOOP_FLATTEN
-#endif
-          {
-            A0 = pA1bfp16.pop();
-            A1 = pA2bfp16.pop();
-
-            // For non transposed matrix
-            // B0 = pB1bfp16.pop_seek(colB - 1);
-            // B1 = pB2bfp16.pop_seek(colB - 1);
-            B0 = pB1bfp16.pop();
-            B1 = pB2bfp16.pop();
-
-            accC00 = mac_8x8_8x8T(A0, B0, accC00);
-            accC01 = mac_8x8_8x8T(A0, B1, accC01);
-            accC10 = mac_8x8_8x8T(A1, B0, accC10);
-            accC11 = mac_8x8_8x8T(A1, B1, accC11);
-          }
-
-        pC1Out.push(accC00.template to_vector<bfp16ebs8>());
-        pC1Out.push(accC01.template to_vector<bfp16ebs8>());
-        pC2Out.push(accC10.template to_vector<bfp16ebs8>());
-        pC2Out.push(accC11.template to_vector<bfp16ebs8>());
+    if constexpr (colA % 2 == 0) {
+      AIE_LOOP_UNROLL_FULL
+      for (unsigned i = 0; i < colA; i += 2) {
+        auto A0a = pAIn.pop();
+        auto A0b = pAIn.pop_seek(colA - 2);
+        auto A1a = pAIn.pop();
+        auto A1b = pAIn.pop_seek(-(int)colA);
+        auto B0a = pBIn.pop();
+        auto B0b = pBIn.pop_seek(colA - 2);
+        auto B1a = pBIn.pop();
+        auto B1b = pBIn.pop_seek(-(int)colA);
+        accC00 = mac_8x8_8x8T(A0a, B0a, accC00);
+        accC01 = mac_8x8_8x8T(A0a, B1a, accC01);
+        accC10 = mac_8x8_8x8T(A1a, B0a, accC10);
+        accC11 = mac_8x8_8x8T(A1a, B1a, accC11);
+        accC00 = mac_8x8_8x8T(A0b, B0b, accC00);
+        accC01 = mac_8x8_8x8T(A0b, B1b, accC01);
+        accC10 = mac_8x8_8x8T(A1b, B0b, accC10);
+        accC11 = mac_8x8_8x8T(A1b, B1b, accC11);
       }
+    } else {
+      AIE_LOOP_UNROLL_FULL
+      for (unsigned i = 0; i < colA; ++i) {
+        auto A0 = pAIn.pop_seek(colA - 1);
+        auto A1 = pAIn.pop_seek(-(int)colA);
+        auto B0 = pBIn.pop_seek(colA - 1);
+        auto B1 = pBIn.pop_seek(-(int)colA);
+        accC00 = mac_8x8_8x8T(A0, B0, accC00);
+        accC01 = mac_8x8_8x8T(A0, B1, accC01);
+        accC10 = mac_8x8_8x8T(A1, B0, accC10);
+        accC11 = mac_8x8_8x8T(A1, B1, accC11);
+      }
+    }
+
+    // The last group wraps to group 0; that read is discarded.
+    aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pCIn(pC);
+    pCIn.seek(nz * colB + nj);
+    acc_t nC00(pCIn.pop());
+    acc_t nC01(pCIn.pop_seek(colB - 2));
+    acc_t nC10(pCIn.pop());
+    acc_t nC11(pCIn.pop());
+
+    pCOut.push(accC00.template to_vector<bfp16ebs8>());
+    pCOut.push_seek(accC01.template to_vector<bfp16ebs8>(), colB - 2);
+    pCOut.push(accC10.template to_vector<bfp16ebs8>());
+    pCOut.push_seek(accC11.template to_vector<bfp16ebs8>(),
+                    j + 2 < colB ? -(int)colB : 0);
+    accC00 = nC00;
+    accC01 = nC01;
+    accC10 = nC10;
+    accC11 = nC11;
   }
 }
 

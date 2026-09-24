@@ -774,3 +774,15 @@ CASES += [
         perf=False,
     ),
 ]
+    # The bfp16 kernel pops two k blocks per row at a time only when the block
+    # count is even; K=24 takes its odd path. N wider than M checks the row
+    # wrap from the other side of the mixed case above.
+    Case(
+        "mm_bfp",
+        dict(dim_m=32, dim_k=24, dim_n=48),
+        calls=4,
+        devices=("npu2",),
+        tag="odd-k",
+        smoke=True,
+        perf=False,
+    ),
