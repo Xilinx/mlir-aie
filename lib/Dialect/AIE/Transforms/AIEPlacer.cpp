@@ -7,6 +7,8 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
@@ -219,6 +221,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   PlacementContext ctx{*targetModel, computePeerAdjacency, needNeighborIn,
                        needNeighborOut};
 
+  // Phase 2d: group cores by the non-core tile they share the most flows
+  // with, so each group can be placed in one column and its hub's centroid
+  // lands there too.
+  FlowMembership flowIndex =
+      buildFlowMembership(flows, pktFlows, routes, objectFifos);
+  CoreGroups coreGroups = buildCoreGroups(logicalTiles, flowIndex);
+
   // Per-kind predicates / labelers shared by all phase-3 call sites below.
   // Buffer: consumer LTO (edge.first) must satisfy isLegalMemAffinity to the
   // owner tile (edge.second).
@@ -266,8 +275,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // two compute neighbors) before its producers consume the surrounding
   // slots. Producers and consumers that the heavy Worker needs as physical
   // neighbors are then steered to those slots by `computePeerAdjacency`.
-  SmallVector<LogicalTileOp> orderedTiles(logicalTiles.begin(),
-                                          logicalTiles.end());
+  //
+  // Before sorting, each core group is made contiguous at its first member,
+  // so the order in which the program creates cores does not decide which
+  // of them share a column.
+  SmallVector<LogicalTileOp> orderedTiles;
+  llvm::DenseSet<unsigned> emittedGroups;
+  for (auto lt : logicalTiles) {
+    auto group = coreGroups.groupOf.find(lt.getOperation());
+    if (group == coreGroups.groupOf.end())
+      orderedTiles.push_back(lt);
+    else if (emittedGroups.insert(group->second).second)
+      llvm::append_range(orderedTiles, coreGroups.members[group->second]);
+  }
   llvm::stable_sort(orderedTiles, [&](LogicalTileOp a, LogicalTileOp b) {
     auto rank = [](LogicalTileOp lt) {
       bool hasCol = lt.tryGetCol().has_value();
@@ -320,11 +340,14 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       auto isReservedForOtherBound = [&](Operation *lto, TileID candidate) {
         return ctx.isReservedForOther(lto, candidate);
       };
+      SmallVector<int> preferredCols =
+          preferredGroupColumns(logicalTile, coreGroups);
       UnpinnedPlacementInputs inputs{
           bufferAdjacency,      bufferPred,
           cascadeAdjacency,     cascadePred,
           computePeerAdjacency, needNeighborIn,
-          needNeighborOut,      isReservedForOtherBound};
+          needNeighborOut,      isReservedForOtherBound,
+          preferredCols};
       auto search =
           findUnconstrainedCoreCandidate(logicalTile, col, row, inputs);
       std::optional<TileID> placement = search.placement;
@@ -392,14 +415,102 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
 
   // Phase 4: place every still-unplaced non-core (mem/shim) LTO at the
   // centroid column of its placed core peers.
-  return placeNonCoreLogicalTiles(logicalTiles, objectFifos, flows, pktFlows,
-                                  routes, channelRequirements);
+  return placeNonCoreLogicalTiles(logicalTiles, flowIndex, channelRequirements);
+}
+
+SequentialPlacer::CoreGroups
+SequentialPlacer::buildCoreGroups(ArrayRef<LogicalTileOp> logicalTiles,
+                                  const FlowMembership &flowIndex) const {
+  // Flows from each core to each non-core tile, in first-seen order.
+  SmallVector<std::pair<LogicalTileOp, llvm::MapVector<Operation *, int>>>
+      coreFlows;
+  llvm::DenseMap<Operation *, int> coresOnHub;
+  for (auto lt : logicalTiles) {
+    if (lt.getTileType() != AIETileType::CoreTile)
+      continue;
+    llvm::MapVector<Operation *, int> counts;
+    auto it = flowIndex.ltoFlows.find(lt.getResult());
+    if (it != flowIndex.ltoFlows.end())
+      for (auto &peers : it->second)
+        for (Value p : peers) {
+          auto tile = dyn_cast_or_null<TileLike>(p.getDefiningOp());
+          if (tile && !tile.isCoreTile())
+            ++counts[p.getDefiningOp()];
+        }
+    for (auto &entry : counts)
+      ++coresOnHub[entry.first];
+    coreFlows.emplace_back(lt, std::move(counts));
+  }
+
+  // A core's hub is the tile it has the most flows with; on a tie, the one
+  // fewer cores touch (the more specific one), then the first seen.
+  CoreGroups groups;
+  llvm::DenseMap<Operation *, unsigned> groupOfHub;
+  for (auto &[lt, counts] : coreFlows) {
+    Operation *hub = nullptr;
+    int best = 0;
+    for (auto &[peer, n] : counts)
+      if (!hub || n > best ||
+          (n == best && coresOnHub[peer] < coresOnHub[hub])) {
+        hub = peer;
+        best = n;
+      }
+    unsigned idx = groups.members.size();
+    if (hub) {
+      auto [it, inserted] = groupOfHub.try_emplace(hub, idx);
+      idx = it->second;
+      if (!inserted) {
+        groups.members[idx].push_back(lt);
+        groups.groupOf[lt.getOperation()] = idx;
+        continue;
+      }
+    }
+    groups.members.push_back({lt});
+    groups.groupOf[lt.getOperation()] = idx;
+  }
+  return groups;
+}
+
+SmallVector<int>
+SequentialPlacer::preferredGroupColumns(LogicalTileOp logicalTile,
+                                        const CoreGroups &groups) const {
+  auto group = groups.groupOf.find(logicalTile.getOperation());
+  if (group == groups.groupOf.end())
+    return {};
+  SmallVector<std::pair<int, int>> placedCols; // (column, members there)
+  int unplaced = 0;
+  for (auto member : groups.members[group->second]) {
+    auto placed = result.find(member.getOperation());
+    if (placed == result.end()) {
+      ++unplaced;
+      continue;
+    }
+    auto *entry = llvm::find_if(
+        placedCols, [&](auto &e) { return e.first == placed->second.col; });
+    if (entry == placedCols.end())
+      placedCols.push_back({placed->second.col, 1});
+    else
+      ++entry->second;
+  }
+  llvm::stable_sort(placedCols, [](auto &a, auto &b) {
+    return a.second != b.second ? a.second > b.second : a.first < b.first;
+  });
+
+  SmallVector<int> cols;
+  for (auto &[col, n] : placedCols)
+    cols.push_back(col);
+  // compTiles is column-major, so this visits columns in order.
+  llvm::MapVector<int, int> freeCores;
+  for (TileID t : availability.compTiles)
+    ++freeCores[t.col];
+  for (auto &[col, n] : freeCores)
+    if (n >= unplaced && !llvm::is_contained(cols, col))
+      cols.push_back(col);
+  return cols;
 }
 
 LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
-    ArrayRef<LogicalTileOp> logicalTiles,
-    ArrayRef<ObjectFifoCreateOp> objectFifos, ArrayRef<FlowOp> flows,
-    ArrayRef<PacketFlowOp> pktFlows, ArrayRef<RouteOp> routes,
+    ArrayRef<LogicalTileOp> logicalTiles, const FlowMembership &flowIndex,
     const llvm::DenseMap<Operation *, std::pair<int, int>>
         &channelRequirements) {
   // Sort the unplaced non-core LTOs by descending channel demand so the
@@ -423,9 +534,6 @@ LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
     };
     return demand(a) > demand(b);
   });
-
-  FlowMembership flowIndex =
-      buildFlowMembership(flows, pktFlows, routes, objectFifos);
 
   for (auto logicalTile : nonCoreOrdered) {
     if (failed(placeNonCoreTileByCentroid(logicalTile, flowIndex,
@@ -510,6 +618,16 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       if (na != nb)
         return na > nb;
       return a.row < b.row;
+    });
+  } else if (!inputs.preferredCols.empty()) {
+    // Keep the LTO with its core group: preferred columns first, in
+    // preference order; the rest keep the column-major order after them.
+    auto rankOf = [&](TileID t) {
+      return std::distance(inputs.preferredCols.begin(),
+                           llvm::find(inputs.preferredCols, t.col));
+    };
+    llvm::stable_sort(orderedCandidates, [&](TileID a, TileID b) {
+      return rankOf(a) < rankOf(b);
     });
   }
 
