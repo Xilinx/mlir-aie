@@ -59,13 +59,12 @@ from aie.utils.compile.utils import (
 )
 
 from . import _manifest
-from ._explicit_builds import BuildCache
 from ._dispatch_compile import (
     compile_dispatch_bridge,
     dispatch_scalar_c_type,
 )
 from ._dma_size_parser import parse_dma_sizes
-from ._object_cache import KernelObjectCache
+from ._explicit_builds import BuildCache
 from ._hash import (
     _compute_artifact_hash,
     _compute_hash,
@@ -77,6 +76,7 @@ from ._introspect import (
     _introspect_generator,
     _is_tensor_param,
 )
+from ._object_cache import KernelObjectCache
 from ._serialization import _decode_kwarg, _encode_kwarg, _TensorPlaceholder
 from .context import compile_context
 
@@ -1478,7 +1478,7 @@ class CompilableDesign:
             )
         ):
             return True
-        if not _manifest.is_valid(kernel_dir):
+        if not self.use_cache or not _manifest.is_valid(kernel_dir):
             _cleanup_failed_compilation(kernel_dir)
         return False
 

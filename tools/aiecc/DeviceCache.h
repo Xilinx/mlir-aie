@@ -30,12 +30,15 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Duration.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SHA256.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <chrono>
 #include <optional>
 #include <string>
 #include <vector>
@@ -168,7 +171,6 @@ public:
       entry.dir = std::string(entryDir);
       if (llvm::sys::fs::exists(entry.dir)) {
         entry.hit = load(entry, device.getSymName(), module.getContext());
-        entry.stale = !entry.hit;
       }
       if (verbose) {
         llvm::errs() << "aiecc: device cache " << (entry.hit ? "hit" : "miss")
@@ -225,7 +227,6 @@ private:
   struct Entry {
     std::string dir;
     bool hit = false;
-    bool stale = false;
     mlir::OwningOpRef<mlir::ModuleOp> placed;
     mlir::OwningOpRef<mlir::ModuleOp> linked;
     std::string placedText;
@@ -422,6 +423,27 @@ private:
       warn("create the cache directory", ec);
       return;
     }
+    // Keep the lock file: unlinking it could let writers lock different inodes
+    // for the same key. Contention or unsupported locking only costs reuse.
+    std::error_code ec;
+    llvm::raw_fd_ostream lockFile(entry.dir + ".lock", ec,
+                                  llvm::sys::fs::CD_OpenAlways);
+    if (ec) {
+      warn("open the entry lock", ec);
+      return;
+    }
+    auto lock = lockFile.tryLockFor(std::chrono::milliseconds(0));
+    if (!lock) {
+      warn("lock an entry", llvm::errorToErrorCode(lock.takeError()));
+      return;
+    }
+    // A miss at lookup may have been repaired while we compiled. Never remove
+    // a valid entry: other builds may already be using its ELF paths.
+    Entry current;
+    current.dir = entry.dir;
+    if (load(current, device.getSymName(), device.getContext())) {
+      return;
+    }
     llvm::SmallString<256> tmp;
     if (std::error_code ec =
             llvm::sys::fs::createUniqueDirectory(entry.dir + ".tmp", tmp)) {
@@ -440,7 +462,7 @@ private:
       }
       return ec;
     };
-    std::error_code ec = writeText(placedFile, entry.placedText);
+    ec = writeText(placedFile, entry.placedText);
     if (!ec) {
       std::string text;
       llvm::raw_string_ostream os(text);
@@ -455,16 +477,11 @@ private:
       llvm::sys::path::append(to, file);
       ec = llvm::sys::fs::copy_file(from, to);
     }
-    if (!ec && entry.stale) {
+    if (!ec && llvm::sys::fs::exists(entry.dir)) {
       ec = llvm::sys::fs::remove_directories(entry.dir);
     }
     if (!ec) {
       ec = llvm::sys::fs::rename(tmp, entry.dir);
-      // Another build may have stored the same entry first.
-      if (ec && llvm::sys::fs::exists(entry.dir)) {
-        llvm::sys::fs::remove_directories(tmp);
-        return;
-      }
     }
     if (ec) {
       warn("store an entry", ec);

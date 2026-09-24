@@ -17,6 +17,7 @@ import pytest
 
 _KEY = textwrap.dedent("""
     import sys
+    from pathlib import Path
     from aie.iron.device import NPU2Col1
     from aie.utils import set_current_device
     from aie.utils.compile.jit._hash import _compute_artifact_hash
@@ -28,7 +29,7 @@ _KEY = textwrap.dedent("""
     flow = sys.argv[1]
     print(
         _compute_artifact_hash(
-            design,
+            Path("design.mlir") if sys.argv[2] == "path" else design,
             [],
             [],
             True,
@@ -41,10 +42,10 @@ _KEY = textwrap.dedent("""
 _PACKAGERS = {"full_elf": "aiebu-asm", "xclbin": "xclbinutil"}
 
 
-def _key(flow, bin_dir, **env):
+def _key(flow, bin_dir, generator="callable", **env):
     path = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
     result = subprocess.run(
-        [sys.executable, "-c", _KEY, flow],
+        [sys.executable, "-c", _KEY, flow, generator],
         env={**os.environ, "PATH": path, **env},
         capture_output=True,
         text=True,
@@ -68,29 +69,34 @@ def bin_dir(tmp_path):
 
 
 @pytest.mark.parametrize("flow", _PACKAGERS)
-def test_the_key_follows_the_flows_packaging_tool(bin_dir, flow):
-    before = _key(flow, bin_dir)
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_the_key_follows_the_flows_packaging_tool(bin_dir, flow, generator):
+    before = _key(flow, bin_dir, generator)
     _install(bin_dir, _PACKAGERS[flow], "1")
-    shadowed = _key(flow, bin_dir)
+    shadowed = _key(flow, bin_dir, generator)
     _install(bin_dir, _PACKAGERS[flow], "2.0")
-    upgraded = _key(flow, bin_dir)
+    upgraded = _key(flow, bin_dir, generator)
     assert len({before, shadowed, upgraded}) == 3
 
 
 @pytest.mark.parametrize("flow", [*_PACKAGERS, "insts_only"])
-def test_the_key_ignores_other_flows_packaging_tools(bin_dir, flow):
-    before = _key(flow, bin_dir)
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_the_key_ignores_other_flows_packaging_tools(bin_dir, flow, generator):
+    before = _key(flow, bin_dir, generator)
     for other, tool in _PACKAGERS.items():
         if other != flow:
             _install(bin_dir, tool, "1")
-    assert _key(flow, bin_dir) == before
+    assert _key(flow, bin_dir, generator) == before
 
 
-def test_aie_xclbinutil_picks_the_xclbinutil_the_key_follows(bin_dir, tmp_path):
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_aie_xclbinutil_picks_the_xclbinutil_the_key_follows(
+    bin_dir, tmp_path, generator
+):
     _install(bin_dir, "xclbinutil", "1")
-    on_path = _key("xclbin", bin_dir)
+    on_path = _key("xclbin", bin_dir, generator)
     chosen = _install(tmp_path, "xclbinutil", "1.0")
-    overridden = _key("xclbin", bin_dir, AIE_XCLBINUTIL=str(chosen))
+    overridden = _key("xclbin", bin_dir, generator, AIE_XCLBINUTIL=str(chosen))
     _install(tmp_path, "xclbinutil", "2.0")
-    upgraded = _key("xclbin", bin_dir, AIE_XCLBINUTIL=str(chosen))
+    upgraded = _key("xclbin", bin_dir, generator, AIE_XCLBINUTIL=str(chosen))
     assert len({on_path, overridden, upgraded}) == 3

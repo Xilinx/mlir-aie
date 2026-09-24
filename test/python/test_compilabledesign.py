@@ -588,6 +588,33 @@ def test_hash_for_path_generator_uses_path_string():
     assert hash(d1) != hash(d2)
 
 
+@pytest.mark.parametrize("use_cache", [False, True])
+@pytest.mark.parametrize("current_outputs", [False, True])
+def test_explicit_outputs_discard_objects_when_cache_disabled(
+    tmp_path, use_cache, current_outputs
+):
+    from aie.utils.compile.jit import _manifest
+
+    kernel_dir = tmp_path / "work"
+    kernel_dir.mkdir()
+    obj = kernel_dir / "kernel.o"
+    obj.write_bytes(b"previous compilation")
+    output = tmp_path / "design.xclbin"
+    output.write_bytes(b"previous output")
+    _manifest.record(kernel_dir, [], [])
+    if current_outputs:
+        _manifest.record_outputs(kernel_dir, "build-key", [output])
+    assert _manifest.is_valid(kernel_dir)
+
+    design = CompilableDesign(_gemm_gen()).specialize(use_cache=use_cache)
+    reused = design._reuse_explicit_outputs(
+        kernel_dir, "build-key", {"xclbin": output}, shared=False
+    )
+
+    assert reused == (use_cache and current_outputs)
+    assert obj.exists() == use_cache
+
+
 def test_hash_for_existing_source_file_tracks_content(tmp_path):
     """Changing a source file's content must change the hash.
 

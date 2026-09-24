@@ -242,7 +242,10 @@ def _compute_artifact_hash(
     ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
     alone.
     """
+    from aie.utils import config as _config
+
     h = hashlib.sha256()
+    tools = {}
 
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
@@ -273,20 +276,18 @@ def _compute_artifact_hash(
             target_device = ("unknown", "", "", "")
 
         h.update(f"target_arch={target_arch}|target_device={target_device!r}".encode())
-        from aie.utils import config as _config
-
         tools = {
             "peano": _config.peano_cxx_path,
             "aiecc": _config.aiecc_path,
         }
         if has_dispatch_params:
             tools["host_cxx"] = _config.host_cxx_path
-        if full_elf:
-            tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
-        elif not insts_only:
-            tools["xclbinutil"] = partial(_config.aiecc_tool_path, "xclbinutil")
-        for name, resolve in tools.items():
-            h.update(f"{name}={_tool_identity(name, resolve)}".encode())
+    if full_elf:
+        tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
+    elif not insts_only:
+        tools["xclbinutil"] = partial(_config.aiecc_tool_path, "xclbinutil")
+    for name, resolve in tools.items():
+        h.update(f"{name}={_tool_identity(name, resolve)}".encode())
 
     return h.hexdigest()
 

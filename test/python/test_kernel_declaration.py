@@ -166,3 +166,32 @@ def test_call_before_resolve_is_rejected():
 
     with pytest.raises(ValueError, match="must be resolved"):
         _module(body)
+
+
+@pytest.mark.parametrize(
+    "kwargs, field",
+    [
+        ({"object_file_name": "other.o"}, "link_with"),
+        ({"tile_size": 32}, "signature"),
+        ({"stack_size_override": 2048}, "stack_size_override"),
+    ],
+)
+def test_call_checks_existing_declaration(kwargs, field):
+    def body():
+        _add_one().resolve()
+        data = buffer(tile(0, 2), np.ndarray[(16,), np.dtype[np.int32]])
+        _add_one(**kwargs)(data, data, 16)
+
+    with pytest.raises(ValueError, match=f"conflicts.*{field}"):
+        _module(body)
+
+
+def test_call_rejects_symbol_owned_by_another_op():
+    def body():
+        tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
+        object_fifo("add_one", tile(0, 0), tile(0, 2), 2, tile_ty)
+        data = buffer(tile(0, 2), tile_ty)
+        _add_one()(data, data, 16)
+
+    with pytest.raises(ValueError, match="already names a aie.objectfifo"):
+        _module(body)

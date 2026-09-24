@@ -108,7 +108,7 @@ def _maybe_collapse_to_match(arg, expected_ty):
 
 
 def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
-    """The symbol table a declaration or call at ``ip`` resolves against."""
+    """Return the symbol table a declaration or call at ``ip`` resolves against."""
     op = ip.block.owner.operation
     while True:
         try:
@@ -495,6 +495,7 @@ class Kernel(Resolvable):
         if self._name not in table:
             raise ValueError("Kernel must be resolved before it can be called.")
         callee = table[self._name]
+        self._check_declaration(callee)
         if len(args) != len(self._arg_types):
             raise ValueError(
                 f"Kernel '{self._name}' expects {len(self._arg_types)} "
