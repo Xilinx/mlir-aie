@@ -28,6 +28,15 @@ _bf16 = dict(dtype=bfloat16)
 _mm = dict(dim_m=64, dim_k=32, dim_n=64)
 _mm_bf16 = dict(**_mm, input_dtype=bfloat16, output_dtype=np.float32)
 _mm_bfp = dict(dim_m=64, dim_k=64, dim_n=64)  # the block_datatypes examples' tile
+# The tile amd/IRON's mm operator builds: square, and B stored transposed.
+_mm_bf16_col_maj = dict(
+    dim_m=64,
+    dim_k=64,
+    dim_n=64,
+    input_dtype=bfloat16,
+    output_dtype=np.float32,
+    b_col_maj=True,
+)
 
 # The exact-copy and one-op bf16 kernels propagate NaN/inf and preserve
 # subnormals, and their references do the same. That is a claim about
@@ -80,6 +89,9 @@ CASES: list[Case] = [
     Case("passthrough", dict(tile_size=2048), calls=256),
     Case("passthrough", dict(dtype=np.int16), calls=16, smoke=True),
     Case("passthrough", dict(dtype=np.uint8), calls=16, smoke=True),
+    # The tile amd/IRON's passthrough operator compiles (PASSTHROUGH_ELEMS=1024
+    # with BIT_WIDTH=16); the cases above all build a different loop bound.
+    Case("passthrough", dict(tile_size=1024, dtype=np.int16), calls=16),
     # Four iterations hung with the old runtime-bound minimum-trip promise.
     Case(
         "passthrough",
@@ -274,6 +286,9 @@ CASES: list[Case] = [
     # linalg
     Case("mm", _mm_bf16, calls=16),
     Case("mm", _mm_bf16, calls=256),
+    # amd/IRON's mm operator compiles the square tile with -DB_COL_MAJ, which
+    # is a separate load path in mm.cc; every case above leaves B row-major.
+    Case("mm", _mm_bf16_col_maj, calls=16),
     Case(
         "mm",
         dict(**_mm, input_dtype=np.int16, output_dtype=np.int32),
@@ -347,6 +362,13 @@ CASES: list[Case] = [
         perf=False,
     ),
     Case("mv", dict(dim_m=32, dim_k=32), calls=16),
+    # The i16 case above builds mv_i16.cc; amd/IRON's mv operator builds the
+    # bf16 kernel out of mv_bf16.cc instead, which no timed case reached.
+    Case(
+        "mv",
+        dict(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16),
+        calls=16,
+    ),
     # The i16 matvec takes two 16-row blocks per pass over the columns, so an
     # odd number of blocks leaves the last one to the tail.
     Case(
