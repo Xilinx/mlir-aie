@@ -16,6 +16,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from pathlib import Path
 
 import aie.utils.compile.utils as compile_utils
 import aie.utils.config as config
@@ -84,6 +85,25 @@ def _symbols(object_path):
     return sorted(
         line.split()[-1] for line in out.splitlines() if len(line.split()) >= 3
     )
+
+
+def _relocated(tool, root):
+    """Copy ``tool`` to a new path under ``root`` and return the working copy.
+
+    Some toolchain binaries find their libraries relative to themselves --
+    Peano's llvm-nm loads libLLVM.so through RUNPATH ``$ORIGIN/../lib`` -- so a
+    bare copy does not start. For those, the rest of the install prefix is
+    linked in beside the copy, so the relative paths still resolve.
+    """
+    copy = root / tool.parent.name / tool.name
+    copy.parent.mkdir(parents=True)
+    shutil.copy2(tool, copy)
+    if subprocess.run([copy, "--version"], capture_output=True).returncode:
+        for entry in tool.parent.parent.iterdir():
+            if entry != tool.parent:
+                (root / entry.name).symlink_to(entry, entry.is_dir())
+        subprocess.run([copy, "--version"], capture_output=True, check=True)
+    return copy
 
 
 def test_two_designs_share_one_compile(tmp_path, source, cache):
@@ -213,8 +233,8 @@ def test_object_tool_changes_miss(tmp_path, source, cache, monkeypatch, tool, mo
     _build(tmp_path, cache, kernel, **build_kwargs)
     assert _identity(original) == before
 
-    selected = tmp_path / os.path.basename(getattr(config, f"{tool}_path")())
-    shutil.copy2(getattr(config, f"{tool}_path")(), selected)
+    resolved = Path(getattr(config, f"{tool}_path")()).resolve()
+    selected = _relocated(resolved, tmp_path / "toolchain")
     monkeypatch.setenv(f"AIE_{tool.upper()}_PATH", str(selected))
     second = _build(tmp_path, cache, kernel, **build_kwargs)
     assert len(list(cache.root.iterdir())) == 2

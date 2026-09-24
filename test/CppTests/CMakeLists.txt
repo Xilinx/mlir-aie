@@ -11,6 +11,9 @@ add_executable(target_model_rtti  target_model_rtti.cpp)
 add_executable(target_model_unknown_device  target_model_unknown_device.cpp)
 add_executable(register_database  register_database.cpp)
 add_executable(device_cache device_cache.cpp)
+# aiecc's headers define cl::opt globals, whose typeinfo must match LLVM's
+# RTTI setting; take aiecc's compile flags so rtti=OFF builds link.
+llvm_update_compile_flags(device_cache)
 target_include_directories(device_cache PRIVATE ${CMAKE_SOURCE_DIR}/tools/aiecc)
 target_link_libraries(device_cache PRIVATE MLIRParser)
 add_test(NAME DeviceCache COMMAND device_cache)
