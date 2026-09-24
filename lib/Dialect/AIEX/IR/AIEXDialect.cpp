@@ -1315,6 +1315,16 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
+// Only the sign is checked here. A count past the hardware field is split into
+// several pushes by aie-assign-runtime-sequence-bd-ids, and NpuPushQueueOp
+// rejects whatever reaches it unsplit.
+LogicalResult AIEX::DMAStartTaskOp::verify() {
+  if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
+    return emitOpError("repeat_count must be non-negative, got ")
+           << rc.getInt();
+  return success();
+}
+
 // Resolving the allocation symbol through the collection keeps the lookup off
 // the device's linear symbol scan, which a per-op verifier repeats after every
 // pass.

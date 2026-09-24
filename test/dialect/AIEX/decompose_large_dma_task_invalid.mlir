@@ -51,8 +51,9 @@ module {
 
 // -----
 
-// The scaled repeat count has to fit the queue's 8-bit field. Saying so here
-// names the factor that got us there, instead of failing later at the push.
+// A scaled repeat count past the queue's 8-bit field is split into several
+// pushes later (dma_task_repeat_split.mlir), but it still has to fit the 32-bit
+// attribute. Saying so here names the factor that got us there.
 
 module {
   aie.device(npu2_1col) {
@@ -60,11 +61,11 @@ module {
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.runtime_sequence @repeat_overflows(%in: memref<16x16x4096xi8>) {
       %tk = aiex.dma_configure_task_for @a {
-        // expected-error@+1 {{decomposition scales the repeat count by 8 to 1607, beyond the [0:255] a queue push can carry}}
+        // expected-error@+1 {{decomposition scales the repeat count by 8 to 17179869183, beyond a 32-bit repeat_count}}
         aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
           {burst_length = 0 : i32}
         aie.end
-      } {issue_token = true, repeat_count = 200 : i32}
+      } {issue_token = true, repeat_count = 2147483647 : i32}
       aiex.dma_start_task(%tk)
     }
   }

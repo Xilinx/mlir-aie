@@ -1407,21 +1407,58 @@ def AIE_DMAStartTaskOp
   let description = [{
     Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
     Once submitted, if the task is configured to issue a token, you can await completion of the task using `aiex.await_task`.
+
+    A task may be started more than once. Each start is one push onto the
+    channel's task queue and runs the whole chain `repeat_count + 1` times.
+
+    - `repeat_count`, when present, replaces the task's own compile-time
+      repeat count for this start only, so one configured chain can be
+      re-issued with a different number of passes.
+    - `no_token` withholds, for this start only, the completion token the task
+      would issue. It cannot add a token to a task that issues none.
+
+    A constant repeat count beyond the target's maximum (255 on AIE2) is legal.
+    `aie-assign-runtime-sequence-bd-ids` issues such a start as several starts
+    of the same task: full-size ones first, then the remainder. Only the last
+    one keeps the token, so an await still completes after every pass. Each
+    of those starts takes its own queue slot. A runtime-valued repeat count
+    cannot be split and must fit the hardware field.
   }];
 
-  let arguments = (ins Index:$task);
+  let arguments = (ins Index:$task, OptionalAttr<I32Attr>:$repeat_count,
+      UnitAttr:$no_token);
 
   let assemblyFormat = [{
     `(` $task `)` attr-dict
   }];
 
+  let builders = [OpBuilder<(ins "mlir::Value":$task), [{
+    build($_builder, $_state, task, /*repeat_count=*/nullptr,
+          /*no_token=*/nullptr);
+  }]>];
+
   let extraClassDeclaration = [{
     DMAConfigureTaskOp getTaskOp();
+    // The repeat count this push carries: the start's override if present,
+    // else the task's (a runtime operand or the compile-time attribute).
+    mlir::OpFoldResult getPushRepeatCount(DMAConfigureTaskOp task);
+    // Whether this push issues a completion token.
+    bool getPushIssueToken(DMAConfigureTaskOp task) {
+      return task.getIssueToken() && !getNoToken();
+    }
   }];
 
   let extraClassDefinition = [{
     DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    mlir::OpFoldResult DMAStartTaskOp::getPushRepeatCount(DMAConfigureTaskOp task) {
+      if (std::optional<uint32_t> rc = getRepeatCount())
+        return mlir::IntegerAttr::get(
+            mlir::IntegerType::get(getContext(), 32), *rc);
+      return task.getRepeatCountValue();
+    }
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_DMAAwaitTaskOp

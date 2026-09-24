@@ -23,6 +23,8 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/DenseSet.h"
 
+#include <limits>
+
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEDECOMPOSELARGEDMABD
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -459,26 +461,47 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
                  << "cannot decompose a buffer descriptor whose repeat count "
                     "is a runtime value: decomposition needs to scale it by "
                  << *growth;
-        // Widen before multiplying: the accessor returns int32_t, so the
-        // addition alone would overflow in int and wrap past any later check.
-        runs = (static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1) * *growth;
-        // Diagnose the scale factor here rather than failing at the queue push.
-        uint32_t maxRepeat = targetModel.getMaxRepeatCount();
-        if (runs - 1 > maxRepeat)
+        // A scaled count past what one queue push carries is fine: the BD-ID
+        // pass issues it as several starts. Only the attribute width limits
+        // it. Widen before multiplying: the accessor returns int32_t, so the
+        // addition alone would overflow in int and wrap past this check.
+        auto scaled = [&](int64_t repeat) { return (repeat + 1) * *growth; };
+        auto fits = [](int64_t r) {
+          return r - 1 <= std::numeric_limits<int32_t>::max();
+        };
+        runs = scaled(getTaskRepeatCount(taskOp));
+        if (!fits(runs))
           return op.emitOpError()
                  << "decomposition scales the repeat count by " << *growth
-                 << " to " << (runs - 1) << ", beyond the [0:" << maxRepeat
-                 << "] a queue push can carry";
+                 << " to " << (runs - 1) << ", beyond a 32-bit repeat_count";
+        // A start that overrides the task's count repeats the same BD, so it
+        // scales by the same factor.
+        for (Operation *user : taskOp->getResult(0).getUsers())
+          if (auto start = dyn_cast<DMAStartTaskOp>(user))
+            if (IntegerAttr rc = start.getRepeatCountAttr())
+              if (!fits(scaled(rc.getInt())))
+                return start.emitOpError()
+                       << "decomposition scales this start's repeat count by "
+                       << *growth << " to " << (scaled(rc.getInt()) - 1)
+                       << ", beyond a 32-bit repeat_count";
       }
 
       rewriter.modifyOpInPlace(op, [&]() {
         updateTaskBdInPlace(op, static_cast<int32_t>(flatOffset), len,
                             outerSizes, outerStrides);
       });
-      if (*growth > 1)
+      if (*growth > 1) {
         rewriter.modifyOpInPlace(taskOp, [&]() {
           setTaskRepeatCount(taskOp, static_cast<int32_t>(runs - 1));
         });
+        for (Operation *user : taskOp->getResult(0).getUsers())
+          if (auto start = dyn_cast<DMAStartTaskOp>(user))
+            if (IntegerAttr rc = start.getRepeatCountAttr())
+              rewriter.modifyOpInPlace(start, [&]() {
+                start.setRepeatCountAttr(rewriter.getI32IntegerAttr(
+                    (rc.getInt() + 1) * *growth - 1));
+              });
+      }
       return success();
     }
 

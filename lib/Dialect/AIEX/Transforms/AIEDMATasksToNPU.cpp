@@ -79,14 +79,15 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       return failure();
     }
     Value bdIdVal = getAsValue(rewriter, loc, idOfr, rewriter.getI32Type());
-    // push_queue takes bd_id + repeat_count as SSA operands. repeat_count is a
-    // runtime operand when present (dynamic tile count), else the compile-time
-    // attribute materialized as a constant.
-    Value repeatCount = getAsValue(rewriter, loc, task_op.getRepeatCountValue(),
-                                   rewriter.getI32Type());
+    // push_queue takes bd_id + repeat_count as SSA operands. repeat_count is
+    // the start's override, else a runtime operand when present (dynamic tile
+    // count), else the compile-time attribute materialized as a constant.
+    Value repeatCount = getAsValue(
+        rewriter, loc, op.getPushRepeatCount(task_op), rewriter.getI32Type());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
-        task_op.getChannel(), task_op.getIssueToken(), repeatCount, bdIdVal);
+        task_op.getChannel(), op.getPushIssueToken(task_op), repeatCount,
+        bdIdVal);
     return success();
   }
 };

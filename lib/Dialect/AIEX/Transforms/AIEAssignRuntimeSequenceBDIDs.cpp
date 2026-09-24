@@ -18,6 +18,10 @@
 // NPU instruction stream); such forms are rejected here for the dynamic EmitC
 // path (Phase 2).
 //
+// A start whose constant repeat count is past the hardware field is first
+// issued as several starts of the same task (see splitLongRepeats), so every
+// start below is exactly one queue push.
+//
 // Before allocating, the pass also checks the per-channel hardware resources a
 // sequence can exhaust (see verifyChannelUsage): task-completion-token (TCT)
 // imbalance -- an await with no matching issue_token push on its channel would
@@ -35,6 +39,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -158,9 +163,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // Queue counting differs from token counting in three ways: every push takes
   // a slot, not just issue_token ones; a non-token push is still retired
   // implicitly, since in-order execution means awaiting a token drains
-  // everything queued ahead of it too; and repeat_count does not multiply
-  // slots. rejectRuntimeControlFlow has already run, so one program-order pass
-  // over straight-line IR is exact.
+  // everything queued ahead of it too; and a repeat_count the hardware field
+  // holds does not multiply slots (splitLongRepeats has already made one start
+  // per push of a larger one). rejectRuntimeControlFlow has already run, so one
+  // program-order pass over straight-line IR is exact.
   LogicalResult verifyChannelUsage(AIE::RuntimeSequenceOp seq) {
     using ChannelKey = DmaQueueModel::ChannelKey;
     auto keyOf = [](DMAConfigureTaskOp cfg) -> ChannelKey {
@@ -187,8 +193,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
         if (queue.wouldOverflow(key, depth))
           guardQueueOverflow(queue, start, tm, key, depth, enforceQueueDepth);
-        queue.push(key, cfg.getIssueToken());
-        if (cfg.getIssueToken())
+        bool issuesToken = start.getPushIssueToken(cfg);
+        queue.push(key, issuesToken);
+        if (issuesToken)
           avail[key]++;
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
         DMAConfigureTaskOp cfg = await.getTaskOp();
@@ -223,11 +230,47 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return failure(wr.wasInterrupted());
   }
 
+  // Issue each start whose constant repeat count does not fit the queue push's
+  // field as several starts of the same task: full-size ones first, then the
+  // remainder, which is the original op. Leading starts withhold the token, so
+  // an await on the task still returns only after the last pass. Splitting
+  // here, not at lowering, makes each push its own start, so the queue-depth
+  // guard below can poll between them. A runtime-valued count is left alone;
+  // aie-dma-to-npu guards it.
+  void splitLongRepeats(AIE::RuntimeSequenceOp seq) {
+    uint32_t maxRepeat = seq->getParentOfType<AIE::DeviceOp>()
+                             .getTargetModel()
+                             .getMaxRepeatCount();
+    // A target without a repeat field (maxRepeat 0) cannot be split into
+    // anything; its push verifier reports the count instead.
+    if (maxRepeat == 0)
+      return;
+    SmallVector<DMAStartTaskOp> starts;
+    seq.walk([&](DMAStartTaskOp start) { starts.push_back(start); });
+    for (DMAStartTaskOp start : starts) {
+      DMAConfigureTaskOp cfg = start.getTaskOp();
+      if (!cfg)
+        continue;
+      std::optional<int64_t> rc =
+          getConstantIntValue(start.getPushRepeatCount(cfg));
+      if (!rc || *rc <= maxRepeat)
+        continue;
+      OpBuilder b(start);
+      int64_t runs = *rc + 1;
+      for (; runs > maxRepeat + 1; runs -= maxRepeat + 1)
+        DMAStartTaskOp::create(b, start.getLoc(), start.getTask(),
+                               b.getI32IntegerAttr(maxRepeat),
+                               /*no_token=*/b.getUnitAttr());
+      start.setRepeatCountAttr(b.getI32IntegerAttr(runs - 1));
+    }
+  }
+
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
     // Reject runtime control flow first, so the token-balance pass below runs
     // on straight-line IR and needs no control-flow reasoning.
     if (failed(rejectRuntimeControlFlow(seq)))
       return failure();
+    splitLongRepeats(seq);
     if (failed(verifyChannelUsage(seq)))
       return failure();
     return success();
@@ -309,10 +352,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return success();
   }
 
-  // Tasks started on each channel, in program order, that are not yet known to
-  // have completed.
-  std::map<DmaQueueModel::ChannelKey, SmallVector<DMAConfigureTaskOp, 8>>
+  // One push onto a channel: the task it started (null for a raw push or
+  // memcpy transfer) and whether that push issues a token. A task started more
+  // than once may issue a token on only some of its pushes.
+  struct StartedTask {
+    DMAConfigureTaskOp task;
+    bool issuesToken;
+  };
+  // Pushes on each channel, in program order, not yet known to have completed.
+  std::map<DmaQueueModel::ChannelKey, SmallVector<StartedTask, 8>>
       startedOnChannel;
+
+  static bool isStarted(ArrayRef<StartedTask> started,
+                        DMAConfigureTaskOp task) {
+    return llvm::any_of(started,
+                        [&](const StartedTask &s) { return s.task == task; });
+  }
   // Configures whose completion an await has established.
   llvm::SmallPtrSet<Operation *, 16> knownComplete;
   // BD ids released by aiex.dma_free_task while the task could still have been
@@ -334,24 +389,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // the tasks queued ahead of it are known to have finished.
   void noteAwaited(const DmaQueueModel::ChannelKey &key) {
     auto &started = startedOnChannel[key];
-    // A null configure represents a token from a raw push or memcpy transfer.
-    auto *it = llvm::find_if(started, [](DMAConfigureTaskOp task) {
-      return !task || task.getIssueToken();
-    });
+    auto *it = llvm::find_if(
+        started, [](const StartedTask &s) { return s.issuesToken; });
     if (it == started.end())
       return;
-    SmallVector<DMAConfigureTaskOp, 8> retired(started.begin(), std::next(it));
+    SmallVector<StartedTask, 8> retired(started.begin(), std::next(it));
     started.erase(started.begin(), std::next(it));
-    for (DMAConfigureTaskOp task : retired)
-      if (task && !llvm::is_contained(started, task))
-        knownComplete.insert(task);
+    for (const StartedTask &s : retired)
+      if (s.task && !isStarted(started, s.task))
+        knownComplete.insert(s.task);
   }
 
   // Record ids released without any completion guarantee. nextBdId scans upward
   // from 0, so a just-freed low id is the first one handed out again -- the
   // worst case for aliasing a BD that is still running.
   void noteFreedInFlight(DMAConfigureTaskOp cfg, Operation *freeOp) {
-    if (!llvm::is_contained(startedOnChannel[channelOf(cfg)], cfg))
+    if (!isStarted(startedOnChannel[channelOf(cfg)], cfg))
       return;
     AIE::TileOp tile = cfg.getTileOp();
     auto &ids = freedInFlight[{tile.getCol(), tile.getRow()}];
@@ -535,7 +588,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         } else if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = start.getTaskOp()) {
             knownComplete.erase(cfg);
-            startedOnChannel[channelOf(cfg)].push_back(cfg);
+            startedOnChannel[channelOf(cfg)].push_back(
+                {cfg, start.getPushIssueToken(cfg)});
           }
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = await.getTaskOp())
@@ -552,7 +606,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             return WalkResult::interrupt();
           frees.push_back(freeOp);
         } else if (auto key = otherTokenChannel(op)) {
-          startedOnChannel[*key].push_back(DMAConfigureTaskOp{});
+          startedOnChannel[*key].push_back({DMAConfigureTaskOp{}, true});
         }
         return WalkResult::advance();
       });
