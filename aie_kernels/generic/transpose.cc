@@ -45,11 +45,13 @@ static_assert(OUTER_SIZE % COPY_VEC == 0);
 extern "C" {
 
 void copy(T *__restrict in_ptr, T *__restrict out_ptr) {
+  event0();
   auto src = aie::begin_restrict_vector<COPY_VEC>(in_ptr);
   auto dst = aie::begin_restrict_vector<COPY_VEC>(out_ptr);
   AIE_LOOP_UNROLL(2)
   for (unsigned i = 0; i < OUTER_SIZE / COPY_VEC; ++i)
     *dst++ = *src++;
+  event1();
 }
 }
 
@@ -118,10 +120,14 @@ static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
 extern "C" {
 
 void transpose_4x4(T *__restrict in_ptr, T *__restrict out_ptr) {
+  event0();
   transpose_blocks<4>(in_ptr, out_ptr);
+  event1();
 }
 
 void transpose_8x8(T *__restrict in_ptr, T *__restrict out_ptr) {
+  event0();
   transpose_blocks<8>(in_ptr, out_ptr);
+  event1();
 }
 }
