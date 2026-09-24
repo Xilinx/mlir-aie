@@ -5,23 +5,36 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <type_traits>
+
+// AIE2P has no scalar float multiply, divide or C-style int-to-float convert;
+// those lower to the soft-float helpers __mulsf3, __divsf3 and __floatsisf.
+// aie::to_float is a single fx2flt and aie::inv is native, so a reciprocal
+// multiply through one vector lane keeps the row statistics off the libcalls.
+static inline float scalar_mul(float a, float b) {
+  return ::aie::mul(::aie::broadcast<float, 16>(a), b).to_vector<float>()[0];
+}
+
+// a - b * c. Subtracting one scalar_mul from another directly makes Peano
+// form a <16 x float> G_FSUB it cannot legalize, so the subtraction has to
+// stay inside the accumulator.
+static inline float scalar_mul_sub(float a, float b, float c) {
+  ::aie::accum<accfloat, 16> acc;
+  acc.from_vector(::aie::broadcast<float, 16>(a));
+  return ::aie::msc(acc, ::aie::broadcast<float, 16>(b), c)
+      .to_vector<float>()[0];
+}
 
 template <typename T, int N>
 void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
   event0();
   constexpr float epsilon = 1e-5f;
-  const float gamma = 1.0f;
-  const float beta = 0.0f;
 
-  ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
-  ::aie::vector<T, N> beta_v = ::aie::broadcast<T, N>(beta);
-
-  int vector_chunks = cols / N;
+  // cols is non-negative, so the unsigned divide lowers to a shift.
+  const int vector_chunks = (uint32_t)cols / N;
 
   // Reduce the row sum in an f32 accumulator, not a bf16 vector: a bf16 running
   // sum drops low-order bits as the reduction length grows (embedding_dim is
@@ -29,29 +42,45 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
   // is already lossy before the variance is computed. The sum of squares is
   // already reduced in f32.
   ::aie::accum<accfloat, N> sum_acc = ::aie::zeros<accfloat, N>();
-  ::aie::vector<float, N> sum_sq_acc = ::aie::zeros<float, N>();
-  for (int i = 0; i < vector_chunks; i++) {
-    ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
-    sum_acc = ::aie::add(sum_acc, reg_a);
-    ::aie::vector<float, N> sq_acc = ::aie::mul(reg_a, reg_a);
-    sum_sq_acc = ::aie::add(sum_sq_acc, sq_acc);
+  ::aie::accum<accfloat, N> sum_sq_acc = ::aie::zeros<accfloat, N>();
+  if (vector_chunks > 0) {
+    const T *restrict p = input;
+    AIE_LOOP_UNROLL(2)
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int i = 0; i < vector_chunks; i++) {
+      ::aie::vector<T, N> reg_a = ::aie::load_v<N>(p);
+      sum_acc = ::aie::add(sum_acc, reg_a);
+      sum_sq_acc = ::aie::mac_square(sum_sq_acc, reg_a);
+      p += N;
+    }
   }
 
-  float mean =
-      ::aie::reduce_add(sum_acc.template to_vector<float>()) / float(cols);
-  float variance = ::aie::reduce_add(sum_sq_acc) / float(cols) - mean * mean;
+  const float inv_cols = ::aie::inv(::aie::to_float<float>(cols));
+  float mean = scalar_mul(
+      ::aie::reduce_add(sum_acc.template to_vector<float>()), inv_cols);
+  float variance = scalar_mul_sub(
+      scalar_mul(::aie::reduce_add(sum_sq_acc.template to_vector<float>()),
+                 inv_cols),
+      mean, mean);
   float inv_std = aie::invsqrt(variance + epsilon);
 
   ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>((T)mean);
   ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>((T)inv_std);
 
-  for (int i = 0; i < vector_chunks; i++) {
-    ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
-    ::aie::vector<T, N> diff_v = ::aie::sub(reg_a, mean_v);
-    ::aie::vector<T, N> norm_v = ::aie::mul(diff_v, inv_std_v);
-    ::aie::vector<T, N> scaled_v = ::aie::mul(norm_v, gamma_v);
-    ::aie::vector<T, N> out_v = ::aie::add(scaled_v, beta_v);
-    ::aie::store_v(output + i * N, out_v);
+  // gamma = 1 and beta = 0 here, so the affine pair is not applied at all.
+  if (vector_chunks > 0) {
+    const T *restrict pi = input;
+    T *restrict po = output;
+    AIE_LOOP_UNROLL(2)
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int i = 0; i < vector_chunks; i++) {
+      ::aie::vector<T, N> diff_v = ::aie::sub(::aie::load_v<N>(pi), mean_v);
+      ::aie::store_v(po, ::aie::mul(diff_v, inv_std_v).template to_vector<T>());
+      pi += N;
+      po += N;
+    }
   }
   event1();
 }
@@ -73,25 +102,41 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
                 "TOut must equal TIn");
   event0();
   constexpr float epsilon = 1e-5f;
-  int chunks = cols / N;
+  // cols is non-negative, so the unsigned divide lowers to a shift.
+  const int chunks = (uint32_t)cols / N;
+  const float inv_cols = ::aie::inv(::aie::to_float<float>(cols));
 
   // Pass 1: mean = sum(x) / cols.
-  ::aie::vector<TIn, N> sum_v = ::aie::zeros<TIn, N>();
-  for (int i = 0; i < chunks; i++) {
-    sum_v = ::aie::add(sum_v, ::aie::load_v<N>(input + i * N));
+  ::aie::accum<accfloat, N> sum_acc = ::aie::zeros<accfloat, N>();
+  if (chunks > 0) {
+    const TIn *restrict p = input;
+    AIE_LOOP_UNROLL(2)
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int i = 0; i < chunks; i++) {
+      sum_acc = ::aie::add(sum_acc, ::aie::load_v<N>(p));
+      p += N;
+    }
   }
-  float mean = ::aie::reduce_add(sum_v) / float(cols);
+  float mean = scalar_mul(
+      ::aie::reduce_add(sum_acc.template to_vector<float>()), inv_cols);
   ::aie::vector<TIn, N> mean_v = ::aie::broadcast<TIn, N>((TIn)mean);
 
   // Pass 2: variance = sum((x - mean)^2) / cols (centered two-pass).
-  ::aie::vector<TIn, N> var_v = ::aie::zeros<TIn, N>();
-  for (int i = 0; i < chunks; i++) {
-    ::aie::vector<TIn, N> diff_v =
-        ::aie::sub(::aie::load_v<N>(input + i * N), mean_v);
-    ::aie::vector<TIn, N> sq = ::aie::mul(diff_v, diff_v);
-    var_v = ::aie::add(var_v, sq);
+  ::aie::accum<accfloat, N> var_acc = ::aie::zeros<accfloat, N>();
+  if (chunks > 0) {
+    const TIn *restrict p = input;
+    AIE_LOOP_UNROLL(2)
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int i = 0; i < chunks; i++) {
+      var_acc =
+          ::aie::mac_square(var_acc, ::aie::sub(::aie::load_v<N>(p), mean_v));
+      p += N;
+    }
   }
-  float variance = ::aie::reduce_add(var_v) / float(cols);
+  float variance = scalar_mul(
+      ::aie::reduce_add(var_acc.template to_vector<float>()), inv_cols);
   float inv_std = aie::invsqrt(variance + epsilon);
   ::aie::vector<TIn, N> inv_std_v = ::aie::broadcast<TIn, N>((TIn)inv_std);
 
@@ -103,30 +148,48 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
     // kernel on this core, so it is handed back before returning.
     ::aie::rounding_mode saved_rounding =
         ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-    for (int i = 0; i < chunks; i++) {
-      ::aie::vector<TIn, N> diff_v =
-          ::aie::sub(::aie::load_v<N>(input + i * N), mean_v);
-      ::aie::vector<TIn, N> norm_v = ::aie::mul(diff_v, inv_std_v);
-      ::aie::vector<TIn, N> gamma_v = ::aie::load_v<N>(gamma + i * N);
-      ::aie::vector<TIn, N> beta_v = ::aie::load_v<N>(beta + i * N);
-      ::aie::vector<TIn, N> scaled_v = ::aie::mul(norm_v, gamma_v);
-      ::aie::vector<TIn, N> out_v = ::aie::add(scaled_v, beta_v);
-      ::aie::accum<accfloat, N> a;
-      a.from_vector(out_v);
-      ::aie::store_v(output + i * N, a.template to_vector<TOut>());
+    if (chunks > 0) {
+      const TIn *restrict pi = input;
+      const TIn *restrict pg = gamma;
+      const TIn *restrict pb = beta;
+      TOut *restrict po = output;
+      AIE_PREPARE_FOR_PIPELINING
+      AIE_LOOP_MIN_ITERATION_COUNT(1)
+      for (int i = 0; i < chunks; i++) {
+        ::aie::vector<TIn, N> diff_v = ::aie::sub(::aie::load_v<N>(pi), mean_v);
+        ::aie::vector<TIn, N> norm_v =
+            ::aie::mul(diff_v, inv_std_v).template to_vector<TIn>();
+        // Kept as a separate multiply and add rather than a mac: an FMA would
+        // skip the rounding of norm * gamma that the host reference performs.
+        ::aie::vector<TIn, N> scaled_v =
+            ::aie::mul(norm_v, ::aie::load_v<N>(pg)).template to_vector<TIn>();
+        ::aie::vector<TIn, N> out_v =
+            ::aie::add(scaled_v, ::aie::load_v<N>(pb));
+        ::aie::accum<accfloat, N> a;
+        a.from_vector(out_v);
+        ::aie::store_v(po, a.template to_vector<TOut>());
+        pi += N;
+        pg += N;
+        pb += N;
+        po += N;
+      }
     }
     ::aie::set_rounding(saved_rounding);
   } else {
-    // gamma = 1, beta = 0, TOut == TIn
-    ::aie::vector<TIn, N> gamma_v = ::aie::broadcast<TIn, N>((TIn)1.0f);
-    ::aie::vector<TIn, N> beta_v = ::aie::broadcast<TIn, N>((TIn)0.0f);
-    for (int i = 0; i < chunks; i++) {
-      ::aie::vector<TIn, N> diff_v =
-          ::aie::sub(::aie::load_v<N>(input + i * N), mean_v);
-      ::aie::vector<TIn, N> norm_v = ::aie::mul(diff_v, inv_std_v);
-      ::aie::vector<TIn, N> scaled_v = ::aie::mul(norm_v, gamma_v);
-      ::aie::vector<TIn, N> out_v = ::aie::add(scaled_v, beta_v);
-      ::aie::store_v(output + i * N, out_v);
+    // gamma = 1 and beta = 0 here, so the affine pair is not applied at all.
+    if (chunks > 0) {
+      const TIn *restrict pi = input;
+      TOut *restrict po = output;
+      AIE_LOOP_UNROLL(2)
+      AIE_PREPARE_FOR_PIPELINING
+      AIE_LOOP_MIN_ITERATION_COUNT(1)
+      for (int i = 0; i < chunks; i++) {
+        ::aie::vector<TIn, N> diff_v = ::aie::sub(::aie::load_v<N>(pi), mean_v);
+        ::aie::store_v(po,
+                       ::aie::mul(diff_v, inv_std_v).template to_vector<TIn>());
+        pi += N;
+        po += N;
+      }
     }
   }
 
