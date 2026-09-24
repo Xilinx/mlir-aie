@@ -192,12 +192,13 @@ class DmaChannel:
     loop: bool = True
 
 
-def _emit_bd(bd: "Bd", bd_id: int | None) -> None:
+def _emit_bd(bd: "Bd", bd_id: int | None, packet_attr: bool = False) -> None:
     """Emit one BD's acquires, packet header, ``aie.dma_bd`` and releases.
 
     They go at the current insertion point. The caller supplies the block and the
     ``next_bd``/``aie.end`` that closes it, and the ``bd_id`` to stamp (which on
-    an out-of-order channel is not ``bd.bd_id``).
+    an out-of-order channel is not ``bd.bd_id``). ``packet_attr`` puts the packet
+    header on the ``aie.dma_bd`` itself, as a runtime-sequence BD needs.
     """
     for acq in bd.acquires:
         acq.emit()
@@ -218,7 +219,10 @@ def _emit_bd(bd: "Bd", bd_id: int | None) -> None:
     # A packet header must be a distinct aie.dma_bd_packet op placed BEFORE the
     # aie.dma_bd: the CDO/xclbin backends (AIERT / AIETargetXAIEV2) read the
     # header only from that op, not from a `packet` attribute on the dma_bd.
-    if bd.packet is not None:
+    # The runtime-sequence lowering is the reverse: it reads only the attribute.
+    if bd.packet is not None and packet_attr:
+        bd_kwargs["packet"] = bd.packet
+    elif bd.packet is not None:
         pkt_type, pkt_id = bd.packet
         dma_bd_packet(pkt_type, pkt_id)
     dma_bd(bd.buffer.op, **bd_kwargs)

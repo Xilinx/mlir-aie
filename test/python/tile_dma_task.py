@@ -12,7 +12,7 @@ tile had to give up dynamic shapes before this existed."""
 import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
-from aie.iron import Buffer, Program, Runtime, tile_dma_task
+from aie.iron import Buffer, Flow, Program, Runtime, tile_dma_task
 from aie.iron.runtime.runtime import IronRuntimeError
 from aie.iron.device import NPU2Col1, Tile
 
@@ -59,6 +59,49 @@ def emit_dynamic_memtile_task():
 # CHECK: aiex.dma_start_task
 # CHECK: aiex.dma_await_task
 print(emit_dynamic_memtile_task())
+
+
+def emit_shared_length_drain():
+    buf_ty = np.ndarray[(4096,), np.dtype[np.int32]]
+    shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
+    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
+    buf = Buffer(tile=mem_tile, type=buf_ty, name="resident")
+    out = Flow(mem_tile, shim, src_channel=0, dst_channel=0)
+
+    def sequence(host, tiles):
+        length = tiles * 512
+        tile_dma_task(
+            mem_tile,
+            DMAChannelDir.MM2S,
+            out.endpoint(mem_tile),
+            buf,
+            sizes=[1, 1, tiles, 512],
+            strides=[0, 0, 512, 1],
+            transfer_len=length,
+        )
+        out.drain(
+            host,
+            sizes=[1, 1, tiles, 512],
+            strides=[0, 0, 512, 1],
+            transfer_len=length,
+            wait=True,
+        )
+
+    rt = Runtime(sequence, [buf_ty, np.int64])
+    rt.add_flow(out)
+    rt.add_buffer(buf)
+    return Program(NPU2Col1(), rt).resolve_program()
+
+
+# The same i64 length also sizes the shim drain, narrowed the same way and
+# before the task opens, since a BD block admits no arithmetic.
+# CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
+# CHECK: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 len = %{{.*}} sizes = [1, 1, %{{.*}}, 512]
+# CHECK: aiex.npu.assert_bd_field(%[[DLEN64:.*]]) {max = 2147483647 : i32} : i64
+# CHECK-NEXT: %[[DLEN32:.*]] = arith.trunci %[[DLEN64]] : i64 to i32
+# CHECK-NEXT: aiex.dma_configure_task_for
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 len = %[[DLEN32]] sizes = [1, 1, %{{.*}}, 512]
+print(emit_shared_length_drain())
 
 
 def emit_late_add_buffer():

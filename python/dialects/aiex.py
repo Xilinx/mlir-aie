@@ -390,7 +390,7 @@ def shim_dma_single_bd_task(
         alloc: The alloc argument associates the DMA task with an ObjectFIFO. This argument is called alloc because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
         mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
         tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
-        offset (optional): Starting point for the data transfer. Default values is 0.
+        offset (optional): Starting point for the data transfer. Default values is 0. A runtime i64 value is narrowed to the i32 the field takes, as is ``transfer_len``.
         sizes: The extent of data to be transferred across each dimension. The dimensions before the last three are iteration dimensions, one execution of the BD per index; past four in all, which must then be constant, the compiler splits the transfer into several BDs.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
@@ -419,6 +419,7 @@ def shim_dma_single_bd_task(
         offset = int(tap.offset)
 
     sizes, strides, repeat_count, repeat_count_val = _task_dims(sizes, strides)
+    offset, transfer_len = _as_bd_i32(offset), _as_bd_i32(transfer_len)
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,

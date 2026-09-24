@@ -159,6 +159,7 @@ def tile_dma_chain(
     repeat_count=0,
     wait: bool = False,
     start: bool = True,
+    out_of_order: bool = False,
 ) -> Task:
     """Configure and start a chain of DMA descriptors on ``tile``'s ``channel``.
 
@@ -185,6 +186,12 @@ def tile_dma_chain(
         wait: issue a completion token, so the returned task can be awaited.
         start: push the task onto the channel queue. ``False`` configures it
             without submitting; ``Task.start()`` submits it later.
+        out_of_order: run an S2MM channel in out-of-order mode, as
+            [`DmaChannel.out_of_order`][iron.DmaChannel] does: each packet
+            lands in the ``Bd`` whose ``bd_id`` matches the out-of-order id in
+            its header, so every ``Bd`` pins ``bd_id`` and sets ``packet``, and
+            ``repeat_count`` counts packets (0-based) rather than chain runs.
+            Needs an integer ``channel``.
 
     Returns:
         A [`Task`][iron.runtime.dmataskhandle.Task] carrying ``.start()``,
@@ -211,6 +218,23 @@ def tile_dma_chain(
                 "repeat_count or one Bd per sub-buffer instead."
             )
 
+    if out_of_order:
+        if direction != DMAChannelDir.S2MM:
+            raise ValueError(
+                f"tile_dma_chain out_of_order is only valid for S2MM, not {direction}"
+            )
+        if isinstance(channel, FlowEndpoint):
+            raise ValueError(
+                "tile_dma_chain out_of_order needs an integer channel, not the "
+                f"Flow endpoint {channel}."
+            )
+        for i, bd in enumerate(bds):
+            if bd.bd_id is None or bd.packet is None:
+                raise ValueError(
+                    f"tile_dma_chain out_of_order Bd {i} must set bd_id and "
+                    "packet; senders address it by its bd_id."
+                )
+
     if isinstance(repeat_count, int):
         rc_kwargs = dict(repeat_count=repeat_count)
     else:
@@ -220,12 +244,17 @@ def tile_dma_chain(
         task = dma_configure_task_for(channel.symbol, issue_token=wait, **rc_kwargs)
     else:
         task = dma_configure_task(
-            tile.op, direction, channel, issue_token=wait, **rc_kwargs
+            tile.op,
+            direction,
+            channel,
+            issue_token=wait,
+            out_of_order=out_of_order,
+            **rc_kwargs,
         )
     with bd_blocks(task) as block:
         for i, bd in enumerate(bds):
             with block[i]:
-                _emit_bd(bd, bd.bd_id)
+                _emit_bd(bd, bd.bd_id, packet_attr=True)
                 if i + 1 < len(bds):
                     next_bd(block[i + 1])
                 else:
