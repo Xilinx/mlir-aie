@@ -107,6 +107,10 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         i for i, step in enumerate(steps) if "git fetch" in step.get("run", "")
     )
     assert all(fetch_index < steps.index(step) < push_index for step in records)
+    page = next(step for step in steps if step.get("name") == "Install results page")
+    assert fetch_index < steps.index(page) < push_index
+    assert "utils/kernel_bench/index.html" in page["run"]
+    assert (WORKFLOWS.parents[1] / "utils/kernel_bench/index.html").is_file()
     baseline_index = next(
         i for i, step in enumerate(steps) if "git show" in step.get("run", "")
     )
@@ -229,6 +233,44 @@ def test_each_power_mode_is_its_own_series(tmp_path):
         assert (
             f"format('aie_kernels ({npu}, {{0}})', steps.pmode.outputs.{npu})" in name
         )
+
+
+def test_results_page_is_committed_to_the_publication_branch(tmp_path):
+    steps = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
+    page = next(step for step in steps if step.get("name") == "Install results page")
+    assert page["if"] == "${{ !inputs.static }}"
+    source = WORKFLOWS.parents[1] / "utils/kernel_bench/index.html"
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    (tmp_path / "utils/kernel_bench").mkdir(parents=True)
+    (tmp_path / "utils/kernel_bench/index.html").write_bytes(source.read_bytes())
+    git("add", ".")
+    git("commit", "-q", "-m", "main")
+    git("switch", "-q", "--orphan", "gh-pages")
+    git("commit", "-q", "--allow-empty", "-m", "pages")
+    git("switch", "-q", "main")
+
+    run = page["run"].replace("$RUNNER_TEMP", str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    for _ in range(2):  # The second run finds nothing to change.
+        subprocess.run(
+            ["bash", "-eo", "pipefail", "-c", run],
+            cwd=tmp_path,
+            env={**os.environ, "BRANCH": "gh-pages"},
+            check=True,
+        )
+        assert git("branch", "--show-current") == "main"
+    assert git("show", "gh-pages:bench/index.html") == source.read_text().strip()
+    assert git("rev-list", "--count", "gh-pages") == "2"
 
 
 @pytest.mark.parametrize(
