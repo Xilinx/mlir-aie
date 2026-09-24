@@ -206,6 +206,16 @@ CASES: list[Case] = [
     Case("mul_sized", calls=16, smoke=True, perf=False),
     Case("relu_sized", calls=16, smoke=True, perf=False),
     Case("silu_sized", calls=16, smoke=True, perf=False),
+    # Same remainder pass as the leaky_relu case above: 160 steps the 32-lane
+    # loop five times, where its unrolled body consumes four.
+    Case(
+        "silu_sized",
+        dict(tile_size=160),
+        calls=4,
+        tag="unroll-tail",
+        smoke=True,
+        perf=False,
+    ),
     Case("gelu_sized", calls=16, smoke=True, perf=False),
     *[
         Case(

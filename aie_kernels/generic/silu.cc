@@ -30,6 +30,12 @@ using namespace aie;
 // Templated on the lane count so `if constexpr` genuinely discards the branch
 // this architecture does not take. In a plain function both branches still
 // have to be well-formed, and the 16-lane one is not at 32 lanes.
+//
+// See sigmoid.cc for why 0.5 * (1 + tanh) is written as one mac against an
+// accumulator preloaded with 0.5. What is left is still a chain the target
+// cannot fill from a single iteration -- the AIE2P body schedules at II19
+// with seven of its bundles empty -- so four iterations are unrolled into it,
+// which packs the same II with four times the work.
 template <int lanes>
 static inline void silu_impl(bfloat16 *restrict input_vector,
                              bfloat16 *restrict output_vector) {
@@ -38,11 +44,12 @@ static inline void silu_impl(bfloat16 *restrict input_vector,
   auto it_out = aie::begin_restrict_vector<lanes>((bfloat16 *)output_vector);
 
   aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
-  aie::vector<bfloat16, lanes> register_1 =
-      aie::broadcast<bfloat16, lanes>(1.0f);
   aie::vector<bfloat16, lanes> register_0_5_wide =
       aie::broadcast<bfloat16, lanes>(0.5f);
+  aie::accum<accfloat, lanes> half;
+  half.from_vector(register_0_5_wide);
   AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_UNROLL(4)
   for (int i = 0; i < num_elems; i += lanes) {
     auto input = *it_in++;
 
@@ -57,9 +64,9 @@ static inline void silu_impl(bfloat16 *restrict input_vector,
       tanh_half_x = tanh_bf16_v16(aie::mul(input, register_0_5));
     }
 
-    auto one_plus = aie::add(tanh_half_x, register_1);
     aie::vector<bfloat16, lanes> sigmoid_approx =
-        aie::mul(one_plus, register_0_5_wide);
+        aie::mac(half, tanh_half_x, register_0_5_wide)
+            .template to_vector<bfloat16>();
     auto mul_output = aie::mul(input, sigmoid_approx);
 
     *it_out++ = mul_output.template to_vector<bfloat16>();
