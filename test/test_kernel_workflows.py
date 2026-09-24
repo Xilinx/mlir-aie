@@ -141,9 +141,14 @@ def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
     assert 'EXAMINE=$("$XRT_SMI" examine)' in run
     assert "printf '%s\\n' \"$EXAMINE\"" in run
     assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
-    # Runners grant NOPASSWD per command, so probe the command itself.
-    assert 'sudo -n -l "$XRT_SMI" configure' in run
-    assert 'sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"' in run
+    # Execute the complete command in the condition: sudoers can match arguments.
+    configure = (
+        'if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"; then'
+    )
+    assert configure in run
+    assert run.count('sudo -n "$XRT_SMI" configure') == 1
+    assert "else\n" in run[run.index(configure) :]
+    assert 'echo "::warning::Cannot set --pmode $BENCH_PMODE' in run
     assert '"$XRT_SMI" examine -d "$BDF" --report platform' in run
     assert "xrt-smi examine | grep -oE" not in run
 
@@ -166,20 +171,18 @@ def write_meta(path, pmode):
 
 
 def test_each_power_mode_is_its_own_series(tmp_path):
-    """Runners cannot always set the power mode, so the benchmarks run in
-    whichever one they find, and the mode names the suite. A chart then never
-    mixes modes, and the PR comparison finds the series its mode published.
-    """
     bench = workflow("benchmarkKernels.yml")["jobs"]["bench"]
     steps = bench["steps"]
     run = next(step["run"] for step in steps if step.get("id") == "bench")
-    assert "--pmode any" in run
+    assert '--pmode "$BENCH_PMODE"' in run
+    assert "--pmode any" not in run
     read = next(step for step in steps if step.get("id") == "pmode")
     assert read["if"] == "hashFiles('bench.json') != ''"
     write_meta(tmp_path / "meta.json", "performance")
     assert run_step(read["run"], tmp_path) == {"pmode": "performance"}
     write_meta(tmp_path / "meta.json", None)
-    assert run_step(read["run"], tmp_path) == {"pmode": "unknown"}
+    with pytest.raises(subprocess.CalledProcessError):
+        run_step(read["run"], tmp_path)
     (compare,) = benchmark_steps(bench)
     assert compare["with"]["name"] == (
         "aie_kernels (${{ matrix.expected_npu }}, ${{ steps.pmode.outputs.pmode }})"
@@ -191,6 +194,9 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     write_meta(tmp_path / "results/npu1/meta.json", "performance")
     write_meta(tmp_path / "results/npu2/meta.json", "turbo")
     assert run_step(read["run"], tmp_path) == {"npu1": "performance", "npu2": "turbo"}
+    write_meta(tmp_path / "results/npu2/meta.json", None)
+    with pytest.raises(subprocess.CalledProcessError):
+        run_step(read["run"], tmp_path)
     names = [step["with"]["name"] for step in benchmark_steps(publisher)[:2]]
     for npu, name in zip(["npu1", "npu2"], names):
         assert (

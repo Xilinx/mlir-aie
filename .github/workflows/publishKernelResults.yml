@@ -56,7 +56,7 @@ jobs:
         if: ${{ !inputs.static }}
         run: |
           for npu in npu1 npu2; do
-            python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or "unknown"))' \
+            python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or sys.exit("power mode is unreadable")))' \
               "$npu" "results/$npu/meta.json" >> "$GITHUB_OUTPUT"
           done
 

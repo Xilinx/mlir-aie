@@ -103,12 +103,10 @@ jobs:
           # `performance` = max DPM, clock gating on. `turbo` is refused
           # while any hwctx is open, so it is not used on shared hosts.
           # Setting the mode needs root (amdxdna refuses the ioctl otherwise).
-          # Ask sudo about this exact command rather than `sudo -n true`: a
-          # runner granted only `xrt-smi` (and `prlimit`) must still configure.
-          # Where it is not granted, the benchmarks run in whatever mode the
-          # runner is in, and are published under that mode.
-          if sudo -n -l "$XRT_SMI" configure >/dev/null 2>&1; then
-            sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"
+          # Run the exact command in the condition so a denied sudo rule is
+          # non-fatal even when permissions are restricted by argument.
+          if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"; then
+            :
           else
             echo "::warning::Cannot set --pmode $BENCH_PMODE: this runner needs passwordless sudo for $XRT_SMI"
           fi
@@ -140,10 +138,8 @@ jobs:
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
-          # Any mode is accepted: the mode names the series, so a run in
-          # another mode starts its own chart rather than joining this one.
           python -m pytest test/python/npu/test_kernels_bench.py -m benchmark -v \
-            --bench-out bench.json --bench-meta meta.json --pmode any \
+            --bench-out bench.json --bench-meta meta.json --pmode "$BENCH_PMODE" \
             --warmup 10 --iters 50 \
             ${ONLY:+-k "$ONLY"} 2>&1 | tee bench.log
           # A failing session leaves no bench.json -> downstream steps skip.
@@ -153,7 +149,7 @@ jobs:
         id: pmode
         if: hashFiles('bench.json') != ''
         run: |
-          python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or "unknown"))' \
+          python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or sys.exit("power mode is unreadable")))' \
             pmode meta.json >> "$GITHUB_OUTPUT"
 
       - name: Upload raw results
