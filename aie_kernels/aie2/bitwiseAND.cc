@@ -32,6 +32,7 @@ void bitwiseAND_aie_scalar(const T *in1, const T *in2, T *out,
 template <typename T, int N>
 void bitwiseAND_aie(const T *src1, const T *src2, T *dst, const int32_t width,
                     const int32_t height) {
+  event0();
 
   AIE_PREPARE_FOR_PIPELINING
   for (int j = 0; j < BITWISE_ELEMS; j += N) {
@@ -46,6 +47,7 @@ void bitwiseAND_aie(const T *src1, const T *src2, T *dst, const int32_t width,
     ::aie::store_v(dst, out);
     dst += N;
   }
+  event1();
 }
 
 extern "C" {
