@@ -199,6 +199,17 @@ CASES: list[Case] = [
     Case("softmax", calls=256),
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
+    # 160 is a multiple of the kernel's 32-element step but not of the 128 its
+    # unrolled loop consumes per pass, so the remainder pass runs.
+    Case(
+        "leaky_relu",
+        dict(tile_size=160),
+        calls=4,
+        scalars=(0.5,),
+        tag="unroll-tail",
+        smoke=True,
+        perf=False,
+    ),
     Case("exp2f_vec", calls=16, devices=("npu2",), smoke=True),
     Case("exp2f_vec", calls=256, devices=("npu2",)),
     # Sized kernels retaining their runtime-count ABI.
