@@ -70,13 +70,18 @@ bool isDecomposableNdDmaPattern(mlir::Operation *forOp,
 /// falls back to slicing (multiple ops). Returns failure when no legal
 /// decomposition exists.
 ///
-/// A pattern with more than kNdDmaDims dimensions first has its iteration
-/// dimensions (d3 and up) merged where one continues the next, then, if more
-/// than one remains, is peeled into one pattern per index of the dimensions
-/// past d3, outermost slowest, each decomposed in turn. One execution of the
-/// original visits one index of the iteration dimensions, so the result keeps
-/// the order of executions as well as of elements, but a peeled pattern
-/// iterates only over d3: its executions are a share of the original's.
+/// A contiguous pattern is illegal only if its iteration dimension (d3) is
+/// longer than a BD's, and is sliced along it.
+///
+/// A pattern with more than kNdDmaDims dimensions first loses its size-one
+/// dimensions past d0 until it has kNdDmaDims, innermost first. What remains
+/// past d2 is iteration dimensions, merged where one continues the next, then,
+/// if more than one remains, peeled into one pattern per index of the
+/// dimensions past d3, outermost slowest, each decomposed in turn. The result
+/// keeps the order of elements, but not the size of an execution: a dropped
+/// dimension between d0 and d2 moves an iteration dimension inside, and a
+/// peeled pattern iterates only over d3, so its executions are a share of the
+/// original's.
 mlir::FailureOr<llvm::SmallVector<NdDmaPattern>> decomposeNdDmaPattern(
     mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType,
     const NdDmaPattern &pattern, const xilinx::AIE::AIETargetModel &targetModel,

@@ -567,6 +567,65 @@ module {
 
 // -----
 
+// A contiguous transfer lowers as a plain length, so only its iteration count
+// is limited (to 64 on npu2). 80 iterations are sliced into 64 and 16, each
+// its own task with a repeat count running one pass over its slice.
+// CHECK-LABEL: @slice_iterations
+// CHECK:         %[[A0:.*]] = aiex.dma_configure_task_for @a
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 0 len = 256 sizes = [64, 1, 1, 256] strides = [1000, 0, 0, 1])
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    } {repeat_count = 63 : i32}
+// CHECK-NEXT:    aiex.dma_start_task(%[[A0]]){{$}}
+// CHECK-NEXT:    %[[A1:.*]] = aiex.dma_configure_task_for @a
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 64000 len = 256 sizes = [16, 1, 1, 256] strides = [1000, 0, 0, 1])
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    } {issue_token = true, repeat_count = 15 : i32}
+// CHECK-NEXT:    aiex.dma_start_task(%[[A1]]){{$}}
+// CHECK-NEXT:    aiex.dma_await_task(%[[A1]])
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @slice_iterations(%in: memref<81920xi32>) {
+      %a = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<81920xi32> offset = 0 len = 256 sizes = [80, 1, 1, 256] strides = [1000, 0, 0, 1])
+        aie.end
+      } {repeat_count = 79 : i32, issue_token = true}
+      aiex.dma_start_task(%a)
+      aiex.dma_await_task(%a)
+    }
+  }
+}
+
+// -----
+
+// An iteration dimension of stride 0 repeats the same data, as the repeat
+// count does. With it dropped, the descriptor fits without slicing, and each
+// of its 80 executions still moves the same 81920 elements.
+// CHECK-LABEL: @drop_repeat_dim
+// CHECK:         %[[A:.*]] = aiex.dma_configure_task_for @a
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 0 len = 81920 sizes = [1, 20, 1, 4096] strides = [0, 4096, 0, 1])
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    } {issue_token = true, repeat_count = 79 : i32}
+// CHECK-NEXT:    aiex.dma_start_task(%[[A]]){{$}}
+// CHECK-NEXT:    aiex.dma_await_task(%[[A]])
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @drop_repeat_dim(%in: memref<81920xi32>) {
+      %a = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<81920xi32> offset = 0 len = 81920 sizes = [80, 20, 1, 4096] strides = [0, 4096, 0, 1])
+        aie.end
+      } {repeat_count = 79 : i32, issue_token = true}
+      aiex.dma_start_task(%a)
+      aiex.dma_await_task(%a)
+    }
+  }
+}
+
+// -----
+
 // Eighteen slices each of a fill and a drain, alternating, through one shim
 // tile's 16 descriptors. As one chain each they could never have fit. As
 // separate tasks, each configured only when it is due, they take ids 0 to 15,

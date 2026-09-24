@@ -27,6 +27,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <limits>
+#include <numeric>
 #include <string>
 #include <tuple>
 
@@ -210,15 +211,30 @@ static int64_t iterationCount(const NdDmaPattern &pattern) {
   return count;
 }
 
-// The factor by which decomposition grew the iterations of a pass, or nullopt
-// if it did not divide evenly (in which case the repeat count cannot express
-// it).
-static std::optional<int64_t> iterationGrowth(int64_t iterations,
-                                              const NdDmaPattern &after) {
-  int64_t newOuter = after.sizes[3];
-  if (iterations <= 0 || newOuter % iterations != 0)
-    return std::nullopt;
-  return newOuter / iterations;
+// The factor by which decomposition scaled the executions of a pass, num/den
+// in lowest terms: a pass over the original takes `iterations` executions,
+// and over `after` one per index of its iteration dimension. Below one, the
+// executions merged, `after`'s inner dimensions taking in one the original
+// iterated over.
+struct IterationScale {
+  int64_t num = 1;
+  int64_t den = 1;
+
+  bool isOne() const { return num == den; }
+  // Whether `runs` executions of the original are whole executions of the
+  // rewrite.
+  bool divides(int64_t runs) const { return runs % den == 0; }
+  int64_t apply(int64_t runs) const { return runs / den * num; }
+  std::string str() const {
+    return den == 1 ? std::to_string(num)
+                    : std::to_string(num) + "/" + std::to_string(den);
+  }
+};
+
+static IterationScale iterationScale(int64_t iterations,
+                                     const NdDmaPattern &after) {
+  int64_t common = std::gcd(after.sizes[3], iterations);
+  return {after.sizes[3] / common, iterations / common};
 }
 
 static unsigned countTaskBds(Operation *taskOp) {
@@ -703,24 +719,54 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
         return cannotReduce() << "a task's only descriptor";
       return failure();
     }
-
-    NdDmaPattern pattern = patternFromDmaBd(op);
-    if (!tooManyDims && isContiguousTransfer(pattern.sizes, pattern.strides))
+    // A descriptor takes its locks once per execution, which decomposition
+    // regroups, and a slice of its own would take none.
+    bool takesLocks = false;
+    taskOp->walk([&](AIE::UseLockOp) { takesLocks = true; });
+    if (takesLocks) {
+      if (tooManyDims)
+        return cannotReduce() << "a descriptor that takes no locks";
       return failure();
-    // One pass over the pattern, in executions of the descriptor.
-    int64_t iterations = iterationCount(pattern);
+    }
 
     int col = tile.getCol();
     int row = tile.getRow();
     const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
     auto bufferType = cast<BaseMemRefType>(op.getBuffer().getType());
+    // A contiguous pattern is lowered as a plain length, so only its
+    // iteration dimension can be too long.
+    int64_t maxIterations = 1LL << targetModel.getDmaBdIterBits(col, row);
+    auto lowerable = [&](const NdDmaPattern &p) {
+      if (p.sizes.size() != kNdDmaDims)
+        return false;
+      if (isContiguousTransfer(p.sizes, p.strides))
+        return p.sizes[3] <= maxIterations;
+      return patternPassesVerification(op, bufferType, targetModel, col, row,
+                                       p);
+    };
 
-    if (patternPassesVerification(op, bufferType, targetModel, col, row,
-                                  pattern))
+    NdDmaPattern pattern = patternFromDmaBd(op);
+    if (lowerable(pattern))
       return failure();
 
-    auto decomposed =
-        decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
+    // Outer iteration dimensions that re-read the same data only repeat what
+    // is inside them, as the task's repeat count does. Where dropping them is
+    // all the pattern needs, they go, and a pass shrinks to what they repeat.
+    NdDmaPattern unrepeated = pattern;
+    for (unsigned d = unrepeated.sizes.size();
+         d-- > 3 && (unrepeated.sizes[d] == 1 || unrepeated.strides[d] == 0);)
+      unrepeated.sizes[d] = 1;
+    bool dropRepeats = lowerable(unrepeated);
+    if (dropRepeats)
+      pattern = unrepeated;
+    // One pass over the pattern, in executions of the descriptor.
+    int64_t iterations = iterationCount(pattern);
+
+    auto decomposed = dropRepeats
+                          ? FailureOr<SmallVector<NdDmaPattern>>(
+                                SmallVector<NdDmaPattern>{pattern})
+                          : decomposeNdDmaPattern(op, bufferType, pattern,
+                                                  targetModel, col, row);
     // failed() already guards both dereferences below via short-circuit /
     // prior control flow; the checker just doesn't associate FailureOr's
     // failed()/succeeded() idiom with the std::optional base it derives from.
@@ -763,46 +809,53 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       // the repeat slot -- so len has to be recomputed alongside the shape.
       int32_t len = static_cast<int32_t>(lenFromInnermost3(sub.sizes));
 
-      std::optional<int64_t> growth = iterationGrowth(iterations, sub);
-      if (!growth)
-        return failure();
+      IterationScale scale = iterationScale(iterations, sub);
       int64_t runs = 0;
-      if (*growth > 1) {
+      if (!scale.isOne()) {
         if (getTaskRepeatCountVal(taskOp))
           return op.emitOpError()
                  << "cannot decompose a buffer descriptor whose repeat count "
                     "is a runtime value: decomposition needs to scale it by "
-                 << *growth;
+                 << scale.str();
         // A scaled count past what one queue push carries is fine: the BD-ID
         // pass issues it as several starts. Only the attribute width limits
         // it. Widen before multiplying: the accessor returns int32_t, so the
         // addition alone would overflow in int and wrap past this check.
-        auto scaled = [&](int64_t repeat) { return (repeat + 1) * *growth; };
-        auto fits = [](int64_t r) {
-          return r - 1 <= std::numeric_limits<int32_t>::max();
+        // Merged executions need every start to run whole ones.
+        auto check = [&](Operation *at, int64_t repeat, StringRef runner,
+                         StringRef count) -> LogicalResult {
+          int64_t before = repeat + 1;
+          if (!scale.divides(before))
+            return at->emitOpError()
+                   << "cannot decompose: it merges every " << scale.den
+                   << " executions of the buffer descriptor into " << scale.num
+                   << ", and " << runner << " runs it " << before << " times";
+          int64_t after = scale.apply(before);
+          if (after - 1 > std::numeric_limits<int32_t>::max())
+            return at->emitOpError()
+                   << "decomposition scales " << count << " by " << scale.str()
+                   << " to " << (after - 1) << ", beyond a 32-bit repeat_count";
+          return success();
         };
-        runs = scaled(getTaskRepeatCount(taskOp));
-        if (!fits(runs))
-          return op.emitOpError()
-                 << "decomposition scales the repeat count by " << *growth
-                 << " to " << (runs - 1) << ", beyond a 32-bit repeat_count";
+        runs = getTaskRepeatCount(taskOp) + int64_t{1};
+        if (failed(check(op, runs - 1, "the task", "the repeat count")))
+          return failure();
         // A start that overrides the task's count repeats the same BD, so it
         // scales by the same factor.
         for (Operation *user : taskOp->getResult(0).getUsers())
           if (auto start = dyn_cast<DMAStartTaskOp>(user))
             if (IntegerAttr rc = start.getRepeatCountAttr())
-              if (!fits(scaled(rc.getInt())))
-                return start.emitOpError()
-                       << "decomposition scales this start's repeat count by "
-                       << *growth << " to " << (scaled(rc.getInt()) - 1)
-                       << ", beyond a 32-bit repeat_count";
+              if (failed(check(start, rc.getInt(), "this start",
+                               "this start's repeat count")))
+                return failure();
+        runs = scale.apply(runs);
       }
 
       rewriter.modifyOpInPlace(op, [&]() {
         updateTaskBdInPlace(op, static_cast<int32_t>(flatOffset), len,
                             outerSizes, outerStrides);
       });
-      if (*growth > 1) {
+      if (!scale.isOne()) {
         rewriter.modifyOpInPlace(taskOp, [&]() {
           setTaskRepeatCount(taskOp, static_cast<int32_t>(runs - 1));
         });
@@ -811,7 +864,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
             if (IntegerAttr rc = start.getRepeatCountAttr())
               rewriter.modifyOpInPlace(start, [&]() {
                 start.setRepeatCountAttr(rewriter.getI32IntegerAttr(
-                    (rc.getInt() + 1) * *growth - 1));
+                    scale.apply(rc.getInt() + 1) - 1));
               });
       }
       return success();
@@ -831,8 +884,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     // whose descriptors aie-assign-runtime-sequence-bd-ids can recycle one by
     // one.
     bool sharedRepeat = llvm::all_of(bds, [&](const NdDmaPattern &sub) {
-      std::optional<int64_t> growth = iterationGrowth(iterations, sub);
-      return growth && *growth == 1;
+      return iterationScale(iterations, sub).isOne();
     });
     bool chainFits =
         sharedRepeat && bds.size() <= targetModel.getNumBDs(col, row);

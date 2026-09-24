@@ -148,7 +148,7 @@ module {
     aie.runtime_sequence @nd_in_chain(%in: memref<65536xi32>) {
       %tk = aiex.dma_configure_task_for @a {
         // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off a task's only descriptor}}
-        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [9000, 3500, 256, 32, 1])
         aie.next_bd ^bd1
       ^bd1:
         aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128)
@@ -175,14 +175,14 @@ module {
       %c4 = arith.constant 4 : index
       scf.for %i = %c0 to %c4 step %c1 {
         %merged = aiex.dma_configure_task_for @a {
-          aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 3, 1, 8, 16] strides = [300, 100, 0, 32, 1])
+          aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 256 sizes = [2, 3, 2, 8, 16] strides = [300, 100, 1000, 32, 1])
           aie.end
         } {issue_token = true, repeat_count = 5 : i32}
         aiex.dma_start_task(%merged)
         aiex.dma_await_task(%merged)
         %tk = aiex.dma_configure_task_for @a {
           // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off outside runtime control flow, since it splits into 2 descriptors}}
-          aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+          aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [9000, 3500, 256, 32, 1])
           aie.end
         } {issue_token = true, repeat_count = 3 : i32}
         aiex.dma_start_task(%tk)
@@ -204,7 +204,7 @@ module {
     aie.runtime_sequence @nd_runtime_repeat(%in: memref<65536xi32>, %r: i32) {
       %tk = aiex.dma_configure_task_for @a repeat %r : i32 {
         // expected-error@+1 {{cannot split this buffer descriptor: its slices need per-descriptor repeat counts, which a chain shares, and they cannot be separate tasks because the task's repeat count is a runtime value}}
-        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [9000, 3500, 256, 32, 1])
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%tk)
@@ -224,11 +224,56 @@ module {
     aie.runtime_sequence @nd_partial_pass(%in: memref<65536xi32>) {
       %tk = aiex.dma_configure_task_for @a {
         // expected-error@+1 {{cannot split this buffer descriptor: its slices need per-descriptor repeat counts, which a chain shares, and they cannot be separate tasks because a start runs it 6 times, not a whole number of passes over its 4-long iteration dimension}}
-        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [9000, 3500, 256, 32, 1])
         aie.end
       } {issue_token = true, repeat_count = 5 : i32}
       aiex.dma_start_task(%tk)
       aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Dropping the unit dimension merges every 20 executions into one, which a
+// task running 30 cannot be expressed in.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @squeeze_partial(%in: memref<1310720xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        // expected-error@+1 {{cannot decompose: it merges every 20 executions of the buffer descriptor into 1, and the task runs it 30 times}}
+        aie.dma_bd(%in : memref<1310720xi32> offset = 0 len = 1024 sizes = [4, 20, 1, 64, 16] strides = [327680, 16, 81920, 1280, 1])
+        aie.end
+      } {issue_token = true, repeat_count = 29 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// A descriptor takes its locks once per execution, which splitting would
+// regroup, so a lock-taking descriptor is not reduced.
+module {
+  aie.device(npu2_1col) {
+    %mt = aie.tile(0, 1)
+    %buf = aie.buffer(%mt) : memref<4096xi32>
+    %lk = aie.lock(%mt) {init = 0 : i32}
+    aie.runtime_sequence @nd_takes_locks(%in: memref<4096xi32>) {
+      %c1 = arith.constant 1 : i32
+      %tk = aiex.dma_configure_task(%mt, MM2S, 0) {
+        aie.use_lock(%lk, AcquireGreaterEqual, %c1)
+        // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off a descriptor that takes no locks}}
+        aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [2048, 1024, 256, 32, 1])
+        aie.use_lock(%lk, Release, %c1)
+        aie.end
+      } {repeat_count = 7 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_free_task(%tk)
     }
   }
 }
