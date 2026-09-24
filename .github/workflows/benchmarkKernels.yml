@@ -102,7 +102,14 @@ jobs:
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
           # `performance` = max DPM, clock gating on. `turbo` is refused
           # while any hwctx is open, so it is not used on shared hosts.
-          sudo "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"
+          # Setting the mode needs root (amdxdna refuses the ioctl otherwise).
+          # Run the exact command in the condition so a denied sudo rule is
+          # non-fatal even when permissions are restricted by argument.
+          if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"; then
+            :
+          else
+            echo "::warning::Cannot set --pmode $BENCH_PMODE non-interactively with $XRT_SMI; benchmark preflight will verify the active mode"
+          fi
           "$XRT_SMI" examine -d "$BDF" --report platform
 
       - name: Run kernel correctness suite
@@ -138,6 +145,13 @@ jobs:
           # A failing session leaves no bench.json -> downstream steps skip.
           # meta.json is written either way, and records why.
 
+      - name: Read power mode
+        id: pmode
+        if: hashFiles('bench.json') != ''
+        run: |
+          python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or sys.exit("power mode is unreadable")))' \
+            pmode meta.json >> "$GITHUB_OUTPUT"
+
       - name: Upload raw results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -165,7 +179,7 @@ jobs:
         if: github.event_name == 'pull_request' && hashFiles('bench.json') != '' && hashFiles('baseline/benchmark-data.json') != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
-          name: aie_kernels (${{ matrix.expected_npu }})
+          name: aie_kernels (${{ matrix.expected_npu }}, ${{ steps.pmode.outputs.pmode }})
           tool: customSmallerIsBetter
           output-file-path: bench.json
           external-data-json-path: baseline/benchmark-data.json
