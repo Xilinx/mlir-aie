@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -13,33 +14,61 @@ using namespace aie;
 static inline void mm_identity_row(uint32_t n, const float *__restrict acc,
                                    float *__restrict out) {
   event0();
+  auto it_in = aie::begin_restrict_vector<16>(acc);
+  auto it_out = aie::begin_restrict_vector<16>(out);
   for (uint32_t off = 0; off < n; off += 16) {
-    aie::store_v(out + off, aie::load_v<16>(acc + off));
+    *it_out++ = *it_in++;
   }
   event1();
 }
 
+// aie2p has no f32 multiplier: `aie::mul` on two float vectors expands to a
+// three-way bf16 split of *both* operands, ~41 bundles per vector. Where one
+// operand is already exact in bf16, splitting the other in two keeps ~16
+// mantissa bits and stays on the native bf16 multiplier.
+struct bf16_split {
+  aie::vector<bfloat16, 16> hi;
+  aie::vector<bfloat16, 16> lo;
+};
+
+static inline bf16_split split_f32(const aie::vector<float, 16> &x) {
+  aie::accum<accfloat, 16> a;
+  a.from_vector(x);
+  bf16_split s;
+  s.hi = a.to_vector<bfloat16>();
+  aie::accum<accfloat, 16> h;
+  h.from_vector(s.hi);
+  aie::accum<accfloat, 16> r;
+  r.from_vector(aie::sub(x, h.to_vector<float>()));
+  s.lo = r.to_vector<bfloat16>();
+  return s;
+}
+
+static inline aie::vector<float, 16>
+mul_split(const bf16_split &x, const aie::vector<bfloat16, 16> &y) {
+  return aie::mac(aie::mul(x.hi, y), x.lo, y).to_vector<float>();
+}
+
 // SiLU: out = x * sigmoid(x), sigmoid built from the tanh SFU as
-// 0.5*(1 + tanh(x/2)). x and the final multiply stay f32, so the accumulator
-// rounds once, inside the tanh; only sigmoid narrows, where its [0, 1] range
-// is harmless. An all-f32 chain overruns the per-tile cycle budget and hangs.
+// 0.5*(1 + tanh(x/2)). Both multipliers of x are exact in bf16 - 0.5, and
+// sigmoid's [0, 1] result - so a two-term split of x carries the whole f32
+// input into each product. An all-f32 chain overruns the per-tile cycle
+// budget and hangs.
 static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
                                       float *__restrict out) {
   event0();
-  const aie::vector<float, 16> halff = aie::broadcast<float, 16>(0.5f);
   const aie::vector<bfloat16, 16> one = aie::broadcast<bfloat16, 16>(1.0f);
   const aie::vector<bfloat16, 16> halfb = aie::broadcast<bfloat16, 16>(0.5f);
+  auto it_in = aie::begin_restrict_vector<16>(acc);
+  auto it_out = aie::begin_restrict_vector<16>(out);
   for (uint32_t off = 0; off < n; off += 16) {
-    aie::vector<float, 16> x = aie::load_v<16>(acc + off);
-    aie::vector<float, 16> half_x = aie::mul(x, halff);
+    aie::vector<float, 16> x = *it_in++;
+    bf16_split xs = split_f32(x);
+    aie::vector<float, 16> half_x = mul_split(xs, halfb);
     aie::vector<bfloat16, 16> tanh_half_x = aie::tanh<bfloat16>(half_x);
     aie::vector<bfloat16, 16> tanh_p1 = aie::add(tanh_half_x, one);
     aie::vector<bfloat16, 16> sig = aie::mul(tanh_p1, halfb);
-    aie::accum<accfloat, 16> sacc;
-    sacc.from_vector(sig);
-    aie::vector<float, 16> sigf = sacc.to_vector<float>();
-    aie::vector<float, 16> outv = aie::mul(x, sigf);
-    aie::store_v(out + off, outv);
+    *it_out++ = mul_split(xs, sig);
   }
   event1();
 }
@@ -51,25 +80,30 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
   event0();
   const aie::vector<bfloat16, 16> half = aie::broadcast<bfloat16, 16>(0.5f);
   const aie::vector<bfloat16, 16> one = aie::broadcast<bfloat16, 16>(1.0f);
+  // sqrt(2/pi), and sqrt(2/pi)*0.044715: writing the inner polynomial as
+  // x*(c0 + c0c1*x^2) keeps the same two rounded constants the separate
+  // form ends up with, but each `aie::mul` here returns an accumulator that
+  // has to be converted back to bf16 before the next one consumes it, and
+  // those conversions are what the serial chain waits on.
   const aie::vector<bfloat16, 16> c0 =
-      aie::broadcast<bfloat16, 16>(0.7978845608f); // sqrt(2/pi)
-  const aie::vector<bfloat16, 16> c1 = aie::broadcast<bfloat16, 16>(0.044715f);
+      aie::broadcast<bfloat16, 16>(0.7978845608f);
+  const aie::vector<bfloat16, 16> c0c1 =
+      aie::broadcast<bfloat16, 16>(0.7978845608f * 0.044715f);
+  aie::accum<accfloat, 16> c0acc;
+  c0acc.from_vector(c0);
+  auto it_in = aie::begin_restrict_vector<16>(acc);
+  auto it_out = aie::begin_restrict_vector<16>(out);
   for (uint32_t off = 0; off < n; off += 16) {
     aie::accum<accfloat, 16> a;
-    a.from_vector(aie::load_v<16>(acc + off));
+    a.from_vector(*it_in++);
     aie::vector<bfloat16, 16> x = a.to_vector<bfloat16>();
+    aie::vector<bfloat16, 16> half_x = aie::mul(half, x);
     aie::vector<bfloat16, 16> x2 = aie::mul(x, x);
-    aie::vector<bfloat16, 16> x3 = aie::mul(x2, x);
-    aie::vector<bfloat16, 16> c1x3 = aie::mul(c1, x3);
-    aie::vector<bfloat16, 16> inner_b = aie::add(x, c1x3);
-    auto inner = aie::mul(c0, inner_b);
+    aie::vector<bfloat16, 16> poly = aie::mac(c0acc, c0c1, x2);
+    auto inner = aie::mul(x, poly);
     aie::vector<bfloat16, 16> t = aie::tanh<bfloat16>(inner.to_vector<float>());
     aie::vector<bfloat16, 16> t_p1 = aie::add(t, one);
-    aie::vector<bfloat16, 16> xt = aie::mul(x, t_p1);
-    aie::vector<bfloat16, 16> gx = aie::mul(half, xt);
-    aie::accum<accfloat, 16> oacc;
-    oacc.from_vector(gx);
-    aie::store_v(out + off, oacc.to_vector<float>());
+    *it_out++ = aie::mul(half_x, t_p1).to_vector<float>();
   }
   event1();
 }
@@ -81,8 +115,10 @@ static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
                                float *__restrict out) {
   event0();
   const aie::vector<float, 16> zero = aie::zeros<float, 16>();
+  auto it_in = aie::begin_restrict_vector<16>(acc);
+  auto it_out = aie::begin_restrict_vector<16>(out);
   for (uint32_t off = 0; off < n; off += 16) {
-    aie::store_v(out + off, aie::max(aie::load_v<16>(acc + off), zero));
+    *it_out++ = aie::max(*it_in++, zero);
   }
   event1();
 }
