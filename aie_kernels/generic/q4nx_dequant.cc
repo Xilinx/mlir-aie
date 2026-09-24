@@ -49,6 +49,27 @@ static_assert(CT_K % SS == 0, "k slice must be a multiple of s");
 static_assert(GROUP % SS == 0, "a group must not split a k step");
 static_assert(K_TILE % GROUP == 0, "k tile must hold whole groups");
 
+// The quantization group of each SS-wide k step. GROUP need not be a power of
+// two, and a constant divide that is not becomes a magic multiply, which on a
+// 32-bit target needs the 64-bit __muldi3 -- a libcall in the inner loop, and
+// a vectorization barrier. The step index is already a linear function of the
+// loop counters, so the quotients are just tabulated once.
+constexpr int K_STEPS = K_TILE / SS;
+
+struct GroupOfStep {
+  uint8_t v[K_STEPS];
+};
+
+constexpr GroupOfStep group_of_step() {
+  GroupOfStep t{};
+  for (int s = 0; s < K_STEPS; s++)
+    t.v[s] = (uint8_t)(s * SS / GROUP);
+  return t;
+}
+
+constexpr GroupOfStep GRP = group_of_step();
+static_assert(K_TILE / GROUP <= 256, "group index must fit in a byte");
+
 } // namespace
 
 extern "C" {
@@ -84,7 +105,7 @@ void q4nx_dequant_bfp(const uint8_t *__restrict qw, bfp16ebs8 *__restrict out) {
       AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_RANGE(CT_K / SS, CT_K / SS)
       for (int i = 0; i < CT_K / SS; i++) {
-        const int grp = (ks * CT_K + i * SS) / GROUP;
+        const int grp = GRP.v[ks * (CT_K / SS) + i];
 
         aie::vector<uint4, PR * SS> q =
             aie::load_v<PR * SS>((const uint4 *)q_it);
