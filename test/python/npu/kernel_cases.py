@@ -305,6 +305,16 @@ CASES: list[Case] = [
         perf=False,
     ),
     Case("mv", dict(dim_m=32, dim_k=32), calls=16),
+    # The i16 matvec takes two 16-row blocks per pass over the columns, so an
+    # odd number of blocks leaves the last one to the tail.
+    Case(
+        "mv",
+        dict(dim_m=48, dim_k=32),
+        calls=4,
+        tag="edge-rows-not-multiple-of-32",
+        smoke=True,
+        perf=False,
+    ),
     Case(
         "mv",
         dict(
