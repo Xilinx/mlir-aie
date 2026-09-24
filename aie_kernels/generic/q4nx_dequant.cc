@@ -33,42 +33,67 @@ constexpr int PR = 16;
 
 constexpr int SCALES = M_TILE * K_TILE / GROUP;
 constexpr int TILE_VALUES = SS * TT;
-constexpr int BLOCKS_PER_RUN = (CT_K / SS) * TT;
-constexpr int BLOCKS_PER_KSLICE = (M_TILE / TT) * BLOCKS_PER_RUN;
-// bfp16ebs8 pointer arithmetic counts bytes, not blocks (llvm-aie#1232).
-constexpr int BLOCK_BYTES = TT + 1;
+constexpr int STEPS = CT_K / SS;
+constexpr int N8 = M_TILE / TT;
 
 static_assert(TT == 8, "bfp16ebs8 shares one exponent across 8 values");
-static_assert(SS == 8, "the column unroll and the interleave tree are 8 wide");
+static_assert(SS == 8, "one step is an 8x8 tile, transposed in place");
 static_assert(PR * SS == 128, "one 512-bit load holds 128 nibbles");
 static_assert(M_TILE % PR == 0, "rows must divide into PR-row groups");
 static_assert(K_TILE % CT_K == 0, "k tile must be a multiple of the k slice");
 static_assert(CT_K % SS == 0, "k slice must be a multiple of s");
-// One scale and min are loaded per i, so the s columns of a step must not
+// One scale and min are loaded per step, so the s columns of a step must not
 // straddle a quantization group.
 static_assert(GROUP % SS == 0, "a group must not split a k step");
 static_assert(K_TILE % GROUP == 0, "k tile must hold whole groups");
 
-// The quantization group of each SS-wide k step. GROUP need not be a power of
-// two, and a constant divide that is not becomes a magic multiply, which on a
-// 32-bit target needs the 64-bit __muldi3 -- a libcall in the inner loop, and
-// a vectorization barrier. The step index is already a linear function of the
-// loop counters, so the quotients are just tabulated once.
+// The byte offset of each SS-wide k step's scale row. GROUP need not be a
+// power of two, and a constant divide that is not becomes a magic multiply,
+// which on a 32-bit target needs the 64-bit __muldi3 -- a libcall in the inner
+// loop, and a vectorization barrier. The step index is already a linear
+// function of the loop counters, so the offsets are just tabulated once.
 constexpr int K_STEPS = K_TILE / SS;
 
-struct GroupOfStep {
-  uint8_t v[K_STEPS];
+struct GroupRow {
+  uint16_t v[K_STEPS];
 };
 
-constexpr GroupOfStep group_of_step() {
-  GroupOfStep t{};
+constexpr GroupRow group_row() {
+  GroupRow t{};
   for (int s = 0; s < K_STEPS; s++)
-    t.v[s] = (uint8_t)(s * SS / GROUP);
+    t.v[s] = (uint16_t)(s * SS / GROUP * M_TILE * sizeof(bfloat16));
   return t;
 }
 
-constexpr GroupOfStep GRP = group_of_step();
-static_assert(K_TILE / GROUP <= 256, "group index must fit in a byte");
+constexpr GroupRow GROW = group_row();
+static_assert(SCALES * sizeof(bfloat16) <= 65536,
+              "scale row offset must fit in 16 bits");
+
+// A load holds 8 k of 16 n, with n 0-7 in the even words and n 8-15 in the
+// odd ones. The shuffle mode that gathers one half is a runtime operand, so
+// both halves share one loop body.
+struct HalfMode {
+  uint8_t v[N8];
+};
+
+constexpr HalfMode half_mode() {
+  HalfMode t{};
+  for (int n8 = 0; n8 < N8; n8++)
+    t.v[n8] = (uint8_t)(T32_16x2_lo + (n8 & 1));
+  return t;
+}
+
+constexpr HalfMode HMODE = half_mode();
+
+// 8 bf16 repeated to fill 32 lanes. Two 128-bit shuffles, where a concat
+// lowers to a chain of vshifts.
+aie::vector<bfloat16, 32> rep8(const bfloat16 *p) {
+  aie::vector<uint32_t, 16> v =
+      aie::load_v<TT>(p).template grow<32>().template cast_to<uint32_t>();
+  v = ::shuffle(v, v, T128_2x4_lo);
+  v = ::shuffle(v, v, T128_2x4_lo);
+  return v.template cast_to<bfloat16>();
+}
 
 } // namespace
 
@@ -90,61 +115,52 @@ void q4nx_dequant_bfp(const uint8_t *__restrict qw, bfp16ebs8 *__restrict out) {
   static_assert(sizeof(uint4) == 1,
                 "uint4 pointer arithmetic is assumed to step bytes");
 
+  // The output is contiguous in (ks, n8, step) order, so one stream writes
+  // it all; a second stream would spill the shared sf register every step.
+  aie::block_vector_output_buffer_stream<bfp16ebs8, TILE_VALUES> s_out(out);
+
   for (int ks = 0; ks < K_TILE / CT_K; ks++) {
-    for (int row = 0; row < M_TILE; row += PR) {
-      // Two runs per 16-row group, one per 8 n, each contiguous in the
-      // dense buffer.
-      bfp16ebs8 *lo = out + BLOCK_BYTES * (ks * BLOCKS_PER_KSLICE +
-                                           (row / TT) * BLOCKS_PER_RUN);
-      aie::block_vector_output_buffer_stream<bfp16ebs8, TILE_VALUES> s_lo(lo);
-      aie::block_vector_output_buffer_stream<bfp16ebs8, TILE_VALUES> s_hi(
-          lo + BLOCK_BYTES * BLOCKS_PER_RUN);
+    const uint8_t *q_it = qs + ks * CT_K * PR / 2;
+    const uint8_t *s_it = (const uint8_t *)scales;
+    const uint16_t *row_it = GROW.v + ks * STEPS;
+    const uint8_t *mode_it = HMODE.v;
+    // The (n8, step) loop is flattened, since CT_K = 16 leaves only two steps
+    // per n8, and the address unit walks every cursor so the scalar ALU
+    // stays free. Both halves of a 16-n group read the same nibble bytes.
+    dims_3d_t q_dims =
+        dims_3d_from_steps(STEPS, SS * PR / 2, 2, 0, K_TILE * PR / 2);
+    dims_2d_t s_dims = dims_2d_from_steps(STEPS, 0, TT * sizeof(bfloat16));
+    dims_2d_t row_dims = dims_2d_from_steps(STEPS, sizeof(uint16_t), 0);
+    dims_2d_t mode_dims = dims_2d_from_steps(STEPS, 0, 1);
 
-      const uint8_t *q_it =
-          qs + ((row / PR) * K_TILE * PR + ks * CT_K * PR) / 2;
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_RANGE(N8 * STEPS, N8 * STEPS)
+    for (int j = 0; j < N8 * STEPS; j++) {
+      aie::vector<uint32_t, 16> w = aie::load_v<16>((const uint32_t *)q_it);
+      aie::vector<uint32_t, 16> half = ::shuffle(w, w, *mode_it);
+      aie::vector<uint4, TT * SS> q =
+          half.template extract<8>(0).template cast_to<uint4>();
+      aie::accum<accfloat, TT * SS> qf;
+      qf.from_vector(aie::to_float(q, 0));
+      aie::vector<bfloat16, TT * SS> qb = qf.template to_vector<bfloat16>();
 
-      AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_RANGE(CT_K / SS, CT_K / SS)
-      for (int i = 0; i < CT_K / SS; i++) {
-        const int grp = GRP.v[ks * (CT_K / SS) + i];
+      // Indexed k*8 + n, so the 8 scales of this n8 repeat across k.
+      const bfloat16 *sp = (const bfloat16 *)(s_it + *row_it);
+      aie::vector<bfloat16, 32> sc = rep8(sp);
+      aie::vector<bfloat16, 32> mn = rep8(sp + SCALES);
+      // min + scale * quant, with the min seeded into the accumulator.
+      aie::accum<accfloat, TT * SS> acc(aie::concat(mn, mn));
+      acc = aie::mac(acc, aie::concat(sc, sc), qb);
+      // The transpose makes it n*8 + k, so the 8 values sharing an exponent
+      // are 8 k for one n. It must precede the conversion, which fuses them.
+      aie::vector<bfloat16, TT * SS> kn = acc.template to_vector<bfloat16>();
+      aie::accum<accfloat, TT * SS> nk(aie::transpose(kn, SS, TT));
+      s_out << nk.template to_vector<bfp16ebs8>();
 
-        aie::vector<uint4, PR * SS> q =
-            aie::load_v<PR * SS>((const uint4 *)q_it);
-        q_it += PR * SS / 2;
-        aie::accum<accfloat, PR * SS> qf;
-        qf.from_vector(aie::to_float(q, 0));
-        aie::vector<bfloat16, PR * SS> qb = qf.template to_vector<bfloat16>();
-
-        aie::vector<bfloat16, PR> sc =
-            aie::load_v<PR>(scales + grp * M_TILE + row);
-        aie::accum<accfloat, PR> mn;
-        mn.from_vector(aie::load_v<PR>(mins + grp * M_TILE + row));
-
-        // min + scale * quant, with the min seeded into the accumulator
-        // so each column costs one mac.
-        aie::vector<bfloat16, PR> col[SS];
-#pragma clang loop unroll(full)
-        for (int c = 0; c < SS; c++) {
-          aie::accum<accfloat, PR> acc = mn;
-          acc = aie::mac(acc, sc, qb.template extract<PR>(c));
-          col[c] = acc.template to_vector<bfloat16>();
-        }
-
-        auto z01 = aie::interleave_zip(col[0], col[1], TT);
-        auto z23 = aie::interleave_zip(col[2], col[3], TT);
-        auto z45 = aie::interleave_zip(col[4], col[5], TT);
-        auto z67 = aie::interleave_zip(col[6], col[7], TT);
-        // Indexed k*8 + n. The transpose makes it n*8 + k, so the 8
-        // values sharing an exponent are 8 k for one n. It must precede
-        // the conversion, which fuses them.
-        auto up = aie::concat(z01.first, z23.first, z45.first, z67.first);
-        auto dn = aie::concat(z01.second, z23.second, z45.second, z67.second);
-
-        aie::accum<accfloat, TILE_VALUES> a_lo(aie::transpose(up, TT, SS));
-        aie::accum<accfloat, TILE_VALUES> a_hi(aie::transpose(dn, TT, SS));
-        s_lo << a_lo.template to_vector<bfp16ebs8>();
-        s_hi << a_hi.template to_vector<bfp16ebs8>();
-      }
+      q_it = add_3d_byte(q_it, q_dims);
+      s_it = add_2d_byte(s_it, s_dims);
+      row_it = add_2d_byte(row_it, row_dims);
+      mode_it = add_2d_byte(mode_it, mode_dims);
     }
   }
 
