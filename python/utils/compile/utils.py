@@ -1293,9 +1293,13 @@ def compile_external_kernel(
     if embed_bitcode and getattr(func, "_use_chess", False):
         raise ValueError("--check-lut-banks requires Peano kernels, not Chess")
     output = os.path.join(kernel_dir, func.object_file_name)
-    cached = object_cache is not None and object_cache.accepts(func)
+    cache = (
+        object_cache
+        if object_cache is not None and object_cache.accepts(func)
+        else None
+    )
     paths = [output]
-    if not cached:
+    if cache is None:
         paths.append(_source_destination(func, kernel_dir))
     if getattr(func, "_use_chess", False):
         paths.append(kernel_dir)
@@ -1304,10 +1308,8 @@ def compile_external_kernel(
             return
         owner = getattr(func, "object_file", None)
         try:
-            if cached:
-                object_cache.fetch(
-                    func, kernel_dir, target_arch, include_dirs, embed_bitcode
-                )
+            if cache is not None:
+                cache.fetch(func, kernel_dir, target_arch, include_dirs, embed_bitcode)
             else:
                 _compile_external_kernel(
                     func, kernel_dir, target_arch, include_dirs, embed_bitcode

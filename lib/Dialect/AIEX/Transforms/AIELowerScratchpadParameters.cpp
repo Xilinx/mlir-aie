@@ -47,13 +47,12 @@ static bool shouldEmitParameterSyncPreamble(CoreOp coreOp) {
 /// The firmware masks the BD address register with 0xFFFFFFFC, so the byte
 /// offset it computes from a runtime offset parameter (an element count times
 /// the element size) is rounded DOWN to a 4-byte boundary rather than rejected.
-/// When the element size is itself a multiple of 4 that can never bite.
-/// Otherwise the runtime value has to be a multiple of 4 / gcd(4, elemBytes)
-/// elements, and nothing can check that -- the value only exists at run time.
+/// This cannot bite when the element size is itself a multiple of 4. Otherwise
+/// the runtime value has to be a multiple of 4 / gcd(4, elemBytes) elements,
+/// and nothing can check that -- the value only exists at run time.
 /// The static offset path rejects the same misalignment outright
 /// (NpuDmaMemcpyNdOp::verify, "Offset must be 4-byte-aligned"), so warn rather
 /// than leave the runtime path silent.
-///
 /// Warn here rather than where the offset is lowered to NPU instructions:
 /// materialization inlines a device's runtime sequence at every call site, so
 /// one source op would warn once per call.

@@ -5,17 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// `--device-cache=<dir>`: reuse what compiling an `aie.device`'s cores produced
-// in an earlier build. An entry holds the device as buffer placement left it,
-// the device as the core-ELF checks and patching left it, and one linked ELF
-// per core. A build that finds its device's entry splices both forms in and
-// compiles none of that device's cores.
+// `--device-cache=<dir>` reuses an earlier build's buffer-placed and patched
+// device IR plus each linked core ELF, avoiding recompilation.
 //
-// An entry is keyed by everything those forms depend on: the device as routing
-// left it, the module's other top-level ops, the contents of every file its
-// cores link, the command line, and the identity of aiecc and each Peano tool.
-// Locations are not part of the key, so a reused device carries the locations
-// of the build that stored it.
+// Entries are keyed by routed device IR, other top-level ops, linked-file
+// contents, command line, and aiecc/Peano tool identities. Locations are
+// excluded, so reused devices retain the storing build's locations.
 //
 //===----------------------------------------------------------------------===//
 
