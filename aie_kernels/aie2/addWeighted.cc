@@ -46,6 +46,7 @@ template <typename T, int N, int MAX>
 void addweighted_aie(const T *src1, const T *src2, T *dst, const int32_t width,
                      const int32_t height, const int16_t alphaFixedPoint,
                      const int16_t betaFixedPoint, const T gamma) {
+  event0();
 
   ::aie::set_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
@@ -71,6 +72,7 @@ void addweighted_aie(const T *src1, const T *src2, T *dst, const int32_t width,
     ::aie::store_v(dst, acc.template to_vector<T>(SRS_SHIFT));
     dst += N;
   }
+  event1();
 }
 
 extern "C" {
