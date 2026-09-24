@@ -15,10 +15,14 @@ scalarShuffleMatrixForBfp16ebs8(size_t tileWidth, size_t tileHeight,
                                 uint8_t *inBfpMatrix, uint8_t *outBfpMatrix,
                                 bool unshuffle = false) {
 
-  tileWidth = tileWidth * 1.125;
+  // bfp16ebs8 stores 8 mantissa bytes plus one shared exponent byte per 8
+  // elements, so a row is 9/8 bytes wide. Spelling that as *1.125 round-trips
+  // the size_t through double, which on aie2p is three soft-float calls
+  // (__floatunsidf, __muldf3, __fixunsdfsi) sitting in the address math.
+  tileWidth = tileWidth * 9 / 8;
 
-  size_t subtileWidth = 8 * 1.125;
-  size_t subtileHeight = 8;
+  constexpr size_t subtileWidth = 9;
+  constexpr size_t subtileHeight = 8;
 
   size_t tileCountingIndex = 0;
   for (size_t subtileStartY = 0; subtileStartY < tileHeight;
@@ -27,21 +31,21 @@ scalarShuffleMatrixForBfp16ebs8(size_t tileWidth, size_t tileHeight,
          subtileStartX += subtileWidth) {
 
       for (size_t i = 0; i < subtileHeight; ++i) {
+        const size_t rowStart = (subtileStartY + i) * tileWidth + subtileStartX;
         for (size_t j = 0; j < subtileWidth; ++j) {
-          size_t inputGlobalX = subtileStartX + j;
-          size_t inputGlobalY = subtileStartY + i;
-          size_t inputIndex = inputGlobalY * tileWidth + inputGlobalX;
+          const size_t inputIndex = rowStart + j;
 
-          size_t outputGlobalX = tileCountingIndex % tileWidth;
-          size_t outputGlobalY = tileCountingIndex / tileWidth;
-          size_t outputIndex = outputGlobalY * tileWidth + outputGlobalX;
+          // (idx / tileWidth) * tileWidth + idx % tileWidth is idx, so the
+          // shuffled side is simply walked in order; writing it out that way
+          // keeps a divide and a modulo by a runtime width out of the
+          // innermost loop.
+          const size_t outputIndex = tileCountingIndex++;
 
           if (!unshuffle) {
             outBfpMatrix[outputIndex] = inBfpMatrix[inputIndex];
           } else {
             outBfpMatrix[inputIndex] = inBfpMatrix[outputIndex];
           }
-          tileCountingIndex++;
         }
       }
     }
