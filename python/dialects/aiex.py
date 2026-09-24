@@ -480,7 +480,9 @@ def tile_dma_single_bd_task(
         direction: ``DMAChannelDir.S2MM`` or ``DMAChannelDir.MM2S``.
         channel: hardware channel index. On a mem tile this also decides which
             half of the BD pool ``bd_id`` may come from -- an even channel
-            reaches only the low half, an odd channel only the high half.
+            reaches only the low half, an odd channel only the high half. A
+            string names an ``aie.route_endpoint`` on ``tile`` instead, whose
+            channel the compiler assigns.
         buffer: an ``aie.buffer`` on ``tile``.
         sizes, strides: the access pattern, outermost dimension first. Give
             both or neither: there is no default stride to pair with a size.
@@ -495,14 +497,15 @@ def tile_dma_single_bd_task(
             f"sizes={sizes} and strides={strides}"
         )
     sizes, strides, repeat_count, repeat_count_val = _task_dims(sizes, strides)
-    task = dma_configure_task(
-        tile,
-        direction,
-        channel,
+    task_kwargs = dict(
         repeat_count=repeat_count,
         repeat_count_val=repeat_count_val,
         issue_token=issue_token,
     )
+    if isinstance(channel, str):
+        task = dma_configure_task_for(channel, **task_kwargs)
+    else:
+        task = dma_configure_task(tile, direction, channel, **task_kwargs)
     bd_kwargs = {}
     if bd_id is not None:
         bd_kwargs["bd_id"] = bd_id

@@ -76,7 +76,7 @@ These classes live under `aie.iron`:
 | `Buffer(tile, type, initial_value=None, name)` | `aie.buffer` on the given tile | [`python/iron/buffer.py`](../../../python/iron/buffer.py) |
 | `Lock(tile, lock_id=None, init=0, name)` | `aie.lock` with explicit id + init count | [`python/iron/lock.py`](../../../python/iron/lock.py) |
 | `Flow(src, dst \| [dsts], *, src_port=DMA, src_channel=None, dst_port=DMA, dst_channel=None)` | `aie.flow` when both channels are given; otherwise `aie.route_endpoint`s joined by an `aie.route`, whose DMA channels the compiler assigns.  A list of `dst`s broadcasts | [`python/iron/dataflow/flow.py`](../../../python/iron/dataflow/flow.py) |
-| `PacketFlow(src, dsts: list[PacketDest], *, pkt_id, ...)` | `aie.packetflow` with explicit packet IDs | same file |
+| `PacketFlow(pkt_id, src, dst, *, src_channel=0, dst_channel=0, extra_dsts=[PacketDest(...)], keep_pkt_header=False)` | `aie.packetflow` tagged with `pkt_id`.  With a shim end it has `fill` / `drain` like a `Flow`, and `fill` stamps `pkt_id` on the input | same file |
 | `TileDma(tile, channels=[DmaChannel(...)])` | `aie.mem` (compute), `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim) — picked by tile type | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
 | `DmaChannel(direction, channel, bds=[Bd(...)], pad_value=0, repeat_count=0, out_of_order=False, loop=True)` | One `@dma(dir, ch)` chain inside the TileDma's region.  `channel` is an index or a `flow.endpoint(tile)` | same |
 | `Bd(buffer, offset=0, length=None, sizes=[], strides=[], acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, pad_dimensions=None, iteration=None, out_of_order_id=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd` | same |
@@ -106,7 +106,10 @@ These classes live under `aie.iron`:
 
 `Bd.packet = (pkt_type, pkt_id)` stamps a packet header on every
 transfer this BD emits — pair it with a `PacketFlow` carrying the same
-`pkt_id` so the routing fabric dispatches correctly.  `Bd.bd_id` pins
+`pkt_id` so the routing fabric dispatches correctly.  From the shim,
+`packet_flow.fill(a)` stamps the header itself, so several `PacketFlow`s
+leaving one shim channel are told apart by which one you fill (see
+[`packet_switch`](../../../programming_examples/basic/packet_switch/)).  `Bd.bd_id` pins
 the descriptor's hardware id; the others are allocated around it.
 
 A few more `Bd` fields cover hardware features that would otherwise need
@@ -327,7 +330,7 @@ is only known at dispatch time:
 
 | Call | What it does |
 |------|--------------|
-| `tile_dma_task(tile, direction, channel, buffer, sizes=, strides=, offset=, transfer_len=, wait=False, acquire=, release=)` | One BD, configured and started.  Its fields may be dispatch-time values |
+| `tile_dma_task(tile, direction, channel, buffer, sizes=, strides=, offset=, transfer_len=, wait=False, acquire=, release=)` | One BD, configured and started.  Its fields may be dispatch-time values, and `channel` may be a `flow.endpoint(tile)` |
 | `tile_dma_chain(tile, direction, channel, bds=[Bd(...)], repeat_count=0, wait=False, out_of_order=False)` | A chain of `Bd`s run in order as one task, `repeat_count + 1` times.  `channel` may be a `flow.endpoint(tile)`.  With `out_of_order=True` it arms an S2MM channel as `DmaChannel.out_of_order` does, and `repeat_count` counts packets |
 | `task.start(repeat_count=None)` | Push an already-configured task again, optionally with a different repeat count |
 | `lock.set(value)` | Overwrite a `Lock`'s value from the host (`aiex.set_lock`) |
@@ -337,10 +340,10 @@ The `Bd`s are the same class a `TileDma` uses, so locks, packet headers
 and access patterns are written the same way.  The one exception is
 `iteration`: a runtime chain takes it from the outermost `sizes` /
 `strides` dimension instead.  A runtime BD takes both lock operations
-or neither, so `tile_dma_task` needs `acquire` and `release` together.
-A `wait=True` token from a mem or compute tile needs a route back to
-the shim, which the default control overlay only builds for shim tiles,
-so synchronize through a shim `drain(..., wait=True)` as below.  A repeat count larger
+or neither, so `tile_dma_task` needs `acquire` and `release` together,
+and both calls reject anything else.  With `wait=True`, a mem or
+compute tile reports completion over a route back to the shim that the
+compiler adds, so `task.await_()` works on any tile.  A repeat count larger
 than one queue push carries is split into several pushes by the
 compiler, so the chain below can run any number of passes:
 

@@ -249,6 +249,12 @@ struct AIEDMATasksToNPUPass
           << n_lock_ops << " lock operations.";
       return failure();
     }
+    if (n_lock_ops == 2 && !getOptionalLockOpsForBlock(block, outOfOrder)) {
+      AIE::UseLockOp lock_op = *lock_ops.begin();
+      lock_op.emitOpError("BD block lock operations must be one acquire and "
+                          "one release.");
+      return failure();
+    }
     return success();
   }
 

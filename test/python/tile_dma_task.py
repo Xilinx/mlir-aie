@@ -12,7 +12,17 @@ tile had to give up dynamic shapes before this existed."""
 import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
-from aie.iron import Buffer, Flow, Program, Runtime, tile_dma_task
+from aie.iron import (
+    Acquire,
+    Bd,
+    Buffer,
+    Flow,
+    Lock,
+    Program,
+    Runtime,
+    tile_dma_chain,
+    tile_dma_task,
+)
 from aie.iron.runtime.runtime import IronRuntimeError
 from aie.iron.device import NPU2Col1, Tile
 
@@ -123,3 +133,68 @@ def emit_late_add_buffer():
 # registration from there would be dropped; it is rejected instead.
 # CHECK: RAISED IronRuntimeError: Cannot register a Buffer after DMA resolution
 emit_late_add_buffer()
+
+
+def emit_endpoint_task():
+    buf_ty = np.ndarray[(64,), np.dtype[np.int32]]
+    shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
+    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
+    buf = Buffer(tile=mem_tile, type=buf_ty, name="staged")
+    out = Flow(mem_tile, shim)
+
+    def sequence(host):
+        tile_dma_task(mem_tile, DMAChannelDir.MM2S, out.endpoint(mem_tile), buf)
+        out.drain(host, wait=True)
+
+    rt = Runtime(sequence, [buf_ty])
+    rt.add_flow(out)
+    rt.add_buffer(buf)
+    return Program(NPU2Col1(), rt).resolve_program()
+
+
+# A Flow whose channels the compiler assigns runs the task on its endpoint.
+# CHECK: aiex.dma_configure_task_for @[[SRC:flow[0-9]*_src]] {
+# CHECK-NEXT: aie.dma_bd(%staged
+# CHECK: aie.route_endpoint @[[SRC]](%{{.*}}) DMA
+print(emit_endpoint_task())
+
+
+def emit_rejected(name, body):
+    buf_ty = np.ndarray[(64,), np.dtype[np.int32]]
+    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
+    buf = Buffer(tile=mem_tile, type=buf_ty, name=name)
+    full = Lock(tile=mem_tile, init=0, name=f"{name}_full")
+    empty = Lock(tile=mem_tile, init=1, name=f"{name}_empty")
+
+    def sequence(_host):
+        body(mem_tile, buf, full, empty)
+
+    rt = Runtime(sequence, [buf_ty])
+    rt.add_buffer(buf)
+    rt.add_lock(full)
+    rt.add_lock(empty)
+    try:
+        Program(NPU2Col1(), rt).resolve_program()
+    except ValueError as e:
+        print(f"RAISED ValueError: {e}")
+
+
+# A runtime BD takes one acquire and one release or neither; anything else is
+# caught before any IR is built rather than by the lowering.
+# CHECK: RAISED ValueError: tile_dma_task needs acquire and release together
+emit_rejected(
+    "acq_only",
+    lambda t, b, full, empty: tile_dma_task(
+        t, DMAChannelDir.MM2S, 0, b, acquire=Acquire(full)
+    ),
+)
+# CHECK: RAISED ValueError: tile_dma_chain Bd 0 has 2 acquires and 0 releases
+emit_rejected(
+    "two_acq",
+    lambda t, b, full, empty: tile_dma_chain(
+        t,
+        DMAChannelDir.MM2S,
+        0,
+        [Bd(b, acquires=[Acquire(full), Acquire(empty)])],
+    ),
+)

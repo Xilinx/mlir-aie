@@ -48,6 +48,7 @@ from ..dataflow.tile_dma import (
     Acquire,
     Bd,
     Release,
+    _channel_operand,
     _emit_bd,
     check_flow_endpoint,
 )
@@ -70,7 +71,7 @@ def _lock_triple(use: Acquire | Release | None):
 def tile_dma_task(
     tile: Tile,
     direction: DMAChannelDir,
-    channel: int,
+    channel: int | FlowEndpoint,
     buffer: Buffer,
     sizes=None,
     strides=None,
@@ -93,8 +94,10 @@ def tile_dma_task(
         tile: the tile whose DMA channel runs this task. ``buffer`` must live
             on it.
         direction: ``DMAChannelDir.S2MM`` or ``DMAChannelDir.MM2S``.
-        channel: hardware channel index. On a mem tile the channel's parity
-            also decides which half of the BD pool ``bd_id`` may come from.
+        channel: hardware channel index, or the
+            [`FlowEndpoint`][iron.FlowEndpoint] whose compiler-assigned
+            channel the task runs on. On a mem tile the channel's parity also
+            decides which half of the BD pool ``bd_id`` may come from.
         buffer: the [`Buffer`][iron.Buffer] this descriptor reads or writes.
         sizes (Sequence[int | Value], optional): access-pattern sizes, outermost
             dimension first. The outermost entry becomes the queue repeat count
@@ -115,7 +118,9 @@ def tile_dma_task(
         bd_id: pin the buffer descriptor id rather than letting the compiler
             allocate one.
         acquire: an [`Acquire`][iron.Acquire] emitted before the descriptor,
-            for taking the buffer from a compute tile.
+            for taking the buffer from a compute tile. A runtime descriptor
+            takes one acquire and one release or neither, so give ``acquire``
+            and ``release`` together.
         release: a [`Release`][iron.Release] emitted after it.
         start: push the task onto the channel queue. ``False`` configures it
             without submitting.
@@ -131,10 +136,17 @@ def tile_dma_task(
             "tile's DMA can only address buffers on that tile (only a shim BD "
             "reaches host memory)."
         )
+    if (acquire is None) != (release is None):
+        raise ValueError(
+            "tile_dma_task needs acquire and release together, got "
+            f"acquire={acquire} and release={release}; a runtime descriptor "
+            "takes one of each or neither."
+        )
+    check_flow_endpoint(tile, direction, channel)
     task = tile_dma_single_bd_task(
         tile.op,
         direction,
-        channel,
+        _channel_operand(channel),
         buffer.op,
         offset=_as_bd_i32(offset),
         sizes=sizes,
@@ -181,7 +193,9 @@ def tile_dma_chain(
             [`FlowEndpoint`][iron.FlowEndpoint] whose compiler-assigned
             channel the chain runs on.
         bds: the descriptors, in chain order. A ``Bd`` may not set ``next``
-            (the chain is linear) or ``iteration``.
+            (the chain is linear) or ``iteration``, and takes one acquire and
+            one release or neither (under ``out_of_order``, a lone release
+            too).
         repeat_count (int | Value): extra runs of the whole chain (0 = once).
         wait: issue a completion token, so the returned task can be awaited.
         start: push the task onto the channel queue. ``False`` configures it
@@ -216,6 +230,13 @@ def tile_dma_chain(
             raise ValueError(
                 f"tile_dma_chain Bd {i} sets iteration; use the chain's "
                 "repeat_count or one Bd per sub-buffer instead."
+            )
+        locks = (len(bd.acquires), len(bd.releases))
+        if locks not in ((0, 0), (1, 1)) and not (out_of_order and locks == (0, 1)):
+            raise ValueError(
+                f"tile_dma_chain Bd {i} has {locks[0]} acquires and {locks[1]} "
+                "releases; a runtime Bd takes one of each or neither"
+                + (", or a lone release out of order." if out_of_order else ".")
             )
 
     if out_of_order:

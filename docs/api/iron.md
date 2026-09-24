@@ -185,7 +185,9 @@ Circuit-switched ([`Flow`][iron.Flow]) and packet-switched
 [`PacketDest`][iron.PacketDest] endpoint descriptor.  A `Flow` given no DMA
 channels lets the compiler assign them; name the assigned channel with
 `flow.endpoint(tile)`, which returns a [`FlowEndpoint`][iron.FlowEndpoint]
-that DMA programs and `tile_dma_chain` take in place of a channel index.
+that DMA programs, `tile_dma_task` and `tile_dma_chain` take in place of a
+channel index.  A `Flow` or `PacketFlow` with one shim end has `fill` /
+`drain`; `PacketFlow.fill` stamps the route's packet ID on the input.
 
 ::: iron.dataflow.flow
     options:
