@@ -17454,8 +17454,7 @@ factories always give one; a hand-built kernel may leave it
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>python/iron/kernel.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-670">670</a></span>
-<span class="normal"><a href="#__codelineno-0-671">671</a></span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-671">671</a></span>
 <span class="normal"><a href="#__codelineno-0-672">672</a></span>
 <span class="normal"><a href="#__codelineno-0-673">673</a></span>
 <span class="normal"><a href="#__codelineno-0-674">674</a></span>
@@ -17622,175 +17621,176 @@ factories always give one; a hand-built kernel may leave it
 <span class="normal"><a href="#__codelineno-0-835">835</a></span>
 <span class="normal"><a href="#__codelineno-0-836">836</a></span>
 <span class="normal"><a href="#__codelineno-0-837">837</a></span>
-<span class="normal"><a href="#__codelineno-0-838">838</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-670" name="__codelineno-0-670"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-671" name="__codelineno-0-671"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-0-672" name="__codelineno-0-672"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-<a id="__codelineno-0-673" name="__codelineno-0-673"></a>    <span class="n">object_file_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-674" name="__codelineno-0-674"></a>    <span class="n">source_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-675" name="__codelineno-0-675"></a>    <span class="n">source_string</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-676" name="__codelineno-0-676"></a>    <span class="n">arg_types</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ArgType</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-677" name="__codelineno-0-677"></a>    <span class="n">include_dirs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-678" name="__codelineno-0-678"></a>    <span class="n">compile_flags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-679" name="__codelineno-0-679"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-680" name="__codelineno-0-680"></a>    <span class="n">symbol_prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-681" name="__codelineno-0-681"></a>    <span class="n">use_chess</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-682" name="__codelineno-0-682"></a>    <span class="n">inline</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-683" name="__codelineno-0-683"></a>    <span class="n">stack_size_override</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-684" name="__codelineno-0-684"></a>    <span class="n">contract</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct an ExternalFunction compiled from C/C++ source at JIT time.</span>
-<a id="__codelineno-0-687" name="__codelineno-0-687"></a>
-<a id="__codelineno-0-688" name="__codelineno-0-688"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">        name: Symbol name of the function as it will appear in the object</span>
-<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">            file.</span>
-<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">        object_file_name: Output artifact name. Defaults to</span>
-<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">            ``&lt;effective_name&gt;.o``, or ``&lt;effective_name&gt;.ll`` with</span>
-<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">            ``inline=True``. With ``inline=True`` an explicit name must end</span>
-<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">            in ``.ll`` (textual LLVM IR) or ``.bc`` (bitcode) -- that suffix</span>
-<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">            selects the emitted format -- and is otherwise rejected.</span>
-<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">        source_file: Path to a C/C++ source file on disk.  Mutually</span>
-<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">            exclusive with ``source_string``.</span>
-<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="sd">        source_string: Inline C/C++ source code.  Mutually exclusive with</span>
-<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">            ``source_file``.</span>
-<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">        arg_types: Type signature of the function arguments.  Defaults to</span>
-<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">            None (empty list).</span>
-<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">        include_dirs: Additional ``-I`` directories passed to the chosen</span>
-<a id="__codelineno-0-703" name="__codelineno-0-703"></a><span class="sd">            compiler (Peano by default; xchesscc when ``use_chess=True``).</span>
-<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">            Defaults to None (empty list).</span>
-<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">        compile_flags: Additional flags passed verbatim to the chosen</span>
-<a id="__codelineno-0-706" name="__codelineno-0-706"></a><span class="sd">            compiler.  Defaults to None (empty list).</span>
-<a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">        symbol_prefix: Optional prefix for the exported symbol name.  When</span>
-<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">            set, the effective symbol name becomes ``&lt;symbol_prefix&gt;_&lt;name&gt;``</span>
-<a id="__codelineno-0-709" name="__codelineno-0-709"></a><span class="sd">            and the object file is named accordingly.  The original name is</span>
-<a id="__codelineno-0-710" name="__codelineno-0-710"></a><span class="sd">            preserved in ``_original_name`` for source file naming.</span>
-<a id="__codelineno-0-711" name="__codelineno-0-711"></a><span class="sd">        use_chess: When ``True``, this ExternalFunction&#39;s source is</span>
-<a id="__codelineno-0-712" name="__codelineno-0-712"></a><span class="sd">            compiled with ``xchesscc_wrapper`` instead of Peano&#39;s</span>
-<a id="__codelineno-0-713" name="__codelineno-0-713"></a><span class="sd">            ``clang++``.  The JIT compile orchestration auto-detects the</span>
-<a id="__codelineno-0-714" name="__codelineno-0-714"></a><span class="sd">            design-level toolchain from the registered EFs and switches</span>
-<a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="sd">            aiecc&#39;s front-end accordingly; mixing chess + peano EFs in</span>
-<a id="__codelineno-0-716" name="__codelineno-0-716"></a><span class="sd">            one design is rejected loudly because aiecc only invokes one</span>
-<a id="__codelineno-0-717" name="__codelineno-0-717"></a><span class="sd">            front-end per compile.</span>
-<a id="__codelineno-0-718" name="__codelineno-0-718"></a><span class="sd">        inline: When True, compile the kernel to ``alwaysinline`` LLVM IR</span>
-<a id="__codelineno-0-719" name="__codelineno-0-719"></a><span class="sd">            (``.ll``) and declare it with ``link_with_mode = &quot;merge&quot;`` so</span>
-<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="sd">            aiecc llvm-links it into the core and inlines it, instead of</span>
-<a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="sd">            object-linking a separate ``.o``. Removes the ``func.call``</span>
-<a id="__codelineno-0-722" name="__codelineno-0-722"></a><span class="sd">            boundary and the separate object. Peano path only (the</span>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">            Chess/xchesscc toolchain cannot llvm-link).</span>
-<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">        stack_size_override: Declared upper bound, in bytes, on the stack</span>
-<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">            that this kernel&#39;s call subtree uses. See</span>
-<a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">            [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].</span>
-<a id="__codelineno-0-727" name="__codelineno-0-727"></a><span class="sd">            With ``inline=True``, the merged kernel has no separate object,</span>
-<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="sd">            so this bound is the one input aiecc&#39;s stack analysis reads for</span>
-<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="sd">            this kernel.</span>
-<a id="__codelineno-0-730" name="__codelineno-0-730"></a><span class="sd">        contract: What the kernel computes, as an</span>
-<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">            ``aie.iron.kernels.KernelContract``: argument roles, a host</span>
-<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">            reference, a tolerance and the operand layouts. The library</span>
-<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="sd">            factories always give one; a hand-built kernel may leave it</span>
-<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="sd">            ``None`` and then cannot be built or judged generically.</span>
-<a id="__codelineno-0-735" name="__codelineno-0-735"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-736" name="__codelineno-0-736"></a>    <span class="k">if</span> <span class="n">inline</span> <span class="ow">and</span> <span class="n">use_chess</span><span class="p">:</span>
-<a id="__codelineno-0-737" name="__codelineno-0-737"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-738" name="__codelineno-0-738"></a>            <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;: inline=True requires the Peano &quot;</span>
-<a id="__codelineno-0-739" name="__codelineno-0-739"></a>            <span class="s2">&quot;toolchain and cannot be combined with use_chess=True.&quot;</span>
-<a id="__codelineno-0-740" name="__codelineno-0-740"></a>        <span class="p">)</span>
-<a id="__codelineno-0-741" name="__codelineno-0-741"></a>    <span class="k">if</span> <span class="n">inline</span> <span class="ow">and</span> <span class="n">symbol_prefix</span><span class="p">:</span>
-<a id="__codelineno-0-742" name="__codelineno-0-742"></a>        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
-<a id="__codelineno-0-743" name="__codelineno-0-743"></a>            <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;: inline=True combined with symbol_prefix is &quot;</span>
-<a id="__codelineno-0-744" name="__codelineno-0-744"></a>            <span class="s2">&quot;not supported (an inline kernel is emitted as LLVM IR and cannot be &quot;</span>
-<a id="__codelineno-0-745" name="__codelineno-0-745"></a>            <span class="s2">&quot;symbol-renamed). Use inline without a symbol_prefix, or drop inline for &quot;</span>
-<a id="__codelineno-0-746" name="__codelineno-0-746"></a>            <span class="s2">&quot;this kernel.&quot;</span>
-<a id="__codelineno-0-747" name="__codelineno-0-747"></a>        <span class="p">)</span>
-<a id="__codelineno-0-748" name="__codelineno-0-748"></a>
-<a id="__codelineno-0-749" name="__codelineno-0-749"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_original_name</span> <span class="o">=</span> <span class="n">name</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">contract</span> <span class="o">=</span> <span class="n">contract</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a>    <span class="n">effective_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">symbol_prefix</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">symbol_prefix</span> <span class="k">else</span> <span class="n">name</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a>    <span class="n">object_file_name_explicit</span> <span class="o">=</span> <span class="n">object_file_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">object_file_name</span><span class="p">:</span>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a>        <span class="n">object_file_name</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a>            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">.ll&quot;</span> <span class="k">if</span> <span class="n">inline</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">.o&quot;</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a>        <span class="p">)</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a>    <span class="k">elif</span> <span class="n">inline</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">object_file_name</span><span class="p">)</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;.ll&quot;</span><span class="p">,</span> <span class="s2">&quot;.bc&quot;</span><span class="p">):</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a>        <span class="c1"># An inline kernel is emitted as LLVM IR, and the suffix picks the</span>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a>        <span class="c1"># format (textual vs bitcode), so a wrong one has no valid reading.</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="c1"># Reject it instead of silently renaming the caller&#39;s artifact --</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a>        <span class="c1"># aiecc routes on the `link_with_mode` attribute, not the suffix, so</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a>        <span class="c1"># a rename would buy nothing.  Compared case-insensitively, matching</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="c1"># compile_cxx_core_function&#39;s own suffix check; the caller&#39;s exact</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="c1"># spelling is preserved either way.</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a>            <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;: inline=True emits LLVM IR, so &quot;</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>            <span class="sa">f</span><span class="s2">&quot;object_file_name must end in &#39;.ll&#39; (textual LLVM IR) or &quot;</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>            <span class="sa">f</span><span class="s2">&quot;&#39;.bc&#39; (bitcode); got &#39;</span><span class="si">{</span><span class="n">object_file_name</span><span class="si">}</span><span class="s2">&#39;.&quot;</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>        <span class="p">)</span>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a>        <span class="n">effective_name</span><span class="p">,</span>
-<a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="n">object_file_name</span><span class="p">,</span>
-<a id="__codelineno-0-773" name="__codelineno-0-773"></a>        <span class="n">arg_types</span><span class="p">,</span>
-<a id="__codelineno-0-774" name="__codelineno-0-774"></a>        <span class="n">link_with_mode</span><span class="o">=</span><span class="s2">&quot;merge&quot;</span> <span class="k">if</span> <span class="n">inline</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a>        <span class="n">stack_size_override</span><span class="o">=</span><span class="n">stack_size_override</span><span class="p">,</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a>    <span class="p">)</span>
-<a id="__codelineno-0-777" name="__codelineno-0-777"></a>
-<a id="__codelineno-0-778" name="__codelineno-0-778"></a>    <span class="k">if</span> <span class="n">source_file</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">source_string</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-779" name="__codelineno-0-779"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;source_file or source_string must be provided.&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-780" name="__codelineno-0-780"></a>    <span class="k">if</span> <span class="n">source_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-781" name="__codelineno-0-781"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="n">source_bytes</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">source_file</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()</span>
-<a id="__codelineno-0-783" name="__codelineno-0-783"></a>        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
-<a id="__codelineno-0-784" name="__codelineno-0-784"></a>            <span class="n">source_bytes</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&lt;unreadable:</span><span class="si">{</span><span class="n">source_file</span><span class="si">}</span><span class="s2">&gt;&quot;</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
-<a id="__codelineno-0-785" name="__codelineno-0-785"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-786" name="__codelineno-0-786"></a>        <span class="k">assert</span> <span class="n">source_string</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-787" name="__codelineno-0-787"></a>        <span class="n">source_bytes</span> <span class="o">=</span> <span class="n">source_string</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
-<a id="__codelineno-0-788" name="__codelineno-0-788"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_object_file</span> <span class="o">=</span> <span class="n">KernelObject</span><span class="p">(</span>
-<a id="__codelineno-0-789" name="__codelineno-0-789"></a>        <span class="n">object_file_name</span><span class="p">,</span>
-<a id="__codelineno-0-790" name="__codelineno-0-790"></a>        <span class="s2">&quot;merge&quot;</span> <span class="k">if</span> <span class="n">inline</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-791" name="__codelineno-0-791"></a>        <span class="n">_KernelSource</span><span class="p">(</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">source_file</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">())</span> <span class="k">if</span> <span class="n">source_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-793" name="__codelineno-0-793"></a>            <span class="n">source_string</span> <span class="k">if</span> <span class="n">source_file</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-794" name="__codelineno-0-794"></a>            <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">source_bytes</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">(),</span>
-<a id="__codelineno-0-795" name="__codelineno-0-795"></a>            <span class="nb">tuple</span><span class="p">(</span><span class="n">include_dirs</span> <span class="ow">or</span> <span class="p">()),</span>
-<a id="__codelineno-0-796" name="__codelineno-0-796"></a>            <span class="nb">tuple</span><span class="p">(</span><span class="n">compile_flags</span> <span class="ow">or</span> <span class="p">()),</span>
-<a id="__codelineno-0-797" name="__codelineno-0-797"></a>            <span class="n">use_chess</span><span class="p">,</span>
-<a id="__codelineno-0-798" name="__codelineno-0-798"></a>            <span class="n">symbol_prefix</span><span class="p">,</span>
-<a id="__codelineno-0-799" name="__codelineno-0-799"></a>            <span class="n">name</span> <span class="k">if</span> <span class="n">inline</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-800" name="__codelineno-0-800"></a>        <span class="p">),</span>
-<a id="__codelineno-0-801" name="__codelineno-0-801"></a>    <span class="p">)</span>
-<a id="__codelineno-0-802" name="__codelineno-0-802"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_cached_digest</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-803" name="__codelineno-0-803"></a>
-<a id="__codelineno-0-804" name="__codelineno-0-804"></a>    <span class="c1"># A translation unit may export several symbols, but an output path</span>
-<a id="__codelineno-0-805" name="__codelineno-0-805"></a>    <span class="c1"># must have only one recipe. Auto-suffix default names on conflict;</span>
-<a id="__codelineno-0-806" name="__codelineno-0-806"></a>    <span class="c1"># explicit names are never silently changed.</span>
-<a id="__codelineno-0-807" name="__codelineno-0-807"></a>    <span class="k">for</span> <span class="n">existing</span> <span class="ow">in</span> <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="p">:</span>
-<a id="__codelineno-0-808" name="__codelineno-0-808"></a>        <span class="k">if</span> <span class="p">(</span>
-<a id="__codelineno-0-809" name="__codelineno-0-809"></a>            <span class="n">existing</span><span class="o">.</span><span class="n">object_file_name</span> <span class="o">==</span> <span class="n">object_file_name</span>
-<a id="__codelineno-0-810" name="__codelineno-0-810"></a>            <span class="ow">and</span> <span class="n">existing</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">_source</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">_source</span>
-<a id="__codelineno-0-811" name="__codelineno-0-811"></a>        <span class="p">):</span>
-<a id="__codelineno-0-812" name="__codelineno-0-812"></a>            <span class="k">if</span> <span class="n">object_file_name_explicit</span><span class="p">:</span>
-<a id="__codelineno-0-813" name="__codelineno-0-813"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-814" name="__codelineno-0-814"></a>                    <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">&#39; would collide with &quot;</span>
-<a id="__codelineno-0-815" name="__codelineno-0-815"></a>                    <span class="sa">f</span><span class="s2">&quot;an already-registered instance: same &quot;</span>
-<a id="__codelineno-0-816" name="__codelineno-0-816"></a>                    <span class="sa">f</span><span class="s2">&quot;explicit object_file_name=&#39;</span><span class="si">{</span><span class="n">object_file_name</span><span class="si">}</span><span class="s2">&#39; but &quot;</span>
-<a id="__codelineno-0-817" name="__codelineno-0-817"></a>                    <span class="sa">f</span><span class="s2">&quot;different compile_flags / source.  Distinguish them &quot;</span>
-<a id="__codelineno-0-818" name="__codelineno-0-818"></a>                    <span class="sa">f</span><span class="s2">&quot;by passing a distinct `object_file_name=...`.&quot;</span>
-<a id="__codelineno-0-819" name="__codelineno-0-819"></a>                <span class="p">)</span>
-<a id="__codelineno-0-820" name="__codelineno-0-820"></a>            <span class="n">suffix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_content_digest</span><span class="p">()[:</span><span class="mi">8</span><span class="p">]</span>
-<a id="__codelineno-0-821" name="__codelineno-0-821"></a>            <span class="n">output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">object_file_name</span><span class="p">)</span>
-<a id="__codelineno-0-822" name="__codelineno-0-822"></a>            <span class="n">object_file_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span>
-<a id="__codelineno-0-823" name="__codelineno-0-823"></a>                <span class="n">output_path</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span>
-<a id="__codelineno-0-824" name="__codelineno-0-824"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="o">.</span><span class="n">stem</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}{</span><span class="n">output_path</span><span class="o">.</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-825" name="__codelineno-0-825"></a>                <span class="p">)</span>
-<a id="__codelineno-0-826" name="__codelineno-0-826"></a>            <span class="p">)</span>
-<a id="__codelineno-0-827" name="__codelineno-0-827"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_object_file</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">object_file</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">object_file_name</span><span class="p">)</span>
-<a id="__codelineno-0-828" name="__codelineno-0-828"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_cached_digest</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-829" name="__codelineno-0-829"></a>            <span class="k">break</span>
-<a id="__codelineno-0-830" name="__codelineno-0-830"></a>    <span class="k">for</span> <span class="n">existing</span> <span class="ow">in</span> <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="p">:</span>
-<a id="__codelineno-0-831" name="__codelineno-0-831"></a>        <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">object_file_name</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_file_name</span><span class="p">:</span>
-<a id="__codelineno-0-832" name="__codelineno-0-832"></a>            <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">_source</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">_source</span><span class="p">:</span>
-<a id="__codelineno-0-833" name="__codelineno-0-833"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-834" name="__codelineno-0-834"></a>                    <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">&#39; would collide on &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">object_file_name</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
-<a id="__codelineno-0-835" name="__codelineno-0-835"></a>                <span class="p">)</span>
-<a id="__codelineno-0-836" name="__codelineno-0-836"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_object_file</span> <span class="o">=</span> <span class="n">existing</span><span class="o">.</span><span class="n">object_file</span>
-<a id="__codelineno-0-837" name="__codelineno-0-837"></a>            <span class="k">break</span>
-<a id="__codelineno-0-838" name="__codelineno-0-838"></a>    <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-838">838</a></span>
+<span class="normal"><a href="#__codelineno-0-839">839</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-671" name="__codelineno-0-671"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a>    <span class="n">object_file_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a>    <span class="n">source_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a>    <span class="n">source_string</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a>    <span class="n">arg_types</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ArgType</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>    <span class="n">include_dirs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a>    <span class="n">compile_flags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a>    <span class="n">symbol_prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a>    <span class="n">use_chess</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a>    <span class="n">inline</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a>    <span class="n">stack_size_override</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a>    <span class="n">contract</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct an ExternalFunction compiled from C/C++ source at JIT time.</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">        name: Symbol name of the function as it will appear in the object</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">            file.</span>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">        object_file_name: Output artifact name. Defaults to</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">            ``&lt;effective_name&gt;.o``, or ``&lt;effective_name&gt;.ll`` with</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">            ``inline=True``. With ``inline=True`` an explicit name must end</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">            in ``.ll`` (textual LLVM IR) or ``.bc`` (bitcode) -- that suffix</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">            selects the emitted format -- and is otherwise rejected.</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">        source_file: Path to a C/C++ source file on disk.  Mutually</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="sd">            exclusive with ``source_string``.</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">        source_string: Inline C/C++ source code.  Mutually exclusive with</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">            ``source_file``.</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">        arg_types: Type signature of the function arguments.  Defaults to</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">            None (empty list).</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a><span class="sd">        include_dirs: Additional ``-I`` directories passed to the chosen</span>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">            compiler (Peano by default; xchesscc when ``use_chess=True``).</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">            Defaults to None (empty list).</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a><span class="sd">        compile_flags: Additional flags passed verbatim to the chosen</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">            compiler.  Defaults to None (empty list).</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a><span class="sd">        symbol_prefix: Optional prefix for the exported symbol name.  When</span>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a><span class="sd">            set, the effective symbol name becomes ``&lt;symbol_prefix&gt;_&lt;name&gt;``</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a><span class="sd">            and the object file is named accordingly.  The original name is</span>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a><span class="sd">            preserved in ``_original_name`` for source file naming.</span>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a><span class="sd">        use_chess: When ``True``, this ExternalFunction&#39;s source is</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a><span class="sd">            compiled with ``xchesscc_wrapper`` instead of Peano&#39;s</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a><span class="sd">            ``clang++``.  The JIT compile orchestration auto-detects the</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="sd">            design-level toolchain from the registered EFs and switches</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a><span class="sd">            aiecc&#39;s front-end accordingly; mixing chess + peano EFs in</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a><span class="sd">            one design is rejected loudly because aiecc only invokes one</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a><span class="sd">            front-end per compile.</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a><span class="sd">        inline: When True, compile the kernel to ``alwaysinline`` LLVM IR</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="sd">            (``.ll``) and declare it with ``link_with_mode = &quot;merge&quot;`` so</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="sd">            aiecc llvm-links it into the core and inlines it, instead of</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a><span class="sd">            object-linking a separate ``.o``. Removes the ``func.call``</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">            boundary and the separate object. Peano path only (the</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">            Chess/xchesscc toolchain cannot llvm-link).</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">        stack_size_override: Declared upper bound, in bytes, on the stack</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">            that this kernel&#39;s call subtree uses. See</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a><span class="sd">            [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a><span class="sd">            With ``inline=True``, the merged kernel has no separate object,</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a><span class="sd">            so this bound is the one input aiecc&#39;s stack analysis reads for</span>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a><span class="sd">            this kernel.</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a><span class="sd">        contract: What the kernel computes, as an</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a><span class="sd">            ``aie.iron.kernels.KernelContract``: argument roles, a host</span>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a><span class="sd">            reference, a tolerance and the operand layouts. The library</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a><span class="sd">            factories always give one; a hand-built kernel may leave it</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a><span class="sd">            ``None`` and then cannot be built or judged generically.</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>    <span class="k">if</span> <span class="n">inline</span> <span class="ow">and</span> <span class="n">use_chess</span><span class="p">:</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a>            <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;: inline=True requires the Peano &quot;</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a>            <span class="s2">&quot;toolchain and cannot be combined with use_chess=True.&quot;</span>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>        <span class="p">)</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a>    <span class="k">if</span> <span class="n">inline</span> <span class="ow">and</span> <span class="n">symbol_prefix</span><span class="p">:</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a>        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a>            <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;: inline=True combined with symbol_prefix is &quot;</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a>            <span class="s2">&quot;not supported (an inline kernel is emitted as LLVM IR and cannot be &quot;</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a>            <span class="s2">&quot;symbol-renamed). Use inline without a symbol_prefix, or drop inline for &quot;</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a>            <span class="s2">&quot;this kernel.&quot;</span>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>        <span class="p">)</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_original_name</span> <span class="o">=</span> <span class="n">name</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">contract</span> <span class="o">=</span> <span class="n">contract</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>    <span class="n">effective_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">symbol_prefix</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">symbol_prefix</span> <span class="k">else</span> <span class="n">name</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a>    <span class="n">object_file_name_explicit</span> <span class="o">=</span> <span class="n">object_file_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">object_file_name</span><span class="p">:</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a>        <span class="n">object_file_name</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a>            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">.ll&quot;</span> <span class="k">if</span> <span class="n">inline</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">.o&quot;</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>        <span class="p">)</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>    <span class="k">elif</span> <span class="n">inline</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">object_file_name</span><span class="p">)</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;.ll&quot;</span><span class="p">,</span> <span class="s2">&quot;.bc&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>        <span class="c1"># An inline kernel is emitted as LLVM IR, and the suffix picks the</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="c1"># format (textual vs bitcode), so a wrong one has no valid reading.</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>        <span class="c1"># Reject it instead of silently renaming the caller&#39;s artifact --</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>        <span class="c1"># aiecc routes on the `link_with_mode` attribute, not the suffix, so</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="c1"># a rename would buy nothing.  Compared case-insensitively, matching</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="c1"># compile_cxx_core_function&#39;s own suffix check; the caller&#39;s exact</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="c1"># spelling is preserved either way.</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>            <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;: inline=True emits LLVM IR, so &quot;</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>            <span class="sa">f</span><span class="s2">&quot;object_file_name must end in &#39;.ll&#39; (textual LLVM IR) or &quot;</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>            <span class="sa">f</span><span class="s2">&quot;&#39;.bc&#39; (bitcode); got &#39;</span><span class="si">{</span><span class="n">object_file_name</span><span class="si">}</span><span class="s2">&#39;.&quot;</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>        <span class="p">)</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="n">effective_name</span><span class="p">,</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>        <span class="n">object_file_name</span><span class="p">,</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a>        <span class="n">arg_types</span><span class="p">,</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>        <span class="n">link_with_mode</span><span class="o">=</span><span class="s2">&quot;merge&quot;</span> <span class="k">if</span> <span class="n">inline</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>        <span class="n">stack_size_override</span><span class="o">=</span><span class="n">stack_size_override</span><span class="p">,</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a>    <span class="p">)</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a>    <span class="k">if</span> <span class="n">source_file</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">source_string</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;source_file or source_string must be provided.&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a>    <span class="k">if</span> <span class="n">source_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>            <span class="n">source_bytes</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">source_file</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>            <span class="n">source_bytes</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&lt;unreadable:</span><span class="si">{</span><span class="n">source_file</span><span class="si">}</span><span class="s2">&gt;&quot;</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a>        <span class="k">assert</span> <span class="n">source_string</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a>        <span class="n">source_bytes</span> <span class="o">=</span> <span class="n">source_string</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_object_file</span> <span class="o">=</span> <span class="n">KernelObject</span><span class="p">(</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>        <span class="n">object_file_name</span><span class="p">,</span>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a>        <span class="s2">&quot;merge&quot;</span> <span class="k">if</span> <span class="n">inline</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>        <span class="n">_KernelSource</span><span class="p">(</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a>            <span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">source_file</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">())</span> <span class="k">if</span> <span class="n">source_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a>            <span class="n">source_string</span> <span class="k">if</span> <span class="n">source_file</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a>            <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">source_bytes</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">(),</span>
+<a id="__codelineno-0-796" name="__codelineno-0-796"></a>            <span class="nb">tuple</span><span class="p">(</span><span class="n">include_dirs</span> <span class="ow">or</span> <span class="p">()),</span>
+<a id="__codelineno-0-797" name="__codelineno-0-797"></a>            <span class="nb">tuple</span><span class="p">(</span><span class="n">compile_flags</span> <span class="ow">or</span> <span class="p">()),</span>
+<a id="__codelineno-0-798" name="__codelineno-0-798"></a>            <span class="n">use_chess</span><span class="p">,</span>
+<a id="__codelineno-0-799" name="__codelineno-0-799"></a>            <span class="n">symbol_prefix</span><span class="p">,</span>
+<a id="__codelineno-0-800" name="__codelineno-0-800"></a>            <span class="n">name</span> <span class="k">if</span> <span class="n">inline</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-801" name="__codelineno-0-801"></a>        <span class="p">),</span>
+<a id="__codelineno-0-802" name="__codelineno-0-802"></a>    <span class="p">)</span>
+<a id="__codelineno-0-803" name="__codelineno-0-803"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_cached_digest</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-804" name="__codelineno-0-804"></a>
+<a id="__codelineno-0-805" name="__codelineno-0-805"></a>    <span class="c1"># A translation unit may export several symbols, but an output path</span>
+<a id="__codelineno-0-806" name="__codelineno-0-806"></a>    <span class="c1"># must have only one recipe. Auto-suffix default names on conflict;</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>    <span class="c1"># explicit names are never silently changed.</span>
+<a id="__codelineno-0-808" name="__codelineno-0-808"></a>    <span class="k">for</span> <span class="n">existing</span> <span class="ow">in</span> <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="p">:</span>
+<a id="__codelineno-0-809" name="__codelineno-0-809"></a>        <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-0-810" name="__codelineno-0-810"></a>            <span class="n">existing</span><span class="o">.</span><span class="n">object_file_name</span> <span class="o">==</span> <span class="n">object_file_name</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a>            <span class="ow">and</span> <span class="n">existing</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">_source</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">_source</span>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a>        <span class="p">):</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a>            <span class="k">if</span> <span class="n">object_file_name_explicit</span><span class="p">:</span>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a>                    <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">&#39; would collide with &quot;</span>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a>                    <span class="sa">f</span><span class="s2">&quot;an already-registered instance: same &quot;</span>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a>                    <span class="sa">f</span><span class="s2">&quot;explicit object_file_name=&#39;</span><span class="si">{</span><span class="n">object_file_name</span><span class="si">}</span><span class="s2">&#39; but &quot;</span>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a>                    <span class="sa">f</span><span class="s2">&quot;different compile_flags / source.  Distinguish them &quot;</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a>                    <span class="sa">f</span><span class="s2">&quot;by passing a distinct `object_file_name=...`.&quot;</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>                <span class="p">)</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a>            <span class="n">suffix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_content_digest</span><span class="p">()[:</span><span class="mi">8</span><span class="p">]</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>            <span class="n">output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">object_file_name</span><span class="p">)</span>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a>            <span class="n">object_file_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a>                <span class="n">output_path</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="o">.</span><span class="n">stem</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}{</span><span class="n">output_path</span><span class="o">.</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a>                <span class="p">)</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a>            <span class="p">)</span>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_object_file</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">object_file</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">object_file_name</span><span class="p">)</span>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_cached_digest</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a>            <span class="k">break</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a>    <span class="k">for</span> <span class="n">existing</span> <span class="ow">in</span> <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="p">:</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a>        <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">object_file_name</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_file_name</span><span class="p">:</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a>            <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">_source</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_file</span><span class="o">.</span><span class="n">_source</span><span class="p">:</span>
+<a id="__codelineno-0-834" name="__codelineno-0-834"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-835" name="__codelineno-0-835"></a>                    <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">&#39; would collide on &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">object_file_name</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+<a id="__codelineno-0-836" name="__codelineno-0-836"></a>                <span class="p">)</span>
+<a id="__codelineno-0-837" name="__codelineno-0-837"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_object_file</span> <span class="o">=</span> <span class="n">existing</span><span class="o">.</span><span class="n">object_file</span>
+<a id="__codelineno-0-838" name="__codelineno-0-838"></a>            <span class="k">break</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a>    <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -18342,7 +18342,8 @@ With no streamed inputs, a one-tile reference is repeated across calls.</p>
 <span class="normal"><a href="#__codelineno-0-665">665</a></span>
 <span class="normal"><a href="#__codelineno-0-666">666</a></span>
 <span class="normal"><a href="#__codelineno-0-667">667</a></span>
-<span class="normal"><a href="#__codelineno-0-668">668</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="k">def</span><span class="w"> </span><span class="nf">judge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="n">ref</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">calls</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal"><a href="#__codelineno-0-668">668</a></span>
+<span class="normal"><a href="#__codelineno-0-669">669</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-609" name="__codelineno-0-609"></a><span class="k">def</span><span class="w"> </span><span class="nf">judge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">got</span><span class="p">,</span> <span class="n">ref</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">calls</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <a id="__codelineno-0-610" name="__codelineno-0-610"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Compare a flat device output against a reference under the contract.</span>
 <a id="__codelineno-0-611" name="__codelineno-0-611"></a>
 <a id="__codelineno-0-612" name="__codelineno-0-612"></a><span class="sd">    Declared layouts decode each output into logical tiles. DMA padding</span>
@@ -18380,28 +18381,29 @@ With no streamed inputs, a one-tile reference is repeated across calls.</p>
 <a id="__codelineno-0-644" name="__codelineno-0-644"></a>                <span class="n">got</span><span class="p">,</span>
 <a id="__codelineno-0-645" name="__codelineno-0-645"></a>                <span class="n">ref</span><span class="p">,</span>
 <a id="__codelineno-0-646" name="__codelineno-0-646"></a>                <span class="n">tolerance</span> <span class="ow">or</span> <span class="n">c</span><span class="o">.</span><span class="n">tolerance</span> <span class="ow">or</span> <span class="n">Tolerance</span><span class="o">.</span><span class="n">default_for</span><span class="p">(</span><span class="n">ref</span><span class="o">.</span><span class="n">dtype</span><span class="p">),</span>
-<a id="__codelineno-0-647" name="__codelineno-0-647"></a>            <span class="p">)</span>
-<a id="__codelineno-0-648" name="__codelineno-0-648"></a>        <span class="p">)</span>
-<a id="__codelineno-0-649" name="__codelineno-0-649"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">multiple</span><span class="p">:</span>
-<a id="__codelineno-0-650" name="__codelineno-0-650"></a>        <span class="k">return</span> <span class="n">verdicts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a>    <span class="n">first_bad</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">0</span>
-<a id="__codelineno-0-652" name="__codelineno-0-652"></a>    <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">verdicts</span><span class="p">:</span>
-<a id="__codelineno-0-653" name="__codelineno-0-653"></a>        <span class="k">if</span> <span class="n">first_bad</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">result</span><span class="o">.</span><span class="n">first_bad_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-654" name="__codelineno-0-654"></a>            <span class="n">first_bad</span> <span class="o">=</span> <span class="n">offset</span> <span class="o">+</span> <span class="n">result</span><span class="o">.</span><span class="n">first_bad_index</span>
-<a id="__codelineno-0-655" name="__codelineno-0-655"></a>        <span class="n">offset</span> <span class="o">+=</span> <span class="n">result</span><span class="o">.</span><span class="n">n_checked</span>
-<a id="__codelineno-0-656" name="__codelineno-0-656"></a>    <span class="n">ulps</span> <span class="o">=</span> <span class="p">[</span><span class="n">v</span><span class="o">.</span><span class="n">max_ulp_err</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">verdicts</span> <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">max_ulp_err</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
-<a id="__codelineno-0-657" name="__codelineno-0-657"></a>    <span class="k">return</span> <span class="n">Verdict</span><span class="p">(</span>
-<a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="n">ok</span><span class="o">=</span><span class="nb">all</span><span class="p">(</span><span class="n">verdicts</span><span class="p">),</span>
-<a id="__codelineno-0-659" name="__codelineno-0-659"></a>        <span class="n">n_checked</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">n_checked</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">verdicts</span><span class="p">),</span>
-<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="n">n_mismatch</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">n_mismatch</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">verdicts</span><span class="p">),</span>
-<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="n">max_abs_err</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">max_abs_err</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">verdicts</span><span class="p">),</span>
-<a id="__codelineno-0-662" name="__codelineno-0-662"></a>        <span class="n">max_ulp_err</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">ulps</span><span class="p">)</span> <span class="k">if</span> <span class="n">ulps</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-663" name="__codelineno-0-663"></a>        <span class="n">first_bad_index</span><span class="o">=</span><span class="n">first_bad</span><span class="p">,</span>
-<a id="__codelineno-0-664" name="__codelineno-0-664"></a>        <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
-<a id="__codelineno-0-665" name="__codelineno-0-665"></a>            <span class="sa">f</span><span class="s2">&quot;output </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> (argument </span><span class="si">{</span><span class="n">arg</span><span class="si">}</span><span class="s2">): </span><span class="si">{</span><span class="n">v</span><span class="o">.</span><span class="n">detail</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-666" name="__codelineno-0-666"></a>            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">out_indices</span><span class="p">,</span> <span class="n">verdicts</span><span class="p">))</span>
-<a id="__codelineno-0-667" name="__codelineno-0-667"></a>        <span class="p">),</span>
-<a id="__codelineno-0-668" name="__codelineno-0-668"></a>    <span class="p">)</span>
+<a id="__codelineno-0-647" name="__codelineno-0-647"></a>                <span class="n">range_axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-648" name="__codelineno-0-648"></a>            <span class="p">)</span>
+<a id="__codelineno-0-649" name="__codelineno-0-649"></a>        <span class="p">)</span>
+<a id="__codelineno-0-650" name="__codelineno-0-650"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">multiple</span><span class="p">:</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a>        <span class="k">return</span> <span class="n">verdicts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-652" name="__codelineno-0-652"></a>    <span class="n">first_bad</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">0</span>
+<a id="__codelineno-0-653" name="__codelineno-0-653"></a>    <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">verdicts</span><span class="p">:</span>
+<a id="__codelineno-0-654" name="__codelineno-0-654"></a>        <span class="k">if</span> <span class="n">first_bad</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">result</span><span class="o">.</span><span class="n">first_bad_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-655" name="__codelineno-0-655"></a>            <span class="n">first_bad</span> <span class="o">=</span> <span class="n">offset</span> <span class="o">+</span> <span class="n">result</span><span class="o">.</span><span class="n">first_bad_index</span>
+<a id="__codelineno-0-656" name="__codelineno-0-656"></a>        <span class="n">offset</span> <span class="o">+=</span> <span class="n">result</span><span class="o">.</span><span class="n">n_checked</span>
+<a id="__codelineno-0-657" name="__codelineno-0-657"></a>    <span class="n">ulps</span> <span class="o">=</span> <span class="p">[</span><span class="n">v</span><span class="o">.</span><span class="n">max_ulp_err</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">verdicts</span> <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">max_ulp_err</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+<a id="__codelineno-0-658" name="__codelineno-0-658"></a>    <span class="k">return</span> <span class="n">Verdict</span><span class="p">(</span>
+<a id="__codelineno-0-659" name="__codelineno-0-659"></a>        <span class="n">ok</span><span class="o">=</span><span class="nb">all</span><span class="p">(</span><span class="n">verdicts</span><span class="p">),</span>
+<a id="__codelineno-0-660" name="__codelineno-0-660"></a>        <span class="n">n_checked</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">n_checked</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">verdicts</span><span class="p">),</span>
+<a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="n">n_mismatch</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">n_mismatch</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">verdicts</span><span class="p">),</span>
+<a id="__codelineno-0-662" name="__codelineno-0-662"></a>        <span class="n">max_abs_err</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">max_abs_err</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">verdicts</span><span class="p">),</span>
+<a id="__codelineno-0-663" name="__codelineno-0-663"></a>        <span class="n">max_ulp_err</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">ulps</span><span class="p">)</span> <span class="k">if</span> <span class="n">ulps</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-664" name="__codelineno-0-664"></a>        <span class="n">first_bad_index</span><span class="o">=</span><span class="n">first_bad</span><span class="p">,</span>
+<a id="__codelineno-0-665" name="__codelineno-0-665"></a>        <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+<a id="__codelineno-0-666" name="__codelineno-0-666"></a>            <span class="sa">f</span><span class="s2">&quot;output </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> (argument </span><span class="si">{</span><span class="n">arg</span><span class="si">}</span><span class="s2">): </span><span class="si">{</span><span class="n">v</span><span class="o">.</span><span class="n">detail</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a>            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">out_indices</span><span class="p">,</span> <span class="n">verdicts</span><span class="p">))</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a>        <span class="p">),</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
