@@ -16,6 +16,8 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../aie_kernel_utils.h"
+
 template <typename T_in, typename T_out, int rowA, int colA, int colB,
           bool b_row_maj = true, bool c_row_maj = true>
 static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
@@ -75,7 +77,7 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
-          bool b_row_maj = true, bool c_row_maj = true>
+          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false>
 static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                                               const T_in *__restrict pB,
                                               T_out *__restrict pC) {
@@ -162,32 +164,46 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           MMUL C10(acc_C10);
           MMUL C11(acc_C11);
 
-          for (unsigned i = 0; i < colA; ++i)
-#ifdef OPT_PERF_ENABLED
-            chess_flatten_loop
-#endif
-            {
-              A0 = aie::load_v<MMUL::size_A>(pA1);
-              pA1 += MMUL::size_A;
-              A1 = aie::load_v<MMUL::size_A>(pA2);
-              pA2 += MMUL::size_A;
-              if constexpr (b_row_maj) {
-                B0 = aie::load_v<MMUL::size_B>(pB1);
-                pB1 += MMUL::size_B * colB;
-                B1 = aie::load_v<MMUL::size_B>(pB2);
-                pB2 += MMUL::size_B * colB;
-              } else {
-                B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-                pB1 += MMUL::size_B;
-                B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-                pB2 += MMUL::size_B;
-              }
-
-              C00.mac(A0, B0);
-              C01.mac(A0, B1);
-              C10.mac(A1, B0);
-              C11.mac(A1, B1);
+          auto k_step = [&]() {
+            A0 = aie::load_v<MMUL::size_A>(pA1);
+            pA1 += MMUL::size_A;
+            A1 = aie::load_v<MMUL::size_A>(pA2);
+            pA2 += MMUL::size_A;
+            if constexpr (b_row_maj) {
+              B0 = aie::load_v<MMUL::size_B>(pB1);
+              pB1 += MMUL::size_B * colB;
+              B1 = aie::load_v<MMUL::size_B>(pB2);
+              pB2 += MMUL::size_B * colB;
+            } else {
+              B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
+              pB1 += MMUL::size_B;
+              B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
+              pB2 += MMUL::size_B;
             }
+
+            C00.mac(A0, B0);
+            C01.mac(A0, B1);
+            C10.mac(A1, B0);
+            C11.mac(A1, B1);
+          };
+
+          // Peano only software-pipelines an innermost single-block loop, so
+          // while the K reduction is a loop of its own the C loads and stores
+          // that bracket it cannot overlap the MACs. Unrolling K folds it into
+          // the 'j' body and lets 'j' itself pipeline. That only pays where one
+          // mmul step is a single instruction and the unrolled reduction still
+          // fits the register file, so the caller picks per shape.
+          if constexpr (unroll_k) {
+            AIE_LOOP_UNROLL_FULL
+            for (unsigned i = 0; i < colA; ++i)
+              k_step();
+          } else {
+            for (unsigned i = 0; i < colA; ++i)
+#ifdef OPT_PERF_ENABLED
+              chess_flatten_loop
+#endif
+              k_step();
+          }
 
           // TODO make shift right here to keep most significat bits
           // when lowering the output
@@ -408,8 +424,8 @@ static inline void matmul_vectorized_8x8x8_i8_i32(const int8 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_2x2_mmul<int8, int32, (m / r), (k / s), (n / t), r,
-                                    s, t, is_b_row_maj, is_c_row_maj>(pA, pB,
-                                                                      pC);
+                                    s, t, is_b_row_maj, is_c_row_maj, true>(
+      pA, pB, pC);
 }
 
 extern "C" {
