@@ -6,6 +6,7 @@
 //
 //===-------------------------------------------------- --------===//
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <limits>
 #include <stdint.h>
@@ -49,7 +50,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
   float accum_exp_val = 0;
   bfloat16 col_sum_inv;
-  const int elem_iters = vector_size / SM_VEC_LEN;
+  const int elem_iters = (uint32_t)vector_size / SM_VEC_LEN;
 
   exp_val_accum = aie::zeros<accfloat, SM_VEC_LEN>();
 
@@ -67,6 +68,8 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec =
       aie::broadcast<bfloat16, SM_VEC_LEN>(
           std::numeric_limits<bfloat16>::lowest());
+  AIE_LOOP_UNROLL(2)
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int i = 0; i < elem_iters; i++) {
     max_accum_vec = aie::max(max_accum_vec, *it_log_in++);
   }
@@ -81,6 +84,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
       aie::mul(max_val_vec, log2e_vec).to_vector<float>();
 
   // Second pass
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int i = 0; i < elem_iters; i++) {
 
     input_bf16 = *it_exp_in++;
@@ -98,6 +102,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   accum_exp_val = aie::reduce_add(reduce);
   col_sum_inv = (bfloat16)aie::inv(accum_exp_val);
 
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int c = 0; c < elem_iters; c++) {
     in_elems = *it_scale++;
     out_vals = aie::mul(in_elems, col_sum_inv);
@@ -140,36 +145,37 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
   aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, scaled_accum,
       exp_in_accum;
 
-  float max_val = std::numeric_limits<bfloat16>::lowest();
   float accum_exp_val = 0;
-  float running_max = std::numeric_limits<bfloat16>::lowest();
-  const int elem_iters = vector_size / SM_VEC_LEN;
+  const int elem_iters = (uint32_t)vector_size / SM_VEC_LEN;
 
   exp_val_accum = aie::zeros<accfloat, SM_VEC_LEN>();
 
   log2e_vec = aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)scale);
 
-  // First pass - running max over the block.
+  // First pass - running max over the block.  Accumulate element-wise and
+  // reduce once at the end: the max of the per-chunk maxima is the max over
+  // the block, and it keeps the scalar float compare -- which lowers to a
+  // __gtsf2 call -- out of the loop along with a per-iteration reduce_max.
+  aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec =
+      aie::broadcast<bfloat16, SM_VEC_LEN>(
+          std::numeric_limits<bfloat16>::lowest());
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int i = 0; i < elem_iters; i++) {
-    input_bf16 = *it_log_in++;
-    scaled_accum = aie::mul(input_bf16, log2e_vec);
-    running_max = aie::reduce_max(scaled_accum.to_vector<bfloat16>());
-    if (running_max > max_val) {
-      max_val = running_max;
-    }
+    max_accum_vec = aie::max(
+        max_accum_vec, aie::mul(*it_log_in++, log2e_vec).to_vector<bfloat16>());
   }
+  bfloat16 max_val = aie::reduce_max(max_accum_vec);
 
-  // Compute m_{i}: max of this block and the carried-in running max.
-  if (max_val > scale_buffer[row_idx]) {
-    scale_buffer[num_rows + row_idx] = max_val;
-  } else {
-    scale_buffer[num_rows + row_idx] = scale_buffer[row_idx];
-    max_val = scale_buffer[row_idx];
-  }
+  // Compute m_{i}: max of this block and the carried-in running max.  aie::max
+  // on bfloat16 is a single instruction; the branch it replaces compared in
+  // float, which is a libcall.
+  max_val = aie::max(max_val, scale_buffer[row_idx]);
+  scale_buffer[num_rows + row_idx] = max_val;
 
   max_val_vec = aie::broadcast<bfloat16, SM_VEC_LEN>(max_val);
 
   // Second pass - unnormalized exponentials, accumulating the block sum.
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
   for (int i = 0; i < elem_iters; i++) {
     input_bf16 = *it_exp_in++;
     scaled_accum = aie::mul(input_bf16, log2e_vec);
