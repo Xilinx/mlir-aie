@@ -49,11 +49,6 @@ import sys
 import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
-from aie.dialects.aiex import (
-    dma_await_task,
-    dma_start_task,
-    shim_dma_single_bd_task,
-)
 from aie.iron import (
     Acquire,
     Bd,
@@ -69,6 +64,7 @@ from aie.iron import (
     Program,
     Release,
     Runtime,
+    TaskGroup,
     TileDma,
     Worker,
     tile_dma_chain,
@@ -258,6 +254,7 @@ def dma_s2mm_ooo(
     cons = [Lock(receiver, init=0, name=f"ooo_cons{kc}") for kc in range(c)]
 
     sender_dmas, workers, sender_locks, recv_locks, flows = [], [], [], [], []
+    drains = []
     runtime_recv = []
 
     def pkt_id(s, kc):
@@ -362,16 +359,10 @@ def dma_s2mm_ooo(
             )
 
         add_sender_flows()
-        for kc in range(c):
-            flows.append(
-                Flow(
-                    src=receiver,
-                    dst=egress,
-                    src_channel=kc,
-                    dst_channel=kc,
-                    shim_symbol=f"egress{kc}",
-                )
-            )
+        drains += [
+            Flow(src=receiver, dst=egress, src_channel=kc, dst_channel=kc)
+            for kc in range(c)
+        ]
     elif recv_backpressure:
         # Single-producer (n=1) receiver-side backpressure: a free-slot credit
         # gates buffer reuse instead of the cross-tile token.
@@ -455,15 +446,7 @@ def dma_s2mm_ooo(
         )
 
         add_sender_flows()
-        flows.append(
-            Flow(
-                src=receiver,
-                dst=egress,
-                src_channel=0,
-                dst_channel=0,
-                shim_symbol="egress0",
-            )
-        )
+        drains.append(Flow(src=receiver, dst=egress, src_channel=0, dst_channel=0))
     else:
         # Multi-round (repeat_count > 0): k+1 merges through the reused buffer with
         # a sender-side barrier. The receiver broadcasts a one-word credit token
@@ -616,26 +599,19 @@ def dma_s2mm_ooo(
                 extra_dsts=[PacketDest(senders[s], channel=0) for s in range(1, n)],
             )
         )
-        flows.append(
+        drains.append(
             PacketFlow(
                 pkt_id=tok_pkt + 1,
                 src=receiver,
                 src_channel=0,
                 dst=egress,
                 dst_channel=0,
-                shim_symbol="egress0",
             )
         )
-        for kc in range(1, c):
-            flows.append(
-                Flow(
-                    src=receiver,
-                    dst=egress,
-                    src_channel=kc,
-                    dst_channel=kc,
-                    shim_symbol=f"egress{kc}",
-                )
-            )
+        drains += [
+            Flow(src=receiver, dst=egress, src_channel=kc, dst_channel=kc)
+            for kc in range(1, c)
+        ]
 
     def sequence(c_h):
         # Runtime receiver path: arm each ooo S2MM merge channel from the host
@@ -655,18 +631,18 @@ def dma_s2mm_ooo(
         # on-chip on the channel's ooo_cons count.
         for r in range(rounds):
             for kc in range(c):
-                task = shim_dma_single_bd_task(
-                    f"egress{kc}",
-                    c_h.op,
+                tg = TaskGroup()
+                drains[kc].drain(
+                    c_h,
                     offset=(r * c + kc) * M * tw,
                     sizes=[1, 1, 1, M * tw],
-                    issue_token=True,
+                    wait=True,
+                    group=tg,
                 )
-                dma_start_task(task)
-                dma_await_task(task)
+                tg.finish()
 
     rt = Runtime(sequence, [np.ndarray[(rounds * c * M * tw,), np.dtype[np.int32]]])
-    for f in flows:
+    for f in flows + drains:
         rt.add_flow(f)
     for lk in cons:
         rt.add_lock(lk)

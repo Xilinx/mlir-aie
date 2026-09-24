@@ -209,8 +209,9 @@ trivial worker releases a lock to launch the send. The core's MM2S BD stamps the
 out-of-order id through the `Bd(out_of_order_id=...)` field. With `m > 1`, the BD
 carries `iteration=BdIteration(size=m, stride=tile_words)` and `repeat_count`
 replays it `m` times, which gives each of the `m` packets a distinct sub-slice under
-the one out-of-order id. The host drains each merged buffer with a high-level shim
-DMA task (`shim_dma_single_bd_task`). `--nonuniform` instead varies `m` across BDs.
+the one out-of-order id. The host drains each merged buffer with the egress route's
+`drain()`, one awaited task per channel and round. `--nonuniform` instead varies `m`
+across BDs.
 With `--channels 2` a sender emits a distinct sub-slice to each channel, and with
 `--repeat-count` its send gates on a credit token per round (see
 [Multiple rounds](#multiple-rounds)).
