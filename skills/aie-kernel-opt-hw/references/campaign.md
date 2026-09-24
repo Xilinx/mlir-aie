@@ -18,19 +18,25 @@ agents' edits and builds. Each rule below cites the incident behind it.
    ```bash
    python -m aie.utils.compile.remarks --target aie2p --jobs 8 --out $W/survey.json --meta $W/survey-meta.json
    ```
+   `libcalls` and `stack_bytes` are rows too, and every build prints its
+   `[OK] name: symbol from source` line.
    Assign work **by file**, so each agent owns a disjoint set (F01).
-2. **Audit the markers** in the file each factory selects
-   (`aie-kernel-opt-static` `static-checks.md` §Resolve; TODO(d-tools:G4)).
-   A row with no markers in the selected source reports another kernel. In
-   one campaign that happened three times: a `zero.cc` delta was credited to
-   matmul and prefill (M05).
-3. **Snapshot the base arm** with `git archive`, along with the Python-side
-   parameters: stack sizes and geometry tables. A shrunk `_PREFILL_GEOM[256]`
-   left `prefill_fv/256` with no before number (F11). Measure the whole matrix
-   once from the base, and keep the raw intervals.
+2. **Audit the markers**: `pytest test/python/test_kernel_trace_markers.py`
+   checks every factory's entry symbol against its contract's `trace=`
+   (`aie-kernel-opt-static` `static-checks.md` §Resolve). List the kernels
+   declared `none` or `partial`: they get no cycles row. Before this audit,
+   a row with no markers in the selected source reported another kernel.
+   In one campaign that happened three times: a `zero.cc` delta was
+   credited to matmul and prefill (M05).
+3. **Snapshot the base arm** with `git archive HEAD aie_kernels
+   aie_runtime_lib`, and write down the Python-side parameters too (stack
+   sizes, geometry tables): both arms run the same installed factories. A
+   shrunk `_PREFILL_GEOM[256]` left `prefill_fv/256` with no before number
+   (F11). Measure the whole matrix once from the base and keep its
+   `--bench-out` and `--bench-meta`.
 4. **Write a brief** that every agent reads. It carries:
-   - the setup, gate, remarks, bench and probe commands, with this site's
-     `$NPU_LOCK` and `$CPUS`
+   - the setup, gate, remarks, marker audit and bench `--baseline-sources`
+     commands, with this site's `$NPU_LOCK` and `$CPUS`
    - the non-negotiables
    - `aie-kernel-opt-static` `levers.md` and `hw-levers.md`
    - the deliverable format below
@@ -54,11 +60,13 @@ agents' edits and builds. Each rule below cites the incident behind it.
 - **Pin the host side.** Give each agent the same fixed `taskset -c $CPUS`
   list for every run it will compare. Leave out any core the site knows is
   faulty.
-- **One `NPU_CACHE_HOME` per agent and per arm,** wiped before each
-  reported run (M09).
+- **One `NPU_CACHE_HOME` per agent.** The arms need neither their own nor
+  a wipe: the cache key now includes `MLIR_AIE_KERNEL_SOURCES` and the core
+  stack size. The stack was what let a 16 B build pass 12 tests from cache
+  (M09).
 - **Build your base arm against the live include closure** by copying the
   tree and restoring only your files at the base revision
-  (`aie-kernel-opt-static` `static-checks.md` §Arms). `mha.cc` includes `mm.cc`, `softmax.cc` and `zero.cc`, and
+  (`aie-kernel-opt-static` `static-checks.md` §Base arm). `mha.cc` includes `mm.cc`, `softmax.cc` and `zero.cc`, and
   prefill and `mm_fused` include `zero.cc`. A `git archive` arm pins the
   siblings too, so it's only correct while nobody edits them (F05).
 - **Source is authoritative for Python.** The JIT reads kernel sources
@@ -73,13 +81,13 @@ agents' edits and builds. Each rule below cites the incident behind it.
 
 An in-flight fix can erase a finding, but it can never manufacture one. One
 of 8 all-clears was clean only because a teammate's uncommitted fix was in
-the tree (F04). Next to every number, record:
+the tree (F04). Every bench row's `extra` carries the commit, the Peano
+version and a `kernels` digest of the tree that ran, so two numbers from
+different trees show different digests. Next to every number, also record:
 
-- the commit
 - `git status --short` over the include closure
 - a timestamp
-- the Peano version
-- the source directory each arm compiled from
+- what `$BASE` was archived from
 
 When two agents disagree, settle it from the object dump, not by picking a
 side (F08).
@@ -87,8 +95,8 @@ side (F08).
 ## Deliverable per agent
 
 The headline is **traced cycles per call, base → after, for every case the
-kernel appears in**, with the arms run back to back and populations split
-with n. Then:
+kernel appears in**, from one `--baseline-sources` run, with n from the
+cycles row's range. Then:
 
 - the static candidate report per change (`aie-kernel-opt-static`)
 - the gate command and its pass line

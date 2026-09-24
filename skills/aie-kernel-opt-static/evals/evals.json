@@ -5,13 +5,13 @@
       "id": 0,
       "name": "soft-float-mean-divide",
       "prompt": "My AIE2P bf16 RMS-norm kernel is slow. The reduction loop accumulates `float sum` and then does `float mean = sum / cols;` and later `out[i] = x[i] * inv * gamma[i];` in a scalar tail. Peano reports the reduction loop at II13 and the normalize loop at II24. What should I change first, and how do I confirm it worked?",
-      "expected_output": "Identifies scalar float divide, int-to-float conversion and float multiply as AIE2P libcalls (__divsf3, __floatsisf, __mulsf3) that block pipelining. Proposes keeping the reduction in a vector accumulator, computing the mean with aie::to_float plus aie::inv, and vectorizing the normalize tail. Confirms statically: llvm-nm -u shows no helpers and the remarks report shows the loops pipelined at a lower II. Classifies the candidate as strong (libcall removed; rms_norm 1597 -> 438 is the precedent on another kernel) but reports it as a candidate, HW unconfirmed, and hands it to aie-kernel-opt-hw for the A/B.",
+      "expected_output": "Identifies scalar float divide, int-to-float conversion and float multiply as AIE2P libcalls (__divsf3, __floatsisf, __mulsf3) that block pipelining. Proposes keeping the reduction in a vector accumulator, computing the mean with aie::to_float plus aie::inv, and vectorizing the normalize tail. Confirms statically: the remarks libcalls row lists no helpers and the report shows the loops pipelined at a lower II. Classifies the candidate as strong (libcall removed; rms_norm 1597 -> 438 is the precedent on another kernel) but reports it as a candidate, HW unconfirmed, and hands it to aie-kernel-opt-hw for the A/B.",
       "files": [],
       "assertions": [
         "Names at least two of __divsf3, __floatsisf, __mulsf3 as the helpers the scalar code pulls in",
         "States that scalar float multiply/divide/int-to-float are software routines (libcalls) on AIE2P",
         "Recommends aie::inv (or aie::invsqrt) and aie::to_float instead of the scalar divide",
-        "Tells the user to check llvm-nm -u (or equivalent undefined-symbol listing) for the helpers after the change",
+        "Tells the user to check the remarks libcalls row (or llvm-nm -u, or an equivalent undefined-symbol listing) for the helpers after the change",
         "Does not state a speedup for the user's kernel; calls the result a candidate and hands it to aie-kernel-opt-hw (or a hardware A/B) for measurement"
       ]
     },

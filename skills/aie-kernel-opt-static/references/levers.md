@@ -20,7 +20,7 @@ produce here is unconfirmed until that skill measures it.
 | # | Static signal (before → after) | Kernel, change | HW outcome (cycles per call) | Verdict |
 |---|---|---|---|---|
 | S01 | Unroll screen: loop `byte_count` flat from ×1 to ×4, no new `[sp, #` | `add`, `mul`, `leaky_relu`, `gelu`, `UNROLL(4)` (L07) | 390 → 150, 454 → 142, 298 → 86, 594 → 318 | hit, 4 of 4 |
-| S02 | `__divsf3`, `__floatsisf` gone from `llvm-nm -u`; the loop now has an II | `rms_norm` (L02) | 1597 → 438 | hit |
+| S02 | `__divsf3`, `__floatsisf` gone from the `libcalls` row; the loop now has an II | `rms_norm` (L02) | 1597 → 438 | hit |
 | S03 | `__divsi3` gone; unsigned trip count | `axpy` (L11) | 317 → 178 | hit |
 | S04 | `[sp, #` traffic around a counter-indexed accumulator array gone | `conv2dk1_i8`, `UNROLL_FULL` (L01) | 7623 → 504 | hit |
 | S05 | Per-call prediction `bundles + 5 + (trips-1) × II` from the object | `zero` cursors (L06); `mm_bfp_mixed` (L10) | predicted ~75 / ~130, measured 78 / 134; predicted 1348 / 1312, measured 1349 / 1313 | hit, including magnitude |
@@ -104,7 +104,7 @@ by L10's K unroll. L06 cursors later moved bf16 `mm` only 5761 → 5713
 X02-X04) before L20 restructured its reduction.
 
 Each lever below gives:
-- **When**: the static signal (remarks meta, `llvm-nm`, `llvm-objdump`).
+- **When**: the static signal (remarks rows and meta, `llvm-objdump`).
 - **Do**: the change.
 - **Check**: what must move in the static output. If it doesn't, the
   candidate is `reject`.
@@ -132,9 +132,9 @@ both kernel skills cite the same numbers.
 
 ## L02 No soft-float or 64-bit libcalls in hot loops
 
-- **When:** `llvm-nm -u <obj>` lists `__mulsf3`, `__divsf3`, `__floatsisf`,
-  `__floatunsisf`, `__ltsf2`, `__gtsf2`, `__muldi3`, `__divsi3`, or any `df`
-  helper. The full list is in `traps.md` P01.
+- **When:** the remarks `libcalls` row lists `__mulsf3`, `__divsf3`,
+  `__floatsisf`, `__floatunsisf`, `__ltsf2`, `__gtsf2`, `__muldi3`,
+  `__divsi3`, or any `df` helper. The full list is in `traps.md` P01.
 - **Do:** use these replacements:
   - compares: `aie::max`/`aie::min`
   - divides: `aie::inv` times a multiply
@@ -142,7 +142,7 @@ both kernel skills cite the same numbers.
   - index math: integers, not `double`
   - a per-chunk horizontal max: reduce element-wise across chunks, and reduce
     horizontally once at the end
-- **Check:** `llvm-nm -u` no longer lists the helper, and the loop now has an
+- **Check:** the `libcalls` row no longer lists the helper, and the loop now has an
   II.
 - **HW:**
   - `rms_norm/1024` 1597 → 438 (isolated)
@@ -390,8 +390,8 @@ both kernel skills cite the same numbers.
   `ii` can barely move, because the postpipeliner can eat the gain:
   `q4nx_dequant`'s pre-RA II went 16 → 11/12 but the final II only 17 → 16.
   A small static move is not a reason to skip the HW A/B; the HW win was
-  larger than the static II suggested. Also check `.text` and
-  `llvm-readelf --stack-sizes` against the contract.
+  larger than the static II suggested. Also check `pm_bytes` and the
+  `stack_bytes` row against the contract.
 - **HW** (isolated; commit c3ca24f4d88), per call:
 
   | case | default (N=3) | N=4 | N=5 |

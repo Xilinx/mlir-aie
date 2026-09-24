@@ -1,6 +1,6 @@
 ---
 name: aie-kernel-opt-static
-description: Find and screen speedup candidates for one compiled AIE kernel without a device. For C++ kernels built by Peano (llvm-aie) for AIE2P or AIE2 in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv. Use when the user wants to know why a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; wants to vectorize or restructure a kernel in aie_kernels/ or their own .cc; or has no NPU at hand. Drives the in-repo aie.utils.compile.remarks report, llvm-nm/llvm-objdump on its objects, and test_kernel_contracts.py. Output is a candidate report per change (diff, static metrics before → after, a confidence class from a table of static signals vs measured HW outcomes, including the misses). It never claims a speedup; aie-kernel-opt-hw measures candidates on the NPU. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).
+description: Find and screen speedup candidates for one compiled AIE kernel without a device. For C++ kernels built by Peano (llvm-aie) for AIE2P or AIE2 in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv. Use when the user wants to know why a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; wants to vectorize or restructure a kernel in aie_kernels/ or their own .cc; or has no NPU at hand. Drives the in-repo aie.utils.compile.remarks report and its base-arm diff, the trace-marker audit, and test_kernel_contracts.py. Output is a candidate report per change (diff, static metrics before → after, a confidence class from a table of static signals vs measured HW outcomes, including the misses). It never claims a speedup; aie-kernel-opt-hw measures candidates on the NPU. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).
 license: Apache-2.0 WITH LLVM-exception
 ---
 
@@ -59,23 +59,26 @@ reading rules for each step.
 
 1. **Resolve what runs.** Follow the factory in `python/iron/kernels/` to the
    source, the production `-D` flags and the `extern "C"` symbol, then to the
-   function that symbol calls. Edit only that function. Record whether it
-   has `event0()` markers (§Resolve).
+   function that symbol calls; remarks prints it as `[OK] name: symbol from
+   source`. Edit only that function. Record the contract's `trace=`
+   (§Resolve).
 
 2. **Contracts.** `pytest test/python/test_kernel_contracts.py -k "$K" -q`,
    host only. It must pass before and after (§Contract check).
 
 3. **Base arm and profile.** Build a base arm at the starting revision and
-   run remarks on it (§Arms, §Static report). Then inspect the objects:
-   libcalls (`llvm-nm -u`), `[sp, #` traffic, the frame against the
-   contract's `stack_bytes`, and `.text` of the entry symbol (§Objects).
+   run remarks with `--keep` (§Base arm, §Static report). Read the
+   `libcalls` and `stack_bytes` rows (the stack against the contract's
+   budget), `pm_bytes`, and `[sp, #` traffic in the kept objects
+   (§Libcalls, stack and objects).
 
 4. **Diagnose** with the table below. Don't pick a lever without a
    diagnosis. If the loop already sits at its bound, stop: report NO-CHANGE
    with the bound (`levers.md` §Bounds).
 
-5. **Apply one change** and re-run remarks on the candidate arm. The lever's
-   Check must move (`levers.md`). If no static metric moved, revert it.
+5. **Apply one change** and re-run remarks with `--baseline-sources` on the
+   base arm; it prints each row that moved. The lever's Check must move
+   (`levers.md`). If no static metric moved, revert it.
    - For an unroll, run the unroll screen first (§Unroll screen).
    - If the change creates a path no case reaches, add a remainder `Case`
      (§Remainder case).
@@ -95,7 +98,7 @@ reading rules for each step.
 
 | Remarks / object shows | Lever | Class if the Check moves |
 |---|---|---|
-| `llvm-nm -u` lists a `traps.md` P01 helper called in a loop | L02; L11 for `__divsi3` | strong |
+| The `libcalls` row names a `traps.md` P01 helper called in a loop | L02; L11 for `__divsi3` | strong |
 | `vector<float>` multiply or min/max in a loop (AIE2P) | L03 skip ×1, three-limb split, bf16 clamp after rounding; L04 32 lanes | likely |
 | Array of accumulators or vectors indexed by a loop counter; stack traffic | L01 `UNROLL_FULL` | strong |
 | Loop you care about isn't innermost or single-block (unpipelined parent) | L10 fold or unroll into it | strong if it newly pipelines |
@@ -132,9 +135,9 @@ Status: candidate, HW unconfirmed. Hand to aie-kernel-opt-hw.
 Diff: <unified diff of the source, one change only>
 Static, base → candidate (per loop fn/bb and per build):
   II, ns, pipelined, zol, byte_count, unpipelined_loops, pm_bytes,
-  libcalls, [sp, # count, frame vs stack_bytes, entry .text
+  libcalls, stack_bytes vs stack_budget, [sp, # count
 Predicted per call (not measured): <bundles + 5 + (trips-1) x II, per case>
-Cases: <case names; new remainder case if any>. Markers: yes | no
+Cases: <case names; new remainder case if any>. Markers: whole_call | none | partial (<reason>)
 Contracts: test_kernel_contracts.py -k <K> pass
 Rejected variants: <change>: <compiler's number>
 ```
@@ -153,16 +156,16 @@ from.
   (`traps.md` P03, P04).
 - Keep every `extern "C"` name, signature and buffer layout. Leave
   `*_scalar` variants alone.
-- Check the frame against the declared stack after any change that grows it.
-  Overflow is silent on hardware (`traps.md` P08).
+- Check the `stack_bytes` row against the budget after any change that grows
+  the frame. Overflow is silent on hardware (`traps.md` P08).
 
 ## References
 
-- `references/levers.md`: the static signal → HW outcome table (S01-S18,
+- `references/levers.md`: the static signal → HW outcome table (S01-S20,
   hits and misses), confidence classes, levers L01-L20 with
   when/do/check/HW precedent, compiler-reported rejects X20-X46, bounds.
 - `references/static-checks.md`: exact commands for every step, and how to
-  read remarks rows, meta and objects.
+  read the remarks output, rows, meta and kept objects.
 - `references/traps.md`: Peano and AIE2P traps P01-P14.
 - `aie-kernel-opt-hw`: measures candidates on the NPU and adds each outcome
   back to the S table.

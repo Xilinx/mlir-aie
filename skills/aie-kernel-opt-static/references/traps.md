@@ -16,7 +16,8 @@ behavior depends on the Peano version:
 
 ## P01 Scalar float, 64-bit and divide helpers are libcalls (AIE2P)
 
-`llvm-nm -u` on the object shows each one:
+The remarks `libcalls` row (and its `calls the runtime library:` line)
+names each one:
 
 | Source | Helper |
 |---|---|
@@ -120,6 +121,9 @@ cleared at a 2048 B stack.
 - IRON's Worker default is 1024 B.
 - aiecc measures each core's stack and errors when the declaration is short
   (`this core needs N bytes`). Declare what it measured.
+- Before any device build, the remarks `stack_bytes` row gives the deepest
+  frame path from the entry symbol and warns above the contract's budget.
+  It leaves out the frames of any routine in the `libcalls` row.
 - Anything that grows the frame (more unroll, more accumulators, trace markers
   at 64 B) needs a new declaration. For example flash needs 2304 / 3392 B.
 - A change that cuts the stack can make the *old* build fail to fit. Snapshot

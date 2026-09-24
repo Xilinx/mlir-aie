@@ -15,15 +15,17 @@ device can settle:
 
 ## Confirming or rejecting a candidate
 
-Judge on traced cycles per call, arms back to back, populations split
-(`measurement.md` §Hardware cycles).
+Judge on traced cycles per call of the kernel itself, both arms in one
+`--baseline-sources` run (`measurement.md` §Hardware cycles). The baseline
+table gives each arm's min (`cycles: [base, cur]`); the candidate's
+`<case>/cycles` row range gives its median and max.
 
 | You see | Verdict |
 |---|---|
-| Both arms' ranges don't overlap and the candidate is lower; every unchanged kernel reproduces to the cycle | **confirmed**: commit with base → after per case |
+| The candidate's max is below the base arm's min, so the ranges don't overlap; every unchanged kernel reproduces to the cycle | **confirmed**: commit with base → after per case |
 | Ranges overlap, or the delta sits inside the spread of an unchanged kernel | **no change**: revert, and record the static signal as a miss |
 | The candidate is higher | **rejected**: revert; record it as an X row here and a miss in the S table |
-| An unchanged kernel moved | **void**: the arms leaked (cache, sibling include, stale install). Fix the arms, then rerun both |
+| An unchanged kernel moved | **void**: the arms differ in more than the change (a sibling include, a stale install, Python-side parameters). Fix the arms, then rerun both |
 | Only wall clock is available | Use `min`, pinned; the delta must clear −19.1..+13.3 µs plus ~3% (`measurement.md` §Wall clock) |
 
 Traced cycles on an unchanged kernel repeat to the cycle, or within a few
@@ -43,12 +45,16 @@ Check the measurement against the static report's prediction
 
 A cycle row names the design, not the kernel. Before you credit a delta:
 
-- Confirm `event0()` is in the entry point the factory selects. With no
-  marker there, the row is whatever else on the core is instrumented,
-  usually `zero`. A `zero.cc` delta was once credited to matmul and prefill
-  three times.
-- Split by order when intervals = K × calls. One GEMV row read median 142
-  when the kernel was 291 (`measurement.md` §Reading intervals).
+- Confirm the remarks `[OK] name: symbol from source` line names the entry
+  point you changed, and that its contract declares `Trace.whole_call()`
+  (the marker audit, `test_kernel_trace_markers.py`, checks the markers
+  match). Before the audit existed, a row with no marker in the selected
+  entry was whatever else on the core was instrumented, usually `zero`: a
+  `zero.cc` delta was credited to matmul and prefill three times.
+- The bench splits the kernel's intervals from its initializers' by
+  position. A stream you trace yourself isn't split: one GEMV row read
+  median 142 when the kernel was 291 (`measurement.md` §Reading the cycles
+  row).
 - A row that moved while its file didn't change belongs to something it
   includes. Check `git diff <rev> -- <include closure>`: `mha.cc` includes
   `mm.cc`, `softmax.cc` and `zero.cc`.
