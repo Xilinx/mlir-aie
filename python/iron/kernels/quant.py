@@ -141,9 +141,12 @@ def q4nx_dequant(
             np.ndarray[(input_bytes,), np.dtype[np.uint8]],
             np.ndarray[(output_bytes,), np.dtype[np.uint8]],
         ],
+        # The inner loop is one long latency chain, so allowing five pipeline
+        # stages instead of the default three takes 2-6% off a call.
         compile_flags=[
             f"-DQ4NX_{name.upper()}={value}" for name, value in geometry.items()
-        ],
+        ]
+        + ["-mllvm", "--aie-pipeliner-max-stagecount=5"],
         contract=KernelContract(
             # aiecc measured_stack_size (Peano 22). A group size that is not a
             # power of two makes the `/ GROUP` in the inner loop call __muldi3,
