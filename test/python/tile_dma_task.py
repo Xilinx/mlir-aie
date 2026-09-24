@@ -49,9 +49,13 @@ def emit_dynamic_memtile_task():
 
 
 # The descriptor is configured on the mem tile's own channel, not through a
-# shim DMA allocation, and carries runtime sizes and length.
+# shim DMA allocation, and carries runtime sizes and length. The i64 length is
+# range-checked before narrowing so truncation cannot turn an invalid value into
+# a different valid transfer.
+# CHECK: aiex.npu.assert_bd_field(%[[LEN64:.*]]) {max = 2147483647 : i32} : i64
+# CHECK-NEXT: %[[LEN32:.*]] = arith.trunci %[[LEN64]] : i64 to i32
 # CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
-# CHECK: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 len = %{{.*}} sizes = [1, 1, %{{.*}}, 512] strides = [0, 0, 512, 1]) {bd_id = 0 : i32}
+# CHECK: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 len = %[[LEN32]] sizes = [1, 1, %{{.*}}, 512] strides = [0, 0, 512, 1]) {bd_id = 0 : i32}
 # CHECK: aiex.dma_start_task
 # CHECK: aiex.dma_await_task
 print(emit_dynamic_memtile_task())

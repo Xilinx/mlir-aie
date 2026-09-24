@@ -101,7 +101,7 @@ def use_lock(
 
 
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
-from ._aiex_ops_gen import NpuWriteRTPOp
+from ._aiex_ops_gen import NpuAssertBdFieldOp, NpuWriteRTPOp
 
 
 class npu_write_rtp(NpuWriteRTPOp):
@@ -134,6 +134,7 @@ def _as_bd_i32(v):
     already-i32 Values and None pass through."""
     if v is None or isinstance(v, (int, np.integer)) or v.type == T.i32():
         return v
+    NpuAssertBdFieldOp(value=v, max=(1 << 31) - 1)
     return trunci(T.i32(), v)
 
 

@@ -795,7 +795,7 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
 def AIE_NpuAssertBdFieldOp : AIEX_Op<"npu.assert_bd_field", []> {
   let summary =
       "Guard a runtime BD-field value against its hardware field width";
-  let arguments = (ins I32:$value, I32Attr:$max);
+  let arguments = (ins AnyInteger:$value, I32Attr:$max);
   let results = (outs);
   let assemblyFormat = [{
     `(` $value `)` attr-dict `:` type($value)
