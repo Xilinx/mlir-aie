@@ -17,6 +17,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -337,71 +339,27 @@ def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
     Path(ir_path).write_text("\n".join(lines) + "\n")
 
 
-def compile_cxx_core_function(
+def cxx_core_compile_command(
     source_path: str,
     target_arch: str,
     output_path: str,
     include_dirs: list[str] | None = None,
     compile_args: list[str] | None = None,
-    cwd: str | None = None,
     use_chess: bool = False,
     inline: bool = False,
-    symbol_name: str | None = None,
-    embed_bitcode: bool = False,
-):
-    """Compile a C++ core function via either Peano or the Chess compiler.
+) -> list[str]:
+    """Return the compiler command line that ``compile_cxx_core_function`` runs.
 
-    Peano is the default; pass ``use_chess=True`` for Chess.
+    Factored out so tools that want the compiler's *diagnostics* rather than
+    its object (a static check of the kernel sources, say) can
+    run the exact command the library uses (same target triple, warning set,
+    defines and section flags) and capture stderr themselves. Building the
+    command here and executing it in ``compile_cxx_core_function`` keeps one
+    source of truth for the flags; nothing about the produced object changes.
 
-    Parameters:
-        source_path (str): Path to C++ source.
-        target_arch (str): Target architecture, e.g., aie2.
-        output_path (str): Output object file path (``.o``), or LLVM IR file
-            (textual ``.ll`` or binary ``.bc``) when ``inline`` is True.
-        include_dirs (list[str], optional): List of include directories to add with -I.
-        compile_args (list[str], optional): Additional compile arguments
-            forwarded verbatim to the chosen compiler.
-        cwd (str, optional): Overrides the current working directory.
-        use_chess (bool): When True, invoke ``xchesscc_wrapper`` instead of
-            ``clang++`` (Peano).  Equivalent to the makefile-common
-            ``KERNEL_CC=xchesscc_wrapper`` path used by the matmul examples'
-            ``use_chess=1`` configurations.  ``xchesscc_wrapper`` reads
-            ``AIETOOLS_DIR`` (or auto-detects from the path of ``xchesscc``)
-            for the AIE-tools include directory; the standard mlir-aie
-            include path is added explicitly here so it doesn't depend on
-            the Chess wrapper's include search.
-        inline (bool): When True, emit inlinable LLVM IR instead of an object.
-        symbol_name (str, optional): Required when ``inline`` is True; names the
-            LLVM ``define`` for the kernel that ``_make_ir_inlinable`` rewrites
-            to ``alwaysinline`` / ``linkonce_odr``. Must match the symbol as it
-            appears in the freshly emitted IR.
-        embed_bitcode (bool): Preserve Peano LLVM IR in the object's ``.llvmbc``
-            section for ``--check-lut-banks``. Inline kernels already retain IR.
-            Not supported with Chess.
+    Parameters match ``compile_cxx_core_function``; validation of the
+    ``inline`` / ``use_chess`` / ``symbol_name`` combinations stays there.
     """
-    if inline and use_chess:
-        raise ValueError(
-            "inline=True requires the Peano toolchain and cannot be combined "
-            "with use_chess=True"
-        )
-    if embed_bitcode and use_chess:
-        raise ValueError(
-            "embed_bitcode=True requires the Peano toolchain and cannot be "
-            "combined with use_chess=True (--check-lut-banks needs Peano LLVM IR)"
-        )
-    if inline and not symbol_name:
-        raise ValueError("symbol_name is required when inline=True")
-
-    ir_suffix = Path(output_path).suffix.lower()
-    if inline and ir_suffix not in (".ll", ".bc"):
-        raise ValueError(
-            "inline=True output_path must use .ll for textual LLVM IR or .bc "
-            f"for binary LLVM IR; got {output_path!r}"
-        )
-
-    # Inline IR is first emitted as text so its kernel definition can be marked
-    # alwaysinline/linkonce_odr. A requested .bc is assembled afterward.
-
     # ``-c`` (object) by default; ``-S -emit-llvm`` (textual IR) for inline.
     emit_flags = ["-S", "-emit-llvm"] if inline else ["-c"]
     if use_chess:
@@ -471,6 +429,83 @@ def compile_cxx_core_function(
     # Add additional compile arguments
     if compile_args:
         cmd.extend(compile_args)
+    return cmd
+
+
+def compile_cxx_core_function(
+    source_path: str,
+    target_arch: str,
+    output_path: str,
+    include_dirs: list[str] | None = None,
+    compile_args: list[str] | None = None,
+    cwd: str | None = None,
+    use_chess: bool = False,
+    inline: bool = False,
+    symbol_name: str | None = None,
+    embed_bitcode: bool = False,
+):
+    """Compile a C++ core function via either Peano or the Chess compiler.
+
+    Peano is the default; pass ``use_chess=True`` for Chess.
+
+    Parameters:
+        source_path (str): Path to C++ source.
+        target_arch (str): Target architecture, e.g., aie2.
+        output_path (str): Output object file path (``.o``), or LLVM IR file
+            (textual ``.ll`` or binary ``.bc``) when ``inline`` is True.
+        include_dirs (list[str], optional): List of include directories to add with -I.
+        compile_args (list[str], optional): Additional compile arguments
+            forwarded verbatim to the chosen compiler.
+        cwd (str, optional): Overrides the current working directory.
+        use_chess (bool): When True, invoke ``xchesscc_wrapper`` instead of
+            ``clang++`` (Peano).  Equivalent to the makefile-common
+            ``KERNEL_CC=xchesscc_wrapper`` path used by the matmul examples'
+            ``use_chess=1`` configurations.  ``xchesscc_wrapper`` reads
+            ``AIETOOLS_DIR`` (or auto-detects from the path of ``xchesscc``)
+            for the AIE-tools include directory; the standard mlir-aie
+            include path is added explicitly here so it doesn't depend on
+            the Chess wrapper's include search.
+        inline (bool): When True, emit inlinable LLVM IR instead of an object.
+        symbol_name (str, optional): Required when ``inline`` is True; names the
+            LLVM ``define`` for the kernel that ``_make_ir_inlinable`` rewrites
+            to ``alwaysinline`` / ``linkonce_odr``. Must match the symbol as it
+            appears in the freshly emitted IR.
+        embed_bitcode (bool): Preserve Peano LLVM IR in the object's ``.llvmbc``
+            section for ``--check-lut-banks``. Inline kernels already retain IR.
+            Not supported with Chess.
+    """
+    if inline and use_chess:
+        raise ValueError(
+            "inline=True requires the Peano toolchain and cannot be combined "
+            "with use_chess=True"
+        )
+    if embed_bitcode and use_chess:
+        raise ValueError(
+            "embed_bitcode=True requires the Peano toolchain and cannot be "
+            "combined with use_chess=True (--check-lut-banks needs Peano LLVM IR)"
+        )
+    if inline and not symbol_name:
+        raise ValueError("symbol_name is required when inline=True")
+
+    ir_suffix = Path(output_path).suffix.lower()
+    if inline and ir_suffix not in (".ll", ".bc"):
+        raise ValueError(
+            "inline=True output_path must use .ll for textual LLVM IR or .bc "
+            f"for binary LLVM IR; got {output_path!r}"
+        )
+
+    # Inline IR is first emitted as text so its kernel definition can be marked
+    # alwaysinline/linkonce_odr. A requested .bc is assembled afterward.
+
+    cmd = cxx_core_compile_command(
+        source_path,
+        target_arch,
+        output_path,
+        include_dirs=include_dirs,
+        compile_args=compile_args,
+        use_chess=use_chess,
+        inline=inline,
+    )
 
     logger.debug("Compiling with: %s", " ".join(cmd))
     ret = subprocess.run(
@@ -540,6 +575,52 @@ def compile_cxx_core_function(
                 raise RuntimeError(f"[Peano] LLVM bitcode assembly failed{detail}")
 
 
+_PROGRESS_RE = re.compile(r"^\(\d+/\d+\)\s*")
+_GLUED_EDGE_RE = re.compile(r"^(?P<edge>\S+?\.mlir)(?=/)")
+
+
+def _readable_diagnostic(line: str) -> str:
+    """One aiecc log line with its progress bar separated from the diagnostic.
+
+    aiecc redraws progress in place, so a diagnostic arrives appended to the
+    edge that emitted it and the two read as one malformed path:
+    ``(28/40) measured_stack_sizes.mlir/tmp/x/aie.mlir:9:10: error: ...``
+    """
+    line = _PROGRESS_RE.sub("", line.rstrip())
+    edge = _GLUED_EDGE_RE.match(line)
+    return f"[{edge['edge']}] {line[edge.end():]}" if edge else line.strip()
+
+
+def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
+    """Return the compiler diagnostics in an aiecc log, without the MLIR dumps.
+
+    aiecc prints a progress line per build edge, and a failing MLIR pass
+    prints the whole operation it failed on. That buries the one diagnostic
+    naming the fix hundreds of lines from either end of the log, so neither
+    the head nor the tail of a failure is worth showing on its own. Keep the
+    ``error:`` and ``warning:`` lines and the edge aiecc gave up on, in order
+    and without repeats.
+    """
+    lines = log.splitlines()
+    kept: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        if "error: " in line or "warning: " in line:
+            keep = _readable_diagnostic(line)
+        elif line.startswith("aiecc: ") and line.rstrip().endswith("failed"):
+            keep = line.rstrip()
+        else:
+            continue
+        if keep in seen:
+            continue
+        seen.add(keep)
+        kept.append(keep)
+        if len(kept) == limit:
+            kept.append(f"... truncated, see the full log ({len(lines)} lines)")
+            break
+    return kept
+
+
 def _module_text(mlir_module: "str | Module") -> str:
     """Serialize `mlir_module` for aiecc, keeping its source locations.
 
@@ -582,8 +663,12 @@ def _aiecc_failure(output: str, returncode: int) -> BaseException:
     """
     located = compile_error_from_output(output)
     if located is None:
+        summary = "\n".join(aiecc_diagnostics(output))
+        # Lead with the diagnostics so a truncated traceback still names the
+        # fix; keep the whole log after them for everything they leave out.
+        detail = f"{summary}\n\n--- full aiecc log ---\n{output}" if summary else output
         return RuntimeError(
-            f"[aiecc] Compilation failed with exit code {returncode}:\n{output}"
+            f"[aiecc] Compilation failed with exit code {returncode}:\n{detail}"
         )
     for line in _diagnostic_lines(output):
         if ": note:" in line or line.startswith("note:"):
@@ -764,6 +849,28 @@ def compile_mlir_module(
             os.unlink(mlir_file)
 
 
+def _defined_symbols(object_path: str) -> list[str]:
+    """Return the external symbols an object file defines, via llvm-nm.
+
+    ``--defined-only`` leaves the object's *references* (memcpy, the LUT
+    helpers) alone -- renaming those would break the link -- and
+    ``--extern-only`` skips file-local labels, which cannot collide.
+    """
+    nm = config.nm_path()
+    result = subprocess.run(
+        [nm, "--defined-only", "--extern-only", str(object_path)],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Symbol listing failed: {result.stderr.decode()}")
+    return [
+        line.split()[-1]
+        for line in result.stdout.decode().splitlines()
+        if len(line.split()) >= 3
+    ]
+
+
 def _rename_ir_symbols(ir: str, symbols: list[str], prefix: str) -> str:
     """Apply the native rename map to IR globals and their COMDAT groups."""
     names = {symbol.encode() for symbol in symbols}
@@ -856,24 +963,11 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     cache hits must track that state explicitly rather than inferring it from
     the symbol names themselves.
     """
-    nm = config.nm_path()
-    nm_result = subprocess.run(
-        [nm, "--defined-only", "--extern-only", str(object_path)],
-        capture_output=True,
-        check=False,
-    )
-    if nm_result.returncode != 0:
-        raise RuntimeError(f"Symbol listing failed: {nm_result.stderr.decode()}")
-
-    symbols = [
-        line.split()[-1]
-        for line in nm_result.stdout.decode().splitlines()
-        if len(line.split()) >= 3
-    ]
+    symbols = _defined_symbols(object_path)
 
     objcopy = config.objcopy_path()
     with tempfile.TemporaryDirectory(
-        prefix="aie-symbol-map-", dir=os.path.dirname(object_path) or "."
+        prefix="aie-symbol-map-", dir=os.path.dirname(os.path.abspath(object_path))
     ) as tmpdir:
         map_file = os.path.join(tmpdir, "symbols.map")
         with open(map_file, "w") as f:
@@ -945,19 +1039,9 @@ def _write_symbol_prefix_stamp(object_path: str, prefix: str) -> None:
 def _staged(dest: str):
     """Yield a sibling temp path that replaces ``dest`` atomically on success.
 
-    Kernels are grouped by ``_original_name``, but a source file is named after
-    its own basename, so the several ExternalFunctions that share one .cc (only
-    their -D flags differ) land in different groups and materialize the same
-    path concurrently.  Writing in place truncates that file under a sibling
-    compile: the reader either takes SIGBUS when the mapping shrinks beneath it,
-    or sees a short prefix, compiles it clean because the missing part was
-    behind an #ifdef, and emits an object with no symbol in it.
-
-    Safe while every writer to one ``dest`` stages identical bytes: renaming
-    makes the swap atomic, and a compile already holding the old inode keeps
-    reading it until it unmaps.  Writers whose bytes differ have to be ordered
-    instead; ``compile_external_kernels`` says which of those its grouping
-    covers.
+    Existing readers keep their original inode. The compile path also locks
+    the source destination through compilation, since atomic replacement alone
+    cannot protect a reader that has not opened a differently-contented source.
     """
     directory = os.path.dirname(dest) or "."
     fd, tmp = tempfile.mkstemp(
@@ -1026,6 +1110,23 @@ def _compiled_into(func, kernel_dir, embed_bitcode=False) -> bool:
     directory, so ``_compiled`` on its own would deny every design after the
     first an object.
     """
+    output = os.path.join(kernel_dir, func.object_file_name)
+    if embed_bitcode and getattr(func, "_use_chess", False):
+        return False
+    prefix = getattr(func, "_symbol_prefix", None)
+    if prefix and not _has_current_symbol_prefix_stamp(output, f"{prefix}_"):
+        return False
+    owner = getattr(func, "object_file", None)
+    if owner is not None:
+        return (
+            os.path.realpath(kernel_dir) in owner._compiled_dirs
+            and os.path.exists(output)
+            and (
+                not embed_bitcode
+                or getattr(func, "_inline", False)
+                or _object_has_bitcode(output)
+            )
+        )
     compiled_dir = getattr(func, "_compiled_dir", None)
     if not getattr(func, "_compiled", False) or compiled_dir is None:
         return False
@@ -1042,28 +1143,36 @@ def compile_external_kernels(
 ):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
-    Kernels are separate translation units with separate outputs, so they
-    compile concurrently.  Their source files are not always separate --
-    several ExternalFunctions can share one .cc -- so ``_staged`` makes each
-    write atomic rather than ordering the compiles behind it.
-
-    The ``_original_name`` grouping below is still load-bearing, for a case
-    ``_staged`` cannot cover: two ExternalFunctions can share an
-    ``_original_name`` while carrying different ``source_string``s, because
-    ``ExternalFunction.__init__`` auto-suffixes a defaulted ``object_file_name``
-    on collision but never the original name.  Both write ``<_original_name>.cc``
-    and the bytes differ, so an atomic swap is not enough and they have to run
-    one after the other.  Not covered either way: two ``source_file``s with the
-    same basename in different directories land on one path with different bytes
-    but different ``_original_name``s, so nothing orders them.
+    Symbols sharing an entry name or object are grouped together. Compilation also locks
+    actual output and staged-source paths, including across concurrent batches
+    and direct calls, so unrelated symbol names cannot race on either file.
 
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
     ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
     """
-    pending = [f for f in funcs if not _compiled_into(f, kernel_dir, embed_bitcode)]
+    pending = []
+    for f in funcs:
+        # A checked compile can be replacing an already-owned object to add IR.
+        # Do not inspect (or reuse) it until that compile has finished.
+        with _lock_compile_paths([os.path.join(kernel_dir, f.object_file_name)]):
+            if not _compiled_into(f, kernel_dir, embed_bitcode):
+                pending.append(f)
     if not pending:
         return
+
+    outputs: dict[str, list] = {}
+    for f in pending:
+        output = os.path.normcase(
+            os.path.realpath(os.path.join(kernel_dir, f.object_file_name))
+        )
+        outputs.setdefault(output, []).append(f)
+    for output, group in outputs.items():
+        recipes = {
+            f.object_file._source for f in group if getattr(f, "object_file", None)
+        }
+        if len(recipes) > 1:
+            raise ValueError(f"Conflicting kernel compile recipes for '{output}'")
 
     # Every compile in a batch shares one cwd (kernel_dir), and xchesscc keeps
     # per-invocation state there, so the Chess path runs serially.
@@ -1074,9 +1183,7 @@ def compile_external_kernels(
             )
         return
 
-    groups: dict[str, list] = {}
-    for f in pending:
-        groups.setdefault(getattr(f, "_original_name", f._name), []).append(f)
+    groups = _kernel_compile_groups(pending)
 
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
@@ -1087,7 +1194,7 @@ def compile_external_kernels(
     jobs = min(jobs, len(groups))
 
     if jobs == 1:
-        for group in groups.values():
+        for group in groups:
             for f in group:
                 compile_external_kernel(
                     f, kernel_dir, target_arch, include_dirs, embed_bitcode
@@ -1103,7 +1210,65 @@ def compile_external_kernels(
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         # list() re-raises the first failure, after the others have finished --
         # a compile error must not be swallowed by a sibling that succeeded.
-        list(pool.map(_run, groups.values()))
+        list(pool.map(_run, groups))
+
+
+def _kernel_compile_groups(funcs):
+    """Partition ``funcs`` into lists that must compile one after the other.
+
+    Kernels sharing an ``_original_name`` or ``object_file_name`` are grouped
+    transitively, preserving input order within each group.
+    """
+    parent = list(range(len(funcs)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    seen: dict[tuple, int] = {}
+    for i, f in enumerate(funcs):
+        for key in (
+            ("name", getattr(f, "_original_name", f._name)),
+            ("object", f.object_file_name),
+        ):
+            if key in seen:
+                parent[find(i)] = find(seen[key])
+            else:
+                seen[key] = i
+    groups: dict[int, list] = {}
+    for i, f in enumerate(funcs):
+        groups.setdefault(find(i), []).append(f)
+    return list(groups.values())
+
+
+_compile_locks = weakref.WeakValueDictionary()
+_compile_locks_guard = threading.Lock()
+
+
+def _source_destination(func, kernel_dir):
+    basename = (
+        os.path.basename(func._source_file)
+        if func._source_file is not None
+        else f"{func._original_name}.cc"
+    )
+    return os.path.join(kernel_dir, basename)
+
+
+@contextlib.contextmanager
+def _lock_compile_paths(paths):
+    # Hold strong references through acquisition and release; unused locks are
+    # then reclaimable even in a process compiling many distinct designs.
+    with _compile_locks_guard:
+        locks = []
+        for path in sorted({os.path.normcase(os.path.realpath(p)) for p in paths}):
+            lock = _compile_locks.setdefault(path, threading.RLock())
+            locks.append(lock)
+    with contextlib.ExitStack() as stack:
+        for lock in locks:
+            stack.enter_context(lock)
+        yield
 
 
 def compile_external_kernel(
@@ -1131,9 +1296,42 @@ def compile_external_kernel(
     """
     if embed_bitcode and getattr(func, "_use_chess", False):
         raise ValueError("--check-lut-banks requires Peano kernels, not Chess")
-    if _compiled_into(func, kernel_dir, embed_bitcode):
-        return
+    output = os.path.join(kernel_dir, func.object_file_name)
+    paths = [output, _source_destination(func, kernel_dir)]
+    if getattr(func, "_use_chess", False):
+        paths.append(kernel_dir)
+    with _lock_compile_paths(paths):
+        if _compiled_into(func, kernel_dir, embed_bitcode):
+            return
+        owner = getattr(func, "object_file", None)
+        try:
+            _compile_external_kernel(
+                func, kernel_dir, target_arch, include_dirs, embed_bitcode
+            )
+        except BaseException:
+            # Rebuilding a cached object to retain IR can fail after overwriting
+            # it. Neither its old ownership nor partial bytes remain reusable.
+            if owner is not None:
+                owner._compiled_dirs.discard(os.path.realpath(kernel_dir))
+            else:
+                func._compiled = False
+                func._compiled_dir = None
+                func._compiled_embed_bitcode = False
+            for path in (output, output + ".d", output + ".bc"):
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(path)
+            raise
+        if owner is not None:
+            owner._compiled_dirs.add(os.path.realpath(kernel_dir))
+        else:
+            func._compiled = True
+            func._compiled_dir = os.path.abspath(kernel_dir)
+            func._compiled_embed_bitcode = embed_bitcode
 
+
+def _compile_external_kernel(
+    func, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+):
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
     # ``define`` carries the un-prefixed _original_name. Object mode reconciles
@@ -1166,11 +1364,6 @@ def compile_external_kernel(
             or _object_has_bitcode(output_file)
         )
     ):
-        # Same three fields the post-compile tail sets, so a cache hit and a
-        # fresh build leave the function in the same state.
-        func._compiled = True
-        func._compiled_dir = os.path.abspath(kernel_dir)
-        func._compiled_embed_bitcode = embed_bitcode
         return
 
     # Invalidate before any writes, so a failed compile, rename, or stamp write
@@ -1180,8 +1373,7 @@ def compile_external_kernel(
             os.remove(_symbol_prefix_stamp_path(output_file, prefix))
 
     if func._source_string is not None:
-        original_name = getattr(func, "_original_name", func._name)
-        source_file = os.path.join(kernel_dir, f"{original_name}.cc")
+        source_file = _source_destination(func, kernel_dir)
         _write_source(source_file, func._source_string)
         compile_cxx_core_function(
             source_path=source_file,
@@ -1192,7 +1384,7 @@ def compile_external_kernel(
             # (inline + symbol_prefix is rejected above, so no rename applies.)
             symbol_name=func._original_name,
             include_dirs=[*func._include_dirs, *(include_dirs or ())],
-            compile_args=func._compile_flags,
+            compile_args=list(func._compile_flags),
             cwd=str(kernel_dir),
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
@@ -1204,7 +1396,7 @@ def compile_external_kernel(
         # points sharing one object_file_name compile only on the first
         # visit, and `_instances` iteration order (a content-hashed set)
         # shifts whenever any registered kernel's content changes.
-        source_file = os.path.join(kernel_dir, os.path.basename(func._source_file))
+        source_file = _source_destination(func, kernel_dir)
         # Check if source file exists before copying
         if not os.path.exists(func._source_file):
             raise FileNotFoundError(
@@ -1231,7 +1423,7 @@ def compile_external_kernel(
             # the source_string branch above).
             symbol_name=func._original_name,
             include_dirs=kernel_include_dirs,
-            compile_args=func._compile_flags,
+            compile_args=list(func._compile_flags),
             cwd=kernel_dir,
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
@@ -1247,11 +1439,13 @@ def compile_external_kernel(
     # together without their helpers colliding too.
     if prefix is not None:
         prefix_symbols_in_object(output_file, prefix)
+        defined = _defined_symbols(output_file)
+        if func._name not in defined:
+            raise RuntimeError(
+                f"ExternalFunction '{func._name}': the compiled object does not "
+                f"define '{func._original_name}' (found {sorted(defined)})"
+            )
         _write_symbol_prefix_stamp(output_file, prefix)
-
-    func._compiled = True
-    func._compiled_dir = os.path.abspath(kernel_dir)
-    func._compiled_embed_bitcode = embed_bitcode
 
 
 def _is_dispatch_library_name(name: str) -> bool:

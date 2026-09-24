@@ -35,7 +35,7 @@ module {
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
       %c2097152 = arith.constant 2097152 : i64
-      // expected-error@+1 {{'aiex.npu.dma_memcpy_nd' op Stride 1 is 2097152 (encoded as 2097151), which exceeds the [1:1048576] range.}}
+      // The decomposition pass can split this oversized stride into legal BDs.
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2][%c0,%c0,%c2097152,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<8388608xi32>
     }
     %tile_0_0 = aie.tile(0, 0)

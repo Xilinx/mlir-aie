@@ -7,7 +7,9 @@
 
 import hashlib
 import logging
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -22,72 +24,27 @@ from ..helpers.sourceloc import capture_source_site, site_location
 
 logger = logging.getLogger(__name__)
 
+# One declared argument: a tensor type, or a scalar. Numpy spells a scalar as a
+# type rather than a dtype instance (``np.int32``, not ``np.dtype(np.int32)``),
+# and that is the form `_validate_arg` branches on to check an SSA operand's
+# MLIR type -- so it belongs in the annotation, not just in the runtime.
+ArgType = type[np.ndarray] | type[np.generic] | np.dtype
 
-class ObjectFile:
-    """Shared reference to one linkable artifact and its symbol namespace.
 
-    Several MLIR ``func.func`` declarations can link against the same object
-    file while binding different exported symbols from it.  This object keeps
-    the shared metadata in one place and can materialize per-symbol
-    [`Kernel`][iron.Kernel] wrappers with [`bind`][iron.kernel.ObjectFile.bind].
+def _as_dtype(dt):
+    """``np.dtype(dt)``, or ``dt`` itself for a block type numpy has no dtype for.
+
+    Older numpy versions coerce custom ``np.generic`` subclasses to void rather
+    than rejecting them, so preserve the block formats before conversion.
     """
+    from ..helpers.npdtypes import v8bfp16ebs8, v16bfp16ebs16
 
-    def __init__(
-        self,
-        object_file_name: str,
-        *,
-        symbol_prefix: str | None = None,
-        link_with_mode: str | None = None,
-    ) -> None:
-        if not object_file_name:
-            raise ValueError("Object file name cannot be empty.")
-        self._object_file_name = object_file_name
-        self._symbol_prefix = symbol_prefix
-        self._link_with_mode = link_with_mode
-
-    @property
-    def object_file_name(self) -> str:
-        """Filename of the linked artifact."""
-        return self._object_file_name
-
-    @property
-    def symbol_prefix(self) -> str | None:
-        """Optional prefix applied to symbols exported from this object file."""
-        return self._symbol_prefix
-
-    @property
-    def link_with_mode(self) -> str | None:
-        """Default link policy for kernels bound from this object file."""
-        return self._link_with_mode
-
-    def resolve_symbol(self, name: str) -> str:
-        """Return ``name`` qualified into this object's symbol namespace."""
-        if not name:
-            raise ValueError("Kernel name cannot be empty.")
-        return f"{self._symbol_prefix}_{name}" if self._symbol_prefix else name
-
-    def bind(
-        self,
-        name: str,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
-        *,
-        link_with_mode: str | None = None,
-        stack_size_override: int | None = None,
-    ) -> "Kernel":
-        """Create a [`Kernel`][iron.Kernel] binding to ``name`` in this object.
-
-        The returned Kernel shares this exact ObjectFile instance, so sibling
-        bindings all refer back to the same underlying artifact metadata.
-        """
-        return Kernel(
-            self.resolve_symbol(name),
-            self,
-            arg_types,
-            link_with_mode=(
-                self._link_with_mode if link_with_mode is None else link_with_mode
-            ),
-            stack_size_override=stack_size_override,
-        )
+    if dt is v8bfp16ebs8 or dt is v16bfp16ebs16:
+        return dt
+    try:
+        return np.dtype(dt)
+    except TypeError:
+        return dt
 
 
 def _is_contiguous_row_major(mr):
@@ -151,30 +108,219 @@ def _maybe_collapse_to_match(arg, expected_ty):
     return memref.collapse_shape(exp_mr, arg, reassociation)
 
 
-class BaseKernel(Resolvable):
-    """Base class for AIE core functions that resolve to a func.func declaration.
+@dataclass(frozen=True)
+class _KernelSource:
+    source_file: str | None
+    source_string: str | None
+    source_digest: str
+    include_dirs: tuple[str, ...]
+    compile_flags: tuple[str, ...]
+    use_chess: bool
+    symbol_prefix: str | None
+    inline_symbol: str | None
 
-    Subclasses:
-        Kernel: wraps a pre-compiled object file.
-        ExternalFunction: compiles C/C++ source at JIT time.
+
+@dataclass(frozen=True, eq=False)
+class KernelObject:
+    """One link artifact, shared by every kernel that binds one of its symbols.
+
+    A prebuilt object only needs a filename and link policy. ExternalFunction
+    supplies the immutable source recipe; compilation state belongs here, not
+    to any particular exported function.
+    """
+
+    name: str
+    link_with_mode: str | None = None
+    _source: _KernelSource | None = field(default=None, repr=False)
+    _compiled_dirs: set[str] = field(default_factory=set, repr=False)
+    _symbol_prefix: str | None = field(default=None, repr=False, kw_only=True)
+
+    def __post_init__(self):
+        if not self.name:
+            raise ValueError("Object file name cannot be empty.")
+
+    @property
+    def object_file_name(self) -> str:
+        """Filename of the linked artifact."""
+        return self.name
+
+    @property
+    def symbol_prefix(self) -> str | None:
+        """Symbol namespace shared by all bindings of this artifact."""
+        return self._source.symbol_prefix if self._source else self._symbol_prefix
+
+    def resolve_symbol(self, name: str) -> str:
+        """Return ``name`` qualified into this object's symbol namespace."""
+        if not name:
+            raise ValueError("Kernel name cannot be empty.")
+        return f"{self.symbol_prefix}_{name}" if self.symbol_prefix else name
+
+    def bind(
+        self,
+        name: str,
+        arg_types: list[ArgType] | None = None,
+        *,
+        link_with_mode: str | None = None,
+        stack_size_override: int | None = None,
+    ) -> "Kernel":
+        """Bind a source-level symbol while retaining this artifact's ownership."""
+        return Kernel(
+            self.resolve_symbol(name),
+            self,
+            arg_types,
+            link_with_mode=link_with_mode,
+            stack_size_override=stack_size_override,
+        )
+
+
+class ObjectFile(KernelObject):
+    """A prebuilt KernelObject with an optional symbol namespace."""
+
+    def __init__(
+        self,
+        object_file_name: str,
+        *,
+        symbol_prefix: str | None = None,
+        link_with_mode: str | None = None,
+    ) -> None:
+        super().__init__(object_file_name, link_with_mode, _symbol_prefix=symbol_prefix)
+
+
+class Kernel(Resolvable):
+    """An AIE core function backed by a pre-compiled object file.
+
+    Use [`ExternalFunction`][iron.ExternalFunction] instead when you want to
+    compile from C/C++ source at JIT time.
+
+    `resolve()` emits a `func.func private` declaration with a
+    `link_with` attribute naming `object_file_name`. The
+    `aie-assign-core-link-files` pass propagates this into the CoreOp's
+    `link_files` attribute so the linker knows which file to include.
+
+    `link_with_mode` selects how that artifact is consumed: the default
+    (None) object-links it, while `"merge"` asks aiecc to llvm-link it into
+    the core's LLVM module before codegen.  The mode is explicit metadata --
+    it is never inferred from the file suffix.
     """
 
     def __init__(
         self,
         name: str,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
-    ):
-        """Construct a BaseKernel.
+        object_file_name: str | KernelObject,
+        arg_types: list[ArgType] | None = None,
+        *,
+        link_with_mode: str | None = None,
+        stack_size_override: int | None = None,
+    ) -> None:
+        """Construct a Kernel backed by a pre-compiled object file.
 
         Args:
-            name: Symbol name of the function.
+            name: Symbol name of the function as it appears in the object file.
+            object_file_name: Filename (e.g. ``"add_one.o"``) or shared
+                ``KernelObject`` of the pre-compiled object file. Must be on
+                the linker search path at compile time.
             arg_types: Type signature of the function arguments.  Defaults to None (empty list).
+            link_with_mode: Optional link policy emitted alongside
+                ``link_with``.  ``"merge"`` routes the artifact through aiecc's
+                ``llvm-link`` merge path; None (the default) object-links it.
+            stack_size_override: Declared upper bound, in bytes, on the stack
+                that this kernel's call subtree uses. Set it for recursion, for
+                an indirect call, or for a ``link_with_mode="merge"`` kernel,
+                which aiecc's stack analysis reads as part of the core rather
+                than as a separate object. See
+                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
+        """
+        self._init_identity(name, arg_types)
+        if isinstance(object_file_name, KernelObject):
+            if (
+                link_with_mode is not None
+                and link_with_mode != object_file_name.link_with_mode
+            ):
+                raise ValueError(
+                    "link_with_mode conflicts with the shared KernelObject"
+                )
+            self._object_file = object_file_name
+        else:
+            self._object_file = KernelObject(object_file_name, link_with_mode)
+        self._stack_size_override = stack_size_override
+
+    @property
+    def object_file(self) -> KernelObject:
+        """The artifact owner, also shared by sibling symbol bindings."""
+        return self._object_file
+
+    @property
+    def _object_file_name(self) -> str:
+        return self.object_file.name
+
+    @property
+    def _link_with_mode(self) -> str | None:
+        return self.object_file.link_with_mode
+
+    @property
+    def object_file_name(self) -> str:
+        """Filename of the compiled object file."""
+        return self._object_file_name
+
+    @property
+    def link_with_mode(self) -> str | None:
+        """Link policy emitted with ``link_with``, or None for object linking."""
+        return self._link_with_mode
+
+    @property
+    def stack_size_override(self) -> int | None:
+        """Declared upper bound on the stack that this kernel's call subtree uses.
+
+        With ``None``, aiecc's analysis computes the bound. An explicit value
+        replaces that computed bound, even when it is smaller: it is a
+        declaration, and ``0`` is legal. See
+        [Core Data Memory](../../programming_guide/core_data_memory.md).
+        """
+        return self._stack_size_override
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        if self.object_file._source is not None:
+            # JIT clears its discovery registry before generating a design.
+            # Re-register the artifact even when only a sibling binding survives.
+            ExternalFunction._register_object(self)
+        if not self._op:
+            self._op = external_func(
+                self._name,
+                inputs=self._arg_types,
+                link_with=self._object_file_name,
+                link_with_mode=self._link_with_mode,
+                stack_size_override=self._stack_size_override,
+                loc=loc,
+                ip=ip,
+            )
+
+    def _init_identity(
+        self,
+        name: str,
+        arg_types: list[ArgType] | None = None,
+    ) -> None:
+        """Set the symbol name and declared signature, without an artifact.
+
+        Split out because a discovery binding is built with ``__new__`` and
+        adopts an existing artifact rather than constructing one.
         """
         if not name:
             raise ValueError("Kernel name cannot be empty.")
         self._name = name
-        self._arg_types = arg_types if arg_types is not None else []
+        # The declaration as written (numpy shapes and dtypes). Resolving the
+        # kernel builds MLIR types from it without disturbing it, so this stays
+        # readable before and after a build.
+        self._arg_types = list(arg_types) if arg_types is not None else []
         self._op: FuncOp | None = None
+
+    @property
+    def name(self) -> str:
+        """Symbol name of the function as it appears in the object file."""
+        return self._name
 
     def _resolve_arg(self, arg_index: int):
         """Validate ``arg_index`` and return the underlying type entry."""
@@ -229,10 +375,10 @@ class BaseKernel(Resolvable):
         if type_args is not None and len(type_args) >= 2:
             dt = type_args[1]
             dt_args = getattr(dt, "__args__", None)
-            return np.dtype(dt_args[0]) if dt_args is not None else np.dtype(dt)
+            return _as_dtype(dt_args[0] if dt_args is not None else dt)
         dtype = getattr(arg, "dtype", None)
         if dtype is not None:
-            return np.dtype(dtype)
+            return _as_dtype(dtype)
         raise ValueError(
             f"Argument {arg_index} does not have a dtype or is not an array type."
         )
@@ -241,7 +387,7 @@ class BaseKernel(Resolvable):
         """Return the first dimension of the array argument at `arg_index`.
 
         Convenience wrapper over
-        [`arg_shape`][iron.kernel.BaseKernel.arg_shape] for the common case of
+        [`arg_shape`][iron.kernel.Kernel.arg_shape] for the common case of
         a 1-D buffer argument. `tile_size(i)` is equivalent to
         `arg_shape(i)[0]`.
 
@@ -256,7 +402,12 @@ class BaseKernel(Resolvable):
         return shape[0]
 
     def arg_types(self) -> list:
-        """Return a copy of the argument type list."""
+        """Return the argument types as declared: ``np.ndarray[shape, dtype]`` / scalars.
+
+        A copy, and stable: resolving the kernel builds MLIR types from these
+        without replacing them, so a memoized kernel describes itself the same
+        way before and after a build.
+        """
         return self._arg_types.copy()
 
     def __call__(self, *args, **kwargs):
@@ -294,109 +445,6 @@ class BaseKernel(Resolvable):
         call(self._op, adapted, **kwargs)
 
 
-class Kernel(BaseKernel):
-    """An AIE core function backed by a pre-compiled object file.
-
-    Use [`ExternalFunction`][iron.ExternalFunction] instead when you want to
-    compile from C/C++ source at JIT time.
-
-    `resolve()` emits a `func.func private` declaration with a
-    `link_with` attribute naming `object_file_name`. The
-    `aie-assign-core-link-files` pass propagates this into the CoreOp's
-    `link_files` attribute so the linker knows which file to include.
-
-    `link_with_mode` selects how that artifact is consumed: the default
-    (None) object-links it, while `"merge"` asks aiecc to llvm-link it into
-    the core's LLVM module before codegen.  The mode is explicit metadata --
-    it is never inferred from the file suffix.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        object_file_name: str | ObjectFile,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
-        *,
-        link_with_mode: str | None = None,
-        stack_size_override: int | None = None,
-    ) -> None:
-        """Construct a Kernel backed by a pre-compiled object file.
-
-        Args:
-            name: Symbol name of the function as it appears in the object file.
-            object_file_name: Filename of the pre-compiled object file
-                (e.g. ``"add_one.o"``), or an [`ObjectFile`][iron.ObjectFile]
-                describing a shared linkable artifact. Must be on the linker
-                search path at compile time.
-            arg_types: Type signature of the function arguments.  Defaults to None (empty list).
-            link_with_mode: Optional link policy emitted alongside
-                ``link_with``.  ``"merge"`` routes the artifact through aiecc's
-                ``llvm-link`` merge path; None (the default) object-links it.
-            stack_size_override: Declared upper bound, in bytes, on the stack
-                that this kernel's call subtree uses. Set it for recursion, for
-                an indirect call, or for a ``link_with_mode="merge"`` kernel,
-                which aiecc's stack analysis reads as part of the core rather
-                than as a separate object. See
-                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
-        """
-        super().__init__(name, arg_types)
-        if isinstance(object_file_name, ObjectFile):
-            self._object_file = object_file_name
-            self._object_file_name = object_file_name.object_file_name
-            if link_with_mode is None:
-                link_with_mode = object_file_name.link_with_mode
-        else:
-            self._object_file = ObjectFile(
-                object_file_name,
-                link_with_mode=link_with_mode,
-            )
-            self._object_file_name = object_file_name
-        self._link_with_mode = link_with_mode
-        self._stack_size_override = stack_size_override
-
-    @property
-    def object_file_name(self) -> str:
-        """Filename of the compiled object file."""
-        return self._object_file_name
-
-    @property
-    def object_file(self) -> ObjectFile:
-        """Shared object-file metadata for this kernel binding."""
-        return self._object_file
-
-    @property
-    def link_with_mode(self) -> str | None:
-        """Link policy emitted with ``link_with``, or None for object linking."""
-        return self._link_with_mode
-
-    @property
-    def stack_size_override(self) -> int | None:
-        """Declared upper bound on the stack that this kernel's call subtree uses.
-
-        With ``None``, aiecc's analysis computes the bound. An explicit value
-        replaces that computed bound, even when it is smaller: it is a
-        declaration, and ``0`` is legal. See
-        [Core Data Memory](../../programming_guide/core_data_memory.md).
-        """
-        return self._stack_size_override
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        if not self._op:
-            self._op = external_func(
-                self._name,
-                inputs=self._arg_types,
-                link_with=self._object_file_name,
-                link_with_mode=self._link_with_mode,
-                stack_size_override=self._stack_size_override,
-                loc=loc,
-                ip=ip,
-            )
-
-
 class ExternalFunction(Kernel):
     """An AIE core function compiled from C/C++ source at JIT time.
 
@@ -412,14 +460,219 @@ class ExternalFunction(Kernel):
 
     _instances: set = set()  # Registry of all live ExternalFunction instances.
 
-    # Optional sibling bindings attached by the linalg kernel factories
-    # (kernels.mm / mv / cascade_mm). Declared here so the dynamic
-    # assignment of these contract attributes type-checks.
-    mac_dims: tuple
-    zero: "Kernel"
-    get_only: "Kernel"
-    put_only: "Kernel"
-    put_get: "Kernel"
+    @classmethod
+    def _register_object(cls, kernel: Kernel) -> None:
+        if isinstance(kernel, cls):
+            cls._instances.add(kernel)
+            return
+        if any(f.object_file is kernel.object_file for f in cls._instances):
+            return
+        # A discovery binding references the existing owner; it does not rebuild
+        # the recipe or retain the ExternalFunction that originally created it.
+        binding = cls.__new__(cls)
+        binding._init_identity(kernel.name, kernel.arg_types())
+        binding._object_file = kernel.object_file
+        binding._stack_size_override = kernel.stack_size_override
+        recipe = binding._recipe
+        prefix = f"{recipe.symbol_prefix}_" if recipe.symbol_prefix else ""
+        binding._original_name = recipe.inline_symbol or kernel.name.removeprefix(
+            prefix
+        )
+        binding._cached_digest = None
+        cls._instances.add(binding)
+
+    # What the kernel computes (aie.iron.kernels.KernelContract), given at
+    # construction. Typed Any rather than KernelContract because pyright
+    # analyzes the sources and the staged package as two module trees, so
+    # naming the class here would make the factories' own KernelContract a
+    # different type. The class-level default covers a discovery binding,
+    # which is created without running __init__.
+    contract: Any = None
+
+    def _require_contract(self):
+        if self.contract is None:
+            raise ValueError(
+                f"kernel '{self.name}' declares no contract; add a KernelContract to "
+                "its factory (roles, reference, tolerance) so it can be described, "
+                "built and checked"
+            )
+        return self.contract
+
+    def param_values(self, inputs: list) -> list:
+        """Pick the ``Param`` arrays out of one logical input list.
+
+        ``inputs`` is one array per unbound ``In``/tensor ``Param`` in argument
+        order. A design bakes tensor ``Param`` arguments into core buffers
+        rather than streaming them, so it needs them separately.
+        """
+        from .kernels._common import Param, _is_tensor_type
+
+        c = self._require_contract()
+        types = self.arg_types()
+        c.validate_types(types)
+        positions = [i for i in c.reference_indices() if _is_tensor_type(types[i])]
+        if len(inputs) != len(positions):
+            raise ValueError(f"{self.name}: expected {len(positions)} input arrays")
+        return [np.asarray(a) for a, i in zip(inputs, positions) if c.roles[i] is Param]
+
+    def input_limit(self, dtype, *, reduction: int | None = None) -> int | None:
+        """Largest integer magnitude an input may take without overflowing.
+
+        From the contract's ``acc_dtype`` and ``reduction`` (``reduction``
+        overrides the per-call value, e.g. with the full ``K`` of a tiled
+        matmul): with two or more multiplied inputs every product of two
+        limits summed ``reduction`` times must fit the accumulator with a
+        factor-4 margin; with one input the sum of ``reduction`` limits must.
+        ``None`` for float inputs, or when the contract declares no
+        accumulator.
+
+        The output dtype does not bound this. What a kernel does when a
+        result leaves the output range is its reference's to model, and
+        clipping inputs to the output range would leave a requantizing
+        kernel's data near zero.
+        """
+        from aie.utils.compile.jit.markers import In
+
+        from .kernels._common import Param, _is_tensor_type
+
+        c = self._require_contract()
+        types = self.arg_types()
+        c.validate_types(types)
+        dt = np.dtype(dtype)
+        if not np.issubdtype(dt, np.integer):
+            return None
+        if c.acc_dtype is None or not np.issubdtype(np.dtype(c.acc_dtype), np.integer):
+            return None
+        n = reduction or c.reduction or 1
+        budget = np.iinfo(c.acc_dtype).max // 4
+        n_tensors = sum(
+            r in (In, Param) and _is_tensor_type(t) for r, t in zip(c.roles, types)
+        )
+        limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
+        return max(1, min(limit, int(np.iinfo(dt).max)))
+
+    def expected(self, inputs: list, *, scalars: tuple = ()):
+        """Return reference output(s), cast to each output argument's dtype."""
+        from aie.helpers.npdtypes import v8bfp16ebs8
+
+        from .kernels._common import _is_tensor_type
+
+        c = self._require_contract()
+        if c.reference is None:
+            raise ValueError(f"{self.name}: contract has no reference")
+        types = self.arg_types()
+        c.validate_types(types)
+        is_tensor = [_is_tensor_type(types[i]) for i in c.reference_indices()]
+        n_tensors = sum(is_tensor)
+        n_scalars = len(is_tensor) - n_tensors
+        if len(inputs) != n_tensors:
+            raise ValueError(f"{self.name}: expected {n_tensors} input arrays")
+        if len(scalars) != n_scalars:
+            raise ValueError(f"{self.name}: expected {n_scalars} scalar(s)")
+        tensors, s = iter(inputs), iter(scalars)
+        args = [next(tensors) if tensor else next(s) for tensor in is_tensor]
+        result = c.reference(*args)
+        multiple = len(c.out_indices) > 1
+        results = result if multiple else (result,)
+        if multiple and (
+            not isinstance(results, tuple) or len(results) != len(c.out_indices)
+        ):
+            raise ValueError("reference must return one tuple entry per output")
+        outputs = []
+        for i, value in zip(c.out_indices, results):
+            dt = self.arg_dtype(i)
+            outputs.append(
+                np.asarray(value).astype(np.float32 if dt is v8bfp16ebs8 else dt)
+            )
+        return tuple(outputs) if multiple else outputs[0]
+
+    def output_dtype(self, ref_dtype=None):
+        """Host dtype(s) of the device output buffer(s).
+
+        Defaults to the declared argument dtypes, with bfp16ebs8 represented
+        as packed bytes. The optional reference dtype override is retained
+        for compatibility. Multiple outputs return a tuple in argument order.
+        """
+        import numpy as np
+        from aie.helpers.npdtypes import v8bfp16ebs8
+
+        outputs = self._require_contract().out_indices
+        multiple = len(outputs) > 1
+        dtypes = (
+            tuple(self.arg_dtype(i) for i in outputs)
+            if ref_dtype is None
+            else ref_dtype if multiple else (ref_dtype,)
+        )
+        if multiple and (
+            not isinstance(dtypes, (tuple, list)) or len(dtypes) != len(outputs)
+        ):
+            raise ValueError("provide one reference dtype per output")
+        result = tuple(
+            np.uint8 if self.arg_dtype(i) is v8bfp16ebs8 else dt
+            for i, dt in zip(outputs, dtypes)
+        )
+        return result if multiple else result[0]
+
+    def judge(self, got, ref, *, calls: int = 1, tolerance=None):
+        """Compare a flat device output against a reference under the contract.
+
+        Declared layouts decode each output into logical tiles. DMA padding
+        is trimmed per call. One Verdict summarizes all outputs and is false
+        if any output fails; its detail identifies the failing output.
+        Without streamed inputs, a complete one-call reference may be repeated.
+        With no streamed inputs, a one-tile reference is repeated across calls.
+        """
+        from aie.utils.compile.jit.markers import In
+        from aie.utils.verify import Tolerance, Verdict, compare
+
+        c = self._require_contract()
+        multiple = len(c.out_indices) > 1
+        actuals, references = (got, ref) if multiple else ((got,), (ref,))
+        if (
+            not isinstance(actuals, (tuple, list))
+            or not isinstance(references, (tuple, list))
+            or len(actuals) != len(c.out_indices)
+            or len(references) != len(c.out_indices)
+        ):
+            raise ValueError("provide one actual and reference array per output")
+        verdicts = []
+        for i, actual, reference in zip(c.out_indices, actuals, references):
+            layout = c.layouts[i] if c.layouts else None
+            got = layout.decode(actual, calls=calls) if layout else np.asarray(actual)
+            got, ref = got.reshape(calls, -1), np.asarray(reference)
+            if c.out_valid is not None:
+                got = got[:, : c.out_valid]
+            if In not in c.roles and ref.size == got.shape[1]:
+                ref = np.broadcast_to(ref.reshape(1, -1), got.shape)
+            else:
+                ref = ref.reshape(calls, -1)
+            verdicts.append(
+                compare(
+                    got,
+                    ref,
+                    tolerance or c.tolerance or Tolerance.default_for(ref.dtype),
+                )
+            )
+        if not multiple:
+            return verdicts[0]
+        first_bad, offset = None, 0
+        for result in verdicts:
+            if first_bad is None and result.first_bad_index is not None:
+                first_bad = offset + result.first_bad_index
+            offset += result.n_checked
+        ulps = [v.max_ulp_err for v in verdicts if v.max_ulp_err is not None]
+        return Verdict(
+            ok=all(verdicts),
+            n_checked=sum(v.n_checked for v in verdicts),
+            n_mismatch=sum(v.n_mismatch for v in verdicts),
+            max_abs_err=max(v.max_abs_err for v in verdicts),
+            max_ulp_err=max(ulps) if ulps else None,
+            first_bad_index=first_bad,
+            detail="; ".join(
+                f"output {i} (argument {arg}): {v.detail}"
+                for i, (arg, v) in enumerate(zip(c.out_indices, verdicts))
+            ),
+        )
 
     def __init__(
         self,
@@ -427,7 +680,7 @@ class ExternalFunction(Kernel):
         object_file_name: str | None = None,
         source_file: str | None = None,
         source_string: str | None = None,
-        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        arg_types: list[ArgType] | None = None,
         include_dirs: list[str] | None = None,
         compile_flags: list[str] | None = None,
         *,
@@ -435,6 +688,7 @@ class ExternalFunction(Kernel):
         use_chess: bool = False,
         inline: bool = False,
         stack_size_override: int | None = None,
+        contract: Any = None,
     ) -> None:
         """Construct an ExternalFunction compiled from C/C++ source at JIT time.
 
@@ -480,6 +734,11 @@ class ExternalFunction(Kernel):
                 With ``inline=True``, the merged kernel has no separate object,
                 so this bound is the one input aiecc's stack analysis reads for
                 this kernel.
+            contract: What the kernel computes, as an
+                ``aie.iron.kernels.KernelContract``: argument roles, a host
+                reference, a tolerance and the operand layouts. The library
+                factories always give one; a hand-built kernel may leave it
+                ``None`` and then cannot be built or judged generically.
         """
         if inline and use_chess:
             raise ValueError(
@@ -494,13 +753,8 @@ class ExternalFunction(Kernel):
                 "this kernel."
             )
 
-        # Must precede the collision scan below: it registers this instance in
-        # `_instances`, whose hash/eq run `_content_digest()` -- which reads
-        # `_inline`.  `_original_name` / `_symbol_prefix` are likewise read by
-        # compile_external_kernel (source naming and the objcopy symbol rename).
         self._original_name = name
-        self._symbol_prefix = symbol_prefix
-        self._inline = inline
+        self.contract = contract
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if not object_file_name:
@@ -528,39 +782,47 @@ class ExternalFunction(Kernel):
             stack_size_override=stack_size_override,
         )
 
-        if source_file is not None:
-            self._source_file = source_file
-            self._source_string = None
-        elif source_string is not None:
-            self._source_file = None
-            self._source_string = source_string
-        else:
+        if source_file is None and source_string is None:
             raise ValueError("source_file or source_string must be provided.")
-
-        self._include_dirs = include_dirs if include_dirs is not None else []
-        self._compile_flags = compile_flags if compile_flags is not None else []
-        self._use_chess = use_chess
-        self._compiled = False
-        self._compiled_dir = None
+        if source_file is not None:
+            try:
+                source_bytes = Path(source_file).read_bytes()
+            except OSError:
+                source_bytes = f"<unreadable:{source_file}>".encode()
+        else:
+            assert source_string is not None
+            source_bytes = source_string.encode()
+        self._object_file = KernelObject(
+            object_file_name,
+            "merge" if inline else None,
+            _KernelSource(
+                str(Path(source_file).resolve()) if source_file is not None else None,
+                source_string if source_file is None else None,
+                hashlib.sha256(source_bytes).hexdigest(),
+                tuple(include_dirs or ()),
+                tuple(compile_flags or ()),
+                use_chess,
+                symbol_prefix,
+                name if inline else None,
+            ),
+        )
         self._cached_digest: str | None = None
 
-        # Two same-name EFs with default object_file_name would collide on the
-        # same artifact path. Auto-suffix defaulted names with a content digest;
-        # raise on explicit names so silent renames don't surprise the caller.
+        # A translation unit may export several symbols, but an output path
+        # must have only one recipe. Auto-suffix default names on conflict;
+        # explicit names are never silently changed.
         for existing in ExternalFunction._instances:
             if (
-                existing._name == effective_name
-                and existing._object_file_name == object_file_name
-                and existing._content_digest() != self._content_digest()
+                existing.object_file_name == object_file_name
+                and existing.object_file._source != self.object_file._source
             ):
                 if object_file_name_explicit:
                     raise ValueError(
                         f"ExternalFunction '{effective_name}' would collide with "
-                        f"an already-registered instance: same name and "
+                        f"an already-registered instance: same "
                         f"explicit object_file_name='{object_file_name}' but "
                         f"different compile_flags / source.  Distinguish them "
-                        f"by passing a distinct `object_file_name=...` or "
-                        f"`name=...`."
+                        f"by passing a distinct `object_file_name=...`."
                     )
                 suffix = self._content_digest()[:8]
                 output_path = Path(object_file_name)
@@ -569,19 +831,87 @@ class ExternalFunction(Kernel):
                         f"{output_path.stem}_{suffix}{output_path.suffix}"
                     )
                 )
-                self._object_file_name = object_file_name
+                self._object_file = replace(self.object_file, name=object_file_name)
+                self._cached_digest = None
                 break
-        self._object_file = ObjectFile(
-            self._object_file_name,
-            symbol_prefix=self._symbol_prefix,
-            link_with_mode=self._link_with_mode,
-        )
+        for existing in ExternalFunction._instances:
+            if existing.object_file_name == self.object_file_name:
+                if existing.object_file._source != self.object_file._source:
+                    raise ValueError(
+                        f"ExternalFunction '{effective_name}' would collide on '{self.object_file_name}'"
+                    )
+                self._object_file = existing.object_file
+                break
         ExternalFunction._instances.add(self)
+
+    # Read-only views of the compile recipe. Tooling that inspects or
+    # recompiles a kernel outside the JIT path (a static check, say) reads
+    # these rather than the private fields; the JIT itself keeps using the
+    # private fields directly.
+
+    @property
+    def _recipe(self) -> _KernelSource:
+        recipe = self.object_file._source
+        assert recipe is not None
+        return recipe
+
+    @property
+    def _source_file(self):
+        return self._recipe.source_file
+
+    @property
+    def _source_string(self):
+        return self._recipe.source_string
+
+    @property
+    def _include_dirs(self):
+        return self._recipe.include_dirs
+
+    @property
+    def _compile_flags(self):
+        return self._recipe.compile_flags
+
+    @property
+    def _use_chess(self):
+        return self._recipe.use_chess
+
+    @property
+    def _symbol_prefix(self):
+        return self._recipe.symbol_prefix
+
+    @property
+    def _inline(self):
+        return self._recipe.inline_symbol is not None
+
+    @property
+    def source_file(self) -> str | None:
+        """Path to the C/C++ source on disk, or None for inline source."""
+        return self._source_file
+
+    @property
+    def source_string(self) -> str | None:
+        """Inline C/C++ source text, or None when compiled from a file."""
+        return self._source_string
+
+    @property
+    def include_dirs(self) -> list[str]:
+        """Copy of the extra ``-I`` directories passed to the compiler."""
+        return list(self._include_dirs)
+
+    @property
+    def compile_flags(self) -> list[str]:
+        """Copy of the extra flags passed verbatim to the compiler."""
+        return list(self._compile_flags)
+
+    @property
+    def use_chess(self) -> bool:
+        """True when this kernel's object is built with xchesscc, not Peano."""
+        return self._use_chess
 
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.
 
-        ``**kwargs`` are forwarded to the base ``BaseKernel.__call__``
+        ``**kwargs`` are forwarded to the base ``Kernel.__call__``
         and ultimately to the MLIR ``func.call`` builder.
         """
         if len(args) != len(self._arg_types):
@@ -597,19 +927,44 @@ class ExternalFunction(Kernel):
     def _validate_arg(self, index: int, arg, expected_ty) -> None:
         """Validate a single argument against its expected type."""
         if isinstance(expected_ty, type) and issubclass(expected_ty, np.generic):
+            if isinstance(arg, ir.Value):
+                from ..helpers.util import np_dtype_to_mlir_type
+
+                expected_mlir_ty = np_dtype_to_mlir_type(expected_ty)
+                if arg.type == expected_mlir_ty:
+                    return
+                # helpers.dialects.func.call casts loop indices to integer
+                # parameters; all other SSA operands must match exactly.
+                if isinstance(arg.type, ir.IndexType) and isinstance(
+                    expected_mlir_ty, ir.IntegerType
+                ):
+                    return
+                raise ValueError(
+                    f"Argument {index}: expected scalar {expected_mlir_ty}, "
+                    f"got {arg.type}"
+                )
             if not isinstance(arg, (int, float, np.integer, np.floating)):
                 raise ValueError(
                     f"Argument {index}: expected scalar, got {type(arg).__name__}"
                 )
             return
-        if hasattr(expected_ty, "__args__") and hasattr(arg, "shape"):
-            expected_shape = expected_ty.__args__[0]
-            expected_dtype = expected_ty.__args__[1].__args__[0]
-            if arg.shape != expected_shape or arg.dtype != expected_dtype:
-                raise ValueError(
-                    f"Argument {index}: expected {expected_shape}/{expected_dtype}, "
-                    f"got {arg.shape}/{arg.dtype}"
-                )
+        if not (hasattr(expected_ty, "__args__") and hasattr(arg, "shape")):
+            return
+        # Only host-side (numpy) arguments are compared. An MLIR value's
+        # element type is spelled differently (`i32` vs `np.int32`) and its
+        # shape may legitimately differ from the declaration until
+        # `_maybe_collapse_to_match` flattens it, so MLIR verification is what
+        # checks those.
+        arg_dtype = getattr(arg, "dtype", None)
+        if not isinstance(arg_dtype, (np.dtype, type)):
+            return
+        expected_shape = expected_ty.__args__[0]
+        expected_dtype = expected_ty.__args__[1].__args__[0]
+        if arg.shape != expected_shape or arg_dtype != expected_dtype:
+            raise ValueError(
+                f"Argument {index}: expected {expected_shape}/{expected_dtype}, "
+                f"got {arg.shape}/{arg_dtype}"
+            )
 
     def _content_digest(self) -> str:
         """Return a 64-bit hex SHA-256 digest of this instance's content.
@@ -627,7 +982,7 @@ class ExternalFunction(Kernel):
         from pathlib import Path as _Path
 
         include_dir_mtimes = []
-        for d in sorted(self._include_dirs):
+        for d in self._include_dirs:
             try:
                 mtime = str(_Path(d).stat().st_mtime)
             except (FileNotFoundError, OSError):
@@ -636,23 +991,17 @@ class ExternalFunction(Kernel):
 
         parts = [
             self._name,
+            self.object_file_name,
             str(self._arg_types),
             str(include_dir_mtimes),
-            str(sorted(self._compile_flags)),
+            str(self._compile_flags),
             # Toolchain choice (peano vs chess) changes the resulting .o
             # contents even when name + arg_types + flags + source are
             # identical, so the digest must distinguish them.
             f"chess={self._use_chess}",
             f"inline={self._inline}",
         ]
-        if self._source_string:
-            parts.append(self._source_string)
-        elif self._source_file:
-            try:
-                with open(self._source_file) as f:
-                    parts.append(f.read())
-            except OSError:
-                parts.append(f"<unreadable:{self._source_file}>")
+        parts.extend([str(self._source_file), self._recipe.source_digest])
         self._cached_digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
         return self._cached_digest
 

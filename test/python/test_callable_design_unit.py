@@ -40,6 +40,34 @@ def test_repr_contains_callable_design():
     assert "CallableDesign" in repr(cd)
 
 
+@pytest.mark.parametrize("has_image", [False, True])
+@pytest.mark.parametrize("has_insts", [False, True])
+def test_measure_compile_artifact_sizes(tmp_path, monkeypatch, has_image, has_insts):
+    def gen():
+        pass
+
+    cd = CallableDesign(gen)
+
+    def compile_artifacts(*, xclbin_path, inst_path):
+        assert xclbin_path == tmp_path / "compile" / "final.xclbin"
+        assert inst_path == tmp_path / "compile" / "insts.bin"
+        xclbin_path.write_bytes(b"image")
+        inst_path.write_bytes(b"insts")
+        core = xclbin_path.with_suffix(".prj") / "elfs_0"
+        core.mkdir(parents=True)
+        (core / "elfs_0.elf").write_bytes(b"elf")
+        return (xclbin_path if has_image else None, inst_path if has_insts else None)
+
+    monkeypatch.setattr(cd, "compile", compile_artifacts)
+    if not has_image:
+        with pytest.raises(RuntimeError, match="compilation returned no image"):
+            cd.measure_compile(tmp_path)
+    else:
+        seconds, image_bytes, insts_bytes, elf_bytes = cd.measure_compile(tmp_path)
+        assert seconds >= 0
+        assert (image_bytes, insts_bytes, elf_bytes) == (5, 5 if has_insts else 0, 3)
+
+
 def test_jit_explicit_dispatch_specialization():
     def gen(a: In, *, M: DispatchTime[np.int32] = 8):
         pass
@@ -392,6 +420,20 @@ def test_external_function_positional_not_in_tensor_args():
     ), "Kernel instance must not appear in scalar_kwargs"
 
 
+def test_variadic_tensor_design_takes_any_number_of_positionals():
+    """A ``*tensors: In`` design has no positional maximum; the runtime checks the count."""
+
+    def stream(*tensors: In, N: CompileTime[int]):
+        pass
+
+    cd = jit(stream, N=2)
+    assert cd.compilable.variadic_tensor_param == "tensors"
+    assert cd.compilable.tensor_params == ["tensors"]
+    assert cd.compilable.split_runtime_args((1, 2, 3), {}) == ([1, 2, 3], {})
+    with pytest.raises(TypeError, match="keyword arguments"):
+        cd(1, tensors=2)
+
+
 # NOTE: trace_config end-to-end behaviour (forwarded to NPUKernel.__init__,
 # not to kernel.__call__) is covered by a real NPU run in
 # test/python/npu/test_iron_jit_e2e.py::test_trace_config_forwarded_to_kernel.
@@ -561,7 +603,14 @@ def test_call_binds_runtime_device_before_in_process_cache(monkeypatch):
     def fake_compile_and_build(self, compilable, cache_key, trace_config):
         seen_keys.append(cache_key)
         assert type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2"
-        return lambda *args, **kwargs: "ran"
+
+        class FakeKernel:
+            num_host_bos = 0
+
+            def __call__(self, *args, **kwargs):
+                return "ran"
+
+        return FakeKernel()
 
     monkeypatch.setattr(
         CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
@@ -587,6 +636,8 @@ def test_call_rebuilds_removed_cached_artifacts(
         pass
 
     class FakeKernel:
+        num_host_bos = 0
+
         def __init__(self, xclbin_path, insts_path, result):
             self.xclbin_path = xclbin_path
             self.insts_path = insts_path

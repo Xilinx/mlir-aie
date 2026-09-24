@@ -65,8 +65,11 @@ class Check:
         )
 
 
-def _xrt_smi() -> str | None:
-    """Locate xrt-smi on PATH or under XILINX_XRT, honouring the platform suffix."""
+def xrt_smi_path() -> str | None:
+    """Locate xrt-smi on PATH or under XILINX_XRT, honoring the platform suffix.
+
+    ``None`` when it is not installed.
+    """
     found = shutil.which("xrt-smi")
     if found:
         return found
@@ -85,7 +88,7 @@ def _examine() -> str | None:
     Used where sysfs is unavailable. Deferred and memoised: this spawns a process,
     unlike the sysfs reads that serve the same purpose on Linux.
     """
-    binary = _xrt_smi()
+    binary = xrt_smi_path()
     if binary is None:
         return None
     try:
@@ -165,7 +168,7 @@ def check_hardware() -> Check:
         if nodes:
             name = _sysfs_attr("vbnv") or "unknown model"
             return Check("hardware", True, f"{name} ({', '.join(nodes)})")
-        if _xrt_smi() is None:
+        if xrt_smi_path() is None:
             return Check(
                 "hardware",
                 False,
@@ -227,7 +230,7 @@ def check_runtime() -> Check:
     an error message -- the module's rule is that a stage spawns a process only
     when the answer depends on it. ``xrt-smi examine`` reports the version.
     """
-    binary = _xrt_smi()
+    binary = xrt_smi_path()
     if binary is None:
         return Check(
             "runtime",

@@ -18,8 +18,6 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-#include "zero.cc"
-
 template <typename T_in, typename T_out, int M, int K>
 void matvec_scalar(T_in *a, T_in *b, T_out *c) {
   event0();
@@ -161,19 +159,6 @@ extern "C" {
         a_in, b_in, c_out);                                                    \
   }
 
-#define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
-                               mlir_type_out, ctype_acc)                       \
-  void zero_vectorized_##mlir_type_out(ctype_out *c_out) {                     \
-    zero_vectorized<ctype_out, DIM_M, 1>(c_out);                               \
-  }
-
-#define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
-                           ctype_acc)                                          \
-  void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
-    zero_scalar<ctype_out, DIM_M, 1>(c_out);                                   \
-  }
-
 combos(matvec_scalar_c_func) combos(matvec_vectorized_c_func)
-    combos(zero_vectorized_c_func) combos(zero_scalar_c_func)
 
 } // extern "C"

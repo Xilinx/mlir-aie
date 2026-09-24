@@ -4,8 +4,9 @@
 # RUN: %pytest %s
 """Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
-from pathlib import Path
+import os
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -203,8 +204,8 @@ def test_identical_rebuild_does_not_replace_mapped_generation(tmp_path):
     path = _compile(tmp_path)
     bridge = DispatchBridge(path, ["param", "n"])
     before = path.stat()
-    # PE linker timestamps have one-second resolution.
-    time.sleep(1.1)
+    if os.name == "nt":
+        time.sleep(1.1)  # Cross the PE timestamp's one-second resolution.
     assert _compile(tmp_path) == path
     after = path.stat()
     assert (before.st_ino, before.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
@@ -214,6 +215,7 @@ def test_identical_rebuild_does_not_replace_mapped_generation(tmp_path):
 
 def test_failed_compile_cleans_linker_companions(tmp_path, monkeypatch):
     import subprocess
+
     from aie.utils.compile.jit import _dispatch_compile
 
     path = _compile(tmp_path)
@@ -234,6 +236,18 @@ def test_failed_compile_cleans_linker_companions(tmp_path, monkeypatch):
     with pytest.raises(DispatchCompileError, match="link failed"):
         compile_dispatch_bridge(tmp_path, ["param", "n"], [np.int32, np.uintp])
     assert path.read_bytes() == before
+    assert not list(tmp_path.glob("dispatch.staging.*"))
+
+
+def test_compile_failure_preserves_loaded_generation(tmp_path):
+    path = _compile(tmp_path)
+    bridge = DispatchBridge(path, ["param", "n"])
+    expected = _words(bridge)
+    with (tmp_path / "dispatch_gen.cpp").open("a") as source:
+        source.write("\n#error deliberate compile failure\n")
+    with pytest.raises(DispatchCompileError, match="host C\\+\\+ compile failed"):
+        compile_dispatch_bridge(tmp_path, ["param", "n"], [np.int32, np.uintp])
+    np.testing.assert_array_equal(expected, _words(bridge))
     assert not list(tmp_path.glob("dispatch.staging.*"))
 
 

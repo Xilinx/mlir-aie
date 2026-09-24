@@ -294,8 +294,12 @@ class CallableDesign:
                 f"{self.compilable.compile_params}."
             )
 
-        # Guard 3-C: too many positional args.
-        if callable(self.compilable.mlir_generator):
+        # Guard 3-C: too many positional args. A variadic tensor list takes
+        # any number; the lowered sequence's operand count checks it later.
+        if (
+            callable(self.compilable.mlir_generator)
+            and self.compilable.variadic_tensor_param is None
+        ):
             max_positional = (
                 len(self.compilable.tensor_params)
                 + len(self.compilable.dispatch_params)
@@ -321,12 +325,15 @@ class CallableDesign:
         else:
             trace_config = effective_compile_kwargs.get("trace_config", None)
 
-        # Build a separate dict for the cache key that excludes trace_config:
-        # trace_config is a per-call object whose identity should not drive cache
-        # misses.
+        # The TraceConfig carries mutable per-call state, so keying on it would
+        # miss every call; its size must be in the key even so, because a traced
+        # build is a different program. Keying on neither let a traced run reuse
+        # the untraced kernel and come back with an empty trace.
         cache_compile_kwargs = {
             k: v for k, v in effective_compile_kwargs.items() if k != "trace_config"
         }
+        if trace_config is not None:
+            cache_compile_kwargs["trace_size"] = trace_config.trace_size
 
         from aie.utils import ensure_current_device
 
@@ -358,7 +365,13 @@ class CallableDesign:
             extra_key=compilable._generation_cache_key(),
         )
 
-        kernel = self._kernel_cache.get(cache_key) if compilable.use_cache else None
+        # A traced call skips the in-process cache. Decoding a trace needs the
+        # physical MLIR, and only going through compile() tells the design which
+        # directory holds it -- an in-process hit returns the kernel without
+        # ever asking. The on-disk cache still serves the artifacts, so this
+        # re-reads rather than rebuilds.
+        use_kernel_cache = compilable.use_cache and trace_config is None
+        kernel = self._kernel_cache.get(cache_key) if use_kernel_cache else None
         if kernel is not None:
             if compilable.full_elf:
                 artifacts_present = Path(kernel.elf_path).is_file()
@@ -384,7 +397,17 @@ class CallableDesign:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
 
         # After compile(): validation reads _expected_tensor_sizes.
-        compilable.validate_tensor_args(tensor_args)
+        implicit_tensor_count = 0
+        if trace_config is not None:
+            if not trace_config.reuse_output_buffer:
+                implicit_tensor_count = 1 + int(trace_config.enable_ctrl_pkts)
+            elif not tensor_args:
+                implicit_tensor_count = 1
+        compilable.validate_tensor_args(
+            tensor_args,
+            num_host_bos=kernel.num_host_bos,
+            implicit_tensor_count=implicit_tensor_count,
+        )
 
         try:
             return kernel(*tensor_args, **remaining_scalars)
@@ -464,7 +487,7 @@ class CallableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
-    ) -> tuple[Path, Path | None]:
+    ) -> tuple[Path | None, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
         With no arguments, pre-warms the on-disk cache so subsequent calls with
@@ -492,8 +515,7 @@ class CallableDesign:
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
         Device Image to that path. Requires explicit ``xclbin_path`` (and
         ``inst_path`` for static designs). In cache mode, use ``get_pdi_path``
-        to locate the
-        ``main.pdi`` aiecc emits into the cache directory.
+        to locate the ``main.pdi`` aiecc emits.
         """
         return self.compilable.compile(
             xclbin_path=xclbin_path,
@@ -502,6 +524,39 @@ class CallableDesign:
             full_elf_path=full_elf_path,
             pdi_path=pdi_path,
         )
+
+    def measure_compile(self, workdir) -> tuple[float, int, int, int]:
+        """Force a rebuild into ``workdir``, time it, and size the artifacts.
+
+        ``compile`` with explicit ``xclbin_path`` and ``inst_path`` bypasses
+        the on-disk cache by contract and keeps its intermediates in
+        ``<stem>.prj/`` next to the xclbin, so nothing about the cache layout
+        has to be guessed or deleted; a cached build this design uses
+        elsewhere is untouched.
+
+        Returns ``(seconds, xclbin_bytes, insts_bytes, sum_core_elf_bytes)``.
+        """
+        import time
+
+        build = Path(workdir) / "compile"
+        build.mkdir(parents=True, exist_ok=True)
+        t0 = time.perf_counter()
+        xclbin, insts = self.compile(
+            xclbin_path=build / "final.xclbin", inst_path=build / "insts.bin"
+        )
+        if xclbin is None:
+            raise RuntimeError("measure_compile(): compilation returned no image")
+        secs = time.perf_counter() - t0
+        # With --get-core-elfs aiecc writes one ELF per core, each in its own
+        # directory: "elfs_<core>/elfs_<core>.elf".
+        prj = build / "final.prj"
+        elf = (
+            sum(p.stat().st_size for p in prj.glob("elfs_*/*.elf"))
+            if prj.is_dir()
+            else 0
+        )
+        insts_bytes = Path(insts).stat().st_size if insts else 0
+        return secs, Path(xclbin).stat().st_size, insts_bytes, elf
 
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
         """Return one cache-directory PDI, or ``None`` if none is present.

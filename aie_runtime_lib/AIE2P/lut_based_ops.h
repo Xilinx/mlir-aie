@@ -19,6 +19,10 @@ alignas(aie::vector_decl_align) extern int16 exp_flut_ab[512];
 alignas(aie::vector_decl_align) extern int16 exp_flut_cd[512];
 alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 
+// See aie_runtime_lib/AIE2/lut_based_ops.h for why getExpBf16 clamps its
+// input to EXP_BF16_CLAMP before the Q8 conversion below.
+static constexpr float EXP_BF16_CLAMP = 88.0f;
+
 __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   bfloat16 __aie_dm_resource_a *ilut_ab =
       (bfloat16 __aie_dm_resource_a *)exp_ilut_ab;
@@ -45,14 +49,31 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   aie::accum<accfloat, 16> exp_val;
   aie::vector<bfloat16, 16> input_bf16 = x;
 
+  // Saturate to the addressable domain (see EXP_BF16_CLAMP) before the Q8
+  // conversion below, which would otherwise wrap. See
+  // aie_runtime_lib/AIE2/lut_based_ops.h for why the upper bound goes
+  // through -max(-x, -c) rather than a direct aie::min(x, c).
+  input_bf16 = aie::neg(
+      aie::max(aie::neg(input_bf16),
+               aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP)));
+  input_bf16 = aie::max(
+      input_bf16, aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP));
+
   // position of output decimal point = 8, making input become 8 bits, and for
   // LUT_elems = 256 lookup. aie::vector<int16, 16>
   // input=aie::to_fixed<int16>(input_bf16,8);
   aie::vector<int16, 32> input0 = v32int16(bfloat16_to_int(input_bf16, 8));
   aie::vector<int16, 16> input = aie::filter_even(input0);
 
+  // See aie_runtime_lib/AIE2/lut_based_ops.h for why the fetches below are
+  // bracketed in floor rounding; the same aie_api fetch()/rounding-mode
+  // interaction applies here.
+  aie::rounding_mode saved_rnd = aie::tile::current().get_rounding();
+  aie::tile::current().set_rounding(aie::rounding_mode::floor);
   I_val_vec = lookup_i.fetch(input.cast_to<uint16>());
   F_val_vec = lookup_f.fetch(input.cast_to<uint16>());
+  aie::tile::current().set_rounding(saved_rnd);
+
   exp_val = aie::mul(I_val_vec, F_val_vec);
   return v16accfloat(exp_val);
 }
