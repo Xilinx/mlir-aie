@@ -380,3 +380,21 @@ def test_target_model_dma_bd_bits():
 
 
 test_target_model_dma_bd_bits()
+
+
+# CHECK-LABEL: test_target_model_dma_limits
+# CHECK: xcvc1902 lock max 1 repeat max 0 queue depth 0
+# CHECK: npu1 lock max 63 repeat max 255 queue depth 4
+# CHECK: npu2 lock max 63 repeat max 255 queue depth 4
+def test_target_model_dma_limits():
+    print("test_target_model_dma_limits")
+    for d in [AIEDevice.xcvc1902, AIEDevice.npu1, AIEDevice.npu2]:
+        tm = get_target_model(d)
+        print(
+            f"{d} lock max {tm.get_max_lock_value()} "
+            f"repeat max {tm.get_max_repeat_count()} "
+            f"queue depth {tm.get_dma_task_queue_depth()}"
+        )
+
+
+test_target_model_dma_limits()
