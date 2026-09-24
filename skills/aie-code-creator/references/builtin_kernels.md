@@ -227,4 +227,4 @@ Write your own kernel (and your own topology) when:
 - the access pattern is a stencil/sliding window or anything where the "one tile in, one tile
   out" assumption of `transform*` doesn't hold (check the `conv_pipeline` templates first);
 - you are optimizing a kernel that profiling has already identified as the bottleneck — at
-  which point see the `aie-kernel-opt` skill rather than starting from scratch.
+  which point see the `aie-kernel-opt-static` skill rather than starting from scratch.

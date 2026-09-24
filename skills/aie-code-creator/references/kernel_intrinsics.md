@@ -59,8 +59,8 @@ void eltwise_add_bf16_vector(const bfloat16 *__restrict a,
 
 | Macro | What it does |
 |-------|--------------|
-| `AIE_PREPARE_FOR_PIPELINING` | Ask the modulo scheduler to make the loop body a single-cycle pipeline |
-| `AIE_LOOP_MIN_ITERATION_COUNT(n)` | Promise the loop runs at least `n` times — required for scheduling |
+| `AIE_PREPARE_FOR_PIPELINING` | Pipelining hint for **Chess only**; expands to nothing under Peano |
+| `AIE_LOOP_MIN_ITERATION_COUNT(n)` | Promise the loop runs at least `n` times — a trip-count hint; under Peano it can cost the zero-overhead loop, so check `non_zol_loops` in the remarks report |
 | `AIE_LOOP_MAX_ITERATION_COUNT(n)` | Promise the loop runs at most `n` times |
 | `AIE_LOOP_RANGE(min, max)` | Combo of the two above |
 | `AIE_LOOP_UNROLL(n)` | Unroll by factor `n` |
@@ -68,9 +68,9 @@ void eltwise_add_bf16_vector(const bfloat16 *__restrict a,
 | `AIE_LOOP_NO_UNROLL` | Block unrolling |
 | `AIE_TRY_INITIATION_INTERVAL(n)` | Request an initiation interval of `n` (**Peano only**) |
 | `AIE_PREPARE_FOR_POSTPIPELINING` | Disable Peano's pipeliner for this loop (**Peano only**) |
-| `AIE_NO_PREPARE_FOR_PIPELINING` | Block pipelining (rare; for setup loops) |
+| `AIE_NO_PREPARE_FOR_PIPELINING` | Block pipelining (**Chess only**; rare, for setup loops) |
 
-Use the macros rather than backend-specific pragmas. Note they don't all map onto both backends: `AIE_LOOP_MIN_ITERATION_COUNT` / `AIE_LOOP_RANGE` / `AIE_LOOP_UNROLL*` become `clang loop` pragmas under Peano/AIECC and the equivalent under Chess, but `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_FLATTEN` map to `chess::` hints only — they are **no-ops under Peano**. All expand to nothing on host builds. Keep them in (free under Chess) but rely on `AIE_LOOP_MIN_ITERATION_COUNT` for pipelining on Peano.
+Use the macros rather than backend-specific pragmas. Note they don't all map onto both backends: `AIE_LOOP_MIN_ITERATION_COUNT` / `AIE_LOOP_RANGE` / `AIE_LOOP_UNROLL*` become `clang loop` pragmas under Peano/AIECC and the equivalent under Chess, but `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_FLATTEN` map to `chess::` hints only — they are **no-ops under Peano**. All expand to nothing on host builds. Peano pipelines inner loops without any hint, so none of these is needed to get a pipelined loop; for which hints have measurably helped, see the `aie-kernel-opt-static` skill.
 
 ## Vector load / store
 

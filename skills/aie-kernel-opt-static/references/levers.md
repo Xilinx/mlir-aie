@@ -1,0 +1,557 @@
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
+# Static signals, levers, and how well they predict hardware
+
+This file answers one question: **which static signal predicts a hardware
+win, and how reliably?** Every row comes from a case where a static signal
+was recorded and the same change was then measured on hardware (traced core
+cycles per call on AIE2P, npu2, unless marked otherwise). Misses are listed
+next to the hits.
+
+Nothing in this file is a speedup claim for *your* kernel. The HW numbers are
+precedents, measured by `aie-kernel-opt-hw` on other kernels. A candidate you
+produce here is unconfirmed until that skill measures it.
+
+## Signal → HW outcome
+
+| # | Static signal (before → after) | Kernel, change | HW outcome (cycles per call) | Verdict |
+|---|---|---|---|---|
+| S01 | Unroll screen: loop `byte_count` flat from ×1 to ×4, no new `[sp, #` | `add`, `mul`, `leaky_relu`, `gelu`, `UNROLL(4)` (L07) | 390 → 150, 454 → 142, 298 → 86, 594 → 318 | hit, 4 of 4 |
+| S02 | `__divsf3`, `__floatsisf` gone from `llvm-nm -u`; the loop now has an II | `rms_norm` (L02) | 1597 → 438 | hit |
+| S03 | `__divsi3` gone; unsigned trip count | `axpy` (L11) | 317 → 178 | hit |
+| S04 | `[sp, #` traffic around a counter-indexed accumulator array gone | `conv2dk1_i8`, `UNROLL_FULL` (L01) | 7623 → 504 | hit |
+| S05 | Per-call prediction `bundles + 5 + (trips-1) × II` from the object | `zero` cursors (L06); `mm_bfp_mixed` (L10) | predicted ~75 / ~130, measured 78 / 134; predicted 1348 / 1312, measured 1349 / 1313 | hit, including magnitude |
+| S06 | `unpipelined_loops` 6 → 2 with the inner II unchanged at 35 | `fused_mm` z loop `UNROLL(2)` (L10) | k_step 216 → 193 | hit: an outer loop that stops paying entry/exit can win with no II change |
+| S07 | Epilogue II30 per 16 lanes → II19 per 64 | `fused_mm` epilogue (L03, L04, L06) | chunk 126 → 19 | hit |
+| S08 | II67 per 128 values → II17 per 64, `[sp]` refs 26 → 4 | `q4nx_dequant` (L19) | 4719 → 2245 (2.10x) | hit; the per-value II ratio (-49%) matched HW (-52%) |
+| S09 | Final II 17 → 16 on a 128-trip loop; pre-RA II 16 → 11/12; `ns` rises | `q4nx_dequant` stage cap 5 (L17) | 2245 → 2115 (-5.8%) | hit **only if scaled by trips**: 128 × 1 cycle predicts ~2117. The pre-RA II over-promised. A 1-cycle II move looks like nothing and was worth 130 cycles |
+| S10 | II125 → 37, frame 0x840 → 0x700 | prefill `fv`, paired accumulator (L18) | 2034 → 1265 (-35%) | hit in direction; the II ratio (-70%) over-predicts because the call does other work |
+| S11 | `[sp]` refs 22 → 10, `.text` -32..-80 B, II unchanged at the mv-slot bound | `mm` cursors (L06) | int16 -4.2%, bf16 -0.8% | hit in direction; small where the loop sits at its bound |
+| S12 | Compiler reports the K unroll worse (II35 → 156, spills) | bf16 / int16 `mm` (X24) | unchanged | hit: predicted no gain, got none |
+| S13 | Compiler reports the z loop at II119 after an i-loop full unroll | `fused_mm` (X40) | k_step 216 → 287 (`aie-kernel-opt-hw` X12) | hit: a compiler-reported loss was a HW loss |
+| S14 | II33 → 18 on the edited function | gelu in-place variant | 594 → 594 (`aie-kernel-opt-hw` X01) | **miss**: the benchmark never calls that symbol. Resolve the called symbol first |
+| S15 | II37 → 31 from an opaque `add_2d` pointer bump that keeps S loads in the loop | prefill `fv` | 1265 → 1374-1576, slower (`aie-kernel-opt-hw` X13) | **miss**: a better II, a slower kernel |
+| S16 | Object `.text` halved by making a helper `static` | any (X39) | 0 B change in the core ELF | **miss** on size: measure the entry symbol, not the object |
+| S17 | Per-row unpipelined `reduce_add` (II125 at K=64) replaced by a 4-row group body at II56 / II90 (14 / 22.5 per row); max loop II *rose* from II10; `.text` +48..576 B; `unpipelined_loops` unchanged at 12 | bf16 `mv`, four rows per transposed tree (L20) | 1154 → 788 (-31.7%); amd/IRON's attention shape (4x64, `vec_size` 32) 159 → 110. Ablation had priced the reduction at 520 of 1154 | hit **only when II is normalized per unit of work**: the raw max II went up. Divide by rows (or values) per iteration before you class a change `reject` |
+| S18 | Mac loop II9 → II7 from per-row cursors, K=2048 | bf16 `mv` 4x2048 (L20) | 420 → 408 (-2.9%) | hit in direction, **miss in magnitude**: rows 4 KB apart likely contend for banks, which remarks can't see |
+| S19 | `[sp` refs 73 → 4 (the rest prologue/epilogue), `unpipelined_loops` 2 → 0, group loop II58; max II *rose* from 15 (per k step) to 58 (per 2x2 group) | `mm_bfp` one A, one B and one C stream (L19) | 4243-4529 → 951 (4.5x); odd-K 32x24x48 850-894 → 269. II58 × 16 groups + 23 cycles of call and prologue = 951, the traced value | hit, including magnitude. The strongest spill-count row: the in-loop `[sp` count predicted the win; the raw max II pointed the other way |
+
+Placeholder for rows not yet harvested: round-6 `mha` (pending).
+
+### Confidence classes
+
+Every candidate gets exactly one class, from the rows above:
+
+| Class | When | Record behind it |
+|---|---|---|
+| **strong** | The signal removes a libcall, removes spill or stack traffic in the hot loop, makes a hot loop pipeline (or drops `unpipelined_loops` on the called path), or passes the unroll screen | S01-S04, S06, S08, S19: every recorded case won on HW |
+| **likely** | The hot loop's II or bundles-per-element drops on the called symbol, and the change doesn't defeat an optimization to get there | S05, S07-S11, S17, S18: always the right direction; magnitude from the per-call prediction, not the II ratio |
+| **experiment** | No precedent row; the II drop comes from hiding work from LLVM (opaque pointers, `volatile`, LICM blockers); the loop sits at a resource bound; or the called symbol isn't resolved | S14, S15: the two recorded misses |
+| **reject** | The compiler reports it worse: II up, new spills, stack over the declared budget, or `pass_failed` drops the pragma | S12, S13: both HW checks agreed with the compiler |
+
+Rules for using the classes:
+
+- Predict magnitude with `bundles + 5 + (trips-1) × II` per call
+  (`static-checks.md` §Predict), never with the II ratio alone (S09, S10).
+- A 1-cycle II change on a long trip count is not noise. Scale it by the trip
+  count before you dismiss it (S09).
+- Compare II per unit of work (per row, per value, per tile), not per loop.
+  A body that does four rows at II56 beats one row at II10 plus a II125
+  reduction (S17).
+- `likely` and `strong` are statements about the record, not about your
+  kernel. The report still says "candidate, HW unconfirmed".
+
+## Levers ranked by best measured delta
+
+A lever is listed only if it produced a measured hardware win on a real
+kernel. "Class" is the class a candidate using it gets **when its Check
+moves**. If the Check doesn't move, the candidate is `reject`.
+
+| ID | Lever | Best HW delta | Class |
+|---|---|---|---|
+| L01 | Fully unroll loops that index register arrays | `conv2dk1_i8` 7623 → 504 (-93.4%) | strong |
+| L06 | Walking `__restrict` cursors | `convert_copy` 652 → 88 (combined); `zero<float,4096>` 519 → 262 (isolated) | likely |
+| L19 | One bfp16 stream per operand per loop | `mm_bfp` 4243-4529 → 951 (4.5x, combined); `q4nx_dequant` 2.10x | strong (spills removed, S08, S19) |
+| L05 | Fold constants into one mac | `sigmoid` 498 → 118 (-76.3%) | likely |
+| L02 | No soft-float or 64-bit libcalls in hot loops | `rms_norm` 1597 → 438 (-72.6%) | strong |
+| L07 | `AIE_LOOP_UNROLL(4)` on latency-bound bodies | `leaky_relu` 298 → 86 (-71.1%) | strong, if the screen passes |
+| L03 | Avoid f32 vector multiply: split the f32 operand only | matmul epilogue silu 8098 → 3213 (-60.3%) | likely |
+| L09 | Split dependency chains | int16 `mv` 291 → 127 (-56.4%) | likely |
+| L13 | `UNROLL_FULL`, not `RANGE`, on a loop that switches on its counter | 5.31 → 2.84 ms (-47%, internal model) | likely |
+| L18 | Pair two 8x8 output tiles on one 64-lane accumulator | prefill `fv` 2034-2082 → 1265-1393 (-35%) | likely |
+| L20 | Batch horizontal reductions: several rows through one transposed tree | bf16 `mv` 1154 → 788 (-31.7%, combined) | likely (normalize II per row, S17) |
+| L10 | Make the hot loop innermost and single-block | int8 `mm` 993 → 737 (-25.8%) | strong when a loop newly pipelines; otherwise likely |
+| L15 | Producer writes mmul-A order | -23.6% on one block (internal model) | likely |
+| L12 | Wide stores, never byte loops | bfp16 shuffle 10.4x per call (rep slope) | strong |
+| L04 | Run emulated f32 chains 32 lanes wide | `bf16_exp` 32482 → 15425 (2.11x, combined) | likely |
+| L08 | Use the full register width | `rope` 1932 → 298 (combined) | likely |
+| L11 | Unsigned counted trip | `axpy` 317 → 178 (-43.8%) | strong |
+| L14 | Vector int8 epilogue | -42% on one block (internal model) | likely |
+| L16 | Pure strided copy → DMA transform | +12% (internal model) | hand off to `aie-dataflow-opt` |
+| L17 | Raise the pipeliner stage cap on a long dependency chain | `q4nx_dequant` 2245-2265 → 2115-2116 (-5.8%) | likely (scale by trips, S09) |
+
+"Internal model" rows are wall-clock or end-to-end numbers from a quantized
+model outside this repository. The number is real, but you can't reproduce it
+from this repository.
+
+Measured flat: bf16 `mm` (5761 cycles) and int16 `mm` (2017) were unchanged
+by L10's K unroll. L06 cursors later moved bf16 `mm` only 5761 → 5713
+(-0.8%), because its k loop is at the mv-slot bound (§Bounds). The bf16 GEMV
+(1154 cycles) got worse under six kernel-local tweaks (`aie-kernel-opt-hw`
+X02-X04) before L20 restructured its reduction.
+
+Each lever below gives:
+- **When**: the static signal (remarks meta, `llvm-nm`, `llvm-objdump`).
+- **Do**: the change.
+- **Check**: what must move in the static output. If it doesn't, the
+  candidate is `reject`.
+- **HW**: the precedent. "Combined" means the commit applied more than one
+  lever, so the number isn't isolated.
+
+Lever IDs follow the shared lessons catalog, so the programming guide and
+both kernel skills cite the same numbers.
+
+---
+
+## L01 Fully unroll loops that index register arrays
+
+- **When:** a short fixed-count loop indexes an array of accumulators or
+  vectors with its counter (`acc[i]`, `strip[j]`), or calls
+  `insert`/`extract`/`set` with it. `llvm-objdump` shows `[sp, #...]`
+  loads/stores around the accumulators, and the enclosing loop is in
+  `unpipelined_loops` or has a high II.
+- **Do:** put `AIE_LOOP_UNROLL_FULL` before the loop. Each index becomes a
+  constant, and the array stays in registers.
+- **Check:** the stack traffic is gone, and the enclosing loop now has an II.
+- **HW:** `conv2dk1_i8/2048x8` 7623 → 504 (isolated). `transpose`
+  subtile=8, wall clock 177.2 → 72.0 µs uint32 and 162.7 → 71.3 µs bf16
+  (combined with L10 and cursors).
+
+## L02 No soft-float or 64-bit libcalls in hot loops
+
+- **When:** `llvm-nm -u <obj>` lists `__mulsf3`, `__divsf3`, `__floatsisf`,
+  `__floatunsisf`, `__ltsf2`, `__gtsf2`, `__muldi3`, `__divsi3`, or any `df`
+  helper. The full list is in `traps.md` P01.
+- **Do:** use these replacements:
+  - compares: `aie::max`/`aie::min`
+  - divides: `aie::inv` times a multiply
+  - int → float: `aie::to_float`
+  - index math: integers, not `double`
+  - a per-chunk horizontal max: reduce element-wise across chunks, and reduce
+    horizontally once at the end
+- **Check:** `llvm-nm -u` no longer lists the helper, and the loop now has an
+  II.
+- **HW:**
+  - `rms_norm/1024` 1597 → 438 (isolated)
+  - with L03: `layer_norm` 2421 → 581; `layer_norm_f32` 13639 → 6094;
+    `layer_norm_affine_cast` 12771 → 10631
+  - with reduce-once: `softmax/1024x16` 1428 → 993
+
+## L03 Avoid the f32 vector multiply (AIE2P)
+
+- **When:** `aie::mul` or `aie::mac` on `vector<float,N>` in the hot loop, or
+  `aie::min`/`aie::max` on it. AIE2P has no f32 vector multiplier, so each one is a bf16 split emulation of
+  about 41-60 bundles per vector (`traps.md` P02).
+- **Do**, in order:
+  1. Skip multiplies by a known 1 or 0 (for example an identity affine).
+  2. If one operand is exact in bf16 (a tanh or sigmoid result, or a constant
+     chosen to be exact), split only the f32 operand into bf16 limbs and mac
+     each limb against the exact operand:
+     - Peel `x0 = bf16(x)`, `x1 = bf16(x - x0)`, `x2 = bf16(x - x0 - x1)`, with
+       each residual formed in the f32 accumulator (`aie::msc`).
+     - **Use three limbs.** 3 × 8 ≥ 24 significand bits, so the product is
+       exact. Two limbs change output bits (`aie-kernel-opt-hw` X06).
+     - For a compile-time constant, split it at compile time and
+       `static_assert` that the limbs sum to it.
+  3. AIE2P has no native f32 min/max either, so an f32 clamp is emulated.
+     Clamp the rounded bf16 result against bounds rounded with the same mode
+     (`conv_even`). Rounding is monotone and leaves representable values
+     fixed, so this is exact for finite inputs.
+- **Check:** no `vector<float>` multiply is left in the loop, and the II drops.
+  Bit-identity is proven on hardware by `aie-kernel-opt-hw` (raw-word diff);
+  flag it in the candidate report.
+- **HW:**
+  - `mm_activation_epilogue/silu` 8098 → 3213 (isolated). Cursors alone on
+    the rows without an f32 multiply: relu 1234 → 1106, identity 652 → 518.
+  - bf16 clamp, with L06 cursors and L04 32 lanes: `fused_mm` epilogue chunk
+    126 → 21, identity per call 1920 → 1084.5 (combined). As landed with
+    L07's `UNROLL(2)` on top (commit 23da3300557): chunk 126 → 19 (18-20). Raw output bit-identical, 0 of 327,680 words in 10
+    configurations. A mutation that rounded the bounds with `floor` changed
+    45,159 words and still passed the 0.04 tolerance (`aie-kernel-opt-hw` X11).
+
+## L04 Run emulated f32 chains 32 lanes wide (AIE2P)
+
+- **When:** an emulated f32 chain (exp, poly) steps 16 lanes. Emulated f32
+  math is 32 lanes wide, so a 16-lane `aie::mul` pays for 32 lanes and uses 16.
+  Vector `to_fixed`/`to_float` inside the chain means SRS/UPS work plus
+  mode-register writes.
+- **Do:** step 32 lanes. Replace the vector `to_fixed`/`to_float` floor with
+  the magic-number floor `x + 1.5*2^23`.
+- **Check:** bundles per element drop. For a `noinline` straight-line body the
+  remarks report the *calling* loop's II, so count the bundles yourself.
+- **HW:** `bf16_exp/1024` 32482 → 15425 (2.11x) and `exp2f_vec/1024`
+  31558 → 14125 (2.23x), combined. Output is bit-identical except that NaN is
+  now a quiet NaN. The `fused_mm` epilogue at 32 lanes is in L03's HW list
+  (combined). Keep 16 lanes where the LUT tanh is 16-lane (AIE2).
+
+## L05 Fold constants into one mac
+
+- **When:** `(tanh+1)/2`, or constant scales applied as separate multiplies
+  and adds.
+- **Do:** write `0.5*tanh + 0.5` as one mac into an accumulator preloaded with
+  0.5, and fold constant scales together. Power-of-two scaling commutes with
+  rounding, so this is bit-exact.
+- **Check:** one fewer vector op per element; the II drops.
+- **HW:**
+  - `sigmoid/1024` 498 → 118 (isolated); LUT build 2435 → 1806
+  - with L08: `swiglu` 3335 → 856; LUT build 5124 → 3010
+  - with L07: `silu` 1255 → 211; LUT build with no unroll 2691 → 2466
+
+## L06 Walking `__restrict` cursors
+
+- **When:** addressing as `base[i*stride]`. Peano doesn't strength-reduce it to
+  post-increment, so the loop body shows address arithmetic. Or the in/out
+  pointers lack `__restrict`.
+- **Do:** advance a `T *__restrict` cursor, and mark non-aliasing in/out
+  pointers `__restrict`. Don't use `__restrict` for in-place kernels, where
+  the streams alias.
+  For multi-dimensional walks, advance with the `add_2d_byte` /
+  `add_3d_byte` intrinsics (unqualified; see
+  `aie_kernels/generic/q4nx_dequant.cc`) so the scalar ALU carries no address
+  math. Scalar counters in their place cost II17 → 22 (X43).
+- **Check:** the II drops (`zero`: 2 → 1 bundle per store), and `[sp, #...]`
+  references in the body fall.
+- **HW:**
+  - `zero<float,4096>` 519 → 262, `<bf16,4096>` 263 → 134, `<u8,4608>`
+    150 → 78, fused 32x16 tile 71 → 37 (isolated). The predictions 147 → ~75
+    and 391 → ~130 were written down before the run.
+  - `mm` B and C cursors across j (isolated; commit 245d0134847): int16
+    `c_col_maj` 2873 → 2753 (-4.2%), `b_col_maj+c_col_maj` 3161 → 3041
+    (-3.8%), bf16 5761 → 5713 (-0.8%), `mha` 10089 → 10001. Raw output
+    bit-identical across 15 cases; `[sp]` references 22 → 10.
+  - `expand/576` 839 → 162 (with an exponent-trick convert)
+  - `convert_copy/1024` 652 → 88 (with unroll)
+  - `q4nx_dequant`: all four cursors on `add_3d_byte`/`add_2d_byte`, part of
+    L19 (combined).
+
+## L07 `AIE_LOOP_UNROLL(4)` on latency-bound bodies
+
+- **When:** the pipelined body is latency-bound, with many empty bundles at a
+  fixed II. Screen for it (`static-checks.md` §Unroll screen): if the loop's
+  `byte_count` stays flat from ×1 to ×4, the extra iterations fill stall slots
+  you already pay for.
+- **Do:** `AIE_LOOP_UNROLL(4)`. Add a case that reaches the remainder
+  (`static-checks.md` §Remainder case).
+- **Don't:** apply it to load-, resource- or register-bound bodies (X20-X23).
+  Stop when the body grows or spills appear.
+- **Check:** II per element drops, and there's no new `[sp, #...]` traffic.
+- **HW** (isolated): `leaky_relu` 298 → 86, `mul` 454 → 142, `add` 390 → 150,
+  `gelu` 594 → 318.
+- **HW, `AIE_LOOP_UNROLL(2)`** on the `fused_mm` epilogue chunk loop (isolated,
+  per call): gelu 2582 → 1919.2 (-25.7%), silu 2294.75 → 1767, sigmoid
+  2070.75 → 1646.2, identity 991.5 → 976. Chunk cycles gelu 172 → 89, silu
+  136 → 70, sigmoid 108 → 55. `UNROLL_FULL` on the same loop grew `.text`
+  in every configuration (X33).
+
+## L08 Use the full register width
+
+- **When:** the loop steps 16 lanes on 8/16-bit data or bf16 arithmetic.
+- **Do:** step 64 lanes for 8/16-bit data and 32 lanes for bf16 arithmetic.
+  Template the lane count on the architecture.
+- **Check:** the trip count halves (or quarters) at a similar II.
+- **HW:** `rope/1024` 1932 → 298, with L06 cursors; `swiglu` with L05.
+
+## L09 Split dependency chains
+
+- **When:** one long mac chain per block, or lane broadcasts spilled and
+  reloaded per row block (`[sp, #...]` in the body).
+- **Do:** use two independent accumulators and add them at the end, or block
+  the rows so one broadcast feeds several accumulators. Stop before spills
+  appear.
+- **Check:** the II drops, and the spills are gone.
+- **HW:** `mv/32x32 int16` 291 → 127 (two row blocks per broadcast, spills
+  gone). `dwconv1d` 2810 → 1505 (two `sliding_mul` chains, unrolled
+  `taps.set`, count-down cursors; combined).
+
+## L10 Make the hot loop innermost and single-block
+
+- **When:** Peano pipelines only innermost single-basic-block loops. The
+  signal is the loop you care about in `unpipelined_loops` because it
+  encloses a short loop, or outer loops that pay prologue and epilogue per
+  trip.
+- **Do:**
+  - Fully unroll a short K reduction into its parent.
+  - Fold nested tile loops into one counter.
+  - Hoist a per-tile `if` out of a mac loop by splitting it into straight
+    loops.
+  - Opt in per dtype. The same unroll left bf16 and int16 unchanged on HW,
+    and the compiler reports it worse for them (X24).
+- **Check:** the parent loop now has an II. Estimate
+  `bundles + 5 + (trips-1)×II`, which matched HW within one cycle for
+  `mm_bfp_mixed`.
+- **HW:**
+  - `mm/64x32x64 int8` 993 → 737 (isolated; bf16 and int16 unchanged)
+  - `mm_bfp/64x64x64/mixed` 1349 → 1313 and non-square 64x32x32 589 → 545,
+    bit-identical over 360448 raw words
+  - `AIE_LOOP_UNROLL(2)` on an unpipelined outer loop (`fused_mm`'s bf16 z
+    loop around an II35 mac loop), so two trips' C loads and stores overlap:
+    k_step 216 → 192-194, identity per call 1084.5 → 991.5 (-8.6%, isolated;
+    commit f32e367c609). `UNROLL(2)`, not `FULL`, keeps code bounded for
+    larger row counts; full unrolls of z and i spilled or got slower (`aie-kernel-opt-hw` X12).
+  - branch split: 10.48 → 9.77 ms end-to-end (internal model)
+
+## L11 Unsigned counted trip
+
+- **When:** a signed trip count, or a signed divide or shift by 2^k (it
+  doesn't lower to a shift).
+- **Do:** compute the trip count up front as unsigned.
+  `AIE_LOOP_MIN_ITERATION_COUNT(1)` was part of this win, but it cost the
+  zero-overhead loop in two other kernels (X37). Re-check `non_zol_loops`
+  every time you add it.
+- **Check:** no `__divsi3`; the II drops; `non_zol_loops` is unchanged.
+- **HW:** `axpy/1024` 317 → 178.
+
+## L12 Wide stores, never byte loops
+
+- **When:** an `lda.s8`/`st.s8` loop. Peano won't pipeline it (II72 at any
+  unroll, X36).
+- **Do:** copy with `uint64_t`/`uint32_t`, or merge byte blocks into 32 B
+  vector stores. Align both ends.
+- **Check:** the loop pipelines, with 2 memory ops per 8 B instead of 16.
+- **HW:**
+  - bfp16 shuffle 27.5 → 2.6 µs per call (10.4x), unshuffle 28.7 → 3.2 µs
+    (9.1x), by rep slope; 183.0 → 80.7 µs wall
+  - explicit `uint64_t` copy: +14% fps (internal model)
+
+## L13 `UNROLL_FULL`, not `RANGE`, on a loop that switches on its counter
+
+- **When:** a small loop whose body branches on the loop variable (for
+  example a 3-tap `kx` loop calling a helper that switches on `kx`).
+- **Do:** `AIE_LOOP_UNROLL_FULL`. `AIE_LOOP_RANGE` is only a trip-count hint
+  and leaves the branch in place.
+- **HW:** `RANGE(3,3)` → `UNROLL_FULL` on `kx`: 5.31 → 2.84 ms (internal
+  model).
+
+## L14 Vector int8 epilogue (AIE2P)
+
+- **When:** a scalar `acc + bias → SRS → clamp` tail per output element.
+- **Do:** add the bias on an int32 vector, then call
+  `acc.to_vector<int8>(shift)` under `aie::rounding_mode::conv_even`. That is
+  bit-exact with scalar banker's-rounding SRS.
+- **HW:** -42% cumulative on one block, 20-25% per kernel (internal model).
+
+## L15 Producer writes mmul-A order (AIE2P)
+
+- **When:** a consumer builds the mmul A operand by scalar gather, and you
+  own both ends.
+- **Why the gather exists:** `aie::concat` won't join vectors narrower than
+  128 bits, so a wide operand can't be assembled from strided narrow loads,
+  and the compiler falls back to a scalar byte copy into a stack buffer.
+- **Do:** have the producer store in mmul-A order: an mmul result's
+  `acc.to_vector<int8>(shift)` is already in the byte order the next mmul
+  wants as A, so it is one vector store. The consumer then does one aligned
+  `vlda`, or builds a shifted window from two aligned blocks:
+  ```cpp
+  auto combined = aie::concat(lo_block, hi_block);   // >= 128 bits each side
+  return aie::shuffle_down(combined, shift_amt).template extract<N>(0);
+  ```
+  Both ends must agree on the stride.
+- **HW:** -23.6% on one block (internal model).
+
+## L16 Pure strided copy → DMA transform
+
+- **When:** the kernel body is only a rearrangement (a stride-2 deinterleave
+  or a transpose).
+- **Do:** move it into a memtile `dims_to_stream` transform. The element must
+  be ≥ 512 B, and int8 vector loads need a 32 B-aligned start. Dataflow
+  placement belongs to `aie-dataflow-opt`.
+- **HW:** stride-2 deinterleave, +12% (internal model).
+- **Example:** `programming_examples/basic/transposes/transposes.py` shows
+  both ends: `--strategy dma` (pure DMA, 4-byte elements only) and
+  `--strategy combined` (a shim DMA block reshuffle plus a small kernel).
+
+## L17 Raise the pipeliner stage cap on a long dependency chain
+
+- **When:** the hot loop is pipelined, its remarks `ns` is 3 (the default
+  cap), and the body is one long latency chain with no dominant step: ablating
+  any single step moves the II by at most a couple of cycles. `q4nx_dequant`'s
+  chain was about 48 cycles (load → shuffle → unpack → to_float → mac → srs →
+  transpose → store) at II17.
+- **Do:** add `-mllvm --aie-pipeliner-max-stagecount=N` (N = 4 or 5) to that
+  kernel's factory `compile_flags` only, never globally:
+  ```python
+  compile_flags=[...] + ["-mllvm", "--aie-pipeliner-max-stagecount=5"],
+  ```
+- **Check:** statically first. Run the remarks on the arm (they compile with
+  the factory's `compile_flags`) and confirm the loop's `ns` rises. The final
+  `ii` can barely move, because the postpipeliner can eat the gain:
+  `q4nx_dequant`'s pre-RA II went 16 → 11/12 but the final II only 17 → 16.
+  A small static move is not a reason to skip the HW A/B; the HW win was
+  larger than the static II suggested. Also check `.text` and
+  `llvm-readelf --stack-sizes` against the contract.
+- **HW** (isolated; commit c3ca24f4d88), per call:
+
+  | case | default (N=3) | N=4 | N=5 |
+  |---|---:|---:|---:|
+  | `q4nx_dequant/5120x4` | 2245-2265 | 2119-2122 | 2115-2116 (-5.8%) |
+  | `1536x2`, group 24 | 712-715 | 682-684 | 673-677 (-5.4%) |
+  | `512x2`, group 8 | 205 | 201 | 201 (-2.0%) |
+  | `.text` B | 688/672/672 | 800/784/800 | 912/896/800 |
+
+  N=4 gives most of the win. N=3 compiles to the default code. Kernel frame
+  unchanged (64 B); byte-exact gate passes. Noise was about 20 cycles on
+  5120x4 and about 1 on the others.
+
+## L18 Pair two 8x8 output tiles on one 64-lane accumulator (AIE2P, bf16)
+
+- **When:** Y += S·V built from several `aie::mmul<8,8,8>` accumulators, with
+  a high II and a large stack frame. Prefill `attn_fv` ran four mmul
+  accumulators with volatile y loads at II125 (head dim 512) and II97 (256),
+  frames 0x840/0xC80.
+- **Do:**
+  - Keep two neighbouring 8x8 output tiles on one 64-lane `accfloat`
+    accumulator (rows 0-3 of both tiles in the low half, rows 4-7 in the high
+    half), so one native `vmac.f` per k advances both tiles.
+  - Build the S-side operand once per row block and reuse it for every pair.
+  - Load the next pair's y before this pair's store. Otherwise the pipeliner
+    can't separate the load from the store (a may-alias loop-carried chain,
+    RecMII about 35) and serializes them. Clamp the last iteration's pointer
+    to itself so nothing reads past y.
+  - Keep each output's ascending-k fp32 sum so the result stays bit-identical.
+- **Check:** the loop's II and frame drop (II125/97 → 37, frame → 0x700).
+  More tiles per accumulator group crashed Peano (`traps.md` P06).
+- **HW** (commit 4dde796eff1): `prefill_fv` head dim 512 2034-2082 →
+  1265-1393 (-35%); head dim 256 3199-3274 → 2707-2963 (-12%). Full prefill
+  round -17% / -15% at 512 and -5% at 256. Raw output bit-identical over 4
+  geometries. Variants that lost on HW are `aie-kernel-opt-hw` X13 (static row S15).
+
+## L19 One bfp16 stream per operand per loop (AIE2P)
+
+- **When:** a loop keeps more bfp16 streams live than AIE2P has state
+  registers, and the stream state spills every step:
+  - output: two `block_vector_output_buffer_stream`s share the single `sf`
+    register, so `llvm-objdump` shows `vlda sfl/sfh` and `vst sfl/sfh` to
+    `[sp, #...]` around every `vst.push...bfp16`;
+  - input: there are two `lf` FIFO registers. `mm_bfp` built four A/B input
+    streams plus two C-in and two C-out streams per 2x2 group, and the
+    FIFO state and address scalars spilled on every k step (73 `[sp`
+    references).
+- **Do:** order the output so it is contiguous and write it through one
+  stream. In `q4nx_dequant` this came with: one 8x8 tile per iteration with a
+  single 64-lane mac (L08), a shuffle mode read from a `constexpr` table so
+  both halves share one body, the (n8, step) loop flattened into one counter
+  (L10), and every cursor on `add_3d_byte`/`add_2d_byte` (L06).
+- **Check:** the `sf` spills are gone; body `[sp]` references drop (26 → 4);
+  the II per value drops (II67 per 128 → II17 per 64).
+- **HW** (combined; commit 00a21467744), per call: `q4nx_dequant/5120x4`
+  4719-4764 → 2245-2265 (2.10x), `1536x2` 1489 → 712-715 (2.09x), `512x2`
+  322-329 → 205 (1.59x). Byte-exact under `Tolerance.exact`.
+- **Do (`mm_bfp`, input side):** one A and one B stream per 2x2 group that
+  hop between the group's two rows with `pop_seek`, and one C output stream
+  for the whole call. Loop once over the (rows/2)·(cols/2) groups with the k
+  loop fully unrolled. Read the next group's C before writing this group's,
+  so the loads overlap the mac tail. Keep the mac order per output tile.
+  Two blocks per row between seeks (`pop`, then `pop_seek`) halve the FIFO
+  fills, **but only for an even block count**: see `traps.md` P14 and keep a
+  seek-after-every-pop loop for odd K.
+- **Check:** in-loop `[sp` references gone (73 → 4, all prologue/epilogue);
+  `unpipelined_loops` 2 → 0. Normalize the II per 2x2 group (S17): 15 per
+  k step became 58 per group.
+- **HW** (combined; commit a558bba4c10), per call:
+  `mm_bfp/64x64x64x16/bfp16ebs8` 4243-4529 → 951 (4.5x), `64x64x64x4`
+  4246-4529 → 951, odd-K `32x24x48x4` 850-894 → 269 (3.2x). Raw HW output
+  byte-identical on 33 of 33 comparable outputs (12 shapes × 3 patterns).
+  The base kernel's 4243-4529 spread was a period-6 external stall that its
+  stack traffic amplified to about 285 cycles; with the spills gone the same
+  stall costs 25-27 cycles in one call of six.
+
+## L20 Batch horizontal reductions (AIE2P, bf16)
+
+- **When:** each row ends in its own `reduce_add` (or another horizontal
+  tree), the remarks meta shows that tree as an unpipelined loop or a long
+  straight-line chain (II125 at K=64 in `mv`), and the row loop never
+  overlaps it. On hardware the reduction was priced by ablation at 520 of
+  1154 cycles (`aie-kernel-opt-hw` §Bounds found by ablation).
+- **Do:**
+  1. Mac four rows against each b chunk, so one load of b feeds four macs.
+  2. Pack the four accumulators (quarter-permuting concat/add, no shuffles)
+     so quarter q holds row q's 16 partials, then fold all four rows with one
+     `interleave_unzip` + `add` tree instead of four `reduce_add`s.
+  3. Finish group g's tree in iteration g+1, after group g+1's macs issue.
+     When the mac loop is fully unrolled (chunks ≤ 4), carry the whole
+     accumulator. Otherwise carry only the folded `vector<float,16>`:
+     carrying the 2048-bit accumulator across the mac loop spilled (stack
+     704 B at K=2048).
+  4. Ride-alongs: a cursor per row (one pointer post-incremented for all 8
+     loads chained them at II9; per-row cursors give II7), and peel the first
+     chunk as `aie::mul` so the zero accumulator isn't reloaded from `[sp]`.
+  5. Keep the original single-row code for the m % 4 tail, and add a case
+     for the mac-loop path (`mv/10x512x4/.../edge-mac-loop`).
+- **Check:** the per-row `reduce_add` loops are gone; the group body's II
+  **per row** is below the old row loop plus its reduction (II56 / 4 rows at
+  K=64); the frame stays within the declared stack. 8 or 16 rows per group
+  overflowed the 1024 B Worker stack (1728 / 3328 B).
+- **HW** (combined; commit 2da9f2d0d71), per call: `mv/32x256` 1154 → 788
+  (-31.7%), 4x64 at `vec_size` 32 (amd/IRON's attention shape) 159 → 110, 4x128 149 → 125, 6-row tail 287 → 273, 10x512
+  551 → 518, 4x2048 420 → 408. Raw output bit-identical on 10 shapes: the
+  transposed tree pairs lanes exactly as `reduce_add` does.
+
+
+---
+
+## Compiler reports, not HW (X20-X45)
+
+These variants were dropped because the remarks or the object showed them
+worse, so they never reached the NPU. They are **not** hardware numbers. Cite
+them as "the compiler reports". A candidate matching a row here is class
+`reject`: in the two cases later checked on hardware (S12, S13), the compiler
+was right.
+
+| ID | Change | Kernel | Compiler reports |
+|---|---|---|---|
+| X20 | `UNROLL(2)` | swiglu | spills, 288 → 576 B |
+| X21 | `UNROLL(8)` | silu / gelu | II93 / II133 |
+| X22 | ×4 on the LUT tanh path | silu LUT build | II77×32 → II269×8: 13% for +848 B. Gate unrolls on `ACTIVATIONS_NATIVE_TANH` |
+| X23 | ×4 on a resource-bound body | tanh | flat at II4 |
+| X24 | `UNROLL_FULL` on K | bf16 / int16 `mm` | II35 → 156 / spills |
+| X25 | `AIE_PREPARE_FOR_POSTPIPELINING` | swiglu | II49 (it disables pipelining, `traps.md` P04) |
+| X26 | `UNROLL(2)` | rope | helper goes out of line, II25 |
+| X27 | Unconditional unroll | `zero` | 176 → 560 B |
+| X28 | `UNROLL_FULL` on the column loop | transpose | 2304 B |
+| X29 | 1x4 / 1x1 accumulator expansion | mha | II164 / II26 × 64 pairs ≈ 13312 |
+| X30 | 4 accumulators at head dim 256 | flash prefill | 16 × II266 = 4256 vs 3104 |
+| X31 | Factoring the polynomial | gelu | II69 (the chain gets deeper) |
+| X32 | 3 mac chains / bias moved to the end | dwconv | II31 / II32 vs 29 |
+| X33 | `UNROLL_FULL` | fused epilogue | `.text` up in all 5 configurations |
+| X34 | `UNROLL(2/4)` | `mm_bfp_mixed` | II16 / II44 vs 6 |
+| X35 | Unroll 2 or 4 | cast | worse than 8 |
+| X36 | Byte loops at any unroll | bfp shuffle | II72 |
+| X37 | `AIE_LOOP_MIN_ITERATION_COUNT` | matmul epilogue, dwconv | lost the zero-overhead loop |
+| X38 | `__builtin_memcpy(d,s,8)`, or a byte loop at -O2 | copy | 16 memory ops vs 2 |
+| X39 | Making a helper `static` to shrink `.text` | any | 2x smaller object, 0 B in the ELF |
+| X40 | Full unroll of the i loop | `mm_fused` | z loop II119 (llvm-aie#1066) |
+| X41 | 32 lanes but keeping `to_fixed/to_float`; inlining the poly; interleaving 2-4 vectors; `UNROLL(2/4)` | `bf16_exp` / `exp2f_vec` | II466/427; 0xac0 B frame; frames 0x5c0 / 0x12c0 |
+| X42 | K full unroll / unroll 2 / peel k=0 / A1 via `vlda.conv` / rotating operands into the store tail / 1x2 expansion | `mm_bfp_mixed` | tile II84 + spills / II16-17 / 88 per tile / II9 + 4 spills / 91-114 per tile / half the bound |
+| X43 | Scalar counters instead of `add_3d_byte` cursors; byte or delta offset tables; 32-lane `to_float` | `q4nx_dequant` | II22 / II25 / II21 / II20 vs 17 per 64 values |
+| X44 | bf16 `unroll_k` (K folded into j) / peel the first k-step / int16 1x2 expansion / one 64-lane accumulator for a pair / int16 accumulate in acc32 | `mm` | LICM hoists A patterns into a ~3.5 KB frame (over the 1 KB Worker stack) / II110 with 68 `[sp` refs / II38 per j ≈ 2432 vs 2017 / 6 mv ops per substep vs 4 / not bit-identical |
+| X45 | `UNROLL(2)` on the paired fv loop; LICM blockers (select, `j/64`, `ptr>>31`) | prefill `fv` | II92 per 2 pairs (46 vs 37 per pair); folded by LLVM, frame 0xF40 over the 2304 B budget |
+
+## Bounds (NO-CHANGE)
+
+When the II already equals the resource or latency bound, the report is
+NO-CHANGE with the bound. That is a valid result. `mm_bfp_mixed`'s k loop
+sits at II6, which is the `vmac.f` acc→acc latency. AIE2P has 5 accumulator registers (dm0-dm4), so a fifth chain is
+impossible. Only the loop-nest overhead moved on hardware (L10).
+
+bf16 `mm`'s k loop is the other measured bound. The bf16 emulation needs 34
+mv-slot ops per step, so MII is 34 and the achieved II35 is 97% slot
+efficiency. Peano's software pipeliner gives up above MII 27 (`SwpMaxMii` in
+the remarks meta `schedule_notes`), so only the postpipeliner runs there.
+Cursors moved it -0.8% (L06); report NO-CHANGE for further kernel-local work.
+
+The bf16 GEMV's horizontal reduction looked like a bound after X02-X04,
+but it was a per-row latency chain, and L20 batched it. A transposed-A
+layout for the bf16 GEMV has never been measured.

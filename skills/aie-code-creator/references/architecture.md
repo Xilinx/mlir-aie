@@ -113,7 +113,7 @@ Violate these and you get either a compile error or silently wrong results.
 |----|----------------|---------------|
 | int8 MAC / cycle | 256 | 512 |
 | bf16 MAC / cycle | 128 | 256 |
-| Clock | ~1.0–1.3 GHz | ~1.5 GHz |
+| Clock | ~1.0–1.3 GHz | ~1.5 GHz nominal; 1.76 GHz measured on Strix |
 
 Multiply per-tile peak by `(rows × columns)` for the full array. You won't hit peak without MMUL, restrict pointers, and pipelined loops.
 

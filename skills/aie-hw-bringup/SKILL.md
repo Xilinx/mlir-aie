@@ -14,7 +14,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 Third of four porting phases (see `aie-model-baseline` for the oracle this
 phase compares against, `aie-dataflow-presim` for the simulation that
 should already have caught topology/deadlock bugs before this phase
-starts, `aie-kernel-opt`/`aie-dataflow-opt` for optimization afterward).
+starts, `aie-kernel-opt-hw`/`aie-dataflow-opt` for optimization afterward).
 
 Simulation catches deadlocks and math bugs cheaply, but it can't catch
 everything — real hardware has memory budgets, real DMA timing, and real
@@ -110,7 +110,7 @@ Precision/unroll cuts trade away exactly the correctness or performance
 this phase is trying to establish; a tile split is a dataflow decision
 that doesn't cost either.
 
-## Checklist before moving to optimization (`aie-kernel-opt` / `aie-dataflow-opt`)
+## Checklist before moving to optimization (`aie-kernel-opt-hw` / `aie-dataflow-opt`)
 
 - [ ] Every block/layer brought up and validated bit-exact on real
       hardware, incrementally, not all at once

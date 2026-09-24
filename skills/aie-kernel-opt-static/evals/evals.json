@@ -1,0 +1,124 @@
+{
+  "skill_name": "aie-kernel-opt-static",
+  "evals": [
+    {
+      "id": 0,
+      "name": "soft-float-mean-divide",
+      "prompt": "My AIE2P bf16 RMS-norm kernel is slow. The reduction loop accumulates `float sum` and then does `float mean = sum / cols;` and later `out[i] = x[i] * inv * gamma[i];` in a scalar tail. Peano reports the reduction loop at II13 and the normalize loop at II24. What should I change first, and how do I confirm it worked?",
+      "expected_output": "Identifies scalar float divide, int-to-float conversion and float multiply as AIE2P libcalls (__divsf3, __floatsisf, __mulsf3) that block pipelining. Proposes keeping the reduction in a vector accumulator, computing the mean with aie::to_float plus aie::inv, and vectorizing the normalize tail. Confirms statically: llvm-nm -u shows no helpers and the remarks report shows the loops pipelined at a lower II. Classifies the candidate as strong (libcall removed; rms_norm 1597 -> 438 is the precedent on another kernel) but reports it as a candidate, HW unconfirmed, and hands it to aie-kernel-opt-hw for the A/B.",
+      "files": [],
+      "assertions": [
+        "Names at least two of __divsf3, __floatsisf, __mulsf3 as the helpers the scalar code pulls in",
+        "States that scalar float multiply/divide/int-to-float are software routines (libcalls) on AIE2P",
+        "Recommends aie::inv (or aie::invsqrt) and aie::to_float instead of the scalar divide",
+        "Tells the user to check llvm-nm -u (or equivalent undefined-symbol listing) for the helpers after the change",
+        "Does not state a speedup for the user's kernel; calls the result a candidate and hands it to aie-kernel-opt-hw (or a hardware A/B) for measurement"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "wrong-symbol-trap",
+      "prompt": "I optimized gelu_tile_bf16 in aie_kernels/aie2p/gelu.cc: the loop went from II33 to II18 and the object file clearly changed. But the gelu benchmark on hardware reads 594 cycles before and 594 after. The test passes. What is going on?",
+      "expected_output": "Explains that the benchmark probably calls a different extern \"C\" entry point than the one optimized, and tells the user to trace the IRON factory binding in python/iron/kernels to its symbol and the implementation it calls. Notes that an in-place variant with no factory is not reached by the e2e test. Recommends either optimizing the called symbol or adding a factory and test case. Adds the lesson that static II on an unresolved symbol is class experiment, not a win.",
+      "files": [],
+      "assertions": [
+        "Suggests the benchmark reaches a different function/entry point than the one edited",
+        "Tells the user to resolve the IRON factory to its extern \"C\" symbol and then to the implementation it calls",
+        "Does not attribute the 0% result to measurement noise or recommend re-running for more samples as the fix",
+        "Recommends optimizing the symbol the benchmark calls, or adding a factory/test for the edited one"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "prepare-for-pipelining-question",
+      "prompt": "My Peano-compiled AIE2P kernel loop isn't pipelining. Should I add AIE_PREPARE_FOR_PIPELINING before the for loop? The programming guide says it is needed to enable the other loop pragmas.",
+      "expected_output": "States that AIE_PREPARE_FOR_PIPELINING expands to nothing under Peano (only the other compiler reads it), so adding it changes nothing, and warns that AIE_PREPARE_FOR_POSTPIPELINING disables pipelining. Points to real causes of an unpipelined loop: a libcall in the body, the loop not being innermost and single-block, a branch on the loop counter, missing __restrict, an unknown or signed trip count. Recommends running python -m aie.utils.compile.remarks and reading the loop's pipelined/missed_reason fields.",
+      "files": [],
+      "assertions": [
+        "States that AIE_PREPARE_FOR_PIPELINING is a no-op (expands to nothing) under Peano",
+        "Mentions at least two real causes of an unpipelined loop among: aliasing/missing restrict, unknown trip count, not an innermost single-block loop, branch in body, libcall in body",
+        "Recommends reading Peano's optimization remarks or loop report to see why the loop was rejected",
+        "Does not recommend AIE_PREPARE_FOR_PIPELINING as a fix"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "latency-bound-unroll-screen",
+      "prompt": "My bf16 elementwise add on AIE2P pipelines at II7 per 32 lanes. The disassembly of the loop is: `vlda.conv cml3,[p0] | vlda.conv cml4,[p1] | nop | nop | nop | vadd.f | vst.conv`. Should I unroll it, and by how much?",
+      "expected_output": "Diagnoses a latency-bound loop: three nop bundles waiting on load-to-use latency. Recommends an unroll screen: compile x1/x2/x4 arms with the remarks tool and compare the loop's byte_count and II; if the body stays flat, the extra iterations fill stall slots and the candidate is class strong (precedent add 390 -> 150, leaky_relu 298 -> 86 on hardware). Stops when the body grows or spills appear. Adds a remainder test case. Reports the chosen factor as a candidate with a per-call prediction and hands it to aie-kernel-opt-hw for the traced-cycles A/B.",
+      "files": [],
+      "assertions": [
+        "Identifies the nops as exposed latency (the loop is latency-bound, not throughput-bound)",
+        "Recommends screening several unroll factors by compiled loop-body size and II before picking one",
+        "Warns to stop widening when the body grows or register spills appear",
+        "Mentions that the unroll creates a remainder path that needs a covering test case",
+        "Presents the chosen factor as a candidate for hardware measurement, not as a measured speedup"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "mmul-expansion-spills",
+      "prompt": "My AIE2P bf16 attention kernel's QK matmul uses a 2x2 mmul expansion from mm.cc. Peano pipelines the loop at II175 for eight native macs, and I see many `[sp, #-0x...]` loads and stores in the loop body. How should I approach this?",
+      "expected_output": "Diagnoses the [sp, ...] traffic as register spills from too many live accumulators and operand tiles. Treats changing the mmul expansion as a candidate: the only hardware precedent is L18 (pairing two 8x8 tiles on one 64-lane accumulator in prefill fv), and the compiler-reported 1x4/1x1 variants for mha (X29) were worse. Screens candidates with the remarks tool and object dump, estimates cycles per call from bundles, II and trip count (not II alone), checks the frame against the declared stack, and classifies each. Warns that hiding loads from LLVM to lower II was a recorded miss (S15). Hands the best candidate to aie-kernel-opt-hw.",
+      "files": [],
+      "assertions": [
+        "Identifies the [sp, ...] traffic inside the loop as register spills",
+        "Does not present a specific expansion as a guaranteed or known win; frames it as a candidate with a confidence class",
+        "Says to compare candidates by estimated cycles per call (II combined with trip count), not II alone",
+        "Checks the stack frame against the kernel's declared stack budget",
+        "Hands the candidate to hardware measurement (aie-kernel-opt-hw) before any speedup claim"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "fp32-vector-multiply-emulation",
+      "prompt": "In my AIE2P matmul's SiLU epilogue I compute `aie::mul(x, sig)` where x is `aie::vector<float,16>` and sig is the bf16 sigmoid result widened to float. The loop sits at about 126 bundles per vector. Why is it so slow?",
+      "expected_output": "Explains AIE2P has no fp32 vector multiplier, so aie::mul on float vectors is emulated with bf16 products (about 224 bytes of code vs 4 for one bf16 mac). Since sig is exact in bf16, only x needs splitting: peel three bf16 limbs of x (residuals formed exactly via accumulator msc) and mac each against sig; three limbs cover fp32's 24 significand bits, two do not (the 2-limb split changed output words on hardware). Cites the precedent (epilogue silu 8098 -> 3213 cycles) as the record behind a likely class, confirms the bundle drop statically, and hands off to aie-kernel-opt-hw for the A/B and the raw-output bit-exact diff.",
+      "files": [],
+      "assertions": [
+        "States that AIE2P lacks a native fp32 vector multiply and aie::mul on float vectors is emulated with bf16 products",
+        "Observes that the sigmoid operand is exactly representable in bf16 so only x needs splitting",
+        "Describes splitting x into bf16 limbs and issuing native bf16 macs",
+        "Recommends confirming the change in the loop's bundle count or II, and leaves correctness/bit-exactness and the speed claim to a hardware run"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "routes-away-first-kernel",
+      "prompt": "I need to write my first AIE kernel: a bf16 vector scale-and-add for NPU2, called from an IRON design. Where do I start?",
+      "expected_output": "Recognizes this is writing a new kernel, not optimizing an existing one, and routes to aie-code-creator (or the programming guide) rather than running the optimization loop.",
+      "files": [],
+      "assertions": [
+        "Does not start the optimization procedure (baseline, static report, levers) on a kernel that does not exist yet",
+        "Points the user to kernel-authoring guidance (aie-code-creator skill or the programming guide) for writing the first version"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "refuse-speedup-claim",
+      "prompt": "I halved the II of the main loop in aie_kernels/aie2p/layer_norm.cc from 24 to 12 with a restrict cursor and UNROLL(2). remarks confirms it and the contracts test passes. I don't have an NPU on this box. Write me the commit message; title it 'layer_norm: 2x faster main loop'.",
+      "expected_output": "Refuses to state a speedup: no hardware measurement exists, and a static II drop has missed before (an II33 -> 18 change measured 594 -> 594; an II37 -> 31 change ran slower). Checks that the edited function is the symbol the layer_norm factory calls. Offers a commit/report that states the static facts (II 24 -> 12 on the named loop, bytes, stack) and a per-call prediction labelled as not measured, classifies the candidate (likely, or strong if the unroll screen passed with flat bytes), and says aie-kernel-opt-hw must A/B it on an NPU before any speedup appears in a commit.",
+      "files": [],
+      "assertions": [
+        "Does not write a commit title or message that claims the kernel is faster, 2x, or any percentage speedup",
+        "Explains that a static II improvement is not a measured speedup and cites at least one case where static II improved but hardware did not",
+        "Offers wording that reports the static metrics (e.g. II 24 -> 12) as compiler output, labelled unconfirmed",
+        "Directs the candidate to a hardware A/B (aie-kernel-opt-hw) before a speed claim",
+        "Assigns or discusses a confidence class, or checks that the edited loop belongs to the symbol the factory calls"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "opaque-pointer-ii-drop",
+      "prompt": "In prefill attention's fv loop (aie_kernels/aie2p) LICM hoists the S operands and they spill. I replaced the pointer increment with an add_2d bump the compiler can't see through, so the S loads stay in the loop. remarks now reports II31 instead of II37 and fewer [sp] refs. Is this a good change to send for hardware testing, and how confident should I be?",
+      "expected_output": "Recognizes that the II drop came from hiding work from LLVM (an opaque pointer bump), which the static skill classes as experiment at best, and cites the recorded miss: this exact change measured 1265 -> 1374-1576 cycles on hardware, slower despite the better static II. Explains that the loop is port-A bound (about 36 vlda per iteration), so keeping loads inside the loop adds load-port pressure the II alone does not show. Recommends not presenting it as a win; if it is sent at all, send it labelled experiment with the precedent, and look instead at the frame/stack and a structural change (L18 precedent).",
+      "files": [],
+      "assertions": [
+        "Classifies the change as an experiment (or lower), not a strong or likely candidate",
+        "Mentions that this kind of II drop (opaque pointer / add_2d bump in prefill fv) was measured slower on hardware",
+        "States that a lower II does not by itself predict fewer cycles per call",
+        "Does not claim the change is a speedup"
+      ]
+    }
+  ]
+}
