@@ -11,6 +11,7 @@ an object that was not rebuilt keeps its inode and mtime. No NPU is required.
 
 import contextlib
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -199,6 +200,35 @@ def test_changing_a_key_input_misses(tmp_path, source, cache, change):
     assert len(list(cache.root.iterdir())) == 2
     if change in _CHANGES_OUTPUT:
         assert first.read_bytes() != second.read_bytes()
+
+
+@pytest.mark.parametrize("tool", ["nm", "objcopy"])
+@pytest.mark.parametrize("mode", ["prefixed", "bitcode"])
+def test_object_tool_changes_miss(tmp_path, source, cache, monkeypatch, tool, mode):
+    kernel = _kernel(source, **({"symbol_prefix": "op0"} if mode == "prefixed" else {}))
+    build_kwargs = {"ir": mode == "bitcode"}
+    first = _build(tmp_path, cache, kernel, **build_kwargs)
+    original = _entry_object(cache, kernel)
+    before = _identity(original)
+    _build(tmp_path, cache, kernel, **build_kwargs)
+    assert _identity(original) == before
+
+    selected = tmp_path / os.path.basename(getattr(config, f"{tool}_path")())
+    shutil.copy2(getattr(config, f"{tool}_path")(), selected)
+    monkeypatch.setenv(f"AIE_{tool.upper()}_PATH", str(selected))
+    second = _build(tmp_path, cache, kernel, **build_kwargs)
+    assert len(list(cache.root.iterdir())) == 2
+
+    stat = selected.stat()
+    os.utime(selected, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    third = _build(tmp_path, cache, kernel, **build_kwargs)
+    assert len(list(cache.root.iterdir())) == 3
+    if mode == "prefixed":
+        assert first.read_bytes() == second.read_bytes() == third.read_bytes()
+    else:
+        for obj in (first, second, third):
+            assert _symbols(obj) == ["helper_fn", "scale"]
+            assert compile_utils._object_has_bitcode(str(obj))
 
 
 @pytest.mark.parametrize("change", sorted(_OTHER_INPUTS))

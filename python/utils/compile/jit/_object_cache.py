@@ -9,8 +9,9 @@ A design's cache entry is keyed on the whole design, so a kernel used by two
 designs -- or by one design at two sizes -- was compiled once per design
 directory. What determines an object's bytes is much narrower: the
 ``KernelObject`` recipe, the target, the design's include paths, whether IR is
-retained, and the compiler. Objects are keyed on exactly that, built once under
-``<root>/<key>/``, and copied into each design directory that links them.
+retained, and the compiler and object tools. Objects are keyed on those inputs,
+built once under ``<root>/<key>/``, and copied into each design directory that
+links them.
 
 An entry records the inputs its compile read (see ``_manifest``) and is rebuilt
 when one changes, so a header edit reaches every object that included it. The
@@ -52,6 +53,8 @@ def _key(func, target_arch, include_dirs, embed_bitcode) -> str:
         embed_bitcode,
         str(config.cxx_header_path()),
         _tool_identity("peano", config.peano_cxx_path),
+        _tool_identity("nm", config.nm_path),
+        _tool_identity("objcopy", config.objcopy_path),
     )
     return hashlib.sha256(repr(identity).encode()).hexdigest()[:24]
 

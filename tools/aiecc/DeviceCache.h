@@ -409,7 +409,10 @@ private:
         allCompiled = false;
         return;
       }
-      std::string file = key + ".elf";
+      auto tile =
+          mlir::cast<xilinx::AIE::TileOp>(core.getTile().getDefiningOp());
+      std::string file = "core_" + std::to_string(tile.getCol()) + "_" +
+                         std::to_string(tile.getRow()) + ".elf";
       elfs.push_back({it->second, file});
       core.setElfFileAttr(mlir::StringAttr::get(core.getContext(), file));
     });

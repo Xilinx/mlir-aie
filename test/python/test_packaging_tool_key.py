@@ -169,3 +169,17 @@ def test_xclbin_and_elf_key_tracks_both_packagers(bin_dir, generator):
     _install(bin_dir, "aiebu-asm", "2")
     both_changed = _key("xclbin+elf", bin_dir, generator)
     assert len({before, xclbin_changed, both_changed}) == 3
+
+
+@pytest.mark.parametrize("tool", ["nm", "objcopy"])
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_design_key_tracks_object_tools(bin_dir, tmp_path, tool, generator):
+    selected = _install(bin_dir, f"llvm-{tool}", "1")
+    env = {f"AIE_{tool.upper()}_PATH": str(selected)}
+    before = _key("insts_only", bin_dir, generator, **env)
+    _install(bin_dir, f"llvm-{tool}", "2.0")
+    upgraded = _key("insts_only", bin_dir, generator, **env)
+    other = _install(tmp_path, f"llvm-{tool}", "2.0")
+    env[f"AIE_{tool.upper()}_PATH"] = str(other)
+    redirected = _key("insts_only", bin_dir, generator, **env)
+    assert len({before, upgraded, redirected}) == 3

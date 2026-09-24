@@ -264,6 +264,8 @@ def _compute_artifact_hash(
     tools = {
         "peano": _config.peano_cxx_path,
         "aiecc": _config.aiecc_path,
+        "nm": _config.nm_path,
+        "objcopy": _config.objcopy_path,
     }
 
     for sf in sorted(source_files, key=str):
