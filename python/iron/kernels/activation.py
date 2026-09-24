@@ -182,11 +182,14 @@ _GELU_TOLERANCE = Tolerance.relative(
 
 
 # What AIE2P's vtanh returns, measured on npu2 through gelu over every finite
-# bf16 input: u itself up to |u| = 0.5, then a ramp that meets tanh by 0.8,
-# within 2.8 ulps of tanh from there (3.5 allowed), and exactly +/-1 from
-# |u| = 3 on.
+# bf16 input and through fused_mm's sigmoid over 262144 f32 arguments: u
+# itself up to |u| = 0.5, then a ramp that meets tanh by 0.8, and exactly
+# +/-1 from |u| = 3 on. Between, it is piecewise with breaks every 0.25:
+# within 1.9 ulps of tanh (2.5 allowed), except the piece from 1 to 1.25,
+# which starts 4.03 ulps off (4.5 allowed).
 _VTANH_ARG_BAND = (0.5, 0.8)
-_VTANH_ULPS = 3.5
+_VTANH_ULPS = 2.5
+_VTANH_WORST_PIECE = (1.0, 1.25, 4.5)
 _VTANH_SATURATES = 3.0
 
 
@@ -204,7 +207,9 @@ def _vtanh_error(u):
         a - t,
         (lo - math.tanh(lo)) * np.clip((hi - a) / (hi - lo), 0.0, 1.0),
     )
-    return np.where(a >= _VTANH_SATURATES, 1.0 - t, band + _VTANH_ULPS * _bf16_ulp(t))
+    start, end, worst = _VTANH_WORST_PIECE
+    ulps = np.where((a >= start) & (a < end), worst, _VTANH_ULPS)
+    return np.where(a >= _VTANH_SATURATES, 1.0 - t, band + ulps * _bf16_ulp(t))
 
 
 def _gelu_vtanh_bound(x):

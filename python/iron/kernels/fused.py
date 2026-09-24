@@ -24,6 +24,10 @@ from ._common import (
     _device,
     _include_dirs,
 )
+from .activation import _bf16_ulp, _vtanh_error
+
+# Largest |d/dx| of each epilogue: x * sigmoid(kx) peaks at 1.0998.
+_SLOPE = {"none": 1.0, "sigmoid": 0.25, "silu": 1.1, "gelu": 1.1}
 
 
 def fused_mm(
@@ -148,21 +152,47 @@ def fused_mm(
             .reshape(-1, dim_m, dim_n)
         )
 
-    def reference(a, b):
+    def operands(a, b):
         a = a.reshape(-1, dim_m, dim_k).astype(np.float32)
         b = b.reshape(-1, dim_k, dim_n).astype(np.float32)
         if bfp16_b:
             # The core converts A itself; B is whatever the host packed.
             a = bfp.quantize(a, rounding="conv_even")
             b = unpack_b_bfp(pack_b_bfp(b))
-        c = a @ b
+        return a.astype(np.float64), b.astype(np.float64)
+
+    # float64 throughout: in float32, 1 + tanh cancels for large negative
+    # inputs and the product's rounding depends on numpy's summation order.
+    def activate(c):
         if epilogue != "none":
             x = c * 1.702 if epilogue == "gelu" else c
             sigmoid = (np.tanh(x * 0.5) + 1) * 0.5
             c = sigmoid if epilogue == "sigmoid" else c * sigmoid
         if clamp is not None:
             c = np.clip(c, clamp[0], clamp[1])
+        return c
+
+    def reference(a, b):
+        a, b = operands(a, b)
+        c = activate(a @ b)
         return c.reshape(len(c), -1)
+
+    # The core's f32 sums are off by at most dim_k f32 ulps of sum |a*b|,
+    # and the activation's slope (under 1.1) carries that through. On
+    # AIE2P tanh is vtanh (see activation._vtanh_error): sigmoid scales
+    # its error by 1/2 and x * sigmoid(u) by |x|/2. Every other step is an
+    # exact bf16 product or an f32 add, and one output ulp covers the store.
+    def error_bound(a, b):
+        a, b = operands(a, b)
+        c = a @ b
+        err = dim_k * 2.0**-24 * (np.abs(a) @ np.abs(b)) * _SLOPE[epilogue]
+        if epilogue == "sigmoid":
+            err = err + 0.5 * _vtanh_error(0.5 * c)
+        elif epilogue != "none":
+            u = 0.851 * c if epilogue == "gelu" else 0.5 * c
+            err = err + 0.5 * np.abs(c) * _vtanh_error(u)
+        err = err + _bf16_ulp(activate(c)) + 2.0**-126
+        return err.reshape(len(c), -1)
 
     flags = {
         "TILE_M": dim_m,
@@ -245,10 +275,20 @@ def fused_mm(
             (5, clamp_bits[1]),
         ),
         reference=reference,
-        tolerance=Tolerance.relative(
-            0.02 if epilogue == "none" else 0.04,
-            0.01 if epilogue == "none" else 0.04,
-            note="bf16 store; activated path additionally narrows tanh to bf16",
+        # AIE2 reaches tanh through its LUT, which this box cannot measure.
+        tolerance=(
+            Tolerance.relative(
+                0.02 if epilogue == "none" else 0.04,
+                0.01 if epilogue == "none" else 0.04,
+                note="bf16 store; activated path additionally narrows tanh to bf16",
+            )
+            if arch == "aie2"
+            else Tolerance.bounded(
+                error_bound,
+                note="f32 accumulation, vtanh's error measured on npu2 and "
+                "one bf16 store ulp, per output; fails a 1.5% change to "
+                "gelu's 1.702 and a 3% change to silu's or sigmoid's 1/2",
+            )
         ),
         acc_dtype=np.float32,
         reduction=dim_k,
