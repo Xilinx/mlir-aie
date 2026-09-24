@@ -150,7 +150,7 @@ public:
     }
     mlir::OwningOpRef<mlir::ModuleOp> shared =
         mlir::ModuleOp::create(mlir::UnknownLoc::get(module.getContext()));
-    shared->setAttrs(module->getAttrDictionary());
+    shared.get()->setAttrs(module->getAttrDictionary());
     for (mlir::Operation &op : module.getBody()->getOperations()) {
       if (!mlir::isa<xilinx::AIE::DeviceOp>(op)) {
         shared->getBody()->push_back(op.clone());

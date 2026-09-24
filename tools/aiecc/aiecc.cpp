@@ -2243,7 +2243,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
     llvm::DenseSet<EdgeBase *> needed =
         reachableEdges(roots, {&physical, &physicalWithElfs});
     cache->active = !keepIntermediates.getValue() && !keepLoc &&
-                    !needed.count(&allCores) &&
+                    !needed.count(&allCores) && !needed.count(&placedCores) &&
                     !needed.count(&unifiedPerCoreLowered);
     if (verbose && !cache->active) {
       llvm::errs() << "aiecc: device cache: not used by this build\n";
