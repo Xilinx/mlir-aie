@@ -261,9 +261,13 @@ def inject(hsaco_path, arch, section_bytes):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
         f.write(section_bytes)
         sec_file = f.name
-    # Unique per call, not per process: two threads packing different arches
-    # into one hsaco would otherwise share a scratch name and clobber each
-    # other. Same directory, which os.replace requires.
+    # Unique per call, not per process, so two calls cannot collide on the
+    # scratch file itself. Same directory, which os.replace requires.
+    #
+    # This does NOT make concurrent updates of one hsaco safe: the whole
+    # read-objcopy-replace is not atomic, so two overlapping calls both read
+    # the original and the later replace discards the other's section. Callers
+    # must serialize per hsaco; see the note in the README.
     with tempfile.NamedTemporaryFile(
         dir=os.path.dirname(os.path.abspath(hsaco_path)),
         prefix=os.path.basename(hsaco_path) + ".",
@@ -351,20 +355,29 @@ def pdi_from_xclbin(path):
         bytes: The PDI image.
 
     Raises:
-        ValueError: If the xclbin does not contain exactly one PDI.
+        ValueError: If the xclbin does not contain exactly one PDI, or
+            xclbinutil rejects it -- carrying xclbinutil's own stderr, which
+            capture_output would otherwise swallow.
     """
     with tempfile.TemporaryDirectory() as d:
-        subprocess.run(
-            [
-                xclbinutil_path(),
-                "--input",
-                path,
-                "--dump-section",
-                f"AIE_PARTITION:JSON:{os.path.join(d, 'aie.json')}",
-            ],
-            check=True,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                [
+                    xclbinutil_path(),
+                    "--input",
+                    path,
+                    "--dump-section",
+                    f"AIE_PARTITION:JSON:{os.path.join(d, 'aie.json')}",
+                ],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            detail = (e.stderr or b"").decode(errors="replace").strip()
+            raise ValueError(
+                f"{path}: xclbinutil could not read the AIE_PARTITION section"
+                + (f": {detail}" if detail else "")
+            ) from e
         pdis = glob.glob(f"{d}/**/*.pdi", recursive=True)
         if len(pdis) != 1:
             raise ValueError(f"{path}: expected exactly one PDI, found {len(pdis)}")
@@ -504,7 +517,7 @@ def kernels_from_options(ops):
             continue
         try:
             kernels.extend(_kernel_from_options(value))
-        except (OSError, ValueError, subprocess.CalledProcessError) as e:
+        except (OSError, ValueError, RuntimeError) as e:
             raise argparse.ArgumentTypeError(str(e)) from e
     return kernels
 
@@ -535,7 +548,7 @@ def parse_kernel_arg(s):
     """
     try:
         return _kernel_from_options(_kernel_options_from_spec(s))
-    except (OSError, ValueError, subprocess.CalledProcessError) as e:
+    except (OSError, ValueError, RuntimeError) as e:
         raise argparse.ArgumentTypeError(f"--kernel {s!r}: {e}") from e
 
 

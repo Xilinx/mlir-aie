@@ -37,6 +37,13 @@ packing into a fresh file and adding to an existing code object are the same
 command. Repacking the same arch replaces the previous section rather than
 appending a second one.
 
+**One writer at a time per hsaco.** Each run reads the file, rewrites it via a
+scratch copy, and renames over the original. That is atomic against a *failed*
+run — a crash leaves the hsaco untouched — but it is not atomic against another
+run. Packing `aie2` and `aie2p` into one file concurrently means both read the
+same original and the second rename discards the first's section, with no
+error. Pack the architectures in sequence, or give each its own file.
+
 `--kernel` is repeatable and takes one of three forms. Every form also has a
 delimiter-free spelling — see [Long-form options](#long-form-options-paths-containing-a-colon),
 which is what you need if any path contains a colon.

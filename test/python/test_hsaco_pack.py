@@ -650,6 +650,46 @@ def test_missing_xclbinutil_explains_the_alternatives(tmp_path, monkeypatch):
         pack.xclbinutil_path()
 
 
+@pytest.mark.parametrize("form", ["long", "colon"])
+def test_unresolvable_xclbinutil_is_a_usage_error(tmp_path, monkeypatch, form):
+    """Tool resolution raises RuntimeError; that must not escape as a traceback."""
+    monkeypatch.delenv("AIE_XCLBINUTIL_PATH", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    if pack._bundled_tool("xclbinutil") is not None:
+        pytest.skip("a bundled xclbinutil is resolvable in this tree")
+    xclbin = _write(tmp_path / "f.xclbin", b"stub")
+    insts = _write(tmp_path / "insts.bin", b"\x01")
+
+    with pytest.raises(argparse.ArgumentTypeError, match="xclbinutil not found"):
+        if form == "long":
+            pack.kernels_from_options(
+                [
+                    ("kernel_name", "k"),
+                    ("kernel_xclbin", xclbin),
+                    ("kernel_insts", insts),
+                ]
+            )
+        else:
+            pack.parse_kernel_arg(f"xclbin:k:{xclbin}:{insts}:0:1")
+
+
+@needs_posix
+def test_a_rejected_xclbin_keeps_xclbinutils_diagnosis(tmp_path, monkeypatch):
+    """capture_output would otherwise swallow the only text saying what was wrong."""
+    body = (
+        "sys.stderr.write('AIE_PARTITION section not found\\n')\nraise SystemExit(1)\n"
+    )
+    _use_stub(
+        monkeypatch,
+        "AIE_XCLBINUTIL_PATH",
+        _stub_tool(tmp_path, "xclbinutil", body),
+    )
+    xclbin = _write(tmp_path / "bad.xclbin", b"not an xclbin")
+
+    with pytest.raises(ValueError, match="AIE_PARTITION section not found"):
+        pack.pdi_from_xclbin(xclbin)
+
+
 # ---------------------------------------------------------------------------
 # --kernel argument parsing
 # ---------------------------------------------------------------------------
