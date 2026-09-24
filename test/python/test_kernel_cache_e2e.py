@@ -84,8 +84,14 @@ _DESIGN = textwrap.dedent("""
         use_cache=sys.argv[3] == "warm",
         full_elf=sys.argv[4] == "full_elf",
     )
-    image, _ = design.compile()
-    print(json.dumps({"dir": str(Path(image).parent), **lookups}))
+    out = Path(sys.argv[5]) if len(sys.argv) > 5 else None
+    if out is None:
+        design.compile()
+    elif design.compilable.full_elf:
+        design.compile(full_elf_path=out / "design.elf")
+    else:
+        design.compile(xclbin_path=out / "final.xclbin", inst_path=out / "insts.bin")
+    print(json.dumps({"dir": str(design.compilable._kernel_dir), **lookups}))
     """)
 
 _SOURCE = 'extern "C" void add_one(int *i, int *o, int n) { for (int j = 0; j < n; j++) o[j] = i[j] + STEP; }\n'
@@ -116,11 +122,12 @@ def _set_step(source, step):
     (source.parent / "step.h").write_text(f"#define STEP {step}\n")
 
 
-def _build(tmp_path, source, flow, home, n=32, mode="warm"):
+def _build(tmp_path, source, flow, home, n=32, mode="warm", out=None):
     script = tmp_path / "design.py"
     script.write_text(_DESIGN)
+    named = [str(out)] if out is not None else []
     result = subprocess.run(
-        [sys.executable, str(script), str(source), str(n), mode, flow],
+        [sys.executable, str(script), str(source), str(n), mode, flow, *named],
         env={**os.environ, "NPU_CACHE_HOME": str(tmp_path / home)},
         capture_output=True,
         text=True,
@@ -196,3 +203,45 @@ def test_a_header_edit_reaches_the_core_elf(tmp_path, source, flow):
     reverted, hits, misses = _build(tmp_path, source, flow, "warm")
     assert (hits, misses) == (0, 1)
     assert _binaries(reverted, flow) == step_one
+
+
+def _named_outputs(out, prj):
+    """The outputs a caller named, and the PDI; an xclbin differs every build."""
+    named = {
+        p.name: p.read_bytes() for p in out.iterdir() if p.suffix in (".bin", ".elf")
+    }
+    return {**named, "main.pdi": (prj / "main.pdi").read_bytes()}
+
+
+def test_named_outputs_are_rebuilt_exactly_when_out_of_date(tmp_path, source, flow):
+    """Named outputs bypass the JIT cache, but not the check that they are current.
+
+    A build that reuses its outputs looks up no kernel object. A header is in
+    no key, so only the recorded inputs can catch its edit.
+    """
+    out = tmp_path / "out"
+    prj, hits, misses = _build(tmp_path, source, flow, "warm", out=out)
+    assert (hits, misses) == (0, 1)
+    step_one = _named_outputs(out, prj)
+    assert _build(tmp_path, source, flow, "warm", out=out) == (prj, 0, 0)
+
+    _set_step(source, 2)
+    assert _build(tmp_path, source, flow, "warm", out=out) == (prj, 0, 1)
+    step_two = _named_outputs(out, prj)
+    assert step_two != step_one
+    cold, _, _ = _build(tmp_path, source, flow, "cold", mode="cold")
+    assert step_two == {name: _binaries(cold, flow)[name] for name in step_two}
+    assert _build(tmp_path, source, flow, "warm", out=out) == (prj, 0, 0)
+
+    # Anything else rewriting an output makes it unknown, even to the same bytes.
+    output = next(p for p in out.iterdir() if p.suffix in (".bin", ".elf"))
+    output.write_bytes(output.read_bytes())
+    assert _build(tmp_path, source, flow, "warm", out=out) == (prj, 1, 0)
+    assert _named_outputs(out, prj) == step_two
+
+    assert _build(tmp_path, source, flow, "warm", n=64, out=out) == (prj, 1, 0)
+    assert _named_outputs(out, prj) != step_two
+
+    _set_step(source, 1)
+    assert _build(tmp_path, source, flow, "warm", n=32, out=out) == (prj, 0, 1)
+    assert _named_outputs(out, prj) == step_one

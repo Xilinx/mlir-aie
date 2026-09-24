@@ -39,6 +39,12 @@ another that need not share a working directory. Depfile tokens anchor against
 ``kernel_dir`` (the cwd Peano runs in, so what their relative paths mean),
 declared sources against the caller's cwd.
 
+A build whose outputs the caller names, outside the cache, has no key to be
+found by, so it also records those outputs (``outputs.json``) with a key for
+everything else it read. The outputs are reused only while the key matches,
+each output is exactly as the build left it, and every recorded input is
+unchanged.
+
 **Known limits.** Two paths fail open rather than closed -- they can report a
 valid entry that is actually stale -- so they are worth knowing before relying
 on this. Both are shared with ccache and neither is fixable by recording inputs
@@ -76,6 +82,7 @@ from aie.utils.compile.utils import _is_dispatch_library_name, _staged
 logger = logging.getLogger(__name__)
 
 MANIFEST_NAME = "deps.json"
+OUTPUTS_NAME = "outputs.json"
 _VERSION = 1
 # clang writes a colon inside a target verbatim, so the targets end at the first
 # colon followed by whitespace, as ninja reads them.
@@ -305,3 +312,53 @@ def is_valid(kernel_dir: Path) -> bool:
         except OSError:
             return False
     return True
+
+
+def _output_entry(path: Path) -> dict:
+    st = path.stat()
+    return {"path": str(path), "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def record_outputs(kernel_dir: Path, key: str, outputs: list[Path]) -> None:
+    """Record that the build named by ``key`` wrote ``outputs``, as they are now.
+
+    For builds whose outputs the caller places, outside the cache. Written
+    after the build, beside the manifest of what it consumed.
+    """
+    payload = {
+        "version": _VERSION,
+        "key": key,
+        "outputs": [_output_entry(Path(p)) for p in outputs],
+    }
+    with _staged(str(Path(kernel_dir) / OUTPUTS_NAME)) as tmp:
+        Path(tmp).write_text(json.dumps(payload))
+
+
+def forget_outputs(kernel_dir: Path) -> None:
+    """Drop the output record before a build starts to overwrite the outputs."""
+    (Path(kernel_dir) / OUTPUTS_NAME).unlink(missing_ok=True)
+
+
+def outputs_current(kernel_dir: Path, key: str, outputs: list[Path]) -> bool:
+    """Return True only if the build ``key`` wrote ``outputs`` and nothing since has.
+
+    Each output must be exactly as that build left it, and every input it
+    recorded unchanged (see ``is_valid``). An output rewritten by anything
+    else, even to the same bytes, is a miss: it is no longer known to be what
+    this build made.
+    """
+    try:
+        payload = json.loads((Path(kernel_dir) / OUTPUTS_NAME).read_text())
+    except (OSError, ValueError):
+        return False
+    if (
+        not isinstance(payload, dict)
+        or payload.get("version") != _VERSION
+        or payload.get("key") != key
+    ):
+        return False
+    try:
+        current = [_output_entry(Path(p)) for p in outputs]
+    except OSError:
+        return False
+    return payload.get("outputs") == current and is_valid(kernel_dir)

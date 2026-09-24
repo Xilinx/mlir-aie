@@ -28,6 +28,7 @@ current target.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 import logging
@@ -38,7 +39,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
@@ -383,10 +384,13 @@ class CompilableDesign:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
         When both ``xclbin_path`` and ``inst_path`` are given, artifacts are
-        written directly to those paths; the parent directory is used as
-        ``work_dir`` for intermediate files (``.o``, lowered ``.mlir``).  The
-        on-disk cache is bypassed in this mode — the caller is presumed to
-        manage their own dependency tracking (e.g. via a Makefile).
+        written directly to those paths; intermediate files (``.o``, lowered
+        ``.mlir``) go to ``<xclbin stem>.prj`` beside them. The JIT cache is
+        not consulted, but a build is not repeated either: if the outputs are
+        exactly as the last build left them, and that build had the same
+        recipe, generated MLIR and kernels and read inputs that are all
+        unchanged, they are returned without running aiecc. With
+        ``use_cache=False`` every call rebuilds.
 
         When both are ``None`` (the default), behavior is unchanged: artifacts
         land in ``~/.npu/cache/<hash>/`` and the cache is consulted first.
@@ -408,8 +412,9 @@ class CompilableDesign:
         by passing ``full_elf_path`` here.  In this mode a single
         self-contained ELF (PDIs + TXN control code) is produced instead of an
         xclbin + insts pair, and ``compile()`` returns ``(elf_path, None)``.
-        With ``full_elf_path`` set the ELF is written there directly (cache
-        bypassed); otherwise it lands in the JIT cache as ``<hash>/design.elf``.
+        With ``full_elf_path`` set the ELF is written there directly, and
+        rebuilt only when it is out of date, as for ``xclbin_path``; otherwise
+        it lands in the JIT cache as ``<hash>/design.elf``.
 
         ``pdi_path`` is likewise optional: when set, aiecc writes the
         Programmable Device Image (config data packed by ``bootgen``) to that
@@ -465,6 +470,8 @@ class CompilableDesign:
             )
         explicit_paths = xclbin_path is not None
         cache_hash = None
+        build_key = ""
+        outputs: list[Path] = []
 
         if elf_path is not None and not explicit_paths:
             raise ValueError(
@@ -523,6 +530,28 @@ class CompilableDesign:
             xclbin_exists = xclbin_path.exists()
             inst_exists = companion_path is not None and companion_path.exists()
 
+            if explicit_paths:
+                build_key = self._explicit_build_key(full_elf=False)
+                dispatch_library = companion_path if has_dispatch else None
+                outputs = [
+                    Path(p)
+                    for p in (xclbin_path, inst_path, elf_path, pdi_path)
+                    if p is not None
+                ]
+                if self._reuse_explicit_outputs(
+                    kernel_dir,
+                    build_key,
+                    [*outputs, dispatch_library] if has_dispatch else outputs,
+                ):
+                    self._record_artifacts(
+                        kernel_dir,
+                        xclbin=xclbin_path,
+                        insts=inst_path,
+                        elf=Path(elf_path) if elf_path is not None else None,
+                        dispatch_library=dispatch_library,
+                    )
+                    return xclbin_path, inst_path
+
             if (
                 not explicit_paths
                 and self.use_cache
@@ -555,7 +584,7 @@ class CompilableDesign:
 
             if explicit_paths:
                 logger.debug(
-                    "Compiling '%s' to %s (explicit paths, cache bypassed)",
+                    "Compiling '%s' to %s (explicit paths)",
                     self.generator_name,
                     xclbin_path,
                 )
@@ -659,6 +688,10 @@ class CompilableDesign:
                         dispatch_so_path.name if dispatch_so_path is not None else None
                     ),
                 )
+                if explicit_paths:
+                    if dispatch_so_path is not None:
+                        outputs.append(dispatch_so_path)
+                    _manifest.record_outputs(kernel_dir, build_key, outputs)
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
@@ -679,8 +712,8 @@ class CompilableDesign:
     ) -> tuple[Path, None]:
         """Compile to a single self-contained full ELF (PDIs + TXN control code).
 
-        With ``full_elf_path`` the ELF is written there and the cache is
-        bypassed; otherwise it lands in ``<NPU_CACHE_HOME>/<hash>/design.elf``.
+        With ``full_elf_path`` the ELF is written there, and rebuilt only when
+        out of date; otherwise it lands in ``<NPU_CACHE_HOME>/<hash>/design.elf``.
         Sets `_elf_path` and `_full_elf_kernel_name` and returns
         ``(elf_path, None)`` (there is no separate insts artifact).
         """
@@ -689,6 +722,7 @@ class CompilableDesign:
 
         explicit_path = full_elf_path is not None
         cache_hash = None
+        build_key = ""
         if explicit_path:
             assert full_elf_path is not None
             elf_path = Path(full_elf_path).resolve()
@@ -701,6 +735,18 @@ class CompilableDesign:
 
         with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
+
+            if explicit_path:
+                build_key = self._explicit_build_key(full_elf=True)
+                if self._reuse_explicit_outputs(kernel_dir, build_key, [elf_path]):
+                    self._record_artifacts(
+                        kernel_dir,
+                        elf=elf_path,
+                        full_elf_kernel_name=self._parse_full_elf_kernel_name(
+                            kernel_dir
+                        ),
+                    )
+                    return elf_path, None
 
             if (
                 not explicit_path
@@ -775,6 +821,8 @@ class CompilableDesign:
                     self.source_files,
                     used_chess=use_chess,
                 )
+                if explicit_path:
+                    _manifest.record_outputs(kernel_dir, build_key, [elf_path])
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
@@ -791,8 +839,8 @@ class CompilableDesign:
     ) -> tuple[None, Path]:
         """Lower the runtime sequence alone to an instruction stream.
 
-        With ``inst_path`` the stream is written there (cache bypassed, the
-        work directory beside it); otherwise it lands in the JIT cache as
+        With ``inst_path`` the stream is written there, and rebuilt only when
+        out of date (the work directory beside it); otherwise it lands in the JIT cache as
         ``<hash>/insts.bin``. Returns ``(None, inst_path)``: there is no image.
         """
         if not isinstance(self.mlir_generator, Path):
@@ -800,6 +848,7 @@ class CompilableDesign:
 
         explicit_path = inst_path is not None
         cache_hash = None
+        build_key = ""
         if explicit_path:
             inst_path = Path(inst_path).resolve()
             kernel_dir = inst_path.parent / f"{inst_path.stem}.prj"
@@ -811,6 +860,12 @@ class CompilableDesign:
 
         with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
+
+            if explicit_path:
+                build_key = self._explicit_build_key(full_elf=False)
+                if self._reuse_explicit_outputs(kernel_dir, build_key, [inst_path]):
+                    self._record_artifacts(kernel_dir, insts=inst_path)
+                    return None, inst_path
 
             if (
                 not explicit_path
@@ -852,6 +907,8 @@ class CompilableDesign:
                         f"not created: {inst_path}"
                     )
                 _manifest.record(kernel_dir, [], self.source_files)
+                if explicit_path:
+                    _manifest.record_outputs(kernel_dir, build_key, [inst_path])
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
@@ -1333,6 +1390,51 @@ class CompilableDesign:
             self.include_paths,
             self.insts_only,
         )
+
+    def _explicit_build_key(self, *, full_elf: bool) -> str:
+        """Identify an explicit-path build by everything it reads but its recorded inputs.
+
+        The cache hash names the recipe and tools but not what the generator
+        calls, so the generated MLIR is keyed too: an edit to a helper the
+        generator imports changes the design only through it. Each kernel's
+        recipe covers what the MLIR only names, such as its compile flags.
+        """
+        mlir_text, kernels = self._generated_for(full_elf=full_elf)
+        h = hashlib.sha256()
+        h.update(self._compute_cache_hash().encode())
+        h.update(mlir_text.encode())
+        for recipe in sorted(
+            repr((f.object_file_name, f.object_file._source)) for f in kernels
+        ):
+            h.update(recipe.encode())
+        return h.hexdigest()
+
+    def _reuse_explicit_outputs(
+        self, kernel_dir: Path, build_key: str, outputs: Sequence[Path | None]
+    ) -> bool:
+        """Return True if ``outputs`` are what the build ``build_key`` wrote.
+
+        Otherwise ready ``kernel_dir`` for a rebuild. Its objects are reused by
+        the kernel compile, so once a recorded input has changed they are
+        cleared, exactly as a stale cache entry is.
+        """
+        if (
+            self.use_cache
+            and None not in outputs
+            and _manifest.outputs_current(
+                kernel_dir, build_key, [p for p in outputs if p is not None]
+            )
+        ):
+            logger.debug(
+                "Outputs of '%s' in %s are current; not recompiling",
+                self.generator_name,
+                kernel_dir,
+            )
+            return True
+        _manifest.forget_outputs(kernel_dir)
+        if not _manifest.is_valid(kernel_dir):
+            _cleanup_failed_compilation(kernel_dir)
+        return False
 
     def _kernel_object_cache(self) -> KernelObjectCache | None:
         """Share compiled kernel objects across designs unless caching is off."""
