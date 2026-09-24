@@ -149,6 +149,7 @@ report them; the timing helpers live here:
         - run_iters
         - preflight
         - provenance
+        - kernel_tree_digest
 
 ## Static checks
 

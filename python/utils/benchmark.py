@@ -12,6 +12,7 @@ jitter, not just central tendency. The numbers are numpy's.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -19,6 +20,7 @@ import time
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -184,14 +186,37 @@ def peano_version() -> str | None:
     return out.splitlines()[0] if out else None
 
 
+def kernel_tree_digest() -> str | None:
+    """A 12-hex digest of the kernel sources the library factories compile.
+
+    Every file under ``aie_kernels_dir()`` and ``aie_runtime_lib_dir()``, by
+    relative path and content. The commit alone cannot say which kernels
+    ran: ``MLIR_AIE_KERNEL_SOURCES`` can name another tree, and a checkout
+    can carry uncommitted edits. ``None`` when neither directory exists.
+    """
+    h = hashlib.sha256()
+    found = False
+    for top in (config.aie_kernels_dir(), config.aie_runtime_lib_dir()):
+        root = Path(top)
+        if not root.is_dir():
+            continue
+        found = True
+        for path in sorted(p for p in root.rglob("*") if p.is_file()):
+            h.update(f"{root.name}/{path.relative_to(root)}\0".encode())
+            h.update(path.read_bytes())
+    return h.hexdigest()[:12] if found else None
+
+
 def provenance(**extra: str | None) -> str:
     """Return a one-line description of what produced a measurement.
 
     The git commit (``GITHUB_SHA`` or ``git rev-parse HEAD``), the Peano that
     compiles the kernels (``peano_version()``), the installed ``mlir_aie``
-    version, and any ``extra`` fields (``device="NPU Strix"``,
-    ``pmode="performance"``) as ``key value`` pairs. A benchmark row records
-    it so a number can be traced to a toolchain.
+    version, the kernel tree
+    (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),
+    and any ``extra`` fields (``device="NPU Strix"``, ``pmode="performance"``)
+    as ``key value`` pairs. A benchmark row records it so a number can be
+    traced to a toolchain and to the kernel sources.
 
     A package that is not installed is left out rather than recorded as
     unknown. CI builds ``mlir_aie`` from source and puts it on ``PYTHONPATH``,
@@ -218,6 +243,8 @@ def provenance(**extra: str | None) -> str:
         "commit": commit[:10],
         "peano": peano_version(),
         "mlir_aie": pkg("mlir_aie"),
+        "kernel_sources": os.environ.get("MLIR_AIE_KERNEL_SOURCES"),
+        "kernels": kernel_tree_digest(),
         **extra,
     }
     return " | ".join(f"{k} {v}" for k, v in fields.items() if v)
