@@ -91,18 +91,24 @@ jobs:
       - name: NPU preflight and performance mode
         id: preflight
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
-          xrt-smi examine
-          BDF=$(xrt-smi examine | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
+          XRT_SMI=$(command -v xrt-smi || command -v xrt-smi.exe)
+          [ -n "$XRT_SMI" ]
+          EXAMINE=$("$XRT_SMI" examine)
+          printf '%s\n' "$EXAMINE"
+          BDF=$(printf '%s\n' "$EXAMINE" | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
+          [ -n "$BDF" ]
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
           # `performance` = max DPM, clock gating on. `turbo` is refused
           # while any hwctx is open, so it is not used on shared hosts.
-          sudo xrt-smi configure -d "$BDF" --pmode "$BENCH_PMODE"
-          xrt-smi examine -d "$BDF" --report platform
+          sudo "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"
+          "$XRT_SMI" examine -d "$BDF" --report platform
 
       - name: Run kernel correctness suite
         id: correctness
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
@@ -120,6 +126,7 @@ jobs:
         env:
           ONLY: ${{ github.event.inputs.only }}
         run: |
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
