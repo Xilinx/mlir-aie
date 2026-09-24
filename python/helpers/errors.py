@@ -72,7 +72,7 @@ def _show_full_traceback() -> bool:
 
 
 def _synthesize_frame(filename: str, lineno: int, name: str):
-    """A traceback whose one frame points at `filename:lineno` inside `name`.
+    """Return a traceback whose one frame points at `filename:lineno` in `name`.
 
     Python reads the source line from `filename` itself when printing, which is
     what puts the offending code in the message rather than just its address.
@@ -207,7 +207,7 @@ def _parse_diagnostic(text: str):
 
 
 def compile_error_from_output(output: str) -> BaseException | None:
-    """An `IronCompileError` for the first located error in a tool's output.
+    """Build an `IronCompileError` for the first located error in `output`.
 
     Returns None when nothing in `output` carries a location, leaving the
     caller to report the failure however it already did -- a diagnostic we

@@ -634,7 +634,7 @@ def _module_text(mlir_module: "str | Module") -> str:
 
 
 def _diagnostic_lines(output: str) -> list[str]:
-    """The warning, error and note lines in a tool's output, in order.
+    """Return the warning, error and note lines in a tool's output, in order.
 
     Notes are the explanation, not decoration. A warning that queue-depth
     enforcement could not be applied says why in an attached note, so dropping
@@ -653,7 +653,7 @@ def _diagnostic_lines(output: str) -> list[str]:
 
 
 def _aiecc_failure(output: str, returncode: int) -> BaseException:
-    """The exception to raise for a failed aiecc run.
+    """Return the exception to raise for a failed aiecc run.
 
     aiecc verifies in-process and reports through MLIR's SourceMgr handler, so
     once the design it was handed carries locations its stderr names the user's

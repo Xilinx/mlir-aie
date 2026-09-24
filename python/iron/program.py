@@ -7,19 +7,18 @@
 import logging
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-
 from ..dialects.aie import (
     TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
     device,
 )
 from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import FuncBase
+from ..helpers.errors import design_boundary
+from ..helpers.sourceloc import capture_source_site, site_location
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
 from .device import Device
 from .resolvable import Resolvable
-from ..helpers.sourceloc import capture_source_site, site_location
-from ..helpers.errors import design_boundary
 from .runtime import Runtime
 from .scratchpad_parameter import ScratchpadParameter
 

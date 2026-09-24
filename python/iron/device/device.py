@@ -18,8 +18,8 @@ from ...dialects.aie import (
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
-from ..resolvable import Resolvable
 from ...helpers.sourceloc import site_location
+from ..resolvable import Resolvable
 from .tile import Tile
 
 

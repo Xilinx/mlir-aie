@@ -22,7 +22,9 @@ from ..dialects.aiex import (
     LockAction,  # pyright: ignore[reportAttributeAccessIssue]
     set_lock_value,
 )
+from ..helpers.astloc import with_statement_locations
 from ..helpers.dialects.scf import _for as range_
+from ..helpers.sourceloc import site_location, site_of_function, traced_body
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
@@ -31,8 +33,6 @@ from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import AnyComputeTile, Tile
 from .resolvable import Resolvable
 from .scratchpad_parameter import ScratchpadParameter
-from ..helpers.astloc import with_statement_locations
-from ..helpers.sourceloc import site_location, site_of_function, traced_body
 
 
 class Worker(ObjectFifoEndpoint, Resolvable):
@@ -251,7 +251,7 @@ class Worker(ObjectFifoEndpoint, Resolvable):
         return self._tile
 
     def tiles(self) -> list:
-        """The compute tile this Worker occupies. See `Resolvable.tiles`."""
+        """Return the compute tile this Worker occupies. See `Resolvable.tiles`."""
         return [self._tile] if self._tile is not None else []
 
     def __repr__(self) -> str:

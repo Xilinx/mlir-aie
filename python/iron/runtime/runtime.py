@@ -17,11 +17,10 @@ bounds) elaborates to a flat binary sequence.
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import logging
 from typing import Callable, Sequence, get_origin
-
-import contextlib
 
 import numpy as np
 
@@ -36,6 +35,8 @@ from ...dialects.aiex import (
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from ...helpers.astloc import with_statement_locations
+from ...helpers.sourceloc import site_location, site_of_function, traced_body
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
@@ -45,8 +46,6 @@ from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow import ObjectFifoHandle
 from ..resolvable import Resolvable
-from ...helpers.astloc import with_statement_locations
-from ...helpers.sourceloc import site_location, site_of_function, traced_body
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence, active_sequence_scope
 from .data import RuntimeData

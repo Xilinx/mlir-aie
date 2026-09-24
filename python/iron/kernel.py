@@ -18,9 +18,9 @@ from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call
+from ..helpers.sourceloc import capture_source_site, site_location
 from .buffer import Buffer
 from .resolvable import Resolvable
-from ..helpers.sourceloc import capture_source_site, site_location
 
 logger = logging.getLogger(__name__)
 
