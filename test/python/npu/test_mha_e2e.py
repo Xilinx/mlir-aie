@@ -22,27 +22,25 @@ exactly, because it reads the raw weights and the carried state; the round sees
 only what survives normalization, but it is the one thing that says the four
 steps agree with each other rather than each being separately defensible.
 
-The references are single-pass and carry none of the kernel's structure: the
-mask is written as ``key <= query``, over absolute positions, and the softmax
-as the textbook online recurrence.
+Every reference here is single-pass, carries none of the kernel's structure,
+and exponentiates with true ``np.exp2``: the mask is written as
+``key <= query`` over absolute positions, and the softmax as the textbook
+online recurrence. Nothing models the device's arithmetic, which matters
+because AIE2P's ``exp2`` is not a polynomial but a linear interpolant that
+overshoots by up to 6.15% -- see ``_RTOL_EXP2``. Modelling it would buy a
+tolerance eleven times tighter, and it is still the wrong trade: it would make
+the reference track this device's instruction rather than the mathematics, so a
+kernel that moved to ``exp2_poly.h`` the way ``flash_attn_prefill.cc`` already
+has would fail a test it had just made more accurate.
 
-**The two halves exponentiate differently, on purpose.** AIE2P's ``exp2`` is a
-linear interpolant that overshoots the true curve by up to 6.15% -- see
-``_machine_exp2``. The per-entry-point gates judge P before it is normalized,
-where that skew lands on the answer undivided, so they model it and bound the
-concession against true ``exp2`` in a second assertion. The round judges
-``P*V / sum(P)``, where a smooth multiplicative error largely cancels, so it
-keeps plain ``np.exp2`` and stays a bound against real mathematics rather than
-against the instruction this device happens to ship. If mha.cc ever moves to
-``exp2_poly.h`` the way ``flash_attn_prefill.cc`` already has, the gates will
-fail and the round will only get tighter -- which is the right way round.
-
-What is left is a tolerance for bf16 rounding: at worst 1.3 steps of its own
-range for the gates and 3.25 for the round, against a bound of 4. The bugs this
-file exists to catch clear that by two orders of magnitude: a mask admitting or
-dropping one key takes that weight between an exact zero and order one, which
-is 128 steps, and the smallest effect any of them has on the carried row sum is
-still 6.5.
+What is left is the interpolant's own envelope where the weights are read raw,
+and bf16 rounding where they are not. The round never sees the envelope: it
+judges ``P*V / sum(P)``, and a smooth multiplicative error divides out of
+numerator and denominator alike, leaving it at 3.25 bf16 steps against a bound
+of 4. The bugs this file exists to catch clear both bounds by an order of
+magnitude: a mask admitting or dropping one key takes that weight between an
+exact zero and order one, and the quietest element any of them disturbs still
+moves by 31%.
 
 Which configuration catches what is not uniform, and each one below is the only
 one that sees something. A key tail that runs one key long shows up only where
@@ -110,6 +108,23 @@ _ATOL_ULP = 4
 # m_new), and that has to evaluate to a clean zero rather than a NaN.
 _LOWEST = float(ml_dtypes.finfo(bfloat16).min)
 
+# What the unnormalized weights are allowed to differ from true exp2 by, and it
+# is a derivation rather than a measurement. ``aie::exp2<bfloat16>`` on AIE2P is
+# not a polynomial: it writes the fraction straight into the mantissa field, so
+# it evaluates 2**floor(u) * (1 + frac(u)). That interpolant is exact at every
+# power of two and, exp2 being convex, overshoots in between -- by at most
+# max((1 + f) / 2**f - 1), which is 6.15% at f = 1/ln2 - 1 = 0.443. bf16 rounds
+# once on the device and once in the reference, 2**-8 each, so the envelope is
+# 1.0615 * 1.0078 - 1 = 6.98%.
+#
+# Measured against that: the weights run 6.79% and the row sums 6.66%, both
+# inside it, and nothing here is random at run time so those hold every run. The
+# mutations in this file's history move the same quantities by 31% at their
+# quietest and 170% at their loudest, which is what says a bound this wide still
+# has teeth. Each was re-run against this bound rather than the tighter one it
+# was first proved under, and none of them stopped failing.
+_RTOL_EXP2 = 0.07
+
 # P leaves the core row-major and has to come back in the mmul's block order.
 # Reading a row-major buffer with these dims emits exactly the layout below.
 _REBLOCK: list[Sequence[int]] = [(8, 512), (8, 8), (8, 64), (8, 1)]
@@ -163,30 +178,11 @@ def _keep_round(q_block: int, n_kv: int, s_q_eff: int, s_kv_eff: int) -> np.ndar
     )
 
 
-def _machine_exp2(u):
-    """AIE2P's bf16 ``exp2``: linear interpolation between powers of two.
-
-    ``aie::exp2<bfloat16>`` takes the exponent's integer part as a shift and
-    interpolates the fraction straight, rather than evaluating a polynomial.
-    Because exp2 is convex the interpolant always overshoots, by up to 6.15% at
-    a fractional part of 0.443 and by nothing at either end -- which is the
-    shape the device output shows, to within half a bf16 step over a whole
-    tile.
-
-    This is the machine's exponential and not a choice mha.cc made, so the
-    reference carries it for the same reason ``test_flash_attn_prefill_e2e``
-    carries that kernel's bf16 ``log2(e)``: modelling the arithmetic the
-    hardware can do is what lets the tolerance stay tight enough to see a bug.
-    The assertions below bound what the concession costs against true ``exp2``.
-    ``flash_attn_prefill.cc`` needs none of this -- it ships ``exp2_poly.h`` to
-    get away from this instruction.
-    """
-    floor = np.floor(u)
-    return np.exp2(floor) * (np.float32(1.0) + (u - floor))
-
-
-def _softmax_step(scores, keep, m_prev, l_prev, *, exp2=_machine_exp2):
+def _softmax_step(scores, keep, m_prev, l_prev):
     """One key block of the online softmax recurrence, in float32.
+
+    True ``np.exp2``, not the interpolant the device evaluates; ``_RTOL_EXP2``
+    says what that costs and why it is worth paying.
 
     Returns the unnormalized weights and the updated running max and row sum.
     Rows the mask leaves empty keep the state they came in with, which is what
@@ -197,21 +193,20 @@ def _softmax_step(scores, keep, m_prev, l_prev, *, exp2=_machine_exp2):
     m_new = np.maximum(m_new, m_prev)
     # Masked entries take the exponent to zero rather than to -inf, so the
     # weight is an exact zero instead of an overflow that np.where discards.
-    p = exp2(np.where(keep, scaled, m_new[:, None]) - m_new[:, None])
+    p = np.exp2(np.where(keep, scaled, m_new[:, None]) - m_new[:, None])
     # The weights are stored as bf16 and the row sum accumulates what was
     # stored, so the reference rounds in the same place.
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
-    l_new = exp2(m_prev - m_new) * l_prev + p.sum(axis=1)
+    l_new = np.exp2(m_prev - m_new) * l_prev + p.sum(axis=1)
     return p, m_new, l_new
 
 
 def _attention(scores, v, keep, *, inv_scale):
     """Masked attention over a given score matrix, rounded where the kernel is.
 
-    Plain ``np.exp2`` rather than ``_machine_exp2``, and the file docstring says
-    why: the normalization below cancels most of the interpolant's overshoot, so
-    the round can afford to be judged against the real curve, and that is worth
-    more than the tighter bound modelling it would buy.
+    The normalization below is why this one needs no allowance for the device's
+    exp2 at all: the overshoot divides out of numerator and denominator, and
+    what is left is bf16 rounding.
 
     P and the running quantities are bf16 stores on the device and float32
     everywhere else. ``inv_scale`` says which exponential is being taken; it is
@@ -464,44 +459,39 @@ def test_partial_softmax_matches_masked_attention(
         p, m, l = _softmax_step(block_scores, keep, m, l)
         ref_p.append(p)
 
-    # Every weight is exp2 of a nonpositive number, so P lives on [0, 1] and a
-    # bf16 step at the top of that range is the natural unit. The bound is
-    # absolute: the weights of the keys furthest below the row max are near
-    # zero and their relative error is unbounded, while the absolute error
-    # stays flat. Padded rows are included -- both the kernel and the reference
-    # must put an exact zero there.
+    # Relative against the interpolant's envelope, with an absolute floor: a
+    # weight near the row max carries the full 6.15% overshoot, while the keys
+    # furthest below it land near zero, where relative accuracy means nothing
+    # and one bf16 step of the range does. Padded rows are included -- both the
+    # kernel and the reference must put an exact zero there, which the floor
+    # still holds them to.
     ulp = 2**-7
-    np.testing.assert_allclose(got_p, np.stack(ref_p), rtol=0, atol=_ATOL_ULP * ulp)
+    np.testing.assert_allclose(
+        got_p, np.stack(ref_p), rtol=_RTOL_EXP2, atol=_ATOL_ULP * ulp
+    )
 
     # The running max and the row sum the kernel carries out for its caller.
     # Only rows some key reached: the kernel runs its epilogue over all 64 rows
     # regardless, so a padded row's state is whatever arithmetic on the seed
     # happens to produce, and the caller discards those rows anyway.
     live = keeps[0].any(axis=1) | keeps[1].any(axis=1)
+    # The max is picked out of the scaled scores and never exponentiated, so it
+    # gets no relative allowance -- it is a bf16 store and nothing more, and it
+    # measures 0.30 steps of 4.
     m_ulp = 2**-7 * float(np.abs(m[live]).max())
     np.testing.assert_allclose(
         got_scale[:_B][live], m[live], rtol=0, atol=_ATOL_ULP * m_ulp
     )
+    # The row sum is a sum of weights, so it inherits their envelope rather than
+    # accumulating past it: every term overshoots by at most 6.15%, so their
+    # sum does too.
     l_ulp = 2**-7 * float(l[live].max())
     np.testing.assert_allclose(
-        got_scale[2 * _B : 3 * _B][live], l[live], rtol=0, atol=_ATOL_ULP * l_ulp
+        got_scale[2 * _B : 3 * _B][live],
+        l[live],
+        rtol=_RTOL_EXP2,
+        atol=_ATOL_ULP * l_ulp,
     )
-
-    # The reference above exponentiates the way the hardware does, so on its own
-    # it would pass a softmax that was systematically the wrong curve. Against
-    # true exp2 the weights move by at most the interpolant's own 6.15%, and
-    # nowhere near that on the row sums, because the overshoot is largest a
-    # little below each power of two and zero at both ends. That bound is a
-    # property of the interpolant rather than a measurement, so this is what
-    # would catch the reference modelling the wrong exponential. The bound is
-    # 6.15% plus the bf16 step each side rounds to, which the widest element
-    # below uses 6.47% of.
-    m, l = np.full(_B, _LOWEST, np.float32), np.zeros(_B, np.float32)
-    exact_p = []
-    for block_scores, keep in zip(scores, keeps):
-        p, m, l = _softmax_step(block_scores, keep, m, l, exp2=np.exp2)
-        exact_p.append(p)
-    np.testing.assert_allclose(np.stack(ref_p), np.stack(exact_p), rtol=0.07, atol=0)
 
 
 @pytest.mark.parametrize(
