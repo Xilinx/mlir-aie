@@ -98,10 +98,12 @@ from .conv import (
     conv2dk3_ref,
     conv2dk14,
     conv2dk14_ref,
+    dwconv1d,
     dwconv1d_channels_first,
     dwconv1d_channels_first_ref,
     dwconv1d_channels_last,
     dwconv1d_channels_last_ref,
+    dwconv1d_ref,
 )
 from .core import RoundingMode, conv_even, set_rounding
 from .datamovement import (
@@ -319,6 +321,8 @@ __all__ = [
     "conv2dk1",
     "conv2dk1_ref",
     "conv2dk3",
+    "dwconv1d",
+    "dwconv1d_ref",
     "dwconv1d_channels_first",
     "dwconv1d_channels_first_ref",
     "dwconv1d_channels_last",

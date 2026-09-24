@@ -39,10 +39,12 @@ conv2dk3/2048x8/uint8/top-row
 convert_copy/1024x16/float32_bfloat16
 convert_copy/1024x256/float32_bfloat16
 convert_copy/272x4/float32_bfloat16/unroll-tail
+dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024
 dwconv1d_channels_first/1024x16/bfloat16/kernel_size=9/seq_len=1008/odd-block-count
 dwconv1d_channels_first/1040x16/bfloat16/kernel_size=1/seq_len=1024
 dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024
 dwconv1d_channels_last/256x16/bfloat16/channels=256
+dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped
 exp2f_vec/1024x16/float32
 exp2f_vec/1024x256/float32
 exp2f_vec/48x4/float32/vector-tail

@@ -9,7 +9,7 @@
 
 import numpy as np
 import pytest
-from aie.utils.verify import poisoned, count_mismatches, nearly_equal
+from aie.utils.verify import count_mismatches, nearly_equal, poisoned
 
 # ---------------------------------------------------------------------------
 # nearly_equal
@@ -186,6 +186,25 @@ def test_ulps_atol_floor_admits_a_flushed_subnormal():
     ).ok
 
 
+@pytest.mark.parametrize("sign", [-1, 1])
+@pytest.mark.parametrize("range_frac", [None, 2.0**-127])
+def test_ulps_atol_floor_excludes_the_smallest_normal(sign, range_frac):
+    smallest_normal = 2.0**-126
+    ref = np.array([sign * smallest_normal, 1.0], np.float32)
+    got = np.array([0.0, 1.0], bfloat16)
+    tol = Tolerance(ulps=1, atol=smallest_normal, range_frac=range_frac)
+    assert not compare(got, ref, tol).ok
+    ref[0] = sign * (smallest_normal - 2.0**-133)
+    assert compare(got, ref, tol).ok
+
+
+def test_ulps_range_floor_remains_inclusive_with_atol():
+    ref = np.array([256.0, 0.0], np.float32)
+    got = np.array([256.0, 1.0], bfloat16)
+    assert compare(got, ref, Tolerance(ulps=0, atol=1.0, range_frac=1 / 256)).ok
+    assert not compare(got, ref, Tolerance.bf16_ulps(0, atol=1.0)).ok
+
+
 def test_range_frac_admits_an_output_its_own_terms_cancelled():
     """The case the floor exists for: a dot product that cancelled to near zero.
 
@@ -208,6 +227,37 @@ def test_range_frac_follows_the_range_where_a_fixed_atol_cannot():
         ref = np.array([scale, 0.0], np.float32)
         assert compare(np.array([scale, 5e-4 * scale], np.float32), ref, tol).ok
         assert not compare(np.array([scale, 2e-3 * scale], np.float32), ref, tol).ok
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.float32, bfloat16])
+def test_range_frac_scales_each_call_independently(dtype):
+    ref = np.array([[1024, 0], [4, 0], [0, 0]], dtype)
+    got = np.array([[1024, 1], [4, 1], [0, 1]], dtype)
+    tol = Tolerance(
+        ulps=0 if dtype == bfloat16 else None, rtol=0.0, range_frac=1 / 1024
+    )
+    assert compare(got, ref, tol).ok
+    verdict = compare(got, ref, tol, range_axis=1)
+    assert not verdict.ok
+    assert verdict.n_checked == 6
+    assert verdict.n_mismatch == 2
+    assert verdict.first_bad_index == 3
+    got[1:, 1] = 0
+    assert compare(got, ref, tol, range_axis=1).ok
+
+
+def test_range_frac_per_call_handles_nonfinite_and_empty_references():
+    tol = Tolerance.relative(0.0, range_frac=1 / 1024)
+    ref = np.array([[np.inf, np.nan], [4, 0]], np.float32)
+    assert compare(ref, ref, tol, range_axis=1).ok
+    got = ref.copy()
+    got[1, 1] = 1
+    verdict = compare(got, ref, tol, range_axis=1)
+    assert not verdict.ok
+    assert "max_abs_err/max|expected|=0.25" in verdict.detail
+    for shape in ((0, 2), (2, 0)):
+        empty = np.empty(shape, np.float32)
+        assert compare(empty, empty, tol, range_axis=1).ok
 
 
 def test_range_frac_scales_to_the_reference_not_the_output():
@@ -242,6 +292,13 @@ def test_range_frac_applies_to_ulps_and_integer_kinds():
     ints = (np.array([256, 2], np.int32), np.array([256, 0], np.int32))
     assert not compare(*ints, Tolerance.relative(0.0, 1.0)).ok
     assert compare(*ints, Tolerance.relative(0.0, range_frac=0.01)).ok
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.float32])
+def test_range_frac_is_inclusive_and_accepts_equal_zeros(dtype):
+    ref = np.array([1000, 0, 0], dtype)
+    got = np.array([1000, 1, 0], dtype)
+    assert compare(got, ref, Tolerance.relative(0.0, range_frac=0.001)).ok
 
 
 def test_range_frac_needs_a_tolerance_to_be_a_floor_under():

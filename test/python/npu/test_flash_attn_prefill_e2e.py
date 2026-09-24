@@ -17,7 +17,7 @@ against ordinary masked attention.
 The reference is deliberately single-pass: writing the online recurrence into
 it would only assert the kernel against itself. What that costs is a tolerance,
 because the kernel rounds to bf16 at each rescale and inside its polynomial
-exp2, and the reference models neither. Measured over the four cases below the
+exp2, and the reference models neither. Measured over the original four cases the
 worst deviation is 2.6 bf16 steps of the output's range; the bound allows 4.
 For scale, the bugs this test exists to catch -- a mask closing a key early, a
 query grid mapped to the wrong row, keys permuted inside a chunk, V off by a
@@ -29,12 +29,10 @@ cases, where it is one key in 129 and the kernel's own rounding covers it. Only
 the windowed case, with 64 keys visible and both edges live, separates it.
 """
 
-import numpy as np
-import pytest
-from ml_dtypes import bfloat16
-
 import aie.extras.dialects.arith as arith  # pyright: ignore[reportMissingImports]
 import aie.iron as iron
+import numpy as np
+import pytest
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
     Buffer,
@@ -49,20 +47,14 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
+from ml_dtypes import bfloat16
 
 BF = np.dtype[bfloat16]
 F32 = np.dtype[np.float32]
 I32 = np.dtype[np.int32]
 
-# The softmax runs on exp2, and flash_attn_prefill.h holds log2(e) in a bf16
-# constant, so the curve the kernel exponentiates is exp(x * 1.0018...), not
-# exp(x). That is a property of the kernel and not an error in it -- the header
-# records the measurement, and the assertion below checks the cost directly --
-# so the reference carries the same constant.
-_EXP_SCALE = np.float32(bfloat16(1.4426950408889634))
-
 # Tolerance, in bf16 steps at the top of the output range; see the assertion
-# for why the unit is absolute. Measured, not guessed. The worst of the four
+# for why the unit is absolute. Measured, not guessed. The worst of the original four
 # cases runs at 2.62 steps and the weakest bug class this test is built to
 # catch -- a mask closing one key early -- moves the output by 6.62, so the
 # bound sits between them with room on both sides.
@@ -70,6 +62,13 @@ _ATOL_ULP = 4
 
 # PrefillGeom<DH>: head_dim -> (query chunk, key chunk).
 _GEOM = {512: (8, 8), 256: (16, 16)}
+
+# The softmax runs on exp2, and flash_attn_prefill.h folds attention's
+# 1/sqrt(head_dim) into its bf16 log2(e) multiplier.
+_EXP_SCALE = {
+    head_dim: np.float32(bfloat16(np.log2(np.e) / np.sqrt(head_dim)))
+    for head_dim in _GEOM
+}
 
 _BLOCK_KEYS = 128
 
@@ -98,7 +97,7 @@ def _pack_kv(mat: np.ndarray) -> np.ndarray:
 
 
 def _unpack_o(flat: np.ndarray, lq: int, dh: int) -> np.ndarray:
-    """The epilogue's 64-element chunks back to (LQ, DH)."""
+    """Unpack the epilogue's 64-element chunks back to (LQ, DH)."""
     return flat.reshape(lq // 8, dh // 8, 8, 8).transpose(0, 2, 1, 3).reshape(lq, dh)
 
 
@@ -143,7 +142,8 @@ def prefill_round(
     lq, lk = _GEOM[head_dim]
     chunks = n_blocks * (_BLOCK_KEYS // lk)
     out_chunks = lq * head_dim // 64
-    q_slots = col + 1
+    q_col = (col & 1) if head_dim == 512 else col
+    q_slots = q_col + 1
 
     q_ty = np.ndarray[(q_slots * lq * head_dim,), BF]
     kv_ty = np.ndarray[(lk * head_dim,), BF]
@@ -167,6 +167,9 @@ def prefill_round(
     )
     fv = obj.bind("prefill_fv_step", [y_ty, s_ty, kv_ty, np.int32])
     epilogue = obj.bind("prefill_epilogue", [o_ty, lq_f32, y_ty, np.int32])
+    setup = fv_step.contract.setup
+    assert setup is not None
+    setter = setup()
 
     # Q is acquired once and held for the whole round, so one slot is all it
     # can ever use -- and at head_dim 512 with a second column it is 16 KB.
@@ -190,12 +193,13 @@ def prefill_round(
     ]
 
     def core(
-        of_q, of_kv, of_o, rb, qk, bm, fv, ep,
-        s, m, prev_m, new_m, c, l, y, l_begin, window_size,
+        of_q, of_kv, of_o, rb, qk, bm, fv, ep, setter,
+        s, m, prev_m, new_m, c, l_sum, y, l_begin, window_size,
     ):  # fmt: skip
         i32 = np_dtype_to_mlir_type(np.int32)
+        setter()
         q = of_q.acquire(1)
-        rb(prev_m, new_m, c, l, y)
+        rb(prev_m, new_m, c, l_sum, y)
         for block in range_(n_blocks):
             b = arith.index_cast(block, to=i32)
             for chunk in range_(_BLOCK_KEYS // lk):
@@ -205,12 +209,12 @@ def prefill_round(
                     row, col, 0, b, j,
                 )  # fmt: skip
                 of_kv.release(1)
-            bm(s, m, new_m, prev_m, c, l, y)
+            bm(s, m, new_m, prev_m, c, l_sum, y)
             for chunk in range_(_BLOCK_KEYS // lk):
                 fv(y, s, of_kv.acquire(1), arith.index_cast(chunk, to=i32))
                 of_kv.release(1)
         for out_chunk in range_(out_chunks):
-            ep(of_o.acquire(1), l, y, arith.index_cast(out_chunk, to=i32))
+            ep(of_o.acquire(1), l_sum, y, arith.index_cast(out_chunk, to=i32))
             of_o.release(1)
         of_q.release(1)
 
@@ -225,6 +229,7 @@ def prefill_round(
             block_mid,
             fv,
             epilogue,
+            setter,
             *scratch,
         ],
         # The contract's number is aiecc's measurement of the fv step alone, and
@@ -258,7 +263,7 @@ def _dyadic(rng, shape, scale):
 
 
 def case_data(head_dim, block_q, n_blocks, window, row, col):
-    """Inputs for one case, as the mathematical operands and as device buffers."""
+    """Build inputs as mathematical operands and device buffers."""
     lq, lk = _GEOM[head_dim]
     chunks = n_blocks * (_BLOCK_KEYS // lk)
     q_pos = _inner_q(head_dim, block_q, row, col) + np.arange(lq)
@@ -280,8 +285,9 @@ def case_data(head_dim, block_q, n_blocks, window, row, col):
     for r, pos in enumerate(q_pos):
         k[pos - k_start] = (q[r].astype(np.float32) * 0.0625).astype(bfloat16)
 
-    q_host = np.zeros((col + 1, lq * head_dim), bfloat16)
-    q_host[col] = _pack_q(q)
+    q_col = (col & 1) if head_dim == 512 else col
+    q_host = np.zeros((q_col + 1, lq * head_dim), bfloat16)
+    q_host[q_col] = _pack_q(q)
     # One stream, in consumption order: each block's key chunks, then its value
     # chunks.
     per_block = _BLOCK_KEYS // lk
@@ -306,10 +312,13 @@ def case_data(head_dim, block_q, n_blocks, window, row, col):
         # shifts the query positions the mask compares against, and a nonzero
         # column additionally shifts which Q tile the core reads.
         (512, 256, 3, 1 << 20, 1, 1),
+        (512, 256, 3, 1 << 20, 1, 2),
+        (512, 256, 3, 1 << 20, 1, 3),
         # Sliding window: the left edge bites, and one block is all a window
         # narrower than the block ever needs. The only case with few enough
         # keys visible to see the causal edge open one key too far.
         (256, 256, 1, 64, 0, 0),
+        (256, 256, 1, 64, 1, 1),
         # The sliding-window geometry with the window open, which is what
         # exercises its 2x2 decomposition against the rescale.
         (256, 128, 2, 1 << 20, 0, 0),
@@ -338,7 +347,13 @@ def test_prefill_round_matches_masked_attention(
     got = _unpack_o(o_t.numpy(), lq, head_dim).astype(np.float32)
 
     ref = _attention(
-        q, k, v, q_pos=q_pos, k_pos=k_pos, window=window, exp_scale=_EXP_SCALE
+        q,
+        k,
+        v,
+        q_pos=q_pos,
+        k_pos=k_pos,
+        window=window,
+        exp_scale=_EXP_SCALE[head_dim],
     ).astype(np.float32)
     # Every output is a convex combination of the V rows, so it lives on the
     # scale of max|v| whatever the head dim, and one bf16 step at the top of
@@ -349,14 +364,19 @@ def test_prefill_round_matches_masked_attention(
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
-    # The reference above carries the kernel's bf16 log2(e), so on its own it
-    # would pass a round that computed a systematically sharpened softmax.
+    # The reference above carries the kernel's bf16 scaled-attention multiplier,
+    # so on its own it would pass a systematically sharpened softmax.
     # Against the mathematical exponential the answer barely moves -- that is
     # what says the round computes attention, and not merely what the model
     # says it does. It is also the check that keeps the bf16 constant honest:
-    # the header argues the 0.18% lands where the weights vanish, and this is
-    # where that argument would fail if it were wrong.
+    # this is where that argument would fail if it were wrong.
     exact = _attention(
-        q, k, v, q_pos=q_pos, k_pos=k_pos, window=window, exp_scale=np.log2(np.e)
+        q,
+        k,
+        v,
+        q_pos=q_pos,
+        k_pos=k_pos,
+        window=window,
+        exp_scale=np.log2(np.e) / np.sqrt(head_dim),
     ).astype(np.float32)
     np.testing.assert_allclose(ref, exact, rtol=0, atol=1 * ulp)

@@ -129,12 +129,6 @@ _LUT_MODEL_TOLERANCE = Tolerance.bf16_ulps(
     "values, one ulp left for the accfloat->bf16 store's rounding mode",
 )
 
-# Every bound below is measured on npu2 over the harness's data cases (the
-# 256-call random case is 262144 elements), and none carries a mismatch
-# budget. Where one needs an absolute floor it is because the kernel's output
-# goes to zero while its error does not, so no relative bound can express the
-# requirement -- the measured rtol comes back as 1.0.
-
 # vtanh has no published spec, so a model reverse-engineered from the device
 # would pass by construction. It keeps the true-function reference instead,
 # bounded by what vtanh costs: worst at x = 0.5, where it still returns its
@@ -166,6 +160,12 @@ _EXP_POLY_TOLERANCE = Tolerance.relative(
     1e-38,
     note="AIE2P exp2_poly range reduction, measured on npu2; aie2 uses the "
     "LUT and is judged against bf16_exp_lut_ref instead",
+)
+_EXP_LUT_TOLERANCE = Tolerance.bf16_ulps(
+    1,
+    atol=2.0**-126,
+    note="exact getExpBf16 model with one store ulp; atol admits AIE2's "
+    "subnormal flush to zero",
 )
 
 
@@ -199,6 +199,7 @@ def _unary_lut_contract(
     setup: Callable[[], object] | None = conv_even,
     use_lut: bool = False,
     elementwise: Callable | None = None,
+    lut_tolerance: Tolerance = _LUT_MODEL_TOLERANCE,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
 
@@ -222,7 +223,7 @@ def _unary_lut_contract(
     # aie2 has no tanh instruction, so it is on the LUT path whatever the
     # caller asked for, and gets the exact model too.
     if (use_lut or _detect_arch() == "aie2") and elementwise is not None:
-        ref, tolerance = elementwise, _LUT_MODEL_TOLERANCE
+        ref, tolerance = elementwise, lut_tolerance
     return KernelContract(
         trace=Trace.whole_call(),
         roles=(In, Out, Param) if count else (In, Out),
@@ -443,6 +444,7 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
 
     ``out = (x * w1) * silu(x * w2)``; see [`swiglu_ref`][iron.kernels.activation.swiglu_ref].
     """
+    use_lut_model = use_lut or _detect_arch() == "aie2"
     return _bf16_lut_factory(
         "swiglu",
         "swiglu_bf16",
@@ -453,10 +455,12 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
-            reference=swiglu_lut_ref if use_lut else swiglu_ref,
+            reference=swiglu_lut_ref if use_lut_model else swiglu_ref,
             acc_dtype=bfloat16,
             tolerance=(
-                _LUT_MODEL_TOLERANCE if use_lut else _vtanh_family_tolerance("swiglu")
+                _LUT_MODEL_TOLERANCE
+                if use_lut_model
+                else _vtanh_family_tolerance("swiglu")
             ),
             ops_per_call=6 * tile_size,
             uses_lut=True,
@@ -489,6 +493,7 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             # does not describe, so it keeps the true-function reference and a
             # measured bound.
             elementwise=bf16_exp_lut_ref,
+            lut_tolerance=_EXP_LUT_TOLERANCE,
             use_lut=_detect_arch() == "aie2",
             tolerance=_EXP_POLY_TOLERANCE,
         ),

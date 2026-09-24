@@ -312,10 +312,10 @@ class Tolerance:
     ) -> "Tolerance":
         """bf16 outputs within ``n`` ulps of the correctly rounded reference.
 
-        ``atol`` is an optional floor an element may meet instead of the ulp
-        bound. Use it for the device's subnormal flush to zero, set to the
-        smallest normal bf16 so it admits the flushed values and nothing above
-        them.
+        ``atol`` is an optional strict bound (``error < atol``) an element may
+        meet instead of the ulp bound. Use it for the device's subnormal flush
+        to zero, set to the smallest normal bf16 so it admits the flushed
+        values and nothing above them.
         """
         return cls(ulps=n, atol=atol, max_mismatch_frac=max_mismatch_frac, note=note)
 
@@ -413,13 +413,19 @@ def poisoned(n: int, dtype) -> np.ndarray:
     return np.full(n * np.dtype(dtype).itemsize, 0x55, dtype=np.uint8).view(dtype)
 
 
-def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
+def compare(
+    actual, expected, tol: Tolerance | None = None, *, range_axis: int | None = None
+) -> Verdict:
     """Compare a kernel's ``actual`` output with a reference under ``tol``.
 
     ``expected`` may be higher precision than ``actual`` (a float64 sum, an
     int64 product); it is cast to ``actual.dtype``, so the kernel is held to
     what a correctly rounded implementation would produce. With ``tol=None``
     the output dtype's :meth:`Tolerance.default_for` applies.
+
+    ``range_axis`` selects the axis reduced to compute ``range_frac``'s
+    reference scale. For ``(calls, tile)`` arrays, use 1 to scale each call
+    independently. The default uses the whole reference array.
 
     This measures; it does not model. What a kernel does on overflow, on a
     narrowing store, or with subnormal inputs belongs in the reference that
@@ -444,14 +450,20 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         )
     a, e, n = actual.ravel(), expected.ravel(), actual.size
 
-    def ref_scale(ref) -> float:
-        """max|ref| over its finite entries -- what ``range_frac`` is a fraction
-        of, and 0 when no range floor is in play."""
+    def ref_scale(ref) -> float | np.ndarray:
+        """Return max|ref| over finite entries.
+
+        This is what ``range_frac`` is a fraction of, or zero when no range
+        floor is in play.
+        """
         if tol.range_frac is None or not n:
             return 0.0
-        mag = np.abs(np.asarray(ref, dtype=np.float64))
-        mag = mag[np.isfinite(mag)]
-        return float(mag.max()) if mag.size else 0.0
+        mag = np.abs(np.asarray(ref, dtype=np.float64).reshape(expected.shape))
+        mag = np.where(np.isfinite(mag), mag, 0.0)
+        scale = mag.max(axis=range_axis, keepdims=True, initial=0.0)
+        if range_axis is None:
+            return float(scale.item())
+        return np.broadcast_to(scale, expected.shape).ravel()
 
     # Integers: bit-exact under exact / ulps; under a relative tolerance the
     # nearly_equal formula in int64 (Tolerance.lsb sets atol = n + 0.5).
@@ -467,10 +479,13 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         scale = ref_scale(e64)
         if tol.kind == "relative":
             bound = np.maximum(
-                max(tol.atol or 0.0, (tol.range_frac or 0.0) * scale),
+                tol.atol or 0.0,
                 (tol.rtol or 0.0) * (np.abs(a64) + np.abs(e64)),
             )
-            bad = ~(err < bound)
+            close = err < bound
+            if tol.range_frac is not None:
+                close |= err <= tol.range_frac * scale
+            bad = ~close
         else:
             bad = a != e_cast
         v = _verdict(bad, err, None, tol, n, ref_range=scale)
@@ -505,9 +520,10 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         max_ulps = tol.ulps if tol.ulps is not None else 0
         within = ulp <= max_ulps
         scale = ref_scale(e_bf.astype(np.float32))
-        floor = max(tol.atol or 0.0, (tol.range_frac or 0.0) * scale)
-        if floor:
-            within |= err <= floor
+        if tol.atol is not None:
+            within |= err < tol.atol
+        if tol.range_frac is not None:
+            within |= err <= tol.range_frac * scale
         bad = nonfinite_bad | (finite & ~within)
         return _verdict(bad, err, ulp, tol, n, nonfinite_bad, ref_range=scale)
 
@@ -519,16 +535,21 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
 
     err[finite] = np.abs(a32[finite].astype(np.float64) - e32[finite])
     scale = ref_scale(e32)
-    floor = max(tol.atol or 0.0, (tol.range_frac or 0.0) * scale)
-    close = nearly_equal(
-        a32, e32, rtol=tol.rtol or 0.0, atol=floor if floor or tol.atol else None
-    )
+    close = nearly_equal(a32, e32, rtol=tol.rtol or 0.0, atol=tol.atol)
+    if tol.range_frac is not None:
+        close |= err <= tol.range_frac * scale
     bad = nonfinite_bad | (finite & ~close)
     return _verdict(bad, err, None, tol, n, nonfinite_bad, ref_range=scale)
 
 
 def _verdict(
-    bad, err, ulp, tol: Tolerance, n: int, nonfinite_bad=None, ref_range: float = 0.0
+    bad,
+    err,
+    ulp,
+    tol: Tolerance,
+    n: int,
+    nonfinite_bad=None,
+    ref_range: float | np.ndarray = 0.0,
 ) -> Verdict:
     n_bad = int(np.count_nonzero(bad))
     # A non-finite mismatch must fail regardless of max_mismatch_frac: that
@@ -547,11 +568,17 @@ def _verdict(
         detail = f"{n_bad}/{n} mismatches; first at flat index {first}; max_abs_err={max_err:.4g}"
         if max_ulp is not None:
             detail += f"; max_ulp={max_ulp}"
-        if ref_range > 0:
+        if np.any(np.asarray(ref_range) > 0):
             # The quantity range_frac is stated in, so a failure says directly
             # whether the bound wants raising or the kernel is wrong.
+            fractions = np.divide(
+                err,
+                ref_range,
+                out=np.where(err == 0, 0.0, np.inf),
+                where=np.asarray(ref_range) > 0,
+            )
             detail += (
-                f"; max_abs_err/max|expected|={max_err / ref_range:.4g}"
+                f"; max_abs_err/max|expected|={float(fractions.max()):.4g}"
                 f" vs range_frac={tol.range_frac:.4g}"
             )
         if tol.note:

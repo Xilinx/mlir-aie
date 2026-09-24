@@ -458,9 +458,10 @@ position. The row is the kernel's minimum. Every call does the same work,
 so anything above the minimum is the core waiting. The median, the maximum,
 each initializer's minimum and whether the trace buffer filled go in the
 row's `range`. The trace buffer is sized to the number of intervals the
-contract declares. Preflight reads the device and its power mode through the host
-runtime (`HostRuntime.power_mode()`) and refuses to run outside
-`--pmode`; a bit-exact `passthrough` smoke test inside a cycle band guards
+contract declares. Preflight reads the device and its power mode through the
+host runtime (`HostRuntime.power_mode()`); the benchmark workflow tries to
+switch to `performance` first, but always records the active mode in the
+results. A bit-exact `passthrough` smoke test inside a cycle band guards
 the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
 at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
 and the sizes alert at 3 %, the wall times are advisory, and nothing

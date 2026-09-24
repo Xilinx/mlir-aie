@@ -1178,6 +1178,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
         cls=_ZeroInitializedKernel,
         contract=KernelContract(
             trace=Trace.whole_call(),
+            setup=conv_even,
             layouts=(
                 _tile_layout((lq, head_dim), streams.C, inverse=True, block=(r, t)),
                 _tile_layout((lq, lk), streams.A, block=(r, s)),

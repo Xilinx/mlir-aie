@@ -29,6 +29,7 @@ from ._common import (
     _make_extern,
     dtypes,
 )
+from .core import conv_even
 
 
 def _i32s(n: int) -> list:
@@ -365,6 +366,20 @@ def dwconv1d_channels_first_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bo
     return out.astype(np.asarray(x_pad).dtype)
 
 
+def dwconv1d(
+    seq_len: int = 1024, kernel_size: int = 9, bias: bool = True
+) -> ExternalFunction:
+    """Compatibility alias for [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first]."""
+    return dwconv1d_channels_first(seq_len, kernel_size, bias)
+
+
+def dwconv1d_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
+    """Compatibility alias for [`dwconv1d_channels_first_ref`][iron.kernels.conv.dwconv1d_channels_first_ref]."""
+    return dwconv1d_channels_first_ref(
+        x_pad, w, seq_len, kernel_size=kernel_size, bias=bias
+    )
+
+
 # The clamp bounds dwconv1d_channels_last is judged against. Wide enough that a
 # bf16 5-tap product only reaches it on the 'large' data case, so the clamped
 # and unclamped paths are both exercised.
@@ -420,6 +435,7 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
         contract=KernelContract(
             trace=Trace.whole_call(),
             stack_bytes=1280,  # aiecc measured_stack_size
+            setup=conv_even,
             # lo/hi are buffers the design writes, so they are Param like
             # mha's idx gate: bound here rather than sampled, which also keeps
             # lo <= hi (aie::clamp does not define the inverted pair).

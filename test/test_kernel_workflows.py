@@ -5,6 +5,7 @@
 
 """Host-only publication regression tests; no compiled aie package required."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -128,6 +129,79 @@ def test_dispatch_filter_is_passed_as_data_not_shell_source():
     assert '${ONLY:+-k "$ONLY"}' in step["run"]
 
 
+def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
+    job = workflow("benchmarkKernels.yml")["jobs"]["bench"]
+    step = next(step for step in job["steps"] if step.get("id") == "preflight")
+    run = step["run"]
+    assert "sudo prlimit -lunlimited --pid $$" in run
+    assert run.index("sudo prlimit -lunlimited --pid $$") < run.index(
+        "XRT_SMI=$(command -v xrt-smi"
+    )
+    assert "XRT_SMI=$(command -v xrt-smi || command -v xrt-smi.exe)" in run
+    assert 'EXAMINE=$("$XRT_SMI" examine)' in run
+    assert "printf '%s\\n' \"$EXAMINE\"" in run
+    assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
+    # Execute the complete command in the condition: sudoers can match arguments.
+    configure = 'if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"; then'
+    assert configure in run
+    assert run.count('sudo -n "$XRT_SMI" configure') == 1
+    assert "else\n" in run[run.index(configure) :]
+    assert 'echo "::warning::Cannot set --pmode $BENCH_PMODE' in run
+    assert '"$XRT_SMI" examine -d "$BDF" --report platform' in run
+    assert "xrt-smi examine | grep -oE" not in run
+
+
+def run_step(run, cwd):
+    output = cwd / "github_output"
+    output.write_text("")
+    subprocess.run(
+        ["bash", "-eo", "pipefail", "-c", run],
+        cwd=cwd,
+        env={**os.environ, "GITHUB_OUTPUT": str(output)},
+        check=True,
+    )
+    return dict(line.split("=", 1) for line in output.read_text().splitlines())
+
+
+def write_meta(path, pmode):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"preflight": {"npu": "npu1", "pmode": pmode}}))
+
+
+def test_each_power_mode_is_its_own_series(tmp_path):
+    bench = workflow("benchmarkKernels.yml")["jobs"]["bench"]
+    steps = bench["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "bench")
+    assert "--pmode any" in run
+    assert '--pmode "$BENCH_PMODE"' not in run
+    read = next(step for step in steps if step.get("id") == "pmode")
+    assert read["if"] == "hashFiles('bench.json') != ''"
+    write_meta(tmp_path / "meta.json", "performance")
+    assert run_step(read["run"], tmp_path) == {"pmode": "performance"}
+    write_meta(tmp_path / "meta.json", None)
+    with pytest.raises(subprocess.CalledProcessError):
+        run_step(read["run"], tmp_path)
+    (compare,) = benchmark_steps(bench)
+    assert compare["with"]["name"] == (
+        "aie_kernels (${{ matrix.expected_npu }}, ${{ steps.pmode.outputs.pmode }})"
+    )
+
+    publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
+    read = next(step for step in publisher["steps"] if step.get("id") == "pmode")
+    assert read["if"] == "${{ !inputs.static }}"
+    write_meta(tmp_path / "results/npu1/meta.json", "performance")
+    write_meta(tmp_path / "results/npu2/meta.json", "turbo")
+    assert run_step(read["run"], tmp_path) == {"npu1": "performance", "npu2": "turbo"}
+    write_meta(tmp_path / "results/npu2/meta.json", None)
+    with pytest.raises(subprocess.CalledProcessError):
+        run_step(read["run"], tmp_path)
+    names = [step["with"]["name"] for step in benchmark_steps(publisher)[:2]]
+    for npu, name in zip(["npu1", "npu2"], names):
+        assert (
+            f"format('aie_kernels ({npu}, {{0}})', steps.pmode.outputs.{npu})" in name
+        )
+
+
 @pytest.mark.parametrize(
     "filename,compute",
     [("benchmarkKernels.yml", "bench")],
@@ -149,7 +223,8 @@ def test_benchmark_uses_built_package(step_id):
     steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
     run = next(step["run"] for step in steps if step.get("id") == step_id)
     assert (
-        run.index("source aie-venv/bin/activate")
+        run.index("sudo prlimit -lunlimited --pid $$")
+        < run.index("source aie-venv/bin/activate")
         < run.index("source utils/env_setup.sh mlir_aie")
         < run.index("python -m pytest")
     )

@@ -378,6 +378,19 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
     fn = kernels.bf16_exp()
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     assert str(runtime_dir) in fn.include_dirs
+    if arch == "aie2":
+        tolerance = fn.contract.tolerance
+        assert tolerance is not None
+        assert tolerance.atol == 2.0**-126
+
+
+@pytest.mark.parametrize(
+    "device,reference",
+    [(NPU1Col1, kernels.swiglu_lut_ref), (NPU2Col1, kernels.swiglu_ref)],
+)
+def test_swiglu_default_reference_matches_architecture(device, reference):
+    set_current_device(device())
+    assert kernels.swiglu().contract.reference is reference
 
 
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))
@@ -475,6 +488,22 @@ def test_multi_output_contract_drives_design_and_reference():
     assert kd.output_size(fn, calls=3) == (192, 192)
     assert [a.direction for a in kd.host_args(fn, calls=3)] == [In, Out, Out]
     assert "split_outputs" in str(kd.design(lambda: fn, calls=3).as_mlir())
+
+
+def test_judge_scales_range_tolerance_per_call():
+    fn = kernels.add()
+    ref = np.zeros((2, 1024), bfloat16)
+    ref[:, 0] = [1024, 4]
+    got = ref.copy()
+    got[:, 1] = 1
+    tol = Tolerance.relative(0.0, range_frac=1 / 1024)
+    assert compare(got, ref, tol).ok
+    verdict = fn.judge(got.ravel(), ref, calls=2, tolerance=tol)
+    assert not verdict.ok
+    assert verdict.n_mismatch == 1
+    assert verdict.first_bad_index == 1025
+    got[1, 1] = 0
+    assert fn.judge(got.ravel(), ref, calls=2, tolerance=tol).ok
 
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.mm_bfp])
@@ -1135,7 +1164,7 @@ def _extern_c_signatures(source_file: str) -> dict[str, list[tuple[str, bool]]]:
 
 
 def _arg_type_facts(arg_type) -> tuple[str, bool]:
-    """The same ``(element type, is a pointer)`` pair for one arg_types entry."""
+    """Return the ``(element type, is a pointer)`` pair for one arg_types entry."""
     args = typing.get_args(arg_type)
     if not args:
         return _C_ELEMENT_NAMES[arg_type], False
@@ -1146,6 +1175,7 @@ def _arg_type_facts(arg_type) -> tuple[str, bool]:
 def test_prefill_binds_its_translation_unit_as_one_object():
     """flash_attn_prefill.cc's five entry points bind through one artifact owner."""
     fn = kernels.prefill_fv(head_dim=512)
+    assert fn.contract.setup is kernels.conv_even
     p = fn._symbol_prefix
     assert fn.name == f"{p}_prefill_fv_step"
     bf = lambda n: np.ndarray[(n,), np.dtype[bfloat16]]  # noqa: E731
@@ -1568,6 +1598,7 @@ def test_transformer_references_match_the_example_formulas():
     off = [np.zeros(32, np.float32).astype(bfloat16) for _ in range(4)]
     live = np.full(32, 2.0, np.float32).astype(bfloat16)
     cl_ref = kernels.dwconv1d_channels_last_ref
+    assert kernels.dwconv1d_channels_last(32).contract.setup is kernels.conv_even
     # Only plane 0 is non-zero, so the result is 2 * x_0 == 2.
     out = cl_ref(live, *off, *xs, lo=-6.0, hi=6.0, clamp=False).astype(np.float32)
     assert out.tolist() == [2.0] * 32
@@ -1742,6 +1773,11 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
             assert name in NOT_JUDGED, f"{name}: no contract"
             continue
         src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
+        if ef.source_file:
+            for include in re.findall(r'^#include "([^"]+)"', src, re.M):
+                header = Path(ef.source_file).parent / include
+                if header.is_file():
+                    src += "\n" + header.read_text()
         src = _active_source(src, ef.compile_flags)
         sets_own = bool(_SET_ROUNDING_CALL.search(src))
         if sets_own:

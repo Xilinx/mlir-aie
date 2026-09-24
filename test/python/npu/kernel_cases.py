@@ -749,6 +749,13 @@ CASES: list[Case] = [
     ),
     # depthwise 1-D conv (aie2p): 1024 outputs per call from a padded row
     Case(
+        "dwconv1d",
+        dict(seq_len=1024, kernel_size=9),
+        calls=16,
+        scalars=(1024,),
+        devices=("npu2",),
+    ),
+    Case(
         "dwconv1d_channels_first",
         dict(seq_len=1024, kernel_size=9),
         calls=16,
@@ -785,6 +792,14 @@ CASES: list[Case] = [
         calls=16,
         devices=("npu2",),
         smoke=True,
+    ),
+    Case(
+        "dwconv1d_channels_last",
+        dict(channels=256, clamp=False),
+        calls=16,
+        tag="unclamped",
+        devices=("npu2",),
+        perf=False,
     ),
     # amd/IRON model shapes: Llama 3.2 1B. Each is one core's per-call tile as
     # IRON instantiates the model at a 2048-token context. The decode GEMVs over

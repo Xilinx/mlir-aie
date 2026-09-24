@@ -25,16 +25,14 @@
 
 using bf16 = bfloat16;
 
-// log2(e), for the exp2 the softmax runs on. As a bf16 it is 1.4453125, 0.18%
-// high -- which a raw exponential could not afford (aie2p/bf16_exp.cc takes an
-// exact float one, x = 88 being a real input there) and a softmax can.
+// log2(e) / sqrt(head_dim), for scaled attention through the exp2 the softmax
+// runs on. LQ uniquely identifies the two supported geometries.
 //
-// The scale multiplies s - m, never s, so the weight error 2^(0.0018*(s-m))
-// grows only as s - m goes negative -- exactly where the weight itself is
-// vanishing. At s - m = -20 it is 2.5% wrong and worth 2^-20 of the output.
-// Near the row max, where the output comes from, both are small. Measured, not
-// assumed: an exact float log2(e) moves the end-to-end error by nothing.
-constexpr bf16 exp_scale = (bf16)1.4426950408889634f;
+// The scale multiplies s - m, never s, so its bf16 rounding error grows only as
+// s - m goes negative -- exactly where the weight itself is vanishing.
+template <int LQ>
+constexpr bf16 exp_scale =
+    (bf16)(1.4426950408889634f * (LQ == 8 ? 0.04419417382415922f : 0.0625f));
 
 // bf16 -inf, the mask fill value.
 constexpr bf16 kNegInf = bf16(-0x1.FEp127f);
@@ -68,7 +66,7 @@ void apply_softmax(bf16 *__restrict pS, bf16 *__restrict new_m_local) {
       // The multiply doubles as the widening exp2 needs, so the scale is free
       // here: the bf16 product lands in a float accumulator either way.
       aie::vector<bf16, 64> Vec = aie::sub(s_vec, m_bcast);
-      aie::accum<accfloat, 64> Vec_acc = aie::mul(Vec, exp_scale);
+      aie::accum<accfloat, 64> Vec_acc = aie::mul(Vec, exp_scale<LQ>);
       aie::store_v(pSg, aie::exp2<bf16>(Vec_acc.template to_vector<float>()));
       pSg += kGroups * 64;
     }
@@ -133,7 +131,7 @@ template <int LQ>
 void calculate_c(float *c, bf16 *prev_m_local, bf16 *new_m_local) {
   aie::vector<bf16, LQ> prev = aie::load_v<LQ>(prev_m_local);
   aie::vector<bf16, LQ> next = aie::load_v<LQ>(new_m_local);
-  aie::accum<accfloat, LQ> arg = aie::mul(aie::sub(prev, next), exp_scale);
+  aie::accum<accfloat, LQ> arg = aie::mul(aie::sub(prev, next), exp_scale<LQ>);
   aie::accum<accfloat, LQ> e;
   e.from_vector(aie::exp2<bf16>(arg.template to_vector<float>()));
   aie::store_v(c, e.template to_vector<float>());
