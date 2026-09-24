@@ -11,36 +11,42 @@ kwargs that are not recognised as configuration keys become ``compile_kwargs``
 
 Three usage patterns are supported:
 
-1. **Bare decorator** — no pre-bound compile params::
+1. **Bare decorator** — no pre-bound compile params:
 
-       @iron.jit
-       def gemm(a: In, b: In, c: Out, *,
-                M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-           ...
+   ```python
+   @iron.jit
+   def gemm(a: In, b: In, c: Out, *,
+            M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+       ...
 
-       gemm(a, b, c, M=512, K=512, N=512)   # compile params at call time
+   gemm(a, b, c, M=512, K=512, N=512)   # compile params at call time
+   ```
 
-2. **With configuration only** — source files, flags, etc., no compile params::
+2. **With configuration only** — source files, flags, etc., no compile params:
 
-       @iron.jit(source_files=["kernel.cc"])
-       def gemm(a: In, b: In, c: Out, *, M: CompileTime[int], ...):
-           ...
+   ```python
+   @iron.jit(source_files=["kernel.cc"])
+   def gemm(a: In, b: In, c: Out, *, M: CompileTime[int], ...):
+       ...
+   ```
 
-3. **With pre-bound compile params** — Triton-style, params fixed at decoration::
+3. **With pre-bound compile params** — Triton-style, params fixed at decoration:
 
-       @iron.jit(M=512, K=512, N=512)
-       def gemm(a: In, b: In, c: Out, *,
-                M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-           ...
+   ```python
+   @iron.jit(M=512, K=512, N=512)
+   def gemm(a: In, b: In, c: Out, *,
+            M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+       ...
 
-       gemm(a, b, c)   # no compile params needed at call time
+   gemm(a, b, c)   # no compile params needed at call time
+   ```
 
-.. note::
-   The decorated function body runs inside an implicit MLIR context
-   (thread-local ``Location`` / ``InsertionPoint``).  See
-   ``programming_guide/implicit_mlir_context.md`` for the model and
-   for the most common gotchas (e.g. why ``@func`` pykernels must be
-   decorated at module scope).
+Note:
+    The decorated function body runs inside an implicit MLIR context
+    (thread-local ``Location`` / ``InsertionPoint``).  See
+    ``programming_guide/implicit_mlir_context.md`` for the model and
+    for the most common gotchas (e.g. why ``@func`` pykernels must be
+    decorated at module scope).
 """
 
 from __future__ import annotations

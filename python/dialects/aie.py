@@ -168,11 +168,13 @@ def dma_bd(
     (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
     shadowing the builtin and matches ``shim_dma_bd``.)
 
-    Example::
+    For example:
 
-        %len = ...
-        aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
-                   offset=0 len=%len)
+    ```mlir
+    %len = ...
+    aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
+               offset=0 len=%len)
+    ```
     """
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])

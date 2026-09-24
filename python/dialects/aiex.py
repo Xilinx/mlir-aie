@@ -599,8 +599,10 @@ def read_scratchpad_parameter(
     Returns:
         An SSA value of the given type.
 
-    Example::
+    For example:
 
-        val = aiex.read_scratchpad_parameter("foo", T.bf16())
+    ```python
+    val = aiex.read_scratchpad_parameter("foo", T.bf16())
+    ```
     """
     return _orig_read_scratchpad_parameter(result_type, name)

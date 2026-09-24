@@ -156,8 +156,8 @@ def assert_close_with_benchmark(
     the comparator based on ``expected``'s dtype: integer dtypes use the
     exact compare (``np.array_equal``), float dtypes use the tolerance
     compare with ``rtol=float_rtol`` / ``atol=float_atol``. A kernel's own
-    :class:`Tolerance` (``fn.contract.tolerance``) can be passed instead and
-    is judged by :func:`compare`, whatever the dtype.
+    ``Tolerance`` (``fn.contract.tolerance``) can be passed instead and
+    is judged by ``compare``, whatever the dtype.
 
     Args:
         actual: Array-like produced by the kernel under test.
@@ -178,7 +178,7 @@ def assert_close_with_benchmark(
             Defaults match the C++ matmul harness's get_*_tol.
         fail_msg: Optional context appended to the ``FAIL!`` line on
             mismatch.
-        tolerance: The kernel's declared :class:`Tolerance`; when given it
+        tolerance: The kernel's declared ``Tolerance``; when given it
             replaces the dtype-selected comparator above.
         mismatch_indices: When True (and the integer branch detects a
             mismatch), append the first five mismatch ``np.argwhere``
@@ -241,9 +241,9 @@ class Tolerance:
     * **ulps** -- ``ulps`` set: bf16 outputs within ``ulps`` units in the
       last place of the correctly rounded reference.
     * **relative** -- ``rtol``/``atol`` set: the canonical
-      ``|a - b| < max(atol, rtol * (|a| + |b|))`` of :func:`nearly_equal`.
+      ``|a - b| < max(atol, rtol * (|a| + |b|))`` of ``nearly_equal``.
       Integer outputs are compared with the same formula in exact integer
-      arithmetic, so :meth:`lsb` (``atol = n + 0.5``) admits an ``n``-LSB
+      arithmetic, so ``lsb`` (``atol = n + 0.5``) admits an ``n``-LSB
       slack for fixed-point pixel kernels whose rounding shift is not
       modeled; under **exact** and **ulps** integers stay bit-equal.
 
@@ -327,7 +327,7 @@ class Tolerance:
 
 @dataclass
 class Verdict:
-    """Outcome of :func:`compare`. Truthy when the comparison passed."""
+    """Outcome of ``compare``. Truthy when the comparison passed."""
 
     ok: bool
     n_checked: int
@@ -373,7 +373,7 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
     ``expected`` may be higher precision than ``actual`` (a float64 sum, an
     int64 product); it is cast to ``actual.dtype``, so the kernel is held to
     what a correctly rounded implementation would produce. With ``tol=None``
-    the output dtype's :meth:`Tolerance.default_for` applies.
+    the output dtype's ``Tolerance.default_for`` applies.
 
     This measures; it does not model. What a kernel does on overflow, on a
     narrowing store, or with subnormal inputs belongs in the reference that

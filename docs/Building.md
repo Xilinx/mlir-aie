@@ -53,12 +53,13 @@ xrt-smi examine
 ```
 
 > At the bottom of the output you should see:
->  ```
->  Devices present
->  BDF             :  Name
+>
+> ```
+> Devices present
+> BDF             :  Name
 > ------------------------------------
->  [0000:66:00.1]  :  NPU Strix
->  ```
+> [0000:66:00.1]  :  NPU Strix
+> ```
 
 ### Install AIETools
 
