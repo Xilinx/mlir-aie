@@ -1002,7 +1002,7 @@ class CompilableDesign:
 
     @classmethod
     def _cached_full_elf_kernel_name(cls, kernel_dir: Path) -> str | None:
-        """The kernel name of a cached full ELF, or ``None`` to rebuild it.
+        """Return a cached full ELF's kernel name, or ``None`` to rebuild it.
 
         A cached ELF is only usable with its ``full_elf_config.json``; one that
         is missing or unreadable makes the hit a miss instead of an error.
