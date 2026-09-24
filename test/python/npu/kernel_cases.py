@@ -337,6 +337,73 @@ CASES: list[Case] = [
         perf=False,
         data_cases=("random", "zeros", "ones", "alternating"),
     ),
+    # Prepacked bfp16ebs8 B. The first is amd/IRON's aie2p flm GEMM tile
+    # (M64, MA32, N64, CT_K128, 8x8x8, OUT_CHUNK 512), so its k step and
+    # drain are IRON's; K is one CT_K chunk rather than 512 to fit L1. The
+    # last walks two k chunks, which moves B by its byte stride.
+    Case(
+        "fused_mm",
+        dict(
+            dim_m=64,
+            band_m=32,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            bfp16_b=True,
+        ),
+        calls=4,
+        devices=("npu2",),
+    ),
+    Case(
+        "fused_mm",
+        dict(
+            dim_m=64,
+            band_m=32,
+            dim_k=128,
+            dim_n=64,
+            chunk_k=128,
+            out_chunk=512,
+            epilogue="silu",
+            bfp16_b=True,
+        ),
+        calls=4,
+        devices=("npu2",),
+        perf=False,
+        data_cases=("random", "zeros", "ones", "alternating"),
+    ),
+    # IRON's other aie2p flm tile, picked when K is a single 512 slice
+    # (N128, CT_K32, MA64). Its 32 KiB accumulator leaves room for only
+    # one CT_K chunk of K.
+    Case(
+        "fused_mm",
+        dict(
+            dim_m=64,
+            band_m=64,
+            dim_k=32,
+            dim_n=128,
+            chunk_k=32,
+            out_chunk=512,
+            bfp16_b=True,
+        ),
+        calls=4,
+        devices=("npu2",),
+    ),
+    Case(
+        "fused_mm",
+        dict(
+            dim_m=16,
+            band_m=16,
+            dim_k=64,
+            dim_n=16,
+            chunk_k=32,
+            out_chunk=64,
+            bfp16_b=True,
+        ),
+        calls=4,
+        devices=("npu2",),
+        smoke=True,
+    ),
     # block floating point (aie2p): bfp16ebs8 A, B and C, and the mixed
     # kernel with bf16 A and C; host encode/shuffle via aie.utils.bfp.
     Case("mm_bfp", _mm_bfp, calls=16, devices=("npu2",)),

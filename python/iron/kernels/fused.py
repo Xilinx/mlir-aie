@@ -6,7 +6,9 @@ import hashlib
 from pathlib import Path
 
 import numpy as np
+from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.kernel import ExternalFunction
+from aie.utils import bfp
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -34,12 +36,13 @@ def fused_mm(
     out_chunk=64,
     epilogue="none",
     clamp=None,
+    bfp16_b=False,
 ) -> ExternalFunction:
     """Compute one bf16 ``A @ B`` tile, with an f32 reduction and fused epilogue.
 
     This bounded composition holds its operands and accumulator on one core;
     it is not the streaming whole-matrix operator. A and B use bf16 storage
-    on both architectures (not the optional prepacked BFP16 B ABI).
+    on both architectures unless ``bfp16_b`` is set.
     ``band_m`` and ``chunk_k`` subdivide the reduction; ``out_chunk`` subdivides
     the drain with a depth of two. The contract supplies the blocked storage
     layouts, including B's column-major ordering of row-major microblocks.
@@ -47,10 +50,21 @@ def fused_mm(
     ``epilogue`` is ``none``, ``gelu`` (the kernel's sigmoid approximation,
     not the tanh GELU curve), ``silu`` or ``sigmoid``. An optional finite
     ``(min, max)`` clamp follows the activation, before the bf16 conversion.
+
+    ``bfp16_b`` (aie2p only) selects the prepacked-B form amd/IRON's flm GEMM
+    builds: B arrives as bfp16ebs8 blocks the host packs once, the mmul is
+    8x8x8, and the core converts A to bfp16 itself. The host rounds B to
+    nearest-even, as IRON's ``pack_b`` does, and the reference multiplies
+    both operands as the core sees them.
     """
     arch = _detect_arch()
     device = _device()
-    r, s, t = (4, 8, 4) if arch == "aie2" else (4, 8, 8)
+    if bfp16_b and arch != "aie2p":
+        raise ValueError("fused_mm: bfp16_b needs aie2p; bfp16ebs8 is an AIE2P type")
+    if bfp16_b:
+        r, s, t = 8, 8, 8
+    else:
+        r, s, t = (4, 8, 4) if arch == "aie2" else (4, 8, 8)
     dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
         raise ValueError("fused_mm dimensions must be positive integers")
@@ -100,6 +114,26 @@ def fused_mm(
             .reshape(-1, dim_k, dim_n)
         )
 
+    # The bfp16 blocks are t-major (block (i, j) holds B^T), because
+    # mac_8x8_8x8T takes B transposed; that also makes each shared exponent
+    # span 8 consecutive k of one column, the grouping the mac expects. The
+    # blocks round as amd/IRON's weight packer does.
+    def pack_b_bfp(b):
+        blocks = (
+            b.reshape(-1, dim_k // chunk_k, chunk_k // s, s, dim_n // t, t)
+            .transpose(0, 1, 4, 2, 5, 3)
+            .reshape(len(b), -1)
+        )
+        return bfp.encode(blocks, rounding="conv_even")
+
+    def unpack_b_bfp(b):
+        return (
+            bfp.decode(b)
+            .reshape(-1, dim_k // chunk_k, dim_n // t, chunk_k // s, t, s)
+            .transpose(0, 1, 3, 5, 2, 4)
+            .reshape(-1, dim_k, dim_n)
+        )
+
     def pack_c(c):
         return (
             c.reshape(-1, dim_m // r, r, dim_n // t, t)
@@ -115,9 +149,13 @@ def fused_mm(
         )
 
     def reference(a, b):
-        c = a.reshape(-1, dim_m, dim_k).astype(np.float32) @ b.reshape(
-            -1, dim_k, dim_n
-        ).astype(np.float32)
+        a = a.reshape(-1, dim_m, dim_k).astype(np.float32)
+        b = b.reshape(-1, dim_k, dim_n).astype(np.float32)
+        if bfp16_b:
+            # The core converts A itself; B is whatever the host packed.
+            a = bfp.quantize(a, rounding="conv_even")
+            b = unpack_b_bfp(pack_b_bfp(b))
+        c = a @ b
         if epilogue != "none":
             x = c * 1.702 if epilogue == "gelu" else c
             sigmoid = (np.tanh(x * 0.5) + 1) * 0.5
@@ -145,6 +183,13 @@ def fused_mm(
     compile_flags = ["-DROUND_CONV_EVEN"] + [
         f"-DMM_FUSED_{name}={value}" for name, value in flags.items()
     ]
+    if bfp16_b:
+        # amd/IRON's pair: the first selects aie_api's bfp16-emulated bf16
+        # mmul, the second the prepacked B storage.
+        compile_flags += [
+            "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
+            "-DMM_FUSED_BFP16_B",
+        ]
     # An absent clamp is (-inf, +inf), which leaves every finite value
     # untouched, so there is no unclamped path to select between.
     bounds = clamp if clamp is not None else (-np.inf, np.inf)
@@ -183,7 +228,11 @@ def fused_mm(
         # streamed transformed, the host packs them (block, no stream).
         layouts=(
             TensorLayout((dim_m, dim_k), pack_a, unpack_a, block=(r, s)),
-            TensorLayout((dim_k, dim_n), pack_b, unpack_b, block=(s, t)),
+            (
+                TensorLayout((dim_k, dim_n), pack_b_bfp, unpack_b_bfp, block=(s, t))
+                if bfp16_b
+                else TensorLayout((dim_k, dim_n), pack_b, unpack_b, block=(s, t))
+            ),
             TensorLayout((dim_m, dim_n), pack_c, unpack_c, block=(r, t)),
             None,
             None,
@@ -219,7 +268,11 @@ def fused_mm(
         source_file=str(source),
         arg_types=[
             np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
-            np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]],
+            (
+                np.ndarray[(dim_k * dim_n // 8,), np.dtype[v8bfp16ebs8]]
+                if bfp16_b
+                else np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
+            ),
             np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
             np.int32,
             np.int32,
