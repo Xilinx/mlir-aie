@@ -211,6 +211,12 @@ disable rules.
   imperative first line, terminal punctuation) — see
   [Linting Python](#linting-python). Writing a docstring in the first place is
   still expected for anything public-facing, just not yet machine-enforced.
+  Docstrings render as Markdown, not reStructuredText: write ``` ``Name`` ```
+  (or an mkdocstrings cross-reference) instead of `:class:`/`:meth:`/`:func:`
+  roles, fenced ```` ```python ```` blocks at the docstring's text indent
+  instead of `Example::` literal blocks, and a Google `Note:` section instead
+  of `.. note::`. `mkdocs build --strict` does not catch these; the
+  `no-rst-docstring-markup` pre-commit hook does.
 - **C++** — use Doxygen-style triple-slash comments (`///`, with `\brief`,
   `\param`, `\returns` as needed) on public declarations in headers. These feed
   the [C++ API reference](docs/api/cpp_doxygen.md).
