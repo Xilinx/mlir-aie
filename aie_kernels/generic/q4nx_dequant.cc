@@ -75,6 +75,7 @@ static_assert(K_TILE / GROUP <= 256, "group index must fit in a byte");
 extern "C" {
 
 void q4nx_dequant_bfp(const uint8_t *__restrict qw, bfp16ebs8 *__restrict out) {
+  event0();
   // The mode is core-global and sticky, so a kernel that converts must pick
   // one. Floor is what a core powers up in, and matches the truncation the
   // operator's byte-exact reference models.
@@ -148,6 +149,7 @@ void q4nx_dequant_bfp(const uint8_t *__restrict qw, bfp16ebs8 *__restrict out) {
   }
 
   aie::set_rounding(saved_rounding);
+  event1();
 }
 
 } // extern "C"
