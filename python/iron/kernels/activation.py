@@ -438,6 +438,7 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
 
     ``out = (x * w1) * silu(x * w2)``; see [`swiglu_ref`][iron.kernels.activation.swiglu_ref].
     """
+    use_lut_model = use_lut or _detect_arch() == "aie2"
     return _bf16_lut_factory(
         "swiglu",
         "swiglu_bf16",
@@ -447,10 +448,12 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
         contract=KernelContract(
             setup=conv_even,
             roles=(In, In, In, Out),
-            reference=swiglu_lut_ref if use_lut else swiglu_ref,
+            reference=swiglu_lut_ref if use_lut_model else swiglu_ref,
             acc_dtype=bfloat16,
             tolerance=(
-                _LUT_MODEL_TOLERANCE if use_lut else _vtanh_family_tolerance("swiglu")
+                _LUT_MODEL_TOLERANCE
+                if use_lut_model
+                else _vtanh_family_tolerance("swiglu")
             ),
             ops_per_call=6 * tile_size,
             uses_lut=True,

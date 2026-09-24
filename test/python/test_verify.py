@@ -9,7 +9,7 @@
 
 import numpy as np
 import pytest
-from aie.utils.verify import poisoned, count_mismatches, nearly_equal
+from aie.utils.verify import count_mismatches, nearly_equal, poisoned
 
 # ---------------------------------------------------------------------------
 # nearly_equal
@@ -242,6 +242,13 @@ def test_range_frac_applies_to_ulps_and_integer_kinds():
     ints = (np.array([256, 2], np.int32), np.array([256, 0], np.int32))
     assert not compare(*ints, Tolerance.relative(0.0, 1.0)).ok
     assert compare(*ints, Tolerance.relative(0.0, range_frac=0.01)).ok
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.float32])
+def test_range_frac_is_inclusive_and_accepts_equal_zeros(dtype):
+    ref = np.array([1000, 0, 0], dtype)
+    got = np.array([1000, 1, 0], dtype)
+    assert compare(got, ref, Tolerance.relative(0.0, range_frac=0.001)).ok
 
 
 def test_range_frac_needs_a_tolerance_to_be_a_floor_under():

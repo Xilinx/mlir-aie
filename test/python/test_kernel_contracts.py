@@ -380,6 +380,15 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
     assert str(runtime_dir) in fn.include_dirs
 
 
+@pytest.mark.parametrize(
+    "device,reference",
+    [(NPU1Col1, kernels.swiglu_lut_ref), (NPU2Col1, kernels.swiglu_ref)],
+)
+def test_swiglu_default_reference_matches_architecture(device, reference):
+    set_current_device(device())
+    assert kernels.swiglu().contract.reference is reference
+
+
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))
 def test_rounding_mode_preserves_string_api(mode):
     assert str(mode) == f"{mode}" == mode.value
@@ -1128,7 +1137,7 @@ def _extern_c_signatures(source_file: str) -> dict[str, list[tuple[str, bool]]]:
 
 
 def _arg_type_facts(arg_type) -> tuple[str, bool]:
-    """The same ``(element type, is a pointer)`` pair for one arg_types entry."""
+    """Return the ``(element type, is a pointer)`` pair for one arg_types entry."""
     args = typing.get_args(arg_type)
     if not args:
         return _C_ELEMENT_NAMES[arg_type], False

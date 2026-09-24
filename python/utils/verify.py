@@ -445,8 +445,11 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
     a, e, n = actual.ravel(), expected.ravel(), actual.size
 
     def ref_scale(ref) -> float:
-        """max|ref| over its finite entries -- what ``range_frac`` is a fraction
-        of, and 0 when no range floor is in play."""
+        """Return max|ref| over finite entries.
+
+        This is what ``range_frac`` is a fraction of, or zero when no range
+        floor is in play.
+        """
         if tol.range_frac is None or not n:
             return 0.0
         mag = np.abs(np.asarray(ref, dtype=np.float64))
@@ -467,10 +470,13 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
         scale = ref_scale(e64)
         if tol.kind == "relative":
             bound = np.maximum(
-                max(tol.atol or 0.0, (tol.range_frac or 0.0) * scale),
+                tol.atol or 0.0,
                 (tol.rtol or 0.0) * (np.abs(a64) + np.abs(e64)),
             )
-            bad = ~(err < bound)
+            close = err < bound
+            if tol.range_frac is not None:
+                close |= err <= tol.range_frac * scale
+            bad = ~close
         else:
             bad = a != e_cast
         v = _verdict(bad, err, None, tol, n, ref_range=scale)
@@ -519,10 +525,9 @@ def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
 
     err[finite] = np.abs(a32[finite].astype(np.float64) - e32[finite])
     scale = ref_scale(e32)
-    floor = max(tol.atol or 0.0, (tol.range_frac or 0.0) * scale)
-    close = nearly_equal(
-        a32, e32, rtol=tol.rtol or 0.0, atol=floor if floor or tol.atol else None
-    )
+    close = nearly_equal(a32, e32, rtol=tol.rtol or 0.0, atol=tol.atol)
+    if tol.range_frac is not None:
+        close |= err <= tol.range_frac * scale
     bad = nonfinite_bad | (finite & ~close)
     return _verdict(bad, err, None, tol, n, nonfinite_bad, ref_range=scale)
 

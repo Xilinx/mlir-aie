@@ -29,12 +29,10 @@ cases, where it is one key in 129 and the kernel's own rounding covers it. Only
 the windowed case, with 64 keys visible and both edges live, separates it.
 """
 
-import numpy as np
-import pytest
-from ml_dtypes import bfloat16
-
 import aie.extras.dialects.arith as arith  # pyright: ignore[reportMissingImports]
 import aie.iron as iron
+import numpy as np
+import pytest
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
     Buffer,
@@ -49,17 +47,11 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
+from ml_dtypes import bfloat16
 
 BF = np.dtype[bfloat16]
 F32 = np.dtype[np.float32]
 I32 = np.dtype[np.int32]
-
-# The softmax runs on exp2, and flash_attn_prefill.h holds log2(e) in a bf16
-# constant, so the curve the kernel exponentiates is exp(x * 1.0018...), not
-# exp(x). That is a property of the kernel and not an error in it -- the header
-# records the measurement, and the assertion below checks the cost directly --
-# so the reference carries the same constant.
-_EXP_SCALE = np.float32(bfloat16(1.4426950408889634))
 
 # Tolerance, in bf16 steps at the top of the output range; see the assertion
 # for why the unit is absolute. Measured, not guessed. The worst of the four
@@ -70,6 +62,13 @@ _ATOL_ULP = 4
 
 # PrefillGeom<DH>: head_dim -> (query chunk, key chunk).
 _GEOM = {512: (8, 8), 256: (16, 16)}
+
+# The softmax runs on exp2, and flash_attn_prefill.h folds attention's
+# 1/sqrt(head_dim) into its bf16 log2(e) multiplier.
+_EXP_SCALE = {
+    head_dim: np.float32(bfloat16(np.log2(np.e) / np.sqrt(head_dim)))
+    for head_dim in _GEOM
+}
 
 _BLOCK_KEYS = 128
 
@@ -98,7 +97,7 @@ def _pack_kv(mat: np.ndarray) -> np.ndarray:
 
 
 def _unpack_o(flat: np.ndarray, lq: int, dh: int) -> np.ndarray:
-    """The epilogue's 64-element chunks back to (LQ, DH)."""
+    """Unpack the epilogue's 64-element chunks back to (LQ, DH)."""
     return flat.reshape(lq // 8, dh // 8, 8, 8).transpose(0, 2, 1, 3).reshape(lq, dh)
 
 
@@ -191,11 +190,11 @@ def prefill_round(
 
     def core(
         of_q, of_kv, of_o, rb, qk, bm, fv, ep,
-        s, m, prev_m, new_m, c, l, y, l_begin, window_size,
+        s, m, prev_m, new_m, c, l_sum, y, l_begin, window_size,
     ):  # fmt: skip
         i32 = np_dtype_to_mlir_type(np.int32)
         q = of_q.acquire(1)
-        rb(prev_m, new_m, c, l, y)
+        rb(prev_m, new_m, c, l_sum, y)
         for block in range_(n_blocks):
             b = arith.index_cast(block, to=i32)
             for chunk in range_(_BLOCK_KEYS // lk):
@@ -205,12 +204,12 @@ def prefill_round(
                     row, col, 0, b, j,
                 )  # fmt: skip
                 of_kv.release(1)
-            bm(s, m, new_m, prev_m, c, l, y)
+            bm(s, m, new_m, prev_m, c, l_sum, y)
             for chunk in range_(_BLOCK_KEYS // lk):
                 fv(y, s, of_kv.acquire(1), arith.index_cast(chunk, to=i32))
                 of_kv.release(1)
         for out_chunk in range_(out_chunks):
-            ep(of_o.acquire(1), l, y, arith.index_cast(out_chunk, to=i32))
+            ep(of_o.acquire(1), l_sum, y, arith.index_cast(out_chunk, to=i32))
             of_o.release(1)
         of_q.release(1)
 
@@ -258,7 +257,7 @@ def _dyadic(rng, shape, scale):
 
 
 def case_data(head_dim, block_q, n_blocks, window, row, col):
-    """Inputs for one case, as the mathematical operands and as device buffers."""
+    """Build inputs as mathematical operands and device buffers."""
     lq, lk = _GEOM[head_dim]
     chunks = n_blocks * (_BLOCK_KEYS // lk)
     q_pos = _inner_q(head_dim, block_q, row, col) + np.arange(lq)
@@ -338,7 +337,13 @@ def test_prefill_round_matches_masked_attention(
     got = _unpack_o(o_t.numpy(), lq, head_dim).astype(np.float32)
 
     ref = _attention(
-        q, k, v, q_pos=q_pos, k_pos=k_pos, window=window, exp_scale=_EXP_SCALE
+        q,
+        k,
+        v,
+        q_pos=q_pos,
+        k_pos=k_pos,
+        window=window,
+        exp_scale=_EXP_SCALE[head_dim],
     ).astype(np.float32)
     # Every output is a convex combination of the V rows, so it lives on the
     # scale of max|v| whatever the head dim, and one bf16 step at the top of
@@ -349,14 +354,19 @@ def test_prefill_round_matches_masked_attention(
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
-    # The reference above carries the kernel's bf16 log2(e), so on its own it
-    # would pass a round that computed a systematically sharpened softmax.
+    # The reference above carries the kernel's bf16 scaled-attention multiplier,
+    # so on its own it would pass a systematically sharpened softmax.
     # Against the mathematical exponential the answer barely moves -- that is
     # what says the round computes attention, and not merely what the model
     # says it does. It is also the check that keeps the bf16 constant honest:
-    # the header argues the 0.18% lands where the weights vanish, and this is
-    # where that argument would fail if it were wrong.
+    # this is where that argument would fail if it were wrong.
     exact = _attention(
-        q, k, v, q_pos=q_pos, k_pos=k_pos, window=window, exp_scale=np.log2(np.e)
+        q,
+        k,
+        v,
+        q_pos=q_pos,
+        k_pos=k_pos,
+        window=window,
+        exp_scale=np.log2(np.e) / np.sqrt(head_dim),
     ).astype(np.float32)
     np.testing.assert_allclose(ref, exact, rtol=0, atol=1 * ulp)
