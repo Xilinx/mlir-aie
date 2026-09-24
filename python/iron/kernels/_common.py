@@ -152,6 +152,12 @@ class KernelContract:
             operands, counts included; the rest come from the caller.
         initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
             ``factory(fn)`` returns the kernel that initializes the buffer.
+        out_offset: ``(index, step)`` for a kernel that writes ``step``
+            elements of its one ``Out`` per call, at the offset it reads
+            from bound scalar ``Param`` ``index``. The builder then hands
+            every call the same output tile, passes ``call * step`` as the
+            offset and drains the tile once, so the calls must fill it
+            exactly. ``None``: each call writes a whole tile of its own.
         trace: The ``Trace`` shape of the kernel's markers. Every
             library factory declares one; ``None`` (undeclared) is only for
             ad-hoc kernels, and ``cycles_per_call`` refuses it.
@@ -178,6 +184,7 @@ class KernelContract:
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
+    out_offset: tuple[int, int] | None = None
     trace: Trace | None = None
     uses_lut: bool = False
 
@@ -210,6 +217,14 @@ class KernelContract:
             for i in initialized
         ):
             raise ValueError("initializers must name distinct InOut arguments")
+        if self.out_offset is not None:
+            index, step = self.out_offset
+            if index not in bound or self.roles.count(Out) != 1 or InOut in self.roles:
+                raise ValueError(
+                    "out_offset needs a bound Param offset and exactly one Out"
+                )
+            if step < 1:
+                raise ValueError(f"out_offset step must be >= 1, got {step}")
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.stack_bytes is not None and self.stack_bytes < 1:

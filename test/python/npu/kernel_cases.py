@@ -526,6 +526,22 @@ CASES: list[Case] = [
         )
         for dim_k, vec_size, smoke in ((64, 32, False), (2048, 64, True))
     ],
+    # Its ffn down projection runs one row of 8192 per call instead, and 256
+    # calls fill one 256-row C tile through row_offset while b stays put
+    # (tile_size_input=1, tile_size_output=256 in IRON's GEMV core).
+    Case(
+        "mv",
+        dict(
+            dim_m=1,
+            dim_k=8192,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            vec_size=64,
+            output_rows=256,
+        ),
+        calls=256,
+        tag="llama-decode-ffn-down",
+    ),
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),

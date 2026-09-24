@@ -93,6 +93,21 @@ def _layout(c, i):
     return c.layouts[i] if c.layouts else None
 
 
+def _out_tiles(fn, calls):
+    """Output tiles a run drains: one per call, or one for all of them."""
+    c = _contract(fn)
+    if c.out_offset is None:
+        return calls
+    step = c.out_offset[1]
+    n = elems(fn.arg_types()[c.out_index])
+    if n != calls * step:
+        raise ValueError(
+            f"{fn.name}: {calls} call(s) of {step} element(s) each must fill "
+            f"the {n}-element output tile"
+        )
+    return 1
+
+
 def _fifo_plan(fn):
     """Pack same-type inputs per call, respecting the core's DMA channel budget."""
     c = _contract(fn)
@@ -165,6 +180,8 @@ def _stage(fn, calls, scalars, params, stack_bytes):
     if any(r is InOut and i not in dict(initializers) for i, r in enumerate(c.roles)):
         raise ValueError(f"{fn.name}: every InOut requires a declared initializer")
     setter = c.setup() if c.setup else None
+    offset = c.out_offset
+    _out_tiles(fn, calls)
 
     def nbytes(i):
         return elems(types[i]) * bfp.itemsize(shape_dtype(types[i])[1])
@@ -201,9 +218,11 @@ def _stage(fn, calls, scalars, params, stack_bytes):
     n_param, n_init = len(buffers), len(initializers)
     slot = {i: j for j, i in enumerate(outs)}
 
-    def body(acquired, outputs, _held, constants, _call):
+    def body(acquired, outputs, _held, constants, call):
         values = dict(zip(param_pos, constants[:n_param]))
         values.update(bound)
+        if offset:
+            values[offset[0]] = call * offset[1]
         for got, group in zip(acquired, groups):
             values.update(
                 (i, got if len(group) == 1 else got[j]) for j, i in enumerate(group)
@@ -225,6 +244,7 @@ def _stage(fn, calls, scalars, params, stack_bytes):
         + [init for _, init in initializers]
         + ([setter] if setter else []),
         iterations=calls,
+        outputs_span_iterations=offset is not None,
         prologue=(lambda constants: constants[-1]()) if setter else None,
         initialize=initialize if initializers else None,
         stack_size=stack_bytes,
@@ -253,7 +273,7 @@ def _build_stream(
 
     groups = _fifo_plan(fn)[0]
     host_types = [host_ty(g[0], calls * len(g)) for g in groups]
-    host_types += [host_ty(i, calls) for i in fn.contract.out_indices]
+    host_types += [host_ty(i, _out_tiles(fn, calls)) for i in fn.contract.out_indices]
     fifos_in = [fifo for fifo, _ in stage.inputs]
     transfers = [(fifo, "fill", j) for j, fifo in enumerate(fifos_in)]
     transfers += [
@@ -397,7 +417,7 @@ def output_size(fn, *, calls=1, shape=None):
     types = fn.arg_types()
     sizes = tuple(
         elems(types[i])
-        * calls
+        * _out_tiles(fn, calls)
         * (bfp.BLOCK_BYTES if bfp.is_bfp(shape_dtype(types[i])[1]) else 1)
         for i in _contract(fn).out_indices
     )
@@ -434,7 +454,8 @@ def host_args(fn, *, calls=1, shape=None):
         n = elems(types[i])
         if bfp.is_bfp(dt):
             n, dt = n * bfp.BLOCK_BYTES, np.uint8
-        s = (calls, n) if len(indices) == 1 else (calls, len(indices), n)
+        rows = calls if direction is In else _out_tiles(fn, calls)
+        s = (rows, n) if len(indices) == 1 else (rows, len(indices), n)
         result.append(_HostBuffer(direction, s, dt))
     return result
 

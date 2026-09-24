@@ -632,6 +632,7 @@ def mv(
     vectorized: bool = True,
     use_chess: bool = False,
     vec_size: int = 64,
+    output_rows: int | None = None,
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
@@ -655,6 +656,11 @@ def mv(
             instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level
             constraint (all EFs in one design must agree).
         vec_size: bf16 only: the kernel's ``VEC_SIZE`` accumulation width.
+        output_rows: bf16 only: the rows of a C tile that successive calls
+            fill ``dim_m`` rows at a time through ``row_offset``, with b
+            held for all of them, as amd/IRON's GEMV core does (its
+            ``tile_size_output``). ``None``: every call writes its own
+            ``dim_m`` rows.
 
     Returns:
         ExternalFunction configured for the matvec kernel.
@@ -663,7 +669,9 @@ def mv(
         ValueError: When the dtype combination is not supported.
     """
     if (input_dtype, output_dtype) == (bfloat16, bfloat16):
-        return _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size)
+        return _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size, output_rows)
+    if output_rows is not None:
+        raise ValueError("mv(): output_rows needs the bf16 kernel's row_offset")
     if input_dtype != np.int16 or output_dtype != np.int32:
         raise ValueError(
             f"mv(): only (np.int16, np.int32) and (bfloat16, bfloat16) are supported, got ({input_dtype}, {output_dtype})"
@@ -707,16 +715,25 @@ def mv(
     )
 
 
-def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
+def _mv_bf16(
+    dim_m, dim_k, vectorized, use_chess, vec_size, output_rows
+) -> ExternalFunction:
     """bf16 matvec from ``aie_kernels/generic/mv_bf16.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
         raise ValueError(
             f"mv(): dim_k ({dim_k}) must be a positive multiple of vec_size ({vec_size})"
         )
+    if output_rows is not None and (output_rows <= 0 or output_rows % dim_m):
+        raise ValueError(
+            f"mv(): output_rows ({output_rows}) must be a positive multiple of dim_m ({dim_m})"
+        )
+    # A C tile filled over several calls holds b for all of them, so b is a
+    # Param the core keeps rather than an input streamed with each call.
+    tiled = output_rows is not None
     prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[bfloat16]]
-    c_ty = np.ndarray[(dim_m,), np.dtype[bfloat16]]
+    c_ty = np.ndarray[(output_rows or dim_m,), np.dtype[bfloat16]]
     return _make_extern(
         f"{prefix}_bf16_bf16",
         _default_source_path("mv_bf16.cc", subdir="generic"),
@@ -725,8 +742,9 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
         use_chess=use_chess,
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(Param, Param, In, In, Out),
+            roles=(Param, Param, In, Param if tiled else In, Out),
             parameter_bindings=((0, dim_m), (1, 0)),
+            out_offset=(1, dim_m) if tiled else None,
             layouts=(
                 None,
                 None,
@@ -735,7 +753,9 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
                 TensorLayout((dim_m,)),
             ),
             reference=lambda a, b: np.einsum(
-                "cmk,ck->cm", a.astype(np.float32), b.astype(np.float32)
+                "cmk,k->cm" if tiled else "cmk,ck->cm",
+                a.astype(np.float32),
+                b.astype(np.float32),
             ),
             acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
             reduction=dim_k,
