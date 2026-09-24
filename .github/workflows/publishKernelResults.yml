@@ -132,7 +132,7 @@ jobs:
         if: ${{ !inputs.static }}
         run: |
           cp utils/kernel_bench/index.html "$RUNNER_TEMP/index.html"
-          git switch -q "$BRANCH"
+          git switch -q gh-pages
           mkdir -p bench
           cp "$RUNNER_TEMP/index.html" bench/index.html
           git add bench/index.html

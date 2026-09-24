@@ -257,7 +257,7 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
         subprocess.run(
             ["bash", "-eo", "pipefail", "-c", run],
             cwd=tmp_path,
-            env={**os.environ, "BRANCH": "gh-pages"},
+            env={k: v for k, v in os.environ.items() if k != "BRANCH"},
             check=True,
         )
         assert git("branch", "--show-current") == "main"
