@@ -49,14 +49,14 @@ print(Program(NPU1Col1(), rt).resolve_program())
 # CHECK:         arith.extsi %arg2 : i32 to i64
 # CHECK:         cf.assert %{{.*}}, "slice stop exceeds the dimension"
 # CHECK:         aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 sizes = [1, 1, %{{.*}}, 16] strides = [0, 0, 16, 1])
+# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 sizes = [1, %{{.*}}, 16] strides = [0, 16, 1])
 # CHECK:         arith.muli %arg3, %c16_i64 : i64
 # CHECK:         aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = %{{.*}} : i64 sizes = [1, 1, %{{.*}}, 16] strides = [0, 0, 16, 1])
+# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = %{{.*}} : i64 sizes = [1, %{{.*}}, 16] strides = [0, 16, 1])
 # CHECK:         emitc.cast %arg5 : ui32 to i64
 # CHECK:         emitc.cast %arg4 : ui8 to i64
 # CHECK:         aiex.dma_configure_task_for @of_in {
-# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = %{{.*}} : i64 sizes = [1, 1, %{{.*}}, 16] strides = [0, 0, 32, 1])
+# CHECK-NEXT:      aie.dma_bd(%arg0 : memref<4096xi32> offset = %{{.*}} : i64 sizes = [1, %{{.*}}, 16] strides = [0, 32, 1])
 
 # A contiguous runtime walk is encoded linear, so only its transfer length is
 # guarded; m:m+4 folds to a constant 64-word length; a strided walk is

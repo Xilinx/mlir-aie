@@ -66,12 +66,12 @@ module {
       aiex.npu.rtp_write(@rtp, 0, %c4096) : i32
       aiex.npu.rtp_write(@rtp, 4, %c4097) : i32
       %tout = aiex.dma_configure_task_for @of_out {
-        aie.dma_bd(%out : memref<8192xi32> offset = 0 len = 2048 sizes = [2, 4, 8, 64] strides = [2048, 512, 64, 1]) {bd_id = 0 : i32}
+        aie.dma_bd(%out : memref<8192xi32> offset = 0 len = 2048 sizes = [4, 8, 64] strides = [512, 64, 1]) {bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 2, stride = 2048, current = 0>}
         aie.end
-      } {issue_token = true}
+      } {issue_token = true, repeat_count = 1 : i32}
       aiex.dma_start_task(%tout)
       %tin = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 4096 sizes = [1, 8, 16, 32] strides = [4096, 512, 32, 1]) {bd_id = 1 : i32}
+        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 4096 sizes = [8, 16, 32] strides = [512, 32, 1]) {bd_id = 1 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%tin)
@@ -85,12 +85,12 @@ module {
       aiex.npu.rtp_write(@rtp, 0, %n) : i32
       aiex.npu.rtp_write(@rtp, 4, %np1) : i32
       %tout = aiex.dma_configure_task_for @of_out {
-        aie.dma_bd(%out : memref<8192xi32> offset = 0 len = 2048 sizes = [2, 4, 8, 64] strides = [2048, 512, 64, 1]) {bd_id = 0 : i32}
+        aie.dma_bd(%out : memref<8192xi32> offset = 0 len = 2048 sizes = [4, 8, 64] strides = [512, 64, 1]) {bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 2, stride = 2048, current = 0>}
         aie.end
-      } {issue_token = true}
+      } {issue_token = true, repeat_count = 1 : i32}
       aiex.dma_start_task(%tout)
       %tin = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 4096 sizes = [1, 8, 16, 32] strides = [4096, 512, 32, 1]) {bd_id = 1 : i32}
+        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 4096 sizes = [8, 16, 32] strides = [512, 32, 1]) {bd_id = 1 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%tin)

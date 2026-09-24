@@ -323,6 +323,7 @@ def shim_dma_bd(
     offset_parameter: str | None = None,
     length_parameter: str | None = None,
     length_unit: int | None = None,
+    iteration=None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -357,6 +358,7 @@ def shim_dma_bd(
         offset_parameter=offset_parameter,
         length_parameter=length_parameter,
         length_unit=length_unit,
+        iteration=iteration,
     )
 
 
@@ -434,22 +436,44 @@ def shim_dma_single_bd_task(
             if strides is not None:
                 strides = [0] + list(strides)
 
-    # The outer dimensions become the queue-push repeat_count. Constants fold to
-    # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into
-    # the repeat_count_val operand so a dynamic tile count is supported.
+    # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
+    # constant folds to the repeat_count attribute (static path, unchanged); a
+    # runtime Value flows into the repeat_count_val operand so a dynamic tile
+    # count is supported.
+    # When sizes has 4 dims, sizes[0] is the iteration/repeat dimension and
+    # is stripped before passing to the BD (see AIEOps.td ## BD iteration).
     repeat_count = 0
     repeat_count_val = None
+    iteration = None
     if sizes:
-        outer = sizes[:-3]
-        if all(isinstance(v, (int, np.integer)) for v in outer):
-            runs = int(np.prod([int(v) for v in outer]))
-            if runs > 1:
-                repeat_count = runs - 1
+        s0 = sizes[0]
+        if isinstance(s0, (int, np.integer)):
+            if s0 > 1:
+                repeat_count = int(s0) - 1
+            if len(sizes) == 4:
+                st0 = strides[0] if strides is not None else 0
+                if isinstance(st0, (int, np.integer)) and int(st0) != 0:
+                    iteration = (int(s0), int(st0), 0)
+                if strides is None:
+                    strides = [0] * (len(sizes) - 1) + [1]
+                sizes = list(sizes[1:])
+                strides = list(strides[1:])
         else:
-            # Runtime: a zero sizes[0] wraps to a huge count, which the
-            # queue-push lowering refuses along with any other one past the
-            # target's maximum.
-            repeat_count_val = sizes[0] - 1
+            # Runtime SSA sizes[0]: same strip, but iteration via SSA operands.
+            s0_i32 = s0
+            if s0.type != T.i32():
+                s0_i32 = arith.trunci(T.i32(), s0)
+            repeat_count_val = s0_i32 - _as_i32(1)
+            st0 = strides[0] if strides is not None else 0
+            if isinstance(st0, (int, np.integer)):
+                st0 = _as_i32(int(st0))
+            elif st0.type != T.i32():
+                st0 = arith.trunci(T.i32(), st0)
+            if strides is None:
+                strides = [0] * (len(sizes) - 1) + [1]
+            sizes = list(sizes[1:])
+            strides = list(strides[1:])
+            iteration = (s0_i32, st0)  # (size_val, stride_val) SSA pair
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -470,6 +494,7 @@ def shim_dma_single_bd_task(
                 offset_parameter=offset_parameter,
                 length_parameter=length_parameter,
                 length_unit=length_unit,
+                iteration=iteration,
             )
             EndOp()
     return task
