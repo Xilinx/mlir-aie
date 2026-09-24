@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// aie-decompose-large-dma-bd rejects an out-of-order BD that needs splitting.
+// aie-decompose-large-dma-bd rejects the task-path descriptors it cannot decompose.
 
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file --verify-diagnostics %s
@@ -67,6 +67,49 @@ module {
         aie.end
       } {issue_token = true, repeat_count = 2147483647 : i32}
       aiex.dma_start_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Sliced one iteration at a time, each slice needs a task of its own, and a
+// start then runs every slice once per pass. Six runs of a four-iteration
+// transfer end partway through a pass, where no slice boundary falls.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @partial_pass(%in: memref<16777216xbf16>) {
+      %tk = aiex.dma_configure_task_for @a {
+        // expected-error@+1 {{cannot split this buffer descriptor: its slices need per-descriptor repeat counts, which a chain shares, and they cannot be separate tasks because a start runs it 6 times, not a whole number of passes over its 4-long iteration dimension}}
+        aie.dma_bd(%in : memref<16777216xbf16> offset = 0 len = 32768 sizes = [4, 1, 64, 512] strides = [4194304, 0, 8192, 1])
+        aie.end
+      } {repeat_count = 3 : i32, issue_token = true}
+      aiex.dma_start_task(%tk) {repeat_count = 5 : i32}
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// A runtime repeat count cannot be divided into passes, so the slices have to
+// stay one chain, and 18 of them do not fit the shim tile's 16 descriptors.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @runtime_repeat_too_many(%in: memref<65536xi32>, %r: i32) {
+      %tk = aiex.dma_configure_task_for @a repeat %r : i32 {
+        // expected-error@+1 {{cannot split this buffer descriptor: its 18 slices outnumber the tile's 16 buffer descriptors, and they cannot be separate tasks because the task's repeat count is a runtime value}}
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 34786 sizes = [1, 1, 17393, 2] strides = [0, 0, 3, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
     }
   }
 }

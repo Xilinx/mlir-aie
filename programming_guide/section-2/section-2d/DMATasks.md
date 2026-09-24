@@ -272,6 +272,8 @@ Every such poll waits for one specific task on one channel. The compiler can see
 
 To get the error back instead, pass `reclaim-bds=false` to `aie-assign-runtime-sequence-bd-ids`. `test/npu-xrt/runtime_bd_reclaim` runs 80 tasks through one Shim Tile's 16 BDs, none freed.
 
+A transfer whose access pattern does not fit one BD is split by the compiler (`aie-decompose-large-dma-bd`). If it splits into more pieces than the channel's queue holds, each piece becomes a task of its own, so that the BDs of finished pieces can be taken back. Only the last piece issues the completion token, so a `dma_await_task` of the transfer still waits for all of it. The compiler interleaves the pieces with the transfers started alongside it, in proportion to how far through each is. That way a transfer started earlier in the sequence cannot use up the BDs its counterpart, started after it, needs to make progress. The pieces never move ahead of their own start, nor past a `dma_await_task`, a sync or a poll.
+
 Both the `npu_dma_memcpy_nd`/`dma_wait` interface and the `shim_dma_single_bd_task`/`dma_await_task`/`dma_free_task` interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 
 -----

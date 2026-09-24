@@ -19,11 +19,16 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <limits>
+#include <string>
+#include <tuple>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEDECOMPOSELARGEDMABD
@@ -291,6 +296,271 @@ static int64_t allocateNextId(NpuDmaMemcpyNdOp op, int64_t startId,
   return id;
 }
 
+static bool getTaskIssueToken(Operation *taskOp) {
+  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp))
+    return cfg.getIssueToken();
+  return cast<DMAConfigureTaskForOp>(taskOp).getIssueToken();
+}
+
+static void setTaskIssueToken(Operation *taskOp, bool token) {
+  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp)) {
+    cfg.setIssueToken(token);
+    return;
+  }
+  cast<DMAConfigureTaskForOp>(taskOp).setIssueToken(token);
+}
+
+// Marks the starts splitIntoTasks emits until orderSlices has placed them:
+// [group, index within the group, group size].
+static constexpr llvm::StringLiteral kSliceAttr = "aiex.decompose_slice";
+// Marks the configures of the slices after the first, which orderSlices moves
+// up to their first start.
+static constexpr llvm::StringLiteral kSliceTaskAttr =
+    "aiex.decompose_slice_task";
+
+// Why the slices of `bd` cannot go out as one task each, or nullopt if they
+// can. Every use of the task has to be one splitIntoTasks rewrites, and every
+// start has to run whole passes over the pattern, a pass being one execution
+// per index of the `iterations`-long iteration dimension: the slices of a pass
+// are issued in turn, so a partial pass has no slice boundary to stop at.
+static std::optional<std::string>
+whyNotSeparateTasks(AIE::DMABDOp bd, Operation *taskOp, int64_t iterations) {
+  std::string why;
+  llvm::raw_string_ostream os(why);
+  if (bd.getBdIdVal()) {
+    os << "the descriptor's bd_id is a runtime value";
+    return why;
+  }
+  if (getTaskRepeatCountVal(taskOp)) {
+    os << "the task's repeat count is a runtime value";
+    return why;
+  }
+  for (Operation *user : taskOp->getResult(0).getUsers()) {
+    if (!isa<DMAStartTaskOp, DMAAwaitTaskOp, DMAFreeTaskOp>(user)) {
+      os << "the task is used by '" << user->getName() << "'";
+      return why;
+    }
+    if (user->getBlock() != taskOp->getBlock()) {
+      os << "the task is used outside the block that configures it";
+      return why;
+    }
+    auto start = dyn_cast<DMAStartTaskOp>(user);
+    if (!start)
+      continue;
+    std::optional<uint32_t> rc = start.getRepeatCount();
+    int64_t runs = static_cast<int64_t>(rc ? *rc : getTaskRepeatCount(taskOp));
+    ++runs;
+    if (runs % iterations != 0) {
+      os << "a start runs it " << runs
+         << " times, not a whole number of passes over its " << iterations
+         << "-long iteration dimension";
+      return why;
+    }
+  }
+  return std::nullopt;
+}
+
+// Issue the slices of `bd` as one single-descriptor task each. The task
+// becomes the first slice and the others are configured right after it, until
+// orderSlices moves each up to its first start. Only
+// the last slice issues the task's token, so an await of the task becomes an
+// await of the last slice, and a free frees every slice. Each start becomes a
+// group of consecutive starts, every slice once per pass, which orderSlices
+// then interleaves with the starts around it.
+static void splitIntoTasks(PatternRewriter &rewriter, AIE::DMABDOp bd,
+                           Operation *taskOp, ArrayRef<NdDmaPattern> slices,
+                           int64_t baseFlatOffset, int64_t iterations,
+                           int64_t &nextGroup) {
+  bool token = getTaskIssueToken(taskOp);
+  int64_t taskRuns = static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1;
+  SmallVector<Operation *> users(taskOp->getResult(0).getUsers());
+
+  SmallVector<Operation *> tasks{taskOp};
+  rewriter.setInsertionPointAfter(taskOp);
+  for (size_t i = 1; i < slices.size(); ++i)
+    tasks.push_back(rewriter.clone(*taskOp));
+  for (Operation *task : llvm::drop_begin(tasks))
+    task->setAttr(kSliceTaskAttr, rewriter.getUnitAttr());
+
+  for (auto [i, sub] : llvm::enumerate(slices)) {
+    Operation *task = tasks[i];
+    AIE::DMABDOp sliceBd = bd;
+    if (i > 0)
+      task->walk([&](AIE::DMABDOp b) { sliceBd = b; });
+    int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, sub);
+    int32_t len = static_cast<int32_t>(lenFromInnermost3(sub.sizes));
+    rewriter.modifyOpInPlace(sliceBd, [&]() {
+      updateTaskBdInPlace(sliceBd, static_cast<int32_t>(flatOffset), len,
+                          toOuter(sub.sizes), toOuter(sub.strides));
+      // A pinned id stays with the first slice, as in a chain.
+      if (i > 0)
+        sliceBd.removeBdIdAttr();
+    });
+    rewriter.modifyOpInPlace(task, [&]() {
+      // One pass over the slice is one execution per index of its own
+      // iteration dimension.
+      setTaskRepeatCount(task, static_cast<int32_t>(sub.sizes[3] - 1));
+      setTaskIssueToken(task, token && i + 1 == slices.size());
+    });
+  }
+
+  for (Operation *user : users) {
+    if (auto await = dyn_cast<DMAAwaitTaskOp>(user)) {
+      rewriter.modifyOpInPlace(await, [&]() {
+        await.getTaskMutable().assign(tasks.back()->getResult(0));
+      });
+      continue;
+    }
+    if (auto free = dyn_cast<DMAFreeTaskOp>(user)) {
+      rewriter.setInsertionPointAfter(free);
+      for (Operation *task : llvm::drop_begin(tasks))
+        DMAFreeTaskOp::create(rewriter, free.getLoc(), task->getResult(0));
+      continue;
+    }
+    auto start = cast<DMAStartTaskOp>(user);
+    std::optional<uint32_t> rc = start.getRepeatCount();
+    int64_t runs = rc ? static_cast<int64_t>(*rc) + 1 : taskRuns;
+    int64_t count = runs / iterations * static_cast<int64_t>(slices.size());
+    int64_t group = nextGroup++;
+    // Only the last start of the last slice may issue the token: an earlier
+    // pass's would complete an await before the transfer has.
+    bool startToken = token && !start.getNoToken();
+    auto mark = [&](DMAStartTaskOp s, int64_t index) {
+      s->setAttr(kSliceAttr,
+                 rewriter.getDenseI64ArrayAttr({group, index, count}));
+    };
+    rewriter.modifyOpInPlace(start, [&]() {
+      start.removeRepeatCountAttr();
+      mark(start, 0);
+    });
+    rewriter.setInsertionPointAfter(start);
+    for (int64_t k = 1; k < count; ++k) {
+      size_t i = static_cast<size_t>(k) % slices.size();
+      bool withholds =
+          token && i + 1 == slices.size() && !(startToken && k + 1 == count);
+      auto s = DMAStartTaskOp::create(
+          rewriter, start.getLoc(), tasks[i]->getResult(0),
+          /*repeat_count=*/nullptr,
+          /*no_token=*/withholds ? rewriter.getUnitAttr() : nullptr);
+      mark(s, k);
+    }
+  }
+}
+
+using ChannelKey = std::tuple<const void *, unsigned, int64_t>;
+
+// The channel a start pushes onto, or nullopt when its task is not a configure
+// this pass can read.
+static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
+  Operation *def = start.getTask().getDefiningOp();
+  if (auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(def))
+    return ChannelKey{cfg.getTile().getAsOpaquePointer(),
+                      static_cast<unsigned>(cfg.getDirection()),
+                      cfg.getChannel()};
+  auto cfgFor = dyn_cast_or_null<DMAConfigureTaskForOp>(def);
+  if (!cfgFor)
+    return std::nullopt;
+  auto dev = cfgFor->getParentOfType<AIE::DeviceOp>();
+  auto alloc = dev ? AIE::ShimDMAAllocationOp::getForSymbol(
+                         dev, cfgFor.getAlloc().getRootReference())
+                   : AIE::ShimDMAAllocationOp();
+  if (!alloc)
+    return std::nullopt;
+  return ChannelKey{alloc.getTile().getAsOpaquePointer(),
+                    static_cast<unsigned>(alloc.getChannelDir()),
+                    alloc.getChannelIndex()};
+}
+
+// Interleave the slices splitIntoTasks emitted with the starts around them.
+// Split into tasks, a transfer past the queue depth has its later slices wait
+// in aie-assign-runtime-sequence-bd-ids for its earlier ones to finish. If a
+// counterpart transfer it depends on (a core's input for an output, say) were
+// still behind all of them in program order, that wait would never end.
+//
+// A round is the starts from one start up to the next start on a channel the
+// round has already used. Within a round, the first slice of every start keeps
+// its place and the later ones follow the round's last start, all ordered by
+// how far through its transfer each is (index / size), ties in program order.
+// So slices only move later, a channel's pushes keep their order, and
+// transfers side by side progress in proportion. A round also ends at anything
+// a push may not move past: an await, a sync or a poll, a push the pass does
+// not track, or a free of a slice still to be placed. Configures, register
+// writes and lock sets it moves past, which only delays the push.
+static void orderSlices(Block &block) {
+  struct Pending {
+    DMAStartTaskOp start;
+    int64_t index, count, head;
+  };
+  SmallVector<Pending> pending;
+  llvm::DenseSet<Value> pendingTasks;
+  llvm::DenseSet<ChannelKey> round;
+  llvm::DenseMap<int64_t, int64_t> headOfGroup;
+  Operation *anchor = nullptr;
+  int64_t heads = 0;
+
+  auto flush = [&]() {
+    llvm::stable_sort(pending, [](const Pending &a, const Pending &b) {
+      int64_t lhs = a.index * b.count;
+      int64_t rhs = b.index * a.count;
+      return lhs != rhs ? lhs < rhs : a.head < b.head;
+    });
+    Operation *after = anchor;
+    for (Pending &p : pending) {
+      p.start->moveAfter(after);
+      after = p.start;
+      // Configure a slice only once it is due, so that the descriptors it
+      // takes are not held while earlier slices wait: the BD-ID pass can take
+      // descriptors back only from started tasks.
+      Operation *task = p.start.getTask().getDefiningOp();
+      if (task && task->hasAttr(kSliceTaskAttr)) {
+        task->removeAttr(kSliceTaskAttr);
+        task->moveBefore(p.start);
+      }
+    }
+    pending.clear();
+    pendingTasks.clear();
+    round.clear();
+    headOfGroup.clear();
+    anchor = nullptr;
+  };
+
+  for (Operation &op : llvm::make_early_inc_range(block)) {
+    if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
+      std::optional<ChannelKey> channel = channelOf(start);
+      auto slice = start->getAttrOfType<DenseI64ArrayAttr>(kSliceAttr);
+      if (channel && slice && slice[1] > 0) {
+        auto head = headOfGroup.find(slice[0]);
+        if (head != headOfGroup.end()) {
+          pending.push_back({start, slice[1], slice[2], head->second});
+          pendingTasks.insert(start.getTask());
+          continue;
+        }
+      }
+      if (!channel || round.contains(*channel))
+        flush();
+      if (!channel)
+        continue;
+      round.insert(*channel);
+      if (slice)
+        headOfGroup[slice[0]] = heads;
+      ++heads;
+      anchor = &op;
+      continue;
+    }
+    if (auto free = dyn_cast<DMAFreeTaskOp>(op)) {
+      if (pendingTasks.contains(free.getTask()))
+        flush();
+      continue;
+    }
+    if (isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, NpuWrite32Op,
+            NpuBlockWriteOp, SetLockOp>(op) ||
+        isMemoryEffectFree(&op))
+      continue;
+    flush();
+  }
+  flush();
+}
+
 struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -380,7 +650,11 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
 };
 
 struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
-  using OpRewritePattern::OpRewritePattern;
+  DecomposeLargeDmaBdTaskPattern(MLIRContext *ctx, int64_t &nextGroup)
+      : OpRewritePattern(ctx), nextGroup(&nextGroup) {}
+
+  // Numbers the start groups splitIntoTasks emits, across the pass.
+  int64_t *nextGroup;
 
   LogicalResult matchAndRewrite(AIE::DMABDOp op,
                                 PatternRewriter &rewriter) const override {
@@ -427,8 +701,6 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     // non-empty, so nothing past this point looks like an optional access.
     SmallVector<NdDmaPattern> &bds =
         *decomposed; // NOLINT(bugprone-unchecked-optional-access)
-    if (bds.size() > targetModel.getNumBDs(col, row))
-      return failure();
 
     if (bds.size() > 1 && isUnderRuntimeControlFlow(op)) {
       op.emitRemark()
@@ -505,7 +777,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       return success();
     }
 
-    // A chain split would make every slice reuse the one out_of_order_id slot.
+    // A split would make every slice reuse the one out_of_order_id slot.
     // TODO: BD iteration plus padding may enable this feature.
     if (op.getOutOfOrderId().has_value())
       return op.emitOpError() << "splitting an out-of-order buffer descriptor "
@@ -513,15 +785,40 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
 
     // Every member of a chain runs once per task execution, so the one
     // queue-push repeat count is shared by all of them. A slice that also wants
-    // its own iteration factor would need a private repeat, which the hardware
-    // has nowhere to put.
-    for (const NdDmaPattern &subPattern : bds) {
-      std::optional<int64_t> growth = iterationGrowth(pattern, subPattern);
-      if (!growth || *growth > 1)
+    // its own iteration factor needs a private repeat, which only a task of
+    // its own has. A chain also holds all of its descriptors until it
+    // finishes, so past the queue depth the slices go out as separate tasks,
+    // whose descriptors aie-assign-runtime-sequence-bd-ids can recycle one by
+    // one.
+    bool sharedRepeat = llvm::all_of(bds, [&](const NdDmaPattern &sub) {
+      std::optional<int64_t> growth = iterationGrowth(pattern, sub);
+      return growth && *growth == 1;
+    });
+    bool chainFits =
+        sharedRepeat && bds.size() <= targetModel.getNumBDs(col, row);
+    uint32_t depth = targetModel.getDmaTaskQueueDepth();
+    if (!chainFits || (depth > 0 && bds.size() > depth)) {
+      std::optional<std::string> why =
+          whyNotSeparateTasks(op, taskOp, pattern.sizes[3]);
+      if (!why) {
+        splitIntoTasks(rewriter, op, taskOp, bds, baseFlatOffset,
+                       pattern.sizes[3], *nextGroup);
+        return success();
+      }
+      if (!sharedRepeat)
         return op.emitOpError()
-               << "cannot split this buffer descriptor into a chain: its "
-                  "slices need per-descriptor repeat counts, which a chain "
-                  "shares";
+               << "cannot split this buffer descriptor: its slices need "
+                  "per-descriptor repeat counts, which a chain shares, and "
+                  "they cannot be separate tasks because "
+               << *why;
+      if (!chainFits)
+        return op.emitOpError()
+               << "cannot split this buffer descriptor: its " << bds.size()
+               << " slices outnumber the tile's "
+               << targetModel.getNumBDs(col, row)
+               << " buffer descriptors, and they cannot be separate tasks "
+                  "because "
+               << *why;
     }
 
     Region *body = getTaskBody(taskOp);
@@ -574,11 +871,26 @@ struct AIEDecomposeLargeDmaBdPass
           AIEDecomposeLargeDmaBdPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
+    int64_t nextGroup = 0;
     RewritePatternSet patterns(&getContext());
-    patterns.add<DecomposeLargeDmaBdPattern, DecomposeLargeDmaBdTaskPattern>(
-        &getContext());
-    if (failed(applyPatternsGreedily(device, std::move(patterns))))
+    patterns.add<DecomposeLargeDmaBdPattern>(&getContext());
+    patterns.add<DecomposeLargeDmaBdTaskPattern>(&getContext(), nextGroup);
+    if (failed(applyPatternsGreedily(device, std::move(patterns)))) {
       signalPassFailure();
+      return;
+    }
+
+    llvm::SetVector<Block *> blocks;
+    device.walk([&](DMAStartTaskOp start) {
+      if (start->hasAttr(kSliceAttr))
+        blocks.insert(start->getBlock());
+    });
+    for (Block *block : blocks)
+      orderSlices(*block);
+    device.walk([&](Operation *op) {
+      op->removeAttr(kSliceAttr);
+      op->removeAttr(kSliceTaskAttr);
+    });
   }
 };
 

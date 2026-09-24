@@ -37,9 +37,26 @@ def AIEDecomposeLargeDmaBd
     (and that cannot be linearized because the access is non-contiguous) into
     one or more hardware-legal ND transfers that move exactly the same data.
 
-    On the task path, multiple sub-patterns are linked with `aie.next_bd`
-    blocks inside the configure region; `bd_id` / `next_bd_id` are left for
-    later passes to assign.
+    On the task path, up to the channel's task-queue depth of sub-patterns
+    are linked with `aie.next_bd` blocks inside the configure region;
+    `bd_id` / `next_bd_id` are left for later passes to assign. Past the queue
+    depth, or when the sub-patterns need repeat counts of their own, each
+    becomes a single-BD task of its own instead, so that
+    `aie-assign-runtime-sequence-bd-ids` can take back the BDs of finished
+    ones. Only the last of those tasks issues the token: an
+    `aiex.dma_await_task` of the original task awaits it, and an
+    `aiex.dma_free_task` frees them all. A start runs every one of them once
+    per pass over the original's iteration dimension, so a start's repeat count
+    must cover whole passes. A runtime repeat count keeps the chain.
+
+    The pushes of those tasks are interleaved with the starts issued alongside
+    them: the first keeps the original start's place, and the rest follow the
+    last start before the next push to a channel already pushed to, or before
+    the next await, sync, poll or untracked push. They are ordered by how far
+    through its transfer each is, ties in program order, and each task is
+    configured only when due. Otherwise the waits the BD-ID pass inserts for a
+    transfer's later pieces could block pushes that a counterpart transfer,
+    issued after it, needs to make progress.
 
     Two techniques are used: dimension factoring (split an oversized dimension
     of size N=a*b across a free dimension slot) is preferred, falling back to
