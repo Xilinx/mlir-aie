@@ -16,8 +16,8 @@ from aie.helpers.taplib import TensorAccessPattern
 
 
 # CHECK-NOT: aiex.scratchpad_parameter
-# CHECK: aie.dma_bd(%arg0 : memref<256xi32> offset = 0 len = 0 sizes = [1, 1, 1, 8] strides = [0, 0, 0, 1]) {length_parameter = @rows, length_unit = 8 : i32, offset_parameter = @start}
-# CHECK: aie.dma_bd(%arg1 : memref<256xi32> offset = 0 len = 0 sizes = [1, 1, 1, 8] strides = [0, 0, 0, 1]) {length_parameter = @rows, length_unit = 8 : i32}
+# CHECK: aie.dma_bd(%arg0 : memref<256xi32> offset = 0 len = 0 sizes = [1, 1, 8] strides = [0, 0, 1]) {length_parameter = @rows, length_unit = 8 : i32, offset_parameter = @start}
+# CHECK: aie.dma_bd(%arg1 : memref<256xi32> offset = 0 len = 0 sizes = [1, 1, 8] strides = [0, 0, 1]) {length_parameter = @rows, length_unit = 8 : i32}
 # CHECK: aiex.scratchpad_parameter @start : i32
 # CHECK-NEXT: aiex.scratchpad_parameter @rows : i32
 # CHECK-NOT: aiex.scratchpad_parameter
