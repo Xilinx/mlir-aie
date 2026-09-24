@@ -86,9 +86,17 @@ def objcopy_path():
 def xclbinutil_path():
     """Return the ``xclbinutil`` used to read a PDI out of an xclbin.
 
-    Prefers the copy mlir-aie installs next to aiecc (built from
-    ``tools/hrx-xclbinutil``, which needs no system XRT), then PATH.
+    Resolution order, matching how ``aie.utils.config`` resolves its own tools:
+    ``AIE_XCLBINUTIL_PATH``, then the copy mlir-aie installs next to aiecc
+    (built from ``tools/hrx-xclbinutil``, which needs no system XRT), then PATH.
     """
+    override = os.environ.get("AIE_XCLBINUTIL_PATH")
+    if override:
+        if not os.path.isfile(override):
+            raise RuntimeError(
+                f"AIE_XCLBINUTIL_PATH is set to {override}, but no such file exists."
+            )
+        return override
     bundled = _bundled_tool("xclbinutil")
     if bundled:
         return bundled
@@ -98,8 +106,9 @@ def xclbinutil_path():
         return found
     raise RuntimeError(
         "xclbinutil not found. It is needed to read a PDI out of an xclbin; build "
-        "mlir-aie with -DAIE_BUILD_HRXXCLBINUTIL=ON, install XRT, or pass the PDI "
-        "directly with the PDI+insts --kernel form."
+        "mlir-aie with -DAIE_BUILD_HRXXCLBINUTIL=ON, install XRT, set "
+        "AIE_XCLBINUTIL_PATH, or pass the PDI directly with the PDI+insts "
+        "--kernel form."
     )
 
 

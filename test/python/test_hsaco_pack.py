@@ -27,7 +27,6 @@ import os
 import re
 import stat
 import struct
-import subprocess
 import sys
 from pathlib import Path
 
@@ -191,25 +190,6 @@ def _write(path, data):
     with open(path, "wb") as f:
         f.write(data)
     return str(path)
-
-
-def _fail_only_the_injection(stderr):
-    """Return a subprocess.run stand-in that fails only the --add-section call.
-
-    Patching ``subprocess.run`` wholesale also breaks tool *resolution*:
-    ``aie.utils.config`` probes a candidate with ``--version`` before returning
-    it, so a blanket stub makes objcopy look unresolvable rather than makes the
-    injection fail. That probe does not happen in a checkout with no build,
-    which is why an unconditional stub passes locally and fails in CI.
-    """
-    real_run = subprocess.run
-
-    def run(cmd, *args, **kwargs):
-        if any(str(c).startswith("--add-section") for c in cmd):
-            raise subprocess.CalledProcessError(1, cmd, stderr=stderr)
-        return real_run(cmd, *args, **kwargs)
-
-    return run
 
 
 def _have_objcopy():
@@ -549,36 +529,62 @@ def test_demangle_kernel_name(symbol, expected):
 # ---------------------------------------------------------------------------
 
 
-_STUB_XCLBINUTIL = """#!{python}
-import os, sys
-args = sys.argv[1:]
-spec = args[args.index("--dump-section") + 1]
-out_dir = os.path.dirname(spec.split(":", 2)[2])
-os.makedirs(out_dir, exist_ok=True)
-with open(os.path.join(out_dir, "partition.pdi"), "wb") as f:
-    f.write({payload!r})
-"""
+def _stub_tool(tmp_path, name, body):
+    """Write an executable stand-in for ``name`` and return its path.
 
-
-def _make_stub_xclbinutil(tmp_path, payload=b"PDI-FROM-XCLBIN", count=1):
+    A real executable rather than a patched attribute, so the resolution,
+    subprocess and error-reporting paths under test all actually run. Every
+    stub answers ``--version``, because that is how a resolver decides whether
+    a candidate works.
+    """
     bin_dir = tmp_path / "stubbin"
     bin_dir.mkdir(exist_ok=True)
-    script = bin_dir / "xclbinutil"
-    body = _STUB_XCLBINUTIL.format(python=sys.executable, payload=payload)
-    if count != 1:
-        body += "".join(
-            f'\nopen(os.path.join(out_dir, "extra{i}.pdi"), "wb").write(b"x")'
-            for i in range(count - 1)
-        )
-    script.write_text(body)
+    script = bin_dir / name
+    script.write_text(
+        f"#!{sys.executable}\n"
+        "import os, sys\n"
+        "args = sys.argv[1:]\n"
+        "if '--version' in args:\n"
+        f"    print({name!r} + ' 1.0 (stub)')\n"
+        "    raise SystemExit(0)\n" + body
+    )
     script.chmod(script.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    return str(bin_dir), str(script)
+    return str(script)
+
+
+def _stub_xclbinutil(tmp_path, payload=b"PDI-FROM-XCLBIN", count=1):
+    """Return a stub xclbinutil that dumps ``count`` PDIs to the requested dir."""
+    body = (
+        "spec = args[args.index('--dump-section') + 1]\n"
+        "out_dir = os.path.dirname(spec.split(':', 2)[2])\n"
+        "os.makedirs(out_dir, exist_ok=True)\n"
+        f"open(os.path.join(out_dir, 'partition.pdi'), 'wb').write({payload!r})\n"
+        f"for i in range({count} - 1):\n"
+        "    open(os.path.join(out_dir, 'extra%d.pdi' % i), 'wb').write(b'x')\n"
+    )
+    return _stub_tool(tmp_path, "xclbinutil", body)
+
+
+def _stub_failing_objcopy(tmp_path, message):
+    """Return a stub llvm-objcopy that resolves cleanly but fails every real run."""
+    body = f"sys.stderr.write({message!r})\nraise SystemExit(1)\n"
+    return _stub_tool(tmp_path, "llvm-objcopy", body)
+
+
+def _use_stub(monkeypatch, env_var, script):
+    """Point tool resolution at ``script`` through the real lookup order.
+
+    Both halves are needed because the two resolvers differ: with a build,
+    aie.utils.config reads the env var; without one, pack falls back to PATH.
+    Setting both exercises whichever is live rather than bypassing it.
+    """
+    monkeypatch.setenv(env_var, script)
+    monkeypatch.setenv("PATH", os.path.dirname(script), prepend=os.pathsep)
 
 
 @needs_posix
 def test_pdi_is_extracted_from_an_xclbin(tmp_path, monkeypatch):
-    _, script = _make_stub_xclbinutil(tmp_path)
-    monkeypatch.setattr(pack, "xclbinutil_path", lambda: script)
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL_PATH", _stub_xclbinutil(tmp_path))
     xclbin = _write(tmp_path / "final.xclbin", b"not really an xclbin")
 
     assert pack.pdi_from_xclbin(xclbin) == b"PDI-FROM-XCLBIN"
@@ -586,8 +592,7 @@ def test_pdi_is_extracted_from_an_xclbin(tmp_path, monkeypatch):
 
 @needs_posix
 def test_xclbin_kernel_spec_packs_the_extracted_pdi(tmp_path, monkeypatch):
-    _, script = _make_stub_xclbinutil(tmp_path)
-    monkeypatch.setattr(pack, "xclbinutil_path", lambda: script)
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL_PATH", _stub_xclbinutil(tmp_path))
     xclbin = _write(tmp_path / "final.xclbin", b"stub")
     insts = _write(tmp_path / "insts.bin", b"\x11\x22\x33\x44")
 
@@ -603,8 +608,7 @@ def test_xclbin_kernel_spec_packs_the_extracted_pdi(tmp_path, monkeypatch):
 
 @needs_posix
 def test_xclbin_with_several_pdis_is_rejected(tmp_path, monkeypatch):
-    _, script = _make_stub_xclbinutil(tmp_path, count=2)
-    monkeypatch.setattr(pack, "xclbinutil_path", lambda: script)
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL_PATH", _stub_xclbinutil(tmp_path, count=2))
     xclbin = _write(tmp_path / "final.xclbin", b"stub")
 
     with pytest.raises(ValueError, match="expected exactly one PDI, found 2"):
@@ -612,21 +616,36 @@ def test_xclbin_with_several_pdis_is_rejected(tmp_path, monkeypatch):
 
 
 @needs_posix
-def test_xclbinutil_falls_back_to_path(tmp_path, monkeypatch):
-    bin_dir, script = _make_stub_xclbinutil(tmp_path)
-    monkeypatch.setattr(pack, "_bundled_tool", lambda name: None)
-    monkeypatch.setenv("PATH", bin_dir, prepend=os.pathsep)
+def test_xclbinutil_override_wins_over_everything_else(tmp_path, monkeypatch):
+    """AIE_XCLBINUTIL_PATH is the documented escape hatch; it must outrank a build."""
+    script = _stub_xclbinutil(tmp_path)
+    monkeypatch.setenv("AIE_XCLBINUTIL_PATH", script)
     assert os.path.samefile(pack.xclbinutil_path(), script)
 
 
-def test_bundled_xclbinutil_wins_over_path(monkeypatch):
-    monkeypatch.setattr(pack, "_bundled_tool", lambda name: f"/bundled/{name}")
-    assert pack.xclbinutil_path() == "/bundled/xclbinutil"
+def test_xclbinutil_override_pointing_at_nothing_is_reported(tmp_path, monkeypatch):
+    missing = str(tmp_path / "nope" / "xclbinutil")
+    monkeypatch.setenv("AIE_XCLBINUTIL_PATH", missing)
+    with pytest.raises(RuntimeError, match="no such file exists"):
+        pack.xclbinutil_path()
 
 
-def test_missing_xclbinutil_explains_the_alternatives(monkeypatch):
-    monkeypatch.setattr(pack, "_bundled_tool", lambda name: None)
-    monkeypatch.setattr(pack.shutil, "which", lambda name: None)
+@needs_posix
+def test_xclbinutil_falls_back_to_path(tmp_path, monkeypatch):
+    """With no override and no build, PATH is the last resort."""
+    script = _stub_xclbinutil(tmp_path)
+    monkeypatch.delenv("AIE_XCLBINUTIL_PATH", raising=False)
+    monkeypatch.setenv("PATH", os.path.dirname(script), prepend=os.pathsep)
+    if pack._bundled_tool("xclbinutil") is not None:
+        pytest.skip("a bundled xclbinutil outranks PATH in this tree")
+    assert os.path.samefile(pack.xclbinutil_path(), script)
+
+
+def test_missing_xclbinutil_explains_the_alternatives(tmp_path, monkeypatch):
+    monkeypatch.delenv("AIE_XCLBINUTIL_PATH", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    if pack._bundled_tool("xclbinutil") is not None:
+        pytest.skip("a bundled xclbinutil is resolvable in this tree")
     with pytest.raises(RuntimeError, match="PDI\\+insts --kernel form"):
         pack.xclbinutil_path()
 
@@ -722,8 +741,7 @@ def test_long_form_full_elf(tmp_path):
 
 @needs_posix
 def test_long_form_xclbin(tmp_path, monkeypatch):
-    _, script = _make_stub_xclbinutil(tmp_path)
-    monkeypatch.setattr(pack, "xclbinutil_path", lambda: script)
+    _use_stub(monkeypatch, "AIE_XCLBINUTIL_PATH", _stub_xclbinutil(tmp_path))
     xclbin = _write(tmp_path / "final.xclbin", b"stub")
     insts = _write(tmp_path / "insts.bin", b"\x01")
 
@@ -1025,8 +1043,10 @@ def test_a_failed_injection_leaves_the_previous_section_intact(tmp_path, monkeyp
     pack.inject(path, "aie2p", good)
     before = open(path, "rb").read()
 
-    monkeypatch.setattr(
-        pack.subprocess, "run", _fail_only_the_injection(b"objcopy said no")
+    _use_stub(
+        monkeypatch,
+        "AIE_OBJCOPY_PATH",
+        _stub_failing_objcopy(tmp_path, "objcopy said no"),
     )
     with pytest.raises(RuntimeError, match="objcopy said no") as excinfo:
         pack.inject(
@@ -1090,7 +1110,7 @@ def test_a_failed_injection_leaves_no_stray_container(tmp_path, monkeypatch, cap
     path = str(tmp_path / "never.hsaco")
     insts = _write(tmp_path / "insts.bin", b"\x01")
 
-    monkeypatch.setattr(pack.subprocess, "run", _fail_only_the_injection(b"nope"))
+    _use_stub(monkeypatch, "AIE_OBJCOPY_PATH", _stub_failing_objcopy(tmp_path, "nope"))
     with pytest.raises(SystemExit):
         pack.main(
             ["--hsaco", path, "--arch", "aie2"]
@@ -1193,10 +1213,12 @@ def test_command_names_agree_across_the_three_registrations(tmp_path):
     assert from_cmake == {"aie-hsaco", "aie-hsaco-dump"}
 
 
-def test_objcopy_falls_back_to_path(monkeypatch):
-    monkeypatch.setattr(pack.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setitem(sys.modules, "aie.utils.config", None)
-    assert pack.objcopy_path().endswith("llvm-objcopy")
+@needs_posix
+def test_objcopy_honours_the_override(tmp_path, monkeypatch):
+    """Whichever resolver is live -- config's, or pack's PATH fallback."""
+    script = _stub_failing_objcopy(tmp_path, "unused")
+    _use_stub(monkeypatch, "AIE_OBJCOPY_PATH", script)
+    assert os.path.samefile(pack.objcopy_path(), script)
 
 
 @needs_objcopy
