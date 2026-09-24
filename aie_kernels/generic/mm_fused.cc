@@ -59,7 +59,14 @@ constexpr int CT_K = MM_FUSED_CT_K;
 // Output stage geometry.
 constexpr int CHUNK = MM_FUSED_OUT_CHUNK;
 constexpr int C_DEPTH = MM_FUSED_C_DEPTH;
-constexpr int V = 16; // one 512-bit bf16 vector
+// The epilogue is lane-wise, so its width changes no result. aie2p runs it 32
+// lanes wide, which halves the trips through the activation's latency chain;
+// aie2 stays at one 512-bit bf16 vector because its LUT tanh is 16 lanes.
+#if __AIE_ARCH__ == 20
+constexpr int V = 16;
+#else
+constexpr int V = CHUNK % 32 == 0 ? 32 : 16;
+#endif
 static_assert(CHUNK % V == 0, "output chunk must be a whole number of vectors");
 
 // Same divisibility conditions mm.cc asserts for its own 2x2 mmul, plus the
@@ -96,29 +103,38 @@ template <int MODE>
 static inline void epilogue_body(bfloat16 *__restrict y_out,
                                  const float *__restrict src, float clamp_min,
                                  float clamp_max) {
-  const aie::vector<float, V> lo = aie::broadcast<float, V>(clamp_min);
-  const aie::vector<float, V> hi = aie::broadcast<float, V>(clamp_max);
+  // The clamp runs on the bf16 result, against bounds rounded the same way.
+  // Rounding is monotone and fixes representable values, so for finite
+  // inputs round(clamp(f, lo, hi)) == clamp(round(f), round(lo), round(hi))
+  // and the output is bit-identical to clamping in f32. aie2p has no native
+  // f32 min/max, and emulating it held the identity epilogue at II30.
+  aie::accum<accfloat, V> bound;
+  bound.from_vector(aie::broadcast<float, V>(clamp_min));
+  const aie::vector<bfloat16, V> lo = bound.template to_vector<bfloat16>();
+  bound.from_vector(aie::broadcast<float, V>(clamp_max));
+  const aie::vector<bfloat16, V> hi = bound.template to_vector<bfloat16>();
 
+  // Walking cursors rather than src + j * V, which Peano recomputes each
+  // trip (II14 against II4 for the identity epilogue).
   AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
+  AIE_LOOP_UNROLL(2)
   for (int j = 0; j < CHUNK / V; j++) {
-    // The accumulator stays f32 through the activation and the clamp, and
-    // is converted to bf16 exactly once, on the store. Converting first
-    // would round twice and let the activation's slope amplify the first
-    // rounding -- see activations.h.
-    aie::vector<float, V> f = aie::load_v<V>(src + j * V);
+    // The accumulator stays f32 through the activation and is converted to
+    // bf16 exactly once. Converting first would round twice and let the
+    // activation's slope amplify the first rounding -- see activations.h.
+    aie::vector<float, V> f = aie::load_v<V>(src);
+    src += V;
     if constexpr (MODE == 1)
       f = gelu_vec<V>(f);
     else if constexpr (MODE == 2)
       f = silu_vec<V>(f);
     else if constexpr (MODE == 3)
       f = sigmoid_vec<V>(f);
-    f = aie::max(aie::min(f, hi), lo);
     aie::accum<accfloat, V> out;
     out.from_vector(f);
-    // The assignment is the conversion: to_v16bfloat16 yields a raw
-    // v16bfloat16, not an aie::vector.
-    aie::vector<bfloat16, V> v = to_v16bfloat16(out);
-    aie::store_v(y_out + j * V, v);
+    aie::vector<bfloat16, V> v = out.template to_vector<bfloat16>();
+    aie::store_v(y_out, aie::max(aie::min(v, hi), lo));
+    y_out += V;
   }
 }
 } // namespace
