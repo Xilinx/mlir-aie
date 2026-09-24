@@ -5,63 +5,78 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
+
+// AIE2P has no scalar float multiply and no C-style int-to-float convert;
+// those lower to the soft-float helpers __mulsf3 and __floatsisf. aie::to_float
+// maps to a single fx2flt, and routing the multiply through one vector lane
+// keeps it on the vector unit. aie::inv/aie::invsqrt are already native.
+static inline float scalar_mul(float a, float b) {
+  return ::aie::mul(::aie::broadcast<float, 16>(a), b).to_vector<float>()[0];
+}
 
 template <typename T, int N>
 void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
               float epsilon = 1e-5f) {
   event0();
-  const float gamma = 1.0f;
-  ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
-  ::aie::vector<float, N> add_res = ::aie::zeros<float, N>();
-  ::aie::accum<acc32, N> acc = ::aie::zeros<acc32, N>();
+  // cols is non-negative, so the unsigned divide lowers to a shift/mask.
+  const int vector_chunks = (uint32_t)cols / N;
+  const int remaining = (uint32_t)cols % N;
+  const int tail_start = vector_chunks * N;
 
-  // Process data in vector chunks
-  int vector_chunks = cols / N;
-  for (int i = 0; i < vector_chunks; i++) {
-    ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
-    ::aie::vector<float, N> square_v = ::aie::mul_square(reg_a);
-    acc = ::aie::add(add_res, square_v);
-    add_res = acc.template to_vector<float>();
-  }
-  float sum_sq = ::aie::reduce_add(add_res);
-
-  // Handle remaining elements
-  int remaining = cols % N;
-  if (remaining > 0) {
-    int start_idx = vector_chunks * N;
-    for (int i = 0; i < remaining; i++) {
-      T val = input[start_idx + i];
-      float square = static_cast<float>(val) * static_cast<float>(val);
-      sum_sq += square;
+  // A walking pointer so the loop body is a post-incrementing load instead of
+  // an index shift plus an offset-register move.
+  ::aie::accum<accfloat, N> acc = ::aie::zeros<accfloat, N>();
+  if (vector_chunks > 0) {
+    const T *restrict p = input;
+    AIE_LOOP_UNROLL(2)
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int i = 0; i < vector_chunks; i++) {
+      acc = ::aie::mac_square(acc, ::aie::load_v<N>(p));
+      p += N;
     }
   }
 
-  float rms = sum_sq / cols + epsilon;
-  float inv_rms = aie::invsqrt(rms);
-  ::aie::vector<T, N> inv_rms_v =
-      ::aie::broadcast<T, N>(static_cast<T>(inv_rms));
-
-  // Process vector chunks
-  for (int i = 0; i < vector_chunks; i++) {
-    ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
-    ::aie::vector<T, N> norm_v = ::aie::mul(reg_a, inv_rms_v);
-    ::aie::vector<T, N> out_v = ::aie::mul(norm_v, gamma_v);
-    ::aie::store_v(output + i * N, out_v);
+  // Square the tail on the vector unit too: gather it into a zero-padded
+  // register rather than doing scalar float math on each element.
+  ::aie::vector<T, N> tail_v = ::aie::zeros<T, N>();
+  if (remaining > 0) {
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int i = 0; i < remaining; i++)
+      tail_v[i] = input[tail_start + i];
+    acc = ::aie::mac_square(acc, tail_v);
   }
 
-  // Handle remaining elements
-  if (remaining > 0) {
-    int start_idx = vector_chunks * N;
-    for (int i = 0; i < remaining; i++) {
-      T val = input[start_idx + i];
-      T norm_val = static_cast<T>(static_cast<float>(val) * inv_rms);
-      T out_val = static_cast<T>(static_cast<float>(norm_val) * gamma);
-      output[start_idx + i] = out_val;
+  const float sum_sq = ::aie::reduce_add(acc.template to_vector<float>());
+  const float rms =
+      scalar_mul(sum_sq, ::aie::inv(::aie::to_float<float>(cols))) + epsilon;
+  const ::aie::vector<T, N> inv_rms_v =
+      ::aie::broadcast<T, N>(static_cast<T>(::aie::invsqrt(rms)));
+
+  if (vector_chunks > 0) {
+    const T *restrict pi = input;
+    T *restrict po = output;
+    AIE_LOOP_UNROLL(2)
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int i = 0; i < vector_chunks; i++) {
+      ::aie::store_v(
+          po,
+          ::aie::mul(::aie::load_v<N>(pi), inv_rms_v).template to_vector<T>());
+      pi += N;
+      po += N;
     }
+  }
+
+  if (remaining > 0) {
+    const ::aie::vector<T, N> out_v =
+        ::aie::mul(tail_v, inv_rms_v).template to_vector<T>();
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int i = 0; i < remaining; i++)
+      output[tail_start + i] = out_v[i];
   }
   event1();
 }
