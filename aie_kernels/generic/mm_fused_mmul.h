@@ -55,9 +55,9 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   constexpr unsigned sizeB = s * t;
   constexpr unsigned sizeC = r * t;
   event0();
-  // Each j trip loads and stores its four accumulators around a pipelined i
-  // loop, which Peano cannot overlap across trips of a rolled loop. Unrolled,
-  // one trip's C stores pair with the next one's C loads and ramp.
+  // Unrolling z lets one row pair's last C stores overlap the next pair's
+  // first C loads. Leave j rolled: unrolled by 4 it cost +4.3% per band with
+  // a 4-trip i loop (chunk_k=32), more than it saved with a 16-trip one.
   AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
   AIE_LOOP_UNROLL(2)
   for (unsigned z = 0; z < rowA; z += 2) {
@@ -66,7 +66,6 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
     const bfloat16 *__restrict pA_cur = pA + (z >> 1) * (2 * r * colA * s);
 
     AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
-    AIE_LOOP_UNROLL(4)
     for (unsigned j = 0; j < colB; j += 2) {
       const bfloat16 *__restrict pA1 = pA_cur;
       const bfloat16 *__restrict pA2 = pA_cur + colA * sizeA;
