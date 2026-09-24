@@ -773,7 +773,6 @@ CASES += [
         smoke=True,
         perf=False,
     ),
-]
     # The bfp16 kernel pops two k blocks per row at a time only when the block
     # count is even; K=24 takes its odd path. N wider than M checks the row
     # wrap from the other side of the mixed case above.
@@ -786,3 +785,4 @@ CASES += [
         smoke=True,
         perf=False,
     ),
+]
