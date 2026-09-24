@@ -131,7 +131,10 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
   static_assert(r * s == MMUL::size_A);
   event0();
+  // Rolled, the z loop does not pipeline and each trip pays the j loop's
+  // entry and exit; two trips per body let those overlap.
   AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
+  AIE_LOOP_UNROLL(2)
   for (unsigned z = 0; z < rowA; z += 2) {
     float *__restrict pC1 = pC + (z * colB) * MMUL::size_C;
     float *__restrict pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
