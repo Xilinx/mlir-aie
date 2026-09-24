@@ -1,6 +1,8 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// One call runs the whole tile, so it is timed as one interval.
+#define MM_FUSED_WHOLE_TILE_MARKERS
 #include "mm_fused.cc"
 
 #if __AIE_ARCH__ == 20
@@ -24,6 +26,7 @@ constexpr int b_chunk_bytes =
 extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c,
                               int32_t mode, int32_t clamp_min_bits,
                               int32_t clamp_max_bits) {
+  event0();
   alignas(aie::vector_decl_align) float acc[MM_FUSED_TILE_M * MM_FUSED_TILE_N];
   mm_fused_acc_init(acc);
   for (int k = 0; k < MM_FUSED_TILE_K / MM_FUSED_CT_K; ++k)
@@ -40,4 +43,5 @@ extern "C" void fused_mm_tile(bfloat16 *a, bfloat16 *b, bfloat16 *c,
       mm_fused_epilogue_chunk(c + (outer * 2 + half) * MM_FUSED_OUT_CHUNK, acc,
                               outer, half, mode, clamp_min_bits,
                               clamp_max_bits);
+  event1();
 }

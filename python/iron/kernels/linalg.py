@@ -1013,13 +1013,7 @@ def mha(
         compile_flags=flags,
         cls=MatrixKernel,
         contract=KernelContract(
-            # The wrapper returns before its markers when idx_buffer masks
-            # the block, so a masked call emits no interval.
-            trace=(
-                Trace.whole_call()
-                if pv
-                else Trace.partial("a masked call returns before its markers")
-            ),
+            trace=Trace.whole_call(),
             layouts=(
                 _tile_layout((dim_m, dim_k), streams.A, block=(r, s)),
                 _tile_layout((dim_k, dim_n), streams.B, block=(s, t)),

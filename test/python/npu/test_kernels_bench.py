@@ -123,8 +123,10 @@ def _measure(case: Case, config, workdir: Path) -> dict:
             fn=fn,
             calls=case.calls,
         )
-        if traced.kernel:
-            measured["cycles"] = traced
+        # Every benchmarked kernel is timed; one that is not would chart only
+        # wall clock and still pass.
+        assert not traced.untimed, f"{case.name}: untimed, {traced.untimed}"
+        measured["cycles"] = traced
     return measured
 
 

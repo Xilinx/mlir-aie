@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent / "npu"))
 from kernel_cases import CASES  # noqa: E402
 
 # The only builds whose calls cannot be timed; each contract says why.
-UNTIMED = {"set_rounding", "fused_mm", "mha"}
+UNTIMED = {"set_rounding"}
 
 
 def _builds(device, generation):

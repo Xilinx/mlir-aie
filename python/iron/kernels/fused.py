@@ -220,9 +220,7 @@ def fused_mm(
         return _EXTERN_CACHE[key]
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
     contract = KernelContract(
-        # mm_fused_mmul.h brackets each mmul band and mm_fused.cc each
-        # epilogue chunk, both inside fused_mm_tile's loops.
-        trace=Trace.partial("markers bracket each mmul band and epilogue chunk"),
+        trace=Trace.whole_call(),
         roles=(In, In, Out, Param, Param, Param),
         # The operands are held on the core in this blocking; nothing is
         # streamed transformed, the host packs them (block, no stream).

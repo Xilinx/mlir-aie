@@ -299,6 +299,10 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out,
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
   if (idx_buffer[0] > idx_buffer[1]) {
+    // matmul_bf16_bf16 brackets itself; an empty pair keeps a masked call to
+    // one interval too, so every call can be timed.
+    event0();
+    event1();
     ::aie::set_rounding(saved_rounding);
     return;
   }

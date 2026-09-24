@@ -344,7 +344,8 @@ A new factory is complete when one line each in two places covers it:
    Declare what the kernel's trace markers measure with `trace=`:
    `Trace.whole_call()` when one `event0()` before the work and one
    `event1()` after it bracket every call of the entry symbol, or
-   `Trace.none(reason)` / `Trace.partial(reason)` when they do not.
+   `Trace.none(reason)` / `Trace.partial(reason)` when they do not. A
+   kernel the benchmark times must be `whole_call`.
 2. **Case.** Add one `Case(...)` to
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
    the shape to run and, with `smoke=True`, that it is the kernel's

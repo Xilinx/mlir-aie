@@ -35,7 +35,7 @@ All of them honour `MLIR_AIE_KERNEL_SOURCES` (see [section 4c](../section-4c#bef
 
 ## <u>Markers come first</u>
 
-A cycle count needs `event0()` before the work and `event1()` after it in the kernel source ([section 4b](../section-4b)). The bench measures cycles with [`kd.cycles_per_call`](../../../python/iron/algorithms/kernel_design.py), and only for kernels whose `KernelContract` declares `trace=Trace.whole_call()`: **exactly one** `event0()`/`event1()` pair brackets **exactly one** whole call of the entry symbol. A kernel whose markers sit around an inner loop or behind an early return declares `Trace.partial(reason)`, and one without markers `Trace.none(reason)`. The bench records no cycles for either, because a wrong declaration produces a clean-looking wrong number (see [Cycles you can trust](#cycles-you-can-trust)).
+A cycle count needs `event0()` before the work and `event1()` after it in the kernel source ([section 4b](../section-4b)). The bench measures cycles with [`kd.cycles_per_call`](../../../python/iron/algorithms/kernel_design.py), and only for kernels whose `KernelContract` declares `trace=Trace.whole_call()`: **exactly one** `event0()`/`event1()` pair brackets **exactly one** whole call of the entry symbol. A kernel whose markers sit around an inner loop or behind an early return declares `Trace.partial(reason)`, and one without markers `Trace.none(reason)`. A benchmarked case whose kernel declares either fails rather than charting wall clock alone, and the declaration must be right, because a wrong one produces a clean-looking wrong number (see [Cycles you can trust](#cycles-you-can-trust)).
 
 Before you declare `Trace.whole_call()` on a kernel's contract (in `python/iron/kernels/`, in the Python package your tests import):
 

@@ -56,6 +56,15 @@ constexpr int S = MM_FUSED_S;
 constexpr int T = MM_FUSED_T;
 constexpr int CT_K = MM_FUSED_CT_K;
 
+// Each entry point brackets its own call in event0/event1. fused_mm_tile.cc
+// calls them all from one call and brackets that instead, so it defines
+// MM_FUSED_WHOLE_TILE_MARKERS to compile these out.
+#ifdef MM_FUSED_WHOLE_TILE_MARKERS
+constexpr bool step_markers = false;
+#else
+constexpr bool step_markers = true;
+#endif
+
 // Output stage geometry.
 constexpr int CHUNK = MM_FUSED_OUT_CHUNK;
 constexpr int C_DEPTH = MM_FUSED_C_DEPTH;
@@ -147,8 +156,7 @@ extern "C" {
 // would mean consuming an extra object through the handshake the B ObjectFifo
 // owns, which desynchronises that fifo and hangs rather than mis-computing.
 void mm_fused_acc_init(float *y_acc) {
-  // zero_vectorized brackets itself in event0/event1 for tracing.
-  zero_vectorized<float, M, N>(y_acc);
+  zero_vectorized<float, M, N, step_markers>(y_acc);
 }
 
 // One step of the k loop: one B chunk multiplied against one A band,
@@ -162,11 +170,15 @@ void mm_fused_acc_init(float *y_acc) {
 // way, so the design's Kernel declaration does not have to care.
 void mm_fused_k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
                      int32_t band) {
+  if constexpr (step_markers)
+    event0();
   ::aie::set_rounding(round_mode);
   // The accumulator is [row-block][col-block][r*t], so band b starts at
   // b * MA * N -- b*(MA/R) row-blocks in, each colB*(r*t) wide.
   mm_fused_mmul_2x2<(MA / R), (CT_K / S), (N / T), R, S, T>(
       a_buf, b_buf, y_acc + band * (MA * N));
+  if constexpr (step_markers)
+    event1();
 }
 
 // Output stage: convert chunk (outer * C_DEPTH + half) of the f32 accumulator
@@ -185,7 +197,8 @@ void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
                              int32_t clamp_max_bits) {
   // The store below is a conversion, so it obeys the same rounding mode the
   // mmul does and must agree with it.
-  event0();
+  if constexpr (step_markers)
+    event0();
   ::aie::set_rounding(round_mode);
   const float *__restrict src = y_acc + (outer * C_DEPTH + half) * CHUNK;
   // __builtin_bit_cast, not memcpy: memcpy leaves an unresolved external
@@ -215,6 +228,7 @@ void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
     epilogue_body<0>(y_out, src, clamp_min, clamp_max);
     break;
   }
-  event1();
+  if constexpr (step_markers)
+    event1();
 }
 }

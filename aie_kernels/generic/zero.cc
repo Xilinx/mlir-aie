@@ -36,7 +36,8 @@ constexpr int zero_tail_width(int rem) {
   return w;
 }
 
-template <typename T, int M, int N>
+// `markers = false` leaves the bracketing to a caller that times a larger call.
+template <typename T, int M, int N, bool markers = true>
 void zero_vectorized(T *__restrict c) {
   constexpr int r = aie::native_vector_length_v<T>;
   constexpr int n = M * N;
@@ -52,7 +53,8 @@ void zero_vectorized(T *__restrict c) {
   // (II 1) instead of a `movs dj0` / `add` address chain the scheduler can only
   // overlap down to II 2.
   T *__restrict p = c;
-  event0();
+  if constexpr (markers)
+    event0();
 #pragma clang loop unroll_count(unroll)
   for (int i = 0; i < n / r; ++i, p += r) {
     aie::store_v(p, zeros);
@@ -70,7 +72,8 @@ void zero_vectorized(T *__restrict c) {
       }
     }
   }
-  event1();
+  if constexpr (markers)
+    event1();
 }
 
 #if defined(ZERO_TYPE) && defined(TILE_SIZE)

@@ -54,7 +54,6 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   constexpr unsigned sizeA = r * s;
   constexpr unsigned sizeB = s * t;
   constexpr unsigned sizeC = r * t;
-  event0();
   // Unrolling z lets one row pair's last C stores overlap the next pair's
   // first C loads. Leave j rolled: unrolled by 4 it cost +4.3% per band with
   // a 4-trip i loop (chunk_k=32), more than it saved with a 16-trip one.
@@ -120,7 +119,6 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
       pC2 += 2 * sizeC;
     }
   }
-  event1();
 }
 
 #else
@@ -134,7 +132,6 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
                                     float *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
   static_assert(r * s == MMUL::size_A);
-  event0();
   // Rolled, the z loop does not pipeline and each trip pays the j loop's
   // entry and exit; two trips per body let those overlap.
   AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
@@ -183,7 +180,6 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
       pC2 += 2 * MMUL::size_C;
     }
   }
-  event1();
 }
 
 #endif // MM_FUSED_BFP16_B
