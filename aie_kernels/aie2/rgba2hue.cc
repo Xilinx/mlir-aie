@@ -68,6 +68,7 @@ comp_divisor_16b(::aie::vector<uint8_t, 32> divisor,
 __attribute__((noinline)) void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
                                             const int32_t height,
                                             const int32_t width) {
+  event0();
   ::aie::vector<uint8_t, 32> r, g, b;
   ::aie::vector<uint8_t, 32> hue;
 
@@ -126,10 +127,12 @@ __attribute__((noinline)) void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
     rgba_in += 128;
     hue_out += 32;
   }
+  event1();
 }
 
 void rgba2hue_aie_scalar(uint8_t *rgba_in, uint8_t *hue_out,
                          const int32_t height, const int32_t width) {
+  event0();
   for (int i = 0; i < height; i++)
     for (int j = 0; j < width; j++) {
       int r = (int)rgba_in[i * (width * 4) + (j * 4)];
@@ -159,6 +162,7 @@ void rgba2hue_aie_scalar(uint8_t *rgba_in, uint8_t *hue_out,
       hue_out[i * width + j] = (uint8_t)h;
     }
 
+  event1();
   return;
 }
 
