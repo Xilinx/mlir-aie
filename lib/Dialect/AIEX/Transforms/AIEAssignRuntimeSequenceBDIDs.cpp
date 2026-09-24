@@ -726,7 +726,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                        b.getI32IntegerAttr(v))
           .getResult();
     };
-    NpuMaskPollOp::create(b, op.getLoc(), cst(*status), cst(0), cst(mask),
+    Value maskValue = cst(mask);
+    Value compareValue = cst(0);
+    Value statusValue = cst(*status);
+    NpuMaskPollOp::create(b, op.getLoc(), statusValue, compareValue, maskValue,
                           /*buffer=*/nullptr, /*column=*/nullptr,
                           /*row=*/nullptr);
     noteDrained(key, unfinished);
