@@ -108,7 +108,7 @@ jobs:
           if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"; then
             :
           else
-            echo "::warning::Cannot set --pmode $BENCH_PMODE: this runner needs passwordless sudo for $XRT_SMI"
+            echo "::warning::Cannot set --pmode $BENCH_PMODE non-interactively with $XRT_SMI; benchmark preflight will verify the active mode"
           fi
           "$XRT_SMI" examine -d "$BDF" --report platform
 
