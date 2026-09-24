@@ -114,6 +114,7 @@ extern "C" {
 void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA,
                                            bfp16ebs8 *__restrict pB,
                                            bfloat16 *__restrict pC) {
+  event0();
 
   constexpr int r = 8;
   constexpr int s = 8;
@@ -134,5 +135,6 @@ void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA,
   // kernels.mm_bfp names conv_even as its contract's setup -- so setting it
   // here too would be the design and the kernel fighting over it.
   matmul_vectorized_2x2_bfp16_bf16<m / r, k / s, n / t, r, s, t>(pA, pB, pC);
+  event1();
 }
 }
