@@ -47,10 +47,15 @@ void zero_vectorized(T *__restrict c) {
   // big accumulators (mha, flash_attn_prefill, mm_fused) keep the rolled form.
   constexpr int unroll = (n / r >= 1 && n / r <= 16) ? n / r : 1;
   const aie::vector<T, r> zeros = aie::zeros<T, r>();
+  // A walking cursor rather than `c + i * r`: it lets the store use the
+  // post-increment addressing mode, so a rolled tile is one bundle per store
+  // (II 1) instead of a `movs dj0` / `add` address chain the scheduler can only
+  // overlap down to II 2.
+  T *__restrict p = c;
   event0();
 #pragma clang loop unroll_count(unroll)
-  for (int i = 0; i < n / r; ++i) {
-    aie::store_v(c + i * r, zeros);
+  for (int i = 0; i < n / r; ++i, p += r) {
+    aie::store_v(p, zeros);
   }
   if constexpr (n % r != 0) {
     if constexpr (n >= w) {
