@@ -37,7 +37,7 @@ def benchmark_steps(job):
 )
 def test_parallel_compute_has_one_main_only_publisher(filename, compute, static):
     config = workflow(filename)
-    assert set(config["on"]) == {"schedule", "pull_request"}
+    assert set(config["on"]) == {"workflow_dispatch", "schedule", "pull_request"}
     # A change to the workflow that runs the checks must itself run them.
     assert filename in " ".join(config["on"]["pull_request"]["paths"]) or (
         filename == "benchmarkKernels.yml"
@@ -60,6 +60,7 @@ def test_parallel_compute_has_one_main_only_publisher(filename, compute, static)
     assert publisher["needs"] == compute
     assert "github.ref == 'refs/heads/main'" in publisher["if"]
     assert "github.event_name != 'pull_request'" in publisher["if"]
+    assert publisher["if"].endswith("&& !inputs.only && !inputs.peano }}")
     assert publisher["uses"] == "./.github/workflows/publishKernelResults.yml"
     assert publisher["with"]["static"] == static
     assert "strategy" not in publisher
@@ -146,6 +147,117 @@ def test_partial_results_are_benchmarked_and_published():
     assert "--junitxml=correctness.xml" in steps["correctness"]["run"]
     assert "--correctness-results correctness.xml" in steps["bench"]["run"]
     assert config["jobs"]["publish"]["if"].startswith("${{ !cancelled() && ")
+
+
+def test_dispatch_filter_is_passed_as_data_not_shell_source():
+    job = workflow("benchmarkKernels.yml")["jobs"]["bench"]
+    step = next(step for step in job["steps"] if step.get("id") == "bench")
+    assert step["env"]["ONLY"] == "${{ inputs.only }}"
+    assert "inputs.only" not in step["run"]
+    assert '${ONLY:+-k "($ONLY) or test_measurement_is_sane"}' in step["run"]
+
+
+@pytest.mark.parametrize("only", ["", "softmax", "softmax and not large", "$(false)"])
+def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path):
+    steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "bench")
+    command = run[run.index("python -m pytest") :].split("2>&1", 1)[0]
+    result = subprocess.run(
+        ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
+        cwd=tmp_path,
+        env={**os.environ, "ONLY": only},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    args = result.stdout.splitlines()
+    if only:
+        assert args[-2:] == ["-k", f"({only}) or test_measurement_is_sane"]
+    else:
+        assert "-k" not in args
+
+
+NIGHTLY_PAGE = """
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026092401+6dc4d6dd-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" rel="nofollow">
+  <span class="text-bold">llvm_aie-22.0.0.2026092401+6dc4d6dd-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl</span>
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026092401+6dc4d6dd-py3-none-win_amd64.whl" rel="nofollow">
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026092001+0006955e-py3-none-win_amd64.whl" rel="nofollow">
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026092101+0006955e-py3-none-win_amd64.whl" rel="nofollow">
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026091901+0006955e-py3-none-win_amd64.whl" rel="nofollow">
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026092201+0006955f-py3-none-win_amd64.whl" rel="nofollow">
+"""
+
+PINNED = "llvm-aie==22.0.0.2026092401+6dc4d6dd"
+WHEEL = "https://example.com/llvm_aie-1.0-py3-none-any.whl"
+
+
+def run_peano_step(peano, tmp_path):
+    step = next(
+        step
+        for step in workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+        if step.get("name") == "Install requested Peano"
+    )
+    (tmp_path / "aie-venv/bin").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "aie-venv/bin/activate").write_text("")
+    (tmp_path / "page.html").write_text(NIGHTLY_PAGE)
+    stubs = (
+        "curl() { cat page.html; }\n"
+        'python() { if [ "$3" = show ]; then echo "Version: stub"; '
+        'else printf "%s\\n" "$@" > pip-args; fi; }\n'
+    )
+    result = subprocess.run(
+        ["bash", "-eo", "pipefail", "-c", stubs + step["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PEANO": peano,
+            "NIGHTLY": step["env"]["NIGHTLY"],
+            "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+        },
+        capture_output=True,
+        text=True,
+    )
+    args = tmp_path / "pip-args"
+    return result, args.read_text().splitlines() if args.exists() else None
+
+
+@pytest.mark.parametrize(
+    "peano,spec",
+    [
+        ("22.0.0.2026092401+6dc4d6dd", PINNED),
+        ("6dc4d6dd", PINNED),
+        ("6dc4d6d", PINNED),
+        ("6dc4d6dd71558b553448df97254408ec3d800eb5", PINNED),
+        # A commit rebuilt by several nightlies resolves to the newest wheel.
+        ("0006955e", "llvm-aie==22.0.0.2026092101+0006955e"),
+        (WHEEL, WHEEL),
+    ],
+)
+def test_dispatch_installs_the_requested_peano(peano, spec, tmp_path):
+    step = next(
+        step
+        for step in workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+        if step.get("name") == "Install requested Peano"
+    )
+    assert step["if"] == "${{ inputs.peano }}"
+    assert step["env"]["PEANO"] == "${{ inputs.peano }}"
+    assert "inputs.peano" not in step["run"]
+    result, args = run_peano_step(peano, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert args[-1] == spec
+    assert "--force-reinstall" in args
+    assert (tmp_path / "summary").read_text() == "Peano: Version: stub\n"
+
+
+@pytest.mark.parametrize(
+    "peano",
+    ["deadbeef", "0006955", "$(false)", "1.0; true", "http://example.com/x.whl"],
+)
+def test_dispatch_rejects_an_unresolvable_peano(peano, tmp_path):
+    result, args = run_peano_step(peano, tmp_path)
+    assert result.returncode == 1
+    assert "::error::" in result.stdout
+    assert args is None
 
 
 def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
