@@ -43,8 +43,9 @@
 
 using namespace aie;
 
-// 512-bit vector register / 32-bit lanes.
-static constexpr int EXP2F_VEC_LEN = 16;
+// Two 512-bit vector registers / 32-bit lanes, the width of one emulated f32
+// multiply (see exp2_poly.h).
+static constexpr int EXP2F_VEC_LEN = 32;
 
 #ifndef EXP2F_VEC_MIN_X
 #define EXP2F_VEC_MIN_X (-111.0f)
@@ -55,9 +56,10 @@ static_assert(kMinX >= -126.0f,
               "the smallest normal, k = -126");
 
 // noinline: Peano -O2 miscompiles the inlined form to NaN under high register
-// pressure.
-static __attribute__((noinline)) aie::vector<float, EXP2F_VEC_LEN>
-exp2f_vec(aie::vector<float, EXP2F_VEC_LEN> x) {
+// pressure. Pointers rather than a 32-lane vector argument and return, which
+// travel through the stack.
+static __attribute__((noinline)) void exp2f_vec(const float *in, float *out) {
+  aie::vector<float, EXP2F_VEC_LEN> x = aie::load_v<EXP2F_VEC_LEN>(in);
   x = aie::max(x, aie::broadcast<float, EXP2F_VEC_LEN>(kMinX));
   // Taken before the clamp below narrows x.
   aie::mask<EXP2F_VEC_LEN> overflow =
@@ -73,22 +75,27 @@ exp2f_vec(aie::vector<float, EXP2F_VEC_LEN> x) {
   aie::vector<int32_t, EXP2F_VEC_LEN> pos_inf_bits =
       aie::broadcast<int32_t, EXP2F_VEC_LEN>(0x7f800000);
   aie::vector<float, EXP2F_VEC_LEN> pos_inf = pos_inf_bits.cast_to<float>();
-  return aie::select(result, pos_inf, overflow);
+  aie::store_v(out, aie::select(result, pos_inf, overflow));
 }
 
 extern "C" {
 
-// vector_size must be a multiple of EXP2F_VEC_LEN.
+// vector_size must be a multiple of 16.
 void exp2f_vec_f32(float *restrict input, float *restrict output,
                    int32_t vector_size) {
   event0();
 
-  auto it_in = aie::cbegin_vector<EXP2F_VEC_LEN>((float *)input);
-  auto it_out = aie::begin_vector<EXP2F_VEC_LEN>((float *)output);
-  const int elem_iters = vector_size / EXP2F_VEC_LEN;
-
-  for (int i = 0; i < elem_iters; i++) {
-    *it_out++ = exp2f_vec(*it_in++);
+  for (int i = 0; i < vector_size / EXP2F_VEC_LEN; i++) {
+    exp2f_vec(input, output);
+    input += EXP2F_VEC_LEN;
+    output += EXP2F_VEC_LEN;
+  }
+  // A 16-element tail runs through a scratch vector, lanes 16-31 unused.
+  if (vector_size % EXP2F_VEC_LEN) {
+    alignas(aie::vector_decl_align) float tail[EXP2F_VEC_LEN];
+    aie::store_v(tail, aie::load_v<EXP2F_VEC_LEN / 2>(input));
+    exp2f_vec(tail, tail);
+    aie::store_v(output, aie::load_v<EXP2F_VEC_LEN / 2>(tail));
   }
 
   event1();
