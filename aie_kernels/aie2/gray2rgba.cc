@@ -25,6 +25,7 @@
 
 void gray2rgba_aie(uint8_t *y_in, uint8_t *rgba_out, const int32_t height,
                    const int32_t width) {
+  event0();
   // Initialize alpha vector
   ::aie::vector<uint8, 64> alpha255 = ::aie::zeros<uint8, 64>();
   for (int i = 0; i < 16; i++) {
@@ -46,6 +47,7 @@ void gray2rgba_aie(uint8_t *y_in, uint8_t *rgba_out, const int32_t height,
       rgba_out += 64;
     }
 
+  event1();
   return;
   ;
 }
