@@ -557,6 +557,11 @@ def AIEVerifyRuntimeRearm : Pass<"aie-verify-runtime-rearm", "AIE::DeviceOp"> {
       "Experimental, opt-in: reject an aiex.dma_channel_reset whose "
       "objectFIFO lock is never re-armed (a necessary, not sufficient, "
       "condition for a safe reset)";
+  let description = [{
+    Requires materialized DMA channels and locks. Run
+    `--aie-objectfifo-allocate` before this pass when `aie.dma_start` names a
+    route endpoint rather than a channel index.
+  }];
   let constructor = "xilinx::AIEX::createAIEVerifyRuntimeRearmPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
