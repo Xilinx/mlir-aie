@@ -76,6 +76,14 @@ using namespace xilinx::aiecc::cli;
 
 namespace {
 
+// Defined here rather than in CommandLineOptions.h: __DATE__/__TIME__ need
+// -Wno-date-time, which CMakeLists.txt sets for this file only.
+void printVersion(llvm::raw_ostream &os) {
+  os << "aiecc (mlir-aie declarative driver)\n";
+  os << "  git SHA:  " << AIECC_GIT_SHA << "\n";
+  os << "  compiled: " << __DATE__ << " " << __TIME__ << "\n";
+}
+
 // Apply the process-wide parallelism cap only when the command line did not
 // select one explicitly. Keep the accepted syntax identical to -j: an
 // unsigned decimal value, including 0 for hardware auto-detection.

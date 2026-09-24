@@ -17,8 +17,6 @@
 #ifndef AIECC_COMMANDLINEOPTIONS_H
 #define AIECC_COMMANDLINEOPTIONS_H
 
-#include "AIECCVersion.h"
-
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
 #include "llvm/ADT/SmallString.h"
@@ -576,12 +574,6 @@ inline bool resolveOptions() {
 //===----------------------------------------------------------------------===//
 // Helper functions
 //===----------------------------------------------------------------------===//
-
-inline void printVersion(llvm::raw_ostream &os) {
-  os << "aiecc (mlir-aie declarative driver)\n";
-  os << "  git SHA:  " << AIECC_GIT_SHA << "\n";
-  os << "  compiled: " << __DATE__ << " " << __TIME__ << "\n";
-}
 
 // A positional argument is a host source file when it has a C/C++ extension.
 inline bool isHostSourceFile(llvm::StringRef name) {
