@@ -421,9 +421,6 @@ def shim_dma_single_bd_task(
     if tap:
         offset, sizes, strides = _shim_dims(tap)
 
-    # The iteration attribute (when set) claims the shim's single iteration/repeat
-    # slot, so the BD carries ONLY its access dimensions (<=3) and does NOT also
-    # hoist an outer dimension.
     repeat_count = 0
     repeat_count_val = None
     if iteration is not None:
@@ -434,38 +431,43 @@ def shim_dma_single_bd_task(
                 f"slot); got {len(sizes)}."
             )
     else:
-        # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
-        # dimension. The repeat_count below hoists sizes[0] into that iteration
-        # dimension, but the transferred extent is prod(sizes[-3:]) (see shim_dma_bd),
-        # so sizes[0] is left out of it only when there are 4 dimensions. With fewer
-        # than 4 dims and sizes[0] > 1, sizes[0] is counted both as a real access dim
-        # (in transfer_len and in the BD dimensions) and as repeat_count, so the shim
-        # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
-        # many objects, and dma_await_task never returns. Normalize to the canonical
-        # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
-        # dimension. Past 4 dims, every dim before the last three iterates, and
-        # aie-decompose-large-dma-bd splits the ones a BD cannot hold into separate
-        # tasks, which it can only do for constant sizes and strides.
         if sizes is not None:
             while len(sizes) < 4:
                 sizes = [1] + list(sizes)
                 if strides is not None:
                     strides = [0] + list(strides)
 
-        # The outer dimensions become the queue-push repeat_count. Constants fold to
-        # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into
-        # the repeat_count_val operand so a dynamic tile count is supported.
         if sizes:
             outer = sizes[:-3]
             if all(isinstance(v, (int, np.integer)) for v in outer):
                 runs = int(np.prod([int(v) for v in outer]))
                 if runs > 1:
                     repeat_count = runs - 1
+                # Strip the outermost dim and emit iteration when applicable.
+                if len(sizes) == 4:
+                    st0 = strides[0] if strides is not None else 0
+                    if isinstance(st0, (int, np.integer)) and int(st0) != 0:
+                        iteration = (int(sizes[0]), int(st0), 0)
+                    if strides is None:
+                        strides = [0] * (len(sizes) - 1) + [1]
+                    sizes = list(sizes[1:])
+                    strides = list(strides[1:])
             else:
-                # Runtime: a zero sizes[0] wraps to a huge count, which the
-                # queue-push lowering refuses along with any other one past the
-                # target's maximum.
-                repeat_count_val = sizes[0] - 1
+                # Runtime SSA sizes[0]: strip and emit iteration via SSA operands.
+                s0_i32 = sizes[0]
+                if s0_i32.type != T.i32():
+                    s0_i32 = arith.trunci(T.i32(), s0_i32)
+                repeat_count_val = s0_i32 - _as_i32(1)
+                st0 = strides[0] if strides is not None else 0
+                if isinstance(st0, (int, np.integer)):
+                    st0 = _as_i32(int(st0))
+                elif st0.type != T.i32():
+                    st0 = arith.trunci(T.i32(), st0)
+                if strides is None:
+                    strides = [0] * (len(sizes) - 1) + [1]
+                sizes = list(sizes[1:])
+                strides = list(strides[1:])
+                iteration = (s0_i32, st0)
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
