@@ -106,10 +106,15 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
 
       T_out *__restrict pC1;
       T_out *__restrict pC2;
+      T_out *__restrict pCj = pC + z * MMUL::size_C;
       if constexpr (c_row_maj) {
         pC1 = pC + (z * colB) * MMUL::size_C;
         pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
       }
+      // Peano does not strength-reduce the j-indexed tile addresses, so these
+      // cursors step with j rather than rebuilding each address from j.
+      const T_in *__restrict pAz = pA + (z * colA) * MMUL::size_A;
+      const T_in *__restrict pBj = pB;
 
       for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
@@ -118,19 +123,20 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
         {
 
           if constexpr (!c_row_maj) {
-            pC1 = pC + j * rowA * MMUL::size_C + z * MMUL::size_C;
-            pC2 = pC + (j + 1) * rowA * MMUL::size_C + z * MMUL::size_C;
+            pC1 = pCj;
+            pC2 = pCj + rowA * MMUL::size_C;
+            pCj += 2 * rowA * MMUL::size_C;
           }
-          const T_in *__restrict pA1 = pA + (z * colA) * MMUL::size_A;
-          const T_in *__restrict pA2 = pA + ((z + 1) * colA) * MMUL::size_A;
-          const T_in *__restrict pB1;
+          const T_in *__restrict pA1 = pAz;
+          const T_in *__restrict pA2 = pAz + colA * MMUL::size_A;
+          const T_in *__restrict pB1 = pBj;
           const T_in *__restrict pB2;
           if constexpr (b_row_maj) {
-            pB1 = pB + (j)*MMUL::size_B;
-            pB2 = pB + (j + 1) * MMUL::size_B;
+            pB2 = pBj + MMUL::size_B;
+            pBj += 2 * MMUL::size_B;
           } else {
-            pB1 = pB + (j * colA) * MMUL::size_B;
-            pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
+            pB2 = pBj + colA * MMUL::size_B;
+            pBj += 2 * colA * MMUL::size_B;
           }
 
           aie::vector<T_in, MMUL::size_A> A0;
