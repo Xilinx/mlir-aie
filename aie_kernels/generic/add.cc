@@ -33,25 +33,47 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
   }
 }
 
+// Four independent load/add/store chains per iteration.
+//
+// One chain per iteration is latency-bound rather than issue-bound: the two
+// operand loads are both vlda.conv.fp32.bf16, which only exists on the a port,
+// so they serialize, and the vadd.f then waits out the load-to-use latency
+// with nothing to fill it -- three of the loop's seven bundles were nops.
+// Peano schedules the four-chain body into a loop of the same size, so the
+// extra chains land in stall slots that were already being paid for.  Going
+// wider is not free: x8 grows the body faster than the work it adds, and x16
+// runs out of accumulator registers.
+#define ADD_UNROLL 4
+
 template <typename T_in, typename T_out, const int N>
 void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
 
   constexpr int vec_factor = ADD_VEC_FACTOR;
   event0();
-  T_in *__restrict pA1 = a;
-  T_in *__restrict pB1 = b;
-  T_out *__restrict pC1 = c;
-  const int F = N / vec_factor;
+  auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
+  auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
+  auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
+  constexpr int F = N / vec_factor;
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(16)
-  for (int i = 0; i < F; i++) {
-    aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
-    pA1 += vec_factor;
-    aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
-    pB1 += vec_factor;
-    aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
-    aie::store_v(pC1, cout);
-    pC1 += vec_factor;
+  for (int i = 0; i < F / ADD_UNROLL; i++) {
+    auto A0 = *pA1++;
+    auto B0 = *pB1++;
+    auto A1 = *pA1++;
+    auto B1 = *pB1++;
+    auto A2 = *pA1++;
+    auto B2 = *pB1++;
+    auto A3 = *pA1++;
+    auto B3 = *pB1++;
+    *pC1++ = aie::add(A0, B0);
+    *pC1++ = aie::add(A1, B1);
+    *pC1++ = aie::add(A2, B2);
+    *pC1++ = aie::add(A3, B3);
+  }
+  // Whole vectors past the last full group of four.  N is a compile-time
+  // constant, so for the 1024-element tile the factories build this is zero
+  // iterations and folds away entirely.
+  for (int i = 0; i < F % ADD_UNROLL; i++) {
+    *pC1++ = aie::add(*pA1++, *pB1++);
   }
   event1();
 }
@@ -62,24 +84,35 @@ template <typename T_in, typename T_out>
 void eltwise_vadd_size(T_in *a, T_in *b, T_out *c, int size) {
   constexpr int vec_factor = ADD_VEC_FACTOR;
   event0();
-  T_in *__restrict pA1 = a;
-  T_in *__restrict pB1 = b;
-  T_out *__restrict pC1 = c;
+  auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
+  auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
+  auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   const int F = ADD_ELEMS / vec_factor;
   AIE_PREPARE_FOR_PIPELINING
-  for (int i = 0; i < F; i++) {
-    aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
-    pA1 += vec_factor;
-    aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
-    pB1 += vec_factor;
-    aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
-    aie::store_v(pC1, cout);
-    pC1 += vec_factor;
+  for (int i = 0; i < F / ADD_UNROLL; i++) { // see eltwise_vadd
+    auto A0 = *pA1++;
+    auto B0 = *pB1++;
+    auto A1 = *pA1++;
+    auto B1 = *pB1++;
+    auto A2 = *pA1++;
+    auto B2 = *pB1++;
+    auto A3 = *pA1++;
+    auto B3 = *pB1++;
+    *pC1++ = aie::add(A0, B0);
+    *pC1++ = aie::add(A1, B1);
+    *pC1++ = aie::add(A2, B2);
+    *pC1++ = aie::add(A3, B3);
   }
-  const int tail =
-      ADD_ELEMS - F * vec_factor; // pA1/pB1/pC1 point past vector body
+  for (int i = 0; i < F % ADD_UNROLL; i++) {
+    *pC1++ = aie::add(*pA1++, *pB1++);
+  }
+  // Scalar tail for a size that is not a whole number of vectors.  Index off
+  // the base pointers rather than the iterators: the vector body consumed
+  // exactly F vectors, so the leftover elements start at F * vec_factor.
+  const int done = F * vec_factor;
+  const int tail = ADD_ELEMS - done;
   for (int i = 0; i < tail; i++) {
-    pC1[i] = pA1[i] + pB1[i];
+    c[done + i] = a[done + i] + b[done + i];
   }
   event1();
 }
