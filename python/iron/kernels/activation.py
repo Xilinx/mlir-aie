@@ -258,7 +258,9 @@ def _create_lut_kernel(
     from aie.utils import config
 
     include = _include_dirs()
-    kernel_arch_dir = Path(config.cxx_header_path()) / "aie_kernels" / arch
+    # From the same tree as the kernel source, so MLIR_AIE_KERNEL_SOURCES
+    # cannot mix a checked-out kernel with installed headers.
+    kernel_arch_dir = Path(config.aie_kernels_dir()) / arch
     include.append(str(kernel_arch_dir))
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     include.append(str(runtime_dir))
