@@ -69,10 +69,17 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 static inline void gelu_tanh_approx_inplace_bf16(bfloat16 *restrict v,
                                                  const int32_t vector_size) {
   event0();
-  auto it = aie::begin_restrict_vector<32>(v);
+  // Separate read and write cursors: with one iterator the load of a slot and
+  // the store of that same slot are a single stream, and the pipeliner serves
+  // them at II=33 instead of the II=18 the out-of-place loop gets. Both
+  // cursors are derived from the restrict `v`, so they are based on it and the
+  // read-then-write order within a slot is still honoured -- a second
+  // begin_restrict_vector would instead promise the two streams are disjoint,
+  // which for an in-place kernel is not true.
+  auto it_in = aie::begin_vector<32>(v);
+  auto it_out = aie::begin_vector<32>(v);
   auto body = [&]() __attribute__((always_inline)) {
-    aie::vector<bfloat16, 32> x = *it;
-    *it++ = gelu_tanh_approx(x);
+    *it_out++ = gelu_tanh_approx(*it_in++);
   };
   VERSIONED_LOOP(2, (vector_size + 31) / 32, body,
                  AIE_PREPARE_FOR_POSTPIPELINING);
