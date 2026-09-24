@@ -200,6 +200,77 @@ inline void scale_by_inv_l(bf16 *o, float *l, float *y) {
   aie::store_v(o, AL00.template to_vector<bf16>());
 }
 
+/// Y += S * V across one 8-row block of y: kTiles 8x8 output tiles, the i-th
+/// taking its V tile from pV + i * kVStride.
+///
+/// The emulated mmul spends two 32-lane macs and a shuffle per k on one 8x8
+/// tile. Two neighbouring output tiles fill one 64-lane accumulator instead,
+/// rows 0-3 of both in L and rows 4-7 in H, and then one native mac per k
+/// advances both: the S side of it is S[r][k] repeated across the row, the
+/// same for either tile, and the V side is row k of each tile's V broadcast
+/// over its four rows, one vextbcst per tile. Every output still sums its
+/// products in ascending k into the same float accumulator, so y is
+/// bit-identical to the mmul's.
+///
+/// The sixteen S-side operands do not fit in registers alongside the
+/// accumulators and spill once, ahead of the loop. y is loaded one tile pair
+/// ahead so that the next pair's load need not wait for this pair's store:
+/// the pipeliner cannot tell the two apart and otherwise serializes them.
+template <unsigned kTiles, unsigned kVStride>
+void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
+                  const bf16 *__restrict pV) {
+  aie::vector<bf16, 64> St = aie::transpose(aie::load_v<64>(pS), 8, 8);
+  aie::vector<bf16, 64> AL[8], AH[8];
+  AIE_LOOP_UNROLL_FULL
+  for (int k = 0; k < 8; k++) {
+    // Lane (r, c) of A holds S[r][k].
+    aie::vector<bf16, 32> b = (v32bfloat16)::broadcast_elem_128(
+        (v16int32)St.template extract<32>(k / 4), k % 4);
+    aie::vector<bf16, 64> A = aie::transpose(aie::concat(b, b), 8, 8);
+    AL[k] = aie::concat(A.template extract<32>(0), A.template extract<32>(0));
+    AH[k] = aie::concat(A.template extract<32>(1), A.template extract<32>(1));
+  }
+
+  auto load_pair = [](aie::accum<accfloat, 64> &L, aie::accum<accfloat, 64> &H,
+                      const float *y) {
+    L.from_vector(aie::concat(aie::load_v<32>(y), aie::load_v<32>(y + 64)));
+    H.from_vector(
+        aie::concat(aie::load_v<32>(y + 32), aie::load_v<32>(y + 96)));
+  };
+
+  aie::accum<accfloat, 64> L, H;
+  load_pair(L, H, pY);
+  for (unsigned j = 0; j < kTiles; j += 2) {
+    float *pYn = j + 2 < kTiles ? pY + 128 : pY;
+    aie::accum<accfloat, 64> Ln, Hn;
+    load_pair(Ln, Hn, pYn);
+
+    aie::vector<bf16, 64> V0 = aie::load_v<64>(pV);
+    aie::vector<bf16, 64> V1 = aie::load_v<64>(pV + kVStride);
+    AIE_LOOP_UNROLL_FULL
+    for (int k = 0; k < 8; k++) {
+      aie::vector<bf16, 32> b0 = (v32bfloat16)::broadcast_elem_128(
+          (v16int32)V0.template extract<32>(k / 4), k % 4);
+      aie::vector<bf16, 32> b1 = (v32bfloat16)::broadcast_elem_128(
+          (v16int32)V1.template extract<32>(k / 4), k % 4);
+      aie::vector<bf16, 64> B = aie::concat(b0, b1);
+      L = aie::mac(L, AL[k], B);
+      H = aie::mac(H, AH[k], B);
+    }
+
+    aie::vector<float, 64> l = L.template to_vector<float>();
+    aie::vector<float, 64> h = H.template to_vector<float>();
+    aie::store_v(pY, l.template extract<32>(0));
+    aie::store_v(pY + 64, l.template extract<32>(1));
+    aie::store_v(pY + 32, h.template extract<32>(0));
+    aie::store_v(pY + 96, h.template extract<32>(1));
+    L = Ln;
+    H = Hn;
+    pY = pYn;
+    pV += 2 * kVStride;
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Per-geometry steps
 //===----------------------------------------------------------------------===//
@@ -257,49 +328,9 @@ struct PrefillGeom<512> {
     aie::store_v(l, sum.template to_vector<float>());
   }
 
-  /// Every output column reuses the single S tile, so the emulated mmul's
-  /// A-side broadcasts are hoisted out of the loop and only the V loads and
-  /// the accumulator round trip scale with j. Four columns per iteration give
-  /// the scheduler four independent mac chains to interleave against that
-  /// fixed cost: the II more than halves per column even though the frame
-  /// grows past what fits in registers, which is why prefill_fv's contract
-  /// asks for 2240 bytes of stack rather than 960.
   static void attn_fv(float *__restrict pY, bf16 *__restrict pS,
                       bf16 *__restrict pV) {
-    aie::vector<bf16, 64> S0 = aie::load_v<64>(pS);
-
-    float *__restrict pY1 = pY;
-
-    for (unsigned j = 0; j < FV_colB; j += 4) {
-      bf16 *__restrict pV1 = pV + j * MMUL::size_B * FV_colA;
-
-      aie::vector<bf16, MMUL::size_B> V0 = aie::load_v<MMUL::size_B>(pV1);
-      aie::vector<bf16, MMUL::size_B> V1 =
-          aie::load_v<MMUL::size_B>(pV1 + MMUL::size_B);
-      aie::vector<bf16, MMUL::size_B> V2 =
-          aie::load_v<MMUL::size_B>(pV1 + 2 * MMUL::size_B);
-      aie::vector<bf16, MMUL::size_B> V3 =
-          aie::load_v<MMUL::size_B>(pV1 + 3 * MMUL::size_B);
-
-      MMUL Y00(aie::load_v<MMUL::size_C>(pY1));
-      MMUL Y01(aie::load_v<MMUL::size_C>(pY1 + MMUL::size_C));
-      MMUL Y02(aie::load_v<MMUL::size_C>(pY1 + 2 * MMUL::size_C));
-      MMUL Y03(aie::load_v<MMUL::size_C>(pY1 + 3 * MMUL::size_C));
-
-      Y00.mac(S0, V0);
-      Y01.mac(S0, V1);
-      Y02.mac(S0, V2);
-      Y03.mac(S0, V3);
-
-      aie::store_v(pY1, Y00.template to_vector<float>());
-      pY1 += MMUL::size_C;
-      aie::store_v(pY1, Y01.template to_vector<float>());
-      pY1 += MMUL::size_C;
-      aie::store_v(pY1, Y02.template to_vector<float>());
-      pY1 += MMUL::size_C;
-      aie::store_v(pY1, Y03.template to_vector<float>());
-      pY1 += MMUL::size_C;
-    }
+    sv_row_block<FV_colB, MMUL::size_B>(pY, pS, pV);
   }
 
   static void attn_qk(bf16 *__restrict pS, bf16 *__restrict pQ,
@@ -430,45 +461,16 @@ struct PrefillGeom<256> {
     aie::store_v(l, l_out.template to_vector<float>());
   }
 
-  /// The 2x2 decomposition already keeps four S tiles live, and the emulated
-  /// bf16 mmul hoists sixteen A-side broadcast registers out of each of them.
-  /// Carrying four 2048-bit accumulators on top of that overcommits the
-  /// register file, and the loop body ends up reloading them from a spill
-  /// slot every iteration. Holding one output column per row block instead
-  /// keeps two accumulators live, which fits, at twice the trip count.
+  /// S is a 2x2 grid of 8x8 tiles, one per (query row block, key half),
+  /// stored row block major. Each tile is one pass over its row block of y,
+  /// the first key half ahead of the second, so every output still sums its
+  /// sixteen products in ascending k.
   static void attn_fv(float *__restrict pY, bf16 *__restrict pS,
                       bf16 *__restrict pV) {
-    aie::vector<bf16, 64> S0 = aie::load_v<64>(pS);
-    aie::vector<bf16, 64> S1 = aie::load_v<64>(pS + 64);
-    aie::vector<bf16, 64> S2 = aie::load_v<64>(pS + 128);
-    aie::vector<bf16, 64> S3 = aie::load_v<64>(pS + 192);
-
-    float *__restrict pY1 = pY;
-    float *__restrict pY2 = pY + FV_colB * MMUL::size_C;
-
-    for (unsigned j = 0; j < FV_colB; j += 1) {
-      bf16 *__restrict pV1 = pV + j * MMUL::size_B * FV_colA;
-
-      aie::vector<bf16, MMUL::size_B> V0 = aie::load_v<MMUL::size_B>(pV1);
-      pV1 += MMUL::size_B;
-      aie::vector<bf16, MMUL::size_B> V1 = aie::load_v<MMUL::size_B>(pV1);
-
-      aie::vector<float, MMUL::size_C> acc_Y00 = aie::load_v<MMUL::size_C>(pY1);
-      aie::vector<float, MMUL::size_C> acc_Y10 = aie::load_v<MMUL::size_C>(pY2);
-
-      MMUL Y00(acc_Y00);
-      MMUL Y10(acc_Y10);
-
-      Y00.mac(S0, V0);
-      Y10.mac(S2, V0);
-      Y00.mac(S1, V1);
-      Y10.mac(S3, V1);
-
-      aie::store_v(pY1, Y00.template to_vector<float>());
-      pY1 += MMUL::size_C;
-      aie::store_v(pY2, Y10.template to_vector<float>());
-      pY2 += MMUL::size_C;
-    }
+    for (unsigned t = 0; t < 4; t++)
+      sv_row_block<FV_colB, MMUL::size_B * FV_colA>(
+          pY + (t / 2) * FV_colB * MMUL::size_C, pS + t * MMUL::size_A,
+          pV + (t % 2) * MMUL::size_B);
   }
 
   /// One 8-query row block of S against both key columns. Same accumulator
