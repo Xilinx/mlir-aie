@@ -45,6 +45,7 @@ from ._common import (
 )
 from .activation import (
     bf16_exp,
+    bf16_exp_lut_ref,
     bf16_exp_ref,
     exp2f_vec,
     exp2f_vec_ref,
@@ -55,15 +56,19 @@ from .activation import (
     leaky_relu_ref,
     relu_ref,
     sigmoid,
+    sigmoid_lut_ref,
     sigmoid_ref,
     silu,
+    silu_lut_ref,
     silu_ref,
     silu_sized,
     softmax,
     softmax_ref,
     swiglu,
+    swiglu_lut_ref,
     swiglu_ref,
     tanh,
+    tanh_lut_ref,
     tanh_ref,
 )
 from .conv import (
@@ -93,6 +98,10 @@ from .conv import (
     conv2dk14,
     conv2dk14_ref,
     dwconv1d,
+    dwconv1d_channels_first,
+    dwconv1d_channels_first_ref,
+    dwconv1d_channels_last,
+    dwconv1d_channels_last_ref,
     dwconv1d_ref,
 )
 from .core import RoundingMode, conv_even, set_rounding
@@ -144,6 +153,8 @@ from .linalg import (
     mv_bf16_ref,
     mv_ref,
     mv_tile_ref,
+    prefill_fv,
+    prefill_fv_ref,
 )
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .quant import q4nx_dequant, q4nx_dequant_ref
@@ -275,9 +286,14 @@ __all__ = [
     "relu_ref",
     "silu_ref",
     "gelu_ref",
+    "bf16_exp_lut_ref",
     "bf16_exp_ref",
     "exp2f_vec_ref",
     "softmax_ref",
+    "sigmoid_lut_ref",
+    "silu_lut_ref",
+    "swiglu_lut_ref",
+    "tanh_lut_ref",
     "tanh_ref",
     "sigmoid_ref",
     "leaky_relu_ref",
@@ -285,6 +301,8 @@ __all__ = [
     "fused_mm",
     "mm_acc_dtype",
     "mha",
+    "prefill_fv",
+    "prefill_fv_ref",
     "mm_bfp",
     "mm_bfp_ref",
     "mm_bfp_mixed_ref",
@@ -299,6 +317,10 @@ __all__ = [
     "conv2dk3",
     "dwconv1d",
     "dwconv1d_ref",
+    "dwconv1d_channels_first",
+    "dwconv1d_channels_first_ref",
+    "dwconv1d_channels_last",
+    "dwconv1d_channels_last_ref",
     "DWCONV1D_TAIL",
     "conv2dk3_ref",
     "conv2dk1_skip",

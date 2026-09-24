@@ -1,9 +1,13 @@
-//===- mv.cc ----------------------------------------------------*- C++ -*-===//
+//===- mv_bf16.cc -----------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2025 Advanced Micro Devices, Inc.
+// Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+//
+// IRON's bf16 GEMV: c[row_offset ..] += A * b over a row-major A, signature
+// (m, row_offset, A, b, c). mv_i16.cc is the int16 counterpart, which reads A
+// word-transposed. They shared the name mv.cc, in two directories.
 
 #define NOCPP
 

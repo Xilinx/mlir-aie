@@ -165,12 +165,35 @@ CASES: list[Case] = [
     Case("gelu", calls=16, smoke=True),
     Case("gelu", calls=256),
     Case("silu", calls=16, smoke=True),
+    Case(
+        "silu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
+    ),
     Case("silu", calls=256),
     Case("bf16_exp", calls=16, smoke=True),
     Case("bf16_exp", calls=256),
     Case("tanh", calls=16, smoke=True),
     Case("tanh", calls=256),
+    # The LUT tanh, which on aie2p is the alternative to the vtanh instruction
+    # and 7.5x closer to the true function. It is judged against an exact model
+    # of the table rather than against tanh itself, so this case is the tight
+    # one: one bf16 ulp, where the vtanh build needs 5% relative.
+    Case(
+        "tanh",
+        dict(use_lut=True),
+        calls=16,
+        tag="lut",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("sigmoid", calls=16, smoke=True),
+    Case(
+        "sigmoid",
+        dict(use_lut=True),
+        calls=16,
+        tag="lut",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("sigmoid", calls=256),
     Case("softmax", calls=16, smoke=True),
     Case("softmax", calls=256),
@@ -310,6 +333,9 @@ CASES: list[Case] = [
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
     Case("swiglu", calls=16, smoke=True),
+    Case(
+        "swiglu", dict(use_lut=True), calls=16, tag="lut", devices=("npu2",), smoke=True
+    ),
     Case("swiglu", calls=256),
     # vision: uint8 lines of 1920 pixels
     Case("gray2rgba", calls=16, smoke=True),
@@ -493,7 +519,30 @@ CASES: list[Case] = [
         calls=16,
         scalars=(1024,),
         devices=("npu2",),
+    ),
+    Case(
+        "dwconv1d_channels_first",
+        dict(seq_len=1024, kernel_size=9),
+        calls=16,
+        scalars=(1024,),
+        devices=("npu2",),
         smoke=True,
+    ),
+    # the transposed layout: one timestep across 256 channels, 5 per-channel taps
+    Case(
+        "dwconv1d_channels_last",
+        dict(channels=256),
+        calls=16,
+        devices=("npu2",),
+        smoke=True,
+    ),
+    Case(
+        "dwconv1d_channels_last",
+        dict(channels=256, clamp=False),
+        calls=16,
+        tag="unclamped",
+        devices=("npu2",),
+        perf=False,
     ),
 ]
 
@@ -546,6 +595,12 @@ CASES += [
     Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, devices=("npu2",), smoke=True, perf=False),
+    # The prefill toolkit's S*V accumulate, one case per geometry. Each
+    # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
+    # the 512 one has a degenerate k-block term and so cannot tell a wrong V
+    # order from a right one, which is why both are smoke cases.
+    Case("prefill_fv", dict(head_dim=512), calls=4, devices=("npu2",), smoke=True),
+    Case("prefill_fv", dict(head_dim=256), calls=4, devices=("npu2",), smoke=True),
     Case(
         "mm_bfp",
         _mm_bfp,
