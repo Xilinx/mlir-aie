@@ -1384,6 +1384,8 @@ def AIE_DMAFreeTaskOp
   let description = [{
     This operation informs the static buffer descriptor allocator pass in the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
 
+    Freeing is optional for a started task. When a tile runs out of BD ids, `aie-assign-runtime-sequence-bd-ids` takes them back from a started task that was never freed, once a poll of its channel's status proves it finished. The pass uses a poll already in the sequence or inserts one (see its `reclaim-bds` option). A later `dma_free_task` of such a task is a no-op. The pass does not take ids from a task that is started again later. It cannot see dependencies through cores or other tiles, so a task it may have to wait on must not depend on a push issued after it.
+
     Potential future implementations of dynamic buffer descriptor allocators may lower this to a `free` instruction.
   }];
   let arguments = (ins Index:$task);

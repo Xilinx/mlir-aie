@@ -336,7 +336,24 @@ def AIEAssignRuntimeSequenceBDIDs
            "through the compute core, which the runtime sequence cannot see, "
            "so this reports designs that are correct by an argument the "
            "compiler does not have. Useful when chasing a suspected BD "
-           "aliasing hang.">];
+           "aliasing hang.">,
+       Option<
+           "reclaimBds", "reclaim-bds", "bool",
+           /*default=*/"true",
+           "When a tile runs out of BD ids, take them back from a task that "
+           "was started and never released, instead of failing. A task some "
+           "status poll already in the sequence proves finished is taken "
+           "without waiting. Otherwise the compiler inserts an "
+           "aiex.npu.maskpoll on the oldest such task's channel status: "
+           "while later pushes are queued behind it, until the queue shrinks "
+           "enough to prove it has finished, and with none, until the channel "
+           "is idle. A task started again later is never taken. A later free "
+           "of a taken task is a no-op; a later await still waits for its "
+           "token. Only allocations that fail without it change, so a "
+           "sequence that fits is unaffected. The poll relies on the waited-on "
+           "tasks finishing from pushes already issued -- a design whose DMAs "
+           "wait on later pushes through a core must release its BDs "
+           "itself.">];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",

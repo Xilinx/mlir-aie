@@ -482,8 +482,14 @@ public:
   }
 
   /// Return the mask selecting the live task-queue occupancy field within the
-  /// getDmaStatusAddress() register (0 when unsupported).
+  /// getDmaStatusAddress() register (0 when unsupported). The field does not
+  /// count the task the channel is running.
   virtual uint32_t getDmaTaskQueueSizeMask() const { return 0; }
+
+  /// Return the bits of the getDmaStatusAddress() register that are all clear
+  /// exactly when the channel has finished every task pushed to it: nothing
+  /// queued, nothing running, nothing stalled (0 when unsupported).
+  virtual uint32_t getDmaChannelIdleMask() const { return 0; }
 
   /// Return the DMA task-queue register address relative to its tile.
   uint32_t getLocalDmaControlAddress(int col, int row, int channel,
@@ -882,6 +888,13 @@ public:
                       AIE::DMAChannelDir direction) const override;
   // Task_Queue_Size, bits 22:20 of the DMA_{MM2S,S2MM}_Status_N register.
   uint32_t getDmaTaskQueueSizeMask() const override { return 0x7u << 20; }
+  // Task_Queue_Size, Channel_Running (bit 19) and the four Stalled_* bits
+  // (5:2): what aie-rt's _XAieMl_DmaWaitForDone polls clear. aie-rt's pending
+  // count adds one to Task_Queue_Size for Channel_Running or a stall, which is
+  // why the field alone does not cover the running task.
+  uint32_t getDmaChannelIdleMask() const override {
+    return getDmaTaskQueueSizeMask() | (1u << 19) | 0x3Cu;
+  }
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
