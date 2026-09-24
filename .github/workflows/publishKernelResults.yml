@@ -49,6 +49,17 @@ jobs:
           name: ${{ inputs.static && 'static-aie2p' || 'kernel-bench-npu2' }}-${{ github.run_id }}
           path: results/npu2
 
+      # Each power mode is its own suite, and so its own section of the page:
+      # a chart never mixes modes, and alerts compare like with like.
+      - name: Read power modes
+        id: pmode
+        if: ${{ !inputs.static }}
+        run: |
+          for npu in npu1 npu2; do
+            python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or "unknown"))' \
+              "$npu" "results/$npu/meta.json" >> "$GITHUB_OUTPUT"
+          done
+
       - name: Fetch publication branch
         run: git fetch origin "$BRANCH:$BRANCH" --depth=1
 
@@ -57,7 +68,7 @@ jobs:
       - name: Record npu1 results
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
-          name: ${{ inputs.static && 'static (aie2)' || 'aie_kernels (npu1)' }}
+          name: ${{ inputs.static && 'static (aie2)' || format('aie_kernels (npu1, {0})', steps.pmode.outputs.npu1) }}
           tool: customSmallerIsBetter
           output-file-path: results/npu1/${{ env.RESULT_FILE }}
           benchmark-data-dir-path: ${{ env.DATA_DIR_1 }}
@@ -72,7 +83,7 @@ jobs:
       - name: Record npu2 results
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
-          name: ${{ inputs.static && 'static (aie2p)' || 'aie_kernels (npu2)' }}
+          name: ${{ inputs.static && 'static (aie2p)' || format('aie_kernels (npu2, {0})', steps.pmode.outputs.npu2) }}
           tool: customSmallerIsBetter
           output-file-path: results/npu2/${{ env.RESULT_FILE }}
           benchmark-data-dir-path: ${{ env.DATA_DIR_2 }}

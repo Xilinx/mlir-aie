@@ -105,8 +105,8 @@ jobs:
           # Setting the mode needs root (amdxdna refuses the ioctl otherwise).
           # Ask sudo about this exact command rather than `sudo -n true`: a
           # runner granted only `xrt-smi` (and `prlimit`) must still configure.
-          # Where it is not granted, the correctness suite still runs and the
-          # benchmark preflight reports the mode it found.
+          # Where it is not granted, the benchmarks run in whatever mode the
+          # runner is in, and are published under that mode.
           if sudo -n -l "$XRT_SMI" configure >/dev/null 2>&1; then
             sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"
           else
@@ -140,12 +140,21 @@ jobs:
           source aie-venv/bin/activate
           source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
+          # Any mode is accepted: the mode names the series, so a run in
+          # another mode starts its own chart rather than joining this one.
           python -m pytest test/python/npu/test_kernels_bench.py -m benchmark -v \
-            --bench-out bench.json --bench-meta meta.json --pmode "$BENCH_PMODE" \
+            --bench-out bench.json --bench-meta meta.json --pmode any \
             --warmup 10 --iters 50 \
             ${ONLY:+-k "$ONLY"} 2>&1 | tee bench.log
           # A failing session leaves no bench.json -> downstream steps skip.
           # meta.json is written either way, and records why.
+
+      - name: Read power mode
+        id: pmode
+        if: hashFiles('bench.json') != ''
+        run: |
+          python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or "unknown"))' \
+            pmode meta.json >> "$GITHUB_OUTPUT"
 
       - name: Upload raw results
         if: always()
@@ -174,7 +183,7 @@ jobs:
         if: github.event_name == 'pull_request' && hashFiles('bench.json') != '' && hashFiles('baseline/benchmark-data.json') != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
-          name: aie_kernels (${{ matrix.expected_npu }})
+          name: aie_kernels (${{ matrix.expected_npu }}, ${{ steps.pmode.outputs.pmode }})
           tool: customSmallerIsBetter
           output-file-path: bench.json
           external-data-json-path: baseline/benchmark-data.json
