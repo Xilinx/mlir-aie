@@ -40,13 +40,16 @@ jobs:
       DATA_DIR_2: ${{ inputs.static && 'bench/static/aie2p' || 'bench/npu2' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # `pattern`, not `name`: an NPU whose leg produced nothing is skipped
+      # rather than failing the other's publication. One match extracts
+      # straight into `path`, as `name` would.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          name: ${{ inputs.static && 'static-aie2' || 'kernel-bench-npu1' }}-${{ github.run_id }}
+          pattern: ${{ inputs.static && 'static-aie2' || 'kernel-bench-npu1' }}-${{ github.run_id }}
           path: results/npu1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          name: ${{ inputs.static && 'static-aie2p' || 'kernel-bench-npu2' }}-${{ github.run_id }}
+          pattern: ${{ inputs.static && 'static-aie2p' || 'kernel-bench-npu2' }}-${{ github.run_id }}
           path: results/npu2
 
       # Each power mode is its own suite, and so its own section of the page:
@@ -56,6 +59,7 @@ jobs:
         if: ${{ !inputs.static }}
         run: |
           for npu in npu1 npu2; do
+            [[ -f "results/$npu/$RESULT_FILE" ]] || continue
             python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or sys.exit("power mode is unreadable")))' \
               "$npu" "results/$npu/meta.json" >> "$GITHUB_OUTPUT"
           done
@@ -66,6 +70,7 @@ jobs:
       # The action commits to the local publication branch and switches back.
       # Fetch once under the lock, accumulate every series, then push once.
       - name: Record npu1 results
+        if: hashFiles(format('results/npu1/{0}', env.RESULT_FILE)) != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: ${{ inputs.static && 'static (aie2)' || format('aie_kernels (npu1, {0})', steps.pmode.outputs.npu1) }}
@@ -81,6 +86,7 @@ jobs:
           summary-always: true
           max-items-in-chart: 400
       - name: Record npu2 results
+        if: hashFiles(format('results/npu2/{0}', env.RESULT_FILE)) != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: ${{ inputs.static && 'static (aie2p)' || format('aie_kernels (npu2, {0})', steps.pmode.outputs.npu2) }}
@@ -96,7 +102,7 @@ jobs:
           summary-always: true
           max-items-in-chart: 400
       - name: Record npu1 program memory
-        if: inputs.static
+        if: inputs.static && hashFiles('results/npu1/static-pm.json') != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: static pm (aie2)
@@ -113,7 +119,7 @@ jobs:
           summary-always: true
           max-items-in-chart: 400
       - name: Record npu2 program memory
-        if: inputs.static
+        if: inputs.static && hashFiles('results/npu2/static-pm.json') != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: static pm (aie2p)

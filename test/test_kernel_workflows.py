@@ -92,7 +92,14 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         # rehearsal cannot land half its series on the real one.
         assert options["gh-pages-branch"] == "${{ inputs.branch }}"
         assert options["comment-on-alert"] == "false"
-    assert [step["if"] for step in records[2:]] == ["inputs.static"] * 2
+    # Each NPU records only if its leg produced results, so one failed leg
+    # cannot hold back the other's publication.
+    assert [step["if"] for step in records] == [
+        "hashFiles(format('results/npu1/{0}', env.RESULT_FILE)) != ''",
+        "hashFiles(format('results/npu2/{0}', env.RESULT_FILE)) != ''",
+        "inputs.static && hashFiles('results/npu1/static-pm.json') != ''",
+        "inputs.static && hashFiles('results/npu2/static-pm.json') != ''",
+    ]
     pushes = [step for step in steps if "git push" in step.get("run", "")]
     assert len(pushes) == 1
     push_index = steps.index(pushes[0])
@@ -119,6 +126,22 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         "results/npu1",
         "results/npu2",
     ]
+    # `name` fails on a missing artifact; `pattern` skips it.
+    assert all("name" not in step["with"] for step in downloads)
+    assert all("pattern" in step["with"] for step in downloads)
+
+
+def test_partial_results_are_benchmarked_and_published():
+    config = workflow("benchmarkKernels.yml")
+    assert config["concurrency"]["cancel-in-progress"] == (
+        "${{ github.event_name == 'pull_request' }}"
+    )
+    assert "github.event.pull_request.number" in config["concurrency"]["group"]
+    steps = {step.get("id"): step for step in config["jobs"]["bench"]["steps"]}
+    assert steps["bench"]["if"] == (
+        "${{ !cancelled() && steps.preflight.outcome == 'success' }}"
+    )
+    assert config["jobs"]["publish"]["if"].startswith("${{ !cancelled() && ")
 
 
 def test_dispatch_filter_is_passed_as_data_not_shell_source():
@@ -175,7 +198,7 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     assert "--pmode any" in run
     assert '--pmode "$BENCH_PMODE"' not in run
     read = next(step for step in steps if step.get("id") == "pmode")
-    assert read["if"] == "hashFiles('bench.json') != ''"
+    assert read["if"] == "${{ !cancelled() && hashFiles('bench.json') != '' }}"
     write_meta(tmp_path / "meta.json", "performance")
     assert run_step(read["run"], tmp_path) == {"pmode": "performance"}
     write_meta(tmp_path / "meta.json", None)
@@ -191,10 +214,16 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     assert read["if"] == "${{ !inputs.static }}"
     write_meta(tmp_path / "results/npu1/meta.json", "performance")
     write_meta(tmp_path / "results/npu2/meta.json", "turbo")
-    assert run_step(read["run"], tmp_path) == {"npu1": "performance", "npu2": "turbo"}
+    run = read["run"].replace("$RESULT_FILE", "bench.json")
+    # A leg with meta but no results (its NPU checks failed) is skipped.
+    assert run_step(run, tmp_path) == {}
+    (tmp_path / "results/npu1/bench.json").write_text("[]")
+    assert run_step(run, tmp_path) == {"npu1": "performance"}
+    (tmp_path / "results/npu2/bench.json").write_text("[]")
+    assert run_step(run, tmp_path) == {"npu1": "performance", "npu2": "turbo"}
     write_meta(tmp_path / "results/npu2/meta.json", None)
     with pytest.raises(subprocess.CalledProcessError):
-        run_step(read["run"], tmp_path)
+        run_step(run, tmp_path)
     names = [step["with"]["name"] for step in benchmark_steps(publisher)[:2]]
     for npu, name in zip(["npu1", "npu2"], names):
         assert (
