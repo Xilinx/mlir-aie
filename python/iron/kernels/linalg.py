@@ -1001,13 +1001,10 @@ def mha(
 
 # head_dim -> (LQ, LK, stack_bytes) for flash_attn_prefill.h's PrefillGeom
 # specializations: 512 is global attention, 256 sliding-window. The stack is
-# aiecc's measured_stack_size under Peano 21, which for both geometries is
-# attn_fv's frame plus 128 bytes of core overhead, attn_fv being the deepest
-# call the five entry points reach. The sliding-window geometry still wants
-# the larger of the two because its 2x2 decomposition works on four S vectors
-# at once, while the global one spends its frame on four output-column
-# accumulators.
-_PREFILL_GEOM = {512: (8, 8, 2304), 256: (16, 16, 3392)}
+# aiecc's measured_stack_size under Peano 21: fv_step -> sv_row_block is the
+# deepest call the five entry points reach, and both geometries share
+# sv_row_block's frame, so they need the same stack.
+_PREFILL_GEOM = {512: (8, 8, 1984), 256: (16, 16, 1984)}
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:
