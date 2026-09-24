@@ -38,8 +38,7 @@ produce here is unconfirmed until that skill measures it.
 | S17 | Per-row unpipelined `reduce_add` (II125 at K=64) replaced by a 4-row group body at II56 / II90 (14 / 22.5 per row); max loop II *rose* from II10; `.text` +48..576 B; `unpipelined_loops` unchanged at 12 | bf16 `mv`, four rows per transposed tree (L20) | 1154 → 788 (-31.7%); amd/IRON's attention shape (4x64, `vec_size` 32) 159 → 110. Ablation had priced the reduction at 520 of 1154 | hit **only when II is normalized per unit of work**: the raw max II went up. Divide by rows (or values) per iteration before you class a change `reject` |
 | S18 | Mac loop II9 → II7 from per-row cursors, K=2048 | bf16 `mv` 4x2048 (L20) | 420 → 408 (-2.9%) | hit in direction, **miss in magnitude**: rows 4 KB apart likely contend for banks, which remarks can't see |
 | S19 | `[sp` refs 73 → 4 (the rest prologue/epilogue), `unpipelined_loops` 2 → 0, group loop II58; max II *rose* from 15 (per k step) to 58 (per 2x2 group) | `mm_bfp` one A, one B and one C stream (L19) | 4243-4529 → 951 (4.5x); odd-K 32x24x48 850-894 → 269. II58 × 16 groups + 23 cycles of call and prologue = 951, the traced value | hit, including magnitude. The strongest spill-count row: the in-loop `[sp` count predicted the win; the raw max II pointed the other way |
-
-Placeholder for rows not yet harvested: round-6 `mha` (pending).
+| S20 | Max II 13 → 48 on `partial_softmax`: the 8-row fold group has MII 38, over `SwpMaxMii` 27, so only the postpipeliner runs it (47 bundles per 8 rows). `.text.partial_softmax` 4496 → 6880 B, frame 64 → 192 B, object `unpipelined_loops` unchanged at 74 | `mha` flash-decode softmax, all rows per pass and eight rows per fold tree (L20) | full block 8171 → 1696 (4.82x), causal diagonal 10912 → 2162 (5.05x), padded 5107 / 6710 → 1448 / 1740. The `mha` bench cases stayed at 10001 and 9913: none calls `partial_softmax` | hit **only when normalized per row**, as S17. A loop the pipeliner gave up on (P13) was still the win |
 
 ### Confidence classes
 
@@ -48,7 +47,7 @@ Every candidate gets exactly one class, from the rows above:
 | Class | When | Record behind it |
 |---|---|---|
 | **strong** | The signal removes a libcall, removes spill or stack traffic in the hot loop, makes a hot loop pipeline (or drops `unpipelined_loops` on the called path), or passes the unroll screen | S01-S04, S06, S08, S19: every recorded case won on HW |
-| **likely** | The hot loop's II or bundles-per-element drops on the called symbol, and the change doesn't defeat an optimization to get there | S05, S07-S11, S17, S18: always the right direction; magnitude from the per-call prediction, not the II ratio |
+| **likely** | The hot loop's II or bundles-per-element drops on the called symbol, and the change doesn't defeat an optimization to get there | S05, S07-S11, S17, S18, S20: always the right direction; magnitude from the per-call prediction, not the II ratio |
 | **experiment** | No precedent row; the II drop comes from hiding work from LLVM (opaque pointers, `volatile`, LICM blockers); the loop sits at a resource bound; or the called symbol isn't resolved | S14, S15: the two recorded misses |
 | **reject** | The compiler reports it worse: II up, new spills, stack over the declared budget, or `pass_failed` drops the pragma | S12, S13: both HW checks agreed with the compiler |
 
@@ -60,7 +59,8 @@ Rules for using the classes:
   count before you dismiss it (S09).
 - Compare II per unit of work (per row, per value, per tile), not per loop.
   A body that does four rows at II56 beats one row at II10 plus a II125
-  reduction (S17).
+  reduction (S17), and an 8-row group at 47 bundles beat per-row calls
+  with a max II of 13 (S20).
 - `likely` and `strong` are statements about the record, not about your
   kernel. The report still says "candidate, HW unconfirmed".
 
@@ -74,6 +74,7 @@ moves**. If the Check doesn't move, the candidate is `reject`.
 |---|---|---|---|
 | L01 | Fully unroll loops that index register arrays | `conv2dk1_i8` 7623 → 504 (-93.4%) | strong |
 | L06 | Walking `__restrict` cursors | `convert_copy` 652 → 88 (combined); `zero<float,4096>` 519 → 262 (isolated) | likely |
+| L20 | Batch horizontal reductions: several rows through one transposed tree | `mha` `partial_softmax` 8171 → 1696 (4.82x, combined); bf16 `mv` 1154 → 788 | likely (normalize II per row, S17, S20) |
 | L19 | One bfp16 stream per operand per loop | `mm_bfp` 4243-4529 → 951 (4.5x, combined); `q4nx_dequant` 2.10x | strong (spills removed, S08, S19) |
 | L05 | Fold constants into one mac | `sigmoid` 498 → 118 (-76.3%) | likely |
 | L02 | No soft-float or 64-bit libcalls in hot loops | `rms_norm` 1597 → 438 (-72.6%) | strong |
@@ -82,7 +83,6 @@ moves**. If the Check doesn't move, the candidate is `reject`.
 | L09 | Split dependency chains | int16 `mv` 291 → 127 (-56.4%) | likely |
 | L13 | `UNROLL_FULL`, not `RANGE`, on a loop that switches on its counter | 5.31 → 2.84 ms (-47%, internal model) | likely |
 | L18 | Pair two 8x8 output tiles on one 64-lane accumulator | prefill `fv` 2034-2082 → 1265-1393 (-35%) | likely |
-| L20 | Batch horizontal reductions: several rows through one transposed tree | bf16 `mv` 1154 → 788 (-31.7%, combined) | likely (normalize II per row, S17) |
 | L10 | Make the hot loop innermost and single-block | int8 `mm` 993 → 737 (-25.8%) | strong when a loop newly pipelines; otherwise likely |
 | L15 | Producer writes mmul-A order | -23.6% on one block (internal model) | likely |
 | L12 | Wide stores, never byte loops | bfp16 shuffle 10.4x per call (rep slope) | strong |
@@ -470,10 +470,10 @@ both kernel skills cite the same numbers.
 
 ## L20 Batch horizontal reductions (AIE2P, bf16)
 
-- **When:** each row ends in its own `reduce_add` (or another horizontal
-  tree), the remarks meta shows that tree as an unpipelined loop or a long
-  straight-line chain (II125 at K=64 in `mv`), and the row loop never
-  overlaps it. On hardware the reduction was priced by ablation at 520 of
+- **When:** each row ends in its own `reduce_add` or `reduce_max` (or
+  another horizontal tree), the remarks meta shows that tree as an
+  unpipelined loop or a long straight-line chain (II125 at K=64 in `mv`),
+  and the row loop never overlaps it. On hardware the reduction was priced by ablation at 520 of
   1154 cycles (`aie-kernel-opt-hw` §Bounds found by ablation).
 - **Do:**
   1. Mac four rows against each b chunk, so one load of b feeds four macs.
@@ -498,11 +498,37 @@ both kernel skills cite the same numbers.
   (-31.7%), 4x64 at `vec_size` 32 (amd/IRON's attention shape) 159 → 110, 4x128 149 → 125, 6-row tail 287 → 273, 10x512
   551 → 518, 4x2048 420 → 408. Raw output bit-identical on 10 shapes: the
   transposed tree pairs lanes exactly as `reduce_add` does.
+- **Second kernel, `mha` `partial_softmax`** (flash-attention decode,
+  commit f0212ca5c58). The base called a per-row helper for each query row:
+  a rounding-mode swap, two passes too short to pipeline and two five-step
+  reductions per row.
+  - **Do:** run each pass over all rows as one pipelined loop, and fold the
+    row max and the row sum eight rows at a time with `interleave_unzip`,
+    which pairs each row's halves the way `reduce_max`/`reduce_add` do. Keep
+    the old path for shapes and scales the fast path doesn't cover.
+  - **Check:** max II rises 13 → 48 and that loop is over `SwpMaxMii`
+    (`traps.md` P13); per row it is about 6 bundles. The frame is 192 B. A
+    whole-block stack scratch variant ran 3964 but needed 3 KB, over the
+    0xD00 Worker stack.
+  - **HW** (combined), per call: full 64x64 block 8171 → 1696 (4.82x), causal
+    diagonal 10912 → 2162 (5.05x), padded 5107 / 6710 → 1448 / 1740. Raw
+    output O bit-identical (0 diffs at `s_eff` 256 and 165).
+  - Steps measured on HW one at a time (full / diagonal block):
+    - the batched passes and folds alone: 8171 → 2562 / 10912 → 3271;
+    - cursors (L06): 2562 → 2327, 1908 → 1861;
+    - max before scaling (exact for a positive, finite scale because
+      rounding is monotone; other scales take the old path): 2327 → 2151;
+    - `AIE_LOOP_MIN_ITERATION_COUNT(2)` on the group loops, which always run
+      at least 2 groups, so the postpipeliner overlaps them: 1861 → 1720;
+    - `aie::msc(a*s, m, 1)` instead of broadcasting `m`: 1720 → 1694;
+    - `UNROLL(4)` on the unpipelinable mask pass (L07): diagonal 2241 → 2162.
+- **Rows per group** are bounded by the stack: 4 for `mv` (8 overflowed
+  1 KB), 8 for `partial_softmax` (192 B frame).
 
 
 ---
 
-## Compiler reports, not HW (X20-X45)
+## Compiler reports, not HW (X20-X46)
 
 These variants were dropped because the remarks or the object showed them
 worse, so they never reached the NPU. They are **not** hardware numbers. Cite
@@ -538,6 +564,7 @@ was right.
 | X43 | Scalar counters instead of `add_3d_byte` cursors; byte or delta offset tables; 32-lane `to_float` | `q4nx_dequant` | II22 / II25 / II21 / II20 vs 17 per 64 values |
 | X44 | bf16 `unroll_k` (K folded into j) / peel the first k-step / int16 1x2 expansion / one 64-lane accumulator for a pair / int16 accumulate in acc32 | `mm` | LICM hoists A patterns into a ~3.5 KB frame (over the 1 KB Worker stack) / II110 with 68 `[sp` refs / II38 per j ≈ 2432 vs 2017 / 6 mv ops per substep vs 4 / not bit-identical |
 | X45 | `UNROLL(2)` on the paired fv loop; LICM blockers (select, `j/64`, `ptr>>31`) | prefill `fv` | II92 per 2 pairs (46 vs 37 per pair); folded by LLVM, frame 0xF40 over the 2304 B budget |
+| X46 | One flat row loop with both reductions / per-row loop `UNROLL(4)`, `UNROLL(8)` / one fused group loop / scale-then-max in the group loop / 16-lane partials with a wider fold / max folded from 64-lane rows / sum fused into the l loop / exp in two 32-lane halves / mask from a 65-entry uint32 table / mask `UNROLL(8)` | `mha` `partial_softmax` | II106-113 per row / 63.5 cycles per row, spills / II139 / in-loop spills, II37-41 / l loop unpipelined, II56 vs 35 / 78 bundles vs 57 / 0x740 B frame + spills / 36 bundles per 2 rows vs 14 / 19 bundles vs 16 / loses the zero-overhead loop, +160 B |
 
 ## Bounds (NO-CHANGE)
 

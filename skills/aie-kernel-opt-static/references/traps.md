@@ -68,7 +68,7 @@ The pragmas that act under Peano:
 | Macro | Effect |
 |---|---|
 | `AIE_LOOP_UNROLL(n)`, `AIE_LOOP_UNROLL_FULL`, `AIE_LOOP_NO_UNROLL` | unroll count / full / off |
-| `AIE_LOOP_MIN_ITERATION_COUNT(n)`, `AIE_LOOP_MAX_ITERATION_COUNT(n)` | trip-count hints. MIN can cost the zero-overhead loop (X37), so re-check `non_zol_loops` |
+| `AIE_LOOP_MIN_ITERATION_COUNT(n)`, `AIE_LOOP_MAX_ITERATION_COUNT(n)` | trip-count hints. MIN can cost the zero-overhead loop (X37), so re-check `non_zol_loops`. `MIN(2)` on a loop that always runs ≥ 2 trips let the postpipeliner overlap it: `partial_softmax` 1861 → 1720 (`levers.md` L20) |
 | `AIE_LOOP_RANGE(lo, hi)` | a trip-count hint only. It does **not** unroll (L13) |
 | `AIE_TRY_INITIATION_INTERVAL(n)` | asks the pipeliner for an II |
 | `AIE_LOOP_HINT(k, v)`, `AIE_LOOP_GPR_REALLOC` | backend loop hints |
@@ -163,6 +163,11 @@ higher gets only the postpipeliner, and the remarks meta `schedule_notes`
 shows it. bf16 `mm`'s k loop sits there (MII34, II35). Raising
 `-pipeliner-max-mii` gave "Unable to find schedule". Treat such a loop as at
 its bound (`levers.md` §Bounds) unless a change lowers its MII below 28.
+
+A loop over the cap can still be the better design when it does more work
+per trip. `partial_softmax`'s 8-row max fold has MII 38 and runs at 47
+bundles per 8 rows under the postpipeliner, and the kernel went 4.8x faster
+on hardware (`levers.md` S20). Compare per row, not per loop.
 
 ## P14 `pop()` then `pop_seek(odd)` reads the wrong blocks (AIE2P, bfp16)
 

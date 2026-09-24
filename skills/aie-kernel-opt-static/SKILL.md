@@ -106,7 +106,7 @@ reading rules for each step.
 | One long mac chain, or broadcasts spilled per block | L09 split chains | likely |
 | Pipelined, `ns` = 3, one long latency chain with no dominant step | L17 `--aie-pipeliner-max-stagecount=4/5` in the factory's `compile_flags` | likely (scale by trips) |
 | Several `mmul<8,8,8>` accumulators for Y += S·V; high II, large frame | L18 two 8x8 tiles on one 64-lane accumulator | likely |
-| A `reduce_add` (horizontal tree) per row, unpipelined or a long chain the row loop never overlaps | L20 several rows through one transposed tree | likely (II per row, S17) |
+| A `reduce_add` or `reduce_max` (horizontal tree) per row, or a per-row helper call, unpipelined or a long chain the row loop never overlaps | L20 several rows through one transposed tree | likely (II per row, S17, S20) |
 | bfp16 stream state spilled in the loop: `sfl/sfh` to `[sp]` around `vst.push`, or FIFO state around `vldb.pop` (more streams than registers) | L19 one stream per operand | strong (in-loop `[sp` drops, S19) |
 | Unpipelined outer loop around a pipelined mac loop | L10 `UNROLL(2)` on it | strong (`unpipelined_loops` drops) |
 | `(tanh+1)/2`, or separate constant multiplies | L05 fold into one mac | likely |
@@ -118,7 +118,7 @@ reading rules for each step.
 
 A candidate that gets its II drop by hiding work from LLVM (an opaque
 pointer bump, `volatile`, a LICM blocker) is `experiment` at best: that is
-the S15 miss. A variant that matches `levers.md` §Compiler reports (X20-X45)
+the S15 miss. A variant that matches `levers.md` §Compiler reports (X20-X46)
 is `reject`.
 
 ## Candidate report
@@ -160,7 +160,7 @@ from.
 
 - `references/levers.md`: the static signal → HW outcome table (S01-S18,
   hits and misses), confidence classes, levers L01-L20 with
-  when/do/check/HW precedent, compiler-reported rejects X20-X45, bounds.
+  when/do/check/HW precedent, compiler-reported rejects X20-X46, bounds.
 - `references/static-checks.md`: exact commands for every step, and how to
   read remarks rows, meta and objects.
 - `references/traps.md`: Peano and AIE2P traps P01-P14.

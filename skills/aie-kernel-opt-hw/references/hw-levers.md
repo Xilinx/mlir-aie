@@ -86,7 +86,12 @@ same PR as the kernel change:
 - If a lever's class changes because of the new row, update the ranked
   table's Class column too.
 - A new anti-pattern gets an X row below, and the static S row points to it.
-- `mha` round-6 row: placeholder, to be added when harvested.
+- If no bench case calls the function you changed, its bench row stays flat
+  and says nothing. The `mha` cases held at 10001 and 9913 while
+  `partial_softmax` went 8171 → 1696 (S20), because they call the matmul
+  entry points. Measure inside a design that calls the function, record
+  that in the row, and add a `kernel_cases.py` case for it when you can
+  (none calls `partial_softmax` yet).
 
 ## Bounds found by ablation
 
