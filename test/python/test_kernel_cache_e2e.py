@@ -199,10 +199,15 @@ def test_a_header_edit_reaches_the_core_elf(tmp_path, source, flow):
     cold, _, _ = _build(tmp_path, source, flow, "cold", mode="cold")
     assert _binaries(cold, flow) == step_two
 
+    # Step one's device is still in aiecc's device cache, so its core is not
+    # compiled again and leaves no core ELF behind.
     _set_step(source, 1)
     reverted, hits, misses = _build(tmp_path, source, flow, "warm")
     assert (hits, misses) == (0, 1)
-    assert _binaries(reverted, flow) == step_one
+    assert len(list((tmp_path / "warm" / "devices").iterdir())) == 2
+    assert _binaries(reverted, flow) == {
+        name: data for name, data in step_one.items() if not name.startswith("elfs_")
+    }
 
 
 def _named_outputs(out, prj):

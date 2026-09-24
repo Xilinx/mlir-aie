@@ -671,6 +671,7 @@ def compile_mlir_module(
     fold_ddr_addr_offset: bool = True,
     npu_cpp_path: str | Path | None = None,
     npu_cpp_emit_dispatch_shim: bool = False,
+    device_cache_dir: str | Path | None = None,
 ):
     """Compile MLIR to instruction, PDI, ELF, xclbin, or C++ files using aiecc.
 
@@ -714,6 +715,9 @@ def compile_mlir_module(
         npu_cpp_emit_dispatch_shim: Include the C ABI used by the Python dispatch
             bridge. Native callers can leave this false and call the generated
             C++ function directly.
+        device_cache_dir: Directory aiecc keeps each ``aie.device``'s compiled
+            cores in (``--device-cache``), so a later build of an unchanged
+            device reuses them. Ignored with Chess.
     """
     if work_dir:
         work_dir = os.path.abspath(work_dir)
@@ -760,6 +764,8 @@ def compile_mlir_module(
         # work_dir (the insts/xclbin/pdi paths are absolute and unaffected).
         args.append(f"--output-dir={work_dir}")
         args.append("--get-input-with-addresses")
+    if device_cache_dir is not None and not use_chess:
+        args.append(f"--device-cache={os.path.abspath(device_cache_dir)}")
     if verbose:
         args.append("--verbose")
     if options:

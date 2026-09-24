@@ -640,6 +640,7 @@ class CompilableDesign:
                         kernel_dir / "dispatch_gen.cpp" if has_dispatch else None
                     ),
                     npu_cpp_emit_dispatch_shim=has_dispatch,
+                    device_cache_dir=self._device_cache_dir(),
                 )
 
                 # aiecc may exit 0 even when xclbin generation fails silently
@@ -806,6 +807,7 @@ class CompilableDesign:
                     work_dir=kernel_dir,
                     use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
+                    device_cache_dir=self._device_cache_dir(),
                 )
 
                 if not elf_path.exists():
@@ -899,6 +901,7 @@ class CompilableDesign:
                     insts_path=inst_path,
                     work_dir=kernel_dir,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
+                    device_cache_dir=self._device_cache_dir(),
                 )
                 if not inst_path.exists():
                     raise RuntimeError(
@@ -1443,6 +1446,10 @@ class CompilableDesign:
         return KernelObjectCache(
             NPU_CACHE_HOME / "objects", _COMPILE_LOCK_TIMEOUT_SECONDS
         )
+
+    def _device_cache_dir(self) -> Path | None:
+        """Share each device's compiled cores across designs unless caching is off."""
+        return NPU_CACHE_HOME / "devices" if self.use_cache else None
 
     def _bind_generation_device(self):
         """Bind an available runtime device before target-sensitive work."""
