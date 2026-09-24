@@ -1472,12 +1472,54 @@ translateToLLVMIR(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item,
   return mlir::success();
 }
 
+// Clone `src` without the devices `devName` cannot reach. The lowering erases
+// every device once it has outlined `devName`'s cores, so the others would only
+// cost a clone of the whole design and a run of the device-nested passes over
+// each of them. Devices it references, e.g. through `aiex.configure`, stay so
+// that the IR still verifies.
+inline mlir::OwningOpRef<mlir::ModuleOp>
+cloneWithOnlyDevice(mlir::ModuleOp src, llvm::StringRef devName) {
+  llvm::StringMap<mlir::Operation *> devices;
+  llvm::SmallVector<mlir::Operation *> worklist;
+  llvm::DenseSet<mlir::Operation *> keep;
+  for (mlir::Operation &op : *src.getBody()) {
+    auto dev = mlir::dyn_cast<xilinx::AIE::DeviceOp>(op);
+    if (dev && dev.getSymName() != devName) {
+      devices[dev.getSymName()] = &op;
+    } else if (keep.insert(&op).second) {
+      worklist.push_back(&op);
+    }
+  }
+  while (!worklist.empty()) {
+    worklist.pop_back_val()->walk([&](mlir::Operation *op) {
+      op->getAttrDictionary().walk([&](mlir::SymbolRefAttr ref) {
+        auto it = devices.find(ref.getRootReference().getValue());
+        if (it != devices.end() && keep.insert(it->second).second) {
+          worklist.push_back(it->second);
+        }
+      });
+    });
+  }
+
+  mlir::OwningOpRef<mlir::ModuleOp> clone(
+      mlir::cast<mlir::ModuleOp>(src->cloneWithoutRegions()));
+  clone->getBodyRegion().emplaceBlock();
+  mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(clone->getBody());
+  mlir::IRMapping mapping;
+  for (mlir::Operation &op : *src.getBody()) {
+    if (keep.contains(&op)) {
+      builder.clone(op, mapping);
+    }
+  }
+  return clone;
+}
+
 // Apply the per-core LLVM lowering to a module clone. col/row=-1 means
 // "all cores" (unified mode); otherwise the named core's body.
 inline mlir::LogicalResult
 loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
                  Item<mlir::OwningOpRef<mlir::ModuleOp>> &out) {
-  mlir::OwningOpRef<mlir::ModuleOp> clone = src.clone();
+  mlir::OwningOpRef<mlir::ModuleOp> clone = cloneWithOnlyDevice(src, devName);
   auto pm = getCoreLLVMLoweringPipeline(clone->getContext(), devName, col, row,
                                         detectAIETarget(src, devName));
   if (mlir::failed(pm->run(*clone))) {
@@ -1487,7 +1529,8 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
   return mlir::success();
 }
 
-// Lower a device once and carve the result into one module per core.
+// Lower `dev` once and carve the result into one module per core, appending
+// them to `out`.
 //
 // The carve reads which tile owns each buffer off the pre-lowering DeviceOp,
 // because `memref.global` loses any attribute hung on it once it becomes
@@ -1495,13 +1538,13 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
 // owns so a core's object carries only its own data.
 //
 // A core the caller will not compile, meaning one that supplies a pre-baked
-// `elf_file`, is skipped, so this keys the same set as `perCore`. Keys match
-// `coreKey`.
-inline mlir::FailureOr<
-    std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>>
-splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
-                  llvm::function_ref<bool(xilinx::AIE::CoreOp)> shouldCompile) {
-  xilinx::AIE::DeviceOp dev = devItem.get().op;
+// `elf_file`, is skipped, so this keys the same set as `perCore`. A device left
+// with no core to compile is not lowered at all. Keys match `coreKey`.
+inline mlir::LogicalResult appendLoweredCores(
+    mlir::ModuleOp mod, xilinx::AIE::DeviceOp dev,
+    llvm::function_ref<bool(xilinx::AIE::CoreOp)> shouldCompile,
+    std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>
+        &out) {
   std::string devName = dev.getSymName().str();
 
   // Cores this device will actually compile, by coordinate.
@@ -1513,6 +1556,9 @@ splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
     auto tile = mlir::cast<xilinx::AIE::TileOp>(c.getTile().getDefiningOp());
     compiled.insert({tile.getCol(), tile.getRow()});
   });
+  if (compiled.empty()) {
+    return mlir::success();
+  }
 
   // Buffer symbol -> owning tile, read before the lowering erases the tiles.
   llvm::StringMap<std::pair<int, int>> owner;
@@ -1522,8 +1568,7 @@ splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
   });
 
   Item<mlir::OwningOpRef<mlir::ModuleOp>> lowered;
-  if (mlir::failed(loweringPipeline(devItem.get().module.get(), devName, -1, -1,
-                                    lowered))) {
+  if (mlir::failed(loweringPipeline(mod, devName, -1, -1, lowered))) {
     return mlir::failure();
   }
 
@@ -1554,8 +1599,6 @@ splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
     }
   });
 
-  std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>> out;
-  out.reserve(cores.size());
   for (const auto &core : cores) {
     llvm::StringRef keep = core.first;
     std::pair<int, int> keepCoords = core.second;
@@ -1584,6 +1627,27 @@ splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
       return mlir::failure();
     }
     out.emplace_back(devName + "_" + keep.str(), std::move(clone));
+  }
+  return mlir::success();
+}
+
+// `appendLoweredCores` over every device `lowerDevice` accepts.
+inline mlir::FailureOr<
+    std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>>
+splitLoweredCores(mlir::ModuleOp mod,
+                  llvm::function_ref<bool(xilinx::AIE::DeviceOp)> lowerDevice,
+                  llvm::function_ref<bool(xilinx::AIE::CoreOp)> shouldCompile) {
+  llvm::SmallVector<xilinx::AIE::DeviceOp> devices;
+  mod.walk([&](xilinx::AIE::DeviceOp dev) {
+    if (lowerDevice(dev)) {
+      devices.push_back(dev);
+    }
+  });
+  std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>> out;
+  for (xilinx::AIE::DeviceOp dev : devices) {
+    if (mlir::failed(appendLoweredCores(mod, dev, shouldCompile, out))) {
+      return mlir::failure();
+    }
   }
   return out;
 }

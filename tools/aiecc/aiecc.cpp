@@ -885,28 +885,30 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // times the lowering pipeline runs:
   //   * unified: lower once per device, then carve that module into one module
   //     per core;
-  //   * per-core: lower once per core, each run on a clone of the whole design.
+  //   * per-core: lower once per core, each run on a clone of its device.
   // Either way every core compiles its own object, so the object stage keeps
   // its per-core parallelism.
 
-  // Unified strategy
   auto &physicalPerDevice = splitPerDevice(
       unplaced, "perDeviceCompile_{0}.mlir", "perDeviceCompileMatching");
   auto &perDeviceArches = physicalPerDevice.map<std::string>(
       "perDeviceArches_{0}.txt", [](const OpInModule<DeviceOp> &dev) {
         return detectAIETarget(dev.module.get(), DeviceOp(dev.op).getSymName());
       });
+
+  // Unified strategy
   // Lower once per device, then carve out one module per core. Keyed like
   // `perCore`, so the per-core arches and link files below apply unchanged --
   // except that `perCore` drops cores that already carry an `elf_file`, so
   // filter the carved set to match or the object subgraph joins on a key its
   // other inputs do not have.
-  auto &unifiedPerCoreLowered = physicalPerDevice.split<ModRef>(
-      "lowered_{0}.mlir", [](const Item<OpInModule<DeviceOp>> &dev) {
+  auto &unifiedPerCoreLowered = unplaced.split<ModRef>(
+      "lowered_{0}.mlir", [matchesDeviceFilter](const Item<ModRef> &mod) {
         // Same predicate as the `perCoreCompile` filter above: a core with an
         // `elf_file` is used verbatim, so it must not appear here either.
         return splitLoweredCores(
-            dev, [](CoreOp c) { return !c.getElfFileAttr() || xbridge; });
+            mod.get().get(), matchesDeviceFilter,
+            [](CoreOp c) { return !c.getElfFileAttr() || xbridge; });
       });
 
   // Per-core strategy
