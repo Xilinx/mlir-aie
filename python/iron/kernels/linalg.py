@@ -989,10 +989,13 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> MatrixKernel:
 
 # head_dim -> (LQ, LK, stack_bytes) for flash_attn_prefill.h's PrefillGeom
 # specializations: 512 is global attention, 256 sliding-window. The stack is
-# aiecc's measured_stack_size. The sliding-window geometry wants six times the
-# global one's because its 2x2 decomposition keeps four MMUL accumulators and
-# four S vectors live at once, which spills.
-_PREFILL_GEOM = {512: (8, 8, 960), 256: (16, 16, 5824)}
+# aiecc's measured_stack_size under Peano 21, which for both geometries is
+# attn_fv's frame plus 128 bytes of core overhead, attn_fv being the deepest
+# call the five entry points reach. The sliding-window geometry still wants
+# the larger of the two because its 2x2 decomposition works on four S vectors
+# at once, while the global one spends its frame on four output-column
+# accumulators.
+_PREFILL_GEOM = {512: (8, 8, 2240), 256: (16, 16, 3328)}
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:

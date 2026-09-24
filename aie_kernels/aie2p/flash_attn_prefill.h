@@ -257,32 +257,47 @@ struct PrefillGeom<512> {
     aie::store_v(l, sum.template to_vector<float>());
   }
 
+  /// Every output column reuses the single S tile, so the emulated mmul's
+  /// A-side broadcasts are hoisted out of the loop and only the V loads and
+  /// the accumulator round trip scale with j. Four columns per iteration give
+  /// the scheduler four independent mac chains to interleave against that
+  /// fixed cost: the II more than halves per column even though the frame
+  /// grows past what fits in registers, which is why prefill_fv's contract
+  /// asks for 2240 bytes of stack rather than 960.
   static void attn_fv(float *__restrict pY, bf16 *__restrict pS,
                       bf16 *__restrict pV) {
     aie::vector<bf16, 64> S0 = aie::load_v<64>(pS);
 
     float *__restrict pY1 = pY;
 
-    for (unsigned j = 0; j < FV_colB; j += 2) {
+    for (unsigned j = 0; j < FV_colB; j += 4) {
       bf16 *__restrict pV1 = pV + j * MMUL::size_B * FV_colA;
-      bf16 *__restrict pV2 = pV + (j + 1) * MMUL::size_B * FV_colA;
 
       aie::vector<bf16, MMUL::size_B> V0 = aie::load_v<MMUL::size_B>(pV1);
-      aie::vector<bf16, MMUL::size_B> V1 = aie::load_v<MMUL::size_B>(pV2);
+      aie::vector<bf16, MMUL::size_B> V1 =
+          aie::load_v<MMUL::size_B>(pV1 + MMUL::size_B);
+      aie::vector<bf16, MMUL::size_B> V2 =
+          aie::load_v<MMUL::size_B>(pV1 + 2 * MMUL::size_B);
+      aie::vector<bf16, MMUL::size_B> V3 =
+          aie::load_v<MMUL::size_B>(pV1 + 3 * MMUL::size_B);
 
-      aie::vector<float, MMUL::size_C> acc_Y00 = aie::load_v<MMUL::size_C>(pY1);
-      aie::vector<float, MMUL::size_C> acc_Y01 =
-          aie::load_v<MMUL::size_C>(pY1 + MMUL::size_C);
-
-      MMUL Y00(acc_Y00);
-      MMUL Y01(acc_Y01);
+      MMUL Y00(aie::load_v<MMUL::size_C>(pY1));
+      MMUL Y01(aie::load_v<MMUL::size_C>(pY1 + MMUL::size_C));
+      MMUL Y02(aie::load_v<MMUL::size_C>(pY1 + 2 * MMUL::size_C));
+      MMUL Y03(aie::load_v<MMUL::size_C>(pY1 + 3 * MMUL::size_C));
 
       Y00.mac(S0, V0);
       Y01.mac(S0, V1);
+      Y02.mac(S0, V2);
+      Y03.mac(S0, V3);
 
       aie::store_v(pY1, Y00.template to_vector<float>());
       pY1 += MMUL::size_C;
       aie::store_v(pY1, Y01.template to_vector<float>());
+      pY1 += MMUL::size_C;
+      aie::store_v(pY1, Y02.template to_vector<float>());
+      pY1 += MMUL::size_C;
+      aie::store_v(pY1, Y03.template to_vector<float>());
       pY1 += MMUL::size_C;
     }
   }
