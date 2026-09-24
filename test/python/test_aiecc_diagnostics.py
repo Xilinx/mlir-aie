@@ -59,7 +59,8 @@ def test_failed_diagnostics(monkeypatch, capsys):
     assert capsys.readouterr().err == ""
 
 
-def test_located_failure_reports_against_the_design(monkeypatch):
+@pytest.mark.parametrize("legacy_notes", [False, True])
+def test_located_failure_reports_against_the_design(monkeypatch, legacy_notes):
     """A located aiecc failure reads as a Python error against the user's line.
 
     aiecc verifies in-process and reports through MLIR's SourceMgr handler, so
@@ -67,6 +68,8 @@ def test_located_failure_reports_against_the_design(monkeypatch):
     file -- which is the whole point: the failure should arrive as a traceback
     into that file rather than as a wall of tool output.
     """
+    if legacy_notes:
+        monkeypatch.setattr(IronCompileError, "add_note", None, raising=False)
     _failing_aiecc(
         monkeypatch,
         f"{THIS_FILE}:1:1: error: 'aie.dma_bd' op exceeds the maximum\n"
@@ -80,7 +83,8 @@ def test_located_failure_reports_against_the_design(monkeypatch):
     frames = traceback.extract_tb(caught.value.__traceback__)
     assert THIS_FILE in [os.path.abspath(f.filename) for f in frames], frames
     # The note is the explanation, so it rides along rather than being dropped.
-    assert any("see current operation" in n for n in caught.value.__notes__)
+    rendered = "".join(traceback.format_exception(caught.value))
+    assert rendered.count(f"[aiecc] {THIS_FILE}:1:1: note: see current operation") == 1
 
 
 def test_glued_progress_output_still_locates(monkeypatch):

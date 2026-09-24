@@ -7,10 +7,11 @@
 
 import importlib.util
 import os
-from pathlib import Path
 import subprocess
 import sys
+import traceback
 import types
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -125,9 +126,18 @@ def test_no_work_dir_preserves_cwd_and_cleans_up(
 
 
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])
-def test_run_aiecc_preserves_located_error(compile_utils, monkeypatch, stream):
-    output = "design.py:42:3: error: invalid operation\nnote: detail"
+@pytest.mark.parametrize("legacy_notes", [False, True])
+def test_run_aiecc_preserves_located_error(
+    compile_utils, monkeypatch, stream, legacy_notes
+):
+    output = (
+        "design.py:42:3: error: invalid operation\n"
+        "note: detail\n"
+        "design.py:40:3: note: previous operation"
+    )
     error = ValueError("invalid operation")
+    if legacy_notes:
+        monkeypatch.setattr(error, "add_note", None, raising=False)
     seen = []
 
     def locate(text):
@@ -144,7 +154,16 @@ def test_run_aiecc_preserves_located_error(compile_utils, monkeypatch, stream):
         compile_utils._run_aiecc("design.mlir", [])
     assert exc.value is error
     assert seen == [output]
-    assert error.__notes__ == ["[aiecc] note: detail"]
+    notes = ["[aiecc] note: detail", "[aiecc] design.py:40:3: note: previous operation"]
+    rendered = "".join(traceback.format_exception(error))
+    for note in notes:
+        assert rendered.count(note) == 1
+    assert rendered.index(notes[0]) < rendered.index(notes[1])
+    if getattr(error, "add_note", None) is not None:
+        assert error.__notes__ == notes
+        assert str(error) == "invalid operation"
+    else:
+        assert str(error) == "invalid operation\n" + "\n".join(notes)
 
 
 def test_run_aiecc_child_resolves_kernel_in_work_dir(

@@ -672,7 +672,13 @@ def _aiecc_failure(output: str, returncode: int) -> BaseException:
         )
     for line in _diagnostic_lines(output):
         if ": note:" in line or line.startswith("note:"):
-            located.add_note(f"[aiecc] {line.strip()}")
+            note = f"[aiecc] {line.strip()}"
+            add_note = getattr(located, "add_note", None)
+            if add_note is not None:
+                add_note(note)
+            else:
+                # Python 3.10 cannot render exception notes separately.
+                located.args = (f"{located}\n{note}", *located.args[1:])
     return located
 
 
