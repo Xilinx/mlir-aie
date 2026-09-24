@@ -442,7 +442,8 @@ CASES: list[Case] = [
     ),
     # The per-call shapes amd/IRON's llama 3.2 1B decode hands the bf16 GEMV:
     # four rows per call over the hidden (2048) and head (64) dims, at the
-    # widest vec_size that leaves at least two chunks.
+    # widest vec_size that leaves at least two chunks. The 2048 case is smoke:
+    # no other smoke case runs the mac loop over this many chunks.
     *[
         Case(
             "mv",
@@ -454,8 +455,9 @@ CASES: list[Case] = [
                 vec_size=vec_size,
             ),
             calls=16,
+            smoke=smoke,
         )
-        for dim_k, vec_size in ((64, 32), (2048, 64))
+        for dim_k, vec_size, smoke in ((64, 32, False), (2048, 64, True))
     ],
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
