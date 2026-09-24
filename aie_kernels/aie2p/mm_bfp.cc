@@ -8,48 +8,165 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// bfp16ebs8 stores 8 mantissa bytes plus one shared exponent byte per 8
+// elements, so one block is 9 bytes and the mmul sub-tile the shuffle makes
+// contiguous is 8 rows of one block.
+static constexpr size_t kBlockBytes = 9;
+static constexpr size_t kSubtileRows = 8;
+
+namespace {
+
+// Both directions below move a run of blocks whose destination is contiguous
+// and whose source is strided, and both visit the destination in strictly
+// increasing address order. That is what lets a block be stored as part of an
+// unaligned vector: the bytes the store writes beyond the block are rewritten
+// by the store that follows it. Only the last block of the buffer has no
+// successor to repair it, so the callers finish on copyRunsAtEnd.
+//
+// 9 bytes is neither a power of two nor vector aligned, so a byte at a time the
+// target serializes every lda.s8 against its st.s8 at the full load-to-use
+// latency: 94 cycles for one block. Merging three blocks into a single
+// 32-byte store also amortizes the read-modify-write an unaligned store costs,
+// which is what the per-block dependence was really paying for: 20 cycles for
+// three blocks.
+
+using bytes32 = aie::vector<uint8_t, 32>;
+
+constexpr aie::mask<32> blockMask(unsigned index) {
+  return aie::mask<32>::from_uint32(((1u << kBlockBytes) - 1)
+                                    << (index * kBlockBytes));
+}
+
+inline bytes32 blockAt(const uint8_t *src, unsigned index) {
+  return aie::shuffle_up(aie::load_unaligned_v<32>(src), index * kBlockBytes);
+}
+
+// 27 of the 32 bytes stored are wanted.
+inline void storeThree(const uint8_t *src, size_t srcStride, uint8_t *dst) {
+  bytes32 v = aie::load_unaligned_v<32>(src);
+  v = aie::select(v, blockAt(src + srcStride, 1), blockMask(1));
+  v = aie::select(v, blockAt(src + 2 * srcStride, 2), blockMask(2));
+  aie::store_unaligned_v(dst, v);
+}
+
+// 18 of 32.
+inline void storeTwo(const uint8_t *src, size_t srcStride, uint8_t *dst) {
+  bytes32 v = aie::load_unaligned_v<32>(src);
+  v = aie::select(v, blockAt(src + srcStride, 1), blockMask(1));
+  aie::store_unaligned_v(dst, v);
+}
+
+// 9 of 16.
+inline void storeOne(const uint8_t *src, uint8_t *dst) {
+  aie::store_unaligned_v(dst, aie::load_unaligned_v<16>(src));
+}
+
+inline void storeOneExact(const uint8_t *src, uint8_t *dst) {
+  for (size_t j = 0; j < kBlockBytes; ++j)
+    dst[j] = src[j];
+}
+
+// n / 3 for the block counts in play. Spelled as a division the target wants
+// the high half of a 32-bit product, which is a __muldi3 call in the middle of
+// the loop's trip count; these widths fit in 16 bits, so the reciprocal
+// multiply fits in a native 32-bit product.
+inline size_t divideByThree(size_t n) { return (n * 0xAAABu) >> 17; }
+
+// `groups` merged triples followed by `tail` (0, 1 or 2) leftover blocks:
+// `3 * groups + tail` blocks `srcStride` apart into that many contiguous blocks
+// at `dst`.
+inline void copyRun(const uint8_t *__restrict src, size_t srcStride,
+                    uint8_t *__restrict dst, size_t groups, size_t tail) {
+  for (size_t g = 0; g < groups; ++g) {
+    storeThree(src, srcStride, dst);
+    src += 3 * srcStride;
+    dst += 3 * kBlockBytes;
+  }
+  if (tail == 2)
+    storeTwo(src, srcStride, dst);
+  else if (tail == 1)
+    storeOne(src, dst);
+}
+
+// The same run, but ending at the end of the destination buffer: `groups`
+// triples then `singles` single blocks leave exactly one block, which is copied
+// at its own width so that nothing is written past `dst`.
+inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
+                         uint8_t *__restrict dst, size_t groups,
+                         size_t singles) {
+  for (size_t g = 0; g < groups; ++g) {
+    storeThree(src, srcStride, dst);
+    src += 3 * srcStride;
+    dst += 3 * kBlockBytes;
+  }
+  for (size_t s = 0; s < singles; ++s) {
+    storeOne(src, dst);
+    src += srcStride;
+    dst += kBlockBytes;
+  }
+  storeOneExact(src, dst);
+}
+
+} // namespace
+
 // There is a CPU version of this function in the helper.h file.
 // Internal linkage lets MATMUL_ONLY and SHUFFLE_ONLY objects coexist.
-[[maybe_unused]] static void
-scalarShuffleMatrixForBfp16ebs8(size_t tileWidth, size_t tileHeight,
-                                uint8_t *inBfpMatrix, uint8_t *outBfpMatrix,
-                                bool unshuffle = false) {
+//
+// The blocked side is written straight through, a sub-tile at a time, while the
+// plain side is gathered one column of blocks at a time.
+[[maybe_unused]] static void shuffleBfp16ebs8(size_t blocksPerRow,
+                                              size_t tileHeight,
+                                              const uint8_t *__restrict in,
+                                              uint8_t *__restrict out) {
+  const size_t rowBytes = blocksPerRow * kBlockBytes;
+  const size_t lastX = rowBytes - kBlockBytes;
+  constexpr size_t subtileBytes = kSubtileRows * kBlockBytes;
 
-  // bfp16ebs8 stores 8 mantissa bytes plus one shared exponent byte per 8
-  // elements, so a row is 9/8 bytes wide. Spelling that as *1.125 round-trips
-  // the size_t through double, which on aie2p is three soft-float calls
-  // (__floatunsidf, __muldf3, __fixunsdfsi) sitting in the address math.
-  tileWidth = tileWidth * 9 / 8;
-
-  constexpr size_t subtileWidth = 9;
-  constexpr size_t subtileHeight = 8;
-
-  size_t tileCountingIndex = 0;
-  for (size_t subtileStartY = 0; subtileStartY < tileHeight;
-       subtileStartY += subtileHeight) {
-    for (size_t subtileStartX = 0; subtileStartX < tileWidth;
-         subtileStartX += subtileWidth) {
-
-      for (size_t i = 0; i < subtileHeight; ++i) {
-        const size_t rowStart = (subtileStartY + i) * tileWidth + subtileStartX;
-        for (size_t j = 0; j < subtileWidth; ++j) {
-          const size_t inputIndex = rowStart + j;
-
-          // (idx / tileWidth) * tileWidth + idx % tileWidth is idx, so the
-          // shuffled side is simply walked in order; writing it out that way
-          // keeps a divide and a modulo by a runtime width out of the
-          // innermost loop.
-          const size_t outputIndex = tileCountingIndex++;
-
-          if (!unshuffle) {
-            outBfpMatrix[outputIndex] = inBfpMatrix[inputIndex];
-          } else {
-            outBfpMatrix[inputIndex] = inBfpMatrix[outputIndex];
-          }
-        }
-      }
+  uint8_t *dst = out;
+  for (size_t sy = 0; sy < tileHeight; sy += kSubtileRows) {
+    const uint8_t *rowBase = in + sy * rowBytes;
+    // Stop one sub-tile short of the end; the peel below finishes it.
+    const size_t xEnd = sy + kSubtileRows < tileHeight ? rowBytes : lastX;
+    for (size_t sx = 0; sx < xEnd; sx += kBlockBytes) {
+      // A sub-tile is 8 blocks: two triples and a pair.
+      copyRun(rowBase + sx, rowBytes, dst, 2, 2);
+      dst += subtileBytes;
     }
   }
+  copyRunAtEnd(in + (tileHeight - kSubtileRows) * rowBytes + lastX, rowBytes,
+               dst, 2, 1);
+}
+
+// The inverse. Here the plain side is the one written, so its rows move outside
+// the sub-tile loop -- a row is contiguous and the sub-tiles feeding it are
+// what becomes strided -- and the rows are still visited in order.
+[[maybe_unused]] static void unshuffleBfp16ebs8(size_t blocksPerRow,
+                                                size_t tileHeight,
+                                                const uint8_t *__restrict in,
+                                                uint8_t *__restrict out) {
+  constexpr size_t subtileBytes = kSubtileRows * kBlockBytes;
+  const size_t rowBytes = blocksPerRow * kBlockBytes;
+
+  // A row is as long as the tile is wide, so the split into triples is the same
+  // for every row and is worth finding once.
+  const size_t groups = divideByThree(blocksPerRow);
+  const size_t tail = blocksPerRow - 3 * groups;
+  // The last row has to leave a block over for the exact copy.
+  const size_t endGroups = tail ? groups : groups - 1;
+  const size_t endSingles = blocksPerRow - 3 * endGroups - 1;
+
+  for (size_t sy = 0; sy < tileHeight; sy += kSubtileRows) {
+    const uint8_t *blockBase = in + sy * rowBytes;
+    const size_t rows =
+        sy + kSubtileRows < tileHeight ? kSubtileRows : kSubtileRows - 1;
+    for (size_t i = 0; i < rows; ++i)
+      copyRun(blockBase + i * kBlockBytes, subtileBytes,
+              out + (sy + i) * rowBytes, groups, tail);
+  }
+  copyRunAtEnd(in + (tileHeight - kSubtileRows) * rowBytes +
+                   (kSubtileRows - 1) * kBlockBytes,
+               subtileBytes, out + (tileHeight - 1) * rowBytes, endGroups,
+               endSingles);
 }
 
 // This kernel mirrors the one found in
@@ -188,7 +305,19 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
 #ifdef SHUFFLE_ONLY
 void scalar_shuffle(uint8_t *pA, uint8_t *pC, size_t tileWidth,
                     size_t tileHeight, bool unshuffle = false) {
-  scalarShuffleMatrixForBfp16ebs8(tileWidth, tileHeight, pA, pC, unshuffle);
+  // A row is 9/8 bytes per element. Spelling that as *1.125 round-trips the
+  // size_t through double, which on aie2p is three soft-float calls
+  // (__floatunsidf, __muldf3, __fixunsdfsi) sitting in the address math;
+  // counting blocks instead keeps it to a shift.
+  const size_t blocksPerRow = tileWidth / kSubtileRows;
+
+  // The direction is a runtime flag, but left in the innermost loop it costs
+  // two sel.nez and indexed addressing on every byte. Specialized, each side
+  // walks its own pointers.
+  if (!unshuffle)
+    shuffleBfp16ebs8(blocksPerRow, tileHeight, pA, pC);
+  else
+    unshuffleBfp16ebs8(blocksPerRow, tileHeight, pA, pC);
 }
 #endif
 }
