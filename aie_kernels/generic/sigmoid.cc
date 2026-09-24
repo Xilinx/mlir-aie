@@ -20,6 +20,13 @@ using namespace aie;
 // tanh(x/2) on the two 16-lane halves both tanh paths work in. Passing the
 // multiply's accumulator straight in keeps x/2 in f32 on AIE2P; AIE2's LUT
 // narrows it, which is the accuracy difference between the two architectures.
+//
+// 0.5 * (1 + t) is written as the single mac 0.5 + t * 0.5 against an
+// accumulator preloaded with 0.5. Spelling it as an add followed by a
+// multiply gives the target a five-step chain -- widen t, add, narrow,
+// multiply, narrow -- that the loop cannot hide, and it is the whole of the
+// II. Scaling by 0.5 is exact, so the value reaching the one store rounding
+// is unchanged.
 void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
                               bfloat16 *restrict output_vector,
                               const int32_t vector_size) {
@@ -30,9 +37,10 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
 
   aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
-  aie::vector<bfloat16, 32> register_1 = aie::broadcast<bfloat16, 32>(1.0f);
   aie::vector<bfloat16, 32> register_0_5_wide =
       aie::broadcast<bfloat16, 32>(0.5f);
+  aie::accum<accfloat, 32> half;
+  half.from_vector(register_0_5_wide);
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < num_elems; i += 32) {
     auto input = *it_in++;
@@ -41,11 +49,8 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
     auto tanh_hi = tanh_bf16_v16(aie::mul(input.extract<16>(1), register_0_5));
     aie::vector<bfloat16, 32> tanh_half_x = aie::concat(tanh_lo, tanh_hi);
 
-    auto one_plus = aie::add(tanh_half_x, register_1);
-    aie::vector<bfloat16, 32> sigmoid_approx =
-        aie::mul(one_plus, register_0_5_wide);
-
-    *it_out++ = sigmoid_approx;
+    *it_out++ =
+        aie::mac(half, tanh_half_x, register_0_5_wide).to_vector<bfloat16>();
   }
 
   event1();
