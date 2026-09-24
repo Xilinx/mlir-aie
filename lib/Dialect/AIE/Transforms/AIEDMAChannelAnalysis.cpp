@@ -26,9 +26,13 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   for (auto program : device.getOps<DmaBody>()) {
     for (Block &block : program.getDmaBody()) {
       for (auto start : block.getOps<DMAStartOp>()) {
+        // A start naming a route endpoint has no index yet; the endpoint is
+        // what allocation assigns.
+        if (!start.getChannelIndex())
+          continue;
         usedChannels.try_emplace(std::make_tuple(getTileKey(program.getTile()),
                                                  start.getChannelDir(),
-                                                 start.getChannelIndex()),
+                                                 *start.getChannelIndex()),
                                  start.getOperation());
       }
     }
@@ -130,13 +134,18 @@ int DMAChannelAnalysis::getDMAChannelIndex(
     Operation *owner) {
   int limit = getDMAChannelLimit(tile, dir, requiresAdjacentTileAccessChannels);
   for (int i = 0; i < limit; i++) {
-    if (streamedChannels.contains({getTileKey(tile->getResult(0)), dir, i}))
-      continue;
-    if (reservePinnedChannel(tile, dir, i, owner) >= 0) {
+    if (isChannelFree(tile, dir, i) &&
+        reservePinnedChannel(tile, dir, i, owner) >= 0) {
       return i;
     }
   }
   return -1;
+}
+
+bool DMAChannelAnalysis::isChannelFree(TileLike tile, DMAChannelDir dir,
+                                       int channel) {
+  auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
+  return !usedChannels.contains(key) && !streamedChannels.contains(key);
 }
 
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,

@@ -63,6 +63,7 @@ from ..ir import (
     DenseElementsAttr,
     DenseI32ArrayAttr,
     DictAttr,
+    FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
     IntegerAttr,
@@ -930,6 +931,22 @@ def another_bd(dma_op):
     raise Exception("couldn't find empty region to add to.")
 
 
+def _dma_channel_kwargs(channel_index) -> dict:
+    """Spell a DMA program's channel as either operand ``aie.dma_start`` takes.
+
+    An int (or IntegerAttr) is a hardware index. Anything else names an
+    ``aie.route_endpoint`` -- by symbol name or by the op itself -- whose channel
+    ``--aie-objectfifo-allocate`` assigns.
+    """
+    if isinstance(channel_index, IntegerAttr):
+        channel_index = channel_index.value
+    if isinstance(channel_index, int):
+        return dict(channel_index=channel_index)
+    if isinstance(channel_index, (str, FlatSymbolRefAttr)):
+        return dict(endpoint=channel_index)
+    return dict(endpoint=channel_index.sym_name.value)
+
+
 @_cext.register_operation(_Dialect, replace=True)
 class DMAStartOp(DMAStartOp):
     def __init__(
@@ -945,6 +962,9 @@ class DMAStartOp(DMAStartOp):
         loc=None,
         ip=None,
     ):
+        """``channel_index`` is a hardware channel index, or the
+        ``aie.route_endpoint`` (op or symbol name) whose channel allocation
+        assigns."""
         if isinstance(dest, Successor):
             dest = dest.block
         if isinstance(chain, Successor):
@@ -955,9 +975,9 @@ class DMAStartOp(DMAStartOp):
             chain = InsertionPoint.current.block
         super().__init__(
             channel_dir,
-            channel_index,
             dest,
             chain,
+            **_dma_channel_kwargs(channel_index),
             repeat_count=repeat_count,
             pad_value=pad_value,
             out_of_order=out_of_order,

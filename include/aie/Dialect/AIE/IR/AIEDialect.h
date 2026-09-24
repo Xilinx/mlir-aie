@@ -115,6 +115,7 @@ struct IsFlowEndPoint : mlir::OpTrait::TraitBase<ConcreteType, IsFlowEndPoint> {
 };
 
 class TileOp;
+class RouteEndpointOp;
 
 uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
                                  uint32_t burstLength);
@@ -286,6 +287,15 @@ parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
+
+/// A dma_start's channel: an index, or the route endpoint naming it.
+mlir::ParseResult parseDMAStartChannel(mlir::OpAsmParser &parser,
+                                       mlir::IntegerAttr &channelIndex,
+                                       mlir::FlatSymbolRefAttr &endpoint);
+
+void printDMAStartChannel(mlir::OpAsmPrinter &printer, mlir::Operation *op,
+                          mlir::IntegerAttr channelIndex,
+                          mlir::FlatSymbolRefAttr endpoint);
 
 mlir::ParseResult
 parseObjectFifoAcquireObjects(mlir::OpAsmParser &parser,

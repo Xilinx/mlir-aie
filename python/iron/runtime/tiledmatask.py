@@ -37,9 +37,20 @@ from ...dialects.aie import (  # pyright: ignore[reportAttributeAccessIssue]
     next_bd,
 )
 from ...dialects.aie import bds as bd_blocks
-from ...dialects.aiex import dma_configure_task, tile_dma_single_bd_task
+from ...dialects.aiex import (
+    dma_configure_task,
+    dma_configure_task_for,
+    tile_dma_single_bd_task,
+)
 from ..buffer import Buffer
-from ..dataflow.tile_dma import Acquire, Bd, Release, _emit_bd
+from ..dataflow.flow import FlowEndpoint
+from ..dataflow.tile_dma import (
+    Acquire,
+    Bd,
+    Release,
+    _emit_bd,
+    check_flow_endpoint,
+)
 from ..device import Tile
 from ._context import active_sequence
 from .dmataskhandle import Task
@@ -143,7 +154,7 @@ def tile_dma_task(
 def tile_dma_chain(
     tile: Tile,
     direction: DMAChannelDir,
-    channel: int,
+    channel: int | FlowEndpoint,
     bds: list[Bd],
     repeat_count=0,
     wait: bool = False,
@@ -165,7 +176,9 @@ def tile_dma_chain(
         tile: the tile whose DMA channel runs this chain. Every ``Bd``'s buffer
             must live on it.
         direction: ``DMAChannelDir.S2MM`` or ``DMAChannelDir.MM2S``.
-        channel: hardware channel index.
+        channel: hardware channel index, or the
+            [`FlowEndpoint`][iron.FlowEndpoint] whose compiler-assigned
+            channel the chain runs on.
         bds: the descriptors, in chain order. A ``Bd`` may not set ``next``
             (the chain is linear) or ``iteration``.
         repeat_count (int | Value): extra runs of the whole chain (0 = once).
@@ -202,9 +215,13 @@ def tile_dma_chain(
         rc_kwargs = dict(repeat_count=repeat_count)
     else:
         rc_kwargs = dict(repeat_count_val=_as_bd_i32(repeat_count))
-    task = dma_configure_task(
-        tile.op, direction, channel, issue_token=wait, **rc_kwargs
-    )
+    check_flow_endpoint(tile, direction, channel)
+    if isinstance(channel, FlowEndpoint):
+        task = dma_configure_task_for(channel.symbol, issue_token=wait, **rc_kwargs)
+    else:
+        task = dma_configure_task(
+            tile.op, direction, channel, issue_token=wait, **rc_kwargs
+        )
     with bd_blocks(task) as block:
         for i, bd in enumerate(bds):
             with block[i]:

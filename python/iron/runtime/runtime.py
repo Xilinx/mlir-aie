@@ -41,7 +41,7 @@ from ...helpers.util import (
 )
 from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
-from ..dataflow import ObjectFifoHandle
+from ..dataflow import Flow, ObjectFifoHandle
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence, active_sequence_scope
@@ -309,8 +309,11 @@ class Runtime(Resolvable):
     def add_flow(self, flow) -> None:
         """Register an explicit flow so the Program resolves it alongside the ObjectFifos.
 
-        Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow].
+        Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow]. A
+        Flow's compiler-assigned endpoints are named after its position here.
         """
+        if isinstance(flow, Flow):
+            flow._bind_name(len(self._flows))
         self._flows.append(flow)
 
     def add_lock(self, lock) -> None:

@@ -1349,13 +1349,38 @@ def AIE_DMAConfigureTaskOp
     }]>];
 }
 
+// The tile is only known once the symbol resolves, so the buffers the body
+// names are checked on the dma_configure_task it becomes.
 def AIE_DMAConfigureTaskForOp
     : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">,
                                          DeclareOpInterfaceMethods<
-                                             SymbolUserOpInterface>]>,
+                                             SymbolUserOpInterface>,
+                                         SkipAccessibilityCheckTrait]>,
       Results<(outs Index:$result)> {
   let summary = "As dma_configure_task, but specify tile, direction and "
-                "channel by reference to a Shim DMA allocation op";
+                "channel by reference to a Shim DMA allocation op or a route "
+                "endpoint";
+  let description = [{
+    `alloc` names either an `aie.shim_dma_allocation` or an
+    `aie.route_endpoint` with a `DMA` bundle. An endpoint may be on any tile;
+    `--aie-objectfifo-allocate` picks its channel and rewrites this op to an
+    `aiex.dma_configure_task` on that tile and channel. The direction is the
+    one the endpoint's route gives it. A shim endpoint with a `fifoName` is
+    instead renamed to the `aie.shim_dma_allocation` allocation records for it.
+
+    Example:
+    ```
+      aie.route_endpoint @b_in(%memtile) DMA
+      aie.route from @b_shim to [@b_in]
+      aie.runtime_sequence(...) {
+        %t = aiex.dma_configure_task_for @b_in {
+          aie.dma_bd(%buf : memref<1024xi32>, 0, 1024)
+          aie.end
+        }
+        aiex.dma_start_task(%t)
+      }
+    ```
+  }];
 
   let arguments = (ins SymbolRefAttr:$alloc,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,

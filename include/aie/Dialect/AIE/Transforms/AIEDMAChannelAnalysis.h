@@ -47,6 +47,10 @@ public:
                          bool requiresAdjacentTileAccessChannels,
                          mlir::Operation *owner = nullptr);
 
+  /// Whether first-free assignment could hand out `channel`: nothing reserves
+  /// it and no explicit flow routes it.
+  bool isChannelFree(TileLike tile, DMAChannelDir dir, int channel);
+
   /// Claim `channel` for (`tile`, `dir`) so first-free assignment cannot take
   /// it. Returns the channel, or -1 when it is out of range or already
   /// claimed; the caller reports, since it knows which endpoint asked.

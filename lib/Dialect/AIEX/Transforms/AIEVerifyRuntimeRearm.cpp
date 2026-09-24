@@ -72,7 +72,7 @@ struct AIEVerifyRuntimeRearmPass
         return;
       ChannelKey key{tile.getCol(), tile.getRow(),
                      static_cast<int>(start.getChannelDir()),
-                     static_cast<int>(start.getChannelIndex())};
+                     static_cast<int>(start.getChannel())};
       SmallVector<LockOp> &locks = m[key];
       // Walk the BD chain (dest, then next_bd successors); the last next_bd
       // loops back, so stop on a revisit.

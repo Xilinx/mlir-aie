@@ -106,6 +106,7 @@ public:
     llvm::SmallVector<CascadeFlowOp> cascadeFlows;
     llvm::SmallVector<FlowOp> flows;
     llvm::SmallVector<PacketFlowOp> pktFlows;
+    llvm::SmallVector<RouteOp> routes;
   };
 
   // Collect all placement-relevant operations from the device.
@@ -183,8 +184,8 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
 // Greedy, single-pass placer that maps each `aie.logical_tile` (LTO) to a
 // physical (col, row). Four phases:
 //
-//   1. Collect LogicalTileOp / ObjectFifo* / Cascade* / Flow* / PacketFlow*
-//      from the device.
+//   1. Collect LogicalTileOp / ObjectFifo* / Cascade* / Flow* / PacketFlow* /
+//      Route from the device.
 //   2. Build per-LTO constraints: buffer/cascade/compute-peer adjacencies,
 //      channel requirements, and needNeighborIn/Out (the minimum number of
 //      compute peers per LTO that MUST land on a shared-L1 neighbor to fit
@@ -389,6 +390,7 @@ private:
       llvm::ArrayRef<LogicalTileOp> logicalTiles,
       llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
+      llvm::ArrayRef<RouteOp> routes,
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
 
@@ -403,6 +405,7 @@ private:
   FlowMembership
   buildFlowMembership(llvm::ArrayRef<FlowOp> flows,
                       llvm::ArrayRef<PacketFlowOp> pktFlows,
+                      llvm::ArrayRef<RouteOp> routes,
                       llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
   // Pick the column that minimizes total routing cost across the LTO's
@@ -451,6 +454,7 @@ private:
 
   void addChannelRequirementsFromFlows(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
+      llvm::ArrayRef<RouteOp> routes,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
 };

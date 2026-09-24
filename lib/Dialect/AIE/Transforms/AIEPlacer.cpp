@@ -75,7 +75,8 @@ Placer::CollectedOps Placer::collectOperations(DeviceOp device) {
             [&](auto link) { ops.objectFifoLinks.push_back(link); })
         .Case<CascadeFlowOp>([&](auto cf) { ops.cascadeFlows.push_back(cf); })
         .Case<FlowOp>([&](auto f) { ops.flows.push_back(f); })
-        .Case<PacketFlowOp>([&](auto pf) { ops.pktFlows.push_back(pf); });
+        .Case<PacketFlowOp>([&](auto pf) { ops.pktFlows.push_back(pf); })
+        .Case<RouteOp>([&](auto route) { ops.routes.push_back(route); });
   });
   return ops;
 }
@@ -169,6 +170,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto &cascadeFlows = collected.cascadeFlows;
   auto &flows = collected.flows;
   auto &pktFlows = collected.pktFlows;
+  auto &routes = collected.routes;
 
   // Phase 2a: Build placement constraints
   auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
@@ -178,7 +180,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // and cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
-  addChannelRequirementsFromFlows(flows, pktFlows, channelRequirements);
+  addChannelRequirementsFromFlows(flows, pktFlows, routes, channelRequirements);
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
@@ -391,13 +393,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // Phase 4: place every still-unplaced non-core (mem/shim) LTO at the
   // centroid column of its placed core peers.
   return placeNonCoreLogicalTiles(logicalTiles, objectFifos, flows, pktFlows,
-                                  channelRequirements);
+                                  routes, channelRequirements);
 }
 
 LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
     ArrayRef<LogicalTileOp> logicalTiles,
     ArrayRef<ObjectFifoCreateOp> objectFifos, ArrayRef<FlowOp> flows,
-    ArrayRef<PacketFlowOp> pktFlows,
+    ArrayRef<PacketFlowOp> pktFlows, ArrayRef<RouteOp> routes,
     const llvm::DenseMap<Operation *, std::pair<int, int>>
         &channelRequirements) {
   // Sort the unplaced non-core LTOs by descending channel demand so the
@@ -422,7 +424,8 @@ LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
     return demand(a) > demand(b);
   });
 
-  FlowMembership flowIndex = buildFlowMembership(flows, pktFlows, objectFifos);
+  FlowMembership flowIndex =
+      buildFlowMembership(flows, pktFlows, routes, objectFifos);
 
   for (auto logicalTile : nonCoreOrdered) {
     if (failed(placeNonCoreTileByCentroid(logicalTile, flowIndex,
@@ -1038,21 +1041,23 @@ Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
 // of the number of `aie.flow` ops it lowers to, and a merge (multiple sources
 // landing on one destination channel) consumes one S2MM channel on the
 // consumer. Dedup by (tile, channel) so the producer-of-broadcast and
-// consumer-of-merge sides are each counted once.
+// consumer-of-merge sides are each counted once. An `aie.route` end whose
+// channel allocation has yet to pick holds a channel of its own.
 void SequentialPlacer::addChannelRequirementsFromFlows(
     ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
+    ArrayRef<RouteOp> routes,
     llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
 
   llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
 
-  auto incIfDMA = [&](Operation *tileOp, WireBundle bundle, int channel,
-                      bool isOutput) {
+  auto incIfDMA = [&](Operation *tileOp, WireBundle bundle,
+                      std::optional<int> channel, bool isOutput) {
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
     if (bundle != WireBundle::DMA)
       return;
     auto &seen = isOutput ? seenSrc : seenDst;
-    if (!seen.insert({tileOp, channel}).second)
+    if (channel && !seen.insert({tileOp, *channel}).second)
       return;
     if (isOutput)
       channelRequirements[tileOp].second++;
@@ -1078,13 +1083,27 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
       }
     });
   }
+
+  // The verifier lets an endpoint appear in only one route.
+  for (auto route : routes) {
+    auto count = [&](FlatSymbolRefAttr name, bool isOutput) {
+      auto endpoint =
+          SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(route, name);
+      if (endpoint)
+        incIfDMA(endpoint.getTile().getDefiningOp(), endpoint.getRouteBundle(),
+                 endpoint.getRouteChannel(), isOutput);
+    };
+    count(route.getSourceAttr(), /*isOutput=*/true);
+    for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      count(dest, /*isOutput=*/false);
+  }
 }
 
 SequentialPlacer::FlowMembership SequentialPlacer::buildFlowMembership(
     ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
-    ArrayRef<ObjectFifoCreateOp> objectFifos) {
+    ArrayRef<RouteOp> routes, ArrayRef<ObjectFifoCreateOp> objectFifos) {
   // packet_flow connectivity is sources x destinations -- destinations
-  // are never each other's peers. Same asymmetry for objectfifo
+  // are never each other's peers. Same asymmetry for route and objectfifo
   // producer/consumers.
   FlowMembership idx;
   auto isLto = [](Value v) {
@@ -1113,6 +1132,23 @@ SequentialPlacer::FlowMembership SequentialPlacer::buildFlowMembership(
       addEntry(s, dsts);
     for (Value d : dsts)
       addEntry(d, srcs);
+  }
+  for (auto route : routes) {
+    auto tileOf = [&](FlatSymbolRefAttr name) -> Value {
+      auto endpoint =
+          SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(route, name);
+      return endpoint ? endpoint.getTile() : Value();
+    };
+    Value src = tileOf(route.getSourceAttr());
+    SmallVector<Value> dsts;
+    for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      if (Value tile = tileOf(dest))
+        dsts.push_back(tile);
+    if (!src)
+      continue;
+    addEntry(src, dsts);
+    for (Value d : dsts)
+      addEntry(d, {src});
   }
   for (auto of : objectFifos) {
     Value prod = of.getProducerTile();

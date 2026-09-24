@@ -1347,15 +1347,24 @@ LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
-      dev, getAlloc().getRootReference());
-  if (!allocOp)
+  Operation *target =
+      symbolTable.lookupSymbolIn(dev, getAlloc().getRootReference());
+  Value tileValue;
+  if (auto allocOp = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(target)) {
+    tileValue = allocOp.getTile();
+  } else if (auto endpoint = dyn_cast_or_null<AIE::RouteEndpointOp>(target)) {
+    if (endpoint.getBundle() != AIE::WireBundle::DMA)
+      return emitOpError() << "'" << getAlloc() << "' names a "
+                           << stringifyWireBundle(endpoint.getBundle())
+                           << " port, not a DMA channel";
+    tileValue = endpoint.getTile();
+  }
+  if (!tileValue)
     return success(); // symbol resolved during a later pass; defer the check
   // Do not call allocOp.getTileOp(): it hard-asserts when the allocation is
   // still bound to an unplaced (logical) tile. Resolve the concrete tile
   // defensively and defer the check until placement substitutes a real tile.
-  auto tile =
-      llvm::dyn_cast_or_null<AIE::TileOp>(allocOp.getTile().getDefiningOp());
+  auto tile = llvm::dyn_cast_or_null<AIE::TileOp>(tileValue.getDefiningOp());
   if (!tile)
     return success();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());

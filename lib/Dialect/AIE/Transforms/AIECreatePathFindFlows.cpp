@@ -647,7 +647,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         if (largest == 0)
           continue;
         auto &sizes = startOp.isSend() ? mm2sBdBytes : s2mmBdBytes;
-        uint64_t &slot = sizes[{tileId, startOp.getChannelIndex()}];
+        uint64_t &slot = sizes[{tileId, startOp.getChannel()}];
         slot = std::max(slot, largest);
       }
   };
