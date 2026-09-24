@@ -88,7 +88,11 @@ void eltwise_vadd_size(T_in *a, T_in *b, T_out *c, int size) {
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
-  const int F = ADD_ELEMS / vec_factor;
+  // With the size known only at run time, a signed F makes F % ADD_UNROLL a
+  // __modsi3 call, and the call spills every callee-saved register; unsigned
+  // it is a mask.  The leftovers sit behind one branch so a size that is a
+  // multiple of the unrolled step pays for a single test, not two.
+  const int F = (uint32_t)ADD_ELEMS / vec_factor;
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F / ADD_UNROLL; i++) { // see eltwise_vadd
     auto A0 = *pA1++;
@@ -104,16 +108,18 @@ void eltwise_vadd_size(T_in *a, T_in *b, T_out *c, int size) {
     *pC1++ = aie::add(A2, B2);
     *pC1++ = aie::add(A3, B3);
   }
-  for (int i = 0; i < F % ADD_UNROLL; i++) {
-    *pC1++ = aie::add(*pA1++, *pB1++);
-  }
-  // Scalar tail for a size that is not a whole number of vectors.  Index off
-  // the base pointers rather than the iterators: the vector body consumed
-  // exactly F vectors, so the leftover elements start at F * vec_factor.
-  const int done = F * vec_factor;
-  const int tail = ADD_ELEMS - done;
-  for (int i = 0; i < tail; i++) {
-    c[done + i] = a[done + i] + b[done + i];
+  if ((uint32_t)ADD_ELEMS % (vec_factor * ADD_UNROLL)) {
+    for (int i = 0; i < F % ADD_UNROLL; i++) {
+      *pC1++ = aie::add(*pA1++, *pB1++);
+    }
+    // Scalar tail for a size that is not a whole number of vectors.  Index off
+    // the base pointers rather than the iterators: the vector body consumed
+    // exactly F vectors, so the leftover elements start at F * vec_factor.
+    const int done = F * vec_factor;
+    const int tail = ADD_ELEMS - done;
+    for (int i = 0; i < tail; i++) {
+      c[done + i] = a[done + i] + b[done + i];
+    }
   }
   event1();
 }

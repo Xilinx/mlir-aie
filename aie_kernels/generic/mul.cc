@@ -85,7 +85,7 @@ void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
-  const int F = MUL_ELEMS / vec_factor;
+  const int F = (uint32_t)MUL_ELEMS / vec_factor; // see eltwise_vadd_size
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F / MUL_UNROLL; i++) { // see eltwise_vmul
     auto A0 = *pA1++;
@@ -101,17 +101,19 @@ void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
     *pC1++ = MUL_ONE(A2, B2);
     *pC1++ = MUL_ONE(A3, B3);
   }
-  for (int i = 0; i < F % MUL_UNROLL; i++) {
-    auto A0 = *pA1++;
-    auto B0 = *pB1++;
-    *pC1++ = MUL_ONE(A0, B0);
-  }
-  // Scalar tail for a size that is not a whole number of vectors; the vector
-  // body consumed exactly F vectors, so the leftovers start at F*vec_factor.
-  const int done = F * vec_factor;
-  const int tail = MUL_ELEMS - done;
-  for (int i = 0; i < tail; i++) {
-    c[done + i] = a[done + i] * b[done + i];
+  if ((uint32_t)MUL_ELEMS % (vec_factor * MUL_UNROLL)) {
+    for (int i = 0; i < F % MUL_UNROLL; i++) {
+      auto A0 = *pA1++;
+      auto B0 = *pB1++;
+      *pC1++ = MUL_ONE(A0, B0);
+    }
+    // Scalar tail for a size that is not a whole number of vectors; the vector
+    // body consumed exactly F vectors, so the leftovers start at F*vec_factor.
+    const int done = F * vec_factor;
+    const int tail = MUL_ELEMS - done;
+    for (int i = 0; i < tail; i++) {
+      c[done + i] = a[done + i] * b[done + i];
+    }
   }
   event1();
 }
