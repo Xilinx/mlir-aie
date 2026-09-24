@@ -8,6 +8,7 @@
 #ifndef AIE_KERNELS_AIE2P_FLASH_ATTN_PREFILL_H
 #define AIE_KERNELS_AIE2P_FLASH_ATTN_PREFILL_H
 
+#include "../aie_kernel_utils.h"
 #include "../generic/zero.cc" // zero_vectorized
 
 #include <aie_api/aie.hpp>
@@ -42,19 +43,34 @@ constexpr bf16 kNegInf = bf16(-0x1.FEp127f);
 // Steps shared by both geometries
 //===----------------------------------------------------------------------===//
 
-/// f = exp(s - rowmax), in place over the whole S tile. The outer trip count is
-/// 128/LK, so the same S tile is covered either way, chunked by LK.
+/// f = exp(s - rowmax), in place over the whole S tile.
+///
+/// A row of S is only LK wide, so taking one row per iteration leaves the
+/// pipeliner an 8- or 16-lane body whose II is set by the exp2 latency rather
+/// than by the work. Stepping a full 64-lane register instead spans 64/LK
+/// query rows at once; the row maxima then have to arrive as a broadcast
+/// pattern, which is built once per group and reused across the whole S tile.
 template <int LQ, int LK>
 void apply_softmax(bf16 *__restrict pS, bf16 *__restrict new_m_local) {
-  for (int b = 0; b < 128 / LK; b++) {
-    for (int q = 0; q < LQ; q++) {
-      aie::vector<bf16, LK> s_vec = aie::load_v<LK>(pS);
+  constexpr int kRows = 64 / LK; // query rows covered by one 64-lane vector
+  constexpr int kGroups = LQ / kRows;
+
+  for (int g = 0; g < kGroups; g++) {
+    aie::vector<bf16, 64> m_bcast;
+    AIE_LOOP_UNROLL_FULL
+    for (int r = 0; r < kRows; r++)
+      m_bcast.insert(r, aie::broadcast<bf16, LK>(new_m_local[g * kRows + r]));
+
+    // Group g owns lanes [g*64, g*64+64) of every LQ*LK chunk of S.
+    bf16 *__restrict pSg = pS + g * 64;
+    for (int b = 0; b < 128 / LK; b++) {
+      aie::vector<bf16, 64> s_vec = aie::load_v<64>(pSg);
       // The multiply doubles as the widening exp2 needs, so the scale is free
       // here: the bf16 product lands in a float accumulator either way.
-      aie::vector<bf16, LK> Vec = aie::sub(s_vec, *(new_m_local + q));
-      aie::accum<accfloat, LK> Vec_acc = aie::mul(Vec, exp_scale);
-      aie::store_v(pS, aie::exp2<bf16>(Vec_acc.template to_vector<float>()));
-      pS += LK;
+      aie::vector<bf16, 64> Vec = aie::sub(s_vec, m_bcast);
+      aie::accum<accfloat, 64> Vec_acc = aie::mul(Vec, exp_scale);
+      aie::store_v(pSg, aie::exp2<bf16>(Vec_acc.template to_vector<float>()));
+      pSg += kGroups * 64;
     }
   }
 }
@@ -129,21 +145,40 @@ void calculate_c(float *c, bf16 *prev_m_local, bf16 *new_m_local) {
 /// so "one value per group" is one value per query row.
 inline aie::vector<float, 64> broadcast_by_row(const float *p) {
   aie::vector<float, 64> v;
+  AIE_LOOP_UNROLL_FULL
   for (int r = 0; r < 8; r++)
     v.insert(r, aie::broadcast<float, 8>(p[r]));
   return v;
 }
 
 /// Rescale the running y accumulator by the per-row correction factor.
+///
+/// There is no fp32 multiplier on this core: a float x float product goes
+/// through __AIE_API_FP32_EMULATION__, which splits both operands into bf16
+/// limbs and issues three macs plus the conversions, and that is what set this
+/// loop's II. c is already exact in bf16 (aie::exp2<bf16> produced it), so only
+/// y needs splitting, and two of the three limb products carry no weight: the
+/// low limb is 2^-8 of the high one, so y_lo * c is the last correction that
+/// can move a bf16 result. Two macs give roughly 16 mantissa bits where a bf16
+/// output ulp is 2^-8, so the rescale stays far below the output's resolution.
 template <int LQ, int DH>
 void calculate_y(float *y, float *c) {
+  aie::vector<bf16, 64> Ones = aie::broadcast<bf16, 64>(1.0f);
   for (int i = 0; i < LQ / 8; i++) {
-    aie::vector<float, 64> CORRECT = broadcast_by_row(c + i * 8);
+    aie::accum<accfloat, 64> corr_acc;
+    corr_acc.from_vector(broadcast_by_row(c + i * 8));
+    aie::vector<bf16, 64> CORRECT = corr_acc.template to_vector<bf16>();
 
     float *pY = y + i * 8 * DH;
     for (unsigned j = 0; j < DH / 8; j += 1) {
-      aie::vector<float, 64> Y = aie::load_v<64>(pY);
-      aie::accum<accfloat, 64> ACC_Y = aie::mul(CORRECT, Y);
+      aie::accum<accfloat, 64> Y;
+      Y.from_vector(aie::load_v<64>(pY));
+      aie::vector<bf16, 64> y_hi = Y.template to_vector<bf16>();
+      // Y - y_hi in the accumulator, rounded down to bf16: the next limb.
+      aie::vector<bf16, 64> y_lo =
+          aie::msc(Y, y_hi, Ones).template to_vector<bf16>();
+      aie::accum<accfloat, 64> ACC_Y = aie::mul(y_hi, CORRECT);
+      ACC_Y = aie::mac(ACC_Y, y_lo, CORRECT);
       aie::store_v(pY, ACC_Y.template to_vector<float>());
       pY += 64;
     }
@@ -380,6 +415,12 @@ struct PrefillGeom<256> {
     aie::store_v(l, l_out.template to_vector<float>());
   }
 
+  /// The 2x2 decomposition already keeps four S tiles live, and the emulated
+  /// bf16 mmul hoists sixteen A-side broadcast registers out of each of them.
+  /// Carrying four 2048-bit accumulators on top of that overcommits the
+  /// register file, and the loop body ends up reloading them from a spill
+  /// slot every iteration. Holding one output column per row block instead
+  /// keeps two accumulators live, which fits, at twice the trip count.
   static void attn_fv(float *__restrict pY, bf16 *__restrict pS,
                       bf16 *__restrict pV) {
     aie::vector<bf16, 64> S0 = aie::load_v<64>(pS);
@@ -390,129 +431,82 @@ struct PrefillGeom<256> {
     float *__restrict pY1 = pY;
     float *__restrict pY2 = pY + FV_colB * MMUL::size_C;
 
-    for (unsigned j = 0; j < FV_colB; j += 2) {
+    for (unsigned j = 0; j < FV_colB; j += 1) {
       bf16 *__restrict pV1 = pV + j * MMUL::size_B * FV_colA;
-      bf16 *__restrict pV2 = pV + (j + 1) * MMUL::size_B * FV_colA;
 
       aie::vector<bf16, MMUL::size_B> V0 = aie::load_v<MMUL::size_B>(pV1);
       pV1 += MMUL::size_B;
-      aie::vector<bf16, MMUL::size_B> V1 = aie::load_v<MMUL::size_B>(pV2);
-      pV2 += MMUL::size_B;
+      aie::vector<bf16, MMUL::size_B> V1 = aie::load_v<MMUL::size_B>(pV1);
 
       aie::vector<float, MMUL::size_C> acc_Y00 = aie::load_v<MMUL::size_C>(pY1);
-      aie::vector<float, MMUL::size_C> acc_Y01 =
-          aie::load_v<MMUL::size_C>(pY1 + MMUL::size_C);
       aie::vector<float, MMUL::size_C> acc_Y10 = aie::load_v<MMUL::size_C>(pY2);
-      aie::vector<float, MMUL::size_C> acc_Y11 =
-          aie::load_v<MMUL::size_C>(pY2 + MMUL::size_C);
 
       MMUL Y00(acc_Y00);
-      MMUL Y01(acc_Y01);
       MMUL Y10(acc_Y10);
-      MMUL Y11(acc_Y11);
 
       Y00.mac(S0, V0);
-      Y01.mac(S0, V1);
       Y10.mac(S2, V0);
-      Y11.mac(S2, V1);
-
-      V0 = aie::load_v<MMUL::size_B>(pV1);
-      pV1 += MMUL::size_B;
-      V1 = aie::load_v<MMUL::size_B>(pV2);
-      pV2 += MMUL::size_B;
-
-      Y00.mac(S1, V0);
-      Y01.mac(S1, V1);
-      Y10.mac(S3, V0);
-      Y11.mac(S3, V1);
+      Y00.mac(S1, V1);
+      Y10.mac(S3, V1);
 
       aie::store_v(pY1, Y00.template to_vector<float>());
       pY1 += MMUL::size_C;
-      aie::store_v(pY1, Y01.template to_vector<float>());
-      pY1 += MMUL::size_C;
       aie::store_v(pY2, Y10.template to_vector<float>());
-      pY2 += MMUL::size_C;
-      aie::store_v(pY2, Y11.template to_vector<float>());
       pY2 += MMUL::size_C;
     }
   }
 
+  /// One 8-query row block of S against both key columns. Same accumulator
+  /// budget as attn_fv: two live C tiles fit alongside the hoisted broadcasts,
+  /// four do not, and the reduction loop is where a spill is most expensive
+  /// because the accumulators stay live the whole way down the head.
+  static void attn_qk_half(bf16 *__restrict pS1, const bf16 *__restrict pQ1,
+                           bf16 *__restrict pK) {
+    const bf16 *__restrict pK1 = pK;
+    const bf16 *__restrict pK2 = pK + MMUL::size_B;
+
+    aie::vector<bf16, MMUL::size_A> Q0 = aie::load_v<MMUL::size_A>(pQ1);
+    pQ1 += MMUL::size_A;
+    aie::vector<bf16, MMUL::size_B> K00 = aie::load_v<MMUL::size_B>(pK1);
+    aie::vector<bf16, MMUL::size_B> K0 = aie::transpose(K00, 8, 8);
+    pK1 += MMUL::size_B * QK_colB;
+    aie::vector<bf16, MMUL::size_B> K01 = aie::load_v<MMUL::size_B>(pK2);
+    aie::vector<bf16, MMUL::size_B> K1 = aie::transpose(K01, 8, 8);
+    pK2 += MMUL::size_B * QK_colB;
+
+    aie::vector<bf16, MMUL::size_C> acc_C00 = aie::zeros<bf16, MMUL::size_C>();
+    aie::vector<bf16, MMUL::size_C> acc_C01 = aie::zeros<bf16, MMUL::size_C>();
+
+    MMUL C00(acc_C00);
+    MMUL C01(acc_C01);
+
+    C00.mac(Q0, K0);
+    C01.mac(Q0, K1);
+
+    for (unsigned i = 1; i < QK_colA; ++i) {
+      Q0 = aie::load_v<MMUL::size_A>(pQ1);
+      pQ1 += MMUL::size_A;
+      K00 = aie::load_v<MMUL::size_B>(pK1);
+      K0 = aie::transpose(K00, 8, 8);
+      pK1 += MMUL::size_B * QK_colB;
+      K01 = aie::load_v<MMUL::size_B>(pK2);
+      K1 = aie::transpose(K01, 8, 8);
+      pK2 += MMUL::size_B * QK_colB;
+
+      C00.mac(Q0, K0);
+      C01.mac(Q0, K1);
+    }
+
+    auto mout0 = aie::interleave_zip(C00.template to_vector<bf16>(),
+                                     C01.template to_vector<bf16>(), 8);
+    aie::store_v(pS1, mout0.first);
+    aie::store_v(pS1 + MMUL::size_C, mout0.second);
+  }
+
   static void attn_qk(bf16 *__restrict pS, bf16 *__restrict pQ,
                       bf16 *__restrict pK) {
-    for (unsigned z = 0; z < QK_rowA; z += 2) {
-      bf16 *__restrict pS1 = pS + (z * QK_colB + 0) * MMUL::size_C;
-      bf16 *__restrict pS2 = pS + ((z + 1) * QK_colB + 0) * MMUL::size_C;
-
-      for (unsigned j = 0; j < QK_colB; j += 2) {
-        const bf16 *__restrict pQ1 = pQ + (z * QK_colA + 0) * MMUL::size_A;
-        const bf16 *__restrict pQ2 =
-            pQ + ((z + 1) * QK_colA + 0) * MMUL::size_A;
-        const bf16 *__restrict pK1 = pK + (0 * QK_colB + j) * MMUL::size_B;
-        const bf16 *__restrict pK2 =
-            pK + (0 * QK_colB + (j + 1)) * MMUL::size_B;
-
-        aie::vector<bf16, MMUL::size_A> Q0 = aie::load_v<MMUL::size_A>(pQ1);
-        pQ1 += MMUL::size_A;
-        aie::vector<bf16, MMUL::size_A> Q1 = aie::load_v<MMUL::size_A>(pQ2);
-        pQ2 += MMUL::size_A;
-        aie::vector<bf16, MMUL::size_B> K00 = aie::load_v<MMUL::size_B>(pK1);
-        aie::vector<bf16, MMUL::size_B> K0 = aie::transpose(K00, 8, 8);
-        pK1 += MMUL::size_B * QK_colB;
-        aie::vector<bf16, MMUL::size_B> K01 = aie::load_v<MMUL::size_B>(pK2);
-        aie::vector<bf16, MMUL::size_B> K1 = aie::transpose(K01, 8, 8);
-        pK2 += MMUL::size_B * QK_colB;
-
-        aie::vector<bf16, MMUL::size_C> acc_C00 =
-            aie::zeros<bf16, MMUL::size_C>();
-        aie::vector<bf16, MMUL::size_C> acc_C01 =
-            aie::zeros<bf16, MMUL::size_C>();
-        aie::vector<bf16, MMUL::size_C> acc_C10 =
-            aie::zeros<bf16, MMUL::size_C>();
-        aie::vector<bf16, MMUL::size_C> acc_C11 =
-            aie::zeros<bf16, MMUL::size_C>();
-
-        MMUL C00(acc_C00);
-        MMUL C01(acc_C01);
-        MMUL C10(acc_C10);
-        MMUL C11(acc_C11);
-
-        C00.mac(Q0, K0);
-        C01.mac(Q0, K1);
-        C10.mac(Q1, K0);
-        C11.mac(Q1, K1);
-
-        for (unsigned i = 1; i < QK_colA; ++i) {
-          Q0 = aie::load_v<MMUL::size_A>(pQ1);
-          pQ1 += MMUL::size_A;
-          Q1 = aie::load_v<MMUL::size_A>(pQ2);
-          pQ2 += MMUL::size_A;
-          K00 = aie::load_v<MMUL::size_B>(pK1);
-          K0 = aie::transpose(K00, 8, 8);
-          pK1 += MMUL::size_B * QK_colB;
-          K01 = aie::load_v<MMUL::size_B>(pK2);
-          K1 = aie::transpose(K01, 8, 8);
-          pK2 += MMUL::size_B * QK_colB;
-
-          C00.mac(Q0, K0);
-          C01.mac(Q0, K1);
-          C10.mac(Q1, K0);
-          C11.mac(Q1, K1);
-        }
-        auto mout0 = aie::interleave_zip(C00.template to_vector<bf16>(),
-                                         C01.template to_vector<bf16>(), 8);
-        auto mout1 = aie::interleave_zip(C10.template to_vector<bf16>(),
-                                         C11.template to_vector<bf16>(), 8);
-
-        aie::store_v(pS1, mout0.first);
-        pS1 += MMUL::size_C;
-        aie::store_v(pS1, mout0.second);
-        pS1 += MMUL::size_C;
-        aie::store_v(pS2, mout1.first);
-        pS2 += MMUL::size_C;
-        aie::store_v(pS2, mout1.second);
-        pS2 += MMUL::size_C;
-      }
-    }
+    attn_qk_half(pS, pQ, pK);
+    attn_qk_half(pS + QK_colB * MMUL::size_C, pQ + QK_colA * MMUL::size_A, pK);
   }
 };
 
