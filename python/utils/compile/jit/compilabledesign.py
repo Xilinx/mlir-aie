@@ -760,14 +760,12 @@ class CompilableDesign:
                 if self._reuse_explicit_outputs(
                     kernel_dir, build_key, {"full_elf": elf_path}
                 ):
-                    self._record_artifacts(
-                        kernel_dir,
-                        elf=elf_path,
-                        full_elf_kernel_name=self._parse_full_elf_kernel_name(
-                            kernel_dir
-                        ),
-                    )
-                    return elf_path, None
+                    kernel_name = self._cached_full_elf_kernel_name(kernel_dir)
+                    if kernel_name is not None:
+                        self._record_artifacts(
+                            kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
+                        )
+                        return elf_path, None
 
             if (
                 not explicit_path
@@ -782,17 +780,19 @@ class CompilableDesign:
                 _cleanup_failed_compilation(kernel_dir)
 
             if not explicit_path and self.use_cache and elf_path.exists():
-                logger.debug(
-                    "Full-ELF cache hit for '%s' (hash=%s)",
-                    self.generator_name,
-                    cache_hash,
-                )
-                self._record_artifacts(
-                    kernel_dir,
-                    elf=elf_path,
-                    full_elf_kernel_name=self._parse_full_elf_kernel_name(kernel_dir),
-                )
-                return elf_path, None
+                kernel_name = self._cached_full_elf_kernel_name(kernel_dir)
+                if kernel_name is None:
+                    _cleanup_failed_compilation(kernel_dir)
+                else:
+                    logger.debug(
+                        "Full-ELF cache hit for '%s' (hash=%s)",
+                        self.generator_name,
+                        cache_hash,
+                    )
+                    self._record_artifacts(
+                        kernel_dir, elf=elf_path, full_elf_kernel_name=kernel_name
+                    )
+                    return elf_path, None
 
             try:
                 mlir_module = self._generate_mlir(ExternalFunction, full_elf=True)
@@ -999,6 +999,19 @@ class CompilableDesign:
             for instance in kernel["instance"]:
                 return f"{kernel['name']}:{instance['id']}"
         raise RuntimeError(f"{config_path} names no runtime sequence.")
+
+    @classmethod
+    def _cached_full_elf_kernel_name(cls, kernel_dir: Path) -> str | None:
+        """The kernel name of a cached full ELF, or ``None`` to rebuild it.
+
+        A cached ELF is only usable with its ``full_elf_config.json``; one that
+        is missing or unreadable makes the hit a miss instead of an error.
+        """
+        try:
+            return cls._parse_full_elf_kernel_name(kernel_dir)
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+            logger.debug("Rebuilding full ELF in %s: %s", kernel_dir, exc)
+            return None
 
     def get_artifacts(self) -> tuple[Path, Path] | None:
         """Return cached artifact paths without recompiling, or ``None``."""

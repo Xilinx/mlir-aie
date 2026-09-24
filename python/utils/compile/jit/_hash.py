@@ -204,14 +204,21 @@ def _compute_recipe_hash(
     return h.hexdigest()
 
 
-def _tool_identity(name: str, resolve: Callable[[], str | Path]) -> str:
-    """Identify a resolved compiler component without probing an executable."""
+def _tool_identity(
+    name: str, resolve: Callable[[], str | Path], *, expected: bool = True
+) -> str:
+    """Identify a resolved compiler component without probing an executable.
+
+    A tool that is not ``expected`` may legitimately be missing, so its absence
+    is hashed without a warning.
+    """
     try:
         path = Path(resolve()).resolve()
         stat = path.stat()
         return f"{path}:{stat.st_mtime_ns}:{stat.st_size}"
     except (ImportError, AttributeError, OSError, RuntimeError) as exc:
-        logger.warning("_compute_artifact_hash: %s absent (%s)", name, exc)
+        if expected:
+            logger.warning("_compute_artifact_hash: %s absent (%s)", name, exc)
         return "absent"
 
 
@@ -256,7 +263,9 @@ def _compute_artifact_hash(
 
     Every tool that packages a requested image is hashed too: ``aiebu-asm`` for
     an ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
-    alone.
+    alone. Both images embed a PDI, so they also hash the ``bootgen`` aiecc
+    would run. aiecc may link bootgen in instead, which Python cannot tell, so
+    a missing ``bootgen`` is not an error.
     """
     from aie.utils import config as _config
 
@@ -299,6 +308,10 @@ def _compute_artifact_hash(
         h.update(f"target_arch={target_arch}|target_device={target_device!r}".encode())
         if has_dispatch_params:
             tools["host_cxx"] = _config.host_cxx_path
+    optional = set()
+    if full_elf or not insts_only:
+        tools["bootgen"] = partial(_config.aiecc_tool_path, "bootgen")
+        optional.add("bootgen")
     if full_elf:
         tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
     elif not insts_only:
@@ -325,7 +338,8 @@ def _compute_artifact_hash(
         if emit_elf:
             tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
     for name, resolve in tools.items():
-        h.update(f"{name}={_tool_identity(name, resolve)}".encode())
+        identity = _tool_identity(name, resolve, expected=name not in optional)
+        h.update(f"{name}={identity}".encode())
 
     return h.hexdigest()
 

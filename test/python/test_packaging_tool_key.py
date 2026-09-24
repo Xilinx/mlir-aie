@@ -183,3 +183,34 @@ def test_design_key_tracks_object_tools(bin_dir, tmp_path, tool, generator):
     env[f"AIE_{tool.upper()}_PATH"] = str(other)
     redirected = _key("insts_only", bin_dir, generator, **env)
     assert len({before, upgraded, redirected}) == 3
+
+
+@pytest.mark.parametrize("flow", ["full_elf", "xclbin", "xclbin+elf"])
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_image_keys_track_bootgen(bin_dir, flow, generator):
+    before = _key(flow, bin_dir, generator)
+    _install(bin_dir, "bootgen", "1")
+    shadowed = _key(flow, bin_dir, generator)
+    _install(bin_dir, "bootgen", "2.0")
+    upgraded = _key(flow, bin_dir, generator)
+    assert len({before, shadowed, upgraded}) == 3
+
+
+@pytest.mark.parametrize("generator", ["callable", "path"])
+def test_insts_only_key_ignores_bootgen(bin_dir, generator):
+    before = _key("insts_only", bin_dir, generator)
+    _install(bin_dir, "bootgen", "1")
+    assert _key("insts_only", bin_dir, generator) == before
+
+
+@pytest.mark.parametrize("flow", ["full_elf", "xclbin"])
+def test_missing_bootgen_is_not_a_warning(bin_dir, flow):
+    # aiecc may link bootgen in, so no bootgen executable is a normal install.
+    result = subprocess.run(
+        [sys.executable, "-c", _KEY, flow, "path"],
+        env={**os.environ, "PATH": str(bin_dir)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "bootgen" not in result.stderr

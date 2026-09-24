@@ -315,3 +315,20 @@ def test_a_named_build_is_fetched_into_a_new_output_dir(tmp_path, source, flow):
     fetched = _run(tmp_path, source, flow, "warm", out=tmp_path / "e")
     assert fetched.get("build_hit") == 1
     assert _named_outputs(tmp_path / "e", Path(fetched["dir"])) == step_two
+
+
+@pytest.mark.skipif(shutil.which("aiebu-asm") is None, reason="aiebu-asm")
+@pytest.mark.parametrize("damage", ["missing", "corrupt"])
+@pytest.mark.parametrize("named", [False, True], ids=["jit", "named"])
+def test_a_full_elf_without_its_config_is_rebuilt(tmp_path, source, damage, named):
+    """The runtime needs the kernel name the config holds, so no config is a miss."""
+    out = tmp_path / "out" if named else None
+    first = _run(tmp_path, source, "full_elf", "warm", out=out)
+    config = Path(first["dir"]) / "full_elf_config.json"
+    if damage == "missing":
+        config.unlink()
+    else:
+        config.write_text("{")
+    second = _run(tmp_path, source, "full_elf", "warm", out=out)
+    assert (second["dir"], second["kernel"]) == (first["dir"], first["kernel"])
+    assert json.loads(config.read_text())["xrt-kernels"]
