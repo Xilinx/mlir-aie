@@ -491,8 +491,8 @@ def test_multi_output_contract_drives_design_and_reference():
 
 
 def test_judge_scales_range_tolerance_per_call():
-    fn = kernels.add(tile_size=32)
-    ref = np.zeros((2, 32), bfloat16)
+    fn = kernels.add()
+    ref = np.zeros((2, 1024), bfloat16)
     ref[:, 0] = [1024, 4]
     got = ref.copy()
     got[:, 1] = 1
@@ -501,7 +501,7 @@ def test_judge_scales_range_tolerance_per_call():
     verdict = fn.judge(got.ravel(), ref, calls=2, tolerance=tol)
     assert not verdict.ok
     assert verdict.n_mismatch == 1
-    assert verdict.first_bad_index == 33
+    assert verdict.first_bad_index == 1025
     got[1, 1] = 0
     assert fn.judge(got.ravel(), ref, calls=2, tolerance=tol).ok
 
