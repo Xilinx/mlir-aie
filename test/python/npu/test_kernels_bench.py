@@ -31,7 +31,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from aie.iron import kernels
+from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.benchmark import preflight, provenance, run_iters
 from cases import Case, inputs_for
@@ -97,6 +97,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     got = tuple(o.numpy() for o in outputs)
     verdict = fn.judge(got if len(got) > 1 else got[0], ref, calls=case.calls)
     assert verdict, f"{case.name}: {verdict.detail}"
+    measured["outputs"] = got
 
     measured["wall"] = run_iters(
         design,
@@ -217,7 +218,51 @@ def test_measurement_is_sane(request, benchmark, workdir):
     _record(benchmark, SMOKE_TEST, m)
 
 
+def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
+    """Output elements whose stored bits differ; a tolerance would hide a change."""
+    word = np.dtype(f"u{a.itemsize}")
+    return int(np.count_nonzero(a.view(word) != b.view(word)))
+
+
+def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
+    """Measure ``case`` from the ``--baseline-sources`` tree beside the current one.
+
+    Both sides get the same inputs, so their raw output words are compared
+    exactly, and both must pass the contract. The rows stay the current
+    tree's; the pair goes to ``--bench-meta`` and the terminal summary.
+    """
+    tree = config.getoption("--baseline-sources")
+    # The baseline's kernels share their object names with this tree's but
+    # not their sources; the registry would refuse them as a collision.
+    ExternalFunction._instances.clear()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("MLIR_AIE_KERNEL_SOURCES", tree)
+        try:
+            base = _measure(case, config, workdir / "baseline")
+        except AssertionError as e:
+            raise AssertionError(f"baseline tree {tree}: {e}") from None
+
+    def cycles(m):
+        return min(m["cycles"].kernel) if "cycles" in m else None
+
+    def npu_us(m):
+        return round(m["wall"].npu.min_us, 2) if m["wall"].npu else None
+
+    words = [
+        _differing_words(a, b) for a, b in zip(base["outputs"], current["outputs"])
+    ]
+    baseline = config._bench_meta.setdefault("baseline", {"sources": tree, "cases": {}})
+    baseline["cases"][case.name] = {
+        "cycles": [cycles(base), cycles(current)],
+        "npu_us_min": [npu_us(base), npu_us(current)],
+        "differing_words": sum(words),
+    }
+
+
 @pytest.mark.benchmark
 @pytest.mark.parametrize("case", _PERF_CASES)
 def test_kernel_benchmark(case, request, benchmark, workdir):
-    _record(benchmark, case, _measure(case, request.config, workdir))
+    m = _measure(case, request.config, workdir)
+    _record(benchmark, case, m)
+    if request.config.getoption("--baseline-sources"):
+        _against_baseline(case, request.config, workdir, m)

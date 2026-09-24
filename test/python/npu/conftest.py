@@ -90,6 +90,14 @@ def pytest_addoption(parser):
     parser.addoption(
         "--no-compile", action="store_true", help="skip the cold-rebuild measurement"
     )
+    parser.addoption(
+        "--baseline-sources",
+        metavar="DIR",
+        default=None,
+        help="also measure every case with its kernels from DIR (a checkout root, "
+        "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words; the pair "
+        "goes to --bench-meta and the terminal summary, the rows stay this tree's",
+    )
 
 
 @pytest.fixture
@@ -141,6 +149,21 @@ def pytest_sessionfinish(session, exitstatus):
     if out := config.getoption("--bench-out"):
         if exitstatus == 0 and rows:
             Path(out).write_text(json.dumps(rows, indent=1))
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Print the ``--baseline-sources`` comparison, one line per case."""
+    baseline = getattr(config, "_bench_meta", {}).get("baseline")
+    if not baseline:
+        return
+    tr = terminalreporter
+    tr.section(f"baseline {baseline['sources']} -> this tree")
+    tr.write_line(f"{'case':<48} {'cycles':>17} {'npu_us min':>19}  words")
+    for name, c in baseline["cases"].items():
+        cycles = "{} -> {}".format(*c["cycles"])
+        npu = "{} -> {}".format(*c["npu_us_min"])
+        words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
+        tr.write_line(f"{name:<48} {cycles:>17} {npu:>19}  {words}")
 
 
 def _device_generation() -> str | None:

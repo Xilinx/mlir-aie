@@ -22,6 +22,7 @@ chart histories a change ends.
 import sys
 from pathlib import Path
 
+import numpy as np
 from aie.iron.algorithms import kernel_design as kd
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -103,6 +104,15 @@ def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():
     )
 
 
+def test_raw_words_compare_bits_not_values():
+    from test_kernels_bench import _differing_words
+
+    a = np.array([0.0, 1.0, np.nan], dtype=np.float32)
+    b = np.array([-0.0, 1.0, np.nan], dtype=np.float32)
+    assert _differing_words(a, a.copy()) == 0
+    assert _differing_words(a, b) == 1
+
+
 def test_matrix_series_keep_tile_geometry_and_call_count():
     cases = [
         Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=4, devices=("npu2",)),
@@ -118,5 +128,6 @@ if __name__ == "__main__":
     test_smoke_benchmark_is_measured_once()
     test_cycle_efficiency_is_independent_of_call_count()
     test_cycles_row_is_the_kernel_min_with_its_spread_beside_it()
+    test_raw_words_compare_bits_not_values()
     test_matrix_series_keep_tile_geometry_and_call_count()
     print("PASS!")

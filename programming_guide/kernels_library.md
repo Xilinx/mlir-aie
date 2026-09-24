@@ -388,6 +388,20 @@ pytest test/python/npu/test_kernels_bench.py -m benchmark --bench-out bench.json
 python -m aie.utils.compile.remarks --target aie2p --out static.json
 ```
 
+To measure a kernel change against the code before it, point
+`--baseline-sources` at a second checkout (any directory holding
+`aie_kernels/` and `aie_runtime_lib/`). The static checks then compile both
+and print each row that differs; the benchmark runs each case from both,
+back to back, on the same inputs:
+
+```bash
+mkdir ../base && git archive HEAD aie_kernels aie_runtime_lib | tar -x -C ../base
+python -m aie.utils.compile.remarks --target aie2p --only '^gelu' \
+    --out static.json --baseline-sources ../base
+pytest test/python/npu/test_kernels_bench.py -m benchmark -k gelu \
+    --baseline-sources ../base --bench-meta meta.json
+```
+
 ### Data policy
 
 Random data is bounded by `fn.input_limit(dtype)`, using the contract's
