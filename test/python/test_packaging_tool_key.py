@@ -144,6 +144,21 @@ def test_relative_aiecc_override_resolves_from_work_dir(bin_dir, tmp_path, gener
     assert before != after
 
 
+def test_relative_aiecc_override_requires_a_work_dir():
+    from pathlib import Path
+
+    from aie.utils.compile.jit._hash import _compute_artifact_hash
+
+    with pytest.raises(ValueError, match="relative xclbinutil path"):
+        _compute_artifact_hash(
+            Path("design.mlir"),
+            [],
+            [],
+            True,
+            aiecc_flags=["--xclbinutil-path=./xclbinutil"],
+        )
+
+
 @pytest.mark.parametrize("generator", ["callable", "path"])
 def test_xclbin_and_elf_key_tracks_both_packagers(bin_dir, generator):
     _install(bin_dir, "xclbinutil", "1")

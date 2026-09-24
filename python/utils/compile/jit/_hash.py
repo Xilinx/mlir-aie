@@ -33,6 +33,7 @@ import hashlib
 import json
 import logging
 import marshal
+import os
 from functools import partial
 from pathlib import Path
 from types import CodeType
@@ -299,10 +300,24 @@ def _compute_artifact_hash(
     if full_elf:
         tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
     elif not insts_only:
+        xclbinutil_override = _aiecc_option(aiecc_flags, "xclbinutil-path")
+        if not xclbinutil_override:
+            xclbinutil_override = os.environ.get("AIE_XCLBINUTIL")
+        if (
+            xclbinutil_override
+            and not Path(xclbinutil_override).is_absolute()
+            and any(sep and sep in xclbinutil_override for sep in (os.sep, os.altsep))
+            and work_dir is None
+        ):
+            raise ValueError(
+                "A relative xclbinutil path requires an explicit output path so "
+                "it can be resolved from aie's work directory; use an absolute "
+                "path with the JIT cache."
+            )
         tools["xclbinutil"] = partial(
             _config.aiecc_tool_path,
             "xclbinutil",
-            override=_aiecc_option(aiecc_flags, "xclbinutil-path"),
+            override=xclbinutil_override,
             cwd=work_dir,
         )
         if emit_elf:
