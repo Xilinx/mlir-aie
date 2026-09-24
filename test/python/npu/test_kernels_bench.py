@@ -26,6 +26,7 @@ restarts its chart on gh-pages.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
@@ -87,8 +88,10 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         # xclbin cache, but compile_external_kernel still skips a kernel
         # object that already exists in its directory, so a shared directory
         # would let one case's leftovers make another's "cold" build look
-        # faster than it is.
-        measured["compile"] = design.measure_compile(workdir / case.name)
+        # faster than it is. bootgen cannot parse a BIF whose paths contain
+        # `=` (and rejects quoting), so case names are not used verbatim.
+        subdir = re.sub(r"[^\w./-]", "_", case.name)
+        measured["compile"] = design.measure_compile(workdir / subdir)
 
     design(*ins, *outputs)
     got = tuple(o.numpy() for o in outputs)
