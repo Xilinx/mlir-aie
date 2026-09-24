@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -43,20 +44,43 @@ static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,
   constexpr unsigned kCoeffLanes = K <= 16 ? 16 : 32;
   ::aie::vector<bfloat16, kCoeffLanes> taps =
       ::aie::zeros<bfloat16, kCoeffLanes>();
+  // A running p makes taps.set a memory round-trip, and the K-iteration loop
+  // schedules at II 10.
+  AIE_LOOP_UNROLL_FULL
   for (int p = 0; p < K; p++)
     taps.set(w[p], p);
 
-  using conv = ::aie::sliding_mul_ops<16, K, 1, 1, 1, bfloat16, bfloat16>;
+  // One sliding_mul over all K taps is K dependent vmac.f in a row, so the
+  // block costs K accumulator latencies. Two independent half-length chains
+  // and one accumulator add cost about half that.
+  constexpr int KA = (K + 1) / 2;
+  constexpr int KB = K - KA;
+  using conv_a = ::aie::sliding_mul_ops<16, KA, 1, 1, 1, bfloat16, bfloat16>;
+  using conv_b =
+      ::aie::sliding_mul_ops<16, KB ? KB : 1, 1, 1, 1, bfloat16, bfloat16>;
 
-  for (int32_t o = 0; o < T; o += 16) {
+  // A down-count over walking cursors is what the zero-overhead loop wants;
+  // the unsigned cast is what keeps the block count a shift rather than a
+  // signed divide. Two blocks per pass give the two chains of one block
+  // something independent to interleave with, which is worth more than the
+  // tail pass costs: II 45 per pass against II 29 per single block.
+  AIE_LOOP_UNROLL(2)
+  for (int32_t n = (uint32_t)(T + 15) / 16; n > 0; n--) {
     // in_pad is only 256-bit aligned; a 512-bit access needs 512-bit alignment.
     const ::aie::vector<bfloat16, 32> window = ::aie::concat(
-        ::aie::load_v<16>(in_pad + o), ::aie::load_v<16>(in_pad + o + 16));
+        ::aie::load_v<16>(in_pad), ::aie::load_v<16>(in_pad + 16));
+    in_pad += 16;
     ::aie::accum<accfloat, 16> acc;
     acc.from_vector(bias_v);
-    ::aie::store_v(
-        out + o,
-        conv::mac(acc, taps, 0, window, 0).template to_vector<bfloat16>());
+    auto acc_a = conv_a::mac(acc, taps, 0, window, 0);
+    if constexpr (KB > 0) {
+      auto acc_b = conv_b::mul(taps, KA, window, KA);
+      ::aie::store_v(out,
+                     ::aie::add(acc_a, acc_b).template to_vector<bfloat16>());
+    } else {
+      ::aie::store_v(out, acc_a.template to_vector<bfloat16>());
+    }
+    out += 16;
   }
   ::aie::set_rounding(saved_rounding);
   event1();

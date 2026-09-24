@@ -552,6 +552,28 @@ CASES: list[Case] = [
         devices=("npu2",),
         smoke=True,
     ),
+    # one tap is the degenerate split: the kernel halves its taps across two
+    # sliding_mul chains and kernel_size=1 is the only shape with nothing in
+    # the second chain.
+    Case(
+        "dwconv1d_channels_first",
+        dict(seq_len=1024, kernel_size=1),
+        calls=16,
+        scalars=(1024,),
+        devices=("npu2",),
+        perf=False,
+    ),
+    # 1008 is 63 blocks of 16, so the kernel's two-blocks-per-pass loop has to
+    # run its tail pass; 1024 is 64 blocks and never does.
+    Case(
+        "dwconv1d_channels_first",
+        dict(seq_len=1008, kernel_size=9),
+        calls=16,
+        scalars=(1008,),
+        devices=("npu2",),
+        tag="odd-block-count",
+        perf=False,
+    ),
     # the transposed layout: one timestep across 256 channels, 5 per-channel taps
     Case(
         "dwconv1d_channels_last",
