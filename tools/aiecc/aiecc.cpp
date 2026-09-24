@@ -787,10 +787,20 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // However, some external tests that manually link pre-baked cores rely on a
   // per-core BCF being emitted for every core, so if chess is enabled we
   // compile all cores regardless.
-  auto &perCore =
-      allCores.filter("perCoreCompile", [](const OpInModule<CoreOp> &x) {
-        return !CoreOp(x.op).getElfFileAttr() || xbridge;
-      });
+  //
+  // A build whose only use of the cores is placing the buffers its runtime
+  // sequences name compiles just the cores on those tiles; see
+  // `sequenceCoresOnly` at the end of this function, which decides it once the
+  // outputs are known.
+  auto sequenceCoresOnly = std::make_shared<bool>(false);
+  auto compilesCore = [sequenceCoresOnly](CoreOp c) {
+    return (!c.getElfFileAttr() || xbridge) &&
+           (!*sequenceCoresOnly || runtimeCodeReferencesCoreTile(c));
+  };
+  auto &perCore = allCores.filter("perCoreCompile",
+                                  [compilesCore](const OpInModule<CoreOp> &x) {
+                                    return compilesCore(CoreOp(x.op));
+                                  });
 
   // Cores whose `elf_file` attribute already points to a built object.
   auto &preBakedElfs =
@@ -899,16 +909,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Unified strategy
   // Lower once per device, then carve out one module per core. Keyed like
   // `perCore`, so the per-core arches and link files below apply unchanged --
-  // except that `perCore` drops cores that already carry an `elf_file`, so
-  // filter the carved set to match or the object subgraph joins on a key its
-  // other inputs do not have.
+  // except that `perCore` drops the cores `compilesCore` rejects, so filter the
+  // carved set to match or the object subgraph joins on a key its other inputs
+  // do not have.
   auto &unifiedPerCoreLowered = unplaced.split<ModRef>(
-      "lowered_{0}.mlir", [matchesDeviceFilter](const Item<ModRef> &mod) {
-        // Same predicate as the `perCoreCompile` filter above: a core with an
-        // `elf_file` is used verbatim, so it must not appear here either.
-        return splitLoweredCores(
-            mod.get().get(), matchesDeviceFilter,
-            [](CoreOp c) { return !c.getElfFileAttr() || xbridge; });
+      "lowered_{0}.mlir",
+      [matchesDeviceFilter, compilesCore](const Item<ModRef> &mod) {
+        return splitLoweredCores(mod.get().get(), matchesDeviceFilter,
+                                 compilesCore);
       });
 
   // Per-core strategy
@@ -1338,9 +1346,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
               });
 
   // NPU runtime-sequence lowering needs only the placed+routed `physical`
-  // module, so feeding it keeps the instruction-sequence branch independent of
-  // per-core compilation. Three cases reference the compiled cores and so run
-  // on the ELF-patched `physicalWithElfs` module instead:
+  // module, and from it only the addresses of the buffers the sequences name,
+  // which is what lets `sequenceCoresOnly` skip the other cores. It reads
+  // `physical` through its own view so that decision can tell this use apart
+  // from every other. Three cases reference the compiled cores and so run on
+  // the ELF-patched `physicalWithElfs` module instead:
   //   * --expand-load-pdis references the compiled cores directly.
   //   * the transaction output embeds each core's compiled program:
   //     `convert-aie-to-transaction` reads each core's `elf_file` to emit a
@@ -1351,10 +1361,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //     compiled cores.
   bool npuTransactionsNeedCoresLowered =
       expandLoadPdis.getValue() || generateTxn || loadPdiToCtrlPkt.getValue();
+  auto &sequencePlacement =
+      physical.filter("sequencePlacement", [](const ModRef &) { return true; });
   EdgeWithTypedOutput<ModRef> &npuLoweringInput =
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
-          : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
+          : static_cast<EdgeWithTypedOutput<ModRef> &>(sequencePlacement);
   // NPU instruction sequence lowering. The default and --load-pdi-to-ctrl-pkt
   // flows share the materialize + expand prefix and diverge at DMA lowering.
   EdgeWithTypedOutput<ModRef> &npuMaterialized =
@@ -2164,6 +2176,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     for (EdgeBase *e : select(cutOutputs, "--cut")) {
       cutEdges.push_back(e);
     }
+  }
+
+  // Placement is per tile, so the addresses the runtime sequences read come out
+  // the same whether or not the other cores were measured. When nothing else
+  // wants a core or the placement, compile only the cores the sequences need.
+  // Kept off under --dump-intermediates, whose placement should be the one a
+  // full build makes.
+  if (!keepIntermediates.getValue()) {
+    std::vector<EdgeBase *> roots = outputs;
+    roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    llvm::DenseSet<EdgeBase *> needed =
+        reachableEdges(roots, {&sequencePlacement});
+    *sequenceCoresOnly = !needed.count(&perCore) && !needed.count(&physical);
   }
 
   return outputs;

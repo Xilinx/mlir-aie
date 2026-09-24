@@ -46,8 +46,10 @@
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Error.h"
@@ -1379,6 +1381,58 @@ inline void recordBankDemand(
   });
 }
 
+// Whether a runtime sequence or BD chain anywhere in the module names a buffer
+// on `core`'s tile, by value or by symbol. Those are the only ways instruction
+// lowering reaches a buffer's address, and placement is per tile, so the
+// instructions cannot depend on how a core this returns false for is measured.
+// Symbols match by name across every device: a spurious match only keeps a core
+// that could have been skipped.
+inline bool runtimeCodeReferencesCoreTile(xilinx::AIE::CoreOp core) {
+  xilinx::AIE::TileOp tile = core.getTileOp();
+  auto device = core->getParentOfType<xilinx::AIE::DeviceOp>();
+  llvm::DenseSet<mlir::Operation *> buffers;
+  llvm::StringSet<> names;
+  device.walk([&](xilinx::AIE::BufferOp buffer) {
+    if (buffer.getTileOp() == tile) {
+      buffers.insert(buffer);
+      names.insert(buffer.name().getValue());
+    }
+  });
+  if (buffers.empty()) {
+    return false;
+  }
+  auto references = [&](mlir::Operation *op) {
+    for (mlir::Value v : op->getOperands()) {
+      if (buffers.contains(v.getDefiningOp())) {
+        return true;
+      }
+    }
+    return op->getAttrDictionary()
+        .walk([&](mlir::SymbolRefAttr ref) {
+          return names.contains(ref.getLeafReference().getValue())
+                     ? mlir::WalkResult::interrupt()
+                     : mlir::WalkResult::advance();
+        })
+        .wasInterrupted();
+  };
+  return device->getParentOfType<mlir::ModuleOp>()
+      ->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *root) {
+        if (!mlir::isa<xilinx::AIE::RuntimeSequenceOp, xilinx::AIE::BDChainOp>(
+                root)) {
+          return mlir::WalkResult::advance();
+        }
+        if (root->walk([&](mlir::Operation *op) {
+                  return references(op) ? mlir::WalkResult::interrupt()
+                                        : mlir::WalkResult::advance();
+                })
+                .wasInterrupted()) {
+          return mlir::WalkResult::interrupt();
+        }
+        return mlir::WalkResult::skip();
+      })
+      .wasInterrupted();
+}
+
 // Pairs with `getInputWithAddressesPipeline(..., assignAddresses=false)`.
 inline std::unique_ptr<mlir::PassManager>
 getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx) {
@@ -1537,8 +1591,8 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
 // `llvm.mlir.global`, and it strips the initializer of a global another core
 // owns so a core's object carries only its own data.
 //
-// A core the caller will not compile, meaning one that supplies a pre-baked
-// `elf_file`, is skipped, so this keys the same set as `perCore`. A device left
+// A core `shouldCompile` rejects is skipped; pass the predicate `perCore`
+// filters with, so this keys the same set. A device left
 // with no core to compile is not lowered at all. Keys match `coreKey`.
 inline mlir::LogicalResult appendLoweredCores(
     mlir::ModuleOp mod, xilinx::AIE::DeviceOp dev,
