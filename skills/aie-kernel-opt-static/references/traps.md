@@ -9,7 +9,7 @@ Code that compiles cleanly and then does nothing, crashes the compiler, or
 produces wrong data. Every item here was hit in real kernel work. Compiler
 behavior depends on the Peano version:
 
-- The pin is in `utils/peano-requirements.txt` (now `22.0.0.2026092101`).
+- The pin is in `utils/peano-requirements.txt` (now `22.0.0.2026092401`).
 - Check what you actually run with `$PEANO_INSTALL_DIR/bin/clang --version`.
 - Items marked "older pin" haven't been re-tested on the current one.
   Re-check before building a workaround into new code.
