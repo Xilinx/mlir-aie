@@ -27,17 +27,43 @@ void zero_scalar(T *__restrict c) {
   }
 }
 
+// Narrowest vector covering `rem` elements, never below one 128-bit register.
+template <typename T>
+constexpr int zero_tail_width(int rem) {
+  int w = 16 / sizeof(T);
+  while (w < rem)
+    w *= 2;
+  return w;
+}
+
 template <typename T, int M, int N>
 void zero_vectorized(T *__restrict c) {
   constexpr int r = aie::native_vector_length_v<T>;
+  constexpr int n = M * N;
+  constexpr int w = zero_tail_width<T>(n % r);
+  // A tile is only a handful of stores, and below this count the loop's own
+  // bookkeeping outweighs them: unrolled, int32/TILE_SIZE=64 drops from 176 to
+  // 48 bytes of .text. Past it the stores outweigh the loop, so callers with
+  // big accumulators (mha, flash_attn_prefill, mm_fused) keep the rolled form.
+  constexpr int unroll = (n / r >= 1 && n / r <= 16) ? n / r : 1;
   const aie::vector<T, r> zeros = aie::zeros<T, r>();
   event0();
-  int i = 0;
-  for (; i + r <= M * N; i += r) {
-    aie::store_v(c + i, zeros);
+#pragma clang loop unroll_count(unroll)
+  for (int i = 0; i < n / r; ++i) {
+    aie::store_v(c + i * r, zeros);
   }
-  for (; i < M * N; ++i) {
-    c[i] = 0;
+  if constexpr (n % r != 0) {
+    if constexpr (n >= w) {
+      // Reach back over elements the body already wrote rather than closing
+      // with a scalar loop: at TILE_SIZE=108 the 44-element remainder is
+      // scheduled as its own II-30 loop, longer than the body it follows, and
+      // a zero stored twice is still zero.
+      aie::store_unaligned_v(c + n - w, aie::zeros<T, w>());
+    } else {
+      for (int i = (n / r) * r; i < n; ++i) {
+        c[i] = 0;
+      }
+    }
   }
   event1();
 }

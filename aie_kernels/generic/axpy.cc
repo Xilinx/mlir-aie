@@ -14,6 +14,8 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+#include "../aie_kernel_utils.h"
+
 #include <aie_api/aie.hpp>
 
 extern "C" {
@@ -21,16 +23,25 @@ void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, const float a,
            bfloat16 *restrict z, const int32_t vector_size) {
   event0();
   ::aie::vector<bfloat16, 64> a_v = ::aie::broadcast<bfloat16, 64>(bfloat16(a));
-  for (int i = 0; i < vector_size; i += 64) {
-    ::aie::vector<bfloat16, 64> x_v = ::aie::load_v<64>(x);
-    x += 64;
-    ::aie::vector<bfloat16, 64> y_v = ::aie::load_v<64>(y);
-    y += 64;
-    ::aie::accum<accfloat, 64> ax_v = ::aie::mul(x_v, a_v);
-    ::aie::accum<accfloat, 64> z_v = ::aie::add(ax_v, y_v);
-    ::aie::vector<bfloat16, 64> z_v_converted = z_v.to_vector<bfloat16>();
-    ::aie::store_v(z, z_v_converted);
-    z += 64;
+  // IRON only accepts a tile that is a multiple of 64, so the unsigned divide
+  // (a shift, not the 64-bit magic multiply) counts the whole row.  Given the
+  // trip count up front, and told the body runs at least once, the scheduler
+  // drops the unpipelined copy it otherwise keeps for a short row and lands
+  // the step at II 10 rather than II 19.
+  const int steps = (uint32_t)vector_size / 64;
+  if (steps > 0) {
+    AIE_LOOP_MIN_ITERATION_COUNT(1)
+    for (int k = 0; k < steps; ++k) {
+      ::aie::vector<bfloat16, 64> x_v = ::aie::load_v<64>(x);
+      x += 64;
+      ::aie::vector<bfloat16, 64> y_v = ::aie::load_v<64>(y);
+      y += 64;
+      ::aie::accum<accfloat, 64> ax_v = ::aie::mul(x_v, a_v);
+      ::aie::accum<accfloat, 64> z_v = ::aie::add(ax_v, y_v);
+      ::aie::vector<bfloat16, 64> z_v_converted = z_v.to_vector<bfloat16>();
+      ::aie::store_v(z, z_v_converted);
+      z += 64;
+    }
   }
   event1();
 }

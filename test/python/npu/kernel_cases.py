@@ -505,10 +505,32 @@ CASES: list[Case] = [
         smoke=True,
     ),
     Case("rope", dict(cols=1024), calls=16, devices=("npu2",), smoke=True),
+    # 1008 is a multiple of 16 but not of the 64 the interleaved row walks in,
+    # and 96 halves into 48, which is a multiple of 16 but not of the 32 the
+    # two-halves row walks in. Both rows are therefore the shortest ones that
+    # reach each kernel's close-out step, which 1024 never does.
+    Case(
+        "rope",
+        dict(cols=1008),
+        calls=16,
+        tag="row-tail",
+        devices=("npu2",),
+        smoke=True,
+        perf=False,
+    ),
     Case(
         "rope",
         dict(cols=1024, two_halves=True),
         calls=16,
+        devices=("npu2",),
+        smoke=True,
+        perf=False,
+    ),
+    Case(
+        "rope",
+        dict(cols=96, two_halves=True),
+        calls=16,
+        tag="row-tail",
         devices=("npu2",),
         smoke=True,
         perf=False,

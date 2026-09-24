@@ -15,7 +15,11 @@
 
 template <typename T_in, typename T_sf, typename T_out, const int N,
           const int G>
-void expand(T_in *in, T_out *out) {
+// in and out are distinct objects in every design that binds this, and saying
+// so is what lets the loop below overlap iterations: without it the scheduler
+// has to assume each store may feed the next block's load and settles for a
+// single-stage schedule at II 26, against a six-stage one at II 4.
+void expand(T_in *__restrict in, T_out *__restrict out) {
   // Keep vector width constant; group size can vary as a multiple of 32
   constexpr int block_size = 32;
   constexpr int blocks_per_group = G / block_size;
@@ -23,12 +27,16 @@ void expand(T_in *in, T_out *out) {
   // Super block size = block_size x blocks_per_group
   static_assert((G % block_size) == 0, "GROUP_SIZE must be a multiple of 32");
 
-  T_in *__restrict pI = in;           // Input pointer
-  T_in *__restrict pSFb = in + N / 2; // The scale factors are after the inputs
-  T_sf *__restrict pSF =
+  T_in *__restrict pI = in; // Input pointer
+  T_in *pSFb = in + N / 2;  // The scale factors are after the inputs
+  T_sf *pSF =
       (T_sf *)pSFb; // But we only advance by the number of bytes not elements
   T_out *__restrict pO = out;
   const int F = groups_per_tile; // iterate over groups of size GROUP_SIZE
+  const aie::vector<uint8, block_size> hi_byte =
+      aie::broadcast<uint8, block_size>(0x43);
+  const aie::vector<bfloat16, block_size> bias =
+      aie::broadcast<bfloat16, block_size>(bfloat16(128.0f));
   event0();
   for (int i = 0; i < F; i++)
     chess_prepare_for_pipelining chess_loop_range(F, ) { // 16 -> F
@@ -45,15 +53,19 @@ void expand(T_in *in, T_out *out) {
         aie::vector<bfloat16, block_size> sf_broadcast =
             aie::broadcast(sf_bf16);
 
-        // Upsize these to 8 bits -> 16 -> bfloat16
         aie::vector<uint8, block_size> asInt8 =
             aie::unpack(I0); // Unpack the 4 bit values to 8 bits
-        aie::vector<uint16, block_size> asInt16 =
-            aie::unpack(asInt8); // Unpack the 8 bit values to 16 bits
-        aie::vector<bfloat16, block_size> as_bf16 =
-            aie::to_float<bfloat16>(asInt16, 0); // Convert to bfloat16
+        // 0x43nn is the bfloat16 for 128 + nn whenever nn < 128, so pairing
+        // each nibble with a 0x43 byte lands the value in bfloat16 with one
+        // shuffle, where to_float spends a ups/add/sub/conv chain on it.
+        auto [lo, hi] = aie::interleave_zip(asInt8, hi_byte, 1);
+        aie::vector<bfloat16, block_size> biased =
+            aie::concat(lo, hi).cast_to<bfloat16>();
+        // (128 + nn) * sf - 128 * sf is nn * sf exactly: both products widen a
+        // bfloat16 pair into the f32 accumulator, so neither one rounds.
         aie::vector<bfloat16, block_size> scaled_bf16 =
-            aie::mul(as_bf16, sf_broadcast); // Scale the bfloat16 values
+            aie::msc(aie::mul(biased, sf_broadcast), bias, sf_broadcast)
+                .to_vector<bfloat16>();
         aie::store_v(pO,
                      scaled_bf16); // Write the scaled bfloat16 values to output
         pO += block_size;          // Advance by the number of bytes
