@@ -39,7 +39,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
@@ -59,6 +59,7 @@ from aie.utils.compile.utils import (
 )
 
 from . import _manifest
+from ._explicit_builds import BuildCache
 from ._dispatch_compile import (
     compile_dispatch_bridge,
     dispatch_scalar_c_type,
@@ -385,12 +386,13 @@ class CompilableDesign:
 
         When both ``xclbin_path`` and ``inst_path`` are given, artifacts are
         written directly to those paths; intermediate files (``.o``, lowered
-        ``.mlir``) go to ``<xclbin stem>.prj`` beside them. The JIT cache is
-        not consulted, but a build is not repeated either: if the outputs are
-        exactly as the last build left them, and that build had the same
-        recipe, generated MLIR and kernels and read inputs that are all
-        unchanged, they are returned without running aiecc. With
-        ``use_cache=False`` every call rebuilds.
+        ``.mlir``) go to ``<xclbin stem>.prj`` beside them. A build is not
+        repeated: if the outputs are exactly as the last build left them, and
+        that build had the same recipe, generated MLIR and kernels and read
+        inputs that are all unchanged, they are returned without running
+        aiecc. The same build made for other paths is copied from
+        ``~/.npu/cache/builds/`` instead (except for ``DispatchTime[T]``
+        designs). With ``use_cache=False`` every call rebuilds.
 
         When both are ``None`` (the default), behavior is unchanged: artifacts
         land in ``~/.npu/cache/<hash>/`` and the cache is consulted first.
@@ -471,7 +473,7 @@ class CompilableDesign:
         explicit_paths = xclbin_path is not None
         cache_hash = None
         build_key = ""
-        outputs: list[Path] = []
+        outputs: dict[str, Path] = {}
 
         if elf_path is not None and not explicit_paths:
             raise ValueError(
@@ -533,15 +535,25 @@ class CompilableDesign:
             if explicit_paths:
                 build_key = self._explicit_build_key(full_elf=False)
                 dispatch_library = companion_path if has_dispatch else None
-                outputs = [
-                    Path(p)
-                    for p in (xclbin_path, inst_path, elf_path, pdi_path)
+                outputs = {
+                    role: Path(p)
+                    for role, p in (
+                        ("xclbin", xclbin_path),
+                        ("insts", inst_path),
+                        ("elf", elf_path),
+                        ("pdi", pdi_path),
+                    )
                     if p is not None
-                ]
+                }
                 if self._reuse_explicit_outputs(
                     kernel_dir,
                     build_key,
-                    [*outputs, dispatch_library] if has_dispatch else outputs,
+                    (
+                        {**outputs, "dispatch_library": dispatch_library}
+                        if has_dispatch
+                        else outputs
+                    ),
+                    shared=not has_dispatch,
                 ):
                     self._record_artifacts(
                         kernel_dir,
@@ -691,8 +703,10 @@ class CompilableDesign:
                 )
                 if explicit_paths:
                     if dispatch_so_path is not None:
-                        outputs.append(dispatch_so_path)
-                    _manifest.record_outputs(kernel_dir, build_key, outputs)
+                        outputs["dispatch_library"] = dispatch_so_path
+                    self._record_explicit_outputs(
+                        kernel_dir, build_key, outputs, shared=not has_dispatch
+                    )
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
@@ -739,7 +753,9 @@ class CompilableDesign:
 
             if explicit_path:
                 build_key = self._explicit_build_key(full_elf=True)
-                if self._reuse_explicit_outputs(kernel_dir, build_key, [elf_path]):
+                if self._reuse_explicit_outputs(
+                    kernel_dir, build_key, {"full_elf": elf_path}
+                ):
                     self._record_artifacts(
                         kernel_dir,
                         elf=elf_path,
@@ -824,7 +840,9 @@ class CompilableDesign:
                     used_chess=use_chess,
                 )
                 if explicit_path:
-                    _manifest.record_outputs(kernel_dir, build_key, [elf_path])
+                    self._record_explicit_outputs(
+                        kernel_dir, build_key, {"full_elf": elf_path}
+                    )
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
@@ -865,7 +883,9 @@ class CompilableDesign:
 
             if explicit_path:
                 build_key = self._explicit_build_key(full_elf=False)
-                if self._reuse_explicit_outputs(kernel_dir, build_key, [inst_path]):
+                if self._reuse_explicit_outputs(
+                    kernel_dir, build_key, {"insts": inst_path}
+                ):
                     self._record_artifacts(kernel_dir, insts=inst_path)
                     return None, inst_path
 
@@ -911,7 +931,9 @@ class CompilableDesign:
                     )
                 _manifest.record(kernel_dir, [], self.source_files)
                 if explicit_path:
-                    _manifest.record_outputs(kernel_dir, build_key, [inst_path])
+                    self._record_explicit_outputs(
+                        kernel_dir, build_key, {"insts": inst_path}
+                    )
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
@@ -1413,19 +1435,28 @@ class CompilableDesign:
         return h.hexdigest()
 
     def _reuse_explicit_outputs(
-        self, kernel_dir: Path, build_key: str, outputs: Sequence[Path | None]
+        self,
+        kernel_dir: Path,
+        build_key: str,
+        outputs: Mapping[str, Path | None],
+        *,
+        shared: bool = True,
     ) -> bool:
         """Return True if ``outputs`` are what the build ``build_key`` wrote.
 
-        Otherwise ready ``kernel_dir`` for a rebuild. Its objects are reused by
-        the kernel compile, so once a recorded input has changed they are
-        cleared, exactly as a stale cache entry is.
+        ``outputs`` maps each output's role to its path. When they are not
+        current in place, a ``shared`` build is fetched from the build cache
+        if it holds ``build_key``. Otherwise ready ``kernel_dir`` for a
+        rebuild. Its objects are reused by the kernel compile, so once a
+        recorded input has changed they are cleared, exactly as a stale cache
+        entry is.
         """
+        paths = list(outputs.values())
         if (
             self.use_cache
-            and None not in outputs
+            and None not in paths
             and _manifest.outputs_current(
-                kernel_dir, build_key, [p for p in outputs if p is not None]
+                kernel_dir, build_key, [p for p in paths if p is not None]
             )
         ):
             logger.debug(
@@ -1435,9 +1466,35 @@ class CompilableDesign:
             )
             return True
         _manifest.forget_outputs(kernel_dir)
+        build_cache = self._build_cache()
+        if (
+            shared
+            and build_cache is not None
+            and None not in paths
+            and build_cache.fetch(
+                build_key,
+                kernel_dir,
+                {role: p for role, p in outputs.items() if p is not None},
+            )
+        ):
+            return True
         if not _manifest.is_valid(kernel_dir):
             _cleanup_failed_compilation(kernel_dir)
         return False
+
+    def _record_explicit_outputs(
+        self,
+        kernel_dir: Path,
+        build_key: str,
+        outputs: Mapping[str, Path],
+        *,
+        shared: bool = True,
+    ) -> None:
+        """Record that ``build_key`` wrote ``outputs``, and keep a ``shared`` build."""
+        _manifest.record_outputs(kernel_dir, build_key, list(outputs.values()))
+        build_cache = self._build_cache()
+        if shared and build_cache is not None:
+            build_cache.store(build_key, kernel_dir, dict(outputs))
 
     def _kernel_object_cache(self) -> KernelObjectCache | None:
         """Share compiled kernel objects across designs unless caching is off."""
@@ -1446,6 +1503,12 @@ class CompilableDesign:
         return KernelObjectCache(
             NPU_CACHE_HOME / "objects", _COMPILE_LOCK_TIMEOUT_SECONDS
         )
+
+    def _build_cache(self) -> BuildCache | None:
+        """Share explicit-path builds across output paths unless caching is off."""
+        if not self.use_cache:
+            return None
+        return BuildCache(NPU_CACHE_HOME / "builds", _COMPILE_LOCK_TIMEOUT_SECONDS)
 
     def _device_cache_dir(self) -> Path | None:
         """Share each device's compiled cores across designs unless caching is off."""

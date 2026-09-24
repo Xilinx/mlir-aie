@@ -72,12 +72,17 @@ _DESIGN = textwrap.dedent("""
     lookups = Counter()
 
     class Count(logging.Handler):
-        def emit(self, record):
-            lookups[record.getMessage().split(" for ")[0].split()[-1]] += 1
+        def __init__(self, prefix):
+            super().__init__()
+            self.prefix = prefix
 
-    log = logging.getLogger("aie.utils.compile.jit._object_cache")
-    log.setLevel(logging.DEBUG)
-    log.addHandler(Count())
+        def emit(self, record):
+            lookups[self.prefix + record.getMessage().split(" for ")[0].split()[-1]] += 1
+
+    for module, prefix in (("_object_cache", ""), ("_explicit_builds", "build_")):
+        log = logging.getLogger(f"aie.utils.compile.jit.{module}")
+        log.setLevel(logging.DEBUG)
+        log.addHandler(Count(prefix))
     set_current_device(NPU2Col1())
     design = add_one.specialize(
         n=int(sys.argv[2]),
@@ -91,7 +96,13 @@ _DESIGN = textwrap.dedent("""
         design.compile(full_elf_path=out / "design.elf")
     else:
         design.compile(xclbin_path=out / "final.xclbin", inst_path=out / "insts.bin")
-    print(json.dumps({"dir": str(design.compilable._kernel_dir), **lookups}))
+    compilable = design.compilable
+    print(json.dumps({
+        "dir": str(compilable._kernel_dir),
+        "kernel": compilable._full_elf_kernel_name,
+        "sizes": compilable._expected_tensor_sizes,
+        **lookups,
+    }))
     """)
 
 _SOURCE = 'extern "C" void add_one(int *i, int *o, int n) { for (int j = 0; j < n; j++) o[j] = i[j] + STEP; }\n'
@@ -122,7 +133,7 @@ def _set_step(source, step):
     (source.parent / "step.h").write_text(f"#define STEP {step}\n")
 
 
-def _build(tmp_path, source, flow, home, n=32, mode="warm", out=None):
+def _run(tmp_path, source, flow, home, n=32, mode="warm", out=None):
     script = tmp_path / "design.py"
     script.write_text(_DESIGN)
     named = [str(out)] if out is not None else []
@@ -134,7 +145,11 @@ def _build(tmp_path, source, flow, home, n=32, mode="warm", out=None):
         timeout=600,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    build = json.loads(result.stdout.splitlines()[-1])
+    return json.loads(result.stdout.splitlines()[-1])
+
+
+def _build(tmp_path, source, flow, home, n=32, mode="warm", out=None):
+    build = _run(tmp_path, source, flow, home, n, mode, out)
     return Path(build["dir"]), build.get("hit", 0), build.get("miss", 0)
 
 
@@ -219,7 +234,7 @@ def _named_outputs(out, prj):
 
 
 def test_named_outputs_are_rebuilt_exactly_when_out_of_date(tmp_path, source, flow):
-    """Named outputs bypass the JIT cache, but not the check that they are current.
+    """Named outputs are checked in place before any cache is consulted.
 
     A build that reuses its outputs looks up no kernel object. A header is in
     no key, so only the recorded inputs can catch its edit.
@@ -238,11 +253,15 @@ def test_named_outputs_are_rebuilt_exactly_when_out_of_date(tmp_path, source, fl
     assert step_two == {name: _binaries(cold, flow)[name] for name in step_two}
     assert _build(tmp_path, source, flow, "warm", out=out) == (prj, 0, 0)
 
-    # Anything else rewriting an output makes it unknown, even to the same bytes.
+    # Anything else rewriting an output makes it unknown, even to the same
+    # bytes, so the build is fetched again.
     output = next(p for p in out.iterdir() if p.suffix in (".bin", ".elf"))
-    output.write_bytes(output.read_bytes())
-    assert _build(tmp_path, source, flow, "warm", out=out) == (prj, 1, 0)
-    assert _named_outputs(out, prj) == step_two
+    for data in (output.read_bytes(), b""):
+        output.write_bytes(data)
+        rebuilt = _run(tmp_path, source, flow, "warm", out=out)
+        assert (rebuilt["dir"], rebuilt.get("build_hit")) == (str(prj), 1)
+        assert "hit" not in rebuilt and "miss" not in rebuilt
+        assert _named_outputs(out, prj) == step_two
 
     assert _build(tmp_path, source, flow, "warm", n=64, out=out) == (prj, 1, 0)
     assert _named_outputs(out, prj) != step_two
@@ -250,3 +269,47 @@ def test_named_outputs_are_rebuilt_exactly_when_out_of_date(tmp_path, source, fl
     _set_step(source, 1)
     assert _build(tmp_path, source, flow, "warm", n=32, out=out) == (prj, 0, 1)
     assert _named_outputs(out, prj) == step_one
+
+
+def _work_files(prj):
+    names = ("input_with_addresses.mlir", "full_elf_config.json", "main.pdi")
+    return {name: (prj / name).read_bytes() for name in names if (prj / name).is_file()}
+
+
+def test_a_named_build_is_fetched_into_a_new_output_dir(tmp_path, source, flow):
+    """The same design built to a new path copies the build instead of rerunning it.
+
+    Every output is fetched, the xclbin included, along with the work files a
+    caller reads afterwards. A header edit is a miss, like everywhere else, and
+    so is a build that does not use the cache.
+    """
+    first = _run(tmp_path, source, flow, "warm", out=tmp_path / "a")
+    assert (first.get("miss"), first.get("build_hit")) == (1, None)
+    second = _run(tmp_path, source, flow, "warm", out=tmp_path / "b")
+    assert second.keys() == {"dir", "kernel", "sizes", "build_hit"}
+    assert (second["kernel"], second["sizes"]) == (first["kernel"], first["sizes"])
+    if flow == "full_elf":
+        assert second["kernel"]
+    a, b = Path(first["dir"]), Path(second["dir"])
+    assert a != b
+    assert _work_files(b) == _work_files(a) != {}
+    outputs = {
+        p.name: p.read_bytes() for p in (tmp_path / "a").iterdir() if p.is_file()
+    }
+    assert {
+        p.name: p.read_bytes() for p in (tmp_path / "b").iterdir() if p.is_file()
+    } == outputs
+    assert _build(tmp_path, source, flow, "warm", out=tmp_path / "b") == (b, 0, 0)
+
+    cold = _run(tmp_path, source, flow, "cold", mode="cold", out=tmp_path / "c")
+    assert "build_hit" not in cold
+    assert not (tmp_path / "cold" / "builds").exists()
+
+    _set_step(source, 2)
+    edited = _run(tmp_path, source, flow, "warm", out=tmp_path / "d")
+    assert (edited.get("miss"), edited.get("build_hit")) == (1, None)
+    step_two = _named_outputs(tmp_path / "d", Path(edited["dir"]))
+    assert step_two != _named_outputs(tmp_path / "a", a)
+    fetched = _run(tmp_path, source, flow, "warm", out=tmp_path / "e")
+    assert fetched.get("build_hit") == 1
+    assert _named_outputs(tmp_path / "e", Path(fetched["dir"])) == step_two
