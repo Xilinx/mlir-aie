@@ -1007,7 +1007,7 @@ def mha(
 # the larger of the two because its 2x2 decomposition works on four S vectors
 # at once, while the global one spends its frame on four output-column
 # accumulators.
-_PREFILL_GEOM = {512: (8, 8, 2240), 256: (16, 16, 3328)}
+_PREFILL_GEOM = {512: (8, 8, 2304), 256: (16, 16, 3392)}
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:
