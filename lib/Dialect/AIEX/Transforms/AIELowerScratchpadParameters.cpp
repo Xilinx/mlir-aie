@@ -17,6 +17,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <numeric>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -40,6 +42,34 @@ static bool shouldEmitParameterSyncPreamble(CoreOp coreOp) {
   bool found = false;
   coreOp.getBody().walk([&](ReadScratchpadParameterOp) { found = true; });
   return found;
+}
+
+/// The firmware masks the BD address register with 0xFFFFFFFC, so the byte
+/// offset it computes from a runtime offset parameter (an element count times
+/// the element size) is rounded DOWN to a 4-byte boundary rather than rejected.
+/// When the element size is itself a multiple of 4 that can never bite.
+/// Otherwise the runtime value has to be a multiple of 4 / gcd(4, elemBytes)
+/// elements, and nothing can check that -- the value only exists at run time.
+/// The static offset path rejects the same misalignment outright
+/// (NpuDmaMemcpyNdOp::verify, "Offset must be 4-byte-aligned"), so warn rather
+/// than leave the runtime path silent.
+///
+/// Warn here rather than where the offset is lowered to NPU instructions:
+/// materialization inlines a device's runtime sequence at every call site, so
+/// one source op would warn once per call.
+static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
+  uint32_t elemBytes =
+      llvm::cast<BaseMemRefType>(bufType).getElementTypeBitWidth() / 8;
+  if (elemBytes == 0 || elemBytes % 4 == 0) {
+    return;
+  }
+  mlir::emitWarning(op->getLoc())
+      << "runtime offset parameter on a " << (elemBytes * 8)
+      << "-bit element type: the firmware masks the BD address register with "
+         "0xFFFFFFFC, so a value that is not a multiple of "
+      << (4 / std::gcd(4u, elemBytes))
+      << " elements is silently rounded down to the 4-byte boundary below "
+         "instead of being rejected";
 }
 
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
@@ -347,7 +377,8 @@ struct AIELowerScratchpadParametersPass
     // Step 3b: rewrite DMA `offset_parameter` symbol references to a plain
     // `offset_state_table_idx` integer attribute, so downstream `aie`-dialect
     // passes do not need to resolve `aiex.scratchpad_parameter` symbols.
-    auto rewriteOffsetParam = [&](Operation *op, FlatSymbolRefAttr ref) {
+    auto rewriteOffsetParam = [&](Operation *op, FlatSymbolRefAttr ref,
+                                  Type bufType) {
       if (!ref) {
         return success();
       }
@@ -373,15 +404,18 @@ struct AIELowerScratchpadParametersPass
                   builder.getIntegerAttr(
                       builder.getIntegerType(8, /*isSigned=*/false), stateIdx));
       op->removeAttr("offset_parameter");
+      warnIfRuntimeOffsetMayRound(op, bufType);
       return success();
     };
     WalkResult rewriteResult = moduleOp.walk([&](Operation *op) {
       if (auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-        if (failed(rewriteOffsetParam(op, dmaOp.getOffsetParameterAttr()))) {
+        if (failed(rewriteOffsetParam(op, dmaOp.getOffsetParameterAttr(),
+                                      dmaOp.getMemref().getType()))) {
           return WalkResult::interrupt();
         }
       } else if (auto bdOp = dyn_cast<AIE::DMABDOp>(op)) {
-        if (failed(rewriteOffsetParam(op, bdOp.getOffsetParameterAttr()))) {
+        if (failed(rewriteOffsetParam(op, bdOp.getOffsetParameterAttr(),
+                                      bdOp.getBuffer().getType()))) {
           return WalkResult::interrupt();
         }
       }

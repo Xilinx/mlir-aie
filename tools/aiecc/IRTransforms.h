@@ -248,7 +248,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(
                  "--no-measure-stack-size to skip this check entirely";
           result = mlir::failure();
         } else {
-          coreOp.emitWarning()
+          mlir::emitWarning(coreOp.getLoc())
               << "cannot determine this core's stack requirement: "
               << stackRes.error
               << "; stack_size is not being validated for this core. Set "
@@ -261,7 +261,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(
 
       // An unchecked narrowing to i32 wraps to a small or negative number.
       if (*stackRes.bytes > INT32_MAX) {
-        coreOp.emitWarning()
+        mlir::emitWarning(coreOp.getLoc())
             << "stack requirement computed as " << *stackRes.bytes
             << " bytes, which does not fit in the attribute's i32; "
                "stack_size is not being validated for this core";
@@ -277,7 +277,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(
             mlir::Builder(module.getContext())
                 .getI32IntegerAttr(static_cast<int32_t>(required)));
       } else {
-        auto diag = coreOp.emitWarning()
+        auto diag = mlir::emitWarning(coreOp.getLoc())
                     << "no stack size information for "
                     << stackRes.unmeasured.size()
                     << " function(s) this core reaches, so its requirement is "
