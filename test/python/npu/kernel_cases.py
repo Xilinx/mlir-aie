@@ -440,6 +440,23 @@ CASES: list[Case] = [
         smoke=True,
         perf=False,
     ),
+    # The per-call shapes amd/IRON's llama 3.2 1B decode hands the bf16 GEMV:
+    # four rows per call over the hidden (2048) and head (64) dims, at the
+    # widest vec_size that leaves at least two chunks.
+    *[
+        Case(
+            "mv",
+            dict(
+                dim_m=4,
+                dim_k=dim_k,
+                input_dtype=bfloat16,
+                output_dtype=bfloat16,
+                vec_size=vec_size,
+            ),
+            calls=16,
+        )
+        for dim_k, vec_size in ((64, 32), (2048, 64))
+    ],
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
@@ -683,6 +700,68 @@ CASES: list[Case] = [
         calls=16,
         devices=("npu2",),
         smoke=True,
+    ),
+    # amd/IRON model shapes: Llama 3.2 1B. Each is one core's per-call tile as
+    # IRON instantiates the model at a 2048-token context. The decode GEMVs over
+    # 2048 and 64 columns are the mv cases above. The one-row ffn down GEMV is
+    # not here: its 2-byte output is below the 4-byte DMA transfer minimum.
+    # prefill q/k/v/o, ffn and attention-score GEMMs: bf16 in and out, 8x8x8
+    # mmul emulated with bfp16. No "large" data: bfp16's shared block
+    # exponent leaves an error proportional to the operands, which at 1e4
+    # scale dwarfs the matmul tolerance's 0.5 atol wherever a sum cancels.
+    Case(
+        "mm",
+        dict(
+            dim_m=64,
+            dim_k=64,
+            dim_n=64,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            emulate_bf16_mmul_with_bfp16=True,
+        ),
+        calls=16,
+        tag="llama-prefill",
+        devices=("npu2",),
+        data_cases=("random", "zeros", "ones", "alternating"),
+    ),
+    # prefill LM head GEMM, B column-major
+    Case(
+        "mm",
+        dict(
+            dim_m=64,
+            dim_k=64,
+            dim_n=64,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            b_col_maj=True,
+            emulate_bf16_mmul_with_bfp16=True,
+        ),
+        calls=16,
+        tag="llama-prefill-lm-head",
+        devices=("npu2",),
+        data_cases=("random", "zeros", "ones", "alternating"),
+    ),
+    # ffn gate activation
+    Case("silu_sized", dict(tile_size=4096), calls=16, tag="llama-prefill"),
+    Case("silu_sized", dict(tile_size=1024), calls=16, tag="llama-decode"),
+    # ffn gate product and attention-score scaling
+    Case("mul_sized", dict(tile_size=4096), calls=16, tag="llama-prefill-ffn"),
+    Case("mul_sized", dict(tile_size=2048), calls=16, tag="llama-prefill-attn-scale"),
+    Case("mul_sized", dict(tile_size=1024), calls=16, tag="llama-decode-ffn"),
+    Case("mul_sized", dict(tile_size=256), calls=16, tag="llama-decode-attn-scale"),
+    # residual adds
+    Case("add_sized", dict(tile_size=2048), calls=16, tag="llama-prefill"),
+    Case("add_sized", dict(tile_size=256), calls=16, tag="llama-decode"),
+    # q/k rotary embedding, one 64-wide head row per call
+    Case(
+        "rope", dict(cols=64, two_halves=True), calls=16, tag="llama", devices=("npu2",)
+    ),
+    # decode KV-cache transpose, 256x32 in 8x8 subtiles
+    Case(
+        "transpose",
+        dict(dim_m=256, dim_n=32, subtile=8),
+        calls=16,
+        tag="llama-decode",
     ),
 ]
 
