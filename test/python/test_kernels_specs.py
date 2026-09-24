@@ -275,7 +275,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="softmax_bf16",
         lut_source="softmax.cc",
-        invalid_kwargs=[(dict(tile_size=2048), "tile_size must be 1024")],
+        invalid_kwargs=[(dict(tile_size=1000), "not a multiple")],
     ),
     KernelSpec(
         name="gelu",

@@ -319,15 +319,16 @@ def _bf16_lut_factory(
 
 
 def softmax(tile_size: int = 1024) -> ExternalFunction:
-    """Softmax activation kernel for bf16 tiles (tile_size must be 1024).
+    """Softmax activation kernel for bf16 tiles.
 
     Args:
-        tile_size: Number of elements per tile.
+        tile_size: Number of elements per tile, passed at run time; a
+            positive multiple of 32, the kernel's vector step.
 
     Returns:
         ExternalFunction configured for the softmax kernel.
     """
-    _require_fixed_tile_size("softmax", tile_size, _LUT_FIXED_TILE)
+    _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "softmax_bf16",

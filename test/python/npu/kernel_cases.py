@@ -837,6 +837,8 @@ CASES: list[Case] = [
     # residual adds
     Case("add_sized", dict(tile_size=2048), calls=16, tag="llama-prefill"),
     Case("add_sized", dict(tile_size=256), calls=16, tag="llama-decode"),
+    # attention weights, one prompt-length row of scores per call
+    Case("softmax", dict(tile_size=2048), calls=16, tag="llama-prefill"),
     # q/k rotary embedding, one 64-wide head row per call
     Case(
         "rope", dict(cols=64, two_halves=True), calls=16, tag="llama", devices=("npu2",)
