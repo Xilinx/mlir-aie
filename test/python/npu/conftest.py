@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 from contextlib import contextmanager
+import re
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -72,10 +74,15 @@ def pytest_addoption(parser):
     parser.addoption(
         "--bench-out",
         default=None,
-        help="write benchmark-action rows here, if the session passes",
+        help="write benchmark-action rows here, if the NPU checks pass",
     )
     parser.addoption(
         "--bench-meta", default=None, help="write run provenance and any failures here"
+    )
+    parser.addoption(
+        "--correctness-results",
+        default=None,
+        help="only publish cases checked without failures in this extensive JUnit report",
     )
     parser.addoption("--warmup", type=int, default=10, help="untimed iterations")
     parser.addoption("--iters", type=int, default=50, help="timed iterations")
@@ -125,14 +132,37 @@ def benchmark(request):
     return record
 
 
-def pytest_sessionfinish(session, exitstatus):
-    """Write the benchmark rows, but only from a session that passed.
+def _checked_cases(path):
+    """Read the extensive sweep, excluding a case if any input or seed failed."""
+    tests = list(ET.parse(path).iter("testcase"))
+    if not tests:
+        raise ValueError("correctness report contains no tests")
+    checked, rejected, failed = set(), set(), []
+    for test in tests:
+        name = test.get("name", "")
+        match = re.fullmatch(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]", name)
+        bad = test.find("failure") is not None or test.find("error") is not None
+        if bad:
+            if not match:
+                raise ValueError(f"unmapped correctness failure: {name}")
+            rejected.add(match[1])
+            failed.append(f"{test.get('classname', '')}::{name}")
+        elif match and test.find("skipped") is None:
+            checked.add(match[1])
+    return checked - rejected, failed
 
-    Timings from a run where some kernel returned the wrong answer are not
-    worth charting, and a partial file would silently drop series. pytest's
-    own exit status is the gate, so there is no second tally to keep in step
-    with it. Meta is written either way -- when nothing was measured, that
-    file is the only record of why.
+
+def pytest_sessionfinish(session, exitstatus):
+    """Write the benchmark rows once the NPU checks have passed.
+
+    A kernel that returns the wrong answer records nothing -- its test raises
+    before timing. When given the extensive correctness report, also exclude
+    cases that failed an edge input or were not checked there. A failed
+    kernel's series shows a gap for this run. What a partial file
+    cannot survive is a bad device: if preflight (power mode) or the
+    measurement sanity check failed, no number from the run is trustworthy
+    and nothing is written. Meta is written either way and lists the failed
+    tests, so a missing series or an empty run is explained.
     """
     import json
     from pathlib import Path
@@ -140,14 +170,28 @@ def pytest_sessionfinish(session, exitstatus):
     config = session.config
     rows = getattr(config, "_bench_rows", [])
     meta = getattr(config, "_bench_meta", {})
+    reporter = config.pluginmanager.get_plugin("terminalreporter")
+    stats = reporter.stats if reporter else {}
+    failed = sorted({r.nodeid for k in ("failed", "error") for r in stats.get(k, [])})
+    if correctness := config.getoption("--correctness-results"):
+        try:
+            checked, correctness_failed = _checked_cases(correctness)
+            rows = [r for r in rows if r["name"].rsplit("/", 1)[0] in checked]
+            failed = sorted(set(failed) | set(correctness_failed))
+        except (OSError, ET.ParseError, ValueError) as exc:
+            meta["correctness_error"] = str(exc)
+            rows = []
 
     if meta_path := config.getoption("--bench-meta"):
         meta["exitstatus"] = int(exitstatus)
         meta["n_rows"] = len(rows)
+        meta["failed"] = failed
         Path(meta_path).write_text(json.dumps(meta, indent=1))
 
+    npu_ok = "preflight" in meta and meta.get("measurement_sane") is True
+    completed = exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED)
     if out := config.getoption("--bench-out"):
-        if exitstatus == 0 and rows:
+        if npu_ok and completed and rows:
             Path(out).write_text(json.dumps(rows, indent=1))
 
 

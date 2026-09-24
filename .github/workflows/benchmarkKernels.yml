@@ -12,6 +12,10 @@ name: Kernel Benchmarks on Ryzen AI
 # Runs nightly from main, which publishes and records the baseline, and on
 # pull requests that bump the Peano pin, which only compare and upload their
 # records.
+#
+# A kernel that fails its checks costs only its own series a point: the
+# rest of the run still publishes, as long as the NPU checks (preflight and
+# the measurement sanity test) passed. The job still goes red.
 
 permissions:
   contents: read
@@ -128,8 +132,9 @@ jobs:
 
       - name: Run kernel benchmarks
         id: bench
-        # Correctness must be green before numbers are trusted.
-        if: steps.correctness.outcome == 'success'
+        # Runs even if correctness failed, but publication excludes every case
+        # with a failure in the extensive sweep, not just the random re-check.
+        if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
         run: |
           sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
@@ -138,13 +143,15 @@ jobs:
           export XRT_CONTEXT_CACHE_SIZE=2
           python -m pytest test/python/npu/test_kernels_bench.py -m benchmark -v \
             --bench-out bench.json --bench-meta meta.json --pmode any \
+            --correctness-results correctness.xml \
             --warmup 10 --iters 50 2>&1 | tee bench.log
-          # A failing session leaves no bench.json -> downstream steps skip.
-          # meta.json is written either way, and records why.
+          # bench.json holds every kernel that passed, unless the NPU checks
+          # failed, in which case there is none and downstream steps skip.
+          # meta.json is written either way, and lists the failures.
 
       - name: Read power mode
         id: pmode
-        if: hashFiles('bench.json') != ''
+        if: ${{ !cancelled() && hashFiles('bench.json') != '' }}
         run: |
           python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or sys.exit("power mode is unreadable")))' \
             pmode meta.json >> "$GITHUB_OUTPUT"
@@ -164,7 +171,7 @@ jobs:
 
       # ---------------- peano bump PR: compare, one sticky comment --------
       - name: Restore baseline (PR)
-        if: github.event_name == 'pull_request' && hashFiles('bench.json') != ''
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && hashFiles('bench.json') != '' }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: baseline
@@ -173,7 +180,7 @@ jobs:
 
       - name: Compare against baseline (PR)
         # Needs a nightly baseline in the cache; the first runs have none.
-        if: github.event_name == 'pull_request' && hashFiles('bench.json') != '' && hashFiles('baseline/benchmark-data.json') != ''
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && hashFiles('bench.json') != '' && hashFiles('baseline/benchmark-data.json') != '' }}
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: aie_kernels (${{ matrix.expected_npu }}, ${{ steps.pmode.outputs.pmode }})
@@ -194,7 +201,8 @@ jobs:
 
   publish:
     needs: bench
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # Publish whichever NPUs produced results, even if the other leg failed.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: write
     uses: ./.github/workflows/publishKernelResults.yml
