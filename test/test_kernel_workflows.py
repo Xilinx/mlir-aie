@@ -145,6 +145,8 @@ def test_partial_results_are_benchmarked_and_published():
     assert steps["bench"]["if"] == (
         "${{ !cancelled() && steps.preflight.outcome == 'success' }}"
     )
+    assert "--junitxml=correctness.xml" in steps["correctness"]["run"]
+    assert "--correctness-results correctness.xml" in steps["bench"]["run"]
     assert config["jobs"]["publish"]["if"].startswith("${{ !cancelled() && ")
 
 
@@ -153,7 +155,27 @@ def test_dispatch_filter_is_passed_as_data_not_shell_source():
     step = next(step for step in job["steps"] if step.get("id") == "bench")
     assert step["env"]["ONLY"] == "${{ github.event.inputs.only }}"
     assert "${{ github.event.inputs.only }}" not in step["run"]
-    assert '${ONLY:+-k "$ONLY"}' in step["run"]
+    assert '${ONLY:+-k "($ONLY) or test_measurement_is_sane"}' in step["run"]
+
+
+@pytest.mark.parametrize("only", ["", "softmax", "softmax and not large", "$(false)"])
+def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path):
+    steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "bench")
+    command = run[run.index("python -m pytest") :].split("2>&1", 1)[0]
+    result = subprocess.run(
+        ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
+        cwd=tmp_path,
+        env={**os.environ, "ONLY": only},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    args = result.stdout.splitlines()
+    if only:
+        assert args[-2:] == ["-k", f"({only}) or test_measurement_is_sane"]
+    else:
+        assert "-k" not in args
 
 
 def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():

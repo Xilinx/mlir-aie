@@ -139,8 +139,8 @@ jobs:
 
       - name: Run kernel benchmarks
         id: bench
-        # Runs even if correctness failed: each benchmark re-checks its own
-        # kernel and records nothing for a wrong one.
+        # Runs even if correctness failed, but publication excludes every case
+        # with a failure in the extensive sweep, not just the random re-check.
         if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
         env:
           ONLY: ${{ github.event.inputs.only }}
@@ -152,8 +152,9 @@ jobs:
           export XRT_CONTEXT_CACHE_SIZE=2
           python -m pytest test/python/npu/test_kernels_bench.py -m benchmark -v \
             --bench-out bench.json --bench-meta meta.json --pmode any \
+            --correctness-results correctness.xml \
             --warmup 10 --iters 50 \
-            ${ONLY:+-k "$ONLY"} 2>&1 | tee bench.log
+            ${ONLY:+-k "($ONLY) or test_measurement_is_sane"} 2>&1 | tee bench.log
           # bench.json holds every kernel that passed, unless the NPU checks
           # failed, in which case there is none and downstream steps skip.
           # meta.json is written either way, and lists the failures.

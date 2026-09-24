@@ -11,8 +11,10 @@ kernel against its contract, then times it. Checking first is the point --
 timings from a kernel that returns the wrong answer are noise, so the
 assertion runs before anything is recorded. A failing kernel drops only its
 own rows; the JSON is still written, unless the device itself is suspect --
-preflight or ``test_measurement_is_sane`` failed -- in which case
+preflight or ``test_measurement_is_sane`` did not pass -- in which case
 ``pytest_sessionfinish`` writes none of it.
+With ``--correctness-results correctness.xml``, publication also excludes
+cases with any extensive-suite failure or no passing correctness test.
 
 Run it the way the nightly workflow does::
 
@@ -20,7 +22,9 @@ Run it the way the nightly workflow does::
         --bench-out bench.json --bench-meta meta.json --pmode turbo
         --warmup 10 --iters 50
 
-``-k`` selects a subset. The series a row lands in is ``<case>/<metric>``;
+``-k`` selects a subset; include the sanity test, for example
+``-k '(softmax) or test_measurement_is_sane'``, to allow publication.
+The series a row lands in is ``<case>/<metric>``;
 ``test_benchmark_series_names.py`` pins those names, because renaming one
 restarts its chart on gh-pages.
 """

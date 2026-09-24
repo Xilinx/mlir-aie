@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 from contextlib import contextmanager
+import re
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -77,6 +79,11 @@ def pytest_addoption(parser):
     parser.addoption(
         "--bench-meta", default=None, help="write run provenance and any failures here"
     )
+    parser.addoption(
+        "--correctness-results",
+        default=None,
+        help="only publish cases checked without failures in this extensive JUnit report",
+    )
     parser.addoption("--warmup", type=int, default=10, help="untimed iterations")
     parser.addoption("--iters", type=int, default=50, help="timed iterations")
     parser.addoption(
@@ -117,12 +124,33 @@ def benchmark(request):
     return record
 
 
+def _checked_cases(path):
+    """Read the extensive sweep, excluding a case if any input or seed failed."""
+    tests = list(ET.parse(path).iter("testcase"))
+    if not tests:
+        raise ValueError("correctness report contains no tests")
+    checked, rejected, failed = set(), set(), []
+    for test in tests:
+        name = test.get("name", "")
+        match = re.fullmatch(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]", name)
+        bad = test.find("failure") is not None or test.find("error") is not None
+        if bad:
+            if not match:
+                raise ValueError(f"unmapped correctness failure: {name}")
+            rejected.add(match[1])
+            failed.append(f"{test.get('classname', '')}::{name}")
+        elif match and test.find("skipped") is None:
+            checked.add(match[1])
+    return checked - rejected, failed
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Write the benchmark rows once the NPU checks have passed.
 
     A kernel that returns the wrong answer records nothing -- its test raises
-    before timing -- so the file holds only kernels that checked out, and a
-    failed kernel's series shows a gap for this commit. What a partial file
+    before timing. When given the extensive correctness report, also exclude
+    cases that failed an edge input or were not checked there. A failed
+    kernel's series shows a gap for this run. What a partial file
     cannot survive is a bad device: if preflight (power mode) or the
     measurement sanity check failed, no number from the run is trustworthy
     and nothing is written. Meta is written either way and lists the failed
@@ -137,6 +165,14 @@ def pytest_sessionfinish(session, exitstatus):
     reporter = config.pluginmanager.get_plugin("terminalreporter")
     stats = reporter.stats if reporter else {}
     failed = sorted({r.nodeid for k in ("failed", "error") for r in stats.get(k, [])})
+    if correctness := config.getoption("--correctness-results"):
+        try:
+            checked, correctness_failed = _checked_cases(correctness)
+            rows = [r for r in rows if r["name"].rsplit("/", 1)[0] in checked]
+            failed = sorted(set(failed) | set(correctness_failed))
+        except (OSError, ET.ParseError, ValueError) as exc:
+            meta["correctness_error"] = str(exc)
+            rows = []
 
     if meta_path := config.getoption("--bench-meta"):
         meta["exitstatus"] = int(exitstatus)
@@ -144,8 +180,7 @@ def pytest_sessionfinish(session, exitstatus):
         meta["failed"] = failed
         Path(meta_path).write_text(json.dumps(meta, indent=1))
 
-    # test_measurement_is_sane leaves the flag unset when -k deselects it.
-    npu_ok = "preflight" in meta and meta.get("measurement_sane", True)
+    npu_ok = "preflight" in meta and meta.get("measurement_sane") is True
     completed = exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED)
     if out := config.getoption("--bench-out"):
         if npu_ok and completed and rows:
