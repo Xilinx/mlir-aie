@@ -193,6 +193,25 @@ def _write(path, data):
     return str(path)
 
 
+def _fail_only_the_injection(stderr):
+    """Return a subprocess.run stand-in that fails only the --add-section call.
+
+    Patching ``subprocess.run`` wholesale also breaks tool *resolution*:
+    ``aie.utils.config`` probes a candidate with ``--version`` before returning
+    it, so a blanket stub makes objcopy look unresolvable rather than makes the
+    injection fail. That probe does not happen in a checkout with no build,
+    which is why an unconditional stub passes locally and fails in CI.
+    """
+    real_run = subprocess.run
+
+    def run(cmd, *args, **kwargs):
+        if any(str(c).startswith("--add-section") for c in cmd):
+            raise subprocess.CalledProcessError(1, cmd, stderr=stderr)
+        return real_run(cmd, *args, **kwargs)
+
+    return run
+
+
 def _have_objcopy():
     """Resolve objcopy exactly as the code under test does.
 
@@ -1006,10 +1025,9 @@ def test_a_failed_injection_leaves_the_previous_section_intact(tmp_path, monkeyp
     pack.inject(path, "aie2p", good)
     before = open(path, "rb").read()
 
-    def fail(cmd, *a, **kw):
-        raise subprocess.CalledProcessError(1, cmd, stderr=b"objcopy said no")
-
-    monkeypatch.setattr(pack.subprocess, "run", fail)
+    monkeypatch.setattr(
+        pack.subprocess, "run", _fail_only_the_injection(b"objcopy said no")
+    )
     with pytest.raises(RuntimeError, match="objcopy said no") as excinfo:
         pack.inject(
             path, "aie2p", pack.build_section("aie2p", [_kernel("new", b"\x03")])
@@ -1072,10 +1090,7 @@ def test_a_failed_injection_leaves_no_stray_container(tmp_path, monkeypatch, cap
     path = str(tmp_path / "never.hsaco")
     insts = _write(tmp_path / "insts.bin", b"\x01")
 
-    def fail(cmd, *a, **kw):
-        raise subprocess.CalledProcessError(1, cmd, stderr=b"nope")
-
-    monkeypatch.setattr(pack.subprocess, "run", fail)
+    monkeypatch.setattr(pack.subprocess, "run", _fail_only_the_injection(b"nope"))
     with pytest.raises(SystemExit):
         pack.main(
             ["--hsaco", path, "--arch", "aie2"]
