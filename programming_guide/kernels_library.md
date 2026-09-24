@@ -493,7 +493,7 @@ for a kernel that fails to compile. With
 `MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
 `aie_kernels/` is compiled against an installed wheel. The separate
 `benchmarkKernels.yml` workflow runs hardware correctness and benchmarks
-nightly, on demand, and on Peano-pin pull requests; it does not run these
+nightly and on Peano-pin pull requests; it does not run these
 static checks.
 
 ### Kernels the generic builder cannot run

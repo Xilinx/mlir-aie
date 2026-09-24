@@ -37,7 +37,7 @@ def benchmark_steps(job):
 )
 def test_parallel_compute_has_one_main_only_publisher(filename, compute, static):
     config = workflow(filename)
-    assert set(config["on"]) == {"workflow_dispatch", "schedule", "pull_request"}
+    assert set(config["on"]) == {"schedule", "pull_request"}
     # A change to the workflow that runs the checks must itself run them.
     assert filename in " ".join(config["on"]["pull_request"]["paths"]) or (
         filename == "benchmarkKernels.yml"
@@ -88,9 +88,7 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         options = step["with"]
         assert options["auto-push"] == "false"
         assert options["skip-fetch-gh-pages"] == "true"
-        # Every record writes whichever branch the caller named, so a
-        # rehearsal cannot land half its series on the real one.
-        assert options["gh-pages-branch"] == "${{ inputs.branch }}"
+        assert options["gh-pages-branch"] == "gh-pages"
         assert options["comment-on-alert"] == "false"
     assert [step["if"] for step in records[2:]] == ["inputs.static"] * 2
     pushes = [step for step in steps if "git push" in step.get("run", "")]
@@ -119,14 +117,6 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         "results/npu1",
         "results/npu2",
     ]
-
-
-def test_dispatch_filter_is_passed_as_data_not_shell_source():
-    job = workflow("benchmarkKernels.yml")["jobs"]["bench"]
-    step = next(step for step in job["steps"] if step.get("id") == "bench")
-    assert step["env"]["ONLY"] == "${{ github.event.inputs.only }}"
-    assert "${{ github.event.inputs.only }}" not in step["run"]
-    assert '${ONLY:+-k "$ONLY"}' in step["run"]
 
 
 def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
@@ -243,31 +233,3 @@ def test_docs_cleanup_preserves_benchmark_history():
         check=True,
     )
     assert result.stdout == b"legacy.html\0"
-
-
-def test_rehearsing_the_publish_cannot_touch_the_real_series():
-    """The branch override has to be inert everywhere but the branch itself.
-
-    A rehearsal publishes to a scratch branch to prove the path works. Two
-    things would let it reach past that: the baseline caches are restored by
-    key prefix, so a rehearsal writing one would hand its numbers to the next
-    PR comparison; and the lock is what keeps this workflow from pushing the
-    branch while the docs workflow is pushing it, so it has to stay a name
-    both can agree on rather than one derived from the input.
-    """
-    config = workflow("publishKernelResults.yml")
-    branch = config["on"]["workflow_call"]["inputs"]["branch"]
-    assert branch["default"] == "gh-pages"
-    assert branch["required"] == "false"
-
-    job = config["jobs"]["publish"]
-    assert job["concurrency"]["group"] == "gh-pages-publish"
-
-    saves = [
-        step
-        for step in job["steps"]
-        if step.get("uses", "").startswith("actions/cache/save@")
-    ]
-    assert len(saves) == 2
-    for step in saves:
-        assert step["if"] == "inputs.branch == 'gh-pages'"

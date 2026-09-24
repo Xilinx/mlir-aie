@@ -9,22 +9,15 @@ name: Kernel Benchmarks on Ryzen AI
 # hard-threshold series regressed. Everything else: no comments, no data,
 # just a red run and an artifact.
 #
-# Runs nightly from main (which records the baseline), on pull requests
-# that bump the Peano pin, and on demand. A dispatched run on main publishes
-# like the nightly does; a dispatched run on any other branch, or a pull
-# request, only compares and uploads its records.
+# Runs nightly from main, which publishes and records the baseline, and on
+# pull requests that bump the Peano pin, which only compare and upload their
+# records.
 
 permissions:
   contents: read
   pull-requests: write   # sticky comment (peano PRs only)
 
 on:
-  workflow_dispatch:
-    inputs:
-      only:
-        description: 'regex on kernel names (e.g. linalg/)'
-        required: false
-        default: ''
   schedule:
     - cron: '0 6 * * *'          # after the 00:00 test nightly
   pull_request:
@@ -130,8 +123,6 @@ jobs:
         id: bench
         # Correctness must be green before numbers are trusted.
         if: steps.correctness.outcome == 'success'
-        env:
-          ONLY: ${{ github.event.inputs.only }}
         run: |
           sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
@@ -140,8 +131,7 @@ jobs:
           export XRT_CONTEXT_CACHE_SIZE=2
           python -m pytest test/python/npu/test_kernels_bench.py -m benchmark -v \
             --bench-out bench.json --bench-meta meta.json --pmode any \
-            --warmup 10 --iters 50 \
-            ${ONLY:+-k "$ONLY"} 2>&1 | tee bench.log
+            --warmup 10 --iters 50 2>&1 | tee bench.log
           # A failing session leaves no bench.json -> downstream steps skip.
           # meta.json is written either way, and records why.
 
