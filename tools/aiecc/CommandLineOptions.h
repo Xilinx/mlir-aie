@@ -487,6 +487,13 @@ inline cl::opt<bool> progress(
 inline cl::opt<bool> noProgress(
     "no-progress",
     cl::desc("Disable the default single-line execution progress output"));
+// Reuse each aie.device's compiled cores across builds; see DeviceCache.h.
+inline cl::opt<std::string> deviceCacheDir(
+    "device-cache",
+    cl::desc("Reuse the placement and linked core ELFs of any aie.device an "
+             "earlier build stored in this dir, and store the ones this build "
+             "compiles (Peano only)"),
+    cl::value_desc("dir"), cl::init(""));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--cut` plus a `manifest.json` describing them into <dir> after a
 // successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds

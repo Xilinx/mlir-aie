@@ -1434,11 +1434,13 @@ inline bool runtimeCodeReferencesCoreTile(xilinx::AIE::CoreOp core) {
 }
 
 // Pairs with `getInputWithAddressesPipeline(..., assignAddresses=false)`.
+// Anchored on DeviceOp, so a caller can place some of a module's devices.
 inline std::unique_ptr<mlir::PassManager>
 getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx) {
   using namespace xilinx::AIE;
-  auto pm = std::make_unique<mlir::PassManager>(ctx);
-  pm->nest<DeviceOp>().addPass(createAIEAssignBufferAddressesPass());
+  auto pm =
+      std::make_unique<mlir::PassManager>(ctx, DeviceOp::getOperationName());
+  pm->addPass(createAIEAssignBufferAddressesPass());
   return pm;
 }
 

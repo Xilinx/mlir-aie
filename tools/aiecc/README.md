@@ -109,6 +109,27 @@ An explicit `-j` or `--nthreads` takes precedence over `AIECC_JOBS`, which in
 turn takes precedence over the default. The environment variable accepts the
 same non-negative integer values as `-j`, including `0` for auto-detection.
 
+### Reusing compiled devices: `--device-cache`
+
+`--device-cache=<dir>` keeps what compiling each `aie.device`'s cores produced
+(its buffer placement and linked core ELFs) in `<dir>`, and a later build whose
+device is unchanged reuses them instead of compiling its cores again:
+
+```bash
+aiecc --get-full-elf --device-cache=$HOME/.cache/aiecc design.mlir
+```
+
+A device is reused only when its routed IR, the module's other top-level ops,
+the contents of every file its cores link, the command line and the `aiecc`
+and Peano binaries all match, so changing one device in a multi-device design
+recompiles just that device. Outputs are byte-identical to a build without the
+cache. `-v` reports each device's `hit`, `miss` and `store`.
+
+The cache is Peano-only, and a build that emits something from inside a
+core's compilation (`--get-core-elfs`, `--get-locmap`, `--dump-intermediates`)
+bypasses it. Concurrent builds can share a directory. Nothing is ever evicted;
+delete the directory to reclaim space.
+
 ### Core memory placement and validation
 
 `aiecc` checks stack and ordinary static-data requirements after linking.
