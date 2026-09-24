@@ -274,6 +274,16 @@ def ar_path():
     return _find_llvm_tool("llvm-ar", "AIE_AR_PATH")
 
 
+def readobj_path():
+    """Return the llvm-readobj the static checks read kernel objects with.
+
+    Its JSON output (sections, symbols, relocations) is what tells which
+    functions a linked kernel keeps and which runtime helpers it calls; GNU
+    readelf has no JSON form and does not decode the AIE relocations.
+    """
+    return _find_llvm_tool("llvm-readobj", "AIE_READOBJ_PATH")
+
+
 def aie_kernels_dir():
     """Return the ``aie_kernels/`` directory the kernel factories compile from.
 

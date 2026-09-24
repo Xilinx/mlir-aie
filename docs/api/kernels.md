@@ -169,6 +169,12 @@ These compiler-remark checks are available on demand through
         - compile_command
         - analyze
         - kernel_builds
+        - Linked
+        - linked
+        - parse_readobj
+        - trace_markers
+        - trace_shape
+        - entry_symbol
 
 ## Host-side helpers
 
