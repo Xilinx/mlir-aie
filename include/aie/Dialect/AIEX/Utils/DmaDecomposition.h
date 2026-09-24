@@ -32,10 +32,18 @@ static constexpr unsigned kNdDmaDims = 4;
 
 /// Innermost-first ND access pattern (d0..d3 / repeat), matching the
 /// convention used by verifyStridesWraps and NpuDmaMemcpyNdOp verification.
+///
+/// A runtime-sequence task BD may give more than kNdDmaDims dimensions, all of
+/// the ones past d2 iteration dimensions; decomposeNdDmaPattern reduces it to
+/// kNdDmaDims-dimension patterns.
 struct NdDmaPattern {
   llvm::SmallVector<int64_t, kNdDmaDims> offsets;
   llvm::SmallVector<int64_t, kNdDmaDims> sizes;
   llvm::SmallVector<int64_t, kNdDmaDims> strides;
+  /// Elements added to the address the offsets give. Carries the position of
+  /// a pattern peeled off the dimensions past kNdDmaDims, which no dimension
+  /// of the peeled pattern can express.
+  int64_t baseOffset = 0;
 };
 
 /// Returns true when the pattern passes verifyStridesWraps for the given tile
@@ -61,6 +69,14 @@ bool isDecomposableNdDmaPattern(mlir::Operation *forOp,
 /// the same data. Prefers dimension factoring (single-op result when possible);
 /// falls back to slicing (multiple ops). Returns failure when no legal
 /// decomposition exists.
+///
+/// A pattern with more than kNdDmaDims dimensions first has its iteration
+/// dimensions (d3 and up) merged where one continues the next, then, if more
+/// than one remains, is peeled into one pattern per index of the dimensions
+/// past d3, outermost slowest, each decomposed in turn. One execution of the
+/// original visits one index of the iteration dimensions, so the result keeps
+/// the order of executions as well as of elements, but a peeled pattern
+/// iterates only over d3: its executions are a share of the original's.
 mlir::FailureOr<llvm::SmallVector<NdDmaPattern>> decomposeNdDmaPattern(
     mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType,
     const NdDmaPattern &pattern, const xilinx::AIE::AIETargetModel &targetModel,

@@ -169,7 +169,7 @@ def shim_dma_single_bd_task(
 - **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
 - **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
 - **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
-- **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+- **`sizes`**: The extent of data to be transferred across each dimension. A buffer descriptor holds four; when `sizes` and `strides` are all constant, more may be given, and the compiler splits the extra ones off into further tasks.
 - **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
 - **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
 - **`burst_length`** (optional): The configuration of the burst length for the DMA task. If `0`, defaults to the highest available value.
@@ -182,6 +182,8 @@ out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=Tr
 ```
 
 The example above describes a linear transfer of `N` data elements from the `C` buffer in host memory into an ObjectFifo with matching metadata labeled "of_out". The `sizes` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
+
+The leftmost dimension, and with more than four every dimension left of the innermost three, is iterated: the BD runs once per index of it, and the task's repeat count is set to match. A transfer of `[2, 3, 4, 8, 16]` therefore runs a `[4, 8, 16]` BD 6 times. Where its outer two dimensions merge into one, it stays one task; otherwise the compiler issues one task per index of the outermost dimension, and only the last of them issues the token.
 
 #### **Host Synchronization with `dma_await_task`**
 

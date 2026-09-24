@@ -270,6 +270,57 @@ def dma_start_bd_chain_for(symbol, args, alloc, *pyargs, **kwargs):
     )
 
 
+def _task_dims(sizes, strides):
+    """Normalize a single-BD task's dimensions and derive its repeat count.
+
+    Returns ``(sizes, strides, repeat_count, repeat_count_val)``. Every
+    dimension before the last three is an iteration dimension rather than a
+    transferred extent: the task runs once per index of them, so its repeat
+    count is their product less one, while the transferred length is
+    ``prod(sizes[-3:])`` (see ``shim_dma_bd``).
+
+    Fewer than 4 dimensions are left-padded with unit dimensions. Without that,
+    a 3-dim ``sizes[0] > 1`` would count both as an access dimension and as the
+    repeat count, so the task would re-issue the whole transfer ``sizes[0]``
+    times and ``dma_await_task`` would never return.
+
+    A BD holds 4 dimensions. ``aie-decompose-large-dma-bd`` splits the ones past
+    that off into further descriptors, which it can only do for constant sizes
+    and strides. A constant repeat count folds to the ``repeat_count``
+    attribute; a runtime one (4 dimensions at most) flows into the
+    ``repeat_count_val`` operand, in i32, the queue field's width.
+    """
+    repeat_count = 0
+    repeat_count_val = None
+    if sizes is None:
+        return sizes, strides, repeat_count, repeat_count_val
+    sizes = list(sizes)
+    if strides is not None:
+        strides = list(strides)
+    while len(sizes) < 4:
+        sizes = [1] + sizes
+        if strides is not None:
+            strides = [0] + strides
+
+    def constant(v):
+        return isinstance(v, (int, np.integer))
+
+    outer = sizes[:-3]
+    if len(sizes) > 4 and not all(map(constant, sizes + (strides or []))):
+        raise ValueError(
+            f"a DMA BD with more than 4 dimensions (got {len(sizes)}) needs "
+            "constant sizes and strides, which the compiler splits into BDs of 4"
+        )
+    if all(map(constant, outer)):
+        runs = int(np.prod([int(v) for v in outer]))
+        if runs > 1:
+            repeat_count = runs - 1
+    else:
+        # sizes may be i64 (DynamicIndexList); narrow before subtracting.
+        repeat_count_val = _as_bd_i32(outer[0]) - _as_i32(1)
+    return sizes, strides, repeat_count, repeat_count_val
+
+
 def shim_dma_bd(
     mem,
     tap: TensorAccessPattern | None = None,
@@ -299,7 +350,7 @@ def shim_dma_bd(
     if sizes is None:
         sizes = [0] * 4
     if strides is None:
-        strides = [0] * 3 + [1]
+        strides = [0] * (len(sizes) - 1) + [1]
 
     if transfer_len is None:
         transfer_len = np.prod(sizes[-3:])
@@ -340,7 +391,7 @@ def shim_dma_single_bd_task(
         mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
         tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
         offset (optional): Starting point for the data transfer. Default values is 0.
-        sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+        sizes: The extent of data to be transferred across each dimension. The dimensions before the last three are iteration dimensions, one execution of the BD per index; past four in all, which must then be constant, the compiler splits the transfer into several BDs.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
@@ -367,42 +418,7 @@ def shim_dma_single_bd_task(
         # so here we make sure it is evaluated and properly is seen as an integer.
         offset = int(tap.offset)
 
-    # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
-    # dimension. The repeat_count below hoists sizes[0] into that iteration
-    # dimension, but the transferred extent is prod(sizes[-3:]) (see shim_dma_bd),
-    # so sizes[0] is left out of it only when there are 4 dimensions. With fewer
-    # than 4 dims and sizes[0] > 1, sizes[0] is counted both as a real access dim
-    # (in transfer_len and in the BD dimensions) and as repeat_count, so the shim
-    # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
-    # many objects, and dma_await_task never returns. Normalize to the canonical
-    # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
-    # dimension, and reject taps with more than 4 dims instead of silently emitting
-    # a wrong BD.
-    if sizes is not None:
-        if len(sizes) > 4:
-            raise ValueError(
-                f"shim DMA BD supports at most 4 dimensions, got {len(sizes)}"
-            )
-        while len(sizes) < 4:
-            sizes = [1] + list(sizes)
-            if strides is not None:
-                strides = [0] + list(strides)
-
-    # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
-    # constant folds to the repeat_count attribute (static path, unchanged); a
-    # runtime Value flows into the repeat_count_val operand so a dynamic tile
-    # count is supported.
-    repeat_count = 0
-    repeat_count_val = None
-    if sizes:
-        s0 = sizes[0]
-        if isinstance(s0, (int, np.integer)):
-            if s0 > 1:
-                repeat_count = int(s0) - 1
-        else:
-            # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
-            # sizes may be i64 (DynamicIndexList); narrow before subtracting.
-            repeat_count_val = _as_bd_i32(s0) - _as_i32(1)
+    sizes, strides, repeat_count, repeat_count_val = _task_dims(sizes, strides)
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -470,28 +486,7 @@ def tile_dma_single_bd_task(
         bd_id: pin the buffer descriptor id instead of letting
             ``aie-assign-runtime-sequence-bd-ids`` choose one.
     """
-    if sizes is not None:
-        if len(sizes) > 4:
-            raise ValueError(
-                f"A DMA BD supports at most 4 dimensions, got {len(sizes)}"
-            )
-        while len(sizes) < 4:
-            sizes = [1] + list(sizes)
-            if strides is not None:
-                strides = [0] + list(strides)
-
-    # The outer (sizes[0]) dimension is the queue-push repeat_count rather than
-    # a transferred extent, exactly as on the shim path.
-    repeat_count = 0
-    repeat_count_val = None
-    if sizes:
-        s0 = sizes[0]
-        if isinstance(s0, (int, np.integer)):
-            if s0 > 1:
-                repeat_count = int(s0) - 1
-        else:
-            repeat_count_val = _as_bd_i32(s0) - _as_i32(1)
-
+    sizes, strides, repeat_count, repeat_count_val = _task_dims(sizes, strides)
     task = dma_configure_task(
         tile,
         direction,

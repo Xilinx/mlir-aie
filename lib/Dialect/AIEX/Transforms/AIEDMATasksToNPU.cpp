@@ -630,8 +630,9 @@ struct AIEDMATasksToNPUPass
     SmallVector<OpFoldResult> sizes(bd_op.getMixedSizes());
     SmallVector<OpFoldResult> strides(bd_op.getMixedStrides());
     if (sizes.size() > 4 || strides.size() > 4)
-      return bd_op->emitOpError("At most four data layout transformation "
-                                "dimensions may be provided.");
+      return bd_op->emitOpError(
+          "At most four data layout transformation dimensions may be "
+          "provided; aie-decompose-large-dma-bd splits a longer one.");
     OpFoldResult one = builder.getI64IntegerAttr(1);
     OpFoldResult zeroOfr = builder.getI64IntegerAttr(0);
     SmallVector<OpFoldResult, 4> sizes4(4, one), strides4(4, zeroOfr);
@@ -831,8 +832,9 @@ struct AIEDMATasksToNPUPass
       llvm::SmallVector<int64_t, 4> input_strides =
           llvm::SmallVector<int64_t, 4>(4, 0);
       if (dims->size() > 4) {
-        return bd_op->emitOpError("At most four data layout transformation "
-                                  "dimensions may be provided.");
+        return bd_op->emitOpError(
+            "At most four data layout transformation dimensions may be "
+            "provided; aie-decompose-large-dma-bd splits a longer one.");
       }
 
       for (size_t i = 0; i < dims->size(); i++) {

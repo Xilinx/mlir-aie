@@ -1219,6 +1219,11 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // caps the total at 4, which the MemTile's 4 ND dimensions already reach. Both
 // branches therefore land on the same uniform 4-dimension cap enforced later by
 // AIEDMATasksToNPU.
+//
+// A BD whose sizes and strides are all constant may give more: every dimension
+// past the third is an iteration dimension, and aie-decompose-large-dma-bd
+// splits them off into descriptors of 4. With a runtime value among them it
+// cannot, so the cap applies here.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
@@ -1242,6 +1247,12 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       return;
     }
     size_t numDims = bd.getMixedSizes().size();
+    auto isConstant = [](OpFoldResult v) {
+      return getConstantIntValue(v).has_value();
+    };
+    if (numDims > maxNDims && llvm::all_of(bd.getMixedSizes(), isConstant) &&
+        llvm::all_of(bd.getMixedStrides(), isConstant))
+      return;
     if (numDims > maxNDims) {
       bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
                        << " dimensions for step sizes and wraps on this tile "

@@ -113,3 +113,122 @@ module {
     }
   }
 }
+
+// -----
+
+// Dimensions past a descriptor's 4 are split off only where their offsets can
+// be computed: a runtime offset or length leaves them where they are.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @nd_runtime_offset(%in: memref<65536xi32>, %off: i32) {
+      %c128 = arith.constant 128 : i32
+      %tk = aiex.dma_configure_task_for @a {
+        // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off a descriptor whose offset, length, sizes and strides are all constant and that has no padding}}
+        aie.dma_bd(%in : memref<65536xi32> offset = %off len = %c128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+        aie.end
+      } {issue_token = true, repeat_count = 3 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Pieces of one descriptor in a chain would need the rest of the chain split
+// with them.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @nd_in_chain(%in: memref<65536xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off a task's only descriptor}}
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+        aie.next_bd ^bd1
+      ^bd1:
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Under runtime control flow, a descriptor has to stay one: iteration
+// dimensions that merge are accepted, ones that split into pieces are not.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @nd_in_loop(%in: memref<65536xi32>) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c4 = arith.constant 4 : index
+      scf.for %i = %c0 to %c4 step %c1 {
+        %merged = aiex.dma_configure_task_for @a {
+          aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 3, 1, 8, 16] strides = [300, 100, 0, 32, 1])
+          aie.end
+        } {issue_token = true, repeat_count = 5 : i32}
+        aiex.dma_start_task(%merged)
+        aiex.dma_await_task(%merged)
+        %tk = aiex.dma_configure_task_for @a {
+          // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off outside runtime control flow, since it splits into 2 descriptors}}
+          aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+          aie.end
+        } {issue_token = true, repeat_count = 3 : i32}
+        aiex.dma_start_task(%tk)
+        aiex.dma_await_task(%tk)
+      }
+    }
+  }
+}
+
+// -----
+
+// Each piece runs its own part of a pass, so the pieces must be separate tasks,
+// which a runtime repeat count cannot be divided among.
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @nd_runtime_repeat(%in: memref<65536xi32>, %r: i32) {
+      %tk = aiex.dma_configure_task_for @a repeat %r : i32 {
+        // expected-error@+1 {{cannot split this buffer descriptor: its slices need per-descriptor repeat counts, which a chain shares, and they cannot be separate tasks because the task's repeat count is a runtime value}}
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}
+
+// -----
+
+// Nor can a repeat count that stops partway through a pass over [2 x 2].
+
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @nd_partial_pass(%in: memref<65536xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        // expected-error@+1 {{cannot split this buffer descriptor: its slices need per-descriptor repeat counts, which a chain shares, and they cannot be separate tasks because a start runs it 6 times, not a whole number of passes over its 4-long iteration dimension}}
+        aie.dma_bd(%in : memref<65536xi32> offset = 0 len = 128 sizes = [2, 2, 1, 8, 16] strides = [9000, 3500, 0, 32, 1])
+        aie.end
+      } {issue_token = true, repeat_count = 5 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

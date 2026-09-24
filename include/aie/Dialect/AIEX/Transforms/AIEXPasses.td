@@ -58,6 +58,17 @@ def AIEDecomposeLargeDmaBd
     transfer's later pieces could block pushes that a counterpart transfer,
     issued after it, needs to make progress.
 
+    A task-path descriptor may give more dimensions than a buffer descriptor
+    holds, if they are all constant. Every one past the innermost three is an
+    iteration dimension, and a pass over the pattern runs the descriptor once
+    per index of them all, outermost slowest. An iteration dimension that
+    continues the one inside it merges with it, and a unit one drops. If more
+    than one is left, the ones past the fourth are split off into a piece per
+    index, each at its own offset and each a task of its own, and every piece
+    is then decomposed like any other descriptor. Where that is not possible
+    (a runtime offset, a chain, runtime control flow, or a repeat count that
+    does not cover whole passes) the pass says why.
+
     Two techniques are used: dimension factoring (split an oversized dimension
     of size N=a*b across a free dimension slot) is preferred, falling back to
     slicing an oversized dimension into ceil(N/limit) sub-transfers with

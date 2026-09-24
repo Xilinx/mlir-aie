@@ -91,8 +91,8 @@ static NdDmaPattern patternFromOp(NpuDmaMemcpyNdOp op) {
 // a constant, so the has_value() checks below are redundant in practice --
 // asserted rather than re-verified to keep that invariant visible here too.
 static NdDmaPattern patternFromDmaBd(AIE::DMABDOp op) {
-  SmallVector<int64_t, 4> outerSizes;
-  SmallVector<int64_t, 4> outerStrides;
+  SmallVector<int64_t, kNdDmaDims> outerSizes;
+  SmallVector<int64_t, kNdDmaDims> outerStrides;
   for (OpFoldResult s : op.getMixedSizes()) {
     auto c = getConstantIntValue(s);
     assert(c && "size must be constant (already checked by allConstant)");
@@ -103,13 +103,13 @@ static NdDmaPattern patternFromDmaBd(AIE::DMABDOp op) {
     assert(c && "stride must be constant (already checked by allConstant)");
     outerStrides.push_back(*c);
   }
-  while (outerSizes.size() < 4) {
+  while (outerSizes.size() < kNdDmaDims) {
     outerSizes.insert(outerSizes.begin(), 1);
     outerStrides.insert(outerStrides.begin(), 0);
   }
 
   NdDmaPattern pattern;
-  pattern.offsets = {0, 0, 0, 0};
+  pattern.offsets.assign(outerSizes.size(), 0);
   pattern.sizes = llvm::map_to_vector(llvm::reverse(outerSizes),
                                       [](int64_t v) { return v; });
   pattern.strides = llvm::map_to_vector(llvm::reverse(outerStrides),
@@ -123,7 +123,7 @@ static SmallVector<int64_t, 4> toOuter(ArrayRef<int64_t> inner) {
 
 static int64_t flatOffsetFromPattern(int64_t baseFlatOffset,
                                      const NdDmaPattern &pattern) {
-  int64_t flat = baseFlatOffset;
+  int64_t flat = baseFlatOffset + pattern.baseOffset;
   for (unsigned k = 0; k < 4; ++k)
     flat += pattern.offsets[k] * pattern.strides[k];
   return flat;
@@ -201,15 +201,24 @@ static void setTaskRepeatCount(Operation *taskOp, int32_t value) {
   cast<DMAConfigureTaskForOp>(taskOp).setRepeatCount(value);
 }
 
-// The factor by which decomposition grew the fourth dimension, or nullopt if it
-// did not divide evenly (in which case the repeat count cannot express it).
-static std::optional<int64_t> iterationGrowth(const NdDmaPattern &before,
+// How many executions one pass over a task BD's pattern takes: one per index
+// of its iteration dimensions, all of them past d2.
+static int64_t iterationCount(const NdDmaPattern &pattern) {
+  int64_t count = 1;
+  for (int64_t size : llvm::drop_begin(pattern.sizes, 3))
+    count *= size;
+  return count;
+}
+
+// The factor by which decomposition grew the iterations of a pass, or nullopt
+// if it did not divide evenly (in which case the repeat count cannot express
+// it).
+static std::optional<int64_t> iterationGrowth(int64_t iterations,
                                               const NdDmaPattern &after) {
-  int64_t oldOuter = before.sizes[3];
   int64_t newOuter = after.sizes[3];
-  if (oldOuter <= 0 || newOuter % oldOuter != 0)
+  if (iterations <= 0 || newOuter % iterations != 0)
     return std::nullopt;
-  return newOuter / oldOuter;
+  return newOuter / iterations;
 }
 
 static unsigned countTaskBds(Operation *taskOp) {
@@ -268,6 +277,8 @@ static NpuDmaMemcpyNdOp createDecomposedOp(PatternRewriter &rewriter,
                                            NpuDmaMemcpyNdOp op,
                                            const NdDmaPattern &pattern,
                                            int64_t id, bool issueToken) {
+  assert(pattern.baseOffset == 0 &&
+         "a memcpy pattern has no peeled dimensions");
   auto outerOffsets = toOuter(pattern.offsets);
   auto outerSizes = toOuter(pattern.sizes);
   auto outerStrides = toOuter(pattern.strides);
@@ -671,14 +682,33 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     AIE::TileOp tile = taskAndTile->first;
     Operation *taskOp = taskAndTile->second;
 
-    if (!allConstant(op))
+    // A descriptor with more dimensions than a BD has cannot be lowered as it
+    // is, so where this pass cannot reduce it, it says why.
+    bool tooManyDims = op.getMixedSizes().size() > kNdDmaDims;
+    auto cannotReduce = [&]() {
+      return op.emitOpError()
+             << "has " << op.getMixedSizes().size()
+             << " dimensions, and a buffer descriptor holds " << kNdDmaDims
+             << "; the extra ones can only be split off ";
+    };
+    if (!allConstant(op)) {
+      if (tooManyDims)
+        return cannotReduce()
+               << "a descriptor whose offset, length, sizes and strides are "
+                  "all constant and that has no padding";
       return failure();
-    if (countTaskBds(taskOp) != 1)
+    }
+    if (countTaskBds(taskOp) != 1) {
+      if (tooManyDims)
+        return cannotReduce() << "a task's only descriptor";
       return failure();
+    }
 
     NdDmaPattern pattern = patternFromDmaBd(op);
-    if (isContiguousTransfer(pattern.sizes, pattern.strides))
+    if (!tooManyDims && isContiguousTransfer(pattern.sizes, pattern.strides))
       return failure();
+    // One pass over the pattern, in executions of the descriptor.
+    int64_t iterations = iterationCount(pattern);
 
     int col = tile.getCol();
     int row = tile.getRow();
@@ -695,14 +725,24 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     // prior control flow; the checker just doesn't associate FailureOr's
     // failed()/succeeded() idiom with the std::optional base it derives from.
     if (failed(decomposed) ||
-        decomposed->empty()) // NOLINT(bugprone-unchecked-optional-access)
+        decomposed->empty()) { // NOLINT(bugprone-unchecked-optional-access)
+      if (tooManyDims)
+        return op.emitOpError()
+               << "has " << op.getMixedSizes().size()
+               << " dimensions, and no split into descriptors of " << kNdDmaDims
+               << " fits this tile";
       return failure();
+    }
     // Bind a plain reference now that decomposed is known non-failed and
     // non-empty, so nothing past this point looks like an optional access.
     SmallVector<NdDmaPattern> &bds =
         *decomposed; // NOLINT(bugprone-unchecked-optional-access)
 
     if (bds.size() > 1 && isUnderRuntimeControlFlow(op)) {
+      if (tooManyDims)
+        return cannotReduce() << "outside runtime control flow, since it "
+                                 "splits into "
+                              << bds.size() << " descriptors";
       op.emitRemark()
           << "deferring multi-BD decomposition under runtime control flow "
              "(dynamic BD pool supports single-BD tasks only)";
@@ -723,7 +763,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       // the repeat slot -- so len has to be recomputed alongside the shape.
       int32_t len = static_cast<int32_t>(lenFromInnermost3(sub.sizes));
 
-      std::optional<int64_t> growth = iterationGrowth(pattern, sub);
+      std::optional<int64_t> growth = iterationGrowth(iterations, sub);
       if (!growth)
         return failure();
       int64_t runs = 0;
@@ -791,7 +831,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     // whose descriptors aie-assign-runtime-sequence-bd-ids can recycle one by
     // one.
     bool sharedRepeat = llvm::all_of(bds, [&](const NdDmaPattern &sub) {
-      std::optional<int64_t> growth = iterationGrowth(pattern, sub);
+      std::optional<int64_t> growth = iterationGrowth(iterations, sub);
       return growth && *growth == 1;
     });
     bool chainFits =
@@ -799,10 +839,10 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     uint32_t depth = targetModel.getDmaTaskQueueDepth();
     if (!chainFits || (depth > 0 && bds.size() > depth)) {
       std::optional<std::string> why =
-          whyNotSeparateTasks(op, taskOp, pattern.sizes[3]);
+          whyNotSeparateTasks(op, taskOp, iterations);
       if (!why) {
-        splitIntoTasks(rewriter, op, taskOp, bds, baseFlatOffset,
-                       pattern.sizes[3], *nextGroup);
+        splitIntoTasks(rewriter, op, taskOp, bds, baseFlatOffset, iterations,
+                       *nextGroup);
         return success();
       }
       if (!sharedRepeat)

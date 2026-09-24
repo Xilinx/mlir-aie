@@ -8,19 +8,37 @@
 // A shim BD on the runtime-sequence path may carry up to 4 dimensions: the 3 ND
 // access dimensions (AIETargetModel::getBDMaxDims) plus the leading dimension
 // that aiex.shim_dma_single_bd_task hoists into the shim iteration/repeat
-// register. A 5-dimension BD is rejected. This is the only verification of the
-// BD dimension count on this path -- AIE::DMABDOp::verify skips BDs nested in a
-// DMA task op.
+// register. A BD whose sizes and strides are all constant may give more, which
+// aie-decompose-large-dma-bd splits into BDs of 4; with a runtime value among
+// them it cannot, and a 5-dimension BD is rejected. This is the only
+// verification of the BD dimension count on this path -- AIE::DMABDOp::verify
+// skips BDs nested in a DMA task op.
 
 // RUN: aie-opt --verify-diagnostics --split-input-file %s
 
-// dma_configure_task (concrete shim tile): 5 dims -> rejected.
+// dma_configure_task (concrete shim tile): 5 dims, one runtime -> rejected.
+module {
+  aie.device(npu1) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.runtime_sequence(%arg0: memref<64xi32>, %n: i64) {
+      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        // expected-error@+1 {{Cannot give more than 4 dimensions}}
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [%n, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
+        aie.end
+      }
+    }
+  }
+}
+
+// -----
+
+// dma_configure_task (concrete shim tile): 5 constant dims -> accepted, for
+// aie-decompose-large-dma-bd to split.
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{Cannot give more than 4 dimensions}}
         aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
         aie.end
       }
@@ -46,15 +64,15 @@ module {
 // -----
 
 // dma_configure_task_for (tile recovered through the shim DMA allocation
-// symbol): 5 dims -> rejected.
+// symbol): 5 dims, one runtime stride -> rejected.
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0)
-    aie.runtime_sequence(%arg0: memref<64xi32>) {
+    aie.runtime_sequence(%arg0: memref<64xi32>, %s: i64) {
       %t = aiex.dma_configure_task_for @alloc0 {
         // expected-error@+1 {{Cannot give more than 4 dimensions}}
-        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 1, 1] strides = [%s, 0, 0, 0, 1])
         aie.end
       }
     }
@@ -81,8 +99,9 @@ module {
 // -----
 
 // dma_configure_task on a MemTile: the limit is the tile's ND width (4) with no
-// iteration hoist, so 4 dimensions are accepted and 5 are rejected -- the same
-// numeric cap as a shim, but reached through the MemTile (no +1) branch.
+// iteration hoist, so 4 dimensions are accepted and 5 runtime-valued ones are
+// rejected -- the same numeric cap as a shim, but reached through the MemTile
+// (no +1) branch.
 module {
   aie.device(npu1) {
     %memtile_0_1 = aie.tile(0, 1)
@@ -97,14 +116,14 @@ module {
 
 // -----
 
-// dma_configure_task on a MemTile: 5 dimensions -> rejected.
+// dma_configure_task on a MemTile: 5 dimensions, one runtime -> rejected.
 module {
   aie.device(npu1) {
     %memtile_0_1 = aie.tile(0, 1)
-    aie.runtime_sequence(%arg0: memref<64xi32>) {
+    aie.runtime_sequence(%arg0: memref<64xi32>, %n: i64) {
       %t = aiex.dma_configure_task(%memtile_0_1, MM2S, 0) {
         // expected-error@+1 {{Cannot give more than 4 dimensions}}
-        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [%n, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
         aie.end
       }
     }
@@ -118,9 +137,9 @@ module {
 // substitutes the allocation performs the check on the concrete tile.
 module {
   aie.device(npu1) {
-    aie.runtime_sequence(%arg0: memref<64xi32>) {
+    aie.runtime_sequence(%arg0: memref<64xi32>, %n: i64) {
       %t = aiex.dma_configure_task_for @missing_alloc {
-        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [%n, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
         aie.end
       }
     }

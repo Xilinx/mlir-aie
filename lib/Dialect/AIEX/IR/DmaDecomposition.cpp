@@ -178,6 +178,11 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         chunkSize = 1;
         break;
       }
+    // It fits, so what is illegal is inside it and could not be factored
+    // away: slice it into single indices, each slice's outermost dimension
+    // then being the next one in.
+    if (chunkSize >= n)
+      chunkSize = 1;
     if (chunkSize > 0 && chunkSize < n) {
       int64_t numChunks = (n + chunkSize - 1) / chunkSize;
       SmallVector<NdDmaPattern> combined;
@@ -209,12 +214,60 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   return failure();
 }
 
+// The kNdDmaDims-dimension patterns a longer pattern reduces to, in order (see
+// decomposeNdDmaPattern). Every dimension past d2 is an iteration dimension:
+// one execution per index of them all, outermost slowest.
+SmallVector<NdDmaPattern> reduceIterationDims(const NdDmaPattern &pattern) {
+  NdDmaPattern piece;
+  piece.baseOffset = pattern.baseOffset;
+  for (unsigned d = 0; d < 3; ++d) {
+    piece.offsets.push_back(pattern.offsets[d]);
+    piece.sizes.push_back(pattern.sizes[d]);
+    piece.strides.push_back(pattern.strides[d]);
+  }
+  // The iteration dimensions, innermost first, with a dimension that continues
+  // the one inside it merged into it and unit ones dropped. Their offsets move
+  // into the base, since merging and peeling both move the dimensions.
+  SmallVector<int64_t> sizes, strides;
+  for (unsigned d = 3; d < pattern.sizes.size(); ++d) {
+    piece.baseOffset += pattern.offsets[d] * pattern.strides[d];
+    if (pattern.sizes[d] == 1)
+      continue;
+    if (!sizes.empty() && pattern.strides[d] == sizes.back() * strides.back()) {
+      sizes.back() *= pattern.sizes[d];
+      continue;
+    }
+    sizes.push_back(pattern.sizes[d]);
+    strides.push_back(pattern.strides[d]);
+  }
+  piece.offsets.push_back(0);
+  piece.sizes.push_back(sizes.empty() ? 1 : sizes.front());
+  piece.strides.push_back(strides.empty() ? 0 : strides.front());
+
+  // Peel the rest, one piece per index, working outward so that each outer
+  // dimension repeats all the pieces inside it.
+  SmallVector<NdDmaPattern> pieces{piece};
+  for (unsigned i = 1; i < sizes.size(); ++i) {
+    SmallVector<NdDmaPattern> outer;
+    outer.reserve(pieces.size() * sizes[i]);
+    for (int64_t index = 0; index < sizes[i]; ++index)
+      for (NdDmaPattern inner : pieces) {
+        inner.baseOffset += index * strides[i];
+        outer.push_back(std::move(inner));
+      }
+    pieces = std::move(outer);
+  }
+  return pieces;
+}
+
 } // namespace
 
 bool AIEX::patternPassesVerification(Operation *forOp,
                                      BaseMemRefType referencedBufType,
                                      const AIE::AIETargetModel &tm, int tileCol,
                                      int tileRow, const NdDmaPattern &pattern) {
+  if (pattern.sizes.size() != kNdDmaDims)
+    return false;
   SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
   SmallVector<int64_t, kNdDmaDims> hwStrides(kNdDmaDims);
   getHardwareStridesWraps(tm, forOp, referencedBufType, pattern.sizes,
@@ -270,10 +323,32 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
                             const NdDmaPattern &pattern,
                             const AIE::AIETargetModel &targetModel, int tileCol,
                             int tileRow) {
-  if (pattern.offsets.size() != kNdDmaDims ||
-      pattern.sizes.size() != kNdDmaDims ||
-      pattern.strides.size() != kNdDmaDims)
+  if (pattern.offsets.size() != pattern.sizes.size() ||
+      pattern.strides.size() != pattern.sizes.size() ||
+      pattern.sizes.size() < kNdDmaDims)
     return failure();
+
+  if (pattern.sizes.size() > kNdDmaDims) {
+    SmallVector<NdDmaPattern> result;
+    for (const NdDmaPattern &piece : reduceIterationDims(pattern)) {
+      // A piece already legal, or contiguous and so left to the lowering as a
+      // plain length, is kept as it is.
+      if (isContiguousTransfer(piece.sizes, piece.strides) ||
+          patternPassesVerification(forOp, referencedBufType, targetModel,
+                                    tileCol, tileRow, piece)) {
+        result.push_back(piece);
+        continue;
+      }
+      auto sub = decomposeRecursive(forOp, referencedBufType, targetModel,
+                                    tileCol, tileRow, piece);
+      if (failed(sub))
+        return failure();
+      SmallVector<NdDmaPattern> &subPatterns =
+          *sub; // NOLINT(bugprone-unchecked-optional-access)
+      result.append(subPatterns.begin(), subPatterns.end());
+    }
+    return result;
+  }
 
   if (isContiguousTransfer(pattern.sizes, pattern.strides))
     return failure();
