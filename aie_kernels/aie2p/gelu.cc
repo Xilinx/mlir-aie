@@ -55,10 +55,21 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 
   // AIE_PREPARE_FOR_POSTPIPELINING is required: the pre-RA pipeliner finds no
   // schedule for this body; the post-RA pipeliner achieves II=18, NS=2.
+  //
+  // II=18 is latency, not work: seven of those eighteen bundles are empty, five
+  // of them a single stall between the mac and the vtanh that consumes it.
+  // Four iterations interleave into that gap and land at II=38, so 9.5 bundles
+  // of work per vector instead of 18. Eight does not -- the live ranges stop
+  // fitting and it falls back to II=133.
+  //
+  // Shortening the chain instead of hiding it was tried and is worse: factoring
+  // inner1 as x*(s + s_beta*x^2) drops a vmul, but serializes the three muls
+  // that currently feed the mac in parallel, and the loop goes to II=69.
   auto body = [&]() __attribute__((always_inline)) {
     *it_out++ = gelu_tanh_approx(*it_in++);
   };
   AIE_PREPARE_FOR_POSTPIPELINING
+  AIE_LOOP_UNROLL(4)
   for (int i = 0; i < GELU_ELEMS; i += 32)
     body();
   event1();

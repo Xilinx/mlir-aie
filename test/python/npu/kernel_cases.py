@@ -228,6 +228,16 @@ CASES: list[Case] = [
         perf=False,
     ),
     Case("gelu_sized", calls=16, smoke=True, perf=False),
+    # gelu's 32-lane loop is unrolled four ways too, so it has the same
+    # remainder pass and the same need for a size that is not a multiple of it.
+    Case(
+        "gelu_sized",
+        dict(tile_size=160),
+        calls=4,
+        tag="unroll-tail",
+        smoke=True,
+        perf=False,
+    ),
     *[
         Case(
             name,
