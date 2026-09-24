@@ -9,7 +9,7 @@
 # gathers, in the order it gathers it, into a contiguous buffer: a wrong piece
 # offset, a wrong per-piece repeat count, a piece out of order or a pass that
 # does not start from the first index shows up as a mismatch.
-#
+
 # REQUIRES: ryzen_ai_npu2, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
@@ -20,9 +20,9 @@
 # RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall -Wextra %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu2% ./test.exe | FileCheck %s --check-prefix=DEVICE
-#
-# 6 pieces, each of 4 executions, from offsets 16384 * i + 4096 * j, and each
-# started again for the second pass.
+# DEVICE: PASS!
+
+# 6 pieces of 4 executions at 16384 * i + 4096 * j, each restarted for pass 2.
 # MLIR:          offset = 0 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 128, 1])
 # MLIR-NEXT:       aie.end
 # MLIR-NEXT:     } {repeat_count = 3 : i32}
@@ -34,7 +34,6 @@
 # MLIR:          aiex.dma_start_task
 # MLIR-COUNT-6:  aiex.dma_start_task
 # MLIR-NEXT:     aiex.dma_await_task
-# DEVICE: PASS!
 
 import numpy as np
 

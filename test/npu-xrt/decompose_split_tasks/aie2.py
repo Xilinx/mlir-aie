@@ -10,7 +10,7 @@
 # drain: its slices have to be issued in step with the drain's. Every slice
 # must move its own pairs: a wrong offset, a lost slice or an early await shows
 # up as a mismatch, and a bad issue order as a hang.
-#
+
 # REQUIRES: ryzen_ai_npu2, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
@@ -22,12 +22,12 @@
 # RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall -Wextra %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu2% ./test.exe | FileCheck %s --check-prefix=DEVICE
-#
+# DEVICE: PASS!
+
 # 36 single-BD tasks, fill and drain slices alternating; the 17th takes back
 # BD 0.
 # MLIR-COUNT-16: {bd_id = {{[0-9]+}} : i32}
 # MLIR:          {bd_id = 0 : i32}
-# DEVICE: PASS!
 
 import numpy as np
 

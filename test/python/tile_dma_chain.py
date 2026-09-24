@@ -89,6 +89,7 @@ def emit_ring(bad=None):
 # CHECK:   aie.dma_bd(%{{.*}} : memref<1536xi32> len = 512)
 # CHECK:   aie.use_lock(%cons0, Release, %{{.*}})
 # CHECK:   aie.next_bd ^bb1
+
 # CHECK: ^bb1:
 # CHECK:   aie.dma_bd(%{{.*}} : memref<1536xi32> offset = 512 len = 512)
 # CHECK:   aie.next_bd ^bb2

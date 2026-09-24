@@ -409,7 +409,9 @@ static void splitIntoTasks(PatternRewriter &rewriter, AIE::DMABDOp bd,
   for (Operation *task : llvm::drop_begin(tasks))
     task->setAttr(kSliceTaskAttr, rewriter.getUnitAttr());
 
-  for (auto [i, sub] : llvm::enumerate(slices)) {
+  for (auto it : llvm::enumerate(slices)) {
+    size_t i = it.index();
+    const NdDmaPattern &sub = it.value();
     Operation *task = tasks[i];
     AIE::DMABDOp sliceBd = bd;
     if (i > 0)
@@ -464,7 +466,7 @@ static void splitIntoTasks(PatternRewriter &rewriter, AIE::DMABDOp bd,
     for (int64_t k = 1; k < count; ++k) {
       size_t i = static_cast<size_t>(k) % slices.size();
       bool withholds =
-          token && i + 1 == slices.size() && !(startToken && k + 1 == count);
+          token && i + 1 == slices.size() && (!startToken || k + 1 != count);
       auto s = DMAStartTaskOp::create(
           rewriter, start.getLoc(), tasks[i]->getResult(0),
           /*repeat_count=*/nullptr,
@@ -499,21 +501,16 @@ static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
 }
 
 // Interleave the slices splitIntoTasks emitted with the starts around them.
-// Split into tasks, a transfer past the queue depth has its later slices wait
-// in aie-assign-runtime-sequence-bd-ids for its earlier ones to finish. If a
-// counterpart transfer it depends on (a core's input for an output, say) were
-// still behind all of them in program order, that wait would never end.
+// Later slices wait for earlier ones to finish (see
+// aie-assign-runtime-sequence-bd-ids), so a counterpart transfer left behind
+// all of them (a core's input for an output, say) would deadlock.
 //
-// A round is the starts from one start up to the next start on a channel the
-// round has already used. Within a round, the first slice of every start keeps
-// its place and the later ones follow the round's last start, all ordered by
-// how far through its transfer each is (index / size), ties in program order.
-// So slices only move later, a channel's pushes keep their order, and
-// transfers side by side progress in proportion. A round also ends at anything
-// a push may not move past: an await, a sync or a poll, a push the pass does
-// not track, or a free of a slice still to be placed. Configures, register
-// and runtime parameter writes and lock sets it moves past, which only delays
-// the push.
+// A round runs from one start up to the next start on a channel it already
+// used. Each start's first slice keeps its place; later ones follow the
+// round's last start, ordered by index / size, ties in program order. A round
+// ends at anything a push may not move past: an await, sync, poll, untracked
+// push, or free of an unplaced slice. Configures, write32, blockwrite, RTP
+// writes and lock sets only delay a push, so slices move past them.
 static void orderSlices(Block &block) {
   struct Pending {
     DMAStartTaskOp start;
@@ -734,8 +731,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     int row = tile.getRow();
     const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
     auto bufferType = cast<BaseMemRefType>(op.getBuffer().getType());
-    // A contiguous pattern is lowered as a plain length, so only its
-    // iteration dimension can be too long.
+    // See contiguousAndFits for why only d3 can make one too long.
     int64_t maxIterations = 1LL << targetModel.getDmaBdIterBits(col, row);
     auto lowerable = [&](const NdDmaPattern &p) {
       if (p.sizes.size() != kNdDmaDims)

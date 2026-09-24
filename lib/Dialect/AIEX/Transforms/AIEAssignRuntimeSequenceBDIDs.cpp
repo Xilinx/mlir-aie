@@ -457,10 +457,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   // Credit a maskpoll on a channel's status register, whether the queue-depth
-  // guard, reclaimFor or the design emitted it. Task_Queue_Size counts queued
-  // pushes but not the running one, so a poll bounding it by b leaves at most
-  // b + 1 unfinished; one that also clears the running and stall bits leaves
-  // none.
+  // guard, reclaimFor or the design emitted it. A poll bounding the queue size
+  // by b leaves at most b + 1 unfinished (see getDmaTaskQueueSizeMask); one
+  // that also clears the running and stall bits leaves none.
   void notePoll(NpuMaskPollOp poll) {
     std::optional<uint32_t> address = poll.getAbsoluteAddress();
     std::optional<uint32_t> mask = getConstantIntOperand(poll.getMask());
@@ -632,25 +631,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     });
   }
 
-  // Take back the ids of a task that was started and is not started again
-  // after `op`, so that `op` can be allocated. Candidates hold an id `op`'s
-  // channel can use -- on a mem tile, one of its channel parity's half.
-  //
-  // A candidate some poll already proved finished is taken as is. Otherwise
-  // the compiler inserts a poll before `op` that proves one finished, and picks
-  // which in this order:
-  //  1. The oldest candidate whose channel has j >= 1 pushes queued behind it.
-  //     If it were unfinished, all j would still be waiting, so
-  //     Task_Queue_Size <= j - 1 proves it finished. A maskpoll tests masked
-  //     equality, so the bound is the largest 2^k - 1 <= j - 1 whose bits the
-  //     field has (j >= 4: bit 22 clear; j = 2, 3: bits 22:21; j = 1: 22:20).
-  //     This waits for no push the sequence has not issued yet.
-  //  2. Otherwise the oldest candidate, until its channel is idle.
-  // Either way the poll waits on a task this channel already holds, so it
-  // returns once that task's own inputs arrive. If those come from a push later
-  // in the sequence -- say through a core fed by a later fill -- it never
-  // returns. That dependence runs through the core, where the compiler cannot
-  // see it; a design with one keeps releasing its own BDs.
+  // Take back the ids of a started task that is not started again after `op`
+  // and holds an id `op`'s channel can use (on a mem tile, its parity's half).
+  // One a poll already proved finished is taken as is. Otherwise a poll before
+  // `op` proves one finished: the oldest with j >= 1 pushes queued behind it,
+  // for which Task_Queue_Size <= j - 1 is proof (as a masked equality, the
+  // largest 2^k - 1 <= j - 1), so it waits on no push not yet issued; failing
+  // that, the oldest, until its channel is idle. The poll never returns if that
+  // task's inputs come from a later push through a core, which the compiler
+  // cannot see; a design with such a dependence releases its own BDs.
   LogicalResult reclaimFor(DMAConfigureTaskOp op) {
     AIE::TileOp tile = op.getTileOp();
     const AIETargetModel &tm =
@@ -716,6 +705,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return failure();
 
     DmaQueueModel::ChannelKey key = channelOf(victim);
+    std::optional<uint32_t> status = tm.getDmaStatusAddress(
+        key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
+    if (!status)
+      return failure();
     uint32_t mask = idle;
     size_t unfinished = 0;
     if (victimQueuedBehind > 0) {
@@ -733,12 +726,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                                        b.getI32IntegerAttr(v))
           .getResult();
     };
-    NpuMaskPollOp::create(
-        b, op.getLoc(),
-        cst(*tm.getDmaStatusAddress(key[0], key[1], key[3],
-                                    static_cast<AIE::DMAChannelDir>(key[2]))),
-        cst(0), cst(mask), /*buffer=*/nullptr, /*column=*/nullptr,
-        /*row=*/nullptr);
+    NpuMaskPollOp::create(b, op.getLoc(), cst(*status), cst(0), cst(mask),
+                          /*buffer=*/nullptr, /*column=*/nullptr,
+                          /*row=*/nullptr);
     noteDrained(key, unfinished);
     take(victim);
     return success();

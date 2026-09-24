@@ -1382,11 +1382,11 @@ def AIE_DMAStartOp
     `(` $channel_dir `,` custom<DMAStartChannel>($channel_index, $endpoint) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
   }];
 
-  let builders = [
-    OpBuilder<(ins "DMAChannelDir":$channel_dir, "int":$channel_index,
-                   "int":$repeat_count, "int":$pad_value, "bool":$out_of_order,
-                   "mlir::Block *":$dest, "mlir::Block *":$chain),
-              [{
+  let builders = [OpBuilder<(ins "DMAChannelDir":$channel_dir,
+                                "int":$channel_index, "int":$repeat_count,
+                                "int":$pad_value, "bool":$out_of_order,
+                                "mlir::Block *":$dest, "mlir::Block *":$chain),
+                            [{
       build($_builder, $_state, channel_dir,
             $_builder.getI32IntegerAttr(channel_index),
             mlir::FlatSymbolRefAttr(), repeat_count, pad_value, out_of_order,

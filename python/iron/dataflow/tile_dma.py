@@ -151,7 +151,7 @@ class DmaChannel:
             (tile→host).
         channel: hardware channel index, or the
             [`FlowEndpoint`][iron.FlowEndpoint] from
-            [`Flow.endpoint`][iron.Flow.endpoint] to run on whichever channel
+            [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint] to run on whichever channel
             the compiler assigns that end.
         bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
             (in-order) or n-way merge (out-of-order).
@@ -193,10 +193,12 @@ class DmaChannel:
 
 
 def _emit_bd(bd: "Bd", bd_id: int | None) -> None:
-    """Emit one BD's body -- acquires, packet header, ``aie.dma_bd``, releases --
-    at the current insertion point. The caller supplies the block and the
+    """Emit one BD's acquires, packet header, ``aie.dma_bd`` and releases.
+
+    They go at the current insertion point. The caller supplies the block and the
     ``next_bd``/``aie.end`` that closes it, and the ``bd_id`` to stamp (which on
-    an out-of-order channel is not ``bd.bd_id``)."""
+    an out-of-order channel is not ``bd.bd_id``).
+    """
     for acq in bd.acquires:
         acq.emit()
     bd_kwargs: dict[str, Any] = dict(sizes=bd.sizes, strides=bd.strides)
@@ -253,8 +255,11 @@ def _channel_pad_word(ch: "DmaChannel") -> int | None:
 
 
 def check_flow_endpoint(tile: Tile, direction: DMAChannelDir, channel) -> None:
-    """Reject a [`FlowEndpoint`][iron.FlowEndpoint] used on another tile or
-    against its route's direction, before the compiler would."""
+    """Reject a [`FlowEndpoint`][iron.FlowEndpoint] on the wrong tile or direction.
+
+    This catches an endpoint used on another tile or against its route's
+    direction before the compiler would.
+    """
     if not isinstance(channel, FlowEndpoint):
         return
     if channel.tile != tile:
@@ -270,7 +275,7 @@ def check_flow_endpoint(tile: Tile, direction: DMAChannelDir, channel) -> None:
 
 
 def _channel_operand(channel: "int | FlowEndpoint") -> int | str:
-    """What ``aie.dma_start`` names: an index, or the route endpoint's symbol."""
+    """Return what ``aie.dma_start`` names: an index, or the endpoint's symbol."""
     return channel.symbol if isinstance(channel, FlowEndpoint) else channel
 
 
@@ -398,7 +403,7 @@ class TileDma(Resolvable):
         def _ooo_slot_id(bd: Bd, pos: int) -> int:
             return bd.bd_id if bd.bd_id is not None else pos
 
-        pinned_bd_ids: dict[int, int] = {}  # slot id -> owning channel
+        pinned_bd_ids: dict[int, int | FlowEndpoint] = {}  # slot id -> channel
         for ch in channels:
             if ch.out_of_order and ch.direction != DMAChannelDir.S2MM:
                 raise ValueError(

@@ -106,6 +106,7 @@ def build(bad=None):
 # CHECK-DAG: aie.route from @flow1_src to [@flow1_dst0, @flow1_dst1]
 # CHECK-DAG: aie.route_endpoint @flow2_dst(%{{.*}}) DMA {fifoName = "flow2_dst"}
 # CHECK-DAG: aie.route from @flow2_src to [@flow2_dst]
+
 # CHECK-DAG: aie.dma_start(S2MM, @flow0_dst,
 # CHECK-DAG: aie.dma_start(S2MM, 3,
 # CHECK-DAG: aie.dma_start(S2MM, @flow1_dst0,
@@ -128,6 +129,7 @@ def build(bad=None):
 # ALLOC: aie.mem(
 # ALLOC: aie.dma_start(S2MM, {{[0-9]}},
 # ALLOC: aie.dma_start(MM2S, 0,
+
 # ALLOC-LABEL: aie.runtime_sequence
 # ALLOC: aiex.dma_configure_task_for @flow0_src_shim_alloc
 # ALLOC: aiex.dma_configure_task(%[[MEM:.*]], MM2S, [[B:[0-9]]])

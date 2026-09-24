@@ -93,7 +93,7 @@ def _emit_shim_dma_alloc(kind: str, shim_symbol, src, src_channel, dst, dst_chan
 class FlowEndpoint:
     """One end of a [`Flow`][iron.Flow] whose channel the compiler assigns.
 
-    Obtained from [`Flow.endpoint`][iron.Flow.endpoint] and passed where a
+    Obtained from [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint] and passed where a
     channel index would go -- a [`DmaChannel`][iron.DmaChannel]'s ``channel``
     or [`tile_dma_chain`][iron.tile_dma_chain]'s -- so the DMA program runs on
     whichever channel allocation gives this end.
@@ -131,7 +131,7 @@ class Flow(Resolvable):
 
     A channel left as ``None`` is assigned by the compiler: the Flow then lowers
     to one ``aie.route_endpoint`` per end and an ``aie.route``, and a DMA
-    program reaches an end through [`endpoint`][iron.Flow.endpoint] rather
+    program reaches an end through [`endpoint`][iron.dataflow.flow.Flow.endpoint] rather
     than an index. That is also how a list of destinations (a circuit-switched
     broadcast) lowers.
     """
@@ -166,7 +166,7 @@ class Flow(Resolvable):
                 shim-as-source → MM2S, shim-as-dest → S2MM.
         """
         self._broadcast = not isinstance(dst, Tile)
-        self._dsts: list[Tile] = list(dst) if self._broadcast else [dst]
+        self._dsts: list[Tile] = [dst] if isinstance(dst, Tile) else list(dst)
         if not self._dsts:
             raise ValueError("Flow needs at least one destination.")
         for port, channel, end in (
@@ -212,14 +212,18 @@ class Flow(Resolvable):
         return self._broadcast or self._src_channel is None or self._dst_channel is None
 
     def _bind_name(self, index: int) -> None:
-        """Called by ``Runtime.add_flow``: its position names the endpoints, so
-        the names depend only on the design, not on what else the process
-        built."""
+        """Name the endpoints by this Flow's position in ``Runtime.add_flow``.
+
+        The names then depend only on the design, not on what else the process
+        built.
+        """
         self._name = f"flow{index}"
 
     def _shim_end(self) -> int | None:
-        """The end ``fill``/``drain`` reach: the source if it is a shim, else a
-        lone shim destination."""
+        """Return the end ``fill``/``drain`` reach.
+
+        That is the source if it is a shim, else a lone shim destination.
+        """
         if self._src.effective_tile_type in _SHIM_TILE_TYPES:
             return 0
         if not self._broadcast and self._dsts[0].effective_tile_type in (
@@ -242,7 +246,7 @@ class Flow(Resolvable):
         return f"{base}_dst{end - 1}" if self._broadcast else f"{base}_dst"
 
     def endpoint(self, tile: Tile) -> "FlowEndpoint | int":
-        """The channel a DMA program on ``tile`` runs this Flow's end on.
+        """Return the channel a DMA program on ``tile`` runs this Flow's end on.
 
         Pass the result as a [`DmaChannel`][iron.DmaChannel]'s ``channel`` or
         to [`tile_dma_chain`][iron.tile_dma_chain]. For a Flow whose channels
@@ -257,7 +261,9 @@ class Flow(Resolvable):
             )
         end = ends[0]
         if not self._routed:
-            return self._src_channel if end == 0 else self._dst_channel
+            channel = self._src_channel if end == 0 else self._dst_channel
+            assert channel is not None
+            return channel
         if end not in self._endpoints:
             self._endpoints[end] = FlowEndpoint(self, end)
         return self._endpoints[end]
@@ -354,9 +360,11 @@ class Flow(Resolvable):
             )
 
     def _resolve_route(self) -> None:
-        """Emit one ``aie.route_endpoint`` per end and the ``aie.route`` joining
-        them. The shim end carries ``fifoName``, which is what gives it the shim
-        DMA allocation the runtime sequence's transfers are renamed to."""
+        """Emit one ``aie.route_endpoint`` per end and the ``aie.route`` joining them.
+
+        The shim end carries ``fifoName``, which is what gives it the shim DMA
+        allocation the runtime sequence's transfers are renamed to.
+        """
         shim_end = self._shim_end()
         ends = [(self._src, self._src_port, self._src_channel)]
         ends += [(d, self._dst_port, self._dst_channel) for d in self._dsts]

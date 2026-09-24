@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
+// RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s
 
 // This test ensures that the proper error is emitted if the user attempts to specify more than
 // the architecturally possible number of data layout transformation dimensions in a `aie.dma_bd`
@@ -24,4 +24,3 @@ module {
     }
   }
 }
-

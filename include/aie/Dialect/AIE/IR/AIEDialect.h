@@ -288,7 +288,7 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
-/// A dma_start's channel: an index, or the route endpoint naming it.
+/// DMAStartOp's channel syntax; see its description in AIEOps.td.
 mlir::ParseResult parseDMAStartChannel(mlir::OpAsmParser &parser,
                                        mlir::IntegerAttr &channelIndex,
                                        mlir::FlatSymbolRefAttr &endpoint);

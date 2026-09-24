@@ -31,8 +31,8 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_start_task,
 )
-from ...dialects.aie import (  # pyright: ignore[reportAttributeAccessIssue]
-    EndOp,
+from ...dialects.aie import (
+    EndOp,  # pyright: ignore[reportAttributeAccessIssue]
     _as_bd_i32,
     next_bd,
 )

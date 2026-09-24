@@ -735,9 +735,8 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   // bd_id and repeat_count are SSA operands; range-check them only when they
-  // are compile-time constants. A runtime repeat_count is guarded where
-  // aie-dma-to-npu packs it (npu.assert_bd_field); a runtime bd_id comes from
-  // the BD pool, which only hands out valid ids.
+  // are compile-time constants. For runtime ones, see the npu.assert_bd_field
+  // aie-dma-to-npu emits and the BD pool, which only hands out valid ids.
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");

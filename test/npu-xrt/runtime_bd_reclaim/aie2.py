@@ -6,7 +6,7 @@
 # ids back from started tasks it can prove finished, so every half-chunk must
 # still move from its own offset. A poll that let an id be rewritten while its
 # task was queued would move some half-chunk from the wrong offset (or hang).
-#
+
 # REQUIRES: ryzen_ai_npu2, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
@@ -17,7 +17,8 @@
 # RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall -Wextra %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu2% ./test.exe | FileCheck %s --check-prefix=DEVICE
-#
+# DEVICE: PASS!
+
 # The pool runs out at the ninth task, before any queue-space poll: the pass
 # polls for the oldest fill, which has three fills queued behind it and so is
 # done once Task_Queue_Size <= 1 (bits 22:21 clear). Later reclaims also lean on
@@ -26,7 +27,6 @@
 # MLIR-NEXT: arith.constant 0 : i32
 # MLIR-NEXT: arith.constant 119336 : i32
 # MLIR-NEXT: aiex.npu.maskpoll
-# DEVICE: PASS!
 
 import numpy as np
 

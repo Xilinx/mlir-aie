@@ -475,10 +475,10 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
         namedChannels.insert({dmaStart.getChannelDir(), endpoint.getAttr()});
         continue;
       }
-      if (!dmaStart.getChannelIndex())
+      std::optional<int32_t> index = dmaStart.getChannelIndex();
+      if (!index)
         continue;
-      DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                            *dmaStart.getChannelIndex()};
+      DMAChannel dmaChan = {dmaStart.getChannelDir(), *index};
       // check if number of input and output channels is more than available
       // hardware
       if (dmaChan.direction == DMAChannelDir::S2MM)
@@ -2982,7 +2982,8 @@ LogicalResult MemTileDMAOp::verify() {
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
       // An endpoint's channel is not known yet; allocation keeps one whose
       // BDs reach another tile's memory off the local-only channels.
-      if (startOp.getChannelIndex().value_or(0) > 3) {
+      if (std::optional<int32_t> channel = startOp.getChannelIndex();
+          channel && *channel > 3) {
         // Channels 4 and 5 in a memtile are restricted to only access local
         // buffers and locks.
 
@@ -3011,8 +3012,7 @@ LogicalResult MemTileDMAOp::verify() {
                 bufferOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   bd.emitOpError()
-                  << "is reachable from DMA channel "
-                  << *startOp.getChannelIndex()
+                  << "is reachable from DMA channel " << *channel
                   << " and attempts to access a non-local buffer\n";
               err.attachNote(startOp->getLoc()) << "channel";
               err.attachNote(bufferOp->getLoc()) << "buffer";
@@ -3024,8 +3024,7 @@ LogicalResult MemTileDMAOp::verify() {
                 lockOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
-                  << "is reachable from DMA channel "
-                  << *startOp.getChannelIndex()
+                  << "is reachable from DMA channel " << *channel
                   << " and attempts to access a non-local lock\n";
               err.attachNote(startOp->getLoc()) << "channel";
               err.attachNote(lockOp->getLoc()) << "lock";
