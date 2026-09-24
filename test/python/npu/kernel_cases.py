@@ -408,6 +408,17 @@ CASES: list[Case] = [
     # kernel with bf16 A and C; host encode/shuffle via aie.utils.bfp.
     Case("mm_bfp", _mm_bfp, calls=16, devices=("npu2",)),
     Case("mm_bfp_shuffle", calls=4, devices=("npu2",), smoke=True),
+    Case("mm_bfp_shuffle", dict(unshuffle=True), calls=4, devices=("npu2",)),
+    # A non-square tile: rows and columns walk different strides.
+    *[
+        Case(
+            "mm_bfp_shuffle",
+            dict(dim_m=32, unshuffle=unshuffle),
+            calls=4,
+            devices=("npu2",),
+        )
+        for unshuffle in (False, True)
+    ],
     Case("q4nx_dequant", calls=4, devices=("npu2",), smoke=True),
     Case(
         "q4nx_dequant",

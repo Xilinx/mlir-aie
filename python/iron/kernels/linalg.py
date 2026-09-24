@@ -884,6 +884,7 @@ def mm_bfp_shuffle(
     *,
     in_shape: tuple | None = None,
     out_shape: tuple | None = None,
+    unshuffle: bool = False,
 ) -> ExternalFunction:
     """Scalar shuffle of a bfp16ebs8 tile into (or out of) the mmul block layout (aie2p).
 
@@ -900,6 +901,9 @@ def mm_bfp_shuffle(
         dim_n: C's tile columns (multiple of 8).
         in_shape: Input tile shape in blocks; default ``(dim_m * dim_k // 8,)``.
         out_shape: Output tile shape in blocks; default ``(dim_m * dim_n // 8,)``.
+        unshuffle: Validate the other direction, out of the block layout
+            back to row-major; the harness passes it as the call's last
+            argument.
     """
     if _detect_arch() != "aie2p":
         raise NotImplementedError(
@@ -927,10 +931,10 @@ def mm_bfp_shuffle(
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, Param, Param, Param),
-            parameter_bindings=((2, dim_k), (3, dim_m), (4, 0)),
+            parameter_bindings=((2, dim_k), (3, dim_m), (4, int(unshuffle))),
             layouts=(
-                plain,
-                blocked,
+                blocked if unshuffle else plain,
+                plain if unshuffle else blocked,
                 None,
                 None,
                 None,

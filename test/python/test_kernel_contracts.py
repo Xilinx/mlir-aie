@@ -1332,6 +1332,17 @@ def test_bfp_shuffle_contract_uses_declared_storage_codecs():
     assert "scalar_shuffle" in str(kd.design(kernels.mm_bfp_shuffle, calls=3).as_mlir())
 
 
+def test_bfp_unshuffle_contract_reads_the_block_layout_back_to_rows():
+    fn = kernels.mm_bfp_shuffle(dim_m=32, unshuffle=True)
+    inputs = kd.sample_inputs(fn, calls=3)
+    (shuffled,) = kd.host_layout(fn, inputs)
+    ref = fn.expected(inputs)
+    got = np.stack([kernels.mm_bfp_shuffle_ref(row, 64, 32, 1) for row in shuffled])
+    assert fn.judge(got, ref, calls=3)
+    assert not fn.judge(shuffled, ref, calls=3)
+    assert fn.contract.parameter_bindings[-1] == (4, 1)
+
+
 def test_conv2dk1_i8_and_skip_references():
     W, IC, OC = 4, 16, 8
     ident = np.zeros((OC // 8, IC // 8, 8, 8), np.int8)
