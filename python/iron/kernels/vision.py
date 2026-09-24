@@ -11,6 +11,7 @@ from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 
 from ._common import (
+    Trace,
     KernelContract,
     Param,
     _default_source_path,
@@ -60,6 +61,7 @@ def _bitwise_kernel(
         compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DBITWISE_ELEMS={line_width}"],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, Out, Param),
             parameter_bindings=((3, line_width),),
             reference={"OR": bitwise_or_ref, "AND": bitwise_and_ref}[op],
@@ -79,6 +81,7 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
         # lut_inv.h pins its gather pair with AIE_BANK_A/AIE_BANK_B.
         compile_flags=[f"-I{_runtime_lib_include()}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, line_width),),
             reference=rgba2hue_ref,
@@ -120,6 +123,7 @@ def threshold(
         compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DTHRESHOLD_ELEMS={line_width}"],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param, Param, Param, Param),
             parameter_bindings=((2, line_width),),
             reference=threshold_ref,
@@ -153,6 +157,7 @@ def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
         line_width * 4,
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, line_width),),
             reference=gray2rgba_ref,
@@ -170,6 +175,7 @@ def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
         line_width,
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, line_width),),
             reference=rgba2gray_ref,
@@ -198,6 +204,7 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
         [line_ty, line_ty, line_ty, line_ty, np.int32, kernel_ty],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, In, Out, Param, Param),
             parameter_bindings=((4, line_width),),
             reference=filter2d_ref,
@@ -252,6 +259,7 @@ def add_weighted(
         ],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, Out, Param, Param, Param, Param),
             parameter_bindings=((3, line_width),),
             reference=add_weighted_ref,

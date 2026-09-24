@@ -72,6 +72,41 @@ class TensorLayout:
 
 
 @dataclass(frozen=True)
+class Trace:
+    """How a kernel's ``event0()``/``event1()`` markers bracket one call.
+
+    ``Trace.whole_call()``: one pair brackets every call of the entry symbol
+    and nothing it calls emits another, so each trace interval is one call.
+    ``Trace.none(reason)``: a call emits no marker. ``Trace.partial(reason)``:
+    markers exist but do not bracket each call exactly once (around an inner
+    loop, or skipped on an early return), so intervals cannot be attributed
+    to calls. ``test_kernel_trace_markers.py`` checks the declaration against
+    the compiled IR of every library build.
+    """
+
+    shape: str
+    reason: str | None = None
+
+    def __post_init__(self):
+        if self.shape not in ("whole_call", "none", "partial"):
+            raise ValueError(f"unknown trace shape {self.shape!r}")
+        if (self.shape == "whole_call") != (self.reason is None):
+            raise ValueError("only an untimed trace shape carries a reason")
+
+    @classmethod
+    def whole_call(cls):
+        return cls("whole_call")
+
+    @classmethod
+    def none(cls, reason: str):
+        return cls("none", reason)
+
+    @classmethod
+    def partial(cls, reason: str):
+        return cls("partial", reason)
+
+
+@dataclass(frozen=True)
 class KernelContract:
     """What a kernel computes, declared next to the factory that builds it.
 
@@ -117,8 +152,9 @@ class KernelContract:
             operands, counts included; the rest come from the caller.
         initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
             ``factory(fn)`` returns the kernel that initializes the buffer.
-        trace_cycles: Whether one event0/event1 pair brackets a whole call
-            and nothing else does; False unless audited.
+        trace: The ``Trace`` shape of the kernel's markers. Every
+            library factory declares one; ``None`` (undeclared) is only for
+            ad-hoc kernels, and ``cycles_per_call`` refuses it.
         uses_lut: Whether the kernel gathers through an ``aie::lut<4>`` table
             pair, so a build should verify the two tables land in different
             banks. Set it on the contract, not per source file: the LUT often
@@ -142,7 +178,7 @@ class KernelContract:
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
-    trace_cycles: bool = False
+    trace: Trace | None = None
     uses_lut: bool = False
 
     def __post_init__(self):

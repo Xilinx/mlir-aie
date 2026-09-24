@@ -19,6 +19,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    Trace,
     KernelContract,
     Param,
     _default_source_path,
@@ -133,6 +134,7 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
         _default_source_path("axpy.cc"),
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Param, Out, Param),
             parameter_bindings=((4, tile_size),),
@@ -181,6 +183,7 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("cast_f32_bf16.cc"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=convert_copy_ref,
@@ -230,6 +233,7 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
         [in_ty, out_ty],
         compile_flags=[f"-DTILE_SIZE={tile_size}", f"-DGROUP_SIZE={group_size}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out),
             reference=lambda p: expand_ref(
                 p, tile_size=tile_size, group_size=group_size
@@ -263,6 +267,7 @@ def rope(
         _default_source_path("rope.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Out, Param),
             parameter_bindings=((3, tile_size),),
@@ -372,6 +377,7 @@ def transpose(
         [tile_ty, tile_ty],
         compile_flags=flags,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out),
             reference=lambda x: transpose_ref(
                 x, dim_m=dim_m, dim_n=dim_n, subtile=subtile

@@ -17,7 +17,7 @@ from functools import partial
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import KernelContract, _default_source_path, _make_extern
+from ._common import KernelContract, Trace, _default_source_path, _make_extern
 
 
 class RoundingMode(str, Enum):
@@ -52,7 +52,10 @@ def set_rounding(mode: RoundingMode = RoundingMode.CONV_EVEN) -> ExternalFunctio
         [],
         compile_flags=[f"-DROUNDING_MODE={mode}"],
         inline=True,
-        contract=KernelContract(roles=()),  # sets core state; no data arguments
+        # Sets core state and has no data arguments.
+        contract=KernelContract(
+            roles=(), trace=Trace.none("runs once before the calls; nothing to time")
+        ),
     )
 
 

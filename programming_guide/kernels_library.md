@@ -341,6 +341,10 @@ A new factory is complete when one line each in two places covers it:
    A factory with more than one dtype lists them in a `.dtypes` table.
    Bind fixed parameters explicitly with `parameter_bindings`, publish nontrivial
    storage with `layouts`, and initialize `InOut` tiles with `initializers`.
+   Declare what the kernel's trace markers measure with `trace=`:
+   `Trace.whole_call()` when one `event0()` before the work and one
+   `event1()` after it bracket every call of the entry symbol, or
+   `Trace.none(reason)` / `Trace.partial(reason)` when they do not.
 2. **Case.** Add one `Case(...)` to
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
    the shape to run and, with `smoke=True`, that it is the kernel's
@@ -352,6 +356,11 @@ The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kerne
 then checks the roles against the real `arg_types()`, the reference's
 arity, that the generated design lowers to MLIR, and that `setup`
 agrees with the source.
+[`test/python/test_kernel_trace_markers.py`](../test/python/test_kernel_trace_markers.py)
+compiles every build to optimized IR and checks the markers the entry
+symbol reaches against `trace=`. Markers in a sibling kernel of the same
+file, around an inner loop, or skipped by an early return do not count as
+`whole_call`.
 
 ## Testing, benchmarking and static checks
 
@@ -361,6 +370,7 @@ what a kernel computes.
 | Tier | What | Where | When |
 | --- | --- | --- | --- |
 | host | contract vs. factory; design lowers to MLIR | `test/python/test_kernel_contracts.py` | every PR (lit) |
+| host, Peano | trace markers vs. the contract's `trace` | `test/python/test_kernel_trace_markers.py` | every PR (lit) |
 | device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
 | device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
 | host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | on demand |
@@ -422,10 +432,19 @@ default. Both remain to do under that issue.
 `test/python/npu/test_kernels_bench.py` measures a kernel only after it has
 produced a correct result under its declared tolerance; a wrong result fails
 the test, and a failed session writes no `--bench-out` file at all. Per case it records core
-`cycles` (trace, median over the run's kernel calls) and
-`cycles_per_kop`, `npu_us` / `e2e_us` from `aie.utils.benchmark`, and
-`compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced
-rebuild. Preflight reads the device and its power mode through the host
+`cycles` and `cycles_per_kop`, `npu_us` / `e2e_us` from
+`aie.utils.benchmark`, and `compile_s` with the `xclbin`, `insts` and
+core-ELF sizes of a forced rebuild.
+
+`cycles` is recorded only for a kernel whose contract declares
+`Trace.whole_call()`. The trace holds one interval per call of the kernel
+and one per call of each traced initializer (`zero` before `mm`), in the
+order the harness calls them, and `kd.cycles_per_call` splits it by that
+position. The row is the kernel's minimum. Every call does the same work,
+so anything above the minimum is the core waiting. The median, the maximum,
+each initializer's minimum and whether the trace buffer filled go in the
+row's `range`. The trace buffer is sized to the number of intervals the
+contract declares. Preflight reads the device and its power mode through the host
 runtime (`HostRuntime.power_mode()`) and refuses to run outside
 `--pmode`; a bit-exact `passthrough` smoke test inside a cycle band guards
 the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed

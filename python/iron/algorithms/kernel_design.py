@@ -15,7 +15,7 @@ kernel-validation harness.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from operator import index
 from pathlib import Path
 from typing import Callable
@@ -456,13 +456,102 @@ def upload(inputs, out_size, out_dtype, *, fn, poison=False):
     return ins, tuple(outs) if multiple else outs[0]
 
 
+@dataclass(frozen=True)
+class CallCycles:
+    """One traced run's intervals, split by the kernel that emitted them.
+
+    ``kernel`` holds one interval per call of the measured kernel, in call
+    order; ``initializers`` the same for each traced initializer, keyed by
+    the ``InOut`` argument it initializes; ``setup`` the setup kernel's one
+    interval when it is traced. A trace that fills its buffer keeps a prefix
+    of the stream, which the split still labels correctly, and ``truncated``
+    says the lists are short. ``untimed`` is the contract's reason when the
+    kernel's markers do not bracket its calls; then nothing ran.
+    """
+
+    kernel: tuple[int, ...] = ()
+    initializers: dict[int, tuple[int, ...]] = field(default_factory=dict)
+    setup: tuple[int, ...] = ()
+    truncated: bool = False
+    untimed: str | None = None
+
+
+def _timed(kernel, role: str) -> bool:
+    trace = kernel.contract.trace if kernel.contract else None
+    if trace is None:
+        raise ValueError(f"{kernel.name} ({role}) declares no trace in its contract")
+    if trace.shape == "partial":
+        raise ValueError(
+            f"{kernel.name} ({role}): {trace.reason}, so its intervals cannot be "
+            "told apart from the measured kernel's"
+        )
+    return trace.shape == "whole_call"
+
+
+def _traced(fn):
+    """``(setup traced, [traced initializer argument indices])``, checked."""
+    c = _contract(fn)
+    setup = bool(c.setup) and _timed(c.setup(), "setup")
+    inits = [i for i, init in c.initializers if _timed(init(fn), f"initializer {i}")]
+    return setup, inits
+
+
+def traced_intervals(fn, *, calls=1) -> int:
+    """How many ``event0``/``event1`` intervals a traced run of ``fn`` emits.
+
+    A ``trace_size`` that holds fewer truncates the run; ``0`` when the
+    kernel itself is not timed.
+    """
+    trace = _contract(fn).trace
+    if trace is None or trace.shape != "whole_call":
+        return 0
+    setup, inits = _traced(fn)
+    return int(setup) + _calls(calls) * (len(inits) + 1)
+
+
+def split_intervals(durations, *, calls, per_call, setup=0):
+    """Label an interval stream: ``setup`` intervals, then ``per_call`` per call.
+
+    The harness runs the setup kernel once, then each call runs its traced
+    initializers in contract order and the kernel last, so interval ``j`` of
+    call ``n`` sits at ``setup + n * per_call + j``. Returns ``(setup
+    intervals, one tuple per per-call kernel, truncated)``. A stream longer
+    than that is some kernel emitting markers it does not declare.
+    """
+    durations = [int(d) for d in durations]
+    expected = setup + calls * per_call
+    if len(durations) > expected:
+        raise RuntimeError(
+            f"expected {expected} trace intervals, got {len(durations)}; a kernel "
+            "on the core emits markers its contract's trace does not declare"
+        )
+    head, stream = durations[:setup], durations[setup:]
+    return (
+        tuple(head),
+        [tuple(stream[j::per_call]) for j in range(per_call)],
+        len(durations) < expected,
+    )
+
+
 def cycles_per_call(
     design_, inputs, out_size, out_dtype, *, fn, trace_size, workdir, calls=1
-):
-    """Measure declared whole-call event pairs, never partial internal regions."""
-    if not _contract(fn).trace_cycles:
-        return []
+) -> CallCycles:
+    """Trace one run and split its intervals by kernel (``CallCycles``).
+
+    Only a kernel whose contract declares ``Trace.whole_call()`` is timed;
+    one declaring ``none`` or ``partial`` returns its reason without running,
+    and one declaring nothing raises. Traced initializers and a traced setup
+    kernel are split off by position; a ``partial`` one raises, because its
+    intervals cannot be labeled. Size ``trace_size`` from
+    ``traced_intervals``.
+    """
+    c = _contract(fn)
+    if c.trace is None:
+        raise ValueError(f"{fn.name}: the contract declares no trace")
+    if c.trace.shape != "whole_call":
+        return CallCycles(untimed=c.trace.reason)
     calls = _calls(calls)
+    setup, inits = _traced(fn)
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     cfg = TraceConfig(trace_size=trace_size, trace_file=str(workdir / "trace.txt"))
@@ -472,16 +561,25 @@ def cycles_per_call(
         raise RuntimeError("the traced run recorded no physical MLIR path")
     trace_json = workdir / "trace.json"
     cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
-    durations = [int(d) for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
-    if len(durations) != calls:
+    durations = [d for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
+    head, per_kernel, truncated = split_intervals(
+        durations, calls=calls, per_call=len(inits) + 1, setup=int(setup)
+    )
+    if not per_kernel[-1]:
         raise RuntimeError(
-            f"{fn.name}: expected {calls} whole-call trace intervals, got "
-            f"{len(durations)}; incomplete trace or incorrect trace_cycles contract"
+            f"{fn.name}: the trace holds {len(durations)} intervals and none of "
+            "the kernel's; the buffer is too small or the markers are missing"
         )
-    return durations
+    return CallCycles(
+        kernel=per_kernel[-1],
+        initializers=dict(zip(inits, per_kernel)),
+        setup=head,
+        truncated=truncated,
+    )
 
 
 __all__ = [
+    "CallCycles",
     "cycles_per_call",
     "design",
     "elems",
@@ -490,5 +588,7 @@ __all__ = [
     "output_size",
     "sample_inputs",
     "shape_dtype",
+    "split_intervals",
+    "traced_intervals",
     "upload",
 ]

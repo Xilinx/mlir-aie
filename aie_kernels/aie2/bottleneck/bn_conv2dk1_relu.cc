@@ -1991,10 +1991,11 @@ void conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t output_channels_padd, const int scale, const int y_index,
     int32_t output_split, int32_t weight_index) {
-
+  event0();
   fused_conv2dk1_xy_pool_i8_large_padded_scalar(
       input, kernels, output, input_width, input_channels, output_channels,
       output_channels_padd, scale, y_index, output_split, weight_index);
+  event1();
 }
 
 #endif

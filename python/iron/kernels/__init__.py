@@ -42,6 +42,7 @@ from ._common import (
     KernelContract,
     Param,
     TensorLayout,
+    Trace,
 )
 from .activation import (
     bf16_exp,
@@ -198,6 +199,7 @@ __all__ = [
     "KernelContract",
     "MatrixKernel",
     "TensorLayout",
+    "Trace",
     "Param",
     "RoundingMode",
     "conv_even",

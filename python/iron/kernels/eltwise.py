@@ -12,6 +12,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    Trace,
     KernelContract,
     Param,
     _default_source_path,
@@ -85,6 +86,7 @@ def _eltwise_bf16_kernel(
         _default_source_path(f"{op}.cc"),
         [tile_ty, tile_ty, tile_ty],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Out),
             reference=add_ref if op == "add" else mul_ref,
@@ -126,11 +128,11 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
             f"-DPASSTHROUGH_ELEMS={tile_size}",
         ],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=lambda x: x,
             tolerance=Tolerance.exact(note="lossless copy"),
-            trace_cycles=True,
         ),
     )
 
@@ -173,6 +175,7 @@ def scale(
         compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DSCALE_ELEMS={tile_size}"],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param, Param),
             parameter_bindings=((3, tile_size),),
             reference=scale_ref,
@@ -244,6 +247,7 @@ def mul_add(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("scale_shift.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, Out, Param),
             reference=mul_add_ref,
             acc_dtype=np.float32,
@@ -279,6 +283,7 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty],
         compile_flags=[f"-DRELU_ELEMS={tile_size}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out),
             reference=lambda x: np.maximum(x.astype(np.float32), 0.0),
             tolerance=Tolerance.exact(note="selection: max(x, 0) is exact in bf16"),
@@ -301,6 +306,7 @@ def add_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DADD_ELEMS={tile_size}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Out, Param),
             parameter_bindings=((3, tile_size),),
@@ -327,6 +333,7 @@ def mul_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DMUL_ELEMS={tile_size}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Out, Param),
             parameter_bindings=((3, tile_size),),
@@ -353,6 +360,7 @@ def relu_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DRELU_ELEMS={tile_size}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=lambda x: np.maximum(x.astype(np.float32), 0.0),

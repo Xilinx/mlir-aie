@@ -14,6 +14,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    Trace,
     KernelContract,
     Param,
     _bf16_lanes,
@@ -70,6 +71,7 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
         "rms_norm.cc",
         [tile_ty, tile_ty, np.int32],
         KernelContract(
+            trace=Trace.whole_call(),
             setup=None if _detect_arch() == "aie2" else conv_even,
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
@@ -91,6 +93,7 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
         "rms_norm.cc",
         [tile_ty, tile_ty, np.int32, np.float32],
         KernelContract(
+            trace=Trace.whole_call(),
             setup=None if _detect_arch() == "aie2" else conv_even,
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),
@@ -116,6 +119,7 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
         "layer_norm.cc",
         [tile_ty, tile_ty, np.int32],
         KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=layer_norm_ref,

@@ -38,6 +38,9 @@ from cases import Case, inputs_for
 from kernel_cases import CASES
 
 TRACE_SIZE = 16384
+# The add/256 case filled 16 KB after 91 intervals (180 B each); size for
+# every declared interval with headroom, so the split sees whole calls.
+TRACE_BYTES_PER_INTERVAL = 512
 
 # A kernel whose cost is known well enough to catch a broken measurement.
 # 270 cycles on Strix, identical across calls and across runs: 8 KB copied at
@@ -104,25 +107,39 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     )
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
-        per_call = kd.cycles_per_call(
+        intervals = kd.traced_intervals(fn, calls=case.calls)
+        traced = kd.cycles_per_call(
             design,
             inputs,
             out_n,
             out_dt,
-            trace_size=TRACE_SIZE,
+            trace_size=max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * intervals),
             workdir=workdir,
             fn=fn,
             calls=case.calls,
         )
-        if per_call:
-            measured["cycles"] = int(np.median(per_call))
+        if traced.kernel:
+            measured["cycles"] = traced
     return measured
+
+
+def _cycles_span(traced: kd.CallCycles) -> str:
+    """The kernel's spread, and any initializer's, beside its min."""
+    k = traced.kernel
+    parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    parts += [f"init[{i}] min {min(v)}" for i, v in traced.initializers.items() if v]
+    if traced.truncated:
+        parts.append("truncated")
+    return "; ".join(parts)
 
 
 def _record(record, case: Case, m: dict) -> None:
     """Emit the rows one measurement contributes, in series-name order."""
-    if (cycles := m.get("cycles")) is not None:
-        record(case.name, "cycles", "cycles", cycles)
+    if (traced := m.get("cycles")) is not None:
+        # The min: every call does the same work, so anything above it is
+        # the core waiting (a stall, a refresh), not the kernel.
+        cycles = min(traced.kernel)
+        record(case.name, "cycles", "cycles", cycles, _cycles_span(traced))
         if ops := case.work():
             record(
                 case.name,
@@ -192,7 +209,7 @@ def test_measurement_is_sane(request, benchmark, workdir):
     for every kernel and the whole run charts as an improvement.
     """
     m = _measure(SMOKE_TEST, request.config, workdir)
-    cycles = m.get("cycles")
+    cycles = min(m["cycles"].kernel) if "cycles" in m else None
     if not request.config.getoption("--no-cycles"):
         lo, hi = SMOKE_CYCLE_BAND
         assert cycles is not None, "traced run produced no cycle count"

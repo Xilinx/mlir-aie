@@ -102,6 +102,7 @@ reimplements the math.
         - KernelContract
         - TensorLayout
         - Param
+        - Trace
 
 `aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a
 design of one Worker, built on the same single-core pipeline as
@@ -129,6 +130,9 @@ The former `aie.utils.kernel_harness` module has been removed.
         - output_size
         - upload
         - cycles_per_call
+        - CallCycles
+        - traced_intervals
+        - split_intervals
 
 
 `test/python/npu/test_kernels_bench.py` times the library: correctness
@@ -155,6 +159,8 @@ report them; the timing helpers live here:
 
 These compiler-remark checks are available on demand through
 `python -m aie.utils.compile.remarks`; there is no static-check CI workflow.
+The trace-marker check (`test/python/test_kernel_trace_markers.py`) runs in
+lit on every PR, through `trace_markers` below.
 
 ::: utils.compile.remarks
     options:

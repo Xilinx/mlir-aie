@@ -20,6 +20,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    Trace,
     KernelContract,
     Param,
     _conv_act_dtype_info,
@@ -333,6 +334,7 @@ def dwconv1d_channels_first(
             f"-DDWCONV1D_CF_BIAS={int(bias)}",
         ],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, Out, Param),
             reference=lambda x, w, n: dwconv1d_channels_first_ref(
                 x, w, n, kernel_size=kernel_size, bias=bias
@@ -416,6 +418,7 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
             f"-DDWCONV1D_CL_CLAMP={int(clamp)}",
         ],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             stack_bytes=1280,  # aiecc measured_stack_size
             # lo/hi are buffers the design writes, so they are Param like
             # mha's idx gate: bound here rather than sampled, which also keeps
@@ -504,6 +507,7 @@ def conv2dk1(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            trace=Trace.whole_call(),
             stack_bytes=2752,  # aiecc measured_stack_size (Peano 22)
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_ref,
@@ -564,6 +568,7 @@ def conv2dk3(
         + _conv_dimensions(input_width, input_channels, output_channels)
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             stack_bytes=4736,  # aiecc measured_stack_size (Peano 22)
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
@@ -622,6 +627,7 @@ def conv2dk1_skip(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            trace=Trace.whole_call(),
             stack_bytes=2752,  # aiecc measured_stack_size (Peano 22, uint8)
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,
@@ -661,6 +667,7 @@ def conv2dk1_i8(
         compile_flags=["-DINT8_ACT"]
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            trace=Trace.whole_call(),
             stack_bytes=1504,  # aiecc measured_stack_size
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_i8_ref,
@@ -709,6 +716,7 @@ def conv2dk14(
         compile_flags=_conv_dimensions(input_width, input_channels, output_channels)
         + [f"-DCONV_KERNEL_WIDTH={kernel_width}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Param, Out, *((Param,) * 5)),
             reference=conv2dk14_ref,
             acc_dtype=np.int32,
@@ -790,6 +798,7 @@ def conv2dk1_skip_init(
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(7)],
         compile_flags=flags,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             stack_bytes=0x2000,  # >=2144 measured; __modsi3 has no .stack_sizes
             roles=(In, In, Param, Out, In, *((Param,) * 7)),
             reference=conv2dk1_skip_init_ref,

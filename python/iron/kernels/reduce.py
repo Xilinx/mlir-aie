@@ -12,6 +12,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    Trace,
     KernelContract,
     Param,
     _default_source_path,
@@ -53,6 +54,7 @@ def _reduce_contract(op: str, tile_size: int) -> KernelContract:
     # is padding), so only element 0 of each output tile is compared. Every
     # reduction here is exact: integer arithmetic, or a selection in bf16.
     return KernelContract(
+        trace=Trace.whole_call(),
         roles=(In, Out, Param),
         parameter_bindings=((2, tile_size),),
         reference=_REDUCE_REFS[op],
@@ -212,6 +214,7 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
         [out_ty, out_ty, out_ty],
         object_file_name=_REDUCE_MAX_OBJ,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, Out),
             reference=compute_max_ref,
             tolerance=Tolerance.exact(note="selection"),

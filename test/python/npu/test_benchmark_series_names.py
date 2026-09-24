@@ -22,6 +22,8 @@ chart histories a change ends.
 import sys
 from pathlib import Path
 
+from aie.iron.algorithms import kernel_design as kd
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from cases import Case, device_for  # noqa: E402
@@ -78,8 +80,27 @@ def test_cycle_efficiency_is_independent_of_call_count():
     for calls in (1, 16, 256):
         case = Case("passthrough", dict(tile_size=2048), calls=calls)
         rows = []
-        _record(lambda *row: rows.append(row), case, {"cycles": 270})
+        traced = kd.CallCycles(kernel=(270,) * calls)
+        _record(lambda *row: rows.append(row), case, {"cycles": traced})
         assert rows[1][1:] == ("cycles_per_kop", "cycles/1k-ops", 131.836)
+
+
+def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():
+    from test_kernels_bench import _record
+
+    case = Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=4, devices=("npu2",))
+    # One call stalled; zero's intervals are their own population.
+    traced = kd.CallCycles(
+        kernel=(900, 1400, 905), initializers={2: (60, 61, 60)}, truncated=True
+    )
+    rows = []
+    _record(lambda *row: rows.append(row), case, {"cycles": traced})
+    assert rows[0][1:] == (
+        "cycles",
+        "cycles",
+        900,
+        "median 905 max 1400 n=3; init[2] min 60; truncated",
+    )
 
 
 def test_matrix_series_keep_tile_geometry_and_call_count():
@@ -96,5 +117,6 @@ if __name__ == "__main__":
     test_series_names_are_unique()
     test_smoke_benchmark_is_measured_once()
     test_cycle_efficiency_is_independent_of_call_count()
+    test_cycles_row_is_the_kernel_min_with_its_spread_beside_it()
     test_matrix_series_keep_tile_geometry_and_call_count()
     print("PASS!")

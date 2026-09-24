@@ -15,6 +15,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    Trace,
     KernelContract,
     Param,
     _bf16_lanes,
@@ -223,6 +224,7 @@ def _unary_lut_contract(
     if (use_lut or _detect_arch() == "aie2") and elementwise is not None:
         ref, tolerance = elementwise, _LUT_MODEL_TOLERANCE
     return KernelContract(
+        trace=Trace.whole_call(),
         roles=(In, Out, Param) if count else (In, Out),
         parameter_bindings=((2, count),) if count else (),
         reference=ref,
@@ -447,6 +449,7 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
         tile_size,
         arg_arity=4,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, In, Out),
             reference=swiglu_lut_ref if use_lut else swiglu_ref,
@@ -543,6 +546,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
@@ -631,6 +635,7 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32, bfloat16],
         compile_flags=[f"-DLEAKY_RELU_ELEMS={tile_size}"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),

@@ -14,6 +14,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    Trace,
     KernelContract,
     TensorLayout,
     _default_source_path,
@@ -91,6 +92,7 @@ def zero(
         compile_flags=flags,
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(Out,),
             layouts=(layout,),
             reference=lambda: np.zeros((1, *layout.shape), dtype=reference_dtype),

@@ -21,6 +21,7 @@ from ._common import (
     KernelContract,
     Param,
     TensorLayout,
+    Trace,
     _default_source_path,
     _detect_arch,
     _make_extern,
@@ -595,6 +596,7 @@ def mm(
         use_chess=use_chess,
         cls=MatrixKernel,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             layouts=layouts,
             stack_bytes=0xD00,  # programming_examples/basic/matrix_multiplication
             # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
@@ -688,6 +690,7 @@ def mv(
         use_chess=use_chess,
         cls=_ZeroInitializedKernel,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, InOut),
             layouts=(
                 _tile_layout((dim_m, dim_k), a_dims_from_stream, inverse=True),
@@ -721,6 +724,7 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
         compile_flags=[f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(Param, Param, In, In, Out),
             parameter_bindings=((0, dim_m), (1, 0)),
             layouts=(
@@ -829,6 +833,7 @@ def mm_bfp(
         compile_flags=flags + ["-DMATMUL_ONLY"],
         cls=MatrixKernel,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             layouts=layouts,
             stack_bytes=0xF00,  # programming_examples/ml/block_datatypes
             setup=conv_even,
@@ -893,6 +898,7 @@ def mm_bfp_shuffle(
         [in_ty, out_ty, np.int16, np.int16, np.int16],
         compile_flags=flags + ["-DSHUFFLE_ONLY"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param, Param, Param),
             parameter_bindings=((2, dim_k), (3, dim_m), (4, 0)),
             layouts=(
@@ -980,6 +986,13 @@ def mha(
         compile_flags=flags,
         cls=MatrixKernel,
         contract=KernelContract(
+            # The wrapper returns before its markers when idx_buffer masks
+            # the block, so a masked call emits no interval.
+            trace=(
+                Trace.whole_call()
+                if pv
+                else Trace.partial("a masked call returns before its markers")
+            ),
             layouts=(
                 _tile_layout((dim_m, dim_k), streams.A, block=(r, s)),
                 _tile_layout((dim_k, dim_n), streams.B, block=(s, t)),
@@ -1060,6 +1073,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
         compile_flags=[f"-DPREFILL_HEAD_DIM={head_dim}"],
         cls=_ZeroInitializedKernel,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             layouts=(
                 _tile_layout((lq, head_dim), streams.C, inverse=True, block=(r, t)),
                 _tile_layout((lq, lk), streams.A, block=(r, s)),
@@ -1184,6 +1198,7 @@ def cascade_mm(
         use_chess=use_chess,
         cls=_CascadeMatrixKernel,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, InOut),
             # Scalar on both targets: row-major operands, nothing streamed
             # transformed, so the layouts carry the 1x1x1 blocking and no
@@ -1256,6 +1271,7 @@ def cascade_mm_put(
         use_chess=use_chess,
         cls=MatrixKernel,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, Param),
             parameter_bindings=((2, np.zeros(dim_m * dim_n, dtype=output_dtype)),),
             layouts=(

@@ -20,6 +20,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    Trace,
     KernelContract,
     Param,
     _default_source_path,
@@ -79,6 +80,7 @@ def _row_kernel(
         _default_source_path(source, subdir="aie2p"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, cols),),
             reference=ref,
@@ -141,6 +143,7 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
         _default_source_path("layer_norm.cc", subdir="aie2p"),
         [in_ty, gb_ty, out_ty, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Param, Out, Param),
             parameter_bindings=((3, cols),),
             reference=layer_norm_affine_cast_ref,
@@ -170,6 +173,7 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("mm_activation_epilogue.cc", subdir="aie2p"),
         [tile_ty, tile_ty, np.int32, np.int32],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),

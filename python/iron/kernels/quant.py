@@ -14,7 +14,13 @@ from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, _default_source_path, _detect_arch, _make_extern
+from ._common import (
+    Trace,
+    KernelContract,
+    _default_source_path,
+    _detect_arch,
+    _make_extern,
+)
 
 
 def _geometry(m_tile, k_tile, group, ct_k, s, t):
@@ -148,6 +154,7 @@ def q4nx_dequant(
         ]
         + ["-mllvm", "--aie-pipeliner-max-stagecount=5"],
         contract=KernelContract(
+            trace=Trace.whole_call(),
             # aiecc measured_stack_size (Peano 22). A group size that is not a
             # power of two makes the `/ GROUP` in the inner loop call __muldi3,
             # which needs 64 bytes more than the power-of-two geometries.
