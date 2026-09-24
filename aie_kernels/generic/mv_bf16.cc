@@ -45,6 +45,115 @@ void matvec_scalar(uint32_t m, uint32_t k, const bfloat16 *__restrict a,
   ::aie::set_rounding(saved_rounding);
 }
 
+// v and w hold rows of L partial sums each. Adds lane i + L / 2 onto lane i of
+// every row, the pairing reduce_add uses, and returns v's rows then w's.
+template <unsigned L, unsigned N>
+static inline aie::vector<float, N> fold2(aie::vector<float, N> v,
+                                          aie::vector<float, N> w) {
+  auto [lo, hi] = aie::interleave_unzip(v, w, L / 2);
+  return aie::add(lo, hi);
+}
+
+// Sums each row of L lanes in v into one lane. A 16-lane vector folds against
+// itself, since narrower unzips lower to per-lane extract and insert.
+template <unsigned L, unsigned N>
+static inline aie::vector<float, 16> fold_rows(aie::vector<float, N> v) {
+  if constexpr (L == 1)
+    return v.template grow_extract<16>(0);
+  else if constexpr (N == 16)
+    return fold_rows<L / 2, 16>(fold2<L>(v, v).template extract<16>(0));
+  else
+    return fold_rows<L / 2, N / 2>(
+        fold2<L>(v.template extract<N / 2>(0), v.template extract<N / 2>(1)));
+}
+
+// Packs four rows' accumulators into one, quarter q holding row q's 16 partial
+// sums, halving each row the way reduce_add does. Down to 16 lanes a halving
+// is a permutation of accumulator quarters, so it needs no shuffle.
+template <uint32_t r>
+static inline aie::accum<accfloat, 64>
+pack_rows4(aie::accum<accfloat, r> a0, aie::accum<accfloat, r> a1,
+           aie::accum<accfloat, r> a2, aie::accum<accfloat, r> a3) {
+  if constexpr (r > 64) {
+    auto half = [](aie::accum<accfloat, r> x) {
+      return aie::add(x.template extract<r / 2>(0),
+                      x.template extract<r / 2>(1));
+    };
+    return pack_rows4<r / 2>(half(a0), half(a1), half(a2), half(a3));
+  } else if constexpr (r == 16) {
+    return aie::concat(a0, a1, a2, a3);
+  } else {
+    static_assert(r == 32 || r == 64);
+    // Two rows of 32 lanes per accumulator.
+    aie::accum<accfloat, 64> t01, t23;
+    if constexpr (r == 64) {
+      auto pair = [](aie::accum<accfloat, 64> x, aie::accum<accfloat, 64> y) {
+        return aie::add(
+            aie::concat(x.template extract<32>(0), y.template extract<32>(0)),
+            aie::concat(x.template extract<32>(1), y.template extract<32>(1)));
+      };
+      t01 = pair(a0, a1);
+      t23 = pair(a2, a3);
+    } else {
+      t01 = aie::concat(a0, a1);
+      t23 = aie::concat(a2, a3);
+    }
+    return aie::add(
+        aie::concat(t01.template extract<16>(0), t01.template extract<16>(2),
+                    t23.template extract<16>(0), t23.template extract<16>(2)),
+        aie::concat(t01.template extract<16>(1), t01.template extract<16>(3),
+                    t23.template extract<16>(1), t23.template extract<16>(3)));
+  }
+}
+
+// Four rows of A times b, packed by pack_rows4. Each row walks its own cursor:
+// one pointer stepped through all four rows chains every load on the previous
+// load's post-increment, which holds the loop at II9 rather than II7. The
+// first chunk multiplies instead of accumulating onto zeros, which the target
+// reloads from the stack for every group. Short rows unroll fully, so a whole
+// group is one block the scheduler can overlap with its neighbor.
+template <uint32_t r, uint32_t k>
+static inline aie::accum<accfloat, 64> mac_rows4(const bfloat16 *__restrict a,
+                                                 const bfloat16 *__restrict b) {
+  constexpr uint32_t chunks = k / r;
+  const bfloat16 *__restrict a0 = a;
+  const bfloat16 *__restrict a1 = a + k;
+  const bfloat16 *__restrict a2 = a + 2 * k;
+  const bfloat16 *__restrict a3 = a + 3 * k;
+  const bfloat16 *__restrict pb = b;
+  aie::vector<bfloat16, r> b_0 = aie::load_v<r>(pb);
+  pb += r;
+  aie::accum<accfloat, r> acc0 = aie::mul(aie::load_v<r>(a0), b_0);
+  a0 += r;
+  aie::accum<accfloat, r> acc1 = aie::mul(aie::load_v<r>(a1), b_0);
+  a1 += r;
+  aie::accum<accfloat, r> acc2 = aie::mul(aie::load_v<r>(a2), b_0);
+  a2 += r;
+  aie::accum<accfloat, r> acc3 = aie::mul(aie::load_v<r>(a3), b_0);
+  a3 += r;
+  auto step = [&]() {
+    aie::vector<bfloat16, r> b_vec = aie::load_v<r>(pb);
+    pb += r;
+    acc0 = aie::mac(acc0, aie::load_v<r>(a0), b_vec);
+    a0 += r;
+    acc1 = aie::mac(acc1, aie::load_v<r>(a1), b_vec);
+    a1 += r;
+    acc2 = aie::mac(acc2, aie::load_v<r>(a2), b_vec);
+    a2 += r;
+    acc3 = aie::mac(acc3, aie::load_v<r>(a3), b_vec);
+    a3 += r;
+  };
+  if constexpr (chunks <= 4) {
+    AIE_LOOP_UNROLL_FULL
+    for (uint32_t i = 1; i < chunks; i++)
+      step();
+  } else {
+    for (uint32_t i = 1; i < chunks; i++)
+      step();
+  }
+  return pack_rows4<r>(acc0, acc1, acc2, acc3);
+}
+
 /*
 Matrix-vector multiplication kernel
 
@@ -66,35 +175,46 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
   constexpr uint32_t chunks = k / r;
 
   // Four rows at a time. One b chunk then feeds four macs instead of one, and
-  // reduce_add_v folds the four accumulators in a single pass where four
-  // separate reduction trees used to run -- the reduction, not the mac, is
-  // what a short row costs.
-  uint32_t row = 0;
-  for (; row + 4 <= m; row += 4, a += 4 * k, c += 4) {
-    aie::accum<accfloat, r> acc0 = aie::zeros<accfloat, r>();
-    aie::accum<accfloat, r> acc1 = acc0;
-    aie::accum<accfloat, r> acc2 = acc0;
-    aie::accum<accfloat, r> acc3 = acc0;
-    const bfloat16 *__restrict pa = a;
-    AIE_LOOP_MIN_ITERATION_COUNT(chunks)
-    for (uint32_t i = 0; i < chunks; i++, pa += r) {
-      aie::vector<bfloat16, r> b_vec = aie::load_v<r>(b + i * r);
-      acc0 = aie::mac(acc0, aie::load_v<r>(pa), b_vec);
-      acc1 = aie::mac(acc1, aie::load_v<r>(pa + k), b_vec);
-      acc2 = aie::mac(acc2, aie::load_v<r>(pa + 2 * k), b_vec);
-      acc3 = aie::mac(acc3, aie::load_v<r>(pa + 3 * k), b_vec);
+  // one transposed tree sums all four rows where reduce_add_v runs four trees
+  // side by side -- the reduction, not the mac, is what a short row costs.
+  // The tree is a latency chain, so each group's finishes in the next
+  // iteration, under that group's macs. Behind a mac loop only the store
+  // waits: the packed accumulator would spill across the loop.
+  auto defer = [](aie::accum<accfloat, 64> u) {
+    if constexpr (chunks <= 4)
+      return u;
+    else
+      return fold_rows<16>(u.template to_vector<float>());
+  };
+  auto store4 = [](bfloat16 *__restrict out, auto deferred) {
+    aie::vector<float, 16> sums;
+    if constexpr (chunks <= 4)
+      sums = fold_rows<16>(deferred.template to_vector<float>());
+    else
+      sums = deferred;
+    aie::vector<bfloat16, 16> v =
+        aie::accum<accfloat, 16>(sums).template to_vector<bfloat16>();
+    out[0] = v[0];
+    out[1] = v[1];
+    out[2] = v[2];
+    out[3] = v[3];
+  };
+  uint32_t groups = m / 4;
+  if (groups > 0) {
+    auto prev = defer(mac_rows4<r, k>(a, b));
+    for (uint32_t g = 1; g < groups; g++, c += 4) {
+      a += 4 * k;
+      auto next = defer(mac_rows4<r, k>(a, b));
+      store4(c, prev);
+      prev = next;
     }
-    aie::vector<float, r> sums = aie::reduce_add_v(
-        acc0.template to_vector<float>(), acc1.template to_vector<float>(),
-        acc2.template to_vector<float>(), acc3.template to_vector<float>());
-    c[0] = static_cast<bfloat16>(sums[0]);
-    c[1] = static_cast<bfloat16>(sums[1]);
-    c[2] = static_cast<bfloat16>(sums[2]);
-    c[3] = static_cast<bfloat16>(sums[3]);
+    store4(c, prev);
+    a += 4 * k;
+    c += 4;
   }
 
   // m need not be a multiple of four.
-  for (; row < m; row++, c++) {
+  for (uint32_t row = groups * 4; row < m; row++, c++) {
     aie::accum<accfloat, r> acc = aie::zeros<accfloat, r>();
     AIE_LOOP_MIN_ITERATION_COUNT(chunks)
     for (uint32_t i = 0; i < chunks; i++, a += r)

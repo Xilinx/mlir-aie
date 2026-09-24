@@ -424,6 +424,22 @@ CASES: list[Case] = [
         )
         for dim_k, tag in ((64, "edge-one-chunk"), (128, "edge-two-chunks"))
     ],
+    # Past four chunks the bf16 kernel keeps its mac loop and carries only the
+    # folded sums from one group of four rows to the next.
+    Case(
+        "mv",
+        dict(
+            dim_m=10,
+            dim_k=512,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            vec_size=64,
+        ),
+        calls=4,
+        tag="edge-mac-loop",
+        smoke=True,
+        perf=False,
+    ),
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
