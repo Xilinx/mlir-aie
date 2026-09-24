@@ -37,6 +37,7 @@ __attribute__((noinline)) void
 threshold_aie(T *img_in, T *img_out, const int32_t img_width,
               const int32_t img_height, const T &thresh_val, const T &max_val,
               const uint8_t thresholdType) {
+  event0();
   ::aie::vector<T, N> constants;
   ::aie::vector<T, N> data_out;
   ::aie::mask<N> temp_val;
@@ -121,6 +122,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
       img_out += N;
     }
   }
+  event1();
 }
 
 template <typename T, int N>
@@ -129,6 +131,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
     const T &thresh_val1, const T &thresh_val2, const T &thresh_val3,
     const T &thresh_val4, const T &max_val1, const T &max_val2,
     const T &max_val3, const T &max_val4, const uint8_t thresholdType) {
+  event0();
   ::aie::vector<T, N> constants;
   ::aie::vector<T, N> data_out;
   ::aie::mask<N> temp_val;
@@ -227,6 +230,7 @@ __attribute__((noinline)) void threshold4Ch_aie(
       img_out += N;
     }
   }
+  event1();
 }
 
 extern "C" {
