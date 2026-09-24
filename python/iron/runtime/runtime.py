@@ -338,6 +338,11 @@ class Runtime(Resolvable):
         [`tile_dma_chain`][iron.tile_dma_chain] has neither, and the sequence
         body runs last, so it must be registered here to exist by then.
         """
+        if self._resolved_tile_dmas is not None:
+            raise IronRuntimeError(
+                "Cannot register a Buffer after DMA resolution; call add_buffer "
+                "before the Program resolves, not from the sequence body."
+            )
         self._buffers.append(buffer)
 
     @property

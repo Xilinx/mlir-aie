@@ -150,6 +150,30 @@ except ValueError as e:
     print(f"RAISED ValueError: {e}")
 
 
+# Unlike shim_dma_bd, a tile BD has no default strides: sizes alone would reach
+# aie.dma_bd without strides and fail its verifier.
+# CHECK-LABEL: CASE tile_sizes_only
+# CHECK: RAISED ValueError: tile_dma_single_bd_task needs sizes and strides together, got sizes=[4, 16] and strides=None
+print("// CASE tile_sizes_only")
+try:
+    with mlir_mod_ctx() as ctx:
+
+        @device(AIEDevice.npu1_1col)
+        def device_body():
+            mem = tile(0, 1)
+            resident = buffer(mem, T.memref(64, T.bf16(), memory_space=1), name="r")
+
+            @runtime_sequence(T.memref(64, T.bf16()))
+            def seq(out):
+                tile_dma_single_bd_task(
+                    mem, DMAChannelDir.MM2S, 0, resident, sizes=[4, 16]
+                )
+
+        print(ctx.module)
+except ValueError as e:
+    print(f"RAISED ValueError: {e}")
+
+
 # tile_dma_single_bd_task takes the same rank-5 form.
 # CHECK-LABEL: CASE tile_rank5
 # CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)

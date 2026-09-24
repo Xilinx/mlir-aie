@@ -13,6 +13,7 @@ import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 from aie.iron import Buffer, Program, Runtime, tile_dma_task
+from aie.iron.runtime.runtime import IronRuntimeError
 from aie.iron.device import NPU2Col1, Tile
 
 
@@ -54,3 +55,24 @@ def emit_dynamic_memtile_task():
 # CHECK: aiex.dma_start_task
 # CHECK: aiex.dma_await_task
 print(emit_dynamic_memtile_task())
+
+
+def emit_late_add_buffer():
+    buf_ty = np.ndarray[(4096,), np.dtype[np.int32]]
+    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
+    buf = Buffer(tile=mem_tile, type=buf_ty, name="late")
+
+    def sequence(_host):
+        rt.add_buffer(buf)
+
+    rt = Runtime(sequence, [buf_ty])
+    try:
+        Program(NPU2Col1(), rt).resolve_program()
+    except IronRuntimeError as e:
+        print(f"RAISED IronRuntimeError: {e}")
+
+
+# By the time the sequence body runs the Program has resolved its buffers, so a
+# registration from there would be dropped; it is rejected instead.
+# CHECK: RAISED IronRuntimeError: Cannot register a Buffer after DMA resolution
+emit_late_add_buffer()

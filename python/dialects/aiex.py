@@ -481,11 +481,18 @@ def tile_dma_single_bd_task(
             half of the BD pool ``bd_id`` may come from -- an even channel
             reaches only the low half, an odd channel only the high half.
         buffer: an ``aie.buffer`` on ``tile``.
+        sizes, strides: the access pattern, outermost dimension first. Give
+            both or neither: there is no default stride to pair with a size.
         issue_token: issue a completion token, so ``dma_await_task`` may wait
             on the returned task.
         bd_id: pin the buffer descriptor id instead of letting
             ``aie-assign-runtime-sequence-bd-ids`` choose one.
     """
+    if (sizes is None) != (strides is None):
+        raise ValueError(
+            "tile_dma_single_bd_task needs sizes and strides together, got "
+            f"sizes={sizes} and strides={strides}"
+        )
     sizes, strides, repeat_count, repeat_count_val = _task_dims(sizes, strides)
     task = dma_configure_task(
         tile,
