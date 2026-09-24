@@ -223,6 +223,17 @@ CASES: list[Case] = [
     Case("axpy", calls=256, scalars=(2.5,), data_cases=IEEE_FLOAT),
     Case("convert_copy", calls=16, devices=("npu2",), smoke=True),
     Case("convert_copy", calls=256, devices=("npu2",)),
+    # 272 is a multiple of the kernel's 16-element step but not of the 128 its
+    # unrolled loop consumes per pass, so the remainder pass runs.
+    Case(
+        "convert_copy",
+        dict(tile_size=272),
+        calls=4,
+        devices=("npu2",),
+        tag="unroll-tail",
+        smoke=True,
+        perf=False,
+    ),
     Case("expand", calls=16, smoke=True),
     Case("expand", calls=256),
     Case("transpose", dict(subtile=4), calls=16, smoke=True),

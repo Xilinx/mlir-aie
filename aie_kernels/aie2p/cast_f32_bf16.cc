@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <cassert>
 #include <stdint.h>
@@ -26,11 +27,21 @@ void cast_f32_bf16_row(const float *restrict input, bfloat16 *restrict output,
   event0();
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  for (int i = 0; i < cols; i += N) {
-    ::aie::vector<float, N> v = ::aie::load_v<N>(input + i);
+  // Indexing off `i` costs a shift and a pointer update per iteration and
+  // leaves a loop the pipeliner rejects ("the loop structure is not
+  // supported"), so each 512-bit load stands alone with its latency exposed.
+  // Walking the two pointers and unrolling by eight instead gets one load and
+  // one converting store issued in the same bundle, eight elements' worth of
+  // accumulators deep.
+  const float *restrict in = input;
+  bfloat16 *restrict out = output;
+  AIE_LOOP_MIN_ITERATION_COUNT(1)
+  AIE_LOOP_UNROLL(8)
+  for (int i = 0; i < cols; i += N, in += N, out += N) {
+    ::aie::vector<float, N> v = ::aie::load_v<N>(in);
     ::aie::accum<accfloat, N> a;
     a.from_vector(v);
-    ::aie::store_v(output + i, a.template to_vector<bfloat16>());
+    ::aie::store_v(out, a.template to_vector<bfloat16>());
   }
   ::aie::set_rounding(saved_rounding);
   event1();
