@@ -142,9 +142,7 @@ def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
     assert "printf '%s\\n' \"$EXAMINE\"" in run
     assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
     # Execute the complete command in the condition: sudoers can match arguments.
-    configure = (
-        'if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"; then'
-    )
+    configure = 'if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"; then'
     assert configure in run
     assert run.count('sudo -n "$XRT_SMI" configure') == 1
     assert "else\n" in run[run.index(configure) :]
