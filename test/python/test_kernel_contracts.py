@@ -1009,21 +1009,28 @@ def test_host_args_match_what_the_sampler_and_uploader_produce(case_id):
         pytest.skip(fn.contract.unsupported)
     calls, shape = opts.get("calls", 1), opts.get("shape")
     args = kd.host_args(fn, calls=calls, shape=shape)
-    ins, out = args[:-1], args[-1]
-    assert [a.direction for a in args] == [In] * len(ins) + [Out]
+    ins = [a for a in args if a.direction is In]
+    outs = args[len(ins) :]
+    assert [a.direction for a in args] == [In] * len(ins) + [Out] * len(outs)
+    assert len(outs) == len(fn.contract.out_indices), case_id
     # Inputs: the arrays host_layout hands the device.
     staged = kd.host_layout(fn, kd.sample_inputs(fn, calls=calls, shape=shape))
     assert len(staged) == len(ins), case_id
     for got, spec in zip(staged, ins):
         assert got.shape == spec.shape, f"{case_id}: {got.shape} != {spec.shape}"
         assert got.dtype == np.dtype(spec.dtype), case_id
-    # Output: the element count and dtype upload allocates.
+    # Outputs: the element counts and dtypes upload allocates.
     ref = fn.expected(
         kd.sample_inputs(fn, calls=calls, shape=shape),
         scalars=opts.get("scalars", ()),
     )
-    assert out.n_elements == kd.output_size(fn, calls=calls, shape=shape), case_id
-    assert np.dtype(out.dtype) == np.dtype(fn.output_dtype(ref.dtype)), case_id
+    sizes = kd.output_size(fn, calls=calls, shape=shape)
+    dtypes = fn.output_dtype(None if isinstance(ref, tuple) else ref.dtype)
+    if len(outs) == 1:
+        sizes, dtypes = (sizes,), (dtypes,)
+    for out, size, dtype in zip(outs, sizes, dtypes, strict=True):
+        assert out.n_elements == size, case_id
+        assert np.dtype(out.dtype) == np.dtype(dtype), case_id
 
 
 def test_host_args_describe_the_layouts_a_caller_must_allocate():
