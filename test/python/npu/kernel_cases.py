@@ -745,4 +745,16 @@ CASES += [
         smoke=True,
         perf=False,
     ),
+    # The mixed kernel walks its 2x2 output tiles with one loop that wraps at
+    # the end of each tile row; with fewer tile columns than rows, a wrap that
+    # used the wrong extent would land a tile on the wrong row.
+    Case(
+        "mm_bfp",
+        dict(dim_m=64, dim_k=32, dim_n=32, mixed=True),
+        calls=4,
+        devices=("npu2",),
+        tag="non-square",
+        smoke=True,
+        perf=False,
+    ),
 ]
