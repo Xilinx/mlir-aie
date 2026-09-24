@@ -89,6 +89,7 @@ void dwconv1d_channels_last_k5_bf16(bf16 *__restrict w_0, bf16 *__restrict w_1,
                                     bf16 *__restrict x_3, bf16 *__restrict x_4,
                                     bf16 *__restrict y, float *lo_buffer,
                                     float *hi_buffer) {
+  event0();
   constexpr int C = DWCONV1D_CL_C;
 
   const bf16 *const wp[5] = {w_0, w_1, w_2, w_3, w_4};
@@ -96,6 +97,7 @@ void dwconv1d_channels_last_k5_bf16(bf16 *__restrict w_0, bf16 *__restrict w_1,
 
   dwconv1d_channels_last_impl<5, C, (bool)DWCONV1D_CL_CLAMP>(
       wp, xp, (bf16)lo_buffer[0], (bf16)hi_buffer[0], y);
+  event1();
 }
 
 } // extern "C"
