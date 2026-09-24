@@ -251,6 +251,13 @@ aiecc --cut=physical_with_elfs.mlir --checkpoint=cp design.mlir
 aiecc --resume=cp/manifest.json --get=cdo_{0}   # only the CDO, from the checkpoint
 ```
 
+### Finding the pass that broke the IR: `--verify-each`
+
+`aiecc` verifies the IR each pass pipeline produces, rather than after every
+pass as `aie-opt` does; on a large design the per-pass verification costs more
+than the passes. If a pipeline produces invalid IR, rerun with `--verify-each`
+to verify after every pass and learn which one it was.
+
 ---
 
 ## Developer guide

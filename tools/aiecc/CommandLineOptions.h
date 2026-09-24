@@ -70,6 +70,11 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+inline cl::opt<bool> verifyEach(
+    "verify-each",
+    cl::desc("Verify the IR after every pass, not once per pass pipeline "
+             "(slower; names the pass that produced invalid IR)"));
+
 inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));

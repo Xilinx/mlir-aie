@@ -72,6 +72,7 @@ public:
         "progress",
         "no-progress",
         "profile",
+        "verify-each",
         "nthreads",
         "get",
         "g",

@@ -1049,7 +1049,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
                   auto pm = getAssignBufferAddressesPipeline(&context);
                   for (auto device : mod.getOps<DeviceOp>()) {
                     if ((!cache || !cache->isHit(device)) &&
-                        mlir::failed(pm->run(device))) {
+                        mlir::failed(runPasses(*pm, device))) {
                       return mlir::failure();
                     }
                   }
@@ -1581,7 +1581,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
         ModRef clone = item.get().module.get().clone();
         auto pm =
             getControlPacketPipeline(&context, /*elfDir=*/"", d.getSymName());
-        if (!pm || mlir::failed(pm->run(*clone))) {
+        if (!pm || mlir::failed(runPasses(*pm, *clone))) {
           return mlir::failure();
         }
         out.value = std::move(clone);
@@ -1598,22 +1598,24 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
 
   auto &ctrlpktDmaSeq = ctrlpktLowered.map<std::vector<char>>(
       ctrlpktDmaSeqName.getValue(),
-      emitBinary<ModRef>([&context](const Item<ModRef> &item,
-                                    std::vector<uint32_t> &words)
-                             -> mlir::LogicalResult {
-        ModRef clone = item.get().get().clone();
-        if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone))) {
-          return mlir::failure();
-        }
-        // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX
-        // consumes the producer-independent (unfolded) insts.bin and adds the
-        // AIE DDR aperture offset for every arg itself. cl::opt defaults to
-        // true, so only pass the flag when unfolding is requested.
-        return xilinx::AIE::AIETranslateNpuToBinary(
-            clone.get(), words, item.key, "",
-            /*locmap=*/nullptr,
-            /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
-      }));
+      emitBinary<ModRef>(
+          [&context](const Item<ModRef> &item,
+                     std::vector<uint32_t> &words) -> mlir::LogicalResult {
+            ModRef clone = item.get().get().clone();
+            auto pm = getControlPacketDmaPipeline(&context);
+            if (mlir::failed(runPasses(*pm, *clone))) {
+              return mlir::failure();
+            }
+            // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX
+            // consumes the producer-independent (unfolded) insts.bin and adds
+            // the AIE DDR aperture offset for every arg itself. cl::opt
+            // defaults to true, so only pass the flag when unfolding is
+            // requested.
+            return xilinx::AIE::AIETranslateNpuToBinary(
+                clone.get(), words, item.key, "",
+                /*locmap=*/nullptr,
+                /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
+          }));
 
   // Partial ELF containing the DMA sequence and the control packet data;
   // this is still used in combination with an xclbin. The
@@ -1813,7 +1815,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
         ModRef clone = item.get().module.get().clone();
         auto pm =
             getTransactionPipeline(&context, /*elfDir=*/"", d.getSymName());
-        if (!pm || mlir::failed(pm->run(*clone))) {
+        if (!pm || mlir::failed(runPasses(*pm, *clone))) {
           return mlir::failure();
         }
         out.value = std::move(clone);
@@ -2336,6 +2338,7 @@ int main(int argc, char **argv) {
   if (!cli::resolveOptions()) {
     return 1;
   }
+  verifyEachPass = verifyEach;
 
   if (checkLutBanks && (xchesscc || xbridge)) {
     llvm::errs() << "aiecc: --check-lut-banks requires Peano compilation and "
