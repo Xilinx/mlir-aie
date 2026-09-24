@@ -691,8 +691,17 @@ struct AIEDMATasksToNPUPass
                      [](OpFoldResult s) { return !getConstantIntValue(s); }) ||
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
-    // Runtime iteration SSA values also require the dynamic BD-word path.
-    bool runtimeIteration = bd_op.getIterationSizeVal() != nullptr;
+    // Runtime iteration SSA values require the dynamic BD-word path, but a
+    // constant-foldable iteration_size_val/stride_val (e.g. a dynamic design
+    // specialized to compile-time M/N, where the outer dim folds to a
+    // constant) is encoded into the static BD word below instead, so it does
+    // not by itself force the dynamic path.
+    Value iterSizeVal = bd_op.getIterationSizeVal();
+    Value iterStrideVal = bd_op.getIterationStrideVal();
+    bool constIteration =
+        iterSizeVal && getConstantIntValue(iterSizeVal) &&
+        (!iterStrideVal || getConstantIntValue(iterStrideVal));
+    bool runtimeIteration = iterSizeVal && !constIteration;
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
         runtimeIteration) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow()))
@@ -845,6 +854,25 @@ struct AIEDMATasksToNPUPass
                 (iter->getStride() * elemWidthInBytes * 8 / gran) - 1;
           }
           iteration_current = iter->getCurrent();
+        }
+      } else if (bd_op.getIterationSizeVal()) {
+        // Constant iteration operands reach the static path when a dynamic
+        // design is specialized to compile-time dims (runtime operands were
+        // routed to the dynamic BD-word path above). Encode them exactly like
+        // the BDIterationAttr case; a zero iteration stride is a pure repeat
+        // carried by the task's repeat_count queue push, so the BD iteration
+        // fields stay at zero (matching the implicit stride-0 handling below).
+        std::optional<int64_t> iterSize =
+            getConstantIntValue(bd_op.getIterationSizeVal());
+        std::optional<int64_t> iterStride =
+            bd_op.getIterationStrideVal()
+                ? getConstantIntValue(bd_op.getIterationStrideVal())
+                : std::optional<int64_t>(0);
+        if (iterSize && iterStride && *iterStride > 0 && *iterSize > 1) {
+          uint32_t elemWidthInBytes = bd_op.getBufferElementTypeWidthInBytes();
+          uint32_t gran = target_model.getAddressGenGranularity();
+          iteration_size = *iterSize - 1;
+          iteration_stride = (*iterStride * elemWidthInBytes * 8 / gran) - 1;
         }
       } else {
         // Implicit path: outermost dim hoisted; getHardwareStridesWraps has
