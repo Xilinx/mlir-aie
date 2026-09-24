@@ -13,7 +13,7 @@
 // RUN: rm -rf %t.d && mkdir -p %t.d/cold %t.d/pop %t.d/hit %t.d/cold_b %t.d/b %t.d/kernel %t.d/attr %t.d/flag %t.d/incomplete %t.d/refill %t.d/core_elfs
 // RUN: cp %s %t.d/design.mlir
 // RUN: sed 's/arith.constant 7 : i32/arith.constant 8 : i32/' %s > %t.d/changed_b.mlir
-// RUN: sed 's/module {/module attributes {cache_test = 1 : i32} {/' %s > %t.d/changed_attr.mlir
+// RUN: sed 's/module {/module attributes {aie.cache_test = 1 : i32} {/' %s > %t.d/changed_attr.mlir
 // RUN: clang++ --target=aie2p-none-unknown-elf -O2 -DBUMP=1 -c %S/device_cache_kernel.cc -o %t.d/device_cache_kernel.o
 
 // RUN: cd %t.d/cold && aiecc --get-pdi %t.d/design.mlir
