@@ -68,13 +68,14 @@
     // series key "npu|case|metric" -> {npu, kase, metric, unit, byMode: mode -> [point]}
     function collect(loaded) {
       const series = new Map();
-      const commits = new Map();
+      const observations = [];
       for (const [npu, data] of loaded) {
         for (const [suite, entries] of Object.entries(data.entries)) {
           const m = SUITE.exec(suite);
           const mode = m && m[1] === npu ? m[2] : suite;
           for (const { commit, date, benches } of entries) {
-            if (!commits.has(commit.id)) commits.set(commit.id, { commit, date });
+            const id = observations.length;
+            observations.push({ id, npu, commit, date });
             for (const bench of benches) {
               const cut = bench.name.lastIndexOf('/');
               const kase = bench.name.slice(0, cut), metric = bench.name.slice(cut + 1);
@@ -82,12 +83,15 @@
               let s = series.get(key);
               if (!s) series.set(key, s = { key, npu, kase, metric, unit: bench.unit, byMode: new Map() });
               if (!s.byMode.has(mode)) s.byMode.set(mode, []);
-              s.byMode.get(mode).push({ id: commit.id, bench });
+              s.byMode.get(mode).push({ id, date, bench });
             }
           }
         }
       }
-      const order = [...commits.values()].sort((a, b) => a.date - b.date);
+      for (const s of series.values()) {
+        for (const points of s.byMode.values()) points.sort((a, b) => a.date - b.date);
+      }
+      const order = observations.sort((a, b) => a.date - b.date);
       return { series: [...series.values()], order };
     }
 
@@ -135,8 +139,9 @@
     }
 
     function draw(el, s, modes) {
-      const labels = db.order.map(c => c.commit.id.slice(0, 7));
-      const index = new Map(db.order.map((c, i) => [c.commit.id, i]));
+      const order = db.order.filter(c => c.npu === s.npu);
+      const labels = order.map(c => c.commit.id.slice(0, 7));
+      const index = new Map(order.map((c, i) => [c.id, i]));
       const datasets = modes.filter(m => s.byMode.has(m)).map(mode => {
         const values = new Array(labels.length).fill(null), benches = new Array(labels.length);
         for (const p of s.byMode.get(mode)) {
@@ -153,15 +158,15 @@
         options: {
           animation: false,
           scales: {
-            xAxes: [{ scaleLabel: { display: true, labelString: 'commit' } }],
+            xAxes: [{ scaleLabel: { display: true, labelString: 'benchmark run (commit)' } }],
             yAxes: [{ scaleLabel: { display: true, labelString: s.unit }, ticks: { beginAtZero: true } }],
           },
           tooltips: {
             mode: 'index', intersect: false,
             callbacks: {
               afterTitle: items => {
-                const c = db.order[items[0].index];
-                return `\n${c.commit.message.split('\n')[0]}\n${c.commit.timestamp}`;
+                const c = order[items[0].index];
+                return `\n${c.commit.message.split('\n')[0]}\n${new Date(c.date).toString()}`;
               },
               label: (item, data) => {
                 const b = data.datasets[item.datasetIndex].benches[item.index];
@@ -170,7 +175,7 @@
             },
           },
           onClick: (_e, active) => {
-            if (active.length) window.open(db.order[active[0]._index].commit.url, '_blank', 'noopener');
+            if (active.length) window.open(order[active[0]._index].commit.url, '_blank', 'noopener');
           },
         },
       }));
