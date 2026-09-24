@@ -567,9 +567,9 @@ class PacketFlow(Resolvable):
             dests=dests,
             keep_pkt_header=self._keep_pkt_header,
         )
-        if self._shared_shim_symbol and _symbol_defined(self._shim_symbol):
-            return
         if self._shim_symbol is not None:
+            if self._shared_shim_symbol and _symbol_defined(self._shim_symbol):
+                return
             _emit_shim_dma_alloc(
                 "PacketFlow",
                 self._shim_symbol,

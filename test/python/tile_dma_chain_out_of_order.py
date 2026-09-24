@@ -75,10 +75,9 @@ def emit_merge(bad=None):
     return Program(NPU2Col1(), rt).resolve_program()
 
 
-# The chain configures one pinned-id, packet-enabled BD per slot; the task is
-# out-of-order and its repeat count is the packet count, minus one.
-# The runtime-sequence lowering reads the header from the dma_bd's packet
-# attribute, not from an aie.dma_bd_packet op.
+# One pinned-id, packet-enabled BD per slot; out of order, the repeat count is
+# the packet count minus one. The header comes from the dma_bd's packet
+# attribute, not an aie.dma_bd_packet op.
 # CHECK: %[[T:.*]] = aiex.dma_configure_task(%{{.*}}, S2MM, 0) {
 # CHECK-NOT: aie.dma_bd_packet
 # CHECK:   aie.dma_bd(%{{.*}} : memref<64xi32> len = 16) {bd_id = 3 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 0>}
