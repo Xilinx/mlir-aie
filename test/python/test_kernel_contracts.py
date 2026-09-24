@@ -21,6 +21,7 @@ of which is silent until a device run otherwise:
 import inspect
 import re
 import sys
+import typing
 from pathlib import Path
 
 import numpy as np
@@ -377,6 +378,19 @@ def test_exp_factory_can_include_shared_clamp_header(arch):
     fn = kernels.bf16_exp()
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     assert str(runtime_dir) in fn.include_dirs
+    if arch == "aie2":
+        tolerance = fn.contract.tolerance
+        assert tolerance is not None
+        assert tolerance.atol == 2.0**-126
+
+
+@pytest.mark.parametrize(
+    "device,reference",
+    [(NPU1Col1, kernels.swiglu_lut_ref), (NPU2Col1, kernels.swiglu_ref)],
+)
+def test_swiglu_default_reference_matches_architecture(device, reference):
+    set_current_device(device())
+    assert kernels.swiglu().contract.reference is reference
 
 
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))
@@ -474,6 +488,22 @@ def test_multi_output_contract_drives_design_and_reference():
     assert kd.output_size(fn, calls=3) == (192, 192)
     assert [a.direction for a in kd.host_args(fn, calls=3)] == [In, Out, Out]
     assert "split_outputs" in str(kd.design(lambda: fn, calls=3).as_mlir())
+
+
+def test_judge_scales_range_tolerance_per_call():
+    fn = kernels.add()
+    ref = np.zeros((2, 1024), bfloat16)
+    ref[:, 0] = [1024, 4]
+    got = ref.copy()
+    got[:, 1] = 1
+    tol = Tolerance.relative(0.0, range_frac=1 / 1024)
+    assert compare(got, ref, tol).ok
+    verdict = fn.judge(got.ravel(), ref, calls=2, tolerance=tol)
+    assert not verdict.ok
+    assert verdict.n_mismatch == 1
+    assert verdict.first_bad_index == 1025
+    got[1, 1] = 0
+    assert fn.judge(got.ravel(), ref, calls=2, tolerance=tol).ok
 
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.mv, kernels.mm_bfp])
@@ -948,7 +978,7 @@ _IRON_KERNEL_SPECS = {
     "mv": (
         dict(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16),
         "matvec_vectorized_bf16_bf16",
-        "mv.cc",
+        "mv_bf16.cc",
         ("-DDIM_K=256", "-DVEC_SIZE=64"),
     ),
     "mm": (
@@ -1100,6 +1130,115 @@ def test_mha_binds_its_translation_unit_as_one_object():
     assert fn.name in str(kd.design(kernels.mha, calls=2).as_mlir())
     with pytest.raises(ValueError, match="multiple of"):
         kernels.mha(dim_m=17)
+
+
+_C_ELEMENT_NAMES = {bfloat16: "bf16", np.float32: "float", np.int32: "int"}
+
+
+def _extern_c_signatures(source_file: str) -> dict[str, list[tuple[str, bool]]]:
+    """Parameters of every ``void`` entry point in a C++ translation unit.
+
+    Each parameter comes back as ``(element type, is a pointer)``, qualifiers
+    dropped -- the two facts one ``arg_types`` entry carries.
+    """
+    body = Path(source_file).read_text()
+    signatures = {}
+    for name, params in re.findall(r"\bvoid\s+(\w+)\(([^)]*)\)\s*\{", body):
+        parsed = []
+        for param in params.split(","):
+            tokens = [
+                token
+                for token in param.replace("*", " * ").split()
+                if token not in ("const", "__restrict", "restrict")
+            ]
+            parsed.append((tokens[0], "*" in tokens))
+        signatures[name] = parsed
+    return signatures
+
+
+def _arg_type_facts(arg_type) -> tuple[str, bool]:
+    """Return the ``(element type, is a pointer)`` pair for one arg_types entry."""
+    args = typing.get_args(arg_type)
+    if not args:
+        return _C_ELEMENT_NAMES[arg_type], False
+    (dtype,) = typing.get_args(args[1])
+    return _C_ELEMENT_NAMES[dtype], True
+
+
+def test_prefill_binds_its_translation_unit_as_one_object():
+    """flash_attn_prefill.cc's five entry points bind through one artifact owner."""
+    fn = kernels.prefill_fv(head_dim=512)
+    assert fn.contract.setup is kernels.conv_even
+    p = fn._symbol_prefix
+    assert fn.name == f"{p}_prefill_fv_step"
+    bf = lambda n: np.ndarray[(n,), np.dtype[bfloat16]]  # noqa: E731
+    f32 = lambda n: np.ndarray[(n,), np.dtype[np.float32]]  # noqa: E731
+    i32b = np.ndarray[(1,), np.dtype[np.int32]]
+    expected = {
+        "prefill_round_begin": [bf(8), bf(8), f32(8), f32(8), f32(8 * 512)],
+        "prefill_qk_step": [
+            bf(64), bf(8 * 512), bf(8 * 512), bf(64), bf(8),
+            i32b, i32b, *([np.int32] * 5),
+        ],  # fmt: skip
+        "prefill_block_mid": [
+            bf(64),
+            bf(64),
+            bf(8),
+            bf(8),
+            f32(8),
+            f32(8),
+            f32(8 * 512),
+        ],
+        "prefill_epilogue": [bf(64), f32(8), f32(8 * 512), np.int32],
+    }
+    # bind() is pure string qualification -- it consults neither the symbol
+    # table nor the signature -- so the loop below alone would pass against a
+    # table naming entry points that no longer exist. Read them off the C++,
+    # and a renamed symbol or a changed parameter list fails here instead.
+    declared = _extern_c_signatures(fn.source_file)
+    assert set(declared) == set(expected) | {"prefill_fv_step"}
+    assert [_arg_type_facts(t) for t in fn.arg_types()] == declared["prefill_fv_step"]
+    for symbol, arg_types in expected.items():
+        assert [_arg_type_facts(t) for t in arg_types] == declared[symbol]
+        sib = fn.object_file.bind(symbol, arg_types)
+        assert sib.name == f"{p}_{symbol}"
+        assert sib.object_file is fn.object_file
+
+    # The two geometries are two builds, not two tiles of one: differing
+    # -DPREFILL_HEAD_DIM must give each its own object and its own symbol, so
+    # a design can call both without a duplicate-symbol link error.
+    swa = kernels.prefill_fv(head_dim=256)
+    assert swa._symbol_prefix != p
+    assert swa.object_file is not fn.object_file
+    assert swa.name != fn.name
+
+    # y accumulates, so it is inout and ships the zero that clears it -- at
+    # argument 0 here, not a matmul's 2.
+    assert fn.contract.accumulates and fn.contract.roles[0] is InOut
+    assert dict(fn.contract.parameter_bindings)[3] == 0
+    assert fn.zero.arg_types() == [np.ndarray[(8 * 512,), np.dtype[np.float32]]]
+
+    # One reference serves both geometries: reorder_s makes S canonical before
+    # fv_step sees it, so each is a plain (LQ, LK) x (LK, DH) product.
+    for dh, lq, lk in ((512, 8, 8), (256, 16, 16)):
+        k = kernels.prefill_fv(head_dim=dh)
+        s, v = kd.sample_inputs(k, calls=2)
+        want = np.asarray(s, np.float32).reshape(-1, lq, lk) @ np.asarray(
+            v, np.float32
+        ).reshape(-1, lk, dh)
+        assert np.array_equal(k.expected([s, v]), want.reshape(2, lq * dh))
+
+    # The reference accumulates in float32 because the kernel's y does. A
+    # float64 one asserts a function the hardware is not defined to compute:
+    # bf16 products are exact either way, but the sums part company by a whole
+    # float32 ulp once the terms cancel, which mm_tile_ref would then report as
+    # an error.
+    assert kernels.prefill_fv_ref(s, v, dim_m=lq, dim_k=lk, dim_n=dh).dtype == (
+        np.float32
+    )
+    assert fn.name in str(kd.design(kernels.prefill_fv, calls=2).as_mlir())
+    with pytest.raises(ValueError, match="head_dim"):
+        kernels.prefill_fv(head_dim=384)
 
 
 def test_accumulating_kernels_are_inout_and_ship_a_zero():
@@ -1437,13 +1576,34 @@ def test_transformer_references_match_the_example_formulas():
     b = np.array([2.0, 4.0], bfloat16)
     assert kernels.mul_add_ref(a, b, 1).tolist() == [3.0, -8.0]
     assert kernels.mul_add_ref(a, b, 0).tolist() == [3.5, 2.0]
-    # dwconv1d: taps read the padded row directly, bias is the trailing weight.
+    # dwconv1d channels-first: taps read the padded row directly, bias is the
+    # trailing weight.
     xp = np.arange(1, 1 + 32 + kernels.DWCONV1D_TAIL, dtype=np.float32).astype(bfloat16)
     w = np.array([1, 0, 0, 5], bfloat16)  # K = 3 taps then bias
-    out = kernels.dwconv1d_ref(xp, w, 32, kernel_size=3, bias=True).astype(np.float32)
+    cf_ref = kernels.dwconv1d_channels_first_ref
+    out = cf_ref(xp, w, 32, kernel_size=3, bias=True).astype(np.float32)
     assert out.tolist() == [float(i + 5) for i in range(1, 33)]
-    out = kernels.dwconv1d_ref(xp, w, 32, kernel_size=3, bias=False).astype(np.float32)
+    out = cf_ref(xp, w, 32, kernel_size=3, bias=False).astype(np.float32)
     assert out.tolist() == [float(i) for i in range(1, 33)]
+    # dwconv1d channels-last: one timestep, five independent weight planes, so
+    # the result is a plain sum_t w_t * x_t across channels.
+    xs = [np.full(32, t + 1, dtype=np.float32).astype(bfloat16) for t in range(5)]
+    off = [np.zeros(32, np.float32).astype(bfloat16) for _ in range(4)]
+    live = np.full(32, 2.0, np.float32).astype(bfloat16)
+    cl_ref = kernels.dwconv1d_channels_last_ref
+    assert kernels.dwconv1d_channels_last(32).contract.setup is kernels.conv_even
+    # Only plane 0 is non-zero, so the result is 2 * x_0 == 2.
+    out = cl_ref(live, *off, *xs, lo=-6.0, hi=6.0, clamp=False).astype(np.float32)
+    assert out.tolist() == [2.0] * 32
+    # Each plane pairs with its own tap: plane 3 live weights x_3 == 4.
+    out = cl_ref(*off[:3], live, off[3], *xs, lo=-6.0, hi=6.0, clamp=False).astype(
+        np.float32
+    )
+    assert out.tolist() == [8.0] * 32
+    # ... and the clamp bites once the product passes the bound.
+    big = np.full(32, 100.0, np.float32).astype(bfloat16)
+    out = cl_ref(big, *off, *xs, lo=-6.0, hi=6.0, clamp=True).astype(np.float32)
+    assert out.tolist() == [6.0] * 32
 
 
 def test_contract_validates_its_remaining_fields():
@@ -1606,6 +1766,11 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
             assert name in NOT_JUDGED, f"{name}: no contract"
             continue
         src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
+        if ef.source_file:
+            for include in re.findall(r'^#include "([^"]+)"', src, re.M):
+                header = Path(ef.source_file).parent / include
+                if header.is_file():
+                    src += "\n" + header.read_text()
         src = _active_source(src, ef.compile_flags)
         sets_own = bool(_SET_ROUNDING_CALL.search(src))
         if sets_own:

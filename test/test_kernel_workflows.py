@@ -172,8 +172,8 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     bench = workflow("benchmarkKernels.yml")["jobs"]["bench"]
     steps = bench["steps"]
     run = next(step["run"] for step in steps if step.get("id") == "bench")
-    assert '--pmode "$BENCH_PMODE"' in run
-    assert "--pmode any" not in run
+    assert "--pmode any" in run
+    assert '--pmode "$BENCH_PMODE"' not in run
     read = next(step for step in steps if step.get("id") == "pmode")
     assert read["if"] == "hashFiles('bench.json') != ''"
     write_meta(tmp_path / "meta.json", "performance")

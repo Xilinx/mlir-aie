@@ -716,6 +716,7 @@ class ExternalFunction(Kernel):
                     got,
                     ref,
                     tolerance or c.tolerance or Tolerance.default_for(ref.dtype),
+                    range_axis=1,
                 )
             )
         if not multiple:
