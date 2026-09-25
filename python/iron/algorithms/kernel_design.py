@@ -21,8 +21,10 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
-from aie.dialects import memref
-from aie.extras.dialects.arith import constant
+from aie.dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
+    constant,
+)
 from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron.buffer import Buffer

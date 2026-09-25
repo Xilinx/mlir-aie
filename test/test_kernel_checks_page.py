@@ -23,10 +23,13 @@ def page():
 const assert = require('node:assert/strict');
 // Disable the automatic data fetch and capture the Chart.js configuration.
 global.fetch = async () => ({ ok: false });
-global.document = { getElementById: () => ({}) };
+global.document = {
+  getElementById: () => ({}), querySelector: () => ({}), querySelectorAll: () => [],
+};
+global.location = { hash: '' };
 let chart, opened;
 global.Chart = function (_canvas, config) { chart = config; };
-global.window = { open: (...args) => { opened = args; } };
+global.window = { open: (...args) => { opened = args; }, addEventListener: () => {} };
 """
     data = """
 const commit = {
