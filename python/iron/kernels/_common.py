@@ -6,6 +6,7 @@
 """Shared helpers for the kernels submodules."""
 
 import hashlib
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
@@ -376,6 +377,27 @@ def _arch_traits() -> ArchTraits:
     return ARCH_TRAITS[_detect_arch()]
 
 
+def _portable() -> bool:
+    """Whether ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch."""
+    return os.environ.get("AIE_KERNELS_PORTABLE") == "1"
+
+
+def _tuned_arch() -> str | None:
+    """Return the architecture whose ``AIE_TUNED_*`` code the sources build, or None.
+
+    A factory choice that follows the code of one branch -- a stack size, a
+    tolerance, a reference model -- keys on this rather than on
+    ``_detect_arch``, so that it pairs with the branch built when
+    ``_portable()`` holds.
+    """
+    return None if _portable() else _detect_arch()
+
+
+def _portable_flags() -> tuple[str, ...]:
+    """Return the compile flags that select the branch ``_tuned_arch`` names."""
+    return ("-DAIE_KERNELS_PORTABLE",) if _portable() else ()
+
+
 def _kernel_source(relpath: str) -> Path:
     """Return the absolute path to a kernel source file.
 
@@ -631,7 +653,7 @@ def _make_extern(
     where separate digest-named objects would each carry every symbol of
     the ``.cc`` and collide at link.
     """
-    flags_tuple = tuple(compile_flags or [])
+    flags_tuple = tuple(compile_flags or []) + _portable_flags()
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
     # One source serves every arch, so the arch is part of the kernel's identity.
     cache_key = (

@@ -34,8 +34,17 @@
 #error "aie_kernels: no row for this __AIE_ARCH__ in aie_arch.h"
 #endif
 
+// A kernel's untuned branch tests only the capabilities above, so a new row
+// builds every kernel before anything is tuned for it. AIE_KERNELS_PORTABLE
+// selects that branch on these architectures too, to keep it building and to
+// check its results on hardware that exists.
+#ifdef AIE_KERNELS_PORTABLE
+#define AIE_TUNED_AIE2 0
+#define AIE_TUNED_AIE2P 0
+#else
 #define AIE_TUNED_AIE2 AIE_ARCH_AIE2
 #define AIE_TUNED_AIE2P AIE_ARCH_AIE2P
+#endif
 
 // __restrict on AIE2 only. The AIE2 pipeliner needs it to overlap a streaming
 // loop's iterations; AIE2P kernels were tuned without it.

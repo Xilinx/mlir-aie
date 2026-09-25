@@ -27,6 +27,7 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
+    _tuned_arch,
     dtypes,
 )
 from .core import conv_even
@@ -342,6 +343,12 @@ def dwconv1d_channels_first(
                 0.128, 0.05, note="programming_examples/ml/dwconv1d: atol 0.05"
             ),
             ops_per_call=2 * kernel_size * seq_len,
+            stack_bytes=(
+                # aiecc measured_stack_size at 17 taps
+                1888
+                if _detect_arch() == "aie2" and _tuned_arch() is None
+                else None
+            ),
         ),
     )
 
@@ -515,8 +522,9 @@ def conv2dk1(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # aiecc measured_stack_size (Peano 22) on aie2p; 288 B on aie2
-            stack_bytes=2752 if _detect_arch() == "aie2p" else None,
+            # aiecc measured_stack_size (Peano 22) of the untuned code on aie2p
+            # (1504 B on aie2); 288 B tuned for aie2
+            stack_bytes=None if _tuned_arch() == "aie2" else 2752,
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,
@@ -577,8 +585,8 @@ def conv2dk3(
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # 0 B on aie2; see conv2dk1 for the aie2p figure's source
-            stack_bytes=4736 if _detect_arch() == "aie2p" else None,
+            # 0 B tuned for aie2; see conv2dk1 for the other figure's source
+            stack_bytes=None if _tuned_arch() == "aie2" else 4736,
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
@@ -635,8 +643,8 @@ def conv2dk1_skip(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # 32 B on aie2; see conv2dk1 (uint8 here) for the aie2p figure
-            stack_bytes=2752 if _detect_arch() == "aie2p" else None,
+            # 32 B tuned for aie2; see conv2dk1 (uint8 here) for the other figure
+            stack_bytes=None if _tuned_arch() == "aie2" else 2752,
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
@@ -810,8 +818,9 @@ def conv2dk1_skip_init(
         compile_flags=flags,
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # aie2p: >=2144 measured; __modsi3 has no .stack_sizes. 288 B on aie2
-            stack_bytes=0x2000 if _detect_arch() == "aie2p" else None,
+            # aie2p: >=2144 measured; __modsi3 has no .stack_sizes. 288 B tuned
+            # for aie2
+            stack_bytes=None if _tuned_arch() == "aie2" else 0x2000,
             roles=(In, In, Param, Out, In, *((Param,) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,

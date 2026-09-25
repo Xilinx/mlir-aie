@@ -96,12 +96,15 @@ tanh_bf16_vec(aie::vector<float, vec_size> x) {
 #if ACTIVATIONS_NATIVE_TANH
   return aie::tanh<bfloat16>(x);
 #else
-  static_assert(vec_size == 16,
-                "AIE2's LUT tanh is fixed at 16 lanes, which is mm_fused's "
-                "epilogue width; widening V needs an explicit split here");
+  static_assert(vec_size % 16 == 0, "AIE2's LUT tanh is 16 lanes wide");
   aie::accum<accfloat, vec_size> narrowed;
   narrowed.from_vector(x);
-  return getTanhBf16(narrowed.template to_vector<bfloat16>());
+  const aie::vector<bfloat16, vec_size> n =
+      narrowed.template to_vector<bfloat16>();
+  aie::vector<bfloat16, vec_size> out;
+  for (unsigned i = 0; i < vec_size / 16; i++)
+    out.insert(i, getTanhBf16(n.template extract<16>(i)));
+  return out;
 #endif
 }
 

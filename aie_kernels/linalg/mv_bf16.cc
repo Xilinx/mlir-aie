@@ -182,11 +182,11 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
   // iteration, under that group's macs. Behind a mac loop only the store
   // waits: the packed accumulator would spill across the loop. On AIE2 four
   // 64-lane accumulators fill the accumulator file, so the packed one spills
-  // there beside the next group's too.
-#if AIE_TUNED_AIE2
-  constexpr bool fold_late = chunks <= 4 && r < 64;
-#else
+  // there beside the next group's too. Only AIE2P is known to have the room.
+#if AIE_TUNED_AIE2P
   constexpr bool fold_late = chunks <= 4;
+#else
+  constexpr bool fold_late = chunks <= 4 && r < 64;
 #endif
   auto defer = [](aie::accum<accfloat, 64> u) {
     if constexpr (fold_late)

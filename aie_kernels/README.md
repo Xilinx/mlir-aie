@@ -18,6 +18,7 @@ Most kernels use the AIE API, a C++ header-only library providing types and oper
 Kernels are grouped by family, and each family directory matches a module under [`aie.iron.kernels`](../python/iron/kernels/). One source serves every architecture:
 
 - Most `.cc` files build for both AIE2 and AIE2P. They choose widths and paths from [`aie_arch.h`](./aie_arch.h), which names what each architecture offers (`AIE_BF16_LANES`, `AIE_HAS_NATIVE_TANH`, ...) and which code was tuned for it (`AIE_TUNED_AIE2`), rather than testing `__AIE_ARCH__`. It has one row per architecture and stops the build on an architecture without one.
+- Code tuned for one architecture sits beside an untuned branch that tests only those capabilities, which is what a new architecture's row builds first. `AIE_KERNELS_PORTABLE=1` in the environment selects the untuned branch on AIE2 and AIE2P too, and pairs the factories' stack sizes, tolerances and reference models with it, so it can be checked on hardware that exists. `mm.cc` is the exception: its headers follow the architecture, since AIE2 lacks some of AIE2P's `mmul` shapes.
 - When the two architectures need different code, the family holds `X_aie2.h` and `X_aie2p.h` and a small `X.cc` that includes the right one.
 - [`common/`](./common) holds helpers shared across families.
 

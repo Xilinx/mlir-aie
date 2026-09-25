@@ -202,34 +202,7 @@ inline void scale_by_inv_l(bf16 *o, float *l, float *y) {
 
 /// Y += S * V across one 8-row block of y: kTiles 8x8 output tiles, the i-th
 /// taking its V tile from pV + i * kVStride.
-#if AIE_TUNED_AIE2
-// AIE2 has no vextbcst to build the operands below from, so each tile is one
-// mmul<8, 8, 8>. It sums in a different order from ascending k, which the aie2
-// tolerance in linalg.py allows for. y is loaded one tile pair ahead so that
-// the next pair's load need not wait for this pair's store.
-template <unsigned kTiles, unsigned kVStride>
-void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
-                  const bf16 *__restrict pV) {
-  using MMUL = aie::mmul<8, 8, 8, bf16, bf16, accauto>;
-  const aie::vector<bf16, 64> S = aie::load_v<64>(pS);
-  aie::vector<float, 64> y0 = aie::load_v<64>(pY);
-  aie::vector<float, 64> y1 = aie::load_v<64>(pY + 64);
-  for (unsigned j = 0; j < kTiles; j += 2) {
-    float *pYn = j + 2 < kTiles ? pY + 128 : pY;
-    aie::vector<float, 64> yn0 = aie::load_v<64>(pYn);
-    aie::vector<float, 64> yn1 = aie::load_v<64>(pYn + 64);
-    MMUL Y0(y0), Y1(y1);
-    Y0.mac(S, aie::load_v<64>(pV));
-    Y1.mac(S, aie::load_v<64>(pV + kVStride));
-    aie::store_v(pY, Y0.template to_vector<float>());
-    aie::store_v(pY + 64, Y1.template to_vector<float>());
-    y0 = yn0;
-    y1 = yn1;
-    pY = pYn;
-    pV += 2 * kVStride;
-  }
-}
-#else
+#if AIE_TUNED_AIE2P
 /// The emulated mmul spends two 32-lane macs and a shuffle per k on one 8x8
 /// tile. Two neighbouring output tiles fill one 64-lane accumulator instead,
 /// rows 0-3 of both in L and rows 4-7 in H, and then one native mac per k
@@ -292,6 +265,34 @@ void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
     aie::store_v(pY + 96, h.template extract<32>(1));
     L = Ln;
     H = Hn;
+    pY = pYn;
+    pV += 2 * kVStride;
+  }
+}
+#else
+// One mmul<8, 8, 8> per tile, for an architecture without the vextbcst the
+// branch above builds its operands from. It sums in a different order from
+// ascending k, which the aie2 tolerance in linalg.py allows for. y is loaded
+// one tile pair ahead so that the next pair's load need not wait for this
+// pair's store.
+template <unsigned kTiles, unsigned kVStride>
+void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
+                  const bf16 *__restrict pV) {
+  using MMUL = aie::mmul<8, 8, 8, bf16, bf16, accauto>;
+  const aie::vector<bf16, 64> S = aie::load_v<64>(pS);
+  aie::vector<float, 64> y0 = aie::load_v<64>(pY);
+  aie::vector<float, 64> y1 = aie::load_v<64>(pY + 64);
+  for (unsigned j = 0; j < kTiles; j += 2) {
+    float *pYn = j + 2 < kTiles ? pY + 128 : pY;
+    aie::vector<float, 64> yn0 = aie::load_v<64>(pYn);
+    aie::vector<float, 64> yn1 = aie::load_v<64>(pYn + 64);
+    MMUL Y0(y0), Y1(y1);
+    Y0.mac(S, aie::load_v<64>(pV));
+    Y1.mac(S, aie::load_v<64>(pV + kVStride));
+    aie::store_v(pY, Y0.template to_vector<float>());
+    aie::store_v(pY + 64, Y1.template to_vector<float>());
+    y0 = yn0;
+    y1 = yn1;
     pY = pYn;
     pV += 2 * kVStride;
   }
@@ -484,10 +485,10 @@ struct PrefillGeom<256> {
     aie::vector<float, 16> l_float32 = aie::load_v<16>(l);
 
     aie::accum<accfloat, 16> l_out;
-#if AIE_TUNED_AIE2
-    l_out = aie::mac(sum, c_float32, l_float32);
-#else
+#if AIE_TUNED_AIE2P
     l_out = mac_elem_16_accuracy_safe(l_float32, c_float32, sum, 0, 0, 0);
+#else
+    l_out = aie::mac(sum, c_float32, l_float32);
 #endif
     aie::store_v(l, l_out.template to_vector<float>());
   }

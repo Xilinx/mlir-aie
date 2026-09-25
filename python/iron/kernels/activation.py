@@ -25,8 +25,10 @@ from ._common import (
     _include_dirs,
     _kernel_source,
     _make_extern,
+    _portable_flags,
     _require_fixed_tile_size,
     _require_vector_alignment,
+    _tuned_arch,
 )
 from .core import conv_even
 
@@ -329,7 +331,7 @@ def _create_lut_kernel(
     if use_lut_tanh and ARCH_TRAITS[arch].native_tanh:
         flags.append("-DACTIVATIONS_TANH_LUT=1")
 
-    if arch == "aie2" or use_lut_tanh:
+    if use_lut_tanh or not ARCH_TRAITS[arch].native_tanh:
         flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
         kernel_path = _kernel_source("common/lut_kernel.cc")
     if compile_flags:
@@ -345,7 +347,7 @@ def _create_lut_kernel(
         source_file=str(kernel_path),
         arg_types=arg_types,
         include_dirs=include,
-        compile_flags=flags,
+        compile_flags=[*flags, *_portable_flags()],
         contract=contract,
     )
 
@@ -409,7 +411,7 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
                 "output is below a generic absolute floor",
             ),
             # softmax_aie2p.h sets conv_even itself; the aie2 LUT path does not.
-            setup=None if _detect_arch() == "aie2p" else conv_even,
+            setup=conv_even if _tuned_arch() == "aie2" else None,
         ),
     )
 
@@ -544,13 +546,13 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
         contract=_unary_lut_contract(
             bf16_exp_ref,
             count=False,
-            # Only aie2 reaches getExpBf16. aie2p's bf16_exp.cc computes a
-            # range-reduced polynomial (exp2_poly.h) instead, which this model
-            # does not describe, so it keeps the true-function reference and a
-            # measured bound.
-            elementwise=bf16_exp_lut_ref,
+            # Only aie2's tuned branch reaches getExpBf16. The other computes a
+            # range-reduced polynomial (exp2_poly.h), which this model does
+            # not describe, so it keeps the true-function reference and a
+            # measured bound, whether or not there is a tanh instruction.
+            elementwise=bf16_exp_lut_ref if _tuned_arch() == "aie2" else None,
             lut_tolerance=_EXP_LUT_TOLERANCE,
-            use_lut=_detect_arch() == "aie2",
+            use_lut=True,
             tolerance=_EXP_POLY_TOLERANCE,
         ),
     )

@@ -27,6 +27,7 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
+    _tuned_arch,
     dtypes,
 )
 from .core import conv_even
@@ -60,9 +61,8 @@ _CASCADE_MM_SCALAR_DIMS = {
 }
 
 _CASCADE_MM_MAC_DIMS = {
-    # cascade_mm.cc is currently shared by AIE2 and AIE2P through
-    # _kernel_source's aie2 fallback.  It is scalar on both targets, so the
-    # required stream layout remains plain row-major.
+    # cascade_mm.cc is one source for both targets and scalar on both, so
+    # the required stream layout remains plain row-major.
     "aie2": _CASCADE_MM_SCALAR_DIMS,
     "aie2p": _CASCADE_MM_SCALAR_DIMS,
 }
@@ -77,8 +77,10 @@ _MM_COMBOS = {
     (bfloat16, np.float32): ("bf16_f32", "bf16_f32_ONLY"),
 }
 
-# Per-arch MMUL micro-kernel dimensions (r, s, t) used by aie_kernels/<arch>/mm.cc
-# for each (input_dtype, output_dtype) combo.  These mirror the
+# Per-arch MMUL micro-kernel dimensions (r, s, t) used by
+# aie_kernels/linalg/mm_<arch>.h for each (input_dtype, output_dtype) combo.
+# mm.cc picks the header by architecture, AIE_KERNELS_PORTABLE or not, so
+# this table is keyed by architecture too.  These mirror the
 # `combos(X) X(..., r, s, t)` macros in those files; if the C++ side
 # changes geometry or adds a dtype combo, both tables here AND those macros
 # must move together.  Designs use `kernels.mm(...).mac_dims` to look up
@@ -1119,6 +1121,11 @@ def mha_softmax() -> ExternalFunction:
             parameter_bindings=((4, scale), (5, b), (6, b)),
             initializers=((2, _zero_output),),
             reference=partial(mha_softmax_ref, scale=scale),
+            # aiecc measured_stack_size of the untuned loop on aie2, where a
+            # whole 64-lane row spills; the tuned one fits the default.
+            stack_bytes=(
+                1376 if _detect_arch() == "aie2" and _tuned_arch() is None else None
+            ),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
             # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
@@ -1133,7 +1140,7 @@ def mha_softmax() -> ExternalFunction:
                     2.0**-120,
                     note="exp2_bf16.h cubic, 0.74% worst element on npu1",
                 )
-                if _detect_arch() == "aie2"
+                if not _arch_traits().native_exp2
                 else Tolerance.relative(
                     0.035,
                     4 * 2.0**-7,
@@ -1208,8 +1215,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     if head_dim not in _PREFILL_GEOM:
         raise ValueError(f"prefill_fv: head_dim must be 512 or 256, got {head_dim}")
     lq, lk, stack_bytes = _PREFILL_GEOM[head_dim]
-    aie2 = _detect_arch() == "aie2"
-    if aie2:
+    if _detect_arch() == "aie2":
         stack_bytes = _PREFILL_STACK_AIE2
     # flash_attn_prefill.h's MMUL is aie::mmul<8, 8, 8, bf16, bf16>, the native
     # bf16 micro-tile, not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.
@@ -1252,8 +1258,8 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             # (8 + 8 < 24) and the only error against a float64 reference is
             # f32 summation order over lk terms, bounded by lk * 2**-24 ~ 1e-6.
             # The margin below that is ~10x, not the ~50000x inheriting would
-            # have given, which would hide nearly any real bug. On aie2 the
-            # mmul sums in a different order, and on large inputs whose
+            # have given, which would hide nearly any real bug. Outside aie2p's
+            # tuned branch the mmul sums in a different order, and on large inputs whose
             # products cancel that order error exceeds any relative bound, so
             # it is judged against the order bound itself.
             tolerance=(
@@ -1263,7 +1269,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
                     "the kernel and the reference; measured worst 0.12 of it "
                     "on npu1",
                 )
-                if aie2
+                if _tuned_arch() != "aie2p"
                 else Tolerance.relative(
                     1e-5,
                     1e-5,

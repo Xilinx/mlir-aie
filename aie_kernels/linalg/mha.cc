@@ -310,7 +310,7 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
     aie::accum<accfloat, VECTOR_LENGTH> exp_in =
         aie::msc(aie::mul(aie::load_v<VECTOR_LENGTH>(a), scale_vec),
                  aie::broadcast<bfloat16, VECTOR_LENGTH>(*m++), one_vec);
-    aie::store_v(p, aie::exp2<bfloat16>(exp_in.to_vector<float>()));
+    aie::store_v(p, exp2_bf16(exp_in.to_vector<float>()));
     a += VECTOR_LENGTH;
     p += VECTOR_LENGTH;
   }

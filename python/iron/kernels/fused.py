@@ -24,6 +24,7 @@ from ._common import (
     _device,
     _include_dirs,
     _kernel_source,
+    _portable_flags,
 )
 from .activation import _bf16_ulp, _vtanh_error
 
@@ -211,8 +212,10 @@ def fused_mm(
         # program memory of a single-activation design at its old size.
         "EPILOGUE_MODE_MASK": 1 << modes[epilogue],
     }
-    compile_flags = ["-DROUND_CONV_EVEN"] + [
-        f"-DMM_FUSED_{name}={value}" for name, value in flags.items()
+    compile_flags = [
+        "-DROUND_CONV_EVEN",
+        *(f"-DMM_FUSED_{name}={value}" for name, value in flags.items()),
+        *_portable_flags(),
     ]
     if bfp16_b:
         # amd/IRON's pair: the first selects aie_api's bfp16-emulated bf16
@@ -227,10 +230,11 @@ def fused_mm(
     clamp_bits = tuple(int(np.float32(v).view(np.int32)) for v in bounds)
     source = _kernel_source("fused/fused_mm_tile.cc")
     include_dirs = _include_dirs()
-    if arch == "aie2":
+    native_tanh = ARCH_TRAITS[arch].native_tanh
+    if not native_tanh:
         from aie.utils import config
 
-        runtime = Path(config.aie_runtime_lib_dir()) / "AIE2"
+        runtime = Path(config.aie_runtime_lib_dir()) / arch.upper()
         include_dirs.append(str(runtime))
     # Include the complete recipe, not just geometry: architecture, source
     # location and runtime includes can change without changing the operands.
@@ -276,14 +280,15 @@ def fused_mm(
             (5, clamp_bits[1]),
         ),
         reference=reference,
-        # AIE2 reaches tanh through its LUT, which this box cannot measure.
+        # Without a tanh instruction the epilogue reads getTanhBf16's table,
+        # which this box cannot measure.
         tolerance=(
             Tolerance.relative(
                 0.02 if epilogue == "none" else 0.04,
                 0.01 if epilogue == "none" else 0.04,
                 note="bf16 store; activated path additionally narrows tanh to bf16",
             )
-            if arch == "aie2"
+            if not native_tanh
             else Tolerance.bounded(
                 error_bound,
                 note="f32 accumulation, vtanh's error measured on npu2 and "

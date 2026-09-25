@@ -14,12 +14,12 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _detect_arch,
     _dtype_to_bit_width,
     _kernel_source,
     _make_extern,
     _require_vector_alignment,
     _runtime_lib_include,
+    _tuned_arch,
     dtypes,
 )
 
@@ -76,7 +76,7 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
     _require_vector_alignment("rgba2hue", line_width, 32, param="line_width")
     # lut_inv.h pins its gather pair with AIE_BANK_A/AIE_BANK_B.
     flags = [f"-I{_runtime_lib_include()}"]
-    if not use_chess and _detect_arch() == "aie2p":
+    if not use_chess and _tuned_arch() == "aie2p":
         # Since the 2026-08-12 Peano nightly, LICM hoists the three accumulator
         # constants out of the loop, where they spill and the II goes 69 ->
         # 74. Capping its MemorySSA walk at zero keeps them in the loop.

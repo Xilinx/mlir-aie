@@ -47,7 +47,7 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
   const float rms =
       scalar_mul(sum_sq, ::aie::inv(::aie::to_float<float>(cols))) + epsilon;
   const ::aie::vector<T, N> inv_rms_v =
-      ::aie::broadcast<T, N>(static_cast<T>(::aie::invsqrt(rms)));
+      ::aie::broadcast<T, N>(static_cast<T>(scalar_invsqrt(rms)));
 
   if (vector_chunks > 0) {
     const T *restrict pi = input;

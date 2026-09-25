@@ -5,7 +5,7 @@
 #define MM_FUSED_WHOLE_TILE_MARKERS
 #include "mm_fused.h"
 
-#if AIE_TUNED_AIE2
+#if !ACTIVATIONS_NATIVE_TANH
 #include "lut_based_ops.cpp"
 #endif
 

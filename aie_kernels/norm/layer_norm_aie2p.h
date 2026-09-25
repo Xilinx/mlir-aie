@@ -69,10 +69,10 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
 
 extern "C" {
 void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
-  // N=32 bf16 = 512 bits = one AIE2P vector register.  conv_even rounding
-  // matches the reference math more closely than the default floor mode for
-  // the normalize pass.
+  // One bf16 multiply's lanes, the multiple the factory holds cols to.
+  // conv_even rounding matches the reference math more closely than the
+  // default floor mode for the normalize pass.
   ::aie::set_rounding(aie::rounding_mode::conv_even);
-  layer_norm<bfloat16, 32>(input, output, cols);
+  layer_norm<bfloat16, AIE_BF16_LANES>(input, output, cols);
 }
 }

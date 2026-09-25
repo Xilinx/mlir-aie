@@ -6,6 +6,7 @@
 //===-------------------------------------------------- --------===//
 
 #include "../aie_kernel_utils.h"
+#include "../common/activations.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -37,7 +38,7 @@ gelu_tanh_approx(aie::vector<bfloat16, 32> x) {
   auto half_x = aie::mul(x, v05);
 
   auto inner1 = aie::mac(sx, sbeta_x, x2);
-  auto tanh_out = aie::tanh<bfloat16>(inner1.to_vector<float>());
+  auto tanh_out = tanh_bf16_vec<32>(inner1.to_vector<float>());
 
   return aie::mac(half_x, tanh_out, half_x.to_vector<bfloat16>())
       .to_vector<bfloat16>();

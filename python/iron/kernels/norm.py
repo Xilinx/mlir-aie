@@ -21,6 +21,7 @@ from ._common import (
     _detect_arch,
     _kernel_source,
     _make_extern,
+    _tuned_arch,
 )
 from .core import conv_even
 
@@ -86,13 +87,13 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
         [tile_ty, tile_ty, np.int32],
         KernelContract(
             trace=Trace.whole_call(),
-            setup=None if _detect_arch() == "aie2" else conv_even,
+            setup=None if _tuned_arch() == "aie2" else conv_even,
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=rms_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance=_RMS_NORM_BF16_AIE2 if _detect_arch() == "aie2" else _NORM_BF16,
+            tolerance=_RMS_NORM_BF16_AIE2 if _tuned_arch() == "aie2" else _NORM_BF16,
             ops_per_call=4 * tile_size,
         ),
     )
@@ -108,13 +109,13 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
         [tile_ty, tile_ty, np.int32, np.float32],
         KernelContract(
             trace=Trace.whole_call(),
-            setup=None if _detect_arch() == "aie2" else conv_even,
+            setup=None if _tuned_arch() == "aie2" else conv_even,
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),
             reference=lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance=_RMS_NORM_BF16_AIE2 if _detect_arch() == "aie2" else _NORM_BF16,
+            tolerance=_RMS_NORM_BF16_AIE2 if _tuned_arch() == "aie2" else _NORM_BF16,
             ops_per_call=4 * tile_size,
         ),
     )
@@ -140,7 +141,7 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
             acc_dtype=np.float32,
             reduction=tile_size,
             tolerance=(
-                _LAYER_NORM_BF16_AIE2 if _detect_arch() == "aie2" else _NORM_BF16
+                _LAYER_NORM_BF16_AIE2 if _tuned_arch() == "aie2" else _NORM_BF16
             ),
             ops_per_call=6 * tile_size,
         ),

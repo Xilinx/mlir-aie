@@ -24,10 +24,11 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _detect_arch,
+    _arch_traits,
     _kernel_source,
     _make_extern,
     _runtime_lib_include,
+    _tuned_arch,
 )
 from .activation import _bf16, tanh_lut_ref
 from .core import conv_even
@@ -121,7 +122,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         np.float32,
         np.float32,
         layer_norm_f32_ref,
-        _NORM_F32_AIE2 if _detect_arch() == "aie2" else _NORM_F32,
+        _NORM_F32_AIE2 if _tuned_arch() == "aie2" else _NORM_F32,
         6 * cols,
         # Headroom: the frame measures 256 bytes on AIE2P and 64 on AIE2, and
         # neither build calls a soft-float helper.
@@ -155,7 +156,7 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
             acc_dtype=np.float32,
             reduction=cols,
             tolerance=(
-                _LAYER_NORM_BF16_AIE2 if _detect_arch() == "aie2" else _NORM_BF16
+                _LAYER_NORM_BF16_AIE2 if _tuned_arch() == "aie2" else _NORM_BF16
             ),
             ops_per_call=8 * cols,
         ),
@@ -170,7 +171,7 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
     (programming_examples/ml/mm_activation_epilogue).
 
     AIE2 has no tanh instruction, so there SiLU and GELU read getTanhBf16's
-    table, and the build is judged against a model of that arithmetic
+    table, and its tuned build is judged against a model of that arithmetic
     instead of the true functions.
 
     Args:
@@ -179,7 +180,8 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
     _cols("mm_activation_epilogue", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
     source = _kernel_source("transformer/mm_activation_epilogue.cc")
-    lut = _detect_arch() == "aie2"
+    lut = not _arch_traits().native_tanh
+    lut_model = _tuned_arch() == "aie2"
     flags = None
     if lut:
         # lut_kernel.cc compiles the source next to lut_based_ops.cpp, whose
@@ -197,13 +199,15 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),
             reference=(
-                mm_activation_epilogue_lut_ref if lut else mm_activation_epilogue_ref
+                mm_activation_epilogue_lut_ref
+                if lut_model
+                else mm_activation_epilogue_ref
             ),
             acc_dtype=np.float32,
             reduction=1,
             tolerance=(
                 _EPILOGUE_LUT_TOLERANCE
-                if lut
+                if lut_model
                 else Tolerance.relative(
                     0.128,
                     0.05,
