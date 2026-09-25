@@ -8,8 +8,9 @@
 # Vector 2^x (software minimax poly)
 
 Demonstrates `kernels.exp2f_vec`, a software degree-5 minimax polynomial
-approximation of `2**x` for `float32`, aie2p only. This is the accuracy
-alternative to [`basic/vector_exp`](../vector_exp)'s LUT-based `bf16_exp`:
+approximation of `2**x` for `float32`, on NPU1 (aie2) and NPU2 (aie2p).
+This is the accuracy alternative to [`basic/vector_exp`](../vector_exp)'s
+LUT-based `bf16_exp`:
 the LUT's relative error is domain-dependent and grows sharply for
 negative inputs (up to 49.1% on `[-100, 0]`, measured), which is exactly
 softmax's input range after the row-max shift. The poly holds ~8.9e-5
@@ -39,8 +40,10 @@ Four cores each operate on `1024` `float32` numbers.
 python3 vector_exp2f.py
 ```
 
-The IRON JIT runtime detects the attached NPU generation automatically
-(aie2p / NPU2 required; the kernel raises `NotImplementedError` on aie2).
+The IRON JIT runtime detects the attached NPU generation automatically.
+The kernel source lives under `aie_kernels/aie2p/` but builds for aie2 as
+well; there it needs a 2048-byte core stack, which the design takes from
+`exp2f_fn.contract.stack_bytes`.
 
 The host driver builds four input blocks: a dense grid over `[-111, 0]`, a
 random sample over the same range, a block from `-500` to just below
