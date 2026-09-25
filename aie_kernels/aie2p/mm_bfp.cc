@@ -17,18 +17,15 @@ static constexpr size_t kSubtileRows = 8;
 namespace {
 
 // Both directions below move a run of blocks whose destination is contiguous
-// and whose source is strided, and both visit the destination in strictly
-// increasing address order. That is what lets a block be stored as part of an
-// unaligned vector: the bytes the store writes beyond the block are rewritten
-// by the store that follows it. Only the last block of the buffer has no
-// successor to repair it, so the callers finish on copyRunsAtEnd.
+// and whose source is strided, visiting the destination in increasing address
+// order. So a block can be stored as part of an unaligned vector: the bytes
+// written beyond it are rewritten by the next store. Only the buffer's last
+// block has no successor to repair it, so the callers finish on copyRunsAtEnd.
 //
-// 9 bytes is neither a power of two nor vector aligned, so a byte at a time the
-// target serializes every lda.s8 against its st.s8 at the full load-to-use
-// latency: 94 cycles for one block. Merging three blocks into a single
-// 32-byte store also amortizes the read-modify-write an unaligned store costs,
-// which is what the per-block dependence was really paying for: 20 cycles for
-// three blocks.
+// 9 bytes is neither a power of two nor vector aligned, so byte by byte the
+// target serializes every lda.s8 against its st.s8: 94 cycles a block. One
+// 32-byte store per three blocks also amortizes an unaligned store's
+// read-modify-write: 20 cycles for three.
 
 using bytes32 = aie::vector<uint8_t, 32>;
 
@@ -177,16 +174,14 @@ inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
 // tiles are already transposed (the ones done during the shuffle), the higher
 // level tiling transposition should be free using data layout transformations.
 //
-// Each block stream keeps its own FIFO state, and aie2p has two lf registers
-// to hold it. Four A/B streams plus two C streams per 2x2 group spilled that
-// state to the stack on every k step, so here A and B each get one stream that
-// hops between the group's two rows with pop_seek, and C gets one output stream
-// for the whole call. Popping two blocks per row before seeking halves the
-// FIFO refills. On hardware, a pop_seek that directly follows a plain pop
-// landed correctly only for even block strides, so an odd number of k blocks
-// seeks after every pop instead. The next group's C is read before this
-// group's is written, which lets those loads overlap the mac tail instead of
-// starting the next group cold.
+// Each block stream keeps its FIFO state in one of aie2p's two lf registers;
+// four A/B streams plus two C streams per 2x2 group spilled it on every k
+// step. So A and B each get one stream that hops between the group's two rows
+// with pop_seek, popping two blocks per row between seeks, and C one output
+// stream for the call. On hardware a pop_seek right after a plain pop lands
+// correctly only for even block strides, so odd k seeks after every pop. The
+// next group's C is read before this group's is written, overlapping those
+// loads with the mac tail.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
           unsigned t>
 void matmul_vectorized_2x2_bfp16(const bfp16ebs8 *__restrict pA,

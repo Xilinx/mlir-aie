@@ -249,10 +249,9 @@ void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
 /// products in ascending k into the same float accumulator, so y is
 /// bit-identical to the mmul's.
 ///
-/// The sixteen S-side operands do not fit in registers alongside the
-/// accumulators and spill once, ahead of the loop. y is loaded one tile pair
-/// ahead so that the next pair's load need not wait for this pair's store:
-/// the pipeliner cannot tell the two apart and otherwise serializes them.
+/// The sixteen S-side operands spill once, ahead of the loop. y is loaded one
+/// tile pair ahead, so the next pair's load need not wait for this pair's
+/// store, which the pipeliner cannot tell apart and would serialize.
 template <unsigned kTiles, unsigned kVStride>
 void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
                   const bf16 *__restrict pV) {

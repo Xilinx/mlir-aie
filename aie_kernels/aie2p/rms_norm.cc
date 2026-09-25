@@ -9,10 +9,8 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-// AIE2P has no scalar float multiply and no C-style int-to-float convert;
-// those lower to the soft-float helpers __mulsf3 and __floatsisf. aie::to_float
-// maps to a single fx2flt, and routing the multiply through one vector lane
-// keeps it on the vector unit. aie::inv/aie::invsqrt are already native.
+// Scalar float math through one vector lane: see scalar_mul in layer_norm.cc.
+// aie::inv/aie::invsqrt are already native.
 static inline float scalar_mul(float a, float b) {
   return ::aie::mul(::aie::broadcast<float, 16>(a), b).to_vector<float>()[0];
 }

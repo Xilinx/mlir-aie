@@ -118,7 +118,6 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
                 "TOut must equal TIn");
   event0();
   constexpr float epsilon = 1e-5f;
-  // cols is non-negative, so the unsigned divide lowers to a shift.
   const int chunks = (uint32_t)cols / N;
   const float inv_cols = ::aie::inv(::aie::to_float<float>(cols));
 

@@ -110,19 +110,16 @@ scale_blocked_rows(bfloat16 *O, const bfloat16 *scale) {
 }
 
 // partial_softmax_alias_bf16 over every valid row of a block whose rows are
-// one vector wide.  Called a row at a time, each row paid for a call, a
-// rounding-mode swap, two passes too short to pipeline, and two reductions
-// that each spend five dependent shuffle-and-combine steps narrowing one row
-// to one lane.  Here the rows are reduced eight at a time: unzipping two
-// partially reduced vectors pairs each row's low half with its high half,
-// which is the pairing reduce_max and reduce_add use, so after the same number
-// of steps all eight results sit in one vector.  The additions are the ones
-// reduce_add makes, in the same tree, so P and scale_buffer come out the same
-// bit for bit.  The suffix mask sets masked lanes to lowest in place first, as
-// the row-at-a-time path does.  The max is taken before scaling, which a
-// positive scale leaves unchanged.  The sum pass parks each row's 16 partial
-// sums in the row itself, which exp has already consumed, for the group loop
-// to fold.
+// one vector wide. Called a row at a time, each row paid for a call, a
+// rounding-mode swap, two passes too short to pipeline, and two five-step
+// shuffle-and-combine reductions. Here the rows are reduced eight at a time:
+// unzipping two partially reduced vectors pairs each row's low half with its
+// high half, reduce_max's and reduce_add's pairing, so after as many steps all
+// eight results sit in one vector. The additions are reduce_add's, in the same
+// tree, so P and scale_buffer come out the same bit for bit. Masked lanes are
+// set to lowest in place first. The max is taken before scaling, which a
+// positive scale leaves unchanged. The sum pass parks each row's 16 partial
+// sums in the row itself, already consumed by exp, for the group loop to fold.
 static constexpr int32_t SM_ROWS = 8;
 static constexpr int32_t SM_LANES = 16;
 

@@ -117,21 +117,18 @@ _ATOL_ULP = 4
 # m_new), and that has to evaluate to a clean zero rather than a NaN.
 _LOWEST = float(ml_dtypes.finfo(bfloat16).min)
 
-# What the unnormalized weights are allowed to differ from true exp2 by, and it
-# is a derivation rather than a measurement. ``aie::exp2<bfloat16>`` on AIE2P is
-# not a polynomial: it writes the fraction straight into the mantissa field, so
-# it evaluates 2**floor(u) * (1 + frac(u)). That interpolant is exact at every
-# power of two and, exp2 being convex, overshoots in between -- by at most
-# max((1 + f) / 2**f - 1), which is 6.15% at f = 1/ln2 - 1 = 0.443. bf16 rounds
-# once on the device and once in the reference, 2**-8 each, so the envelope is
-# 1.0615 * 1.0078 - 1 = 6.98%.
+# What the unnormalized weights may differ from true exp2 by, derived rather
+# than measured. ``aie::exp2<bfloat16>`` on AIE2P is not a polynomial: it writes
+# the fraction straight into the mantissa field, evaluating
+# 2**floor(u) * (1 + frac(u)). exp2 being convex, that overshoots between powers
+# of two by at most max((1 + f) / 2**f - 1) = 6.15%, at f = 1/ln2 - 1 = 0.443.
+# bf16 rounds once on the device and once in the reference, 2**-8 each, so the
+# envelope is 1.0615 * 1.0078 - 1 = 6.98%.
 #
-# Measured against that: the weights run 6.79% and the row sums 6.66%, both
-# inside it, and nothing here is random at run time so those hold every run. The
-# mutations in this file's history move the same quantities by 31% at their
-# quietest and 170% at their loudest, which is what says a bound this wide still
-# has teeth. Each was re-run against this bound rather than the tighter one it
-# was first proved under, and none of them stopped failing.
+# Measured, the weights run 6.79% and the row sums 6.66%, and nothing here is
+# random at run time. The mutations in this file's history move the same
+# quantities by 31% at their quietest and 170% at their loudest, and each still
+# fails against this bound.
 _RTOL_EXP2 = 0.07
 
 # P leaves the core row-major and has to come back in the mmul's block order.

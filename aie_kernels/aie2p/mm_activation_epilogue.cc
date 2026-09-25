@@ -50,10 +50,10 @@ mul_split(const bf16_split &x, const aie::vector<bfloat16, 16> &y) {
   return aie::mac(aie::mul(x.hi, y), x.lo, y).to_vector<float>();
 }
 
-// SiLU: out = x * sigmoid(x), sigmoid built from tanh as 0.5*(1 + tanh(x/2)).
-// Both multipliers of x are exact in bf16 - 0.5, and sigmoid's [0, 1] result -
-// so a two-term split of x carries the whole f32 input into each product. An
-// all-f32 chain overruns the per-tile cycle budget and hangs.
+// SiLU: out = x * sigmoid(x), sigmoid built from tanh (see activations.h).
+// Both multipliers of x are exact in bf16, so a two-term split of x carries
+// the whole f32 input into each product. An all-f32 chain overruns the
+// per-tile cycle budget and hangs.
 static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
                                       float *__restrict out) {
   event0();
