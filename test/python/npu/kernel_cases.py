@@ -286,6 +286,11 @@ CASES: list[Case] = [
         smoke=True,
         perf=False,
     ),
+    # On AIE2 a row this short takes the loop that is not software-pipelined.
+    *[
+        Case(name, dict(tile_size=64), calls=4, tag="short-row", perf=False, **kw)
+        for name, kw in (("axpy", dict(scalars=(2.5,))), ("convert_copy", {}))
+    ],
     Case("expand", calls=16, smoke=True),
     Case("expand", calls=256),
     Case("transpose", dict(subtile=4), calls=16, smoke=True),

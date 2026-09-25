@@ -22,6 +22,34 @@ extern "C" {
 void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, const float a,
            bfloat16 *restrict z, const int32_t vector_size) {
   event0();
+#if __AIE_ARCH__ == 20
+  // AIE2: y loads straight into the accumulator (vlda.conv, a port) and x on
+  // the b port, so each 16 lanes is one mac and one converting store.  The
+  // single-chain schedule is 14 stages deep: the scheduler only uses it when
+  // told the loop runs at least 16 times.
+  ::aie::vector<bfloat16, 16> a16 = ::aie::broadcast<bfloat16, 16>(bfloat16(a));
+  auto px = ::aie::begin_restrict_vector<16>(x);
+  auto py = ::aie::begin_restrict_vector<16>(y);
+  auto pz = ::aie::begin_restrict_vector<16>(z);
+  const int steps = (uint32_t)vector_size / 64 * 4;
+  if (steps >= 16) {
+    AIE_LOOP_MIN_ITERATION_COUNT(16)
+    AIE_LOOP_NO_UNROLL
+    for (int k = 0; k < steps; ++k) {
+      ::aie::accum<accfloat, 16> acc;
+      acc.from_vector(*py++);
+      *pz++ = ::aie::mac(acc, *px++, a16).to_vector<bfloat16>();
+    }
+  } else if (steps > 0) {
+    AIE_LOOP_MIN_ITERATION_COUNT(4)
+    AIE_LOOP_NO_UNROLL
+    for (int k = 0; k < steps; ++k) {
+      ::aie::accum<accfloat, 16> acc;
+      acc.from_vector(*py++);
+      *pz++ = ::aie::mac(acc, *px++, a16).to_vector<bfloat16>();
+    }
+  }
+#else
   ::aie::vector<bfloat16, 64> a_v = ::aie::broadcast<bfloat16, 64>(bfloat16(a));
   // IRON only accepts a tile that is a multiple of 64, so the unsigned divide
   // (a shift, not the 64-bit magic multiply) counts the whole row.  Given the
@@ -43,6 +71,7 @@ void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, const float a,
       z += 64;
     }
   }
+#endif
   event1();
 }
 
