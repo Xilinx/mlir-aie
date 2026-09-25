@@ -40,12 +40,18 @@ inline std::string npuSeqKey(llvm::StringRef deviceName,
 }
 
 // BIF text consumed by bootgen to assemble a device's PDI from its CDOs.
+// bootgen never initializes the metaheader revoke_id it writes into the image
+// header, so it is set explicitly to keep the PDI deterministic.
 inline std::string makeBifText(llvm::StringRef cdoDir,
                                llvm::StringRef devName) {
   return llvm::formatv(R"(all:
 {{
   id_code = 0x14ca8093
   extended_id_code = 0x01
+  metaheader
+  {{
+    revoke_id = 0
+  }
   image
   {{
     name=aie_image, id=0x1c000000

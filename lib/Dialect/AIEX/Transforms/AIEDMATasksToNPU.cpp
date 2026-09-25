@@ -1168,6 +1168,17 @@ struct AIEDMATasksToNPUPass
   // depth) needed to prune that fully; run it as a nested pipeline afterward
   // to pick up what the local canonicalizations left behind.
   LogicalResult dropDeadTaskCarries(AIE::DeviceOp device) {
+    // Only a region-carried value can be a dead carry, and a static sequence
+    // has none; the analysis costs time proportional to the whole device.
+    if (llvm::none_of(device.getOps<AIE::RuntimeSequenceOp>(), [](auto seq) {
+          return seq
+              .walk([](RegionBranchOpInterface) {
+                return WalkResult::interrupt();
+              })
+              .wasInterrupted();
+        }))
+      return success();
+
     RewritePatternSet patterns(&getContext());
     scf::ForOp::getCanonicalizationPatterns(patterns, &getContext());
     scf::IfOp::getCanonicalizationPatterns(patterns, &getContext());

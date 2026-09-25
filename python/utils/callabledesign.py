@@ -501,8 +501,9 @@ class CallableDesign:
         time on first invocation.
 
         With both ``xclbin_path`` and ``inst_path`` set, writes artifacts
-        directly to those paths and bypasses the cache — useful for build
-        systems (e.g. Makefiles) that manage their own dependency tracking.
+        directly to those paths instead of the cache, rebuilding them only
+        when they are out of date — useful for build systems (e.g. Makefiles)
+        that name their own outputs.
         Static designs require both paths or neither. Active ``DispatchTime[T]``
         designs accept ``xclbin_path`` alone, return ``(xclbin_path, None)``, and
         reject ``inst_path`` and ``elf_path`` (there is no static instruction
@@ -534,11 +535,11 @@ class CallableDesign:
     def measure_compile(self, workdir) -> tuple[float, int, int, int]:
         """Force a rebuild into ``workdir``, time it, and size the artifacts.
 
-        ``compile`` with explicit ``xclbin_path`` and ``inst_path`` bypasses
-        the on-disk cache by contract and keeps its intermediates in
-        ``<stem>.prj/`` next to the xclbin, so nothing about the cache layout
-        has to be guessed or deleted; a cached build this design uses
-        elsewhere is untouched.
+        The build runs with ``use_cache=False``, so no output or kernel object
+        from an earlier build is reused, and with explicit ``xclbin_path`` and
+        ``inst_path``, which keep its intermediates in ``<stem>.prj/`` next to
+        the xclbin. Nothing about the cache layout has to be guessed or
+        deleted; a cached build this design uses elsewhere is untouched.
 
         Returns ``(seconds, xclbin_bytes, insts_bytes, sum_core_elf_bytes)``.
         """
@@ -547,7 +548,7 @@ class CallableDesign:
         build = Path(workdir) / "compile"
         build.mkdir(parents=True, exist_ok=True)
         t0 = time.perf_counter()
-        xclbin, insts = self.compile(
+        xclbin, insts = self.specialize(use_cache=False).compile(
             xclbin_path=build / "final.xclbin", inst_path=build / "insts.bin"
         )
         if xclbin is None:
