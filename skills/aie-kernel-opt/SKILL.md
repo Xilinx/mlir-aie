@@ -343,7 +343,7 @@ rises; the final II may barely move, so measure anyway. `q4nx_dequant`
 S·V, keep two neighbouring output tiles on one `accfloat` accumulator so
 one `vmac.f` advances both; build the S operand once per row block; load
 the next pair's y before this pair's store (clamp the last pointer to
-itself). More tiles per accumulator crashed Peano. Prefill `fv` 2034 →
+itself). Prefill `fv` 2034 →
 1265, bit-identical.
 
 **L19 One bfp16 stream per operand (AIE2P).** Output streams share one `sf`
@@ -374,17 +374,18 @@ from `aie_kernels/aie_arch.h`; the other target's `.text` must not change.
 
 ## Traps
 
-Code that compiles cleanly and then does nothing, crashes, or produces
-wrong data. Compiler behavior depends on the Peano version
-(`utils/peano-requirements.txt`); re-test a crash workaround before relying
-on it.
+Code that compiles cleanly and then does nothing, runs slowly or produces
+wrong data. None of these is a compiler bug. A Peano crash or miscompile
+is: reduce it to a repro, file it against llvm-aie, and name the issue next
+to any workaround rather than recording it here.
 
-- **Libcalls (AIE2 and AIE2P).** `float * float` (`__mulsf3`), `float /
-  float` (`__divsf3`), `(float)int` (`__floatsisf`), float compares
-  (`__ltsf2`), any `double`, 64-bit multiply including a constant divide
-  (`__muldi3`), and signed divide even by 2^k (`__divsi3`). A libcall in a
+- **Libcalls (AIE2 and AIE2P).** The scalar unit has no float multiplier
+  or divider: `float * float` (`__mulsf3`), `float / float` (`__divsf3`),
+  `(float)int` (`__floatsisf`), float compares (`__ltsf2`) and any `double`
+  are runtime calls, as are 64-bit multiply and divide and any integer
+  divide or modulo that isn't by a power-of-two constant. A libcall in a
   loop also blocks pipelining. Float add/sub and bf16 ↔ float casts are
-  native.
+  native. The remarks report lists every libcall a kernel makes.
 - **No f32 vector multiplier.** `aie::mul`/`mac` on `vector<float,N>` is a
   bf16 emulation (224 B of code where one bf16 mac is 4 B).
 - **Pragmas.** Under Peano `AIE_PREPARE_FOR_PIPELINING`, `AIE_LOOP_FLATTEN`
@@ -393,10 +394,6 @@ on it.
   ones that act are `AIE_LOOP_UNROLL(n)`/`_FULL`/`NO_UNROLL` and the
   trip-count hints (`AIE_LOOP_RANGE` is only a hint). Put each immediately
   before the `for`; `pass_failed` lists any the compiler dropped.
-- **`chess_storage(...)` is a no-op under Peano.** Use `alignas(32)` or
-  `alignas(aie::vector_decl_align)`.
-- **Subtracting two lane-extracted products** crashes with `unable to
-  legalize instruction: G_FSUB`. Keep it in an accumulator with `aie::msc`.
 - **Stack overflow is silent.** It corrupts the neighbouring buffer:
   suspect it when errors are small, scattered and row-local. The IRON
   Worker default is 1024 B; aiecc errors with `this core needs N bytes`
@@ -404,15 +401,9 @@ on it.
   over the contract's `stack_bytes` (it leaves out libcall frames). Anything
   that grows the frame (unroll, accumulators, markers) needs a new
   declaration in the same change.
-- **Store loops and derived pointer planes can miscompile.** An int16 zero
-  loop at unroll 2 stored the loop offset; planes derived as `w + t*stride`
-  collapsed to plane 0. Probe with poisoned outputs and one-hot inputs.
 - **`to_vector<int32>` is a raw accumulator dump**; `to_vector<int8>(shift)`
   applies the row-major permutation. Indexing one as the other got 61454 of
   65536 values wrong.
-- **`pop()` then `pop_seek(odd)` reads the wrong blocks** on a bfp16 input
-  stream (AIE2P). Even block strides pass, so gate an odd count
-  (`mm_bfp/32x24x48x4/bfp16ebs8/odd-k`).
 - **Software pipelining stops at MII 27** (`SwpMaxMii` in `schedule_notes`);
   above it only the postpipeliner runs. A loop over the cap can still win
   if it does more work per trip.
