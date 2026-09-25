@@ -13,10 +13,6 @@
 
 template <typename T, int M, int N>
 void zero_scalar(T *__restrict c) {
-  // Not unrolled: Peano miscompiles the 16-bit loop unrolled by two, one
-  // bundle reading and writing dj0, so every other int16 element is left
-  // holding the loop's byte offset when M*N % 4 == 2.
-#pragma clang loop unroll(disable)
   for (int i = 0; i < M * N; i++) {
     c[i] = 0;
   }
