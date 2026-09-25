@@ -24,11 +24,12 @@ void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
   v32bfloat16 zeroes = broadcast_zero_bfloat16();
 
   event0();
-  AIE_PREPARE_FOR_PIPELINING
-  for (size_t i = 0; i < RELU_ELEMS; i += v_factor) {
-    v32bfloat16 input = *(v32bfloat16 *)(a + i);
-    v32bfloat16 output = max(input, zeroes);
-    *(v32bfloat16 *)(c + i) = output;
+  v32bfloat16 *restrict pA = (v32bfloat16 *)a;
+  v32bfloat16 *restrict pC = (v32bfloat16 *)c;
+  const int F = (uint32_t)RELU_ELEMS / v_factor;
+  AIE_LOOP_NO_UNROLL
+  for (int i = 0; i < F; i++) {
+    *pC++ = max(*pA++, zeroes);
   }
   event1();
   return;
