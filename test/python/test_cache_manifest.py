@@ -370,3 +370,73 @@ def test_depfile_entry_with_an_escaped_space_is_recorded(tmp_path):
     time.sleep(0.01)
     header.write_text("// h v2")
     assert not _manifest.is_valid(tmp_path)
+
+
+def test_depfile_escapes_are_undone(tmp_path):
+    """Peano writes ``#`` as ``\\#`` and ``$`` as ``$$``; a colon in a
+    dependency is written as is. Each names one real input."""
+    names = ["ha#sh.h", "dol$lar.h", "co:lon.h"]
+    for n in names:
+        (tmp_path / n).write_text("// h")
+    (tmp_path / "k.o.d").write_text(
+        f"{tmp_path / 'k.o'}: ha\\#sh.h dol$$lar.h \\\n  co:lon.h\n"
+    )
+
+    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+
+    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
+    assert [i["path"] for i in payload["inputs"]] == sorted(
+        str(tmp_path / n) for n in names
+    )
+
+
+def test_depfile_targets_are_not_inputs(tmp_path):
+    """Every name before the rule's colon is a target, including one that
+    itself contains a colon -- clang writes that verbatim. Only what follows
+    ``: `` was read by the compiler."""
+    (tmp_path / "k.o").write_text("obj")
+    (tmp_path / "hdr.h").write_text("// h")
+    (tmp_path / "k.o.d").write_text(f"{tmp_path / 'k.o'} {tmp_path}/o:k.o: hdr.h\n")
+
+    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+
+    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
+    assert [i["path"] for i in payload["inputs"]] == [str(tmp_path / "hdr.h")]
+
+
+def test_depfile_naming_a_missing_input_records_an_incomplete_manifest(tmp_path):
+    """Peano writes a backslash in a path as a slash, so a header named
+    ``a\\b.h`` is reported as ``a/b.h``, which names no file. Dropping it would
+    leave a real input unchecked under ``complete: true``."""
+    header = tmp_path / "a\\b.h"
+    header.write_text("// h")
+    (tmp_path / "k.o.d").write_text(f"{tmp_path / 'k.o'}: a/b.h\n")
+
+    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+
+    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
+    assert payload["complete"] is False
+    assert _manifest.is_valid(tmp_path)
+
+
+def test_depfile_dotdot_is_taken_after_following_a_symlink(tmp_path):
+    """``link/../h.h`` is the file the compiler opened only when ``..`` follows
+    ``link``. Collapsing it lexically names ``h.h`` beside ``link`` instead,
+    and an edit to the real header would go unseen."""
+    (tmp_path / "real" / "sub").mkdir(parents=True)
+    header = tmp_path / "real" / "h.h"
+    header.write_text("// h")
+    (tmp_path / "h.h").write_text("// decoy")
+    (tmp_path / "link").symlink_to(tmp_path / "real" / "sub")
+    (tmp_path / "k.o.d").write_text(f"{tmp_path / 'k.o'}: link/../h.h\n")
+
+    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+
+    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
+    assert [i["path"] for i in payload["inputs"]] == [
+        str(tmp_path / "link" / ".." / "h.h")
+    ]
+
+    time.sleep(0.01)
+    header.write_text("// h v2")
+    assert not _manifest.is_valid(tmp_path)
