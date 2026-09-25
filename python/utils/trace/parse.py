@@ -332,19 +332,16 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
             if loc in pid_events[tt]:
                 pid = pid_events[tt][loc][NUM_EVENTS]
             else:
-                logger.error(
-                    "tile in %s not found in trace packet data file (e.g trace.txt).",
-                    loc,
+                tiles = [
+                    keys
+                    for tt_tmp in range(len(commands))
+                    for keys in pid_events[tt_tmp]
+                ]
+                raise ValueError(
+                    f"trace data comes from tile {loc}, which the design does not "
+                    f"trace; it traces {tiles}. Consider changing the column "
+                    "shift (colshift) if you think this is an error."
                 )
-                tiles = []
-                for tt_tmp in range(len(commands)):
-                    for keys in pid_events[tt_tmp]:
-                        tiles.append(keys)
-                logger.error("Defined tiles in design are at: %s", tiles)
-                logger.error(
-                    "Consider changing --colshift value if you think this is an error."
-                )
-                sys.exit(1)
 
             active_events = dict()
             for i in range(8):  # 8 max events at a time
@@ -604,13 +601,11 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None, device_name=None):
 
         if row is None and col is None:
             if address is None:
-                logger.error(
-                    "Could not decode write32 op '%s': address is not a "
+                raise ValueError(
+                    f"Could not decode write32 op '{write32}': address is not a "
                     "compile-time constant (trace config requires constant "
-                    "operands)",
-                    write32,
+                    "operands)"
                 )
-                sys.exit(1)
             row = (address >> target_model.get_row_shift()) & 0x1F
             col = (address >> target_model.get_column_shift()) & 0x1F
             address = address & 0xFFFFF  # 20 bits address
@@ -623,12 +618,10 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None, device_name=None):
             hex(value) if value is not None else None,
         )
         if row is None or col is None or address is None or value is None:
-            logger.error(
-                "Could not decode write32 op '%s': address or value is not a "
-                "compile-time constant (trace config requires constant operands)",
-                write32,
+            raise ValueError(
+                f"Could not decode write32 op '{write32}': address or value is not "
+                "a compile-time constant (trace config requires constant operands)"
             )
-            sys.exit(1)
 
         # Adjust column based on colshift
         if colshift is not None:
@@ -1050,7 +1043,11 @@ def main():
 
     setup_trace_metadata(trace_events, pid_events, events_module)
 
-    convert_commands_to_json(trace_events, commands_0, pid_events, events_module)
+    try:
+        convert_commands_to_json(trace_events, commands_0, pid_events, events_module)
+    except ValueError as e:
+        logger.error("%s", e)
+        sys.exit(1)
 
     print(json.dumps(trace_events).replace("'", '"').replace(", {", ",\n{"), file=of)
 
