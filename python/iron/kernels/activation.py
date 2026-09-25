@@ -623,6 +623,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
                 1e-3,
                 note="minimax poly targets 8.9e-5 relative error; see exp2f_vec_ref",
             ),
+            stack_bytes=2048 if _detect_arch() == "aie2" else None,
         ),
     )
 
