@@ -537,8 +537,11 @@ struct AIEInsertTraceFlowsPass
               findNearestSpareColumn(shimCol, activeColumns, targetModel);
           if (spare >= 0) {
             shimInfo.shimTile = getOrCreateShim(device, builder, spare);
-            // Reset channel to default since spare shim is clean
-            shimInfo.channel = clShimChannel;
+            // A spare has no core but can still carry one flow; it is not
+            // full, so its other channel is free.
+            shimInfo.channel = usedChannels[spare].count(clShimChannel)
+                                   ? 1 - clShimChannel
+                                   : clShimChannel;
             continue;
           }
         }
