@@ -60,6 +60,8 @@ jobs:
 
       # The action commits to the local publication branch and switches back.
       # Fetch once under the lock, accumulate every series, then push once.
+      # Dispatch and schedule payloads carry no commit, so the action looks up
+      # github.sha with the token; the token is used for nothing else here.
       - name: Record npu1 results
         if: hashFiles(format('results/npu1/{0}', env.RESULT_FILE)) != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
@@ -71,6 +73,8 @@ jobs:
           gh-pages-branch: gh-pages
           skip-fetch-gh-pages: true
           auto-push: false
+          github-token: ${{ github.token }}
+          ref: ${{ github.sha }}
           alert-threshold: ${{ inputs.static && '101%' || '103%' }}
           comment-on-alert: false
           fail-on-alert: false
@@ -87,6 +91,8 @@ jobs:
           gh-pages-branch: gh-pages
           skip-fetch-gh-pages: true
           auto-push: false
+          github-token: ${{ github.token }}
+          ref: ${{ github.sha }}
           alert-threshold: ${{ inputs.static && '101%' || '103%' }}
           comment-on-alert: false
           fail-on-alert: false
@@ -103,6 +109,8 @@ jobs:
           gh-pages-branch: gh-pages
           skip-fetch-gh-pages: true
           auto-push: false
+          github-token: ${{ github.token }}
+          ref: ${{ github.sha }}
           # Program memory needs more slack than integer II/ZOL/count metrics.
           alert-threshold: '103%'
           comment-on-alert: false
@@ -120,6 +128,8 @@ jobs:
           gh-pages-branch: gh-pages
           skip-fetch-gh-pages: true
           auto-push: false
+          github-token: ${{ github.token }}
+          ref: ${{ github.sha }}
           alert-threshold: '103%'
           comment-on-alert: false
           fail-on-alert: false
