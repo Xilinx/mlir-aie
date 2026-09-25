@@ -15,15 +15,17 @@ void conv2dk1_skip_init_i8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                            uint8_t *output, int8_t *skip,
                            const int32_t input_width,
                            const int32_t input_channels,
-                           const int32_t output_channels, const int scale,
-                           const int skip_scale);
+                           const int32_t output_channels,
+                           const int32_t input_channels_skip, const int scale,
+                           const int skip_scale, const int scale_skip_conv);
 
 void conv2dk1_skip_init_ui8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                             uint8_t *output, uint8_t *skip,
                             const int32_t input_width,
                             const int32_t input_channels,
-                            const int32_t output_channels, const int scale,
-                            const int skip_scale);
+                            const int32_t output_channels,
+                            const int32_t input_channels_skip, const int scale,
+                            const int skip_scale, const int scale_skip_conv);
 
 } // extern "C"
 

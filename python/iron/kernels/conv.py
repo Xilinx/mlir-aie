@@ -809,7 +809,8 @@ def conv2dk1_skip_init(
         compile_flags=flags,
         contract=KernelContract(
             trace=Trace.whole_call(),
-            stack_bytes=0x2000,  # >=2144 measured; __modsi3 has no .stack_sizes
+            # aie2p: >=2144 measured; __modsi3 has no .stack_sizes. 288 B on aie2
+            stack_bytes=0x2000 if _detect_arch() == "aie2p" else None,
             roles=(In, In, Param, Out, In, *((Param,) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,

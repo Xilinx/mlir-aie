@@ -701,6 +701,16 @@ CASES: list[Case] = [
         tag="int8_skip",
         smoke=True,
     ),
+    # One ic/16 step on each input half and one ic/8 skip step: loops of a
+    # single trip, which the AIE2 kernel runs on a path of their own.
+    Case(
+        "conv2dk1_skip_init",
+        dict(input_channels=16, skip_input_channels=8, act_dtype=np.uint8),
+        calls=8,
+        scalars=(32, 16, 64, 8, 10, 1, 9),
+        tag="one-step",
+        perf=False,
+    ),
     # conv2dk14: 16 patches of 14x14 RGBA pixels per call, 784 taps.
     Case(
         "conv2dk14",

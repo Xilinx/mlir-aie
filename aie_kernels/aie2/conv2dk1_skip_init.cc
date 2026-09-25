@@ -16,6 +16,7 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 #ifdef SCALAR
@@ -116,6 +117,135 @@ static void conv2dk1_skip_init_scalar(
 // conv2d 1x1 skip init - vector
 // act: uint8, wts: int8, skip: SkipT (int8 or uint8), out: uint8
 //*****************************************************************************
+#if __AIE_ARCH__ == 20
+// The ic loops are promised MinTrips trips. Two is what lets them run as
+// pipelined hardware loops.
+template <typename SkipT, int MinTrips>
+static void conv2dk1_skip_init_blocks(
+    uint8_t *input0, uint8_t *input1, int8_t *kernels,
+    uint8_t *__restrict output, SkipT *__restrict skip,
+    const int32_t input_width, const int32_t input_channels,
+    const int32_t output_channels, const int32_t input_channels_skip,
+    const int scale, const int skip_scale, const int scale_skip_conv) {
+  using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
+  using MMULSkip = aie::mmul<4, 8, 8, SkipT, int8>;
+  ::aie::set_saturation(
+      aie::saturation_mode::saturate); // Needed to saturate properly to uint8
+  ::aie::set_rounding(
+      aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
+
+  constexpr int NUM_ACC = 8;
+  const int iw = input_width;
+  const int iw_32 = (input_width / 4) / 8;
+  // input0 and input1 each hold half the input channels; the weights of
+  // input0's channels come first within each oc/8 group. The skip
+  // projection's weights follow all of the main conv's.
+  const int ic_half = input_channels / 16;
+  const int ic_skip = input_channels_skip / 8;
+  int8_t *kernels_skip = kernels + output_channels * input_channels;
+
+  uint8_t *restrict out_ptr = output;
+
+  for (int oc = 0; oc < (output_channels / 8); oc++) {
+    for (int x = 0; x < iw_32; x++) {
+      {
+        MMUL4x8x8 acc[NUM_ACC];
+        AIE_LOOP_UNROLL_FULL
+        for (int i = 0; i < NUM_ACC; i++)
+          acc[i] = aie::zeros<acc32, 32>();
+        const uint8_t *restrict in0 = input0 + x * 256;
+        const uint8_t *restrict in1 = input1 + x * 256;
+        const int8_t *restrict w0 = kernels;
+        const int8_t *restrict w1 = kernels + ic_half * 64;
+        AIE_PREPARE_FOR_PIPELINING
+        AIE_LOOP_MIN_ITERATION_COUNT(MinTrips)
+        for (int ic = 0; ic < ic_half; ic++) {
+          aie::vector<int8, 64> b0 = aie::load_v<64>(w0);
+          aie::vector<int8, 64> b1 = aie::load_v<64>(w1);
+          w0 += 64;
+          w1 += 64;
+          AIE_LOOP_UNROLL_FULL
+          for (int x8 = 0; x8 < NUM_ACC; x8++)
+            acc[x8].mac(aie::load_v<32>(in0 + x8 * 32), b0);
+          AIE_LOOP_UNROLL_FULL
+          for (int x8 = 0; x8 < NUM_ACC; x8++)
+            acc[x8].mac(aie::load_v<32>(in1 + x8 * 32), b1);
+          in0 += iw * 8;
+          in1 += iw * 8;
+        }
+        // The int8 conv result waits in the output buffer for the skip.
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          aie::store_v((int8_t *)out_ptr + x8 * 32,
+                       acc[x8].template to_vector<int8>(scale));
+      }
+      {
+        MMULSkip acc[NUM_ACC];
+        AIE_LOOP_UNROLL_FULL
+        for (int i = 0; i < NUM_ACC; i++)
+          acc[i] = aie::zeros<acc32, 32>();
+        const SkipT *restrict in = skip + x * 256;
+        const int8_t *restrict w = kernels_skip;
+        AIE_PREPARE_FOR_PIPELINING
+        AIE_LOOP_MIN_ITERATION_COUNT(MinTrips)
+        for (int ic = 0; ic < ic_skip; ic++) {
+          aie::vector<int8, 64> b = aie::load_v<64>(w);
+          w += 64;
+          AIE_LOOP_UNROLL_FULL
+          for (int x8 = 0; x8 < NUM_ACC; x8++)
+            acc[x8].mac(aie::load_v<32>(in + x8 * 32), b);
+          in += iw * 8;
+        }
+        // Each step runs over all eight accumulators before the next, so
+        // the eight chains get registers of their own and overlap.
+        aie::vector<int8, 32> vs[NUM_ACC];
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          vs[x8] = acc[x8].template to_vector<int8>(scale_skip_conv);
+        aie::accum<acc32, 32> sum[NUM_ACC];
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          sum[x8].from_vector(aie::load_v<32>((int8_t *)out_ptr + x8 * 32), 0);
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          sum[x8] = aie::mac(sum[x8], vs[x8], (int8_t)1);
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++) {
+          aie::store_v(out_ptr, sum[x8].template to_vector<uint8>(skip_scale));
+          out_ptr += 32;
+        }
+      }
+    }
+    kernels += (input_channels / 8) * 64; // next oc/8 weights
+    kernels_skip += ic_skip * 64;         // next oc/8 skip weights
+  }
+
+  // Only whole 32-wide blocks are computed. The tail of an input_width that
+  // is not a multiple of 32 was never implemented and would be left
+  // unwritten; the factory rejects such a width. See
+  // kernels.conv2dk1_skip_init.
+}
+
+template <typename SkipT>
+static void conv2dk1_skip_init_vector(
+    uint8_t *input0, uint8_t *input1, int8_t *kernels, uint8_t *output,
+    SkipT *skip, const int32_t input_width, const int32_t input_channels,
+    const int32_t output_channels, const int32_t input_channels_skip,
+    const int scale, const int skip_scale, const int scale_skip_conv) {
+  event0();
+  if (input_channels >= 32 && input_channels_skip >= 16)
+    conv2dk1_skip_init_blocks<SkipT, 2>(input0, input1, kernels, output, skip,
+                                        input_width, input_channels,
+                                        output_channels, input_channels_skip,
+                                        scale, skip_scale, scale_skip_conv);
+  else
+    conv2dk1_skip_init_blocks<SkipT, 1>(input0, input1, kernels, output, skip,
+                                        input_width, input_channels,
+                                        output_channels, input_channels_skip,
+                                        scale, skip_scale, scale_skip_conv);
+  event1();
+}
+#else
 template <typename SkipT>
 static void conv2dk1_skip_init_vector(
     uint8_t *input0, uint8_t *input1, int8_t *kernels, uint8_t *output,
@@ -287,6 +417,7 @@ static void conv2dk1_skip_init_vector(
 
   event1();
 }
+#endif
 
 #endif // Vector
 

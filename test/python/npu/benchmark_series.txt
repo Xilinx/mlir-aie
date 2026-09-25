@@ -63,6 +63,7 @@ conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64
 conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/int8_skip
 conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32
 conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip
+conv2dk1_skip_init/256x8/uint8/input_channels=16/skip_input_channels=8/one-step
 conv2dk3/2048x8/int8_uint8
 conv2dk3/2048x8/int8_uint8/bottom-row
 conv2dk3/2048x8/int8_uint8/output_channels=32/weight_output_channels=64/channel-offset
