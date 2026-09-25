@@ -1066,6 +1066,33 @@ CASES: list[Case] = [
         scalars=(3,),
         tag="relu",
     ),
+    # On aie2 the identity and ReLU loop needs 4 trips: 16 and 48 run only its
+    # fallback loop, and 80 the main loop at its minimum count.
+    *[
+        Case(
+            "mm_activation_epilogue",
+            dict(tile_size=size),
+            calls=4,
+            scalars=(mode,),
+            tag=f"{act}-{tag}",
+            perf=False,
+        )
+        for size, tag in ((16, "one-vector"), (48, "short-row"), (80, "min-trips"))
+        for mode, act in enumerate(("identity", "silu", "gelu", "relu"))
+    ],
+    # On aie2, identity and ReLU select on the float's bit pattern.
+    *[
+        Case(
+            "mm_activation_epilogue",
+            calls=16,
+            scalars=(mode,),
+            tag=f"{act}-ieee",
+            data_cases=IEEE_FLOAT,
+            devices=("npu1",),
+            perf=False,
+        )
+        for mode, act in ((0, "identity"), (3, "relu"))
+    ],
     # depthwise 1-D conv: 1024 outputs per call from a padded row
     Case(
         "dwconv1d",

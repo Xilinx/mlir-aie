@@ -124,12 +124,44 @@ static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
   event1();
 }
 
+#if __AIE_ARCH__ == 20
+// aie2 has no f32 max, and a bare copy loop gets no zero-overhead loop, so
+// identity and ReLU share one integer select on the bit pattern: lanes where
+// x - 1 is below `neg` become +0. With neg = -inf's pattern those are the
+// negative floats other than -0 and -NaN, which mm_relu_row passes through
+// too; with INT32_MIN there are none.
+static inline void mm_floor_row(uint32_t n, const float *__restrict acc,
+                                float *__restrict out, int32_t neg) {
+  event0();
+  const aie::vector<int32_t, 16> zero = aie::zeros<int32_t, 16>();
+  const aie::vector<int32_t, 16> one = aie::broadcast<int32_t, 16>(1);
+  auto it_in = aie::begin_restrict_vector<16>((const int32_t *)acc);
+  auto it_out = aie::begin_restrict_vector<16>((int32_t *)out);
+  auto body = [&]() __attribute__((always_inline)) {
+    aie::vector<int32_t, 16> x = *it_in++;
+    *it_out++ = aie::select(x, zero, aie::lt(aie::sub(x, one), neg));
+  };
+  VERSIONED_LOOP(4, n / 16, body);
+  event1();
+}
+#endif
+
 extern "C" {
 
 // mode: 0 = identity, 1 = SiLU, 2 = GELU, 3 = ReLU. `n` a multiple of 16.
 void mm_activation_epilogue_row(const float *__restrict c_in,
                                 float *__restrict c_out, int32_t n,
                                 int32_t mode) {
+#if __AIE_ARCH__ == 20
+  if (mode == 1) {
+    mm_silu_hiprec_row((uint32_t)n, c_in, c_out);
+  } else if (mode == 2) {
+    mm_gelu_row((uint32_t)n, c_in, c_out);
+  } else {
+    mm_floor_row((uint32_t)n, c_in, c_out,
+                 mode == 3 ? (int32_t)0xff800000 : INT32_MIN);
+  }
+#else
   if (mode == 1) {
     mm_silu_hiprec_row((uint32_t)n, c_in, c_out);
   } else if (mode == 2) {
@@ -139,6 +171,7 @@ void mm_activation_epilogue_row(const float *__restrict c_in,
   } else {
     mm_identity_row((uint32_t)n, c_in, c_out);
   }
+#endif
 }
 
 } // extern "C"
