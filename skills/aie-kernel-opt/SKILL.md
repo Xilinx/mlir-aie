@@ -169,7 +169,7 @@ python -m aie.utils.compile.remarks --target aie2p --only "^$K" \
 
 ```bash
 taskset -c $CPUS pytest test/python/npu/test_kernels_perf.py -m perf -k "[$CASE] or [<unchanged case>]" \
-  --no-compile --baseline-sources $BASE --perf-out $W/perf.json --perf-meta $W/meta.json
+  --baseline-sources $BASE --perf-out $W/perf.json --perf-meta $W/meta.json
 ```
 
 - Each case runs from this tree, then from `$BASE`, with the same inputs.
@@ -180,7 +180,7 @@ taskset -c $CPUS pytest test/python/npu/test_kernels_perf.py -m perf -k "[$CASE]
   rejects `=`; select a prefix and check with `--collect-only -q`.
 - To screen a candidate kept in its own copy, set
   `MLIR_AIE_KERNEL_SOURCES=$W/cand-<name>`; the JIT cache key includes it,
-  so no cache wipe is needed. Drop `--no-compile` for the ELF byte rows.
+  so no cache wipe is needed.
 
 Verdict:
 

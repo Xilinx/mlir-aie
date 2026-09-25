@@ -113,6 +113,32 @@ assert.equal(latestChange(db.series[0], ['performance']), null);
 """)
 
 
+def test_npu_us_deviation_is_a_band_outside_the_legend_and_tooltip(page):
+    page("""
+const timed = (date, value, range) => ({ commit, date, benches: [
+  { name: 'softmax/1024x16/bfloat16/npu_us', unit: 'us', value, range },
+]});
+db = collect([['npu1', { entries: { 'aie_kernels (npu1, turbo)': [
+  timed(100000, 50, 'min 40.0 max 60.0 n=50'),
+  timed(200000, 40, '± 2.5; min 38.0 max 45.0 n=50'),
+]}}]]);
+modeColor = new Map([['turbo', '#0969da']]);
+draw(el, db.series[0], ['turbo']);
+const [line, low, high] = chart.data.datasets;
+assert.equal(chart.data.datasets.length, 3);
+assert.deepEqual(line.data, [50, 40]);
+assert.deepEqual(low.data, [null, 37.5]);
+assert.deepEqual(high.data, [null, 42.5]);
+assert.equal(high.fill, '-1');
+assert.equal(low.backgroundColor, 'rgba(9, 105, 218, 0.2)');
+const data = chart.data;
+assert.deepEqual([0, 1, 2].map(i => chart.options.legend.labels.filter({ datasetIndex: i }, data)),
+                 [true, false, false]);
+assert.deepEqual([0, 1, 2].map(i => chart.options.tooltips.filter({ datasetIndex: i }, data)),
+                 [true, false, false]);
+""")
+
+
 def test_latest_cases_follow_the_latest_nightly(page):
     page("""
 const row = (name, unit, value) => ({ name, unit, value });

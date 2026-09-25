@@ -31,7 +31,6 @@ restarts its chart on gh-pages.
 
 from __future__ import annotations
 
-import re
 import tempfile
 from pathlib import Path
 
@@ -90,17 +89,6 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     ins, out = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
     outputs = out if isinstance(out, tuple) else (out,)
 
-    measured: dict = {}
-    if not config.getoption("--no-compile"):
-        # A subdirectory per case: the cold rebuild bypasses the on-disk
-        # xclbin cache, but compile_external_kernel still skips a kernel
-        # object that already exists in its directory, so a shared directory
-        # would let one case's leftovers make another's "cold" build look
-        # faster than it is. bootgen cannot parse a BIF whose paths contain
-        # `=` (and rejects quoting), so case names are not used verbatim.
-        subdir = re.sub(r"[^\w./-]", "_", case.name)
-        measured["compile"] = design.measure_compile(workdir / subdir)
-
     design(*ins, *outputs)
     # Copies: numpy() views the device buffer, which dies with this frame.
     got = tuple(o.numpy().copy() for o in outputs)
@@ -112,8 +100,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         scalars=case.scalars,
     )
     assert verdict, f"{case.name}: {verdict.detail}"
-    measured["outputs"] = got
-
+    measured: dict = {"outputs": got, "sizes": _sizes(design)}
     measured["wall"] = run_iters(
         design,
         *ins,
@@ -141,6 +128,13 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     return measured
 
 
+def _sizes(design) -> tuple[int, int, int]:
+    """The xclbin, instruction and core ELF bytes of the build ``design`` ran."""
+    entry = design.compilable.get_cache_entry()
+    elfs = sum(p.stat().st_size for p in entry.directory.glob("elfs_*/*.elf"))
+    return entry.xclbin.stat().st_size, entry.insts.stat().st_size, elfs
+
+
 def _cycles_span(traced: kd.CallCycles) -> str:
     """The kernel's spread, and any initializer's, beside its min."""
     k = traced.kernel
@@ -165,28 +159,16 @@ def _record(record, case: Case, m: dict) -> None:
                 "cycles/1k-ops",
                 round(1000.0 * cycles * case.kernel_calls() / ops, 3),
             )
-    wall = m.get("wall")
-    if wall and wall.npu:
-        s = wall.npu
+    if (wall := m.get("wall")) and (s := wall.npu):
         record(
             case.name,
             "npu_us",
             "us",
             round(s.median_us, 2),
-            f"min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}",
+            f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}",
         )
-    if wall:
-        s = wall.e2e
-        record(
-            case.name,
-            "e2e_us",
-            "us",
-            round(s.median_us, 2),
-            f"min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}",
-        )
-    if compiled := m.get("compile"):
-        seconds, xclbin, insts, elf = compiled
-        record(case.name, "compile_s", "s", round(seconds, 2))
+    if sizes := m.get("sizes"):
+        xclbin, insts, elf = sizes
         record(case.name, "xclbin_bytes", "bytes", xclbin)
         record(case.name, "insts_bytes", "bytes", insts)
         record(case.name, "core_elf_bytes", "bytes", elf)

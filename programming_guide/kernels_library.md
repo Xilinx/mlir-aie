@@ -453,9 +453,8 @@ default. Both remain to do under that issue.
 `test/python/npu/test_kernels_perf.py` measures a kernel only after it has
 produced a correct result under its declared tolerance; a wrong result fails
 the test, and a failed session writes no `--perf-out` file at all. Per case it records core
-`cycles` and `cycles_per_kop`, `npu_us` / `e2e_us` from
-`aie.utils.benchmark`, and `compile_s` with the `xclbin`, `insts` and
-core-ELF sizes of a forced rebuild.
+`cycles` and `cycles_per_kop`, `npu_us` from `aie.utils.benchmark`, and
+the `xclbin`, `insts` and core-ELF sizes of the build it ran.
 
 `cycles` is recorded only for a kernel whose contract declares
 `Trace.whole_call()`. The trace holds one interval per call of the kernel

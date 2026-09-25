@@ -112,9 +112,7 @@
     const METRICS = {
       cycles: 'core cycles per kernel call, the fastest traced call; deterministic',
       cycles_per_kop: 'cycles per 1,000 of the kernel\'s operations, from cycles',
-      npu_us: 'host time to submit a run and wait for it, median of 50; moves with the machine',
-      e2e_us: 'the whole Python call, median of 50; moves with the machine',
-      compile_s: 'uncached compile time; moves with the machine',
+      npu_us: 'host time to submit a run and wait for it, median of 50, shaded ± its median absolute deviation; moves with the machine',
       xclbin_bytes: 'size of the xclbin',
       insts_bytes: 'size of the runtime sequence\'s instructions',
       core_elf_bytes: 'size of the core ELF; deterministic',
@@ -403,19 +401,35 @@
       history.replaceState(null, '', '#' + p);
     }
 
+    // A row whose range starts "± d" (npu_us) is shaded value ± d; the lower
+    // edge, then the upper filled down to it.
+    function band(values, rows, color) {
+      const dev = rows.map(r => r && /^± ([\d.]+)/.exec(r.range || ''));
+      if (!dev.some(Boolean)) return [];
+      const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16)).join(', ');
+      const edge = sign => ({
+        band: true, data: values.map((v, i) => dev[i] ? v + sign * Number(dev[i][1]) : null),
+        spanGaps: true, lineTension: 0, pointRadius: 0, borderWidth: 0,
+        backgroundColor: `rgba(${rgb}, 0.2)`,
+      });
+      return [{ ...edge(-1), fill: false }, { ...edge(1), fill: '-1' }];
+    }
+
     function draw(el, s, modes) {
       const order = db.order.filter(c => c.npu === s.npu);
       const labels = order.map(c => c.commit.id.slice(0, 7));
       const index = new Map(order.map((c, i) => [c.id, i]));
-      const datasets = modes.filter(m => s.byMode.has(m)).map(mode => {
+      const datasets = modes.filter(m => s.byMode.has(m)).flatMap(mode => {
         const values = new Array(labels.length).fill(null), rows = new Array(labels.length);
         for (const p of s.byMode.get(mode)) {
           const i = index.get(p.id);
           values[i] = p.row.value;
           rows[i] = p.row;
         }
-        return { label: mode, data: values, rows, fill: false, spanGaps: true, lineTension: 0,
-                 borderColor: modeColor.get(mode), backgroundColor: modeColor.get(mode), pointRadius: 2 };
+        const color = modeColor.get(mode);
+        return [{ label: mode, data: values, rows, fill: false, spanGaps: true, lineTension: 0,
+                  borderColor: color, backgroundColor: color, pointRadius: 2 },
+                ...band(values, rows, color)];
       });
       charts.push(new Chart(el.querySelector('canvas'), {
         type: 'line',
@@ -426,8 +440,10 @@
             xAxes: [{ scaleLabel: { display: true, labelString: 'nightly run (commit)' } }],
             yAxes: [{ scaleLabel: { display: true, labelString: s.unit }, ticks: { beginAtZero: true } }],
           },
+          legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex].band } },
           tooltips: {
             mode: 'index', intersect: false,
+            filter: (item, data) => !data.datasets[item.datasetIndex].band,
             callbacks: {
               afterTitle: items => {
                 const c = order[items[0].index];

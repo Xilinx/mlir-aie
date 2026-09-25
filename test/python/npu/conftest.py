@@ -94,9 +94,6 @@ def pytest_addoption(parser):
         "--no-cycles", action="store_true", help="skip the traced cycle-count run"
     )
     parser.addoption(
-        "--no-compile", action="store_true", help="skip the cold-rebuild measurement"
-    )
-    parser.addoption(
         "--baseline-sources",
         metavar="DIR",
         default=None,

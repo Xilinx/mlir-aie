@@ -139,9 +139,7 @@ The former `aie.utils.kernel_harness` module has been removed.
 first, then cycles, wall time and build size, gated by a device preflight
 and a measurement-sanity test. It is an ordinary pytest module, so `-k`
 selects cases and the session's exit status decides whether any numbers are
-written. Build time and artifact sizes come from
-[`CallableDesign.measure_compile`](iron.md#compile-time--jit), so any design can
-report them. `--baseline-sources DIR` measures every selected case a second
+written. `--baseline-sources DIR` measures every selected case a second
 time with its kernels from `DIR` and compares the two runs' raw output words
 and cycles in `--perf-meta`. The timing helpers live here:
 

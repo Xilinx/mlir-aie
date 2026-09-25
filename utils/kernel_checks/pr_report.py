@@ -310,8 +310,8 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         out += [""] + _details(f"Improved ({len(rows)})", _table(header, rows))
     if rows := _changes(legs, "other"):
         note = (
-            "`npu_us`, `e2e_us` and `compile_s` are timed on the host and move "
-            "with the machine; the byte counts do not."
+            "`npu_us` is timed on the host and moves with the machine; the "
+            "byte counts do not."
         )
         out += [""] + _details(
             f"Other metrics that moved {100 * OTHER_THRESHOLD:g}% or more "
