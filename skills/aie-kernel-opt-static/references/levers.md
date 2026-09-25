@@ -88,6 +88,7 @@ produce here is unconfirmed until that skill measures it.
 | S68 | Loop II189 → II83 per 64 elements, both NS 1; `pm_bytes` 752 → 704, frame 0 → 704 B | `silu` (AIE2, npu1): S67's `lut_map_bf16` around the same tanh-and-mac body. Loads inside the trip instead: II89; clamping the index in bf16: II87, frame 800 B | 1024: 3031 → 1434 (2.1x), 4096: 12133 → 5763; bit-identical on all 65536 inputs at 6 tile sizes | hit, including magnitude: 16 trips × II83 = 1328 of 1434 |
 | S69 | Loop II15 per 4 vectors, NS 3 (unrolled by 4, one serial chain) → II2 per vector, NS 5 | `reduce_add` (AIE2, npu1): a walked `v16int32` pointer instead of `in + i`, and the loop kept rolled under `AIE_LOOP_NO_UNROLL`. `in + i` rolled: II3; the walked pointer unrolled by 4 under `AIE_PREPARE_FOR_PIPELINING`: II8 per 4, 146 | 249 → 147 (1.7x); bit-identical | hit, including magnitude: 64 trips × II2 = 128 of 147 |
 | S70 | Loop II15 per 4 vectors, NS 3 → II2 per vector, NS 5 | `reduce_min` (AIE2, npu1): S69. `in + i` rolled: II5; unrolled by 4: II8 per 4, 146 | 251 → 147 (1.7x); bit-identical | hit, including magnitude: 64 trips × II2 = 128 of 147 |
+| S71 | int32 loop II15 per 4 vectors, NS 3; bfloat16 II9 per 2, NS 2 → both II2 per vector, NS 5 | `reduce_max` (AIE2, npu1): S69 with `aie::load_v` from the walked pointer. `in + i` rolled: II5; unrolled by 4: int32 154, bfloat16 135 | int32 259 → 155 (1.7x), bfloat16 171 → 90 (1.9x); bit-identical | hit, including magnitude: 64 trips × II2 = 128 of 155, 32 × II2 = 64 of 90 |
 
 ### Confidence classes
 
