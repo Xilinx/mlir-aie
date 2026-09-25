@@ -17,6 +17,7 @@
 
 #ifndef MUL_ELEMS
 #define MUL_ELEMS size
+#define MUL_ELEMS_RUNTIME
 #endif
 
 // See add.cc: one bf16 vector register, 512 bits on AIE2P and 256 on AIE2.
@@ -43,8 +44,17 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
 // produces garbage at the 32-wide AIE2P width.
 #define MUL_ONE(A, B) (aie::mul((A), (B)).template to_vector<T_out>())
 
+// AIE2 runs one chain per iteration instead: with restrict pointers and the
+// loop kept rolled, the pipeliner overlaps it to one vector per cycle.
+#if __AIE_ARCH__ == 20
+#define MUL_RESTRICT __restrict
+#else
+#define MUL_RESTRICT
+#endif
+
 template <typename T_in, typename T_out, const int N>
-void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
+void eltwise_vmul(T_in *MUL_RESTRICT a, T_in *MUL_RESTRICT b,
+                  T_out *MUL_RESTRICT c) {
 
   constexpr int vec_factor = MUL_VEC_FACTOR;
   event0();
@@ -52,6 +62,12 @@ void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   constexpr int F = N / vec_factor;
+#if __AIE_ARCH__ == 20
+  AIE_LOOP_NO_UNROLL
+  for (int i = 0; i < F / MUL_UNROLL * MUL_UNROLL; i++) {
+    *pC1++ = MUL_ONE(*pA1++, *pB1++);
+  }
+#else
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F / MUL_UNROLL; i++) {
     auto A0 = *pA1++;
@@ -67,6 +83,7 @@ void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
     *pC1++ = MUL_ONE(A2, B2);
     *pC1++ = MUL_ONE(A3, B3);
   }
+#endif
   // Zero iterations for the 1024-element tile the factories build.
   for (int i = 0; i < F % MUL_UNROLL; i++) {
     auto A0 = *pA1++;
@@ -79,13 +96,21 @@ void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
 // Runtime size (need not divide vec_factor); scalar tail avoids the full-width
 // load_v/store_v reading/writing past the buffer on a short final vector.
 template <typename T_in, typename T_out>
-void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
+void eltwise_vmul_size(T_in *MUL_RESTRICT a, T_in *MUL_RESTRICT b,
+                       T_out *MUL_RESTRICT c, int size) {
   constexpr int vec_factor = MUL_VEC_FACTOR;
   event0();
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   const int F = (uint32_t)MUL_ELEMS / vec_factor; // see eltwise_vadd_size
+// The single chain needs its 14-stage schedule's trip count at compile time.
+#if __AIE_ARCH__ == 20 && !defined(MUL_ELEMS_RUNTIME)
+  AIE_LOOP_NO_UNROLL
+  for (int i = 0; i < F / MUL_UNROLL * MUL_UNROLL; i++) {
+    *pC1++ = MUL_ONE(*pA1++, *pB1++);
+  }
+#else
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F / MUL_UNROLL; i++) { // see eltwise_vmul
     auto A0 = *pA1++;
@@ -101,6 +126,7 @@ void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
     *pC1++ = MUL_ONE(A2, B2);
     *pC1++ = MUL_ONE(A3, B3);
   }
+#endif
   if ((uint32_t)MUL_ELEMS % (vec_factor * MUL_UNROLL)) {
     for (int i = 0; i < F % MUL_UNROLL; i++) {
       auto A0 = *pA1++;
