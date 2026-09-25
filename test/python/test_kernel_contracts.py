@@ -430,6 +430,17 @@ def test_swiglu_default_reference_matches_architecture(device, reference):
     assert kernels.swiglu().contract.reference is reference
 
 
+def test_factory_contract_follows_device_switch():
+    set_current_device(NPU2Col1())
+    npu2 = kernels.mha_softmax()
+    set_current_device(NPU1Col1())
+    npu1 = kernels.mha_softmax()
+    assert npu1 is not npu2
+    assert npu1.contract.tolerance.rtol < npu2.contract.tolerance.rtol
+    set_current_device(NPU2Col1())
+    assert kernels.mha_softmax() is npu2
+
+
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))
 def test_rounding_mode_preserves_string_api(mode):
     assert str(mode) == f"{mode}" == mode.value
