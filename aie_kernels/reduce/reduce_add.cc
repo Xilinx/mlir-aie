@@ -36,7 +36,7 @@ static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
   const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_total = zero;
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // A walked pointer and a rolled loop pipeline at II2 per vector, its two
   // loads. Indexing `in + i` unrolls by 4 into one serial chain at II15.
   const v16int32 *p = (const v16int32 *)in;

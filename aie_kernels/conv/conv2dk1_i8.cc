@@ -25,12 +25,12 @@
 #endif
 
 // Input width split across the MMUL; the product is 32 either way.
-#if __AIE_ARCH__ >= 21
-#define CONV2DK1_I8_NUM_ACC 4
-#define CONV2DK1_I8_MMUL_M 8
-#else
+#if AIE_TUNED_AIE2
 #define CONV2DK1_I8_NUM_ACC 8
 #define CONV2DK1_I8_MMUL_M 4
+#else
+#define CONV2DK1_I8_NUM_ACC 4
+#define CONV2DK1_I8_MMUL_M 8
 #endif
 
 #define REL_WRITE 0
@@ -162,7 +162,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
     for (int oc = 0; oc < (output_channels / CHANNEL_FACTOR); oc++) {
       for (int iw_partialc = 0; iw_partialc < iw_partial; iw_partialc++) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
         // Two pointers, one per half block, so both load units carry the
         // activations. LLVM would unroll this loop by two, which schedules
         // at II23 per two steps.

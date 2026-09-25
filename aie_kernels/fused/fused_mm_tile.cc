@@ -5,7 +5,7 @@
 #define MM_FUSED_WHOLE_TILE_MARKERS
 #include "mm_fused.h"
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 #include "lut_based_ops.cpp"
 #endif
 

@@ -33,7 +33,7 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
   event0();
 
   const int num_elems = SIGMOID_ELEMS;
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
   aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
   aie::accum<accfloat, 16> half;

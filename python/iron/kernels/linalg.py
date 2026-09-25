@@ -18,10 +18,12 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    ARCH_TRAITS,
     KernelContract,
     Param,
     TensorLayout,
     Trace,
+    _arch_traits,
     _detect_arch,
     _kernel_source,
     _make_extern,
@@ -558,7 +560,9 @@ def mm(
         compile_flags.append("-DC_COL_MAJ")
     arch = _detect_arch()
     bf16_emulated = (
-        emulate_bf16_mmul_with_bfp16 and arch == "aie2p" and input_dtype is bfloat16
+        emulate_bf16_mmul_with_bfp16
+        and ARCH_TRAITS[arch].bfp16
+        and input_dtype is bfloat16
     )
     if bf16_emulated:
         compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
@@ -827,7 +831,7 @@ def mm_bfp(
         dim_n: Tile columns of B and C (multiple of 8).
         mixed: bf16 A and C with bfp16 B.
     """
-    if _detect_arch() != "aie2p":
+    if not _arch_traits().bfp16:
         raise NotImplementedError(
             "mm_bfp: bfp16ebs8 is an AIE2P type; select an NPU2 device"
         )
@@ -919,7 +923,7 @@ def mm_bfp_shuffle(
             back to row-major; the harness passes it as the call's last
             argument.
     """
-    if _detect_arch() != "aie2p":
+    if not _arch_traits().bfp16:
         raise NotImplementedError(
             "mm_bfp_shuffle: bfp16ebs8 is an AIE2P type; select an NPU2 device"
         )
@@ -1033,9 +1037,7 @@ def mha(
     ]
     if b_col_maj:
         flags.append("-DB_COL_MAJ")
-    emulate_bf16_mmul_with_bfp16 = (
-        emulate_bf16_mmul_with_bfp16 and _detect_arch() == "aie2p"
-    )
+    emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
     # mha.cc includes mm.cc without C_COL_MAJ, and without B_COL_MAJ unless

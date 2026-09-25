@@ -4,6 +4,7 @@
 #ifndef AIE_KERNELS_COMMON_EXP2_BF16_H
 #define AIE_KERNELS_COMMON_EXP2_BF16_H
 
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -12,7 +13,7 @@
 // products, within 0.2% of 2^f, and 2^k is added into its f32 exponent field.
 // x is clamped to [-200, 127]. Past the bottom of the exponent field the sum
 // goes negative, and is clamped to +0.
-#if __AIE_ARCH__ == 20
+#if !AIE_HAS_NATIVE_EXP2
 static inline aie::vector<bfloat16, 16> exp2_bf16_16(aie::vector<float, 16> x) {
   x = aie::max(x, aie::broadcast<float, 16>(-200.0f));
   x = aie::min(x, aie::broadcast<float, 16>(127.0f));

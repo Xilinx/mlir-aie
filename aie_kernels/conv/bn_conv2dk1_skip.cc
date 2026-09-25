@@ -19,6 +19,7 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
 const int32_t MIN = 128;
@@ -803,7 +804,7 @@ static void conv2dk1_skip_ui8_i8_i8_scalar(
 
 #endif
 #endif //
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // See k1_load in bn_conv2dk1_relu.cc for the layout and chunking. The
 // requantized conv and the skip are added in 32-bit lanes and requantized by
 // skip_scale.
@@ -912,7 +913,7 @@ k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
                    output_channels, scale, skip_scale);
   event1();
 }
-#endif // __AIE_ARCH__ == 20
+#endif // AIE_TUNED_AIE2
 
 //*****************************************************************************
 // conv2d 1x1 skip wrappers
@@ -1029,7 +1030,7 @@ void conv2dk1_skip_ui8_ui8_i8(uint8_t *input0, int8_t *kernels, int8_t *output,
                               const int32_t input_channels,
                               const int32_t output_channels, const int scale,
                               const int skip_scale) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 4 && skip_scale > 0) {
     k1_skip_vector(input0, kernels, output, skip, input_width, input_channels,
                    output_channels, scale, skip_scale);
@@ -1048,7 +1049,7 @@ void conv2dk1_skip_ui8_i8_i8(uint8_t *input0, int8_t *kernels, int8_t *output,
                              const int32_t input_channels,
                              const int32_t output_channels, const int scale,
                              const int skip_scale) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 4 && skip_scale > 0) {
     k1_skip_vector(input0, kernels, output, skip, input_width, input_channels,
                    output_channels, scale, skip_scale);

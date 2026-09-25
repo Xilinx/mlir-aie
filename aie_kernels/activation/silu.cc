@@ -75,7 +75,7 @@ static inline void silu_impl(bfloat16 *restrict input_vector,
   }
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
 static inline void silu_aie2(bfloat16 *restrict input_vector,
                              bfloat16 *restrict output_vector,
@@ -99,7 +99,7 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                            bfloat16 *restrict output_vector,
                            const int32_t vector_size) {
   event0();
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   silu_aie2(input_vector, output_vector, vector_size);
 #else
   silu_impl<AIE_BF16_LANES>(input_vector, output_vector, vector_size);

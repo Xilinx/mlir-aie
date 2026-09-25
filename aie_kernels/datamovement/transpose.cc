@@ -111,7 +111,7 @@ struct Strips {
   }
 };
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // 8x8 blocks of 16- or 32-bit elements from 256-bit rows: two blocks a row at
 // 16 bits, one at 32. Each two-register VSHUFFLE moves one bit of the element
 // index between the register number and the lane: three stages for 16 bits
@@ -233,7 +233,7 @@ struct Shuffles<8, 32> {
 // row where the fused loop took 30 a strip.
 template <unsigned S>
 static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   using Sh = Shuffles<S, BIT_WIDTH>;
   if constexpr (Sh::fits) {
     constexpr unsigned units = DIM_m / Sh::W;
@@ -256,7 +256,7 @@ static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
 #endif
   using St = Strips<S>;
   constexpr unsigned cols = DIM_m / St::W;
-  if constexpr (__AIE_ARCH__ == 20 && cols <= 2) {
+  if constexpr (AIE_TUNED_AIE2 && cols <= 2) {
     for (unsigned row = 0; row < DIM_n; row += S) {
       AIE_LOOP_UNROLL_FULL
       for (unsigned col = 0; col < DIM_m; col += St::W)

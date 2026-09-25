@@ -59,7 +59,7 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *AIE2_RESTRICT rgba_in,
   ::aie::vector<uint8_t, 32> r, g, b;
   ::aie::vector<uint8_t, 32> y;
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // The rounding term seeds the accumulator, leaving a chain of three macs
   // instead of a mul and three macs. Kept rolled, the loop then pipelines (six
   // iterations in flight) when it is known to run at least six times; the count

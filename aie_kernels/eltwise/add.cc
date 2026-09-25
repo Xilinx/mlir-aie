@@ -44,7 +44,7 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
 // one vector per cycle once the pointers are restrict and the loop is kept
 // rolled.  Only a converts on load (vlda.conv is a-port only); b loads as bf16
 // on the b port and is added as b * 1 in a mac.
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 template <typename T_in, typename T_out, int vec_factor>
 void eltwise_vadd_aie2(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
                        aie::restrict_vector_iterator<T_in, vec_factor> &pB,
@@ -70,7 +70,7 @@ void eltwise_vadd(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   constexpr int F = N / vec_factor;
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   eltwise_vadd_aie2<T_in, T_out, vec_factor>(pA1, pB1, pC1,
                                              F / ADD_UNROLL * ADD_UNROLL);
 #else
@@ -115,7 +115,7 @@ void eltwise_vadd_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   // multiple of the unrolled step pays for a single test, not two.
   const int F = (uint32_t)ADD_ELEMS / vec_factor;
 // The single chain needs its 14-stage schedule's trip count at compile time.
-#if __AIE_ARCH__ == 20 && !defined(ADD_ELEMS_RUNTIME)
+#if AIE_TUNED_AIE2 && !defined(ADD_ELEMS_RUNTIME)
   eltwise_vadd_aie2<T_in, T_out, vec_factor>(pA1, pB1, pC1,
                                              F / ADD_UNROLL * ADD_UNROLL);
 #else

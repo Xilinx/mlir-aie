@@ -123,7 +123,7 @@ static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
   event1();
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // aie2 reads tanh from getTanhBf16's table, and each store is ordered before
 // the next vector's table reads. A loop that loads, computes and stores one
 // vector per iteration does not pipeline, even with an II hint. Storing each
@@ -228,7 +228,7 @@ extern "C" {
 void mm_activation_epilogue_row(const float *__restrict c_in,
                                 float *__restrict c_out, int32_t n,
                                 int32_t mode) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (mode == 1) {
     mm_lut_rows((uint32_t)n, c_in, c_out, mm_silu_lut);
   } else if (mode == 2) {

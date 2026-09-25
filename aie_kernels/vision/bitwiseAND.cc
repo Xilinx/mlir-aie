@@ -35,7 +35,7 @@ void bitwiseAND_aie(const T *AIE2_RESTRICT src1, const T *AIE2_RESTRICT src2,
                     const int32_t height) {
   event0();
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // Unrolled by 2, the int32 build pipelines at II9, not 2 x II3.
   AIE_LOOP_NO_UNROLL
 #else

@@ -33,7 +33,7 @@ void gray2rgba_aie(uint8_t *AIE2_RESTRICT y_in, uint8_t *AIE2_RESTRICT rgba_out,
     alpha255[i * 4 + 3] = 255;
   }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // 32 pixels a step with no bor: zipping the bytes with themselves gives
   // (y, y) pairs and with 255 gives (y, 255) pairs; zipping those pairs gives
   // (y, y, y, 255). Four shuffles for four 256-bit stores. A row shorter than

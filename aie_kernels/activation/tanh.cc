@@ -24,7 +24,7 @@ void tanh_bf16_vectorized(bfloat16 *restrict input_vector,
   event0();
 
   const int num_elems = TANH_ELEMS;
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
   lut_map_bf16<4, false>(input_vector, output_vector, num_elems,
                          [](aie::vector<bfloat16, 16> x) {

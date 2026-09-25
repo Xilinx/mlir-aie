@@ -183,7 +183,7 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
   // waits: the packed accumulator would spill across the loop. On AIE2 four
   // 64-lane accumulators fill the accumulator file, so the packed one spills
   // there beside the next group's too.
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   constexpr bool fold_late = chunks <= 4 && r < 64;
 #else
   constexpr bool fold_late = chunks <= 4;

@@ -4,6 +4,7 @@
 #ifndef AIE_KERNELS_COMMON_EXP2_POLY_H
 #define AIE_KERNELS_COMMON_EXP2_POLY_H
 
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -31,7 +32,7 @@ static inline aie::vector<float, N> exp2_poly(aie::vector<float, N> x,
   const auto f =
       aie::sub(x, aie::sub(r, aie::select(aie::zeros<float, N>(),
                                           aie::broadcast<float, N>(1.0f), up)));
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // An emulated f32 multiply is a long latency chain on AIE2, and Horner puts
   // five of them end to end. Estrin's split, (c0 + c1 f) + f^2 (c2 + c3 f) +
   // f^4 (c4 + c5 f), puts three.

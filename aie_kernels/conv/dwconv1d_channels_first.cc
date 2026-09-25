@@ -25,7 +25,7 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 template <int K>
 __attribute__((always_inline)) static inline ::aie::vector<bfloat16, 32>
 shifted(const ::aie::vector<bfloat16, 32> &w0,

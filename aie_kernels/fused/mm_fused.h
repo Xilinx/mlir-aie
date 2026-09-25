@@ -71,7 +71,7 @@ constexpr int C_DEPTH = MM_FUSED_C_DEPTH;
 // The epilogue is lane-wise, so its width changes no result. aie2p runs it 32
 // lanes wide, which halves the trips through the activation's latency chain;
 // aie2 stays at one 512-bit bf16 vector because its LUT tanh is 16 lanes.
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 constexpr int V = 16;
 #else
 constexpr int V = CHUNK % 32 == 0 ? 32 : 16;

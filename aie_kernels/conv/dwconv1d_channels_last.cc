@@ -30,7 +30,7 @@ using bf16 = bfloat16;
 /// Both operands arrive as K independent pointers. Deriving the weight planes
 /// from one base as `w + t * stride` miscompiled under the full unroll below:
 /// in the first 32-lane group, planes 0..K-2 all resolved to plane 0.
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // On AIE2 the taps go outermost over four 32-lane groups at a time: each
 // group still sums its taps in order, but ten pointers walked one group at a
 // time leave the loads single-issued between pointer moves.

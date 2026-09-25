@@ -72,7 +72,7 @@ static inline void swiglu_impl(bfloat16 *restrict input_vector,
   }
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // AIE2's tanh reads a table, ordered against every other load and store, so
 // the next trip's inputs are loaded before this trip's lookups and both stores
 // follow them. At four vectors per trip the prefetched inputs spill past the
@@ -134,7 +134,7 @@ void swiglu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                              bfloat16 *restrict output_vector,
                              const int32_t vector_size) {
   event0();
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   swiglu_aie2(input_vector, weight_vector_1, weight_vector_2, output_vector);
 #else
   swiglu_impl<AIE_BF16_LANES>(input_vector, weight_vector_1, weight_vector_2,

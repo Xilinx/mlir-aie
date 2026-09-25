@@ -202,7 +202,7 @@ inline void scale_by_inv_l(bf16 *o, float *l, float *y) {
 
 /// Y += S * V across one 8-row block of y: kTiles 8x8 output tiles, the i-th
 /// taking its V tile from pV + i * kVStride.
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // AIE2 has no vextbcst to build the operands below from, so each tile is one
 // mmul<8, 8, 8>. It sums in a different order from ascending k, which the aie2
 // tolerance in linalg.py allows for. y is loaded one tile pair ahead so that
@@ -484,7 +484,7 @@ struct PrefillGeom<256> {
     aie::vector<float, 16> l_float32 = aie::load_v<16>(l);
 
     aie::accum<accfloat, 16> l_out;
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
     l_out = aie::mac(sum, c_float32, l_float32);
 #else
     l_out = mac_elem_16_accuracy_safe(l_float32, c_float32, sum, 0, 0, 0);

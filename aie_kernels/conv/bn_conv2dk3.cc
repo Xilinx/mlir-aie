@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
 #define REL_WRITE 0
@@ -129,7 +130,7 @@ void conv2dk3_i8_stride2_scalar(
   event1();
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // Stride-2 3x3, input_width a multiple of 8; see k1_load in
 // bn_conv2dk1_relu.cc for the layout and mmul tiling.
 // Input pixels 2x .. 2x + 7 split with filter_even into the centre tap and
@@ -286,7 +287,7 @@ static void k3_stride2_vector(const int8_t *line0, const int8_t *line1,
   }
   event1();
 }
-#endif // __AIE_ARCH__ == 20
+#endif // AIE_TUNED_AIE2
 
 extern "C" {
 
@@ -298,7 +299,7 @@ void conv2dk3_stride2_i8(int8_t *line0, int8_t *line1, int8_t *line2,
                          const int32_t kernel_width,
                          const int32_t kernel_height, const int32_t check,
                          const int scale, const int channel_offset) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (kernel_width == 3 && input_width >= 8 && input_width % 8 == 0 &&
       (((uintptr_t)line0 | (uintptr_t)line1 | (uintptr_t)line2 |
         (uintptr_t)wts | (uintptr_t)output) &

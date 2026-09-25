@@ -101,7 +101,7 @@ void filter2d_3lines_aie(uint8_t *AIE2_RESTRICT lineIn0,
     ::aie::store_v(output, acc.to_vector<uint8>(SRS_SHIFT - 8));
     output += VecFactor;
   };
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // Pipelined when known to run at least four times (see rgba2gray.cc), that
   // is when i = 5 * VecFactor still passes the test.
   if (5 * (int)VecFactor < width - 1) {

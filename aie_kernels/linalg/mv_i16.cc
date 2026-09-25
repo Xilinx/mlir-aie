@@ -36,7 +36,7 @@ void matvec_scalar(T_in *a, T_in *b, T_out *c) {
   event1();
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // AIE2, int16: a 32-lane load of the word-transposed A holds 16 rows of one
 // column pair, row i's even column in lane 2i and its odd column in lane
 // 2i + 1. An elementwise mac against that column pair of b, repeated 16
@@ -119,7 +119,7 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
   static_assert(k % s == 0);
   static_assert(std::is_same<T_in, bfloat16>::value ||
                 std::is_same<T_in, int16_t>::value);
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if constexpr (std::is_same<T_in, int16_t>::value) {
     matvec_i16_aie2<m, k, r>(a, b, c);
     return;

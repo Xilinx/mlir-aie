@@ -4,6 +4,7 @@
 #ifndef AIE_KERNELS_COMMON_SCALAR_F32_H
 #define AIE_KERNELS_COMMON_SCALAR_F32_H
 
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
 // AIE2P has no scalar float multiply, divide or C-style int-to-float convert;
@@ -28,7 +29,7 @@ static inline float scalar_mul_sub(float a, float b, float c) {
 // vector one is a bit-trick estimate good to 6.5e-4, so one Newton step,
 // y * (1.5 - x / 2 * y * y), brings it to f32 accuracy.
 static inline float scalar_invsqrt(float x) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   ::aie::vector<float, 16> y = ::aie::invsqrt(::aie::broadcast<float, 16>(x));
   ::aie::vector<float, 16> half_xy = ::aie::mul(y, 0.5f * x).to_vector<float>();
   ::aie::accum<accfloat, 16> t;

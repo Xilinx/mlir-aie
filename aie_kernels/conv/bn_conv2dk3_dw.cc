@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
 #define REL_WRITE 0
@@ -364,7 +365,7 @@ conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
 
 #endif // Vector
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // One [W][8] row of a channel block per call; 32 lanes are 4 pixels x 8
 // channels. A row dropped by `check` gets zero weights, so its line contents
 // never reach the sum.
@@ -550,7 +551,7 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
   }
   event1();
 }
-#endif // __AIE_ARCH__ == 20
+#endif // AIE_TUNED_AIE2
 
 extern "C" {
 
@@ -563,7 +564,7 @@ void conv2dk3_dw_stride2_relu_ui8_ui8(
     const int32_t output_channels, const int32_t kernel_width,
     const int32_t kernel_height, const int32_t check, const int scale,
     const int channel_offset) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width / 2 >= 4) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 2, check, scale);
@@ -581,7 +582,7 @@ void conv2dk3_dw_stride1_relu_ui8_ui8(
     const int32_t output_channels, const int32_t kernel_width,
     const int32_t kernel_height, const int32_t check, const int scale,
     const int channel_offset) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);
@@ -605,7 +606,7 @@ void bn13_conv2dk3_ui8_out_split(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t check, const int scale, const int channel_offset) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output1, output2, input_width,
               output_channels, output_channels / 16, 1, check, scale);
@@ -627,7 +628,7 @@ void bn13_conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                        const int32_t kernel_width, const int32_t kernel_height,
                        const int32_t check, const int scale,
                        const int channel_offset) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);
@@ -651,7 +652,7 @@ void bn14_conv2dk3_ui8_out_split(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t check, const int scale, const int channel_offset) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output1, output2, input_width,
               output_channels, output_channels / 16, 1, check, scale);
@@ -673,7 +674,7 @@ void bn14_conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                        const int32_t kernel_width, const int32_t kernel_height,
                        const int32_t check, const int scale,
                        const int channel_offset) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);

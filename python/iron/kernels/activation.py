@@ -16,10 +16,11 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    ARCH_TRAITS,
     KernelContract,
     Param,
     Trace,
-    _bf16_lanes,
+    _arch_traits,
     _detect_arch,
     _include_dirs,
     _kernel_source,
@@ -234,7 +235,7 @@ _GELU_VTANH_TOLERANCE = Tolerance.bounded(
 
 
 def _gelu_tolerance() -> Tolerance:
-    return _GELU_TOLERANCE if _detect_arch() == "aie2" else _GELU_VTANH_TOLERANCE
+    return _GELU_VTANH_TOLERANCE if _arch_traits().native_tanh else _GELU_TOLERANCE
 
 
 def _vtanh_family_tolerance(name: str) -> Tolerance:
@@ -277,9 +278,9 @@ def _unary_lut_contract(
     a tolerance sized to the instruction's measured error -- a much weaker
     statement, and deliberately a different one.
     """
-    # aie2 has no tanh instruction, so it is on the LUT path whatever the
-    # caller asked for, and gets the exact model too.
-    if (use_lut or _detect_arch() == "aie2") and elementwise is not None:
+    # Without a tanh instruction the LUT path is taken whatever the caller
+    # asked for, and gets the exact model too.
+    if (use_lut or not _arch_traits().native_tanh) and elementwise is not None:
         ref, tolerance = elementwise, lut_tolerance
     return KernelContract(
         trace=Trace.whole_call(),
@@ -325,7 +326,7 @@ def _create_lut_kernel(
     include.append(str(runtime_dir))
 
     flags = list(compile_flags or [])
-    if use_lut_tanh and arch != "aie2":
+    if use_lut_tanh and ARCH_TRAITS[arch].native_tanh:
         flags.append("-DACTIVATIONS_TANH_LUT=1")
 
     if arch == "aie2" or use_lut_tanh:
@@ -460,7 +461,7 @@ def silu_sized(tile_size: int = 1024) -> ExternalFunction:
     keeps the ``(in, out, size)`` ABI. Positive whole vectors are required
     (16 on aie2, 32 on aie2p).
     """
-    width = _bf16_lanes()
+    width = _arch_traits().bf16_lanes
     _require_vector_alignment("silu_sized", tile_size, width)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
@@ -481,10 +482,7 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
     keeps the ``(in, out, size)`` ABI. Positive whole vectors only: multiples
     of 16 on aie2 or 32 on aie2p.
     """
-    if _detect_arch() == "aie2":
-        _require_vector_alignment("gelu_sized", tile_size, 16)
-    else:
-        _require_vector_alignment("gelu_sized", tile_size, 32)
+    _require_vector_alignment("gelu_sized", tile_size, _arch_traits().bf16_lanes)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "gelu_bf16_size",
@@ -502,7 +500,7 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
 
     ``out = (x * w1) * silu(x * w2)``; see [`swiglu_ref`][iron.kernels.activation.swiglu_ref].
     """
-    use_lut_model = use_lut or _detect_arch() == "aie2"
+    use_lut_model = use_lut or not _arch_traits().native_tanh
     return _bf16_lut_factory(
         "swiglu",
         "swiglu_bf16",

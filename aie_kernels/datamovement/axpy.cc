@@ -22,7 +22,7 @@ extern "C" {
 void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, const float a,
            bfloat16 *restrict z, const int32_t vector_size) {
   event0();
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // AIE2: y loads straight into the accumulator (vlda.conv, a port) and x on
   // the b port, so each 16 lanes is one mac and one converting store.  The
   // single-chain schedule is 14 stages deep: the scheduler only uses it when

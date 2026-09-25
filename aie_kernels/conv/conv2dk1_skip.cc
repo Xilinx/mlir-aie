@@ -223,7 +223,7 @@ void conv2dk1_skip_ui8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 
 #else // Vector
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 //*****************************************************************************
 // conv2d 1x1 skip - vector
 // act: uint8, wts: int8, skip: int8 or uint8, out: uint8
@@ -844,7 +844,7 @@ void conv2dk1_skip_ui8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 
 #else // Vector
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 #ifdef INT8_ACT
 
 void conv2dk1_skip_i8(uint8_t *input0, uint8_t *input1, int8_t *kernels,

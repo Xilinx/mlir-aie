@@ -5,7 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if __AIE_ARCH__ == 20
+#include "../aie_arch.h"
+
+#if AIE_TUNED_AIE2
 #include "mm_aie2.h"
 #else
 #include "mm_aie2p.h"

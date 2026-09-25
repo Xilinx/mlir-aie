@@ -17,7 +17,7 @@ from ._common import (
     KernelContract,
     TensorLayout,
     Trace,
-    _detect_arch,
+    _arch_traits,
     _kernel_source,
     _make_extern,
     dtypes,
@@ -64,7 +64,7 @@ def zero(
     size = math.prod(shape)
     block = dtype is v8bfp16ebs8
     if block:
-        if _detect_arch() != "aie2p":
+        if not _arch_traits().bfp16:
             raise NotImplementedError("zero: bfp16ebs8 requires an NPU2 device")
         from aie.utils import bfp
 

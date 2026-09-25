@@ -15,6 +15,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     _EXTERN_CACHE,
+    ARCH_TRAITS,
     KernelContract,
     Param,
     TensorLayout,
@@ -63,7 +64,7 @@ def fused_mm(
     """
     arch = _detect_arch()
     device = _device()
-    if bfp16_b and arch != "aie2p":
+    if bfp16_b and not ARCH_TRAITS[arch].bfp16:
         raise ValueError("fused_mm: bfp16_b needs aie2p; bfp16ebs8 is an AIE2P type")
     if bfp16_b:
         r, s, t = 8, 8, 8

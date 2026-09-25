@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
 #define REL_WRITE 0
@@ -1663,7 +1664,7 @@ void fused_conv2dk1_xy_pool_i8_large_scalar(
 // #endif // UINT8_ACT
 // #endif
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // 1x1 conv on [C/8][W][8] rows: each mmul<4,8,8> takes 4 pixels x 8 input
 // channels against one [8][8] weight block. A row is covered by 4-pixel
 // chunks; when input_width is not a multiple of 4 the last chunk starts at
@@ -1897,7 +1898,7 @@ static void fc_ui16_vector(const uint16_t *__restrict input,
   }
   event1();
 }
-#endif // __AIE_ARCH__ == 20
+#endif // AIE_TUNED_AIE2
 
 //*****************************************************************************
 // conv2d 1x1 wrappers
@@ -2172,7 +2173,7 @@ void post_L2_conv2dk1_relu_i16_ui16_pad(uint16_t *input, int8_t *kernels,
                                         const int32_t input_channels_pad,
                                         const int32_t output_channels,
                                         const int scale) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width == 1 && input_channels >= 64 && input_channels % 16 == 0 &&
       (((uintptr_t)input | (uintptr_t)kernels) & 31) == 0 &&
       ((uintptr_t)output & 15) == 0) {
@@ -2236,7 +2237,7 @@ void conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8(
     const int32_t output_channels_padd, const int scale, const int y_index,
     int32_t output_split, int32_t weight_index) {
   event0();
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 4 && input_width <= K1_POOL_MAX_WIDTH &&
       ((uintptr_t)output & 15) == 0) {
     k1_xy_pool_vector(input, kernels, output, input_width, input_channels,
@@ -2286,7 +2287,7 @@ void conv2dk1_relu_i8_ui8(int8_t *input, int8_t *kernels, uint8_t *output,
                           const int32_t input_width,
                           const int32_t input_channels,
                           const int32_t output_channels, const int scale) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if (input_width >= 4) {
     k1_vector(input, kernels, output, input_width, input_channels,
               output_channels, scale);

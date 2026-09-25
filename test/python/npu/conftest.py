@@ -212,6 +212,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 def _device_generation() -> str | None:
     """``"npu1"`` / ``"npu2"`` for the device the tests will run on, or None."""
+    from aie.iron.kernels._common import ARCH_TRAITS
     from aie.utils import get_current_device
     from aie.utils.compile.utils import resolve_target_arch
 
@@ -226,7 +227,7 @@ def _device_generation() -> str | None:
         arch = resolve_target_arch(device)
     except Exception:  # noqa: BLE001 - unrecognized device: nothing to skip on
         return None
-    return "npu2" if arch == "aie2p" else "npu1"
+    return ARCH_TRAITS[arch].device
 
 
 def pytest_collection_modifyitems(config, items):

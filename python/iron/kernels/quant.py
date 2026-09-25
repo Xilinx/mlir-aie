@@ -17,7 +17,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Trace,
-    _detect_arch,
+    _arch_traits,
     _kernel_source,
     _make_extern,
 )
@@ -136,7 +136,7 @@ def q4nx_dequant(
     """
     geometry = _geometry(m_tile, k_tile, group, ct_k, s, t)
     m_tile, k_tile, group, ct_k, s, t = geometry.values()
-    if _detect_arch() != "aie2p":
+    if not _arch_traits().bfp16:
         raise NotImplementedError("q4nx_dequant() is only available on aie2p.")
     input_bytes = m_tile * k_tile // 2 + 4 * m_tile * k_tile // group
     output_bytes = m_tile * k_tile * 9 // 8

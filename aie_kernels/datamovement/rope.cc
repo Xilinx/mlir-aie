@@ -133,7 +133,7 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
   event1();
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // AIE2 multiplies bf16 16 lanes at a time, so aie::mul above pads each operand
 // with zeros. A bf16 mac instead sums two products into each f32 lane, lane i
 // getting a[i] b[i] + a[i + 16] b[i + 16], so each rotated half is one mac:
@@ -229,7 +229,7 @@ static void rope_two_halves_aie2(const bfloat16 *restrict input,
 extern "C" {
 // Interleaved (Llama-paper) RoPE — the default; existing designs bind this.
 void rope(bfloat16 *input, bfloat16 *lut, bfloat16 *output, int32_t dims) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   rope_aie2(input, lut, output, dims);
 #else
   rope_kernel<bfloat16, 16>(input, lut, output, dims);
@@ -239,7 +239,7 @@ void rope(bfloat16 *input, bfloat16 *lut, bfloat16 *output, int32_t dims) {
 // Two-halves (HuggingFace-transformers) RoPE.
 void rope_two_halves(bfloat16 *input, bfloat16 *lut, bfloat16 *output,
                      int32_t dims) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   rope_two_halves_aie2(input, lut, output, dims);
 #else
   rope_kernel_two_halves<bfloat16, 32>(input, lut, output, dims);

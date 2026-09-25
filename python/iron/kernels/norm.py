@@ -17,7 +17,7 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _bf16_lanes,
+    _arch_traits,
     _detect_arch,
     _kernel_source,
     _make_extern,
@@ -126,7 +126,7 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
     ``cols`` aliases ``tile_size``, a positive multiple of 16 on aie2 or 32 on
     aie2p (the source processes whole vectors, without a scalar tail).
     """
-    tile_size = _row_size("layer_norm", tile_size, cols, _bf16_lanes())
+    tile_size = _row_size("layer_norm", tile_size, cols, _arch_traits().bf16_lanes)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _norm_extern(
         "layer_norm",

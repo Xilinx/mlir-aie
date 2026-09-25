@@ -49,7 +49,7 @@ void eltwise_vmul(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   constexpr int F = N / vec_factor;
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   AIE_LOOP_NO_UNROLL
   for (int i = 0; i < F / MUL_UNROLL * MUL_UNROLL; i++) {
     *pC1++ = MUL_ONE(*pA1++, *pB1++);
@@ -92,7 +92,7 @@ void eltwise_vmul_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   const int F = (uint32_t)MUL_ELEMS / vec_factor; // see eltwise_vadd_size
 // The single chain needs its 14-stage schedule's trip count at compile time.
-#if __AIE_ARCH__ == 20 && !defined(MUL_ELEMS_RUNTIME)
+#if AIE_TUNED_AIE2 && !defined(MUL_ELEMS_RUNTIME)
   AIE_LOOP_NO_UNROLL
   for (int i = 0; i < F / MUL_UNROLL * MUL_UNROLL; i++) {
     *pC1++ = MUL_ONE(*pA1++, *pB1++);

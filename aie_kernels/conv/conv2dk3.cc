@@ -398,7 +398,7 @@ void conv2dk3_ui8_scalar(
 
 #else // Vector
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 //*****************************************************************************
 // conv2d 3x3 - vector
 // act: int8 or uint8, wts: int8, out: uint8
@@ -1468,7 +1468,7 @@ void conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
 
 #else // Vector
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 #ifdef INT8_ACT
 
 void conv2dk3_i8(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,

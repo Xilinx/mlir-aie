@@ -18,7 +18,7 @@ All code targets `aie_api/aie.hpp`. Always include `aie_kernel_utils.h` for port
 #define NOCPP
 #include <cstdint>
 #include <type_traits>
-#include "aie_kernel_utils.h"        // copy from aie_kernels/aie_kernel_utils.h, or adjust path
+#include "aie_kernel_utils.h"        // copy from aie_kernels/ with its aie_arch.h, or adjust path
 #include <aie_api/aie.hpp>
 
 // Templated implementation

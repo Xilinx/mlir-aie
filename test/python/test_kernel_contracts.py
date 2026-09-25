@@ -31,6 +31,7 @@ from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import KernelContract, Param
+from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
@@ -1733,7 +1734,6 @@ def test_saturating_kernels_saturate_in_their_reference():
 _SET_ROUNDING_CALL = re.compile(r"^\s*(?!//)[^/\n]*\bset_rounding\s*\(", re.M)
 _NARROWS = re.compile(r"to_vector<|\.srs\(|srs<|to_fixed|to_float")
 _DIRECTIVE = re.compile(r"^\s*#\s*(\w+)\s*(.*?)\s*(?://.*)?$")
-_ARCH_VALUES = {"aie2": "20", "aie2p": "21"}
 
 
 def _condition(expr: str, macros: dict) -> bool:
@@ -1761,7 +1761,7 @@ def _translation_unit(ef, arch: str) -> str:
     reading the text alone would credit the in-tree build with calls it never
     compiles.
     """
-    macros = {"__AIE_ARCH__": _ARCH_VALUES[arch]}
+    macros = {"__AIE_ARCH__": str(ARCH_TRAITS[arch].aie_arch)}
     for flag in ef.compile_flags or ():
         if flag.startswith("-D"):
             name, _, value = flag[2:].partition("=")

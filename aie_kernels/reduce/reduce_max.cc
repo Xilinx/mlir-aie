@@ -26,7 +26,7 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   V after_vector;
   V running_max = tiny;
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // Walked pointer, rolled loop: see reduce_add.cc. For bfloat16, indexing
   // `in + i` gives II9 per 2 vectors.
   const T *p = in;

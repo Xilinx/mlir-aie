@@ -27,7 +27,7 @@ void cast_f32_bf16_row(const float *restrict input, bfloat16 *restrict output,
   event0();
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // AIE2 loads the f32 vector straight into the accumulator, which only the a
   // port can do, so a single chain pipelines to two cycles per 16 elements.
   // Its 5-stage schedule is only used for a loop known to run a few times.

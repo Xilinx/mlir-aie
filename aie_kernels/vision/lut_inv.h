@@ -4,6 +4,7 @@
 #ifndef X_LUT_INV
 #define X_LUT_INV
 
+#include "../aie_arch.h"
 #include "aie_bank_placement.h"
 
 // constexpr uint16 num_entries_lut_inv_16b = 256;
@@ -86,11 +87,7 @@ constexpr uint16 num_entries_lut_inv_16b = 256;
 // aie::lut<4> needs each bank-width run of entries stored twice in a row: 128
 // bits (8 entries) on AIE2, 256 bits (16) on AIE2P. Laid out for the wrong one,
 // half the lanes read the neighbouring run.
-#if __AIE_ARCH__ >= 21
-constexpr unsigned lut_inv_16b_run = 16;
-#else
-constexpr unsigned lut_inv_16b_run = 8;
-#endif
+constexpr unsigned lut_inv_16b_run = AIE_LUT_16B_RUN;
 
 // Where entry d sits in either table.
 constexpr unsigned lut_inv_16b_index(unsigned d) {

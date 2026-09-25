@@ -6,7 +6,6 @@
 """Shared helpers for the kernels submodules."""
 
 import hashlib
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
@@ -20,8 +19,6 @@ from aie.helpers.npdtypes import (
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
-
-_log = logging.getLogger(__name__)
 
 
 class Param:
@@ -324,27 +321,59 @@ class KernelContract:
                 raise ValueError(f"argument {i}: expected scalar parameter")
 
 
-def _detect_arch() -> str:
-    """Return ``'aie2p'`` or ``'aie2'`` based on the active device.
+@dataclass(frozen=True)
+class ArchTraits:
+    """What the kernel sources assume of one architecture.
 
-    Falls back to ``'aie2'`` if no device is currently set.
+    One row of ``aie_kernels/aie_arch.h``, which the C++ side reads;
+    ``test_arch_traits.py`` compiles the two against each other.
+
+    Attributes:
+        name: The architecture, as ``resolve_target_arch`` names it.
+        aie_arch: The compiler's ``__AIE_ARCH__``.
+        device: The ``from_name`` device a factory models when none is bound.
+        bf16_lanes: bf16 lanes in one vector multiply, the width the sources
+            walk a buffer at. A tile has to be whole vectors of it.
+        native_tanh: Has a tanh instruction; otherwise tanh reads a LUT.
+        native_exp2: Has an exp2 instruction; otherwise exp2 is a polynomial.
+        bfp16: Has the bfp16ebs8 block type.
+        lut_16b_run: uint16 entries per bank run in an ``aie::lut`` table.
     """
-    try:
-        from aie.utils import get_current_device
-        from aie.utils.compile.utils import resolve_target_arch
 
-        device = get_current_device(probe_runtime=False)
-        return resolve_target_arch(device)
-    except (ImportError, RuntimeError, AttributeError, ValueError):
-        # ImportError: iron not built; RuntimeError: no explicit device set;
-        # AttributeError/ValueError: unrecognised device.  Anything else (e.g.
-        # OSError from a misconfigured install) bubbles up so the user sees it.
-        _log.warning(
-            "_detect_arch: no explicit device or unrecognised device; "
-            "falling back to 'aie2'",
-            exc_info=True,
-        )
-        return "aie2"
+    name: str
+    aie_arch: int
+    device: str
+    bf16_lanes: int
+    native_tanh: bool
+    native_exp2: bool
+    bfp16: bool
+    lut_16b_run: int
+
+
+ARCH_TRAITS = {
+    t.name: t
+    for t in (
+        ArchTraits("aie2", 20, "npu1", 16, False, False, False, 8),
+        ArchTraits("aie2p", 21, "npu2", 32, True, True, True, 16),
+    )
+}
+
+
+def _detect_arch() -> str:
+    """Return the bound device's architecture, or ``'aie2'`` when none is bound.
+
+    Raises:
+        RuntimeError: When the bound device's architecture has no kernels.
+    """
+    from aie.utils import get_current_device
+    from aie.utils.compile.utils import resolve_target_arch
+
+    return resolve_target_arch(get_current_device(probe_runtime=False))
+
+
+def _arch_traits() -> ArchTraits:
+    """Return the traits of the architecture ``_detect_arch`` names."""
+    return ARCH_TRAITS[_detect_arch()]
 
 
 def _kernel_source(relpath: str) -> Path:
@@ -482,19 +511,8 @@ def _device():
 
     device = get_current_device(probe_runtime=False)
     if device is None:
-        device = from_name("npu2" if _detect_arch() == "aie2p" else "npu1")
+        device = from_name(_arch_traits().device)
     return device
-
-
-def _bf16_lanes() -> int:
-    """Elements per bf16 vector in this architecture's kernel sources.
-
-    ``aie::vector<bfloat16, 16>`` on aie2, ``<bfloat16, 32>`` on aie2p
-    (``silu.cc``, ``layer_norm.cc``, ...). A tile has to be whole vectors of
-    it. This is what the sources chose, not a target-model query: the
-    register is wider than the bf16 datapath on aie2.
-    """
-    return 32 if _detect_arch() == "aie2p" else 16
 
 
 def _min_dma_aligned_elems(dtype) -> int:

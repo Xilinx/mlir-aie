@@ -158,7 +158,7 @@ fold_rows(Load at, Fold fold) {
   return o;
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // 2^-y for y = m - a * s, 16 lanes, from x = [a | m] and neg_scale = [-s | 1]:
 // AIE2's bf16 product sums a lane of each half.  exp2_bf16.h's method
 // otherwise, with the same cubic in the upper halves, but k = round(y) is not
@@ -271,7 +271,7 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
   // Each row's exponentials go to P.  A discarded lane's is +0.
   bfloat16 *__restrict p = P;
   const bfloat16 *__restrict m = m_new;
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   // Half a row per pass keeps the loop within the registers; a whole row
   // spills.
   const auto neg_scale = aie::concat(aie::broadcast<bfloat16, SM_LANES>(-scale),

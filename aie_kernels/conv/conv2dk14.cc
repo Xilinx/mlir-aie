@@ -136,7 +136,7 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 // Output - ch/8 t/8 t8 c8 --> 2 2 8 8
 //
 //*****************************************************************************
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
                          const int32_t runtime_input_width,
                          const int32_t runtime_input_channels,

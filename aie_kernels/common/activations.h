@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef __ACTIVATIONS_H__
 #define __ACTIVATIONS_H__
+#include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
 // Branch-free vector-width activations over aie::vector<float, N> for
@@ -28,7 +29,7 @@
 #define ACTIVATIONS_TANH_LUT 0
 #endif
 
-#if __AIE_ARCH__ >= 21 && !ACTIVATIONS_TANH_LUT
+#if AIE_HAS_NATIVE_TANH && !ACTIVATIONS_TANH_LUT
 #define ACTIVATIONS_NATIVE_TANH 1
 #else
 #define ACTIVATIONS_NATIVE_TANH 0

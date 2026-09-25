@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // AIE2 has no 32-lane bf16 multiply: a bf16 vmac.f sums, per lane i of 16,
 // a[i] * b[i] and a[16 + i] * b[16 + i], and aie_api pads each operand's
 // upper half with zeros, a move per operand. Here a block's 32 biased values

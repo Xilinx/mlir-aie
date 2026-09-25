@@ -117,7 +117,7 @@ static void conv2dk1_skip_init_scalar(
 // conv2d 1x1 skip init - vector
 // act: uint8, wts: int8, skip: SkipT (int8 or uint8), out: uint8
 //*****************************************************************************
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // The ic loops are promised MinTrips trips. Two is what lets them run as
 // pipelined hardware loops.
 template <typename SkipT, int MinTrips>

@@ -121,7 +121,7 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
   event1();
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // With aie_api's f32 multiply the loops above run at II 77 to 143 per 16
 // lanes on AIE2. Here an f32 is split into bf16 limbs, two holding its top 16
 // bits and three all of it; see ../norm/layer_norm_aie2.h for the mac.
@@ -429,7 +429,7 @@ static void layer_norm_f32_aie2(const float *restrict input,
 
 extern "C" {
 void layer_norm_f32(float *input, float *output, int32_t cols) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   layer_norm_f32_aie2<float, false>(input, output, nullptr, nullptr, cols);
@@ -446,7 +446,7 @@ void layer_norm_f32(float *input, float *output, int32_t cols) {
 // programming_examples/ml/norm/norm.py for the matching packing.
 void layer_norm_affine_cast(float *input, float *gb, bfloat16 *output,
                             int32_t cols) {
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   layer_norm_f32_aie2<bfloat16, true>(input, output, gb, gb + cols, cols);

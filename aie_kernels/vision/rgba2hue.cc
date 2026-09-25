@@ -65,7 +65,7 @@ comp_divisor_16b(::aie::vector<uint8_t, 32> divisor,
   divisor_select = aie::concat(res1, res2);
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 // As in rgba2gray.cc (see there), the loop pipelines only when known to run
 // at least four times, and here also only as the one copy of the body in its
 // function; a shorter row takes the plain loop in its own function.
@@ -135,7 +135,7 @@ rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
     rgba_in += 128;
     hue_out += 32;
   };
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
   if constexpr (MinFour) {
     AIE_LOOP_NO_UNROLL
     AIE_LOOP_MIN_ITERATION_COUNT(4)
@@ -157,7 +157,7 @@ rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
   event1();
 }
 
-#if __AIE_ARCH__ == 20
+#if AIE_TUNED_AIE2
 void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out, const int32_t height,
                   const int32_t width) {
   if ((width * height) / 32 >= 4)
