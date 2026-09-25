@@ -80,6 +80,7 @@ dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024
 dwconv1d_channels_first/1024x16/bfloat16/kernel_size=9/seq_len=1008/odd-block-count
 dwconv1d_channels_first/1040x16/bfloat16/kernel_size=1/seq_len=1024
 dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024
+dwconv1d_channels_first/64x16/bfloat16/kernel_size=17/seq_len=48/short-row
 dwconv1d_channels_last/256x16/bfloat16/channels=256
 dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped
 exp2f_vec/1024x16/float32

@@ -25,6 +25,113 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
+#if __AIE_ARCH__ == 20
+// AIE2 has no bf16 sliding multiply: a bf16 vmac.f sums, per lane i of 16,
+// a[i] * b[i] and a[16 + i] * b[16 + i]. aie_api's sliding_mul spends one per
+// tap with the upper halves zeroed, two shuffle-slot ops per tap and block.
+// Here one shift of a 48-sample window serves a tap for two blocks: its low
+// half is the first block's data, its high half the second's. Pairing the low
+// (or high) halves of two taps' shifts fills both halves of a vmac.f, so two
+// blocks cost K - 1 shifts, K + 1 half merges and K + 1 vmac.f.
+//
+// COUNTED marks the pair loop as running at least twice, which lets it
+// pipeline and drops its zero-trip guard; a short row takes the other
+// instance. With both loops in one function the pipelined one loses 3 cycles.
+template <int K, bool BIAS, bool COUNTED>
+__attribute__((noinline)) static void
+dwconv1d_cf_blocks(const bfloat16 *restrict in_pad, const bfloat16 *restrict w,
+                   bfloat16 *restrict out, int32_t nb) {
+  const float bias = BIAS ? static_cast<float>(w[K]) : 0.0f;
+  ::aie::accum<accfloat, 16> bias_acc;
+  bias_acc.from_vector(::aie::broadcast<float, 16>(bias));
+  const v16accfloat acc0 = bias_acc;
+
+  // Tap pair j: w[2j] across the low 16 lanes, w[2j + 1] (0 past K) the high.
+  constexpr int NP = (K + 1) / 2;
+  const ::aie::vector<bfloat16, 16> zero16 = ::aie::zeros<bfloat16, 16>();
+  v32bfloat16 coeff[NP];
+  AIE_LOOP_UNROLL_FULL
+  for (int j = 0; j < NP; j++)
+    coeff[j] = ::aie::concat(
+        ::aie::broadcast<bfloat16, 16>(w[2 * j]),
+        2 * j + 1 < K ? ::aie::broadcast<bfloat16, 16>(w[2 * j + 1]) : zero16);
+
+  const ::aie::vector<bfloat16, 32> zero32 = ::aie::zeros<bfloat16, 32>();
+  auto shifted = [&](const ::aie::vector<bfloat16, 32> &w0,
+                     const ::aie::vector<bfloat16, 32> &w1, int p)
+      __attribute__((always_inline)) {
+    if (p >= K)
+      return zero32;
+    if (p == 0)
+      return w0;
+    return ::aie::shuffle_down_fill(w0, w1, p);
+  };
+
+  auto two_blocks = [&]() __attribute__((always_inline)) {
+    // Samples t .. t + 47; the lanes past t + 47 are never read.
+    const ::aie::vector<bfloat16, 32> w0 = ::aie::concat(
+        ::aie::load_v<16>(in_pad), ::aie::load_v<16>(in_pad + 16));
+    const ::aie::vector<bfloat16, 32> w1 =
+        ::aie::load_v<16>(in_pad + 32).template grow<32>();
+    in_pad += 32;
+    v16accfloat a = acc0, b = acc0;
+    AIE_LOOP_UNROLL_FULL
+    for (int j = 0; j < NP; j++) {
+      const v32bfloat16 sp = shifted(w0, w1, 2 * j);
+      const v32bfloat16 sq = shifted(w0, w1, 2 * j + 1);
+      a = mac_elem_16_2(coeff[j], shuffle(sp, sq, INTLV_lo_256o512), a);
+      b = mac_elem_16_2(coeff[j], shuffle(sp, sq, INTLV_hi_256o512), b);
+    }
+    ::aie::store_v(out, ::aie::accum<accfloat, 16>(a).to_vector<bfloat16>());
+    ::aie::store_v(out + 16,
+                   ::aie::accum<accfloat, 16>(b).to_vector<bfloat16>());
+    out += 32;
+  };
+
+  const int32_t np = nb / 2;
+  if constexpr (COUNTED) {
+    AIE_LOOP_NO_UNROLL
+    AIE_LOOP_MIN_ITERATION_COUNT(2)
+    for (int32_t n = 0; n < np; n++)
+      two_blocks();
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int32_t n = 0; n < np; n++)
+      two_blocks();
+  }
+  if (nb & 1) {
+    const ::aie::vector<bfloat16, 32> w0 = ::aie::concat(
+        ::aie::load_v<16>(in_pad), ::aie::load_v<16>(in_pad + 16));
+    v16accfloat a = acc0;
+    AIE_LOOP_UNROLL_FULL
+    for (int j = 0; j < NP; j++) {
+      const v32bfloat16 sp = shifted(w0, w0, 2 * j);
+      const v32bfloat16 sq = shifted(w0, w0, 2 * j + 1);
+      a = mac_elem_16_2(coeff[j], shuffle(sp, sq, INTLV_lo_256o512), a);
+    }
+    ::aie::store_v(out, ::aie::accum<accfloat, 16>(a).to_vector<bfloat16>());
+  }
+}
+
+template <int K, bool BIAS>
+static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,
+                                                const bfloat16 *restrict w,
+                                                bfloat16 *restrict out,
+                                                int32_t T) {
+  static_assert(K >= 1 && K <= 17,
+                "K taps must fit one 32-lane window (16 + K - 1 <= 32)");
+  event0();
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+  const int32_t nb = (uint32_t)(T + 15) / 16;
+  if (nb >= 4)
+    dwconv1d_cf_blocks<K, BIAS, true>(in_pad, w, out, nb);
+  else
+    dwconv1d_cf_blocks<K, BIAS, false>(in_pad, w, out, nb);
+  ::aie::set_rounding(saved_rounding);
+  event1();
+}
+#else
 template <int K, bool BIAS>
 static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,
                                                 const bfloat16 *restrict w,
@@ -85,6 +192,7 @@ static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,
   ::aie::set_rounding(saved_rounding);
   event1();
 }
+#endif
 
 #ifndef DWCONV1D_CF_K
 #define DWCONV1D_CF_K 9

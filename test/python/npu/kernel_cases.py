@@ -1092,6 +1092,16 @@ CASES: list[Case] = [
         tag="odd-block-count",
         perf=False,
     ),
+    # three blocks are under the four AIE2's pipelined loop requires; 17 taps
+    # is the widest window.
+    Case(
+        "dwconv1d_channels_first",
+        dict(seq_len=48, kernel_size=17),
+        calls=16,
+        scalars=(48,),
+        tag="short-row",
+        perf=False,
+    ),
     # the transposed layout: one timestep across 256 channels, 5 per-channel taps
     Case(
         "dwconv1d_channels_last",
