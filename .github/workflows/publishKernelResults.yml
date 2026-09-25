@@ -171,9 +171,8 @@ jobs:
           # A series only exists once a run has published it, and
           # `kernel-checks/` is created by the first one. Until then `git show`
           # has nothing to read, and under `-o pipefail` that would fail the
-          # publish that is busy creating it. Skip instead: the comparison
-          # steps are guarded on the baseline file existing, so they sit out
-          # the same run.
+          # publish that is busy creating it. Skip instead: the report reads
+          # a missing series as no baseline.
           save_series() {
             if git cat-file -e "gh-pages:$1" 2>/dev/null; then
               git show "gh-pages:$1" \
@@ -198,7 +197,7 @@ jobs:
                 "baselines/$npu/baseline/series-pm.json"
             fi
           done
-      # Cache paths must match the compute jobs' restore path ("baseline").
+      # Cache paths must match the report job's restore path ("baseline").
       - name: Select npu1 baseline
         run: cp -r baselines/npu1/baseline baseline
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0

@@ -305,17 +305,7 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     run = next(step["run"] for step in steps if step.get("id") == "perf")
     assert "--pmode any" in run
     assert '--pmode "$PERF_PMODE"' not in run
-    read = next(step for step in steps if step.get("id") == "pmode")
-    assert read["if"] == "${{ !cancelled() && hashFiles('perf.json') != '' }}"
-    write_meta(tmp_path / "meta.json", "performance")
-    assert run_step(read["run"], tmp_path) == {"pmode": "performance"}
-    write_meta(tmp_path / "meta.json", None)
-    with pytest.raises(subprocess.CalledProcessError):
-        run_step(read["run"], tmp_path)
-    (compare,) = record_steps(checks)
-    assert compare["with"]["name"] == (
-        "aie_kernels (${{ matrix.expected_npu }}, ${{ steps.pmode.outputs.pmode }})"
-    )
+    assert not record_steps(checks)
 
     publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
     read = next(step for step in publisher["steps"] if step.get("id") == "pmode")
@@ -337,6 +327,85 @@ def test_each_power_mode_is_its_own_series(tmp_path):
         assert (
             f"format('aie_kernels ({npu}, {{0}})', steps.pmode.outputs.{npu})" in name
         )
+
+
+def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
+    config = workflow("nightlyKernelChecks.yml")
+    assert "pull-requests" not in config["permissions"]
+    report = config["jobs"]["report"]
+    assert report["needs"] == "checks"
+    assert "github.event_name != 'schedule'" in report["if"]
+    assert "needs.checks.result != 'skipped'" in report["if"]
+    assert report["permissions"] == {"contents": "read", "pull-requests": "write"}
+    steps = report["steps"]
+    downloads = [
+        step["with"]
+        for step in steps
+        if step.get("uses", "").startswith("actions/download-artifact@")
+    ]
+    assert downloads == [
+        {
+            "pattern": f"kernel-checks-{npu}-${{{{ github.run_id }}}}",
+            "path": f"results/{npu}",
+        }
+        for npu in ("npu1", "npu2")
+    ]
+    # Each restore reads what the publisher saved, under the path it saved.
+    publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
+    saved = [
+        step["with"]
+        for step in publisher["steps"]
+        if step.get("uses", "").startswith("actions/cache/save@")
+    ]
+    restored = [
+        step["with"]
+        for step in steps
+        if step.get("uses", "").startswith("actions/cache/restore@")
+    ]
+    for npu, save, restore in zip(("npu1", "npu2"), saved, restored):
+        assert save["path"] == restore["path"] == "baseline"
+        assert f"'kernel-checks-baseline-{npu}' }}}}-" in save["key"]
+        assert restore["key"] == restore["restore-keys"]
+        assert restore["key"] == f"kernel-checks-baseline-{npu}-"
+
+    # Run the steps between the downloads and the comment, in order, on the
+    # artifacts an npu2-only run leaves.
+    (tmp_path / "results/npu2").mkdir(parents=True)
+    (tmp_path / "results/npu2/perf.json").write_text(
+        json.dumps([{"name": "relu/1024/bf16/cycles", "unit": "cycles", "value": 9}])
+    )
+    (tmp_path / "utils").symlink_to(WORKFLOWS.parents[1] / "utils")
+    summary = tmp_path / "summary.md"
+    env = {
+        **os.environ,
+        "GITHUB_STEP_SUMMARY": str(summary),
+        "GITHUB_SERVER_URL": "https://github.com",
+        "GITHUB_REPOSITORY": "Xilinx/mlir-aie",
+        "GITHUB_RUN_ID": "7",
+    }
+    for step in steps:
+        if step.get("uses", "").startswith("actions/cache/restore@"):
+            if step["with"]["key"].endswith("npu2-"):
+                (tmp_path / "baseline").mkdir()
+                (tmp_path / "baseline/series.json").write_text('{"entries": {}}')
+        elif "run" in step and "gh api" not in step["run"]:
+            subprocess.run(
+                ["bash", "-eo", "pipefail", "-c", step["run"]],
+                cwd=tmp_path,
+                env=env,
+                check=True,
+            )
+    assert (tmp_path / "baselines/npu2/series.json").is_file()
+    assert not (tmp_path / "baselines/npu1").exists()
+    text = summary.read_text()
+    assert text == (tmp_path / "report.md").read_text()
+    assert "(https://github.com/Xilinx/mlir-aie/actions/runs/7)" in text
+    assert "| npu2 | ? | none cached | 1 | 0 |" in text
+    comment = next(step for step in steps if "gh api" in step.get("run", ""))
+    assert comment["if"] == "github.event_name == 'pull_request'"
+    marker = (WORKFLOWS.parents[1] / "utils/kernel_checks/pr_report.py").read_text()
+    assert 'MARKER = "<!-- kernel-checks-report -->"' in marker
+    assert 'startswith("<!-- kernel-checks-report -->")' in comment["run"]
 
 
 def test_results_page_is_committed_to_the_publication_branch(tmp_path):

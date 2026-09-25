@@ -5,14 +5,13 @@ name: Nightly Kernel Checks on Ryzen AI
 
 # Check aie_kernels on the NPU, record cycles / wall time / compile size via
 # the IRON JIT path, and publish graphs and a catalogue to the site. Never
-# gates PRs. On Peano/LLVM-bump PRs: compare against the recorded baseline;
-# the action comments only if a hard-threshold series regressed. Everything
-# else: no comments, no data, just a red run and an artifact.
+# gates PRs. Every run that does not publish gets a report of its failures
+# and of its changes against the last nightly (utils/kernel_checks/pr_report.py)
+# in the job summary; on a Peano PR, the same report is kept as one comment.
 #
 # Runs nightly from main, which publishes and records the baseline, on pull
 # requests that bump the Peano pin, and on demand. Only the nightly and an
-# unfiltered, pinned dispatch on main publish; every other run compares
-# against the baseline and uploads its records.
+# unfiltered, pinned dispatch on main publish.
 #
 # A kernel that fails its checks costs only its own series a point: the
 # rest of the run still publishes, as long as the NPU checks (preflight and
@@ -20,7 +19,6 @@ name: Nightly Kernel Checks on Ryzen AI
 
 permissions:
   contents: read
-  pull-requests: write   # sticky comment (peano PRs only)
 
 on:
   workflow_dispatch:
@@ -203,13 +201,6 @@ jobs:
           python utils/kernel_checks/catalogue.py --npu "$AIE_EXPECTED_NPU" \
             "${args[@]}" --out catalogue.json
 
-      - name: Read power mode
-        id: pmode
-        if: ${{ !cancelled() && hashFiles('perf.json') != '' }}
-        run: |
-          python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or sys.exit("power mode is unreadable")))' \
-            pmode meta.json >> "$GITHUB_OUTPUT"
-
       - name: Upload raw results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -224,37 +215,75 @@ jobs:
             correctness.xml
           if-no-files-found: ignore
 
-      # ------- PR or dispatch: compare; a PR gets one sticky comment -------
-      - name: Restore baseline
-        if: ${{ !cancelled() && github.event_name != 'schedule' && hashFiles('perf.json') != '' }}
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: baseline
-          key: kernel-checks-baseline-${{ matrix.expected_npu }}-
-          restore-keys: kernel-checks-baseline-${{ matrix.expected_npu }}-
-
-      - name: Compare against baseline
-        # Needs a nightly baseline in the cache; the first runs have none.
-        if: ${{ !cancelled() && github.event_name != 'schedule' && hashFiles('perf.json') != '' && hashFiles('baseline/series.json') != '' }}
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
-        with:
-          name: aie_kernels (${{ matrix.expected_npu }}, ${{ steps.pmode.outputs.pmode }})
-          tool: customSmallerIsBetter
-          output-file-path: perf.json
-          external-data-json-path: baseline/series.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          alert-threshold: '103%'
-          # One PR comment, only if something regressed; a dispatch gets the
-          # job summary alone.
-          comment-on-alert: ${{ github.event_name == 'pull_request' }}
-          summary-always: true
-          fail-on-alert: false
-          save-data-file: false
-
       - name: Cleanup
         if: always()
         run: |
           rm -rf "$NPU_CACHE_HOME" "$PIP_CACHE_DIR"
+
+  report:
+    needs: checks
+    # The nightly publishes instead; the page is its report.
+    if: ${{ !cancelled() && needs.checks.result != 'skipped' && github.event_name != 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # the one report comment on a Peano PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # `pattern`, not `name`: an NPU whose leg produced nothing is reported
+      # as such rather than failing the report.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: kernel-checks-npu1-${{ github.run_id }}
+          path: results/npu1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: kernel-checks-npu2-${{ github.run_id }}
+          path: results/npu2
+      # publishKernelResults.yml saves each NPU's series under this path.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: baseline
+          key: kernel-checks-baseline-npu1-
+          restore-keys: kernel-checks-baseline-npu1-
+      - name: Keep npu1 baseline
+        run: |
+          mkdir -p baselines
+          if [[ -d baseline ]]; then mv baseline baselines/npu1; fi
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: baseline
+          key: kernel-checks-baseline-npu2-
+          restore-keys: kernel-checks-baseline-npu2-
+      - name: Keep npu2 baseline
+        run: |
+          if [[ -d baseline ]]; then mv baseline baselines/npu2; fi
+
+      - name: Write report
+        run: |
+          python3 utils/kernel_checks/pr_report.py --results results \
+            --baselines baselines --out report.md \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Edit the report comment in place, so a PR carries one, current report.
+      - name: Comment on the PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Paginated, --jq runs per page; keep the first match.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- kernel-checks-report -->")) | .id')
+          id=${id%%$'\n'*}
+          if [[ -n "$id" ]]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" \
+              -F body=@report.md > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+              -F body=@report.md > /dev/null
+          fi
 
   publish:
     needs: checks
