@@ -63,25 +63,22 @@ void copy(T *__restrict in_ptr, T *__restrict out_ptr) {
 // vector holds fewer than S rows (32-bit 8x8 blocks), an output row is
 // assembled from the S / R strips that cover the block.
 template <unsigned S>
-static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
-  constexpr unsigned W =
+struct Strips {
+  static constexpr unsigned W =
       std::max<unsigned>(S, std::min<unsigned>(DIM_m, VEC / S));
-  constexpr unsigned R = std::min<unsigned>(S, VEC / W);
-  constexpr unsigned C = W / S;
-  constexpr unsigned H = S / R; // strips per block row
+  static constexpr unsigned R = std::min<unsigned>(S, VEC / W);
+  static constexpr unsigned C = W / S;
+  static constexpr unsigned H = S / R; // strips per block row
   static_assert(DIM_m % W == 0 && DIM_n % S == 0 && S % R == 0);
   static_assert(W * BIT_WIDTH >= 128, "a strip row must fill a 128-bit load");
   static_assert(H == 1 || R * BIT_WIDTH >= 128,
                 "chunks must fill a 128-bit vector");
 
-  // The row and column walks are fused into one counter so that the strip
-  // body is the innermost loop: as a nest the pipeliner declines the outer
-  // loops and schedules nothing, whereas the fused loop is a single body it
-  // pipelines. The strip's own loops all have compile-time trip counts of at
-  // most S and index the vectors with the counter, so unrolling them keeps
-  // `strips` in registers instead of on the stack.
-  unsigned row = 0, col = 0;
-  for (unsigned blk = 0; blk < (DIM_n / S) * (DIM_m / W); ++blk) {
+  // The strip's own loops all have compile-time trip counts of at most S and
+  // index the vectors with the counter, so unrolling them keeps `strips` in
+  // registers instead of on the stack.
+  static inline void transpose(const T *__restrict in, T *__restrict out,
+                               unsigned row, unsigned col) {
     aie::vector<T, R * W> strips[H];
     AIE_LOOP_UNROLL_FULL
     for (unsigned h = 0; h < H; ++h) {
@@ -109,10 +106,33 @@ static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
         aie::store_v(dst, o);
       }
     }
-    col += W;
-    if (col == DIM_m) {
-      col = 0;
-      row += S;
+  }
+};
+
+// The row and column walks are fused into one counter so that the strip body
+// is the innermost loop: as a nest the pipeliner declines the outer loops and
+// schedules nothing, whereas the fused loop is a single body it pipelines. On
+// AIE2 a row of at most two strips unrolls instead, and the row loop then
+// pipelines at 25 cycles a row where the fused loop takes 30 a strip.
+template <unsigned S>
+static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
+  using St = Strips<S>;
+  constexpr unsigned cols = DIM_m / St::W;
+  if constexpr (__AIE_ARCH__ == 20 && cols <= 2) {
+    for (unsigned row = 0; row < DIM_n; row += S) {
+      AIE_LOOP_UNROLL_FULL
+      for (unsigned col = 0; col < DIM_m; col += St::W)
+        St::transpose(in, out, row, col);
+    }
+  } else {
+    unsigned row = 0, col = 0;
+    for (unsigned blk = 0; blk < (DIM_n / S) * cols; ++blk) {
+      St::transpose(in, out, row, col);
+      col += St::W;
+      if (col == DIM_m) {
+        col = 0;
+        row += S;
+      }
     }
   }
 }
