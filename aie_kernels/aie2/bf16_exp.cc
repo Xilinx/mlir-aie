@@ -4,19 +4,21 @@
 #include "../aie_kernel_utils.h"
 #include <lut_based_ops.h>
 
+// Rotated by one: the pipeliner cannot tell the output store from the table
+// reads, so each iteration's reads waited for the previous iteration's store.
 template <const int N>
 void exp_bf16_func(bfloat16 *restrict in, bfloat16 *restrict out) {
-
-  int vec_size = 16;
+  auto it_in = aie::cbegin_restrict_vector<16>(in);
+  auto it_out = aie::begin_restrict_vector<16>(out);
+  aie::vector<bfloat16, 16> prev = to_v16bfloat16(getExpBf16(*it_in++));
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_RANGE(64, 64)
-  for (int i = 0; i < N; i += vec_size) {
-    v16bfloat16 vec_in = *(v16bfloat16 *)(in + i);
-    v16accfloat acc_exp = getExpBf16(vec_in);
-    v16bfloat16 bf16_exp = to_v16bfloat16(acc_exp);
-    *(v16bfloat16 *)(out + i) = bf16_exp;
+  AIE_LOOP_RANGE(N / 16 - 1, N / 16 - 1)
+  for (int i = 1; i < N / 16; i++) {
+    aie::vector<bfloat16, 16> cur = to_v16bfloat16(getExpBf16(*it_in++));
+    *it_out++ = prev;
+    prev = cur;
   }
-  return;
+  *it_out = prev;
 }
 
 extern "C" {
