@@ -126,7 +126,7 @@ class KernelContract:
             output for all calls, a tuple for several outputs. ``None``
             builds the kernel but does not judge it.
         tolerance: How close the device must come; ``None`` is
-            :meth:`Tolerance.default_for` the output dtype.
+            ``Tolerance.default_for`` the output dtype.
         ops_per_call: Arithmetic operations per call; ``None`` means one
             per output element.
         out_valid: Meaningful leading elements of a DMA-padded output tile;
@@ -145,7 +145,7 @@ class KernelContract:
             more than the target's default. Say where the number came from.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
-        layouts: A :class:`TensorLayout` per argument; ``None`` is identity.
+        layouts: A ``TensorLayout`` per argument; ``None`` is identity.
         parameter_bindings: ``(index, value)`` pairs fixing ``Param``
             operands, counts included; the rest come from the caller.
         initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
@@ -240,7 +240,7 @@ class KernelContract:
         """Position of the one output, written (``Out``) or accumulated into (``InOut``).
 
         Raises for a kernel with several outputs: code that must handle any
-        kernel reads :attr:`out_indices`.
+        kernel reads ``out_indices``.
         """
         if len(self.out_indices) > 1:
             raise ValueError("multiple outputs: use out_indices")
@@ -618,7 +618,7 @@ def _make_extern(
 ) -> ExternalFunction:
     """Construct (or reuse) an ExternalFunction with the standard include_dirs.
 
-    ``contract`` (a :class:`KernelContract`) is what harnesses and tests read
+    ``contract`` (a ``KernelContract``) is what harnesses and tests read
     to build, run and judge the kernel generically; every factory passes
     one. ``cls`` is the class to construct, for factories whose kernels have
     more to say than a plain ``ExternalFunction`` (``linalg.MatrixKernel``).

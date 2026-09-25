@@ -21,9 +21,9 @@ below supplies that conversion, not a replacement scalar dtype.
 
 The block-floating-point matmul kernels (``aie.iron.kernels.mm_bfp``) load
 8x8 sub-tiles as one 72-byte block vector, which a DMA cannot gather at
-9-byte granularity, so tiles are :func:`shuffle` d on the host: within each
+9-byte granularity, so tiles are rearranged by ``shuffle`` on the host: within each
 ``(tile_height, tile_width)`` tile the 8-row by 8-block sub-tiles are made
-contiguous in raster order. :func:`quantize` is what a kernel sees of a
+contiguous in raster order. ``quantize`` is what a kernel sees of a
 float input, and what a reference should multiply.
 """
 
@@ -81,7 +81,7 @@ def encode(x, *, rounding: str = "floor") -> np.ndarray:
     to nearest, ties to even, as amd/IRON's ``f32_to_bfp16ebs8`` packs
     weights, byte for byte. A mantissa that rounds to +128 saturates to 127
     there, so ``decode(encode(x, rounding="conv_even"))`` differs from
-    :func:`quantize`, which models the core raising the exponent instead.
+    ``quantize``, which models the core raising the exponent instead.
     """
     if rounding not in ("floor", "conv_even"):
         raise ValueError(
