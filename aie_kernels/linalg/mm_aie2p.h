@@ -47,6 +47,22 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
   event1();
 }
 
+// aie::transpose of a rows x cols tile. aie::transpose has no 64-lane 32-bit
+// form, so that tile (the i8_i32 8x8 C) transposes its top and bottom halves
+// and zips each output row back together from one half-row of each.
+template <unsigned rows, unsigned cols, typename T, unsigned Elems>
+static inline aie::vector<T, Elems>
+transpose_tile(const aie::vector<T, Elems> &v) {
+  if constexpr (sizeof(T) == 4 && Elems == 64) {
+    auto top = aie::transpose(v.template extract<Elems / 2>(0), rows / 2, cols);
+    auto bottom =
+        aie::transpose(v.template extract<Elems / 2>(1), rows / 2, cols);
+    return aie::concat(aie::interleave_zip(top, bottom, rows / 2));
+  } else {
+    return aie::transpose(v, rows, cols);
+  }
+}
+
 /* Blocked MatMul kernel (vectorized) utilizing the aie::mmul class.
  * The matrices are assumed to be pre-tiled with the following shapes
  * for the aie:mmul class: A => rxs, B => sxt, C => rxt.
@@ -157,12 +173,12 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
             acc_C10 = aie::load_v<MMUL::size_C>(pC2);
             acc_C11 = aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
           } else {
-            acc_C00 = aie::transpose(aie::load_v<MMUL::size_C>(pC1), t, r);
-            acc_C01 = aie::transpose(aie::load_v<MMUL::size_C>(pC2), t, r);
-            acc_C10 = aie::transpose(
-                aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C), t, r);
-            acc_C11 = aie::transpose(
-                aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C), t, r);
+            acc_C00 = transpose_tile<t, r>(aie::load_v<MMUL::size_C>(pC1));
+            acc_C01 = transpose_tile<t, r>(aie::load_v<MMUL::size_C>(pC2));
+            acc_C10 = transpose_tile<t, r>(
+                aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C));
+            acc_C11 = transpose_tile<t, r>(
+                aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C));
           }
 
           MMUL C00(acc_C00);
@@ -228,16 +244,16 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
             pC2 += MMUL::size_C;
           } else {
             aie::store_v(pC1,
-                         aie::transpose(C00.template to_vector<T_out>(), r, t));
+                         transpose_tile<r, t>(C00.template to_vector<T_out>()));
             pC1 += MMUL::size_C;
             aie::store_v(pC2,
-                         aie::transpose(C01.template to_vector<T_out>(), r, t));
+                         transpose_tile<r, t>(C01.template to_vector<T_out>()));
             pC2 += MMUL::size_C;
             aie::store_v(pC1,
-                         aie::transpose(C10.template to_vector<T_out>(), r, t));
+                         transpose_tile<r, t>(C10.template to_vector<T_out>()));
             pC1 += MMUL::size_C;
             aie::store_v(pC2,
-                         aie::transpose(C11.template to_vector<T_out>(), r, t));
+                         transpose_tile<r, t>(C11.template to_vector<T_out>()));
             pC2 += MMUL::size_C;
           }
         }
