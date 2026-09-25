@@ -269,7 +269,7 @@ def mm_activation_epilogue_lut_ref(x, mode):
     ([`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref]). SiLU splits
     ``x`` into bf16 ``hi`` and ``lo`` terms and multiplies each by the bf16
     sigmoid ``(bf16(t + 1)) / 2``, where ``t`` is the table's tanh of
-    ``x / 2`` narrowed to bf16. The device's f32 ``x - hi`` first rounds
+    ``hi / 2`` narrowed to bf16. The device's f32 ``x - hi`` first rounds
     ``x`` (half to even) onto ``hi``'s f32 grid, which moves ``lo`` where
     ``hi`` rounded up across a power of two. GELU runs in bf16: ``x``,
     ``x * x`` and the inner polynomial are each rounded before the next step,
@@ -287,7 +287,7 @@ def mm_activation_epilogue_lut_ref(x, mode):
             grid = np.spacing(np.abs(hi)).astype(np.float64)
             x_on_grid = (np.round(x32 / grid) * grid).astype(np.float32)
             lo = _bf16(np.where(np.isfinite(grid), x_on_grid, x32) - hi)
-            t = tanh_lut_ref(_bf16(hi * np.float32(0.5) + lo * np.float32(0.5)))
+            t = tanh_lut_ref(hi * np.float32(0.5))
             sig = _bf16(_bf16(t + np.float32(1.0)) * np.float32(0.5))
             out = hi * sig + lo * sig
         else:

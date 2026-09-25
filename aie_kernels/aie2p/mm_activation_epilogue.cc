@@ -128,7 +128,7 @@ static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
 // the next vector's table reads. A loop that loads, computes and stores one
 // vector per iteration does not pipeline, even with an II hint. Storing each
 // result one iteration late puts the next vector's table reads ahead of the
-// store, and with the hint that loop pipelines (SiLU at II 39, GELU at 46);
+// store, and with the hint that loop pipelines (SiLU at II 36, GELU at 46);
 // without the hint the pipeliner still gives up on it.
 template <typename F>
 static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
@@ -160,14 +160,15 @@ static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
   event1();
 }
 
-// SiLU as in mm_silu_hiprec_row.
+// SiLU as in mm_silu_hiprec_row, except that tanh reads hi/2, which is exact
+// in bf16, instead of rounding hi/2 + lo/2 again. The two differ only where
+// that rounding ties, and dropping it shortens the chain.
 static inline aie::vector<float, 16> mm_silu_lut(aie::vector<float, 16> x) {
   const aie::vector<bfloat16, 16> half = aie::broadcast<bfloat16, 16>(0.5f);
   aie::accum<accfloat, 16> half_acc;
   half_acc.from_vector(half);
   bf16_split xs = split_f32(x);
-  aie::vector<bfloat16, 16> t =
-      tanh_bf16_v16(aie::mac(aie::mul(xs.hi, half), xs.lo, half));
+  aie::vector<bfloat16, 16> t = tanh_bf16_v16(aie::mul(xs.hi, half));
   // bf16(0.5 + 0.5*t) is bf16(t + 1) * 0.5.
   aie::vector<bfloat16, 16> sig =
       aie::mac(half_acc, t, half).to_vector<bfloat16>();
