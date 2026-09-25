@@ -132,6 +132,12 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
                                     float *__restrict pC) {
   using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
   static_assert(r * s == MMUL::size_A);
+#if __AIE_ARCH__ == 20
+  // A pipelined loop of two or four trips is almost all prologue and epilogue.
+  // Unrolling i and j instead leaves one straight block per z pair, in which
+  // the next block's C loads overlap this one's macs.
+  constexpr bool unroll_ij = colA <= 4 && colB <= 4;
+#endif
   // Rolled, the z loop does not pipeline and each trip pays the j loop's
   // entry and exit; two trips per body let those overlap.
   AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
@@ -147,6 +153,9 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
     aie::vector<bfloat16, MMUL::size_B> B1;
 
     AIE_LOOP_MAX_ITERATION_COUNT(colB / 2)
+#if __AIE_ARCH__ == 20
+    AIE_LOOP_UNROLL(unroll_ij ? colB / 2 : 1)
+#endif
     for (unsigned j = 0; j < colB; j += 2) {
       const bfloat16 *__restrict pA1 = pA_cur;
       const bfloat16 *__restrict pA2 = pA_cur + colA * MMUL::size_A;
@@ -160,6 +169,9 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
 
       // Rolled, for the same reason as the bfp16 form above (llvm-aie#1066).
       AIE_LOOP_MAX_ITERATION_COUNT(colA)
+#if __AIE_ARCH__ == 20
+      AIE_LOOP_UNROLL(unroll_ij ? colA : 1)
+#endif
       for (unsigned i = 0; i < colA; i++) {
         A0 = aie::load_v<MMUL::size_A>(pA1);
         pA1 += MMUL::size_A;
