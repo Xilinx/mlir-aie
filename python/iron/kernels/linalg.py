@@ -493,6 +493,7 @@ def mm(
     c_col_maj: bool = False,
     use_chess: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
+    round_conv_even: bool = False,
 ) -> MatrixKernel:
     """Matrix-multiply kernel: C += A * B.
 
@@ -522,6 +523,11 @@ def mm(
             Changes the micro-kernel dims to (8, 8, 8); designs reading
             ``.mac_dims`` will see the new geometry automatically.  Ignored
             for non-bf16 inputs and on AIE2.
+        round_conv_even: AIE2 only, bf16 inputs only.  When ``True``
+            compile with ``-DROUND_CONV_EVEN`` so the kernel itself selects
+            round-to-nearest-even for each call and restores the caller's
+            mode, in place of the contract's ``conv_even`` setup.  AIE2P's
+            kernel always does this, so it is ignored there.
 
     Returns:
         ExternalFunction configured for the matmul kernel.
@@ -556,6 +562,9 @@ def mm(
     )
     if bf16_emulated:
         compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
+    self_rounding = round_conv_even and arch != "aie2p" and input_dtype is bfloat16
+    if self_rounding:
+        compile_flags.append("-DROUND_CONV_EVEN")
     # The scalar kernel walks its operands element by element in row-major
     # order: its micro-tile is 1x1x1 and nothing is streamed transformed.
     r, s, t = _MatMulFactory.mac_dims(
@@ -600,8 +609,13 @@ def mm(
             layouts=layouts,
             stack_bytes=0xD00,  # programming_examples/basic/matrix_multiplication
             # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
-            # stores bf16 in whatever mode the core is in.
-            setup=(conv_even if arch != "aie2p" and output_dtype is bfloat16 else None),
+            # does so only under round_conv_even, and otherwise stores bf16
+            # in whatever mode the core is in.
+            setup=(
+                conv_even
+                if arch != "aie2p" and output_dtype is bfloat16 and not self_rounding
+                else None
+            ),
             roles=(In, In, InOut),
             reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
             initializers=((2, _zero_output),),
@@ -955,7 +969,12 @@ def mm_bfp_shuffle(
 
 
 def mha(
-    dim_m: int = 64, dim_k: int = 64, dim_n: int = 64, pv: bool = False
+    dim_m: int = 64,
+    dim_k: int = 64,
+    dim_n: int = 64,
+    pv: bool = False,
+    b_col_maj: bool = False,
+    emulate_bf16_mmul_with_bfp16: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/aie2p/mha.cc``.
 
@@ -985,6 +1004,12 @@ def mha(
         dim_k: Depth of the micro-tile (multiple of 8).
         dim_n: Columns of the micro-tile (multiple of 16).
         pv: If ``True`` return the ``P*V`` product instead of ``QK^T``.
+        b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the ``QK^T``
+            product consumes ``K`` as stored, ``(n, k)``, rather than
+            transposed.  ``matmul_bf16_bf16_rowmaj`` is row-major either way.
+        emulate_bf16_mmul_with_bfp16: As for [`mm`][iron.kernels.linalg.mm]:
+            both products use BFP16-based emulation, and ``QK^T``'s
+            micro-tile becomes (8, 8, 8).  Ignored on AIE2.
     """
     for name, v, mult in (
         ("dim_m", dim_m, 16),
@@ -999,13 +1024,32 @@ def mha(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[bfloat16]]
     idx = np.ndarray[(2,), np.dtype[np.int32]]
-    flags = [f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}", f"-DDIM_N={dim_n}"]
-    # mha.cc includes mm.cc without B_COL_MAJ or C_COL_MAJ: row-major
-    # operands on the native bf16 micro-tile. matmul_bf16_bf16_rowmaj keeps
-    # that block order but expands aie::mmul<8, 8, 8, bf16, bf16> directly,
-    # not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.
-    r, s, t = (8, 8, 8) if pv else _MM_MAC_DIMS["aie2p"][(bfloat16, bfloat16)]
-    streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t))
+    # mha.cc only calls mm.cc's bf16 products, so build none of the others.
+    flags = [
+        f"-DDIM_M={dim_m}",
+        f"-DDIM_K={dim_k}",
+        f"-DDIM_N={dim_n}",
+        "-Dbf16_bf16_ONLY",
+    ]
+    if b_col_maj:
+        flags.append("-DB_COL_MAJ")
+    emulate_bf16_mmul_with_bfp16 = (
+        emulate_bf16_mmul_with_bfp16 and _detect_arch() == "aie2p"
+    )
+    if emulate_bf16_mmul_with_bfp16:
+        flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
+    # mha.cc includes mm.cc without C_COL_MAJ, and without B_COL_MAJ unless
+    # b_col_maj. matmul_bf16_bf16_rowmaj is always row-major and expands
+    # aie::mmul<8, 8, 8, bf16, bf16> directly, not the micro-tile
+    # _MM_MAC_DIMS records for mm.cc.
+    b_col_maj = b_col_maj and not pv
+    if pv:
+        r, s, t = (8, 8, 8)
+    elif emulate_bf16_mmul_with_bfp16:
+        r, s, t = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[(bfloat16, bfloat16)]
+    else:
+        r, s, t = _MM_MAC_DIMS["aie2p"][(bfloat16, bfloat16)]
+    streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj)
     return _make_extern(
         "matmul_bf16_bf16_rowmaj" if pv else "matmul_bf16_bf16_wrapper",
         _default_source_path("mha.cc", subdir="aie2p"),
@@ -1016,7 +1060,12 @@ def mha(
             trace=Trace.whole_call(),
             layouts=(
                 _tile_layout((dim_m, dim_k), streams.A, block=(r, s)),
-                _tile_layout((dim_k, dim_n), streams.B, block=(s, t)),
+                _tile_layout(
+                    (dim_k, dim_n),
+                    streams.B,
+                    axes=(1, 0) if b_col_maj else None,
+                    block=(s, t),
+                ),
                 _tile_layout((dim_m, dim_n), streams.C, inverse=True, block=(r, t)),
                 *(() if pv else (None,)),
             ),

@@ -330,8 +330,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="tanh_bf16",
         lut_source="tanh.cc",
         invalid_kwargs=[
-            (dict(tile_size=512), "multiple of 32 and at least 1024"),
-            (dict(tile_size=1000), "multiple of 32 and at least 1024"),
+            (dict(tile_size=0), "must be positive"),
+            (dict(tile_size=1000), "not a multiple of"),
         ],
         tile_size_checks=[(dict(tile_size=2048), 2048)],
     ),
@@ -343,8 +343,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="sigmoid_bf16",
         lut_source="sigmoid.cc",
         invalid_kwargs=[
-            (dict(tile_size=512), "multiple of 32 and at least 1024"),
-            (dict(tile_size=1000), "multiple of 32 and at least 1024"),
+            (dict(tile_size=0), "must be positive"),
+            (dict(tile_size=1000), "not a multiple of"),
         ],
         tile_size_checks=[(dict(tile_size=2048), 2048)],
     ),

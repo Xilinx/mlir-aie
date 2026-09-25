@@ -286,7 +286,10 @@ class Kernel(Resolvable):
             # JIT clears its discovery registry before generating a design.
             # Re-register the artifact even when only a sibling binding survives.
             ExternalFunction._register_object(self)
-        if not self._op:
+        # Factories memoize their ExternalFunctions, so one instance can be
+        # resolved into several Programs; a declaration left from an earlier
+        # program's context is stale, so emit a fresh one.
+        if not self._op or self._op.context != ir.Context.current:
             self._op = external_func(
                 self._name,
                 inputs=self._arg_types,
