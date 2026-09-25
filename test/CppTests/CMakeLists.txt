@@ -10,6 +10,13 @@ add_executable(target_model  target_model.cpp)
 add_executable(target_model_rtti  target_model_rtti.cpp)
 add_executable(target_model_unknown_device  target_model_unknown_device.cpp)
 add_executable(register_database  register_database.cpp)
+add_executable(device_cache device_cache.cpp)
+# aiecc's headers define cl::opt globals, whose typeinfo must match LLVM's
+# RTTI setting; take aiecc's compile flags so rtti=OFF builds link.
+llvm_update_compile_flags(device_cache)
+target_include_directories(device_cache PRIVATE ${CMAKE_SOURCE_DIR}/tools/aiecc)
+target_link_libraries(device_cache PRIVATE MLIRParser)
+add_test(NAME DeviceCache COMMAND device_cache)
 add_test(NAME TargetModel COMMAND target_model)
 add_test(NAME TargetModelRtti COMMAND target_model_rtti)
 add_test(NAME TargetModelUnknownDevice COMMAND target_model_unknown_device)
@@ -37,7 +44,7 @@ target_link_libraries(stack_size_analysis PRIVATE ${stack_size_analysis_libs})
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
-set(EXECUTABLES target_model target_model_rtti target_model_unknown_device register_database)
+set(EXECUTABLES target_model target_model_rtti target_model_unknown_device register_database device_cache)
 
 set(CPP_TEST_DEPENDS ${EXECUTABLES} bfloat16_fallback_test stack_size_analysis)
 add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND}

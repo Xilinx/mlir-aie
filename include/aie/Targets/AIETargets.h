@@ -14,6 +14,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LogicalResult.h"
 
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -88,11 +89,12 @@ AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
                                     llvm::StringRef deviceName = "",
                                     llvm::StringRef sequenceName = "",
                                     std::vector<TxnLocEntry> *locmap = nullptr);
-mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
-                                           llvm::raw_ostream &output,
-                                           int tileCol, int tileRow,
-                                           llvm::StringRef deviceName = "",
-                                           bool probe = false);
+// `resolveLinkFile`, when given, rewrites each `link_files` entry before it
+// becomes an INPUT() directive.
+mlir::LogicalResult AIETranslateToLdScript(
+    mlir::ModuleOp module, llvm::raw_ostream &output, int tileCol, int tileRow,
+    llvm::StringRef deviceName = "", bool probe = false,
+    llvm::function_ref<std::string(llvm::StringRef)> resolveLinkFile = nullptr);
 mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
                                       llvm::raw_ostream &output, int tileCol,
                                       int tileRow,

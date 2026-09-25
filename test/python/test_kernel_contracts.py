@@ -363,7 +363,7 @@ def test_rounding_setup_is_merged_alwaysinline_ir():
     assert setter._inline
     assert setter.object_file_name.endswith(".ll")
     assert setter._symbol_prefix is None
-    assert setter is kernels.conv_even()
+    assert setter == kernels.conv_even()
     assert setter.name != kernels.set_rounding(kernels.RoundingMode.FLOOR).name
     mlir = str(kd.design(kernels.gelu).as_mlir())
     assert 'link_with_mode = "merge"' in mlir
@@ -400,7 +400,7 @@ def test_rounding_mode_preserves_string_api(mode):
     setter = kernels.set_rounding(mode)
     assert setter.name == f"set_rounding_{mode.value}"
     assert f"-DROUNDING_MODE={mode.value}" in setter.compile_flags
-    assert setter is kernels.set_rounding(mode.value)
+    assert setter == kernels.set_rounding(mode.value)
 
 
 @pytest.mark.parametrize(

@@ -12,7 +12,6 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
-    _EXTERN_CACHE,
     KernelContract,
     Param,
     TensorLayout,
@@ -170,8 +169,6 @@ def fused_mm(
         # reference and tolerance, so the bounds belong in the key.
         clamp_bits,
     )
-    if key in _EXTERN_CACHE:
-        return _EXTERN_CACHE[key]
     prefix = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
     contract = KernelContract(
         roles=(In, In, Out, Param, Param, Param),
@@ -210,7 +207,7 @@ def fused_mm(
         stack_bytes=np.dtype(np.float32).itemsize * dim_m * dim_n
         + max(device.default_core_stack_bytes, 2048),
     )
-    fn = ExternalFunction(
+    return ExternalFunction(
         "fused_mm_tile",
         source_file=str(source),
         arg_types=[
@@ -228,5 +225,3 @@ def fused_mm(
         symbol_prefix=prefix,
         contract=contract,
     )
-    _EXTERN_CACHE[key] = fn
-    return fn

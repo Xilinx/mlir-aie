@@ -48,7 +48,8 @@ def test_measure_compile_artifact_sizes(tmp_path, monkeypatch, has_image, has_in
 
     cd = CallableDesign(gen)
 
-    def compile_artifacts(*, xclbin_path, inst_path):
+    def compile_artifacts(design, *, xclbin_path, inst_path):
+        assert design.compilable.use_cache is False
         assert xclbin_path == tmp_path / "compile" / "final.xclbin"
         assert inst_path == tmp_path / "compile" / "insts.bin"
         xclbin_path.write_bytes(b"image")
@@ -58,7 +59,7 @@ def test_measure_compile_artifact_sizes(tmp_path, monkeypatch, has_image, has_in
         (core / "elfs_0.elf").write_bytes(b"elf")
         return (xclbin_path if has_image else None, inst_path if has_insts else None)
 
-    monkeypatch.setattr(cd, "compile", compile_artifacts)
+    monkeypatch.setattr(CallableDesign, "compile", compile_artifacts)
     if not has_image:
         with pytest.raises(RuntimeError, match="compilation returned no image"):
             cd.measure_compile(tmp_path)

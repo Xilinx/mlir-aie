@@ -16,8 +16,8 @@ import numpy as np
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
-from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call
+from ..helpers.util import try_convert_np_type_to_mlir_type
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -105,6 +105,18 @@ def _maybe_collapse_to_match(arg, expected_ty):
     # All N input dims collapse into the single output dim.
     reassociation = [list(range(arg_mr.rank))]
     return memref.collapse_shape(exp_mr, arg, reassociation)
+
+
+def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
+    """Return the symbol table a declaration or call at ``ip`` resolves against."""
+    op = ip.block.owner.operation
+    while True:
+        try:
+            return ir.SymbolTable(op)
+        except TypeError:
+            op = op.parent
+            if op is None:
+                raise ValueError("Kernels must be used inside a symbol table.")
 
 
 @dataclass(frozen=True)
@@ -282,17 +294,75 @@ class Kernel(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
+        """Declare this kernel in the enclosing symbol table, once.
+
+        The declaration lives in the IR, not on the kernel, so one kernel can
+        be resolved into any number of designs and contexts. A kernel equal to
+        one already declared reuses that declaration; one that shares only the
+        symbol name is rejected.
+        """
         if self.object_file._source is not None:
             # JIT clears its discovery registry before generating a design.
             # Re-register the artifact even when only a sibling binding survives.
             ExternalFunction._register_object(self)
-        if not self._op:
-            self._op = external_func(
+        point = ip if ip is not None else ir.InsertionPoint.current
+        table = _enclosing_symbol_table(point)
+        if self._name in table:
+            self._check_declaration(table[self._name])
+            return
+        with point:
+            external_func(
                 self._name,
                 inputs=self._arg_types,
                 link_with=self._object_file_name,
                 link_with_mode=self._link_with_mode,
                 stack_size_override=self._stack_size_override,
+            )
+
+    def _declaration(self) -> dict:
+        return {
+            "signature": str(
+                ir.FunctionType.get(
+                    [try_convert_np_type_to_mlir_type(t) for t in self._arg_types], []
+                )
+            ),
+            "link_with": self._object_file_name,
+            "link_with_mode": self._link_with_mode,
+            "stack_size_override": self._stack_size_override,
+        }
+
+    def _check_declaration(self, existing) -> None:
+        op_name = existing.operation.name
+        if op_name != "func.func":
+            raise ValueError(
+                f"Kernel '{self._name}' cannot be declared: '@{self._name}' "
+                f"already names a {op_name} in this scope."
+            )
+        attrs = existing.attributes
+        found = {
+            "signature": str(attrs["function_type"].value),
+            "link_with": attrs["link_with"].value if "link_with" in attrs else None,
+            "link_with_mode": (
+                attrs["link_with_mode"].value if "link_with_mode" in attrs else None
+            ),
+            "stack_size_override": (
+                attrs["stack_size_override"].value
+                if "stack_size_override" in attrs
+                else None
+            ),
+        }
+        wanted = self._declaration()
+        differences = [
+            f"{key}: {found[key]!r} vs {wanted[key]!r}"
+            for key in wanted
+            if found[key] != wanted[key]
+        ]
+        if differences:
+            raise ValueError(
+                f"Kernel '{self._name}' conflicts with the '@{self._name}' already "
+                f"declared in this scope ({'; '.join(differences)}). Kernels that "
+                "share a symbol must share its signature and object; give one a "
+                "distinct name or symbol_prefix."
             )
 
     def _init_identity(
@@ -312,7 +382,6 @@ class Kernel(Resolvable):
         # kernel builds MLIR types from it without disturbing it, so this stays
         # readable before and after a build.
         self._arg_types = list(arg_types) if arg_types is not None else []
-        self._op: FuncOp | None = None
 
     @property
     def name(self) -> str:
@@ -422,20 +491,23 @@ class Kernel(Resolvable):
         `**kwargs` are forwarded to the underlying `func.call` builder
         (typically `loc=`, `ip=` for MLIR location / insertion point).
         """
-        if not self._op:
+        table = _enclosing_symbol_table(kwargs.get("ip") or ir.InsertionPoint.current)
+        if self._name not in table:
             raise ValueError("Kernel must be resolved before it can be called.")
+        callee = table[self._name]
+        self._check_declaration(callee)
         if len(args) != len(self._arg_types):
             raise ValueError(
                 f"Kernel '{self._name}' expects {len(self._arg_types)} "
                 f"argument(s), but {len(args)} were provided."
             )
         arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
-        expected_input_types = self._op.function_type.value.inputs
+        expected_input_types = callee.function_type.value.inputs
         adapted = [
             _maybe_collapse_to_match(a, expected_ty)
             for a, expected_ty in zip(arg_ops, expected_input_types)
         ]
-        call(self._op, adapted, **kwargs)
+        call(callee, adapted, **kwargs)
 
 
 class ExternalFunction(Kernel):
@@ -702,6 +774,7 @@ class ExternalFunction(Kernel):
                 None (empty list).
             include_dirs: Additional ``-I`` directories passed to the chosen
                 compiler (Peano by default; xchesscc when ``use_chess=True``).
+                Relative paths resolve against the current directory at construction.
                 Defaults to None (empty list).
             compile_flags: Additional flags passed verbatim to the chosen
                 compiler.  Defaults to None (empty list).
@@ -793,7 +866,7 @@ class ExternalFunction(Kernel):
                 str(Path(source_file).resolve()) if source_file is not None else None,
                 source_string if source_file is None else None,
                 hashlib.sha256(source_bytes).hexdigest(),
-                tuple(include_dirs or ()),
+                tuple(str(Path(d).absolute()) for d in include_dirs or ()),
                 tuple(compile_flags or ()),
                 use_chess,
                 symbol_prefix,
