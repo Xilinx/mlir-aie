@@ -13,6 +13,10 @@
 
 #include <aie_api/aie.hpp>
 
+#if __AIE_ARCH__ == 20
+#include "exp2_bf16.h"
+#endif
+
 // Flash-attention prefill (online softmax) in two geometries: global (head_dim
 // 512, chunk 8) and sliding-window (head_dim 256, chunk 16), over a 128-key
 // block. PrefillGeom<DH> carries the four steps tuned per variant: attn_qk and
@@ -67,7 +71,11 @@ void apply_softmax(bf16 *__restrict pS, bf16 *__restrict new_m_local) {
       // here: the bf16 product lands in a float accumulator either way.
       aie::vector<bf16, 64> Vec = aie::sub(s_vec, m_bcast);
       aie::accum<accfloat, 64> Vec_acc = aie::mul(Vec, exp_scale<LQ>);
+#if __AIE_ARCH__ == 20
+      aie::store_v(pSg, exp2_bf16(Vec_acc.template to_vector<float>()));
+#else
       aie::store_v(pSg, aie::exp2<bf16>(Vec_acc.template to_vector<float>()));
+#endif
       pSg += kGroups * 64;
     }
   }
@@ -133,7 +141,11 @@ void calculate_c(float *c, bf16 *prev_m_local, bf16 *new_m_local) {
   aie::vector<bf16, LQ> next = aie::load_v<LQ>(new_m_local);
   aie::accum<accfloat, LQ> arg = aie::mul(aie::sub(prev, next), exp_scale<LQ>);
   aie::accum<accfloat, LQ> e;
+#if __AIE_ARCH__ == 20
+  e.from_vector(exp2_bf16(arg.template to_vector<float>()));
+#else
   e.from_vector(aie::exp2<bf16>(arg.template to_vector<float>()));
+#endif
   aie::store_v(c, e.template to_vector<float>());
 }
 
@@ -198,6 +210,16 @@ inline void scale_by_inv_l(bf16 *o, float *l, float *y) {
   aie::store_v(o, AL00.template to_vector<bf16>());
 }
 
+/// Lanes 8i .. 8i+7 of v repeated four times.
+inline aie::vector<bf16, 32> broadcast_128(aie::vector<bf16, 32> v, int i) {
+#if __AIE_ARCH__ == 20
+  aie::vector<bf16, 8> e = v.extract<8>(i);
+  return aie::concat(e, e, e, e);
+#else
+  return (v32bfloat16)::broadcast_elem_128((v16int32)v, i);
+#endif
+}
+
 /// Y += S * V across one 8-row block of y: kTiles 8x8 output tiles, the i-th
 /// taking its V tile from pV + i * kVStride.
 ///
@@ -222,8 +244,8 @@ void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
   AIE_LOOP_UNROLL_FULL
   for (int k = 0; k < 8; k++) {
     // Lane (r, c) of A holds S[r][k].
-    aie::vector<bf16, 32> b = (v32bfloat16)::broadcast_elem_128(
-        (v16int32)St.template extract<32>(k / 4), k % 4);
+    aie::vector<bf16, 32> b =
+        broadcast_128(St.template extract<32>(k / 4), k % 4);
     aie::vector<bf16, 64> A = aie::transpose(aie::concat(b, b), 8, 8);
     AL[k] = aie::concat(A.template extract<32>(0), A.template extract<32>(0));
     AH[k] = aie::concat(A.template extract<32>(1), A.template extract<32>(1));
@@ -247,10 +269,10 @@ void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
     aie::vector<bf16, 64> V1 = aie::load_v<64>(pV + kVStride);
     AIE_LOOP_UNROLL_FULL
     for (int k = 0; k < 8; k++) {
-      aie::vector<bf16, 32> b0 = (v32bfloat16)::broadcast_elem_128(
-          (v16int32)V0.template extract<32>(k / 4), k % 4);
-      aie::vector<bf16, 32> b1 = (v32bfloat16)::broadcast_elem_128(
-          (v16int32)V1.template extract<32>(k / 4), k % 4);
+      aie::vector<bf16, 32> b0 =
+          broadcast_128(V0.template extract<32>(k / 4), k % 4);
+      aie::vector<bf16, 32> b1 =
+          broadcast_128(V1.template extract<32>(k / 4), k % 4);
       aie::vector<bf16, 64> B = aie::concat(b0, b1);
       L = aie::mac(L, AL[k], B);
       H = aie::mac(H, AH[k], B);
@@ -455,7 +477,11 @@ struct PrefillGeom<256> {
     aie::vector<float, 16> l_float32 = aie::load_v<16>(l);
 
     aie::accum<accfloat, 16> l_out;
+#if __AIE_ARCH__ == 20
+    l_out = aie::mac(sum, c_float32, l_float32);
+#else
     l_out = mac_elem_16_accuracy_safe(l_float32, c_float32, sum, 0, 0, 0);
+#endif
     aie::store_v(l, l_out.template to_vector<float>());
   }
 

@@ -1143,8 +1143,8 @@ CASES += [
     # -DPREFILL_HEAD_DIM build is its own object with its own blocked V order;
     # the 512 one has a degenerate k-block term and so cannot tell a wrong V
     # order from a right one, which is why both are smoke cases.
-    Case("prefill_fv", dict(head_dim=512), calls=4, devices=("npu2",), smoke=True),
-    Case("prefill_fv", dict(head_dim=256), calls=4, devices=("npu2",), smoke=True),
+    Case("prefill_fv", dict(head_dim=512), calls=4, smoke=True),
+    Case("prefill_fv", dict(head_dim=256), calls=4, smoke=True),
     Case(
         "mm_bfp",
         _mm_bfp,

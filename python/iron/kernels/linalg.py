@@ -1123,12 +1123,15 @@ def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
 # specializations: 512 is global attention, 256 sliding-window. The stack is
 # aiecc's measured_stack_size under Peano 21: fv_step -> sv_row_block is the
 # deepest call the five entry points reach, and both geometries share
-# sv_row_block's frame, so they need the same stack.
+# sv_row_block's frame, so they need the same stack. On aie2 both need
+# _PREFILL_STACK_AIE2 under Peano 22, measured with all five entry points on
+# one core (test_flash_attn_prefill_e2e.py); fv_step alone needs 2400.
 _PREFILL_GEOM = {512: (8, 8, 1984), 256: (16, 16, 1984)}
+_PREFILL_STACK_AIE2 = 2432
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:
-    """Flash-attention prefill toolkit from ``aie_kernels/aie2p/flash_attn_prefill.cc`` (aie2p only).
+    """Flash-attention prefill toolkit from ``aie_kernels/aie2p/flash_attn_prefill.cc``.
 
     One translation unit per geometry, exporting the five steps an attention
     prefill dataflow composes over one query chunk. The returned kernel is the
@@ -1153,13 +1156,11 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     Args:
         head_dim: 512 for global attention, 256 for sliding-window.
     """
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError(
-            "prefill_fv: flash_attn_prefill.cc is an AIE2P kernel; select an NPU2 device"
-        )
     if head_dim not in _PREFILL_GEOM:
         raise ValueError(f"prefill_fv: head_dim must be 512 or 256, got {head_dim}")
     lq, lk, stack_bytes = _PREFILL_GEOM[head_dim]
+    if _detect_arch() == "aie2":
+        stack_bytes = _PREFILL_STACK_AIE2
     # flash_attn_prefill.h's MMUL is aie::mmul<8, 8, 8, bf16, bf16>, the native
     # bf16 micro-tile, not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.
     r = s = t = 8
@@ -1206,7 +1207,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
                 1e-5,
                 1e-5,
                 note="f32 accumulation order over lk<=16 exact bf16 products: "
-                "lk * 2**-24 ~ 1e-6; verified on npu2 at this bound",
+                "lk * 2**-24 ~ 1e-6; verified on npu1 and npu2 at this bound",
             ),
             ops_per_call=2 * lq * lk * head_dim,
         ),
