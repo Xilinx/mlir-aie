@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+# RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
 # RUN: %run_on_npu2_hrx% %pytest %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
@@ -42,6 +43,12 @@ magnitude: a mask admitting or dropping one key takes that weight between an
 exact zero and order one, and the quietest element any of them disturbs still
 moves by 31%.
 
+AIE2 has no ``aie::exp2``, and mha.cc evaluates a cubic there instead, so the
+envelope does not apply: the weights are held to ``kernels.mha_softmax``'s
+aie2 tolerance, 0.4% of ``|a| + |b|``. A weight one bf16 step off always meets
+it, and one two steps off only in the top 5% of a binade. That bound is what
+sees a wrong coefficient in the cubic, which the envelope passes.
+
 Which configuration catches what is not uniform, and each one below is the only
 one that sees something. A key tail that runs one key long shows up only where
 the tail falls mid-vector, since a tail on a vector boundary takes the same
@@ -79,6 +86,8 @@ from aie.iron import (
     jit,
     kernels,
 )
+from aie.utils.compile.utils import resolve_target_arch
+from aie.utils.verify import nearly_equal
 
 BF = np.dtype[bfloat16]
 I32 = np.dtype[np.int32]
@@ -464,11 +473,18 @@ def test_partial_softmax_matches_masked_attention(
     # furthest below it land near zero, where relative accuracy means nothing
     # and one bf16 step of the range does. Padded rows are included -- both the
     # kernel and the reference must put an exact zero there, which the floor
-    # still holds them to.
+    # still holds them to. On aie2 the factory's bound: measured over 31 seeds
+    # on npu1, the weights run 0.389% of |a| + |b|, one step.
+    aie2 = resolve_target_arch(iron.get_current_device()) == "aie2"
+    tol = kernels.mha_softmax().contract.tolerance
+    assert tol.rtol is not None and tol.atol is not None
     ulp = 2**-7
-    np.testing.assert_allclose(
-        got_p, np.stack(ref_p), rtol=_RTOL_EXP2, atol=_ATOL_ULP * ulp
-    )
+    if aie2:
+        assert nearly_equal(got_p, np.stack(ref_p), rtol=tol.rtol, atol=tol.atol).all()
+    else:
+        np.testing.assert_allclose(
+            got_p, np.stack(ref_p), rtol=_RTOL_EXP2, atol=_ATOL_ULP * ulp
+        )
 
     # The running max and the row sum the kernel carries out for its caller.
     # Only rows some key reached: the kernel runs its epilogue over all 64 rows
@@ -484,14 +500,17 @@ def test_partial_softmax_matches_masked_attention(
     )
     # The row sum is a sum of weights, so it inherits their envelope rather than
     # accumulating past it: every term overshoots by at most 6.15%, so their
-    # sum does too.
-    l_ulp = 2**-7 * float(l[live].max())
-    np.testing.assert_allclose(
-        got_scale[2 * _B : 3 * _B][live],
-        l[live],
-        rtol=_RTOL_EXP2,
-        atol=_ATOL_ULP * l_ulp,
-    )
+    # sum does too. On aie2 the second block's sum is c * l_prev + sum(P),
+    # with c an exp2 as well and each term a bf16 store, so it gets two
+    # weights' allowance; it measures 0.54% of |a| + |b| over the same seeds.
+    got_l = got_scale[2 * _B : 3 * _B][live]
+    if aie2:
+        assert nearly_equal(got_l, l[live], rtol=2 * tol.rtol, atol=tol.atol).all()
+    else:
+        l_ulp = 2**-7 * float(l[live].max())
+        np.testing.assert_allclose(
+            got_l, l[live], rtol=_RTOL_EXP2, atol=_ATOL_ULP * l_ulp
+        )
 
 
 @pytest.mark.parametrize(
