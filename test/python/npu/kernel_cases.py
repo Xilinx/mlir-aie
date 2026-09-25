@@ -998,6 +998,24 @@ CASES: list[Case] = [
     Case("rms_norm", dict(cols=200), calls=16, tag="row-tail", perf=False),
     Case("rms_norm", dict(cols=1000), calls=16, tag="row-tail", perf=False),
     Case("layer_norm", dict(cols=1024), calls=16, smoke=True),
+    # Rows of an odd number of 16-lane halves, which aie2 alone accepts: 208 is
+    # too short for the pipelined loops and 1008 leaves an odd chunk.
+    Case(
+        "layer_norm",
+        dict(cols=208),
+        calls=16,
+        tag="row-tail",
+        devices=("npu1",),
+        perf=False,
+    ),
+    Case(
+        "layer_norm",
+        dict(cols=1008),
+        calls=16,
+        tag="row-tail",
+        devices=("npu1",),
+        perf=False,
+    ),
     Case(
         "layer_norm_f32",
         dict(cols=1024),
