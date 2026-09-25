@@ -54,7 +54,7 @@ Adding markers has a cost of its own: on AIE2P they grew one kernel's stack fram
 
 ## <u>A worked example: `add`</u>
 
-The bf16 [add.cc](../../../aie_kernels/eltwise/add.cc) kernel used to run one load/add/store chain per loop iteration. It now runs four. Here is how that change looks through each tool.
+The bf16 [add.cc](../../../aie_kernels/eltwise/add.cc) kernel used to run one load/add/store chain per loop iteration. On AIE2P it now runs four. Here is how that change looks through each tool.
 
 **Hardware first.** The `add` contract declares `Trace.whole_call()`, so the bench times it. Benchmark the 16-call case with the kernel in your checkout and, in the same run, with a snapshot of the old one. Run from the root of the checkout:
 
@@ -121,6 +121,8 @@ Now check the arithmetic: the old loop does one vector (32 elements) per iterati
 Twelve bundles do four useful things. Both inputs are loaded with `vlda.conv.fp32.bf16`, a load that converts bf16 to float on the way in and exists only on load unit A, so the two loads take two bundles instead of sharing one. The `vadd.f` then waits out the load latency, and the store waits for the add. Nothing else is available to fill the gaps: the loop is **latency-bound**, not limited by any unit.
 
 The shipped loop gives the scheduler four independent chains. Its 18 bundles start with eight `vlda.conv` loads back to back, and the adds and stores of earlier chains fill the bundles that were empty. 4.5 bundles per vector instead of 12. The loads on unit A now set a floor of 2 bundles per vector, so there is still some room, but the easy win is taken.
+
+AIE2 took the opposite route. There the four-chain body needs more bundles than the pipeliner's limit (`SwpMaxMii` 27), so it ran unoverlapped. The AIE2 branch of `add.cc` keeps one chain under `AIE_LOOP_NO_UNROLL` with `__restrict` pointers, and the pipeliner overlaps its iterations to one vector per cycle: 342 → 78 cycles on an npu1.
 
 This is the pattern for the rest of the section: hardware says whether it got faster, the remarks say what the compiler did, and the bundles say why.
 
@@ -221,7 +223,7 @@ Each lever below targets one kind of bound, and each comes with its hardware mea
 
 **Why it works.** A loop whose body is mostly `nop` at a fixed II is waiting on latency, as `add` was in the [worked example](#a-worked-example-add). Independent work fills those bundles for free.
 
-* **Unroll a latency-bound loop by 4.** `leaky_relu`: **298 → 86**; `mul`: 454 → 142; `add`: 390 → 150; `gelu`: 594 → 318. Screen ×1, ×2 and ×4 with the remarks tool first, then confirm on hardware. The right factor depends on the body. Do not unroll a loop that is already bound by loads, stores, or the multiplier: there are no empty slots to fill.
+* **Unroll a latency-bound loop by 4.** `leaky_relu`: **298 → 86**; `mul`: 454 → 142; `add`: 390 → 150; `gelu`: 594 → 318 (all AIE2P). On AIE2 an unrolled body can exceed the pipeliner's limit instead; see [the AIE2 route for `add`](#a-worked-example-add). Screen ×1, ×2 and ×4 with the remarks tool first, then confirm on hardware. The right factor depends on the body. Do not unroll a loop that is already bound by loads, stores, or the multiplier: there are no empty slots to fill.
   The same holds for a loop that is already pipelined but short: `AIE_LOOP_UNROLL(2)` on the fused matrix multiply's epilogue chunk loop, the only change between two measured versions, took the gelu chunk from 172 to 89 cycles and the whole gelu call from 2582 to 1919.
 * **Unroll by 2 a loop that does not pipeline.** When a loop does not software-pipeline, each trip pays for its inner loop's entry and exit in sequence. Two trips per body let those overlap. The fused matrix multiply's k step: **216 → 192-194** cycles, with identical output. Fully unrolling the inner loop instead made it slower (216 → 287) and overflowed the 4096-byte stack in four configurations.
 * **Split long dependency chains.** A single accumulator chain runs at the latency of the accumulate instruction. Two independent accumulators, or several output rows fed from one broadcast operand, let the chains overlap. Stop before the extra registers spill. `mv` (int16, 32x32): **291 → 127**. `dwconv1d`: 2810 → 1505 (two chains plus an unrolled tap setup).
@@ -259,7 +261,7 @@ On an int8 convolution network, three more changes measured faster:
 
 Some things compile without a warning and then crash, run silently slower, or give wrong results.
 
-**Library calls** (AIE2P, Peano): scalar `float` multiply (`__mulsf3`) and divide (`__divsf3`), `float` from a 32-bit integer (`__floatsisf`, `__floatunsisf`), scalar `float` comparisons (`__ltsf2`, `__gtsf2`), anything using `double`, 64-bit integer multiply (`__muldi3`), and 32-bit integer divide (`__divsi3`). A group size that is not a power of two can turn `/ GROUP` into `__muldi3`. Native: `float` add and subtract, `aie::inv`, `aie::invsqrt`, `aie::to_float`, `aie::max`/`aie::min`, and bf16↔float conversion. `aie::to_float` is not a call, but inside a hot vector chain it is not free either (lever 1).
+**Library calls** (AIE2 and AIE2P, Peano): scalar `float` multiply (`__mulsf3`) and divide (`__divsf3`), `float` from a 32-bit integer (`__floatsisf`, `__floatunsisf`), scalar `float` comparisons (`__ltsf2`, `__gtsf2`), anything using `double`, 64-bit integer multiply (`__muldi3`), and 32-bit integer divide (`__divsi3`). A group size that is not a power of two can turn `/ GROUP` into `__muldi3`. Native: `float` add and subtract, `aie::inv`, `aie::invsqrt`, `aie::to_float`, `aie::max`/`aie::min`, and bf16↔float conversion. `aie::to_float` is not a call, but inside a hot vector chain it is not free either (lever 1).
 
 **Pragmas that do nothing, or the opposite.** Under Peano, `AIE_PREPARE_FOR_PIPELINING` expands to nothing, and so do the other Chess-only controls ([pragma reference](../section-4c#loop-pragma-reference)). Code built with and without it is byte-identical. `AIE_PREPARE_FOR_POSTPIPELINING` expands to `pipeline(disable)`: it **turns pipelining off**. `AIE_LOOP_RANGE` states a trip count and unrolls nothing. `chess_storage(...)` silently drops its alignment and bank placement: the same table was 32-byte aligned under Chess and 4-byte aligned under Peano. Use `alignas`.
 

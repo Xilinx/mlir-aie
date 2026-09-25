@@ -147,7 +147,7 @@ void kernel(const bfloat16 *__restrict a,
 
 `AIE_PREPARE_FOR_PIPELINING` expands to `[[chess::prepare_for_pipelining]]` under Chess but to **nothing at all** under Peano/AIECC, which is the default backend. Peano pipelines inner loops on its own: `mv_bf16` compiled byte-identical in six configurations with and without it. Leaving one in existing code is harmless, but adding one never speeds up a Peano build, and its absence never explains why a loop didn't pipeline. The same holds for `AIE_LOOP_FLATTEN` (Chess-only). In the other direction, `AIE_TRY_INITIATION_INTERVAL(n)` and `AIE_PREPARE_FOR_POSTPIPELINING` are real under **Peano only**, and `AIE_PREPARE_FOR_POSTPIPELINING` *turns pipelining off*.
 
-`AIE_LOOP_MIN_ITERATION_COUNT(n)` is a trip-count hint under both backends. It has helped (an unsigned counted trip in `axpy`), but it has also cost the zero-overhead loop in other kernels, so check `non_zol_loops` in the remarks report after adding it.
+`AIE_LOOP_MIN_ITERATION_COUNT(n)` is a trip-count hint under both backends. On AIE2 it let runtime-count loops overlap (`axpy` 269 → 87 on npu1, with a plain loop kept for rows shorter than `n`), but it has also cost the zero-overhead loop in other kernels, so check `non_zol_loops` in the remarks report after adding it.
 
 For why a loop didn't pipeline, and for the levers that were measured on hardware, see [`aie-kernel-opt-static`](../../aie-kernel-opt-static/SKILL.md) and its [`traps.md`](../../aie-kernel-opt-static/references/traps.md) P03/P04.
 
@@ -349,7 +349,7 @@ Without it, overflow wraps. Symptoms: huge negative outputs where you expected l
 ::aie::set_rounding  (aie::rounding_mode::symmetric_inf);
 ```
 
-Call once at the top of the kernel.
+Call once at the top of the kernel, never inside a hot loop or a helper inlined into one: saving, setting and restoring the mode on every call kept `bf16_exp`'s loop from pipelining on AIE2. To restore the caller's mode afterwards, keep what `aie::swap_rounding` returns.
 
 ---
 

@@ -141,10 +141,10 @@ The two `dwconv1d` kernels compute the same thing over transposed tensors, and t
 | one call emits | one channel, all timesteps | one timestep, all channels |
 | contiguous axis | time | channels |
 | taps | `K` scalars, broadcast | `K` vectors of `C`, one per channel |
-| vectorizes over | time, via `sliding_mul` | channels, via plain `mac` |
+| vectorizes over | time, via `sliding_mul` (`mac_elem_16_2` on AIE2) | channels, via plain `mac` |
 | `K` | runtime-templated, 1–17 | fixed per entry point (5 today) |
 | sequence length | runtime | n/a |
-| MACs per instruction slot | 4.2 | 12.2 |
+| MACs per instruction slot (AIE2P) | 4.2 | 12.2 |
 
 Channels-last retires nearly 3x the MACs per slot because `sliding_mul` spends half its vector on the window halo and then rebuilds each tap's operand with a `vshift`, while the channels-last form's operands are already aligned and every lane is a real MAC.
 

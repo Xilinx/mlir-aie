@@ -26,7 +26,7 @@ template <typename T_in, typename T_out, int N>
 static inline void eltwise_add_impl(const T_in *__restrict a,
                                     const T_in *__restrict b,
                                     T_out      *__restrict c) {
-    constexpr int VEC = 32;              // natural bf16 width; see architecture.md
+    constexpr int VEC = 32;              // natural bf16 width; multiplies: AIE_BF16_LANES
     static_assert(N % VEC == 0, "N must be divisible by VEC");
     constexpr int F = N / VEC;
 
@@ -60,7 +60,7 @@ void eltwise_add_bf16_vector(const bfloat16 *__restrict a,
 | Macro | What it does |
 |-------|--------------|
 | `AIE_PREPARE_FOR_PIPELINING` | Pipelining hint for **Chess only**; expands to nothing under Peano |
-| `AIE_LOOP_MIN_ITERATION_COUNT(n)` | Promise the loop runs at least `n` times — a trip-count hint; under Peano it can cost the zero-overhead loop, so check `non_zol_loops` in the remarks report |
+| `AIE_LOOP_MIN_ITERATION_COUNT(n)` | Promise the loop runs at least `n` times — a trip-count hint. On AIE2 it let runtime-count loops overlap (`axpy` 269 → 87); under Peano it can also cost the zero-overhead loop, so check `non_zol_loops` in the remarks report |
 | `AIE_LOOP_MAX_ITERATION_COUNT(n)` | Promise the loop runs at most `n` times |
 | `AIE_LOOP_RANGE(min, max)` | Combo of the two above |
 | `AIE_LOOP_UNROLL(n)` | Unroll by factor `n` |
@@ -195,7 +195,7 @@ T reduce_sum(const T *__restrict in, int total) {
 ::aie::set_rounding  (aie::rounding_mode::symmetric_inf); // shift rounding mode
 ```
 
-Call once at the top of the kernel (or in a wrapper) before any vector op that could overflow.
+Call once at the top of the kernel (or in a wrapper) before any vector op that could overflow, never inside the hot loop (see `pitfalls.md`). `aie::swap_rounding` returns the previous mode for restoring it.
 
 ## Accumulator type quick-pick
 

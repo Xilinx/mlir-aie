@@ -99,13 +99,19 @@ reading rules for each step.
 | Remarks / object shows | Lever | Class if the Check moves |
 |---|---|---|
 | The `libcalls` row names a `traps.md` P01 helper called in a loop | L02; L11 for `__divsi3` | strong |
-| `vector<float>` multiply or min/max in a loop (AIE2P) | L03 skip ×1, three-limb split, bf16 clamp after rounding; L04 32 lanes | likely |
+| `vector<float>` multiply or min/max in a loop | L03 skip ×1, three-limb split, bf16 clamp after rounding; L04 32 lanes (AIE2P) | likely |
 | Array of accumulators or vectors indexed by a loop counter; stack traffic | L01 `UNROLL_FULL` | strong |
 | Loop you care about isn't innermost or single-block (unpipelined parent) | L10 fold or unroll into it | strong if it newly pipelines |
 | Loop branches on its counter | L13 `UNROLL_FULL`, not `RANGE` | likely |
 | Address arithmetic in the body; no `__restrict` | L06 walking restrict cursors | likely |
 | Pipelined; `byte_count` flat from ×1 to ×4 | L07 `UNROLL(4)` | strong |
-| Stepping 16 lanes on 8/16-bit or bf16 data | L08 64 / 32 lanes | likely |
+| AIE2: unrolled body at MII above `SwpMaxMii` 27, postpipeliner only | `__restrict` plus one chain under `AIE_LOOP_NO_UNROLL` (L07's AIE2 note; S24, S25, S58, S63) | strong (the loop newly pipelines) |
+| AIE2: runtime trip count, loop not overlapped | `AIE_LOOP_MIN_ITERATION_COUNT(n)` plus a plain loop for shorter rows (L11; S29, S36, S40, S44) | likely |
+| AIE2: LUT reads ordered against the stores, loop runs in series | Rotate the loop one vector ahead, or `lut_map_bf16` (S33, S67) | likely |
+| crRnd saved, set and restored inside the loop | Hoist the rounding-mode change out of the loop (S31) | likely |
+| AIE2: bf16 `sliding_mul` (no native one) | `mac_elem_16_2` / `shuffle_down_fill` (S57) | likely |
+| AIE2: `aie::transpose` in the loop | Two-register `::shuffle` stages (S81, S82) | likely |
+| Stepping 16 lanes on 8/16-bit, or on bf16 on AIE2P | L08 64 lanes / `AIE_BF16_LANES` | likely |
 | One long mac chain, or broadcasts spilled per block | L09 split chains | likely |
 | Pipelined, `ns` = 3, one long latency chain with no dominant step | L17 `--aie-pipeliner-max-stagecount=4/5` in the factory's `compile_flags` | likely (scale by trips) |
 | Several `mmul<8,8,8>` accumulators for Y += S·V; high II, large frame | L18 two 8x8 tiles on one 64-lane accumulator | likely |
@@ -161,12 +167,12 @@ from.
 
 ## References
 
-- `references/levers.md`: the static signal → HW outcome table (S01-S20,
-  hits and misses), confidence classes, levers L01-L20 with
+- `references/levers.md`: the static signal → HW outcome table (S01-S83,
+  hits and misses; S23 onward on AIE2, npu1), confidence classes, levers L01-L20 with
   when/do/check/HW precedent, compiler-reported rejects X20-X46, bounds.
 - `references/static-checks.md`: exact commands for every step, and how to
   read the remarks output, rows, meta and kept objects.
-- `references/traps.md`: Peano and AIE2P traps P01-P14.
+- `references/traps.md`: Peano, AIE2 and AIE2P traps P01-P14.
 - `aie-kernel-opt-hw`: measures candidates on the NPU and adds each outcome
   back to the S table.
 

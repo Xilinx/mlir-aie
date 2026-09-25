@@ -124,6 +124,11 @@ Rules for using the classes:
   A body that does four rows at II56 beats one row at II10 plus a II125
   reduction (S17), and an 8-row group at 47 bundles beat per-row calls
   with a max II of 13 (S20).
+- Judge a scalar loop rewritten as vector code by bundles per element, or
+  hand it to hardware, not by the counter rows or a Check that didn't move.
+  S34, S35, S48, S49, S54 and S66 made `unpipelined_loops`, `pm_bytes` and
+  the frame worse and cut cycles 40x to 250x; S76 moved only `pm_bytes`
+  and saved 20% (all AIE2).
 - `likely` and `strong` are statements about the record, not about your
   kernel. The report still says "candidate, HW unconfirmed".
 
@@ -318,12 +323,18 @@ both kernel skills cite the same numbers.
   2070.75 → 1646.2, identity 991.5 → 976. Chunk cycles gelu 172 → 89, silu
   136 → 70, sigmoid 108 → 55. `UNROLL_FULL` on the same loop grew `.text`
   in every configuration (X33).
+- **On AIE2** the unroll can push the body past the pipeliner: `add` and
+  `mul` unrolled to four chains reached MII 32, over `SwpMaxMii` 27, and got
+  no overlap. One chain rolled under `AIE_LOOP_NO_UNROLL` with `__restrict`
+  pipelined at II1: `add` 342 → 78, `mul` 310 → 78 (S24, S25; also S58,
+  S63). `leaky_relu` peaked at unroll 8 (S60).
 
 ## L08 Use the full register width
 
 - **When:** the loop steps 16 lanes on 8/16-bit data or bf16 arithmetic.
-- **Do:** step 64 lanes for 8/16-bit data and 32 lanes for bf16 arithmetic.
-  Template the lane count on the architecture.
+- **Do:** step 64 lanes for 8/16-bit data and, on AIE2P, 32 lanes for bf16
+  arithmetic; AIE2's bf16 multiply is 16 lanes. Take the bf16 width from
+  `AIE_BF16_LANES` in `aie_kernels/aie_arch.h`.
 - **Check:** the trip count halves (or quarters) at a similar II.
 - **HW:** `rope/1024` 1932 → 298, with L06 cursors; `swiglu` with L05.
 
@@ -374,7 +385,9 @@ both kernel skills cite the same numbers.
 - **Do:** compute the trip count up front as unsigned.
   `AIE_LOOP_MIN_ITERATION_COUNT(1)` was part of this win, but it cost the
   zero-overhead loop in two other kernels (X37). Re-check `non_zol_loops`
-  every time you add it.
+  every time you add it. On AIE2, `MIN(n)` on a runtime-count loop let it
+  overlap: `axpy` 269 → 87 (S29; also S30, S36, S37, S39, S40, S42, S44).
+  Keep a second plain instance of the loop for rows shorter than n.
 - **Check:** no `__divsi3`; the II drops; `non_zol_loops` is unchanged.
 - **HW:** `axpy/1024` 317 → 178.
 
@@ -619,7 +632,7 @@ was right.
 | X34 | `UNROLL(2/4)` | `mm_bfp_mixed` | II16 / II44 vs 6 |
 | X35 | Unroll 2 or 4 | cast | worse than 8 |
 | X36 | Byte loops at any unroll | bfp shuffle | II72 |
-| X37 | `AIE_LOOP_MIN_ITERATION_COUNT` | matmul epilogue, dwconv | lost the zero-overhead loop |
+| X37 | `AIE_LOOP_MIN_ITERATION_COUNT` | matmul epilogue, dwconv | lost the zero-overhead loop (AIE2P); on AIE2 it won eight times, see L11 |
 | X38 | `__builtin_memcpy(d,s,8)`, or a byte loop at -O2 | copy | 16 memory ops vs 2 |
 | X39 | Making a helper `static` to shrink `.text` | any | 2x smaller object, 0 B in the ELF |
 | X40 | Full unroll of the i loop | `mm_fused` | z loop II119 (llvm-aie#1066) |

@@ -256,7 +256,7 @@ A zero-overhead loop is set up by writes to `ls`, `le` and `lc`, and its body is
 
 1. Compile the 16-bit design for AIE2. You do not need an npu1 device to compile: `make clean; make devicename=npu build/final_8192.xclbin`, then disassemble the kernel object in `build/final_8192.prj/`. How many bundles is the AIE2 loop?
     <details markdown="1"><summary>Show answer</summary>
-    Two. On AIE2 each vector load moves 256 bits, so the 512-bit input takes a `vlda` plus a `vldb`, and the output takes two 256-bit `vst.srs` stores. With only one store unit, two stores need two cycles, so II 2 is the floor on AIE2. AIE2P moves 512 bits per load and per store here, so it reaches II 1. The 32-bit loop is II 8 on AIE2. (These are compiler output; the AIE2 numbers were not measured on an npu1 for this section.)
+    Two. On AIE2 each vector load moves 256 bits, so the 512-bit input takes a `vlda` plus a `vldb`, and the output takes two 256-bit `vst.srs` stores. With only one store unit, two stores need two cycles, so II 2 is the floor on AIE2. AIE2P moves 512 bits per load and per store here, so it reaches II 1. The 32-bit loop is II 8 on AIE2. On an npu1 the 16-bit kernel measured 78 cycles for 1024 elements: 32 iterations at II 2 plus 14 cycles of pipeline fill, drain and call.
     </details>
 
 ## <u>Trip Counts</u>
@@ -338,7 +338,7 @@ A parallel path performs shifts, shuffles, simple additions, comparisons and oth
 | 16-bit `scale` loop | II 2 | II 1 |
 | 32-bit `scale` loop | II 8 | II 5 (32-bit multiply built from 16-bit partial products) |
 | int16 matrix-multiply instruction | 4x4x4, 64 MACs | 4x4x8, 128 MACs |
-| `float` vector multiply | not covered here | no native instruction; emulated with several bf16 multiplies |
+| `float` vector multiply | no native instruction; emulated with several bf16 multiplies | no native instruction; emulated with several bf16 multiplies |
 | Scalar `float` multiply and divide | library calls (`__mulsf3`, `__divsf3`) | library calls (`__mulsf3`, `__divsf3`) |
 
 The first four rows are Peano's output for this example. The matrix-multiply shapes are from the AIE API [matrix multiplication](https://xilinx.github.io/aie_api/group__group__mmul.html) table. The last row applies to scalar `float` code with Peano on both architectures: every scalar `float` multiply or divide in a hot loop is a function call. [Section 4d](../section-4d#reading-the-static-report) shows how to find them, and [what removing them gained](../section-4d#1-take-library-calls-and-emulated-float-math-out-of-the-loop).
@@ -361,7 +361,7 @@ Total: 70% × 25% ≈ 17%. That sounds poor, but an elementwise multiply simply 
 
 #### <u>Load/ Store bandwidth efficiency</u>
 
-On AIE2P the loop issues one 512-bit load, one multiply and one 512-bit store every cycle. II 1 is the smallest II any loop can have, so the loop body is as fast as it can be; the remaining 14 cycles are filling and draining a 14-stage pipeline and entering and leaving the function. On AIE2 the two 256-bit stores per vector need two cycles through the single store unit, so the compiler's AIE2 schedule cannot beat 64 cycles for this kernel regardless of the multiplier. (That bound is from the schedule; it was not traced on an npu1 for this section.)
+On AIE2P the loop issues one 512-bit load, one multiply and one 512-bit store every cycle. II 1 is the smallest II any loop can have, so the loop body is as fast as it can be; the remaining 14 cycles are filling and draining a 14-stage pipeline and entering and leaving the function. On AIE2 the two 256-bit stores per vector need two cycles through the single store unit, so the compiler's AIE2 schedule cannot beat 64 cycles for this kernel regardless of the multiplier; an npu1 measured 78.
 
 #### <u>Data movement efficiency</u>
 
@@ -399,7 +399,7 @@ The macros in [aie_kernel_utils.h](../../../aie_kernels/aie_kernel_utils.h) let 
 
 | Macro | Peano (`#pragma clang loop ...`) | Chess | Notes |
 |---|---|---|---|
-| `AIE_LOOP_MIN_ITERATION_COUNT(n)` | `min_iteration_count(n)` | `chess::min_loop_count(n)` | Must be true for every call. Measured: 1426 → 338 on the 32-bit `scale` with a runtime `N` ([Trip Count Exercises](#trip-count-exercises)). In two other kernels the compiler reported that it cost the zero-overhead loop, so check `zol` after adding it. |
+| `AIE_LOOP_MIN_ITERATION_COUNT(n)` | `min_iteration_count(n)` | `chess::min_loop_count(n)` | Must be true for every call. Measured: 1426 → 338 on the 32-bit `scale` with a runtime `N` ([Trip Count Exercises](#trip-count-exercises)). On AIE2 it let `axpy`'s runtime-count loop overlap (269 → 87), with a plain loop kept for shorter rows. In two other kernels the compiler reported that it cost the zero-overhead loop, so check `zol` after adding it. |
 | `AIE_LOOP_MAX_ITERATION_COUNT(n)` | `max_iteration_count(n)` | `chess::max_loop_count(n)` | |
 | `AIE_LOOP_RANGE(a, b)` | min + max iteration count | min + max loop count | A trip-count hint only. It does not unroll. |
 | `AIE_LOOP_UNROLL(n)` | `unroll_count(n)` | `chess::unroll_loop(n)` | Measured: ×4 on a latency-bound loop took `add` from 390 to 150 cycles ([4d](../section-4d#3-fill-the-empty-bundles)). |
@@ -410,6 +410,8 @@ The macros in [aie_kernel_utils.h](../../../aie_kernels/aie_kernel_utils.h) let 
 | `AIE_PREPARE_FOR_POSTPIPELINING` | **`pipeline(disable)`** | nothing | Under Peano this *turns pipelining off* for the loop. |
 | `AIE_LOOP_HINT(key, value)` / `AIE_LOOP_GPR_REALLOC` | `hint(key, value)` / `hint(aie-gpr-realloc, 1)` | nothing | Peano back-end tuning hints. |
 | `AIE_NO_PREPARE_FOR_PIPELINING`, `AIE_MODULO_SCHEDULING_BUDGET_RATIO(n)`, `AIE_KEEP_SW_LOOP`, `AIE_PEEL_PIPELINED_LOOP(n)`, `AIE_KEEP_FREE_FOR_PIPELINING(r)`, `AIE_ALLOCATE(r)`, `AIE_NO_HW_LOOP`, `AIE_LOOP_FLATTEN` | **nothing** | the matching Chess attribute | Chess-only scheduling controls. |
+
+Two per-architecture definitions from [aie_arch.h](../../../aie_kernels/aie_arch.h) sit beside these pragmas in library kernels: `AIE_BF16_LANES` is the bf16 vector-multiply width (16 on AIE2, 32 on AIE2P), and `AIE2_RESTRICT` puts `__restrict` on a pointer parameter only on AIE2, whose pipeliner needs it to overlap a streaming loop.
 
 The Peano expansions are the ones active by default. Check [aie_kernel_utils.h](../../../aie_kernels/aie_kernel_utils.h) for the exact spelling before relying on a macro. A pragma that expands to nothing leaves the compiled code byte-identical, so the quickest way to know whether a pragma did anything is to compare the II the remarks tool reports, or the disassembly, with and without it. Whether it made the kernel faster is a question for the hardware: [section 4d](../section-4d) shows how to answer it with the kernel benchmark.
 

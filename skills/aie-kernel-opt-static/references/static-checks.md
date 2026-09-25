@@ -75,7 +75,7 @@ both tools take a base arm as `--baseline-sources <arm>`.
 BASE=$W/base; mkdir -p $BASE
 # Nobody else editing siblings: the whole tree at the base revision.
 git archive HEAD aie_kernels aie_runtime_lib | tar -x -C $BASE
-# Shared tree, or your file includes a sibling (mha.cc includes mm.cc and softmax.cc; many include zero.cc):
+# Shared tree, or your file includes a sibling (linalg/mha.cc includes mm_aie2p.h and softmax_aie2p.h; many include common/zero.h):
 cp -r aie_kernels aie_runtime_lib $BASE/ && git show <rev>:<file> > $BASE/<file>   # per file you changed
 diff -rq aie_kernels $BASE/aie_kernels   # must list only your files
 ```
@@ -84,6 +84,11 @@ The candidate arm is the live checkout, or a copy per candidate
 (`$W/cand-<name>`, selected with `MLIR_AIE_KERNEL_SOURCES`) when you screen
 several. The factories and their `-D` flags come from the installed Python
 either way, so both arms share them.
+
+Every source builds for both AIE2 and AIE2P. A change meant for one
+architecture goes under `AIE_TUNED_*` or a capability from
+`aie_kernels/aie_arch.h`, and the other target's `.text` must come out
+identical: diff the objects remarks keeps with `--target <other> --keep`.
 
 ## Static report (steps 3 and 5)
 

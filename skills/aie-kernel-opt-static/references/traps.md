@@ -3,7 +3,7 @@ Copyright (C) 2026 Advanced Micro Devices, Inc.
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-# Traps (Peano and AIE2P)
+# Traps (Peano, AIE2 and AIE2P)
 
 Code that compiles cleanly and then does nothing, crashes the compiler, or
 produces wrong data. Every item here was hit in real kernel work. Compiler
@@ -14,7 +14,7 @@ behavior depends on the Peano version:
 - Items marked "older pin" haven't been re-tested on the current one.
   Re-check before building a workaround into new code.
 
-## P01 Scalar float, 64-bit and divide helpers are libcalls (AIE2P)
+## P01 Scalar float, 64-bit and divide helpers are libcalls (AIE2 and AIE2P)
 
 The remarks `libcalls` row (and its `calls the runtime library:` line)
 names each one:
@@ -36,10 +36,10 @@ also blocks pipelining. The fix is lever L02 (`levers.md`).
 `aie::to_float` and `to_fixed` are native, but they aren't free inside a
 vector chain: they go through SRS/UPS with mode-register writes (L04).
 
-## P02 No f32 vector multiplier (AIE2P)
+## P02 No f32 vector multiplier (AIE2 and AIE2P)
 
 `aie::mul`/`aie::mac` on `vector<float,N>` is emulated with bf16 products,
-at 32 lanes: 224 B of code where one bf16 mac is 4 B. There is no mixed
+at 32 lanes on AIE2P (II77 to II143 per 16 lanes on AIE2, S61): 224 B of code where one bf16 mac is 4 B. There is no mixed
 f32×bf16 `aie::mul`. The fixes are L03 and L04.
 
 ## P03 Pragmas that expand to nothing under Peano
@@ -69,7 +69,7 @@ The pragmas that act under Peano:
 | Macro | Effect |
 |---|---|
 | `AIE_LOOP_UNROLL(n)`, `AIE_LOOP_UNROLL_FULL`, `AIE_LOOP_NO_UNROLL` | unroll count / full / off |
-| `AIE_LOOP_MIN_ITERATION_COUNT(n)`, `AIE_LOOP_MAX_ITERATION_COUNT(n)` | trip-count hints. MIN can cost the zero-overhead loop (X37), so re-check `non_zol_loops`. `MIN(2)` on a loop that always runs ≥ 2 trips let the postpipeliner overlap it: `partial_softmax` 1861 → 1720 (`levers.md` L20) |
+| `AIE_LOOP_MIN_ITERATION_COUNT(n)`, `AIE_LOOP_MAX_ITERATION_COUNT(n)` | trip-count hints. MIN can cost the zero-overhead loop (X37), so re-check `non_zol_loops`. On AIE2, MIN(n) on a runtime-count loop let it overlap (`axpy` 269 → 87, S29; `levers.md` L11), with a plain loop kept for shorter rows. `MIN(2)` on a loop that always runs ≥ 2 trips let the postpipeliner overlap it: `partial_softmax` 1861 → 1720 (`levers.md` L20) |
 | `AIE_LOOP_RANGE(lo, hi)` | a trip-count hint only. It does **not** unroll (L13) |
 | `AIE_TRY_INITIATION_INTERVAL(n)` | asks the pipeliner for an II |
 | `AIE_LOOP_HINT(k, v)`, `AIE_LOOP_GPR_REALLOC` | backend loop hints |
@@ -111,7 +111,7 @@ one-hot inputs (`aie-kernel-opt-hw` `measurement.md` §Gate).
 iteration on older Peano. It was fixed in `22.0.0.2026082201`, which the pin is
 later than. Byte loops are still slow (L12).
 
-## P08 Stack overflow is silent (AIE2P)
+## P08 Stack overflow is silent (AIE2 and AIE2P)
 
 An overflow doesn't trap. It corrupts the neighbouring buffer, so suspect the
 stack first when errors are small, scattered and row-local. In one internal
@@ -190,12 +190,13 @@ an odd block count (`mm_bfp/32x24x48x4/bfp16ebs8/odd-k`) before the gate.
 
 On AIE2P, `aie::exp2` computes `2^floor(x) · (1 + frac(x))`, which overshoots
 true `exp2` by up to 6.15%. Keep `np.exp2` in references (`aie-kernel-opt-hw` `measurement.md`
-§Gate).
+§Gate). AIE2 has no `aie::exp2`; the cubic in `aie_kernels/common/exp2_bf16.h`
+stands in (S80).
 
 ## Disproven beliefs
 
 - **S9:** "mmul `a.grow` fusion bug." The mechanism was disproven. If a
   small-LSB mismatch appears around an int8 mmul, bisect it from scratch.
 - "Missing `__restrict` costs 5-20x." No measurement backs the range. The
-  measured L06 wins are 1.1x to 7.4x, and each combines restrict with
-  cursors.
+  measured L06 wins are 1.1x to 7.5x. On AIE2, restrict alone gave 7.5x
+  (`add_weighted`, S58), 3.4x (`threshold`, S62) and 1.7x (`add`, S24).
