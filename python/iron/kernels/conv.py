@@ -15,7 +15,7 @@ from functools import partial
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
-from aie.utils.compile.jit.markers import In, Out
+from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
@@ -29,6 +29,7 @@ from ._common import (
     dtypes,
 )
 from .core import conv_even
+from .linalg import _zero_output
 
 
 def _i32s(n: int) -> list:
@@ -827,6 +828,262 @@ def conv2dk1_skip_init(
     )
 
 
+def _requant_even(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8):
+    """``acc >> scale`` rounded half to even and saturated to ``[lo, hi]``.
+
+    The bottleneck kernels' ``(sum + 2**(scale-1) - 1 + ((sum >> scale) & 1))
+    >> scale``; defined for ``scale >= 1`` only, as in the kernels.
+    """
+    scale = int(scale)
+    out = (acc + (1 << (scale - 1)) - 1 + ((acc >> scale) & 1)) >> scale
+    return np.clip(out, lo, hi).astype(dtype)
+
+
+def _dw3x3_acc(lines, weights, input_width, channels, check, stride: int = 1):
+    """int64 ``[C/8][W'][8]`` sums of a depthwise 3x3 conv over ``[C/8][W][8]`` lines.
+
+    Weights ``[C/8][3][3][c8]``, zero-padded horizontally, ``check``
+    dropping the top or bottom line as in ``_conv3x3_acc``. Returns
+    ``(acc, lead, W')``.
+    """
+    W, C, check = int(input_width), int(channels), int(check)
+    lines = [np.asarray(line) for line in lines]
+    lead = lines[0].shape[:-1]
+    w = np.asarray(weights, dtype=np.int8)[: 9 * C]
+    w = w.reshape(C // 8, 3, 3, 8).astype(np.int64)
+    Wo = W // stride
+    acc = np.zeros(lead + (C // 8, Wo, 8), dtype=np.int64)
+    for r in range(3):
+        if (check == 0 and r == 0) or (check == 2 and r == 2):
+            continue
+        v = lines[r][..., : C * W].reshape(*lead, C // 8, W, 8).astype(np.int64)
+        padded = np.pad(v, [(0, 0)] * len(lead) + [(0, 0), (1, 1), (0, 0)])
+        for ki in range(3):
+            shifted = padded[..., :, ki : ki + stride * Wo : stride, :]
+            acc += shifted * w[:, r, ki][:, None, :]
+    return acc, lead, Wo
+
+
+def bn_conv2dk1_relu_ref(
+    x, weights, input_width, input_channels, output_channels, scale
+):
+    """Numpy reference for [`bn_conv2dk1_relu`][iron.kernels.conv.bn_conv2dk1_relu].
+
+    The layouts of [`conv2dk1_ref`][iron.kernels.conv.conv2dk1_ref], rounding
+    half to even: ``out = sat_u8(round_even(sum_ic x * w, scale))``.
+    """
+    W, IC, OC = int(input_width), int(input_channels), int(output_channels)
+    acc, lead = _conv1x1_acc(x, weights, W, IC, OC)
+    return _requant_even(acc, scale).reshape(*lead, W * OC)
+
+
+def bn_conv2dk1_i8_ref(x, weights, input_width, input_channels, output_channels, scale):
+    """Numpy reference for [`bn_conv2dk1_i8`][iron.kernels.conv.bn_conv2dk1_i8].
+
+    ``uint8`` activations, ``int8`` output:
+    ``out = sat_i8(round_even(sum_ic x * w, scale))``.
+    """
+    W, IC, OC = int(input_width), int(input_channels), int(output_channels)
+    acc, lead = _conv1x1_acc(x, weights, W, IC, OC)
+    return _requant_even(acc, scale, -128, 127, np.int8).reshape(*lead, W * OC)
+
+
+def bn_conv2dk1_skip_ref(
+    x,
+    weights,
+    skip,
+    input_width,
+    input_channels,
+    output_channels,
+    scale,
+    skip_scale,
+):
+    """Numpy reference for [`bn_conv2dk1_skip`][iron.kernels.conv.bn_conv2dk1_skip].
+
+    ``skip`` is an ``[OC/8][W][8]`` line of either signedness::
+
+        conv = sat_i8(round_even(sum_ic x * w, scale))
+        out  = sat_i8(round_even(conv + skip, skip_scale))
+
+    Both shifts must be at least 1.
+    """
+    W, IC, OC = int(input_width), int(input_channels), int(output_channels)
+    acc, lead = _conv1x1_acc(x, weights, W, IC, OC)
+    conv = _requant_even(acc, scale, -128, 127, np.int64)
+    total = conv + np.asarray(skip).reshape(*lead, OC // 8, W, 8).astype(np.int64)
+    return _requant_even(total, skip_scale, -128, 127, np.int8).reshape(*lead, W * OC)
+
+
+def bn_conv2dk3_ref(
+    line0,
+    line1,
+    line2,
+    weights,
+    input_width,
+    input_channels,
+    output_channels,
+    kernel_width,
+    kernel_height,
+    check,
+    scale,
+    channel_offset,
+):
+    """Numpy reference for [`bn_conv2dk3`][iron.kernels.conv.bn_conv2dk3]: 3x3 stride-2 conv.
+
+    The layouts and ``check`` of [`conv2dk3_ref`][iron.kernels.conv.conv2dk3_ref];
+    output ``x`` reads input pixels ``2x-1 .. 2x+1`` and the output line is
+    ``input_width / 2`` wide: ``out = sat_u8(round_even(sum, scale))``.
+    """
+    acc, lead, Wo, OC = _conv3x3_acc(
+        (line0, line1, line2),
+        weights,
+        input_width,
+        input_channels,
+        output_channels,
+        kernel_width,
+        check,
+        channel_offset,
+        stride=2,
+    )
+    del kernel_height
+    return _requant_even(acc, scale).reshape(*lead, Wo * OC)
+
+
+def bn_conv2dk3_dw_ref(
+    line0,
+    line1,
+    line2,
+    weights,
+    input_width,
+    input_channels,
+    output_channels,
+    kernel_width,
+    kernel_height,
+    check,
+    scale,
+    channel_offset,
+    *,
+    stride: int = 1,
+):
+    """Numpy reference for [`bn_conv2dk3_dw`][iron.kernels.conv.bn_conv2dk3_dw]: depthwise 3x3 + ReLU.
+
+    Lines are ``[C/8][W][8]`` ``uint8``, weights ``[C/8][3 rows][3][c8]``,
+    ``check`` as in [`conv2dk3_ref`][iron.kernels.conv.conv2dk3_ref]:
+    ``out = sat_u8(round_even(sum, scale))`` over ``output_channels``
+    channels and ``input_width / stride`` pixels. ``kernel_width``,
+    ``kernel_height`` and ``channel_offset`` are accepted for the signature.
+    """
+    del input_channels, kernel_width, kernel_height, channel_offset
+    acc, lead, Wo = _dw3x3_acc(
+        (line0, line1, line2), weights, input_width, output_channels, check, stride
+    )
+    return _requant_even(acc, scale).reshape(*lead, Wo * int(output_channels))
+
+
+def bn_conv2dk3_dw_out_split_ref(
+    line0,
+    line1,
+    line2,
+    weights,
+    input_width,
+    input_channels,
+    output_channels,
+    kernel_width,
+    kernel_height,
+    check,
+    scale,
+    channel_offset,
+):
+    """Numpy reference for [`bn_conv2dk3_dw_out_split`][iron.kernels.conv.bn_conv2dk3_dw_out_split].
+
+    The stride-1 [`bn_conv2dk3_dw_ref`][iron.kernels.conv.bn_conv2dk3_dw_ref],
+    its output channels split in two halves, one per output.
+    """
+    out = bn_conv2dk3_dw_ref(
+        line0,
+        line1,
+        line2,
+        weights,
+        input_width,
+        input_channels,
+        output_channels,
+        kernel_width,
+        kernel_height,
+        check,
+        scale,
+        channel_offset,
+    )
+    half = out.shape[-1] // 2
+    return out[..., :half], out[..., half:]
+
+
+def bn_conv2dk1_relu_xy_pool_padded_ref(
+    x,
+    weights,
+    input_width,
+    input_channels,
+    output_channels,
+    output_channels_padd,
+    scale,
+    y_index,
+    output_split,
+    weight_index,
+):
+    """Numpy reference for [`bn_conv2dk1_relu_xy_pool_padded`][iron.kernels.conv.bn_conv2dk1_relu_xy_pool_padded] into a zeroed output.
+
+    Each output channel of this call's slice (``output_channels /
+    output_split`` of them, at slice ``weight_index``) sums
+    ``sat_u8(round_even(sum_ic x * w, scale))`` over the ``input_width``
+    pixels. On the last row (``y_index == input_width - 1``) the sum is
+    averaged over 49 pixels in ``float32`` as the kernel does: an average
+    whose first decimal is 5 rounds to even, any other rounds half up.
+    Channels outside the slice stay 0; ``output_channels_padd`` must not
+    exceed ``output_channels``.
+    """
+    W, IC, OC = int(input_width), int(input_channels), int(output_channels)
+    tile = OC // int(output_split)
+    acc, lead = _conv1x1_acc(x, np.asarray(weights)[: IC * tile], W, IC, tile)
+    total = _requant_even(acc, scale, dtype=np.int64).sum(axis=-2)  # [tile/8][8]
+    total = total.reshape(*lead, tile)
+    if int(y_index) == W - 1:
+        avg = total.astype(np.float32) / np.float32(49.0)
+        whole = avg.astype(np.int32)
+        tie = (avg * np.float32(10)).astype(np.int32) % 10 == 5
+        even = np.where(whole % 2 == 0, whole, whole + 1)
+        total = np.where(tie, even, (avg + np.float32(0.5)).astype(np.int32))
+    out = np.zeros((*lead, OC), dtype=np.uint16)
+    start = tile * int(weight_index)
+    out[..., start : start + tile] = total.astype(np.uint16)
+    del output_channels_padd
+    return out
+
+
+def bn_fc_relu_ui16_pad_ref(
+    x, weights, input_width, input_channels, input_channels_pad, output_channels, scale
+):
+    """Numpy reference for [`bn_fc_relu_ui16_pad`][iron.kernels.conv.bn_fc_relu_ui16_pad].
+
+    A 1x1 conv of ``uint16`` activations whose weights are laid out for
+    ``input_channels_pad`` input channels (``[OC/8][ICP/8][ic8][oc8]``, the
+    first ``input_channels`` used); the output is ``uint16`` holding
+    ``sat_u8(round_even(sum_ic x * w, scale))``.
+    """
+    W, IC, ICP = int(input_width), int(input_channels), int(input_channels_pad)
+    OC = int(output_channels)
+    x = np.asarray(x)
+    lead = x.shape[:-1]
+    xi = x[..., : IC * W].reshape(*lead, IC // 8, W, 8).astype(np.int64)
+    w = np.asarray(weights, dtype=np.int8)[: OC * ICP]
+    w = w.reshape(OC // 8, ICP // 8, 8, 8)[:, : IC // 8].astype(np.int64)
+    acc = np.einsum("...iwc,oicp->...owp", xi, w)
+    return _requant_even(acc, scale, dtype=np.uint16).reshape(*lead, W * OC)
+
+
+_BN_EXACT = Tolerance.exact(
+    note="round-half-even integer reference of the scalar source; bit-exact on npu1"
+)
+
+
 def bn_conv2dk1_relu(
     input_width: int = 32,
     input_channels: int = 64,
@@ -850,6 +1107,15 @@ def bn_conv2dk1_relu(
         _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DINT8_ACT"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out, Param, Param, Param, Param),
+            reference=bn_conv2dk1_relu_ref,
+            acc_dtype=np.int32,
+            reduction=input_channels,
+            tolerance=_BN_EXACT,
+            ops_per_call=2 * input_width * input_channels * output_channels,
+        ),
     )
 
 
@@ -877,6 +1143,15 @@ def bn_conv2dk3(
         "conv2dk3_stride2_i8",
         _default_source_path("bottleneck/bn_conv2dk3.cc", subdir="aie2"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, In, Param, Out, *((Param,) * 8)),
+            reference=bn_conv2dk3_ref,
+            acc_dtype=np.int32,
+            reduction=9 * input_channels,
+            tolerance=_BN_EXACT,
+            ops_per_call=2 * 9 * (input_width // 2) * input_channels * output_channels,
+        ),
     )
 
 
@@ -903,6 +1178,15 @@ def bn_conv2dk1_i8(
         _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DSCALAR"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out, Param, Param, Param, Param),
+            reference=bn_conv2dk1_i8_ref,
+            acc_dtype=np.int32,
+            reduction=input_channels,
+            tolerance=_BN_EXACT,
+            ops_per_call=2 * input_width * input_channels * output_channels,
+        ),
     )
 
 
@@ -948,6 +1232,16 @@ def bn_conv2dk1_skip(
         _default_source_path("bottleneck/bn_conv2dk1_skip.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out, In, *((Param,) * 5)),
+            reference=bn_conv2dk1_skip_ref,
+            acc_dtype=np.int32,
+            reduction=input_channels,
+            tolerance=_BN_EXACT,
+            ops_per_call=2 * input_width * input_channels * output_channels
+            + input_width * output_channels,
+        ),
     )
 
 
@@ -987,6 +1281,15 @@ def bn_conv2dk3_dw(
         _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, In, Param, Out, *((Param,) * 8)),
+            reference=partial(bn_conv2dk3_dw_ref, stride=stride),
+            acc_dtype=np.int32,
+            reduction=9,
+            tolerance=_BN_EXACT,
+            ops_per_call=2 * 9 * out_size,
+        ),
     )
 
 
@@ -1031,6 +1334,16 @@ def bn_conv2dk1_relu_xy_pool_padded(
         _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, InOut, *((Param,) * 8)),
+            reference=bn_conv2dk1_relu_xy_pool_padded_ref,
+            initializers=((2, _zero_output),),
+            acc_dtype=np.int32,
+            reduction=input_channels,
+            tolerance=_BN_EXACT,
+            ops_per_call=2 * input_width * input_channels * output_channels,
+        ),
     )
 
 
@@ -1183,6 +1496,15 @@ def bn_conv2dk3_dw_out_split(
         _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, In, In, Param, Out, Out, *((Param,) * 8)),
+            reference=bn_conv2dk3_dw_out_split_ref,
+            acc_dtype=np.int32,
+            reduction=9,
+            tolerance=_BN_EXACT,
+            ops_per_call=2 * 9 * input_width * input_channels,
+        ),
     )
 
 
@@ -1305,4 +1627,13 @@ def bn_fc_relu_ui16_pad(
         _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out, *((Param,) * 5)),
+            reference=bn_fc_relu_ui16_pad_ref,
+            acc_dtype=np.int32,
+            reduction=input_channels,
+            tolerance=_BN_EXACT,
+            ops_per_call=2 * input_channels * output_channels,
+        ),
     )

@@ -665,6 +665,138 @@ CASES: list[Case] = [
         tag="top-row",
         perf=False,
     ),
+    Case(
+        "conv2dk3",
+        calls=8,
+        scalars=(32, 64, 64, 3, 3, 0, 15, 0),
+        tag="top-row",
+        perf=False,
+    ),
+    *[
+        Case(
+            "conv2dk3",
+            dict(act_dtype=dt),
+            calls=8,
+            scalars=(32, 64, 64, 3, 3, 2, 15, 0),
+            tag="bottom-row",
+            perf=False,
+        )
+        for dt in (np.int8, np.uint8)
+    ],
+    # The ResNet/bottleneck split: two workers share the weights buffer and
+    # each computes half the output channels, selected by channel_offset.
+    *[
+        Case(
+            "conv2dk3",
+            dict(act_dtype=dt, output_channels=32, weight_output_channels=64),
+            calls=8,
+            scalars=(32, 64, 32, 3, 3, 1, 15, 32),
+            tag="channel-offset",
+            perf=False,
+        )
+        for dt in (np.int8, np.uint8)
+    ],
+    # MobileNet bottleneck kernels at MobileNet V3 layer shapes; shifts put
+    # the random sums around the output range, as for conv above.
+    Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=28, input_channels=40, output_channels=120),
+        calls=8,
+        scalars=(28, 40, 120, 8),
+        smoke=True,
+    ),
+    Case(
+        "bn_conv2dk1_i8",
+        dict(input_width=28, input_channels=120, output_channels=40),
+        calls=8,
+        scalars=(28, 120, 40, 10),
+        smoke=True,
+    ),
+    Case(
+        "bn_conv2dk1_skip",
+        dict(input_width=28, input_channels=120, output_channels=40),
+        calls=8,
+        scalars=(28, 120, 40, 10, 1),
+        smoke=True,
+    ),
+    Case(
+        "bn_conv2dk1_skip",
+        dict(
+            input_width=28,
+            input_channels=120,
+            output_channels=40,
+            skip_dtype=np.int8,
+        ),
+        calls=8,
+        scalars=(28, 120, 40, 10, 1),
+    ),
+    Case(
+        "bn_conv2dk3",
+        dict(input_width=224, input_channels=8, output_channels=16),
+        calls=8,
+        scalars=(224, 8, 16, 3, 3, 1, 8, 0),
+        smoke=True,
+    ),
+    Case(
+        "bn_conv2dk3",
+        dict(input_width=224, input_channels=8, output_channels=16),
+        calls=8,
+        scalars=(224, 8, 16, 3, 3, 0, 8, 0),
+        tag="top-row",
+        perf=False,
+    ),
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=28, input_channels=120, output_channels=120),
+        calls=8,
+        scalars=(28, 120, 120, 3, 3, 1, 7, 0),
+        smoke=True,
+    ),
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=56, input_channels=72, output_channels=72, stride=2),
+        calls=8,
+        scalars=(56, 72, 72, 3, 3, 1, 7, 0),
+    ),
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=28, input_channels=120, output_channels=120),
+        calls=8,
+        scalars=(28, 120, 120, 3, 3, 2, 7, 0),
+        tag="bottom-row",
+        perf=False,
+    ),
+    Case(
+        "bn_conv2dk3_dw_out_split",
+        dict(input_width=7, input_channels=480, output_split_channels=240),
+        calls=8,
+        scalars=(7, 480, 480, 3, 3, 1, 7, 0),
+        smoke=True,
+    ),
+    # One of MobileNet's eight 120-channel weight slices, on the last row so
+    # the average is taken.
+    Case(
+        "bn_conv2dk1_relu_xy_pool_padded",
+        dict(input_width=7, input_channels=80, output_channels=120),
+        calls=8,
+        scalars=(7, 80, 120, 120, 8, 6, 1, 0),
+        smoke=True,
+    ),
+    Case(
+        "bn_conv2dk1_relu_xy_pool_padded",
+        dict(input_width=7, input_channels=80, output_channels=120),
+        calls=8,
+        scalars=(7, 80, 120, 120, 8, 0, 1, 0),
+        tag="first-row",
+        perf=False,
+    ),
+    Case(
+        "bn_fc_relu_ui16_pad",
+        dict(input_channels=1280, output_channels=8),
+        calls=8,
+        scalars=(1, 1280, 1280, 8, 12),
+        smoke=True,
+    ),
     # eltwise mul/add selected per call (programming_examples/ml/scale_shift)
     Case("mul_add", calls=16, scalars=(1,), smoke=True),
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),

@@ -508,12 +508,14 @@ builds the pair by hand and judges it against the two products.
 covered by the rounding-mode tests above.
 
 The MobileNet bottleneck kernels (`bn_*`) are exported for the
-[`mobilenet`](../programming_examples/ml/mobilenet) examples but carry no
-contract yet: their sources take between four and ten trailing scalars in
-per-kernel orders, several write only part of their output buffer per call,
-and the cascade halves exist as one symbol per network block. They are
-validated through the composed MobileNet designs until the sources are
-regularized; the contract test lists them by name as not judged.
+[`mobilenet`](../programming_examples/ml/mobilenet) examples. The single-core
+ones carry contracts with round-half-even integer references and run in the
+hardware sweeps at MobileNet V3 layer shapes; `bn_conv2dk1_relu_xy_pool_padded`
+accumulates into its output across calls, so its case zeroes that buffer
+first. The cascade halves (`bn_conv2dk1_partial_*` and
+`bn_conv2dk1_input_split_partial_*`) exist as one symbol per network block
+and are still validated only through the composed MobileNet designs; the
+contract test lists them by name as not judged.
 
 `mm_bfp_shuffle` validates the forward permutation through declared plain-BFP
 input and blocked-BFP output codecs, comparing exactly the represented values.

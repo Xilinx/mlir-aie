@@ -69,20 +69,12 @@ NOT_JUDGED = {
     "cascade_mm_put": "the PUT half of that pair; its result leaves on the cascade stream",
     "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
     **{
-        name: "MobileNet bottleneck kernel, not validated yet (see the guide)"
+        name: "one half of a MobileNet bottleneck cascade pair, not validated yet (see the guide)"
         for name in (
-            "bn_conv2dk1_relu",
-            "bn_conv2dk3",
-            "bn_conv2dk1_i8",
-            "bn_conv2dk1_skip",
-            "bn_conv2dk3_dw",
-            "bn_conv2dk1_relu_xy_pool_padded",
             "bn_conv2dk1_partial_put_i8",
             "bn_conv2dk1_partial_get_relu_i8",
-            "bn_conv2dk3_dw_out_split",
             "bn_conv2dk1_input_split_partial_put_ui8",
             "bn_conv2dk1_input_split_partial_skip_get",
-            "bn_fc_relu_ui16_pad",
         )
     },
 }
