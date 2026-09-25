@@ -259,7 +259,7 @@ On an int8 convolution network, three more changes measured faster:
 
 ## <u>Peano and AIE2P traps</u>
 
-Some things compile without a warning and then crash, run silently slower, or give wrong results.
+Some things compile without a warning and then run silently slower or give wrong results.
 
 **Library calls** (AIE2 and AIE2P, Peano): scalar `float` multiply (`__mulsf3`) and divide (`__divsf3`), `float` from a 32-bit integer (`__floatsisf`, `__floatunsisf`), scalar `float` comparisons (`__ltsf2`, `__gtsf2`), anything using `double`, 64-bit integer multiply (`__muldi3`), and 32-bit integer divide (`__divsi3`). A group size that is not a power of two can turn `/ GROUP` into `__muldi3`. Native: `float` add and subtract, `aie::inv`, `aie::invsqrt`, `aie::to_float`, `aie::max`/`aie::min`, and bf16↔float conversion. `aie::to_float` is not a call, but inside a hot vector chain it is not free either (lever 1).
 
@@ -270,9 +270,6 @@ Some things compile without a warning and then crash, run silently slower, or gi
 * On hardware, a block stream's `pop_seek` that directly follows a plain `pop()` landed on the wrong block when the seek stride was odd; even strides were correct. [mm_bfp.cc](../../../aie_kernels/linalg/mm_bfp.cc) therefore seeks after every pop when the number of k blocks is odd, and an odd-K case in [kernel_cases.py](../../../test/python/npu/kernel_cases.py) covers that path.
 * An unaligned `load_v<int8, 32>` silently returns wrong bytes: use two aligned loads and `shuffle_down`. Vector stores of 64 lanes need a 64-byte-aligned buffer (32 at the least), and lookup tables need `alignas(32)`.
 * `mmul::to_vector<int32>` dumps the accumulator in a different lane order from `to_vector<int8>(shift)`.
-* Peano has miscompiled store loops and derived pointers: an int16 `zero` loop unrolled by 2 stored its loop offset instead of 0, and weight planes addressed as `w + t * stride` collapsed onto the first plane. Test store loops with poisoned outputs and pointer arithmetic with one-hot inputs.
-
-**Crashes.** Subtracting two lane-wise products with vector `-` crashed instruction legalization (use `aie::msc`); `to_vector<int8>` followed by `aie::unpack` crashed instruction selection; inline assembly crashed the front end. Those were on older Peano versions. On the current one, grouping three or four 8x8 tiles per accumulator in the prefill attention kernel crashed the assembly printer.
 
 **The modulo scheduler has a limit.** Peano's modulo scheduler gives up on loops whose minimum II is above 27; those loops get only the post-pass scheduler. The remarks note says so (for example, `Minimal Initiation Interval too large: 40 > 27` on the scalar `add` loop). Splitting a large body is the way back into the pipeliner.
 
@@ -305,7 +302,6 @@ A well-measured "no change" is a result. Record it, with the number that ruled i
 | An `if` or ternary inside a multiply-accumulate loop | int8 convolution | 7% slower |
 | `AIE_LOOP_UNROLL_FULL` on the mmul row loop | fused matrix multiply | k step 216 → 287, and four configurations overflow the 4096-byte stack |
 | An opaque pointer bump to keep operand loads in the loop | flash-attention prefill | compiler's II 37 → 31, but hardware 1265 → 1374-1576 |
-| Unrolling an int16 store loop by 2 | `zero` | wrong output (a miscompile) |
 | Averaging host wall clock | any | a phantom 7.5% between identical builds |
 
 Many more variants were rejected on the compiler's report alone, because the II grew or registers spilled. Those are useful screens, not measurements, and are not listed here.
