@@ -67,11 +67,19 @@ static __attribute__((noinline)) void exp2f_vec(const float *in, float *out) {
   x = aie::min(x, aie::broadcast<float, EXP2F_VEC_LEN>(127.999f));
   aie::vector<int32_t, EXP2F_VEC_LEN> ki;
   const auto p = exp2_poly(x, ki);
+#if __AIE_ARCH__ == 20
+  // AIE2 emulates the f32 multiply, so add k to p's exponent instead. p is in
+  // [1, 2) and the clamps hold k to [-126, 127], so the sum stays a normal
+  // float and is exact.
+  aie::vector<float, EXP2F_VEC_LEN> result =
+      aie::add(p.cast_to<int32_t>(), aie::upshift(ki, 23)).cast_to<float>();
+#else
   aie::vector<int32_t, EXP2F_VEC_LEN> ebits = aie::upshift(
       aie::add(ki, aie::broadcast<int32_t, EXP2F_VEC_LEN>(127)), 23);
   aie::vector<float, EXP2F_VEC_LEN> p2k = ebits.cast_to<float>();
   aie::vector<float, EXP2F_VEC_LEN> result =
       aie::mul(p, p2k).to_vector<float>();
+#endif
   aie::vector<int32_t, EXP2F_VEC_LEN> pos_inf_bits =
       aie::broadcast<int32_t, EXP2F_VEC_LEN>(0x7f800000);
   aie::vector<float, EXP2F_VEC_LEN> pos_inf = pos_inf_bits.cast_to<float>();
