@@ -33,17 +33,11 @@ constexpr unsigned DataStepXY = 1;
 using mul_ops =
     aie::sliding_mul_xy_ops<Lanes, Points, CoeffStep, DataStepXY, int8, uint8>;
 
-#if __AIE_ARCH__ == 20
-#define FILTER2D_RESTRICT __restrict
-#else
-#define FILTER2D_RESTRICT
-#endif
-
-void filter2d_3lines_aie(uint8_t *FILTER2D_RESTRICT lineIn0,
-                         uint8_t *FILTER2D_RESTRICT lineIn1,
-                         uint8_t *FILTER2D_RESTRICT lineIn2,
-                         uint8_t *FILTER2D_RESTRICT output, const int32_t width,
-                         int16_t *FILTER2D_RESTRICT kernel) {
+void filter2d_3lines_aie(uint8_t *AIE2_RESTRICT lineIn0,
+                         uint8_t *AIE2_RESTRICT lineIn1,
+                         uint8_t *AIE2_RESTRICT lineIn2,
+                         uint8_t *AIE2_RESTRICT output, const int32_t width,
+                         int16_t *AIE2_RESTRICT kernel) {
   event0();
 
   set_sat(); // Needed for int16 to saturate properly to uint8

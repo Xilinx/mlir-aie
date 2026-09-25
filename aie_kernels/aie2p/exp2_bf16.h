@@ -7,11 +7,12 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-// 2^x rounded to bf16, standing in for aie::exp2<bfloat16> on AIE2, which has
-// no exp2. x = k + f with k = round(x) and |f| <= 1/2. 2^f is a cubic in bf16
+// 2^x rounded to bf16: aie::exp2<bfloat16> on AIE2P. AIE2 has no exp2, so
+// there x = k + f with k = round(x) and |f| <= 1/2. 2^f is a cubic in bf16
 // products, within 0.2% of 2^f, and 2^k is added into its f32 exponent field.
 // x is clamped to [-200, 127]. Past the bottom of the exponent field the sum
 // goes negative, and is clamped to +0.
+#if __AIE_ARCH__ == 20
 static inline aie::vector<bfloat16, 16> exp2_bf16_16(aie::vector<float, 16> x) {
   x = aie::max(x, aie::broadcast<float, 16>(-200.0f));
   x = aie::min(x, aie::broadcast<float, 16>(127.0f));
@@ -52,5 +53,11 @@ static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
     return out;
   }
 }
+#else
+template <unsigned N>
+static inline aie::vector<bfloat16, N> exp2_bf16(aie::vector<float, N> x) {
+  return aie::exp2<bfloat16>(x);
+}
+#endif
 
 #endif

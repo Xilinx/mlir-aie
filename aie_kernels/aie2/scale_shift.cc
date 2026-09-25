@@ -30,11 +30,8 @@ void eltwise_mul_add(T_in *a, T_in *b, T_out *c, bool is_mul) {
 // iterations to one vector per cycle; the add goes through a mac so only a
 // needs the a-port-only vlda.conv (see generic/add.cc).
 #if __AIE_ARCH__ == 20
-#define MUL_ADD_RESTRICT __restrict
-
 template <typename T_in, typename T_out, const int N>
-void eltwise_vadd(T_in *MUL_ADD_RESTRICT a, T_in *MUL_ADD_RESTRICT b,
-                  T_out *MUL_ADD_RESTRICT c) {
+void eltwise_vadd(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c) {
   constexpr int vec_factor = 16;
   event0();
   auto pA = aie::begin_restrict_vector<vec_factor>(a);
@@ -51,8 +48,7 @@ void eltwise_vadd(T_in *MUL_ADD_RESTRICT a, T_in *MUL_ADD_RESTRICT b,
 }
 
 template <typename T_in, typename T_out, const int N>
-void eltwise_vmul(T_in *MUL_ADD_RESTRICT a, T_in *MUL_ADD_RESTRICT b,
-                  T_out *MUL_ADD_RESTRICT c) {
+void eltwise_vmul(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c) {
   constexpr int vec_factor = 16;
   event0();
   auto pA = aie::begin_restrict_vector<vec_factor>(a);

@@ -17,13 +17,6 @@ using namespace aie;
 #define SWIGLU_ELEMS vector_size
 #endif
 
-// See add.cc: one bf16 vector register, 512 bits on AIE2P and 256 on AIE2.
-#if __AIE_ARCH__ >= 21
-#define SWIGLU_LANES 32
-#else
-#define SWIGLU_LANES 16
-#endif
-
 // out = (x * w1) * silu(x * w2), one vector register per iteration. tanh runs
 // 16 lanes at a time whatever the register width, so the 32-wide iteration
 // splits and re-concatenates and the 16-wide one does neither; silu.cc
@@ -144,8 +137,8 @@ void swiglu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 #if __AIE_ARCH__ == 20
   swiglu_aie2(input_vector, weight_vector_1, weight_vector_2, output_vector);
 #else
-  swiglu_impl<SWIGLU_LANES>(input_vector, weight_vector_1, weight_vector_2,
-                            output_vector);
+  swiglu_impl<AIE_BF16_LANES>(input_vector, weight_vector_1, weight_vector_2,
+                              output_vector);
 #endif
   event1();
 
@@ -156,7 +149,7 @@ extern "C" {
 
 void swiglu_bf16(bfloat16 *restrict input, bfloat16 *restrict weights_1,
                  bfloat16 *restrict weights_2, bfloat16 *restrict output) {
-  // Assuming input size is a multiple of SWIGLU_LANES
+  // Assuming input size is a multiple of AIE_BF16_LANES
   int32_t input_size = 1024;
   swiglu_tanh_approx_bf16(input, weights_1, weights_2, output, input_size);
 }

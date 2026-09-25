@@ -20,13 +20,6 @@
 #define ADD_ELEMS_RUNTIME
 #endif
 
-// One bf16 vector register: 512 bits on AIE2P, 256 on AIE2.
-#if __AIE_ARCH__ >= 21
-#define ADD_VEC_FACTOR 32
-#else
-#define ADD_VEC_FACTOR 16
-#endif
-
 template <typename T_in, typename T_out, const int N>
 void eltwise_add(T_in *a, T_in *b, T_out *c) {
   for (int i = 0; i < N; i++) {
@@ -52,8 +45,6 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
 // rolled.  Only a converts on load (vlda.conv is a-port only); b loads as bf16
 // on the b port and is added as b * 1 in a mac.
 #if __AIE_ARCH__ == 20
-#define ADD_RESTRICT __restrict
-
 template <typename T_in, typename T_out, int vec_factor>
 void eltwise_vadd_aie2(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
                        aie::restrict_vector_iterator<T_in, vec_factor> &pB,
@@ -67,15 +58,13 @@ void eltwise_vadd_aie2(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
     *pC++ = aie::mac(acc, *pB++, ones).template to_vector<T_out>();
   }
 }
-#else
-#define ADD_RESTRICT
 #endif
 
 template <typename T_in, typename T_out, const int N>
-void eltwise_vadd(T_in *ADD_RESTRICT a, T_in *ADD_RESTRICT b,
-                  T_out *ADD_RESTRICT c) {
+void eltwise_vadd(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
+                  T_out *AIE2_RESTRICT c) {
 
-  constexpr int vec_factor = ADD_VEC_FACTOR;
+  constexpr int vec_factor = AIE_BF16_LANES;
   event0();
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
@@ -113,9 +102,9 @@ void eltwise_vadd(T_in *ADD_RESTRICT a, T_in *ADD_RESTRICT b,
 // Runtime size (need not divide vec_factor); scalar tail avoids the full-width
 // load_v/store_v reading/writing past the buffer on a short final vector.
 template <typename T_in, typename T_out>
-void eltwise_vadd_size(T_in *ADD_RESTRICT a, T_in *ADD_RESTRICT b,
-                       T_out *ADD_RESTRICT c, int size) {
-  constexpr int vec_factor = ADD_VEC_FACTOR;
+void eltwise_vadd_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
+                       T_out *AIE2_RESTRICT c, int size) {
+  constexpr int vec_factor = AIE_BF16_LANES;
   event0();
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);

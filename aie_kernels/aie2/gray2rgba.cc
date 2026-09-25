@@ -24,15 +24,8 @@
   return ::aie::vector<uint8, 64>(lli);
 }
 
-#if __AIE_ARCH__ == 20
-#define GRAY2RGBA_RESTRICT __restrict
-#else
-#define GRAY2RGBA_RESTRICT
-#endif
-
-void gray2rgba_aie(uint8_t *GRAY2RGBA_RESTRICT y_in,
-                   uint8_t *GRAY2RGBA_RESTRICT rgba_out, const int32_t height,
-                   const int32_t width) {
+void gray2rgba_aie(uint8_t *AIE2_RESTRICT y_in, uint8_t *AIE2_RESTRICT rgba_out,
+                   const int32_t height, const int32_t width) {
   event0();
   // Initialize alpha vector
   ::aie::vector<uint8, 64> alpha255 = ::aie::zeros<uint8, 64>();

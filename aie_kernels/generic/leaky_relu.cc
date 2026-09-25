@@ -15,13 +15,6 @@ using namespace aie;
 #define LEAKY_RELU_ELEMS vector_size
 #endif
 
-// See add.cc: one bf16 vector register, 512 bits on AIE2P and 256 on AIE2.
-#if __AIE_ARCH__ >= 21
-#define LEAKY_RELU_LANES 32
-#else
-#define LEAKY_RELU_LANES 16
-#endif
-
 // Leaky ReLU: f(x) = max(x, alpha * x).  For alpha < 1 this is x when x > 0 and
 // alpha * x otherwise.
 //
@@ -34,7 +27,7 @@ using namespace aie;
 void leaky_relu_vectorized_bf16(bfloat16 *restrict a, bfloat16 *restrict c,
                                 const int32_t vector_size,
                                 const bfloat16 alpha) {
-  constexpr int lanes = LEAKY_RELU_LANES;
+  constexpr int lanes = AIE_BF16_LANES;
   event0();
 
   auto it_in = aie::begin_restrict_vector<lanes>((bfloat16 *)a);
@@ -43,11 +36,7 @@ void leaky_relu_vectorized_bf16(bfloat16 *restrict a, bfloat16 *restrict c,
   vector<bfloat16, lanes> alpha_vec = aie::broadcast<bfloat16, lanes>(alpha);
 
   AIE_PREPARE_FOR_PIPELINING
-#if __AIE_ARCH__ == 20
-  AIE_LOOP_UNROLL(8)
-#else
-  AIE_LOOP_UNROLL(4)
-#endif
+  AIE_LOOP_UNROLL(128 / lanes)
   for (int i = 0; i < LEAKY_RELU_ELEMS; i += lanes) {
     vector<bfloat16, lanes> input = *it_in++;
     vector<bfloat16, lanes> alpha_times_input = aie::mul(input, alpha_vec);

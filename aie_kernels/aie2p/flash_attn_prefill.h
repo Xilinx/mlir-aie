@@ -13,9 +13,7 @@
 
 #include <aie_api/aie.hpp>
 
-#if __AIE_ARCH__ == 20
 #include "exp2_bf16.h"
-#endif
 
 // Flash-attention prefill (online softmax) in two geometries: global (head_dim
 // 512, chunk 8) and sliding-window (head_dim 256, chunk 16), over a 128-key
@@ -71,11 +69,7 @@ void apply_softmax(bf16 *__restrict pS, bf16 *__restrict new_m_local) {
       // here: the bf16 product lands in a float accumulator either way.
       aie::vector<bf16, 64> Vec = aie::sub(s_vec, m_bcast);
       aie::accum<accfloat, 64> Vec_acc = aie::mul(Vec, exp_scale<LQ>);
-#if __AIE_ARCH__ == 20
       aie::store_v(pSg, exp2_bf16(Vec_acc.template to_vector<float>()));
-#else
-      aie::store_v(pSg, aie::exp2<bf16>(Vec_acc.template to_vector<float>()));
-#endif
       pSg += kGroups * 64;
     }
   }
@@ -141,11 +135,7 @@ void calculate_c(float *c, bf16 *prev_m_local, bf16 *new_m_local) {
   aie::vector<bf16, LQ> next = aie::load_v<LQ>(new_m_local);
   aie::accum<accfloat, LQ> arg = aie::mul(aie::sub(prev, next), exp_scale<LQ>);
   aie::accum<accfloat, LQ> e;
-#if __AIE_ARCH__ == 20
   e.from_vector(exp2_bf16(arg.template to_vector<float>()));
-#else
-  e.from_vector(aie::exp2<bf16>(arg.template to_vector<float>()));
-#endif
   aie::store_v(c, e.template to_vector<float>());
 }
 

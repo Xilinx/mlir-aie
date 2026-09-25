@@ -11,9 +11,7 @@
 #include <limits>
 #include <stdint.h>
 
-#if __AIE_ARCH__ == 20
 #include "exp2_bf16.h"
-#endif
 
 #define SM_VEC_LEN 32   // 32
 #define log2e 1.4453125 // 1.44269504089
@@ -95,11 +93,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
     scaled_accum = aie::mul(input_bf16, log2e_vec);
     exp_in_accum = aie::sub(scaled_accum, max_scaled);
-#if __AIE_ARCH__ == 20
     exp_val = exp2_bf16(exp_in_accum.to_vector<float>());
-#else
-    exp_val = aie::exp2<bfloat16>(exp_in_accum.to_vector<float>());
-#endif
     exp_val_accum = add(exp_val_accum, exp_val);
 
     *it_exp_out++ = exp_val;
@@ -187,11 +181,7 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
     input_bf16 = *it_exp_in++;
     scaled_accum = aie::mul(input_bf16, log2e_vec);
     exp_in_accum = aie::sub(scaled_accum, max_val_vec);
-#if __AIE_ARCH__ == 20
     exp_val = exp2_bf16(exp_in_accum.to_vector<float>());
-#else
-    exp_val = aie::exp2<bfloat16>(exp_in_accum.to_vector<float>());
-#endif
     exp_val_accum = add(exp_val_accum, exp_val);
     *it_exp_out++ = exp_val;
   }

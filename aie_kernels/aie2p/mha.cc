@@ -555,11 +555,7 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
 
     aie::accum<accfloat, VECTOR_LENGTH> diff =
         aie::accum<accfloat, VECTOR_LENGTH>(aie::sub(m_i_minus_1, m_i));
-#if __AIE_ARCH__ == 20
     l_i_accum.from_vector(exp2_bf16(diff.to_vector<float>()));
-#else
-    l_i_accum = aie::exp2<bfloat16>(diff.to_vector<float>());
-#endif
     Vec64bf16 max_diff_exp = l_i_accum.to_vector<bfloat16>();
 
     aie::store_v(scale_buffer + 3 * B_q + i, max_diff_exp);

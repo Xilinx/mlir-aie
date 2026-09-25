@@ -17,13 +17,6 @@ using namespace aie;
 #define SILU_ELEMS vector_size
 #endif
 
-// See add.cc: one bf16 vector register, 512 bits on AIE2P and 256 on AIE2.
-#if __AIE_ARCH__ >= 21
-#define SILU_LANES 32
-#else
-#define SILU_LANES 16
-#endif
-
 // silu(x) = x * 0.5 * (1 + tanh(x/2)), one vector register per iteration.
 // tanh runs 16 lanes at a time whatever the register width, so the 32-wide
 // iteration splits and re-concatenates and the 16-wide one does neither.
@@ -109,7 +102,7 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 #if __AIE_ARCH__ == 20
   silu_aie2(input_vector, output_vector, vector_size);
 #else
-  silu_impl<SILU_LANES>(input_vector, output_vector, vector_size);
+  silu_impl<AIE_BF16_LANES>(input_vector, output_vector, vector_size);
 #endif
   event1();
 

@@ -87,6 +87,21 @@ Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 #define AIE_LOOP_GPR_REALLOC
 #endif
 
+// One bf16 vector register: 512 bits on AIE2P, 256 on AIE2.
+#if __AIE_ARCH__ >= 21
+#define AIE_BF16_LANES 32
+#else
+#define AIE_BF16_LANES 16
+#endif
+
+// __restrict on AIE2 only. The AIE2 pipeliner needs it to overlap a streaming
+// loop's iterations; AIE2P kernels were tuned without it.
+#if __AIE_ARCH__ == 20
+#define AIE2_RESTRICT __restrict
+#else
+#define AIE2_RESTRICT
+#endif
+
 // Runs `body` (a zero-arg lambda) `count` times. `body` cannot reference the
 // internal loop index. When count >= MinIters the loop is eligible for software
 // pipelining (extra pragma macros may be passed after `body`, e.g.

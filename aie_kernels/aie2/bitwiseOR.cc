@@ -29,16 +29,9 @@ void bitwiseOR_aie_scalar(const T *in1, const T *in2, T *out,
       out[i * width + j] = in1[i * width + j] | in2[i * width + j];
 }
 
-#if __AIE_ARCH__ == 20
-#define BITWISE_OR_RESTRICT __restrict
-#else
-#define BITWISE_OR_RESTRICT
-#endif
-
 template <typename T, int N>
-void bitwiseOR_aie(const T *BITWISE_OR_RESTRICT src1,
-                   const T *BITWISE_OR_RESTRICT src2,
-                   T *BITWISE_OR_RESTRICT dst, const int32_t width,
+void bitwiseOR_aie(const T *AIE2_RESTRICT src1, const T *AIE2_RESTRICT src2,
+                   T *AIE2_RESTRICT dst, const int32_t width,
                    const int32_t height) {
   event0();
 

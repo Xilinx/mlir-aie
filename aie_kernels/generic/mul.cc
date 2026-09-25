@@ -20,13 +20,6 @@
 #define MUL_ELEMS_RUNTIME
 #endif
 
-// See add.cc: one bf16 vector register, 512 bits on AIE2P and 256 on AIE2.
-#if __AIE_ARCH__ >= 21
-#define MUL_VEC_FACTOR 32
-#else
-#define MUL_VEC_FACTOR 16
-#endif
-
 template <typename T_in, typename T_out, const int N>
 void eltwise_mul(T_in *a, T_in *b, T_out *c) {
   for (int i = 0; i < N; i++) {
@@ -46,17 +39,11 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
 
 // AIE2 runs one chain per iteration instead: with restrict pointers and the
 // loop kept rolled, the pipeliner overlaps it to one vector per cycle.
-#if __AIE_ARCH__ == 20
-#define MUL_RESTRICT __restrict
-#else
-#define MUL_RESTRICT
-#endif
-
 template <typename T_in, typename T_out, const int N>
-void eltwise_vmul(T_in *MUL_RESTRICT a, T_in *MUL_RESTRICT b,
-                  T_out *MUL_RESTRICT c) {
+void eltwise_vmul(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
+                  T_out *AIE2_RESTRICT c) {
 
-  constexpr int vec_factor = MUL_VEC_FACTOR;
+  constexpr int vec_factor = AIE_BF16_LANES;
   event0();
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
@@ -96,9 +83,9 @@ void eltwise_vmul(T_in *MUL_RESTRICT a, T_in *MUL_RESTRICT b,
 // Runtime size (need not divide vec_factor); scalar tail avoids the full-width
 // load_v/store_v reading/writing past the buffer on a short final vector.
 template <typename T_in, typename T_out>
-void eltwise_vmul_size(T_in *MUL_RESTRICT a, T_in *MUL_RESTRICT b,
-                       T_out *MUL_RESTRICT c, int size) {
-  constexpr int vec_factor = MUL_VEC_FACTOR;
+void eltwise_vmul_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
+                       T_out *AIE2_RESTRICT c, int size) {
+  constexpr int vec_factor = AIE_BF16_LANES;
   event0();
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);

@@ -42,16 +42,9 @@ void addweighted_aie_scalar(const T *in1, const T *in2, T *out,
     }
 }
 
-#if __AIE_ARCH__ == 20
-#define ADD_WEIGHTED_RESTRICT __restrict
-#else
-#define ADD_WEIGHTED_RESTRICT
-#endif
-
 template <typename T, int N, int MAX>
-void addweighted_aie(const T *ADD_WEIGHTED_RESTRICT src1,
-                     const T *ADD_WEIGHTED_RESTRICT src2,
-                     T *ADD_WEIGHTED_RESTRICT dst, const int32_t width,
+void addweighted_aie(const T *AIE2_RESTRICT src1, const T *AIE2_RESTRICT src2,
+                     T *AIE2_RESTRICT dst, const int32_t width,
                      const int32_t height, const int16_t alphaFixedPoint,
                      const int16_t betaFixedPoint, const T gamma) {
   event0();

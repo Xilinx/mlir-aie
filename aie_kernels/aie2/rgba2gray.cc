@@ -42,16 +42,10 @@ __attribute__((inline)) void xf_extract_rgb(uint8_t *ptr_rgba,
   b = ::aie::filter_even(ba_temp, 1);
 }
 
-#if __AIE_ARCH__ == 20
-#define RGBA2GRAY_RESTRICT __restrict
-#else
-#define RGBA2GRAY_RESTRICT
-#endif
-
-__attribute__((noinline)) void
-rgba2gray_aie(uint8_t *RGBA2GRAY_RESTRICT rgba_in,
-              uint8_t *RGBA2GRAY_RESTRICT y_out, const int32_t height,
-              const int32_t width) {
+__attribute__((noinline)) void rgba2gray_aie(uint8_t *AIE2_RESTRICT rgba_in,
+                                             uint8_t *AIE2_RESTRICT y_out,
+                                             const int32_t height,
+                                             const int32_t width) {
   event0();
   //::aie::vector<int16_t, 16> WT(66, 129, 25, 128); //Y=0.299*R + 0.587*G +
   //: 0.114*B (BT.470) :aie::vector<int16_t, 16> WT(25, 129, 66, 128);

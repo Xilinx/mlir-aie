@@ -32,15 +32,9 @@ enum _threshold_type {
 #define THRESHOLD_ELEMS (img_height * img_width)
 #endif
 
-#if __AIE_ARCH__ == 20
-#define THRESHOLD_RESTRICT __restrict
-#else
-#define THRESHOLD_RESTRICT
-#endif
-
 template <typename T, int N>
 __attribute__((noinline)) void
-threshold_aie(T *THRESHOLD_RESTRICT img_in, T *THRESHOLD_RESTRICT img_out,
+threshold_aie(T *AIE2_RESTRICT img_in, T *AIE2_RESTRICT img_out,
               const int32_t img_width, const int32_t img_height,
               const T &thresh_val, const T &max_val,
               const uint8_t thresholdType) {
