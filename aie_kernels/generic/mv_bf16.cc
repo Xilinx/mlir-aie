@@ -111,10 +111,11 @@ pack_rows4(aie::accum<accfloat, r> a0, aie::accum<accfloat, r> a1,
 // load's post-increment, which holds the loop at II9 rather than II7. The
 // first chunk multiplies instead of accumulating onto zeros, which the target
 // reloads from the stack for every group. Short rows unroll fully, so a whole
-// group is one block the scheduler can overlap with its neighbor.
+// group is one block the scheduler can overlap with its neighbor. AIE2 would
+// not inline it, and returned its accumulator through the stack.
 template <uint32_t r, uint32_t k>
-static inline aie::accum<accfloat, 64> mac_rows4(const bfloat16 *__restrict a,
-                                                 const bfloat16 *__restrict b) {
+__attribute__((always_inline)) static inline aie::accum<accfloat, 64>
+mac_rows4(const bfloat16 *__restrict a, const bfloat16 *__restrict b) {
   constexpr uint32_t chunks = k / r;
   const bfloat16 *__restrict a0 = a;
   const bfloat16 *__restrict a1 = a + k;
@@ -179,16 +180,23 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
   // side by side -- the reduction, not the mac, is what a short row costs.
   // The tree is a latency chain, so each group's finishes in the next
   // iteration, under that group's macs. Behind a mac loop only the store
-  // waits: the packed accumulator would spill across the loop.
+  // waits: the packed accumulator would spill across the loop. On AIE2 four
+  // 64-lane accumulators fill the accumulator file, so the packed one spills
+  // there beside the next group's too.
+#if __AIE_ARCH__ == 20
+  constexpr bool fold_late = chunks <= 4 && r < 64;
+#else
+  constexpr bool fold_late = chunks <= 4;
+#endif
   auto defer = [](aie::accum<accfloat, 64> u) {
-    if constexpr (chunks <= 4)
+    if constexpr (fold_late)
       return u;
     else
       return fold_rows<16>(u.template to_vector<float>());
   };
   auto store4 = [](bfloat16 *__restrict out, auto deferred) {
     aie::vector<float, 16> sums;
-    if constexpr (chunks <= 4)
+    if constexpr (fold_late)
       sums = fold_rows<16>(deferred.template to_vector<float>());
     else
       sums = deferred;
