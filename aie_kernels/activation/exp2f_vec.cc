@@ -54,9 +54,8 @@ static_assert(kMinX >= -126.0f,
               "2^k is built in the f32 exponent field, which bottoms out at "
               "the smallest normal, k = -126");
 
-// noinline: inlined, Peano -O2 miscompiles it to NaN under register pressure.
 // Pointers keep the 32-lane vectors off the stack.
-static __attribute__((noinline)) void exp2f_vec(const float *in, float *out) {
+static void exp2f_vec(const float *in, float *out) {
   aie::vector<float, EXP2F_VEC_LEN> x = aie::load_v<EXP2F_VEC_LEN>(in);
   x = aie::max(x, aie::broadcast<float, EXP2F_VEC_LEN>(kMinX));
   // Taken before the clamp below narrows x.
