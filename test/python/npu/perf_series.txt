@@ -14,7 +14,9 @@ add_sized/1024x16/bfloat16
 add_sized/2048x16/bfloat16/llama-prefill
 add_sized/256x16/bfloat16/llama-decode
 add_sized/32x4/bfloat16/edge-tiny
+add_weighted/1920x16/int16/gamma
 add_weighted/1920x16/uint8
+add_weighted/1920x16/uint8/gamma
 add_weighted/32x4/uint8/line_width=32/edge-one-vector
 axpy/1024x16/bfloat16
 axpy/1024x256/bfloat16

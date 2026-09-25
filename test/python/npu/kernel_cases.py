@@ -656,8 +656,17 @@ CASES: list[Case] = [
         )
         for mode in range(5)
     ],
-    # alpha = beta = 0.5 in Q2.14; gamma = 0, where the kernel's two paths agree.
+    # alpha = beta = 0.5 in Q2.14.
     Case("add_weighted", calls=16, scalars=(8192, 8192, 0), smoke=True),
+    Case("add_weighted", calls=16, scalars=(8192, 8192, 40), tag="gamma", perf=False),
+    Case(
+        "add_weighted",
+        dict(dtype=np.int16),
+        calls=16,
+        scalars=(8192, 8192, -300),
+        tag="gamma",
+        perf=False,
+    ),
     Case(
         "add_weighted",
         dict(line_width=32),

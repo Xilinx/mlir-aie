@@ -252,7 +252,7 @@ def add_weighted(
             "add_weighted: no int32 build; addWeighted.cc has no int32 x int16 MAC. "
             "Use np.uint8 or np.int16."
         )
-    gamma_ty = {8: np.int8, 16: np.int16, 32: np.int32}[bit_width]
+    gamma_ty = {8: np.int8, 16: np.int16}[bit_width]
     _require_vector_alignment(
         "add_weighted", line_width, 256 // bit_width, param="line_width"
     )
@@ -385,19 +385,18 @@ def bitwise_and_ref(a, b):
 def add_weighted_ref(a, b, alpha, beta, gamma):
     """Numpy reference for [`add_weighted`][iron.kernels.vision.add_weighted]: Q2.14 blend.
 
-    ``out = sat((alpha * a + beta * b + gamma) >> 14)`` with ``alpha`` and
-    ``beta`` as Q2.14 fixed point (``8192`` is 0.5). This is what the vector
-    path in ``addWeighted.cc`` computes: it seeds the accumulator with
-    ``gamma`` *before* the shift, so ``gamma`` contributes ``gamma / 2**14``
-    and is effectively ignored. The scalar path in the same file adds
-    ``gamma`` *after* the shift, as OpenCV does; the two disagree for any
-    non-zero ``gamma``. Within one LSB otherwise.
+    ``out = sat(((alpha * a + beta * b) >> 14) + gamma)`` with ``alpha`` and
+    ``beta`` as Q2.14 fixed point (``8192`` is 0.5) and ``gamma`` in output
+    units, as OpenCV's ``addWeighted`` has it; the kernel reads ``gamma`` as
+    the data type, so for ``uint8`` data ``-56`` is ``200``. The vector path in
+    ``addWeighted.cc`` rounds the shift down; its scalar path rounds to
+    nearest, so the two differ by at most one LSB.
     """
     a = np.asarray(a)
     info = np.iinfo(a.dtype)
     acc = a.astype(np.int64) * int(alpha) + np.asarray(b).astype(np.int64) * int(beta)
-    acc = acc + int(gamma)
-    return np.clip(acc >> 14, info.min, info.max).astype(a.dtype)
+    acc = (acc >> 14) + int(np.array(gamma).astype(a.dtype))
+    return np.clip(acc, info.min, info.max).astype(a.dtype)
 
 
 def filter2d_ref(line0, line1, line2, kernel):
