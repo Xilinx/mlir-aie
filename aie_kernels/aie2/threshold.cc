@@ -32,10 +32,17 @@ enum _threshold_type {
 #define THRESHOLD_ELEMS (img_height * img_width)
 #endif
 
+#if __AIE_ARCH__ == 20
+#define THRESHOLD_RESTRICT __restrict
+#else
+#define THRESHOLD_RESTRICT
+#endif
+
 template <typename T, int N>
 __attribute__((noinline)) void
-threshold_aie(T *img_in, T *img_out, const int32_t img_width,
-              const int32_t img_height, const T &thresh_val, const T &max_val,
+threshold_aie(T *THRESHOLD_RESTRICT img_in, T *THRESHOLD_RESTRICT img_out,
+              const int32_t img_width, const int32_t img_height,
+              const T &thresh_val, const T &max_val,
               const uint8_t thresholdType) {
   event0();
   ::aie::vector<T, N> constants;
@@ -44,6 +51,17 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
   constants[0] = 0;          // updating constant zero_val value
   constants[1] = thresh_val; // updating constant threshold value
   constants[2] = max_val;    // updating constant max_val value
+#if __AIE_ARCH__ == 20
+  // Whole vectors rather than elements of `constants`: 8 cycles less per
+  // call.
+  const ::aie::vector<T, N> zero_val = ::aie::zeros<T, N>();
+  const ::aie::vector<T, N> thresh = ::aie::broadcast<T, N>(thresh_val);
+  const ::aie::vector<T, N> max_v = ::aie::broadcast<T, N>(max_val);
+#else
+  auto zero_val = constants[0];
+  auto thresh = constants[1];
+  auto max_v = constants[2];
+#endif
 
   switch (thresholdType) {
   case XF_THRESHOLD_TYPE_TRUNC:
@@ -53,7 +71,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
       img_in += N;
-      data_out = ::aie::min(constants[1], data_buf1);
+      data_out = ::aie::min(thresh, data_buf1);
       ::aie::store_v(img_out, data_out);
       img_out += N;
     }
@@ -65,8 +83,8 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
       img_in += N;
-      temp_val = ::aie::lt(constants[1], data_buf1);
-      data_out = ::aie::select(constants[0], constants[2], temp_val);
+      temp_val = ::aie::lt(thresh, data_buf1);
+      data_out = ::aie::select(zero_val, max_v, temp_val);
       ::aie::store_v(img_out, data_out);
       img_out += N;
     }
@@ -78,8 +96,8 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
       img_in += N;
-      temp_val = ::aie::lt(constants[1], data_buf1);
-      data_out = ::aie::select(constants[2], constants[0], temp_val);
+      temp_val = ::aie::lt(thresh, data_buf1);
+      data_out = ::aie::select(max_v, zero_val, temp_val);
       ::aie::store_v(img_out, data_out);
       img_out += N;
     }
@@ -91,8 +109,8 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
       img_in += N;
-      temp_val = ::aie::lt(constants[1], data_buf1);
-      data_out = ::aie::select(constants[0], data_buf1, temp_val);
+      temp_val = ::aie::lt(thresh, data_buf1);
+      data_out = ::aie::select(zero_val, data_buf1, temp_val);
       ::aie::store_v(img_out, data_out);
       img_out += N;
     }
@@ -104,8 +122,8 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
       img_in += N;
-      temp_val = ::aie::lt(constants[1], data_buf1);
-      data_out = ::aie::select(data_buf1, constants[0], temp_val);
+      temp_val = ::aie::lt(thresh, data_buf1);
+      data_out = ::aie::select(data_buf1, zero_val, temp_val);
       ::aie::store_v(img_out, data_out);
       img_out += N;
     }
@@ -117,7 +135,7 @@ threshold_aie(T *img_in, T *img_out, const int32_t img_width,
       ::aie::vector<T, N> data_buf1 =
           ::aie::load_v(img_in); // in:00++15|_________|_________|_________
       img_in += N;
-      data_out = ::aie::min(constants[1], data_buf1);
+      data_out = ::aie::min(thresh, data_buf1);
       ::aie::store_v(img_out, data_out);
       img_out += N;
     }
