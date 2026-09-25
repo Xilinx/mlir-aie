@@ -79,14 +79,74 @@ static inline void swiglu_impl(bfloat16 *restrict input_vector,
   }
 }
 
+#if __AIE_ARCH__ == 20
+// AIE2's tanh reads a table, ordered against every other load and store, so
+// the next trip's inputs are loaded before this trip's lookups and both stores
+// follow them. At four vectors per trip the prefetched inputs spill past the
+// 1 KiB stack.
+static inline void swiglu_aie2(const bfloat16 *restrict x,
+                               const bfloat16 *restrict w1,
+                               const bfloat16 *restrict w2,
+                               bfloat16 *restrict out) {
+  constexpr int K = 2;
+  constexpr int n = SWIGLU_ELEMS;
+  constexpr int trips = n / (16 * K);
+  static_assert(trips > 0 && n % (16 * K) == 0, "swiglu tiles are 1024");
+  using V = aie::vector<bfloat16, 16>;
+  V register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
+  aie::accum<accfloat, 16> half;
+  half.from_vector(register_0_5);
+  auto f = [&](V in, V wt_1, V wt_2) {
+    V mul_input_weight_1 = aie::mul(in, wt_1);
+    V mul_input_weight_2 = aie::mul(in, wt_2);
+    V sigmoid_approx =
+        aie::mac(half,
+                 tanh_bf16_v16(aie::mul(mul_input_weight_2, register_0_5)),
+                 register_0_5)
+            .to_vector<bfloat16>();
+    V silu_output = aie::mul(mul_input_weight_2, sigmoid_approx);
+    return V(aie::mul(mul_input_weight_1, silu_output).to_vector<bfloat16>());
+  };
+  auto it_out = aie::begin_restrict_vector<16>(out);
+  V nx[K], n1[K], n2[K];
+  for (int j = 0; j < K; j++) {
+    nx[j] = aie::load_v<16>(x + 16 * j);
+    n1[j] = aie::load_v<16>(w1 + 16 * j);
+    n2[j] = aie::load_v<16>(w2 + 16 * j);
+  }
+  for (int i = 0; i < trips; i++) {
+    V a[K], b[K], c[K], y[K];
+    for (int j = 0; j < K; j++) {
+      a[j] = nx[j];
+      b[j] = n1[j];
+      c[j] = n2[j];
+    }
+    const int o = (i + 1 < trips ? i + 1 : i) * 16 * K;
+    for (int j = 0; j < K; j++) {
+      nx[j] = aie::load_v<16>(x + o + 16 * j);
+      n1[j] = aie::load_v<16>(w1 + o + 16 * j);
+      n2[j] = aie::load_v<16>(w2 + o + 16 * j);
+    }
+    for (int j = 0; j < K; j++)
+      y[j] = f(a[j], b[j], c[j]);
+    for (int j = 0; j < K; j++)
+      *it_out++ = y[j];
+  }
+}
+#endif
+
 void swiglu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                              bfloat16 *restrict weight_vector_1,
                              bfloat16 *restrict weight_vector_2,
                              bfloat16 *restrict output_vector,
                              const int32_t vector_size) {
   event0();
+#if __AIE_ARCH__ == 20
+  swiglu_aie2(input_vector, weight_vector_1, weight_vector_2, output_vector);
+#else
   swiglu_impl<SWIGLU_LANES>(input_vector, weight_vector_1, weight_vector_2,
                             output_vector);
+#endif
   event1();
 
   return;
