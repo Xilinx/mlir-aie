@@ -647,8 +647,9 @@ def conv2dk1_skip(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # 32 B tuned for aie2; see conv2dk1 (uint8 here) for the other figure
-            stack_bytes=None if _tuned_arch() == "aie2" else 2752,
+            # aiecc measured_stack_size (Peano 22) of the untuned code on aie2p
+            # with an int8 skip; 32 B tuned for aie2
+            stack_bytes=None if _tuned_arch() == "aie2" else 2816,
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
