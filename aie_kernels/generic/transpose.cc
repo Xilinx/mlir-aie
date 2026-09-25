@@ -5,8 +5,9 @@
 // Blocked transpose: every SxS block of a DIM_n x DIM_m (rows x columns)
 // matrix is transposed in place, so the blocks stay where they are and the
 // elements inside each block move. Built on aie::transpose, the AIE API's
-// vector-as-matrix transpose (VSHUFFLE underneath), except for AIE2's 16- and
-// 32-bit 8x8 blocks, which call VSHUFFLE directly; see
+// vector-as-matrix transpose (VSHUFFLE underneath), except on AIE2 for 16- and
+// 32-bit 8x8 blocks and 8- and 16-bit 4x4 blocks, which call VSHUFFLE
+// directly; see
 // programming_examples/basic/transposes for a design that combines this
 // kernel with DMA-level transposes.
 //
@@ -117,12 +118,66 @@ struct Strips {
 // (row bit 1 -> column bit 0, row bit 2 -> block, block -> column bit 2), two
 // for 32 bits. aie::transpose instead assembles and splits the strip with
 // VSHIFT/VSEL, 45 cycles an 8x8 block at 16 bits and 53 at 32.
+// 4x4 blocks of 8- or 16-bit elements take 32 columns of four rows, with rows j
+// and j + 2 in one register, in three stages. W is the columns a call covers.
 template <unsigned S, unsigned BW>
-struct Shuffles;
+struct Shuffles {
+  static constexpr bool fits = false;
+};
+template <>
+struct Shuffles<4, 8> {
+  using U = uint8_t;
+  static constexpr unsigned W = 32;
+  static constexpr bool fits = DIM_m % W == 0;
+  static inline void transpose(const U *__restrict in, U *__restrict out) {
+    v64uint8 x[2], y[2], z[2], w[2];
+    for (unsigned j = 0; j < 2; ++j)
+      x[j] = aie::concat(aie::load_v<W>(in + j * DIM_m),
+                         aie::load_v<W>(in + (j + 2) * DIM_m));
+    y[0] = ::shuffle(x[0], x[1], T8_2x64_lo);
+    y[1] = ::shuffle(x[0], x[1], T8_2x64_hi);
+    z[0] = ::shuffle(y[0], y[1], T64_2x8_lo);
+    z[1] = ::shuffle(y[0], y[1], T64_2x8_hi);
+    w[0] = ::shuffle(z[0], z[1], T16_16x4_lo);
+    w[1] = ::shuffle(z[0], z[1], T16_16x4_hi);
+    for (unsigned q = 0; q < 4; ++q)
+      aie::store_v(out + q * DIM_m,
+                   aie::vector<U, 2 * W>(w[q >> 1]).template extract<W>(q & 1));
+  }
+};
+template <>
+struct Shuffles<4, 16> {
+  using U = uint16_t;
+  static constexpr unsigned W = 32;
+  static constexpr bool fits = DIM_m % W == 0;
+  static inline void transpose(const U *__restrict in, U *__restrict out) {
+    v32uint16 x[2][2], y[2][2], z[2][2], w[2][2];
+    for (unsigned h = 0; h < 2; ++h)
+      for (unsigned j = 0; j < 2; ++j)
+        x[h][j] =
+            aie::concat(aie::load_v<W / 2>(in + j * DIM_m + h * W / 2),
+                        aie::load_v<W / 2>(in + (j + 2) * DIM_m + h * W / 2));
+    for (unsigned j = 0; j < 2; ++j) {
+      y[0][j] = ::shuffle(x[0][j], x[1][j], T16_16x4_lo);
+      y[1][j] = ::shuffle(x[0][j], x[1][j], T16_16x4_hi);
+    }
+    for (unsigned c = 0; c < 2; ++c) {
+      z[c][0] = ::shuffle(y[c][0], y[c][1], T64_8x2_lo);
+      z[c][1] = ::shuffle(y[c][0], y[c][1], T64_8x2_hi);
+    }
+    for (unsigned c = 0; c < 2; ++c) {
+      w[c][0] = ::shuffle(z[c][0], z[c][1], T16_4x16_lo);
+      w[c][1] = ::shuffle(z[c][0], z[c][1], T16_4x16_hi);
+    }
+    for (unsigned q = 0; q < 4; ++q)
+      aie::store_v(out + q * DIM_m, aie::vector<U, W>(w[q >> 1][q & 1]));
+  }
+};
 template <>
 struct Shuffles<8, 16> {
   using U = uint16_t;
   static constexpr unsigned W = 16;
+  static constexpr bool fits = DIM_m % W == 0;
   static inline void transpose(const U *__restrict in, U *__restrict out) {
     v32uint16 x[4], y[2][2], z[2][2], w[2][2];
     for (unsigned k = 0; k < 4; ++k)
@@ -149,6 +204,7 @@ template <>
 struct Shuffles<8, 32> {
   using U = uint32_t;
   static constexpr unsigned W = 8;
+  static constexpr bool fits = DIM_m % W == 0;
   static inline void transpose(const U *__restrict in, U *__restrict out) {
     v16uint32 x[4], y[2][2], w[2][2];
     for (unsigned k = 0; k < 4; ++k)
@@ -172,13 +228,14 @@ struct Shuffles<8, 32> {
 // The row and column walks are fused into one counter so that the strip body
 // is the innermost loop: as a nest the pipeliner declines the outer loops and
 // schedules nothing, whereas the fused loop is a single body it pipelines. On
-// AIE2 a row of at most two strips unrolls instead, and the row loop then
-// pipelines at 25 cycles a row where the fused loop takes 30 a strip.
+// AIE2 a row of at most two strips unrolls instead: for 32 columns of 16-bit
+// 4x4 blocks, before Shuffles took them, the row loop pipelined at 25 cycles a
+// row where the fused loop took 30 a strip.
 template <unsigned S>
 static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
 #if __AIE_ARCH__ == 20
-  if constexpr (S == 8 && BIT_WIDTH >= 16 && DIM_m % (256 / BIT_WIDTH) == 0) {
-    using Sh = Shuffles<S, BIT_WIDTH>;
+  using Sh = Shuffles<S, BIT_WIDTH>;
+  if constexpr (Sh::fits) {
     constexpr unsigned units = DIM_m / Sh::W;
     // Walked pointers: the index arithmetic of `in + o` costs II27 on the
     // 32-bit build, the pointer bump II14.
@@ -186,11 +243,11 @@ static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
     T *d = out;
     unsigned c = 0;
     AIE_LOOP_NO_UNROLL
-    for (unsigned i = 0; i < (DIM_n / 8) * units; ++i) {
+    for (unsigned i = 0; i < (DIM_n / S) * units; ++i) {
       Sh::transpose(s, d);
       bool wrap = ++c == units;
       c = wrap ? 0 : c;
-      unsigned step = wrap ? 7 * DIM_m + Sh::W : Sh::W;
+      unsigned step = wrap ? (S - 1) * DIM_m + Sh::W : Sh::W;
       s += step;
       d += step;
     }
