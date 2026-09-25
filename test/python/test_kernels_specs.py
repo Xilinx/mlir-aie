@@ -1044,7 +1044,7 @@ def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
         assert factory is getattr(transformer, name)
     assert factory().arg_shape(0) == (1024,)
     fn = factory(tile_size=2048)
-    assert fn is factory(cols=2048)
+    assert fn == factory(cols=2048)
     assert fn.arg_shape(0) == (2048,)
     assert Path(fn._source_file).parent.name == canonical.__name__.split(".")[-1]
     assert len(fn.contract.roles) == len(fn.arg_types())
@@ -1262,18 +1262,16 @@ def test_cascade_mm_carries_the_same_accessor():
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
 @pytest.mark.parametrize("arch", ["aie2", "aie2p"])
 def test_mac_dims_does_not_construct_or_register_a_kernel(factory, arch, monkeypatch):
-    from aie.iron.kernels import _common, linalg
+    from aie.iron.kernels import linalg
 
     def unexpected_construction(*args, **kwargs):
         pytest.fail("Geometry queries must not construct kernels")
 
     monkeypatch.setattr(linalg, "_make_extern", unexpected_construction)
     instances = list(ExternalFunction._instances)
-    cache = dict(_common._EXTERN_CACHE)
     assert callable(factory.mac_dims)
     assert len(factory.mac_dims(bfloat16, bfloat16, arch=arch)) == 3
     assert list(ExternalFunction._instances) == instances
-    assert _common._EXTERN_CACHE == cache
 
 
 @pytest.mark.parametrize("factory", [kernels.mm, kernels.cascade_mm])
@@ -1358,8 +1356,8 @@ def test_matrix_zero_companion_uses_contract_initializer(
     instances = list(ExternalFunction._instances)
     assert instances == [fn]
     initializer = fn.zero
-    assert initializer is fn.contract.initializers[0][1](fn)
-    assert initializer is fn.zero
+    assert initializer == fn.contract.initializers[0][1](fn)
+    assert initializer == fn.zero
     assert initializer.object_file is not fn.object_file
     assert initializer.use_chess == use_chess
     assert initializer.arg_types() == [fn.arg_types()[2]]

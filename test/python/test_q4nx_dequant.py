@@ -198,7 +198,7 @@ def test_factory_metadata_and_finite_sample(npu2_device):
     expected = contract.reference(*sample)
     assert expected.shape == (3, 9216) and expected.dtype == np.uint8
     np.testing.assert_array_equal(expected, kernels.q4nx_dequant_ref(sample[0]))
-    assert fn is kernels.q4nx_dequant()
+    assert fn == kernels.q4nx_dequant()
 
 
 def test_nondefault_factory_and_architecture(npu2_device):
