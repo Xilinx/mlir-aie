@@ -109,7 +109,19 @@ def get_trace_slices(mlir_module_str, kernel=DEFAULT_KERNEL):
     """
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
-        attr = _find_sequence(module, kernel).trace_slices
+        try:
+            sequence = _find_sequence(module, kernel)
+        except ValueError:
+            if kernel != DEFAULT_KERNEL:
+                raise
+            for sequence in find_ops(
+                module.operation,
+                lambda o: isinstance(o.operation.opview, RuntimeSequenceOp),
+            ):
+                if sequence.trace_slices is not None:
+                    raise
+            return []
+        attr = sequence.trace_slices
         if attr is None:
             return []
         entries = []
