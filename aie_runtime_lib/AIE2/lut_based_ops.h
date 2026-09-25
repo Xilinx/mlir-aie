@@ -22,54 +22,28 @@ alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 // Clamp to the LUT's supported range before Q8 conversion can wrap.
 static constexpr float EXP_BF16_CLAMP = 88.0f;
 
+// exp(x) = exp(int(x)) * exp(frac(x)), from a 256-entry table each: the
+// aie::parallel_lookup of the Q8 input (steps 8 and 0) written out. Its byte
+// offsets are floor(4x) and floor(1024x) within the 1 KiB tables; vfloor
+// floors whatever crRnd is, where parallel_lookup's accumulator shift needed
+// crRnd set to floor, and saving, setting and restoring it on every call kept
+// the calling loops from pipelining. The integer offset's two low bits select
+// the same entry, so both are masked to 0x3FC.
 __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
-  bfloat16 __aie_dm_resource_a *ilut_ab =
-      (bfloat16 __aie_dm_resource_a *)exp_ilut_ab;
-  bfloat16 __aie_dm_resource_b *ilut_cd =
-      (bfloat16 __aie_dm_resource_b *)exp_ilut_cd;
-  bfloat16 __aie_dm_resource_a *flut_ab =
-      (bfloat16 __aie_dm_resource_a *)exp_flut_ab;
-  bfloat16 __aie_dm_resource_b *flut_cd =
-      (bfloat16 __aie_dm_resource_b *)exp_flut_cd;
+  aie::vector<bfloat16, 16> xc =
+      aie::max(aie::min(aie::vector<bfloat16, 16>(x),
+                        aie::broadcast<bfloat16, 16>((bfloat16)EXP_BF16_CLAMP)),
+               aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP));
+  v16int32 index_i = ::band(bfloat16_to_int(xc, 2), broadcast_s32(0x3FC));
+  v16int32 index_f = ::band(bfloat16_to_int(xc, 10), broadcast_s32(0x3FC));
 
-  using lut_type = aie::lut<4, bfloat16, bfloat16>;
-  const int LUT_elems = 256;
-  const int step_i = 8;
-  const int step_f = 0;
-
-  lut_type lut_i(LUT_elems, ilut_ab, ilut_cd);
-  lut_type lut_f(LUT_elems, flut_ab, flut_cd);
-  aie::parallel_lookup<uint16, lut_type, aie::lut_oor_policy::truncate>
-      lookup_i(lut_i, step_i);
-  aie::parallel_lookup<uint16, lut_type, aie::lut_oor_policy::truncate>
-      lookup_f(lut_f, step_f);
-
-  aie::vector<bfloat16, 16> I_val_vec, F_val_vec;
-  aie::accum<accfloat, 16> exp_val;
-  aie::vector<bfloat16, 16> input_bf16 = x;
-
-  // -max(-x, -c) also saturates +inf, unlike min(x, c) on AIE2P.
-  input_bf16 = aie::neg(
-      aie::max(aie::neg(input_bf16),
-               aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP)));
-  input_bf16 = aie::max(
-      input_bf16, aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP));
-
-  // position of output decimal point = 8, making input become 8 bits, and for
-  // LUT_elems = 256 lookup. aie::vector<int16, 16>
-  // input=aie::to_fixed<int16>(input_bf16,8);
-  aie::vector<int16, 32> input0 = v32int16(bfloat16_to_int(input_bf16, 8));
-  aie::vector<int16, 16> input = aie::filter_even(input0);
-
-  // Lookup indices require floor rounding (aie_api CRVO-4425).
-  aie::rounding_mode saved_rnd = aie::tile::current().get_rounding();
-  aie::tile::current().set_rounding(aie::rounding_mode::floor);
-  I_val_vec = lookup_i.fetch(input.cast_to<uint16>());
-  F_val_vec = lookup_f.fetch(input.cast_to<uint16>());
-  aie::tile::current().set_rounding(saved_rnd);
-
-  exp_val = aie::mul(I_val_vec, F_val_vec);
-  return v16accfloat(exp_val);
+  v64int8 i0, i1, f0, f1;
+  load_lut_2x_int8(exp_ilut_ab, exp_ilut_cd, index_i, i0, i1);
+  load_lut_2x_int8(exp_flut_ab, exp_flut_cd, index_f, f0, f1);
+  aie::vector<bfloat16, 32> i_val = (v32bfloat16)::shuffle(i0, i1, T16_16x4_lo);
+  v32bfloat16 f_val = (v32bfloat16)::shuffle(f0, f1, T16_16x4_lo);
+  i_val.insert<16>(1, aie::zeros<bfloat16, 16>());
+  return mul_elem_16_2(i_val, f_val);
 }
 
 __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
