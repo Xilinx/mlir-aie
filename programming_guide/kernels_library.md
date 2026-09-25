@@ -464,7 +464,9 @@ host runtime (`HostRuntime.power_mode()`); the benchmark workflow tries to
 switch to `performance` first, but always records the active mode in the
 results. A bit-exact `passthrough` smoke test inside a cycle band guards
 the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
-at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
+at `https://xilinx.github.io/mlir-aie/bench/`, whose catalogue view lists
+every factory with the builds each NPU offers and how its cases fared that
+night (`utils/kernel_bench/catalogue.py` writes it); `cycles`
 and the sizes alert at 3 %, the wall times are advisory, and nothing
 gates a pull request. A Peano-bump PR is compared against the cached
 nightly baseline and gets one comment only if a hard-threshold series

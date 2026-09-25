@@ -7,7 +7,8 @@
   branch by publishKernelResults.yml. It reads the data.js that
   github-action-benchmark writes under bench/<npu>/, where each power mode is
   its own suite, "aie_kernels (<npu>, <mode>)". One chart per NPU, kernel
-  case and metric, with a line per power mode.
+  case and metric, with a line per power mode. The catalogue view reads the
+  bench/<npu>/catalogue.json that utils/kernel_bench/catalogue.py writes.
 -->
 <head>
   <meta charset="utf-8">
@@ -15,6 +16,7 @@
   <title>AIE kernel benchmarks</title>
   <style>
     body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; color: #24292f; }
+    [hidden] { display: none !important; }
     header { padding: 12px 20px; border-bottom: 1px solid #d0d7de; }
     h1 { font-size: 20px; margin: 0 0 4px; }
     #status { font-size: 13px; color: #57606a; }
@@ -29,11 +31,24 @@
     .chart .delta.worse { color: #cf222e; }
     .chart .delta.better { color: #1a7f37; }
     #empty { padding: 20px; color: #57606a; }
+    #views { font-size: 14px; margin: 4px 0; display: flex; gap: 12px; }
+    #catalogue { padding: 10px 20px; font-size: 14px; }
+    #catalogue p { color: #57606a; margin: 4px 0 10px; }
+    #catalogue table { border-collapse: collapse; width: 100%; }
+    #catalogue th, #catalogue td { border-bottom: 1px solid #d0d7de; padding: 4px 8px; text-align: left; vertical-align: top; }
+    #catalogue th { position: sticky; top: 0; background: #f6f8fa; }
+    #catalogue .none { color: #8c959f; }
+    #catalogue .pass { color: #1a7f37; }
+    #catalogue .fail { color: #cf222e; }
   </style>
 </head>
 <body>
   <header>
     <h1>AIE kernel benchmarks</h1>
+    <div id="views">
+      <label><input type="radio" name="view" value="charts" checked> Charts</label>
+      <label><input type="radio" name="view" value="catalogue"> Catalogue</label>
+    </div>
     <div id="status">Loading&hellip;</div>
   </header>
   <form id="controls" onsubmit="return false">
@@ -49,6 +64,14 @@
   </form>
   <div id="charts"></div>
   <div id="empty" hidden>No series match these filters.</div>
+  <section id="catalogue" hidden>
+    <p id="catalogue-status">Loading&hellip;</p>
+    <label>Kernel <input id="catalogue-filter" type="search" placeholder="factory, family or summary" size="28"></label>
+    <table>
+      <thead><tr id="catalogue-head"><th>Family</th><th>Kernel</th><th>Summary</th><th>Source</th></tr></thead>
+      <tbody id="catalogue-rows"></tbody>
+    </table>
+  </section>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.2/dist/Chart.min.js"></script>
   <script>
@@ -56,6 +79,7 @@
     const NPUS = ['npu1', 'npu2'];
     const SUITE = /^aie_kernels \((npu\d+), (.+)\)$/;
     const PALETTE = ['#0969da', '#cf222e', '#1a7f37', '#8250df', '#bf8700', '#57606a'];
+    const REPO = 'https://github.com/Xilinx/mlir-aie';
 
     // Every metric is smaller-is-better (customSmallerIsBetter).
     async function load(npu) {
@@ -130,8 +154,99 @@
       return Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
     }
 
+    function currentView() {
+      return document.querySelector('input[name=view]:checked').value;
+    }
+
+    function applyView() {
+      const view = readHash().view === 'catalogue' ? 'catalogue' : 'charts';
+      document.querySelector(`input[name=view][value=${view}]`).checked = true;
+      $('catalogue').hidden = view !== 'catalogue';
+      for (const id of ['controls', 'charts', 'status']) $(id).hidden = view === 'catalogue';
+      if (view === 'catalogue') $('empty').hidden = true;
+    }
+
+    // One row per factory; per NPU, what it offers there and what the nightly
+    // extensive sweep and benchmark made of it.
+    function npuCell(npu, k) {
+      const td = document.createElement('td');
+      if (!k || !k.builds.length) {
+        td.className = 'none';
+        td.textContent = '\u2014';
+        td.title = 'not offered on this NPU';
+        return td;
+      }
+      td.title = k.builds.join('\n');
+      td.append(`${k.builds.length} build${k.builds.length > 1 ? 's' : ''}`);
+      const verdict = document.createElement('span');
+      if (k.failed.length) {
+        verdict.className = 'fail';
+        verdict.textContent = ` \u00b7 ${k.failed.length} failing`;
+        verdict.title = k.failed.join('\n');
+      } else if (k.passed) {
+        verdict.className = 'pass';
+        verdict.textContent = ` \u00b7 ${k.passed} case${k.passed > 1 ? 's' : ''} pass`;
+      } else {
+        verdict.className = 'none';
+        verdict.textContent = ' \u00b7 not checked on hardware';
+      }
+      td.append(verdict);
+      if (k.timed) {
+        const a = document.createElement('a');
+        a.href = '#' + new URLSearchParams({ view: 'charts', npu, metric: 'all', kernel: `${k.factory}/` });
+        a.textContent = 'charts';
+        td.append(' \u00b7 ', a);
+      }
+      return td;
+    }
+
+    function renderCatalogue(catalogues) {
+      const status = $('catalogue-status');
+      if (!catalogues.length) {
+        status.textContent = 'No catalogue has been published yet.';
+        return;
+      }
+      status.textContent = catalogues.map(c =>
+        `${c.npu} (${c.arch}): ${c.commit ? c.commit.slice(0, 7) : 'unknown commit'}, ${new Date(c.date).toString()}`
+      ).join(' \u00b7 ');
+      for (const c of catalogues) {
+        const th = document.createElement('th');
+        th.textContent = c.npu;
+        $('catalogue-head').append(th);
+      }
+      const byNpu = catalogues.map(c => new Map(c.kernels.map(k => [k.factory, k])));
+      const rows = new Map();
+      for (const c of catalogues) for (const k of c.kernels) if (!rows.has(k.factory)) rows.set(k.factory, k);
+      const sorted = [...rows.values()].sort((a, b) =>
+        a.family.localeCompare(b.family) || a.factory.localeCompare(b.factory));
+      const commit = catalogues.find(c => c.commit)?.commit || 'main';
+      const trs = sorted.map(k => {
+        const tr = document.createElement('tr');
+        const source = document.createElement('td');
+        k.sources.forEach((src, i) => {
+          const a = document.createElement('a');
+          a.href = `${REPO}/blob/${commit}/aie_kernels/${src}`;
+          a.textContent = src;
+          source.append(...(i ? [', ', a] : [a]));
+        });
+        tr.append(...[k.family, k.factory, k.summary].map(text => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          return td;
+        }), source, ...catalogues.map((c, i) => npuCell(c.npu, byNpu[i].get(k.factory))));
+        tr.search = `${k.family} ${k.factory} ${k.summary}`.toLowerCase();
+        return tr;
+      });
+      $('catalogue-rows').append(...trs);
+      $('catalogue-filter').addEventListener('input', () => {
+        const q = $('catalogue-filter').value.trim().toLowerCase();
+        for (const tr of trs) tr.hidden = !tr.search.includes(q);
+      });
+    }
+
     function writeHash() {
       const p = new URLSearchParams({
+        view: currentView(),
         npu: checked($('npus')).join(','), mode: checked($('modes')).join(','),
         metric: $('metric').value, kernel: $('kernel').value, sort: $('sort').value,
       });
@@ -205,7 +320,7 @@
         }
         return a.key.localeCompare(b.key);
       });
-      $('empty').hidden = shown.length > 0;
+      $('empty').hidden = shown.length > 0 || currentView() === 'catalogue';
       // Charts draw as they scroll into view: a full sweep is thousands.
       observer = new IntersectionObserver(seen => {
         for (const { isIntersecting, target } of seen) {
@@ -235,6 +350,18 @@
     }
 
     (async () => {
+      for (const radio of document.querySelectorAll('input[name=view]')) {
+        radio.addEventListener('change', () => {
+          const p = new URLSearchParams(location.hash.slice(1));
+          p.set('view', radio.value);
+          location.hash = p;
+        });
+      }
+      window.addEventListener('hashchange', applyView);
+      applyView();
+      const catalogues = await Promise.all(NPUS.map(n =>
+        fetch(`${n}/catalogue.json`, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null)));
+      renderCatalogue(catalogues.filter(c => c));
       const loaded = (await Promise.all(NPUS.map(async n => [n, await load(n).catch(() => null)])))
         .filter(([, data]) => data);
       if (!loaded.length) {

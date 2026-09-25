@@ -191,6 +191,18 @@ jobs:
           # failed, in which case there is none and downstream steps skip.
           # meta.json is written either way, and lists the failures.
 
+      - name: Write kernel catalogue
+        if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
+        run: |
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          source utils/env_setup.sh mlir_aie
+          args=()
+          [[ -f correctness.xml ]] && args+=(--correctness correctness.xml)
+          [[ -f bench.json ]] && args+=(--bench bench.json)
+          python utils/kernel_bench/catalogue.py --npu "$AIE_EXPECTED_NPU" \
+            "${args[@]}" --out catalogue.json
+
       - name: Read power mode
         id: pmode
         if: ${{ !cancelled() && hashFiles('bench.json') != '' }}
@@ -206,6 +218,7 @@ jobs:
           path: |
             bench.json
             meta.json
+            catalogue.json
             bench.log
             correctness.log
             correctness.xml

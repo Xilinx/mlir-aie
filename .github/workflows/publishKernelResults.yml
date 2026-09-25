@@ -137,7 +137,8 @@ jobs:
           max-items-in-chart: 400
 
       # The action writes a plain page per NPU. This one sits above them and
-      # filters every NPU and power mode by kernel and metric.
+      # filters every NPU and power mode by kernel and metric, and shows each
+      # NPU's catalogue: an NPU whose leg wrote none keeps its previous one.
       - name: Install results page
         if: ${{ !inputs.static }}
         run: |
@@ -146,9 +147,15 @@ jobs:
           mkdir -p bench
           cp "$RUNNER_TEMP/index.html" bench/index.html
           git add bench/index.html
+          for npu in npu1 npu2; do
+            [[ -f "results/$npu/catalogue.json" ]] || continue
+            mkdir -p "bench/$npu"
+            cp "results/$npu/catalogue.json" "bench/$npu/catalogue.json"
+            git add "bench/$npu/catalogue.json"
+          done
           git diff --cached --quiet || git -c user.name=github-action-benchmark \
             -c user.email=github@users.noreply.github.com \
-            commit -q -m "Update kernel benchmark results page"
+            commit -q -m "Update kernel benchmark results page and catalogue"
           git checkout -q -
 
       - name: Publish all series

@@ -365,6 +365,8 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
 
     run = page["run"].replace("$RUNNER_TEMP", str(tmp_path / "tmp"))
     (tmp_path / "tmp").mkdir()
+    (tmp_path / "results/npu1").mkdir(parents=True)
+    (tmp_path / "results/npu1/catalogue.json").write_text('{"npu": "npu1"}')
     for _ in range(2):  # The second run finds nothing to change.
         subprocess.run(
             ["bash", "-eo", "pipefail", "-c", run],
@@ -374,6 +376,8 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
         )
         assert git("branch", "--show-current") == "main"
     assert git("show", "gh-pages:bench/index.html") == source.read_text().strip()
+    assert git("show", "gh-pages:bench/npu1/catalogue.json") == '{"npu": "npu1"}'
+    assert git("ls-tree", "-r", "--name-only", "gh-pages", "bench/npu2") == ""
     assert git("rev-list", "--count", "gh-pages") == "2"
 
 
