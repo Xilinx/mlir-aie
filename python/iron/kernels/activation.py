@@ -530,6 +530,10 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
+# aiecc measured 3008 for the polynomial branch on aie2p.
+_BF16_EXP_POLY_STACK_BYTES = 3072
+
+
 def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise exponential kernel for bf16 tiles (must be 1024).
 
@@ -557,6 +561,9 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             lut_tolerance=_EXP_LUT_TOLERANCE,
             use_lut=True,
             tolerance=_EXP_POLY_TOLERANCE,
+            stack_bytes=(
+                None if _tuned_arch() == "aie2" else _BF16_EXP_POLY_STACK_BYTES
+            ),
         ),
     )
 

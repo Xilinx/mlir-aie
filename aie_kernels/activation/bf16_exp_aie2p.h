@@ -17,11 +17,8 @@
 
 using namespace aie;
 
-// noinline: inlined into the tile loop, Peano -O2 miscompiles it under
-// register pressure. Pointers keep the 32-lane vectors off the stack.
-static __attribute__((noinline)) void exp_bf16_vec(const bfloat16 *in,
-                                                   bfloat16 *out) {
-  aie::vector<bfloat16, VEC_LEN> input_bf16 = aie::load_v<VEC_LEN>(in);
+static inline aie::vector<bfloat16, VEC_LEN>
+exp_bf16_vec(aie::vector<bfloat16, VEC_LEN> input_bf16) {
   // Match the LUT-backed AIE2 kernel's domain, including infinite inputs.
   const auto upper = aie::broadcast<bfloat16, VEC_LEN>(EXP_BF16_CLAMP);
   const auto lower = aie::broadcast<bfloat16, VEC_LEN>(-EXP_BF16_CLAMP);
@@ -62,18 +59,17 @@ static __attribute__((noinline)) void exp_bf16_vec(const bfloat16 *in,
                             aie::eq(k, aie::broadcast<int32_t, VEC_LEN>(-127)));
   result =
       aie::select(result, aie::broadcast<int32_t, VEC_LEN>(0x7fc0), is_nan);
-  aie::store_v(out, aie::pack(result).cast_to<bfloat16>());
+  return aie::pack(result).cast_to<bfloat16>();
 }
 
 template <const int N>
 void exp_bf16_func(bfloat16 *restrict in, bfloat16 *restrict out) {
   static_assert(N % VEC_LEN == 0);
-  AIE_LOOP_NO_UNROLL
-  for (int i = 0; i < N / VEC_LEN; i++) {
-    exp_bf16_vec(in, out);
-    in += VEC_LEN;
-    out += VEC_LEN;
-  }
+  auto it_in = aie::begin_restrict_vector<VEC_LEN>(in);
+  auto it_out = aie::begin_restrict_vector<VEC_LEN>(out);
+  AIE_PREPARE_FOR_PIPELINING
+  for (int i = 0; i < N / VEC_LEN; i++)
+    *it_out++ = exp_bf16_vec(*it_in++);
 }
 
 extern "C" {
