@@ -34,14 +34,6 @@ _LUT_FIXED_TILE = 1024
 _RUNTIME_VECTOR_WIDTH = 32
 
 
-def _require_runtime_tile_size(factory_name: str, tile_size: int) -> None:
-    if tile_size < _LUT_FIXED_TILE or tile_size % _RUNTIME_VECTOR_WIDTH:
-        raise ValueError(
-            f"{factory_name}: tile_size must be a multiple of "
-            f"{_RUNTIME_VECTOR_WIDTH} and at least {_LUT_FIXED_TILE}, got {tile_size}"
-        )
-
-
 # Mirrors EXP_BF16_CLAMP in aie_runtime_lib/AIE2{,P}/lut_based_ops.h: the
 # input domain getExpBf16 saturates to, so the references below describe what
 # the device actually computes. Keep the two in step.
@@ -635,20 +627,20 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
 
 
 def tanh(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """Tanh for bf16 tiles of at least 1024 elements, in multiples of 32.
+    """Tanh for bf16 tiles of a positive multiple of 32 elements.
 
     The count is compiled in; retain
     ``tile_size`` as a trailing ``int`` argument (e.g. via
     ``transform_parallel(pass_size_to_kernel=True)``).
 
     Args:
-        tile_size: Elements per call (multiple of 32, at least 1024).
+        tile_size: Elements per call (a positive multiple of 32).
         use_lut: Compute tanh from the interpolated LUT rather than AIE2P's
             vtanh instruction. Moot on aie2, which only has the LUT. See
             [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref] for what
             the LUT computes and why it is the more accurate of the two.
     """
-    _require_runtime_tile_size("tanh", tile_size)
+    _require_vector_alignment("tanh", tile_size, _RUNTIME_VECTOR_WIDTH)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "tanh_bf16",
@@ -669,11 +661,11 @@ def tanh(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
 
 
 def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
-    """Sigmoid for bf16 tiles of at least 1024 elements, in multiples of 32.
+    """Sigmoid for bf16 tiles of a positive multiple of 32 elements.
 
     The count is compiled in; retain ``tile_size`` as a trailing ABI argument.
     """
-    _require_runtime_tile_size("sigmoid", tile_size)
+    _require_vector_alignment("sigmoid", tile_size, _RUNTIME_VECTOR_WIDTH)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "sigmoid_bf16",
