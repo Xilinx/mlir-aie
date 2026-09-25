@@ -168,7 +168,7 @@ def test_factory_metadata_and_finite_sample(npu2_device):
     assert fn._original_name == "q4nx_dequant_bfp"
     assert fn._name.endswith("_q4nx_dequant_bfp")
     assert Path(fn._source_file).name == "q4nx_dequant.cc"
-    assert Path(fn._source_file).parent.name == "generic"
+    assert Path(fn._source_file).parent.name == "quant"
     assert fn.arg_shape(0) == (5120,)
     assert fn.arg_shape(1) == (9216,)
     assert fn.arg_dtype(0) == fn.arg_dtype(1) == np.uint8

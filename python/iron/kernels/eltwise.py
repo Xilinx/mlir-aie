@@ -15,8 +15,8 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _default_source_path,
     _dtype_to_bit_width,
+    _kernel_source,
     _make_extern,
     _require_fixed_tile_size,
     _require_vector_alignment,
@@ -83,7 +83,7 @@ def _eltwise_bf16_kernel(
     func_variant = "vector" if vectorized else "scalar"
     return _make_extern(
         f"eltwise_{op}_bf16_{func_variant}",
-        _default_source_path(f"{op}.cc"),
+        _kernel_source(f"eltwise/{op}.cc"),
         [tile_ty, tile_ty, tile_ty],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -121,7 +121,7 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
     return _make_extern(
         "passThroughLine",
-        _default_source_path("passThrough.cc"),
+        _kernel_source("eltwise/passThrough.cc"),
         [tile_ty, tile_ty, np.int32],
         compile_flags=[
             f"-DBIT_WIDTH={bit_width}",
@@ -170,7 +170,7 @@ def scale(
     bit_width = 16 if dtype == np.int16 else 32
     return _make_extern(
         f"vector_scalar_mul_{func_variant}",
-        _default_source_path("scale.cc"),
+        _kernel_source("eltwise/scale.cc"),
         [tile_ty, tile_ty, scalar_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DSCALE_ELEMS={tile_size}"],
         use_chess=use_chess,
@@ -232,7 +232,7 @@ def mul_add(tile_size: int = 1024) -> ExternalFunction:
     One kernel for a two-phase runtime-parameter design:
     programming_examples/ml/scale_shift computes ``A * B`` with ``is_mul = 1``
     and then ``+ C`` with ``is_mul = 0`` on the same workers.
-    ``aie_kernels/aie2/scale_shift.cc`` fixes the tile at 1024 elements.
+    ``aie_kernels/eltwise/scale_shift.cc`` fixes the tile at 1024 elements.
 
     Args:
         tile_size: Elements per tile (must be 1024).
@@ -244,7 +244,7 @@ def mul_add(tile_size: int = 1024) -> ExternalFunction:
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "eltwise_mul_add_bf16_vector",
-        _default_source_path("scale_shift.cc"),
+        _kernel_source("eltwise/scale_shift.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -279,7 +279,7 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "bf16_relu",
-        _default_source_path("relu.cc"),
+        _kernel_source("eltwise/relu.cc"),
         [tile_ty, tile_ty],
         compile_flags=[f"-DRELU_ELEMS={tile_size}"],
         contract=KernelContract(
@@ -302,7 +302,7 @@ def add_sized(tile_size: int = 1024) -> ExternalFunction:
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "eltwise_add_bf16_vector_size",
-        _default_source_path("add.cc"),
+        _kernel_source("eltwise/add.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DADD_ELEMS={tile_size}"],
         contract=KernelContract(
@@ -329,7 +329,7 @@ def mul_sized(tile_size: int = 1024) -> ExternalFunction:
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "eltwise_mul_bf16_vector_size",
-        _default_source_path("mul.cc"),
+        _kernel_source("eltwise/mul.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DMUL_ELEMS={tile_size}"],
         contract=KernelContract(
@@ -356,7 +356,7 @@ def relu_sized(tile_size: int = 1024) -> ExternalFunction:
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "relu_bf16_size",
-        _default_source_path("relu.cc"),
+        _kernel_source("eltwise/relu.cc"),
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DRELU_ELEMS={tile_size}"],
         contract=KernelContract(

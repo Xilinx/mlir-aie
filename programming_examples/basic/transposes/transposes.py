@@ -25,7 +25,7 @@ mechanism has its own (dtype, size) support envelope:
                       (L3→L2→L1 TAP chain), and a VSHUFFLE kernel
                       (``kernels.transpose``, i.e. ``transpose_4x4`` or
                       ``transpose_8x8`` in the library's
-                      ``aie_kernels/generic/transpose.cc``) transposes each
+                      ``aie_kernels/datamovement/transpose.cc``) transposes each
                       inner ``s x s`` sub-tile.  Supports
                       ``i8`` / ``i16`` / ``i32`` and any sizes with
                       ``m | M``, ``n | N``, ``s | m``, ``s | n``.
@@ -209,7 +209,7 @@ def _transpose_combined(
     matrix_ty = np.ndarray[(M, K), np.dtype[dtype]]
     tile_ty = np.ndarray[(m, n), np.dtype[dtype]]
 
-    # The library's blocked transpose (aie_kernels/generic/transpose.cc), which
+    # The library's blocked transpose (aie_kernels/datamovement/transpose.cc), which
     # takes any 1-, 2- or 4-byte element type.
     kernel_func = kernels.transpose(dim_m=m, dim_n=n, subtile=s, dtype=dtype)
 

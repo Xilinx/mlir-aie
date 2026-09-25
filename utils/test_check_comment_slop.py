@@ -38,6 +38,21 @@ class CollectTests(unittest.TestCase):
         blocks, _ = slop.collect(diff(("a.cpp", 1, ["// one", "int x = 1;", "// two"])))
         self.assertEqual(len(blocks), 2)
 
+    def test_comments_moved_from_another_file_are_not_blocks(self):
+        moved = [f"// line {i}" for i in range(20)]
+        d = "\n".join(
+            [
+                "--- a/old/k.cc",
+                "+++ /dev/null",
+                f"@@ -1,{len(moved)} +0,0 @@",
+                *[f"-{line}" for line in moved],
+                diff(("new/k.cc", 1, moved + ["// written here", "int x = 1;"])),
+            ]
+        )
+        blocks, code = slop.collect(d)
+        self.assertEqual([b.lines for b in blocks], [["written here"]])
+        self.assertEqual(code, 1)
+
     def test_non_source_files_are_ignored(self):
         blocks, code = slop.collect(diff(("README.md", 1, ["# heading", "text"])))
         self.assertEqual(blocks, [])

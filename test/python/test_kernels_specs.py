@@ -766,7 +766,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,  # f32 in, bf16 out, size
         expected_name="cast_f32_bf16_row",
-        # Binds aie2p/cast_f32_bf16.cc (upstream's cast, chosen over the dropped
+        # Binds datamovement/cast_f32_bf16.cc (upstream's cast, chosen over the dropped
         # IRON convert_copy.cc — see KERNEL_DEDUP_REPORT §4.1).
         invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
     ),
@@ -1046,8 +1046,7 @@ def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
     fn = factory(tile_size=2048)
     assert fn is factory(cols=2048)
     assert fn.arg_shape(0) == (2048,)
-    source_dir = "generic" if name == "rope" else kernel_arch
-    assert Path(fn._source_file).parent.name == source_dir
+    assert Path(fn._source_file).parent.name == canonical.__name__.split(".")[-1]
     assert len(fn.contract.roles) == len(fn.arg_types())
     if name != "rope":
         assert any(kernel_arch.upper() in flag for flag in fn._compile_flags)
@@ -1364,7 +1363,7 @@ def test_matrix_zero_companion_uses_contract_initializer(
     assert initializer.object_file is not fn.object_file
     assert initializer.use_chess == use_chess
     assert initializer.arg_types() == [fn.arg_types()[2]]
-    assert Path(initializer.source_file).parts[-2:] == ("generic", "zero.cc")
+    assert Path(initializer.source_file).parts[-2:] == ("zero", "zero.cc")
 
 
 def test_cascade_siblings_share_artifact_and_preserve_contract(kernel_arch):

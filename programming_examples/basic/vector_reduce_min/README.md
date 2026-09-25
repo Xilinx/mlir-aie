@@ -22,7 +22,7 @@ The design body is a single `aie.iron.algorithms.reduce(reduce_min_vector, in_ty
 
    The Makefile drives the XCLBIN + `insts.bin` flavour today.
 
-1. `reduce_min.cc`: A C++ implementation of a vectorized `min` reduction for AIE cores. The kernel uses the AIE API ([docs](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html)). Source: [here](../../../aie_kernels/aie2/reduce_min.cc).
+1. `reduce_min.cc`: A C++ implementation of a vectorized `min` reduction for AIE cores. The kernel uses the AIE API ([docs](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html)). Source: [here](../../../aie_kernels/reduce/reduce_min.cc).
 
 1. `test.cpp`: C++ testbench. Loads the compiled artifacts (XCLBIN + `insts.bin` today; `xrt::elf` + `xrt::module` is the alternative path) and runs the kernel on the NPU.
 

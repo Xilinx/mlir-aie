@@ -17,8 +17,8 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Trace,
-    _default_source_path,
     _detect_arch,
+    _kernel_source,
     _make_extern,
 )
 
@@ -142,7 +142,7 @@ def q4nx_dequant(
     output_bytes = m_tile * k_tile * 9 // 8
     return _make_extern(
         "q4nx_dequant_bfp",
-        _default_source_path("q4nx_dequant.cc", subdir="generic"),
+        _kernel_source("quant/q4nx_dequant.cc"),
         [
             np.ndarray[(input_bytes,), np.dtype[np.uint8]],
             np.ndarray[(output_bytes,), np.dtype[np.uint8]],

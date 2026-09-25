@@ -527,8 +527,9 @@ def _row(name: str, unit: str, value, extra: str, rng: str | None = None) -> dic
 # in a loop sits inside that loop, so neither counts.
 
 _IR_DEFINE = re.compile(r"^define [^@]*@([-\w.$]+)\(")
-_IR_LABEL = re.compile(r"^([-\w.$]+):")
-_IR_SUCC = re.compile(r"\blabel %([-\w.$]+)")
+# LLVM quotes a label holding a `$`, as an inlined lambda's exit block does.
+_IR_LABEL = re.compile(r'^"?([-\w.$]+)"?:')
+_IR_SUCC = re.compile(r'\blabel %"?([-\w.$]+)')
 _IR_EVENT = re.compile(r"@llvm\.aie\w*\.event\(i32 ([01])\)")
 _IR_CALL = re.compile(r"\bcall\b[^@]*@([-\w.$]+)\(")
 # Longer event sequences are wrong whatever they say, so stop growing them.

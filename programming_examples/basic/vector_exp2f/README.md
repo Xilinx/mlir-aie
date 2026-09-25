@@ -18,7 +18,7 @@ relative error across its default domain, `x` in `[-111, 127.999)` (and a
 bounded ~7.8e-4 in the narrow `[127.999, 128)` sliver right at the upper
 clamp). The lower clamp is movable down to the hard floor of `-126` at up
 to 6.5e-3; see
-[`aie_kernels/aie2p/exp2f_vec.cc`](../../../aie_kernels/aie2p/exp2f_vec.cc)
+[`aie_kernels/activation/exp2f_vec.cc`](../../../aie_kernels/activation/exp2f_vec.cc)
 for the measured accuracy table and the derivation (`x = k + f`, `2^k`
 built directly in the float32 exponent field, `2^f` from the poly).
 
@@ -31,7 +31,7 @@ Four cores each operate on `1024` `float32` numbers.
    with `kernels.exp2f_vec` / `kernels.exp2f_vec_ref` in place of
    `kernels.bf16_exp` / `kernels.bf16_exp_ref`, and `float32` in place of
    `bfloat16`.
-2. [`exp2f_vec.cc`](../../../aie_kernels/aie2p/exp2f_vec.cc) - the kernel.
+2. [`exp2f_vec.cc`](../../../aie_kernels/activation/exp2f_vec.cc) - the kernel.
    Its `__attribute__((noinline))` is load-bearing; see the comment there.
 
 ## Usage
@@ -41,9 +41,9 @@ python3 vector_exp2f.py
 ```
 
 The IRON JIT runtime detects the attached NPU generation automatically.
-The kernel source lives under `aie_kernels/aie2p/` but builds for aie2 as
-well; there it needs a 2048-byte core stack, which the design takes from
-`exp2f_fn.contract.stack_bytes`.
+The kernel source, `aie_kernels/activation/exp2f_vec.cc`, builds for aie2
+and aie2p. On aie2 it needs a 2048-byte core stack, which the design takes
+from `exp2f_fn.contract.stack_bytes`.
 
 The host driver builds four input blocks: a dense grid over `[-111, 0]`, a
 random sample over the same range, a block from `-500` to just below

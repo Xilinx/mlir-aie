@@ -6,7 +6,7 @@
 """Depthwise conv1d, 'same' padding, stride 1, bf16, IRON API + ``@iron.jit``.
 
 Runs on NPU1 (aie2) and NPU2 (aie2p): ``dwconv1d_channels_first.cc`` lives
-under ``aie_kernels/aie2p/`` and builds for both. On NPU1 pass ``-n 4``: each
+under ``aie_kernels/conv/`` and builds for both. On NPU1 pass ``-n 4``: each
 core streams ``x`` and ``w`` from the shim, and NPU1's four shim tiles have 8
 such DMA channels, so the default 8 cores do not place.
 

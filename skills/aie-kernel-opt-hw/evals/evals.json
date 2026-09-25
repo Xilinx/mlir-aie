@@ -57,7 +57,7 @@
     {
       "id": 4,
       "name": "raw-kernel-static-first",
-      "prompt": "Here's my int8 conv kernel in aie_kernels/aie2p/conv2dk1_i8.cc. It's slow on the NPU. Make it faster.",
+      "prompt": "Here's my int8 conv kernel in aie_kernels/conv/conv2dk1_i8.cc. It's slow on the NPU. Make it faster.",
       "expected_output": "Starts with the static screen per aie-kernel-opt-static (resolve the called symbol, contracts, remarks, libcalls/spills/stack, diagnosis -> candidate with a class) rather than editing and timing blindly, then measures the candidate on hardware with a base arm, back to back.",
       "files": [],
       "assertions": [

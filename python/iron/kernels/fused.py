@@ -19,10 +19,10 @@ from ._common import (
     Param,
     TensorLayout,
     Trace,
-    _default_source_path,
     _detect_arch,
     _device,
     _include_dirs,
+    _kernel_source,
 )
 from .activation import _bf16_ulp, _vtanh_error
 
@@ -224,7 +224,7 @@ def fused_mm(
     # untouched, so there is no unclamped path to select between.
     bounds = clamp if clamp is not None else (-np.inf, np.inf)
     clamp_bits = tuple(int(np.float32(v).view(np.int32)) for v in bounds)
-    source = _default_source_path("fused_mm_tile.cc", "generic")
+    source = _kernel_source("fused/fused_mm_tile.cc")
     include_dirs = _include_dirs()
     if arch == "aie2":
         from aie.utils import config

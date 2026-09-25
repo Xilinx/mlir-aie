@@ -202,7 +202,26 @@ HUNK_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 def added_lines(diff):
-    """Yield (path, lineno, text, is_comment) for every added line.
+    """Yield (path, lineno, text, is_comment) for every added line."""
+    for sign, path, lineno, text in _body_lines(diff):
+        if sign == "+" and path:
+            yield path, lineno, text, is_comment_line(path, text)
+
+
+def moved_comments(diff):
+    """Return every removed line's text, comment markers stripped.
+
+    A comment removed at one site and added at another was moved, not written.
+    Moving a file that changed too much to be diffed as a rename otherwise
+    reads as writing all of its comments anew.
+    """
+    return {
+        strip_comment_markers(t) for sign, _, _, t in _body_lines(diff) if sign == "-"
+    }
+
+
+def _body_lines(diff):
+    """Yield (sign, new path, new lineno, text) for every added or removed line.
 
     The @@ header declares how many lines the hunk body holds, and we consume exactly
     that many. Telling body from header by prefix instead cannot be made correct: an
@@ -229,12 +248,11 @@ def added_lines(diff):
         if raw.startswith("\\"):  # "\ No newline at end of file"
             continue
         if raw.startswith("+"):
-            body = raw[1:]
-            if path:
-                yield path, lineno, body, is_comment_line(path, body)
+            yield "+", path, lineno, raw[1:]
             lineno += 1
             new_left -= 1
         elif raw.startswith("-"):
+            yield "-", path, lineno, raw[1:]
             old_left -= 1
         else:  # context
             lineno += 1
@@ -292,6 +310,7 @@ def collect(diff):
     """Group added comment lines into contiguous blocks; count added code lines."""
     blocks, current, code = [], None, 0
     in_block, expected = False, None
+    moved = moved_comments(diff)
     for path, lineno, text, is_comment in added_lines(diff):
         if not path.endswith(SOURCE_SUFFIXES):
             continue
@@ -309,7 +328,7 @@ def collect(diff):
 
         if is_comment:
             stripped = strip_comment_markers(text)
-            if LICENSE_RE.match(stripped):
+            if LICENSE_RE.match(stripped) or (stripped and stripped in moved):
                 current = None
                 continue
             if (

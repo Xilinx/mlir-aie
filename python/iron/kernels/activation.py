@@ -20,7 +20,6 @@ from ._common import (
     Param,
     Trace,
     _bf16_lanes,
-    _default_source_path,
     _detect_arch,
     _include_dirs,
     _kernel_source,
@@ -307,22 +306,21 @@ def _create_lut_kernel(
     ``use_lut_tanh`` asks for getTanhBf16 over the vtanh instruction. It is
     moot on aie2, which has no tanh instruction and always reads the tables.
 
-    A build that reads a table is compiled inside aie2/lut_kernel.cc, which is
+    A build that reads a table is compiled inside common/lut_kernel.cc, which is
     what pulls lut_based_ops.cpp -- and therefore the tables -- into the
     translation unit.
 
     ``contract`` is attached as ``.contract`` like ``_make_extern`` does.
     """
     arch = _detect_arch()
-    kernel_path = _kernel_source(arch, arch, kernel_filename)
+    kernel_path = _kernel_source(f"activation/{kernel_filename}")
 
     from aie.utils import config
 
     include = _include_dirs()
-    # From the same tree as the kernel source, so MLIR_AIE_KERNEL_SOURCES
-    # cannot mix a checked-out kernel with installed headers.
-    kernel_arch_dir = Path(config.aie_kernels_dir()) / arch
-    include.append(str(kernel_arch_dir))
+    # lut_kernel.cc lives elsewhere, so the kernel's own directory goes on the
+    # include path for its relative includes.
+    include.append(str(kernel_path.parent))
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
     include.append(str(runtime_dir))
 
@@ -332,7 +330,7 @@ def _create_lut_kernel(
 
     if arch == "aie2" or use_lut_tanh:
         flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
-        kernel_path = _kernel_source(arch, arch, "lut_kernel.cc")
+        kernel_path = _kernel_source("common/lut_kernel.cc")
     if compile_flags:
         return _make_extern(
             func_name,
@@ -409,7 +407,7 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
                 "so an unwritten (all-zero) tile fails, since every softmax "
                 "output is below a generic absolute floor",
             ),
-            # aie2p/softmax.cc sets conv_even itself; the aie2 LUT path does not.
+            # softmax_aie2p.h sets conv_even itself; the aie2 LUT path does not.
             setup=None if _detect_arch() == "aie2p" else conv_even,
         ),
     )
@@ -566,7 +564,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
     A float32-output alternative to [`bf16_exp`]
     [iron.kernels.activation.bf16_exp], sharing its AIE2P range-reduced
     polynomial but with a separately configurable input domain. See
-    ``aie_kernels/aie2p/exp2f_vec.cc`` for the accuracy rationale and the
+    ``aie_kernels/activation/exp2f_vec.cc`` for the accuracy rationale and the
     ``noinline`` codegen hazard this kernel carries.
 
     The same source builds for aie2.
@@ -578,7 +576,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
             -111 is the lowest exponent that still holds the kernel's
             8.9e-5 relative error; -126 is the hard floor (one f32
             exponent field), reachable at up to 6.5e-3. See
-            ``aie_kernels/aie2p/exp2f_vec.cc`` for the measured table.
+            ``aie_kernels/activation/exp2f_vec.cc`` for the measured table.
 
     Returns:
         ExternalFunction configured for the exp2f_vec kernel.
@@ -597,7 +595,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
             f"f32 exponent field, whose smallest normal exponent is -126), "
             f"got {min_x}"
         )
-    source = _default_source_path("exp2f_vec.cc", subdir="aie2p")
+    source = _kernel_source("activation/exp2f_vec.cc")
     tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
     return _make_extern(
         "exp2f_vec_f32",
@@ -792,7 +790,7 @@ def _bf16(v):
 def sigmoid_lut_ref(x):
     """Model of [`sigmoid`][iron.kernels.activation.sigmoid] built with ``use_lut=True``.
 
-    Follows generic/sigmoid.cc step for step: ``x/2`` is exact (0.5 is a power
+    Follows activation/sigmoid.cc step for step: ``x/2`` is exact (0.5 is a power
     of two), the accumulator overload of ``tanh_bf16_v16`` narrows to bf16
     before the table, and the ``+1`` and ``*0.5`` stay in the accumulator so
     there is a single store rounding at the end.
@@ -805,7 +803,7 @@ def sigmoid_lut_ref(x):
 def silu_lut_ref(x):
     """Model of [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
 
-    generic/silu.cc narrows the sigmoid factor to bf16 before the final
+    activation/silu.cc narrows the sigmoid factor to bf16 before the final
     multiply, so that rounding is modelled too, not folded away.
     """
     xf = np.asarray(x).astype(np.float32)
@@ -816,7 +814,7 @@ def silu_lut_ref(x):
 def swiglu_lut_ref(x, w1, w2):
     """Model of [`swiglu`][iron.kernels.activation.swiglu] built with ``use_lut=True``.
 
-    generic/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
+    activation/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
     sigmoid factor and the silu product each land in a bf16 register before
     the next step -- which is what this reproduces.
     """

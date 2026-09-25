@@ -7,7 +7,7 @@
 ``@iron.jit``.
 
 Runs on NPU1 and NPU2. The ``mm_activation_epilogue_row`` kernel lives under
-``aie_kernels/aie2p/``; on aie2, which has no tanh instruction, SiLU and GELU
+``aie_kernels/transformer/``; on aie2, which has no tanh instruction, SiLU and GELU
 take tanh from the ``getTanhBf16`` lookup table instead.
 
 ``float32`` in, ``float32`` out, per-element:

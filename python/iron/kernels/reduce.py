@@ -15,7 +15,7 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _default_source_path,
+    _kernel_source,
     _make_extern,
     _min_dma_aligned_elems,
     _require_vector_alignment,
@@ -84,7 +84,7 @@ def _reduce_kernel(
     func_variant = "vector" if vectorized else "scalar"
     return _make_extern(
         f"reduce_{op}_{func_variant}",
-        _default_source_path(f"reduce_{op}.cc"),
+        _kernel_source(f"reduce/reduce_{op}.cc"),
         [in_ty, out_ty, np.int32],
         compile_flags=[f"-DREDUCE_{op.upper()}_ELEMS={tile_size}"],
         contract=_reduce_contract(op, tile_size),
@@ -170,7 +170,7 @@ def reduce_max(
     suffix = "_bfloat16" if is_bf16 else ""
     return _make_extern(
         f"reduce_max_{func_variant}{suffix}",
-        _default_source_path("reduce_max.cc"),
+        _kernel_source("reduce/reduce_max.cc"),
         [in_ty, out_ty, np.int32],
         compile_flags=[f"-DREDUCE_MAX_ELEMS={tile_size}"],
         contract=_reduce_contract("max", tile_size),
@@ -210,7 +210,7 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
     suffix = "_bfloat16" if is_bf16 else ""
     return _make_extern(
         f"compute_max{suffix}",
-        _default_source_path("reduce_max.cc"),
+        _kernel_source("reduce/reduce_max.cc"),
         [out_ty, out_ty, out_ty],
         object_file_name=_REDUCE_MAX_OBJ,
         contract=KernelContract(

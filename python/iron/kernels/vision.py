@@ -14,9 +14,9 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _default_source_path,
     _detect_arch,
     _dtype_to_bit_width,
+    _kernel_source,
     _make_extern,
     _require_vector_alignment,
     _runtime_lib_include,
@@ -38,7 +38,7 @@ def _color_convert_kernel(
     out_ty = np.ndarray[(out_size,), np.dtype[np.uint8]]
     return _make_extern(
         func_name,
-        _default_source_path(filename),
+        _kernel_source(f"vision/{filename}"),
         [in_ty, out_ty, np.int32],
         compile_flags=compile_flags,
         use_chess=use_chess,
@@ -57,7 +57,7 @@ def _bitwise_kernel(
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         f"bitwise{op}Line",
-        _default_source_path(f"bitwise{op}.cc"),
+        _kernel_source(f"vision/bitwise{op}.cc"),
         [line_ty, line_ty, line_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DBITWISE_ELEMS={line_width}"],
         use_chess=use_chess,
@@ -126,7 +126,7 @@ def threshold(
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         "thresholdLine",
-        _default_source_path("threshold.cc"),
+        _kernel_source("vision/threshold.cc"),
         [line_ty, line_ty, np.int32, scalar_ty, scalar_ty, np.int8],
         compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DTHRESHOLD_ELEMS={line_width}"],
         use_chess=use_chess,
@@ -208,7 +208,7 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
     kernel_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
     return _make_extern(
         "filter2dLine",
-        _default_source_path("filter2d.cc"),
+        _kernel_source("vision/filter2d.cc"),
         [line_ty, line_ty, line_ty, line_ty, np.int32, kernel_ty],
         use_chess=use_chess,
         contract=KernelContract(
@@ -259,7 +259,7 @@ def add_weighted(
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         "addWeightedLine",
-        _default_source_path("addWeighted.cc"),
+        _kernel_source("vision/addWeighted.cc"),
         [line_ty, line_ty, line_ty, np.int32, np.int16, np.int16, gamma_ty],
         compile_flags=[
             f"-DBIT_WIDTH={bit_width}",
@@ -283,7 +283,7 @@ def add_weighted(
 
 # --------------------------------------------------------------------------
 # Numpy references. Each follows the *vector* path of its kernel (the one the
-# ``*Line`` entry points call), read off aie_kernels/aie2/*.cc.
+# ``*Line`` entry points call), read off aie_kernels/vision/*.cc.
 # --------------------------------------------------------------------------
 
 

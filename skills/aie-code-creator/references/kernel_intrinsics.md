@@ -145,7 +145,7 @@ aie::store_v(pC, C00.template to_vector<T_out>());
 
 ### Outer expansion (per-tile macro-kernel)
 
-For real GEMMs you unroll the MMUL across an outer block (e.g., 4×4 expansion: hold 16 MMUL accumulators in registers, share each loaded A across 4 Bs and vice versa). See `mlir-aie/aie_kernels/aie2/mm.cc` for canonical implementations.
+For real GEMMs you unroll the MMUL across an outer block (e.g., 4×4 expansion: hold 16 MMUL accumulators in registers, share each loaded A across 4 Bs and vice versa). See `mlir-aie/aie_kernels/linalg/mm_aie2.h` for canonical implementations.
 
 ```cpp
 // Sketch of 2x2 expansion

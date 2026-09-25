@@ -48,7 +48,7 @@ within `atol=0.05`.
    dispatch, extended to four phases and four outputs.
 
 1. `mm_activation_epilogue.cc`: kernel, from
-   [`aie_kernels/aie2p/`](../../../aie_kernels/aie2p/), built for both
+   [`aie_kernels/transformer/`](../../../aie_kernels/transformer/), built for both
    AIE2 and AIE2P. One `mode` argument (0/1/2/3) selects identity, SiLU,
    GELU, or ReLU.
 

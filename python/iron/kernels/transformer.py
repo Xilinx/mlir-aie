@@ -24,8 +24,8 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _default_source_path,
     _detect_arch,
+    _kernel_source,
     _make_extern,
     _runtime_lib_include,
 )
@@ -84,7 +84,7 @@ def _row_kernel(
     out_ty = np.ndarray[(cols,), np.dtype[out_dt]]
     return _make_extern(
         symbol,
-        _default_source_path(source, subdir="aie2p"),
+        _kernel_source(source),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -105,8 +105,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
     """Row-wise LayerNorm on float32 in and out (gamma = 1, beta = 0, eps 1e-5).
 
     A separate factory rather than a dtype of
-    [`layer_norm`][iron.kernels.norm.layer_norm], though both come from
-    one templated core in ``layer_norm.cc``: this one is held to atol 1e-3
+    [`layer_norm`][iron.kernels.norm.layer_norm]: this one is held to atol 1e-3
     (2e-6 on aie2) instead of the bf16 tolerance, which its reference meets
     only by computing the variance two-pass in float64. Merging them would
     put that numerical difference behind a dtype switch.
@@ -117,7 +116,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
     return _row_kernel(
         "layer_norm_f32",
         "layer_norm_f32",
-        "layer_norm.cc",
+        "transformer/layer_norm_f32.cc",
         cols,
         np.float32,
         np.float32,
@@ -146,7 +145,7 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
     out_ty = np.ndarray[(cols,), np.dtype[bfloat16]]
     return _make_extern(
         "layer_norm_affine_cast",
-        _default_source_path("layer_norm.cc", subdir="aie2p"),
+        _kernel_source("transformer/layer_norm_f32.cc"),
         [in_ty, gb_ty, out_ty, np.int32],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -179,14 +178,14 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
     """
     _cols("mm_activation_epilogue", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
-    source = _default_source_path("mm_activation_epilogue.cc", subdir="aie2p")
+    source = _kernel_source("transformer/mm_activation_epilogue.cc")
     lut = _detect_arch() == "aie2"
     flags = None
     if lut:
         # lut_kernel.cc compiles the source next to lut_based_ops.cpp, whose
         # tables getTanhBf16 reads.
         flags = [f'-DAIE_LUT_KERNEL_SOURCE="{source}"', f"-I{_runtime_lib_include()}"]
-        source = _default_source_path("lut_kernel.cc")
+        source = _kernel_source("common/lut_kernel.cc")
     return _make_extern(
         "mm_activation_epilogue_row",
         source,

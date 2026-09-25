@@ -22,8 +22,8 @@ from ._common import (
     Param,
     TensorLayout,
     Trace,
-    _default_source_path,
     _detect_arch,
+    _kernel_source,
     _make_extern,
     dtypes,
 )
@@ -37,7 +37,7 @@ _CASCADE_COMBOS = {
     (bfloat16, np.float32): "bf16_f32",
 }
 
-# Mirror of the ``combos(X)`` macro in aie_kernels/aie2/cascade_mm.cc.
+# Mirror of the ``combos(X)`` macro in aie_kernels/linalg/cascade_mm.cc.
 # Designs use ``kernels.cascade_mm(...).mac_dims`` to look up the
 # scalar-block geometry the compiled cascade kernel expects.  cascade_mm
 # only ships an aie2 .cc today; if an aie2p variant lands the table
@@ -599,7 +599,7 @@ def mm(
     )
     return _make_extern(
         f"{prefix}_{suffix}",
-        _default_source_path("mm.cc"),
+        _kernel_source("linalg/mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=compile_flags,
         use_chess=use_chess,
@@ -608,7 +608,7 @@ def mm(
             trace=Trace.whole_call(),
             layouts=layouts,
             stack_bytes=0xD00,  # programming_examples/basic/matrix_multiplication
-            # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
+            # mm_aie2p.h sets conv_even itself and restores it; mm_aie2.h
             # does so only under round_conv_even, and otherwise stores bf16
             # in whatever mode the core is in.
             setup=(
@@ -650,12 +650,12 @@ def mv(
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
-    ``(np.int16, np.int32)`` builds ``aie_kernels/generic/mv_i16.cc``; its
+    ``(np.int16, np.int32)`` builds ``aie_kernels/linalg/mv_i16.cc``; its
     vectorized path reads A word-transposed, which A's layout carries
     (``contract.layouts[0].stream``). Its ``.zero`` companion initializes C
     with the independent ``kernels.zero(dim_m, output_dtype)``.
     ``(bfloat16, bfloat16)`` builds
-    ``aie_kernels/generic/mv_bf16.cc``, IRON's ``GEMV`` kernel, whose signature
+    ``aie_kernels/linalg/mv_bf16.cc``, IRON's ``GEMV`` kernel, whose signature
     is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
     ``c`` so one core can fill several output blocks; A is row-major.
 
@@ -696,7 +696,7 @@ def mv(
     b_ty = np.ndarray[(dim_k,), np.dtype[np.int16]]
     c_ty = np.ndarray[(dim_m,), np.dtype[np.int32]]
     # The vectorized kernel reads A in a "32-bit-word transposed" layout (see
-    # aie_kernels/generic/mv_i16.cc): 2-byte elements are packed two per word, rows
+    # aie_kernels/linalg/mv_i16.cc): 2-byte elements are packed two per word, rows
     # of each 2-column word slowly, m rows then the next 2-col word. A design
     # applies this as dims_from_stream on the hop into the core, reading it
     # from the layout (programming_examples/basic/matrix_multiplication/
@@ -706,7 +706,7 @@ def mv(
     )
     return _make_extern(
         f"{prefix}_i16_i32",
-        _default_source_path("mv_i16.cc"),
+        _kernel_source("linalg/mv_i16.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
         use_chess=use_chess,
@@ -732,7 +732,7 @@ def mv(
 def _mv_bf16(
     dim_m, dim_k, vectorized, use_chess, vec_size, output_rows
 ) -> ExternalFunction:
-    """bf16 matvec from ``aie_kernels/generic/mv_bf16.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
+    """bf16 matvec from ``aie_kernels/linalg/mv_bf16.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
         raise ValueError(
             f"mv(): dim_k ({dim_k}) must be a positive multiple of vec_size ({vec_size})"
@@ -757,7 +757,7 @@ def _mv_bf16(
         flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
     return _make_extern(
         f"{prefix}_bf16_bf16",
-        _default_source_path("mv_bf16.cc", subdir="generic"),
+        _kernel_source("linalg/mv_bf16.cc"),
         [np.int32, np.int32, a_ty, b_ty, c_ty],
         compile_flags=flags,
         use_chess=use_chess,
@@ -806,7 +806,7 @@ def mm_bfp(
 ) -> MatrixKernel:
     """Block-floating-point matmul ``C += A @ B`` on bfp16ebs8 blocks (aie2p only).
 
-    ``mixed=False`` (``aie_kernels/aie2p/mm_bfp.cc``): A, B and C are
+    ``mixed=False`` (``aie_kernels/linalg/mm_bfp.cc``): A, B and C are
     ``v8bfp16ebs8`` blocks, all pre-shuffled into the mmul layout, so no
     DMA transform applies (``stream_dims`` is ``None`` for every operand).
     ``mixed=True`` (``mm_bfp_mixed.cc``): A is bf16 in the (r, s, t)
@@ -839,12 +839,12 @@ def mm_bfp(
     flags = [f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}", f"-DDIM_N={dim_n}"]
     b_ty = np.ndarray[(dim_k * dim_n // 8,), np.dtype[v8bfp16ebs8]]
     if mixed:
-        source = _default_source_path("mm_bfp_mixed.cc", subdir="aie2p")
+        source = _kernel_source("linalg/mm_bfp_mixed.cc")
         a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]]
         c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
         symbol = "matmul_vectorized_different_datatypes"
     else:
-        source = _default_source_path("mm_bfp.cc", subdir="aie2p")
+        source = _kernel_source("linalg/mm_bfp.cc")
         a_ty = np.ndarray[(dim_m * dim_k // 8,), np.dtype[v8bfp16ebs8]]
         c_ty = np.ndarray[(dim_m * dim_n // 8,), np.dtype[v8bfp16ebs8]]
         symbol = "matmul_vectorized_bfp16"
@@ -939,7 +939,7 @@ def mm_bfp_shuffle(
     blocked = _block_layout(logical_shape)
     extern = _make_extern(
         "scalar_shuffle",
-        _default_source_path("mm_bfp.cc", subdir="aie2p"),
+        _kernel_source("linalg/mm_bfp.cc"),
         [in_ty, out_ty, np.int16, np.int16, np.int16],
         compile_flags=flags + ["-DSHUFFLE_ONLY"],
         contract=KernelContract(
@@ -976,7 +976,7 @@ def mha(
     b_col_maj: bool = False,
     emulate_bf16_mmul_with_bfp16: bool = False,
 ) -> MatrixKernel:
-    """Flash-attention toolkit from ``aie_kernels/aie2p/mha.cc``.
+    """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
     One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
     exports the symbols an attention dataflow composes over one micro-tile.
@@ -1052,7 +1052,7 @@ def mha(
     streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj)
     return _make_extern(
         "matmul_bf16_bf16_rowmaj" if pv else "matmul_bf16_bf16_wrapper",
-        _default_source_path("mha.cc", subdir="aie2p"),
+        _kernel_source("linalg/mha.cc"),
         [a_ty, b_ty, tile] if pv else [a_ty, b_ty, tile, idx],
         compile_flags=flags,
         cls=MatrixKernel,
@@ -1108,7 +1108,7 @@ def mha_softmax() -> ExternalFunction:
     scale = float(bfloat16(np.log2(np.e) / np.sqrt(b)))
     return _make_extern(
         "partial_softmax",
-        _default_source_path("mha.cc", subdir="aie2p"),
+        _kernel_source("linalg/mha.cc"),
         [tile, tile, state, idx, bfloat16, *([np.int32] * 4)],
         compile_flags=[f"-DDIM_M={b}", f"-DDIM_K={b}", f"-DDIM_N={b}"],
         contract=KernelContract(
@@ -1178,7 +1178,7 @@ _PREFILL_STACK_AIE2 = 1152
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:
-    """Flash-attention prefill toolkit from ``aie_kernels/aie2p/flash_attn_prefill.cc``.
+    """Flash-attention prefill toolkit from ``aie_kernels/linalg/flash_attn_prefill.cc``.
 
     One translation unit per geometry, exporting the five steps an attention
     prefill dataflow composes over one query chunk. The returned kernel is the
@@ -1224,7 +1224,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     v_dims = [n_blocks, k_blocks, *within]
     return _make_extern(
         "prefill_fv_step",
-        _default_source_path("flash_attn_prefill.cc", subdir="aie2p"),
+        _kernel_source("linalg/flash_attn_prefill.cc"),
         [y_ty, s_ty, v_ty, np.int32],
         compile_flags=[f"-DPREFILL_HEAD_DIM={head_dim}"],
         cls=_ZeroInitializedKernel,
@@ -1369,7 +1369,7 @@ def cascade_mm(
     r, s, t = _CascadeMatMulFactory.mac_dims(input_dtype, output_dtype)
     extern = _make_extern(
         f"matmul_scalar_cascade_get_only_{suffix}",
-        _default_source_path("cascade_mm.cc"),
+        _kernel_source("linalg/cascade_mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=[
             f"-DDIM_M={dim_m}",
@@ -1442,7 +1442,7 @@ def cascade_mm_put(
     r, s, t = _CascadeMatMulFactory.mac_dims(input_dtype, output_dtype)
     return _make_extern(
         f"matmul_scalar_cascade_put_only_{suffix}",
-        _default_source_path("cascade_mm.cc"),
+        _kernel_source("linalg/cascade_mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=[
             f"-DDIM_M={dim_m}",

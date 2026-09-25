@@ -7,8 +7,8 @@
 # RUN: %pytest %s
 """round_conv_even plumbing for the aie.iron.kernels mm factory.
 
-aie2/mm.cc selects conv_even rounding itself under -DROUND_CONV_EVEN;
-aie2p/mm.cc always does, so the flag is not passed there.
+mm_aie2.h selects conv_even rounding itself under -DROUND_CONV_EVEN;
+mm_aie2p.h always does, so the flag is not passed there.
 
 Sibling files:
   test_kernels_specs.py        — spec-table-driven coverage of every factory
@@ -19,12 +19,11 @@ The npu2_device fixture comes from conftest.py at this directory level.
 """
 
 import pytest
-from ml_dtypes import bfloat16
-
 from aie.iron import kernels
 from aie.iron.device import NPU1Col1
 from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
+from ml_dtypes import bfloat16
 
 
 @pytest.fixture
@@ -58,7 +57,7 @@ def test_kernels_mm_round_conv_even_carries_macro_on_aie2(npu1_device):
 
 
 def test_kernels_mm_round_conv_even_ignored_on_aie2p(npu2_device):
-    """aie2p/mm.cc always rounds conv_even: no macro, one shared object."""
+    """mm_aie2p.h always rounds conv_even: no macro, one shared object."""
     ef = _bf16_mm(round_conv_even=True)
     assert "-DROUND_CONV_EVEN" not in ef._compile_flags
     assert ef is _bf16_mm()

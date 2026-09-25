@@ -17,7 +17,7 @@
 
 In [section-4a](../section-4a) we timed a whole application, and in [section-4b](../section-4b) we used trace to count the cycles a kernel spends between `event0()` and `event1()`. This section uses those cycle counts to look at a kernel from the inside: how the scalar version turns into vector code, how the compiler schedules the vector loop, and how close that schedule gets to what the hardware can do.
 
-We switch from the local copy in section-4b to the [vector-scalar multiply example](../../../programming_examples/basic/vector_scalar_mul/). By default it works on 16-bit data and uses the vectorized kernel. Read the example's summary first, then open its kernel source, [scale.cc](../../../aie_kernels/aie2/scale.cc). The same `aie2/scale.cc` is compiled for both AIE2 (npu1, Phoenix/Hawk Point) and AIE2P (npu2, Strix-class) devices.
+We switch from the local copy in section-4b to the [vector-scalar multiply example](../../../programming_examples/basic/vector_scalar_mul/). By default it works on 16-bit data and uses the vectorized kernel. Read the example's summary first, then open its kernel source, [scale.cc](../../../aie_kernels/eltwise/scale.cc). The same `scale.cc` is compiled for both AIE2 (npu1, Phoenix/Hawk Point) and AIE2P (npu2, Strix-class) devices.
 
 Unless a number says otherwise, the cycle counts in this section were measured on an npu2 (AIE2P) device with the default compiler, Peano (llvm-aie). Where the proprietary Chess compiler behaves differently, both numbers are shown. Each kernel call processes 1024 elements. Your counts may be off by a cycle or two, and will move more with a different compiler version.
 
@@ -29,7 +29,7 @@ The exercises below ask you to edit `scale.cc` and to switch the design between 
     ```bash
     export MLIR_AIE_KERNEL_SOURCES=<mlir-aie>
     ```
-    Without it, edits to `<mlir-aie>/aie_kernels/aie2/scale.cc` are silently ignored. The kernel's source bytes are part of the build cache key, so an edited kernel is always recompiled.
+    Without it, edits to `<mlir-aie>/aie_kernels/eltwise/scale.cc` are silently ignored. The kernel's source bytes are part of the build cache key, so an edited kernel is always recompiled.
 * **Scalar or vector.** [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) takes `vectorized: CompileTime[bool] = True`. There is no command-line flag for it: edit the default to `False` to build the scalar kernel.
 * **Data type and compiler.** `make int_bit_width=32 trace` builds the 32-bit version (the default is 16). `make CHESS=true trace` compiles the kernel with Chess instead of Peano, if you have the AIE tools installed.
 
@@ -37,7 +37,7 @@ Run `make clean` between configurations.
 
 ### <u>The scalar kernel</u>
 
-The scalar code in [scale.cc](../../../aie_kernels/aie2/scale.cc) is close to the code we traced in section-4b:
+The scalar code in [scale.cc](../../../aie_kernels/eltwise/scale.cc) is close to the code we traced in section-4b:
 ```C++
 template <typename T>
 void scale_scalar(T *a, T *c, T factor, const int32_t N) {
@@ -130,7 +130,7 @@ void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
 }
 ```
 
-[scale.cc](../../../aie_kernels/aie2/scale.cc) also has a specialization for `int32_t`. It is the same loop with `vec_factor = 16` and an `acc64` accumulator.
+[scale.cc](../../../aie_kernels/eltwise/scale.cc) also has a specialization for `int32_t`. It is the same loop with `vec_factor = 16` and an `acc64` accumulator.
 
 Instead of one multiply per element, each iteration now loads 32 elements, multiplies them in one vector operation, and stores 32 results, so the loop runs `SCALE_ELEMS / 32` times. `AIE_PREPARE_FOR_PIPELINING` is a loop pragma from [aie_kernel_utils.h](../../../aie_kernels/aie_kernel_utils.h). What it does depends on the compiler, as we will see below.
 

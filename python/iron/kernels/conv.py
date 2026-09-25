@@ -24,8 +24,8 @@ from ._common import (
     Param,
     Trace,
     _conv_act_dtype_info,
-    _default_source_path,
     _detect_arch,
+    _kernel_source,
     _make_extern,
     dtypes,
 )
@@ -324,7 +324,7 @@ def dwconv1d_channels_first(
     out_ty = np.ndarray[(seq_len,), np.dtype[bfloat16]]
     return _make_extern(
         "dwconv1d_channels_first_bf16",
-        _default_source_path("dwconv1d_channels_first.cc", subdir="aie2p"),
+        _kernel_source("conv/dwconv1d_channels_first.cc"),
         [in_ty, w_ty, out_ty, np.int32],
         compile_flags=[
             f"-DDWCONV1D_CF_K={kernel_size}",
@@ -417,7 +417,7 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
     lim_ty = np.ndarray[(1,), np.dtype[np.float32]]
     return _make_extern(
         "dwconv1d_channels_last_k5_bf16",
-        _default_source_path("dwconv1d_channels_last.cc", subdir="aie2p"),
+        _kernel_source("conv/dwconv1d_channels_last.cc"),
         [*([plane_ty] * 2 * _TAPS), plane_ty, lim_ty, lim_ty],
         compile_flags=[
             f"-DDWCONV1D_CL_C={channels}",
@@ -509,7 +509,7 @@ def conv2dk1(
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
     return _make_extern(
         func_name,
-        _default_source_path("conv2dk1.cc"),
+        _kernel_source("conv/conv2dk1.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
@@ -570,7 +570,7 @@ def conv2dk3(
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
     return _make_extern(
         func_name,
-        _default_source_path("conv2dk3.cc"),
+        _kernel_source("conv/conv2dk3.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels)
@@ -629,7 +629,7 @@ def conv2dk1_skip(
     skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[act_dtype]]
     return _make_extern(
         func_name,
-        _default_source_path("conv2dk1_skip.cc", subdir="aie2"),
+        _kernel_source("conv/conv2dk1_skip.cc"),
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
@@ -670,7 +670,7 @@ def conv2dk1_i8(
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
     return _make_extern(
         "conv2dk1_i8",
-        _default_source_path("conv2dk1_i8.cc"),
+        _kernel_source("conv/conv2dk1_i8.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DINT8_ACT"]
         + _conv_dimensions(input_width, input_channels, output_channels),
@@ -700,7 +700,7 @@ def conv2dk14(
 ) -> ExternalFunction:
     """14x14 convolution kernel.
 
-    The source lives under ``aie_kernels/aie2p/`` and builds for aie2 as
+    The source lives under ``aie_kernels/conv/`` and builds for aie2 as
     well, where the vector path has its own AIE2 variant.
 
     Args:
@@ -722,7 +722,7 @@ def conv2dk14(
     out_ty = np.ndarray[(output_channels * tiles,), np.dtype[np.int8]]
     return _make_extern(
         "conv2dk14_i8",
-        _default_source_path("conv2dk14.cc", subdir="aie2p"),
+        _kernel_source("conv/conv2dk14.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         compile_flags=_conv_dimensions(input_width, input_channels, output_channels)
         + [f"-DCONV_KERNEL_WIDTH={kernel_width}"],
@@ -805,7 +805,7 @@ def conv2dk1_skip_init(
     skip_ty = np.ndarray[(input_width * skip_input_channels,), np.dtype[act_dtype]]
     return _make_extern(
         func_name,
-        _default_source_path("conv2dk1_skip_init.cc", subdir="aie2"),
+        _kernel_source("conv/conv2dk1_skip_init.cc"),
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(7)],
         compile_flags=flags,
         contract=KernelContract(
@@ -1107,7 +1107,7 @@ def bn_conv2dk1_relu(
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
     return _make_extern(
         "conv2dk1_relu_i8_ui8",
-        _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DINT8_ACT"],
         contract=KernelContract(
@@ -1152,7 +1152,7 @@ def bn_conv2dk3(
     out_ty = np.ndarray[((input_width // 2) * output_channels,), np.dtype[np.uint8]]
     return _make_extern(
         "conv2dk3_stride2_i8",
-        _default_source_path("bottleneck/bn_conv2dk3.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk3.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -1186,7 +1186,7 @@ def bn_conv2dk1_i8(
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
     return _make_extern(
         "conv2dk1_ui8_i8",
-        _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_i8.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DSCALAR"],
         contract=KernelContract(
@@ -1240,7 +1240,7 @@ def bn_conv2dk1_skip(
     skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[skip_dtype]]
     return _make_extern(
         func_name,
-        _default_source_path("bottleneck/bn_conv2dk1_skip.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_skip.cc"),
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
         contract=KernelContract(
@@ -1289,7 +1289,7 @@ def bn_conv2dk3_dw(
 
     return _make_extern(
         func_name,
-        _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk3_dw.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"],
         contract=KernelContract(
@@ -1342,7 +1342,7 @@ def bn_conv2dk1_relu_xy_pool_padded(
     out_ty = np.ndarray[(output_channels,), np.dtype[np.uint16]]
     return _make_extern(
         "conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
-        _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
         contract=KernelContract(
@@ -1405,7 +1405,7 @@ def bn_conv2dk1_partial_put_i8(
     wt_ty = np.ndarray[(weight_count,), np.dtype[np.int8]]
     return _make_extern(
         f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_put_new",
-        _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_i8.cc"),
         [in_ty, wt_ty, *_i32s(7)],
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"],
     )
@@ -1448,7 +1448,7 @@ def bn_conv2dk1_partial_get_relu_i8(
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
     return _make_extern(
         f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_get_new",
-        _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(9)],
         compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"],
     )
@@ -1504,7 +1504,7 @@ def bn_conv2dk3_dw_out_split(
 
     return _make_extern(
         f"bn{block_index}_conv2dk3_ui8_out_split",
-        _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk3_dw.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"],
         contract=KernelContract(
@@ -1550,7 +1550,7 @@ def bn_conv2dk1_input_split_partial_put_ui8(
     wt_ty = np.ndarray[(weight_count,), np.dtype[np.int8]]
     return _make_extern(
         f"bn{block_index}_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new",
-        _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_i8.cc"),
         [in_ty, wt_ty, *_i32s(7)],
         compile_flags=[
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW"
@@ -1593,7 +1593,7 @@ def bn_conv2dk1_input_split_partial_skip_get(
     skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
     return _make_extern(
         f"bn_{block_index}_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
-        _default_source_path("bottleneck/bn_conv2dk1_skip.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_skip.cc"),
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(10)],
         compile_flags=[
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW"
@@ -1635,7 +1635,7 @@ def bn_fc_relu_ui16_pad(
     out_ty = np.ndarray[(output_channels,), np.dtype[np.uint16]]
     return _make_extern(
         "post_L2_conv2dk1_relu_i16_ui16_pad",
-        _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
+        _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
         contract=KernelContract(

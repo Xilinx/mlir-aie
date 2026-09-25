@@ -5,11 +5,10 @@
 #
 """Data-movement / conversion kernel factories: axpy, convert_copy, expand, transpose.
 
-Most wrap arch-agnostic sources under ``aie_kernels/generic/`` — plain
-``aie_api`` vector code with no LUT dependency, resolved through
-``_default_source_path``'s ``generic/`` fallback.  ``convert_copy`` is the
-exception: it binds ``aie2p/cast_f32_bf16.cc`` (the maintained f32->bf16 cast
-with host-matching ``conv_even`` rounding) on both generations.
+Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
+vector code with no LUT dependency.  ``convert_copy`` binds
+``cast_f32_bf16.cc``, the f32->bf16 cast with host-matching ``conv_even``
+rounding.
 """
 
 import numpy as np
@@ -22,7 +21,7 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _default_source_path,
+    _kernel_source,
     _make_extern,
     dtypes,
 )
@@ -130,7 +129,7 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
     func = "saxpy" if vectorized else "saxpy_scalar"
     return _make_extern(
         func,
-        _default_source_path("axpy.cc"),
+        _kernel_source("datamovement/axpy.cc"),
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -154,7 +153,7 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
     kernel processes 16 elements per iteration, so ``tile_size`` must be a
     multiple of 16.
 
-    Backed by ``aie_kernels/aie2p/cast_f32_bf16.cc`` (symbol
+    Backed by ``aie_kernels/datamovement/cast_f32_bf16.cc`` (symbol
     ``cast_f32_bf16_row``), which rounds with ``conv_even`` — bit-for-bit
     agreeing with a host AVX512-BF16 pack — and restores the core's rounding
     mode on exit.  The same source builds for aie2.
@@ -176,7 +175,7 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "cast_f32_bf16_row",
-        _default_source_path("cast_f32_bf16.cc", subdir="aie2p"),
+        _kernel_source("datamovement/cast_f32_bf16.cc"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -225,7 +224,7 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "expand_uint4_to_bfloat16",
-        _default_source_path("expand.cc"),
+        _kernel_source("datamovement/expand.cc"),
         [in_ty, out_ty],
         compile_flags=[f"-DTILE_SIZE={tile_size}", f"-DGROUP_SIZE={group_size}"],
         contract=KernelContract(
@@ -260,7 +259,7 @@ def rope(
     func = "rope_two_halves" if two_halves else "rope"
     return _make_extern(
         func,
-        _default_source_path("rope.cc"),
+        _kernel_source("datamovement/rope.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
             trace=Trace.whole_call(),
@@ -369,7 +368,7 @@ def transpose(
     tile_ty = np.ndarray[(dim_m * dim_n,), np.dtype[dtype]]
     return _make_extern(
         f"transpose_{subtile}x{subtile}",
-        _default_source_path("transpose.cc"),
+        _kernel_source("datamovement/transpose.cc"),
         [tile_ty, tile_ty],
         compile_flags=flags,
         contract=KernelContract(

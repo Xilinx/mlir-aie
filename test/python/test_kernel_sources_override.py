@@ -38,7 +38,7 @@ def _peano_available() -> bool:
 
 @pytest.fixture
 def tree(tmp_path, monkeypatch):
-    """A private copy of the kernel sources, selected by the override."""
+    """Copy the kernel sources and select the copy with the override."""
     shutil.copytree(config.aie_kernels_dir(), tmp_path / "aie_kernels")
     shutil.copytree(config.aie_runtime_lib_dir(), tmp_path / "aie_runtime_lib")
     monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(tmp_path))
@@ -92,14 +92,13 @@ def test_every_build_resolves_inside_the_override(tree, device):
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 @pytest.mark.parametrize("device", [NPU2Col1], indirect=True)
 def test_a_header_only_in_the_override_is_the_one_compiled(tree, device, tmp_path):
-    # generic/tanh.cc reaching aie2p/exp2_poly.h has no copy beside it, so the
-    # preprocessor searches the -I list, where the stale install copy used to
-    # come first.
-    header = tree / "aie_kernels" / "aie2p" / "exp2_poly.h"
+    # activation/tanh.cc reaching common/exp2_poly.h has no copy beside it,
+    # and the stale install copy must not stand in for the override's.
+    header = tree / "aie_kernels" / "common" / "exp2_poly.h"
     header.write_text("#define FROM_OVERRIDE 1\n" + header.read_text())
-    with open(tree / "aie_kernels" / "generic" / "tanh.cc", "a") as f:
+    with open(tree / "aie_kernels" / "activation" / "tanh.cc", "a") as f:
         f.write(
-            '\n#include "exp2_poly.h"\n#ifndef FROM_OVERRIDE\n'
+            '\n#include "../common/exp2_poly.h"\n#ifndef FROM_OVERRIDE\n'
             "#error exp2_poly.h resolved outside MLIR_AIE_KERNEL_SOURCES\n#endif\n"
         )
     out = tmp_path / "build"

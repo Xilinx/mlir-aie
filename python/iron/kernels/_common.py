@@ -347,37 +347,21 @@ def _detect_arch() -> str:
         return "aie2"
 
 
-def _kernel_source(arch: str, subdir: str, filename: str) -> Path:
+def _kernel_source(relpath: str) -> Path:
     """Return the absolute path to a kernel source file.
 
     Args:
-        arch: Target architecture string (``'aie2'`` or ``'aie2p'``).
-        subdir: Subdirectory under ``aie_kernels/`` (e.g. ``'aie2'``).
-        filename: Source file name (e.g. ``'scale.cc'``).
-
-    Returns:
-        Path to the source file.
+        relpath: Path under ``aie_kernels/``, e.g. ``'eltwise/scale.cc'``.
 
     Raises:
-        FileNotFoundError: When the source file cannot be found.
+        FileNotFoundError: When the source file does not exist.
     """
     from aie.utils import config
 
-    base = Path(config.aie_kernels_dir())
-    candidate = base / subdir / filename
-    if candidate.exists():
-        return candidate
-    if subdir != "aie2":
-        aie2_fallback = base / "aie2" / filename
-        if aie2_fallback.exists():
-            return aie2_fallback
-    generic = base / "generic" / filename
-    if generic.exists():
-        return generic
-    raise FileNotFoundError(
-        f"Kernel source '{filename}' not found under {base}/{subdir}/, "
-        f"{base}/aie2/, or {base}/generic/"
-    )
+    path = Path(config.aie_kernels_dir()) / relpath
+    if not path.exists():
+        raise FileNotFoundError(f"Kernel source {path} not found")
+    return path
 
 
 def _include_dirs() -> list[str]:
@@ -526,12 +510,6 @@ def _min_dma_aligned_elems(dtype) -> int:
     return max(1, (align + itemsize - 1) // itemsize)
 
 
-def _default_source_path(filename: str, subdir: str | None = None) -> Path:
-    """Return ``_kernel_source(arch, subdir or arch, filename)`` using the active arch."""
-    arch = _detect_arch()
-    return _kernel_source(arch, subdir or arch, filename)
-
-
 def _arg_type_key(t):
     """Hashable key for one entry of ``arg_types`` (used by ``_EXTERN_CACHE``)."""
     if hasattr(t, "__args__"):
@@ -610,7 +588,7 @@ def _make_extern(
     LLVM IR cannot use the object-file symbol-prefix mechanism.
 
     Memoized on (func_name, source_path, arg_types, compile_flags,
-    use_chess) so repeated calls with identical parameters return the
+    use_chess, arch) so repeated calls with identical parameters return the
     SAME ExternalFunction instance (see ``_EXTERN_CACHE`` for rationale).
 
     Different parameterizations get distinct instances AND distinct
@@ -637,7 +615,15 @@ def _make_extern(
     """
     flags_tuple = tuple(compile_flags or [])
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
-    cache_key = (func_name, str(source_path), arg_keys, flags_tuple, use_chess)
+    # One source serves every arch, so the arch is part of the kernel's identity.
+    cache_key = (
+        func_name,
+        str(source_path),
+        arg_keys,
+        flags_tuple,
+        use_chess,
+        _detect_arch(),
+    )
     if inline:
         if use_chess:
             raise ValueError("inline kernels require Peano, not Chess")
@@ -700,7 +686,8 @@ def _make_extern(
     # duplicate-symbol link error.  The .o *filename* stays the deterministic
     # suffix form regardless — only the symbol rename is skipped.
     if use_chess:
-        # ``cache_key`` layout: (func_name, source_path, arg_keys, flags, chess).
+        # ``cache_key`` layout: (func_name, source_path, arg_keys, flags, chess,
+        # arch).
         # A prior chess entry with the same func_name but any other field
         # different is a genuine second variant that we cannot disambiguate.
         for other_key in _EXTERN_CACHE:

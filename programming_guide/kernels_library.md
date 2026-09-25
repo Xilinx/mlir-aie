@@ -13,7 +13,7 @@ ready-to-bind [`ExternalFunction`](../python/iron/kernel.py) objects.
 Each factory bundles three things that designs would otherwise repeat
 by hand:
 
-* The source path (e.g. `aie_kernels/aie2/mm.cc`).
+* The source path (e.g. `aie_kernels/linalg/mm.cc`).
 * The compile flags (e.g. `-DDIM_M=64 -DDIM_K=64 -DDIM_N=64 -DBIT_WIDTH=16`).
 * The typed argument list (e.g. `[a_ty, b_ty, c_ty]`).
 
@@ -291,7 +291,7 @@ Three things make this work for more than one kernel per design:
   they are baked into the design. A caller that only needs to size
   buffers reads this instead of running the sampler.
 
-`kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
+`kernels.mha()` compiles `aie_kernels/linalg/mha.cc` once and binds its
 selected entry point, the `QK^T` product: `mm.cc`'s bf16 tile matmul with
 its index gate bound open, validated by the generic builder like `mm`. The
 other symbols of the translation unit bind from the same object. The bf16

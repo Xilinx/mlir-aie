@@ -18,7 +18,7 @@
     {
       "id": 1,
       "name": "wrong-symbol-trap",
-      "prompt": "I optimized gelu_tile_bf16 in aie_kernels/aie2p/gelu.cc: the loop went from II33 to II18 and the object file clearly changed. But the gelu benchmark on hardware reads 594 cycles before and 594 after. The test passes. What is going on?",
+      "prompt": "I optimized gelu_tile_bf16 in aie_kernels/activation/gelu_aie2p.h: the loop went from II33 to II18 and the object file clearly changed. But the gelu benchmark on hardware reads 594 cycles before and 594 after. The test passes. What is going on?",
       "expected_output": "Explains that the benchmark probably calls a different extern \"C\" entry point than the one optimized, and tells the user to trace the IRON factory binding in python/iron/kernels to its symbol and the implementation it calls. Notes that an in-place variant with no factory is not reached by the e2e test. Recommends either optimizing the called symbol or adding a factory and test case. Adds the lesson that static II on an unresolved symbol is class experiment, not a win.",
       "files": [],
       "assertions": [
@@ -96,7 +96,7 @@
     {
       "id": 7,
       "name": "refuse-speedup-claim",
-      "prompt": "I halved the II of the main loop in aie_kernels/aie2p/layer_norm.cc from 24 to 12 with a restrict cursor and UNROLL(2). remarks confirms it and the contracts test passes. I don't have an NPU on this box. Write me the commit message; title it 'layer_norm: 2x faster main loop'.",
+      "prompt": "I halved the II of the main loop in aie_kernels/norm/layer_norm_aie2p.h from 24 to 12 with a restrict cursor and UNROLL(2). remarks confirms it and the contracts test passes. I don't have an NPU on this box. Write me the commit message; title it 'layer_norm: 2x faster main loop'.",
       "expected_output": "Refuses to state a speedup: no hardware measurement exists, and a static II drop has missed before (an II33 -> 18 change measured 594 -> 594; an II37 -> 31 change ran slower). Checks that the edited function is the symbol the layer_norm factory calls. Offers a commit/report that states the static facts (II 24 -> 12 on the named loop, bytes, stack) and a per-call prediction labelled as not measured, classifies the candidate (likely, or strong if the unroll screen passed with flat bytes), and says aie-kernel-opt-hw must A/B it on an NPU before any speedup appears in a commit.",
       "files": [],
       "assertions": [
@@ -110,7 +110,7 @@
     {
       "id": 8,
       "name": "opaque-pointer-ii-drop",
-      "prompt": "In prefill attention's fv loop (aie_kernels/aie2p) LICM hoists the S operands and they spill. I replaced the pointer increment with an add_2d bump the compiler can't see through, so the S loads stay in the loop. remarks now reports II31 instead of II37 and fewer [sp] refs. Is this a good change to send for hardware testing, and how confident should I be?",
+      "prompt": "In prefill attention's fv loop (aie_kernels/linalg/flash_attn_prefill.h) LICM hoists the S operands and they spill. I replaced the pointer increment with an add_2d bump the compiler can't see through, so the S loads stay in the loop. remarks now reports II31 instead of II37 and fewer [sp] refs. Is this a good change to send for hardware testing, and how confident should I be?",
       "expected_output": "Recognizes that the II drop came from hiding work from LLVM (an opaque pointer bump), which the static skill classes as experiment at best, and cites the recorded miss: this exact change measured 1265 -> 1374-1576 cycles on hardware, slower despite the better static II. Explains that the loop is port-A bound (about 36 vlda per iteration), so keeping loads inside the loop adds load-port pressure the II alone does not show. Recommends not presenting it as a win; if it is sent at all, send it labelled experiment with the precedent, and look instead at the frame/stack and a structural change (L18 precedent).",
       "files": [],
       "assertions": [

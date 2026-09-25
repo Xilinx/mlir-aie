@@ -18,8 +18,8 @@ from ._common import (
     Param,
     Trace,
     _bf16_lanes,
-    _default_source_path,
     _detect_arch,
+    _kernel_source,
     _make_extern,
 )
 from .core import conv_even
@@ -52,7 +52,7 @@ def _norm_extern(
     runtime_dir = Path(config.aie_runtime_lib_dir()) / _detect_arch().upper()
     return _make_extern(
         func_name,
-        _default_source_path(filename),
+        _kernel_source(f"norm/{filename}"),
         arg_types,
         compile_flags=[f"-I{runtime_dir}"],
         contract=contract,

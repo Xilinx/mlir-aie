@@ -484,7 +484,7 @@ def test_lut_kernel_command_uses_native_source(tmp_path):
 def test_kernel_sources_follow_the_environment_override(tmp_path, monkeypatch):
     # A pull request compiles the checkout's kernels against the installed
     # wheel: MLIR_AIE_KERNEL_SOURCES names the checkout.
-    src = tmp_path / "aie_kernels" / "aie2p" / "scale.cc"
+    src = tmp_path / "aie_kernels" / "eltwise" / "scale.cc"
     src.parent.mkdir(parents=True)
     src.write_text("// stand-in\n")
     monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(tmp_path))
@@ -492,7 +492,7 @@ def test_kernel_sources_follow_the_environment_override(tmp_path, monkeypatch):
     assert config.aie_runtime_lib_dir() == str(tmp_path / "aie_runtime_lib")
     from aie.iron.kernels._common import _kernel_source
 
-    assert _kernel_source("aie2p", "aie2p", "scale.cc") == src
+    assert _kernel_source("eltwise/scale.cc") == src
 
 
 def test_chess_kernels_are_refused(tmp_path):
@@ -572,7 +572,7 @@ def test_a_baseline_tree_prints_the_rows_that_differ(tmp_path, capsys):
     base = tmp_path / "base"
     shutil.copytree(config.aie_kernels_dir(), base / "aie_kernels")
     shutil.copytree(config.aie_runtime_lib_dir(), base / "aie_runtime_lib")
-    relu = base / "aie_kernels" / "aie2p" / "relu.cc"
+    relu = base / "aie_kernels" / "eltwise" / "relu_aie2p.h"
     relu.write_text(
         relu.read_text().replace(
             "  event1();",

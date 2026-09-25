@@ -17,8 +17,8 @@ from ._common import (
     KernelContract,
     TensorLayout,
     Trace,
-    _default_source_path,
     _detect_arch,
+    _kernel_source,
     _make_extern,
     dtypes,
 )
@@ -87,7 +87,7 @@ def zero(
         flags.append("-DZERO_SCALAR")
     return _make_extern(
         "zero",
-        _default_source_path("zero.cc", subdir="generic"),
+        _kernel_source("zero/zero.cc"),
         [np.ndarray[shape, np.dtype[dtype]]],
         compile_flags=flags,
         use_chess=use_chess,

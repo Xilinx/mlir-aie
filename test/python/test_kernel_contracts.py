@@ -1732,31 +1732,90 @@ def test_saturating_kernels_saturate_in_their_reference():
 
 _SET_ROUNDING_CALL = re.compile(r"^\s*(?!//)[^/\n]*\bset_rounding\s*\(", re.M)
 _NARROWS = re.compile(r"to_vector<|\.srs\(|srs<|to_fixed|to_float")
-_IFDEF = re.compile(r"^\s*#\s*(ifdef|ifndef)\s+(\w+)|^\s*#\s*(else|endif)\b", re.M)
+_DIRECTIVE = re.compile(r"^\s*#\s*(\w+)\s*(.*?)\s*(?://.*)?$")
+_ARCH_VALUES = {"aie2": "20", "aie2p": "21"}
 
 
-def _active_source(src: str, compile_flags) -> str:
-    """Drop the ``#ifdef`` regions this kernel's flags leave out.
+def _condition(expr: str, macros: dict) -> bool:
+    """Evaluate an ``#if`` expression; an undefined name is 0, as in C."""
+    expr = re.sub(
+        r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)",
+        lambda m: "1" if (m[1] or m[2]) in macros else "0",
+        expr,
+    )
+    for _ in range(8):
+        expr = re.sub(r"\b[A-Za-z_]\w*\b", lambda m: f"({macros.get(m[0], '0')})", expr)
+    assert re.fullmatch(r"[\d\s()<>=!&|+*/-]*", expr), expr
+    expr = expr.replace("&&", " and ").replace("||", " or ")
+    expr = re.sub(r"!(?!=)", " not ", expr)
+    return bool(eval(expr, {"__builtins__": {}}))
 
-    ``aie2/mm.cc`` guards its rounding swap on ``ROUND_CONV_EVEN``, which only
-    downstream IRON defines; reading the text alone would credit the in-tree
-    build with a call it never compiles.
+
+def _translation_unit(ef, arch: str) -> str:
+    """Return the kernel text the compiler sees for ``arch``.
+
+    Quoted includes are inlined and dead preprocessor branches dropped.
+
+    ``linalg/mm_aie2.h`` guards its rounding swap on ``ROUND_CONV_EVEN``, which
+    only downstream IRON defines, and a dispatcher includes one arch's body;
+    reading the text alone would credit the in-tree build with calls it never
+    compiles.
     """
-    defined = {f[2:].split("=")[0] for f in compile_flags or () if f.startswith("-D")}
-    out, keep, depth = [], [True], 0
-    for line in src.splitlines(keepends=True):
-        m = _IFDEF.match(line)
-        if m and m.group(1):
-            depth += 1
-            live = (m.group(2) in defined) == (m.group(1) == "ifdef")
-            keep.append(keep[-1] and live)
-        elif m and m.group(3) == "else" and depth:
-            keep[-1] = keep[-2] and not keep[-1]
-        elif m and m.group(3) == "endif" and depth:
-            depth -= 1
-            keep.pop()
-        elif keep[-1]:
-            out.append(line)
+    macros = {"__AIE_ARCH__": _ARCH_VALUES[arch]}
+    for flag in ef.compile_flags or ():
+        if flag.startswith("-D"):
+            name, _, value = flag[2:].partition("=")
+            macros[name] = value or "1"
+    out = []
+
+    def expand(src: str, base: Path | None):
+        # One entry per open conditional: (enclosing live, this branch live,
+        # some branch already taken).
+        stack = []
+        live = True
+        for line in re.sub(r"\\\n", " ", src).splitlines(keepends=True):
+            m = _DIRECTIVE.match(line)
+            if not m:
+                if live:
+                    out.append(line)
+                continue
+            word, rest = m[1], m[2]
+            if word in ("if", "ifdef", "ifndef"):
+                if word == "if":
+                    cond = _condition(rest, macros)
+                else:
+                    cond = (rest in macros) == (word == "ifdef")
+                stack.append((live, live and cond, cond))
+                live = live and cond
+            elif word == "elif":
+                outer, _, taken = stack[-1]
+                cond = not taken and _condition(rest, macros)
+                stack[-1] = (outer, outer and cond, taken or cond)
+                live = outer and cond
+            elif word == "else":
+                outer, _, taken = stack[-1]
+                stack[-1] = (outer, outer and not taken, True)
+                live = outer and not taken
+            elif word == "endif":
+                live = stack.pop()[0]
+            elif not live:
+                continue
+            elif word == "define":
+                out.append(line)
+                name, _, value = rest.partition(" ")
+                if "(" not in name:
+                    macros[name] = value.strip() or "1"
+            elif word == "include" and base is not None:
+                target = macros.get(rest, rest)
+                if target.startswith('"'):
+                    header = base / target.strip('"')
+                    if header.is_file():
+                        expand(header.read_text(), header.parent)
+
+    if ef.source_file:
+        expand(Path(ef.source_file).read_text(), Path(ef.source_file).parent)
+    else:
+        expand(ef.source_string, None)
     return "".join(out)
 
 
@@ -1776,17 +1835,7 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
         if c is None:
             assert name in NOT_JUDGED, f"{name}: no contract"
             continue
-        src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
-        if ef.source_file:
-            for include in re.findall(r'^#include "([^"]+)"', src, re.M):
-                header = Path(ef.source_file).parent / include
-                if header.is_file():
-                    src += "\n" + header.read_text()
-        # aie2/lut_kernel.cc includes the kernel named by this flag.
-        for flag in ef.compile_flags or ():
-            if flag.startswith("-DAIE_LUT_KERNEL_SOURCE="):
-                src += "\n" + Path(flag.split("=", 1)[1].strip('"')).read_text()
-        src = _active_source(src, ef.compile_flags)
+        src = _translation_unit(ef, arch)
         sets_own = bool(_SET_ROUNDING_CALL.search(src))
         if sets_own:
             assert c.setup is None, f"{name}: source sets the mode and names a setup"
