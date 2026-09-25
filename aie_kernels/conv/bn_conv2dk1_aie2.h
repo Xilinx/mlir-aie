@@ -62,8 +62,7 @@ k1_chunks(const TI *__restrict in, const int8_t *__restrict wts,
   }
 }
 
-// Every chunk of every output channel block of the [OC/8][W][8] output; side
-// buffers share its layout.
+// Walks the whole [OC/8][W][8] output; side buffers share its layout.
 template <bool Aligned, typename TI, typename TO, typename Epi, typename... S>
 static void k1_rows(const TI *input, const int8_t *kernels, TO *output,
                     const int32_t input_width, const int32_t input_channels,

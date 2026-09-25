@@ -20,14 +20,13 @@ import re
 import sys
 from collections import defaultdict
 
+import pr_report
 from aie.iron import kernels
 from aie.iron.device import from_name
 from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import get_current_device
 from aie.utils.compile.remarks import kernel_builds
 from aie.utils.hostruntime import set_current_device
-
-import pr_report
 
 _LUT_SOURCE = re.compile(r'-DAIE_LUT_KERNEL_SOURCE="(.+)"')
 
