@@ -709,85 +709,16 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 #endif
 
 #if AIE_TUNED_AIE2
-// See k1_load in bn_conv2dk1_relu.cc for the layout and chunking.
-template <bool Aligned>
-static inline aie::vector<uint8, 32> k1_load(const uint8_t *p) {
-  if constexpr (Aligned)
-    return aie::load_v<32>(p);
-  else
-    return aie::load_unaligned_v<32>(p, 8);
-}
-
-// See k1_store in bn_conv2dk1_relu.cc.
-template <bool Aligned>
-static inline void k1_store(int8_t *p, aie::vector<int8, 32> v) {
-  if (Aligned || ((uintptr_t)p & 31) == 0)
-    aie::store_v(p, v);
-  else
-    aie::store_unaligned_v(p, v, 8);
-}
-
-// See k1_chunks in bn_conv2dk1_relu.cc.
-template <bool Aligned, int N>
-static inline void
-k1_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,
-          int8_t *__restrict out, const int32_t row, const int32_t ic_blocks,
-          const int32_t last_off, const int scale) {
-  using MMUL = aie::mmul<4, 8, 8, uint8, int8>;
-  MMUL acc[N];
-  aie::vector<int8, 64> b = aie::load_v<64>(wts);
-  for (int j = 0; j < N; j++)
-    acc[j].mul(k1_load<Aligned>(in + (j == N - 1 ? last_off : 32 * j)), b);
-#pragma clang loop min_iteration_count(1)
-  for (int ic = 1; ic < ic_blocks; ic++) {
-    in += row;
-    wts += 64;
-    b = aie::load_v<64>(wts);
-    for (int j = 0; j < N; j++)
-      acc[j].mac(k1_load<Aligned>(in + (j == N - 1 ? last_off : 32 * j)), b);
-  }
-  for (int j = 0; j < N; j++)
-    k1_store<Aligned>(out + (j == N - 1 ? last_off : 32 * j),
-                      acc[j].template to_vector<int8>(scale));
-}
+#include "bn_conv2dk1_aie2.h"
 
 template <bool Aligned>
-static void k1_rows(const uint8_t *input, const int8_t *kernels, int8_t *output,
-                    const int32_t input_width, const int32_t input_channels,
-                    const int32_t output_channels, const int scale) {
-  constexpr int N = 4;
-  const int32_t row = input_width * 8;
-  const int32_t ic_blocks = input_channels / 8;
-  const int32_t chunks = (input_width + 3) / 4;
-  const int32_t groups = chunks / N;
-  const int32_t rem = chunks % N;
-  const int32_t tail = (input_width - 4) * 8;
-  for (int oc = 0; oc < output_channels / 8; oc++) {
-    const int8_t *wts = kernels + oc * ic_blocks * 64;
-    int8_t *out = output + oc * row;
-    for (int g = 0; g < groups; g++) {
-      const int32_t x = g * N * 32;
-      const int32_t last =
-          (rem == 0 && g == groups - 1) ? tail - x : 32 * (N - 1);
-      k1_chunks<Aligned, N>(input + x, wts, out + x, row, ic_blocks, last,
-                            scale);
-    }
-    const int32_t x = groups * N * 32;
-    switch (rem) {
-    case 1:
-      k1_chunks<Aligned, 1>(input + x, wts, out + x, row, ic_blocks, tail - x,
-                            scale);
-      break;
-    case 2:
-      k1_chunks<Aligned, 2>(input + x, wts, out + x, row, ic_blocks, tail - x,
-                            scale);
-      break;
-    case 3:
-      k1_chunks<Aligned, 3>(input + x, wts, out + x, row, ic_blocks, tail - x,
-                            scale);
-      break;
-    }
-  }
+static void k1_i8_rows(const uint8_t *input, const int8_t *kernels,
+                       int8_t *output, const int32_t input_width,
+                       const int32_t input_channels,
+                       const int32_t output_channels, const int scale) {
+  k1_rows<Aligned>(
+      input, kernels, output, input_width, input_channels, output_channels,
+      [=](auto &acc) { return acc.template to_vector<int8>(scale); });
 }
 
 static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
@@ -799,11 +730,11 @@ static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
   aie::set_rounding(aie::rounding_mode::conv_even);
   if (input_width % 4 == 0 &&
       (((uintptr_t)input | (uintptr_t)output) & 31) == 0)
-    k1_rows<true>(input, kernels, output, input_width, input_channels,
-                  output_channels, scale);
+    k1_i8_rows<true>(input, kernels, output, input_width, input_channels,
+                     output_channels, scale);
   else
-    k1_rows<false>(input, kernels, output, input_width, input_channels,
-                   output_channels, scale);
+    k1_i8_rows<false>(input, kernels, output, input_width, input_channels,
+                      output_channels, scale);
   event1();
 }
 #endif // AIE_TUNED_AIE2

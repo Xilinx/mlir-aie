@@ -132,7 +132,7 @@ void conv2dk3_i8_stride2_scalar(
 
 #if AIE_TUNED_AIE2
 // Stride-2 3x3, input_width a multiple of 8; see k1_load in
-// bn_conv2dk1_relu.cc for the layout and mmul tiling.
+// bn_conv2dk1_aie2.h for the layout and mmul tiling.
 // Input pixels 2x .. 2x + 7 split with filter_even into the centre tap and
 // filter_odd into the right tap; the odd pixels shifted up by one, with pixel
 // 2x - 1 from the chunk before (zero at x = 0), give the left tap. Rows

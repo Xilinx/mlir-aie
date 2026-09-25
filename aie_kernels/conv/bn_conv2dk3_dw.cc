@@ -407,7 +407,7 @@ static inline aie::vector<uint8, N> dw_load(const uint8_t *p) {
     return aie::load_unaligned_v<N>(p, 8);
 }
 
-// See k1_store in bn_conv2dk1_relu.cc.
+// See k1_store in bn_conv2dk1_aie2.h.
 template <bool Aligned>
 static inline void dw_store(uint8_t *p, aie::accum<acc32, 32> acc, int scale) {
   dw_v v = acc.to_vector<uint8>(scale);
