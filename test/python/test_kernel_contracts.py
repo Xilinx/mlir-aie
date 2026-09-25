@@ -98,11 +98,13 @@ def test_every_case_names_an_exported_factory():
         assert callable(_factory(case_id)), case_id
 
 
-def test_device_fixture_restores_previous_device():
-    from conftest import npu2_device
-
+def test_device_fixture_restores_previous_device(request):
+    # By path: with test/python/npu collected too, "conftest" is npu's.
+    conftest = request.config.pluginmanager.get_plugin(
+        str(Path(__file__).with_name("conftest.py"))
+    )
     previous = get_current_device(probe_runtime=False)
-    binding = npu2_device.__wrapped__()
+    binding = conftest.npu2_device.__wrapped__()
     next(binding)
     assert isinstance(get_current_device(probe_runtime=False), NPU2Col1)
     binding.close()
