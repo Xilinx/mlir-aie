@@ -663,15 +663,21 @@ CASES: list[Case] = [
         perf=False,
     ),
     # conv2dk1_skip streams three tensors; the harness packs them into one
-    # fifo only when they share a type, i.e. input_channels == 2 *
-    # output_channels with a uint8 residual (the int8 residual build shares
-    # the contract and is covered by the host reference tests).
+    # fifo when they share a type, i.e. input_channels == 2 * output_channels
+    # with a uint8 residual. An int8 residual goes in a fifo of its own.
     Case(
         "conv2dk1_skip",
         dict(input_channels=128, output_channels=64, act_dtype=np.uint8),
         calls=8,
         scalars=(32, 128, 64, 12, 1),
         smoke=True,
+    ),
+    Case(
+        "conv2dk1_skip",
+        dict(input_channels=128, output_channels=64, act_dtype=np.int8),
+        calls=8,
+        scalars=(32, 128, 64, 12, 1),
+        tag="int8_skip",
     ),
     # conv2dk1_skip_init: the residual is a 1x1 conv of its own; packable with
     # a uint8 residual of half the input channels (one type across the fifo).

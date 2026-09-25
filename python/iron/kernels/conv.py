@@ -614,10 +614,8 @@ def conv2dk1_skip(
     Note:
         The activations are ``uint8`` in two half-channel tensors whatever
         ``act_dtype``, which types the residual (``skip``) only. The generic
-        harness streams the three tensors through one packed fifo, which
-        needs them to share a type: ``input_channels == 2 * output_channels``
-        with ``act_dtype=np.uint8``. The ``int8`` residual build has the
-        same contract but needs a design of its own to run.
+        harness packs tensors of one type into one fifo, so an ``int8``
+        residual streams beside the ``uint8`` activations in a second fifo.
     """
     func_name, flags = _conv_act_dtype_info(
         "conv2dk1_skip", act_dtype, factory_name="conv2dk1_skip"
@@ -636,7 +634,8 @@ def conv2dk1_skip(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            stack_bytes=2752,  # aiecc measured_stack_size (Peano 22, uint8)
+            # aiecc measured_stack_size (Peano 22, uint8) on aie2p; 32 B on aie2
+            stack_bytes=2752 if _detect_arch() == "aie2p" else None,
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
