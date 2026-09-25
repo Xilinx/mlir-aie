@@ -185,13 +185,20 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
       mac_elem_16_2(d_n, bf16_pair(i0, i0), broadcast_to_v16accfloat(1e-5f)));
   v32bfloat16 inv_std = inv_sqrt_limbs(var_eps);
 
+  // mean = q + e: q = s1 inv_n to 16 bits, and e = (s1 - n q) inv_n corrects
+  // it to f32, zero when n divides s1.
   v32bfloat16 s1_limbs = bf16_pair(b0, b1);
-  v32bfloat16 mean = limbs(mac_elem_16_2(
+  v32bfloat16 q = limbs(mac_elem_16_2(
       s1_limbs, bf16_pair(i1, i1), mul_elem_16_2(s1_limbs, bf16_pair(i0, i0))));
-  v16bfloat16 m0 = limb(mean, 0), m1 = limb(mean, 1);
+  v16bfloat16 q0 = limb(q, 0), q1 = limb(q, 1);
+  v16bfloat16 r0 = to_v16bfloat16(msc_elem_16_2(
+      q, bf16_pair(n1, n1), msc_elem_16_2(q, bf16_pair(n0, n0), s1)));
+  v16bfloat16 e =
+      to_v16bfloat16(mul_elem_16_2(bf16_pair(r0, zero), bf16_pair(i0, zero)));
   v16accfloat c = msc_elem_16_2(
-      inv_std, bf16_pair(m1, m1),
-      msc_elem_16_2(inv_std, bf16_pair(m0, m0), ::aie::zeros<accfloat, 16>()));
+      inv_std, bf16_pair(q1, q1),
+      msc_elem_16_2(inv_std, bf16_pair(q0, q0), ::aie::zeros<accfloat, 16>()));
+  c = msc_elem_16_2(inv_std, bf16_pair(e, e), c);
 
   if (pipelined) {
     const T *restrict pi = input;
