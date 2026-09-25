@@ -765,6 +765,24 @@ CASES: list[Case] = [
         smoke=True,
     ),
     Case(
+        "bn_conv2dk1_i8",
+        dict(input_width=56, input_channels=64, output_channels=24),
+        calls=8,
+        scalars=(56, 64, 24, 10),
+    ),
+    Case(
+        "bn_conv2dk1_i8",
+        dict(input_width=14, input_channels=240, output_channels=80),
+        calls=8,
+        scalars=(14, 240, 80, 11),
+    ),
+    Case(
+        "bn_conv2dk1_i8",
+        dict(input_width=7, input_channels=336, output_channels=80),
+        calls=8,
+        scalars=(7, 336, 80, 11),
+    ),
+    Case(
         "bn_conv2dk1_skip",
         dict(input_width=28, input_channels=120, output_channels=40),
         calls=8,
