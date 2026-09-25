@@ -658,7 +658,15 @@ CASES: list[Case] = [
     ],
     # alpha = beta = 0.5 in Q2.14.
     Case("add_weighted", calls=16, scalars=(8192, 8192, 0), smoke=True),
-    Case("add_weighted", calls=16, scalars=(8192, 8192, 40), tag="gamma", perf=False),
+    # The vector path once dropped gamma, so a gamma case runs on every PR.
+    Case(
+        "add_weighted",
+        calls=16,
+        scalars=(8192, 8192, 40),
+        tag="gamma",
+        smoke=True,
+        perf=False,
+    ),
     Case(
         "add_weighted",
         dict(dtype=np.int16),
