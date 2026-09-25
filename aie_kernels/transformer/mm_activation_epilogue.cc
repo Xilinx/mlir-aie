@@ -128,8 +128,9 @@ static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
 // the next vector's table reads. A loop that loads, computes and stores one
 // vector per iteration does not pipeline, even with an II hint. Storing each
 // result one iteration late puts the next vector's table reads ahead of the
-// store, and with the hint that loop pipelines (SiLU at II 36, GELU at 46);
-// without the hint the pipeliner still gives up on it.
+// store, and with the hint that loop pipelines (SiLU at II 36); without the
+// hint the pipeliner still gives up on it. GELU, with its input clamp, stays
+// at II 82 under any hint from 46 to 60.
 template <typename F>
 static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
                                float *__restrict out, F f) {
@@ -191,10 +192,13 @@ static inline aie::vector<float, 16> mm_gelu_lut(aie::vector<float, 16> xf) {
   aie::accum<accfloat, 16> a;
   a.from_vector(xf);
   aie::vector<bfloat16, 16> x = a.to_vector<bfloat16>();
-  aie::vector<bfloat16, 16> half_x = aie::mul(half, x);
-  aie::vector<bfloat16, 16> x2 = aie::mul(x, x);
+  // Past |x| = 8 the table is flat, and x^3 would overflow into 0 * inf.
+  aie::vector<bfloat16, 16> xl = aie::max(x, bfloat16(-8.0f));
+  aie::vector<bfloat16, 16> xc = aie::min(xl, bfloat16(8.0f));
+  aie::vector<bfloat16, 16> half_x = aie::mul(half, xl);
+  aie::vector<bfloat16, 16> x2 = aie::mul(xc, xc);
   aie::vector<bfloat16, 16> poly = aie::mac(c0acc, c0c1, x2);
-  aie::vector<bfloat16, 16> t = tanh_bf16_v16(aie::mul(x, poly));
+  aie::vector<bfloat16, 16> t = tanh_bf16_v16(aie::mul(xc, poly));
   aie::vector<bfloat16, 16> t_p1 =
       aie::mac(one_acc, t, one).to_vector<bfloat16>();
   return aie::mul(half_x, t_p1).to_vector<float>();

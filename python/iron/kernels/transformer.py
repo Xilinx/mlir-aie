@@ -284,9 +284,10 @@ def mm_activation_epilogue_lut_ref(x, mode):
     ``x`` (half to even) onto ``hi``'s f32 grid, which moves ``lo`` where
     ``hi`` rounded up across a power of two. GELU runs in bf16: ``x``,
     ``x * x`` and the inner polynomial are each rounded before the next step,
-    and the output is ``bf16(x / 2) * bf16(t + 1)``. Both return +0 where
-    IEEE arithmetic gives -0, as the accumulator does. Identity and ReLU are
-    exact.
+    and the output is ``bf16(x / 2) * bf16(t + 1)``. The polynomial reads
+    ``x`` clamped to [-8, 8] and ``x / 2`` reads it clamped to [-8, inf), so
+    huge inputs give ``x`` or 0 rather than NaN. Both return +0 where IEEE
+    arithmetic gives -0, as the accumulator does. Identity and ReLU are exact.
     """
     x32 = np.asarray(x, np.float32)
     mode = int(mode)
@@ -304,9 +305,10 @@ def mm_activation_epilogue_lut_ref(x, mode):
         else:
             c0 = _bf16(np.float32(0.7978845608))
             c0c1 = _bf16(np.float32(0.7978845608) * np.float32(0.044715))
-            xb = _bf16(x32)
-            poly = _bf16(c0 + c0c1 * _bf16(xb * xb))
-            t = tanh_lut_ref(_bf16(xb * poly))
-            half_x = _bf16(np.float32(0.5) * xb)
+            xl = np.maximum(_bf16(x32), np.float32(-8.0))
+            xc = np.minimum(xl, np.float32(8.0))
+            poly = _bf16(c0 + c0c1 * _bf16(xc * xc))
+            t = tanh_lut_ref(_bf16(xc * poly))
+            half_x = _bf16(np.float32(0.5) * xl)
             out = half_x * _bf16(t + np.float32(1.0))
     return (out + np.float32(0.0)).astype(x.dtype)
