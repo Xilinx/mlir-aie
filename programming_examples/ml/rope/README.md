@@ -31,6 +31,8 @@ This design implements a `bfloat16`-based Rotary Position Embedding (RoPE) opera
 python3 rope.py --dev npu2
 ```
 
+On NPU1, pass `--dev npu`.
+
 ### C++ Testbench
 
 To compile the design and C++ testbench:
