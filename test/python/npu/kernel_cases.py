@@ -586,6 +586,8 @@ CASES: list[Case] = [
     # vision: uint8 lines of 1920 pixels
     Case("gray2rgba", calls=16, smoke=True),
     Case("rgba2gray", calls=16, smoke=True),
+    # Five vectors, one under the count the AIE2 pipelined loop requires.
+    Case("rgba2gray", dict(line_width=160), calls=4, tag="short-row", perf=False),
     Case("threshold", calls=16, scalars=(100, 255, 0), smoke=True),
     Case("threshold", calls=16, scalars=(100, 255, 2), tag="trunc", perf=False),
     Case("threshold", calls=16, scalars=(100, 255, 4), tag="tozero-inv", perf=False),

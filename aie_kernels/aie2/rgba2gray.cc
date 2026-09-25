@@ -42,9 +42,16 @@ __attribute__((inline)) void xf_extract_rgb(uint8_t *ptr_rgba,
   b = ::aie::filter_even(ba_temp, 1);
 }
 
-__attribute__((noinline)) void rgba2gray_aie(uint8_t *rgba_in, uint8_t *y_out,
-                                             const int32_t height,
-                                             const int32_t width) {
+#if __AIE_ARCH__ == 20
+#define RGBA2GRAY_RESTRICT __restrict
+#else
+#define RGBA2GRAY_RESTRICT
+#endif
+
+__attribute__((noinline)) void
+rgba2gray_aie(uint8_t *RGBA2GRAY_RESTRICT rgba_in,
+              uint8_t *RGBA2GRAY_RESTRICT y_out, const int32_t height,
+              const int32_t width) {
   event0();
   //::aie::vector<int16_t, 16> WT(66, 129, 25, 128); //Y=0.299*R + 0.587*G +
   //: 0.114*B (BT.470) :aie::vector<int16_t, 16> WT(25, 129, 66, 128);
@@ -58,6 +65,35 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *rgba_in, uint8_t *y_out,
   ::aie::vector<uint8_t, 32> r, g, b;
   ::aie::vector<uint8_t, 32> y;
 
+#if __AIE_ARCH__ == 20
+  // The rounding term seeds the accumulator, leaving a chain of three macs
+  // instead of a mul and three macs. Kept rolled, the loop then pipelines (six
+  // iterations in flight) when it is known to run at least six times; the count
+  // drops the loop's zero-trip guard, so a shorter row takes the plain loop.
+  ::aie::accum<acc32, 32> rnd;
+  rnd.from_vector(::aie::broadcast<int32_t, 32>(1 << (SRS_SHIFT - 1)));
+  auto body = [&]() __attribute__((always_inline)) {
+    xf_extract_rgb(rgba_in, r, g, b);
+    ::aie::accum<acc32, 32> acc =
+        ::aie::mac(::aie::mac(::aie::mac(rnd, r, WT[0]), g, WT[1]), b, WT[2]);
+    y = acc.template to_vector<uint8_t>(SRS_SHIFT);
+    ::aie::store_v(y_out, y);
+    rgba_in += 128;
+    y_out += 32;
+  };
+  if ((width * height) / 32 >= 6) {
+    AIE_LOOP_NO_UNROLL
+    AIE_LOOP_MIN_ITERATION_COUNT(6)
+    for (int j = 0; (j < (width * height) / 32); j += 1) {
+      body();
+    }
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int j = 0; (j < (width * height) / 32); j += 1) {
+      body();
+    }
+  }
+#else
   AIE_PREPARE_FOR_PIPELINING
   for (int j = 0; (j < (width * height) / 32); j += 1) {
     xf_extract_rgb(rgba_in, r, g, b);
@@ -70,6 +106,7 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *rgba_in, uint8_t *y_out,
     rgba_in += 128;
     y_out += 32;
   }
+#endif
   event1();
 }
 

@@ -189,6 +189,7 @@ relu/1024x16/bfloat16
 relu/1024x256/bfloat16
 relu_sized/1024x16/bfloat16
 relu_sized/32x4/bfloat16/edge-tiny
+rgba2gray/640x4/uint8/line_width=160/short-row
 rgba2gray/7680x16/uint8
 rgba2hue/384x4/uint8/line_width=96/short-row
 rgba2hue/7680x16/uint8
