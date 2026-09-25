@@ -1787,7 +1787,6 @@ static void k1_xy_pool_vector(const int8_t *input, const int8_t *kernels,
                               const int scale, const int y_index,
                               int32_t output_split, int32_t weight_index) {
   alignas(32) uint8_t row[K1_POOL_MAX_WIDTH * 8];
-  alignas(32) uint16_t part[16];
   for (int i = 0; i < K1_POOL_MAX_WIDTH * 8; i += 32)
     aie::store_v(row + i, aie::zeros<uint8, 32>());
   aie::set_saturation(aie::saturation_mode::saturate);
@@ -1795,7 +1794,8 @@ static void k1_xy_pool_vector(const int8_t *input, const int8_t *kernels,
   const int32_t oc_tile = output_channels / output_split;
   const int32_t oc_offset = oc_tile / 8 * weight_index;
   const bool aligned = input_width % 4 == 0 && ((uintptr_t)input & 31) == 0;
-  const uint32_t prior = y_index != 0 ? 0xffffu : 0u;
+  const aie::vector<uint16, 8> prior =
+      aie::broadcast<uint16, 8>(y_index != 0 ? 0xffffu : 0u);
   const bool last = y_index == input_width - 1;
   for (int oc = 0; oc < oc_tile / 8; oc++) {
     const int8_t *wts = kernels + oc * (input_channels / 8) * 64;
@@ -1806,15 +1806,34 @@ static void k1_xy_pool_vector(const int8_t *input, const int8_t *kernels,
     aie::vector<uint16, 32> sum = aie::zeros<uint16, 32>();
     for (int x = 0; x < input_width * 8; x += 32)
       sum = aie::add(sum, aie::load_v<32>(row + x).unpack());
-    aie::store_v(part, aie::add(sum.extract<16>(0), sum.extract<16>(1)));
-    for (int oc8 = 0; oc8 < 8; oc8++) {
-      uint16_t *o = output + (oc_offset + oc) * 8 + oc8;
-      const uint32_t acc = (*o & prior) + part[oc8] + part[8 + oc8];
-      const uint32_t q = (acc * 42799u) >> 21;
-      const uint32_t r = acc - 49u * q;
-      const uint32_t avg = q + ((r >= 30) | ((r >= 25) & (q & 1)));
-      *o = (uint16_t)(last ? avg : acc);
+    const aie::vector<uint16, 16> s16 =
+        aie::add(sum.extract<16>(0), sum.extract<16>(1));
+    uint16_t *o = output + (oc_offset + oc) * 8;
+    const aie::vector<int32, 8> acc =
+        aie::add(aie::vector_cast<int32>(
+                     aie::bit_and(aie::load_v<8>(o), prior).unpack()),
+                 aie::vector_cast<int32>(
+                     aie::add(s16.extract<8>(0), s16.extract<8>(1)).unpack()));
+    aie::vector<int32, 16> res = aie::concat(acc, aie::zeros<int32, 8>());
+    if (last) {
+      // (acc * 42799) >> 21 as (acc << 16) - acc * 22737, rounded down.
+      aie::accum<acc64, 16> m;
+      m.from_vector(res, 16);
+      m = aie::mac(m, res, aie::broadcast<int16, 16>(-22737));
+      aie::set_rounding(aie::rounding_mode::floor);
+      const aie::vector<int32, 16> q = m.template to_vector<int32>(21);
+      aie::set_rounding(aie::rounding_mode::conv_even);
+      const aie::vector<int32, 16> r =
+          aie::sub(res, aie::mul(q, aie::broadcast<int16, 16>(49))
+                            .template to_vector<int32>(0));
+      const auto up =
+          aie::ge(r, 30) |
+          (aie::ge(r, 25) &
+           aie::eq(aie::bit_and(q, aie::broadcast<int32, 16>(1)), 1));
+      res = aie::select(q, aie::add(q, 1), up);
     }
+    aie::store_v(o, aie::filter_even(aie::vector_cast<uint16>(res), 1)
+                        .template extract<8>(0));
   }
   for (int oc = output_channels; oc < output_channels_padd; oc++)
     output[oc] = 0;
@@ -2218,7 +2237,8 @@ void conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8(
     int32_t output_split, int32_t weight_index) {
   event0();
 #if __AIE_ARCH__ == 20
-  if (input_width >= 4 && input_width <= K1_POOL_MAX_WIDTH) {
+  if (input_width >= 4 && input_width <= K1_POOL_MAX_WIDTH &&
+      ((uintptr_t)output & 15) == 0) {
     k1_xy_pool_vector(input, kernels, output, input_width, input_channels,
                       output_channels, output_channels_padd, scale, y_index,
                       output_split, weight_index);
