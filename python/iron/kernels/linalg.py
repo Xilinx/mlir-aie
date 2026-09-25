@@ -1064,8 +1064,6 @@ def mha_softmax() -> ExternalFunction:
         compile_flags=[f"-DDIM_M={b}", f"-DDIM_K={b}", f"-DDIM_N={b}"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # aiecc measured_stack_size on aie2, over its 1024 default.
-            stack_bytes=1376 if _detect_arch() == "aie2" else None,
             roles=(In, Out, InOut, *([Param] * 6)),
             parameter_bindings=((4, scale), (5, b), (6, b)),
             initializers=((2, _zero_output),),
@@ -1075,14 +1073,14 @@ def mha_softmax() -> ExternalFunction:
             # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
             # |a| + |b|, so half of that; the floor is test_mha_e2e's
             # 4 bf16 steps at 1, P's top. aie2 has no aie::exp2 and takes
-            # exp2_bf16.h's cubic instead, 0.48% from exp2 with the bf16
-            # store (0.51% measured on npu1), so its rtol is 0.4% of |a| + |b|
-            # and its floor only admits the underflow to 0.
+            # exp2_bf16.h's cubic instead, 0.74% from exp2 at worst with the
+            # bf16 store on npu1 (0.37% of |a| + |b|), so its rtol is 0.4% of
+            # |a| + |b| and its floor only admits the underflow to 0.
             tolerance=(
                 Tolerance.relative(
                     0.004,
                     2.0**-120,
-                    note="exp2_bf16.h cubic, 0.51% worst element on npu1",
+                    note="exp2_bf16.h cubic, 0.74% worst element on npu1",
                 )
                 if _detect_arch() == "aie2"
                 else Tolerance.relative(

@@ -161,6 +161,45 @@ fold_rows(Load at, Fold fold) {
   return o;
 }
 
+#if __AIE_ARCH__ == 20
+// 2^-y for y = m - a * s, 16 lanes, from x = [a | m] and neg_scale = [-s | 1]:
+// AIE2's bf16 product sums a lane of each half.  exp2_bf16.h's method
+// otherwise, with the same cubic in the upper halves, but k = round(y) is not
+// clamped.  Shifting it into the exponent field saturates instead (the caller
+// sets saturation), and maxdiff clamps the difference at +0, so every y above
+// 128, masked lanes included, gives +0 whatever 2^-f came to.  Below -127.5,
+// where 2^-y overflows, the result is undefined; the caller's y is at least
+// -|m| * 2^-8.
+static inline __attribute__((always_inline)) aie::vector<bfloat16, SM_LANES>
+exp2_neg_bf16(aie::vector<bfloat16, 2 * SM_LANES> x,
+              aie::vector<bfloat16, 2 * SM_LANES> neg_scale,
+              aie::accum<accfloat, SM_LANES> magic) {
+  using Acc = aie::accum<accfloat, SM_LANES>;
+  const auto one = aie::broadcast<bfloat16, SM_LANES>(1.0f);
+  // The mac rounds after each product, so y + magic is not one mac: that
+  // rounds m - k' + magic with k' = round(a * s).
+  Acc y(mul_elem_16_2(x, neg_scale));
+  const aie::vector<float, SM_LANES> ym =
+      aie::add(magic, y.to_vector<float>()).to_vector<float>();
+  const aie::vector<int32_t, SM_LANES> k = aie::sub(
+      ym.cast_to<int32_t>(), aie::broadcast<int32_t, SM_LANES>(0x4b400000));
+  Acc f(mac_elem_16_2(x, neg_scale, aie::sub(magic, ym)));
+  const auto fv = aie::concat(f.to_vector<bfloat16>(), one);
+  Acc t(mul_elem_16_2(
+      fv, aie::concat(aie::broadcast<bfloat16, SM_LANES>(-0.0555041087f),
+                      aie::broadcast<bfloat16, SM_LANES>(0.2402265069f))));
+  t = mul_elem_16_2(
+      fv, aie::concat(t.to_vector<bfloat16>(),
+                      aie::broadcast<bfloat16, SM_LANES>(-0.6931471805f)));
+  t = mul_elem_16_2(fv, aie::concat(t.to_vector<bfloat16>(), one));
+  Acc r;
+  r.from_vector(
+      aie::maxdiff(t.to_vector<float>().cast_to<int32_t>(), aie::upshift(k, 23))
+          .cast_to<float>());
+  return r.to_vector<bfloat16>();
+}
+#endif
+
 static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
                                  const bfloat16 *__restrict m_prev,
                                  bfloat16 *__restrict m_new,
@@ -232,27 +271,53 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
                  aie::select(aie::load_v<SM_ROWS>(m_new + g), m, live(g)));
   }
 
-  // Each row's exponentials go to P.  A discarded lane's is +0.  Taking m off
-  // as m * 1 in the multiplier gives the same difference as subtracting it,
-  // without widening m to 64 accumulator lanes first.
-  const auto one_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(1.0f);
-  a = A;
+  // Each row's exponentials go to P.  A discarded lane's is +0.
   bfloat16 *__restrict p = P;
   const bfloat16 *__restrict m = m_new;
+#if __AIE_ARCH__ == 20
+  // Half a row per pass keeps the loop within the registers; a whole row
+  // spills.
+  const auto neg_scale = aie::concat(aie::broadcast<bfloat16, SM_LANES>(-scale),
+                                     aie::broadcast<bfloat16, SM_LANES>(1.0f));
+  aie::accum<accfloat, SM_LANES> magic;
+  magic.from_vector(aie::broadcast<float, SM_LANES>(12582912.0f));
+  aie::saturation_mode saved_saturation =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  for (int32_t h = 0; h < VECTOR_LENGTH; h += 2 * SM_LANES) {
+    a = A + h;
+    p = P + h;
+    m = m_new;
+    AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
+    for (int32_t i = 0; i < group_rows; i++) {
+      const auto m_vec = aie::broadcast<bfloat16, SM_LANES>(*m++);
+      aie::store_v(p,
+                   exp2_neg_bf16(aie::concat(aie::load_v<SM_LANES>(a), m_vec),
+                                 neg_scale, magic));
+      aie::store_v(
+          p + SM_LANES,
+          exp2_neg_bf16(aie::concat(aie::load_v<SM_LANES>(a + SM_LANES), m_vec),
+                        neg_scale, magic));
+      a += VECTOR_LENGTH;
+      p += VECTOR_LENGTH;
+    }
+  }
+  aie::set_saturation(saved_saturation);
+#else
+  // Taking m off as m * 1 in the multiplier gives the same difference as
+  // subtracting it, without widening m to 64 accumulator lanes first.
+  const auto one_vec = aie::broadcast<bfloat16, VECTOR_LENGTH>(1.0f);
+  a = A;
   AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
   AIE_LOOP_UNROLL(2)
   for (int32_t i = 0; i < group_rows; i++) {
     aie::accum<accfloat, VECTOR_LENGTH> exp_in =
         aie::msc(aie::mul(aie::load_v<VECTOR_LENGTH>(a), scale_vec),
                  aie::broadcast<bfloat16, VECTOR_LENGTH>(*m++), one_vec);
-#if __AIE_ARCH__ == 20
-    aie::store_v(p, exp2_bf16(exp_in.to_vector<float>()));
-#else
     aie::store_v(p, aie::exp2<bfloat16>(exp_in.to_vector<float>()));
-#endif
     a += VECTOR_LENGTH;
     p += VECTOR_LENGTH;
   }
+#endif
 
   // Their sums, narrowed to 16 lanes, are parked in the A rows, which nothing
   // reads after this call.  Doing this in the loop above would make each
