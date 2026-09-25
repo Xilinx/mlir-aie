@@ -232,13 +232,13 @@ static inline v16accfloat residual(v16accfloat x, v16bfloat16 hi) {
                        broadcast_one_to_v32bfloat16(), x);
 }
 
-// [hi | mid] limbs of x; rest is x - hi - mid, exactly.
+// [hi | mid] limbs of x; rest is x - hi - mid, exactly, in one msc.
 static inline v32bfloat16 limbs(v16accfloat x, v16accfloat &rest) {
   v16bfloat16 hi = to_v16bfloat16(x);
   v16accfloat r = residual(x, hi);
-  v16bfloat16 mid = to_v16bfloat16(r);
-  rest = residual(r, mid);
-  return bf16_pair(hi, mid);
+  v32bfloat16 l = bf16_pair(hi, to_v16bfloat16(r));
+  rest = msc_elem_16_2(l, broadcast_one_to_v32bfloat16(), x);
+  return l;
 }
 
 static inline v32bfloat16 limbs(v16accfloat x) {
@@ -373,11 +373,12 @@ static inline void normalize_affine(const float *restrict in,
                           mac_elem_16_2(d, s11, mul_elem_16_2(d, s00))),
             n_rest);
   v32bfloat16 g = limbs(f32_acc(gamma), g_rest);
-  v16bfloat16 g0 = limb(g, 0), g1 = limb(g, 1);
-  v16accfloat a = mac_elem_16_2(n, bf16_pair(g0, g0), f32_acc(beta));
-  v16accfloat b = mac_elem_16_2(bf16_pair(to_v16bfloat16(n_rest), limb(n, 0)),
-                                bf16_pair(g0, to_v16bfloat16(g_rest)),
-                                mul_elem_16_2(n, bf16_pair(g1, g1)));
+  v16bfloat16 g0 = limb(g, 0), n0 = limb(n, 0);
+  v16accfloat a = mac_elem_16_2(n, g, f32_acc(beta));
+  a = mac_elem_16_2(bf16_pair(limb(n, 1), to_v16bfloat16(n_rest)),
+                    bf16_pair(g0, g0), a);
+  v16accfloat b = mul_elem_16_2(bf16_pair(n0, n0),
+                                bf16_pair(limb(g, 1), to_v16bfloat16(g_rest)));
   ::aie::store_v(out, ::aie::vector<bfloat16, 16>(to_v16bfloat16(add(a, b))));
 }
 
@@ -499,12 +500,17 @@ static void layer_norm_f32_aie2(const float *restrict input,
       const float *restrict pi = input;
       float *restrict po = output;
       AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_MIN_ITERATION_COUNT(MIN_CHUNKS)
-      for (unsigned i = 0; i < chunks; i++) {
+      AIE_LOOP_MIN_ITERATION_COUNT(MIN_CHUNKS / 4)
+      for (unsigned i = 0; i < chunks / 4; i++) {
         normalize_f32(pi, po, mean, s00, s11, s20);
-        pi += N;
-        po += N;
+        normalize_f32(pi + N, po + N, mean, s00, s11, s20);
+        normalize_f32(pi + 2 * N, po + 2 * N, mean, s00, s11, s20);
+        normalize_f32(pi + 3 * N, po + 3 * N, mean, s00, s11, s20);
+        pi += 4 * N;
+        po += 4 * N;
       }
+      for (unsigned i = 0; i < (chunks & 3); i++)
+        normalize_f32(pi + i * N, po + i * N, mean, s00, s11, s20);
     } else {
       for (unsigned i = 0; i < chunks; i++)
         normalize_f32(input + i * N, output + i * N, mean, s00, s11, s20);
