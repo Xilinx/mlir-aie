@@ -1430,7 +1430,7 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("SetLockOp is not supported on AIE1.");
 
-  if (getValue() < 0)
+  if (getValueAttr().getValue().isNegative())
     return emitOpError("Lock value must be non-negative");
 
   if (getValue() > targetModel.getMaxLockValue())
