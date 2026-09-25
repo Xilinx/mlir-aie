@@ -283,6 +283,7 @@ swiglu/1024x256/bfloat16
 tanh/1024x16/bfloat16
 tanh/1024x16/bfloat16/use_lut=True/lut
 tanh/1024x256/bfloat16
+tanh/1056x4/bfloat16/tail
 threshold/1920x16/int16
 threshold/1920x16/uint8
 threshold/1920x16/uint8/tozero-inv

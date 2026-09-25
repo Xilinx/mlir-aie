@@ -185,6 +185,8 @@ CASES: list[Case] = [
     Case("bf16_exp", calls=256),
     Case("tanh", calls=16, smoke=True),
     Case("tanh", calls=256),
+    # AIE2 tanh takes 64 elements per trip, so 1056 leaves a 32-element tail.
+    Case("tanh", dict(tile_size=1056), calls=4, tag="tail", smoke=True, perf=False),
     # The LUT tanh, which on aie2p is the alternative to the vtanh instruction
     # and 7.5x closer to the true function. It is judged against an exact model
     # of the table rather than against tanh itself, so this case is the tight
