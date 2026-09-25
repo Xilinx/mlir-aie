@@ -7,7 +7,8 @@
 
 The bf16 norms and RoPE are re-exported from ``norm`` and ``datamovement``;
 they support aie2 and aie2p, with ``cols`` as an alias for ``tile_size``.
-The f32/affine norms and activation epilogue are aie2p-only. Each processes one row
+The activation epilogue is aie2p-only; the f32/affine norms take their aie2p
+source on both generations. Each processes one row
 (``cols`` elements) per call; the row length is a scalar ``Param`` the
 factory binds to ``cols``. These are the kernels
 ``programming_examples/ml/{norm,rope,mm_activation_epilogue}`` build.
@@ -71,7 +72,6 @@ def _row_kernel(
     setup=None,
     stack_bytes=None,
 ) -> ExternalFunction:
-    _aie2p_only(name, source)
     _cols(name, cols)
     in_ty = np.ndarray[(cols,), np.dtype[in_dt]]
     out_ty = np.ndarray[(cols,), np.dtype[out_dt]]
@@ -133,7 +133,6 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
     Args:
         cols: Elements per row (multiple of 16).
     """
-    _aie2p_only("layer_norm_affine_cast", "layer_norm.cc")
     _cols("layer_norm_affine_cast", cols)
     in_ty = np.ndarray[(cols,), np.dtype[np.float32]]
     gb_ty = np.ndarray[(2 * cols,), np.dtype[np.float32]]

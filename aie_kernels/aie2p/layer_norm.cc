@@ -28,6 +28,22 @@ static inline float scalar_mul_sub(float a, float b, float c) {
       .to_vector<float>()[0];
 }
 
+// On AIE2 a scalar aie::invsqrt lowers to sqrtf, which does not link. The
+// vector one is a bit-trick estimate good to 6.5e-4, so one Newton step,
+// y * (1.5 - x / 2 * y * y), brings it to f32 accuracy.
+static inline float scalar_invsqrt(float x) {
+#if __AIE_ARCH__ == 20
+  ::aie::vector<float, 16> y = ::aie::invsqrt(::aie::broadcast<float, 16>(x));
+  ::aie::vector<float, 16> half_xy = ::aie::mul(y, 0.5f * x).to_vector<float>();
+  ::aie::accum<accfloat, 16> t;
+  t.from_vector(::aie::broadcast<float, 16>(1.5f));
+  t = ::aie::msc(t, half_xy, y);
+  return ::aie::mul(y, t.to_vector<float>()).to_vector<float>()[0];
+#else
+  return ::aie::invsqrt(x);
+#endif
+}
+
 template <typename T, int N>
 void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
   event0();
@@ -63,7 +79,7 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
       scalar_mul(::aie::reduce_add(sum_sq_acc.template to_vector<float>()),
                  inv_cols),
       mean, mean);
-  float inv_std = aie::invsqrt(variance + epsilon);
+  float inv_std = scalar_invsqrt(variance + epsilon);
 
   ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>((T)mean);
   ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>((T)inv_std);
@@ -137,7 +153,7 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
   }
   float variance = scalar_mul(
       ::aie::reduce_add(var_acc.template to_vector<float>()), inv_cols);
-  float inv_std = aie::invsqrt(variance + epsilon);
+  float inv_std = scalar_invsqrt(variance + epsilon);
   ::aie::vector<TIn, N> inv_std_v = ::aie::broadcast<TIn, N>((TIn)inv_std);
 
   // The two instantiations diverge only in where gamma/beta come from and
