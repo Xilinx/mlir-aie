@@ -637,6 +637,15 @@ CASES: list[Case] = [
     # for k3) so saturation is exercised without being the whole picture.
     Case("conv2dk1", calls=8, scalars=(32, 64, 64, 12), smoke=True),
     Case("conv2dk1_i8", calls=8, scalars=(32, 64, 64, 12), smoke=True),
+    # Two 32-pixel blocks per row; at width 32 the block loop runs once.
+    Case(
+        "conv2dk1_i8",
+        dict(input_width=64),
+        calls=8,
+        scalars=(64, 64, 64, 12),
+        tag="two-blocks",
+        perf=False,
+    ),
     # conv2dk1_skip streams three tensors; the harness packs them into one
     # fifo only when they share a type, i.e. input_channels == 2 *
     # output_channels with a uint8 residual (the int8 residual build shares

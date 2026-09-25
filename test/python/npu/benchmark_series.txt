@@ -58,6 +58,7 @@ conv2dk1/2048x8/int8_uint8
 conv2dk1/2048x8/uint8
 conv2dk14/12544x4/uint8_int8
 conv2dk1_i8/2048x8/int8
+conv2dk1_i8/4096x8/int8/input_width=64/two-blocks
 conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64
 conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32
 conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip

@@ -162,6 +162,27 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
     for (int oc = 0; oc < (output_channels / CHANNEL_FACTOR); oc++) {
       for (int iw_partialc = 0; iw_partialc < iw_partial; iw_partialc++) {
+#if __AIE_ARCH__ == 20
+        // Two pointers, one per half block, so both load units carry the
+        // activations. LLVM would unroll this loop by two, which schedules
+        // at II23 per two steps.
+        int8_t *restrict in1 = input + MMUL_MK * NUM_ACC / 2;
+        AIE_PREPARE_FOR_PIPELINING
+        AIE_LOOP_NO_UNROLL
+        for (int ic = 0; ic < (input_channels / CHANNEL_FACTOR); ic++) {
+          aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
+          kernels += MMUL_KN;
+
+          AIE_LOOP_UNROLL_FULL
+          for (int x = 0; x < NUM_ACC / 2; x++) {
+            acc_tmp[x].mac(aie::load_v<MMUL_MK>(input + x * MMUL_MK), in_b);
+            acc_tmp[x + NUM_ACC / 2].mac(
+                aie::load_v<MMUL_MK>(in1 + x * MMUL_MK), in_b);
+          }
+          input += iw * CHANNEL_FACTOR;
+          in1 += iw * CHANNEL_FACTOR;
+        }
+#else
         AIE_PREPARE_FOR_PIPELINING
         for (int ic = 0; ic < (input_channels / CHANNEL_FACTOR); ic++) {
           aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
@@ -176,6 +197,7 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
           // Move to next ic/8 position but in the same input range
           input += (iw * CHANNEL_FACTOR) - MMUL_MK * NUM_ACC;
         }
+#endif
         // input ptr just moves to next section
 
         AIE_LOOP_UNROLL_FULL
