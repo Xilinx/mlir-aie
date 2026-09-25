@@ -1010,6 +1010,13 @@ CASES: list[Case] = [
         calls=16,
         smoke=True,
     ),
+    # On aie2, 112 is too short for the pipelined loops and 1008 leaves an odd
+    # chunk and three past a multiple of four.
+    *[
+        Case(name, dict(cols=cols), calls=16, tag="row-tail", perf=False)
+        for name in ("layer_norm_f32", "layer_norm_affine_cast")
+        for cols in (112, 1008)
+    ],
     Case("rope", dict(cols=1024), calls=16, smoke=True),
     # 1008 is a multiple of 16 but not of the 64 the interleaved row walks in,
     # and 96 halves into 48, which is a multiple of 16 but not of the 32 the
