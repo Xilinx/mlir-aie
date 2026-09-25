@@ -80,16 +80,12 @@ tanh_bf16_v16(aie::vector<bfloat16, 16> x) {
 // only unavoidable early narrowing is AIE2's bf16-only tanh LUT.
 //
 // There is no f32 vector multiplier: aie::mul over aie::vector<float, N> is a
-// three-term bf16 emulation, 224 bytes of code at 16 lanes against 4 for one
-// bf16 mac. Every multiply below therefore has a bf16 operand -- a constant
-// exact in bf16, or tanh's result, which already is one.
+// bf16 emulation. Every multiply below has a bf16 operand -- a constant exact
+// in bf16, or tanh's result.
 
-// tanh of an f32 vector, bf16 out. AIE2P could return f32, but asking for it
-// defeats aiecc's stack measurement -- it reports a spurious "__start ->
-// _main_init -> core -> _main_init" recursion -- and tanh's output is in
-// [-1, 1], where bf16 costs at most 2^-9 absolute anyway. AIE2's LUT has
-// nothing else to offer. The narrow result goes straight into a bf16 mac
-// below, so neither caller pays to widen it.
+// tanh of an f32 vector, bf16 out: tanh is in [-1, 1], where bf16 costs at most
+// 2^-9. An f32 result on AIE2P makes aiecc's stack measurement report a
+// spurious recursion.
 template <int vec_size>
 __attribute__((always_inline)) aie::vector<bfloat16, vec_size>
 tanh_bf16_vec(aie::vector<float, vec_size> x) {
@@ -108,11 +104,8 @@ tanh_bf16_vec(aie::vector<float, vec_size> x) {
 #endif
 }
 
-// acc + x * b, for an f32 x and a bf16 b. An f32 splits into three bf16 terms
-// that sum back to it exactly -- three 8-bit mantissas cover f32's 24 -- so
-// macing each term against b is the same arithmetic, not an approximation of
-// it, and costs three products where aie::mul would spend nine splitting an
-// operand that is already narrow.
+// acc + x * b, for an f32 x and a bf16 b. x splits exactly into three bf16
+// terms, so three macs against b give the exact product.
 template <int vec_size>
 __attribute__((always_inline)) aie::accum<accfloat, vec_size>
 mac_f32_bf16(aie::accum<accfloat, vec_size> acc, aie::vector<float, vec_size> x,
@@ -130,10 +123,8 @@ mac_f32_bf16(aie::accum<accfloat, vec_size> acc, aie::vector<float, vec_size> x,
   return aie::mac(acc, x2, b);
 }
 
-// x * c. The constant decomposes into exact bf16 terms the same way x does, so
-// a power of two needs one pass and a general constant needs three. Even at
-// three this beats aie::mul, which forms the same nine products but sums them
-// through f32 adds and re-splits x for each one.
+// x * c. c splits into exact bf16 terms the same way x does: one for a power
+// of two, three in general.
 template <int vec_size, float c>
 __attribute__((always_inline)) aie::accum<accfloat, vec_size>
 scale_vec(aie::vector<float, vec_size> x) {
@@ -155,10 +146,8 @@ scale_vec(aie::vector<float, vec_size> x) {
   return acc;
 }
 
-// sigmoid(x) = (tanh(x/2) + 1) / 2, written as 0.5 * tanh(x/2) + 0.5 so that
-// the halving and the offset are one bf16 mac rather than an f32 add and an
-// f32 multiply. 0.5 is exact in bf16 and tanh's result is bf16, so the product
-// is exact in the accumulator and the sum rounds where (t + 1) * 0.5 rounded.
+// sigmoid(x) = 0.5 * tanh(x/2) + 0.5, one bf16 mac. 0.5 and tanh's result are
+// bf16, so the product is exact in the accumulator.
 template <int vec_size>
 __attribute__((always_inline)) aie::vector<float, vec_size>
 sigmoid_vec(aie::vector<float, vec_size> x) {
@@ -171,10 +160,8 @@ sigmoid_vec(aie::vector<float, vec_size> x) {
       .template to_vector<float>();
 }
 
-// x * sigmoid(2u), for a caller holding half the sigmoid argument. That is
-// x/2 * tanh(u) + x/2, and halving a bf16 is exact, so sigmoid's /2 rides on
-// tanh's result and both terms are three-product macs against a bf16 operand.
-// silu passes u = x/2 and shares the x/2 it already computed.
+// x * sigmoid(2u) = x/2 * tanh(u) + x/2, for a caller holding half the sigmoid
+// argument. Halving is exact, so both terms are macs against a bf16 operand.
 template <int vec_size>
 __attribute__((always_inline)) aie::vector<float, vec_size>
 x_times_sigmoid_vec(aie::vector<float, vec_size> x,
@@ -200,9 +187,7 @@ silu_vec(aie::vector<float, vec_size> x) {
 template <int vec_size>
 __attribute__((always_inline)) aie::vector<float, vec_size>
 gelu_vec(aie::vector<float, vec_size> x) {
-  // 1.702 / 2: the halving sigmoid owes its argument rides along in the scaling
-  // x needs anyway. Halving a float is exact, so every partial product shifts
-  // by one exponent and the result is the one the separate multiply gave.
+  // 1.702 / 2 folds sigmoid's halving into x's scaling; halving is exact.
   return x_times_sigmoid_vec<vec_size>(
       x, scale_vec<vec_size, 0.851f>(x).template to_vector<float>());
 }

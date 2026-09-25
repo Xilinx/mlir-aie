@@ -47,11 +47,9 @@ static_assert(CT_K % SS == 0, "k slice must be a multiple of s");
 static_assert(GROUP % SS == 0, "a group must not split a k step");
 static_assert(K_TILE % GROUP == 0, "k tile must hold whole groups");
 
-// The byte offset of each SS-wide k step's scale row. GROUP need not be a
-// power of two, and a constant divide that is not becomes a magic multiply,
-// which on a 32-bit target needs the 64-bit __muldi3 -- a libcall in the inner
-// loop, and a vectorization barrier. The step index is already a linear
-// function of the loop counters, so the offsets are just tabulated once.
+// The byte offset of each SS-wide k step's scale row, tabulated once: GROUP
+// need not be a power of two, and dividing by it in the inner loop would be a
+// __muldi3 libcall.
 constexpr int K_STEPS = K_TILE / SS;
 
 struct GroupRow {

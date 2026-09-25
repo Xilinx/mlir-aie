@@ -220,10 +220,8 @@ static void conv2dk1_skip_init_blocks(
     kernels_skip += ic_skip * 64;         // next oc/8 skip weights
   }
 
-  // Only whole 32-wide blocks are computed. The tail of an input_width that
-  // is not a multiple of 32 was never implemented and would be left
-  // unwritten; the factory rejects such a width. See
-  // kernels.conv2dk1_skip_init.
+  // Only whole 32-wide blocks are computed; kernels.conv2dk1_skip_init
+  // rejects other widths.
 }
 
 template <typename SkipT>

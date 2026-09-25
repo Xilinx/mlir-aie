@@ -30,13 +30,9 @@
 // step, all kernel symbols must be defined in this single translation unit.
 extern "C" {
 
-// The 8x8x8 bf16 mmul keeps a 64-float accumulator, so mm_aie2p.h's 2x2
-// expansion holds four of them -- eight accumulator registers -- plus two A and
-// two B tiles across the reduction.  That does not fit, and the reduction loop
-// schedules at II 175 for its eight native macs.  Expanding only along n keeps
-// two accumulators live and one A tile, and the same eight macs schedule at
-// II 36, which is the rate mm_aie2p.h's own bf16 product runs at.  The mac
-// order per output tile is unchanged, so the result is unchanged too.
+// Expanded along n only: mm_aie2p.h's 2x2 expansion keeps four 64-float
+// accumulators plus two A and two B tiles live, which does not fit the
+// registers. The mac order per output tile, and so the result, is the same.
 void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
   event0();
   ::aie::rounding_mode saved_rounding =
@@ -85,12 +81,10 @@ void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
 } // extern "C" (row-major wrappers)
 
 // O is the r=t=8 blocked GEMM output: element (row, col) of the tile sits at
-// (row / 8) * 512 + (col / 8) * 64 + (row % 8) * 8 + col % 8, so one row's
-// scale covers only eight lanes at a time and the tile costs 512 broadcasts
-// and 512 eight-lane multiplies.  Transposing an 8x8 replica of the eight
-// scale values of a block row builds the whole 64-lane pattern in one shuffle,
-// which turns the block row into eight contiguous 64-lane multiplies.  Kept
-// out of line so its two callers share one copy of the unrolled body.
+// (row / 8) * 512 + (col / 8) * 64 + (row % 8) * 8 + col % 8. Transposing an
+// 8x8 replica of the eight scale values of a block row builds its 64-lane
+// scale pattern in one shuffle. Out of line so its two callers share one copy
+// of the unrolled body.
 static __attribute__((noinline)) void
 scale_blocked_rows(bfloat16 *O, const bfloat16 *scale) {
   using Vec8bf16 = aie::vector<bfloat16, 8>;
@@ -110,22 +104,16 @@ scale_blocked_rows(bfloat16 *O, const bfloat16 *scale) {
 }
 
 // partial_softmax_alias_bf16 over every valid row of a block whose rows are
-// one vector wide. Called a row at a time, each row paid for a call, a
-// rounding-mode swap, two passes too short to pipeline, and two five-step
-// shuffle-and-combine reductions. Here the rows are reduced eight at a time:
-// unzipping two partially reduced vectors pairs each row's low half with its
-// high half, reduce_max's and reduce_add's pairing, so after as many steps all
-// eight results sit in one vector. The additions are reduce_add's, in the same
-// tree, so P and scale_buffer come out the same bit for bit. Masked lanes are
-// set to lowest in place first. The max is taken before scaling, which a
-// positive scale leaves unchanged. The sum pass parks each row's 16 partial
-// sums in the row itself, already consumed by exp, for the group loop to fold.
+// one vector wide, reduced eight rows at a time: unzipping two partially
+// reduced vectors pairs each row's low half with its high half, reduce_max's
+// and reduce_add's pairing, so P and scale_buffer match the per-row call bit
+// for bit. Masked lanes are set to lowest in place first. The max is taken
+// before scaling, which a positive scale leaves unchanged.
 static constexpr int32_t SM_ROWS = 8;
 static constexpr int32_t SM_LANES = 16;
 
 // Lane numbers, compared against a row's first masked column, build the
-// suffix mask in one vector compare instead of a 64-bit shift on the scalar
-// unit.
+// suffix mask in one vector compare.
 alignas(64) static const int16_t sm_lane_idx[VECTOR_LENGTH] = {
     0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
     16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
@@ -222,7 +210,7 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
   // was filled with lowest, and the caller zeroes their P rows after.
   const int32_t group_rows = (rows + SM_ROWS - 1) & ~(SM_ROWS - 1);
 
-  // Lanes a row discards hold lowest from here on, as they did before.
+  // Lanes a row discards hold lowest from here on.
   if (diagonal || valid_cols < VECTOR_LENGTH) {
     bfloat16 *__restrict row = A;
     AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS)
@@ -235,10 +223,9 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
     }
   }
 
-  // Rows past the last valid one keep their scale_buffer entries, as they
-  // did when no call was made for them.  Their P rows are zeroed after.  The
-  // group loops run over at least two groups, which the caller's block always
-  // has, so that the pipeliner may overlap them.
+  // Rows past the last valid one keep their scale_buffer entries; their P rows
+  // are zeroed after. The group loops run over at least two groups, which the
+  // caller's block always has, so that the pipeliner may overlap them.
   const int32_t group_end = group_rows > SM_ROWS ? group_rows : 2 * SM_ROWS;
   auto live = [rows](int32_t g) {
     int32_t n = rows - g >= SM_ROWS ? SM_ROWS : rows - g > 0 ? rows - g : 0;
@@ -487,13 +474,9 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
   } else {
     // Everything a valid row discards is a suffix of that row: the columns from
     // valid_kv_cols on, and on the diagonal block the columns past the
-    // diagonal. The two start at different columns but both run to the end of
-    // the row, so the earlier start covers both.  A suffix starting mid-vector
-    // used to fall entirely to the scalar remainder loop -- on a 64-wide
-    // diagonal block that is sum(B_kv - 1 - i) single-element stores -- and a
-    // lane mask keeps it on the vector path.  mask's own runtime shift walks
-    // its backing words in a loop the target keeps as a loop, so build the bits
-    // directly.
+    // diagonal, so the earlier start covers both. A lane mask covers a suffix
+    // that starts mid-vector; its bits are built directly because mask's own
+    // runtime shift is a loop.
     if (valid_kv_cols < B_kv || kv_block_idx == q_block_idx) {
       for (int32_t i = 0; i < valid_q_rows; i++) {
         int32_t start = valid_kv_cols;

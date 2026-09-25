@@ -61,9 +61,9 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *AIE2_RESTRICT rgba_in,
 
 #if AIE_TUNED_AIE2
   // The rounding term seeds the accumulator, leaving a chain of three macs
-  // instead of a mul and three macs. Kept rolled, the loop then pipelines (six
-  // iterations in flight) when it is known to run at least six times; the count
-  // drops the loop's zero-trip guard, so a shorter row takes the plain loop.
+  // instead of a mul and three macs. Kept rolled, the loop then pipelines when
+  // it is known to run at least six times; the count drops the loop's
+  // zero-trip guard, so a shorter row takes the plain loop.
   ::aie::accum<acc32, 32> rnd;
   rnd.from_vector(::aie::broadcast<int32_t, 32>(1 << (SRS_SHIFT - 1)));
   auto body = [&]() __attribute__((always_inline)) {

@@ -38,16 +38,13 @@ shifted(const ::aie::vector<bfloat16, 32> &w0,
 }
 
 // AIE2 has no bf16 sliding multiply: a bf16 vmac.f sums, per lane i of 16,
-// a[i] * b[i] and a[16 + i] * b[16 + i]. aie_api's sliding_mul spends one per
-// tap with the upper halves zeroed, two shuffle-slot ops per tap and block.
-// Here one shift of a 48-sample window serves a tap for two blocks: its low
-// half is the first block's data, its high half the second's. Pairing the low
-// (or high) halves of two taps' shifts fills both halves of a vmac.f, so two
-// blocks cost K - 1 shifts, K + 1 half merges and K + 1 vmac.f.
+// a[i] * b[i] and a[16 + i] * b[16 + i]. One shift of a 48-sample window
+// serves a tap for two blocks: its low half is the first block's data, its
+// high half the second's. Pairing the low (or high) halves of two taps' shifts
+// fills both halves of a vmac.f.
 //
-// COUNTED marks the pair loop as running at least twice, which lets it
-// pipeline and drops its zero-trip guard; a short row takes the other
-// instance. With both loops in one function the pipelined one loses 3 cycles.
+// COUNTED promises the pair loop at least two trips, so it pipelines; a short
+// row takes the other instance.
 template <int K, bool BIAS, bool COUNTED>
 __attribute__((noinline)) static void
 dwconv1d_cf_blocks(const bfloat16 *restrict in_pad, const bfloat16 *restrict w,
@@ -151,26 +148,20 @@ static inline void dwconv1d_channels_first_impl(const bfloat16 *restrict in_pad,
   constexpr unsigned kCoeffLanes = K <= 16 ? 16 : 32;
   ::aie::vector<bfloat16, kCoeffLanes> taps =
       ::aie::zeros<bfloat16, kCoeffLanes>();
-  // A running p makes taps.set a memory round-trip, and the K-iteration loop
-  // schedules at II 10.
+  // Unrolled: with a running p, taps.set is a memory round-trip.
   AIE_LOOP_UNROLL_FULL
   for (int p = 0; p < K; p++)
     taps.set(w[p], p);
 
-  // One sliding_mul over all K taps is K dependent vmac.f in a row, so the
-  // block costs K accumulator latencies. Two independent half-length chains
-  // and one accumulator add cost about half that.
+  // Two independent half-length chains rather than K dependent vmac.f.
   constexpr int KA = (K + 1) / 2;
   constexpr int KB = K - KA;
   using conv_a = ::aie::sliding_mul_ops<16, KA, 1, 1, 1, bfloat16, bfloat16>;
   using conv_b =
       ::aie::sliding_mul_ops<16, KB ? KB : 1, 1, 1, 1, bfloat16, bfloat16>;
 
-  // A down-count over walking cursors is what the zero-overhead loop wants;
-  // the unsigned cast is what keeps the block count a shift rather than a
-  // signed divide. Two blocks per pass give the two chains of one block
-  // something independent to interleave with, which is worth more than the
-  // tail pass costs: II 45 per pass against II 29 per single block.
+  // A down-count over walking cursors for the zero-overhead loop; unsigned so
+  // the block count is a shift. Two blocks per pass interleave their chains.
   AIE_LOOP_UNROLL(2)
   for (int32_t n = (uint32_t)(T + 15) / 16; n > 0; n--) {
     // in_pad is only 256-bit aligned; a 512-bit access needs 512-bit alignment.

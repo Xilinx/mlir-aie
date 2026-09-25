@@ -27,23 +27,13 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
   }
 }
 
-// Four independent load/add/store chains per iteration.
-//
-// One chain per iteration is latency-bound rather than issue-bound: the two
-// operand loads are both vlda.conv.fp32.bf16, which only exists on the a port,
-// so they serialize, and the vadd.f then waits out the load-to-use latency
-// with nothing to fill it -- only four of the one-chain loop's twelve bundles
-// did work.  Peano schedules the four-chain body into eighteen bundles, so four
-// vectors cost 18 cycles where one cost 12; most of the extra chains land in
-// stall slots that were already being paid for.  Going wider is not free: x8
-// grows the body faster than the work it adds, and x16 runs out of accumulator
-// registers.
+// Four independent load/add/store chains per iteration. One chain is
+// latency-bound: both operand loads are vlda.conv, which only the a port has.
 #define ADD_UNROLL 4
 
-// AIE2 instead runs one chain per iteration, which the pipeliner overlaps to
-// one vector per cycle once the pointers are restrict and the loop is kept
-// rolled.  Only a converts on load (vlda.conv is a-port only); b loads as bf16
-// on the b port and is added as b * 1 in a mac.
+// AIE2 instead runs one chain per iteration, which pipelines with restrict
+// pointers and a rolled loop. Only a converts on load (vlda.conv is a-port
+// only); b loads as bf16 on the b port and is added as b * 1 in a mac.
 #if AIE_TUNED_AIE2
 template <typename T_in, typename T_out, int vec_factor>
 void eltwise_vadd_aie2(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
@@ -90,9 +80,7 @@ void eltwise_vadd(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
     *pC1++ = aie::add(A3, B3);
   }
 #endif
-  // Whole vectors past the last full group of four.  N is a compile-time
-  // constant, so for the 1024-element tile the factories build this is zero
-  // iterations and folds away entirely.
+  // Whole vectors past the last full group of four.
   for (int i = 0; i < F % ADD_UNROLL; i++) {
     *pC1++ = aie::add(*pA1++, *pB1++);
   }
@@ -109,12 +97,9 @@ void eltwise_vadd_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
-  // With the size known only at run time, a signed F makes F % ADD_UNROLL a
-  // __modsi3 call, and the call spills every callee-saved register; unsigned
-  // it is a mask.  The leftovers sit behind one branch so a size that is a
-  // multiple of the unrolled step pays for a single test, not two.
+  // Unsigned, so F % ADD_UNROLL is a mask rather than a __modsi3 call.
   const int F = (uint32_t)ADD_ELEMS / vec_factor;
-// The single chain needs its 14-stage schedule's trip count at compile time.
+// The single chain pipelines only with a compile-time trip count.
 #if AIE_TUNED_AIE2 && !defined(ADD_ELEMS_RUNTIME)
   eltwise_vadd_aie2<T_in, T_out, vec_factor>(pA1, pB1, pC1,
                                              F / ADD_UNROLL * ADD_UNROLL);
@@ -139,9 +124,7 @@ void eltwise_vadd_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
     for (int i = 0; i < F % ADD_UNROLL; i++) {
       *pC1++ = aie::add(*pA1++, *pB1++);
     }
-    // Scalar tail for a size that is not a whole number of vectors.  Index off
-    // the base pointers rather than the iterators: the vector body consumed
-    // exactly F vectors, so the leftover elements start at F * vec_factor.
+    // Scalar tail for a size that is not a whole number of vectors.
     const int done = F * vec_factor;
     const int tail = ADD_ELEMS - done;
     for (int i = 0; i < tail; i++) {

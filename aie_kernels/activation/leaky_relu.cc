@@ -17,13 +17,6 @@ using namespace aie;
 
 // Leaky ReLU: f(x) = max(x, alpha * x).  For alpha < 1 this is x when x > 0 and
 // alpha * x otherwise.
-//
-// The multiply lands in an accumulator that has to be narrowed again before
-// vmax can see it, and that three-step chain is all one iteration offers the
-// target: on AIE2P the body schedules at II9 with seven of its nine bundles
-// empty. Four iterations unrolled into it fill those bundles at the same II.
-// AIE2's vector is half as wide, and eight of its iterations, the same 128
-// elements, schedule at II22 where four took II14.
 void leaky_relu_vectorized_bf16(bfloat16 *restrict a, bfloat16 *restrict c,
                                 const int32_t vector_size,
                                 const bfloat16 alpha) {

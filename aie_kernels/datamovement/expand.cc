@@ -15,12 +15,10 @@
 
 #if AIE_TUNED_AIE2
 // AIE2 has no 32-lane bf16 multiply: a bf16 vmac.f sums, per lane i of 16,
-// a[i] * b[i] and a[16 + i] * b[16 + i], and aie_api pads each operand's
-// upper half with zeros, a move per operand. Here a block's 32 biased values
-// are one operand as they come out of the byte interleave, and the scale
-// (0 in the other half) picks the 16 lanes an output takes. The accumulator
-// starts at -128 * scale, so (128 + nn) * scale lands on nn * scale exactly,
-// as in the two-product form. One unpack serves two blocks.
+// a[i] * b[i] and a[16 + i] * b[16 + i]. A block's 32 biased values are one
+// operand, and the scale (0 in the other half) picks the 16 lanes an output
+// takes. The accumulator starts at -128 * scale, so (128 + nn) * scale lands
+// on nn * scale exactly.
 template <typename T_in, typename T_sf, typename T_out, const int N,
           const int G>
 void expand(T_in *__restrict in, T_out *__restrict out) {
@@ -106,10 +104,8 @@ void expand(T_in *__restrict in, T_out *__restrict out) {
 #else
 template <typename T_in, typename T_sf, typename T_out, const int N,
           const int G>
-// in and out are distinct objects in every design that binds this, and saying
-// so is what lets the loop below overlap iterations: without it the scheduler
-// has to assume each store may feed the next block's load and settles for a
-// single-stage schedule at II 26, against a six-stage one at II 4.
+// in and out are distinct in every design that binds this; without
+// __restrict the loop below cannot overlap iterations.
 void expand(T_in *__restrict in, T_out *__restrict out) {
   // Keep vector width constant; group size can vary as a multiple of 32
   constexpr int block_size = 32;
@@ -147,8 +143,7 @@ void expand(T_in *__restrict in, T_out *__restrict out) {
         aie::vector<uint8, block_size> asInt8 =
             aie::unpack(I0); // Unpack the 4 bit values to 8 bits
         // 0x43nn is the bfloat16 for 128 + nn whenever nn < 128, so pairing
-        // each nibble with a 0x43 byte lands the value in bfloat16 with one
-        // shuffle, where to_float spends a ups/add/sub/conv chain on it.
+        // each nibble with a 0x43 byte converts it in one shuffle.
         auto [lo, hi] = aie::interleave_zip(asInt8, hi_byte, 1);
         aie::vector<bfloat16, block_size> biased =
             aie::concat(lo, hi).cast_to<bfloat16>();

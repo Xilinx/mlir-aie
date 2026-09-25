@@ -55,8 +55,8 @@ __aie_inline void mm_fused_mmul_2x2(const bfloat16 *__restrict pA,
   constexpr unsigned sizeB = s * t;
   constexpr unsigned sizeC = r * t;
   // Unrolling z lets one row pair's last C stores overlap the next pair's
-  // first C loads. Leave j rolled: unrolled by 4 it cost +4.3% per band with
-  // a 4-trip i loop (chunk_k=32), more than it saved with a 16-trip one.
+  // first C loads. Leave j rolled: unrolling it costs short i loops more than
+  // it saves long ones.
   AIE_LOOP_MAX_ITERATION_COUNT(rowA / 2)
   AIE_LOOP_UNROLL(2)
   for (unsigned z = 0; z < rowA; z += 2) {

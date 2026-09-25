@@ -756,10 +756,10 @@ def _mv_bf16(
     c_ty = np.ndarray[(output_rows or dim_m,), np.dtype[bfloat16]]
     flags = [f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"]
     if not use_chess:
-        # Peano's outer-loop pointer optimizer (on since 22.0.0.2026090301)
-        # turns three of the second row group's offset loads into
-        # post-modify loads from the unoffset base, so rows 4-6 come out
-        # wrong. Drop the flag once llvm-aie fixes the pass.
+        # Peano's outer-loop pointer optimizer turns three of the second row
+        # group's offset loads into post-modify loads from the unoffset base,
+        # so rows 4-6 come out wrong. Drop the flag once llvm-aie fixes the
+        # pass.
         flags += ["-mllvm", "--aie-enable-outer-loop-pointer-opt=false"]
     return _make_extern(
         f"{prefix}_bf16_bf16",
@@ -1177,11 +1177,11 @@ def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
 
 # head_dim -> (LQ, LK, stack_bytes) for flash_attn_prefill.h's PrefillGeom
 # specializations: 512 is global attention, 256 sliding-window. The stack is
-# aiecc's measured_stack_size under Peano 21: fv_step -> sv_row_block is the
-# deepest call the five entry points reach, and both geometries share
-# sv_row_block's frame, so they need the same stack. On aie2 both need
-# _PREFILL_STACK_AIE2 under Peano 22, measured with all five entry points on
-# one core (test_flash_attn_prefill_e2e.py); prefill_epilogue is the deepest.
+# aiecc's measured_stack_size: fv_step -> sv_row_block is the deepest call the
+# five entry points reach, and both geometries share sv_row_block's frame, so
+# they need the same stack. On aie2 both need _PREFILL_STACK_AIE2, measured
+# with all five entry points on one core (test_flash_attn_prefill_e2e.py);
+# prefill_epilogue is the deepest.
 _PREFILL_GEOM = {512: (8, 8, 1984), 256: (16, 16, 1984)}
 _PREFILL_STACK_AIE2 = 1152
 

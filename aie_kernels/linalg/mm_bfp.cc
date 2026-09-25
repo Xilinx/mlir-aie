@@ -22,10 +22,8 @@ namespace {
 // written beyond it are rewritten by the next store. Only the buffer's last
 // block has no successor to repair it, so the callers finish on copyRunsAtEnd.
 //
-// 9 bytes is neither a power of two nor vector aligned, so byte by byte the
-// target serializes every lda.s8 against its st.s8: 94 cycles a block. One
-// 32-byte store per three blocks also amortizes an unaligned store's
-// read-modify-write: 20 cycles for three.
+// Byte by byte, every lda.s8 serializes against its st.s8, so blocks move up
+// to three to a 32-byte store.
 
 using bytes32 = aie::vector<uint8_t, 32>;
 
@@ -63,10 +61,8 @@ inline void storeOneExact(const uint8_t *src, uint8_t *dst) {
     dst[j] = src[j];
 }
 
-// n / 3 for the block counts in play. Spelled as a division the target wants
-// the high half of a 32-bit product, which is a __muldi3 call in the middle of
-// the loop's trip count; these widths fit in 16 bits, so the reciprocal
-// multiply fits in a native 32-bit product.
+// n / 3 for block counts below 2^16, as a 32-bit reciprocal multiply; a
+// division would call __muldi3.
 inline size_t divideByThree(size_t n) { return (n * 0xAAABu) >> 17; }
 
 // `groups` merged triples followed by `tail` (0, 1 or 2) leftover blocks:
@@ -174,14 +170,12 @@ inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
 // tiles are already transposed (the ones done during the shuffle), the higher
 // level tiling transposition should be free using data layout transformations.
 //
-// Each block stream keeps its FIFO state in one of aie2p's two lf registers;
-// four A/B streams plus two C streams per 2x2 group spilled it on every k
-// step. So A and B each get one stream that hops between the group's two rows
-// with pop_seek, popping two blocks per row between seeks, and C one output
-// stream for the call. On hardware a pop_seek right after a plain pop lands
-// correctly only for even block strides, so odd k seeks after every pop. The
-// next group's C is read before this group's is written, overlapping those
-// loads with the mac tail.
+// Each block stream keeps its FIFO state in one of aie2p's two lf registers,
+// so A and B each get one stream that hops between the group's two rows with
+// pop_seek, popping two blocks per row between seeks, and C one output stream
+// for the call. On hardware a pop_seek right after a plain pop lands correctly
+// only for even block strides, so odd k seeks after every pop. The next
+// group's C is read before this group's is written.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
           unsigned t>
 void matmul_vectorized_2x2_bfp16(const bfp16ebs8 *__restrict pA,
@@ -318,15 +312,11 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
 void scalar_shuffle(uint8_t *pA, uint8_t *pC, size_t tileWidth,
                     size_t tileHeight, bool unshuffle = false) {
   event0();
-  // A row is 9/8 bytes per element. Spelling that as *1.125 round-trips the
-  // size_t through double, which on aie2p is three soft-float calls
-  // (__floatunsidf, __muldf3, __fixunsdfsi) sitting in the address math;
-  // counting blocks instead keeps it to a shift.
+  // Count blocks: a row's 9/8 bytes per element as *1.125 would go through
+  // soft-float double calls.
   const size_t blocksPerRow = tileWidth / kSubtileRows;
 
-  // The direction is a runtime flag, but left in the innermost loop it costs
-  // two sel.nez and indexed addressing on every byte. Specialized, each side
-  // walks its own pointers.
+  // Specialized on direction, which would otherwise be selected per byte.
   if (!unshuffle)
     shuffleBfp16ebs8(blocksPerRow, tileHeight, pA, pC);
   else

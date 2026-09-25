@@ -28,9 +28,8 @@ void cast_f32_bf16_row(const float *restrict input, bfloat16 *restrict output,
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 #if AIE_TUNED_AIE2
-  // AIE2 loads the f32 vector straight into the accumulator, which only the a
-  // port can do, so a single chain pipelines to two cycles per 16 elements.
-  // Its 5-stage schedule is only used for a loop known to run a few times.
+  // AIE2 loads the f32 vector straight into the accumulator (a port only). The
+  // pipelined schedule needs a promised minimum trip count.
   auto pin = ::aie::begin_restrict_vector<N>(input);
   auto pout = ::aie::begin_restrict_vector<N>(output);
   const int steps = (uint32_t)cols / N;
@@ -51,12 +50,7 @@ void cast_f32_bf16_row(const float *restrict input, bfloat16 *restrict output,
     }
   }
 #else
-  // Indexing off `i` costs a shift and a pointer update per iteration and
-  // leaves a loop the pipeliner rejects ("the loop structure is not
-  // supported"), so each 512-bit load stands alone with its latency exposed.
-  // Walking the two pointers and unrolling by eight instead gets one load and
-  // one converting store issued in the same bundle, eight elements' worth of
-  // accumulators deep.
+  // Walking pointers: indexing off `i` leaves a loop the pipeliner rejects.
   const float *restrict in = input;
   bfloat16 *restrict out = output;
   AIE_LOOP_MIN_ITERATION_COUNT(1)

@@ -68,9 +68,8 @@ constexpr bool step_markers = true;
 // Output stage geometry.
 constexpr int CHUNK = MM_FUSED_OUT_CHUNK;
 constexpr int C_DEPTH = MM_FUSED_C_DEPTH;
-// The epilogue is lane-wise, so its width changes no result. aie2p runs it 32
-// lanes wide, which halves the trips through the activation's latency chain;
-// aie2 stays at one 512-bit bf16 vector because its LUT tanh is 16 lanes.
+// The epilogue is lane-wise, so its width changes no result. aie2 stays at 16
+// lanes because its LUT tanh is 16 lanes.
 #if AIE_TUNED_AIE2
 constexpr int V = 16;
 #else
@@ -116,7 +115,7 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
   // Rounding is monotone and fixes representable values, so for finite
   // inputs round(clamp(f, lo, hi)) == clamp(round(f), round(lo), round(hi))
   // and the output is bit-identical to clamping in f32. aie2p has no native
-  // f32 min/max, and emulating it held the identity epilogue at II30.
+  // f32 min/max.
   aie::accum<accfloat, V> bound;
   bound.from_vector(aie::broadcast<float, V>(clamp_min));
   const aie::vector<bfloat16, V> lo = bound.template to_vector<bfloat16>();
@@ -124,7 +123,7 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
   const aie::vector<bfloat16, V> hi = bound.template to_vector<bfloat16>();
 
   // Walking cursors rather than src + j * V, which Peano recomputes each
-  // trip (II14 against II4 for the identity epilogue).
+  // trip.
   AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
   AIE_LOOP_UNROLL(2)
   for (int j = 0; j < CHUNK / V; j++) {

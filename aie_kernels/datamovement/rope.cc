@@ -13,9 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// One interleaved-RoPE step over N elements.  The shuffle/multiply/round chain
-// below is the same instruction sequence at every N a vector register can
-// hold, so the caller runs it at the widest N a row has room for.
+// One interleaved-RoPE step over N elements.
 template <typename T, int N>
 static inline void rope_step(const T *restrict input, const T *restrict lut,
                              T *restrict output) {
@@ -48,17 +46,12 @@ template <typename T, int N>
 void rope_kernel(const T *restrict input, const T *restrict lut,
                  T *restrict output, int32_t dims) {
   event0();
-  // A 4N-element step issues one vshuffle, one vmul and one vconv per operand
-  // just as an N-element one does -- the narrow form leaves three quarters of
-  // each 512-bit lane idle -- so a row runs in 4N-element steps and closes with
-  // at most three N-element ones.  Both divisors are unsigned so they stay
-  // shifts rather than becoming the 64-bit magic multiply.
+  // A row runs in 4N-element steps and closes with at most three N-element
+  // ones. Both divisors are unsigned so they stay shifts.
   constexpr int W = 4 * N;
   const int wide = (uint32_t)dims / W;
   const int tail = ((uint32_t)dims % W) / N;
-  // Walking cursors: recomputing input + v, lut + v and output + v from one
-  // index gives the scheduler three address chains that all depend on v, and
-  // it then schedules the step at II 30 rather than II 16.
+  // Walking cursors rather than three addresses recomputed from one index.
   const T *restrict pi = input;
   const T *restrict pl = lut;
   T *restrict po = output;
@@ -112,8 +105,7 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
   event0();
   const int dims_half = (uint32_t)dims / 2;
   const int wide = (uint32_t)dims_half / N;
-  // Walking cursors, for the reason given in rope_kernel above: from an index
-  // the step schedules at II 45, from cursors at II 19.
+  // Walking cursors, as in rope_kernel.
   const T *restrict pi = input;
   const T *restrict pl = lut;
   T *restrict po = output;
@@ -125,8 +117,7 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
   }
   // IRON only accepts a two-halves row that is a multiple of 2N, so each half
   // is a multiple of N/2 and what is left here is one half-width step or
-  // nothing.  A scalar close-out would instead pay per element for a float
-  // multiply that aie2p has no scalar instruction for.
+  // nothing.
   if (wide * N < dims_half) {
     rope_halves_step<T, N / 2>(pi, pl, po, dims_half);
   }

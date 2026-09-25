@@ -815,7 +815,7 @@ static inline void matmul_vectorized_4x4x4_i16_i32(const int16 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   // Four row blocks per 'j' halve the C loads, conversions and stores per mac
-  // against two. The fully unrolled K loop still fits in 1.5 KiB at 16 steps.
+  // against two.
   if constexpr (m % (4 * r) == 0)
     return matmul_vectorized_4x2_mmul<int16, int32, (m / r), (k / s), (n / t),
                                       r, s, t, is_b_row_maj, is_c_row_maj,

@@ -425,7 +425,7 @@ static void conv2dk3_vector(T *line0, T *line1, T *line2, int8_t *wts,
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::positive_inf);
 
-  // The row width is fixed at 32 pixels, as before; input_width is unused.
+  // The row width is fixed at 32 pixels; input_width is unused.
   constexpr int iw = 32;
   constexpr int blocks = iw / 4;
   const int wts_ic_stride = kernel_height * kernel_width * 64;

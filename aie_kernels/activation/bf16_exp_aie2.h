@@ -4,8 +4,8 @@
 #include "../aie_kernel_utils.h"
 #include <lut_based_ops.h>
 
-// Rotated by one: the pipeliner cannot tell the output store from the table
-// reads, so each iteration's reads waited for the previous iteration's store.
+// Store one iteration late: the pipeliner orders the table reads after the
+// previous store.
 template <const int N>
 void exp_bf16_func(bfloat16 *restrict in, bfloat16 *restrict out) {
   auto it_in = aie::cbegin_restrict_vector<16>(in);

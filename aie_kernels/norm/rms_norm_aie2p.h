@@ -19,8 +19,7 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
   const int remaining = (uint32_t)cols % N;
   const int tail_start = vector_chunks * N;
 
-  // A walking pointer so the loop body is a post-incrementing load instead of
-  // an index shift plus an offset-register move.
+  // A walking pointer, so the load can post-increment.
   ::aie::accum<accfloat, N> acc = ::aie::zeros<accfloat, N>();
   if (vector_chunks > 0) {
     const T *restrict p = input;

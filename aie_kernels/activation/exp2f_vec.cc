@@ -43,8 +43,7 @@
 
 using namespace aie;
 
-// Two 512-bit vector registers / 32-bit lanes, the width of one emulated f32
-// multiply (see exp2_poly.h).
+// The width of one emulated f32 multiply (see exp2_poly.h).
 static constexpr int EXP2F_VEC_LEN = 32;
 
 #ifndef EXP2F_VEC_MIN_X
@@ -55,9 +54,8 @@ static_assert(kMinX >= -126.0f,
               "2^k is built in the f32 exponent field, which bottoms out at "
               "the smallest normal, k = -126");
 
-// noinline: Peano -O2 miscompiles the inlined form to NaN under high register
-// pressure. Pointers rather than a 32-lane vector argument and return, which
-// travel through the stack.
+// noinline: inlined, Peano -O2 miscompiles it to NaN under register pressure.
+// Pointers keep the 32-lane vectors off the stack.
 static __attribute__((noinline)) void exp2f_vec(const float *in, float *out) {
   aie::vector<float, EXP2F_VEC_LEN> x = aie::load_v<EXP2F_VEC_LEN>(in);
   x = aie::max(x, aie::broadcast<float, EXP2F_VEC_LEN>(kMinX));

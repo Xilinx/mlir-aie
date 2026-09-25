@@ -24,9 +24,9 @@ static inline void mm_identity_row(uint32_t n, const float *__restrict acc,
 }
 
 // aie2p has no f32 multiplier: `aie::mul` on two float vectors expands to a
-// three-way bf16 split of *both* operands, ~41 bundles per vector. Where one
-// operand is already exact in bf16, splitting the other in two keeps ~16
-// mantissa bits and stays on the native bf16 multiplier.
+// three-way bf16 split of *both* operands. Where one operand is already exact
+// in bf16, splitting the other in two keeps ~16 mantissa bits and stays on the
+// native bf16 multiplier.
 struct bf16_split {
   aie::vector<bfloat16, 16> hi;
   aie::vector<bfloat16, 16> lo;
@@ -80,11 +80,9 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
   event0();
   const aie::vector<bfloat16, 16> half = aie::broadcast<bfloat16, 16>(0.5f);
   const aie::vector<bfloat16, 16> one = aie::broadcast<bfloat16, 16>(1.0f);
-  // sqrt(2/pi), and sqrt(2/pi)*0.044715: writing the inner polynomial as
-  // x*(c0 + c0c1*x^2) keeps the same two rounded constants the separate
-  // form ends up with, but each `aie::mul` here returns an accumulator that
-  // has to be converted back to bf16 before the next one consumes it, and
-  // those conversions are what the serial chain waits on.
+  // sqrt(2/pi) and sqrt(2/pi)*0.044715, for x*(c0 + c0c1*x^2): each
+  // `aie::mul` result converts back to bf16 before the next one consumes it,
+  // so fewer multiplies shorten the serial chain.
   const aie::vector<bfloat16, 16> c0 =
       aie::broadcast<bfloat16, 16>(0.7978845608f);
   const aie::vector<bfloat16, 16> c0c1 =
@@ -126,11 +124,9 @@ static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
 #if AIE_TUNED_AIE2
 // aie2 reads tanh from getTanhBf16's table, and each store is ordered before
 // the next vector's table reads. A loop that loads, computes and stores one
-// vector per iteration does not pipeline, even with an II hint. Storing each
-// result one iteration late puts the next vector's table reads ahead of the
-// store, and with an II hint that loop pipelines; without one the pipeliner
-// still gives up on it. SiLU reaches II 37 from any hint of 31 up, and GELU
-// 58 from 55 up; below that GELU gets 83.
+// vector per iteration does not pipeline. Storing each result one iteration
+// late puts the next vector's table reads ahead of the store, and with an II
+// hint that loop pipelines.
 template <int II, typename F>
 static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
                                float *__restrict out, F f) {
@@ -143,8 +139,8 @@ static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
     *it_out++ = prev;
     prev = cur;
   };
-  // VERSIONED_LOOP's fallback assumes a trip, which a one-vector row does not
-  // have, and guarding it puts GELU at II 47.
+  // Not VERSIONED_LOOP: its fallback assumes a trip, which a one-vector row
+  // does not have.
   const int count = (int)(n / 16) - 1;
   if (count >= 4) {
     AIE_PREPARE_FOR_PIPELINING

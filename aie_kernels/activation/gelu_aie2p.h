@@ -55,16 +55,7 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 
   // AIE_PREPARE_FOR_POSTPIPELINING is required: the pre-RA pipeliner finds no
   // schedule for this body; the post-RA pipeliner achieves II=18, NS=2.
-  //
-  // II=18 is latency, not work: seven of those eighteen bundles are empty, five
-  // of them a single stall between the mac and the vtanh that consumes it.
-  // Four iterations interleave into that gap and land at II=38, so 9.5 bundles
-  // of work per vector instead of 18. Eight does not -- the live ranges stop
-  // fitting and it falls back to II=133.
-  //
-  // Shortening the chain instead of hiding it was tried and is worse: factoring
-  // inner1 as x*(s + s_beta*x^2) drops a vmul, but serializes the three muls
-  // that currently feed the mac in parallel, and the loop goes to II=69.
+  // Unrolling fills the mac-to-vtanh stall; by eight it runs out of registers.
   auto body = [&]() __attribute__((always_inline)) {
     *it_out++ = gelu_tanh_approx(*it_in++);
   };
@@ -80,13 +71,9 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 static inline void gelu_tanh_approx_inplace_bf16(bfloat16 *restrict v,
                                                  const int32_t vector_size) {
   event0();
-  // Separate read and write cursors: with one iterator the load of a slot and
-  // the store of that same slot are a single stream, and the pipeliner serves
-  // them at II=33 instead of the II=18 the out-of-place loop gets. Both
-  // cursors are derived from the restrict `v`, so they are based on it and the
-  // read-then-write order within a slot is still honoured -- a second
-  // begin_restrict_vector would instead promise the two streams are disjoint,
-  // which for an in-place kernel is not true.
+  // Separate read and write cursors, so the loads and stores are separate
+  // streams. Both derive from `v`: a second begin_restrict_vector would claim
+  // the streams are disjoint, which in place they are not.
   auto it_in = aie::begin_vector<32>(v);
   auto it_out = aie::begin_vector<32>(v);
   auto body = [&]() __attribute__((always_inline)) {

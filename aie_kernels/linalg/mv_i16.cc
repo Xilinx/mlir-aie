@@ -7,8 +7,7 @@
 //
 // int16 x int16 -> int32 matrix-vector multiply; the vectorized path reads A
 // word-transposed. mv_bf16.cc is the bf16 counterpart, IRON's GEMV, with a
-// row-major A and a different signature. They shared the name mv.cc, in two
-// directories, which said nothing about which was which.
+// row-major A and a different signature.
 
 #define NOCPP
 
@@ -41,8 +40,7 @@ void matvec_scalar(T_in *a, T_in *b, T_out *c) {
 // column pair, row i's even column in lane 2i and its odd column in lane
 // 2i + 1. An elementwise mac against that column pair of b, repeated 16
 // times, accumulates both columns without separating them; the even and odd
-// lanes are added once per row block. The filtered form below spends 16
-// shuffles and 8 lane broadcasts per 8 columns.
+// lanes are added once per row block.
 template <unsigned m, unsigned k, unsigned r>
 __aie_inline void matvec_i16_aie2(const int16 *__restrict a,
                                   const int16 *__restrict b,
@@ -174,9 +172,7 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
 
   // Columns are the inner loop and two row blocks share each pass over them,
   // so one C accumulator pair stays in registers for the whole k sweep and one
-  // set of b lane broadcasts feeds two mac chains. Sweeping columns outermost
-  // instead reloads and restores C once per 8 columns, and leaves the eight
-  // broadcasts of b spilled to the stack and reloaded every row block.
+  // set of b lane broadcasts feeds two mac chains.
   unsigned row = 0;
   for (; row + 2 * r <= m; row += 2 * r) {
     const T_in *__restrict a_ptr = a + 2 * row;

@@ -210,11 +210,9 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           };
 
           // Peano only software-pipelines an innermost single-block loop, so
-          // while the K reduction is a loop of its own the C loads and stores
-          // that bracket it cannot overlap the MACs. Unrolling K folds it into
-          // the 'j' body and lets 'j' itself pipeline. That only pays where one
-          // mmul step is a single instruction and the unrolled reduction still
-          // fits the register file, so the caller picks per shape.
+          // unrolling K lets 'j', with its C loads and stores, pipeline. The
+          // caller enables it only where one mmul step is one instruction and
+          // the unrolled reduction fits the register file.
           if constexpr (unroll_k) {
             AIE_LOOP_UNROLL_FULL
             for (unsigned i = 0; i < colA; ++i)

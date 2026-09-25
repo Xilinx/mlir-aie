@@ -15,9 +15,8 @@ static inline float scalar_mul(float a, float b) {
   return ::aie::mul(::aie::broadcast<float, 16>(a), b).to_vector<float>()[0];
 }
 
-// a - b * c. Subtracting one scalar_mul from another directly makes Peano
-// form a <16 x float> G_FSUB it cannot legalize, so the subtraction has to
-// stay inside the accumulator.
+// a - b * c, kept in the accumulator: subtracting two scalar_mul results
+// forms a <16 x float> G_FSUB that Peano cannot legalize.
 static inline float scalar_mul_sub(float a, float b, float c) {
   ::aie::accum<accfloat, 16> acc;
   acc.from_vector(::aie::broadcast<float, 16>(a));

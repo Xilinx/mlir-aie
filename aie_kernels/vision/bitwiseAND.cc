@@ -36,7 +36,7 @@ void bitwiseAND_aie(const T *AIE2_RESTRICT src1, const T *AIE2_RESTRICT src2,
   event0();
 
 #if AIE_TUNED_AIE2
-  // Unrolled by 2, the int32 build pipelines at II9, not 2 x II3.
+  // Rolled: unrolled by two, the int32 build pipelines worse.
   AIE_LOOP_NO_UNROLL
 #else
   AIE_PREPARE_FOR_PIPELINING

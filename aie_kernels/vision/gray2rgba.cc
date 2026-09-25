@@ -38,7 +38,7 @@ void gray2rgba_aie(uint8_t *AIE2_RESTRICT y_in, uint8_t *AIE2_RESTRICT rgba_out,
   // (y, y) pairs and with 255 gives (y, 255) pairs; zipping those pairs gives
   // (y, y, y, 255). Four shuffles for four 256-bit stores. A row shorter than
   // four steps takes the plain loop; see rgba2gray.cc. A width that is not a
-  // multiple of 32 finishes 16 pixels at a time as before.
+  // multiple of 32 finishes 16 pixels at a time.
   const v64uint8 alpha = ::aie::broadcast<uint8, 64>(255);
   for (int i = 0; i < height; i++) {
     const int steps = width / 32;

@@ -147,8 +147,8 @@ def q4nx_dequant(
             np.ndarray[(input_bytes,), np.dtype[np.uint8]],
             np.ndarray[(output_bytes,), np.dtype[np.uint8]],
         ],
-        # The inner loop is one long latency chain, so allowing five pipeline
-        # stages instead of the default three takes 2-6% off a call.
+        # The inner loop is one long latency chain, so it is allowed five
+        # pipeline stages instead of the default three.
         compile_flags=[
             f"-DQ4NX_{name.upper()}={value}" for name, value in geometry.items()
         ]

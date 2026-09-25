@@ -526,7 +526,7 @@ def conv2dk1(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # aiecc measured_stack_size (Peano 22) of the untuned code on aie2p
+            # aiecc measured_stack_size of the untuned code on aie2p
             # (1504 B on aie2); 288 B tuned for aie2
             stack_bytes=None if _tuned_arch() == "aie2" else 2752,
             roles=(In, Param, Out, Param, Param, Param, Param),

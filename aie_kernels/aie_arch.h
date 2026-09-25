@@ -46,8 +46,8 @@
 #define AIE_TUNED_AIE2P AIE_ARCH_AIE2P
 #endif
 
-// __restrict on AIE2 only. The AIE2 pipeliner needs it to overlap a streaming
-// loop's iterations; AIE2P kernels were tuned without it.
+// __restrict on AIE2 only: the AIE2 pipeliner needs it to overlap a streaming
+// loop's iterations.
 #if AIE_TUNED_AIE2
 #define AIE2_RESTRICT __restrict
 #else

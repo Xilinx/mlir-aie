@@ -122,9 +122,9 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
 }
 
 #if AIE_TUNED_AIE2
-// With aie_api's f32 multiply the loops above run at II 77 to 143 per 16
-// lanes on AIE2. Here an f32 is split into bf16 limbs, two holding its top 16
-// bits and three all of it; see ../norm/layer_norm_aie2.h for the mac.
+// aie_api's f32 multiply is emulated on AIE2, so here an f32 is split into
+// bf16 limbs, two holding its top 16 bits and three all of it; see
+// ../norm/layer_norm_aie2.h for the mac.
 static inline v32bfloat16 bf16_pair(v16bfloat16 lo, v16bfloat16 hi) {
   return concat(lo, hi);
 }

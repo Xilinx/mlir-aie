@@ -33,9 +33,8 @@ static inline aie::vector<float, N> exp2_poly(aie::vector<float, N> x,
       aie::sub(x, aie::sub(r, aie::select(aie::zeros<float, N>(),
                                           aie::broadcast<float, N>(1.0f), up)));
 #if AIE_TUNED_AIE2
-  // An emulated f32 multiply is a long latency chain on AIE2, and Horner puts
-  // five of them end to end. Estrin's split, (c0 + c1 f) + f^2 (c2 + c3 f) +
-  // f^4 (c4 + c5 f), puts three.
+  // Estrin, (c0 + c1 f) + f^2 (c2 + c3 f) + f^4 (c4 + c5 f), chains three
+  // emulated f32 multiplies where Horner chains five.
   auto fma = [](aie::vector<float, N> a, aie::vector<float, N> b,
                 aie::vector<float, N> c) {
     aie::accum<accfloat, N> acc;

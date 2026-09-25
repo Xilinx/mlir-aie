@@ -27,8 +27,8 @@ void eltwise_mul_add(T_in *a, T_in *b, T_out *c, bool is_mul) {
 }
 
 // AIE2: restrict parameters and a rolled loop let the pipeliner overlap
-// iterations to one vector per cycle; the add goes through a mac so only a
-// needs the a-port-only vlda.conv (see add.cc).
+// iterations; the add goes through a mac so only a needs the a-port-only
+// vlda.conv (see add.cc).
 #if AIE_TUNED_AIE2
 template <typename T_in, typename T_out, const int N>
 void eltwise_vadd(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c) {

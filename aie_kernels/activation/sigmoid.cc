@@ -21,12 +21,9 @@ using namespace aie;
 // multiply's accumulator straight in keeps x/2 in f32 on AIE2P; AIE2's LUT
 // narrows it, which is the accuracy difference between the two architectures.
 //
-// 0.5 * (1 + t) is written as the single mac 0.5 + t * 0.5 against an
-// accumulator preloaded with 0.5. Spelling it as an add followed by a
-// multiply gives the target a five-step chain -- widen t, add, narrow,
-// multiply, narrow -- that the loop cannot hide, and it is the whole of the
-// II. Scaling by 0.5 is exact, so the value reaching the one store rounding
-// is unchanged.
+// 0.5 * (1 + t) is one mac, t * 0.5 onto an accumulator holding 0.5, rather
+// than an add and a multiply. Scaling by 0.5 is exact, so the result is the
+// same.
 void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
                               bfloat16 *restrict output_vector,
                               const int32_t vector_size) {

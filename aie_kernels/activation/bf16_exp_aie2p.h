@@ -17,9 +17,8 @@
 
 using namespace aie;
 
-// Keep the polynomial out of the tile loop: the inlined exp2f_vec form has
-// exhibited Peano -O2 register-pressure miscompiles. The call takes pointers
-// because a 32-lane vector argument and return travel through the stack.
+// noinline: inlined into the tile loop, Peano -O2 miscompiles it under
+// register pressure. Pointers keep the 32-lane vectors off the stack.
 static __attribute__((noinline)) void exp_bf16_vec(const bfloat16 *in,
                                                    bfloat16 *out) {
   aie::vector<bfloat16, VEC_LEN> input_bf16 = aie::load_v<VEC_LEN>(in);

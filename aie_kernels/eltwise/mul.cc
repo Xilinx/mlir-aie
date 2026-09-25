@@ -27,9 +27,8 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
   }
 }
 
-// Four independent load/mul/store chains per iteration; see the note on
-// ADD_UNROLL in add.cc for why one chain leaves the loop latency-bound and
-// why four is the width that pays.
+// Four independent load/mul/store chains per iteration; see ADD_UNROLL in
+// add.cc.
 #define MUL_UNROLL 4
 
 // aie::mul on bf16 yields an accumulator (fp32 products); convert back to
@@ -37,8 +36,8 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
 // produces garbage at the 32-wide AIE2P width.
 #define MUL_ONE(A, B) (aie::mul((A), (B)).template to_vector<T_out>())
 
-// AIE2 runs one chain per iteration instead: with restrict pointers and the
-// loop kept rolled, the pipeliner overlaps it to one vector per cycle.
+// AIE2 runs one chain per iteration instead, which pipelines with restrict
+// pointers and a rolled loop.
 template <typename T_in, typename T_out, const int N>
 void eltwise_vmul(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
                   T_out *AIE2_RESTRICT c) {
@@ -71,7 +70,7 @@ void eltwise_vmul(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
     *pC1++ = MUL_ONE(A3, B3);
   }
 #endif
-  // Zero iterations for the 1024-element tile the factories build.
+  // Whole vectors past the last full group of four.
   for (int i = 0; i < F % MUL_UNROLL; i++) {
     auto A0 = *pA1++;
     auto B0 = *pB1++;
@@ -91,7 +90,7 @@ void eltwise_vmul_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   const int F = (uint32_t)MUL_ELEMS / vec_factor; // see eltwise_vadd_size
-// The single chain needs its 14-stage schedule's trip count at compile time.
+// The single chain pipelines only with a compile-time trip count.
 #if AIE_TUNED_AIE2 && !defined(MUL_ELEMS_RUNTIME)
   AIE_LOOP_NO_UNROLL
   for (int i = 0; i < F / MUL_UNROLL * MUL_UNROLL; i++) {
@@ -120,8 +119,7 @@ void eltwise_vmul_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
       auto B0 = *pB1++;
       *pC1++ = MUL_ONE(A0, B0);
     }
-    // Scalar tail for a size that is not a whole number of vectors; the vector
-    // body consumed exactly F vectors, so the leftovers start at F*vec_factor.
+    // Scalar tail for a size that is not a whole number of vectors.
     const int done = F * vec_factor;
     const int tail = MUL_ELEMS - done;
     for (int i = 0; i < tail; i++) {

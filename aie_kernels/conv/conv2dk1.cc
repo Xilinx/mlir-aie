@@ -168,7 +168,7 @@ conv2dk1_vector(ActT *input, int8_t *kernels, uint8_t *__restrict output,
       const ActT *restrict in0 = input + x * 256;
       const ActT *restrict in1 = in0 + 128;
       const int8_t *restrict w = kernels;
-      // LLVM would unroll this by two, which schedules at II23 per two steps.
+      // Rolled: LLVM's default unroll by two pipelines worse.
       AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_NO_UNROLL
       for (int ic = 0; ic < (input_channels / 8); ic++) {

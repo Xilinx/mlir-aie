@@ -46,8 +46,7 @@ threshold_aie(T *AIE2_RESTRICT img_in, T *AIE2_RESTRICT img_out,
   constants[1] = thresh_val; // updating constant threshold value
   constants[2] = max_val;    // updating constant max_val value
 #if AIE_TUNED_AIE2
-  // Whole vectors rather than elements of `constants`: 8 cycles less per
-  // call.
+  // Whole vectors rather than elements of `constants`.
   const ::aie::vector<T, N> zero_val = ::aie::zeros<T, N>();
   const ::aie::vector<T, N> thresh = ::aie::broadcast<T, N>(thresh_val);
   const ::aie::vector<T, N> max_v = ::aie::broadcast<T, N>(max_val);

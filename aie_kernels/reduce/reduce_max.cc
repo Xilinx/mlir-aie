@@ -27,8 +27,7 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   V running_max = tiny;
 
 #if AIE_TUNED_AIE2
-  // Walked pointer, rolled loop: see reduce_add.cc. For bfloat16, indexing
-  // `in + i` gives II9 per 2 vectors.
+  // Walked pointer, rolled loop: see reduce_add.cc.
   const T *p = in;
   AIE_LOOP_NO_UNROLL
   for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i += VECTOR_SIZE) {

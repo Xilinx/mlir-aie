@@ -116,8 +116,7 @@ struct Strips {
 // 16 bits, one at 32. Each two-register VSHUFFLE moves one bit of the element
 // index between the register number and the lane: three stages for 16 bits
 // (row bit 1 -> column bit 0, row bit 2 -> block, block -> column bit 2), two
-// for 32 bits. aie::transpose instead assembles and splits the strip with
-// VSHIFT/VSEL, 45 cycles an 8x8 block at 16 bits and 53 at 32.
+// for 32 bits.
 // 4x4 blocks of 8- or 16-bit elements take 32 columns of four rows, with rows j
 // and j + 2 in one register, in three stages. W is the columns a call covers.
 template <unsigned S, unsigned BW>
@@ -226,19 +225,15 @@ struct Shuffles<8, 32> {
 #endif
 
 // The row and column walks are fused into one counter so that the strip body
-// is the innermost loop: as a nest the pipeliner declines the outer loops and
-// schedules nothing, whereas the fused loop is a single body it pipelines. On
-// AIE2 a row of at most two strips unrolls instead: for 32 columns of 16-bit
-// 4x4 blocks, before Shuffles took them, the row loop pipelined at 25 cycles a
-// row where the fused loop took 30 a strip.
+// is the innermost loop, the only one the pipeliner schedules. On AIE2 a row
+// of at most two strips unrolls instead.
 template <unsigned S>
 static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
 #if AIE_TUNED_AIE2
   using Sh = Shuffles<S, BIT_WIDTH>;
   if constexpr (Sh::fits) {
     constexpr unsigned units = DIM_m / Sh::W;
-    // Walked pointers: the index arithmetic of `in + o` costs II27 on the
-    // 32-bit build, the pointer bump II14.
+    // Walked pointers rather than the index arithmetic of `in + o`.
     const T *s = in;
     T *d = out;
     unsigned c = 0;

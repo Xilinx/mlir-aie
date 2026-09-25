@@ -108,11 +108,10 @@ pack_rows4(aie::accum<accfloat, r> a0, aie::accum<accfloat, r> a1,
 
 // Four rows of A times b, packed by pack_rows4. Each row walks its own cursor:
 // one pointer stepped through all four rows chains every load on the previous
-// load's post-increment, which holds the loop at II9 rather than II7. The
-// first chunk multiplies instead of accumulating onto zeros, which the target
-// reloads from the stack for every group. Short rows unroll fully, so a whole
-// group is one block the scheduler can overlap with its neighbor. AIE2 would
-// not inline it, and returned its accumulator through the stack.
+// load's post-increment. The first chunk multiplies instead of accumulating
+// onto zeros, which would be reloaded from the stack for every group. Short
+// rows unroll fully, so a whole group is one block the scheduler can overlap
+// with its neighbor. Not inlined, it returns its accumulator through the stack.
 template <uint32_t r, uint32_t k>
 __attribute__((always_inline)) static inline aie::accum<accfloat, 64>
 mac_rows4(const bfloat16 *__restrict a, const bfloat16 *__restrict b) {
@@ -177,12 +176,11 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
 
   // Four rows at a time. One b chunk then feeds four macs instead of one, and
   // one transposed tree sums all four rows where reduce_add_v runs four trees
-  // side by side -- the reduction, not the mac, is what a short row costs.
-  // The tree is a latency chain, so each group's finishes in the next
-  // iteration, under that group's macs. Behind a mac loop only the store
+  // side by side. The tree is a latency chain, so each group's finishes in the
+  // next iteration, under that group's macs. Behind a mac loop only the store
   // waits: the packed accumulator would spill across the loop. On AIE2 four
-  // 64-lane accumulators fill the accumulator file, so the packed one spills
-  // there beside the next group's too. Only AIE2P is known to have the room.
+  // 64-lane accumulators fill the accumulator file, so the packed one would
+  // spill there beside the next group's too.
 #if AIE_TUNED_AIE2P
   constexpr bool fold_late = chunks <= 4;
 #else

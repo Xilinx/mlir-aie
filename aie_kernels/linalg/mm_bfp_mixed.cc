@@ -21,11 +21,8 @@ void matmul_vectorized_2x2_bfp16_bf16(const bfloat16 *__restrict pA,
   const unsigned sizeB = s * t;
   const unsigned sizeC = r * t;
 
-  // The 2x2 output tiles are walked by one loop rather than a row-pair loop
-  // around a column-pair loop. Only the innermost loop is software-pipelined,
-  // so each trip of an outer loop is paid serially; folding the row-pair loop
-  // into the tile loop removes its per-row setup (about 13 cycles each) and
-  // leaves the column wrap to a select.
+  // The 2x2 output tiles are walked by one loop, the column wrap a select:
+  // only the innermost loop is software-pipelined.
   const bfloat16 *__restrict pArow = pA;
   bfloat16 *__restrict pC1 = pC;
   unsigned j = 0;

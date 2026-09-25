@@ -45,11 +45,8 @@ constexpr bf16 kNegInf = bf16(-0x1.FEp127f);
 
 /// f = exp(s - rowmax), in place over the whole S tile.
 ///
-/// A row of S is only LK wide, so taking one row per iteration leaves the
-/// pipeliner an 8- or 16-lane body whose II is set by the exp2 latency rather
-/// than by the work. Stepping a full 64-lane register instead spans 64/LK
-/// query rows at once; the row maxima then have to arrive as a broadcast
-/// pattern, which is built once per group and reused across the whole S tile.
+/// Each 64-lane step spans 64/LK query rows, so the row maxima arrive as a
+/// broadcast pattern built once per group.
 template <int LQ, int LK>
 void apply_softmax(bf16 *__restrict pS, bf16 *__restrict new_m_local) {
   constexpr int kRows = 64 / LK; // query rows covered by one 64-lane vector
@@ -153,14 +150,9 @@ inline aie::vector<float, 64> broadcast_by_row(const float *p) {
 
 /// Rescale the running y accumulator by the per-row correction factor.
 ///
-/// There is no fp32 multiplier on this core: a float x float product goes
-/// through __AIE_API_FP32_EMULATION__, which splits both operands into bf16
-/// limbs and issues three macs plus the conversions, and that is what set this
-/// loop's II. c is already exact in bf16 (aie::exp2<bf16> produced it), so only
-/// y needs splitting, and two of the three limb products carry no weight: the
-/// low limb is 2^-8 of the high one, so y_lo * c is the last correction that
-/// can move a bf16 result. Two macs give roughly 16 mantissa bits where a bf16
-/// output ulp is 2^-8, so the rescale stays far below the output's resolution.
+/// There is no fp32 multiplier. c is exact in bf16 (aie::exp2<bf16> produced
+/// it), so only y is split into bf16 limbs. Two limbs give roughly 16 mantissa
+/// bits, far below a bf16 output ulp.
 template <int LQ, int DH>
 void calculate_y(float *y, float *c) {
   aie::vector<bf16, 64> Ones = aie::broadcast<bf16, 64>(1.0f);
@@ -203,18 +195,15 @@ inline void scale_by_inv_l(bf16 *o, float *l, float *y) {
 /// Y += S * V across one 8-row block of y: kTiles 8x8 output tiles, the i-th
 /// taking its V tile from pV + i * kVStride.
 #if AIE_TUNED_AIE2P
-/// The emulated mmul spends two 32-lane macs and a shuffle per k on one 8x8
-/// tile. Two neighbouring output tiles fill one 64-lane accumulator instead,
-/// rows 0-3 of both in L and rows 4-7 in H, and then one native mac per k
-/// advances both: the S side of it is S[r][k] repeated across the row, the
-/// same for either tile, and the V side is row k of each tile's V broadcast
-/// over its four rows, one vextbcst per tile. Every output still sums its
-/// products in ascending k into the same float accumulator, so y is
-/// bit-identical to the mmul's.
+/// Two neighbouring output tiles fill one 64-lane accumulator, rows 0-3 of
+/// both in L and rows 4-7 in H, so one native mac per k advances both: the S
+/// side is S[r][k] repeated across the row, and the V side is row k of each
+/// tile's V broadcast over its four rows, one vextbcst per tile. Every output
+/// still sums its products in ascending k, so y is bit-identical to the
+/// mmul's.
 ///
-/// The sixteen S-side operands spill once, ahead of the loop. y is loaded one
-/// tile pair ahead, so the next pair's load need not wait for this pair's
-/// store, which the pipeliner cannot tell apart and would serialize.
+/// y is loaded one tile pair ahead, so the next pair's load need not wait for
+/// this pair's store, which the pipeliner cannot tell apart.
 template <unsigned kTiles, unsigned kVStride>
 void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
                   const bf16 *__restrict pV) {
@@ -505,10 +494,8 @@ struct PrefillGeom<256> {
           pV + (t % 2) * MMUL::size_B);
   }
 
-  /// One 8-query row block of S against both key columns. Same accumulator
-  /// budget as attn_fv: two live C tiles fit alongside the hoisted broadcasts,
-  /// four do not, and the reduction loop is where a spill is most expensive
-  /// because the accumulators stay live the whole way down the head.
+  /// One 8-query row block of S against both key columns: two live C tiles
+  /// fit alongside the hoisted broadcasts, four spill.
   static void attn_qk_half(bf16 *__restrict pS1, const bf16 *__restrict pQ1,
                            bf16 *__restrict pK) {
     const bf16 *__restrict pK1 = pK;

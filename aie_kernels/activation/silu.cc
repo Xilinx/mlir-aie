@@ -24,17 +24,8 @@ using namespace aie;
 // this architecture does not take. In a plain function both branches still
 // have to be well-formed, and the 16-lane one is not at 32 lanes.
 //
-// See sigmoid.cc for why 0.5 * (1 + tanh) is written as one mac against an
-// accumulator preloaded with 0.5. What is left is still a chain the target
-// cannot fill from a single iteration -- the AIE2P body schedules at II19
-// with seven of its bundles empty -- so four iterations are unrolled into it,
-// which packs the same II with four times the work.
-//
-// Only where tanh is the single vtanh, though. The LUT path's body in aie2p's
-// use_lut build (AIE2 runs silu_aie2 below instead) is already around eighty
-// bundles and is limited by its table loads rather than by an unfilled
-// schedule, so unrolling it buys 13% and costs 848 bytes of program memory
-// (II77 over 32 iterations at 576 bytes, against II269 over 8 at 1424).
+// See sigmoid.cc for the 0.5 * (1 + tanh) mac. The unroll fills the native
+// vtanh's latency chain; the LUT tanh is bound by its table loads instead.
 template <int lanes>
 static inline void silu_impl(bfloat16 *restrict input_vector,
                              bfloat16 *restrict output_vector,

@@ -163,9 +163,8 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
     for (int oc = 0; oc < (output_channels / CHANNEL_FACTOR); oc++) {
       for (int iw_partialc = 0; iw_partialc < iw_partial; iw_partialc++) {
 #if AIE_TUNED_AIE2
-        // Two pointers, one per half block, so both load units carry the
-        // activations. LLVM would unroll this loop by two, which schedules
-        // at II23 per two steps.
+        // Two pointers, one per half block, so the loads can dual-issue.
+        // Rolled: LLVM's default unroll by two pipelines worse.
         int8_t *restrict in1 = input + MMUL_MK * NUM_ACC / 2;
         AIE_PREPARE_FOR_PIPELINING
         AIE_LOOP_NO_UNROLL

@@ -17,13 +17,8 @@ using namespace aie;
 #define SWIGLU_ELEMS vector_size
 #endif
 
-// out = (x * w1) * silu(x * w2), one vector register per iteration. tanh runs
-// 16 lanes at a time whatever the register width, so the 32-wide iteration
-// splits and re-concatenates and the 16-wide one does neither; silu.cc
-// explains why that is a template parameter rather than an `if`.
-//
-// See sigmoid.cc for why 0.5 * (1 + tanh) is written as one mac against an
-// accumulator preloaded with 0.5.
+// out = (x * w1) * silu(x * w2), one vector register per iteration. See
+// silu.cc for the lane template and sigmoid.cc for the 0.5 * (1 + tanh) mac.
 template <int lanes>
 static inline void swiglu_impl(bfloat16 *restrict input_vector,
                                bfloat16 *restrict weight_vector_1,
@@ -73,11 +68,10 @@ static inline void swiglu_impl(bfloat16 *restrict input_vector,
 }
 
 #if AIE_TUNED_AIE2
-// AIE2's tanh reads a table, ordered against every other load and store, so
-// the next trip's inputs are loaded before this trip's lookups and both stores
-// follow them. At four vectors per trip the prefetched inputs spill past the
-// 1 KiB stack. silu(x * w2) is exactly 0 from x * w2 = -8 down, and where it is
-// 0 the output is 0 too, rather than NaN where x * w1 overflowed.
+// AIE2's table reads are ordered against every load and store, so the next
+// trip's inputs load before this trip's lookups. At K = 4 they overflow the
+// 1 KiB stack. silu(x * w2) is 0 from x * w2 = -8 down, so the output is 0
+// there rather than NaN where x * w1 overflowed.
 static inline void swiglu_aie2(const bfloat16 *restrict x,
                                const bfloat16 *restrict w1,
                                const bfloat16 *restrict w2,

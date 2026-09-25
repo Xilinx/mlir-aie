@@ -152,10 +152,8 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
 
   log2e_vec = aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)scale);
 
-  // First pass - running max over the block.  Accumulate element-wise and
-  // reduce once at the end: the max of the per-chunk maxima is the max over
-  // the block, and it keeps the scalar float compare -- which lowers to a
-  // __gtsf2 call -- out of the loop along with a per-iteration reduce_max.
+  // First pass - running max over the block, reduced once at the end: a
+  // scalar float compare is a libcall.
   aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec =
       aie::broadcast<bfloat16, SM_VEC_LEN>(
           std::numeric_limits<bfloat16>::lowest());
@@ -166,9 +164,7 @@ void partial_softmax_alias_bf16(bfloat16 *restrict input_vector,
   }
   bfloat16 max_val = aie::reduce_max(max_accum_vec);
 
-  // Compute m_{i}: max of this block and the carried-in running max.  aie::max
-  // on bfloat16 is a single instruction; the branch it replaces compared in
-  // float, which is a libcall.
+  // Compute m_{i}: max of this block and the carried-in running max.
   max_val = aie::max(max_val, scale_buffer[row_idx]);
   scale_buffer[num_rows + row_idx] = max_val;
 
@@ -206,8 +202,7 @@ void partial_softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
                           bfloat16 *restrict scale_buffer,
                           const int32_t input_size, const int32_t row_idx,
                           const int32_t num_rows, const bfloat16 scale) {
-  // Here rather than in partial_softmax_alias_bf16, so mha.cc's
-  // partial_softmax can time a whole block around its rows.
+  // Not in partial_softmax_alias_bf16, so mha.cc can time a whole block.
   event0();
   partial_softmax_alias_bf16(input, output, scale_buffer, input_size, row_idx,
                              num_rows, scale);
