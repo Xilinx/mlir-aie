@@ -118,7 +118,7 @@ def catalogue(npu: str, correctness=None, perf=None) -> dict:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     parser.add_argument(
         "--npu", required=True, choices=[t.device for t in ARCH_TRAITS.values()]
     )
