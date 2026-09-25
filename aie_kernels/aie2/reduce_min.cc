@@ -25,12 +25,21 @@ void _reduce_min_vector(int32_t *restrict in, int32_t *restrict out,
   const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_min = massive;
+#if __AIE_ARCH__ == 20
+  // A walked pointer and a rolled loop pipeline at II2 per vector, its two
+  // loads. Indexing `in + i` unrolls by 4 into one serial chain at II15.
+  const v16int32 *p = (const v16int32 *)in;
+  AIE_LOOP_NO_UNROLL
+  for (int32_t i = 0; i < REDUCE_MIN_ELEMS; i += vector_size)
+    running_min = min(running_min, *p++);
+#else
   AIE_PREPARE_FOR_PIPELINING
   for (int32_t i = 0; i < REDUCE_MIN_ELEMS; i += vector_size) {
     v16int32 next = *(v16int32 *)(in + i);
     v16int32 test = min(running_min, next);
     running_min = test;
   }
+#endif
   after_vector = running_min;
   v16int32 first = shift_bytes(after_vector, after_vector, 32U);
   v16int32 second = min(after_vector, first);
