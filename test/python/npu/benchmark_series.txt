@@ -76,6 +76,7 @@ exp2f_vec/1024x256/float32
 exp2f_vec/48x4/float32/vector-tail
 expand/576x16/uint8_bfloat16
 expand/576x256/uint8_bfloat16
+filter2d/160x4/uint8/line_width=160/short-row
 filter2d/1920x16/uint8
 fused_mm/16x64x16x4/bfloat16/band_m=16/bfp16_b=True/chunk_k=32/out_chunk=64
 fused_mm/32x32x16x4/bfloat16

@@ -626,6 +626,8 @@ CASES: list[Case] = [
         perf=False,
     ),
     Case("filter2d", calls=16, smoke=True),
+    # Three middle vectors, one under the count the AIE2 pipelined loop needs.
+    Case("filter2d", dict(line_width=160), calls=4, tag="short-row", perf=False),
     Case("rgba2hue", calls=16, smoke=True),
     # Under four vectors, so AIE2 takes the loop that is not software-pipelined.
     Case("rgba2hue", dict(line_width=96), calls=4, tag="short-row", perf=False),

@@ -16,6 +16,7 @@
 
 #define THRESH_TYPE XF_THRESHOLD_TYPE_BINARY
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 const int32_t SRS_SHIFT = 12;
@@ -32,9 +33,17 @@ constexpr unsigned DataStepXY = 1;
 using mul_ops =
     aie::sliding_mul_xy_ops<Lanes, Points, CoeffStep, DataStepXY, int8, uint8>;
 
-void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
-                         uint8_t *output, const int32_t width,
-                         int16_t *kernel) {
+#if __AIE_ARCH__ == 20
+#define FILTER2D_RESTRICT __restrict
+#else
+#define FILTER2D_RESTRICT
+#endif
+
+void filter2d_3lines_aie(uint8_t *FILTER2D_RESTRICT lineIn0,
+                         uint8_t *FILTER2D_RESTRICT lineIn1,
+                         uint8_t *FILTER2D_RESTRICT lineIn2,
+                         uint8_t *FILTER2D_RESTRICT output, const int32_t width,
+                         int16_t *FILTER2D_RESTRICT kernel) {
   event0();
 
   set_sat(); // Needed for int16 to saturate properly to uint8
@@ -74,7 +83,7 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
   output += VecFactor;
 
   // middle of line, no border extension needed
-  for (int i = 2 * VecFactor; i < width - 1; i += VecFactor) {
+  auto body = [&]() __attribute__((always_inline)) {
     for (int r = 0; r < KERNEL_WIDTH; r++) {
       data_buf[r].insert(0, aie::load_v<32>(line[r]));
       line[r] += VecFactor;
@@ -97,7 +106,26 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
     }
     ::aie::store_v(output, acc.to_vector<uint8>(SRS_SHIFT - 8));
     output += VecFactor;
+  };
+#if __AIE_ARCH__ == 20
+  // Kept rolled, the loop pipelines (four iterations in flight) when it is
+  // known to run at least four times, that is when i = 5 * VecFactor still
+  // passes the test; the count drops the zero-trip guard, so a shorter row
+  // takes the plain loop.
+  if (5 * (int)VecFactor < width - 1) {
+    AIE_LOOP_NO_UNROLL
+    AIE_LOOP_MIN_ITERATION_COUNT(4)
+    for (int i = 2 * VecFactor; i < width - 1; i += VecFactor)
+      body();
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int i = 2 * VecFactor; i < width - 1; i += VecFactor)
+      body();
   }
+#else
+  for (int i = 2 * VecFactor; i < width - 1; i += VecFactor)
+    body();
+#endif
 
   // right of line, border extension by mirroring
   for (int r = 0; r < KERNEL_WIDTH; r++) {
