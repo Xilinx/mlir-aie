@@ -65,9 +65,18 @@ comp_divisor_16b(::aie::vector<uint8_t, 32> divisor,
   divisor_select = aie::concat(res1, res2);
 }
 
-__attribute__((noinline)) void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
-                                            const int32_t height,
-                                            const int32_t width) {
+#if __AIE_ARCH__ == 20
+// Kept rolled, the loop pipelines (three iterations in flight) only when it is
+// known to run at least four times, and only when it is the one copy of the
+// body in its function; a shorter row takes the plain loop in its own function.
+template <bool MinFour>
+__attribute__((noinline)) void
+rgba2hue_rows(uint8_t *__restrict rgba_in, uint8_t *__restrict hue_out,
+#else
+__attribute__((noinline)) void
+rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
+#endif
+              const int32_t height, const int32_t width) {
   event0();
   ::aie::vector<uint8_t, 32> r, g, b;
   ::aie::vector<uint8_t, 32> hue;
@@ -85,8 +94,7 @@ __attribute__((noinline)) void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
   ::aie::vector<int16_t, 32> fourEightFive =
       aie::broadcast<int16_t, 32>(341); // 340 + 1
 
-  AIE_PREPARE_FOR_PIPELINING
-  for (int j = 0; (j < (width * height) / 32); j += 1) {
+  auto body = [&]() __attribute__((always_inline)) {
     xf_extract_rgb(rgba_in, r, g, b);
 
     // Get rgbMin and rgbMax
@@ -126,9 +134,38 @@ __attribute__((noinline)) void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
     ::aie::store_v(hue_out, hue);
     rgba_in += 128;
     hue_out += 32;
+  };
+#if __AIE_ARCH__ == 20
+  if constexpr (MinFour) {
+    AIE_LOOP_NO_UNROLL
+    AIE_LOOP_MIN_ITERATION_COUNT(4)
+    for (int j = 0; (j < (width * height) / 32); j += 1) {
+      body();
+    }
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int j = 0; (j < (width * height) / 32); j += 1) {
+      body();
+    }
   }
+#else
+  AIE_PREPARE_FOR_PIPELINING
+  for (int j = 0; (j < (width * height) / 32); j += 1) {
+    body();
+  }
+#endif
   event1();
 }
+
+#if __AIE_ARCH__ == 20
+void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out, const int32_t height,
+                  const int32_t width) {
+  if ((width * height) / 32 >= 4)
+    rgba2hue_rows<true>(rgba_in, hue_out, height, width);
+  else
+    rgba2hue_rows<false>(rgba_in, hue_out, height, width);
+}
+#endif
 
 extern "C" {
 

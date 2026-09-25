@@ -621,6 +621,8 @@ CASES: list[Case] = [
     ),
     Case("filter2d", calls=16, smoke=True),
     Case("rgba2hue", calls=16, smoke=True),
+    # Under four vectors, so AIE2 takes the loop that is not software-pipelined.
+    Case("rgba2hue", dict(line_width=96), calls=4, tag="short-row", perf=False),
     # conv: full-range int8 data (the kernels saturate, so `input_limit` only
     # keeps the int32 accumulator safe); the shift puts random sums around
     # uint8's range (64 channels x 127^2 ~ 2**20 >> 12 for k1; 9x that >> 15
