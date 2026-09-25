@@ -751,20 +751,18 @@ CASES: list[Case] = [
         tag="relu",
         devices=("npu2",),
     ),
-    # depthwise 1-D conv (aie2p): 1024 outputs per call from a padded row
+    # depthwise 1-D conv: 1024 outputs per call from a padded row
     Case(
         "dwconv1d",
         dict(seq_len=1024, kernel_size=9),
         calls=16,
         scalars=(1024,),
-        devices=("npu2",),
     ),
     Case(
         "dwconv1d_channels_first",
         dict(seq_len=1024, kernel_size=9),
         calls=16,
         scalars=(1024,),
-        devices=("npu2",),
         smoke=True,
     ),
     # one tap is the degenerate split: the kernel halves its taps across two
@@ -775,7 +773,6 @@ CASES: list[Case] = [
         dict(seq_len=1024, kernel_size=1),
         calls=16,
         scalars=(1024,),
-        devices=("npu2",),
         perf=False,
     ),
     # 1008 is 63 blocks of 16, so the kernel's two-blocks-per-pass loop has to
@@ -785,7 +782,6 @@ CASES: list[Case] = [
         dict(seq_len=1008, kernel_size=9),
         calls=16,
         scalars=(1008,),
-        devices=("npu2",),
         tag="odd-block-count",
         perf=False,
     ),
@@ -794,7 +790,6 @@ CASES: list[Case] = [
         "dwconv1d_channels_last",
         dict(channels=256),
         calls=16,
-        devices=("npu2",),
         smoke=True,
     ),
     Case(
@@ -802,7 +797,6 @@ CASES: list[Case] = [
         dict(channels=256, clamp=False),
         calls=16,
         tag="unclamped",
-        devices=("npu2",),
         perf=False,
     ),
     # amd/IRON model shapes: Llama 3.2 1B. Each is one core's per-call tile as

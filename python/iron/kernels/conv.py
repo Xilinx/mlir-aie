@@ -25,7 +25,6 @@ from ._common import (
     Param,
     _conv_act_dtype_info,
     _default_source_path,
-    _detect_arch,
     _make_extern,
     dtypes,
 )
@@ -289,7 +288,7 @@ DWCONV1D_TAIL = 16
 def dwconv1d_channels_first(
     seq_len: int = 1024, kernel_size: int = 9, bias: bool = True
 ) -> ExternalFunction:
-    """Depthwise 1-D cross-correlation on one bf16 channel (aie2p only).
+    """Depthwise 1-D cross-correlation on one bf16 channel.
 
     ``out[t] = bias + sum_p w[p] * x_pad[t + p]`` for ``t < seq_len``: a
     'same' convolution when ``x_pad`` is the channel zero-padded by
@@ -309,11 +308,6 @@ def dwconv1d_channels_first(
         kernel_size: Taps, 1 to 17.
         bias: Add the trailing weight as a bias.
     """
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError(
-            "dwconv1d_channels_first: aie_kernels/aie2p/dwconv1d_channels_first.cc "
-            "has no aie2 port; select an NPU2 device"
-        )
     if not 1 <= kernel_size <= 17:
         raise ValueError(
             f"dwconv1d_channels_first: kernel_size must be 1..17, got {kernel_size}"
@@ -387,7 +381,7 @@ _CLAMP_LIMIT = 6.0
 
 
 def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalFunction:
-    """Depthwise 1-D conv over a channels-last layout, 5 taps (aie2p only).
+    """Depthwise 1-D conv over a channels-last layout, 5 taps.
 
     ``y[c] = clamp(sum_{t=0..4} w_t[c] * x_t[c], lo, hi)`` for ``c < channels``:
     one output timestep across every channel, with per-channel taps. The five
@@ -411,11 +405,6 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
         channels: Channels per call (multiple of 32).
         clamp: Clamp the result to the runtime ``lo``/``hi`` buffers.
     """
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError(
-            "dwconv1d_channels_last: aie_kernels/aie2p/dwconv1d_channels_last.cc "
-            "has no aie2 port; select an NPU2 device"
-        )
     if channels <= 0 or channels % 32:
         raise ValueError(
             "dwconv1d_channels_last: channels must be a positive multiple of the "
