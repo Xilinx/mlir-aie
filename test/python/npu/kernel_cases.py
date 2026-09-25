@@ -1190,8 +1190,9 @@ CASES: list[Case] = [
         scalars=(3,),
         tag="relu",
     ),
-    # On aie2 the identity and ReLU loop needs 4 trips: 16 and 48 run only its
-    # fallback loop, and 80 the main loop at its minimum count.
+    # On aie2 the main loops need 4 trips, and the SiLU and GELU loops run one
+    # fewer than the row has vectors: 16 runs none of those, 48 only the
+    # fallback loops, and 80 the main loops at their minimum count.
     *[
         Case(
             "mm_activation_epilogue",

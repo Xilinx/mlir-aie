@@ -50,11 +50,10 @@ mul_split(const bf16_split &x, const aie::vector<bfloat16, 16> &y) {
   return aie::mac(aie::mul(x.hi, y), x.lo, y).to_vector<float>();
 }
 
-// SiLU: out = x * sigmoid(x), sigmoid built from tanh (the SFU on aie2p,
-// getTanhBf16's table on aie2) as 0.5*(1 + tanh(x/2)). Both multipliers of x
-// are exact in bf16 - 0.5, and sigmoid's [0, 1] result - so a two-term split of
-// x carries the whole f32 input into each product. An all-f32 chain overruns
-// the per-tile cycle budget and hangs.
+// SiLU: out = x * sigmoid(x), sigmoid built from tanh as 0.5*(1 + tanh(x/2)).
+// Both multipliers of x are exact in bf16 - 0.5, and sigmoid's [0, 1] result -
+// so a two-term split of x carries the whole f32 input into each product. An
+// all-f32 chain overruns the per-tile cycle budget and hangs.
 static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
                                       float *__restrict out) {
   event0();
@@ -125,6 +124,81 @@ static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
 }
 
 #if __AIE_ARCH__ == 20
+// aie2 reads tanh from getTanhBf16's table, and each store is ordered before
+// the next vector's table reads. A loop that loads, computes and stores one
+// vector per iteration does not pipeline, even with an II hint. Storing each
+// result one iteration late puts the next vector's table reads ahead of the
+// store, and with the hint that loop pipelines (SiLU at II 39, GELU at 46);
+// without the hint the pipeliner still gives up on it.
+template <typename F>
+static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
+                               float *__restrict out, F f) {
+  event0();
+  auto it_in = aie::begin_restrict_vector<16>(acc);
+  auto it_out = aie::begin_restrict_vector<16>(out);
+  aie::vector<float, 16> prev = f(*it_in++);
+  auto body = [&]() __attribute__((always_inline)) {
+    aie::vector<float, 16> cur = f(*it_in++);
+    *it_out++ = prev;
+    prev = cur;
+  };
+  // VERSIONED_LOOP's fallback assumes a trip, which a one-vector row does not
+  // have, and guarding it puts GELU at II 47.
+  const int count = (int)(n / 16) - 1;
+  if (count >= 4) {
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_TRY_INITIATION_INTERVAL(46)
+    AIE_LOOP_MIN_ITERATION_COUNT(4)
+    for (int i = 0; i < count; i++)
+      body();
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int i = 0; i < count; i++)
+      body();
+  }
+  *it_out = prev;
+  event1();
+}
+
+// SiLU as in mm_silu_hiprec_row.
+static inline aie::vector<float, 16> mm_silu_lut(aie::vector<float, 16> x) {
+  const aie::vector<bfloat16, 16> half = aie::broadcast<bfloat16, 16>(0.5f);
+  aie::accum<accfloat, 16> half_acc;
+  half_acc.from_vector(half);
+  bf16_split xs = split_f32(x);
+  aie::vector<bfloat16, 16> t =
+      tanh_bf16_v16(aie::mac(aie::mul(xs.hi, half), xs.lo, half));
+  // bf16(0.5 + 0.5*t) is bf16(t + 1) * 0.5.
+  aie::vector<bfloat16, 16> sig =
+      aie::mac(half_acc, t, half).to_vector<bfloat16>();
+  return mul_split(xs, sig);
+}
+
+// GELU as in mm_gelu_row. t + 1 is a mac on an accumulator holding 1: a bf16
+// aie::add goes through f32 and back on aie2.
+static inline aie::vector<float, 16> mm_gelu_lut(aie::vector<float, 16> xf) {
+  const aie::vector<bfloat16, 16> half = aie::broadcast<bfloat16, 16>(0.5f);
+  const aie::vector<bfloat16, 16> one = aie::broadcast<bfloat16, 16>(1.0f);
+  const aie::vector<bfloat16, 16> c0 =
+      aie::broadcast<bfloat16, 16>(0.7978845608f);
+  const aie::vector<bfloat16, 16> c0c1 =
+      aie::broadcast<bfloat16, 16>(0.7978845608f * 0.044715f);
+  aie::accum<accfloat, 16> c0acc;
+  c0acc.from_vector(c0);
+  aie::accum<accfloat, 16> one_acc;
+  one_acc.from_vector(one);
+  aie::accum<accfloat, 16> a;
+  a.from_vector(xf);
+  aie::vector<bfloat16, 16> x = a.to_vector<bfloat16>();
+  aie::vector<bfloat16, 16> half_x = aie::mul(half, x);
+  aie::vector<bfloat16, 16> x2 = aie::mul(x, x);
+  aie::vector<bfloat16, 16> poly = aie::mac(c0acc, c0c1, x2);
+  aie::vector<bfloat16, 16> t = tanh_bf16_v16(aie::mul(x, poly));
+  aie::vector<bfloat16, 16> t_p1 =
+      aie::mac(one_acc, t, one).to_vector<bfloat16>();
+  return aie::mul(half_x, t_p1).to_vector<float>();
+}
+
 // aie2 has no f32 max, and a bare copy loop gets no zero-overhead loop, so
 // identity and ReLU share one integer select on the bit pattern: lanes where
 // x - 1 is below `neg` become +0. With neg = -inf's pattern those are the
@@ -148,15 +222,16 @@ static inline void mm_floor_row(uint32_t n, const float *__restrict acc,
 
 extern "C" {
 
-// mode: 0 = identity, 1 = SiLU, 2 = GELU, 3 = ReLU. `n` a multiple of 16.
+// mode: 0 = identity, 1 = SiLU, 2 = GELU, 3 = ReLU. `n` a positive multiple
+// of 16.
 void mm_activation_epilogue_row(const float *__restrict c_in,
                                 float *__restrict c_out, int32_t n,
                                 int32_t mode) {
 #if __AIE_ARCH__ == 20
   if (mode == 1) {
-    mm_silu_hiprec_row((uint32_t)n, c_in, c_out);
+    mm_lut_rows((uint32_t)n, c_in, c_out, mm_silu_lut);
   } else if (mode == 2) {
-    mm_gelu_row((uint32_t)n, c_in, c_out);
+    mm_lut_rows((uint32_t)n, c_in, c_out, mm_gelu_lut);
   } else {
     mm_floor_row((uint32_t)n, c_in, c_out,
                  mode == 3 ? (int32_t)0xff800000 : INT32_MIN);
