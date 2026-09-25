@@ -874,6 +874,10 @@ CASES: list[Case] = [
         smoke=True,
         perf=False,
     ),
+    # 200 is too short for the pipelined loops and 1000 has an odd chunk
+    # count; both end in a scalar tail.
+    Case("rms_norm", dict(cols=200), calls=16, tag="row-tail", perf=False),
+    Case("rms_norm", dict(cols=1000), calls=16, tag="row-tail", perf=False),
     Case("layer_norm", dict(cols=1024), calls=16, smoke=True),
     Case(
         "layer_norm_f32",
