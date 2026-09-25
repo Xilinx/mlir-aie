@@ -83,6 +83,8 @@ dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped
 exp2f_vec/1024x16/float32
 exp2f_vec/1024x256/float32
 exp2f_vec/48x4/float32/vector-tail
+expand/400x16/uint8_bfloat16/group_size=96/group-96
+expand/544x16/uint8_bfloat16/group_size=64/group-64
 expand/576x16/uint8_bfloat16
 expand/576x256/uint8_bfloat16
 filter2d/160x4/uint8/line_width=160/short-row

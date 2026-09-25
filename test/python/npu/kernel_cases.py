@@ -312,6 +312,22 @@ CASES: list[Case] = [
     ],
     Case("expand", calls=16, smoke=True),
     Case("expand", calls=256),
+    # AIE2 builds a group's scale once when a group spans blocks; 96 leaves one
+    # block of each group unpaired.
+    Case(
+        "expand",
+        dict(tile_size=1024, group_size=64),
+        calls=16,
+        tag="group-64",
+        perf=False,
+    ),
+    Case(
+        "expand",
+        dict(tile_size=768, group_size=96),
+        calls=16,
+        tag="group-96",
+        perf=False,
+    ),
     Case("transpose", dict(subtile=4), calls=16, smoke=True),
     Case("transpose", dict(subtile=8), calls=16, smoke=True),
     Case("transpose", dict(subtile=4, dtype=np.uint8), calls=16, smoke=True),

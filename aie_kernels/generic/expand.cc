@@ -13,6 +13,97 @@
 #include <stdlib.h>
 #include <type_traits>
 
+#if __AIE_ARCH__ == 20
+// AIE2 has no 32-lane bf16 multiply: a bf16 vmac.f sums, per lane i of 16,
+// a[i] * b[i] and a[16 + i] * b[16 + i], and aie_api pads each operand's
+// upper half with zeros, a move per operand. Here a block's 32 biased values
+// are one operand as they come out of the byte interleave, and the scale
+// (0 in the other half) picks the 16 lanes an output takes. The accumulator
+// starts at -128 * scale, so (128 + nn) * scale lands on nn * scale exactly,
+// as in the two-product form. One unpack serves two blocks.
+template <typename T_in, typename T_sf, typename T_out, const int N,
+          const int G>
+void expand(T_in *__restrict in, T_out *__restrict out) {
+  constexpr int block_size = 32;
+  constexpr int blocks_per_group = G / block_size;
+  constexpr int blocks = N / block_size;
+  static_assert((G % block_size) == 0, "GROUP_SIZE must be a multiple of 32");
+  // An odd block count makes the payload 2 mod 4 bytes, which no DMA moves.
+  static_assert(blocks % 2 == 0, "TILE_SIZE must be a multiple of 64");
+
+  T_in *__restrict pI = in;
+  T_in *pSFb = in + N / 2;
+  const T_sf *__restrict pSF = (const T_sf *)pSFb;
+  T_out *__restrict pO = out;
+  const aie::vector<uint8, 64> hi_byte = aie::broadcast<uint8, 64>(0x43);
+  const aie::vector<bfloat16, 32> neg_bias =
+      aie::broadcast<bfloat16, 32>(bfloat16(-128.0f));
+  const aie::vector<bfloat16, 32> zero = aie::zeros<bfloat16, 32>();
+  const aie::mask<32> lo_half = aie::mask<32>::from_uint32(0x0000ffffu);
+
+  struct scale {
+    v32bfloat16 lo, hi;
+    v16accfloat bias;
+  };
+  auto make_scale = [&](bfloat16 sf) __attribute__((always_inline)) {
+    const aie::vector<bfloat16, 32> s = aie::broadcast<bfloat16, 32>(sf);
+    scale c;
+    c.lo = aie::select(zero, s, lo_half);
+    c.hi = aie::select(s, zero, lo_half);
+    c.bias = mul_elem_16_2(neg_bias, c.lo);
+    return c;
+  };
+  auto block = [&](const aie::vector<uint8, 64> &biased_bytes, const scale &c)
+      __attribute__((always_inline)) {
+    const v32bfloat16 biased = biased_bytes.cast_to<bfloat16>();
+    aie::store_v(pO,
+                 aie::accum<accfloat, 16>(mac_elem_16_2(biased, c.lo, c.bias))
+                     .to_vector<bfloat16>());
+    aie::store_v(pO + 16,
+                 aie::accum<accfloat, 16>(mac_elem_16_2(biased, c.hi, c.bias))
+                     .to_vector<bfloat16>());
+    pO += block_size;
+  };
+  // Two blocks from one 64-nibble load.
+  auto two_blocks = [&](const scale &c0, const scale &c1)
+      __attribute__((always_inline)) {
+    const aie::vector<uint8, 64> nibbles =
+        aie::unpack(aie::load_v<2 * block_size>(pI));
+    pI += block_size;
+    const auto [lo, hi] = aie::interleave_zip(nibbles, hi_byte, 1);
+    block(lo, c0);
+    block(hi, c1);
+  };
+
+  event0();
+  if constexpr (blocks_per_group % 2) {
+    // Two groups at a time keep every 64-nibble load 32-byte aligned; the
+    // block count is even, so the group count is too.
+    AIE_LOOP_NO_UNROLL
+    for (int g = 0; g < blocks / blocks_per_group; g += 2) {
+      const scale c0 = make_scale(pSF[0]);
+      const scale c1 = make_scale(pSF[1]);
+      pSF += 2;
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 1; k < blocks_per_group; k += 2)
+        two_blocks(c0, c0);
+      two_blocks(c0, c1);
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 1; k < blocks_per_group; k += 2)
+        two_blocks(c1, c1);
+    }
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int g = 0; g < blocks / blocks_per_group; g++) {
+      const scale c = make_scale(*pSF++);
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 0; k < blocks_per_group; k += 2)
+        two_blocks(c, c);
+    }
+  }
+  event1();
+}
+#else
 template <typename T_in, typename T_sf, typename T_out, const int N,
           const int G>
 // in and out are distinct objects in every design that binds this, and saying
@@ -73,6 +164,7 @@ void expand(T_in *__restrict in, T_out *__restrict out) {
     }
   event1();
 }
+#endif
 
 extern "C" {
 
