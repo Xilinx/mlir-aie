@@ -95,7 +95,7 @@ def _factory(case_id: str):
 @pytest.fixture(autouse=True)
 def _aie2p_device(npu2_device):
     # Factories pick sources and mac_dims from the current device; a few
-    # (exp2f_vec, convert_copy) exist only for aie2p.
+    # (mm_activation_epilogue) exist only for aie2p.
     yield
 
 

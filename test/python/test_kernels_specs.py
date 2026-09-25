@@ -23,7 +23,6 @@ The shared _isolate_extern_state fixture lives in conftest.py at this
 directory level.
 """
 
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -60,12 +59,6 @@ class KernelSpec:
     shape_checks: list[tuple[dict, int, tuple]] = field(default_factory=list)
     # (kwargs_overrides, expected_tile_size_at_arg_0)
     tile_size_checks: list[tuple[dict, int]] = field(default_factory=list)
-    # True for a factory that raises unless the current device resolves to
-    # aie2p (e.g. exp2f_vec's explicit NotImplementedError gate on aie2).
-    # Every other factory here is arch-agnostic (or pins its own subdir
-    # regardless of the detected arch), so this defaults off; see
-    # _device_for below for what setting it does.
-    requires_npu2: bool = False
 
 
 KERNEL_SPECS: list[KernelSpec] = [
@@ -379,7 +372,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         kwargs=dict(tile_size=1024),
         arg_count=3,
         expected_name="exp2f_vec_f32",
-        requires_npu2=True,
         invalid_kwargs=[
             (dict(tile_size=1000), "multiple of 16"),
             (dict(tile_size=1024, min_x=-127.0), "min_x must be >= -126"),
@@ -834,40 +826,8 @@ def _flat_ids(rows, label):
     return [f"{r[0].name}-{label}{i}" for i, r in enumerate(rows)]
 
 
-@contextmanager
-def _device_for(spec: KernelSpec):
-    """Bind the current iron device around a factory call, when the spec needs one.
-
-    Every factory in KERNEL_SPECS except exp2f_vec is arch-agnostic (or pins
-    its own subdir regardless of the detected arch), so this is a no-op for
-    almost every row. exp2f_vec is aie2p-only and raises NotImplementedError
-    unless the current device resolves to aie2p (see its factory), so its
-    spec row sets requires_npu2 and needs a real device bound for the
-    duration of the call, mirroring the npu2_device fixture test_kernels_
-    chess.py's emulated-bf16 tests use, inlined here since KERNEL_SPECS'
-    generic tests are parametrized per-spec, not per-fixture.
-
-    Restores whatever was bound before rather than clearing, so binding here
-    cannot drop a device a caller had already selected. The npu2_device fixture
-    in conftest.py can clear unconditionally because pytest scopes its teardown
-    to one test; this runs inline, per parametrized spec.
-    """
-    if spec.requires_npu2:
-        # probe_runtime=False reads only the explicit binding, and never
-        # initializes the default runtime just to snapshot it.
-        previous = get_current_device(probe_runtime=False)
-        set_current_device(NPU2Col1())
-        try:
-            yield
-        finally:
-            set_current_device(previous)
-    else:
-        yield
-
-
 def _call_factory(spec: KernelSpec, kwargs: dict):
-    with _device_for(spec):
-        return spec.factory(**kwargs)
+    return spec.factory(**kwargs)
 
 
 ARG_COUNT_OVERRIDES: list[tuple[KernelSpec, dict, int]] = []

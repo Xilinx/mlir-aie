@@ -222,15 +222,14 @@ CASES: list[Case] = [
         smoke=True,
         perf=False,
     ),
-    Case("exp2f_vec", calls=16, devices=("npu2",), smoke=True),
-    Case("exp2f_vec", calls=256, devices=("npu2",)),
+    Case("exp2f_vec", calls=16, smoke=True),
+    Case("exp2f_vec", calls=256),
     # 48 is not a multiple of the 32 elements one block handles, so the
     # 16-element tail runs.
     Case(
         "exp2f_vec",
         dict(tile_size=48),
         calls=4,
-        devices=("npu2",),
         tag="vector-tail",
         smoke=True,
         perf=False,

@@ -577,7 +577,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
     ``aie_kernels/aie2p/exp2f_vec.cc`` for the accuracy rationale and the
     ``noinline`` codegen hazard this kernel carries.
 
-    aie2p only for now; not characterized on aie2.
+    The same source builds for aie2.
 
     Args:
         tile_size: Number of elements per tile; must be a multiple of 16
@@ -592,7 +592,6 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         ExternalFunction configured for the exp2f_vec kernel.
 
     Raises:
-        NotImplementedError: On aie2 (this kernel has not been ported).
         ValueError: If tile_size is not a multiple of 16, or min_x is
             below -126.
     """
@@ -606,13 +605,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
             f"f32 exponent field, whose smallest normal exponent is -126), "
             f"got {min_x}"
         )
-    arch = _detect_arch()
-    if arch != "aie2p":
-        raise NotImplementedError(
-            "exp2f_vec is aie2p-only for now; it has not been characterized "
-            "or ported to aie2"
-        )
-    source = _default_source_path("exp2f_vec.cc")
+    source = _default_source_path("exp2f_vec.cc", subdir="aie2p")
     tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
     return _make_extern(
         "exp2f_vec_f32",
