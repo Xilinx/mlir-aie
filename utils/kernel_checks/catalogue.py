@@ -5,9 +5,10 @@
 
 For every factory in ``aie.iron.kernels``: its family, summary and sources,
 the builds it offers on this NPU's architecture, and how its cases fared in
-the nightly extensive sweep and the benchmark. benchmarkKernels.yml runs it
-on each NPU after timing, and publishKernelResults.yml installs the result
-as ``bench/<npu>/catalogue.json`` beside that NPU's ``data.js``.
+the nightly extensive sweep and performance checks. nightlyKernelChecks.yml
+runs it on each NPU after timing, and publishKernelResults.yml installs the
+result as ``kernel-checks/<npu>/catalogue.json`` beside that NPU's
+``data.js``.
 """
 
 import argparse
@@ -52,7 +53,7 @@ def _by_factory(case_names) -> dict[str, set[str]]:
 def _swept(path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     """Return the cases of the extensive sweep that passed and that failed, by factory.
 
-    A case failed if any input or seed failed, as the benchmark excludes it.
+    A case failed if any input or seed failed, as the performance checks exclude it.
     """
     passed, failed = set(), set()
     for test in ET.parse(path).iter("testcase"):
@@ -72,7 +73,7 @@ def _timed(path) -> dict[str, set[str]]:
     return _by_factory(row["name"].rsplit("/", 1)[0] for row in rows)
 
 
-def catalogue(npu: str, correctness=None, bench=None) -> dict:
+def catalogue(npu: str, correctness=None, perf=None) -> dict:
     """Return ``npu``'s column: every factory, and what this NPU offers and verified of it."""
     arch = next(t.name for t in ARCH_TRAITS.values() if t.device == npu)
     previous = get_current_device(probe_runtime=False)
@@ -88,7 +89,7 @@ def catalogue(npu: str, correctness=None, bench=None) -> dict:
         set_current_device(previous)
 
     passed, failed = _swept(correctness) if correctness else ({}, {})
-    timed = _timed(bench) if bench else {}
+    timed = _timed(perf) if perf else {}
     rows = []
     for factory in kernels.factories():
         f = getattr(kernels, factory)
@@ -122,10 +123,10 @@ def main(argv=None) -> int:
         "--npu", required=True, choices=[t.device for t in ARCH_TRAITS.values()]
     )
     parser.add_argument("--correctness", help="junit XML of the extensive sweep")
-    parser.add_argument("--bench", help="bench.json of the timed cases")
+    parser.add_argument("--perf", help="perf.json of the timed cases")
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
-    result = catalogue(args.npu, args.correctness, args.bench)
+    result = catalogue(args.npu, args.correctness, args.perf)
     with open(args.out, "w") as f:
         json.dump(result, f, indent=1)
     return 0

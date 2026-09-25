@@ -333,7 +333,7 @@ A new factory is complete when one line each in two places covers it:
 1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
    with the argument roles (`In`, `Out`, `InOut`, or `Param`), a
    numpy reference exported as `<name>_ref`, `ops_per_call` for the
-   benchmark's throughput series, and a `Tolerance` with its evidence in
+   performance checks' throughput series, and a `Tolerance` with its evidence in
    `note` — or none, to get the dtype default. Reductions set `out_valid`
    to the number of meaningful output elements. Say what the kernel
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
@@ -345,12 +345,12 @@ A new factory is complete when one line each in two places covers it:
    `Trace.whole_call()` when one `event0()` before the work and one
    `event1()` after it bracket every call of the entry symbol, or
    `Trace.none(reason)` / `Trace.partial(reason)` when they do not. A
-   kernel the benchmark times must be `whole_call`.
+   kernel the performance checks time must be `whole_call`.
 2. **Case.** Add one `Case(...)` to
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
    the shape to run and, with `smoke=True`, that it is the kernel's
    representative shape for the per-PR device test. The same table drives
-   the nightly correctness sweep and the benchmark, so there is nothing
+   the nightly correctness sweep and the performance checks, so there is nothing
    else to register.
 
 The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
@@ -363,7 +363,7 @@ symbol reaches against `trace=`. Markers in a sibling kernel of the same
 file, around an inner loop, or skipped by an early return do not count as
 `whole_call`.
 
-## Testing, benchmarking and static checks
+## Testing, performance and static checks
 
 Every tier below reads the contract and the case table; none restates
 what a kernel computes.
@@ -384,23 +384,23 @@ architectures each PR, and the nightly builds every case's.
 pytest test/python/test_kernel_contracts.py                        # host
 pytest test/python/npu/test_kernels_e2e.py -k eltwise              # NPU, smoke
 pytest test/python/npu/test_kernels_e2e.py -m extensive --seeds 3  # NPU, everything
-pytest test/python/npu/test_kernels_bench.py -m benchmark -k mul   # time one kernel
-pytest test/python/npu/test_kernels_bench.py -m benchmark --bench-out bench.json
+pytest test/python/npu/test_kernels_perf.py -m perf -k mul          # time one kernel
+pytest test/python/npu/test_kernels_perf.py -m perf --perf-out perf.json
 python -m aie.utils.compile.remarks --target aie2p --out static.json
 ```
 
 To measure a kernel change against the code before it, point
 `--baseline-sources` at a second checkout (any directory holding
 `aie_kernels/` and `aie_runtime_lib/`). The static checks then compile both
-and print each row that differs; the benchmark runs each case from both,
+and print each row that differs; the performance checks run each case from both,
 back to back, on the same inputs:
 
 ```bash
 mkdir ../base && git archive HEAD aie_kernels aie_runtime_lib | tar -x -C ../base
 python -m aie.utils.compile.remarks --target aie2p --only '^gelu' \
     --out static.json --baseline-sources ../base
-pytest test/python/npu/test_kernels_bench.py -m benchmark -k gelu \
-    --baseline-sources ../base --bench-meta meta.json
+pytest test/python/npu/test_kernels_perf.py -m perf -k gelu \
+    --baseline-sources ../base --perf-meta meta.json
 ```
 
 ### Data policy
@@ -442,11 +442,11 @@ either owns its mode or assumes the caller set one), not the whole of it:
 around their body, and nothing yet boots a core into `conv_even` by
 default. Both remain to do under that issue.
 
-### What the benchmark records
+### What the performance checks record
 
-`test/python/npu/test_kernels_bench.py` measures a kernel only after it has
+`test/python/npu/test_kernels_perf.py` measures a kernel only after it has
 produced a correct result under its declared tolerance; a wrong result fails
-the test, and a failed session writes no `--bench-out` file at all. Per case it records core
+the test, and a failed session writes no `--perf-out` file at all. Per case it records core
 `cycles` and `cycles_per_kop`, `npu_us` / `e2e_us` from
 `aie.utils.benchmark`, and `compile_s` with the `xclbin`, `insts` and
 core-ELF sizes of a forced rebuild.
@@ -460,13 +460,13 @@ so anything above the minimum is the core waiting. The median, the maximum,
 each initializer's minimum and whether the trace buffer filled go in the
 row's `range`. The trace buffer is sized to the number of intervals the
 contract declares. Preflight reads the device and its power mode through the
-host runtime (`HostRuntime.power_mode()`); the benchmark workflow tries to
+host runtime (`HostRuntime.power_mode()`); the nightly workflow tries to
 switch to `performance` first, but always records the active mode in the
 results. A bit-exact `passthrough` smoke test inside a cycle band guards
-the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
-at `https://xilinx.github.io/mlir-aie/bench/`, whose catalogue view lists
-every factory with the builds each NPU offers and how its cases fared that
-night (`utils/kernel_bench/catalogue.py` writes it); `cycles`
+the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/` and is
+graphed at `https://xilinx.github.io/mlir-aie/kernel-checks/`, whose catalogue
+view lists every factory with the builds each NPU offers and how its cases fared that
+night (`utils/kernel_checks/catalogue.py` writes it); `cycles`
 and the sizes alert at 3 %, the wall times are advisory, and nothing
 gates a pull request. A Peano-bump PR is compared against the cached
 nightly baseline and gets one comment only if a hard-threshold series
@@ -495,8 +495,8 @@ emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With
 `MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
 `aie_kernels/` is compiled against an installed wheel. The separate
-`benchmarkKernels.yml` workflow runs hardware correctness and benchmarks
-nightly and on Peano-pin pull requests; it does not run these
+`nightlyKernelChecks.yml` workflow runs the hardware correctness and
+performance checks nightly and on Peano-pin pull requests; it does not run these
 static checks.
 
 ### Kernels the generic builder cannot run
@@ -531,7 +531,7 @@ the GEMM-ordered bfp16ebs8 byte stream. Both are exposed as byte buffers so
 the harness checks exponents, mantissas and ordering exactly, including the
 kernel's floor-rounded bf16 intermediate. The default block and two smaller
 geometries participate in the compile and extensive hardware sweeps; the
-default also runs as a hardware smoke test and benchmark.
+default also runs as a hardware smoke test and performance check.
 
 ## Related reading
 

@@ -21,21 +21,21 @@ Everything here is built on tools that are already in this repository, and every
 
 ## <u>The measurement tools in this repository</u>
 
-The kernel library ([`aie.iron.kernels`](../../kernels_library.md)) comes with a test and benchmark suite that you can use on your own kernel edits. [Testing, benchmarking and static checks](../../kernels_library.md#testing-benchmarking-and-static-checks) describes it in full, and the API is in [docs/api/kernels.md](../../../docs/api/kernels.md). In short:
+The kernel library ([`aie.iron.kernels`](../../kernels_library.md)) comes with correctness and performance checks that you can use on your own kernel edits. [Testing, performance and static checks](../../kernels_library.md#testing-performance-and-static-checks) describes it in full, and the API is in [docs/api/kernels.md](../../../docs/api/kernels.md). In short:
 
 | Tool | What it tells you |
 |---|---|
-| [`test/python/npu/kernel_cases.py`](../../../test/python/npu/kernel_cases.py) | The table of cases: kernel, tile size, number of calls, edge data, and which cases are smoke tests, nightly tests, or benchmarks. |
+| [`test/python/npu/kernel_cases.py`](../../../test/python/npu/kernel_cases.py) | The table of cases: kernel, tile size, number of calls, edge data, and which cases are smoke tests, nightly tests, or performance cases. |
 | [`test/python/npu/test_kernels_e2e.py`](../../../test/python/npu/test_kernels_e2e.py) | Is the kernel still correct? Runs each case on the NPU with poisoned output buffers and judges it against the kernel's numpy reference. |
-| [`test/python/npu/test_kernels_bench.py`](../../../test/python/npu/test_kernels_bench.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `npu_us`, compile time and binary sizes. |
+| [`test/python/npu/test_kernels_perf.py`](../../../test/python/npu/test_kernels_perf.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `npu_us`, compile time and binary sizes. |
 | `python -m aie.utils.compile.remarks` | What did the compiler do? Compiles each kernel exactly as the JIT does and reports every loop's II, stages, zero-overhead-loop status, program memory, dropped pragmas, runtime-library calls and stack depth. No device needed. |
-| [Nightly charts](https://xilinx.github.io/mlir-aie/bench/) | The benchmark's history, one chart per case and metric. Its [catalogue](https://xilinx.github.io/mlir-aie/bench/#view=catalogue) lists every kernel, its sources, and which NPUs build it and passed it last night. |
+| [Nightly Kernel Checks](https://xilinx.github.io/mlir-aie/kernel-checks/) | The performance history, one chart per case and metric. Its [catalogue](https://xilinx.github.io/mlir-aie/kernel-checks/#view=catalogue) lists every kernel, its sources, and which NPUs build it and passed it last night. |
 
 All of them honour `MLIR_AIE_KERNEL_SOURCES` (see [section 4c](../section-4c#before-you-start-make-sure-your-edits-are-compiled)): point it at a checkout and they compile that checkout's `aie_kernels/`. That is also how you build a "before" version to compare against.
 
 ## <u>Markers come first</u>
 
-A cycle count needs `event0()` before the work and `event1()` after it in the kernel source ([section 4b](../section-4b)). The bench measures cycles with [`kd.cycles_per_call`](../../../python/iron/algorithms/kernel_design.py), and only for kernels whose `KernelContract` declares `trace=Trace.whole_call()`: **exactly one** `event0()`/`event1()` pair brackets **exactly one** whole call of the entry symbol. A kernel whose markers sit around an inner loop or behind an early return declares `Trace.partial(reason)`, and one without markers `Trace.none(reason)`. A benchmarked case whose kernel declares either fails rather than charting wall clock alone, and the declaration must be right, because a wrong one produces a clean-looking wrong number (see [Cycles you can trust](#cycles-you-can-trust)).
+A cycle count needs `event0()` before the work and `event1()` after it in the kernel source ([section 4b](../section-4b)). `test_kernels_perf.py` measures cycles with [`kd.cycles_per_call`](../../../python/iron/algorithms/kernel_design.py), and only for kernels whose `KernelContract` declares `trace=Trace.whole_call()`: **exactly one** `event0()`/`event1()` pair brackets **exactly one** whole call of the entry symbol. A kernel whose markers sit around an inner loop or behind an early return declares `Trace.partial(reason)`, and one without markers `Trace.none(reason)`. A timed case whose kernel declares either fails rather than charting wall clock alone, and the declaration must be right, because a wrong one produces a clean-looking wrong number (see [Cycles you can trust](#cycles-you-can-trust)).
 
 Before you declare `Trace.whole_call()` on a kernel's contract (in `python/iron/kernels/`, in the Python package your tests import):
 
@@ -56,14 +56,14 @@ Adding markers has a cost of its own: on AIE2P they grew one kernel's stack fram
 
 The bf16 [add.cc](../../../aie_kernels/eltwise/add.cc) kernel used to run one load/add/store chain per loop iteration. On AIE2P it now runs four. Here is how that change looks through each tool.
 
-**Hardware first.** The `add` contract declares `Trace.whole_call()`, so the bench times it. Benchmark the 16-call case with the kernel in your checkout and, in the same run, with a snapshot of the old one. Run from the root of the checkout:
+**Hardware first.** The `add` contract declares `Trace.whole_call()`, so the performance check times it. Time the 16-call case with the kernel in your checkout and, in the same run, with a snapshot of the old one. Run from the root of the checkout:
 
 ```bash
 mkdir /tmp/before
 git archive <old-commit> aie_kernels aie_runtime_lib | tar -x -C /tmp/before
-MLIR_AIE_KERNEL_SOURCES=$PWD pytest test/python/npu/test_kernels_bench.py -m benchmark \
-    -k "[add/1024x16/bfloat16]" --bench-out after.json \
-    --baseline-sources /tmp/before --bench-meta meta.json
+MLIR_AIE_KERNEL_SOURCES=$PWD pytest test/python/npu/test_kernels_perf.py -m perf \
+    -k "[add/1024x16/bfloat16]" --perf-out after.json \
+    --baseline-sources /tmp/before --perf-meta meta.json
 ```
 
 `--baseline-sources` measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and `meta.json` give both arms' `cycles` and minimum `npu_us`, and how many raw output words differ. The rows in `after.json` are the checkout's. Set `MLIR_AIE_KERNEL_SOURCES` for the checkout too. Without it, the tools compile the installed copy of `aie_kernels/`, so the "after" arm quietly measures whatever kernel was last installed. The brackets in `-k` match the whole case ID; without them, `mul_add/1024x16/bfloat16` would match too. `--pmode <mode>` makes the run refuse to start unless the device is in that power mode (the nightly uses `performance`); it checks the mode and does not set it.
@@ -76,7 +76,7 @@ Each row in the JSON is `<case>/<metric>`:
 | `add/1024x16/bfloat16/cycles_per_kop` | 380.859 | 146.484 |
 | `add/1024x16/bfloat16/npu_us` | 85.16 | 90.53 |
 
-`cycles` is the minimum over the 16 traced calls, with the median, maximum and count in the row's `range`. The table's cycles are medians, recorded before the bench switched to the minimum. `npu_us` is the median device time of a whole 16-call dispatch. The kernel is 2.6x faster, yet `npu_us` got *slower*. The next section explains why that is expected, and why you should judge the kernel by `cycles`.
+`cycles` is the minimum over the 16 traced calls, with the median, maximum and count in the row's `range`. The table's cycles are medians, recorded before the performance check switched to the minimum. `npu_us` is the median device time of a whole 16-call dispatch. The kernel is 2.6x faster, yet `npu_us` got *slower*. The next section explains why that is expected, and why you should judge the kernel by `cycles`.
 
 **Then the compiler's view.** Run the remarks tool on each tree:
 
@@ -144,7 +144,7 @@ Wall clock is also noisy. Between builds that were byte-identical, the minimum d
 
 ## <u>Cycles you can trust</u>
 
-The bench's `cycles_per_call` labels each interval with the kernel that emitted it and refuses a stream that holds more intervals than the contracts declare. `get_trace_summary.py`, which the programming examples' `make trace` runs, does not: it pairs each `event0` with the next `event1` and prints first/min/avg/max, whatever those intervals are. Check before you quote it.
+`test_kernels_perf.py`'s `cycles_per_call` labels each interval with the kernel that emitted it and refuses a stream that holds more intervals than the contracts declare. `get_trace_summary.py`, which the programming examples' `make trace` runs, does not: it pairs each `event0` with the next `event1` and prints first/min/avg/max, whatever those intervals are. Check before you quote it.
 
 **Count intervals first.** Compare the number of intervals with the number of kernel calls the design makes:
 
@@ -312,12 +312,12 @@ Many more variants were rejected on the compiler's report alone, because the II 
 
 ## <u>Keeping it correct</u>
 
-A faster kernel that is sometimes wrong is not faster. `test_kernels_e2e.py` is the gate, and the bench refuses to time a kernel that fails it. These habits catch what an ordinary test misses:
+A faster kernel that is sometimes wrong is not faster. `test_kernels_e2e.py` is the gate, and the performance check refuses to time a kernel that fails it. These habits catch what an ordinary test misses:
 
 * **Test the tails.** Every unroll, widening or blocking adds a remainder path. Add a case to [kernel_cases.py](../../../test/python/npu/kernel_cases.py) whose size reaches it; the activation kernels have 160-element cases for this. Square shapes can hide index-wrap bugs: in `mm_bfp_mixed`, a wrap mutation failed 5 of 6 runs of a non-square 64x32x32 case, and every square case passed.
 * **"Bit-exact" means raw words.** A tolerance check can pass a broken kernel. In the fused epilogue, a test at 4% relative tolerance passed with a dropped term, with a 6% shift in an activation's argument, and with the clamp bounds rounded the wrong way, which changed 45,159 output words. To claim "bit-identical", run both builds on hardware and diff the raw output words.
 * **Prove the gate.** Break the kernel on purpose (drop a term, skip the tail) and confirm the test fails. A test that survives the mutation is not testing that path.
-* **Poison the outputs.** An unwritten element must not pass as a zero. The kernel test and bench upload poisoned outputs for you.
+* **Poison the outputs.** An unwritten element must not pass as a zero. The kernel test and performance check upload poisoned outputs for you.
 * **Derive tolerances from the error model**, and measure them over the longest case. A generous default hid an overrun in `swiglu` that grew from 0.07 at 4 calls to 0.25 at 256.
 * **Keep references independent.** A reference must not replay the kernel's own recurrence. Judge an approximation against the true function: AIE2P's `aie::exp2<bfloat16>` is a piecewise-linear `2^floor(u) × (1 + frac(u))` that overshoots by up to 6.15%, so the attention tests compare with `np.exp2` and a derived error envelope. The native `vtanh` returns x itself for |x| ≤ 0.5, so test both tanh configurations.
 * **Watch what you feed an approximation.** Feeding tanh a bf16-rounded argument amplified `silu`'s error by 1.35x. In softmax, take the row maximum over the raw input and scale it through the same multiply as the data; a kernel that did otherwise returned all-zero rows on large inputs.
@@ -331,14 +331,14 @@ Make sure every number comes from the source you think it does.
 * Point `MLIR_AIE_KERNEL_SOURCES` at the tree you are editing. For the "before" version, extract a snapshot (`git archive <commit> aie_kernels aie_runtime_lib`), including every file the kernel includes: an attention kernel that includes `mm.cc` changes when `mm.cc` does. Snapshot any Python-side parameters the old kernel needs, too, such as its stack size.
 * Run both versions back to back. Kernels you did not change must reproduce to the cycle; if they do not, the setup is the problem.
 * Kernel source bytes, the `MLIR_AIE_KERNEL_SOURCES` path and the library harness's stack size are part of the JIT cache key, but not every Python-side design parameter is. Clear the cache (`NPU_CACHE_HOME`) before a run you intend to report. A run that finishes suspiciously fast probably compiled nothing.
-* Record the kernel tree, its uncommitted changes and the time with each number. The bench's provenance line records the commit, the Peano version, `MLIR_AIE_KERNEL_SOURCES` when it is set, and a digest of the kernel sources the factories compiled, uncommitted edits included. Two rows with the same digest ran the same kernel sources.
+* Record the kernel tree, its uncommitted changes and the time with each number. The performance check's provenance line records the commit, the Peano version, `MLIR_AIE_KERNEL_SOURCES` when it is set, and a digest of the kernel sources the factories compiled, uncommitted edits included. Two rows with the same digest ran the same kernel sources.
 * Check the numbers in comments and commit messages against the object and the hardware before you rely on them.
 * Change one thing at a time, and keep the rejected variants with the number that rejected them.
 * Leave the `*_scalar` variants alone: they are the references the vector kernels are tested against.
 
 ## <u>Exercises</u>
 
-1. Reproduce the [worked example](#a-worked-example-add): benchmark `add/1024x16/bfloat16` with the shipped kernel and with the one-chain loop below in a copy of [add.cc](../../../aie_kernels/eltwise/add.cc), and read both remarks rows.
+1. Reproduce the [worked example](#a-worked-example-add): time `add/1024x16/bfloat16` with the shipped kernel and with the one-chain loop below in a copy of [add.cc](../../../aie_kernels/eltwise/add.cc), and read both remarks rows.
     ```C++
     T_in *__restrict pA1 = a;
     T_in *__restrict pB1 = b;
@@ -360,9 +360,9 @@ Make sure every number comes from the source you think it does.
     390 and 150 cycles; II 12 and II 18, both with `NS=1`. The wall-clock `npu_us` does not move beyond noise, because the core is busy for about 1.5% of the device time.
     </details>
 
-1. The bench sizes the trace buffer from the number of intervals the contracts declare (`kd.traced_intervals`). Call `kd.cycles_per_call` for the `add/1024x256/bfloat16` case with `trace_size=16384` instead. What comes back, and how can you tell?
+1. The performance check sizes the trace buffer from the number of intervals the contracts declare (`kd.traced_intervals`). Call `kd.cycles_per_call` for the `add/1024x256/bfloat16` case with `trace_size=16384` instead. What comes back, and how can you tell?
     <details markdown="1"><summary>Show answer</summary>
-    A 16 KB buffer fills after 91 intervals of this design, so `kernel` holds the first 91 calls and `truncated` is `True`. Those 91 are still labelled correctly, because the buffer keeps the start of the stream in call order. In a bench row, `truncated` appears in the `range`.
+    A 16 KB buffer fills after 91 intervals of this design, so `kernel` holds the first 91 calls and `truncated` is `True`. Those 91 are still labelled correctly, because the buffer keeps the start of the stream in call order. In a performance row, `truncated` appears in the `range`.
     </details>
 
 1. In your copy of [scale.cc](../../../aie_kernels/eltwise/scale.cc), change the scalar kernel's `c[i] = factor * a[i];` to `c[i] = a[i] / factor;`. Rebuild the 32-bit scalar design from [section 4c](../section-4c) and run `llvm-nm -u` on the kernel object. What do you see, and what does it cost?

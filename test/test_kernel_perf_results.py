@@ -3,7 +3,7 @@
 #
 # RUN: %pytest %s
 
-"""Host-only tests of benchmark publication gates."""
+"""Host-only tests of the performance checks' publication gates."""
 
 import importlib.util
 import json
@@ -27,8 +27,8 @@ def hooks():
 def finish(hooks, tmp_path):
     def run(meta, correctness=None, exitstatus=0, failed=()):
         options = {
-            "--bench-out": str(tmp_path / "bench.json"),
-            "--bench-meta": str(tmp_path / "meta.json"),
+            "--perf-out": str(tmp_path / "perf.json"),
+            "--perf-meta": str(tmp_path / "meta.json"),
             "--correctness-results": correctness,
         }
         rows = [
@@ -40,13 +40,13 @@ def finish(hooks, tmp_path):
             stats={"failed": [SimpleNamespace(nodeid=name) for name in failed]}
         )
         config = SimpleNamespace(
-            _bench_rows=rows,
-            _bench_meta=meta,
+            _perf_rows=rows,
+            _perf_meta=meta,
             getoption=options.get,
             pluginmanager=SimpleNamespace(get_plugin=lambda _: reporter),
         )
         hooks.pytest_sessionfinish(SimpleNamespace(config=config), exitstatus)
-        out = tmp_path / "bench.json"
+        out = tmp_path / "perf.json"
         return (
             json.loads(out.read_text()) if out.exists() else None,
             json.loads((tmp_path / "meta.json").read_text()),
@@ -104,13 +104,13 @@ def test_edge_failure_excludes_all_case_metrics(finish, tmp_path, outcome):
         {"preflight": {}, "measurement_sane": True},
         path,
         exitstatus=1,
-        failed=["test_benchmark_failure"],
+        failed=["test_perf_failure"],
     )
     assert len(rows) == meta["n_rows"] == 2
     assert all(row["name"].startswith("relu/") for row in rows)
     assert meta["failed"] == [
-        "test_benchmark_failure",
         f"test_kernels_e2e::{softmax}/large/s0]",
+        "test_perf_failure",
     ]
 
 

@@ -1,12 +1,12 @@
-# benchmark_series.txt
+# perf_series.txt
 #
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Every Case.name in kernel_cases.py, which is the series key the published
-# benchmark charts are keyed on: a row is named "<this>/<metric>". A name that
-# changes starts a new series and orphans the history behind the old one, so
-# test_benchmark_series_names.py pins them here. Adding a case adds a line;
+# performance charts are keyed on: a row is named "<this>/<metric>". A name
+# that changes starts a new series and orphans the history behind the old one,
+# so test_perf_series_names.py pins them here. Adding a case adds a line;
 # changing one is a deliberate decision to break that chart's history.
 add/1024x16/bfloat16
 add/1024x256/bfloat16

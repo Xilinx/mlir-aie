@@ -16,8 +16,8 @@ import pytest
 def page():
     node = shutil.which("node")
     if not node:
-        pytest.skip("node is required to test the benchmark page")
-    path = Path(__file__).resolve().parents[1] / "utils/kernel_bench/index.html"
+        pytest.skip("node is required to test the kernel checks page")
+    path = Path(__file__).resolve().parents[1] / "utils/kernel_checks/index.html"
     script = path.read_text().split("<script>", 1)[1].split("</script>", 1)[0]
     setup = """
 const assert = require('node:assert/strict');
@@ -63,7 +63,7 @@ def test_repeated_sha_observations_are_not_deduplicated(page):
     page("""
 assert.equal(db.order.length, 7);
 assert.equal(new Set(db.order.map(p => p.id)).size, 7);
-assert.deepEqual(s.byMode.get('turbo').map(p => p.bench.value), [100, 110, 121]);
+assert.deepEqual(s.byMode.get('turbo').map(p => p.row.value), [100, 110, 121]);
 assert.equal(latestChange(s, ['turbo']), 0.1);
 assert.equal(latestChange(s, ['turbo', 'performance']), 0.1);
 """)

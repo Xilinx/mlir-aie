@@ -21,7 +21,7 @@ def workflow(name):
     return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
 
 
-def benchmark_steps(job):
+def record_steps(job):
     return [
         step
         for step in job["steps"]
@@ -32,7 +32,7 @@ def benchmark_steps(job):
 @pytest.mark.parametrize(
     "filename,compute,static",
     [
-        ("benchmarkKernels.yml", "bench", "false"),
+        ("nightlyKernelChecks.yml", "checks", "false"),
     ],
 )
 def test_parallel_compute_has_one_main_only_publisher(filename, compute, static):
@@ -40,7 +40,7 @@ def test_parallel_compute_has_one_main_only_publisher(filename, compute, static)
     assert set(config["on"]) == {"workflow_dispatch", "schedule", "pull_request"}
     # A change to the workflow that runs the checks must itself run them.
     assert filename in " ".join(config["on"]["pull_request"]["paths"]) or (
-        filename == "benchmarkKernels.yml"
+        filename == "nightlyKernelChecks.yml"
     )
     assert config["permissions"]["contents"] == "read"
     job = config["jobs"][compute]
@@ -53,7 +53,7 @@ def test_parallel_compute_has_one_main_only_publisher(filename, compute, static)
         assert "git push" not in step.get("run", "")
         assert "git show" not in step.get("run", "")
         assert not step.get("uses", "").startswith("actions/cache/save@")
-    for step in benchmark_steps(job):
+    for step in record_steps(job):
         assert step["with"]["save-data-file"] == "false"
         assert "external-data-json-path" in step["with"]
     publisher = config["jobs"]["publish"]
@@ -83,7 +83,7 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
     assert "strategy" not in publisher
     assert "github.ref == 'refs/heads/main'" in publisher["if"]
     steps = publisher["steps"]
-    records = benchmark_steps(publisher)
+    records = record_steps(publisher)
     assert len(records) == 4
     for step in records:
         options = step["with"]
@@ -108,8 +108,8 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
     assert all(fetch_index < steps.index(step) < push_index for step in records)
     page = next(step for step in steps if step.get("name") == "Install results page")
     assert fetch_index < steps.index(page) < push_index
-    assert "utils/kernel_bench/index.html" in page["run"]
-    assert (WORKFLOWS.parents[1] / "utils/kernel_bench/index.html").is_file()
+    assert "utils/kernel_checks/index.html" in page["run"]
+    assert (WORKFLOWS.parents[1] / "utils/kernel_checks/index.html").is_file()
     baseline_index = next(
         i for i, step in enumerate(steps) if "git show" in step.get("run", "")
     )
@@ -134,24 +134,24 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
     assert all("pattern" in step["with"] for step in downloads)
 
 
-def test_partial_results_are_benchmarked_and_published():
-    config = workflow("benchmarkKernels.yml")
+def test_partial_results_are_timed_and_published():
+    config = workflow("nightlyKernelChecks.yml")
     assert config["concurrency"]["cancel-in-progress"] == (
         "${{ github.event_name == 'pull_request' }}"
     )
     assert "github.event.pull_request.number" in config["concurrency"]["group"]
-    steps = {step.get("id"): step for step in config["jobs"]["bench"]["steps"]}
-    assert steps["bench"]["if"] == (
+    steps = {step.get("id"): step for step in config["jobs"]["checks"]["steps"]}
+    assert steps["perf"]["if"] == (
         "${{ !cancelled() && steps.preflight.outcome == 'success' }}"
     )
     assert "--junitxml=correctness.xml" in steps["correctness"]["run"]
-    assert "--correctness-results correctness.xml" in steps["bench"]["run"]
+    assert "--correctness-results correctness.xml" in steps["perf"]["run"]
     assert config["jobs"]["publish"]["if"].startswith("${{ !cancelled() && ")
 
 
 def test_dispatch_filter_is_passed_as_data_not_shell_source():
-    job = workflow("benchmarkKernels.yml")["jobs"]["bench"]
-    step = next(step for step in job["steps"] if step.get("id") == "bench")
+    job = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]
+    step = next(step for step in job["steps"] if step.get("id") == "perf")
     assert step["env"]["ONLY"] == "${{ inputs.only }}"
     assert "inputs.only" not in step["run"]
     assert '${ONLY:+-k "($ONLY) or test_measurement_is_sane"}' in step["run"]
@@ -159,8 +159,8 @@ def test_dispatch_filter_is_passed_as_data_not_shell_source():
 
 @pytest.mark.parametrize("only", ["", "softmax", "softmax and not large", "$(false)"])
 def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path):
-    steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
-    run = next(step["run"] for step in steps if step.get("id") == "bench")
+    steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "perf")
     command = run[run.index("python -m pytest") :].split("2>&1", 1)[0]
     result = subprocess.run(
         ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
@@ -194,7 +194,7 @@ WHEEL = "https://example.com/llvm_aie-1.0-py3-none-any.whl"
 def run_peano_step(peano, tmp_path):
     step = next(
         step
-        for step in workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+        for step in workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
         if step.get("name") == "Install requested Peano"
     )
     (tmp_path / "aie-venv/bin").mkdir(parents=True, exist_ok=True)
@@ -236,7 +236,7 @@ def run_peano_step(peano, tmp_path):
 def test_dispatch_installs_the_requested_peano(peano, spec, tmp_path):
     step = next(
         step
-        for step in workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+        for step in workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
         if step.get("name") == "Install requested Peano"
     )
     assert step["if"] == "${{ inputs.peano }}"
@@ -260,8 +260,8 @@ def test_dispatch_rejects_an_unresolvable_peano(peano, tmp_path):
     assert args is None
 
 
-def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
-    job = workflow("benchmarkKernels.yml")["jobs"]["bench"]
+def test_preflight_sets_memlock_and_reuses_one_examine():
+    job = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]
     step = next(step for step in job["steps"] if step.get("id") == "preflight")
     run = step["run"]
     assert "sudo prlimit -lunlimited --pid $$" in run
@@ -273,11 +273,11 @@ def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
     assert "printf '%s\\n' \"$EXAMINE\"" in run
     assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
     # Execute the complete command in the condition: sudoers can match arguments.
-    configure = 'if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"; then'
+    configure = 'if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$PERF_PMODE"; then'
     assert configure in run
     assert run.count('sudo -n "$XRT_SMI" configure') == 1
     assert "else\n" in run[run.index(configure) :]
-    assert 'echo "::warning::Cannot set --pmode $BENCH_PMODE' in run
+    assert 'echo "::warning::Cannot set --pmode $PERF_PMODE' in run
     assert '"$XRT_SMI" examine -d "$BDF" --report platform' in run
     assert "xrt-smi examine | grep -oE" not in run
 
@@ -300,19 +300,19 @@ def write_meta(path, pmode):
 
 
 def test_each_power_mode_is_its_own_series(tmp_path):
-    bench = workflow("benchmarkKernels.yml")["jobs"]["bench"]
-    steps = bench["steps"]
-    run = next(step["run"] for step in steps if step.get("id") == "bench")
+    checks = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]
+    steps = checks["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "perf")
     assert "--pmode any" in run
-    assert '--pmode "$BENCH_PMODE"' not in run
+    assert '--pmode "$PERF_PMODE"' not in run
     read = next(step for step in steps if step.get("id") == "pmode")
-    assert read["if"] == "${{ !cancelled() && hashFiles('bench.json') != '' }}"
+    assert read["if"] == "${{ !cancelled() && hashFiles('perf.json') != '' }}"
     write_meta(tmp_path / "meta.json", "performance")
     assert run_step(read["run"], tmp_path) == {"pmode": "performance"}
     write_meta(tmp_path / "meta.json", None)
     with pytest.raises(subprocess.CalledProcessError):
         run_step(read["run"], tmp_path)
-    (compare,) = benchmark_steps(bench)
+    (compare,) = record_steps(checks)
     assert compare["with"]["name"] == (
         "aie_kernels (${{ matrix.expected_npu }}, ${{ steps.pmode.outputs.pmode }})"
     )
@@ -322,17 +322,17 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     assert read["if"] == "${{ !inputs.static }}"
     write_meta(tmp_path / "results/npu1/meta.json", "performance")
     write_meta(tmp_path / "results/npu2/meta.json", "turbo")
-    run = read["run"].replace("$RESULT_FILE", "bench.json")
+    run = read["run"].replace("$RESULT_FILE", "perf.json")
     # A leg with meta but no results (its NPU checks failed) is skipped.
     assert run_step(run, tmp_path) == {}
-    (tmp_path / "results/npu1/bench.json").write_text("[]")
+    (tmp_path / "results/npu1/perf.json").write_text("[]")
     assert run_step(run, tmp_path) == {"npu1": "performance"}
-    (tmp_path / "results/npu2/bench.json").write_text("[]")
+    (tmp_path / "results/npu2/perf.json").write_text("[]")
     assert run_step(run, tmp_path) == {"npu1": "performance", "npu2": "turbo"}
     write_meta(tmp_path / "results/npu2/meta.json", None)
     with pytest.raises(subprocess.CalledProcessError):
         run_step(run, tmp_path)
-    names = [step["with"]["name"] for step in benchmark_steps(publisher)[:2]]
+    names = [step["with"]["name"] for step in record_steps(publisher)[:2]]
     for npu, name in zip(["npu1", "npu2"], names):
         assert (
             f"format('aie_kernels ({npu}, {{0}})', steps.pmode.outputs.{npu})" in name
@@ -343,7 +343,7 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
     steps = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
     page = next(step for step in steps if step.get("name") == "Install results page")
     assert page["if"] == "${{ !inputs.static }}"
-    source = WORKFLOWS.parents[1] / "utils/kernel_bench/index.html"
+    source = WORKFLOWS.parents[1] / "utils/kernel_checks/index.html"
 
     def git(*args):
         return subprocess.run(
@@ -355,8 +355,8 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
         ).stdout.strip()
 
     git("init", "-q", "-b", "main")
-    (tmp_path / "utils/kernel_bench").mkdir(parents=True)
-    (tmp_path / "utils/kernel_bench/index.html").write_bytes(source.read_bytes())
+    (tmp_path / "utils/kernel_checks").mkdir(parents=True)
+    (tmp_path / "utils/kernel_checks/index.html").write_bytes(source.read_bytes())
     git("add", ".")
     git("commit", "-q", "-m", "main")
     git("switch", "-q", "--orphan", "gh-pages")
@@ -375,15 +375,19 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
             check=True,
         )
         assert git("branch", "--show-current") == "main"
-    assert git("show", "gh-pages:bench/index.html") == source.read_text().strip()
-    assert git("show", "gh-pages:bench/npu1/catalogue.json") == '{"npu": "npu1"}'
-    assert git("ls-tree", "-r", "--name-only", "gh-pages", "bench/npu2") == ""
+    assert (
+        git("show", "gh-pages:kernel-checks/index.html") == source.read_text().strip()
+    )
+    assert (
+        git("show", "gh-pages:kernel-checks/npu1/catalogue.json") == '{"npu": "npu1"}'
+    )
+    assert git("ls-tree", "-r", "--name-only", "gh-pages", "kernel-checks/npu2") == ""
     assert git("rev-list", "--count", "gh-pages") == "2"
 
 
 @pytest.mark.parametrize(
     "filename,compute",
-    [("benchmarkKernels.yml", "bench")],
+    [("nightlyKernelChecks.yml", "checks")],
 )
 def test_source_builds_initialize_submodules(filename, compute):
     steps = workflow(filename)["jobs"][compute]["steps"]
@@ -397,9 +401,9 @@ def test_source_builds_initialize_submodules(filename, compute):
     assert steps.index(checkout) < steps.index(build)
 
 
-@pytest.mark.parametrize("step_id", ["correctness", "bench"])
-def test_benchmark_uses_built_package(step_id):
-    steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
+@pytest.mark.parametrize("step_id", ["correctness", "perf"])
+def test_checks_use_built_package(step_id):
+    steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
     run = next(step["run"] for step in steps if step.get("id") == step_id)
     assert (
         run.index("sudo prlimit -lunlimited --pid $$")
@@ -409,7 +413,7 @@ def test_benchmark_uses_built_package(step_id):
     )
 
 
-def test_docs_cleanup_preserves_benchmark_history():
+def test_docs_cleanup_preserves_kernel_checks_history():
     steps = workflow("generateDocs.yml")["jobs"]["build-docs"]["steps"]
     cleanup = next(
         step["run"] for step in steps if "git ls-files -z" in step.get("run", "")
@@ -417,7 +421,16 @@ def test_docs_cleanup_preserves_benchmark_history():
     filters = cleanup.split("git ls-files -z", 1)[1].split("| xargs", 1)[0]
     result = subprocess.run(
         ["bash", "-c", "cat " + filters.rstrip().rstrip("\\")],
-        input=b"bench/npu1/data.js\0bench/static/aie2/data.js\0dev/index.html\0legacy.html\0",
+        input=b"\0".join(
+            [
+                b"kernel-checks/npu1/data.js",
+                b"kernel-checks/static/aie2/data.js",
+                b"bench/npu1/index.html",
+                b"dev/index.html",
+                b"legacy.html",
+                b"",
+            ]
+        ),
         capture_output=True,
         check=True,
     )

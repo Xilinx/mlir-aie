@@ -13,7 +13,7 @@ from pathlib import Path
 
 from aie.iron import kernels
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "utils" / "kernel_bench"))
+sys.path.insert(0, str(Path(__file__).parents[2] / "utils" / "kernel_checks"))
 import catalogue  # noqa: E402
 
 JUNIT = """<?xml version="1.0" encoding="utf-8"?>
@@ -27,7 +27,7 @@ JUNIT = """<?xml version="1.0" encoding="utf-8"?>
 </testsuite></testsuites>
 """
 
-BENCH = [
+PERF = [
     {"name": "gelu/1024x16/bfloat16/npu_us", "unit": "us", "value": 270.0},
     {"name": "gelu/1024x16/bfloat16/cycles", "unit": "cycles", "value": 9000},
     {"name": "gelu/1024x256/bfloat16/npu_us", "unit": "us", "value": 2100.0},
@@ -41,9 +41,9 @@ def _write(tmp_path, argv):
     return result, {k["factory"]: k for k in result["kernels"]}
 
 
-def test_sweep_and_bench_verdicts(tmp_path):
+def test_sweep_and_perf_verdicts(tmp_path):
     (tmp_path / "correctness.xml").write_text(JUNIT)
-    (tmp_path / "bench.json").write_text(json.dumps(BENCH))
+    (tmp_path / "perf.json").write_text(json.dumps(PERF))
     result, rows = _write(
         tmp_path,
         [
@@ -51,8 +51,8 @@ def test_sweep_and_bench_verdicts(tmp_path):
             "npu1",
             "--correctness",
             str(tmp_path / "correctness.xml"),
-            "--bench",
-            str(tmp_path / "bench.json"),
+            "--perf",
+            str(tmp_path / "perf.json"),
         ],
     )
     assert result["arch"] == "aie2" and result["swept"]

@@ -30,8 +30,8 @@ from SKILL.md §Setup:
 | Need | Tool |
 |---|---|
 | Correctness at every data case | `pytest test/python/npu/test_kernels_e2e.py -m extensive` |
-| Cycles per call, wall clock, compile time, ELF bytes | `pytest test/python/npu/test_kernels_bench.py -m benchmark` (`kd.cycles_per_call` behind it) |
-| Base against candidate: cycles, `npu_us` min, raw output words | the same bench with `--baseline-sources $BASE --bench-meta <file>` |
+| Cycles per call, wall clock, compile time, ELF bytes | `pytest test/python/npu/test_kernels_perf.py -m perf` (`kd.cycles_per_call` behind it) |
+| Base against candidate: cycles, `npu_us` min, raw output words | the same check with `--baseline-sources $BASE --perf-meta <file>` |
 | Whether the entry symbol's markers bracket one whole call | `pytest test/python/test_kernel_trace_markers.py` (host only) |
 
 ## Gate (step 2)
@@ -84,15 +84,15 @@ Then measure both arms in one run:
 
 ```bash
 flock "$NPU_LOCK" taskset -c $CPUS \
-  pytest test/python/npu/test_kernels_bench.py -m benchmark -k "[$CASE]" --no-compile \
-  --baseline-sources $BASE --bench-out $W/bench.json --bench-meta $W/meta.json
+  pytest test/python/npu/test_kernels_perf.py -m perf -k "[$CASE]" --no-compile \
+  --baseline-sources $BASE --perf-out $W/perf.json --perf-meta $W/meta.json
 ```
 
 - Each case is measured from this tree, then from `$BASE` right after it,
   with the same inputs. Both must pass the contract.
 - The terminal summary prints one line per case: `cycles base -> cur`,
   `npu_us min base -> cur`, and `same` or `N differ` for the raw output
-  words. `--bench-meta` holds the same under `baseline.cases.<case>` as
+  words. `--perf-meta` holds the same under `baseline.cases.<case>` as
   `{cycles: [base, cur], npu_us_min: [base, cur], differing_words: N}`.
 - The candidate is this checkout. To screen a candidate kept in its own copy
   (`$W/cand-<name>`), set `MLIR_AIE_KERNEL_SOURCES=$W/cand-<name>` on the
@@ -100,7 +100,7 @@ flock "$NPU_LOCK" taskset -c $CPUS \
   both arms share their Python-side parameters (`campaign.md` F11).
 - The JIT cache key includes `MLIR_AIE_KERNEL_SOURCES` and the core stack
   size, so the arms can't share a stale build and no cache wipe is needed.
-- Bench test IDs are `test_kernel_benchmark[<case>]`, so `-k "[$CASE]"`
+- Performance test IDs are `test_kernel_perf[<case>]`, so `-k "[$CASE]"`
   (brackets included) selects exactly one case. Without the brackets,
   `-k "add/1024x16/bfloat16"` also ran `mul_add`. `-k` rejects `=`, so for a
   case like `dwconv1d/.../kernel_size=9/...` select `[dwconv1d/1040x16` and
@@ -109,9 +109,9 @@ flock "$NPU_LOCK" taskset -c $CPUS \
   runs at `performance`. Record the mode with the numbers.
 - `--no-compile` skips the cold-rebuild timing. Drop it when you want
   `compile_s` and the ELF byte rows.
-- `--bench-out` is a list of `{name: "<case>/<metric>", unit, value, range?,
+- `--perf-out` is a list of `{name: "<case>/<metric>", unit, value, range?,
   extra}` rows for this tree only. It's written only if the whole session
-  passed. `--bench-meta` is written either way.
+  passed. `--perf-meta` is written either way.
   - `<case>/cycles` is the **min** of the kernel's intervals. Its `range`
     gives `median X max Y n=N`, then `init[i] min M` per traced initializer,
     then `truncated` if the trace buffer filled.
@@ -140,7 +140,7 @@ holds `kernel`, `initializers`, `setup`, `truncated` and `untimed`.
 | A `<case>/cycles` row | The kernel's own intervals, split from any initializer's | Still confirm the static report's `[OK] name: symbol from source` line names *your* entry point |
 | No `<case>/cycles` row | The contract declares `none` or `partial`. Library-wide that's `set_rounding`, `fused_mm` and the default `mha` build (a masked call returns before its markers) | Fall back to wall clock and say so. To time it, move one marker pair onto the entry so it brackets every call, declare `Trace.whole_call()`, and pass the marker audit |
 | `expected E trace intervals, got M; a kernel on the core emits markers its contract's trace does not declare` | Something traced but undeclared: a marker around an inner loop, or an initializer that has markers but doesn't declare them | Run `pytest test/python/test_kernel_trace_markers.py`. It names the build and the marker it rejects |
-| `truncated` in the range | The trace buffer filled. The row is the min over the calls that fit | The bench sizes the buffer from `kd.traced_intervals`, so this is rare. Compare `n=` with the case's `calls`, and flag n < calls/2 as undersampled |
+| `truncated` in the range | The trace buffer filled. The row is the min over the calls that fit | The performance check sizes the buffer from `kd.traced_intervals`, so this is rare. Compare `n=` with the case's `calls`, and flag n < calls/2 as undersampled |
 | `the trace holds M intervals and none of the kernel's` | The buffer is too small, or the markers are missing | Run the marker audit |
 | A `partial` initializer raises with its reason | Its intervals can't be told apart from the kernel's | Fix the initializer's markers first |
 
@@ -197,7 +197,7 @@ Several other checks apply to any row:
   difference the times: `(t20 − t4) / 16` is the per-call cost with dispatch
   cancelled. A bfp16 shuffle read −56% on wall clock and 10.4x per call by
   slope. If the second case doesn't exist, add it to `kernel_cases.py`
-  (and to `benchmark_series.txt`).
+  (and to `perf_series.txt`).
 - Before you believe a delta, confirm the artifacts differ: compare the
   `core_elf_bytes` rows (run without `--no-compile`), or `cmp` the core
   ELFs.
@@ -230,7 +230,7 @@ on every case is the claim.
 
 ## Provenance
 
-Every bench row's `extra` carries the commit, the Peano version,
+Every performance row's `extra` carries the commit, the Peano version,
 `kernel_sources` and the `kernels` digest. The digest changes with any edit
 to the kernel tree that ran, committed or not. Next to every number you
 quote, also record:

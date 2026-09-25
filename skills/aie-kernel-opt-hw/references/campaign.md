@@ -33,14 +33,14 @@ agents' edits and builds. Each rule below cites the incident behind it.
    sizes, geometry tables): both arms run the same installed factories. A
    shrunk `_PREFILL_GEOM[256]` left `prefill_fv/256` with no before number
    (F11). Measure the whole matrix once from the base and keep its
-   `--bench-out` and `--bench-meta`.
+   `--perf-out` and `--perf-meta`.
 4. **Write a brief** that every agent reads. It carries:
-   - the setup, gate, remarks, marker audit and bench `--baseline-sources`
-     commands, with this site's `$NPU_LOCK` and `$CPUS`
+   - the setup, gate, remarks, marker audit and performance-check
+     `--baseline-sources` commands, with this site's `$NPU_LOCK` and `$CPUS`
    - the non-negotiables
    - `aie-kernel-opt-static` `levers.md` and `hw-levers.md`
    - the deliverable format below
-   
+
    Between rounds, add every new measurement trap to the brief (F12).
 
 ## Rules in a shared tree
@@ -55,7 +55,7 @@ agents' edits and builds. Each rule below cites the incident behind it.
   reach, export it as `NPU_LOCK`, wrap every hardware command in it, and
   keep `-k` selections narrow (F06):
   ```bash
-  flock "$NPU_LOCK" pytest test/python/npu/test_kernels_bench.py -m benchmark -k "$CASE" ...
+  flock "$NPU_LOCK" pytest test/python/npu/test_kernels_perf.py -m perf -k "$CASE" ...
   ```
 - **Pin the host side.** Give each agent the same fixed `taskset -c $CPUS`
   list for every run it will compare. Leave out any core the site knows is
@@ -81,7 +81,7 @@ agents' edits and builds. Each rule below cites the incident behind it.
 
 An in-flight fix can erase a finding, but it can never manufacture one. One
 of 8 all-clears was clean only because a teammate's uncommitted fix was in
-the tree (F04). Every bench row's `extra` carries the commit, the Peano
+the tree (F04). Every performance row's `extra` carries the commit, the Peano
 version and a `kernels` digest of the tree that ran, so two numbers from
 different trees show different digests. Next to every number, also record:
 

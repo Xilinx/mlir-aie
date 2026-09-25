@@ -3,17 +3,18 @@
 <!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 <!--
-  Kernel benchmark results, installed as bench/index.html on the publication
-  branch by publishKernelResults.yml. It reads the data.js that
-  github-action-benchmark writes under bench/<npu>/, where each power mode is
-  its own suite, "aie_kernels (<npu>, <mode>)". One chart per NPU, kernel
-  case and metric, with a line per power mode. The catalogue view reads the
-  bench/<npu>/catalogue.json that utils/kernel_bench/catalogue.py writes.
+  The Nightly Kernel Checks page, installed as kernel-checks/index.html on the
+  publication branch by publishKernelResults.yml. It reads the data.js that
+  github-action-benchmark writes under kernel-checks/<npu>/, where each power
+  mode is its own suite, "aie_kernels (<npu>, <mode>)". One chart per NPU,
+  kernel case and metric, with a line per power mode. The catalogue view
+  reads the kernel-checks/<npu>/catalogue.json that
+  utils/kernel_checks/catalogue.py writes.
 -->
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AIE kernel benchmarks</title>
+  <title>Nightly Kernel Checks</title>
   <style>
     body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; color: #24292f; }
     [hidden] { display: none !important; }
@@ -44,7 +45,7 @@
 </head>
 <body>
   <header>
-    <h1>AIE kernel benchmarks</h1>
+    <h1>Nightly Kernel Checks</h1>
     <div id="views">
       <label><input type="radio" name="view" value="charts" checked> Charts</label>
       <label><input type="radio" name="view" value="catalogue"> Catalogue</label>
@@ -100,14 +101,14 @@
           for (const { commit, date, benches } of entries) {
             const id = observations.length;
             observations.push({ id, npu, commit, date });
-            for (const bench of benches) {
-              const cut = bench.name.lastIndexOf('/');
-              const kase = bench.name.slice(0, cut), metric = bench.name.slice(cut + 1);
+            for (const row of benches) {
+              const cut = row.name.lastIndexOf('/');
+              const kase = row.name.slice(0, cut), metric = row.name.slice(cut + 1);
               const key = `${npu}|${kase}|${metric}`;
               let s = series.get(key);
-              if (!s) series.set(key, s = { key, npu, kase, metric, unit: bench.unit, byMode: new Map() });
+              if (!s) series.set(key, s = { key, npu, kase, metric, unit: row.unit, byMode: new Map() });
               if (!s.byMode.has(mode)) s.byMode.set(mode, []);
-              s.byMode.get(mode).push({ id, date, bench });
+              s.byMode.get(mode).push({ id, date, row });
             }
           }
         }
@@ -126,7 +127,7 @@
       for (const mode of modes) {
         const pts = s.byMode.get(mode);
         if (!pts || pts.length < 2) continue;
-        const [a, b] = pts.slice(-2).map(p => p.bench.value);
+        const [a, b] = pts.slice(-2).map(p => p.row.value);
         if (!a) continue;
         const d = (b - a) / a;
         if (worst === null || d > worst) worst = d;
@@ -167,7 +168,7 @@
     }
 
     // One row per factory; per NPU, what it offers there and what the nightly
-    // extensive sweep and benchmark made of it.
+    // extensive sweep and performance checks made of it.
     function npuCell(npu, k) {
       const td = document.createElement('td');
       if (!k || !k.builds.length) {
@@ -258,13 +259,13 @@
       const labels = order.map(c => c.commit.id.slice(0, 7));
       const index = new Map(order.map((c, i) => [c.id, i]));
       const datasets = modes.filter(m => s.byMode.has(m)).map(mode => {
-        const values = new Array(labels.length).fill(null), benches = new Array(labels.length);
+        const values = new Array(labels.length).fill(null), rows = new Array(labels.length);
         for (const p of s.byMode.get(mode)) {
           const i = index.get(p.id);
-          values[i] = p.bench.value;
-          benches[i] = p.bench;
+          values[i] = p.row.value;
+          rows[i] = p.row;
         }
-        return { label: mode, data: values, benches, fill: false, spanGaps: true, lineTension: 0,
+        return { label: mode, data: values, rows, fill: false, spanGaps: true, lineTension: 0,
                  borderColor: modeColor.get(mode), backgroundColor: modeColor.get(mode), pointRadius: 2 };
       });
       charts.push(new Chart(el.querySelector('canvas'), {
@@ -273,7 +274,7 @@
         options: {
           animation: false,
           scales: {
-            xAxes: [{ scaleLabel: { display: true, labelString: 'benchmark run (commit)' } }],
+            xAxes: [{ scaleLabel: { display: true, labelString: 'nightly run (commit)' } }],
             yAxes: [{ scaleLabel: { display: true, labelString: s.unit }, ticks: { beginAtZero: true } }],
           },
           tooltips: {
@@ -284,7 +285,7 @@
                 return `\n${c.commit.message.split('\n')[0]}\n${new Date(c.date).toString()}`;
               },
               label: (item, data) => {
-                const b = data.datasets[item.datasetIndex].benches[item.index];
+                const b = data.datasets[item.datasetIndex].rows[item.index];
                 return `${data.datasets[item.datasetIndex].label}: ${item.value} ${s.unit}` + (b && b.range ? ` (${b.range})` : '');
               },
             },

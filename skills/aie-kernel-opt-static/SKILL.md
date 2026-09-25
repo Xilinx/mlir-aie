@@ -181,5 +181,5 @@ For background only (no step needs it):
   disassembly, trip counts, the loop-pragma reference.
 - `programming_guide/section-4/section-4d/README.md` §Reading the static report, §Levers that measured faster, §Peano
   and AIE2P traps, §When to stop.
-- `programming_guide/kernels_library.md`, "Testing, benchmarking and static
+- `programming_guide/kernels_library.md`, "Testing, performance and static
   checks".

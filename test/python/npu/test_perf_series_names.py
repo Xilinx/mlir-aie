@@ -1,4 +1,4 @@
-# test_benchmark_series_names.py -*- Python -*-
+# test_perf_series_names.py -*- Python -*-
 #
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -6,16 +6,16 @@
 # RUN: %python %s
 # REQUIRES: python_bindings
 
-"""Pin the benchmark series keys.
+"""Pin the performance series keys.
 
-``benchmarkKernels.yml`` feeds rows named ``<Case.name>/<metric>`` to
+``nightlyKernelChecks.yml`` feeds rows named ``<Case.name>/<metric>`` to
 benchmark-action, which keys each chart on that string and keeps its history
 under it. Renaming a case therefore does not rename a chart -- it abandons one
 and starts another, silently, and the loss is only visible on the published
 dashboard.
 
 Nothing else ties those names down, so this does. It is a snapshot test on
-purpose: a diff to ``benchmark_series.txt`` is the reviewable record of which
+purpose: a diff to ``perf_series.txt`` is the reviewable record of which
 chart histories a change ends.
 """
 
@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from cases import Case, device_for  # noqa: E402
 from kernel_cases import CASES  # noqa: E402
 
-_SNAPSHOT = Path(__file__).parent / "benchmark_series.txt"
+_SNAPSHOT = Path(__file__).parent / "perf_series.txt"
 
 
 def _recorded() -> list[str]:
@@ -51,11 +51,11 @@ def test_series_names_are_unchanged():
     added = sorted(set(current) - set(recorded))
     removed = sorted(set(recorded) - set(current))
     assert not removed, (
-        f"these benchmark series would lose their published history: {removed}. "
+        f"these performance series would lose their published history: {removed}. "
         f"If that is intended, update {_SNAPSHOT.name}."
     )
     assert not added, (
-        f"new benchmark series: {added}. Add them to {_SNAPSHOT.name} so the "
+        f"new performance series: {added}. Add them to {_SNAPSHOT.name} so the "
         "next rename is still caught."
     )
 
@@ -64,11 +64,11 @@ def test_series_names_are_unique():
     """Two cases sharing a name would overwrite each other's chart."""
     names = _current()
     duplicates = sorted({n for n in names if names.count(n) > 1})
-    assert not duplicates, f"cases share a benchmark series: {duplicates}"
+    assert not duplicates, f"cases share a performance series: {duplicates}"
 
 
-def test_smoke_benchmark_is_measured_once():
-    from test_kernels_bench import _PERF_CASES, SMOKE_TEST
+def test_smoke_case_is_measured_once():
+    from test_kernels_perf import _PERF_CASES, SMOKE_TEST
 
     names = [SMOKE_TEST.name, *(param.values[0].name for param in _PERF_CASES)]
     assert len(names) == len(set(names))
@@ -76,7 +76,7 @@ def test_smoke_benchmark_is_measured_once():
 
 
 def test_cycle_efficiency_is_independent_of_call_count():
-    from test_kernels_bench import _record
+    from test_kernels_perf import _record
 
     for calls in (1, 16, 256):
         case = Case("passthrough", dict(tile_size=2048), calls=calls)
@@ -87,7 +87,7 @@ def test_cycle_efficiency_is_independent_of_call_count():
 
 
 def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():
-    from test_kernels_bench import _record
+    from test_kernels_perf import _record
 
     case = Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=4, devices=("npu2",))
     # One call stalled; zero's intervals are their own population.
@@ -105,7 +105,7 @@ def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():
 
 
 def test_raw_words_compare_bits_not_values():
-    from test_kernels_bench import _differing_words
+    from test_kernels_perf import _differing_words
 
     a = np.array([0.0, 1.0, np.nan], dtype=np.float32)
     b = np.array([-0.0, 1.0, np.nan], dtype=np.float32)
@@ -125,7 +125,7 @@ def test_matrix_series_keep_tile_geometry_and_call_count():
 if __name__ == "__main__":
     test_series_names_are_unchanged()
     test_series_names_are_unique()
-    test_smoke_benchmark_is_measured_once()
+    test_smoke_case_is_measured_once()
     test_cycle_efficiency_is_independent_of_call_count()
     test_cycles_row_is_the_kernel_min_with_its_spread_beside_it()
     test_raw_words_compare_bits_not_values()

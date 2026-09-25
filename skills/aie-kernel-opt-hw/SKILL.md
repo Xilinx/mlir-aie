@@ -1,6 +1,6 @@
 ---
 name: aie-kernel-opt-hw
-description: Measure and land AIE kernel speedups on the NPU. Takes a candidate report from aie-kernel-opt-static, or a raw compiled kernel (C++ built by Peano for AIE2P or AIE2, in aie_kernels/ or the user's own .cc), and settles it on hardware. Use when the user has an NPU and wants to know whether a kernel change is really faster, wants traced cycles per call, sees a trace interval count that doesn't match the calls, wants to claim bit-exactness, sees a kernel win that doesn't show in wall clock, or is running a multi-kernel or multi-agent optimization campaign. Drives the in-repo test_kernels_e2e gate, and test_kernels_bench with kd.cycles_per_call and --baseline-sources, measuring base and candidate back to back; covers reading cycle rows, mutation-proven gates, raw output diffs, one commit per kernel with its numbers, and feeding each outcome back to the static table. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).
+description: Measure and land AIE kernel speedups on the NPU. Takes a candidate report from aie-kernel-opt-static, or a raw compiled kernel (C++ built by Peano for AIE2P or AIE2, in aie_kernels/ or the user's own .cc), and settles it on hardware. Use when the user has an NPU and wants to know whether a kernel change is really faster, wants traced cycles per call, sees a trace interval count that doesn't match the calls, wants to claim bit-exactness, sees a kernel win that doesn't show in wall clock, or is running a multi-kernel or multi-agent optimization campaign. Drives the in-repo test_kernels_e2e gate, and test_kernels_perf with kd.cycles_per_call and --baseline-sources, measuring base and candidate back to back; covers reading cycle rows, mutation-proven gates, raw output diffs, one commit per kernel with its numbers, and feeding each outcome back to the static table. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).
 license: Apache-2.0 WITH LLVM-exception
 ---
 
@@ -61,11 +61,11 @@ each step.
    measure both arms in one run:
    ```bash
    flock "$NPU_LOCK" taskset -c $CPUS \
-     pytest test/python/npu/test_kernels_bench.py -m benchmark -k "[$CASE]" --no-compile \
-     --baseline-sources $BASE --bench-out $W/bench.json --bench-meta $W/meta.json
+     pytest test/python/npu/test_kernels_perf.py -m perf -k "[$CASE]" --no-compile \
+     --baseline-sources $BASE --perf-out $W/perf.json --perf-meta $W/meta.json
    ```
    - The terminal summary prints `cycles base -> cur`, `npu_us min base ->
-     cur` and the raw output words that differ, per case. `--bench-meta`
+     cur` and the raw output words that differ, per case. `--perf-meta`
      has the same under `baseline.cases.<case>`.
    - Add a case of a kernel you didn't touch
      (`-k "[$CASE] or [<unchanged case>]"`). It must reproduce to the cycle
@@ -108,7 +108,7 @@ each step.
 | No `<case>/cycles` row | The contract declares `Trace.none` or `Trace.partial` (`set_rounding`, `fused_mm`, the default `mha` build) | Use wall clock `min` and say so. To time it, make one marker pair bracket the whole call and declare `Trace.whole_call()` (`measurement.md` §Reading the cycles row) |
 | `expected E trace intervals, got M; a kernel on the core emits markers its contract's trace does not declare` | Markers the contracts don't declare: an inner-loop bracket, or an initializer with undeclared markers | `pytest test/python/test_kernel_trace_markers.py` names the build |
 | `truncated` in the cycles range, or `none of the kernel's` | The trace buffer filled, or the markers are missing | Compare `n=` with `calls`, flag n < calls/2; run the marker audit |
-| A stream you traced yourself, K instrumented kernels per call | The bench splits by position; a hand trace doesn't | Population j is `intervals[j::K]`. Never quote min or median over the mixed stream |
+| A stream you traced yourself, K instrumented kernels per call | The performance check splits by position; a hand trace doesn't | Population j is `intervals[j::K]`. Never quote min or median over the mixed stream |
 | A row moved but its file didn't | Something in its include closure changed | `git diff <rev> -- <include closure>`; credit the right kernel (`hw-levers.md` §Trace-row attribution) |
 | `core_fraction = cycles·calls/1.76e9/npu_s` < 0.5 | Dispatch-bound at this shape (60-90 µs floor) | Judge on cycles. If production is also dispatch-bound, go to `aie-dataflow-opt` |
 | Wall-clock delta | Host noise band −19.1..+13.3 µs plus ~3% | Use `min` from `range`, pinned. The delta must clear both. Never use the mean (X07) |
@@ -117,7 +117,7 @@ each step.
 ## Non-negotiables
 
 - One change per A/B, and both arms in one run (`--baseline-sources`).
-- Correctness before cycles: a failing gate, or a bench case that fails its
+- Correctness before cycles: a failing gate, or a performance case that fails its
   contract in either arm, voids the numbers.
 - A tolerance pass is not bit-exactness (X11).
 - Keep every `extern "C"` name, signature and buffer layout. Leave
@@ -128,7 +128,7 @@ each step.
 
 ## References
 
-- `references/measurement.md`: the gate, the bench A/B, reading the cycles
+- `references/measurement.md`: the gate, the performance A/B, reading the cycles
   row, clock and dispatch, wall clock, raw diff, ablation, provenance.
 - `references/hw-levers.md`: verdict rules, trace-row attribution, port
   balance as a diagnosis, feeding rows back to the static table, and

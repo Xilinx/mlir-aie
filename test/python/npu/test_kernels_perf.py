@@ -1,4 +1,4 @@
-# test_kernels_bench.py -*- Python -*-
+# test_kernels_perf.py -*- Python -*-
 #
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -18,14 +18,14 @@ cases with any extensive-suite failure or no passing correctness test.
 
 Run it the way the nightly workflow does::
 
-    pytest test/python/npu/test_kernels_bench.py -m benchmark
-        --bench-out bench.json --bench-meta meta.json --pmode turbo
+    pytest test/python/npu/test_kernels_perf.py -m perf
+        --perf-out perf.json --perf-meta meta.json --pmode turbo
         --warmup 10 --iters 50
 
 ``-k`` selects a subset; include the sanity test, for example
 ``-k '(softmax) or test_measurement_is_sane'``, to allow publication.
 The series a row lands in is ``<case>/<metric>``;
-``test_benchmark_series_names.py`` pins those names, because renaming one
+``test_perf_series_names.py`` pins those names, because renaming one
 restarts its chart on gh-pages.
 """
 
@@ -134,7 +134,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
             fn=fn,
             calls=case.calls,
         )
-        # Every benchmarked kernel is timed; one that is not would chart only
+        # Every kernel checked here is timed; one that is not would chart only
         # wall clock and still pass.
         assert not traced.untimed, f"{case.name}: untimed, {traced.untimed}"
         measured["cycles"] = traced
@@ -194,7 +194,7 @@ def _record(record, case: Case, m: dict) -> None:
 
 @pytest.fixture(scope="module")
 def workdir():
-    with tempfile.TemporaryDirectory(prefix="aie-bench-") as d:
+    with tempfile.TemporaryDirectory(prefix="aie-perf-") as d:
         yield Path(d)
 
 
@@ -215,20 +215,20 @@ def _preflight(request):
             f"power mode is {pre.pmode or 'unreadable'}, required '{required}' "
             "(set it with xrt-smi configure --pmode, or pass --pmode any)"
         )
-    config._bench_meta["preflight"] = dict(vars(pre))
-    config._bench_meta["provenance"] = provenance(device=pre.device, pmode=pre.pmode)
+    config._perf_meta["preflight"] = dict(vars(pre))
+    config._perf_meta["provenance"] = provenance(device=pre.device, pmode=pre.pmode)
     return pre
 
 
-@pytest.mark.benchmark
-def test_measurement_is_sane(request, benchmark, workdir):
+@pytest.mark.perf
+def test_measurement_is_sane(request, record_perf, workdir):
     """Time a kernel whose cost is known, so a broken clock fails loudly.
 
     Without this, a tracing path that decodes nothing reports ``None`` cycles
     for every kernel and the whole run charts as an improvement. Failing here
     withholds the whole JSON, not just this row.
     """
-    meta = request.config._bench_meta
+    meta = request.config._perf_meta
     meta["measurement_sane"] = False
     m = _measure(SMOKE_TEST, request.config, workdir)
     cycles = min(m["cycles"].kernel) if "cycles" in m else None
@@ -237,7 +237,7 @@ def test_measurement_is_sane(request, benchmark, workdir):
         assert cycles is not None, "traced run produced no cycle count"
         assert lo <= cycles <= hi, f"{cycles} cycles is outside {SMOKE_CYCLE_BAND}"
     meta["measurement_sane"] = True
-    _record(benchmark, SMOKE_TEST, m)
+    _record(record_perf, SMOKE_TEST, m)
 
 
 def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
@@ -251,7 +251,7 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
 
     Both sides get the same inputs, so their raw output words are compared
     exactly, and both must pass the contract. The rows stay the current
-    tree's; the pair goes to ``--bench-meta`` and the terminal summary.
+    tree's; the pair goes to ``--perf-meta`` and the terminal summary.
     """
     tree = config.getoption("--baseline-sources")
     # The baseline's kernels share their object names with this tree's but
@@ -273,7 +273,7 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
     words = [
         _differing_words(a, b) for a, b in zip(base["outputs"], current["outputs"])
     ]
-    baseline = config._bench_meta.setdefault("baseline", {"sources": tree, "cases": {}})
+    baseline = config._perf_meta.setdefault("baseline", {"sources": tree, "cases": {}})
     baseline["cases"][case.name] = {
         "cycles": [cycles(base), cycles(current)],
         "npu_us_min": [npu_us(base), npu_us(current)],
@@ -281,10 +281,10 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
     }
 
 
-@pytest.mark.benchmark
+@pytest.mark.perf
 @pytest.mark.parametrize("case", _PERF_CASES)
-def test_kernel_benchmark(case, request, benchmark, workdir):
+def test_kernel_perf(case, request, record_perf, workdir):
     m = _measure(case, request.config, workdir)
-    _record(benchmark, case, m)
+    _record(record_perf, case, m)
     if request.config.getoption("--baseline-sources"):
         _against_baseline(case, request.config, workdir, m)

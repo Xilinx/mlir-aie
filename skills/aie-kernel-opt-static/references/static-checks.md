@@ -43,7 +43,7 @@ python -m aie.utils.compile.remarks --target aie2p --only "^$K" --out $W/rows.js
   case's. Say so in the report.
 - **Marker check.** Read the contract's `trace=`:
   - `Trace.whole_call()`: one `event0()`/`event1()` pair brackets every call
-    of the entry symbol, and the bench will chart its cycles.
+    of the entry symbol, and the performance checks will chart its cycles.
   - `Trace.none(reason)` or `Trace.partial(reason)`: no cycle number will
     exist for it. Put the reason in the report.
 
@@ -62,8 +62,8 @@ pytest test/python/test_kernel_contracts.py -k "$K" -q
 It needs no device. It checks that the roles match `arg_types()`, that the
 reference takes what the contract hands it, and that a design lowers to MLIR.
 A new `Case` you add (for example a remainder case) is picked up here too.
-Also add the case name to `test/python/npu/benchmark_series.txt`, or
-`test_benchmark_series_names.py` fails.
+Also add the case name to `test/python/npu/perf_series.txt`, or
+`test_perf_series_names.py` fails.
 
 ## Base arm (step 3)
 
