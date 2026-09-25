@@ -92,6 +92,8 @@ def test_every_build_resolves_inside_the_override(tree, device):
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 @pytest.mark.parametrize("device", [NPU2Col1], indirect=True)
 def test_a_header_only_in_the_override_is_the_one_compiled(tree, device, tmp_path):
+    if not (tree / "aie_runtime_lib" / "AIE2P").is_dir():
+        pytest.skip("this build has no aie_runtime_lib/AIE2P")
     # activation/tanh.cc reaching common/exp2_poly.h has no copy beside it,
     # and the stale install copy must not stand in for the override's.
     header = tree / "aie_kernels" / "common" / "exp2_poly.h"

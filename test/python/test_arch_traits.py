@@ -93,6 +93,8 @@ def test_default_device_is_of_its_architecture(arch):
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 @pytest.mark.parametrize("arch", list(ARCH_TRAITS))
 def test_every_kernel_builds_from_its_portable_branch(arch, tmp_path, monkeypatch):
+    if not (Path(config.aie_runtime_lib_dir()) / arch.upper()).is_dir():
+        pytest.skip(f"this build has no aie_runtime_lib/{arch.upper()}")
     monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
     previous = get_current_device(probe_runtime=False)
     set_current_device(from_name(ARCH_TRAITS[arch].device, n_cols=1))

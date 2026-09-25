@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import Trace
+from aie.utils import config
 from aie.utils.compile.remarks import entry_symbol, kernel_builds, trace_shape
 from aie.utils.hostruntime import set_current_device
 
@@ -66,6 +67,8 @@ def _builds(device, generation):
 )
 def classified(request, tmp_path_factory):
     target, generation = request.param
+    if not (Path(config.aie_runtime_lib_dir()) / target.upper()).is_dir():
+        pytest.skip(f"this build has no aie_runtime_lib/{target.upper()}")
     device = NPU1Col1() if target == "aie2" else NPU2Col1()
     try:
         builds = _builds(device, generation)
