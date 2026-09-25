@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T_in, typename T_out, const int N>
@@ -25,6 +26,45 @@ void eltwise_mul_add(T_in *a, T_in *b, T_out *c, bool is_mul) {
   }
 }
 
+// AIE2: restrict parameters and a rolled loop let the pipeliner overlap
+// iterations to one vector per cycle; the add goes through a mac so only a
+// needs the a-port-only vlda.conv (see generic/add.cc).
+#if __AIE_ARCH__ == 20
+#define MUL_ADD_RESTRICT __restrict
+
+template <typename T_in, typename T_out, const int N>
+void eltwise_vadd(T_in *MUL_ADD_RESTRICT a, T_in *MUL_ADD_RESTRICT b,
+                  T_out *MUL_ADD_RESTRICT c) {
+  constexpr int vec_factor = 16;
+  event0();
+  auto pA = aie::begin_restrict_vector<vec_factor>(a);
+  auto pB = aie::begin_restrict_vector<vec_factor>(b);
+  auto pC = aie::begin_restrict_vector<vec_factor>(c);
+  const auto ones = aie::broadcast<T_in, vec_factor>(1.0f);
+  AIE_LOOP_NO_UNROLL
+  for (int i = 0; i < N / vec_factor; i++) {
+    aie::accum<accfloat, vec_factor> acc;
+    acc.from_vector(*pA++);
+    *pC++ = aie::mac(acc, *pB++, ones).template to_vector<T_out>();
+  }
+  event1();
+}
+
+template <typename T_in, typename T_out, const int N>
+void eltwise_vmul(T_in *MUL_ADD_RESTRICT a, T_in *MUL_ADD_RESTRICT b,
+                  T_out *MUL_ADD_RESTRICT c) {
+  constexpr int vec_factor = 16;
+  event0();
+  auto pA = aie::begin_restrict_vector<vec_factor>(a);
+  auto pB = aie::begin_restrict_vector<vec_factor>(b);
+  auto pC = aie::begin_restrict_vector<vec_factor>(c);
+  AIE_LOOP_NO_UNROLL
+  for (int i = 0; i < N / vec_factor; i++) {
+    *pC++ = aie::mul(*pA++, *pB++).template to_vector<T_out>();
+  }
+  event1();
+}
+#else
 template <typename T_in, typename T_out, const int N>
 void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
 
@@ -67,6 +107,7 @@ void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
     }
   event1();
 }
+#endif
 
 template <typename T_in, typename T_out, const int N>
 void eltwise_vmul_vadd(T_in *a, T_in *b, T_out *c, bool is_mul) {
