@@ -888,6 +888,54 @@ CASES: list[Case] = [
         perf=False,
     ),
     Case(
+        "bn_conv2dk3",
+        dict(input_width=56, input_channels=16, output_channels=24),
+        calls=8,
+        scalars=(56, 16, 24, 3, 3, 2, 9, 0),
+        tag="bottom-row",
+        perf=False,
+    ),
+    Case(
+        "bn_conv2dk3",
+        dict(input_width=112, input_channels=32, output_channels=16),
+        calls=8,
+        scalars=(112, 32, 16, 3, 3, 1, 10, 0),
+        perf=False,
+    ),
+    Case(
+        "bn_conv2dk3",
+        dict(input_width=56, input_channels=8, output_channels=24),
+        calls=8,
+        scalars=(56, 8, 24, 3, 3, 2, 8, 0),
+        tag="bottom-row",
+        perf=False,
+    ),
+    Case(
+        "bn_conv2dk3",
+        dict(input_width=40, input_channels=24, output_channels=8),
+        calls=8,
+        scalars=(40, 24, 8, 3, 3, 0, 9, 0),
+        tag="top-row",
+        perf=False,
+    ),
+    # The second of two workers sharing the weights buffer.
+    *[
+        Case(
+            "bn_conv2dk3",
+            dict(
+                input_width=w,
+                input_channels=ic,
+                output_channels=8,
+                weight_output_channels=16,
+            ),
+            calls=8,
+            scalars=(w, ic, 8, 3, 3, 1, 9, 8),
+            tag="channel-offset",
+            perf=False,
+        )
+        for w, ic in ((64, 16), (32, 8))
+    ],
+    Case(
         "bn_conv2dk3_dw",
         dict(input_width=28, input_channels=120, output_channels=120),
         calls=8,

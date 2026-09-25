@@ -129,6 +129,166 @@ void conv2dk3_i8_stride2_scalar(
   event1();
 }
 
+#if __AIE_ARCH__ == 20
+// Stride-2 3x3 on [C/8][W][8] rows, input_width a multiple of 8. Each
+// mmul<4,8,8> takes 4 output pixels x 8 input channels against one [8][8]
+// weight block. Input pixels 2x .. 2x + 7 split with filter_even into the
+// centre tap and filter_odd into the right tap; the odd pixels shifted up by
+// one, with pixel 2x - 1 from the chunk before (zero at x = 0), give the left
+// tap. Rows dropped by `check` are skipped. Rounds half to even and saturates
+// like the scalar.
+template <int N, bool Left>
+static inline void k3_chunks(const int8_t *const *lines, const int8_t *wts,
+                             uint8_t *__restrict out, const int32_t r0,
+                             const int32_t r1, const int32_t row,
+                             const int32_t ic_blocks, const int scale) {
+  using MMUL = aie::mmul<4, 8, 8, int8, int8>;
+  MMUL acc[N];
+  for (int j = 0; j < N; j++)
+    acc[j] = MMUL(aie::zeros<acc32, 32>());
+  for (int r = r0; r < r1; r++) {
+    const int8_t *in = lines[r];
+    const int8_t *w = wts + r * 192;
+#pragma clang loop min_iteration_count(1)
+    for (int ic = 0; ic < ic_blocks; ic++) {
+      aie::vector<int8, 32> prev;
+      if constexpr (Left)
+        prev = aie::zeros<int8, 32>();
+      else
+        prev = aie::load_v<32>(in - 32);
+      const aie::vector<int8, 64> b0 = aie::load_v<64>(w);
+      const aie::vector<int8, 64> b1 = aie::load_v<64>(w + 64);
+      const aie::vector<int8, 64> b2 = aie::load_v<64>(w + 128);
+      for (int j = 0; j < N; j++) {
+        const aie::vector<int8, 64> v = aie::load_v<64>(in + 64 * j);
+        const aie::vector<int8, 32> c = aie::filter_even(v, 8);
+        const aie::vector<int8, 32> rt = aie::filter_odd(v, 8);
+        acc[j].mac(aie::shuffle_up_fill(rt, prev, 8), b0);
+        acc[j].mac(c, b1);
+        acc[j].mac(rt, b2);
+        prev = rt;
+      }
+      in += row;
+      w += 576;
+    }
+  }
+  for (int j = 0; j < N; j++)
+    aie::store_v(out + 32 * j, acc[j].template to_vector<uint8>(scale));
+}
+
+// input_channels == 8: one pass over the row per output channel block, each
+// row's odd pixels carried from chunk to chunk. A row dropped by `check` gets
+// zero weights.
+alignas(32) static const int8_t k3_zero_wts[3 * 64] = {};
+
+template <int N>
+static inline void
+k3_ic1_step(const int8_t *const *lines, const int8_t *const *wr,
+            aie::vector<int8, 32> *prev, uint8_t *out, const int scale) {
+  using MMUL = aie::mmul<4, 8, 8, int8, int8>;
+  MMUL acc[N];
+#pragma unroll
+  for (int r = 0; r < 3; r++) {
+    const aie::vector<int8, 64> b0 = aie::load_v<64>(wr[r]);
+    const aie::vector<int8, 64> b1 = aie::load_v<64>(wr[r] + 64);
+    const aie::vector<int8, 64> b2 = aie::load_v<64>(wr[r] + 128);
+    for (int j = 0; j < N; j++) {
+      const aie::vector<int8, 64> v = aie::load_v<64>(lines[r] + 64 * j);
+      const aie::vector<int8, 32> c = aie::filter_even(v, 8);
+      const aie::vector<int8, 32> rt = aie::filter_odd(v, 8);
+      if (r == 0)
+        acc[j].mul(aie::shuffle_up_fill(rt, prev[r], 8), b0);
+      else
+        acc[j].mac(aie::shuffle_up_fill(rt, prev[r], 8), b0);
+      acc[j].mac(c, b1);
+      acc[j].mac(rt, b2);
+      prev[r] = rt;
+    }
+  }
+  for (int j = 0; j < N; j++)
+    aie::store_v(out + 32 * j, acc[j].template to_vector<uint8>(scale));
+}
+
+static void k3_ic1_rows(const int8_t *line0, const int8_t *line1,
+                        const int8_t *line2, const int8_t *wts, uint8_t *output,
+                        const int32_t input_width,
+                        const int32_t output_channels, const int32_t check,
+                        const int scale, const int channel_offset) {
+  const int32_t output_width = input_width / 2;
+  const int32_t chunks = output_width / 4;
+  for (int oc = 0; oc < output_channels / 8; oc++) {
+    const int8_t *w = wts + (oc + channel_offset / 8) * 3 * 3 * 64;
+    const int8_t *wr[3] = {check == top ? k3_zero_wts : w, w + 192,
+                           check == bottom ? k3_zero_wts : w + 384};
+    const int8_t *l[3] = {line0, line1, line2};
+    aie::vector<int8, 32> prev[3] = {
+        aie::zeros<int8, 32>(), aie::zeros<int8, 32>(), aie::zeros<int8, 32>()};
+    uint8_t *out = output + oc * output_width * 8;
+    for (int x = 0; x + 2 <= chunks; x += 2) {
+      k3_ic1_step<2>(l, wr, prev, out, scale);
+      for (int i = 0; i < 3; i++)
+        l[i] += 128;
+      out += 64;
+    }
+    if (chunks & 1)
+      k3_ic1_step<1>(l, wr, prev, out, scale);
+  }
+}
+
+static void k3_stride2_vector(const int8_t *line0, const int8_t *line1,
+                              const int8_t *line2, const int8_t *wts,
+                              uint8_t *output, const int32_t input_width,
+                              const int32_t input_channels,
+                              const int32_t output_channels,
+                              const int32_t check, const int scale,
+                              const int channel_offset) {
+  event0();
+  aie::set_saturation(aie::saturation_mode::saturate);
+  aie::set_rounding(aie::rounding_mode::conv_even);
+  if (input_channels == 8) {
+    k3_ic1_rows(line0, line1, line2, wts, output, input_width, output_channels,
+                check, scale, channel_offset);
+    event1();
+    return;
+  }
+  constexpr int N = 4;
+  const int32_t output_width = input_width / 2;
+  const int32_t row = input_width * 8;
+  const int32_t ic_blocks = input_channels / 8;
+  const int32_t groups = (output_width / 4 - 1) / N;
+  const int32_t rem = (output_width / 4 - 1) % N;
+  const int32_t r0 = check == top ? 1 : 0;
+  const int32_t r1 = check == bottom ? 2 : 3;
+  for (int oc = 0; oc < output_channels / 8; oc++) {
+    const int8_t *w = wts + (oc + channel_offset / 8) * ic_blocks * 3 * 3 * 64;
+    uint8_t *out = output + oc * output_width * 8;
+    const int8_t *l[3] = {line0, line1, line2};
+    k3_chunks<1, true>(l, w, out, r0, r1, row, ic_blocks, scale);
+    for (int i = 0; i < 3; i++)
+      l[i] += 64;
+    out += 32;
+    for (int g = 0; g < groups; g++) {
+      k3_chunks<N, false>(l, w, out, r0, r1, row, ic_blocks, scale);
+      for (int i = 0; i < 3; i++)
+        l[i] += 64 * N;
+      out += 32 * N;
+    }
+    switch (rem) {
+    case 1:
+      k3_chunks<1, false>(l, w, out, r0, r1, row, ic_blocks, scale);
+      break;
+    case 2:
+      k3_chunks<2, false>(l, w, out, r0, r1, row, ic_blocks, scale);
+      break;
+    case 3:
+      k3_chunks<3, false>(l, w, out, r0, r1, row, ic_blocks, scale);
+      break;
+    }
+  }
+  event1();
+}
+#endif // __AIE_ARCH__ == 20
+
 extern "C" {
 
 void conv2dk3_stride2_i8(int8_t *line0, int8_t *line1, int8_t *line2,
@@ -139,6 +299,17 @@ void conv2dk3_stride2_i8(int8_t *line0, int8_t *line1, int8_t *line2,
                          const int32_t kernel_width,
                          const int32_t kernel_height, const int32_t check,
                          const int scale, const int channel_offset) {
+#if __AIE_ARCH__ == 20
+  if (kernel_width == 3 && input_width >= 8 && input_width % 8 == 0 &&
+      (((uintptr_t)line0 | (uintptr_t)line1 | (uintptr_t)line2 |
+        (uintptr_t)wts | (uintptr_t)output) &
+       31) == 0) {
+    k3_stride2_vector(line0, line1, line2, wts, output, input_width,
+                      input_channels, output_channels, check, scale,
+                      channel_offset);
+    return;
+  }
+#endif
   conv2dk3_i8_stride2_scalar(line0, line1, line2, wts, output, input_width,
                              input_channels, output_channels, kernel_width,
                              kernel_height, check, scale, channel_offset);

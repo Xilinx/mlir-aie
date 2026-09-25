@@ -1126,20 +1126,28 @@ def bn_conv2dk3(
     input_width: int = 32,
     input_channels: int = 64,
     output_channels: int = 64,
+    weight_output_channels: int | None = None,
 ) -> ExternalFunction:
     """Bottleneck 3x3 conv with stride-2 kernel (int8 in, uint8 out).
 
     Args:
         input_width: Spatial width of the input.
         input_channels: Number of input channels.
-        output_channels: Number of output channels.
+        output_channels: Number of output channels produced by this call.
+        weight_output_channels: Total number of output channels stored in the
+            weights buffer, as for [`conv2dk3`][iron.kernels.conv.conv2dk3].
+            Defaults to ``output_channels``.
 
     Returns:
         ExternalFunction configured for the bn_conv2dk3 kernel.
     """
+    if weight_output_channels is None:
+        weight_output_channels = output_channels
     line_size = input_width * input_channels
     line_ty = np.ndarray[(line_size,), np.dtype[np.int8]]
-    wt_ty = np.ndarray[(3 * 3 * input_channels * output_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[
+        (3 * 3 * input_channels * weight_output_channels,), np.dtype[np.int8]
+    ]
     # Output is half-resolution because the kernel is stride-2.
     out_ty = np.ndarray[((input_width // 2) * output_channels,), np.dtype[np.uint8]]
     return _make_extern(

@@ -42,8 +42,14 @@ bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_chan
 bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40
 bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8
 bn_conv2dk1_skip/4032x8/uint8_int8/input_channels=72/input_width=56/output_channels=24
+bn_conv2dk3/1024x8/int8_uint8/input_channels=16/input_width=64/output_channels=8/weight_output_channels=16/channel-offset
 bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16
 bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16/top-row
+bn_conv2dk3/256x8/int8_uint8/input_channels=8/input_width=32/output_channels=8/weight_output_channels=16/channel-offset
+bn_conv2dk3/3584x8/int8_uint8/input_channels=32/input_width=112/output_channels=16
+bn_conv2dk3/448x8/int8_uint8/input_channels=8/input_width=56/output_channels=24/bottom-row
+bn_conv2dk3/896x8/int8_uint8/input_channels=16/input_width=56/output_channels=24/bottom-row
+bn_conv2dk3/960x8/int8_uint8/input_channels=24/input_width=40/output_channels=8/top-row
 bn_conv2dk3_dw/2576x8/uint8/input_channels=184/input_width=14/output_channels=184
 bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120
 bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/bottom-row
