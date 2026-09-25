@@ -209,6 +209,8 @@ CASES: list[Case] = [
         smoke=True,
     ),
     Case("sigmoid", calls=256),
+    # As tanh above.
+    Case("sigmoid", dict(tile_size=1056), calls=4, tag="tail", smoke=True, perf=False),
     Case("softmax", calls=16, smoke=True),
     Case("softmax", calls=256),
     # The AIE2 exp loop is rotated by one and pipelined only from 144 elements

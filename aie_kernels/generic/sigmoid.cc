@@ -33,6 +33,19 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
   event0();
 
   const int num_elems = SIGMOID_ELEMS;
+#if __AIE_ARCH__ == 20
+  // AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
+  aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
+  aie::accum<accfloat, 16> half;
+  half.from_vector(register_0_5);
+  lut_map_bf16<4, false>(
+      input_vector, output_vector, num_elems, [&](aie::vector<bfloat16, 16> x) {
+        return aie::vector<bfloat16, 16>(
+            aie::mac(half, tanh_bf16_v16(aie::mul(x, register_0_5)),
+                     register_0_5)
+                .to_vector<bfloat16>());
+      });
+#else
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
 
@@ -52,6 +65,7 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
     *it_out++ =
         aie::mac(half, tanh_half_x, register_0_5_wide).to_vector<bfloat16>();
   }
+#endif
 
   event1();
 
