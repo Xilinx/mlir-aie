@@ -476,6 +476,8 @@ class ObjectFifo(Resolvable):
                 consumer_datatype=consumer_datatype,
                 packet=self._packet or None,
                 packet_id=self._packet_id,
+                loc=loc,
+                ip=ip,
             )
             self._op = op
 
@@ -1116,7 +1118,7 @@ class ObjectFifoHandle(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        self._object_fifo.resolve(loc=loc, ip=ip)
+        self._object_fifo.resolve(ip=ip)
 
 
 class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
@@ -1200,11 +1202,16 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             # sources or destinations.
 
             for s in self._srcs:
-                s.resolve()
+                s.resolve(ip=ip)
             for d in self._dsts:
-                d.resolve()
+                d.resolve(ip=ip)
             src_ops = [s.op for s in self._srcs]
             dst_ops = [d.op for d in self._dsts]
             self._op = object_fifo_link(
-                src_ops, dst_ops, self._src_offsets, self._dst_offsets
+                src_ops,
+                dst_ops,
+                self._src_offsets,
+                self._dst_offsets,
+                loc=loc,
+                ip=ip,
             )

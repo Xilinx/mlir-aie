@@ -7,10 +7,11 @@
 
 import importlib.util
 import os
-from pathlib import Path
 import subprocess
 import sys
+import traceback
 import types
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -27,9 +28,16 @@ def compile_utils():
         aiecc_path=lambda: "tools/aiecc",
         peano_install_dir=lambda: "tools/peano",
     )
+    errors = types.ModuleType("aie.helpers.errors")
+    errors.compile_error_from_output = lambda output: None
     with patch.dict(
         sys.modules,
-        {"aie": aie, "aie.utils": aie.utils, "aie.utils.config": aie.utils.config},
+        {
+            "aie": aie,
+            "aie.utils": aie.utils,
+            "aie.utils.config": aie.utils.config,
+            "aie.helpers.errors": errors,
+        },
     ):
         spec.loader.exec_module(module)
     return module
@@ -115,6 +123,47 @@ def test_no_work_dir_preserves_cwd_and_cleans_up(
     assert len(inputs) == 1
     assert not inputs[0].exists()
     assert Path.cwd() == tmp_path
+
+
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+@pytest.mark.parametrize("legacy_notes", [False, True])
+def test_run_aiecc_preserves_located_error(
+    compile_utils, monkeypatch, stream, legacy_notes
+):
+    output = (
+        "design.py:42:3: error: invalid operation\n"
+        "note: detail\n"
+        "design.py:40:3: note: previous operation"
+    )
+    error = ValueError("invalid operation")
+    if legacy_notes:
+        monkeypatch.setattr(error, "add_note", None, raising=False)
+    seen = []
+
+    def locate(text):
+        seen.append(text)
+        return error
+
+    monkeypatch.setattr(compile_utils, "compile_error_from_output", locate)
+    monkeypatch.setattr(
+        compile_utils.subprocess,
+        "run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 1, **{stream: output}),
+    )
+    with pytest.raises(ValueError, match="invalid operation") as exc:
+        compile_utils._run_aiecc("design.mlir", [])
+    assert exc.value is error
+    assert seen == [output]
+    notes = ["[aiecc] note: detail", "[aiecc] design.py:40:3: note: previous operation"]
+    rendered = "".join(traceback.format_exception(error))
+    for note in notes:
+        assert rendered.count(note) == 1
+    assert rendered.index(notes[0]) < rendered.index(notes[1])
+    if getattr(error, "add_note", None) is not None:
+        assert error.__notes__ == notes
+        assert str(error) == "invalid operation"
+    else:
+        assert str(error) == "invalid operation\n" + "\n".join(notes)
 
 
 def test_run_aiecc_child_resolves_kernel_in_work_dir(

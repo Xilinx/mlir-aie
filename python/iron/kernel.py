@@ -18,6 +18,7 @@ from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call
+from ..helpers.sourceloc import capture_source_site, site_location
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -293,6 +294,8 @@ class Kernel(Resolvable):
                 link_with=self._object_file_name,
                 link_with_mode=self._link_with_mode,
                 stack_size_override=self._stack_size_override,
+                loc=loc,
+                ip=ip,
             )
 
     def _init_identity(
@@ -435,6 +438,10 @@ class Kernel(Resolvable):
             _maybe_collapse_to_match(a, expected_ty)
             for a, expected_ty in zip(arg_ops, expected_input_types)
         ]
+        # A kernel call happens while the core body runs, so the user's call
+        # line is live on the stack -- more precise than the body's ambient
+        # location, which only names the enclosing function.
+        kwargs.setdefault("loc", site_location(capture_source_site()))
         call(self._op, adapted, **kwargs)
 
 

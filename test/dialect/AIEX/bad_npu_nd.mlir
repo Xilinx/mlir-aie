@@ -18,7 +18,7 @@ module {
       %c16 = arith.constant 16 : i64
       %c32 = arith.constant 32 : i64
       %c128 = arith.constant 128 : i64
-      // expected-error@+1 {{Size 3 exceeds the [1:64] range}}
+      // expected-error@+1 {{'aiex.npu.dma_memcpy_nd' op Size 3 is 128 (encoded as 127), which exceeds the [1:64] range.}}
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c0,%c16,%c8,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<128x4x2x8xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
@@ -174,7 +174,7 @@ module {
       %c8 = arith.constant 8 : i64
       %c1572864 = arith.constant 1572864 : i64
       aiex.npu.dma_memcpy_nd (%a[%c1,%c0,%c0,%c0][%c1,%c1,%c1,%c2][%c1572864,%c0,%c0,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi32>
-      // expected-error@+1 {{Stride 3 exceeds the [1:1048576] range.}}
+      // expected-error@+1 {{'aiex.npu.dma_memcpy_nd' op Stride 3 is 1572864 (encoded as 1572863), which exceeds the [1:1048576] range.}}
       aiex.npu.dma_memcpy_nd (%a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c1572864,%c0,%c0,%c1]) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
     }
     %tile_0_0 = aie.tile(0, 0)

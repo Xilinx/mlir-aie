@@ -72,11 +72,17 @@ def _default_shim_symbol(kind: str, src, src_channel, dst, dst_channel) -> str:
     return f"shim_{shim.col}_{shim.row}_{direction}_{channel}"
 
 
-def _emit_shim_dma_alloc(kind: str, shim_symbol, src, src_channel, dst, dst_channel):
+def _emit_shim_dma_alloc(
+    kind: str, shim_symbol, src, src_channel, dst, dst_channel, *, loc=None, ip=None
+):
     if src.effective_tile_type in _SHIM_TILE_TYPES:
-        shim_dma_allocation(shim_symbol, src.op, DMAChannelDir.MM2S, src_channel)
+        shim_dma_allocation(
+            shim_symbol, src.op, DMAChannelDir.MM2S, src_channel, loc=loc, ip=ip
+        )
     elif dst.effective_tile_type in _SHIM_TILE_TYPES:
-        shim_dma_allocation(shim_symbol, dst.op, DMAChannelDir.S2MM, dst_channel)
+        shim_dma_allocation(
+            shim_symbol, dst.op, DMAChannelDir.S2MM, dst_channel, loc=loc, ip=ip
+        )
     else:
         raise ValueError(
             f"{kind}.shim_symbol={shim_symbol!r} requires a shim endpoint, "
@@ -220,6 +226,8 @@ class Flow(Resolvable):
                 self._dst.op,
                 self._dst_port,
                 self._dst_channel,
+                loc=loc,
+                ip=ip,
             )
             if self._shim_symbol is not None:
                 _emit_shim_dma_alloc(
@@ -229,6 +237,8 @@ class Flow(Resolvable):
                     self._src_channel,
                     self._dst,
                     self._dst_channel,
+                    loc=loc,
+                    ip=ip,
                 )
 
 
@@ -339,6 +349,8 @@ class PacketFlow(Resolvable):
             source_channel=self._src_channel,
             dests=dests,
             keep_pkt_header=self._keep_pkt_header,
+            loc=loc,
+            ip=ip,
         )
         if self._shim_symbol is not None:
             _emit_shim_dma_alloc(
@@ -348,4 +360,6 @@ class PacketFlow(Resolvable):
                 self._src_channel,
                 self._dst,
                 self._dst_channel,
+                loc=loc,
+                ip=ip,
             )

@@ -12,6 +12,11 @@
 
 // RUN: aie-translate --aie-npu-to-binary --aie-npu-emit-locmap=%t.json %s
 // RUN: FileCheck %s < %t.json
+// RUN: %PYTHON %S/Inputs/check_loc_sidecar.py %t.json
+
+// This hardware-independent check runs under check-aie in existing PR CI.
+// Check structured locations per instruction, not just uncorrelated JSON fields:
+// non-unknown coverage alone cannot detect attribution to the wrong source op.
 
 #user_w32 = loc("user.py":42:4)
 #user_bw  = loc("user.py":50:4)
@@ -19,6 +24,10 @@
 #name_w32 = loc("of_in"(#user_w32))
 #name_bw  = loc("dma_task"(#user_bw))
 #name_zero = loc("zero_reg"(#user_zero))
+#callee = loc("kernel.py":12:3)
+#caller = loc("user.py":70:8)
+#callsite = loc(callsite(#callee at #caller))
+#fused = loc(fused[#name_w32, #callsite])
 
 module {
   aie.device(npu1) {
@@ -32,6 +41,10 @@ module {
       aiex.npu.write32(%cst_npu_2, %cst_npu_3) : i32, i32 loc(#name_zero)
       %0 = memref.get_global @write_data : memref<4xi32>
       aiex.npu.blockwrite (%0) { address = 0x12345678 : ui32 } : memref<4xi32> loc(#name_bw)
+      %cst_nested = arith.constant 4 : i32
+      aiex.npu.write32(%cst_nested, %cst_npu_3) : i32, i32 loc(#fused)
+      %cst_unknown = arith.constant 8 : i32
+      aiex.npu.write32(%cst_unknown, %cst_npu_3) : i32, i32 loc(unknown)
     }
   }
 }

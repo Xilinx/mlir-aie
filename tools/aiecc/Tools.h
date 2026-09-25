@@ -63,8 +63,7 @@ namespace xilinx::aiecc {
 inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
                                        llvm::ArrayRef<char> buffer2,
                                        llvm::StringRef patchJson,
-                                       Item<File> &out, bool verbose,
-                                       bool progress) {
+                                       Item<File> &out, bool verbose) {
   void *elfBuf = nullptr;
   int result;
   std::string captured;
@@ -84,6 +83,7 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
     llvm::raw_fd_ostream os(out.filePath, ec);
     if (ec) {
       free(elfBuf);
+      auto log = endProgressLine();
       llvm::errs() << "aiecc: cannot write ELF '" << out.filePath
                    << "': " << ec.message() << "\n";
       return mlir::failure();
@@ -95,11 +95,9 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
   }
   if (elfBuf)
     free(elfBuf);
-  if (!captured.empty()) {
-    if (progress)
-      llvm::errs() << '\n';
+  auto log = endProgressLine();
+  if (!captured.empty())
     llvm::errs() << captured;
-  }
   llvm::errs() << "aiecc: aiebu_assembler_get_elf failed (code " << result
                << ")\n";
   return mlir::failure();
@@ -114,8 +112,7 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
 // Only compiled when the bootgen library is linked; otherwise a declarative
 // `bootgen` ShellCommand edge is used (see the `pdi` edge).
 inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
-                                       Item<File> &out, bool verbose,
-                                       bool progress) {
+                                       Item<File> &out, bool verbose) {
   char errMsg[1024] = {0};
   int rc;
   std::string captured;
@@ -129,11 +126,9 @@ inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
                               sizeof(errMsg));
   }
   if (rc != BOOTGEN_SUCCESS) {
-    if (!captured.empty()) {
-      if (progress)
-        llvm::errs() << '\n';
+    auto log = endProgressLine();
+    if (!captured.empty())
       llvm::errs() << captured;
-    }
     llvm::errs() << "aiecc: bootgen_generate_pdi failed (code " << rc << ")";
     if (errMsg[0] != '\0')
       llvm::errs() << ": " << errMsg;

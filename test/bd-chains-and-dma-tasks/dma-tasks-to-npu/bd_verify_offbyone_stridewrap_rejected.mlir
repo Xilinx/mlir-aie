@@ -25,7 +25,7 @@ module @d0stride_limit_plus1 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4194304xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Stride 0 exceeds the [1:1048576] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Stride 0 is 1048577 (encoded as 1048576), which exceeds the [1:1048576] range.}}
         aie.dma_bd(%arg0 : memref<4194304xi32> offset = 0 len = 2 sizes = [1, 1, 1, 2] strides = [0, 0, 0, 1048577]) {bd_id = 0 : i32}
         aie.end
       }
@@ -40,7 +40,7 @@ module @d0stride_limit_plus2 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4194304xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Stride 0 exceeds the [1:1048576] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Stride 0 is 1048578 (encoded as 1048577), which exceeds the [1:1048576] range.}}
         aie.dma_bd(%arg0 : memref<4194304xi32> offset = 0 len = 2 sizes = [1, 1, 1, 2] strides = [0, 0, 0, 1048578]) {bd_id = 0 : i32}
         aie.end
       }
@@ -57,7 +57,7 @@ module @d1stride_limit_plus1 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4194304xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Stride 1 exceeds the [1:1048576] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Stride 1 is 1048577 (encoded as 1048576), which exceeds the [1:1048576] range.}}
         aie.dma_bd(%arg0 : memref<4194304xi32> offset = 0 len = 2 sizes = [1, 1, 2, 1] strides = [0, 0, 1048577, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -72,7 +72,7 @@ module @d1stride_limit_plus2 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4194304xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Stride 1 exceeds the [1:1048576] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Stride 1 is 1048578 (encoded as 1048577), which exceeds the [1:1048576] range.}}
         aie.dma_bd(%arg0 : memref<4194304xi32> offset = 0 len = 2 sizes = [1, 1, 2, 1] strides = [0, 0, 1048578, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -89,7 +89,7 @@ module @d2stride_limit_plus1 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4194304xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Stride 2 exceeds the [1:1048576] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Stride 2 is 1048577 (encoded as 1048576), which exceeds the [1:1048576] range.}}
         aie.dma_bd(%arg0 : memref<4194304xi32> offset = 0 len = 2000 sizes = [1, 2, 1, 1000] strides = [0, 1048577, 0, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -104,7 +104,7 @@ module @d2stride_limit_plus2 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4194304xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Stride 2 exceeds the [1:1048576] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Stride 2 is 1048578 (encoded as 1048577), which exceeds the [1:1048576] range.}}
         aie.dma_bd(%arg0 : memref<4194304xi32> offset = 0 len = 2000 sizes = [1, 2, 1, 1000] strides = [0, 1048578, 0, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -121,7 +121,7 @@ module @iteration_size_limit_plus1 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<200000xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Size 3 exceeds the [1:64] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Size 3 is 65 (encoded as 64), which exceeds the [1:64] range.}}
         aie.dma_bd(%arg0 : memref<200000xi32> offset = 0 len = 2048 sizes = [65, 1, 1, 2048] strides = [2048, 0, 0, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -136,7 +136,7 @@ module @iteration_size_limit_plus2 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<200000xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Size 3 exceeds the [1:64] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Size 3 is 66 (encoded as 65), which exceeds the [1:64] range.}}
         aie.dma_bd(%arg0 : memref<200000xi32> offset = 0 len = 2048 sizes = [66, 1, 1, 2048] strides = [2048, 0, 0, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -153,7 +153,7 @@ module @iterstride_limit_plus1 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4194304xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Stride 3 exceeds the [1:1048576] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Stride 3 is 1048577 (encoded as 1048576), which exceeds the [1:1048576] range.}}
         aie.dma_bd(%arg0 : memref<4194304xi32> offset = 0 len = 1 sizes = [2, 1, 1, 1] strides = [1048577, 0, 0, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -168,7 +168,7 @@ module @iterstride_limit_plus2 {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4194304xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        // expected-error@+1 {{'aie.dma_bd' op Stride 3 exceeds the [1:1048576] range.}}
+        // expected-error@+1 {{'aie.dma_bd' op Stride 3 is 1048578 (encoded as 1048577), which exceeds the [1:1048576] range.}}
         aie.dma_bd(%arg0 : memref<4194304xi32> offset = 0 len = 1 sizes = [2, 1, 1, 1] strides = [1048578, 0, 0, 1]) {bd_id = 0 : i32}
         aie.end
       }
