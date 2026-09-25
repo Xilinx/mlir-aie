@@ -6,33 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
+#include "../common/bf16_limbs.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-// Row statistics in bf16 limbs, as in layer_norm_aie2.h (see there); here an
-// f32 held as [hi | lo] limbs times a bf16 is one mac.
-static inline v32bfloat16 bf16_pair(v16bfloat16 lo, v16bfloat16 hi) {
-  return concat(lo, hi);
-}
-
-static inline v16bfloat16 bf16_lanes(int32_t bits) {
-  return extract_v16bfloat16(
-      broadcast_to_v32bfloat16(__builtin_bit_cast(bfloat16, (int16_t)bits)), 0);
-}
-
-// [hi | lo] limbs of x; hi + lo holds its top 16 bits.
-static inline v32bfloat16 limbs(v16accfloat x) {
-  v16bfloat16 hi = to_v16bfloat16(x);
-  v16accfloat lo = msc_elem_16_2(bf16_pair(hi, bf16_lanes(0)),
-                                 broadcast_one_to_v32bfloat16(), x);
-  return bf16_pair(hi, to_v16bfloat16(lo));
-}
-
-static inline v16bfloat16 limb(v32bfloat16 x, int i) {
-  return extract_v16bfloat16(x, i);
-}
 
 // 1 / sqrt(sum_sq / cols + epsilon) as [hi | lo] limbs, to about 1e-5.
 static inline v32bfloat16 inv_rms_limbs(float sum_sq, int32_t cols,
@@ -46,41 +24,7 @@ static inline v32bfloat16 inv_rms_limbs(float sum_sq, int32_t cols,
       s, bf16_pair(limb(inv_cols, 1), limb(inv_cols, 1)),
       mac_elem_16_2(s, bf16_pair(limb(inv_cols, 0), limb(inv_cols, 0)),
                     broadcast_to_v16accfloat(epsilon)));
-  v32bfloat16 m = limbs(m_acc);
-
-  // y0: the bit-trick estimate, cut to bf16 (4% off). m >= epsilon is normal.
-  float m_f = ::aie::vector<float, 16>(v16float(m_acc))[0];
-  int32_t y0_bits =
-      (0x5f3759df - (__builtin_bit_cast(int32_t, m_f) >> 1)) >> 16;
-  v16bfloat16 y0 = bf16_lanes(y0_bits);
-  v16bfloat16 zero = bf16_lanes(0);
-
-  // y1 = y0 + y0 / 2 (1 - m y0^2), a Newton step in bf16 (5e-3 off).
-  v16bfloat16 m_y0 = to_v16bfloat16(mul_elem_16_2(m, bf16_pair(y0, y0)));
-  v16accfloat r = msc_elem_16_2(bf16_pair(m_y0, zero), bf16_pair(y0, zero),
-                                broadcast_to_v16accfloat(1.0f));
-  v16bfloat16 y1 = to_v16bfloat16(mac_elem_16_2(
-      bf16_pair(to_v16bfloat16(r), zero),
-      bf16_pair(bf16_lanes(y0_bits - 0x80), zero), ups_to_v16accfloat(y0)));
-
-  // See inv_sqrt_limbs in layer_norm_aie2.h.
-  bfloat16 y1_s = ::aie::vector<bfloat16, 16>(y1)[0];
-  int32_t y1_bits = __builtin_bit_cast(int16_t, y1_s);
-  v32bfloat16 y1_sq =
-      limbs(mul_elem_16_2(bf16_pair(y1, zero), bf16_pair(y1, zero)));
-  r = msc_elem_16_2(m, bf16_pair(limb(y1_sq, 1), limb(y1_sq, 1)),
-                    broadcast_to_v16accfloat(1.0f));
-  r = msc_elem_16_2(m, bf16_pair(limb(y1_sq, 0), limb(y1_sq, 0)), r);
-  v32bfloat16 r_limbs = limbs(r);
-  v16bfloat16 r_sq = to_v16bfloat16(mul_elem_16_2(
-      bf16_pair(limb(r_limbs, 0), zero), bf16_pair(limb(r_limbs, 0), zero)));
-  v16bfloat16 y1_3_8 = to_v16bfloat16(mul_elem_16_2(
-      bf16_pair(y1, zero), bf16_pair(bf16_lanes(0x3ec0), zero))); // 0.375
-  v16bfloat16 y1_half = bf16_lanes(y1_bits - 0x80);
-  v16accfloat y = mac_elem_16_2(r_limbs, bf16_pair(y1_half, y1_half),
-                                ups_to_v16accfloat(y1));
-  y = mac_elem_16_2(bf16_pair(r_sq, zero), bf16_pair(y1_3_8, zero), y);
-  return limbs(y);
+  return inv_sqrt_limbs(m_acc);
 }
 
 // x * inv_rms for one chunk; each half against [hi | lo] is one mac.

@@ -123,40 +123,8 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
 
 #if AIE_TUNED_AIE2
 // aie_api's f32 multiply is emulated on AIE2, so here an f32 is split into
-// bf16 limbs, two holding its top 16 bits and three all of it; see
-// ../norm/layer_norm_aie2.h for the mac.
-static inline v32bfloat16 bf16_pair(v16bfloat16 lo, v16bfloat16 hi) {
-  return concat(lo, hi);
-}
-
-static inline v16bfloat16 bf16_lanes(int32_t bits) {
-  return extract_v16bfloat16(
-      broadcast_to_v32bfloat16(__builtin_bit_cast(bfloat16, (int16_t)bits)), 0);
-}
-
-// x - hi, exactly.
-static inline v16accfloat residual(v16accfloat x, v16bfloat16 hi) {
-  return msc_elem_16_2(bf16_pair(hi, bf16_lanes(0)),
-                       broadcast_one_to_v32bfloat16(), x);
-}
-
-// [hi | mid] limbs of x; rest is x - hi - mid, exactly, in one msc.
-static inline v32bfloat16 limbs(v16accfloat x, v16accfloat &rest) {
-  v16bfloat16 hi = to_v16bfloat16(x);
-  v16accfloat r = residual(x, hi);
-  v32bfloat16 l = bf16_pair(hi, to_v16bfloat16(r));
-  rest = msc_elem_16_2(l, broadcast_one_to_v32bfloat16(), x);
-  return l;
-}
-
-static inline v32bfloat16 limbs(v16accfloat x) {
-  v16accfloat rest;
-  return limbs(x, rest);
-}
-
-static inline v16bfloat16 limb(v32bfloat16 x, int i) {
-  return extract_v16bfloat16(x, i);
-}
+// bf16 limbs, two holding its top 16 bits and three all of it.
+#include "../common/bf16_limbs.h"
 
 static inline v16accfloat f32_acc(const float *restrict p) {
   return v16accfloat(v16float(::aie::load_v<16>(p)));
@@ -173,40 +141,7 @@ static inline v16accfloat inv_sqrt(v16accfloat m_acc) {
   v16bfloat16 m2 = to_v16bfloat16(m_rest);
   v16bfloat16 zero = bf16_lanes(0);
   v32bfloat16 ones = broadcast_one_to_v32bfloat16();
-
-  // y0: the bit-trick estimate, cut to bf16 (4% off).
-  float m_f = ::aie::vector<float, 16>(v16float(m_acc))[0];
-  int32_t y0_bits =
-      (0x5f3759df - (__builtin_bit_cast(int32_t, m_f) >> 1)) >> 16;
-  v16bfloat16 y0 = bf16_lanes(y0_bits);
-
-  // y1 = y0 + y0 / 2 (1 - m y0^2), a Newton step in bf16 (5e-3 off).
-  v16bfloat16 m_y0 = to_v16bfloat16(mul_elem_16_2(m, bf16_pair(y0, y0)));
-  v16accfloat r = msc_elem_16_2(bf16_pair(m_y0, zero), bf16_pair(y0, zero),
-                                f32_lanes(1.0f));
-  v16bfloat16 y1 = to_v16bfloat16(mac_elem_16_2(
-      bf16_pair(to_v16bfloat16(r), zero),
-      bf16_pair(bf16_lanes(y0_bits - 0x80), zero), ups_to_v16accfloat(y0)));
-
-  // y2 = y1 (1 + r / 2 + 3 r^2 / 8); see inv_sqrt_limbs in
-  // ../norm/layer_norm_aie2.h.
-  bfloat16 y1_s = ::aie::vector<bfloat16, 16>(y1)[0];
-  int32_t y1_bits = __builtin_bit_cast(int16_t, y1_s);
-  v32bfloat16 y1_sq =
-      limbs(mul_elem_16_2(bf16_pair(y1, zero), bf16_pair(y1, zero)));
-  r = msc_elem_16_2(m, bf16_pair(limb(y1_sq, 1), limb(y1_sq, 1)),
-                    f32_lanes(1.0f));
-  r = msc_elem_16_2(m, bf16_pair(limb(y1_sq, 0), limb(y1_sq, 0)), r);
-  v32bfloat16 r_limbs = limbs(r);
-  v16bfloat16 r_sq = to_v16bfloat16(mul_elem_16_2(
-      bf16_pair(limb(r_limbs, 0), zero), bf16_pair(limb(r_limbs, 0), zero)));
-  v16bfloat16 y1_3_8 = to_v16bfloat16(mul_elem_16_2(
-      bf16_pair(y1, zero), bf16_pair(bf16_lanes(0x3ec0), zero))); // 0.375
-  v16bfloat16 y1_half = bf16_lanes(y1_bits - 0x80);
-  v32bfloat16 y2 =
-      limbs(mac_elem_16_2(bf16_pair(r_sq, zero), bf16_pair(y1_3_8, zero),
-                          mac_elem_16_2(r_limbs, bf16_pair(y1_half, y1_half),
-                                        ups_to_v16accfloat(y1))));
+  v32bfloat16 y2 = inv_sqrt_limbs(m_acc, m);
 
   // y2 is good to about 1e-5, and exact in its two limbs. One more step,
   // y2 + y2 r / 2 with r = 1 - (m y2) y2, where m y2 rounded to f32 leaves r
@@ -218,7 +153,7 @@ static inline v16accfloat inv_sqrt(v16accfloat m_acc) {
                     mac_elem_16_2(m, bf16_pair(y2_1, y2_1),
                                   mul_elem_16_2(m, bf16_pair(y2_0, y2_0)))),
       t_rest);
-  r = msc_elem_16_2(t, bf16_pair(y2_0, y2_0), f32_lanes(1.0f));
+  v16accfloat r = msc_elem_16_2(t, bf16_pair(y2_0, y2_0), f32_lanes(1.0f));
   r = msc_elem_16_2(t, bf16_pair(y2_1, y2_1), r);
   r = msc_elem_16_2(bf16_pair(to_v16bfloat16(t_rest), zero),
                     bf16_pair(y2_0, zero), r);
