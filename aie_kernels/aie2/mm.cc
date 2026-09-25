@@ -907,7 +907,8 @@ static inline void matmul_vectorized_4x8x8_i8_i16(const int8 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_4x2_mmul<int8, int16, (m / r), (k / s), (n / t), r,
-                                    s, t, is_b_row_maj>(pA, pB, pC);
+                                    s, t, is_b_row_maj, is_c_row_maj>(pA, pB,
+                                                                      pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
@@ -923,7 +924,8 @@ static inline void matmul_vectorized_4x8x8_i8_i32(const int8 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_4x2_mmul<int8, int32, (m / r), (k / s), (n / t), r,
-                                    s, t, is_b_row_maj>(pA, pB, pC);
+                                    s, t, is_b_row_maj, is_c_row_maj>(pA, pB,
+                                                                      pC);
 }
 
 extern "C" {

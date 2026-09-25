@@ -1060,6 +1060,13 @@ CASES += [
     ),
     Case(
         "mm",
+        dict(**_mm, input_dtype=np.int8, output_dtype=np.int32, c_col_maj=True),
+        calls=4,
+        smoke=True,
+        perf=False,
+    ),
+    Case(
+        "mm",
         dict(**_mm_bf16, c_col_maj=True),
         calls=4,
         smoke=True,

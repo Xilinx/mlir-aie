@@ -116,6 +116,7 @@ mm/64x32x64x4/bfloat16_float32/b_col_maj=True
 mm/64x32x64x4/bfloat16_float32/c_col_maj=True
 mm/64x32x64x4/int16_int32
 mm/64x32x64x4/int16_int32/c_col_maj=True
+mm/64x32x64x4/int8_int32/c_col_maj=True
 mm/64x64x64x16/bfloat16/b_col_maj=True/emulate_bf16_mmul_with_bfp16=True/llama-prefill-lm-head
 mm/64x64x64x16/bfloat16/emulate_bf16_mmul_with_bfp16=True/llama-prefill
 mm/64x64x64x16/bfloat16_float32/b_col_maj=True
