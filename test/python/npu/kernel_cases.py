@@ -745,6 +745,23 @@ CASES: list[Case] = [
         scalars=(224, 4, 16, 14, 17),
         smoke=True,
     ),
+    # An odd number of 8-channel groups, and two 16-patch groups per call.
+    Case(
+        "conv2dk14",
+        dict(output_channels=24),
+        calls=4,
+        scalars=(224, 4, 24, 14, 17),
+        tag="three-groups",
+        perf=False,
+    ),
+    Case(
+        "conv2dk14",
+        dict(input_width=448, output_channels=8),
+        calls=4,
+        scalars=(448, 4, 8, 14, 17),
+        tag="two-tile-groups",
+        perf=False,
+    ),
     Case(
         "conv2dk1",
         dict(act_dtype=np.uint8),

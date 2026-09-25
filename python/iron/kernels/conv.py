@@ -700,8 +700,8 @@ def conv2dk14(
 ) -> ExternalFunction:
     """14x14 convolution kernel.
 
-    The source lives under ``aie_kernels/aie2p/`` but has no arch-specific
-    code; it builds and passes on aie2 as well.
+    The source lives under ``aie_kernels/aie2p/`` and builds for aie2 as
+    well, where the vector path has its own AIE2 variant.
 
     Args:
         input_width: Spatial width of the input.

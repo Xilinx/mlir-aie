@@ -136,6 +136,91 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 // Output - ch/8 t/8 t8 c8 --> 2 2 8 8
 //
 //*****************************************************************************
+#if __AIE_ARCH__ == 20
+void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
+                         const int32_t runtime_input_width,
+                         const int32_t runtime_input_channels,
+                         const int32_t runtime_output_channels,
+                         const int32_t runtime_kernel_width, const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t kernel_width = CONV_KERNEL_WIDTH;
+  event0();
+
+  // Each 8 tiles x 8 channels block is two native 4x8x8 macs on the two
+  // 256-bit halves of the activations, so no shuffle is needed.
+  using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::symmetric_inf);
+
+  const int output_channels_div_8 = output_channels / 8;
+  const int tiles_div_16 = input_width / kernel_width / 16;
+  const int pixels_div_2 = kernel_width * kernel_width / 2;
+
+  const int group = tiles_div_16 * 128;
+  int8_t *__restrict out_ptr = output;
+
+  // Two channel groups share each activation load. An odd last group is
+  // computed twice and stored once.
+  for (int k = 0; k < output_channels_div_8; k += 2) {
+    const int second = k + 1 < output_channels_div_8 ? group : 0;
+    const uint8_t *__restrict in_ptr = input;
+    for (int j = 0; j < tiles_div_16; j++) {
+      const uint8_t *__restrict a_ptr = in_ptr;
+      const uint8_t *__restrict b_ptr = in_ptr + pixels_div_2 * 64;
+      const int8_t *__restrict k_ptr = kernels + k * pixels_div_2 * 64;
+      const int8_t *__restrict l_ptr =
+          second ? k_ptr + pixels_div_2 * 64 : k_ptr;
+      MMUL4x8x8 acc0 = aie::zeros<acc32, 32>();
+      MMUL4x8x8 acc1 = aie::zeros<acc32, 32>();
+      MMUL4x8x8 acc2 = aie::zeros<acc32, 32>();
+      MMUL4x8x8 acc3 = aie::zeros<acc32, 32>();
+      MMUL4x8x8 acc4 = aie::zeros<acc32, 32>();
+      MMUL4x8x8 acc5 = aie::zeros<acc32, 32>();
+      MMUL4x8x8 acc6 = aie::zeros<acc32, 32>();
+      MMUL4x8x8 acc7 = aie::zeros<acc32, 32>();
+      AIE_PREPARE_FOR_PIPELINING
+      AIE_LOOP_NO_UNROLL
+      for (int i = 0; i < pixels_div_2; i++) {
+        aie::vector<int8, 64> w0 = aie::load_v<64>(k_ptr);
+        aie::vector<int8, 64> w1 = aie::load_v<64>(l_ptr);
+        k_ptr += 64;
+        l_ptr += 64;
+        aie::vector<uint8, 32> x0 = aie::load_v<32>(a_ptr);
+        aie::vector<uint8, 32> x1 = aie::load_v<32>(a_ptr + 32);
+        aie::vector<uint8, 32> x2 = aie::load_v<32>(b_ptr);
+        aie::vector<uint8, 32> x3 = aie::load_v<32>(b_ptr + 32);
+        a_ptr += 64;
+        b_ptr += 64;
+        acc0.mac(x0, w0);
+        acc1.mac(x1, w0);
+        acc2.mac(x2, w0);
+        acc3.mac(x3, w0);
+        acc4.mac(x0, w1);
+        acc5.mac(x1, w1);
+        acc6.mac(x2, w1);
+        acc7.mac(x3, w1);
+      }
+      aie::store_v(out_ptr, acc0.to_vector<int8>(scale));
+      aie::store_v(out_ptr + 32, acc1.to_vector<int8>(scale));
+      aie::store_v(out_ptr + 64, acc2.to_vector<int8>(scale));
+      aie::store_v(out_ptr + 96, acc3.to_vector<int8>(scale));
+      if (second) {
+        aie::store_v(out_ptr + second, acc4.to_vector<int8>(scale));
+        aie::store_v(out_ptr + second + 32, acc5.to_vector<int8>(scale));
+        aie::store_v(out_ptr + second + 64, acc6.to_vector<int8>(scale));
+        aie::store_v(out_ptr + second + 96, acc7.to_vector<int8>(scale));
+      }
+      out_ptr += 128;
+      in_ptr += 2 * pixels_div_2 * 64;
+    }
+    out_ptr += second;
+  }
+
+  event1();
+}
+#else
 void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
                          const int32_t runtime_input_width,
                          const int32_t runtime_input_channels,
@@ -203,6 +288,7 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
 
   event1();
 }
+#endif
 
 #endif // UINT8_ACT
 
