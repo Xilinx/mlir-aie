@@ -53,6 +53,35 @@ class CollectTests(unittest.TestCase):
         self.assertEqual([b.lines for b in blocks], [["written here"]])
         self.assertEqual(code, 1)
 
+    def test_a_moved_comment_excuses_one_copy_only(self):
+        d = "\n".join(
+            [
+                "--- a/old/k.cc",
+                "+++ /dev/null",
+                "@@ -1,1 +0,0 @@",
+                "-// explanation",
+                diff(("new/k.cc", 1, ["// explanation", "int x = 1;"])),
+                diff(("new/j.cc", 1, ["// explanation", "int y = 1;"])),
+            ]
+        )
+        blocks, _ = slop.collect(d)
+        self.assertEqual(
+            [(b.path, b.lines) for b in blocks], [("new/j.cc", ["explanation"])]
+        )
+
+    def test_a_removed_code_line_does_not_excuse_a_comment(self):
+        d = "\n".join(
+            [
+                "--- a/k.py",
+                "+++ b/k.py",
+                "@@ -1,1 +1,1 @@",
+                "-x = 1",
+                "+# x = 1",
+            ]
+        )
+        blocks, _ = slop.collect(d)
+        self.assertEqual([b.lines for b in blocks], [["x = 1"]])
+
     def test_non_source_files_are_ignored(self):
         blocks, code = slop.collect(diff(("README.md", 1, ["# heading", "text"])))
         self.assertEqual(blocks, [])

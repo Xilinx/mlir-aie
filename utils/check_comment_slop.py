@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 
 # A concept re-explained at N sites is the dominant failure: the model restates it at
@@ -209,25 +210,29 @@ def added_lines(diff):
 
 
 def moved_comments(diff):
-    """Return every removed line's text, comment markers stripped.
+    """Count every removed comment line's text, comment markers stripped.
 
     A comment removed at one site and added at another was moved, not written.
     Moving a file that changed too much to be diffed as a rename otherwise
-    reads as writing all of its comments anew.
+    reads as writing all of its comments anew. Each removal excuses one
+    addition, so a comment moved once and then copied is still caught.
     """
-    return {
-        strip_comment_markers(t) for sign, _, _, t in _body_lines(diff) if sign == "-"
-    }
+    return Counter(
+        strip_comment_markers(t)
+        for sign, path, _, t in _body_lines(diff)
+        if sign == "-" and path and is_comment_line(path, t)
+    )
 
 
 def _body_lines(diff):
-    """Yield (sign, new path, new lineno, text) for every added or removed line.
+    """Yield (sign, path, new lineno, text) for every added or removed line.
 
+    The path is the new one for an added line and the old one for a removed line.
     The @@ header declares how many lines the hunk body holds, and we consume exactly
     that many. Telling body from header by prefix instead cannot be made correct: an
     added `++iter;` arrives as `+++iter;` and a removed `-- x` as `--- x`.
     """
-    path, lineno, old_left, new_left = None, 0, 0, 0
+    path, old_path, lineno, old_left, new_left = None, None, 0, 0, 0
     for raw in diff.splitlines():
         # Every body line carries a +/-/space/\ prefix, so a bare @@ or `diff --git` can
         # only be a header. Resyncing on one bounds the damage of a hunk whose declared
@@ -237,7 +242,9 @@ def _body_lines(diff):
             old_left = new_left = 0
 
         if old_left <= 0 and new_left <= 0:
-            if raw.startswith("+++ b/"):
+            if raw.startswith("--- a/"):
+                old_path = raw[6:]
+            elif raw.startswith("+++ b/"):
                 path = raw[6:]
             elif m := HUNK_RE.match(raw):
                 old_left = int(m.group(1) or 1)
@@ -252,7 +259,7 @@ def _body_lines(diff):
             lineno += 1
             new_left -= 1
         elif raw.startswith("-"):
-            yield "-", path, lineno, raw[1:]
+            yield "-", old_path, lineno, raw[1:]
             old_left -= 1
         else:  # context
             lineno += 1
@@ -328,7 +335,11 @@ def collect(diff):
 
         if is_comment:
             stripped = strip_comment_markers(text)
-            if LICENSE_RE.match(stripped) or (stripped and stripped in moved):
+            if stripped and moved[stripped]:
+                moved[stripped] -= 1
+                current = None
+                continue
+            if LICENSE_RE.match(stripped):
                 current = None
                 continue
             if (

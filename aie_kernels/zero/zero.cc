@@ -8,9 +8,11 @@
 #include "../common/zero.h"
 
 extern "C" void zero(ZERO_TYPE *__restrict output) {
+  event0();
 #ifdef ZERO_SCALAR
   zero_scalar<ZERO_TYPE, TILE_SIZE, 1>(output);
 #else
-  zero_vectorized<ZERO_TYPE, TILE_SIZE, 1>(output);
+  zero_vectorized<ZERO_TYPE, TILE_SIZE, 1, false>(output);
 #endif
+  event1();
 }

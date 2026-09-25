@@ -72,7 +72,9 @@ void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
   // One bf16 multiply's lanes, the multiple the factory holds cols to.
   // conv_even rounding matches the reference math more closely than the
   // default floor mode for the normalize pass.
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
   layer_norm<bfloat16, AIE_BF16_LANES>(input, output, cols);
+  ::aie::set_rounding(saved_rounding);
 }
 }
