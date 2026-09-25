@@ -801,6 +801,29 @@ CASES: list[Case] = [
         scalars=(28, 120, 40, 10, 1),
     ),
     Case(
+        "bn_conv2dk1_skip",
+        dict(input_width=56, input_channels=72, output_channels=24),
+        calls=8,
+        scalars=(56, 72, 24, 10, 1),
+    ),
+    Case(
+        "bn_conv2dk1_skip",
+        dict(input_width=7, input_channels=240, output_channels=40),
+        calls=8,
+        scalars=(7, 240, 40, 11, 1),
+    ),
+    Case(
+        "bn_conv2dk1_skip",
+        dict(
+            input_width=14,
+            input_channels=184,
+            output_channels=80,
+            skip_dtype=np.int8,
+        ),
+        calls=8,
+        scalars=(14, 184, 80, 11, 1),
+    ),
+    Case(
         "bn_conv2dk3",
         dict(input_width=224, input_channels=8, output_channels=16),
         calls=8,
