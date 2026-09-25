@@ -25,6 +25,7 @@ from ._common import (
     Param,
     _conv_act_dtype_info,
     _default_source_path,
+    _detect_arch,
     _make_extern,
     dtypes,
 )
@@ -575,7 +576,8 @@ def conv2dk3(
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            stack_bytes=4736,  # aiecc measured_stack_size (Peano 22)
+            # aiecc measured_stack_size (Peano 22) on aie2p; 0 B on aie2
+            stack_bytes=4736 if _detect_arch() == "aie2p" else None,
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
