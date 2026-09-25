@@ -8,13 +8,19 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-#ifndef GELU_ELEMS
+#ifdef GELU_ELEMS
+static_assert(GELU_ELEMS > 0 && GELU_ELEMS % 16 == 0);
+#else
 #define GELU_ELEMS vector_size
 #endif
+
 #include <lut_based_ops.h>
 #include <stdint.h>
 
 using namespace aie;
+
+// Tile size of gelu_bf16, which takes no size argument.
+constexpr int32_t gelu_tile_elems = 1024;
 
 // 0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3))), as u = x (c + d x^2) and
 // 0.5 x + 0.5 x tanh(u), each accumulated in fp32.
@@ -51,8 +57,7 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 extern "C" {
 
 void gelu_bf16(bfloat16 *restrict input, bfloat16 *restrict output) {
-  int32_t input_size = 1024; // Assuming input size is a multiple of 16
-  gelu_tanh_approx_bf16(input, output, input_size);
+  gelu_tanh_approx_bf16(input, output, gelu_tile_elems);
 }
 
 void gelu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,

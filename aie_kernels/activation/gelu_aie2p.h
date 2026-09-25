@@ -12,9 +12,14 @@
 
 using namespace aie;
 
-#ifndef GELU_ELEMS
+#ifdef GELU_ELEMS
+static_assert(GELU_ELEMS > 0 && GELU_ELEMS % 32 == 0);
+#else
 #define GELU_ELEMS vector_size
 #endif
+
+// Tile size of gelu_bf16, which takes no size argument.
+constexpr int32_t gelu_tile_elems = 1024;
 
 // GELU (tanh approximation):
 //   0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3))).
@@ -54,7 +59,7 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
 
   // AIE_PREPARE_FOR_POSTPIPELINING is required: the pre-RA pipeliner finds no
-  // schedule for this body; the post-RA pipeliner achieves II=18, NS=2.
+  // schedule for this body.
   // Unrolling fills the mac-to-vtanh stall; by eight it runs out of registers.
   auto body = [&]() __attribute__((always_inline)) {
     *it_out++ = gelu_tanh_approx(*it_in++);
@@ -87,8 +92,7 @@ static inline void gelu_tanh_approx_inplace_bf16(bfloat16 *restrict v,
 extern "C" {
 
 void gelu_bf16(bfloat16 *restrict input, bfloat16 *restrict output) {
-  int32_t input_size = 1024; // Assuming input size is a multiple of 32
-  gelu_tanh_approx_bf16(input, output, input_size);
+  gelu_tanh_approx_bf16(input, output, gelu_tile_elems);
 }
 
 void gelu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
