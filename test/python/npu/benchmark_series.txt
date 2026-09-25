@@ -57,7 +57,11 @@ bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/
 bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2/top-row
 bn_conv2dk3_dw/4704x8/uint8/input_channels=336/input_width=14/output_channels=336/stride=2
 bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240
+bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=16/two-blocks
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8
+bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/fc1
+bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/ic-tail
+bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8/short
 compute_max/1x16/int32
 compute_max/2x16/bfloat16
 conv2dk1/2048x8/int8_uint8

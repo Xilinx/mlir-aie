@@ -1819,6 +1819,65 @@ static void k1_xy_pool_vector(const int8_t *input, const int8_t *kernels,
   for (int oc = output_channels; oc < output_channels_padd; oc++)
     output[oc] = 0;
 }
+
+// Fully connected: a single pixel, so the input is input_channels contiguous
+// uint16 and each output channel block's weights are [input_channels][8].
+// mmul<2,8,8> takes 16 inputs as a 2 x 8 matrix against the next 8 rows of
+// weights; row 0 of acc0 and row 1 of acc1 are the ones that line up, and
+// their sum is the dot product.
+static void fc_ui16_vector(const uint16_t *__restrict input,
+                           const int8_t *__restrict kernels,
+                           uint16_t *__restrict output,
+                           const int32_t input_channels,
+                           const int32_t input_channels_pad,
+                           const int32_t output_channels, const int scale) {
+  using MMUL = aie::mmul<2, 8, 8, uint16, int8>;
+  event0();
+  aie::set_saturation(aie::saturation_mode::saturate);
+  aie::set_rounding(aie::rounding_mode::conv_even);
+  const uint32_t pairs = (uint32_t)input_channels / 32;
+  for (int oc = 0; oc < output_channels / 8; oc++) {
+    const aie::vector<uint16, 16> *__restrict x =
+        (const aie::vector<uint16, 16> *)input;
+    const aie::vector<int8, 64> *__restrict w =
+        (const aie::vector<int8, 64> *)(kernels +
+                                        oc * (input_channels_pad / 8) * 64);
+    MMUL acc0, acc1, acc2, acc3;
+    acc0.mul(x[0], w[0]);
+    acc1.mul(x[0], w[1]);
+    acc2.mul(x[1], w[2]);
+    acc3.mul(x[1], w[3]);
+#pragma clang loop min_iteration_count(1)
+    for (uint32_t c = 1; c < pairs; c++) {
+      x += 2;
+      w += 4;
+      acc0.mac(x[0], w[0]);
+      acc1.mac(x[0], w[1]);
+      acc2.mac(x[1], w[2]);
+      acc3.mac(x[1], w[3]);
+    }
+    x += 2;
+    w += 4;
+    aie::vector<int32, 16> s02 = aie::add(acc0.template to_vector<int32>(0),
+                                          acc2.template to_vector<int32>(0));
+    aie::vector<int32, 16> s13 = aie::add(acc1.template to_vector<int32>(0),
+                                          acc3.template to_vector<int32>(0));
+    if ((uint32_t)input_channels & 16) {
+      MMUL t0, t1;
+      t0.mul(x[0], w[0]);
+      t1.mul(x[0], w[1]);
+      s02 = aie::add(s02, t0.template to_vector<int32>(0));
+      s13 = aie::add(s13, t1.template to_vector<int32>(0));
+    }
+    const aie::vector<int32, 8> sum =
+        aie::add(s02.extract<8>(0), s13.extract<8>(1));
+    aie::accum<acc32, 16> a;
+    a.from_vector(aie::concat(sum, aie::zeros<int32, 8>()), 0);
+    aie::store_v(output + oc * 8,
+                 a.template to_vector<uint8>(scale).unpack().extract<8>(0));
+  }
+  event1();
+}
 #endif // __AIE_ARCH__ == 20
 
 //*****************************************************************************
@@ -2094,7 +2153,15 @@ void post_L2_conv2dk1_relu_i16_ui16_pad(uint16_t *input, int8_t *kernels,
                                         const int32_t input_channels_pad,
                                         const int32_t output_channels,
                                         const int scale) {
-
+#if __AIE_ARCH__ == 20
+  if (input_width == 1 && input_channels >= 64 && input_channels % 16 == 0 &&
+      (((uintptr_t)input | (uintptr_t)kernels) & 31) == 0 &&
+      ((uintptr_t)output & 15) == 0) {
+    fc_ui16_vector(input, kernels, output, input_channels, input_channels_pad,
+                   output_channels, scale);
+    return;
+  }
+#endif
   conv2dk1_ui16_scalar_pad(input, kernels, output, input_width, input_channels,
                            input_channels_pad, output_channels, scale);
 }

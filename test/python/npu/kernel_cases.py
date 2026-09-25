@@ -1047,6 +1047,38 @@ CASES: list[Case] = [
         scalars=(1, 1280, 1280, 8, 12),
         smoke=True,
     ),
+    # MobileNet's FC1: 960 of the 1280 weight rows used.
+    Case(
+        "bn_fc_relu_ui16_pad",
+        dict(input_channels=1280, output_channels=8),
+        calls=8,
+        scalars=(1, 960, 1280, 8, 11),
+        tag="fc1",
+    ),
+    Case(
+        "bn_fc_relu_ui16_pad",
+        dict(input_channels=1280, output_channels=16),
+        calls=8,
+        scalars=(1, 960, 1280, 16, 12),
+        tag="two-blocks",
+        perf=False,
+    ),
+    Case(
+        "bn_fc_relu_ui16_pad",
+        dict(input_channels=1280, output_channels=8),
+        calls=8,
+        scalars=(1, 1264, 1280, 8, 12),
+        tag="ic-tail",
+        perf=False,
+    ),
+    Case(
+        "bn_fc_relu_ui16_pad",
+        dict(input_channels=1280, output_channels=8),
+        calls=8,
+        scalars=(1, 48, 1280, 8, 8),
+        tag="short",
+        perf=False,
+    ),
     # eltwise mul/add selected per call (programming_examples/ml/scale_shift)
     Case("mul_add", calls=16, scalars=(1,), smoke=True),
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),
