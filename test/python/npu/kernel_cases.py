@@ -904,6 +904,27 @@ CASES: list[Case] = [
         perf=False,
     ),
     Case(
+        "bn_conv2dk1_relu_xy_pool_padded",
+        dict(input_width=7, input_channels=80, output_channels=120),
+        calls=8,
+        scalars=(7, 80, 120, 120, 8, 3, 1, 0),
+        tag="mid-row",
+        perf=False,
+    ),
+    Case(
+        "bn_conv2dk1_relu_xy_pool_padded",
+        dict(
+            input_width=7,
+            input_channels=80,
+            output_channels=128,
+            weight_chunk_count=80 * 64,
+        ),
+        calls=8,
+        scalars=(7, 80, 128, 128, 8, 6, 2, 1),
+        tag="split",
+        perf=False,
+    ),
+    Case(
         "bn_fc_relu_ui16_pad",
         dict(input_channels=1280, output_channels=8),
         calls=8,

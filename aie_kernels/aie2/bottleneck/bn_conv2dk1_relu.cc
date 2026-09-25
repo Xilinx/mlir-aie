@@ -1768,6 +1768,57 @@ static void k1_vector(const int8_t *input, const int8_t *kernels,
                    output_channels, scale);
   event1();
 }
+
+constexpr int32_t K1_POOL_MAX_WIDTH = 32;
+
+// Pools one output channel block at a time. The requantized conv row goes to
+// a stack buffer, where the overlapping last chunk just rewrites the same
+// pixels and the bytes past the row stay zero, and is summed 4 pixels at a
+// time. The accumulate follows the scalar, and the float average is replaced
+// by its integer form: q + 1 when the remainder is at least 30, or 25-29 with
+// q odd. The divide by 49 is a 32-bit multiply-shift. For sums below 100353
+// (the largest here is 65535 + 255 * K1_POOL_MAX_WIDTH) it is one low only on
+// multiples of 49, where the remainder 49 still rounds q up to the quotient.
+static void k1_xy_pool_vector(const int8_t *input, const int8_t *kernels,
+                              uint16_t *output, const int32_t input_width,
+                              const int32_t input_channels,
+                              const int32_t output_channels,
+                              const int32_t output_channels_padd,
+                              const int scale, const int y_index,
+                              int32_t output_split, int32_t weight_index) {
+  alignas(32) uint8_t row[K1_POOL_MAX_WIDTH * 8];
+  alignas(32) uint16_t part[16];
+  for (int i = 0; i < K1_POOL_MAX_WIDTH * 8; i += 32)
+    aie::store_v(row + i, aie::zeros<uint8, 32>());
+  aie::set_saturation(aie::saturation_mode::saturate);
+  aie::set_rounding(aie::rounding_mode::conv_even);
+  const int32_t oc_tile = output_channels / output_split;
+  const int32_t oc_offset = oc_tile / 8 * weight_index;
+  const bool aligned = input_width % 4 == 0 && ((uintptr_t)input & 31) == 0;
+  const uint32_t prior = y_index != 0 ? 0xffffu : 0u;
+  const bool last = y_index == input_width - 1;
+  for (int oc = 0; oc < oc_tile / 8; oc++) {
+    const int8_t *wts = kernels + oc * (input_channels / 8) * 64;
+    if (aligned)
+      k1_rows<true>(input, wts, row, input_width, input_channels, 8, scale);
+    else
+      k1_rows<false>(input, wts, row, input_width, input_channels, 8, scale);
+    aie::vector<uint16, 32> sum = aie::zeros<uint16, 32>();
+    for (int x = 0; x < input_width * 8; x += 32)
+      sum = aie::add(sum, aie::load_v<32>(row + x).unpack());
+    aie::store_v(part, aie::add(sum.extract<16>(0), sum.extract<16>(1)));
+    for (int oc8 = 0; oc8 < 8; oc8++) {
+      uint16_t *o = output + (oc_offset + oc) * 8 + oc8;
+      const uint32_t acc = (*o & prior) + part[oc8] + part[8 + oc8];
+      const uint32_t q = (acc * 42799u) >> 21;
+      const uint32_t r = acc - 49u * q;
+      const uint32_t avg = q + ((r >= 30) | ((r >= 25) & (q & 1)));
+      *o = (uint16_t)(last ? avg : acc);
+    }
+  }
+  for (int oc = output_channels; oc < output_channels_padd; oc++)
+    output[oc] = 0;
+}
 #endif // __AIE_ARCH__ == 20
 
 //*****************************************************************************
@@ -2099,6 +2150,15 @@ void conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8(
     const int32_t output_channels_padd, const int scale, const int y_index,
     int32_t output_split, int32_t weight_index) {
   event0();
+#if __AIE_ARCH__ == 20
+  if (input_width >= 4 && input_width <= K1_POOL_MAX_WIDTH) {
+    k1_xy_pool_vector(input, kernels, output, input_width, input_channels,
+                      output_channels, output_channels_padd, scale, y_index,
+                      output_split, weight_index);
+    event1();
+    return;
+  }
+#endif
   fused_conv2dk1_xy_pool_i8_large_padded_scalar(
       input, kernels, output, input_width, input_channels, output_channels,
       output_channels_padd, scale, y_index, output_split, weight_index);
