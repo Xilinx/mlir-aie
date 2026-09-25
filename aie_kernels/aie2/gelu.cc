@@ -17,35 +17,23 @@
 
 using namespace aie;
 
+// 0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3))), as u = x (c + d x^2) and
+// 0.5 x + 0.5 x tanh(u), each accumulated in fp32.
 static inline __attribute__((always_inline)) aie::vector<bfloat16, 16>
 gelu_v16(aie::vector<bfloat16, 16> x) {
-  const bfloat16 k0_5 = 0.5f;
-  const bfloat16 k1 = 1.0f;
-  const bfloat16 sqrt_2_over_pi = 0.79788456f; // ≈ sqrt(2/π)
-  const bfloat16 kBeta = 0.044715f;
+  const float sqrt_2_over_pi = 0.79788456f;
+  const float kBeta = 0.044715f;
+  aie::accum<accfloat, 16> c(aie::broadcast<float, 16>(sqrt_2_over_pi));
+  auto d = aie::broadcast<bfloat16, 16>(sqrt_2_over_pi * kBeta);
+  auto v05 = aie::broadcast<bfloat16, 16>(0.5f);
 
-  auto v05 = aie::broadcast<bfloat16, 16>(k0_5);
-  auto v1 = aie::broadcast<bfloat16, 16>(k1);
-  auto vs2opi = aie::broadcast<bfloat16, 16>(sqrt_2_over_pi);
-  auto vBeta = aie::broadcast<bfloat16, 16>(kBeta);
-
-  // Compute x^3
-  aie::vector<bfloat16, 16> x2 = aie::mul(x, x);  // x^2
-  aie::vector<bfloat16, 16> x3 = aie::mul(x, x2); // x^3
-
-  // inner = sqrt(2/pi) * (x + 0.044715 * x^3)
-  aie::vector<bfloat16, 16> x3_beta = aie::mul(x3, vBeta);
-  aie::vector<bfloat16, 16> inner = aie::add(x, x3_beta);
-  aie::vector<bfloat16, 16> inner1 = aie::mul(inner, vs2opi);
-
-  // tanh_out = tanh(inner)
-  aie::vector<bfloat16, 16> tanh_out = getTanhBf16(inner1);
-
-  // result = 0.5 * x * (1 + tanh_out)
-  aie::vector<bfloat16, 16> one_plus_tanh = aie::add(tanh_out, v1);
-  // Multiply by x and 0.5
-  aie::vector<bfloat16, 16> mul_v05 = aie::mul(v05, one_plus_tanh);
-  return aie::mul(x, mul_v05).to_vector<bfloat16>();
+  aie::vector<bfloat16, 16> x2 = aie::mul(x, x).to_vector<bfloat16>();
+  aie::vector<bfloat16, 16> p = aie::mac(c, x2, d).to_vector<bfloat16>();
+  aie::vector<bfloat16, 16> u = aie::mul(x, p).to_vector<bfloat16>();
+  aie::vector<bfloat16, 16> t = getTanhBf16(u);
+  aie::accum<accfloat, 16> hx_acc = aie::mul(x, v05);
+  aie::vector<bfloat16, 16> hx = hx_acc.to_vector<bfloat16>();
+  return aie::mac(hx_acc, t, hx).to_vector<bfloat16>();
 }
 
 void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
