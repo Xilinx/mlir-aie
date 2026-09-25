@@ -41,7 +41,7 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | basic | [bitwiseOR.cc](./aie2/bitwiseOR.cc) | AIE API | Bitwise OR of fixed point tensors | `uint8_t`,`int16_t`,`int32_t`|
 | basic | [bitwiseAND.cc](./aie2/bitwiseAND.cc) | AIE API | Bitwise AND of fixed point tensors | `uint8_t`,`int16_t`,`int32_t` |
 | gemm  | [mm.cc](./aie2/mm.cc) | AIE API | Matrix/Matrix multiplication | `int8_t`,`int16_t`,`bfloat16` |
-| gemm  | [cascade_mm.cc](./aie2/cascade_mm.cc) | AIE API | Cascade Matrix/Matrix multiply (multi-core) | `int16_t`,`bfloat16` |
+| gemm  | [cascade_mm.cc](./aie2/cascade_mm.cc) | Scalar, cascade intrinsics | Cascade Matrix/Matrix multiply (multi-core) | `int16_t`,`bfloat16` |
 | |
 | reduction | [reduce_add.cc](./aie2/reduce_add.cc) | Intrinsics | Sum of elements in a tensor | `int32_t` |
 | reduction| [reduce_max.cc](./aie2/reduce_max.cc) | Intrinsics | Max value across a tensor | `int32_t` |
