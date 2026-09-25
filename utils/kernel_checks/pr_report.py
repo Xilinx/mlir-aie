@@ -20,6 +20,7 @@ import json
 import re
 import sys
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -90,21 +91,29 @@ def _reason(test) -> str:
     return line[:200] + ("\u2026" if len(line) > 200 else "")
 
 
+def sweep(xml) -> Iterator[tuple[str, str, ET.Element]]:
+    """Yield the case, variant and testcase of each input the extensive sweep ran."""
+    for test in ET.parse(xml).iter("testcase"):
+        match = _EXTENSIVE.fullmatch(test.get("name", ""))
+        if match and test.find("skipped") is None:
+            yield match[1], match[2], test
+
+
+def failed(test) -> bool:
+    return test.find("failure") is not None or test.find("error") is not None
+
+
 def failures(directory: Path) -> tuple[list[Failure], set[str]]:
     """Return the failing cases, and every case the extensive sweep ran."""
     by_case: dict[str, Failure] = {}
     swept = set()
     xml = directory / "correctness.xml"
     if xml.exists():
-        for test in ET.parse(xml).iter("testcase"):
-            match = _EXTENSIVE.fullmatch(test.get("name", ""))
-            if not match or test.find("skipped") is not None:
-                continue
-            case, variant = match[1], match[2]
+        for case, variant, test in sweep(xml):
             swept.add(case)
             f = by_case.setdefault(case, Failure(case))
             f.total += 1
-            if test.find("failure") is not None or test.find("error") is not None:
+            if failed(test):
                 f.failed.append(variant)
                 f.reason = f.reason or _reason(test)
     meta = directory / "meta.json"

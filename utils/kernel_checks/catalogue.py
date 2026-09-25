@@ -18,7 +18,6 @@ import json
 import os
 import re
 import sys
-import xml.etree.ElementTree as ET
 from collections import defaultdict
 
 from aie.iron import kernels
@@ -28,7 +27,8 @@ from aie.utils import get_current_device
 from aie.utils.compile.remarks import kernel_builds
 from aie.utils.hostruntime import set_current_device
 
-_EXTENSIVE = re.compile(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]")
+import pr_report
+
 _LUT_SOURCE = re.compile(r'-DAIE_LUT_KERNEL_SOURCE="(.+)"')
 
 
@@ -56,14 +56,8 @@ def _swept(path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     A case failed if any input or seed failed, as the performance checks exclude it.
     """
     passed, failed = set(), set()
-    for test in ET.parse(path).iter("testcase"):
-        match = _EXTENSIVE.fullmatch(test.get("name", ""))
-        if not match:
-            continue
-        if test.find("failure") is not None or test.find("error") is not None:
-            failed.add(match[1])
-        elif test.find("skipped") is None:
-            passed.add(match[1])
+    for case, _, test in pr_report.sweep(path):
+        (failed if pr_report.failed(test) else passed).add(case)
     return _by_factory(passed - failed), _by_factory(failed)
 
 
