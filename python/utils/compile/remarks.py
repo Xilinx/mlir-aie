@@ -553,45 +553,18 @@ def _ir_functions(ir: str) -> dict[str, list[tuple[str, list[str]]]]:
     return {f: [b for b in bs if b[1] or b[0] != "0"] for f, bs in functions.items()}
 
 
-def _cycles(succs: dict[str, list[str]]) -> set[str]:
-    """Blocks on a CFG cycle (Tarjan's SCCs; a self-loop counts)."""
-    index: dict[str, int] = {}
-    low: dict[str, int] = {}
-    stack: list[str] = []
-    on_stack: set[str] = set()
-    looping: set[str] = set()
-    for root in succs:
-        if root in index:
-            continue
-        work = [(root, iter(succs[root]))]
-        index[root] = low[root] = len(index)
-        stack.append(root)
-        on_stack.add(root)
-        while work:
-            v, it = work[-1]
-            w = next(it, None)
-            if w is None:
-                work.pop()
-                if work:
-                    low[work[-1][0]] = min(low[work[-1][0]], low[v])
-                if low[v] == index[v]:
-                    scc = []
-                    while True:
-                        w = stack.pop()
-                        on_stack.discard(w)
-                        scc.append(w)
-                        if w == v:
-                            break
-                    if len(scc) > 1 or v in succs[v]:
-                        looping.update(scc)
-            elif w not in index:
-                index[w] = low[w] = len(index)
-                stack.append(w)
-                on_stack.add(w)
-                work.append((w, iter(succs.get(w, ()))))
-            elif w in on_stack:
-                low[v] = min(low[v], index[w])
-    return looping
+def _in_loop(succs: dict[str, list[str]], block: str) -> bool:
+    """Whether ``block`` can reach itself, a self-loop included."""
+    seen: set[str] = set()
+    work = list(succs[block])
+    while work:
+        b = work.pop()
+        if b == block:
+            return True
+        if b not in seen:
+            seen.add(b)
+            work.extend(succs[b])
+    return False
 
 
 def _marker_paths(functions, name: str, memo: dict) -> set[str] | str:
@@ -621,11 +594,10 @@ def _marker_paths(functions, name: str, memo: dict) -> set[str] | str:
                 continue
             seqs = {(s + t)[:_MAX_EVENTS] for s in seqs for t in step}
         local[b] = seqs
-    looping = _cycles(succs)
-    inside = sorted(b for b in looping if local[b] != {""})
-    if inside:
-        memo[name] = f"a marker in {name} sits inside a loop (block {inside[0]})"
-        return memo[name]
+    for b, _ in blocks:
+        if local[b] != {""} and _in_loop(succs, b):
+            memo[name] = f"a marker in {name} sits inside a loop (block {b})"
+            return memo[name]
     # Paths from the entry block: acyclic once the event-free loops are
     # collapsed, so a worklist of (block, sequence) pairs terminates.
     body = dict(blocks)
