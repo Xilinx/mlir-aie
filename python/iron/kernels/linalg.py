@@ -957,7 +957,7 @@ def mm_bfp_shuffle(
 def mha(
     dim_m: int = 64, dim_k: int = 64, dim_n: int = 64, pv: bool = False
 ) -> MatrixKernel:
-    """Flash-attention toolkit from ``aie_kernels/aie2p/mha.cc`` (aie2p only).
+    """Flash-attention toolkit from ``aie_kernels/aie2p/mha.cc``.
 
     One translation unit that includes ``softmax.cc`` and ``mm.cc`` and
     exports the symbols an attention dataflow composes over one micro-tile.
@@ -986,10 +986,6 @@ def mha(
         dim_n: Columns of the micro-tile (multiple of 16).
         pv: If ``True`` return the ``P*V`` product instead of ``QK^T``.
     """
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError(
-            "mha: mha.cc is an AIE2P kernel; select an NPU2 device"
-        )
     for name, v, mult in (
         ("dim_m", dim_m, 16),
         ("dim_k", dim_k, 8),
@@ -1041,7 +1037,7 @@ _MHA_BLOCK = 64  # partial_softmax's fast path needs 64 keys per block
 
 
 def mha_softmax() -> ExternalFunction:
-    """One 64x64 block of ``mha.cc``'s online softmax, ``partial_softmax`` (aie2p only).
+    """One 64x64 block of ``mha.cc``'s online softmax, ``partial_softmax``.
 
     Writes the block's unnormalized weights ``P = exp2(A * s - m)``, with
     ``s = log2(e) / 8`` and ``m`` each query row's running maximum, and
@@ -1056,10 +1052,6 @@ def mha_softmax() -> ExternalFunction:
     past query block skipped), and ``S_q_eff``/``S_kv_eff`` are the
     sequence lengths whose tails pad the block.
     """
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError(
-            "mha_softmax: mha.cc is an AIE2P kernel; select an NPU2 device"
-        )
     b = _MHA_BLOCK
     tile = np.ndarray[(b * b,), np.dtype[bfloat16]]
     state = np.ndarray[(4 * b,), np.dtype[bfloat16]]
@@ -1072,6 +1064,8 @@ def mha_softmax() -> ExternalFunction:
         compile_flags=[f"-DDIM_M={b}", f"-DDIM_K={b}", f"-DDIM_N={b}"],
         contract=KernelContract(
             trace=Trace.whole_call(),
+            # aiecc measured_stack_size on aie2, over its 1024 default.
+            stack_bytes=1376 if _detect_arch() == "aie2" else None,
             roles=(In, Out, InOut, *([Param] * 6)),
             parameter_bindings=((4, scale), (5, b), (6, b)),
             initializers=((2, _zero_output),),
@@ -1080,11 +1074,22 @@ def mha_softmax() -> ExternalFunction:
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
             # (test_mha_e2e.py's _RTOL_EXP2). This form's rtol multiplies
             # |a| + |b|, so half of that; the floor is test_mha_e2e's
-            # 4 bf16 steps at 1, P's top.
-            tolerance=Tolerance.relative(
-                0.035,
-                4 * 2.0**-7,
-                note="aie::exp2 interpolant envelope, 6.98% (test_mha_e2e.py)",
+            # 4 bf16 steps at 1, P's top. aie2 has no aie::exp2 and takes
+            # exp2_bf16.h's cubic instead, 0.48% from exp2 with the bf16
+            # store (0.51% measured on npu1), so its rtol is 0.4% of |a| + |b|
+            # and its floor only admits the underflow to 0.
+            tolerance=(
+                Tolerance.relative(
+                    0.004,
+                    2.0**-120,
+                    note="exp2_bf16.h cubic, 0.51% worst element on npu1",
+                )
+                if _detect_arch() == "aie2"
+                else Tolerance.relative(
+                    0.035,
+                    4 * 2.0**-7,
+                    note="aie::exp2 interpolant envelope, 6.98% (test_mha_e2e.py)",
+                )
             ),
         ),
     )

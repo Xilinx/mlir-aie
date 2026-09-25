@@ -1037,11 +1037,11 @@ CASES += [
     ),
     Case("mv", dict(dim_m=32, dim_k=32), calls=4, smoke=True, perf=False),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
-    Case("mha", calls=4, devices=("npu2",), smoke=True, perf=False),
+    Case("mha", calls=4, smoke=True, perf=False),
     # ...and its P*V product, mha.cc's own 8x8x8 expansion. Same tile, but a
     # different micro-tile and so a different blocked operand order, which is
     # the part a shared case could not check.
-    Case("mha", dict(pv=True), calls=4, devices=("npu2",), smoke=True, perf=False),
+    Case("mha", dict(pv=True), calls=4, smoke=True, perf=False),
     # The toolkit's online softmax over one key block: params is (key block,
     # query block), scalars the two sequence lengths. The padded diagonal
     # block takes every branch the full one skips (the causal mask, masked
@@ -1052,7 +1052,6 @@ CASES += [
         calls=4,
         params=((0, 1),),
         scalars=(128, 64),
-        devices=("npu2",),
         smoke=True,
     ),
     Case(
@@ -1061,7 +1060,6 @@ CASES += [
         params=((0, 0),),
         scalars=(64, 64),
         tag="diagonal",
-        devices=("npu2",),
     ),
     Case(
         "mha_softmax",
@@ -1069,7 +1067,6 @@ CASES += [
         params=((0, 0),),
         scalars=(37, 37),
         tag="diagonal-padded",
-        devices=("npu2",),
         smoke=True,
         perf=False,
     ),

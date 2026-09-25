@@ -245,7 +245,11 @@ static void partial_softmax_rows(bfloat16 *__restrict A, bfloat16 *__restrict P,
     aie::accum<accfloat, VECTOR_LENGTH> exp_in =
         aie::msc(aie::mul(aie::load_v<VECTOR_LENGTH>(a), scale_vec),
                  aie::broadcast<bfloat16, VECTOR_LENGTH>(*m++), one_vec);
+#if __AIE_ARCH__ == 20
+    aie::store_v(p, exp2_bf16(exp_in.to_vector<float>()));
+#else
     aie::store_v(p, aie::exp2<bfloat16>(exp_in.to_vector<float>()));
+#endif
     a += VECTOR_LENGTH;
     p += VECTOR_LENGTH;
   }
@@ -489,7 +493,11 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
 
     aie::accum<accfloat, VECTOR_LENGTH> diff =
         aie::accum<accfloat, VECTOR_LENGTH>(aie::sub(m_i_minus_1, m_i));
+#if __AIE_ARCH__ == 20
+    l_i_accum.from_vector(exp2_bf16(diff.to_vector<float>()));
+#else
     l_i_accum = aie::exp2<bfloat16>(diff.to_vector<float>());
+#endif
     Vec64bf16 max_diff_exp = l_i_accum.to_vector<bfloat16>();
 
     aie::store_v(scale_buffer + 3 * B_q + i, max_diff_exp);
