@@ -27,6 +27,30 @@ void cast_f32_bf16_row(const float *restrict input, bfloat16 *restrict output,
   event0();
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
+#if __AIE_ARCH__ == 20
+  // AIE2 loads the f32 vector straight into the accumulator, which only the a
+  // port can do, so a single chain pipelines to two cycles per 16 elements.
+  // Its 5-stage schedule is only used for a loop known to run a few times.
+  auto pin = ::aie::begin_restrict_vector<N>(input);
+  auto pout = ::aie::begin_restrict_vector<N>(output);
+  const int steps = (uint32_t)cols / N;
+  if (steps >= 8) {
+    AIE_LOOP_MIN_ITERATION_COUNT(8)
+    AIE_LOOP_NO_UNROLL
+    for (int i = 0; i < steps; i++) {
+      ::aie::accum<accfloat, N> a;
+      a.from_vector(*pin++);
+      *pout++ = a.template to_vector<bfloat16>();
+    }
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int i = 0; i < steps; i++) {
+      ::aie::accum<accfloat, N> a;
+      a.from_vector(*pin++);
+      *pout++ = a.template to_vector<bfloat16>();
+    }
+  }
+#else
   // Indexing off `i` costs a shift and a pointer update per iteration and
   // leaves a loop the pipeliner rejects ("the loop structure is not
   // supported"), so each 512-bit load stands alone with its latency exposed.
@@ -43,6 +67,7 @@ void cast_f32_bf16_row(const float *restrict input, bfloat16 *restrict output,
     a.from_vector(v);
     ::aie::store_v(out, a.template to_vector<bfloat16>());
   }
+#endif
   ::aie::set_rounding(saved_rounding);
   event1();
 }
