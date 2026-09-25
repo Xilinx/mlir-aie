@@ -33,9 +33,12 @@ bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_chan
 bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8
 bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16
 bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16/top-row
+bn_conv2dk3_dw/2576x8/uint8/input_channels=184/input_width=14/output_channels=184
 bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120
 bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120/bottom-row
 bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2
+bn_conv2dk3_dw/4032x8/uint8/input_channels=72/input_width=56/output_channels=72/stride=2/top-row
+bn_conv2dk3_dw/4704x8/uint8/input_channels=336/input_width=14/output_channels=336/stride=2
 bn_conv2dk3_dw_out_split/3360x8/uint8_uint8+uint8/input_channels=480/input_width=7/output_split_channels=240
 bn_fc_relu_ui16_pad/1280x8/uint16/input_channels=1280/output_channels=8
 compute_max/1x16/int32

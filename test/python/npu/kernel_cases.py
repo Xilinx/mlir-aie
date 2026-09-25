@@ -765,6 +765,26 @@ CASES: list[Case] = [
     ),
     Case(
         "bn_conv2dk3_dw",
+        dict(input_width=56, input_channels=72, output_channels=72, stride=2),
+        calls=8,
+        scalars=(56, 72, 72, 3, 3, 0, 7, 0),
+        tag="top-row",
+        perf=False,
+    ),
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=14, input_channels=336, output_channels=336, stride=2),
+        calls=8,
+        scalars=(14, 336, 336, 3, 3, 1, 7, 0),
+    ),
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=14, input_channels=184, output_channels=184),
+        calls=8,
+        scalars=(14, 184, 184, 3, 3, 1, 7, 0),
+    ),
+    Case(
+        "bn_conv2dk3_dw",
         dict(input_width=28, input_channels=120, output_channels=120),
         calls=8,
         scalars=(28, 120, 120, 3, 3, 2, 7, 0),
