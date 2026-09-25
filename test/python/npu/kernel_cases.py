@@ -279,6 +279,16 @@ CASES: list[Case] = [
         smoke=True,
         perf=False,
     ),
+    # AIE2 gelu takes 64 elements per trip and loads the next trip's input
+    # ahead: 96 runs a single trip, reloading its own input, then the remainder.
+    Case(
+        "gelu_sized",
+        dict(tile_size=96),
+        calls=4,
+        tag="short-trip",
+        smoke=True,
+        perf=False,
+    ),
     *[
         Case(
             name,

@@ -95,4 +95,37 @@ getTanhBf16(v16bfloat16 vInput) {
   aie::accum<accfloat, 16> result = mac_elem_16_2(slope, x, offset);
   return (v16bfloat16)result.to_vector<bfloat16>();
 }
+// Applies f, a function of one 16-lane vector that reads a table, to n
+// elements, a multiple of 16. The table reads are ordered against every other
+// load and store, so a loop that loads one vector, looks it up and stores it
+// runs them one after another. K vectors per trip instead, each trip's input
+// loaded by the one before it (the last trip reloads its own), and all K
+// stores after all K lookups.
+template <int K = 4, typename F>
+inline __attribute__((always_inline)) void
+lut_map_bf16(const bfloat16 *restrict in, bfloat16 *restrict out, int n, F f) {
+  using V = aie::vector<bfloat16, 16>;
+  auto it_out = aie::begin_restrict_vector<16>(out);
+  const int trips = n / (16 * K);
+  if (trips > 0) {
+    V next[K];
+    for (int j = 0; j < K; j++)
+      next[j] = aie::load_v<16>(in + 16 * j);
+    for (int i = 0; i < trips; i++) {
+      V x[K], y[K];
+      for (int j = 0; j < K; j++)
+        x[j] = next[j];
+      const bfloat16 *p = in + (i + 1 < trips ? i + 1 : i) * 16 * K;
+      for (int j = 0; j < K; j++)
+        next[j] = aie::load_v<16>(p + 16 * j);
+      for (int j = 0; j < K; j++)
+        y[j] = f(x[j]);
+      for (int j = 0; j < K; j++)
+        *it_out++ = y[j];
+    }
+  }
+  auto it_in = aie::begin_restrict_vector<16>(in + trips * 16 * K);
+  for (int i = 0; i < n % (16 * K); i += 16)
+    *it_out++ = f(*it_in++);
+}
 #endif //__LUT_BASED_OPS_H__

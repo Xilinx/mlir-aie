@@ -114,6 +114,7 @@ gelu/1024x256/bfloat16
 gelu_sized/1024x16/bfloat16
 gelu_sized/160x4/bfloat16/unroll-tail
 gelu_sized/32x4/bfloat16/edge-tiny
+gelu_sized/96x4/bfloat16/short-trip
 gray2rgba/112x4/uint8/line_width=112/short-row
 gray2rgba/144x4/uint8/line_width=144/tail
 gray2rgba/1920x16/uint8
