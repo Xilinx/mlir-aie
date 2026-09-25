@@ -133,15 +133,116 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
   event1();
 }
 
+#if __AIE_ARCH__ == 20
+// AIE2 multiplies bf16 16 lanes at a time, so aie::mul above pads each operand
+// with zeros. A bf16 mac instead sums two products into each f32 lane, lane i
+// getting a[i] b[i] + a[i + 16] b[i + 16], so each rotated half is one mac:
+// [x | y] [cos | -sin] and [y | x] [cos | sin].
+static inline v32bfloat16 negate_high(v32bfloat16 v) {
+  const v32uint16 sign_high = ::aie::concat(
+      ::aie::zeros<uint16_t, 16>(), ::aie::broadcast<uint16_t, 16>(0x8000));
+  return __builtin_bit_cast(v32bfloat16,
+                            __builtin_bit_cast(v32uint16, v) + sign_high);
+}
+
+static inline v32bfloat16 swap_halves(v32bfloat16 v) {
+  return concat(extract_v16bfloat16(v, 1), extract_v16bfloat16(v, 0));
+}
+
+// [cos | sin] for 16 rotations.
+static inline v32bfloat16 load_cos_sin(const bfloat16 *restrict lut) {
+  return shuffle(v32bfloat16(::aie::load_v<32>(lut)), T16_16x2);
+}
+
+// One interleaved step over 32 elements.
+static inline void rope_step_aie2(const bfloat16 *restrict input,
+                                  const bfloat16 *restrict lut,
+                                  bfloat16 *restrict output) {
+  v32bfloat16 x = shuffle(v32bfloat16(::aie::load_v<32>(input)), T16_16x2);
+  v32bfloat16 cs = load_cos_sin(lut);
+  v32bfloat16 y = concat(to_v16bfloat16(mul_elem_16_2(x, negate_high(cs))),
+                         to_v16bfloat16(mul_elem_16_2(swap_halves(x), cs)));
+  ::aie::store_v(output, ::aie::vector<bfloat16, 32>(shuffle(y, T16_2x16)));
+}
+
+static void rope_aie2(const bfloat16 *restrict input,
+                      const bfloat16 *restrict lut, bfloat16 *restrict output,
+                      int32_t dims) {
+  event0();
+  constexpr unsigned MIN_STEPS = 4;
+  const unsigned steps = (uint32_t)dims / 32;
+  const bfloat16 *restrict pi = input;
+  const bfloat16 *restrict pl = lut;
+  bfloat16 *restrict po = output;
+  if (steps >= MIN_STEPS) {
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(MIN_STEPS)
+    for (unsigned k = 0; k < steps; ++k, pi += 32, pl += 32, po += 32)
+      rope_step_aie2(pi, pl, po);
+  } else {
+    for (unsigned k = 0; k < steps; ++k, pi += 32, pl += 32, po += 32)
+      rope_step_aie2(pi, pl, po);
+  }
+  if ((uint32_t)dims & 16)
+    rope_step<bfloat16, 16>(pi, pl, po);
+  event1();
+}
+
+// One two-halves step over 16 elements of each half.
+static inline void rope_halves_step_aie2(const bfloat16 *restrict input,
+                                         const bfloat16 *restrict lut,
+                                         bfloat16 *restrict output,
+                                         unsigned dims_half) {
+  v16bfloat16 x1 = ::aie::load_v<16>(input);
+  v16bfloat16 x2 = ::aie::load_v<16>(input + dims_half);
+  v32bfloat16 cs = load_cos_sin(lut);
+  ::aie::store_v(output, ::aie::vector<bfloat16, 16>(to_v16bfloat16(
+                             mul_elem_16_2(concat(x1, x2), negate_high(cs)))));
+  ::aie::store_v(output + dims_half, ::aie::vector<bfloat16, 16>(to_v16bfloat16(
+                                         mul_elem_16_2(concat(x2, x1), cs))));
+}
+
+// A two-halves row is a multiple of 32, so each half is whole 16-element steps.
+static void rope_two_halves_aie2(const bfloat16 *restrict input,
+                                 const bfloat16 *restrict lut,
+                                 bfloat16 *restrict output, int32_t dims) {
+  event0();
+  constexpr unsigned MIN_STEPS = 4;
+  const unsigned dims_half = (uint32_t)dims / 2;
+  const unsigned steps = dims_half / 16;
+  const bfloat16 *restrict pi = input;
+  const bfloat16 *restrict pl = lut;
+  bfloat16 *restrict po = output;
+  if (steps >= MIN_STEPS) {
+    AIE_PREPARE_FOR_PIPELINING
+    AIE_LOOP_MIN_ITERATION_COUNT(MIN_STEPS)
+    for (unsigned k = 0; k < steps; ++k, pi += 16, pl += 32, po += 16)
+      rope_halves_step_aie2(pi, pl, po, dims_half);
+  } else {
+    for (unsigned k = 0; k < steps; ++k, pi += 16, pl += 32, po += 16)
+      rope_halves_step_aie2(pi, pl, po, dims_half);
+  }
+  event1();
+}
+#endif
+
 extern "C" {
 // Interleaved (Llama-paper) RoPE — the default; existing designs bind this.
 void rope(bfloat16 *input, bfloat16 *lut, bfloat16 *output, int32_t dims) {
+#if __AIE_ARCH__ == 20
+  rope_aie2(input, lut, output, dims);
+#else
   rope_kernel<bfloat16, 16>(input, lut, output, dims);
+#endif
 }
 
 // Two-halves (HuggingFace-transformers) RoPE.
 void rope_two_halves(bfloat16 *input, bfloat16 *lut, bfloat16 *output,
                      int32_t dims) {
+#if __AIE_ARCH__ == 20
+  rope_two_halves_aie2(input, lut, output, dims);
+#else
   rope_kernel_two_halves<bfloat16, 32>(input, lut, output, dims);
+#endif
 }
 }

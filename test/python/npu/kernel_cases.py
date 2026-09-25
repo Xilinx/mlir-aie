@@ -1020,6 +1020,8 @@ CASES: list[Case] = [
         smoke=True,
         perf=False,
     ),
+    # On aie2, 112 is too short for the pipelined interleaved loop.
+    Case("rope", dict(cols=112), calls=16, tag="row-tail", perf=False),
     Case(
         "mm_activation_epilogue",
         calls=16,

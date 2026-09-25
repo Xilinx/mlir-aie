@@ -215,6 +215,7 @@ rms_norm_eps/1024x16/bfloat16/cols=1024
 rope/1008x16/bfloat16/cols=1008/row-tail
 rope/1024x16/bfloat16/cols=1024
 rope/1024x16/bfloat16/cols=1024/two_halves=True
+rope/112x16/bfloat16/cols=112/row-tail
 rope/64x16/bfloat16/cols=64/two_halves=True/llama
 rope/96x16/bfloat16/cols=96/two_halves=True/row-tail
 scale/1024x16/int16
