@@ -655,6 +655,14 @@ CASES: list[Case] = [
     Case("conv2dk1_i8", calls=8, scalars=(32, 64, 64, 12), smoke=True),
     # Two 32-pixel blocks per row; at width 32 the block loop runs once.
     Case(
+        "conv2dk1",
+        dict(input_width=64),
+        calls=8,
+        scalars=(64, 64, 64, 12),
+        tag="two-blocks",
+        perf=False,
+    ),
+    Case(
         "conv2dk1_i8",
         dict(input_width=64),
         calls=8,

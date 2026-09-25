@@ -515,7 +515,8 @@ def conv2dk1(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            stack_bytes=2752,  # aiecc measured_stack_size (Peano 22)
+            # aiecc measured_stack_size (Peano 22) on aie2p; 288 B on aie2
+            stack_bytes=2752 if _detect_arch() == "aie2p" else None,
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,

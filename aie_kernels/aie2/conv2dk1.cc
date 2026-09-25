@@ -127,6 +127,73 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, uint8_t *output,
 
 #else // Vector
 
+#if __AIE_ARCH__ == 20
+//*****************************************************************************
+// conv2d 1x1 - vector
+// act: int8 or uint8, wts: int8, out: uint8
+//
+// input_width must be a multiple of 32: each block of 32 pixels keeps 8
+// accumulators of 4 pixels.
+//*****************************************************************************
+template <typename ActT>
+static void
+conv2dk1_vector(ActT *input, int8_t *kernels, uint8_t *__restrict output,
+                const int32_t runtime_input_width,
+                const int32_t runtime_input_channels,
+                const int32_t runtime_output_channels, const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  event0();
+
+  using MMUL4x8x8 = aie::mmul<4, 8, 8, ActT, int8>;
+  ::aie::set_saturation(
+      aie::saturation_mode::saturate); // Needed to saturate properly to uint8
+  ::aie::set_rounding(
+      aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
+
+  constexpr int NUM_ACC = 8;
+  const int iw = input_width;
+  const int iw_32 = (input_width / 4) / 8;
+
+  uint8_t *restrict out_ptr = output;
+
+  for (int oc = 0; oc < (output_channels / 8); oc++) {
+    for (int x = 0; x < iw_32; x++) {
+      MMUL4x8x8 acc[NUM_ACC];
+      AIE_LOOP_UNROLL_FULL
+      for (int i = 0; i < NUM_ACC; i++)
+        acc[i] = aie::zeros<acc32, 32>();
+      // Two pointers, one per half block, so the loads can dual-issue.
+      const ActT *restrict in0 = input + x * 256;
+      const ActT *restrict in1 = in0 + 128;
+      const int8_t *restrict w = kernels;
+      // LLVM would unroll this by two, which schedules at II23 per two steps.
+      AIE_PREPARE_FOR_PIPELINING
+      AIE_LOOP_NO_UNROLL
+      for (int ic = 0; ic < (input_channels / 8); ic++) {
+        aie::vector<int8, 64> b = aie::load_v<64>(w);
+        w += 64;
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC / 2; x8++) {
+          acc[x8].mac(aie::load_v<32>(in0 + x8 * 32), b);
+          acc[x8 + 4].mac(aie::load_v<32>(in1 + x8 * 32), b);
+        }
+        in0 += iw * 8;
+        in1 += iw * 8;
+      }
+      AIE_LOOP_UNROLL_FULL
+      for (int x8 = 0; x8 < NUM_ACC; x8++) {
+        aie::store_v(out_ptr, acc[x8].template to_vector<uint8>(scale));
+        out_ptr += 32;
+      }
+    }
+    kernels += (input_channels / 8) * 64; // next oc/8 weights
+  }
+
+  event1();
+}
+#else
 #ifdef INT8_ACT
 
 //*****************************************************************************
@@ -382,6 +449,7 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
 }
 
 #endif // UINT8_ACT
+#endif
 
 #endif // Vector
 
@@ -414,6 +482,31 @@ void conv2dk1_ui8(uint8_t *input, int8_t *kernels, uint8_t *output,
 
 #else // Vector
 
+#if __AIE_ARCH__ == 20
+#ifdef INT8_ACT
+
+void conv2dk1_i8(int8_t *input, int8_t *kernels, uint8_t *output,
+                 const int32_t runtime_input_width,
+                 const int32_t runtime_input_channels,
+                 const int32_t runtime_output_channels, const int scale) {
+  conv2dk1_vector<int8_t>(input, kernels, output, runtime_input_width,
+                          runtime_input_channels, runtime_output_channels,
+                          scale);
+}
+
+#else // UINT8_ACT
+
+void conv2dk1_ui8(uint8_t *input, int8_t *kernels, uint8_t *output,
+                  const int32_t runtime_input_width,
+                  const int32_t runtime_input_channels,
+                  const int32_t runtime_output_channels, const int scale) {
+  conv2dk1_vector<uint8_t>(input, kernels, output, runtime_input_width,
+                           runtime_input_channels, runtime_output_channels,
+                           scale);
+}
+
+#endif // UINT8_ACT
+#else
 #ifdef INT8_ACT
 
 void conv2dk1_i8(int8_t *input, int8_t *kernels, uint8_t *output,
@@ -433,6 +526,7 @@ void conv2dk1_ui8(uint8_t *input, int8_t *kernels, uint8_t *output,
 }
 
 #endif // UINT8_ACT
+#endif
 
 #endif // Vector
 
