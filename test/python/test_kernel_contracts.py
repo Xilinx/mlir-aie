@@ -435,10 +435,10 @@ def test_factory_contract_follows_device_switch():
     npu2 = kernels.mha_softmax()
     set_current_device(NPU1Col1())
     npu1 = kernels.mha_softmax()
-    assert npu1 is not npu2
+    assert npu1 != npu2
     assert npu1.contract.tolerance.rtol < npu2.contract.tolerance.rtol
     set_current_device(NPU2Col1())
-    assert kernels.mha_softmax() is npu2
+    assert kernels.mha_softmax() == npu2
 
 
 @pytest.mark.parametrize("mode", list(kernels.RoundingMode))

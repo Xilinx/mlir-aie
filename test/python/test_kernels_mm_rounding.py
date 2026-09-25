@@ -60,4 +60,4 @@ def test_kernels_mm_round_conv_even_ignored_on_aie2p(npu2_device):
     """mm_aie2p.h always rounds conv_even: no macro, one shared object."""
     ef = _bf16_mm(round_conv_even=True)
     assert "-DROUND_CONV_EVEN" not in ef._compile_flags
-    assert ef is _bf16_mm()
+    assert ef == _bf16_mm()

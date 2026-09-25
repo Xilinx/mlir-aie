@@ -576,6 +576,7 @@ def _make_extern(
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
     cls: type[_KernelT],
+    include_dirs: list[str] | None = None,
 ) -> _KernelT: ...
 
 
@@ -590,6 +591,7 @@ def _make_extern(
     inline: bool = False,
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
+    include_dirs: list[str] | None = None,
 ) -> ExternalFunction: ...
 
 
@@ -604,6 +606,7 @@ def _make_extern(
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
     cls: type[ExternalFunction] = ExternalFunction,
+    include_dirs: list[str] | None = None,
 ) -> ExternalFunction:
     """Construct an ExternalFunction with the standard include_dirs.
 
@@ -611,6 +614,7 @@ def _make_extern(
     to build, run and judge the kernel generically; every factory passes
     one. ``cls`` is the class to construct, for factories whose kernels have
     more to say than a plain ``ExternalFunction`` (``linalg.MatrixKernel``).
+    ``include_dirs`` replaces the standard include path.
 
     ``inline`` uses Peano's always-inline LLVM IR and merge linking. Inline
     factories must use distinct C++ symbol names for distinct variants because
@@ -714,7 +718,7 @@ def _make_extern(
         object_file_name=object_file_name,
         source_file=str(source_path),
         arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        include_dirs=include_dirs or _include_dirs(),
         compile_flags=list(flags_tuple),
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,

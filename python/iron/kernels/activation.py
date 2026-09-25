@@ -25,7 +25,6 @@ from ._common import (
     _include_dirs,
     _kernel_source,
     _make_extern,
-    _portable_flags,
     _require_fixed_tile_size,
     _require_vector_alignment,
     _tuned_arch,
@@ -336,21 +335,13 @@ def _create_lut_kernel(
     if use_lut_tanh or not ARCH_TRAITS[arch].native_tanh:
         flags.append(f'-DAIE_LUT_KERNEL_SOURCE="{kernel_path}"')
         kernel_path = _kernel_source("common/lut_kernel.cc")
-    if compile_flags:
-        return _make_extern(
-            func_name,
-            kernel_path,
-            arg_types,
-            compile_flags=flags + [f"-I{directory}" for directory in include],
-            contract=contract,
-        )
-    return ExternalFunction(
+    return _make_extern(
         func_name,
-        source_file=str(kernel_path),
-        arg_types=arg_types,
-        include_dirs=include,
-        compile_flags=[*flags, *_portable_flags()],
+        kernel_path,
+        arg_types,
+        compile_flags=flags,
         contract=contract,
+        include_dirs=include,
     )
 
 
