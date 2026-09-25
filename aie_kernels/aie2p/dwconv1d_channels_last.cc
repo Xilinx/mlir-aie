@@ -30,6 +30,56 @@ using bf16 = bfloat16;
 /// Both operands arrive as K independent pointers. Deriving the weight planes
 /// from one base as `w + t * stride` miscompiled under the full unroll below:
 /// in the first 32-lane group, planes 0..K-2 all resolved to plane 0.
+#if __AIE_ARCH__ == 20
+// On AIE2 the taps go outermost over four 32-lane groups at a time: each
+// group still sums its taps in order, but ten pointers walked one group at a
+// time leave the loads single-issued between pointer moves.
+template <int K, int C, bool CLAMP>
+static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
+                                               const bf16 *const *__restrict x,
+                                               bf16 lo, bf16 hi,
+                                               bf16 *__restrict y) {
+  constexpr int vec_size = 32;
+  static_assert(C % vec_size == 0, "C must be a multiple of the 32-lane store");
+  constexpr int G = 4;
+  constexpr int NG = C / vec_size;
+
+  AIE_LOOP_UNROLL_FULL
+  for (int g0 = 0; g0 < NG; g0 += G) {
+    aie::accum<accfloat, vec_size> acc[G];
+    AIE_LOOP_UNROLL_FULL
+    for (int g = 0; g < G; g++) {
+      if (g0 + g < NG) {
+        const int o = (g0 + g) * vec_size;
+        acc[g] = aie::mul(aie::load_v<vec_size>(x[0] + o),
+                          aie::load_v<vec_size>(w[0] + o));
+      }
+    }
+    AIE_LOOP_UNROLL_FULL
+    for (int t = 1; t < K; t++) {
+      AIE_LOOP_UNROLL_FULL
+      for (int g = 0; g < G; g++) {
+        if (g0 + g < NG) {
+          const int o = (g0 + g) * vec_size;
+          acc[g] = aie::mac(acc[g], aie::load_v<vec_size>(x[t] + o),
+                            aie::load_v<vec_size>(w[t] + o));
+        }
+      }
+    }
+    AIE_LOOP_UNROLL_FULL
+    for (int g = 0; g < G; g++) {
+      if (g0 + g < NG) {
+        const int o = (g0 + g) * vec_size;
+        aie::vector<bf16, vec_size> y_vec = acc[g].template to_vector<bf16>();
+        if constexpr (CLAMP) {
+          y_vec = aie::clamp(y_vec, lo, hi);
+        }
+        aie::store_v(y + o, y_vec);
+      }
+    }
+  }
+}
+#else
 template <int K, int C, bool CLAMP>
 static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
                                                const bf16 *const *__restrict x,
@@ -61,6 +111,7 @@ static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
     aie::store_v(y + o, y_vec);
   }
 }
+#endif
 
 #ifndef DWCONV1D_CL_C
 #define DWCONV1D_CL_C 256
