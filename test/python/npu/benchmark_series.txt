@@ -18,6 +18,7 @@ add_weighted/1920x16/uint8
 add_weighted/32x4/uint8/line_width=32/edge-one-vector
 axpy/1024x16/bfloat16
 axpy/1024x256/bfloat16
+axpy/64x4/bfloat16/short-row
 bf16_exp/1024x16/bfloat16
 bf16_exp/1024x256/bfloat16
 bitwise_and/1920x16/uint8
@@ -47,11 +48,17 @@ conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64
 conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32
 conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip
 conv2dk3/2048x8/int8_uint8
+conv2dk3/2048x8/int8_uint8/bottom-row
+conv2dk3/2048x8/int8_uint8/output_channels=32/weight_output_channels=64/channel-offset
+conv2dk3/2048x8/int8_uint8/top-row
 conv2dk3/2048x8/uint8
+conv2dk3/2048x8/uint8/bottom-row
+conv2dk3/2048x8/uint8/output_channels=32/weight_output_channels=64/channel-offset
 conv2dk3/2048x8/uint8/top-row
 convert_copy/1024x16/float32_bfloat16
 convert_copy/1024x256/float32_bfloat16
 convert_copy/272x4/float32_bfloat16/unroll-tail
+convert_copy/64x4/float32_bfloat16/short-row
 dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024
 dwconv1d_channels_first/1024x16/bfloat16/kernel_size=9/seq_len=1008/odd-block-count
 dwconv1d_channels_first/1040x16/bfloat16/kernel_size=1/seq_len=1024
