@@ -19,8 +19,7 @@ This is the first of four phases in porting a model to AIE/NPU:
    *design* (FIFOs, kernels, novel mechanisms) against the oracle in software.
 3. **Hardware bring-up against reference** (`aie-hw-bringup`) — get a minimal
    version running on real silicon, comparing against the oracle at every step.
-4. **Kernel optimization** (`aie-kernel-opt-static`, then `aie-kernel-opt-hw`
-   on a device) and **dataflow optimization**
+4. **Kernel optimization** (`aie-kernel-opt`) and **dataflow optimization**
    (`aie-dataflow-opt`) — once it's correct, make it fast.
 
 Skipping this phase doesn't save time — it moves the cost downstream, where

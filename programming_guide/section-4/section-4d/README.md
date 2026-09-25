@@ -377,7 +377,7 @@ Make sure every number comes from the source you think it does.
 
 ## <u>Automating this workflow</u>
 
-Two agent skills automate this workflow: [aie-kernel-opt-static](../../../skills/aie-kernel-opt-static/SKILL.md) screens a kernel change from the static report without a device and never claims a speedup, and [aie-kernel-opt-hw](../../../skills/aie-kernel-opt-hw/SKILL.md) takes its candidates through the gate, a back-to-back traced A/B and one commit per kernel.
+The [aie-kernel-opt](../../../skills/aie-kernel-opt/SKILL.md) agent skill automates this workflow: the static report, the gate, a back-to-back traced A/B and one commit per kernel.
 
 -----
 [Prev](../section-4c) &middot; [Top](../../section-4) &middot; [Next](../../section-5)

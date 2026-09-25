@@ -149,7 +149,7 @@ void kernel(const bfloat16 *__restrict a,
 
 `AIE_LOOP_MIN_ITERATION_COUNT(n)` is a trip-count hint under both backends. On AIE2 it let runtime-count loops overlap (`axpy` 269 → 87 on npu1, with a plain loop kept for rows shorter than `n`), but it has also cost the zero-overhead loop in other kernels, so check `non_zol_loops` in the remarks report after adding it.
 
-For why a loop didn't pipeline, and for the levers that were measured on hardware, see [`aie-kernel-opt-static`](../../aie-kernel-opt-static/SKILL.md) and its [`traps.md`](../../aie-kernel-opt-static/references/traps.md) P03/P04.
+For why a loop didn't pipeline, and for the levers that were measured on hardware, see [`aie-kernel-opt`](../../aie-kernel-opt/SKILL.md), including its Traps section.
 
 ---
 
@@ -176,7 +176,7 @@ for (int i = 0; i < 3; ++i) {
 ```
 
 `AIE_LOOP_UNROLL_FULL` is real under both Chess and Peano/AIECC (unlike `AIE_PREPARE_FOR_PIPELINING`), so this is a safe default for small fixed-trip-count loops with any data-dependent branching in the body.
-For the hardware-measured versions of this lever, see `aie-kernel-opt-static`.
+For the hardware-measured versions of this lever, see `aie-kernel-opt`.
 
 ---
 
@@ -366,7 +366,7 @@ const int n_tiles = (uint32_t)channel_count / 8u;
 ```
 
 Also prefer **`constexpr`** (not `const`) for shapes/strides seeded from the design, and thread sizes in as template params or `-D` defines: only a compile-time literal lets Peano fold divides and address math to shifts. Confirm the call is gone with `llvm-nm build/X.o | grep __div` (should print nothing).
-For the hardware-measured versions of this lever, see `aie-kernel-opt-static`.
+For the hardware-measured versions of this lever, see `aie-kernel-opt`.
 
 ---
 

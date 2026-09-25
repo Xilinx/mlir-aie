@@ -21,7 +21,7 @@ The skill provides:
 - **Defaults** for kernel source, API level, target device, data type, and parallelism so designs can be produced without exhaustive clarification
 - A **step-by-step workflow** from computation shape to complete design (built-in check -> pattern -> kernel template -> wiring -> sizing -> pitfalls check)
 - **Reference files** loaded on demand covering the built-in kernel/algorithm libraries and `In`/`Out`/`CompileTime[T]` jit signatures, hardware architecture, the Python API (`Program`, `Worker`, `ObjectFifo`, `Runtime`, `Kernel`, `Buffer`, `iron.jit`), copy-ready design patterns, C++ kernel intrinsics, build/test harness, and known pitfalls
-- A pointer to upstream mlir-aie's phased skill family (`aie-model-baseline`, `aie-dataflow-presim`, `aie-hw-bringup`, `aie-kernel-opt-static`, `aie-kernel-opt-hw`, `aie-dataflow-opt`) for the phases before and after design creation
+- A pointer to upstream mlir-aie's phased skill family (`aie-model-baseline`, `aie-dataflow-presim`, `aie-hw-bringup`, `aie-kernel-opt`, `aie-dataflow-opt`) for the phases before and after design creation
 
 When asked for a complete design, it delivers the Python design file, a build/run snippet, and the C++ kernel file where one had to be written.
 

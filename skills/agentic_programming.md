@@ -38,10 +38,8 @@ skill:
    sequential block-by-block bring-up against the reference, methodical
    bisection when something hangs or mismatches.
 4. **Optimize** — once correct, go faster at either level:
-   [`aie-kernel-opt-static`](aie-kernel-opt-static/SKILL.md) (micro, no
-   device: find and screen candidate changes to one compiled kernel),
-   [`aie-kernel-opt-hw`](aie-kernel-opt-hw/SKILL.md) (micro, NPU: measure
-   those candidates and land the real wins) or [`aie-dataflow-opt`](aie-dataflow-opt/SKILL.md) (macro:
+   [`aie-kernel-opt`](aie-kernel-opt/SKILL.md) (micro: make one compiled
+   kernel faster, and measure it on the NPU) or [`aie-dataflow-opt`](aie-dataflow-opt/SKILL.md) (macro:
    fix tile placement, overlays, and DMA bandwidth around already-correct
    kernels).
 

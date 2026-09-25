@@ -13,7 +13,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 Second of four porting phases (see `aie-model-baseline` for phase 1, the
 numeric oracle this phase validates against; `aie-hw-bringup` for phase 3;
-`aie-kernel-opt-static`/`aie-dataflow-opt` for optimization once it's correct).
+`aie-kernel-opt`/`aie-dataflow-opt` for optimization once it's correct).
 
 The point of this phase: a deadlock, a wrong FIFO depth, or a math error in
 a new design is cheap to find in a Python simulation that runs in seconds

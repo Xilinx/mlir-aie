@@ -1,6 +1,6 @@
 ---
 name: aie-dataflow-opt
-description: Guide to optimizing an AIE/IRON design's dataflow — dispatch partitioning, tile placement, overlays, weight/activation streaming strategy, and DMA bandwidth/compression — once it's already functionally correct. Distinct from aie-kernel-opt-hw and aie-kernel-opt-static (which optimize a single compiled kernel in place): this is about which op runs on which tile or dispatch, how data moves between them, and where the real bottleneck is before touching any kernel at all. Use this whenever the user is optimizing throughput/latency of a full IRON design (not a single kernel), deciding tile placement, overlay layout, or dispatch boundaries for a multi-dispatch model, choosing between static/streamed weights, modeling DMA bandwidth or compression ratios, or asking why a design is slow when profiling shows no single kernel is unusually expensive — even if they haven't used the word "dataflow."
+description: Guide to optimizing an AIE/IRON design's dataflow — dispatch partitioning, tile placement, overlays, weight/activation streaming strategy, and DMA bandwidth/compression — once it's already functionally correct. Distinct from aie-kernel-opt (which optimizes a single compiled kernel in place): this is about which op runs on which tile or dispatch, how data moves between them, and where the real bottleneck is before touching any kernel at all. Use this whenever the user is optimizing throughput/latency of a full IRON design (not a single kernel), deciding tile placement, overlay layout, or dispatch boundaries for a multi-dispatch model, choosing between static/streamed weights, modeling DMA bandwidth or compression ratios, or asking why a design is slow when profiling shows no single kernel is unusually expensive — even if they haven't used the word "dataflow."
 license: Apache-2.0 WITH LLVM-exception
 ---
 
@@ -11,13 +11,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # Dataflow optimization (the "make the whole design fast" phase)
 
-Fourth of four porting phases, alongside `aie-kernel-opt-hw` (see
+Fourth of four porting phases, alongside `aie-kernel-opt` (see
 `aie-model-baseline` for the oracle, `aie-dataflow-presim` for pre-hardware
 validation, `aie-hw-bringup` for getting to a correct baseline on real
 hardware — this phase assumes that baseline already exists and is correct).
 
-**This skill is macro; `aie-kernel-opt-hw` and `aie-kernel-opt-static` are
-micro.** They answer "how do I make this one compiled kernel faster." This skill
+**This skill is macro; `aie-kernel-opt` is micro.** `aie-kernel-opt`
+answers "how do I make this one compiled kernel faster." This skill
 answers "which op should run on which tile, how should data move between
 them, and is a kernel even the right thing to be optimizing" — questions
 that have to be answered *before* kernel-level tuning pays off, because no
@@ -38,9 +38,7 @@ contributing 99ms, even if the 4ms one looks the messier of the two.
 
 For the per-kernel form of the same idea (a cheap wrong op in place of one
 stage of a kernel), and for reading a kernel's trace interval counts, see
-`aie-kernel-opt-hw`'s
-[`measurement.md`](../aie-kernel-opt-hw/references/measurement.md)
-§Ablation and §Reading intervals.
+[`aie-kernel-opt`](../aie-kernel-opt/SKILL.md) §Reading hardware rows.
 
 ## 2. If the model spans multiple dispatches, treat the boundary as the top-level placement decision
 

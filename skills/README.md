@@ -27,8 +27,7 @@ each skill below covers one:
 | [`aie-model-baseline`](aie-model-baseline/SKILL.md) | Phase 1 — preparing a model for deployment: locking a quantization scheme, exporting ONNX, extracting a deployment manifest, and building a bit-exact numeric oracle. |
 | [`aie-dataflow-presim`](aie-dataflow-presim/SKILL.md) | Phase 2 — validating an IRON dataflow design in software before hardware: a threaded ObjectFifo mock for deadlock/depth bugs, bit-exact validation against the oracle, probing novel mechanisms in isolation, and capacity/regime modeling. |
 | [`aie-hw-bringup`](aie-hw-bringup/SKILL.md) | Phase 3 — bringing up a design on real hardware for the first time: sequential block-by-block bring-up against the reference, methodical bisection, and memory-budget tile splits. |
-| [`aie-kernel-opt-static`](aie-kernel-opt-static/SKILL.md) | Phase 4 (micro, no device) — screening a Peano-compiled kernel change with the remarks report and object checks: a candidate report with a confidence class; never claims a speedup. |
-| [`aie-kernel-opt-hw`](aie-kernel-opt-hw/SKILL.md) | Phase 4 (micro, NPU) — settling kernel candidates on hardware: back-to-back A/B of traced cycles per call, correctness gates, raw output diff, one commit per kernel. |
+| [`aie-kernel-opt`](aie-kernel-opt/SKILL.md) | Phase 4 (micro) — making one Peano-compiled kernel faster: the remarks report and its base-arm diff, a mutation-proven gate, a back-to-back traced A/B on the NPU, the levers that measured faster and the Peano traps. |
 | [`aie-dataflow-opt`](aie-dataflow-opt/SKILL.md) | Phase 4 (macro) — optimizing the dataflow around already-correct kernels: NOOP-ablation-driven prioritization, regime-aware placement/overlays, and DMA bandwidth/compression modeling. |
 
 ## Using a skill
@@ -49,7 +48,7 @@ ln -s "$(pwd)/skills" ~/.claude/skills
 Claude Code scans `.claude/skills/` (walking up to the repo root) and
 `~/.claude/skills/` at startup and loads each `SKILL.md` it finds. To pull
 in just one skill instead of the whole collection, symlink that single
-subdirectory (e.g. `mkdir -p .claude/skills && ln -s ../../skills/aie-kernel-opt-static .claude/skills/aie-kernel-opt-static`).
+subdirectory (e.g. `mkdir -p .claude/skills && ln -s ../../skills/aie-kernel-opt .claude/skills/aie-kernel-opt`).
 
 **With any other agent, or by hand.** A `SKILL.md` is plain Markdown — read
 it directly, or point your agent's instructions file at the relevant skill.

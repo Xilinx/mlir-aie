@@ -115,8 +115,7 @@ re-derive their methodology here, point at it:
 | Prepare the model | `aie-model-baseline` | Quantization scheme, ONNX export, bit-exact numeric oracle |
 | Validate pre-hardware | `aie-dataflow-presim` | Threaded ObjectFifo mock for deadlock/depth bugs; prove novel decompositions in numpy first |
 | First hardware bring-up | `aie-hw-bringup` | Block-by-block bring-up against the oracle, methodical bisection |
-| Optimize (micro, no device) | `aie-kernel-opt-static` | Screen changes to one compiled kernel from the remarks report; candidates only, no speedup claims |
-| Optimize (micro, NPU) | `aie-kernel-opt-hw` | Measure candidates back to back on hardware and land the real wins |
+| Optimize (micro) | `aie-kernel-opt` | Make one compiled kernel faster: the remarks report, then a back-to-back A/B on the NPU |
 | Optimize (macro) | `aie-dataflow-opt` | NOOP-ablation ranking, placement/overlays, DMA bandwidth modeling |
 
 Two habits from those skills are worth carrying into design time, because they're cheap now
@@ -139,5 +138,5 @@ mechanism you haven't built before** instead of debugging it inside the full des
 | "Wrong results / garbage output" | [`pitfalls.md`](references/pitfalls.md) §Vector size divisibility + §MMUL divisibility + §ObjectFifo type vs. kernel signature |
 | "Output is all zeros" | [`pitfalls.md`](references/pitfalls.md) §Device name doesn't match the hardware |
 | "My fix changed nothing" | [`pitfalls.md`](references/pitfalls.md) §Stale JIT/xclbin cache |
-| "Slow / not pipelining" | [`pitfalls.md`](references/pitfalls.md) §Missing __restrict, then the `aie-kernel-opt-static` skill |
+| "Slow / not pipelining" | [`pitfalls.md`](references/pitfalls.md) §Missing __restrict, then the `aie-kernel-opt` skill |
 | "How do I run / test this?" | [`programming_guide/section-3/README.md`](../../programming_guide/section-3/README.md) |
