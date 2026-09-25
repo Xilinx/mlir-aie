@@ -5,8 +5,8 @@
 #
 """One Worker per stage, fed and drained through fifos: the loop the single-core templates run.
 
-A :class:`Stage` is what one core does: acquire its input fifos, acquire its
-outputs, call its body, release. :func:`pipeline` builds the Workers and
+A ``Stage`` is what one core does: acquire its input fifos, acquire its
+outputs, call its body, release. ``pipeline`` builds the Workers and
 writes the runtime sequence that fills and drains the host buffers.
 ``transform``, ``for_each``, ``reduce`` and the kernel-validation builder are
 each a few lines on top of it.
@@ -186,5 +186,8 @@ def pipeline(stages, host_types, transfers, *, trace_size=0):
     rt = Runtime(sequence, list(host_types) + [e for e, _, _ in endpoints])
     prog = Program(device, rt, workers=workers)
     if trace_size > 0:
-        prog.enable_trace(trace_size)
+        # The placer fills shims from column 0, where a kernel with two
+        # outputs takes both S2MM channels; the far column leaves the trace
+        # one.
+        prog.enable_trace(trace_size, egress_shim_col=device.cols - 1)
     return prog.resolve_program()

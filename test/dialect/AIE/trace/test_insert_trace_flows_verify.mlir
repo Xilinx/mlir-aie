@@ -155,6 +155,62 @@ module @shim_full_no_lateral {
 
 // -----
 
+// Test: Two objectFifos end at the shim; their lowering, which runs after
+// this pass, takes both S2MM channels, so the trace has none -- error rather
+// than a route that collides with theirs.
+module @shim_full_objectfifos {
+  // expected-error@+1 {{no S2MM channels available on shim tile at column 0}}
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    %tile00 = aie.tile(0, 0)
+
+    aie.objectfifo @out0(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out1(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    aie.trace @trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      aie.trace.start_config @trace
+    }
+  }
+}
+
+// -----
+
+// Test: Pins are reserved before first-free assignment, as in the lowering:
+// @out1 pins channel 0, so @out0, declared first, takes channel 1 and the
+// shim is full.
+module @shim_full_pinned_objectfifo {
+  // expected-error@+1 {{no S2MM channels available on shim tile at column 0}}
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    %tile00 = aie.tile(0, 0)
+
+    aie.objectfifo @out0(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out1(%tile02, {%tile00}, 2 : i32) {cons_dma_channels = array<i32: 0>} : !aie.objectfifo<memref<16xi32>>
+
+    aie.trace @trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      aie.trace.start_config @trace
+    }
+  }
+}
+
+// -----
+
 // Test: egress_shim_col past device width is rejected by the lowering pass.
 module @invalid_egress_col_oob {
   // expected-error@+1 {{egress_shim_col 5 is not a valid shim NOC tile (device has 1 columns)}}

@@ -5,8 +5,10 @@
 #
 """Depthwise conv1d, 'same' padding, stride 1, bf16, IRON API + ``@iron.jit``.
 
-NPU2-only: ``aie_kernels/aie2p/dwconv1d_channels_first.cc`` has no aie2
-counterpart.
+Runs on NPU1 (aie2) and NPU2 (aie2p): ``dwconv1d_channels_first.cc`` lives
+under ``aie_kernels/conv/`` and builds for both. On NPU1 pass ``-n 4``: each
+core streams ``x`` and ``w`` from the shim, and NPU1's four shim tiles have 8
+such DMA channels, so the default 8 cores do not place.
 
 ``n_cores`` cores each process ``channels // n_cores`` channels; one channel
 is one length-``seq_len`` time series with its own ``kernel_size`` taps (+ an

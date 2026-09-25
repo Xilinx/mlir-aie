@@ -5,7 +5,7 @@
 # RUN: %run_on_npu2_xrt% %pytest -m "not extensive" %s
 # RUN: %run_on_npu2_hrx% %pytest -m "not extensive" %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
-"""Compile, link and execute all three mm_fused.cc entry points together."""
+"""Compile, link and execute all three mm_fused.h entry points together."""
 
 import numpy as np
 import pytest

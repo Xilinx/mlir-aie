@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""One kernel at one tile size: what a test checks and a benchmark times.
+"""One kernel at one tile size: what a test checks and a performance check times.
 
 A :class:`Case` names a factory, its keyword arguments and the harness
 options (call count, runtime scalars, ``Param`` values). What the kernel
@@ -13,7 +13,7 @@ must survive.
 
 The case tables themselves live with the tests
 (``test/python/npu/kernel_cases.py``): the device smoke test, the extensive
-sweep and the benchmark module all read the same table.
+sweep and the performance checks all read the same table.
 """
 
 from __future__ import annotations

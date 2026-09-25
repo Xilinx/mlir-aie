@@ -132,7 +132,7 @@ Type mismatch is not caught — the kernel reads/writes raw bytes with the wrong
 void kernel(bfloat16 *a, bfloat16 *b, bfloat16 *c, int N) { ... }
 ```
 
-The modulo scheduler can't pipeline reads from `a` ahead of writes to `c`. Throughput drops 5–20×.
+The modulo scheduler can't move reads from `a` ahead of writes to `c`, so the loop's initiation interval grows.
 
 ```cpp
 // GOOD
@@ -143,20 +143,13 @@ void kernel(const bfloat16 *__restrict a,
 
 ---
 
-## ❌ Relying on `AIE_PREPARE_FOR_PIPELINING` alone → scalar-rate loops under Peano
+## ❌ Treating `AIE_PREPARE_FOR_PIPELINING` as a performance lever
 
-`AIE_PREPARE_FOR_PIPELINING` expands to `[[chess::prepare_for_pipelining]]` under Chess but to **nothing at all** under Peano/AIECC — which is the default backend. A hot loop annotated only with it gets no pipelining hint whatsoever on a default build, and you see one vector op per several cycles instead of one per cycle.
+`AIE_PREPARE_FOR_PIPELINING` expands to `[[chess::prepare_for_pipelining]]` under Chess but to **nothing at all** under Peano/AIECC, which is the default backend. Peano pipelines inner loops on its own: `mv_bf16` compiled byte-identical in six configurations with and without it. Leaving one in existing code is harmless, but adding one never speeds up a Peano build, and its absence never explains why a loop didn't pipeline. The same holds for `AIE_LOOP_FLATTEN` (Chess-only). In the other direction, `AIE_TRY_INITIATION_INTERVAL(n)` and `AIE_PREPARE_FOR_POSTPIPELINING` are real under **Peano only**, and `AIE_PREPARE_FOR_POSTPIPELINING` *turns pipelining off*.
 
-`AIE_LOOP_MIN_ITERATION_COUNT(n)` is the one that carries the information under both backends (it becomes `clang loop min_iteration_count(n)` under Peano): the scheduler needs to know the body runs at least `n` times to justify a prologue/epilogue.
+`AIE_LOOP_MIN_ITERATION_COUNT(n)` is a trip-count hint under both backends. On AIE2 it let runtime-count loops overlap (`axpy` 269 → 87 on npu1, with a plain loop kept for rows shorter than `n`), but it has also cost the zero-overhead loop in other kernels, so check `non_zol_loops` in the remarks report after adding it.
 
-```cpp
-// GOOD — the MIN_ITERATION_COUNT is doing the real work on a default build
-AIE_PREPARE_FOR_PIPELINING          // free under Chess, no-op under Peano
-AIE_LOOP_MIN_ITERATION_COUNT(16)    // real under both
-for (int i = 0; i < F; ++i) { ... }
-```
-
-Keep both — `AIE_PREPARE_FOR_PIPELINING` costs nothing and helps if someone builds with Chess — but never treat it as sufficient. Same caveat applies to `AIE_LOOP_FLATTEN` (Chess-only). In the other direction, `AIE_TRY_INITIATION_INTERVAL(n)` and `AIE_PREPARE_FOR_POSTPIPELINING` are real under **Peano only** and no-ops under Chess.
+For why a loop didn't pipeline, and for the levers that were measured on hardware, see [`aie-kernel-opt`](../../aie-kernel-opt/SKILL.md), including its Traps section.
 
 ---
 
@@ -183,6 +176,7 @@ for (int i = 0; i < 3; ++i) {
 ```
 
 `AIE_LOOP_UNROLL_FULL` is real under both Chess and Peano/AIECC (unlike `AIE_PREPARE_FOR_PIPELINING`), so this is a safe default for small fixed-trip-count loops with any data-dependent branching in the body.
+For the hardware-measured versions of this lever, see `aie-kernel-opt`.
 
 ---
 
@@ -355,7 +349,7 @@ Without it, overflow wraps. Symptoms: huge negative outputs where you expected l
 ::aie::set_rounding  (aie::rounding_mode::symmetric_inf);
 ```
 
-Call once at the top of the kernel.
+Call once at the top of the kernel, never inside a hot loop or a helper inlined into one: saving, setting and restoring the mode on every call kept `bf16_exp`'s loop from pipelining on AIE2. To restore the caller's mode afterwards, keep what `aie::swap_rounding` returns.
 
 ---
 
@@ -372,6 +366,7 @@ const int n_tiles = (uint32_t)channel_count / 8u;
 ```
 
 Also prefer **`constexpr`** (not `const`) for shapes/strides seeded from the design, and thread sizes in as template params or `-D` defines: only a compile-time literal lets Peano fold divides and address math to shifts. Confirm the call is gone with `llvm-nm build/X.o | grep __div` (should print nothing).
+For the hardware-measured versions of this lever, see `aie-kernel-opt`.
 
 ---
 

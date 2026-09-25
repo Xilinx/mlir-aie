@@ -131,11 +131,12 @@ def test_each_symbol_is_declared_once_per_device(corpus):
 
 
 def test_a_symbol_always_names_one_signature_and_object(corpus):
-    """So any two kernels in the corpus can share a design without conflict."""
+    """So any two kernels for one NPU can share a design without conflict."""
     meanings = defaultdict(set)
-    for design in corpus.values():
+    for label, design in corpus.items():
+        npu = label.split("/")[0]
         for _, symbol, signature, obj in design.declarations:
-            meanings[symbol].add((signature, obj))
+            meanings[npu, symbol].add((signature, obj))
     assert not {s: m for s, m in meanings.items() if len(m) > 1}
 
 

@@ -15,13 +15,11 @@ handles placement and data movement, while the kernel handles the arithmetic.
 ## Where they live
 
 The [`aie_kernels`](../../aie_kernels/) directory holds a library of example
-kernels, organized by target:
-
-| Directory | Target | Notes |
-|-----------|--------|-------|
-| [`generic`](../../aie_kernels/generic/) | Any AIE | Portable C — runs on any generation at varying performance. |
-| [`aie2`](../../aie_kernels/aie2/) | AIE2 / XDNA | The largest set: eltwise, gemm, reduction, conv, vision. |
-| [`aie2p`](../../aie_kernels/aie2p/) | AIE2P / XDNA 2 | Kernels tuned for the newer architecture. |
+kernels, organized by family (`activation`, `conv`, `linalg`, `norm`, ...).
+Each family directory matches a module under `aie.iron.kernels`. One source
+serves AIE2 and AIE2P. Where the two architectures need different code, the
+family holds `X_aie2.h` and `X_aie2p.h` and a small `X.cc` that includes the
+right one. Helpers shared across families live in `common/`.
 
 See the [`aie_kernels` README](../../aie_kernels/) for the full per-kernel
 catalog (name, coding style, purpose, datatypes).
@@ -37,7 +35,7 @@ Kernels use one of three coding styles, in decreasing order of portability:
 - **Low-level intrinsics** — architecture-specific intrinsics used directly
   when the AIE API does not expose a needed operation.
 - **Plain C** — scalar code with no vectorization, portable across
-  generations (the `generic` kernels).
+  generations.
 
 ```cpp
 #include <aie_api/aie.hpp>

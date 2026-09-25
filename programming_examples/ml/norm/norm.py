@@ -5,8 +5,9 @@
 #
 """Row-wise norm (RMSNorm | LayerNorm) — IRON API + ``@iron.jit``.
 
-NPU2-only: the underlying ``{rms,layer}_norm.cc`` kernels live under
-``aie_kernels/aie2p/`` and have no aie2 counterpart.
+Runs on NPU1 and NPU2, except ``layer_affine_cast``, which is NPU2-only: its
+design feeds every core a row stream and a gamma/beta stream from the shim,
+16 shim-to-tile DMA channels, and NPU1's four shim tiles have 8.
 
 Eight cores process ``sequence_length // 8`` rows each; one row =
 ``embedding_dim`` values. Per row:

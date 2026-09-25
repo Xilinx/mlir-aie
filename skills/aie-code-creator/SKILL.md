@@ -86,7 +86,8 @@ Load the ones you need; don't pre-read all of them.
 - **Fixed-width integer types**: `int8_t`, `int16_t`, `int32_t`, `uint8_t`, ... — never bare `int`.
 - **Templated** on data type and on size constants when reasonable; provide thin `extern "C"` wrappers with concrete types for MLIR linkage.
 - **Vectorized** via the AIE API (`aie::vector`, `aie::mmul`, `aie::add/mul/mac`), **not** compiler-specific intrinsics like `v32bfloat16` or `broadcast_to_v16int32` unless the AIE API has no equivalent.
-- **`__restrict` on every pointer** passed into the hot loop. Without it, the modulo scheduler will refuse to pipeline.
+- **`__restrict` on every pointer** passed into the hot loop, so loads can move ahead of stores. On AIE2 it was often the difference between a loop that pipelines and one that doesn't (`add_weighted` 1026 → 137 cycles on npu1). Library kernels spell it `AIE2_RESTRICT` from `aie_arch.h`, because their AIE2P code was tuned without it.
+- **bf16 multiply width**: 32 lanes on AIE2P, 16 on AIE2. Library kernels take it from `AIE_BF16_LANES` in `aie_arch.h`.
 - **Loop annotations** from `aie_kernel_utils.h` — `AIE_PREPARE_FOR_PIPELINING`, `AIE_LOOP_MIN_ITERATION_COUNT(n)`, `AIE_LOOP_RANGE(min, max)`, `AIE_LOOP_UNROLL(n)`, `AIE_LOOP_UNROLL_FULL`. Under the default Peano/AIECC flow, `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_FLATTEN` are **no-ops** — only Chess honors them. `AIE_LOOP_MIN_ITERATION_COUNT(n)`, `AIE_LOOP_RANGE(min, max)`, and `AIE_LOOP_UNROLL_FULL` are real under **both** backends. Keep all of them in (they cost nothing under Chess), but never rely on `AIE_PREPARE_FOR_PIPELINING` alone. For a small, fixed-trip-count inner loop that branches or switches on the loop index (e.g. a 3×3 window), reach for `AIE_LOOP_UNROLL_FULL` rather than `AIE_LOOP_RANGE` — a live branch on the loop variable can block the modulo scheduler regardless of iteration-count hints (see `references/pitfalls.md`).
 - **`event0()` / `event1()`** around the hot region for trace-based profiling.
 - **`constexpr`** for vector widths and loop trip-count math.
@@ -114,7 +115,7 @@ re-derive their methodology here, point at it:
 | Prepare the model | `aie-model-baseline` | Quantization scheme, ONNX export, bit-exact numeric oracle |
 | Validate pre-hardware | `aie-dataflow-presim` | Threaded ObjectFifo mock for deadlock/depth bugs; prove novel decompositions in numpy first |
 | First hardware bring-up | `aie-hw-bringup` | Block-by-block bring-up against the oracle, methodical bisection |
-| Optimize (micro) | `aie-kernel-opt` | Make one compiled kernel faster — measure first, then the lever catalog |
+| Optimize (micro) | `aie-kernel-opt` | Make one compiled kernel faster: the remarks report, then a back-to-back A/B on the NPU |
 | Optimize (macro) | `aie-dataflow-opt` | NOOP-ablation ranking, placement/overlays, DMA bandwidth modeling |
 
 Two habits from those skills are worth carrying into design time, because they're cheap now
@@ -137,5 +138,5 @@ mechanism you haven't built before** instead of debugging it inside the full des
 | "Wrong results / garbage output" | [`pitfalls.md`](references/pitfalls.md) §Vector size divisibility + §MMUL divisibility + §ObjectFifo type vs. kernel signature |
 | "Output is all zeros" | [`pitfalls.md`](references/pitfalls.md) §Device name doesn't match the hardware |
 | "My fix changed nothing" | [`pitfalls.md`](references/pitfalls.md) §Stale JIT/xclbin cache |
-| "Slow / not pipelining" | [`pitfalls.md`](references/pitfalls.md) §Missing __restrict + §Relying on AIE_PREPARE_FOR_PIPELINING alone |
+| "Slow / not pipelining" | [`pitfalls.md`](references/pitfalls.md) §Missing __restrict, then the `aie-kernel-opt` skill |
 | "How do I run / test this?" | [`programming_guide/section-3/README.md`](../../programming_guide/section-3/README.md) |

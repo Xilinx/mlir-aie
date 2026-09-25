@@ -720,7 +720,7 @@ class NpuTensor(ABC):
     def numpy_view(self):
         """Return a NumPy view of this buffer's host memory without syncing from device.
 
-        The write-path peer of :meth:`numpy`, which syncs from the NPU first.
+        The write-path peer of ``numpy``, which syncs from the NPU first.
         This does not, and marks the buffer CPU-resident so that a later
         ``.to("npu")`` (or an NPU operator's implicit sync) pushes what was
         written. Use it where the caller is about to overwrite the contents

@@ -7,17 +7,9 @@ on:
   workflow_call:
     inputs:
       static:
-        description: Publish static checks instead of hardware benchmarks
+        description: Publish static checks instead of hardware checks
         required: true
         type: boolean
-      branch:
-        description: >
-          Branch to publish the series to. Overridable so the publish path can
-          be rehearsed against a scratch branch; nothing but a rehearsal should
-          pass anything other than the default.
-        required: false
-        default: gh-pages
-        type: string
 
 permissions:
   contents: write
@@ -34,10 +26,9 @@ jobs:
       cancel-in-progress: false
       queue: max
     env:
-      RESULT_FILE: ${{ inputs.static && 'static.json' || 'bench.json' }}
-      BRANCH: ${{ inputs.branch }}
-      DATA_DIR_1: ${{ inputs.static && 'bench/static/aie2' || 'bench/npu1' }}
-      DATA_DIR_2: ${{ inputs.static && 'bench/static/aie2p' || 'bench/npu2' }}
+      RESULT_FILE: ${{ inputs.static && 'static.json' || 'perf.json' }}
+      DATA_DIR_1: ${{ inputs.static && 'kernel-checks/static/aie2' || 'kernel-checks/npu1' }}
+      DATA_DIR_2: ${{ inputs.static && 'kernel-checks/static/aie2p' || 'kernel-checks/npu2' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       # `pattern`, not `name`: an NPU whose leg produced nothing is skipped
@@ -45,11 +36,11 @@ jobs:
       # straight into `path`, as `name` would.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          pattern: ${{ inputs.static && 'static-aie2' || 'kernel-bench-npu1' }}-${{ github.run_id }}
+          pattern: ${{ inputs.static && 'static-aie2' || 'kernel-checks-npu1' }}-${{ github.run_id }}
           path: results/npu1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          pattern: ${{ inputs.static && 'static-aie2p' || 'kernel-bench-npu2' }}-${{ github.run_id }}
+          pattern: ${{ inputs.static && 'static-aie2p' || 'kernel-checks-npu2' }}-${{ github.run_id }}
           path: results/npu2
 
       # Each power mode is its own suite, and so its own section of the page:
@@ -65,7 +56,7 @@ jobs:
           done
 
       - name: Fetch publication branch
-        run: git fetch origin "$BRANCH:$BRANCH" --depth=1
+        run: git fetch origin gh-pages:gh-pages --depth=1
 
       # The action commits to the local publication branch and switches back.
       # Fetch once under the lock, accumulate every series, then push once.
@@ -79,7 +70,7 @@ jobs:
           tool: customSmallerIsBetter
           output-file-path: results/npu1/${{ env.RESULT_FILE }}
           benchmark-data-dir-path: ${{ env.DATA_DIR_1 }}
-          gh-pages-branch: ${{ inputs.branch }}
+          gh-pages-branch: gh-pages
           skip-fetch-gh-pages: true
           auto-push: false
           github-token: ${{ github.token }}
@@ -97,7 +88,7 @@ jobs:
           tool: customSmallerIsBetter
           output-file-path: results/npu2/${{ env.RESULT_FILE }}
           benchmark-data-dir-path: ${{ env.DATA_DIR_2 }}
-          gh-pages-branch: ${{ inputs.branch }}
+          gh-pages-branch: gh-pages
           skip-fetch-gh-pages: true
           auto-push: false
           github-token: ${{ github.token }}
@@ -114,8 +105,8 @@ jobs:
           name: static pm (aie2)
           tool: customSmallerIsBetter
           output-file-path: results/npu1/static-pm.json
-          benchmark-data-dir-path: bench/static-pm/aie2
-          gh-pages-branch: ${{ inputs.branch }}
+          benchmark-data-dir-path: kernel-checks/static-pm/aie2
+          gh-pages-branch: gh-pages
           skip-fetch-gh-pages: true
           auto-push: false
           github-token: ${{ github.token }}
@@ -133,8 +124,8 @@ jobs:
           name: static pm (aie2p)
           tool: customSmallerIsBetter
           output-file-path: results/npu2/static-pm.json
-          benchmark-data-dir-path: bench/static-pm/aie2p
-          gh-pages-branch: ${{ inputs.branch }}
+          benchmark-data-dir-path: kernel-checks/static-pm/aie2p
+          gh-pages-branch: gh-pages
           skip-fetch-gh-pages: true
           auto-push: false
           github-token: ${{ github.token }}
@@ -146,22 +137,29 @@ jobs:
           max-items-in-chart: 400
 
       # The action writes a plain page per NPU. This one sits above them and
-      # filters every NPU and power mode by kernel and metric.
+      # filters every NPU and power mode by kernel and metric, and shows each
+      # NPU's catalogue: an NPU whose leg wrote none keeps its previous one.
       - name: Install results page
         if: ${{ !inputs.static }}
         run: |
-          cp utils/kernel_bench/index.html "$RUNNER_TEMP/index.html"
-          git switch -q "$BRANCH"
-          mkdir -p bench
-          cp "$RUNNER_TEMP/index.html" bench/index.html
-          git add bench/index.html
+          cp utils/kernel_checks/index.html "$RUNNER_TEMP/index.html"
+          git switch -q gh-pages
+          mkdir -p kernel-checks
+          cp "$RUNNER_TEMP/index.html" kernel-checks/index.html
+          git add kernel-checks/index.html
+          for npu in npu1 npu2; do
+            [[ -f "results/$npu/catalogue.json" ]] || continue
+            mkdir -p "kernel-checks/$npu"
+            cp "results/$npu/catalogue.json" "kernel-checks/$npu/catalogue.json"
+            git add "kernel-checks/$npu/catalogue.json"
+          done
           git diff --cached --quiet || git -c user.name=github-action-benchmark \
             -c user.email=github@users.noreply.github.com \
-            commit -q -m "Update kernel benchmark results page"
+            commit -q -m "Update the kernel checks page and catalogue"
           git checkout -q -
 
       - name: Publish all series
-        run: git push origin "$BRANCH:$BRANCH"
+        run: git push origin gh-pages:gh-pages
 
       - name: Save baselines for PR comparisons
         env:
@@ -170,17 +168,17 @@ jobs:
         run: |
           # Cache exactly the commit just published, not a later remote update.
           #
-          # A series only exists once a run has published it, and `bench/` is
-          # created by the first one. Until then `git show` has nothing to
-          # read, and under `-o pipefail` that would fail the publish that is
-          # busy creating it. Skip instead: the comparison steps are guarded
-          # on the baseline file existing, so they sit out the same run.
+          # A series only exists once a run has published it, and
+          # `kernel-checks/` is created by the first one. Until then `git show`
+          # has nothing to read, and under `-o pipefail` that would fail the
+          # publish that is busy creating it. Skip instead: the report reads
+          # a missing series as no baseline.
           save_series() {
-            if git cat-file -e "$BRANCH:$1" 2>/dev/null; then
-              git show "$BRANCH:$1" \
+            if git cat-file -e "gh-pages:$1" 2>/dev/null; then
+              git show "gh-pages:$1" \
                 | sed -e 's/^window\.BENCHMARK_DATA = //' -e 's/;\s*$//' > "$2"
             else
-              echo "no $BRANCH:$1 yet -- nothing to cache as a baseline"
+              echo "no gh-pages:$1 yet -- nothing to cache as a baseline"
             fi
           }
           for npu in npu1 npu2; do
@@ -193,26 +191,24 @@ jobs:
             fi
             mkdir -p "baselines/$npu/baseline"
             save_series "$data_dir/data.js" \
-              "baselines/$npu/baseline/benchmark-data.json"
+              "baselines/$npu/baseline/series.json"
             if [[ "$STATIC" == true ]]; then
-              save_series "bench/static-pm/$target/data.js" \
-                "baselines/$npu/baseline/benchmark-data-pm.json"
+              save_series "kernel-checks/static-pm/$target/data.js" \
+                "baselines/$npu/baseline/series-pm.json"
             fi
           done
-      # Cache paths must match the compute jobs' restore path ("baseline").
+      # Cache paths must match the report job's restore path ("baseline").
       - name: Select npu1 baseline
         run: cp -r baselines/npu1/baseline baseline
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        if: inputs.branch == 'gh-pages'
         with:
           path: baseline
-          key: ${{ inputs.static && 'static-baseline-aie2' || 'kernel-bench-baseline-npu1' }}-${{ github.run_id }}
+          key: ${{ inputs.static && 'static-baseline-aie2' || 'kernel-checks-baseline-npu1' }}-${{ github.run_id }}
       - name: Select npu2 baseline
         run: |
           rm -rf baseline
           cp -r baselines/npu2/baseline baseline
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        if: inputs.branch == 'gh-pages'
         with:
           path: baseline
-          key: ${{ inputs.static && 'static-baseline-aie2p' || 'kernel-bench-baseline-npu2' }}-${{ github.run_id }}
+          key: ${{ inputs.static && 'static-baseline-aie2p' || 'kernel-checks-baseline-npu2' }}-${{ github.run_id }}

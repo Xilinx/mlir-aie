@@ -28,7 +28,7 @@ Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
 cannot say. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
 run and check any kernel, and the ``*_ref`` functions exported here are those
-references. :func:`factories` lists the factory names.
+references. ``factories`` lists the factory names.
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 
@@ -42,6 +42,7 @@ from ._common import (
     KernelContract,
     Param,
     TensorLayout,
+    Trace,
 )
 from .activation import (
     bf16_exp,
@@ -138,6 +139,8 @@ from .linalg import (
     cascade_mm,
     cascade_mm_put,
     mha,
+    mha_softmax,
+    mha_softmax_ref,
     mm,
     mm_acc_dtype,
     mm_bfp,
@@ -174,6 +177,7 @@ from .transformer import (
     layer_norm_f32,
     layer_norm_f32_ref,
     mm_activation_epilogue,
+    mm_activation_epilogue_lut_ref,
     mm_activation_epilogue_ref,
 )
 from .vision import (
@@ -200,6 +204,7 @@ __all__ = [
     "KernelContract",
     "MatrixKernel",
     "TensorLayout",
+    "Trace",
     "Param",
     "RoundingMode",
     "conv_even",
@@ -227,6 +232,7 @@ __all__ = [
     "rope_ref",
     "mm_activation_epilogue",
     "mm_activation_epilogue_ref",
+    "mm_activation_epilogue_lut_ref",
     "reduce_add",
     "reduce_min",
     "reduce_max",
@@ -301,6 +307,8 @@ __all__ = [
     "fused_mm",
     "mm_acc_dtype",
     "mha",
+    "mha_softmax",
+    "mha_softmax_ref",
     "prefill_fv",
     "prefill_fv_ref",
     "mm_bfp",

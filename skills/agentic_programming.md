@@ -39,7 +39,7 @@ skill:
    bisection when something hangs or mismatches.
 4. **Optimize** — once correct, go faster at either level:
    [`aie-kernel-opt`](aie-kernel-opt/SKILL.md) (micro: make one compiled
-   kernel faster) or [`aie-dataflow-opt`](aie-dataflow-opt/SKILL.md) (macro:
+   kernel faster, and measure it on the NPU) or [`aie-dataflow-opt`](aie-dataflow-opt/SKILL.md) (macro:
    fix tile placement, overlays, and DMA bandwidth around already-correct
    kernels).
 

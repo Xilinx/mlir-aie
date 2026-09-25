@@ -113,7 +113,7 @@ def test_kernels_mm_selects_combo_with_independent_zero(
     zero = ef.contract.initializers[0][1](ef)
     assert zero.use_chess == use_chess
     assert zero.object_file is not ef.object_file
-    assert Path(zero.source_file).parts[-2:] == ("generic", "zero.cc")
+    assert Path(zero.source_file).parts[-2:] == ("zero", "zero.cc")
 
 
 def test_external_function_rejects_inline_with_chess():

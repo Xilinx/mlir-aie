@@ -20,12 +20,12 @@ compared to a Taylor-series evaluation.
 1. [`vector_exp.py`](vector_exp.py) — IRON structural design plus the host
    driver. Decorated with `@iron.jit`; the design uses
    [`aie.iron.kernels.bf16_exp`](../../../python/iron/kernels/activation.py),
-   which wraps [`aie_kernels/aie2/bf16_exp.cc`](../../../aie_kernels/aie2/bf16_exp.cc)
+   which wraps [`aie_kernels/activation/bf16_exp.cc`](../../../aie_kernels/activation/bf16_exp.cc)
    and bundles the AIE runtime's
    [`lut_based_ops.cpp`](../../../aie_runtime_lib/AIE2/lut_based_ops.cpp)
    automatically.  No per-example `.cc` / `kernels.a` / xclbin step is
    needed.
-2. [`bf16_exp.cc`](../../../aie_kernels/aie2/bf16_exp.cc) — vectorized table-lookup
+2. [`bf16_exp.cc`](../../../aie_kernels/activation/bf16_exp.cc) — vectorized table-lookup
    implementation for AIE cores.  Operates on vectors of size 16, loading
    the vectorized accumulator with LUT results before storing back.
 

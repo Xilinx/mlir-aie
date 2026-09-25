@@ -616,15 +616,11 @@ class ExternalFunction(Kernel):
         limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
         return max(1, min(limit, int(np.iinfo(dt).max)))
 
-    def expected(self, inputs: list, *, scalars: tuple = ()):
-        """Return reference output(s), cast to each output argument's dtype."""
-        from aie.helpers.npdtypes import v8bfp16ebs8
-
+    def _reference_args(self, inputs: list, scalars: tuple) -> list:
+        """Interleave ``inputs`` and ``scalars`` in the reference's argument order."""
         from .kernels._common import _is_tensor_type
 
         c = self._require_contract()
-        if c.reference is None:
-            raise ValueError(f"{self.name}: contract has no reference")
         types = self.arg_types()
         c.validate_types(types)
         is_tensor = [_is_tensor_type(types[i]) for i in c.reference_indices()]
@@ -635,8 +631,16 @@ class ExternalFunction(Kernel):
         if len(scalars) != n_scalars:
             raise ValueError(f"{self.name}: expected {n_scalars} scalar(s)")
         tensors, s = iter(inputs), iter(scalars)
-        args = [next(tensors) if tensor else next(s) for tensor in is_tensor]
-        result = c.reference(*args)
+        return [next(tensors) if tensor else next(s) for tensor in is_tensor]
+
+    def expected(self, inputs: list, *, scalars: tuple = ()):
+        """Return reference output(s), cast to each output argument's dtype."""
+        from aie.helpers.npdtypes import v8bfp16ebs8
+
+        c = self._require_contract()
+        if c.reference is None:
+            raise ValueError(f"{self.name}: contract has no reference")
+        result = c.reference(*self._reference_args(inputs, scalars))
         multiple = len(c.out_indices) > 1
         results = result if multiple else (result,)
         if multiple and (
@@ -678,7 +682,16 @@ class ExternalFunction(Kernel):
         )
         return result if multiple else result[0]
 
-    def judge(self, got, ref, *, calls: int = 1, tolerance=None):
+    def judge(
+        self,
+        got,
+        ref,
+        *,
+        calls: int = 1,
+        tolerance=None,
+        inputs: list | None = None,
+        scalars: tuple = (),
+    ):
         """Compare a flat device output against a reference under the contract.
 
         Declared layouts decode each output into logical tiles. DMA padding
@@ -686,6 +699,8 @@ class ExternalFunction(Kernel):
         if any output fails; its detail identifies the failing output.
         Without streamed inputs, a complete one-call reference may be repeated.
         With no streamed inputs, a one-tile reference is repeated across calls.
+        A tolerance that is a function of the inputs needs the ``inputs`` and
+        ``scalars`` the reference was given.
         """
         from aie.utils.compile.jit.markers import In
         from aie.utils.verify import Tolerance, Verdict, compare
@@ -700,8 +715,20 @@ class ExternalFunction(Kernel):
             or len(references) != len(c.out_indices)
         ):
             raise ValueError("provide one actual and reference array per output")
+        tol = tolerance or c.tolerance
+        bounds = (None,) * len(c.out_indices)
+        if tol is not None and tol.kind == "bound":
+            if inputs is None:
+                raise ValueError(
+                    f"{self.name}: its tolerance is a function of the inputs; "
+                    "pass the reference's inputs= (and scalars=) to judge"
+                )
+            bounds = tol.bound(*self._reference_args(inputs, scalars))
+            bounds = bounds if multiple else (bounds,)
         verdicts = []
-        for i, actual, reference in zip(c.out_indices, actuals, references):
+        for i, actual, reference, bound in zip(
+            c.out_indices, actuals, references, bounds
+        ):
             layout = c.layouts[i] if c.layouts else None
             got = layout.decode(actual, calls=calls) if layout else np.asarray(actual)
             got, ref = got.reshape(calls, -1), np.asarray(reference)
@@ -715,8 +742,9 @@ class ExternalFunction(Kernel):
                 compare(
                     got,
                     ref,
-                    tolerance or c.tolerance or Tolerance.default_for(ref.dtype),
+                    tol or Tolerance.default_for(ref.dtype),
                     range_axis=1,
+                    bound=None if bound is None else np.reshape(bound, ref.shape),
                 )
             )
         if not multiple:
