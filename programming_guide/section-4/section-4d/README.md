@@ -29,7 +29,7 @@ The kernel library ([`aie.iron.kernels`](../../kernels_library.md)) comes with c
 | [`test/python/npu/test_kernels_e2e.py`](../../../test/python/npu/test_kernels_e2e.py) | Is the kernel still correct? Runs each case on the NPU with poisoned output buffers, checks that nothing was written past each output tile, and judges it against the kernel's numpy reference. |
 | [`test/python/npu/test_kernels_perf.py`](../../../test/python/npu/test_kernels_perf.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `npu_us`, compile time and binary sizes. |
 | `python -m aie.utils.compile.remarks` | What did the compiler do? Compiles each kernel exactly as the JIT does and reports every loop's II, stages, zero-overhead-loop status, program memory, dropped pragmas, runtime-library calls and stack depth. No device needed. |
-| [Nightly Kernel Checks](https://xilinx.github.io/mlir-aie/kernel-checks/) | The performance history, one chart per case and metric. Its [catalogue](https://xilinx.github.io/mlir-aie/kernel-checks/#view=catalogue) lists every kernel, its sources, and which NPUs build it and passed it last night. |
+| [Nightly Kernel Checks](https://xilinx.github.io/mlir-aie/kernel-checks/) | The performance history, one chart per case and metric. Its [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) lists every kernel, its sources, which NPUs build it and passed it last night, and each case's latest numbers. |
 
 All of them honour `MLIR_AIE_KERNEL_SOURCES` (see [section 4c](../section-4c#before-you-start-make-sure-your-edits-are-compiled)): point it at a checkout and they compile that checkout's `aie_kernels/`. That is also how you build a "before" version to compare against.
 
