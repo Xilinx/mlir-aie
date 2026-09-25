@@ -69,13 +69,20 @@ def _run_case(case, data_case: str, seed: int):
         getattr(kernels, case.factory),
         **case.harness_opts(),
         params=fn.param_values(inputs),
+        guard=True,
         **case.kwargs,
     )
     ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kd.output_size(fn, calls=case.calls)
+    out_n = kd.output_size(fn, calls=case.calls, guard=True)
     out_dt = fn.output_dtype()
     # The output is poisoned so a kernel that writes nothing cannot pass.
-    got = _run(design, fn, inputs, out_n, out_dt)
+    got, overrun = kd.strip_guard(
+        fn, _run(design, fn, inputs, out_n, out_dt), calls=case.calls
+    )
+    assert not any(np.atleast_1d(overrun)), (
+        f"{case.name} [{data_case}, seed {seed}]: changed {overrun} guard byte(s) past its output "
+        f"({kd.GUARD_BYTES} after each tile)"
+    )
     verdict = fn.judge(got, ref, calls=case.calls, inputs=inputs, scalars=case.scalars)
     assert verdict, f"{case.name} [{data_case}, seed {seed}]: {verdict.detail}"
 

@@ -180,6 +180,12 @@ verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
 assert verdict, verdict.detail
 ```
 
+`kd.design(..., guard=True)` also catches writes past an output. Each output
+tile gets `kd.GUARD_BYTES` of `0x55` after it, which the kernel never sees.
+Size the output with `kd.output_size(fn, calls=16, guard=True)` and split the
+result with `kd.strip_guard(fn, out.numpy(), calls=16)`, which returns the
+data and the number of changed guard bytes. bfp outputs are not guarded.
+
 Every design validates independent tile calls, including matrix kernels.
 `kd.design(kernels.mm, calls=16)` repeats sixteen tile products, initializing
 each output before its call. The factory's dimensions size a tile; `calls`

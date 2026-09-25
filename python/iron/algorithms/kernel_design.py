@@ -21,7 +21,10 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+from aie.dialects import memref
+from aie.extras.dialects.arith import constant
 from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
+from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernels._common import Param, _is_tensor_type
@@ -33,6 +36,9 @@ from aie.utils.trace.utils import get_cycles_summary
 from aie.utils.verify import poisoned
 
 from ._pipeline import Stage, pipeline
+
+GUARD_BYTES = 64
+_GUARD_WORDS = np.ndarray[(GUARD_BYTES // 4,), np.dtype[np.int32]]
 
 
 def _contract(fn):
@@ -79,6 +85,29 @@ def _device():
 
 def _stack_bytes(fn):
     return _contract(fn).stack_bytes or _device().default_core_stack_bytes
+
+
+def _guarded(fn, guard):
+    """Return the outputs ``guard`` covers: every one but bfp."""
+    types = fn.arg_types()
+    return [
+        i
+        for i in _contract(fn).out_indices
+        if guard and not bfp.is_bfp(shape_dtype(types[i])[1])
+    ]
+
+
+def _guard_elems(arg_type):
+    return GUARD_BYTES // np.dtype(shape_dtype(arg_type)[1]).itemsize
+
+
+def _view(raw, arg_type, byte_shift):
+    return memref.view(
+        np_ndarray_type_to_memref_type(arg_type),
+        raw,
+        constant(byte_shift, index=True),
+        [],
+    )
 
 
 def _tensor_positions(fn):
@@ -151,7 +180,7 @@ def _encode_params(fn, params):
     return tuple(encoded)
 
 
-def _stage(fn, calls, scalars, params, stack_bytes):
+def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
     """Plan the Worker: fifos per input group and output, buffers per Param, the call itself."""
     c = _contract(fn)
     types = fn.arg_types()
@@ -186,9 +215,21 @@ def _stage(fn, calls, scalars, params, stack_bytes):
     def nbytes(i):
         return elems(types[i]) * bfp.itemsize(shape_dtype(types[i])[1])
 
+    guarded = _guarded(fn, guard)
+
+    def fifo_type(i):
+        if i not in guarded:
+            return types[i]
+        return np.ndarray[(nbytes(i) + GUARD_BYTES,), np.dtype[np.int8]]
+
+    def typed(outputs):
+        return [
+            _view(o, types[i], 0) if i in guarded else o for i, o in zip(outs, outputs)
+        ]
+
     # Two sets of tiles (ping-pong) when they fit beside the parameters and
     # the stack, one otherwise.
-    tile_bytes = sum(nbytes(i) for i in [*ins, *outs])
+    tile_bytes = sum(nbytes(i) for i in [*ins, *outs]) + GUARD_BYTES * len(guarded)
     fixed_bytes = sum(nbytes(i) for i in param_pos) + stack_bytes
     core_bytes = _device().core_memory_bytes
     depth = next(
@@ -203,7 +244,8 @@ def _stage(fn, calls, scalars, params, stack_bytes):
         for j, g in enumerate(groups)
     ]
     fifos_out = [
-        ObjectFifo(types[i], name=f"out{j}", depth=depth) for j, i in enumerate(outs)
+        ObjectFifo(fifo_type(i), name=f"out{j}", depth=depth)
+        for j, i in enumerate(outs)
     ]
     buffers = [
         Buffer(
@@ -227,13 +269,20 @@ def _stage(fn, calls, scalars, params, stack_bytes):
             values.update(
                 (i, got if len(group) == 1 else got[j]) for j, i in enumerate(group)
             )
-        values.update(zip(outs, outputs))
+        values.update(zip(outs, typed(outputs)))
         constants[n_param](*(values[i] for i in range(len(c.roles))))
 
     def initialize(outputs, constants):
-        kernels = constants[n_param + 1 : n_param + 1 + n_init]
-        for (i, _), init in zip(initializers, kernels):
-            init(outputs[slot[i]])
+        for i, raw in zip(outs, outputs):
+            if i in guarded:
+                words = _view(raw, _GUARD_WORDS, nbytes(i))
+                for k in range(GUARD_BYTES // 4):
+                    words[k] = 0x55555555
+        if initializers:
+            views = typed(outputs)
+            kernels = constants[n_param + 1 : n_param + 1 + n_init]
+            for (i, _), init in zip(initializers, kernels):
+                init(views[slot[i]])
 
     return Stage(
         body,
@@ -246,7 +295,7 @@ def _stage(fn, calls, scalars, params, stack_bytes):
         iterations=calls,
         outputs_span_iterations=offset is not None,
         prologue=(lambda constants: constants[-1]()) if setter else None,
-        initialize=initialize if initializers else None,
+        initialize=initialize if initializers or guarded else None,
         stack_size=stack_bytes,
     )
 
@@ -260,16 +309,18 @@ def _build_stream(
     scalars=(),
     params=(),
     trace_config=None,
+    guard=False,
 ):
     fn = factory(**factory_kwargs)
-    stage = _stage(fn, calls, tuple(scalars), params, stack_bytes)
+    stage = _stage(fn, calls, tuple(scalars), params, stack_bytes, guard)
     stage.trace = trace_config is not None
     types = fn.arg_types()
 
+    guarded = _guarded(fn, guard)
+
     def host_ty(i, repetitions):
-        return np.ndarray[
-            (elems(types[i]) * repetitions,), np.dtype[shape_dtype(types[i])[1]]
-        ]
+        n = elems(types[i]) + (_guard_elems(types[i]) if i in guarded else 0)
+        return np.ndarray[(n * repetitions,), np.dtype[shape_dtype(types[i])[1]]]
 
     groups = _fifo_plan(fn)[0]
     host_types = [host_ty(g[0], calls * len(g)) for g in groups]
@@ -301,6 +352,7 @@ def _stream(
     scalars: CompileTime[tuple] = (),
     params: CompileTime[tuple] = (),
     trace_config: CompileTime[TraceConfig | None] = None,
+    guard: CompileTime[bool] = False,
 ):
     return _build_stream(
         factory=factory,
@@ -310,6 +362,7 @@ def _stream(
         scalars=scalars,
         params=params,
         trace_config=trace_config,
+        guard=guard,
     )
 
 
@@ -321,12 +374,19 @@ def design(
     shape=None,
     params=None,
     aiecc_flags=None,
+    guard=False,
     **factory_kwargs,
 ):
     """Wrap tile calls; ``params``/``scalars`` supply unbound tensor/scalar Params.
 
     This harness embeds these values for every call; changing them recompiles
     the design. Direct designs can supply different operands on each call.
+
+    With ``guard=True`` the core writes ``GUARD_BYTES`` of ``0x55`` after each
+    output tile in its memory before every call and drains them with the
+    tile, so a kernel that writes past its output shows up on the host:
+    size the outputs with ``output_size(..., guard=True)`` and split them
+    with ``strip_guard``. bfp outputs carry no guard.
     """
     calls = _calls(calls, shape)
     fn = factory(**factory_kwargs)
@@ -355,6 +415,7 @@ def design(
         stack_bytes=_stack_bytes(fn),
         scalars=tuple(scalars),
         params=_encode_params(fn, params or ()),
+        guard=guard,
         **({"aiecc_flags": flags} if flags else {}),
     )
 
@@ -411,17 +472,44 @@ def host_layout(fn, inputs):
     return result
 
 
-def output_size(fn, *, calls=1, shape=None):
+def output_size(fn, *, calls=1, shape=None, guard=False):
     """Storage elements per output; a tuple for multiple outputs."""
     calls = _calls(calls, shape)
     types = fn.arg_types()
+    guarded = _guarded(fn, guard)
     sizes = tuple(
-        elems(types[i])
+        (elems(types[i]) + (_guard_elems(types[i]) if i in guarded else 0))
         * _out_tiles(fn, calls)
         * (bfp.BLOCK_BYTES if bfp.is_bfp(shape_dtype(types[i])[1]) else 1)
         for i in _contract(fn).out_indices
     )
     return sizes[0] if len(sizes) == 1 else sizes
+
+
+def strip_guard(fn, outputs, *, calls=1):
+    """Split the outputs of a ``guard=True`` design into data and overrun.
+
+    Returns the outputs without their guards, shaped as ``output_size``
+    without ``guard`` would size them, and per output the number of guard
+    bytes the kernel changed.
+    """
+    calls = _calls(calls)
+    multiple = isinstance(outputs, tuple)
+    guarded = _guarded(fn, True)
+    data, overrun = [], []
+    for i, out in zip(_contract(fn).out_indices, outputs if multiple else (outputs,)):
+        if i not in guarded:
+            data.append(out)
+            overrun.append(0)
+            continue
+        rows = np.ascontiguousarray(out).reshape(_out_tiles(fn, calls), -1)
+        raw = rows.view(np.uint8)
+        n = raw.shape[1] - GUARD_BYTES
+        overrun.append(int(np.count_nonzero(raw[:, n:] != 0x55)))
+        data.append(np.ascontiguousarray(raw[:, :n]).view(out.dtype).reshape(-1))
+    if multiple:
+        return tuple(data), tuple(overrun)
+    return data[0], overrun[0]
 
 
 @dataclass(frozen=True)
@@ -437,7 +525,7 @@ class _HostBuffer:
         return int(np.prod(self.shape))
 
 
-def host_args(fn, *, calls=1, shape=None):
+def host_args(fn, *, calls=1, shape=None, guard=False):
     """Describe physical host buffers, not kernel arguments or constant Params.
 
     Same-type streamed inputs share a buffer; each output has its own.
@@ -445,6 +533,7 @@ def host_args(fn, *, calls=1, shape=None):
     """
     calls = _calls(calls, shape)
     types = fn.arg_types()
+    guarded = _guarded(fn, guard)
     result = []
     entries = [(In, g) for g in _fifo_plan(fn)[0]]
     entries += [(Out, [i]) for i in _contract(fn).out_indices]
@@ -454,6 +543,8 @@ def host_args(fn, *, calls=1, shape=None):
         n = elems(types[i])
         if bfp.is_bfp(dt):
             n, dt = n * bfp.BLOCK_BYTES, np.uint8
+        elif direction is Out and i in guarded:
+            n += _guard_elems(types[i])
         rows = calls if direction is In else _out_tiles(fn, calls)
         s = (rows, n) if len(indices) == 1 else (rows, len(indices), n)
         result.append(_HostBuffer(direction, s, dt))

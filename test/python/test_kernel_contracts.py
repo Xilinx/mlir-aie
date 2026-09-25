@@ -305,6 +305,47 @@ def test_matrix_design_defaults_to_one_tile(factory):
 
 
 @pytest.mark.parametrize(
+    "factory, kwargs",
+    [(kernels.add_weighted, dict(line_width=64)), (kernels.add, {})],
+    ids=["uint8", "bfloat16"],
+)
+def test_guard_sizes_and_strips_each_tile(factory, kwargs):
+    fn = factory(**kwargs)
+    out_dt = fn.output_dtype()
+    n = kd.output_size(fn, calls=3)
+    size = kd.output_size(fn, calls=3, guard=True)
+    assert size == n + 3 * kd.GUARD_BYTES // np.dtype(out_dt).itemsize
+    assert [a.n_elements for a in kd.host_args(fn, calls=3, guard=True)][-1] == size
+    data = np.arange(n * np.dtype(out_dt).itemsize, dtype=np.uint8).reshape(3, -1)
+    raw = np.hstack([data, np.full((3, kd.GUARD_BYTES), 0x55, np.uint8)])
+    got, overrun = kd.strip_guard(fn, raw.reshape(-1).view(out_dt), calls=3)
+    np.testing.assert_array_equal(got.view(np.uint8), data.reshape(-1))
+    assert overrun == 0
+    raw[2, data.shape[1]] = 0
+    assert kd.strip_guard(fn, raw.reshape(-1).view(out_dt), calls=3)[1] == 1
+
+
+def test_guarded_design_hands_the_kernel_a_view_of_its_tile():
+    mlir = str(
+        kd.design(
+            kernels.add_weighted,
+            line_width=64,
+            calls=2,
+            scalars=(8192, 8192, 0),
+            guard=True,
+        ).as_mlir()
+    )
+    assert "!aie.objectfifo<memref<128xi8>>" in mlir
+    assert "memref<128xi8> to memref<64xui8>" in mlir
+    assert mlir.count("memref.store") == kd.GUARD_BYTES // 4
+
+
+def test_guard_covers_an_initialized_output():
+    mlir = str(kd.design(kernels.mm, calls=2, guard=True).as_mlir())
+    assert "memref.view" in mlir
+
+
+@pytest.mark.parametrize(
     "shape",
     [(0, 32, 64), (-64, 32, 64), (65, 32, 64), (64, 33, 64), (64, 32, 65)],
 )

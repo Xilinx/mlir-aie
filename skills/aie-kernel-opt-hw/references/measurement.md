@@ -74,7 +74,8 @@ pytest test/python/npu/test_kernels_e2e.py -m extensive -k "$CASE" --seeds 3
   in fp32, not the kernel's recurrence.
 - **Gate every entry point alone**, and the composition once.
 - Outputs are poisoned (`kd.upload(..., poison=True)`), so an unwritten
-  output fails. Keep it that way. One-hot inputs found a weight-plane
+  output fails, and guarded (`kd.design(..., guard=True)`), so a write past
+  a tile's end fails. Keep it that way. One-hot inputs found a weight-plane
   miscompile that no reading of the code did.
 
 ## Hardware cycles (step 3)
