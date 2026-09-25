@@ -75,7 +75,7 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
-          bool b_row_maj = true, bool c_row_maj = true>
+          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false>
 static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                                               const T_in *__restrict pB,
                                               T_out *__restrict pC) {
@@ -96,6 +96,13 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
       pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
     }
 
+    // A cursor that walks the K steps of this row block and wraps back to its
+    // start. The address generator keeps the wrap opaque to LICM, so an
+    // unrolled K reduction reloads A per 'j' instead of hoisting all of it and
+    // spilling.
+    const T_in *pAk = pA + (z * colA) * MMUL::size_A;
+    dims_2d_t a_dims = dims_2d_from_steps(colA, MMUL::size_A * sizeof(T_in), 0);
+
     for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
       AIE_LOOP_FLATTEN
@@ -106,17 +113,11 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           pC1 = pC + j * rowA * MMUL::size_C + z * MMUL::size_C;
           pC2 = pC + (j + 1) * rowA * MMUL::size_C + z * MMUL::size_C;
         }
-        const T_in *__restrict pA1 = pA + (z * colA) * MMUL::size_A;
-        const T_in *__restrict pA2 = pA + ((z + 1) * colA) * MMUL::size_A;
-        const T_in *__restrict pB1;
-        const T_in *__restrict pB2;
-        if constexpr (b_row_maj) {
-          pB1 = pB + (j)*MMUL::size_B;
-          pB2 = pB + (j + 1) * MMUL::size_B;
-        } else {
-          pB1 = pB + (j * colA) * MMUL::size_B;
-          pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
-        }
+        const T_in *__restrict pBk =
+            pB + (b_row_maj ? j : j * colA) * MMUL::size_B;
+        constexpr unsigned a_row = colA * MMUL::size_A;
+        constexpr unsigned b_tile =
+            b_row_maj ? MMUL::size_B : colA * MMUL::size_B;
 
         aie::vector<T_in, MMUL::size_A> A0;
         aie::vector<T_in, MMUL::size_A> A1;
@@ -149,32 +150,40 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
         MMUL C10(acc_C10);
         MMUL C11(acc_C11);
 
-        for (unsigned i = 0; i < colA; ++i)
-#ifdef OPT_PERF_ENABLED
-          AIE_LOOP_FLATTEN
-#endif
-          {
-            A0 = aie::load_v<MMUL::size_A>(pA1);
-            pA1 += MMUL::size_A;
-            A1 = aie::load_v<MMUL::size_A>(pA2);
-            pA2 += MMUL::size_A;
-            if constexpr (b_row_maj) {
-              B0 = aie::load_v<MMUL::size_B>(pB1);
-              pB1 += MMUL::size_B * colB;
-              B1 = aie::load_v<MMUL::size_B>(pB2);
-              pB2 += MMUL::size_B * colB;
-            } else {
-              B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-              pB1 += MMUL::size_B;
-              B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-              pB2 += MMUL::size_B;
-            }
-
-            C00.mac(A0, B0);
-            C01.mac(A0, B1);
-            C10.mac(A1, B0);
-            C11.mac(A1, B1);
+        auto k_step = [&]() {
+          A0 = aie::load_v<MMUL::size_A>(pAk);
+          A1 = aie::load_v<MMUL::size_A>(pAk + a_row);
+          pAk = add_2d_byte(pAk, a_dims);
+          if constexpr (b_row_maj) {
+            B0 = aie::load_v<MMUL::size_B>(pBk);
+            B1 = aie::load_v<MMUL::size_B>(pBk + b_tile);
+            pBk += MMUL::size_B * colB;
+          } else {
+            B0 = aie::transpose(aie::load_v<MMUL::size_B>(pBk), t, s);
+            B1 = aie::transpose(aie::load_v<MMUL::size_B>(pBk + b_tile), t, s);
+            pBk += MMUL::size_B;
           }
+
+          C00.mac(A0, B0);
+          C01.mac(A0, B1);
+          C10.mac(A1, B0);
+          C11.mac(A1, B1);
+        };
+
+        // Peano only software-pipelines an innermost single-block loop, so
+        // unrolling K folds it into the 'j' body, where the C loads and stores
+        // can overlap the MACs.
+        if constexpr (unroll_k) {
+          AIE_LOOP_UNROLL_FULL
+          for (unsigned i = 0; i < colA; ++i)
+            k_step();
+        } else {
+          for (unsigned i = 0; i < colA; ++i)
+#ifdef OPT_PERF_ENABLED
+            AIE_LOOP_FLATTEN
+#endif
+          k_step();
+        }
 
         // TODO make shift right here to keep most significat bits
         // when lowering the output
@@ -236,7 +245,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
-          bool b_row_maj = true, bool c_row_maj = true>
+          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false>
 static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
                                               const T_in *__restrict pB,
                                               T_out *__restrict pC) {
@@ -258,6 +267,10 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
       pC4 = pC + ((z + 3) * colB + 0) * MMUL::size_C;
     }
 
+    // The A cursor and K unroll are as in matmul_vectorized_2x2_mmul.
+    const T_in *pAk = pA + (z * colA) * MMUL::size_A;
+    dims_2d_t a_dims = dims_2d_from_steps(colA, MMUL::size_A * sizeof(T_in), 0);
+
     for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
       AIE_LOOP_FLATTEN
@@ -268,20 +281,11 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
           pC2 = pC + (j + 1) * rowA * MMUL::size_C + z * MMUL::size_C;
         }
 
-        const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
-        const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
-        const T_in *__restrict pA3 = pA + ((z + 2) * colA + 0) * MMUL::size_A;
-        const T_in *__restrict pA4 = pA + ((z + 3) * colA + 0) * MMUL::size_A;
-
-        const T_in *__restrict pB1;
-        const T_in *__restrict pB2;
-        if constexpr (b_row_maj) {
-          pB1 = pB + (j)*MMUL::size_B;
-          pB2 = pB + (j + 1) * MMUL::size_B;
-        } else {
-          pB1 = pB + (j * colA) * MMUL::size_B;
-          pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
-        }
+        const T_in *__restrict pBk =
+            pB + (b_row_maj ? j : j * colA) * MMUL::size_B;
+        constexpr unsigned a_row = colA * MMUL::size_A;
+        constexpr unsigned b_tile =
+            b_row_maj ? MMUL::size_B : colA * MMUL::size_B;
 
         aie::vector<T_in, MMUL::size_A> A01;
         aie::vector<T_in, MMUL::size_A> A11;
@@ -334,40 +338,43 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
         MMUL C30(acc_C30);
         MMUL C31(acc_C31);
 
-        for (unsigned i = 0; i < colA; i += 1)
-#ifdef OPT_PERF_ENABLED
-          AIE_LOOP_FLATTEN
-#endif
-          {
-            A01 = aie::load_v<MMUL::size_A>(pA1);
-            pA1 += MMUL::size_A;
-            A11 = aie::load_v<MMUL::size_A>(pA2);
-            pA2 += MMUL::size_A;
-            A21 = aie::load_v<MMUL::size_A>(pA3);
-            pA3 += MMUL::size_A;
-            A31 = aie::load_v<MMUL::size_A>(pA4);
-            pA4 += MMUL::size_A;
-            if constexpr (b_row_maj) {
-              B0 = aie::load_v<MMUL::size_B>(pB1);
-              pB1 += (MMUL::size_B * colB);
-              B1 = aie::load_v<MMUL::size_B>(pB2);
-              pB2 += (MMUL::size_B * colB);
-            } else {
-              B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-              pB1 += MMUL::size_B;
-              B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-              pB2 += MMUL::size_B;
-            }
-
-            C00.mac(A01, B0);
-            C01.mac(A01, B1);
-            C10.mac(A11, B0);
-            C11.mac(A11, B1);
-            C20.mac(A21, B0);
-            C21.mac(A21, B1);
-            C30.mac(A31, B0);
-            C31.mac(A31, B1);
+        auto k_step = [&]() {
+          A01 = aie::load_v<MMUL::size_A>(pAk);
+          A11 = aie::load_v<MMUL::size_A>(pAk + a_row);
+          A21 = aie::load_v<MMUL::size_A>(pAk + 2 * a_row);
+          A31 = aie::load_v<MMUL::size_A>(pAk + 3 * a_row);
+          pAk = add_2d_byte(pAk, a_dims);
+          if constexpr (b_row_maj) {
+            B0 = aie::load_v<MMUL::size_B>(pBk);
+            B1 = aie::load_v<MMUL::size_B>(pBk + b_tile);
+            pBk += MMUL::size_B * colB;
+          } else {
+            B0 = aie::transpose(aie::load_v<MMUL::size_B>(pBk), t, s);
+            B1 = aie::transpose(aie::load_v<MMUL::size_B>(pBk + b_tile), t, s);
+            pBk += MMUL::size_B;
           }
+
+          C00.mac(A01, B0);
+          C01.mac(A01, B1);
+          C10.mac(A11, B0);
+          C11.mac(A11, B1);
+          C20.mac(A21, B0);
+          C21.mac(A21, B1);
+          C30.mac(A31, B0);
+          C31.mac(A31, B1);
+        };
+
+        if constexpr (unroll_k) {
+          AIE_LOOP_UNROLL_FULL
+          for (unsigned i = 0; i < colA; i += 1)
+            k_step();
+        } else {
+          for (unsigned i = 0; i < colA; i += 1)
+#ifdef OPT_PERF_ENABLED
+            AIE_LOOP_FLATTEN
+#endif
+          k_step();
+        }
 
         if constexpr (c_row_maj) {
           aie::store_v(pC1, C00.template to_vector<T_out>());
@@ -443,7 +450,7 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
-          bool b_row_maj = true, bool c_row_maj = true>
+          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false>
 static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
                                          const T_in *__restrict pB,
                                          T_out *__restrict pC) {
@@ -465,6 +472,10 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
       pC4 = pC + ((z + 3) * colB) * MMUL::size_C;
     }
 
+    // The A cursor and K unroll are as in matmul_vectorized_2x2_mmul.
+    const T_in *pAk = pA + (z * colA) * MMUL::size_A;
+    dims_2d_t a_dims = dims_2d_from_steps(colA, MMUL::size_A * sizeof(T_in), 0);
+
     for (unsigned j = 0; j < colB; j += 4)
 #ifdef OPT_PERF_ENABLED
       AIE_LOOP_FLATTEN
@@ -476,26 +487,8 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
           pC3 = pC + (j + 2) * rowA * MMUL::size_C + z * MMUL::size_C;
           pC4 = pC + (j + 3) * rowA * MMUL::size_C + z * MMUL::size_C;
         }
-        const T_in *__restrict pA1 = pA + (z * colA + 0) * MMUL::size_A;
-        const T_in *__restrict pA2 = pA + ((z + 1) * colA + 0) * MMUL::size_A;
-        const T_in *__restrict pA3 = pA + ((z + 2) * colA + 0) * MMUL::size_A;
-        const T_in *__restrict pA4 = pA + ((z + 3) * colA + 0) * MMUL::size_A;
-
-        const T_in *__restrict pB1;
-        const T_in *__restrict pB2;
-        const T_in *__restrict pB3;
-        const T_in *__restrict pB4;
-        if constexpr (b_row_maj) {
-          pB1 = pB + (j)*MMUL::size_B;
-          pB2 = pB + (j + 1) * MMUL::size_B;
-          pB3 = pB + (j + 2) * MMUL::size_B;
-          pB4 = pB + (j + 3) * MMUL::size_B;
-        } else {
-          pB1 = pB + (j * colA) * MMUL::size_B;
-          pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
-          pB3 = pB + ((j + 2) * colA) * MMUL::size_B;
-          pB4 = pB + ((j + 3) * colA) * MMUL::size_B;
-        }
+        const T_in *__restrict pBk =
+            pB + (b_row_maj ? j : j * colA) * MMUL::size_B;
 
         aie::vector<T_in, MMUL::size_A> A0;
         aie::vector<T_in, MMUL::size_A> A1;
@@ -600,60 +593,64 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
         MMUL C32(acc_C32);
         MMUL C33(acc_C33);
 
-        for (unsigned i = 0; i < colA; ++i)
-#ifdef OPT_PERF_ENABLED
-          AIE_LOOP_FLATTEN
-#endif
-          {
-            A0 = aie::load_v<MMUL::size_A>(pA1);
-            pA1 += MMUL::size_A;
-            A1 = aie::load_v<MMUL::size_A>(pA2);
-            pA2 += MMUL::size_A;
-            A2 = aie::load_v<MMUL::size_A>(pA3);
-            pA3 += MMUL::size_A;
-            A3 = aie::load_v<MMUL::size_A>(pA4);
-            pA4 += MMUL::size_A;
+        constexpr unsigned a_row = colA * MMUL::size_A;
+        constexpr unsigned b_tile =
+            b_row_maj ? MMUL::size_B : colA * MMUL::size_B;
+        auto k_step = [&]() {
+          A0 = aie::load_v<MMUL::size_A>(pAk);
+          A1 = aie::load_v<MMUL::size_A>(pAk + a_row);
+          A2 = aie::load_v<MMUL::size_A>(pAk + 2 * a_row);
+          A3 = aie::load_v<MMUL::size_A>(pAk + 3 * a_row);
+          pAk = add_2d_byte(pAk, a_dims);
 
-            if constexpr (b_row_maj) {
-              B0 = aie::load_v<MMUL::size_B>(pB1);
-              pB1 += MMUL::size_B * colB;
-              B1 = aie::load_v<MMUL::size_B>(pB2);
-              pB2 += MMUL::size_B * colB;
-              B2 = aie::load_v<MMUL::size_B>(pB3);
-              pB3 += MMUL::size_B * colB;
-              B3 = aie::load_v<MMUL::size_B>(pB4);
-              pB4 += MMUL::size_B * colB;
-            } else {
-              B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-              pB1 += MMUL::size_B;
-              B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-              pB2 += MMUL::size_B;
-              B2 = aie::transpose(aie::load_v<MMUL::size_B>(pB3), t, s);
-              pB3 += MMUL::size_B;
-              B3 = aie::transpose(aie::load_v<MMUL::size_B>(pB4), t, s);
-              pB4 += MMUL::size_B;
-            }
-
-            C00.mac(A0, B0);
-            C01.mac(A0, B1);
-            C10.mac(A1, B0);
-            C11.mac(A1, B1);
-
-            C02.mac(A0, B2);
-            C03.mac(A0, B3);
-            C12.mac(A1, B2);
-            C13.mac(A1, B3);
-
-            C20.mac(A2, B0);
-            C21.mac(A2, B1);
-            C30.mac(A3, B0);
-            C31.mac(A3, B1);
-
-            C22.mac(A2, B2);
-            C23.mac(A2, B3);
-            C32.mac(A3, B2);
-            C33.mac(A3, B3);
+          if constexpr (b_row_maj) {
+            B0 = aie::load_v<MMUL::size_B>(pBk);
+            B1 = aie::load_v<MMUL::size_B>(pBk + b_tile);
+            B2 = aie::load_v<MMUL::size_B>(pBk + 2 * b_tile);
+            B3 = aie::load_v<MMUL::size_B>(pBk + 3 * b_tile);
+            pBk += MMUL::size_B * colB;
+          } else {
+            B0 = aie::transpose(aie::load_v<MMUL::size_B>(pBk), t, s);
+            B1 = aie::transpose(aie::load_v<MMUL::size_B>(pBk + b_tile), t, s);
+            B2 = aie::transpose(aie::load_v<MMUL::size_B>(pBk + 2 * b_tile), t,
+                                s);
+            B3 = aie::transpose(aie::load_v<MMUL::size_B>(pBk + 3 * b_tile), t,
+                                s);
+            pBk += MMUL::size_B;
           }
+
+          C00.mac(A0, B0);
+          C01.mac(A0, B1);
+          C10.mac(A1, B0);
+          C11.mac(A1, B1);
+
+          C02.mac(A0, B2);
+          C03.mac(A0, B3);
+          C12.mac(A1, B2);
+          C13.mac(A1, B3);
+
+          C20.mac(A2, B0);
+          C21.mac(A2, B1);
+          C30.mac(A3, B0);
+          C31.mac(A3, B1);
+
+          C22.mac(A2, B2);
+          C23.mac(A2, B3);
+          C32.mac(A3, B2);
+          C33.mac(A3, B3);
+        };
+
+        if constexpr (unroll_k) {
+          AIE_LOOP_UNROLL_FULL
+          for (unsigned i = 0; i < colA; ++i)
+            k_step();
+        } else {
+          for (unsigned i = 0; i < colA; ++i)
+#ifdef OPT_PERF_ENABLED
+            AIE_LOOP_FLATTEN
+#endif
+          k_step();
+        }
 
         if constexpr (c_row_maj) {
           aie::store_v(pC1, C00.template to_vector<T_out>());
@@ -846,7 +843,7 @@ matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
       aie::swap_rounding(aie::rounding_mode::conv_even);
 #endif
   matmul_vectorized_4x4<bfloat16, bfloat16, (m / r), (k / s), (n / t), r, s, t,
-                        is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+                        is_b_row_maj, is_c_row_maj, (k / s) <= 8>(pA, pB, pC);
 #ifdef ROUND_CONV_EVEN
   aie::set_rounding(saved_rounding);
 #endif
@@ -872,7 +869,7 @@ matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
       aie::swap_rounding(aie::rounding_mode::conv_even);
 #endif
   matmul_vectorized_4x4<bfloat16, float, (m / r), (k / s), (n / t), r, s, t,
-                        is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+                        is_b_row_maj, is_c_row_maj, (k / s) <= 8>(pA, pB, pC);
 #ifdef ROUND_CONV_EVEN
   aie::set_rounding(saved_rounding);
 #endif
@@ -891,7 +888,8 @@ static inline void matmul_vectorized_4x8x8_i8_i8(const int8 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_4x2_mmul<int8, int8, (m / r), (k / s), (n / t), r, s,
-                                    t, is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+                                    t, is_b_row_maj, is_c_row_maj,
+                                    (k / s) <= 4>(pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
@@ -907,8 +905,8 @@ static inline void matmul_vectorized_4x8x8_i8_i16(const int8 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_4x2_mmul<int8, int16, (m / r), (k / s), (n / t), r,
-                                    s, t, is_b_row_maj, is_c_row_maj>(pA, pB,
-                                                                      pC);
+                                    s, t, is_b_row_maj, is_c_row_maj,
+                                    (k / s) <= 4>(pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
@@ -924,8 +922,8 @@ static inline void matmul_vectorized_4x8x8_i8_i32(const int8 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_4x2_mmul<int8, int32, (m / r), (k / s), (n / t), r,
-                                    s, t, is_b_row_maj, is_c_row_maj>(pA, pB,
-                                                                      pC);
+                                    s, t, is_b_row_maj, is_c_row_maj,
+                                    (k / s) <= 4>(pA, pB, pC);
 }
 
 extern "C" {
