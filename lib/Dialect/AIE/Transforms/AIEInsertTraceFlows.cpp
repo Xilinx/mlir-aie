@@ -1135,20 +1135,31 @@ private:
     });
 
     // This pass runs before objectFifo lowering, so an objectFifo that ends
-    // at a shim has no flow yet. Its lowering will take the lowest S2MM
-    // channel still free there; claim that one now.
+    // at a shim has no flow yet. Claim what its lowering will: every
+    // cons_dma_channels pin first, then the lowest free S2MM channel for
+    // each unpinned consumer.
+    SmallVector<TileOp> unpinned;
     device.walk([&](ObjectFifoCreateOp fifo) {
-      for (Value consumer : fifo.getConsumerTiles()) {
+      if (fifo.getPlio())
+        return;
+      auto pins = fifo.getConsDmaChannels();
+      for (auto [i, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
         auto tile = dyn_cast_or_null<TileOp>(consumer.getDefiningOp());
         if (!tile || !tile.isShimTile())
           continue;
-        auto &channels = used[tile.getCol()];
-        int ch = 0;
-        while (channels.count(ch))
-          ++ch;
-        channels.insert(ch);
+        if (pins && i < pins->size() && (*pins)[i] >= 0)
+          used[tile.getCol()].insert((*pins)[i]);
+        else
+          unpinned.push_back(tile);
       }
     });
+    for (TileOp tile : unpinned) {
+      auto &channels = used[tile.getCol()];
+      int ch = 0;
+      while (channels.count(ch))
+        ++ch;
+      channels.insert(ch);
+    }
 
     return used;
   }
