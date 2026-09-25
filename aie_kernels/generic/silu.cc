@@ -81,11 +81,35 @@ static inline void silu_impl(bfloat16 *restrict input_vector,
   }
 }
 
+#if __AIE_ARCH__ == 20
+// AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
+static inline void silu_aie2(bfloat16 *restrict input_vector,
+                             bfloat16 *restrict output_vector,
+                             const int32_t vector_size) {
+  aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
+  aie::accum<accfloat, 16> half;
+  half.from_vector(register_0_5);
+  lut_map_bf16(input_vector, output_vector, SILU_ELEMS,
+               [&](aie::vector<bfloat16, 16> x) {
+                 aie::vector<bfloat16, 16> sigmoid_approx =
+                     aie::mac(half, tanh_bf16_v16(aie::mul(x, register_0_5)),
+                              register_0_5)
+                         .to_vector<bfloat16>();
+                 return aie::vector<bfloat16, 16>(
+                     aie::mul(x, sigmoid_approx).to_vector<bfloat16>());
+               });
+}
+#endif
+
 void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                            bfloat16 *restrict output_vector,
                            const int32_t vector_size) {
   event0();
+#if __AIE_ARCH__ == 20
+  silu_aie2(input_vector, output_vector, vector_size);
+#else
   silu_impl<SILU_LANES>(input_vector, output_vector, vector_size);
+#endif
   event1();
 
   return;

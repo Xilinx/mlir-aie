@@ -265,6 +265,7 @@ silu_sized/1024x16/bfloat16/llama-decode
 silu_sized/160x4/bfloat16/unroll-tail
 silu_sized/32x4/bfloat16/edge-tiny
 silu_sized/4096x16/bfloat16/llama-prefill
+silu_sized/96x4/bfloat16/short-trip
 softmax/1024x16/bfloat16
 softmax/1024x256/bfloat16
 softmax/160x4/bfloat16/min-pipelined

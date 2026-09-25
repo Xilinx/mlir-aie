@@ -268,6 +268,15 @@ CASES: list[Case] = [
         smoke=True,
         perf=False,
     ),
+    # AIE2 silu runs the same 64-element trips as gelu below.
+    Case(
+        "silu_sized",
+        dict(tile_size=96),
+        calls=4,
+        tag="short-trip",
+        smoke=True,
+        perf=False,
+    ),
     Case("gelu_sized", calls=16, smoke=True, perf=False),
     # gelu's 32-lane loop is unrolled four ways too, so it has the same
     # remainder pass and the same need for a size that is not a multiple of it.
