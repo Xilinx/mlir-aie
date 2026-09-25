@@ -231,6 +231,26 @@ def test_softmax_wide_dynamic_range():
     assert got.astype(np.float32)[0] > 0.9
 
 
+# AIE2 gelu's tanh argument, x * (c + d * x^2), overflowed to inf for
+# |x| >= 2.13e13, and the LUT's flat end segment turned 0 * inf into NaN.
+@pytest.mark.supported_devices("npu1")
+def test_gelu_saturates_for_huge_inputs():
+    """Gelu is x for large positive inputs and 0 for large negative ones."""
+    fn = kernels.gelu()
+    xs = np.array([8, 9, 1e4, 2e13, 2.2e13, 1e20, 1e30, 3e38, np.inf], dtype=np.float32)
+    xs = np.concatenate([xs, -xs])
+    tile = np.zeros(1024, dtype=np.float32)
+    tile[: len(xs)] = xs
+    tile_bf16 = tile.astype(bfloat16).reshape(1, 1024)
+
+    design = kd.design(kernels.gelu, calls=1)
+    got = _run(design, fn, [tile_bf16], 1024, np.dtype(bfloat16))
+    edge = tile_bf16.ravel()[: len(xs)].astype(np.float32)
+    np.testing.assert_array_equal(
+        got[: len(xs)].astype(np.float32), np.where(edge > 0, edge, 0)
+    )
+
+
 def _bf16_from_bits(u):
     return (np.asarray(u, np.uint32) << 16).view(np.float32).astype(bfloat16)
 
