@@ -26,7 +26,7 @@
 
 // CHECK-LABEL: @runtime_bdid
 // The runtime BD register base: 118784 + bd_id*32.
-// CHECK: %[[POP:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK: %[[POP:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK: %[[MUL:.*]] = arith.muli %[[POP]], %{{.*}} : i32
 // CHECK: %[[BASE:.*]] = arith.addi %{{.*}}, %[[MUL]] : i32
 // One packed blockwrite carries all 8 words; no write32 configures this BD.
@@ -40,13 +40,13 @@
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @runtime_bdid(%arg0: memref<1024xi32>) {
-    %bd = aiex.dma_bd_pool_pop(0, 0) : i32
+    %bd = aiex.dma_bd_pool_pop(0, 0, 0) : i32
     %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256) bd_id_val %bd : i32
       aie.end
     } {issue_token = true}
     aiex.dma_start_task(%t)
     aiex.dma_await_task(%t)
-    aiex.dma_bd_pool_push(0, 0) bd_id %bd : i32
+    aiex.dma_bd_pool_push(0, 0, 0) bd_id %bd : i32
   }
 }

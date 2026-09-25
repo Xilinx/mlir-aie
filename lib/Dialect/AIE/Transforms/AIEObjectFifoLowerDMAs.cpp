@@ -229,6 +229,9 @@ struct AIEObjectFifoLowerDMAsPass
     bool binaryLocks = !device.getTargetModel().hasProperty(
         AIETargetModel::UsesSemaphoreLocks);
     size_t total = descriptors.size() * copies;
+    // Allocation budgets each channel's BDs by this count.
+    assert(static_cast<int64_t>(total) == endpoint.getNumBDs() &&
+           "getNumBDs disagrees with the chain lowered");
     size_t emitted = 0;
     Block *current = bdBlock;
     for (Descriptor &descriptor : descriptors) {

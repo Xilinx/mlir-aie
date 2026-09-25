@@ -267,13 +267,13 @@ in_h.fill(a_in, tap=tap)
 By default (`managed=True`) a transfer is enrolled in a `TaskGroup` that frees it automatically. Pass `managed=False` to own the returned `Task` yourself — e.g. to carry it across `scf.for` iterations as an iter_arg in a manually pipelined loop:
 
 ```python
-task = in_h.fill(a_in, managed=False)
+task = in_h.fill(a_in, managed=False, wait=True)
 ...
 task.await_()
 task.free()
 ```
 
-`managed=False` and `group=` are mutually exclusive (an unmanaged transfer isn't part of a `TaskGroup`).
+`managed=False` and `group=` are mutually exclusive (an unmanaged transfer isn't part of a `TaskGroup`). Only a `wait=True` transfer can be awaited. When every loop in the sequence has a compile-time trip count, `.free()` is optional: the compiler takes BDs back from tasks it can prove finished. Issue a task after the transfers it depends on (a block's fills before its drain), since the compiler may wait on it before issuing anything later.
 
 ### Runtime parameters (RTP) and the worker barrier
 

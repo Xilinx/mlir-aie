@@ -11,11 +11,11 @@ import numpy as np
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect, DMABDOp as _DMABDOp
-from ._ods_common import _cext
+from ._ods_common import _cext, get_op_result_or_value
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
-from ..extras.dialects.arith import ScalarValue, constant
+from ..extras.dialects.arith import ScalarValue, constant, extsi, index_cast, trunci
 from ..extras.dialects._shaped_value import ShapedValue
 from ..extras.dialects.memref import (
     MemRefValue,
@@ -63,7 +63,9 @@ from ..ir import (
     DenseElementsAttr,
     DenseI32ArrayAttr,
     DictAttr,
+    FlatSymbolRefAttr,
     FunctionType,
+    IndexType,
     InsertionPoint,
     IntegerAttr,
     IntegerType,
@@ -100,7 +102,7 @@ def use_lock(
 
 
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
-from ._aiex_ops_gen import NpuWriteRTPOp
+from ._aiex_ops_gen import NpuAssertBdFieldOp, NpuWriteRTPOp
 
 
 class npu_write_rtp(NpuWriteRTPOp):
@@ -124,6 +126,64 @@ def _as_i32(v):
     if isinstance(v, (int, np.integer)):
         return constant(int(v), T.i32())
     return v
+
+
+def _as_bd_i32(v):
+    """Narrow a runtime integer Value to i32 for a BD's offset, len or queue
+    repeat_count. Those fields are i32 while sizes and strides are i64, so one
+    dispatch-time scalar feeding both needs narrowing on this side. Ints,
+    already-i32 Values and None pass through."""
+    if v is None or isinstance(v, (int, np.integer)) or v.type == T.i32():
+        return v
+    NpuAssertBdFieldOp(value=v, max=(1 << 31) - 1)
+    return trunci(T.i32(), v)
+
+
+def _as_bd_i64_dims(values, what, widen=True):
+    """Widen the runtime entries of a BD sizes/strides/offsets list to i64,
+    the operand type, so an i32 dispatch-time scalar or an index loop variable
+    can feed a dimension directly. Ints pass through as static entries;
+    anything that is not an integer raises a TypeError naming the entry.
+
+    Inside a BD block, which lowers only constants, pass ``widen=False``: a
+    narrower integer then raises instead, asking for the cast to be hoisted."""
+    if values is None:
+        return None
+    widened = []
+    for i, v in enumerate(values):
+        if isinstance(v, (int, np.integer)):
+            widened.append(int(v))
+            continue
+        given = type(v).__name__
+        try:
+            v = get_op_result_or_value(v)
+        except (AssertionError, ValueError):
+            v = None
+        if not isinstance(v, Value):
+            raise TypeError(
+                f"{what}[{i}] must be an int or an integer SSA value from the "
+                f"runtime sequence, got {given}."
+            )
+        if v.type == T.i64():
+            widened.append(v)
+            continue
+        is_index = isinstance(v.type, IndexType)
+        if not is_index and not (isinstance(v.type, IntegerType) and v.type.width < 64):
+            raise TypeError(
+                f"{what}[{i}] must be an int or an integer SSA value, "
+                f"got a value of type {v.type}."
+            )
+        if not widen:
+            raise TypeError(
+                f"{what}[{i}] is {v.type} but must be i64, and a BD block "
+                "cannot hold the cast. Widen it with arith.extsi (or "
+                "arith.index_cast) before the dma_configure_task."
+            )
+        if is_index:
+            widened.append(index_cast(v, to=T.i64()))
+        else:
+            widened.append(extsi(T.i64(), v))
+    return widened
 
 
 def _split_i32_scalar(v):
@@ -156,14 +216,20 @@ def dma_bd(
     (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
     shadowing the builtin and matches ``shim_dma_bd``.)
 
-    Example::
+    For example:
 
-        %len = ...
-        aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
-                   offset=0 len=%len)
+    ```mlir
+    %len = ...
+    aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
+               offset=0 len=%len)
+    ```
     """
-    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
-    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
+    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(
+        _as_bd_i64_dims(sizes, "dma_bd sizes", widen=False) or []
+    )
+    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(
+        _as_bd_i64_dims(strides, "dma_bd strides", widen=False) or []
+    )
 
     offset_operand, static_offset = _split_i32_scalar(offset)
     len_operand, static_len = _split_i32_scalar(transfer_len)
@@ -920,6 +986,22 @@ def another_bd(dma_op):
     raise Exception("couldn't find empty region to add to.")
 
 
+def _dma_channel_kwargs(channel_index) -> dict:
+    """Spell a DMA program's channel as either operand ``aie.dma_start`` takes.
+
+    An int (or IntegerAttr) is a hardware index. Anything else names an
+    ``aie.route_endpoint`` -- by symbol name or by the op itself -- whose channel
+    ``--aie-objectfifo-allocate`` assigns.
+    """
+    if isinstance(channel_index, IntegerAttr):
+        channel_index = channel_index.value
+    if isinstance(channel_index, int):
+        return dict(channel_index=channel_index)
+    if isinstance(channel_index, (str, FlatSymbolRefAttr)):
+        return dict(endpoint=channel_index)
+    return dict(endpoint=channel_index.sym_name.value)
+
+
 @_cext.register_operation(_Dialect, replace=True)
 class DMAStartOp(DMAStartOp):
     def __init__(
@@ -935,6 +1017,9 @@ class DMAStartOp(DMAStartOp):
         loc=None,
         ip=None,
     ):
+        """``channel_index`` is a hardware channel index, or the
+        ``aie.route_endpoint`` (op or symbol name) whose channel allocation
+        assigns."""
         if isinstance(dest, Successor):
             dest = dest.block
         if isinstance(chain, Successor):
@@ -945,9 +1030,9 @@ class DMAStartOp(DMAStartOp):
             chain = InsertionPoint.current.block
         super().__init__(
             channel_dir,
-            channel_index,
             dest,
             chain,
+            **_dma_channel_kwargs(channel_index),
             repeat_count=repeat_count,
             pad_value=pad_value,
             out_of_order=out_of_order,

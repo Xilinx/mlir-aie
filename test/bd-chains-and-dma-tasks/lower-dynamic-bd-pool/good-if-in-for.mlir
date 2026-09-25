@@ -15,10 +15,10 @@
 // CHECK-LABEL: @if_in_for
 // CHECK: scf.for
 // CHECK:   scf.if %{{.*}} {
-// CHECK:     %[[ID:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK:     %[[ID:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK:     aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
 // CHECK:       aie.dma_bd(%{{.*}} : memref<1024xi32> offset = 0 len = 256) bd_id_val %[[ID]] : i32
-// CHECK:     aiex.dma_bd_pool_push(0, 0) bd_id %[[ID]] : i32
+// CHECK:     aiex.dma_bd_pool_push(0, 0, 0) bd_id %[[ID]] : i32
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)

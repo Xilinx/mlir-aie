@@ -37,9 +37,37 @@ def AIEDecomposeLargeDmaBd
     (and that cannot be linearized because the access is non-contiguous) into
     one or more hardware-legal ND transfers that move exactly the same data.
 
-    On the task path, multiple sub-patterns are linked with `aie.next_bd`
-    blocks inside the configure region; `bd_id` / `next_bd_id` are left for
-    later passes to assign.
+    On the task path, up to the channel's task-queue depth of sub-patterns
+    are linked with `aie.next_bd` blocks inside the configure region;
+    `bd_id` / `next_bd_id` are left for later passes to assign. Past the queue
+    depth, or when the sub-patterns need repeat counts of their own, each
+    becomes a single-BD task of its own instead, so that
+    `aie-assign-runtime-sequence-bd-ids` can take back the BDs of finished
+    ones. Only the last of those tasks issues the token: an
+    `aiex.dma_await_task` of the original task awaits it, and an
+    `aiex.dma_free_task` frees them all. A start runs every one of them once
+    per pass over the original's iteration dimension, so a start's repeat count
+    must cover whole passes. A runtime repeat count keeps the chain.
+
+    The pushes of those tasks are interleaved with the starts issued alongside
+    them: the first keeps the original start's place, and the rest follow the
+    last start before the next push to a channel already pushed to, or before
+    the next await, sync, poll or untracked push. They are ordered by how far
+    through its transfer each is, ties in program order, and each task is
+    configured only when due. Otherwise the waits the BD-ID pass inserts for a
+    transfer's later pieces could block pushes that a counterpart transfer,
+    issued after it, needs to make progress.
+
+    A task-path descriptor may give more dimensions than a buffer descriptor
+    holds, if they are all constant. Every one past the innermost three is an
+    iteration dimension, and a pass over the pattern runs the descriptor once
+    per index of them all, outermost slowest. An iteration dimension that
+    continues the one inside it merges with it, and a unit one drops. If more
+    than one is left, the ones past the fourth are split off into a piece per
+    index, each at its own offset and each a task of its own, and every piece
+    is then decomposed like any other descriptor. Where that is not possible
+    (a runtime offset, a chain, runtime control flow, or a repeat count that
+    does not cover whole passes) the pass says why.
 
     Two techniques are used: dimension factoring (split an oversized dimension
     of size N=a*b across a free dimension slot) is preferred, falling back to
@@ -336,7 +364,24 @@ def AIEAssignRuntimeSequenceBDIDs
            "through the compute core, which the runtime sequence cannot see, "
            "so this reports designs that are correct by an argument the "
            "compiler does not have. Useful when chasing a suspected BD "
-           "aliasing hang.">];
+           "aliasing hang.">,
+       Option<
+           "reclaimBds", "reclaim-bds", "bool",
+           /*default=*/"true",
+           "When a tile runs out of BD ids, take them back from a task that "
+           "was started and never released, instead of failing. A task some "
+           "status poll already in the sequence proves finished is taken "
+           "without waiting. Otherwise the compiler inserts an "
+           "aiex.npu.maskpoll on the oldest such task's channel status: "
+           "while later pushes are queued behind it, until the queue shrinks "
+           "enough to prove it has finished, and with none, until the channel "
+           "is idle. A task started again later is never taken. A later free "
+           "of a taken task is a no-op; a later await still waits for its "
+           "token. Only allocations that fail without it change, so a "
+           "sequence that fits is unaffected. The poll relies on the waited-on "
+           "tasks finishing from pushes already issued -- a design whose DMAs "
+           "wait on later pushes through a core must release its BDs "
+           "itself.">];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",
@@ -512,6 +557,11 @@ def AIEVerifyRuntimeRearm : Pass<"aie-verify-runtime-rearm", "AIE::DeviceOp"> {
       "Experimental, opt-in: reject an aiex.dma_channel_reset whose "
       "objectFIFO lock is never re-armed (a necessary, not sufficient, "
       "condition for a safe reset)";
+  let description = [{
+    Requires materialized DMA channels and locks. Run
+    `--aie-objectfifo-allocate` before this pass when `aie.dma_start` names a
+    route endpoint rather than a channel index.
+  }];
   let constructor = "xilinx::AIEX::createAIEVerifyRuntimeRearmPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",

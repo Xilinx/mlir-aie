@@ -18,13 +18,15 @@ def for_each(func, tensor_ty, tile_size=16):
 
     Accepts a numpy ``ndarray`` type descriptor instead of a real tensor.
     Intended for use inside ``@iron.jit`` generator bodies where shape and
-    dtype are expressed as ``CompileTime[T]`` parameters::
+    dtype are expressed as ``CompileTime[T]`` parameters:
 
-        @iron.jit
-        def my_design(data: InOut,
-                      N: CompileTime[int], dtype: CompileTime[type] = np.int32):
-            tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-            return iron.algorithms.for_each(lambda x: x + 1, tensor_ty)
+    ```python
+    @iron.jit
+    def my_design(data: InOut,
+                  N: CompileTime[int], dtype: CompileTime[type] = np.int32):
+        tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+        return iron.algorithms.for_each(lambda x: x + 1, tensor_ty)
+    ```
 
     Args:
         func: Function or `ExternalFunction` to apply.
@@ -80,11 +82,13 @@ def _for_each_real(func, tensor, *params, tile_size=16):
                  array types are transferred via ObjectFifos.
         tile_size: Size of each tile processed by a worker (default: 16)
 
-    Example::
+    For example:
 
-        # kernel has separate in/out tile buffers, but only one tensor is passed
-        scale = ExternalFunction("scale", arg_types=[tile_ty, tile_ty, scalar_ty, np.int32], ...)
-        for_each(scale, tensor, factor, tile_size=16)
+    ```python
+    # kernel has separate in/out tile buffers, but only one tensor is passed
+    scale = ExternalFunction("scale", arg_types=[tile_ty, tile_ty, scalar_ty, np.int32], ...)
+    for_each(scale, tensor, factor, tile_size=16)
+    ```
 
     Returns:
         mlir.ir.Module: The compiled MLIR module ready for execution.

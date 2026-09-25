@@ -7,7 +7,7 @@
 
 Applies ``lambda a, b: a + b`` to each ``tile_size``-element tile of two
 1-D int32 tensors.  The design body delegates to
-:func:`aie.iron.algorithms.transform_binary`.
+``aie.iron.algorithms.transform_binary``.
 """
 
 import argparse

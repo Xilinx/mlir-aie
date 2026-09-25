@@ -8,8 +8,9 @@
 Returned by ``fifo.fill``/``fifo.drain``. Its ``handle`` is the transfer's
 ``!index`` SSA value, so a ``Task`` can be carried across ``scf.for`` iterations
 as a ``range_`` ``iter_args`` entry for software-pipelined transfers -- and it
-carries ``.free()`` / ``.await_()`` verbs so the loop body does not need to reach
-for the raw ``aiex.dma_free_task`` / ``aiex.dma_await_task`` dialect ops.
+carries ``.start()`` / ``.free()`` / ``.await_()`` verbs so the loop body does not
+need to reach for the raw ``aiex.dma_start_task`` / ``aiex.dma_free_task`` /
+``aiex.dma_await_task`` dialect ops.
 
 A ``Task`` returned by an *unmanaged* transfer (``managed=False``) is not enrolled
 in a ``TaskGroup``'s automatic await/free, so the caller owns its lifetime with
@@ -21,6 +22,7 @@ from __future__ import annotations
 from ...dialects.aiex import (  # pyright: ignore[reportMissingImports]
     dma_await_task,
     dma_free_task,
+    dma_start_task,
 )
 
 
@@ -40,6 +42,16 @@ class Task:
     def handle(self):
         """The transfer's ``!index`` SSA value (the ``scf`` iter_arg payload)."""
         return self._handle
+
+    def start(self, repeat_count: int | None = None) -> None:
+        """Push this task onto its channel's queue again (``dma_start_task``).
+
+        The task's buffer descriptors are already written, so a restart costs
+        one queue push rather than a reconfiguration. ``repeat_count`` replaces
+        the task's configured count for this start only; a count beyond what
+        one push carries is issued as several pushes by the compiler.
+        """
+        dma_start_task(self._handle, repeat_count=repeat_count)
 
     def free(self) -> None:
         """Return this transfer's buffer descriptor to the pool (``dma_free_task``)."""

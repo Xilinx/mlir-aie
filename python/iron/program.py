@@ -187,6 +187,8 @@ class Program:
                     all_tiles.extend(td.all_tiles())
                 for lk in self._rt.locks:
                     all_tiles.append(lk.tile)
+                for b in self._rt.buffers:
+                    all_tiles.extend(b.tiles())
 
                 # Resolve tiles
                 for t in all_tiles:
@@ -210,6 +212,12 @@ class Program:
                         if b.tile is None:
                             b._tile = td.tile
                         b.resolve()
+
+                # Buffers the sequence body addresses directly through
+                # tile_dma_task/tile_dma_chain. The body is emitted last, so
+                # these have to exist by then, and nothing else reaches them.
+                for b in self._rt.buffers:
+                    b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
                 for w in self._workers:

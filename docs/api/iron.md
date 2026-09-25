@@ -150,6 +150,17 @@ into `iron` from `aie.utils`.
 | `iron.set_current_device` | Select the NPU device for subsequent allocations. |
 | `iron.ensure_current_device` | Raise if no device is currently selected. |
 
+The [`Device`][iron.device.device.Device] also reports the hardware limits a
+design is sized against, such as `max_lock_value`, `max_repeat_count`,
+`dma_task_queue_depth` and `get_num_bds(tile_type)`, so a design can read them
+instead of hardcoding them.
+
+::: iron.device.device
+    options:
+      show_root_heading: false
+      members:
+        - Device
+
 ---
 
 ## Data type helpers
@@ -171,7 +182,12 @@ descriptors, and locks.
 
 Circuit-switched ([`Flow`][iron.Flow]) and packet-switched
 ([`PacketFlow`][iron.PacketFlow]) stream connections, plus the
-[`PacketDest`][iron.PacketDest] endpoint descriptor.
+[`PacketDest`][iron.PacketDest] endpoint descriptor.  A `Flow` given no DMA
+channels lets the compiler assign them; name the assigned channel with
+`flow.endpoint(tile)`, which returns a [`FlowEndpoint`][iron.FlowEndpoint]
+that DMA programs, `tile_dma_task` and `tile_dma_chain` take in place of a
+channel index.  A `Flow` or `PacketFlow` with one shim end has `fill` /
+`drain`; `PacketFlow.fill` stamps the route's packet ID on the input.
 
 ::: iron.dataflow.flow
     options:
@@ -215,6 +231,10 @@ Lower-level runtime task types scheduled by the
       show_root_heading: false
 
 ::: iron.runtime.dmatask
+    options:
+      show_root_heading: false
+
+::: iron.runtime.tiledmatask
     options:
       show_root_heading: false
 

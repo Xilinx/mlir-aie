@@ -121,7 +121,7 @@ def q4nx_dequant(
     ``m_tile`` counts n rows (a multiple of 16); ``k_tile`` must be divisible
     by both ``group`` and ``ct_k``. The latter two are positive multiples of
     eight; ``s`` and ``t`` must be eight. Groups need not divide k slices.
-    See :func:`q4nx_dequant_ref` for the packed input and output layouts.
+    See ``q4nx_dequant_ref`` for the packed input and output layouts.
 
     Both arguments are uint8 byte buffers, including the bfp16ebs8 output,
     so the generic harness compares the complete encoded result byte for

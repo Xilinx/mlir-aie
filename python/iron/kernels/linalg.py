@@ -141,7 +141,7 @@ def mm_bfp_ref(a, b):
 
     ``a`` is ``(M, K)`` and ``b`` ``(K, N)`` float; each is quantized the way
     the host encodes it for the kernel (blocks of 8 along ``K``, see
-    :mod:`aie.utils.bfp`) and the product is accumulated in float64. The
+    ``aie.utils.bfp``) and the product is accumulated in float64. The
     kernel's own output is bfp16ebs8 too, which the tolerance covers.
     """
     from aie.utils import bfp
@@ -771,7 +771,7 @@ def mm_bfp(
     Initialize C with the independent ``kernels.zero`` factory.
     The host holds B transposed (``b_col_maj``), and
     every bfp16ebs8 operand is encoded and shuffled into the mmul tile
-    layout on the host with :mod:`aie.utils.bfp`, which is what the generic
+    layout on the host with ``aie.utils.bfp``, which is what the generic
     harness does; the contract's reference multiplies the quantized
     operands. These are the kernels
     programming_examples/ml/block_datatypes/matrix_multiplication build.
@@ -1104,7 +1104,7 @@ def prefill_fv_ref(s, v, *, dim_m: int, dim_k: int, dim_n: int):
 
 
 def mm_bfp_shuffle_ref(tile, tile_width, tile_height, unshuffle):
-    """Numpy reference for [`mm_bfp_shuffle`][iron.kernels.linalg.mm_bfp_shuffle]: :func:`aie.utils.bfp.shuffle` of one tile's bytes.
+    """Numpy reference for [`mm_bfp_shuffle`][iron.kernels.linalg.mm_bfp_shuffle]: ``aie.utils.bfp.shuffle`` of one tile's bytes.
 
     ``tile`` is the encoded ``(tile_height, tile_width)`` tile as bytes
     (``tile_width`` in values); returns the reordered bytes.

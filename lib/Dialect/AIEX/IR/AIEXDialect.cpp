@@ -562,12 +562,13 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   int64_t d1Hw = hwSize(sizesRev[1]);
   int64_t iterRaw = hwSize(sizesRev[3]);
   int64_t iterHw = iterRaw > 1 ? iterRaw - 1 : 0;
-  if (failed(checkSize(sizesRev[0], d0Hw, ShimBdFieldWidths::d0WrapMax(),
-                       "d0 size")) ||
-      failed(checkSize(sizesRev[1], d1Hw, ShimBdFieldWidths::d1WrapMax(),
-                       "d1 size")) ||
-      failed(checkSize(sizesRev[3], iterHw, ShimBdFieldWidths::iterWrapMax(),
-                       "iteration size")))
+  int64_t wrapMax =
+      (1ll << targetModel.getDmaBdWrapBits(tile.getCol(), tile.getRow())) - 1;
+  int64_t iterMax =
+      (1ll << targetModel.getDmaBdIterBits(tile.getCol(), tile.getRow())) - 1;
+  if (failed(checkSize(sizesRev[0], d0Hw, wrapMax, "d0 size")) ||
+      failed(checkSize(sizesRev[1], d1Hw, wrapMax, "d1 size")) ||
+      failed(checkSize(sizesRev[3], iterHw, iterMax, "iteration size")))
     return failure();
 
   // Realizability of the CONSTANT size/stride operands (divisibility +
@@ -582,9 +583,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   // 6-bit) could exceed the field and silently truncate on hardware. The TXN
   // stream has no on-device trap, so the dynamic lowering emits a host-side
   // bounds guard (npu.assert_bd_field -> generated-C++ early return of nullopt)
-  // for exactly those fields. Nothing to reject here: wide fields
-  // (buffer_length via linear mode, repeat_count) need no guard, and narrow
-  // fields are guarded at lowering time.
+  // for exactly those fields. Nothing to reject here: buffer_length via linear
+  // mode is wide enough to need no guard, narrow fields are guarded at
+  // lowering time, and so is the 8-bit repeat_count, where the queue push is
+  // packed.
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value())
@@ -733,9 +735,8 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   // bd_id and repeat_count are SSA operands; range-check them only when they
-  // are compile-time constants. A runtime (non-constant) value is left
-  // unchecked here: bounds checking of runtime operands is not yet implemented
-  // (it belongs to the dynamic lowering path added in a later patch).
+  // are compile-time constants. For runtime ones, see the npu.assert_bd_field
+  // aie-dma-to-npu emits and the BD pool, which only hands out valid ids.
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
@@ -800,6 +801,12 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
                          << "] range.";
   if (static_cast<uint32_t>(getIterationStride()) > maxStep)
     return emitOpError() << "Iteration Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  // buffer_length is the full 32-bit word on a shim NOC tile but only 17 bits
+  // on a mem tile and 14 on a core tile, where the packer masks it.
+  uint64_t maxLen = targetModel.getDmaBdMaxLen(tileType);
+  if (getBufferLength() > maxLen)
+    return emitOpError() << "Buffer length exceeds the [0:" << maxLen
                          << "] range.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
@@ -1211,6 +1218,11 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // caps the total at 4, which the MemTile's 4 ND dimensions already reach. Both
 // branches therefore land on the same uniform 4-dimension cap enforced later by
 // AIEDMATasksToNPU.
+//
+// A BD whose sizes and strides are all constant may give more: every dimension
+// past the third is an iteration dimension, and aie-decompose-large-dma-bd
+// splits them off into descriptors of 4. With a runtime value among them it
+// cannot, so the cap applies here.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
@@ -1234,6 +1246,12 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       return;
     }
     size_t numDims = bd.getMixedSizes().size();
+    auto isConstant = [](OpFoldResult v) {
+      return getConstantIntValue(v).has_value();
+    };
+    if (numDims > maxNDims && llvm::all_of(bd.getMixedSizes(), isConstant) &&
+        llvm::all_of(bd.getMixedStrides(), isConstant))
+      return;
     if (numDims > maxNDims) {
       bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
                        << " dimensions for step sizes and wraps on this tile "
@@ -1307,6 +1325,16 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
+// Only the sign is checked here. A count past the hardware field is split into
+// several pushes by aie-assign-runtime-sequence-bd-ids, and NpuPushQueueOp
+// rejects whatever reaches it unsplit.
+LogicalResult AIEX::DMAStartTaskOp::verify() {
+  if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
+    return emitOpError("repeat_count must be non-negative, got ")
+           << rc.getInt();
+  return success();
+}
+
 // Resolving the allocation symbol through the collection keeps the lookup off
 // the device's linear symbol scan, which a per-op verifier repeats after every
 // pass.
@@ -1318,15 +1346,24 @@ LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
-      dev, getAlloc().getRootReference());
-  if (!allocOp)
+  Operation *target =
+      symbolTable.lookupSymbolIn(dev, getAlloc().getRootReference());
+  Value tileValue;
+  if (auto allocOp = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(target)) {
+    tileValue = allocOp.getTile();
+  } else if (auto endpoint = dyn_cast_or_null<AIE::RouteEndpointOp>(target)) {
+    if (endpoint.getBundle() != AIE::WireBundle::DMA)
+      return emitOpError() << "'" << getAlloc() << "' names a "
+                           << stringifyWireBundle(endpoint.getBundle())
+                           << " port, not a DMA channel";
+    tileValue = endpoint.getTile();
+  }
+  if (!tileValue)
     return success(); // symbol resolved during a later pass; defer the check
   // Do not call allocOp.getTileOp(): it hard-asserts when the allocation is
   // still bound to an unplaced (logical) tile. Resolve the concrete tile
   // defensively and defer the check until placement substitutes a real tile.
-  auto tile =
-      llvm::dyn_cast_or_null<AIE::TileOp>(allocOp.getTile().getDefiningOp());
+  auto tile = llvm::dyn_cast_or_null<AIE::TileOp>(tileValue.getDefiningOp());
   if (!tile)
     return success();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
@@ -1392,6 +1429,9 @@ LogicalResult AIEX::SetLockOp::verify() {
 
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("SetLockOp is not supported on AIE1.");
+
+  if (getValueAttr().getValue().isNegative())
+    return emitOpError("Lock value must be non-negative");
 
   if (getValue() > targetModel.getMaxLockValue())
     return emitOpError("Lock value exceeds the maximum value of " +

@@ -15,7 +15,7 @@
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t [[P:v[0-9]+]]) {
 // CHECK:   std::vector<uint32_t> txn;
 // CHECK:   aie_runtime::txn_init(txn);
-// CHECK:   if ([[P]] > 1023) return std::nullopt;
+// CHECK:   if ([[P]] < 0 || [[P]] > 1023) return std::nullopt;
 // CHECK:   aie_runtime::txn_append_write32(txn, {{v[0-9]+}}, [[P]]);
 // CHECK:   return std::move(txn);
 module {

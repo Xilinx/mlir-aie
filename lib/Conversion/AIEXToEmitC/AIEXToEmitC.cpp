@@ -61,8 +61,32 @@ emitc::OpaqueType getU32Type(MLIRContext *ctx) {
 
 // The C++ variable name of the runtime BD pool for a tile. One pool per tile
 // that draws BD ids at runtime, declared in the generated function's prologue.
-std::string bdPoolName(uint32_t col, uint32_t row) {
-  return "bd_pool_" + std::to_string(col) + "_" + std::to_string(row);
+// The half-open range of BD ids `channel` can actually submit on (col, row).
+// A mem tile partitions its table by channel parity, so two channels of
+// opposite parity name disjoint ranges and therefore separate pools; every
+// other tile type reports the whole table for every channel.
+std::pair<uint32_t, uint32_t> accessibleBdRange(const AIE::AIETargetModel &tm,
+                                                uint32_t col, uint32_t row,
+                                                uint32_t channel) {
+  uint32_t lo = 0, hi = 0;
+  bool seen = false;
+  for (uint32_t bd = 0; bd < tm.getNumBDs(col, row); ++bd) {
+    if (!tm.isBdChannelAccessible(col, row, bd, channel))
+      continue;
+    if (!seen) {
+      lo = bd;
+      seen = true;
+    }
+    hi = bd + 1;
+  }
+  return {lo, hi};
+}
+
+// Pools are named by their id range rather than by channel: channels sharing a
+// partition must share one pool, or they would hand out the same id twice.
+std::string bdPoolName(uint32_t col, uint32_t row, uint32_t lo) {
+  return "bd_pool_" + std::to_string(col) + "_" + std::to_string(row) + "_" +
+         std::to_string(lo);
 }
 
 // BD ids the static allocator has already placed on (col, row), read off the
@@ -107,6 +131,10 @@ void emitTxnCall(OpBuilder &b, Location loc, StringRef fn, Value txnVec,
 struct DeviceResolved {
   llvm::DenseMap<Operation *, uint32_t> absoluteAddr;
   llvm::DenseMap<Operation *, DenseIntElementsAttr> blockWriteData;
+  // The converter runs over ops already cloned out of the aie.device, so
+  // AIE::getTargetModel() on them would fall back to a default model. Carry
+  // the real one across with the rest of the device-resolved state.
+  const AIE::AIETargetModel *targetModel = nullptr;
 };
 
 class AIEXToEmitCConverter {
@@ -297,9 +325,10 @@ private:
           // BD field, the builder yields no stream (std::nullopt) rather than a
           // truncated one. Appends nothing, so not counted.
           emitc::VerbatimOp::create(b, loc,
-                                    "if ({} > " + std::to_string(g.getMax()) +
+                                    "if ({} < 0 || {} > " +
+                                        std::to_string(g.getMax()) +
                                         ") return std::nullopt;",
-                                    ValueRange{g.getValue()});
+                                    ValueRange{g.getValue(), g.getValue()});
         })
         .Case<AIEX::NpuAssertBdDivisibleOp>([&](auto g) {
           // Host-side realizability guard: a runtime size/stride whose byte
@@ -327,8 +356,12 @@ private:
           emitc::VerbatimOp::create(
               b, loc,
               "uint32_t " + var + "; if (!aie_runtime::bd_pool_pop(" +
-                  bdPoolName(pop.getColumn(), pop.getRow()) + ", " + var +
-                  ")) return std::nullopt;");
+                  bdPoolName(pop.getColumn(), pop.getRow(),
+                             accessibleBdRange(*resolved.targetModel,
+                                               pop.getColumn(), pop.getRow(),
+                                               pop.getChannel())
+                                 .first) +
+                  ", " + var + ")) return std::nullopt;");
           Value ref =
               emitc::LiteralOp::create(b, loc, pop.getBdId().getType(), var);
           pop.getBdId().replaceAllUsesWith(ref);
@@ -337,7 +370,8 @@ private:
           // Return a BD id to the tile's runtime pool.
           emitc::CallOpaqueOp::create(
               b, loc, TypeRange{}, "aie_runtime::bd_pool_push",
-              ValueRange{poolRef(b, loc, push.getColumn(), push.getRow()),
+              ValueRange{poolRef(b, loc, push.getColumn(), push.getRow(),
+                                 push.getChannel()),
                          push.getBdId()});
         })
         // memref.get_global feeding a blockwrite is consumed by
@@ -386,10 +420,13 @@ private:
 
   // An emitc.literal referencing a tile's pool variable (for pass-by-reference
   // into bd_pool_push).
-  Value poolRef(OpBuilder &b, Location loc, uint32_t col, uint32_t row) {
+  Value poolRef(OpBuilder &b, Location loc, uint32_t col, uint32_t row,
+                uint32_t channel) {
     return emitc::LiteralOp::create(
         b, loc, emitc::OpaqueType::get(b.getContext(), "aie_runtime::BdPool"),
-        bdPoolName(col, row));
+        bdPoolName(
+            col, row,
+            accessibleBdRange(*resolved.targetModel, col, row, channel).first));
   }
 
   void convertBlockWrite(OpBuilder &b, Location loc, AIEX::NpuBlockWriteOp bw) {
@@ -746,31 +783,38 @@ private:
     // from the target model -- never hardcoded here. One decl per distinct
     // tile.
     const AIE::AIETargetModel &targetModel = deviceOp.getTargetModel();
-    llvm::SmallSet<std::pair<uint32_t, uint32_t>, 4> pooledTiles;
+    // Keyed by (col, row, range-start): channels that share a BD partition
+    // share a pool, opposite-parity mem tile channels get their own.
+    llvm::SmallSet<std::tuple<uint32_t, uint32_t, uint32_t>, 4> pooledTiles;
     seqOp.walk([&](Operation *op) {
       uint32_t col, row;
+      uint32_t channel;
       if (auto pop = dyn_cast<AIEX::DMABdPoolPopOp>(op)) {
         col = pop.getColumn();
         row = pop.getRow();
+        channel = pop.getChannel();
       } else if (auto push = dyn_cast<AIEX::DMABdPoolPushOp>(op)) {
         col = push.getColumn();
         row = push.getRow();
+        channel = push.getChannel();
       } else {
         return;
       }
-      if (!pooledTiles.insert({col, row}).second)
+      auto [lo, hi] = accessibleBdRange(targetModel, col, row, channel);
+      if (!pooledTiles.insert({col, row, lo}).second)
         return;
-      uint32_t numBDs = targetModel.getNumBDs(col, row);
+      std::string name = bdPoolName(col, row, lo);
       emitc::VerbatimOp::create(fb, loc,
-                                "aie_runtime::BdPool " + bdPoolName(col, row) +
-                                    " = aie_runtime::bd_pool_init(" +
-                                    std::to_string(numBDs) + ");");
+                                "aie_runtime::BdPool " + name +
+                                    " = aie_runtime::" + "bd_pool_init_range(" +
+                                    std::to_string(lo) + ", " +
+                                    std::to_string(hi) + ");");
       // Hand back the ids the static allocator already placed on this tile.
       for (uint32_t id : staticBdIdsOnTile(deviceOp, col, row))
-        emitc::VerbatimOp::create(fb, loc,
-                                  "aie_runtime::bd_pool_reserve(" +
-                                      bdPoolName(col, row) + ", " +
-                                      std::to_string(id) + ");");
+        if (id >= lo && id < hi)
+          emitc::VerbatimOp::create(fb, loc,
+                                    "aie_runtime::bd_pool_reserve(" + name +
+                                        ", " + std::to_string(id) + ");");
     });
 
     // A rolled loop makes the op count a runtime quantity: declare a __opcount
@@ -798,6 +842,7 @@ private:
       if (!isa<BaseMemRefType>(arg.getType()))
         mapping.map(arg, funcBlock->getArgument(p++));
     DeviceResolved resolved;
+    resolved.targetModel = &deviceOp.getTargetModel();
     for (Operation &op : entry.without_terminator()) {
       fb.clone(op, mapping);
       // Record device-resolved values for the clone and any nested op (a BD

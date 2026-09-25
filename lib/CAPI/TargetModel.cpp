@@ -147,6 +147,18 @@ uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel, int col, int row) {
   return unwrap(targetModel).getNumBDs(col, row);
 }
 
+uint32_t aieTargetModelGetMaxLockValue(AieTargetModel targetModel) {
+  return unwrap(targetModel).getMaxLockValue();
+}
+
+uint32_t aieTargetModelGetMaxRepeatCount(AieTargetModel targetModel) {
+  return unwrap(targetModel).getMaxRepeatCount();
+}
+
+uint32_t aieTargetModelGetDmaTaskQueueDepth(AieTargetModel targetModel) {
+  return unwrap(targetModel).getDmaTaskQueueDepth();
+}
+
 uint32_t aieTargetModelGetDmaBdWrapBits(AieTargetModel targetModel, int col,
                                         int row) {
   return unwrap(targetModel).getDmaBdWrapBits(col, row);

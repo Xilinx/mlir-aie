@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 module {
-  aie.device(npu2) {
+  aie.device(NPUDEVICE) {
     %shim = aie.tile(0, 0)
     %s2 = aie.tile(0, 2)
     %s3 = aie.tile(0, 3)
@@ -97,14 +97,14 @@ module {
     aie.runtime_sequence(%out : memref<16xi32>, %tok : memref<8xi32>) {
       %c1 = arith.constant 1 : i32
       %c2 = arith.constant 2 : i32
-      %bda = aiex.dma_bd_pool_pop(0, 0) : i32
+      %bda = aiex.dma_bd_pool_pop(0, 0, 0) : i32
       %t0 = aiex.dma_configure_task(%shim, S2MM, 0, <pkt_type = 0, pkt_id = 0>) {
         aie.dma_bd(%out : memref<16xi32> offset = 8 len = 8) bd_id_val %bda : i32
         aie.use_lock(%cons, Release, %c1)
         aie.end
       } {out_of_order}
       aiex.dma_start_task(%t0)
-      %bdb = aiex.dma_bd_pool_pop(0, 0) : i32
+      %bdb = aiex.dma_bd_pool_pop(0, 0, 0) : i32
       %t1 = aiex.dma_configure_task(%shim, S2MM, 0, <pkt_type = 0, pkt_id = 0>) {
         aie.dma_bd(%out : memref<16xi32> offset = 0 len = 8) bd_id_val %bdb : i32
         aie.use_lock(%cons, Release, %c1)
@@ -112,7 +112,7 @@ module {
       } {out_of_order}
       aiex.dma_start_task(%t1)
 
-      %bdc = aiex.dma_bd_pool_pop(0, 0) : i32
+      %bdc = aiex.dma_bd_pool_pop(0, 0, 0) : i32
       %tc = aiex.dma_configure_task(%shim, S2MM, 1, <pkt_type = 0, pkt_id = 2>) {
         aie.use_lock(%cons, AcquireGreaterEqual, %c2)
         aie.dma_bd(%tok : memref<8xi32> offset = 0 len = 8) bd_id_val %bdc : i32
@@ -121,9 +121,9 @@ module {
       } {issue_token = true}
       aiex.dma_start_task(%tc)
       aiex.dma_await_task(%tc)
-      aiex.dma_bd_pool_push(0, 0) bd_id %bdc : i32
-      aiex.dma_bd_pool_push(0, 0) bd_id %bdb : i32
-      aiex.dma_bd_pool_push(0, 0) bd_id %bda : i32
+      aiex.dma_bd_pool_push(0, 0, 0) bd_id %bdc : i32
+      aiex.dma_bd_pool_push(0, 0, 0) bd_id %bdb : i32
+      aiex.dma_bd_pool_push(0, 0, 0) bd_id %bda : i32
     }
   }
 }

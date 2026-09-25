@@ -19,25 +19,25 @@
 
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_
 // The pool is declared once, sized from the target model (shim = 16 BDs).
-// CHECK: aie_runtime::BdPool bd_pool_0_0 = aie_runtime::bd_pool_init(16);
+// CHECK: aie_runtime::BdPool bd_pool_0_0_0 = aie_runtime::bd_pool_init_range(0, 16);
 // A pop into a fresh variable, failing the build (nullopt) if the pool is empty.
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0_0, bd_{{[0-9]+}})) return std::nullopt;
 // The BD register block is one block-write at the pool-derived runtime address.
 // CHECK: aie_runtime::txn_append_blockwrite
 // The id is returned to the pool.
-// CHECK: aie_runtime::bd_pool_push(bd_pool_0_0,
+// CHECK: aie_runtime::bd_pool_push(bd_pool_0_0_0,
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.shim_dma_allocation @of_in (%tile_0_0, MM2S, 0)
   aie.runtime_sequence @pool(%in: memref<8192xi32>) {
-    %bd = aiex.dma_bd_pool_pop(0, 0) : i32
+    %bd = aiex.dma_bd_pool_pop(0, 0, 0) : i32
     %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1]) bd_id_val %bd : i32
       aie.end
     } {issue_token = true}
     aiex.dma_start_task(%t)
     aiex.dma_await_task(%t)
-    aiex.dma_bd_pool_push(0, 0) bd_id %bd : i32
+    aiex.dma_bd_pool_push(0, 0, 0) bd_id %bd : i32
   }
 }

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// bd_pool_init seeds the free list with every id on the tile, and pop hands
+// bd_pool_init_range seeds the free list with every accessible id, and pop hands
 // out id 0 first. But the BD table is one per tile, shared with whatever the
 // static allocator already placed there -- so on a tile carrying both a
 // static shim BD and this pool, an unreserved pop would hand out the static
@@ -23,10 +23,10 @@
 // RUN: | aie-translate --aie-npu-to-cpp | FileCheck %s
 
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_
-// CHECK: aie_runtime::BdPool bd_pool_0_0 = aie_runtime::bd_pool_init(16);
+// CHECK: aie_runtime::BdPool bd_pool_0_0_0 = aie_runtime::bd_pool_init_range(0, 16);
 // The static shim BD's id (0) is withheld right after the pool is seeded.
-// CHECK-NEXT: aie_runtime::bd_pool_reserve(bd_pool_0_0, 0);
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK-NEXT: aie_runtime::bd_pool_reserve(bd_pool_0_0_0, 0);
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0_0, bd_{{[0-9]+}})) return std::nullopt;
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
@@ -44,13 +44,13 @@ aie.device(npu2) {
 
   aie.shim_dma_allocation @of_in (%tile_0_0, MM2S, 1)
   aie.runtime_sequence @pool(%in: memref<8192xi32>) {
-    %bd = aiex.dma_bd_pool_pop(0, 0) : i32
+    %bd = aiex.dma_bd_pool_pop(0, 0, 0) : i32
     %t = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
       aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1]) bd_id_val %bd : i32
       aie.end
     } {issue_token = true}
     aiex.dma_start_task(%t)
     aiex.dma_await_task(%t)
-    aiex.dma_bd_pool_push(0, 0) bd_id %bd : i32
+    aiex.dma_bd_pool_push(0, 0, 0) bd_id %bd : i32
   }
 }

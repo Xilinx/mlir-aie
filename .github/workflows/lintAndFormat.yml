@@ -371,6 +371,9 @@ jobs:
       - name: Lint workflow files (actionlint)
         run: pre-commit run actionlint --all-files --color never
 
+      - name: Check docstrings for Sphinx/RST markup
+        run: pre-commit run no-rst-docstring-markup --all-files --color never
+
       - name: Run clang-format via pre-commit
         env:
           CLANG_FORMAT_BASE_REF: ${{ github.base_ref || github.event.repository.default_branch || 'main' }}

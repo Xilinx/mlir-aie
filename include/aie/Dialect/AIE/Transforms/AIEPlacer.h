@@ -106,6 +106,7 @@ public:
     llvm::SmallVector<CascadeFlowOp> cascadeFlows;
     llvm::SmallVector<FlowOp> flows;
     llvm::SmallVector<PacketFlowOp> pktFlows;
+    llvm::SmallVector<RouteOp> routes;
   };
 
   // Collect all placement-relevant operations from the device.
@@ -183,20 +184,22 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
 // Greedy, single-pass placer that maps each `aie.logical_tile` (LTO) to a
 // physical (col, row). Four phases:
 //
-//   1. Collect LogicalTileOp / ObjectFifo* / Cascade* / Flow* / PacketFlow*
-//      from the device.
+//   1. Collect LogicalTileOp / ObjectFifo* / Cascade* / Flow* / PacketFlow* /
+//      Route from the device.
 //   2. Build per-LTO constraints: buffer/cascade/compute-peer adjacencies,
 //      channel requirements, and needNeighborIn/Out (the minimum number of
 //      compute peers per LTO that MUST land on a shared-L1 neighbor to fit
-//      the per-tile DMA budget).
-//   3. Place compute tiles. Sort by constraint level (pinned -> partial ->
-//      unpinned) then by descending placementPriority. For each LTO:
-//      validate buffer/cascade/compute-peer constraints and channel budget,
-//      then claim the tile. Unpinned candidates are tried in two passes:
-//      first the slots not soft-reserved for another demand-bearing LTO's
-//      peers, then a fallback pass that accepts reserved slots. Each
-//      placement of a demand-bearing LTO soft-reserves its mem-affinity
-//      neighbor slots for that LTO's compute peers.
+//      the per-tile DMA budget). Group the compute LTOs by the non-core
+//      tile each shares the most flows with (buildCoreGroups).
+//   3. Place compute tiles. Make each core group contiguous, then sort by
+//      constraint level (pinned -> partial -> unpinned) and by descending
+//      placementPriority. For each LTO: validate buffer/cascade/compute-peer
+//      constraints and channel budget, then claim the tile, trying first
+//      the columns that keep its group together. Unpinned candidates are
+//      tried in two passes: first the slots not soft-reserved for another
+//      demand-bearing LTO's peers, then a fallback pass that accepts
+//      reserved slots. Each placement of a demand-bearing LTO soft-reserves
+//      its mem-affinity neighbor slots for that LTO's compute peers.
 //   4. Place each remaining non-core (mem/shim) LTO near the column
 //      centroid of its placed-core peers. With mergeLogicalTiles == true
 //      (default) several non-core LTOs may share one physical tile when
@@ -352,6 +355,9 @@ private:
     const llvm::DenseMap<mlir::Operation *, int> &needNeighborIn;
     const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut;
     llvm::function_ref<bool(mlir::Operation *, TileID)> isReservedForOther;
+    // Columns to try first, in order, to keep the LTO with its core group
+    // (see buildCoreGroups). Ignored for LTOs with neighbor demand.
+    llvm::ArrayRef<int> preferredCols;
   };
 
   // Outputs of `findUnconstrainedCoreCandidate`. `placement` is set on
@@ -380,18 +386,6 @@ private:
   // SequentialPlacer-only: walks CoreOps and BufferOps.
   Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
 
-  // Phase 4 driver: for every still-unplaced non-core LTO, place it near
-  // the centroid column of its core peers. Internally builds the per-fifo
-  // and per-flow connectivity adjacencies needed to find the centroid,
-  // then iterates non-core LTOs in descending channel-demand order so the
-  // heaviest consumers get first pick of physical tiles.
-  mlir::LogicalResult placeNonCoreLogicalTiles(
-      llvm::ArrayRef<LogicalTileOp> logicalTiles,
-      llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
-      llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
-      const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
-          &channelRequirements);
-
   // Per-LTO peer-Value lists, one list per flow that mentions the LTO.
   // Built once and shared so each centroid lookup is O(#flows on the LTO).
   struct FlowMembership {
@@ -400,9 +394,39 @@ private:
         ltoFlows;
   };
 
+  // Phase 4 driver: for every still-unplaced non-core LTO, place it near
+  // the centroid column of its core peers, iterating non-core LTOs in
+  // descending channel-demand order so the heaviest consumers get first
+  // pick of physical tiles.
+  mlir::LogicalResult placeNonCoreLogicalTiles(
+      llvm::ArrayRef<LogicalTileOp> logicalTiles,
+      const FlowMembership &flowIndex,
+      const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
+          &channelRequirements);
+
+  // Core LTOs grouped by the non-core LTO each shares the most flows with
+  // (its hub), members in program order. A core with no non-core peer is a
+  // group of its own. Placing a group in one column lets the hub's
+  // centroid land on that column.
+  struct CoreGroups {
+    llvm::DenseMap<mlir::Operation *, unsigned> groupOf;
+    llvm::SmallVector<llvm::SmallVector<LogicalTileOp>> members;
+  };
+
+  CoreGroups buildCoreGroups(llvm::ArrayRef<LogicalTileOp> logicalTiles,
+                             const FlowMembership &flowIndex) const;
+
+  // Columns to try first for `logicalTile`: those already holding members
+  // of its group, most members first; for a group's first member, the
+  // columns with a free core for every member, in column order. Empty
+  // means no preference.
+  llvm::SmallVector<int> preferredGroupColumns(LogicalTileOp logicalTile,
+                                               const CoreGroups &groups) const;
+
   FlowMembership
   buildFlowMembership(llvm::ArrayRef<FlowOp> flows,
                       llvm::ArrayRef<PacketFlowOp> pktFlows,
+                      llvm::ArrayRef<RouteOp> routes,
                       llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
   // Pick the column that minimizes total routing cost across the LTO's
@@ -451,6 +475,7 @@ private:
 
   void addChannelRequirementsFromFlows(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
+      llvm::ArrayRef<RouteOp> routes,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
 };

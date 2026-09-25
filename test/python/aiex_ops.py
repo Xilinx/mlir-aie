@@ -4,7 +4,14 @@
 # RUN: %PYTHON %s | FileCheck %s
 
 from aie.dialects.aiex import *
-from aie.dialects.aie import device, AIEDevice, object_fifo, tile
+from aie.dialects.aie import (
+    device,
+    AIEDevice,
+    DMAChannelDir,
+    object_fifo,
+    shim_dma_allocation,
+    tile,
+)
 from util import construct_and_print_module
 
 
@@ -42,6 +49,27 @@ def NpuDmaMemcpyNdOp():
                 strides=[0, 0, 0, 1],
                 packet=(1, 4),
                 issue_token=True,
+            )
+
+
+# CHECK-LABEL: NpuDmaMemcpyNdOpI32Dims
+# CHECK: aie.runtime_sequence(%arg0: memref<4096xi8>, %arg1: i32)
+# CHECK: %[[ROWS:.*]] = arith.extsi %arg1 : i32 to i64
+# CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, %[[ROWS]], 64][0, 0, 64, 1])
+@construct_and_print_module
+def NpuDmaMemcpyNdOpI32Dims():
+    @device(AIEDevice.npu1)
+    def device_body():
+        shim_dma_allocation("objFifo_out0", tile(0, 0), DMAChannelDir.S2MM, 0)
+
+        @runtime_sequence(np.ndarray[(4096,), np.dtype[np.int8]], np.int32)
+        def sequence(B, rows):
+            npu_dma_memcpy_nd(
+                metadata="objFifo_out0",
+                bd_id=1,
+                mem=B,
+                sizes=[1, 1, rows, 64],
+                strides=[0, 0, 64, 1],
             )
 
 

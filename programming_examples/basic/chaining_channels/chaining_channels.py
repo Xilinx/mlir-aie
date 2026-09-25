@@ -33,7 +33,6 @@ from aie.dialects.aiex import (
     npu_address_patch,
     npu_push_queue,
     npu_sync,
-    npu_write32,
     npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.iron import (
@@ -120,7 +119,7 @@ def chaining_channels(
     )
 
     # Memtile DMA: a self-chained MM2S BD that fires every time the runtime
-    # sequence releases memtile_lock (lock at 0xC0000 on NPU2).
+    # sequence sets memtile_lock.
     memtile_dma = TileDma(
         tile=mem_tile,
         channels=[
@@ -177,7 +176,7 @@ def chaining_channels(
     # ---- runtime sequence: manual BD writes (THE lesson) ---------------
     def sequence(a, b):
         # Release the MemTile lock to trigger the memtile MM2S BD.
-        npu_write32(column=col, row=1, address=0xC0000, value=1)
+        memtile_lock.set(1)
 
         # BD 0: S2MM channel 0 on the shim (MemTile -> DDR, buffer `a`).
         npu_writebd(

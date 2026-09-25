@@ -279,7 +279,7 @@ rt = Runtime(
 
 The two-phase `TaskGroup` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.  The handles in `A_hs` / `B_hs` / `C_hs` are the `.prod()` / `.cons()` endpoints passed as trailing entries in the `Runtime`'s arg list; the shim tile each uses is chosen by the compiler.
 
-`tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either parameter too low starves the cores; too high overflows the shim DMA BD pool.
+`tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either parameter too low starves the cores.  Set too high, a half needs more BDs than a Shim Tile has, and the compiler has to take BDs back from tasks it can prove finished (see [Running Out of Buffer Descriptors](../../../../programming_guide/section-2/section-2d/DMATasks.md#running-out-of-buffer-descriptors)).  That is only safe when no task depends on one issued after it, and this sequence drains C before it fills A and B, so keep each half within the shim BD pool.
 
 ## Compute Microkernels
 

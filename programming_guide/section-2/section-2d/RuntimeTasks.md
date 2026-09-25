@@ -114,6 +114,8 @@ The `fill()`/`drain()` methods return a `Task` handle. Prefer the default manage
 
 For software-pipelined data movement with manual lifetime control, issue the transfer with `managed=False` and do not pass `group=`. Use `range_` and `yield_` from `aie.iron.controlflow` to carry a `Task` through `iter_args` across loop iterations. Call `.await_()` only on transfers issued with `wait=True` (which requests a completion token), then call `.free()` when it is safe to reuse the descriptor. Awaiting alone does not free it. An unwaited transfer may be freed only after a dependent waited transfer proves it has completed. Do not manually free managed tasks: their task group already owns that responsibility. See [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py).
 
+In a sequence whose loops all have compile-time trip counts, freeing is optional: when a tile runs out of BDs, the compiler takes them back from started tasks it can prove finished (see [Running Out of Buffer Descriptors](./DMATasks.md#running-out-of-buffer-descriptors)). A pipelined sequence can then issue every transfer with `managed=False`, set `wait=True` only on the transfers the host must wait for, and `.await_()` just those. Issue a task after the transfers it depends on, e.g. a block's fills before its drain, since the compiler may have to wait for it to finish before issuing anything else.
+
 #### **Setting Runtime Parameters in the Body**
 
 Because the sequence body runs inside a live MLIR context, you can write operations directly in it — there is no separate escape hatch. A common example is setting runtime parameters, which are loaded into the local memory modules of the Workers at runtime.
@@ -172,13 +174,13 @@ def sequence(a, b, c):
 
 rt = Runtime(sequence, [data_ty, data_ty, data_ty])
 ```
-Currently, a `WorkerRuntimeBarrier` may take any value between 0 and 63. This is due to the fact that these barriers leverage the lock mechansim of the architecture under-the-hood.
+A `WorkerRuntimeBarrier` may take any value between 0 and the device's `max_lock_value` (63 on current devices). This is due to the fact that these barriers leverage the lock mechanism of the architecture under-the-hood.
 
 > **NOTE:**  Similar to the `Buffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.
 
 #### **Runtime Task Groups**
 
-It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited.
+It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited. The compiler already reuses the BDs of tasks it can prove finished, so a task group is not needed just to stay within the BD pool; use one to say when the sequence should wait.
 
 To facilitate this reconfiguration step, IRON introduces `TaskGroup`s, created with the `TaskGroup()` constructor as defined in [taskgroup.py](../../../python/iron/runtime/taskgroup.py).
 

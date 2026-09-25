@@ -83,18 +83,19 @@ It composes with `--channels`, `--packets`, and `--nonuniform`.
 | `core`, 2 channels     | 7 | 16-BD core tile budget |
 
 - **BD budget.** Each channel needs `n` receive BDs plus 1 egress BD, which
-  requires `c*(n+1) <= 16` on a core tile. Two channels at `n=8` need 18 BDs, and
-  `n=7` fits.
+  requires `c*(n+1) <= 16` on a core tile
+  (`device.get_num_bds(AIETileType.CoreTile)`). Two channels at `n=8` need 18
+  BDs, and `n=7` fits.
 - **Routing.** A stream-switch slave port holds at most 4 packet rules. Centering
   the receiver at column `N//2` splits the funnel and keeps every port under 4
   rules.
 - **Packet count.** The total must stay `<= 63` because the egress lock acquires
-  the total packet count and a lock value is 6-bit.
+  the total packet count and a lock value is 6-bit (`device.max_lock_value`).
 - **Multi-round (`--repeat-count k`).** Let `M` be the per-round packet count
-  (`n*m`, or `sum(ms)` under `--nonuniform`). The 8-bit repeat field bounds the
-  all-rounds total to `M*(k+1) <= 256`. The sender's per-round credit and the
-  token-credit lock are each a single 6-bit lock, which bounds `channels * max(ms)
-  <= 63` and `rounds (k+1) <= 63`. The sender walks all rounds from one BD, whose
+  (`n*m`, or `sum(ms)` under `--nonuniform`). The 8-bit repeat field
+  (`device.max_repeat_count`) bounds the all-rounds total to `M*(k+1) <= 256`. The
+  sender's per-round credit and the token-credit lock are each a single 6-bit lock,
+  which bounds `channels * max(ms) <= 63` and `rounds (k+1) <= 63`. The sender walks all rounds from one BD, whose
   iteration wrap bounds `max(ms) * (k+1) <= 64`. On a core tile with 2 channels the
   `2n+3` receive/drain/token BDs bound it to `n <= 6`.
 
@@ -139,8 +140,9 @@ completion, egress drain, verifier).
   `DmaChannel(..., out_of_order=True)` on a `TileDma`. Lowers to
   `aie.dma_start {out_of_order}`.
 - **`runtime`**: armed from the host sequence with
-  `aiex.dma_configure_task(receiver, S2MM, ch) {out_of_order}`
-  followed by `dma_start_task`; only the drain MM2S stays static. Supports the
+  `tile_dma_chain(receiver, S2MM, ch, recv_bds, out_of_order=True)`, which lowers
+  to `aiex.dma_configure_task(receiver, S2MM, ch) {out_of_order}` followed by
+  `dma_start_task`; only the drain MM2S stays static. Supports the
   full merge matrix (multi-packet, multi-channel, multi-round). Two runtime-only
   wrinkles: per-slot BD iteration is expressed via the outermost `sizes`/`strides`
   dimension rather than the static `BdIteration` attribute (which the
@@ -207,8 +209,9 @@ trivial worker releases a lock to launch the send. The core's MM2S BD stamps the
 out-of-order id through the `Bd(out_of_order_id=...)` field. With `m > 1`, the BD
 carries `iteration=BdIteration(size=m, stride=tile_words)` and `repeat_count`
 replays it `m` times, which gives each of the `m` packets a distinct sub-slice under
-the one out-of-order id. The host drains each merged buffer with a high-level shim
-DMA task (`shim_dma_single_bd_task`). `--nonuniform` instead varies `m` across BDs.
+the one out-of-order id. The host drains each merged buffer with the egress route's
+`drain()`, one awaited task per channel and round. `--nonuniform` instead varies `m`
+across BDs.
 With `--channels 2` a sender emits a distinct sub-slice to each channel, and with
 `--repeat-count` its send gates on a credit token per round (see
 [Multiple rounds](#multiple-rounds)).

@@ -7,7 +7,7 @@
 
 Applies ``lambda a: a + 1`` to each ``tile_size``-element tile of a 1-D
 int32 tensor.  The design body delegates to
-:func:`aie.iron.algorithms.transform`, which handles the
+``aie.iron.algorithms.transform``, which handles the
 ObjectFifo / Worker / Runtime plumbing for any single-input element-wise
 lambda.
 """
