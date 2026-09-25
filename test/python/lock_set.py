@@ -14,13 +14,13 @@ from aie.iron import Lock, Program, Runtime
 from aie.iron.device import NPU2Col1, Tile
 
 
-def emit_rearm():
+def emit_rearm(value=4):
     host_ty = np.ndarray[(16,), np.dtype[np.int32]]
     mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
     prod = Lock(mem_tile, init=2, name="prod")
 
     def sequence(_host):
-        prod.set(4)
+        prod.set(value)
 
     rt = Runtime(sequence, [host_ty])
     rt.add_lock(prod)
@@ -31,6 +31,20 @@ def emit_rearm():
 # CHECK: aie.runtime_sequence
 # CHECK: aiex.set_lock(%prod, 4)
 print(emit_rearm())
+
+# CHECK: aiex.set_lock(%prod, 0)
+print(emit_rearm(0))
+# CHECK: aiex.set_lock(%prod, 63)
+print(emit_rearm(63))
+
+
+# CHECK: error: Lock.set value must be non-negative.
+try:
+    emit_rearm(-1)
+except ValueError as e:
+    print(f"error: {e}")
+else:
+    raise AssertionError("Expected a negative lock value to fail")
 
 
 def emit_outside_sequence():

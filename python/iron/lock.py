@@ -118,6 +118,7 @@ class Lock(Resolvable):
 
         Raises:
             RuntimeError: If called outside a runtime sequence body.
+            ValueError: If value is negative.
         """
         if not _in_runtime_sequence():
             raise RuntimeError(
@@ -125,6 +126,8 @@ class Lock(Resolvable):
                 "function passed to Runtime(seq_fn, fn_args); inside a Worker "
                 "body use acquire()/release()."
             )
+        if value < 0:
+            raise ValueError("Lock.set value must be non-negative.")
         _set_lock_value(self.op, value)
 
 

@@ -484,7 +484,10 @@ class PacketFlow(Resolvable):
             )
         src_is_shim = self._src.effective_tile_type in _SHIM_TILE_TYPES
         dst_is_shim = self._dst.effective_tile_type in _SHIM_TILE_TYPES
-        if src_is_shim and (dst_is_shim or self._extra_dsts):
+        extra_dst_is_shim = any(
+            d.tile.effective_tile_type in _SHIM_TILE_TYPES for d in self._extra_dsts
+        )
+        if src_is_shim and (dst_is_shim or extra_dst_is_shim):
             raise ValueError(
                 "PacketFlow.fill()/drain() require exactly one shim endpoint; "
                 "shim-to-shim transfers need explicit endpoint allocations."
