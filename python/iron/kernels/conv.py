@@ -706,7 +706,10 @@ def conv2dk14(
     output_channels: int = 16,
     kernel_width: int = 14,
 ) -> ExternalFunction:
-    """14x14 convolution kernel (aie2p only).
+    """14x14 convolution kernel.
+
+    The source lives under ``aie_kernels/aie2p/`` but has no arch-specific
+    code; it builds and passes on aie2 as well.
 
     Args:
         input_width: Spatial width of the input.

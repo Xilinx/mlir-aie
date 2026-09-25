@@ -638,12 +638,11 @@ CASES: list[Case] = [
         tag="int8_skip",
         smoke=True,
     ),
-    # conv2dk14 (aie2p): 16 patches of 14x14 RGBA pixels per call, 784 taps.
+    # conv2dk14: 16 patches of 14x14 RGBA pixels per call, 784 taps.
     Case(
         "conv2dk14",
         calls=4,
         scalars=(224, 4, 16, 14, 17),
-        devices=("npu2",),
         smoke=True,
     ),
     Case(
@@ -671,18 +670,17 @@ CASES: list[Case] = [
     # eltwise mul/add selected per call (programming_examples/ml/scale_shift)
     Case("mul_add", calls=16, scalars=(1,), smoke=True),
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),
-    # transformer blocks (aie2p): one row per call
-    Case("rms_norm", dict(cols=1024), calls=16, devices=("npu2",), smoke=True),
+    # transformer blocks: one row per call
+    Case("rms_norm", dict(cols=1024), calls=16, smoke=True),
     Case(
         "rms_norm_eps",
         dict(cols=1024),
         calls=16,
         scalars=(1e-5,),
-        devices=("npu2",),
         smoke=True,
         perf=False,
     ),
-    Case("layer_norm", dict(cols=1024), calls=16, devices=("npu2",), smoke=True),
+    Case("layer_norm", dict(cols=1024), calls=16, smoke=True),
     Case(
         "layer_norm_f32",
         dict(cols=1024),
@@ -697,7 +695,7 @@ CASES: list[Case] = [
         devices=("npu2",),
         smoke=True,
     ),
-    Case("rope", dict(cols=1024), calls=16, devices=("npu2",), smoke=True),
+    Case("rope", dict(cols=1024), calls=16, smoke=True),
     # 1008 is a multiple of 16 but not of the 64 the interleaved row walks in,
     # and 96 halves into 48, which is a multiple of 16 but not of the 32 the
     # two-halves row walks in. Both rows are therefore the shortest ones that
@@ -707,7 +705,6 @@ CASES: list[Case] = [
         dict(cols=1008),
         calls=16,
         tag="row-tail",
-        devices=("npu2",),
         smoke=True,
         perf=False,
     ),
@@ -715,7 +712,6 @@ CASES: list[Case] = [
         "rope",
         dict(cols=1024, two_halves=True),
         calls=16,
-        devices=("npu2",),
         smoke=True,
         perf=False,
     ),
@@ -724,7 +720,6 @@ CASES: list[Case] = [
         dict(cols=96, two_halves=True),
         calls=16,
         tag="row-tail",
-        devices=("npu2",),
         smoke=True,
         perf=False,
     ),
@@ -866,9 +861,7 @@ CASES: list[Case] = [
     # attention weights, one prompt-length row of scores per call
     Case("softmax", dict(tile_size=2048), calls=16, tag="llama-prefill"),
     # q/k rotary embedding, one 64-wide head row per call
-    Case(
-        "rope", dict(cols=64, two_halves=True), calls=16, tag="llama", devices=("npu2",)
-    ),
+    Case("rope", dict(cols=64, two_halves=True), calls=16, tag="llama"),
     # decode KV-cache transpose, 256x32 in 8x8 subtiles
     Case(
         "transpose",
