@@ -7,6 +7,7 @@
 //===-------------------------------------------------- --------===//
 
 #include <aie_api/aie.hpp>
+#include <limits>
 #include <lut_based_ops.h>
 #include <stdint.h>
 
@@ -19,6 +20,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
   int num_elems = vector_size;
   float accum_exp_val;
+  auto it_max_in = aie::cbegin_vector<16>((bfloat16 *)input_vector);
   auto it_exp_in = aie::cbegin_vector<16>((bfloat16 *)input_vector);
   auto it_exp_out = aie::begin_vector<16>((bfloat16 *)output_vector);
   auto it_scale = aie::cbegin_restrict_vector<16>((bfloat16 *)output_vector);
@@ -40,8 +42,22 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, 16> input_bf16;
   aie::accum<accfloat, 16> exp_val_accum;
   exp_val_accum = aie::zeros<accfloat, 16>();
+
+  // Subtract the tile maximum before exponentiating, so the largest exponent
+  // argument is exactly 0 and every other one is negative: exp <= 1, the sum
+  // lies in [1, vector_size], and its reciprocal stays finite and nonzero.
+  // Without this, large inputs saturate exp and the whole tile normalises to
+  // zero.
+  aie::vector<bfloat16, 16> max_accum_vec =
+      aie::broadcast<bfloat16, 16>(std::numeric_limits<bfloat16>::lowest());
   for (int i = 0; i < elem_iters; i++) {
-    input_bf16 = *it_exp_in++;
+    max_accum_vec = aie::max(max_accum_vec, *it_max_in++);
+  }
+  aie::vector<bfloat16, 16> max_val_vec =
+      aie::broadcast<bfloat16, 16>(aie::reduce_max(max_accum_vec));
+
+  for (int i = 0; i < elem_iters; i++) {
+    input_bf16 = aie::sub(*it_exp_in++, max_val_vec);
     exp_val = to_v16bfloat16(getExpBf16(input_bf16));
     exp_val_accum = add(exp_val_accum, exp_val);
     *it_exp_out++ = exp_val;

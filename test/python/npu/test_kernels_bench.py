@@ -9,9 +9,12 @@
 Every case in ``kernel_cases.py`` marked ``perf`` is one test: it checks the
 kernel against its contract, then times it. Checking first is the point --
 timings from a kernel that returns the wrong answer are noise, so the
-assertion runs before anything is recorded, and a failing test leaves the
-session non-zero, which is what stops ``pytest_sessionfinish`` writing the
-JSON at all.
+assertion runs before anything is recorded. A failing kernel drops only its
+own rows; the JSON is still written, unless the device itself is suspect --
+preflight or ``test_measurement_is_sane`` did not pass -- in which case
+``pytest_sessionfinish`` writes none of it.
+With ``--correctness-results correctness.xml``, publication also excludes
+cases with any extensive-suite failure or no passing correctness test.
 
 Run it the way the nightly workflow does::
 
@@ -19,7 +22,9 @@ Run it the way the nightly workflow does::
         --bench-out bench.json --bench-meta meta.json --pmode turbo
         --warmup 10 --iters 50
 
-``-k`` selects a subset. The series a row lands in is ``<case>/<metric>``;
+``-k`` selects a subset; include the sanity test, for example
+``-k '(softmax) or test_measurement_is_sane'``, to allow publication.
+The series a row lands in is ``<case>/<metric>``;
 ``test_benchmark_series_names.py`` pins those names, because renaming one
 restarts its chart on gh-pages.
 """
@@ -172,7 +177,8 @@ def _preflight(request):
 
     A number taken at the wrong clock is worse than no number, because it
     lands in the same series as the right ones. Failing here fails every test
-    in the module, which is what keeps the JSON unwritten.
+    in the module and leaves ``preflight`` out of the meta, which keeps the
+    JSON unwritten.
     """
     config = request.config
     pre = preflight()
@@ -192,14 +198,18 @@ def test_measurement_is_sane(request, benchmark, workdir):
     """Time a kernel whose cost is known, so a broken clock fails loudly.
 
     Without this, a tracing path that decodes nothing reports ``None`` cycles
-    for every kernel and the whole run charts as an improvement.
+    for every kernel and the whole run charts as an improvement. Failing here
+    withholds the whole JSON, not just this row.
     """
+    meta = request.config._bench_meta
+    meta["measurement_sane"] = False
     m = _measure(SMOKE_TEST, request.config, workdir)
     cycles = m.get("cycles")
     if not request.config.getoption("--no-cycles"):
         lo, hi = SMOKE_CYCLE_BAND
         assert cycles is not None, "traced run produced no cycle count"
         assert lo <= cycles <= hi, f"{cycles} cycles is outside {SMOKE_CYCLE_BAND}"
+    meta["measurement_sane"] = True
     _record(benchmark, SMOKE_TEST, m)
 
 
