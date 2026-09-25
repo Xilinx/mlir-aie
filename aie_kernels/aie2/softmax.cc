@@ -6,6 +6,7 @@
 //
 //===-------------------------------------------------- --------===//
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <limits>
 #include <lut_based_ops.h>
@@ -13,6 +14,7 @@
 
 using namespace aie;
 
+template <int MinIters>
 void softmax_simple_bf16(bfloat16 *restrict input_vector,
                          bfloat16 *restrict output_vector,
                          const int32_t vector_size) {
@@ -20,9 +22,9 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
   int num_elems = vector_size;
   float accum_exp_val;
-  auto it_max_in = aie::cbegin_vector<16>((bfloat16 *)input_vector);
-  auto it_exp_in = aie::cbegin_vector<16>((bfloat16 *)input_vector);
-  auto it_exp_out = aie::begin_vector<16>((bfloat16 *)output_vector);
+  auto it_max_in = aie::cbegin_restrict_vector<16>((bfloat16 *)input_vector);
+  auto it_exp_in = aie::cbegin_restrict_vector<16>((bfloat16 *)input_vector);
+  auto it_exp_out = aie::begin_restrict_vector<16>((bfloat16 *)output_vector);
   auto it_scale = aie::cbegin_restrict_vector<16>((bfloat16 *)output_vector);
   auto it_soft_out = aie::begin_restrict_vector<16>((bfloat16 *)output_vector);
 
@@ -50,23 +52,35 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   // zero.
   aie::vector<bfloat16, 16> max_accum_vec =
       aie::broadcast<bfloat16, 16>(std::numeric_limits<bfloat16>::lowest());
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(MinIters)
   for (int i = 0; i < elem_iters; i++) {
     max_accum_vec = aie::max(max_accum_vec, *it_max_in++);
   }
   aie::vector<bfloat16, 16> max_val_vec =
       aie::broadcast<bfloat16, 16>(aie::reduce_max(max_accum_vec));
 
-  for (int i = 0; i < elem_iters; i++) {
-    input_bf16 = aie::sub(*it_exp_in++, max_val_vec);
-    exp_val = to_v16bfloat16(getExpBf16(input_bf16));
+  // Rotated by one: the pipeliner cannot tell the output store from the table
+  // reads, so each iteration's reads waited for the previous iteration's store.
+  aie::vector<bfloat16, 16> prev =
+      to_v16bfloat16(getExpBf16(aie::sub(*it_exp_in++, max_val_vec)));
+  exp_val_accum = add(exp_val_accum, prev);
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(MinIters)
+  for (int i = 1; i < elem_iters; i++) {
+    exp_val = to_v16bfloat16(getExpBf16(aie::sub(*it_exp_in++, max_val_vec)));
     exp_val_accum = add(exp_val_accum, exp_val);
-    *it_exp_out++ = exp_val;
+    *it_exp_out++ = prev;
+    prev = exp_val;
   }
+  *it_exp_out++ = prev;
   aie::vector<float, 16> reduce = exp_val_accum.to_vector<float>();
   accum_exp_val = aie::reduce_add(reduce);
   /////////////////////
 
   col_sum_inv = (bfloat16)aie::inv(accum_exp_val);
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(MinIters)
   for (int c = 0; c < col_iters; c++) {
     in_elems = *it_scale++;
     out_vals = aie::mul(in_elems, col_sum_inv);
@@ -82,7 +96,12 @@ extern "C" {
 
 void softmax_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
                   const int32_t input_size) {
-  softmax_simple_bf16(input, output, input_size);
+  // The pipelined loops need 8 trips; the exp loop runs one fewer than the
+  // others.
+  if (input_size >= 16 * 9)
+    softmax_simple_bf16<8>(input, output, input_size);
+  else
+    softmax_simple_bf16<1>(input, output, input_size);
 }
 
 // Fill [unmasked_size, total_size) with -inf, so a following softmax zeros

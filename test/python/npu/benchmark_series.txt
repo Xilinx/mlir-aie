@@ -217,7 +217,9 @@ silu_sized/32x4/bfloat16/edge-tiny
 silu_sized/4096x16/bfloat16/llama-prefill
 softmax/1024x16/bfloat16
 softmax/1024x256/bfloat16
+softmax/160x4/bfloat16/min-pipelined
 softmax/2048x16/bfloat16/llama-prefill
+softmax/32x4/bfloat16/short-trip
 swiglu/1024x16/bfloat16
 swiglu/1024x16/bfloat16/use_lut=True/lut
 swiglu/1024x256/bfloat16

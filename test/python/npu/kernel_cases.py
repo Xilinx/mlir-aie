@@ -209,6 +209,25 @@ CASES: list[Case] = [
     Case("sigmoid", calls=256),
     Case("softmax", calls=16, smoke=True),
     Case("softmax", calls=256),
+    # The AIE2 exp loop is rotated by one and pipelined only from 144 elements
+    # up: 32 runs a single trip on the short path, 160 is the smallest tile on
+    # the pipelined path.
+    Case(
+        "softmax",
+        dict(tile_size=32),
+        calls=4,
+        tag="short-trip",
+        smoke=True,
+        perf=False,
+    ),
+    Case(
+        "softmax",
+        dict(tile_size=160),
+        calls=4,
+        tag="min-pipelined",
+        smoke=True,
+        perf=False,
+    ),
     Case("leaky_relu", calls=16, scalars=(0.5,), smoke=True),
     Case("leaky_relu", calls=256, scalars=(0.5,)),
     # 160 is a multiple of the kernel's 32-element step but not of the 128 its
