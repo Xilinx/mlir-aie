@@ -28,6 +28,20 @@ _NORM_BF16 = Tolerance.relative(
     0.128, 0.05, note="programming_examples/ml/norm: atol 0.05 with the bf16 rtol"
 )
 
+# The aie2 kernels keep the statistics in f32, measured on npu1 within one ulp
+# of the reference. layer_norm's x inv_std - mean inv_std cancels near zero,
+# where f32 leaves an absolute error under 1e-6 on unit-variance rows.
+_RMS_NORM_BF16_AIE2 = Tolerance.bf16_ulps(
+    1,
+    atol=2.0**-126,
+    note="aie2, measured on npu1: one ulp; atol is the smallest normal bf16",
+)
+_LAYER_NORM_BF16_AIE2 = Tolerance.bf16_ulps(
+    1,
+    atol=1e-5,
+    note="aie2, measured on npu1: one ulp; atol covers the cancellation near 0",
+)
+
 
 def _norm_extern(
     func_name: str, filename: str, arg_types: list, contract: KernelContract
@@ -78,7 +92,7 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
             reference=rms_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance=_NORM_BF16,
+            tolerance=_RMS_NORM_BF16_AIE2 if _detect_arch() == "aie2" else _NORM_BF16,
             ops_per_call=4 * tile_size,
         ),
     )
@@ -100,7 +114,7 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
             reference=lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance=_NORM_BF16,
+            tolerance=_RMS_NORM_BF16_AIE2 if _detect_arch() == "aie2" else _NORM_BF16,
             ops_per_call=4 * tile_size,
         ),
     )
@@ -125,7 +139,9 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
             reference=layer_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance=_NORM_BF16,
+            tolerance=(
+                _LAYER_NORM_BF16_AIE2 if _detect_arch() == "aie2" else _NORM_BF16
+            ),
             ops_per_call=6 * tile_size,
         ),
     )
