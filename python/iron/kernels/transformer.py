@@ -278,16 +278,15 @@ def mm_activation_epilogue_lut_ref(x, mode):
 
     Follows mm_activation_epilogue.cc's roundings around getTanhBf16
     ([`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref]). SiLU splits
-    ``x`` into bf16 ``hi`` and ``lo`` terms and multiplies each by the bf16
-    sigmoid ``(bf16(t + 1)) / 2``, where ``t`` is the table's tanh of
-    ``hi / 2`` narrowed to bf16. The device's f32 ``x - hi`` first rounds
-    ``x`` (half to even) onto ``hi``'s f32 grid, which moves ``lo`` where
-    ``hi`` rounded up across a power of two. GELU runs in bf16: ``x``,
-    ``x * x`` and the inner polynomial are each rounded before the next step,
-    and the output is ``bf16(x / 2) * bf16(t + 1)``. The polynomial reads
-    ``x`` clamped to [-8, 8] and ``x / 2`` reads it clamped to [-8, inf), so
-    huge inputs give ``x`` or 0 rather than NaN. Both return +0 where IEEE
-    arithmetic gives -0, as the accumulator does. Identity and ReLU are exact.
+    ``x`` into ``hi``, its top 16 bits, and ``lo``, ``bf16(x - hi)``, and
+    multiplies each by the bf16 sigmoid ``(bf16(t + 1)) / 2``, where ``t`` is
+    the table's tanh of ``bf16(x) / 2`` narrowed to bf16. ``hi`` is finite for
+    any finite ``x``, so huge inputs give about ``x`` or 0 rather than NaN;
+    +-inf still gives NaN. GELU runs in bf16: ``x``, ``x * x`` and the inner
+    polynomial are each rounded before the next step, and the output is
+    ``bf16(x / 2) * bf16(t + 1)``, all reading ``x`` clamped at -8 so -inf
+    gives 0. Both return +0 where IEEE arithmetic gives -0, as the accumulator
+    does. Identity and ReLU are exact.
     """
     x32 = np.asarray(x, np.float32)
     mode = int(mode)
@@ -295,20 +294,17 @@ def mm_activation_epilogue_lut_ref(x, mode):
         return mm_activation_epilogue_ref(x, mode)
     with np.errstate(over="ignore", invalid="ignore"):
         if mode == 1:
-            hi = _bf16(x32)
-            grid = np.spacing(np.abs(hi)).astype(np.float64)
-            x_on_grid = (np.round(x32 / grid) * grid).astype(np.float32)
-            lo = _bf16(np.where(np.isfinite(grid), x_on_grid, x32) - hi)
-            t = tanh_lut_ref(hi * np.float32(0.5))
+            hi = (x32.view(np.uint32) & np.uint32(0xFFFF0000)).view(np.float32)
+            lo = _bf16(x32 - hi)
+            t = tanh_lut_ref(_bf16(x32) * np.float32(0.5))
             sig = _bf16(_bf16(t + np.float32(1.0)) * np.float32(0.5))
             out = hi * sig + lo * sig
         else:
             c0 = _bf16(np.float32(0.7978845608))
             c0c1 = _bf16(np.float32(0.7978845608) * np.float32(0.044715))
             xl = np.maximum(_bf16(x32), np.float32(-8.0))
-            xc = np.minimum(xl, np.float32(8.0))
-            poly = _bf16(c0 + c0c1 * _bf16(xc * xc))
-            t = tanh_lut_ref(_bf16(xc * poly))
+            poly = _bf16(c0 + c0c1 * _bf16(xl * xl))
+            t = tanh_lut_ref(_bf16(xl * poly))
             half_x = _bf16(np.float32(0.5) * xl)
             out = half_x * _bf16(t + np.float32(1.0))
     return (out + np.float32(0.0)).astype(x.dtype)

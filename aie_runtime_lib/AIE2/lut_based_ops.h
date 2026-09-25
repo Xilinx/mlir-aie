@@ -77,20 +77,23 @@ extern float tanh_lut_cd[];
 inline __attribute__((always_inline)) v16bfloat16
 getTanhBf16(v16bfloat16 vInput) {
   // Byte offset of the segment: floor(x * 4) entries of 16 bytes, relative to
-  // the middle of the table and clamped to its 32 entries.
+  // the middle of the table. x is clamped to the table's range first; the end
+  // segments have slope 0, so the result is unchanged, and +-inf no longer
+  // makes 0 * inf.
   constexpr int bias_bytes = 16 << 4;
   const float *lut_ab = tanh_lut_ab + bias_bytes / sizeof(float);
   const float *lut_cd = tanh_lut_cd + bias_bytes / sizeof(float);
-  v16int32 index = bfloat16_to_int(vInput, 6);
-  index = ::max(index, aie::broadcast<int32, 16>(-bias_bytes));
-  index = ::min(index, aie::broadcast<int32, 16>((32 << 4) - 1 - bias_bytes));
+  aie::vector<bfloat16, 16> xc = aie::max(
+      aie::min(aie::vector<bfloat16, 16>(vInput), bfloat16(4.0f - 1.0f / 64)),
+      bfloat16(-4.0f));
+  v16int32 index = bfloat16_to_int(xc, 6);
 
   v32bfloat16 coeff0, coeff1;
   load_lut_2x_float(lut_ab, lut_cd, index, coeff0, coeff1);
   v16accfloat offset = (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi);
   v32bfloat16 slope = ::shuffle(coeff0, coeff1, T16_16x4_lo);
   aie::vector<bfloat16, 32> x = aie::zeros<bfloat16, 32>();
-  x.insert<16>(1, aie::vector<bfloat16, 16>(vInput));
+  x.insert<16>(1, xc);
 
   aie::accum<accfloat, 16> result = mac_elem_16_2(slope, x, offset);
   return (v16bfloat16)result.to_vector<bfloat16>();

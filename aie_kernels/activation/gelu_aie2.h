@@ -27,10 +27,9 @@ gelu_v16(aie::vector<bfloat16, 16> x) {
   auto v05 = aie::broadcast<bfloat16, 16>(0.5f);
 
   aie::vector<bfloat16, 16> xl = aie::max(x, bfloat16(-8.0f));
-  aie::vector<bfloat16, 16> xc = aie::min(xl, bfloat16(8.0f));
-  aie::vector<bfloat16, 16> x2 = aie::mul(xc, xc).to_vector<bfloat16>();
+  aie::vector<bfloat16, 16> x2 = aie::mul(xl, xl).to_vector<bfloat16>();
   aie::vector<bfloat16, 16> p = aie::mac(c, x2, d).to_vector<bfloat16>();
-  aie::vector<bfloat16, 16> u = aie::mul(xc, p).to_vector<bfloat16>();
+  aie::vector<bfloat16, 16> u = aie::mul(xl, p).to_vector<bfloat16>();
   aie::vector<bfloat16, 16> t = getTanhBf16(u);
   aie::accum<accfloat, 16> hx_acc = aie::mul(xl, v05);
   aie::vector<bfloat16, 16> hx = hx_acc.to_vector<bfloat16>();

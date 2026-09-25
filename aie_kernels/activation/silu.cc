@@ -77,6 +77,8 @@ static inline void silu_impl(bfloat16 *restrict input_vector,
 
 #if AIE_TUNED_AIE2
 // AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
+// The sigmoid is exactly 0 from x = -8 down, so x is clamped there before it
+// multiplies it, which keeps -inf from making -inf * 0.
 static inline void silu_aie2(bfloat16 *restrict input_vector,
                              bfloat16 *restrict output_vector,
                              const int32_t vector_size) {
@@ -90,7 +92,8 @@ static inline void silu_aie2(bfloat16 *restrict input_vector,
                               register_0_5)
                          .to_vector<bfloat16>();
                  return aie::vector<bfloat16, 16>(
-                     aie::mul(x, sigmoid_approx).to_vector<bfloat16>());
+                     aie::mul(aie::max(x, bfloat16(-8.0f)), sigmoid_approx)
+                         .to_vector<bfloat16>());
                });
 }
 #endif

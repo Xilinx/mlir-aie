@@ -76,7 +76,8 @@ static inline void swiglu_impl(bfloat16 *restrict input_vector,
 // AIE2's tanh reads a table, ordered against every other load and store, so
 // the next trip's inputs are loaded before this trip's lookups and both stores
 // follow them. At four vectors per trip the prefetched inputs spill past the
-// 1 KiB stack.
+// 1 KiB stack. silu(x * w2) is exactly 0 from x * w2 = -8 down, and where it is
+// 0 the output is 0 too, rather than NaN where x * w1 overflowed.
 static inline void swiglu_aie2(const bfloat16 *restrict x,
                                const bfloat16 *restrict w1,
                                const bfloat16 *restrict w2,
@@ -97,8 +98,11 @@ static inline void swiglu_aie2(const bfloat16 *restrict x,
                  tanh_bf16_v16(aie::mul(mul_input_weight_2, register_0_5)),
                  register_0_5)
             .to_vector<bfloat16>();
-    V silu_output = aie::mul(mul_input_weight_2, sigmoid_approx);
-    return V(aie::mul(mul_input_weight_1, silu_output).to_vector<bfloat16>());
+    V silu_output =
+        aie::mul(aie::max(mul_input_weight_2, bfloat16(-8.0f)), sigmoid_approx);
+    V y = aie::mul(mul_input_weight_1, silu_output).to_vector<bfloat16>();
+    return aie::select(y, aie::zeros<bfloat16, 16>(),
+                       aie::eq(silu_output.cast_to<int16_t>(), int16_t(0)));
   };
   auto it_out = aie::begin_restrict_vector<16>(out);
   V nx[K], n1[K], n2[K];

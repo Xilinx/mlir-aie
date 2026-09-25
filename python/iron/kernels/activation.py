@@ -260,6 +260,7 @@ def _unary_lut_contract(
     use_lut: bool = False,
     elementwise: Callable | None = None,
     lut_tolerance: Tolerance = _LUT_MODEL_TOLERANCE,
+    stack_bytes: int | None = None,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
 
@@ -293,6 +294,7 @@ def _unary_lut_contract(
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
         setup=setup,
         uses_lut=True,
+        stack_bytes=stack_bytes,
     )
 
 
@@ -416,6 +418,10 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
+# aiecc measured 1120 on aie2, past the 1 KiB default.
+_GELU_AIE2_STACK_BYTES = 1280
+
+
 def gelu(tile_size: int = 1024) -> ExternalFunction:
     """GELU activation kernel (tanh approximation) for bf16 tiles (must be 1024)."""
     return _bf16_lut_factory(
@@ -425,7 +431,10 @@ def gelu(tile_size: int = 1024) -> ExternalFunction:
         tile_size,
         arg_arity=2,
         contract=_unary_lut_contract(
-            gelu_ref, count=False, tolerance=_gelu_tolerance()
+            gelu_ref,
+            count=False,
+            tolerance=_gelu_tolerance(),
+            stack_bytes=_GELU_AIE2_STACK_BYTES if _tuned_arch() == "aie2" else None,
         ),
     )
 
@@ -492,7 +501,10 @@ def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DGELU_ELEMS={tile_size}"],
         contract=_unary_lut_contract(
-            gelu_ref, count=tile_size, tolerance=_gelu_tolerance()
+            gelu_ref,
+            count=tile_size,
+            tolerance=_gelu_tolerance(),
+            stack_bytes=_GELU_AIE2_STACK_BYTES if _tuned_arch() == "aie2" else None,
         ),
     )
 
@@ -804,11 +816,13 @@ def silu_lut_ref(x):
     """Model of [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
 
     activation/silu.cc narrows the sigmoid factor to bf16 before the final
-    multiply, so that rounding is modelled too, not folded away.
+    multiply, so that rounding is modelled too, not folded away. The sigmoid
+    is exactly 0 from x = -8 down, and x is clamped there before the multiply,
+    so -inf gives 0 rather than NaN.
     """
     xf = np.asarray(x).astype(np.float32)
     sig = np.asarray(sigmoid_lut_ref(xf), np.float32)
-    return _bf16(xf * sig).astype(np.asarray(x).dtype)
+    return _bf16(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
 
 
 def swiglu_lut_ref(x, w1, w2):
@@ -816,22 +830,27 @@ def swiglu_lut_ref(x, w1, w2):
 
     activation/swiglu.cc narrows after every multiply -- ``x*w1``, ``x*w2``, the
     sigmoid factor and the silu product each land in a bf16 register before
-    the next step -- which is what this reproduces.
+    the next step -- which is what this reproduces. ``x*w2`` is clamped at -8
+    before its multiply, as in silu_lut_ref, and where the silu product is 0
+    the output is 0, so an overflowed ``x*w1`` does not make ``inf * 0``.
     """
-    xw1 = _bf16(np.asarray(x, np.float32) * np.asarray(w1, np.float32))
-    xw2 = _bf16(np.asarray(x, np.float32) * np.asarray(w2, np.float32))
-    sig = np.asarray(sigmoid_lut_ref(xw2), np.float32)
-    silu_out = _bf16(xw2 * sig)
-    return _bf16(xw1 * silu_out).astype(np.asarray(x).dtype)
+    with np.errstate(over="ignore", invalid="ignore"):
+        xw1 = _bf16(np.asarray(x, np.float32) * np.asarray(w1, np.float32))
+        xw2 = _bf16(np.asarray(x, np.float32) * np.asarray(w2, np.float32))
+        sig = np.asarray(sigmoid_lut_ref(xw2), np.float32)
+        silu_out = _bf16(np.maximum(xw2, -8.0) * sig)
+        out = np.where(silu_out == 0, np.float32(0.0), _bf16(xw1 * silu_out))
+    return out.astype(np.asarray(x).dtype)
 
 
 def tanh_lut_ref(x):
     """Numpy model of ``getTanhBf16``, the interpolated-LUT tanh.
 
-    The kernel evaluates ``slope[e] * x + offset[e]`` for
-    ``e = clamp(floor(4x), -16, 15) + 16``: 32 segments of width 0.25 over
-    ``[-4, 4)``, saturating to the end segments (the constants -1 and +1)
-    outside. The product is exact in f32 (bf16 carries 8 mantissa bits and
+    The kernel clamps x to the table's range ``[-4, 4 - 1/64]``, then evaluates
+    ``slope[e] * x + offset[e]`` for ``e = floor(4x) + 16``: 32 segments of
+    width 0.25 over ``[-4, 4)``. The end segments are the constants -1 and +1,
+    so the clamp changes no finite result, and +-inf gives +-1 rather than
+    ``0 * inf``. The product is exact in f32 (bf16 carries 8 mantissa bits and
     8 + 8 < 24), so the only rounding is the accumulator's store back to bf16,
     which is why the build using this is judged at one ulp rather than a
     percentage.
@@ -842,7 +861,7 @@ def tanh_lut_ref(x):
     approximation with no published spec, so it is judged against
     [`tanh_ref`][iron.kernels.activation.tanh_ref] and a measured bound.
     """
-    xf = np.asarray(x).astype(np.float32)
+    xf = np.clip(np.asarray(x).astype(np.float32), -4.0, 4.0 - 1.0 / 64)
     e = np.clip(np.floor(xf * 4.0).astype(np.int64), -16, 15) + 16
     slope = np.asarray(_TANH_LUT_SLOPE, np.float32)[e]
     offset = np.asarray(_TANH_LUT_OFFSET, np.float32)[e]

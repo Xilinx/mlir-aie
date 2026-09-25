@@ -128,10 +128,10 @@ static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
 // the next vector's table reads. A loop that loads, computes and stores one
 // vector per iteration does not pipeline, even with an II hint. Storing each
 // result one iteration late puts the next vector's table reads ahead of the
-// store, and with the hint that loop pipelines (SiLU at II 36); without the
-// hint the pipeliner still gives up on it. GELU, with its input clamp, stays
-// at II 82 under any hint from 46 to 60.
-template <typename F>
+// store, and with an II hint that loop pipelines; without one the pipeliner
+// still gives up on it. SiLU reaches II 37 from any hint of 31 up, and GELU
+// 58 from 55 up; below that GELU gets 83.
+template <int II, typename F>
 static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
                                float *__restrict out, F f) {
   event0();
@@ -148,7 +148,7 @@ static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
   const int count = (int)(n / 16) - 1;
   if (count >= 4) {
     AIE_PREPARE_FOR_PIPELINING
-    AIE_TRY_INITIATION_INTERVAL(46)
+    AIE_TRY_INITIATION_INTERVAL(II)
     AIE_LOOP_MIN_ITERATION_COUNT(4)
     for (int i = 0; i < count; i++)
       body();
@@ -161,15 +161,35 @@ static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
   event1();
 }
 
-// SiLU as in mm_silu_hiprec_row, except that tanh reads hi/2, which is exact
-// in bf16, instead of rounding hi/2 + lo/2 again. The two differ only where
-// that rounding ties, and dropping it shortens the chain.
+// split_f32 for an x that may lie past bf16's largest finite value, where a
+// rounded hi would be inf and x - hi -inf. hi is x's top 16 bits instead,
+// finite for a finite x, and x - hi is exact in f32.
+static inline bf16_split split_f32_trunc(const aie::vector<float, 16> &x) {
+  aie::vector<int32_t, 16> bits = x.cast_to<int32_t>();
+  aie::vector<int32_t, 16> hi_bits =
+      aie::bit_and(bits, aie::broadcast<int32_t, 16>((int32_t)0xffff0000));
+  bf16_split s;
+  s.hi = aie::filter_odd(bits.cast_to<int16_t>(), 1).cast_to<bfloat16>();
+  aie::accum<accfloat, 16> r;
+  r.from_vector(aie::sub(x, hi_bits.cast_to<float>()));
+  s.lo = r.to_vector<bfloat16>();
+  return s;
+}
+
+// SiLU as in mm_silu_hiprec_row, except that tanh reads bf16(x)/2, which is
+// exact in bf16, instead of rounding hi/2 + lo/2 again. The two differ only
+// where that rounding ties, and dropping it shortens the chain. Past bf16's
+// range bf16(x) is inf, which the table takes, but the product's split must
+// stay finite, so it truncates.
 static inline aie::vector<float, 16> mm_silu_lut(aie::vector<float, 16> x) {
   const aie::vector<bfloat16, 16> half = aie::broadcast<bfloat16, 16>(0.5f);
   aie::accum<accfloat, 16> half_acc;
   half_acc.from_vector(half);
-  bf16_split xs = split_f32(x);
-  aie::vector<bfloat16, 16> t = tanh_bf16_v16(aie::mul(xs.hi, half));
+  bf16_split xs = split_f32_trunc(x);
+  aie::accum<accfloat, 16> a;
+  a.from_vector(x);
+  aie::vector<bfloat16, 16> t =
+      tanh_bf16_v16(aie::mul(a.to_vector<bfloat16>(), half));
   // bf16(0.5 + 0.5*t) is bf16(t + 1) * 0.5.
   aie::vector<bfloat16, 16> sig =
       aie::mac(half_acc, t, half).to_vector<bfloat16>();
@@ -192,13 +212,13 @@ static inline aie::vector<float, 16> mm_gelu_lut(aie::vector<float, 16> xf) {
   aie::accum<accfloat, 16> a;
   a.from_vector(xf);
   aie::vector<bfloat16, 16> x = a.to_vector<bfloat16>();
-  // Past |x| = 8 the table is flat, and x^3 would overflow into 0 * inf.
+  // t + 1 is 0 from x = -8 down, so -inf is clamped there rather than
+  // making -inf * 0.
   aie::vector<bfloat16, 16> xl = aie::max(x, bfloat16(-8.0f));
-  aie::vector<bfloat16, 16> xc = aie::min(xl, bfloat16(8.0f));
   aie::vector<bfloat16, 16> half_x = aie::mul(half, xl);
-  aie::vector<bfloat16, 16> x2 = aie::mul(xc, xc);
+  aie::vector<bfloat16, 16> x2 = aie::mul(xl, xl);
   aie::vector<bfloat16, 16> poly = aie::mac(c0acc, c0c1, x2);
-  aie::vector<bfloat16, 16> t = tanh_bf16_v16(aie::mul(xc, poly));
+  aie::vector<bfloat16, 16> t = tanh_bf16_v16(aie::mul(xl, poly));
   aie::vector<bfloat16, 16> t_p1 =
       aie::mac(one_acc, t, one).to_vector<bfloat16>();
   return aie::mul(half_x, t_p1).to_vector<float>();
@@ -234,9 +254,9 @@ void mm_activation_epilogue_row(const float *__restrict c_in,
                                 int32_t mode) {
 #if AIE_TUNED_AIE2
   if (mode == 1) {
-    mm_lut_rows((uint32_t)n, c_in, c_out, mm_silu_lut);
+    mm_lut_rows<37>((uint32_t)n, c_in, c_out, mm_silu_lut);
   } else if (mode == 2) {
-    mm_lut_rows((uint32_t)n, c_in, c_out, mm_gelu_lut);
+    mm_lut_rows<58>((uint32_t)n, c_in, c_out, mm_gelu_lut);
   } else {
     mm_floor_row((uint32_t)n, c_in, c_out,
                  mode == 3 ? (int32_t)0xff800000 : INT32_MIN);
