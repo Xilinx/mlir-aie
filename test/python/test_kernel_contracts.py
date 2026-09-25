@@ -56,11 +56,13 @@ def _case_id(case) -> str:
     return "/".join(parts)
 
 
+# The fixture below binds npu2, so an npu1-only case is left to its device run.
+NPU2_CASES = [case for case in DEVICE_CASES if case.supported_on("npu2")]
 CASES = {
     _case_id(case): (case.kwargs, dict(calls=case.calls, scalars=case.scalars))
-    for case in DEVICE_CASES
+    for case in NPU2_CASES
 }
-assert len(CASES) == len(DEVICE_CASES), "two device cases map to one host id"
+assert len(CASES) == len(NPU2_CASES), "two device cases map to one host id"
 
 # Exported factories the generic builder does not judge, each with its reason.
 # Anything else exported must carry a contract and appear in the case table.
