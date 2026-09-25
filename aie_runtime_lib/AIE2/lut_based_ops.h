@@ -95,27 +95,30 @@ __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
 extern float tanh_lut_ab[];
 extern float tanh_lut_cd[];
 
+// aie::linear_approx<bfloat16, aie::lut<4, float, bfloat16>> with step_bits
+// -2 and bias 16, written out: 32 segments of 0.25 over [-4, 4), each
+// offset + slope * x. The object form is rebuilt on every call, and its
+// scratchpad member makes it escape, so each call stored the whole object to
+// the stack and read the input back through it.
 inline __attribute__((always_inline)) v16bfloat16
 getTanhBf16(v16bfloat16 vInput) {
-  aie::vector<bfloat16, 16> input = vInput;
+  // Byte offset of the segment: floor(x * 4) entries of 16 bytes, relative to
+  // the middle of the table and clamped to its 32 entries.
+  constexpr int bias_bytes = 16 << 4;
+  const float *lut_ab = tanh_lut_ab + bias_bytes / sizeof(float);
+  const float *lut_cd = tanh_lut_cd + bias_bytes / sizeof(float);
+  v16int32 index = bfloat16_to_int(vInput, 6);
+  index = ::max(index, aie::broadcast<int32, 16>(-bias_bytes));
+  index = ::min(index, aie::broadcast<int32, 16>((32 << 4) - 1 - bias_bytes));
 
-  int step_bits = -2;
-  int bias = 16;
-  int data_size = 16;
-  int LUT_elems = 32;
-  int shift_offset = 0; // unused
+  v32bfloat16 coeff0, coeff1;
+  load_lut_2x_float(lut_ab, lut_cd, index, coeff0, coeff1);
+  v16accfloat offset = (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi);
+  v32bfloat16 slope = ::shuffle(coeff0, coeff1, T16_16x4_lo);
+  aie::vector<bfloat16, 32> x = aie::zeros<bfloat16, 32>();
+  x.insert<16>(1, aie::vector<bfloat16, 16>(vInput));
 
-  using lut_type = aie::lut<4, float, bfloat16>;
-
-  lut_type test_lut(LUT_elems, (bfloat16 *)tanh_lut_ab,
-                    (bfloat16 *)tanh_lut_cd);
-
-  aie::linear_approx<bfloat16, lut_type> lin_aprox(test_lut, step_bits, bias,
-                                                   shift_offset);
-
-  aie::vector<bfloat16, 16> output =
-      lin_aprox.compute(input).to_vector<bfloat16>();
-
-  return (v16bfloat16)output;
+  aie::accum<accfloat, 16> result = mac_elem_16_2(slope, x, offset);
+  return (v16bfloat16)result.to_vector<bfloat16>();
 }
 #endif //__LUT_BASED_OPS_H__
