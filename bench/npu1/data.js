@@ -1,0 +1,2776 @@
+window.BENCHMARK_DATA = {
+  "lastUpdate": 1790300319474,
+  "repoUrl": "https://github.com/Xilinx/mlir-aie",
+  "entries": {
+    "aie_kernels (npu1, default)": [
+      {
+        "commit": {
+          "author": {
+            "name": "Erika Hunhoff",
+            "username": "hunhoffe",
+            "email": "erika.hunhoff@amd.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "e8d062f9dc8c053c38e022eedf52abc760db6761",
+          "message": "Kernel benchmarks: fix publish on dispatch and schedule runs (#3803)\n\nCo-authored-by: Claude <noreply@anthropic.com>",
+          "timestamp": "2026-09-25T00:24:37Z",
+          "url": "https://github.com/Xilinx/mlir-aie/commit/e8d062f9dc8c053c38e022eedf52abc760db6761"
+        },
+        "date": 1790300317122,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "passthrough/2048x16/int32/cycles",
+            "value": 264,
+            "unit": "cycles",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/cycles_per_kop",
+            "value": 128.906,
+            "unit": "cycles/1k-ops",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/npu_us",
+            "value": 195,
+            "range": "min 182.4 max 310.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/e2e_us",
+            "value": 348.2,
+            "range": "min 331.8 max 462.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/compile_s",
+            "value": 1.57,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/xclbin_bytes",
+            "value": 8791,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/core_elf_bytes",
+            "value": 3020,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/cycles",
+            "value": 264,
+            "unit": "cycles",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/cycles_per_kop",
+            "value": 128.906,
+            "unit": "cycles/1k-ops",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/npu_us",
+            "value": 1442.45,
+            "range": "min 766.7 max 1745.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/e2e_us",
+            "value": 1915.48,
+            "range": "min 1204.3 max 2218.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/compile_s",
+            "value": 1.54,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/xclbin_bytes",
+            "value": 8791,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/core_elf_bytes",
+            "value": 3020,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/cycles",
+            "value": 264,
+            "unit": "cycles",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/cycles_per_kop",
+            "value": 64.453,
+            "unit": "cycles/1k-ops",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/npu_us",
+            "value": 193.44,
+            "range": "min 181.7 max 304.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/e2e_us",
+            "value": 343.54,
+            "range": "min 326.8 max 459.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/compile_s",
+            "value": 1.55,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/xclbin_bytes",
+            "value": 8791,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/core_elf_bytes",
+            "value": 3020,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/cycles",
+            "value": 136,
+            "unit": "cycles",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/cycles_per_kop",
+            "value": 33.203,
+            "unit": "cycles/1k-ops",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/npu_us",
+            "value": 175.15,
+            "range": "min 158.0 max 354.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/e2e_us",
+            "value": 324.08,
+            "range": "min 303.1 max 498.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/compile_s",
+            "value": 1.54,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/xclbin_bytes",
+            "value": 8791,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/core_elf_bytes",
+            "value": 3020,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/npu_us",
+            "value": 162.75,
+            "range": "min 149.4 max 347.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/e2e_us",
+            "value": 320.16,
+            "range": "min 296.2 max 1056.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/compile_s",
+            "value": 1.61,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/xclbin_bytes",
+            "value": 8919,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/core_elf_bytes",
+            "value": 3048,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/npu_us",
+            "value": 291.46,
+            "range": "min 276.1 max 371.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/e2e_us",
+            "value": 454.56,
+            "range": "min 432.3 max 529.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/compile_s",
+            "value": 1.61,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/xclbin_bytes",
+            "value": 8919,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/core_elf_bytes",
+            "value": 3048,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/npu_us",
+            "value": 175.6,
+            "range": "min 159.5 max 323.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/e2e_us",
+            "value": 329.94,
+            "range": "min 314.2 max 472.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/compile_s",
+            "value": 1.59,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/xclbin_bytes",
+            "value": 9079,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/core_elf_bytes",
+            "value": 3208,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/npu_us",
+            "value": 186.98,
+            "range": "min 167.6 max 260.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/e2e_us",
+            "value": 330.07,
+            "range": "min 305.4 max 412.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/compile_s",
+            "value": 1.72,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/xclbin_bytes",
+            "value": 8951,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/core_elf_bytes",
+            "value": 3052,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/npu_us",
+            "value": 1261.93,
+            "range": "min 647.1 max 1528.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/e2e_us",
+            "value": 1783.78,
+            "range": "min 1091.4 max 2245.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/compile_s",
+            "value": 1.72,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/xclbin_bytes",
+            "value": 8951,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/core_elf_bytes",
+            "value": 3052,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/npu_us",
+            "value": 179.59,
+            "range": "min 167.6 max 347.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/e2e_us",
+            "value": 320.71,
+            "range": "min 301.4 max 483.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/compile_s",
+            "value": 1.74,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/xclbin_bytes",
+            "value": 8967,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/core_elf_bytes",
+            "value": 3116,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/npu_us",
+            "value": 603.01,
+            "range": "min 566.6 max 1217.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/e2e_us",
+            "value": 931.39,
+            "range": "min 815.8 max 1956.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/compile_s",
+            "value": 1.74,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/xclbin_bytes",
+            "value": 8967,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/core_elf_bytes",
+            "value": 3116,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/npu_us",
+            "value": 157.51,
+            "range": "min 151.9 max 261.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/e2e_us",
+            "value": 301.6,
+            "range": "min 290.2 max 399.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/compile_s",
+            "value": 1.61,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/xclbin_bytes",
+            "value": 8839,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/core_elf_bytes",
+            "value": 2932,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/npu_us",
+            "value": 666.53,
+            "range": "min 319.6 max 1536.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/e2e_us",
+            "value": 1309.42,
+            "range": "min 572.5 max 2133.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/compile_s",
+            "value": 1.6,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/xclbin_bytes",
+            "value": 8839,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/core_elf_bytes",
+            "value": 2932,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/npu_us",
+            "value": 176.28,
+            "range": "min 158.1 max 332.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/e2e_us",
+            "value": 324.25,
+            "range": "min 301.4 max 473.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/compile_s",
+            "value": 1.55,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/xclbin_bytes",
+            "value": 8983,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/core_elf_bytes",
+            "value": 3092,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/npu_us",
+            "value": 432.54,
+            "range": "min 414.7 max 664.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/e2e_us",
+            "value": 678.81,
+            "range": "min 612.9 max 1216.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/compile_s",
+            "value": 1.55,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/xclbin_bytes",
+            "value": 8983,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/core_elf_bytes",
+            "value": 3092,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/npu_us",
+            "value": 204.36,
+            "range": "min 164.4 max 332.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/e2e_us",
+            "value": 380.85,
+            "range": "min 320.7 max 764.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/compile_s",
+            "value": 1.56,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/xclbin_bytes",
+            "value": 8999,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/core_elf_bytes",
+            "value": 3108,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/npu_us",
+            "value": 433.74,
+            "range": "min 420.2 max 444.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/e2e_us",
+            "value": 683.23,
+            "range": "min 667.3 max 700.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/compile_s",
+            "value": 1.56,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/xclbin_bytes",
+            "value": 8999,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/core_elf_bytes",
+            "value": 3108,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/npu_us",
+            "value": 177.96,
+            "range": "min 157.8 max 259.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/e2e_us",
+            "value": 323.44,
+            "range": "min 301.2 max 403.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/compile_s",
+            "value": 1.62,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/xclbin_bytes",
+            "value": 9031,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/core_elf_bytes",
+            "value": 3140,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/npu_us",
+            "value": 471.16,
+            "range": "min 425.7 max 1277.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/e2e_us",
+            "value": 782.68,
+            "range": "min 663.5 max 1869.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/compile_s",
+            "value": 1.62,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/xclbin_bytes",
+            "value": 9031,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/core_elf_bytes",
+            "value": 3140,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/npu_us",
+            "value": 166.23,
+            "range": "min 151.2 max 254.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/e2e_us",
+            "value": 312.63,
+            "range": "min 290.0 max 664.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/compile_s",
+            "value": 1.61,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/xclbin_bytes",
+            "value": 8919,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/core_elf_bytes",
+            "value": 3036,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/npu_us",
+            "value": 283.04,
+            "range": "min 272.4 max 387.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/e2e_us",
+            "value": 443.96,
+            "range": "min 429.9 max 601.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/compile_s",
+            "value": 1.62,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/xclbin_bytes",
+            "value": 8919,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/core_elf_bytes",
+            "value": 3036,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/npu_us",
+            "value": 291.27,
+            "range": "min 252.5 max 474.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/e2e_us",
+            "value": 520.64,
+            "range": "min 461.5 max 760.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/compile_s",
+            "value": 4.1,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/xclbin_bytes",
+            "value": 14649,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/core_elf_bytes",
+            "value": 9244,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/npu_us",
+            "value": 2224.43,
+            "range": "min 1775.3 max 2714.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/e2e_us",
+            "value": 2918.46,
+            "range": "min 2353.3 max 3415.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/compile_s",
+            "value": 4.12,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/xclbin_bytes",
+            "value": 14649,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/core_elf_bytes",
+            "value": 9244,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/npu_us",
+            "value": 248.36,
+            "range": "min 225.1 max 381.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/e2e_us",
+            "value": 475.02,
+            "range": "min 435.1 max 1030.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/compile_s",
+            "value": 4.11,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/xclbin_bytes",
+            "value": 14441,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/core_elf_bytes",
+            "value": 9020,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/npu_us",
+            "value": 1559.73,
+            "range": "min 1292.6 max 1829.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/e2e_us",
+            "value": 1999.83,
+            "range": "min 1539.8 max 2776.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/compile_s",
+            "value": 4.11,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/xclbin_bytes",
+            "value": 14441,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/core_elf_bytes",
+            "value": 9020,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/npu_us",
+            "value": 217.97,
+            "range": "min 205.5 max 304.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/e2e_us",
+            "value": 364.95,
+            "range": "min 347.0 max 544.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/compile_s",
+            "value": 3.14,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/xclbin_bytes",
+            "value": 14073,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/core_elf_bytes",
+            "value": 8632,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/npu_us",
+            "value": 1487.26,
+            "range": "min 1205.1 max 1779.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/e2e_us",
+            "value": 1970.48,
+            "range": "min 1686.3 max 2656.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/compile_s",
+            "value": 3.14,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/xclbin_bytes",
+            "value": 14073,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/core_elf_bytes",
+            "value": 8632,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/npu_us",
+            "value": 196.05,
+            "range": "min 186.5 max 310.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/e2e_us",
+            "value": 346.21,
+            "range": "min 333.4 max 518.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/compile_s",
+            "value": 3.44,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/xclbin_bytes",
+            "value": 14249,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/core_elf_bytes",
+            "value": 8952,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/npu_us",
+            "value": 1389.91,
+            "range": "min 1253.8 max 1696.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/e2e_us",
+            "value": 2023.11,
+            "range": "min 1696.2 max 2485.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/compile_s",
+            "value": 3.43,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/xclbin_bytes",
+            "value": 14249,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/core_elf_bytes",
+            "value": 8952,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/npu_us",
+            "value": 225.23,
+            "range": "min 213.9 max 329.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/e2e_us",
+            "value": 451.79,
+            "range": "min 423.2 max 546.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/compile_s",
+            "value": 3.42,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/xclbin_bytes",
+            "value": 14377,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/core_elf_bytes",
+            "value": 9088,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/npu_us",
+            "value": 1547.34,
+            "range": "min 1077.0 max 1852.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/e2e_us",
+            "value": 1996.5,
+            "range": "min 1487.1 max 2287.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/compile_s",
+            "value": 3.44,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/xclbin_bytes",
+            "value": 14377,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/core_elf_bytes",
+            "value": 9088,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/npu_us",
+            "value": 265.86,
+            "range": "min 241.0 max 359.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/e2e_us",
+            "value": 490.13,
+            "range": "min 396.9 max 581.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/compile_s",
+            "value": 3.29,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/xclbin_bytes",
+            "value": 16057,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/core_elf_bytes",
+            "value": 11628,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/npu_us",
+            "value": 2166.13,
+            "range": "min 1823.0 max 2685.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/e2e_us",
+            "value": 2880.73,
+            "range": "min 2302.4 max 3508.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/compile_s",
+            "value": 3.29,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/xclbin_bytes",
+            "value": 16057,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/core_elf_bytes",
+            "value": 11628,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/npu_us",
+            "value": 160.75,
+            "range": "min 153.8 max 252.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/e2e_us",
+            "value": 308.26,
+            "range": "min 297.3 max 398.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/compile_s",
+            "value": 1.75,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/xclbin_bytes",
+            "value": 8871,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/core_elf_bytes",
+            "value": 2972,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/npu_us",
+            "value": 317.09,
+            "range": "min 278.2 max 709.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/e2e_us",
+            "value": 532.81,
+            "range": "min 438.7 max 1150.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/compile_s",
+            "value": 1.75,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/xclbin_bytes",
+            "value": 8871,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/core_elf_bytes",
+            "value": 2972,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/npu_us",
+            "value": 166.69,
+            "range": "min 161.0 max 259.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/e2e_us",
+            "value": 316.46,
+            "range": "min 301.9 max 401.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/compile_s",
+            "value": 1.77,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/xclbin_bytes",
+            "value": 9127,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/core_elf_bytes",
+            "value": 3296,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/npu_us",
+            "value": 494.54,
+            "range": "min 457.0 max 1456.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/e2e_us",
+            "value": 745.97,
+            "range": "min 700.8 max 1906.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/compile_s",
+            "value": 1.78,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/xclbin_bytes",
+            "value": 9127,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/core_elf_bytes",
+            "value": 3296,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/npu_us",
+            "value": 180.06,
+            "range": "min 162.7 max 256.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/e2e_us",
+            "value": 326.72,
+            "range": "min 310.1 max 401.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/compile_s",
+            "value": 1.63,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/xclbin_bytes",
+            "value": 8871,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/core_elf_bytes",
+            "value": 2984,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/npu_us",
+            "value": 450,
+            "range": "min 436.5 max 1370.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/e2e_us",
+            "value": 682.29,
+            "range": "min 611.3 max 2158.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/compile_s",
+            "value": 1.64,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/xclbin_bytes",
+            "value": 8871,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/core_elf_bytes",
+            "value": 2984,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/npu_us",
+            "value": 163.16,
+            "range": "min 149.9 max 251.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/e2e_us",
+            "value": 314.18,
+            "range": "min 295.8 max 400.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/compile_s",
+            "value": 1.62,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/xclbin_bytes",
+            "value": 9111,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/core_elf_bytes",
+            "value": 3216,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/npu_us",
+            "value": 174.28,
+            "range": "min 155.6 max 359.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/e2e_us",
+            "value": 318.72,
+            "range": "min 291.4 max 566.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/compile_s",
+            "value": 1.62,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/xclbin_bytes",
+            "value": 9352,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/core_elf_bytes",
+            "value": 3492,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/npu_us",
+            "value": 160.06,
+            "range": "min 146.2 max 257.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/e2e_us",
+            "value": 312.55,
+            "range": "min 298.9 max 407.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/compile_s",
+            "value": 1.75,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/xclbin_bytes",
+            "value": 9111,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/core_elf_bytes",
+            "value": 3140,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/npu_us",
+            "value": 183.54,
+            "range": "min 167.2 max 364.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/e2e_us",
+            "value": 345,
+            "range": "min 312.8 max 833.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/compile_s",
+            "value": 1.76,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/xclbin_bytes",
+            "value": 9384,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/core_elf_bytes",
+            "value": 3524,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/npu_us",
+            "value": 247.13,
+            "range": "min 236.0 max 294.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/e2e_us",
+            "value": 409.09,
+            "range": "min 399.5 max 453.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/compile_s",
+            "value": 1.77,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/xclbin_bytes",
+            "value": 10537,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/core_elf_bytes",
+            "value": 4972,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/npu_us",
+            "value": 1922.06,
+            "range": "min 1612.9 max 2534.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/e2e_us",
+            "value": 2864.35,
+            "range": "min 2126.0 max 3585.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/compile_s",
+            "value": 1.77,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/xclbin_bytes",
+            "value": 10537,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/core_elf_bytes",
+            "value": 4972,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/npu_us",
+            "value": 252.22,
+            "range": "min 237.8 max 408.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/e2e_us",
+            "value": 412.04,
+            "range": "min 390.4 max 566.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/compile_s",
+            "value": 2.08,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/xclbin_bytes",
+            "value": 9912,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/core_elf_bytes",
+            "value": 4264,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/npu_us",
+            "value": 231.32,
+            "range": "min 211.5 max 258.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/e2e_us",
+            "value": 385.35,
+            "range": "min 369.4 max 473.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/compile_s",
+            "value": 1.79,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/xclbin_bytes",
+            "value": 10329,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/core_elf_bytes",
+            "value": 4716,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/npu_us",
+            "value": 166.27,
+            "range": "min 150.6 max 269.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/e2e_us",
+            "value": 320.02,
+            "range": "min 299.4 max 563.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/compile_s",
+            "value": 3.17,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/xclbin_bytes",
+            "value": 10505,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/core_elf_bytes",
+            "value": 4688,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/npu_us",
+            "value": 166.54,
+            "range": "min 151.7 max 246.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/e2e_us",
+            "value": 320.95,
+            "range": "min 310.6 max 404.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/compile_s",
+            "value": 1.78,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/xclbin_bytes",
+            "value": 9608,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/core_elf_bytes",
+            "value": 3768,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/npu_us",
+            "value": 147.68,
+            "range": "min 135.3 max 161.4 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/e2e_us",
+            "value": 291.18,
+            "range": "min 283.6 max 311.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/compile_s",
+            "value": 1.58,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/xclbin_bytes",
+            "value": 8839,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/core_elf_bytes",
+            "value": 2856,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/npu_us",
+            "value": 152.92,
+            "range": "min 142.8 max 185.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/e2e_us",
+            "value": 299.63,
+            "range": "min 284.7 max 325.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/compile_s",
+            "value": 1.6,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/xclbin_bytes",
+            "value": 8855,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/core_elf_bytes",
+            "value": 2880,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/npu_us",
+            "value": 269.57,
+            "range": "min 256.6 max 396.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/e2e_us",
+            "value": 479.84,
+            "range": "min 457.9 max 602.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/compile_s",
+            "value": 3.84,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/xclbin_bytes",
+            "value": 14889,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/core_elf_bytes",
+            "value": 10196,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/npu_us",
+            "value": 2270.13,
+            "range": "min 1882.5 max 2702.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/e2e_us",
+            "value": 2987.64,
+            "range": "min 2414.7 max 3642.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/compile_s",
+            "value": 3.84,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/xclbin_bytes",
+            "value": 14889,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/core_elf_bytes",
+            "value": 10196,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/npu_us",
+            "value": 191.8,
+            "range": "min 175.2 max 237.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/e2e_us",
+            "value": 340.49,
+            "range": "min 324.3 max 444.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/compile_s",
+            "value": 1.57,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/xclbin_bytes",
+            "value": 8807,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/core_elf_bytes",
+            "value": 2948,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/npu_us",
+            "value": 190.58,
+            "range": "min 173.9 max 270.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/e2e_us",
+            "value": 335.61,
+            "range": "min 316.6 max 410.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/compile_s",
+            "value": 1.62,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/xclbin_bytes",
+            "value": 8887,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/core_elf_bytes",
+            "value": 3136,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/npu_us",
+            "value": 166.29,
+            "range": "min 150.6 max 256.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/e2e_us",
+            "value": 313.17,
+            "range": "min 294.9 max 400.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/compile_s",
+            "value": 1.62,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/xclbin_bytes",
+            "value": 9816,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/core_elf_bytes",
+            "value": 4804,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/npu_us",
+            "value": 177.37,
+            "range": "min 163.1 max 365.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/e2e_us",
+            "value": 326.3,
+            "range": "min 308.3 max 633.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/compile_s",
+            "value": 1.57,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/xclbin_bytes",
+            "value": 8999,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/core_elf_bytes",
+            "value": 3100,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/npu_us",
+            "value": 171.83,
+            "range": "min 156.6 max 288.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/e2e_us",
+            "value": 318.8,
+            "range": "min 300.0 max 430.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/compile_s",
+            "value": 1.56,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/xclbin_bytes",
+            "value": 8999,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/core_elf_bytes",
+            "value": 3100,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/npu_us",
+            "value": 188.59,
+            "range": "min 172.2 max 325.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/e2e_us",
+            "value": 338.01,
+            "range": "min 321.3 max 781.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/compile_s",
+            "value": 1.61,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/xclbin_bytes",
+            "value": 9304,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/core_elf_bytes",
+            "value": 3408,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/npu_us",
+            "value": 202.31,
+            "range": "min 184.5 max 414.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/e2e_us",
+            "value": 359.8,
+            "range": "min 338.9 max 579.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/compile_s",
+            "value": 1.63,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/xclbin_bytes",
+            "value": 9608,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/core_elf_bytes",
+            "value": 4572,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/npu_us",
+            "value": 227.43,
+            "range": "min 213.4 max 243.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/e2e_us",
+            "value": 381.99,
+            "range": "min 364.4 max 401.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/compile_s",
+            "value": 3.18,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/xclbin_bytes",
+            "value": 11145,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/core_elf_bytes",
+            "value": 5748,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/npu_us",
+            "value": 264.37,
+            "range": "min 239.4 max 398.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/e2e_us",
+            "value": 479.5,
+            "range": "min 395.3 max 895.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/compile_s",
+            "value": 1.76,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/xclbin_bytes",
+            "value": 13785,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/core_elf_bytes",
+            "value": 3964,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/npu_us",
+            "value": 285.85,
+            "range": "min 228.4 max 1573.9 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/e2e_us",
+            "value": 481.73,
+            "range": "min 422.7 max 2068.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/compile_s",
+            "value": 1.75,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/xclbin_bytes",
+            "value": 13785,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/core_elf_bytes",
+            "value": 3968,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/npu_us",
+            "value": 337.07,
+            "range": "min 306.6 max 395.2 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/e2e_us",
+            "value": 551.03,
+            "range": "min 475.5 max 625.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/compile_s",
+            "value": 1.94,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/xclbin_bytes",
+            "value": 18489,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/core_elf_bytes",
+            "value": 5428,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/npu_us",
+            "value": 302.77,
+            "range": "min 279.9 max 394.7 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/e2e_us",
+            "value": 557.41,
+            "range": "min 452.0 max 658.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/compile_s",
+            "value": 1.89,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/xclbin_bytes",
+            "value": 18617,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/core_elf_bytes",
+            "value": 8060,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/npu_us",
+            "value": 298.09,
+            "range": "min 277.5 max 426.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/e2e_us",
+            "value": 475.99,
+            "range": "min 452.3 max 656.1 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/compile_s",
+            "value": 1.89,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/xclbin_bytes",
+            "value": 18665,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/core_elf_bytes",
+            "value": 7196,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/npu_us",
+            "value": 239.52,
+            "range": "min 219.1 max 306.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/e2e_us",
+            "value": 404.21,
+            "range": "min 384.2 max 474.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/compile_s",
+            "value": 1.75,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/xclbin_bytes",
+            "value": 13785,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/core_elf_bytes",
+            "value": 3964,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/npu_us",
+            "value": 1433.75,
+            "range": "min 1149.4 max 1748.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/e2e_us",
+            "value": 2029.95,
+            "range": "min 1721.1 max 2615.5 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/compile_s",
+            "value": 1.82,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/xclbin_bytes",
+            "value": 48633,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/core_elf_bytes",
+            "value": 7704,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/npu_us",
+            "value": 1324.83,
+            "range": "min 522.2 max 1727.3 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/e2e_us",
+            "value": 1909.38,
+            "range": "min 887.0 max 2476.0 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/compile_s",
+            "value": 1.63,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/xclbin_bytes",
+            "value": 47945,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/core_elf_bytes",
+            "value": 6944,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/npu_us",
+            "value": 188.82,
+            "range": "min 167.8 max 366.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/e2e_us",
+            "value": 341.56,
+            "range": "min 314.2 max 753.6 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/compile_s",
+            "value": 1.61,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/xclbin_bytes",
+            "value": 9239,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/core_elf_bytes",
+            "value": 3548,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/npu_us",
+            "value": 188.72,
+            "range": "min 174.8 max 269.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/e2e_us",
+            "value": 333.86,
+            "range": "min 311.8 max 763.8 n=50",
+            "unit": "us",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/compile_s",
+            "value": 1.61,
+            "unit": "s",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/xclbin_bytes",
+            "value": 9239,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/core_elf_bytes",
+            "value": 3548,
+            "unit": "bytes",
+            "extra": "commit e8d062f9dc | peano 22.0.0.2026092101+0006955e | device RyzenAI-npu1 | pmode default"
+          }
+        ]
+      }
+    ]
+  }
+}
