@@ -36,6 +36,79 @@ void matvec_scalar(T_in *a, T_in *b, T_out *c) {
   event1();
 }
 
+#if __AIE_ARCH__ == 20
+// AIE2, int16: a 32-lane load of the word-transposed A holds 16 rows of one
+// column pair, row i's even column in lane 2i and its odd column in lane
+// 2i + 1. An elementwise mac against that column pair of b, repeated 16
+// times, accumulates both columns without separating them; the even and odd
+// lanes are added once per row block. The filtered form below spends 16
+// shuffles and 8 lane broadcasts per 8 columns.
+template <unsigned m, unsigned k, unsigned r>
+__aie_inline void matvec_i16_aie2(const int16 *__restrict a,
+                                  const int16 *__restrict b,
+                                  int32 *__restrict c) {
+  using acc_t = aie::accum<acc32, 2 * r>;
+  auto b_pair = [](const aie::vector<int16, 8> &b_vec, unsigned p) {
+    return aie::broadcast<int32, r>(b_vec.template cast_to<int32>()[p])
+        .template cast_to<int16>();
+  };
+  auto finish = [](int32 *__restrict c_ptr, const acc_t &acc) {
+    const auto v = acc.template to_vector<int32>();
+    aie::store_v(c_ptr, aie::add(aie::load_v<r>(c_ptr),
+                                 aie::add(aie::filter_even(v, 1),
+                                          aie::filter_odd(v, 1))));
+  };
+
+  event0();
+  unsigned row = 0;
+  for (; row + 2 * r <= m; row += 2 * r) {
+    const int16 *__restrict a_lo = a + 2 * row;
+    const int16 *__restrict a_hi = a + 2 * row + 2 * r;
+    const int16 *__restrict b_ptr = b;
+    acc_t acc_lo[2] = {aie::zeros<acc32, 2 * r>(), aie::zeros<acc32, 2 * r>()};
+    acc_t acc_hi[2] = {aie::zeros<acc32, 2 * r>(), aie::zeros<acc32, 2 * r>()};
+
+    AIE_LOOP_MIN_ITERATION_COUNT(k / 8)
+    AIE_LOOP_UNROLL(k / 8 <= 4 ? k / 8 : 1)
+    for (unsigned col = 0; col < k; col += 8) {
+      const aie::vector<int16, 8> b_vec = aie::load_v<8>(b_ptr);
+      AIE_LOOP_UNROLL_FULL
+      for (unsigned p = 0; p < 4; p++) {
+        const auto bp = b_pair(b_vec, p);
+        acc_lo[p % 2] =
+            aie::mac(acc_lo[p % 2], aie::load_v<2 * r>(a_lo + p * 2 * m), bp);
+        acc_hi[p % 2] =
+            aie::mac(acc_hi[p % 2], aie::load_v<2 * r>(a_hi + p * 2 * m), bp);
+      }
+      a_lo += 8 * m;
+      a_hi += 8 * m;
+      b_ptr += 8;
+    }
+    finish(c + row, aie::add(acc_lo[0], acc_lo[1]));
+    finish(c + row + r, aie::add(acc_hi[0], acc_hi[1]));
+  }
+
+  if constexpr ((m / r) % 2 != 0) {
+    const int16 *__restrict a_ptr = a + 2 * row;
+    const int16 *__restrict b_ptr = b;
+    acc_t acc = aie::zeros<acc32, 2 * r>();
+
+    AIE_LOOP_MIN_ITERATION_COUNT(k / 8)
+    for (unsigned col = 0; col < k; col += 8) {
+      const aie::vector<int16, 8> b_vec = aie::load_v<8>(b_ptr);
+      AIE_LOOP_UNROLL_FULL
+      for (unsigned p = 0; p < 4; p++)
+        acc = aie::mac(acc, aie::load_v<2 * r>(a_ptr + p * 2 * m),
+                       b_pair(b_vec, p));
+      a_ptr += 8 * m;
+      b_ptr += 8;
+    }
+    finish(c + row, acc);
+  }
+  event1();
+}
+#endif
+
 template <typename T_in, typename T_out, typename T_acc, unsigned m, unsigned k,
           unsigned r, unsigned s>
 void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
@@ -46,6 +119,12 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
   static_assert(k % s == 0);
   static_assert(std::is_same<T_in, bfloat16>::value ||
                 std::is_same<T_in, int16_t>::value);
+#if __AIE_ARCH__ == 20
+  if constexpr (std::is_same<T_in, int16_t>::value) {
+    matvec_i16_aie2<m, k, r>(a, b, c);
+    return;
+  }
+#endif
 
   // This kernel expects a "32-bit word transposed matrix", i.e. the result
   // of transposing the row-major representation of the matrix at a
