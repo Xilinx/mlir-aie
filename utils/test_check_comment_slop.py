@@ -69,6 +69,20 @@ class CollectTests(unittest.TestCase):
             [(b.path, b.lines) for b in blocks], [("new/j.cc", ["explanation"])]
         )
 
+    def test_a_moved_block_comment_body_is_not_a_block(self):
+        moved = ["/*", "moved prose", "*/"]
+        d = "\n".join(
+            [
+                "--- a/old/k.cc",
+                "+++ /dev/null",
+                f"@@ -1,{len(moved)} +0,0 @@",
+                *[f"-{line}" for line in moved],
+                diff(("new/k.cc", 1, moved + ["int x = 1;"])),
+            ]
+        )
+        blocks, _ = slop.collect(d)
+        self.assertEqual(blocks, [])
+
     def test_a_removed_code_line_does_not_excuse_a_comment(self):
         d = "\n".join(
             [

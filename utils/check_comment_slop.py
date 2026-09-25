@@ -217,11 +217,24 @@ def moved_comments(diff):
     reads as writing all of its comments anew. Each removal excuses one
     addition, so a comment moved once and then copied is still caught.
     """
-    return Counter(
-        strip_comment_markers(t)
-        for sign, path, _, t in _body_lines(diff)
-        if sign == "-" and path and is_comment_line(path, t)
-    )
+    moved = Counter()
+    in_block, expected = False, None
+    for sign, path, lineno, text in _body_lines(diff):
+        if sign != "-" or not path:
+            continue
+        # As in collect(), a /* */ body is read across contiguous lines only. A
+        # removed line does not advance the new line number, so a run of them
+        # shares one, and any line kept or added between two breaks the run.
+        if expected != (path, lineno):
+            in_block = False
+        expected = (path, lineno)
+        is_comment = is_comment_line(path, text)
+        if not path.endswith((".py", ".pyi")):
+            in_block, has_code = _scan_line(text, in_block)
+            is_comment = not has_code
+        if is_comment:
+            moved[strip_comment_markers(text)] += 1
+    return moved
 
 
 def _body_lines(diff):
