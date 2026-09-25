@@ -708,11 +708,7 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 #endif
 
 #if __AIE_ARCH__ == 20
-// 1x1 conv on [C/8][W][8] rows: each mmul<4,8,8> takes 4 pixels x 8 input
-// channels against one [8][8] weight block. A row is covered by 4-pixel
-// chunks; when input_width is not a multiple of 4 the last chunk starts at
-// input_width - 4 and overlaps the one before it. Rounds half to even and
-// saturates like the scalar.
+// See k1_load in bn_conv2dk1_relu.cc for the layout and chunking.
 template <bool Aligned>
 static inline aie::vector<uint8, 32> k1_load(const uint8_t *p) {
   if constexpr (Aligned)
@@ -721,9 +717,7 @@ static inline aie::vector<uint8, 32> k1_load(const uint8_t *p) {
     return aie::load_unaligned_v<32>(p, 8);
 }
 
-// An unaligned store rewrites the enclosing 64-byte window. Buffers are
-// 32-byte aligned, so storing a 32-byte aligned vector directly keeps that
-// window from reaching past the end of the buffer.
+// See k1_store in bn_conv2dk1_relu.cc.
 template <bool Aligned>
 static inline void k1_store(int8_t *p, aie::vector<int8, 32> v) {
   if (Aligned || ((uintptr_t)p & 31) == 0)
@@ -732,8 +726,7 @@ static inline void k1_store(int8_t *p, aie::vector<int8, 32> v) {
     aie::store_unaligned_v(p, v, 8);
 }
 
-// N chunks of one output channel block. Chunk j is at byte offset 32 * j
-// from in/out, except the last at last_off.
+// See k1_chunks in bn_conv2dk1_relu.cc.
 template <bool Aligned, int N>
 static inline void
 k1_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,

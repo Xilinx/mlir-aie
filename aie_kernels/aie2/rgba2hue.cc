@@ -66,9 +66,9 @@ comp_divisor_16b(::aie::vector<uint8_t, 32> divisor,
 }
 
 #if __AIE_ARCH__ == 20
-// Kept rolled, the loop pipelines (three iterations in flight) only when it is
-// known to run at least four times, and only when it is the one copy of the
-// body in its function; a shorter row takes the plain loop in its own function.
+// As in rgba2gray.cc (see there), the loop pipelines only when known to run
+// at least four times, and here also only as the one copy of the body in its
+// function; a shorter row takes the plain loop in its own function.
 template <bool MinFour>
 __attribute__((noinline)) void
 rgba2hue_rows(uint8_t *__restrict rgba_in, uint8_t *__restrict hue_out,

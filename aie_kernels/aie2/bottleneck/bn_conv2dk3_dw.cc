@@ -367,7 +367,7 @@ conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
 #if __AIE_ARCH__ == 20
 // One [W][8] row of a channel block per call; 32 lanes are 4 pixels x 8
 // channels. A row dropped by `check` gets zero weights, so its line contents
-// never reach the sum. Rounds half to even and saturates like the scalar.
+// never reach the sum.
 using dw_v = aie::vector<uint8, 32>;
 using dw_w = aie::vector<int8, 32>;
 
@@ -406,9 +406,7 @@ static inline aie::vector<uint8, N> dw_load(const uint8_t *p) {
     return aie::load_unaligned_v<N>(p, 8);
 }
 
-// An unaligned store rewrites the enclosing 64-byte window. Buffers are
-// 32-byte aligned, so storing a 32-byte aligned vector directly keeps that
-// window from reaching past the end of the buffer.
+// See k1_store in bn_conv2dk1_relu.cc.
 template <bool Aligned>
 static inline void dw_store(uint8_t *p, aie::accum<acc32, 32> acc, int scale) {
   dw_v v = acc.to_vector<uint8>(scale);

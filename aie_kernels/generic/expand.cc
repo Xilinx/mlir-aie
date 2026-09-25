@@ -53,8 +53,8 @@ void expand(T_in *__restrict in, T_out *__restrict out) {
     c.bias = mul_elem_16_2(neg_bias, c.lo);
     return c;
   };
-  auto block = [&](const aie::vector<uint8, 64> &biased_bytes, const scale &c)
-      __attribute__((always_inline)) {
+  auto block = [&](const aie::vector<uint8, 64> &biased_bytes,
+                   const scale &c) __attribute__((always_inline)) {
     const v32bfloat16 biased = biased_bytes.cast_to<bfloat16>();
     aie::store_v(pO,
                  aie::accum<accfloat, 16>(mac_elem_16_2(biased, c.lo, c.bias))
@@ -65,8 +65,8 @@ void expand(T_in *__restrict in, T_out *__restrict out) {
     pO += block_size;
   };
   // Two blocks from one 64-nibble load.
-  auto two_blocks = [&](const scale &c0, const scale &c1)
-      __attribute__((always_inline)) {
+  auto two_blocks = [&](const scale &c0,
+                        const scale &c1) __attribute__((always_inline)) {
     const aie::vector<uint8, 64> nibbles =
         aie::unpack(aie::load_v<2 * block_size>(pI));
     pI += block_size;

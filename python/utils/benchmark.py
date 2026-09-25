@@ -164,7 +164,7 @@ def print_benchmark(result: BenchmarkResult) -> None:
 
 
 def peano_version() -> str | None:
-    """The Peano that compiles the kernels, as ``21.0.0+c9c5ecb7``.
+    """Return the Peano that compiles the kernels, as ``21.0.0+c9c5ecb7``.
 
     Asked of the compiler itself rather than read from the ``llvm-aie``
     distribution: ``PEANO_INSTALL_DIR`` can select any build, and the
@@ -187,7 +187,7 @@ def peano_version() -> str | None:
 
 
 def kernel_tree_digest() -> str | None:
-    """A 12-hex digest of the kernel sources the library factories compile.
+    """Return a 12-hex digest of the kernel sources the library factories compile.
 
     Every file under ``aie_kernels_dir()`` and ``aie_runtime_lib_dir()``, by
     relative path and content. The commit alone cannot say which kernels

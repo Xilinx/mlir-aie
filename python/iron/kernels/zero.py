@@ -14,9 +14,9 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
-    Trace,
     KernelContract,
     TensorLayout,
+    Trace,
     _default_source_path,
     _detect_arch,
     _make_extern,

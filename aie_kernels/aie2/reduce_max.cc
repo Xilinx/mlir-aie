@@ -27,9 +27,8 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   V running_max = tiny;
 
 #if __AIE_ARCH__ == 20
-  // A walked pointer and a rolled loop pipeline at II2 per vector, its two
-  // loads. Indexing `in + i` unrolls into one serial chain: II15 per 4
-  // vectors for int32, II9 per 2 for bfloat16.
+  // Walked pointer, rolled loop: see reduce_add.cc. For bfloat16, indexing
+  // `in + i` gives II9 per 2 vectors.
   const T *p = in;
   AIE_LOOP_NO_UNROLL
   for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i += VECTOR_SIZE) {

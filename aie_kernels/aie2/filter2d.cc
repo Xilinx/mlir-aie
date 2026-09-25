@@ -108,10 +108,8 @@ void filter2d_3lines_aie(uint8_t *FILTER2D_RESTRICT lineIn0,
     output += VecFactor;
   };
 #if __AIE_ARCH__ == 20
-  // Kept rolled, the loop pipelines (four iterations in flight) when it is
-  // known to run at least four times, that is when i = 5 * VecFactor still
-  // passes the test; the count drops the zero-trip guard, so a shorter row
-  // takes the plain loop.
+  // Pipelined when known to run at least four times (see rgba2gray.cc), that
+  // is when i = 5 * VecFactor still passes the test.
   if (5 * (int)VecFactor < width - 1) {
     AIE_LOOP_NO_UNROLL
     AIE_LOOP_MIN_ITERATION_COUNT(4)

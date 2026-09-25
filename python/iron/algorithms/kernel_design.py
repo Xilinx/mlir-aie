@@ -510,7 +510,7 @@ def _timed(kernel, role: str) -> bool:
 
 
 def _traced(fn):
-    """``(setup traced, [traced initializer argument indices])``, checked."""
+    """Return ``(setup traced, [traced initializer argument indices])``, checked."""
     c = _contract(fn)
     setup = bool(c.setup) and _timed(c.setup(), "setup")
     inits = [i for i, init in c.initializers if _timed(init(fn), f"initializer {i}")]

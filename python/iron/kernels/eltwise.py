@@ -12,9 +12,9 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
-    Trace,
     KernelContract,
     Param,
+    Trace,
     _default_source_path,
     _dtype_to_bit_width,
     _make_extern,

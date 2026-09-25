@@ -60,8 +60,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::vector<bfloat16, 16> max_val_vec =
       aie::broadcast<bfloat16, 16>(aie::reduce_max(max_accum_vec));
 
-  // Rotated by one: the pipeliner cannot tell the output store from the table
-  // reads, so each iteration's reads waited for the previous iteration's store.
+  // Rotated by one, as in exp_bf16_func: see bf16_exp.cc.
   aie::vector<bfloat16, 16> prev =
       to_v16bfloat16(getExpBf16(aie::sub(*it_exp_in++, max_val_vec)));
   exp_val_accum = add(exp_val_accum, prev);

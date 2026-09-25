@@ -26,6 +26,17 @@
 #include <stdint.h>
 
 #if __AIE_ARCH__ == 20
+template <int K>
+__attribute__((always_inline)) static inline ::aie::vector<bfloat16, 32>
+shifted(const ::aie::vector<bfloat16, 32> &w0,
+        const ::aie::vector<bfloat16, 32> &w1, int p) {
+  if (p >= K)
+    return ::aie::zeros<bfloat16, 32>();
+  if (p == 0)
+    return w0;
+  return ::aie::shuffle_down_fill(w0, w1, p);
+}
+
 // AIE2 has no bf16 sliding multiply: a bf16 vmac.f sums, per lane i of 16,
 // a[i] * b[i] and a[16 + i] * b[16 + i]. aie_api's sliding_mul spends one per
 // tap with the upper halves zeroed, two shuffle-slot ops per tap and block.
@@ -56,17 +67,6 @@ dwconv1d_cf_blocks(const bfloat16 *restrict in_pad, const bfloat16 *restrict w,
         ::aie::broadcast<bfloat16, 16>(w[2 * j]),
         2 * j + 1 < K ? ::aie::broadcast<bfloat16, 16>(w[2 * j + 1]) : zero16);
 
-  const ::aie::vector<bfloat16, 32> zero32 = ::aie::zeros<bfloat16, 32>();
-  auto shifted = [&](const ::aie::vector<bfloat16, 32> &w0,
-                     const ::aie::vector<bfloat16, 32> &w1, int p)
-      __attribute__((always_inline)) {
-    if (p >= K)
-      return zero32;
-    if (p == 0)
-      return w0;
-    return ::aie::shuffle_down_fill(w0, w1, p);
-  };
-
   auto two_blocks = [&]() __attribute__((always_inline)) {
     // Samples t .. t + 47; the lanes past t + 47 are never read.
     const ::aie::vector<bfloat16, 32> w0 = ::aie::concat(
@@ -77,8 +77,8 @@ dwconv1d_cf_blocks(const bfloat16 *restrict in_pad, const bfloat16 *restrict w,
     v16accfloat a = acc0, b = acc0;
     AIE_LOOP_UNROLL_FULL
     for (int j = 0; j < NP; j++) {
-      const v32bfloat16 sp = shifted(w0, w1, 2 * j);
-      const v32bfloat16 sq = shifted(w0, w1, 2 * j + 1);
+      const v32bfloat16 sp = shifted<K>(w0, w1, 2 * j);
+      const v32bfloat16 sq = shifted<K>(w0, w1, 2 * j + 1);
       a = mac_elem_16_2(coeff[j], shuffle(sp, sq, INTLV_lo_256o512), a);
       b = mac_elem_16_2(coeff[j], shuffle(sp, sq, INTLV_hi_256o512), b);
     }
@@ -105,8 +105,8 @@ dwconv1d_cf_blocks(const bfloat16 *restrict in_pad, const bfloat16 *restrict w,
     v16accfloat a = acc0;
     AIE_LOOP_UNROLL_FULL
     for (int j = 0; j < NP; j++) {
-      const v32bfloat16 sp = shifted(w0, w0, 2 * j);
-      const v32bfloat16 sq = shifted(w0, w0, 2 * j + 1);
+      const v32bfloat16 sp = shifted<K>(w0, w0, 2 * j);
+      const v32bfloat16 sq = shifted<K>(w0, w0, 2 * j + 1);
       a = mac_elem_16_2(coeff[j], shuffle(sp, sq, INTLV_lo_256o512), a);
     }
     ::aie::store_v(out, ::aie::accum<accfloat, 16>(a).to_vector<bfloat16>());

@@ -20,9 +20,9 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
-    Trace,
     KernelContract,
     Param,
+    Trace,
     _conv_act_dtype_info,
     _default_source_path,
     _detect_arch,
@@ -577,7 +577,7 @@ def conv2dk3(
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # aiecc measured_stack_size (Peano 22) on aie2p; 0 B on aie2
+            # 0 B on aie2; see conv2dk1 for the aie2p figure's source
             stack_bytes=4736 if _detect_arch() == "aie2p" else None,
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
@@ -635,7 +635,7 @@ def conv2dk1_skip(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # aiecc measured_stack_size (Peano 22, uint8) on aie2p; 32 B on aie2
+            # 32 B on aie2; see conv2dk1 (uint8 here) for the aie2p figure
             stack_bytes=2752 if _detect_arch() == "aie2p" else None,
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,

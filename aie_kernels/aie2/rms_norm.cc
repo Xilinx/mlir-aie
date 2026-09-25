@@ -11,11 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// The row statistics run on the vector unit, every lane holding the same
-// value: scalar f32 mul, div and int-to-float are soft-float libcalls on AIE2,
-// and its f32 vector multiply is a 9-mac bf16 emulation. A bf16 mac sums two
-// exact products into each f32 lane, lane i getting a[i] b[i] + a[i+16]
-// b[i+16], so an f32 held as [hi | lo] bf16 limbs times a bf16 is one mac.
+// Row statistics in bf16 limbs, as in layer_norm.cc (see there); here an f32
+// held as [hi | lo] limbs times a bf16 is one mac.
 static inline v32bfloat16 bf16_pair(v16bfloat16 lo, v16bfloat16 hi) {
   return concat(lo, hi);
 }
@@ -66,8 +63,7 @@ static inline v32bfloat16 inv_rms_limbs(float sum_sq, int32_t cols,
       bf16_pair(to_v16bfloat16(r), zero),
       bf16_pair(bf16_lanes(y0_bits - 0x80), zero), ups_to_v16accfloat(y0)));
 
-  // y = y1 (1 + r / 2 + 3 r^2 / 8) with r = 1 - m y1^2 taken exactly: y1^2 is
-  // exact in two limbs, and |r| < 1e-2 leaves the cubic term under 4e-7.
+  // See inv_sqrt_limbs in layer_norm.cc.
   bfloat16 y1_s = ::aie::vector<bfloat16, 16>(y1)[0];
   int32_t y1_bits = __builtin_bit_cast(int16_t, y1_s);
   v32bfloat16 y1_sq =
@@ -106,8 +102,7 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
   event0();
   const unsigned vector_chunks = (uint32_t)cols / N;
   const int remaining = cols - vector_chunks * N;
-  // The pipelined loops are promised MIN_CHUNKS chunks, since the promised
-  // trip count caps the stage count. Shorter rows take the plain loops.
+  // See MIN_CHUNKS in layer_norm.cc.
   constexpr unsigned MIN_CHUNKS = 8;
   const bool pipelined = vector_chunks >= MIN_CHUNKS;
 

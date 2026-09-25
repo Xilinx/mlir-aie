@@ -11,9 +11,9 @@ from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 
 from ._common import (
-    Trace,
     KernelContract,
     Param,
+    Trace,
     _default_source_path,
     _detect_arch,
     _dtype_to_bit_width,

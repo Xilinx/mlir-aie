@@ -31,7 +31,7 @@ not LLVM's documented ones):
 | ``aie-asm-printer`` | ``Analysis`` / ``analysis`` | ``BasicBlock``, ``BundleCount``, ``ByteCount`` | ``pm_bytes`` (summed over the shipped functions) |
 | ``aie-multi-slot-pseudo`` | ``Missed`` / ``missing-memory-bank`` | ``Instruction`` | ``missing_bank_loads`` |
 | stderr | ``-Wpass-failed`` | a ``#pragma clang loop`` / ``AIE_*`` macro the compiler dropped | ``pass_failed_warnings``, text kept |
-| the object | ``llvm-readobj`` sections, symbols, relocations | what the entry symbol reaches | the shipped functions; ``libcalls`` (runtime-library symbols, e.g. ``__divsf3``) |
+| the object | ``llvm-readobj`` sections, symbols, relocations | what the entry symbol reaches | the shipped functions; ``libcalls`` (e.g. ``__divsf3``) |
 | the object | ``llvm-readobj --stack-sizes`` (``-fstack-size-section``) | frame bytes per function | ``stack_bytes`` on the deepest path from the entry |
 
 The loop counts and ``pm_bytes`` cover only the functions the entry symbol
@@ -536,7 +536,7 @@ _MAX_EVENTS = 4
 
 
 def _ir_functions(ir: str) -> dict[str, list[tuple[str, list[str]]]]:
-    """``{function: [(block, lines)]}``; an unnamed entry block is ``"0"``."""
+    """Return ``{function: [(block, lines)]}``; an unnamed entry block is ``"0"``."""
     functions: dict[str, list[tuple[str, list[str]]]] = {}
     blocks = None
     for line in ir.splitlines():
@@ -594,7 +594,7 @@ def _cycles(succs: dict[str, list[str]]) -> set[str]:
 
 
 def _marker_paths(functions, name: str, memo: dict) -> set[str] | str:
-    """The event0/event1 sequences a call of ``name`` can emit, or why it is not a set.
+    """Return the event0/event1 sequences a call of ``name`` can emit, or why they are not a set.
 
     ``{"01"}`` is one whole-call pair on every path, ``{""}`` no markers. A
     string return is the reason the markers are not per call (one inside a
@@ -766,7 +766,7 @@ def _kernel_file(ext_fn, out_dir: Path) -> tuple[Path, list[str]]:
 
 
 def entry_symbol(ext_fn) -> str:
-    """The symbol the kernel source defines, before the JIT's per-build prefix."""
+    """Return the symbol the kernel source defines, before the JIT's per-build prefix."""
     return getattr(ext_fn, "_original_name", ext_fn.name)
 
 
@@ -981,13 +981,13 @@ def main(argv=None) -> int:
 
     for index, ((name, ef), (rep, detail)) in enumerate(zip(builds, analyzed)):
         source = ef.source_file or f"<inline {ef.name}.cc>"
+        budget = (
+            ef.contract and ef.contract.stack_bytes
+        ) or device.default_core_stack_bytes
         if rep is None:
             failed.append(f"{name}: {detail}")
         else:
             rows += report_rows(rep, name, extra)
-            budget = (
-                ef.contract and ef.contract.stack_bytes
-            ) or device.default_core_stack_bytes
             meta["kernels"][name] = {
                 "source": source,
                 "symbol": entry_symbol(ef),

@@ -213,10 +213,9 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
 }
 
 #if __AIE_ARCH__ == 20
-// AIE2 has no f32 vector multiply: aie_api builds one from bf16 macs, and the
-// loops above run at II 77 to 143 per 16 lanes. Here an f32 is split into bf16
-// limbs: two hold its top 16 bits, three all of it. A bf16 mac sums two exact
-// products into each f32 lane, lane i getting a[i] b[i] + a[i+16] b[i+16].
+// With aie_api's f32 multiply the loops above run at II 77 to 143 per 16
+// lanes on AIE2. Here an f32 is split into bf16 limbs, two holding its top 16
+// bits and three all of it; see aie2/layer_norm.cc for the mac.
 static inline v32bfloat16 bf16_pair(v16bfloat16 lo, v16bfloat16 hi) {
   return concat(lo, hi);
 }
@@ -280,8 +279,7 @@ static inline v16accfloat inv_sqrt(v16accfloat m_acc) {
       bf16_pair(to_v16bfloat16(r), zero),
       bf16_pair(bf16_lanes(y0_bits - 0x80), zero), ups_to_v16accfloat(y0)));
 
-  // y2 = y1 (1 + r / 2 + 3 r^2 / 8) with r = 1 - m y1^2 taken exactly: y1^2 is
-  // exact in two limbs, and |r| < 1e-2 leaves the cubic term under 4e-7.
+  // y2 = y1 (1 + r / 2 + 3 r^2 / 8); see inv_sqrt_limbs in aie2/layer_norm.cc.
   bfloat16 y1_s = ::aie::vector<bfloat16, 16>(y1)[0];
   int32_t y1_bits = __builtin_bit_cast(int16_t, y1_s);
   v32bfloat16 y1_sq =
@@ -391,8 +389,7 @@ static void layer_norm_f32_aie2(const float *restrict input,
   event0();
   constexpr unsigned N = 16;
   const unsigned chunks = (uint32_t)cols / N;
-  // The pipelined loops are promised MIN_CHUNKS chunks, since the promised
-  // trip count caps the stage count. Shorter rows take the plain loops.
+  // See MIN_CHUNKS in aie2/layer_norm.cc.
   constexpr unsigned MIN_CHUNKS = 8;
   const bool pipelined = chunks >= MIN_CHUNKS;
   // 1 / n from a Q31 quotient. Divided first: no vector state is live across

@@ -130,13 +130,12 @@ void conv2dk3_i8_stride2_scalar(
 }
 
 #if __AIE_ARCH__ == 20
-// Stride-2 3x3 on [C/8][W][8] rows, input_width a multiple of 8. Each
-// mmul<4,8,8> takes 4 output pixels x 8 input channels against one [8][8]
-// weight block. Input pixels 2x .. 2x + 7 split with filter_even into the
-// centre tap and filter_odd into the right tap; the odd pixels shifted up by
-// one, with pixel 2x - 1 from the chunk before (zero at x = 0), give the left
-// tap. Rows dropped by `check` are skipped. Rounds half to even and saturates
-// like the scalar.
+// Stride-2 3x3, input_width a multiple of 8; see k1_load in
+// bn_conv2dk1_relu.cc for the layout and mmul tiling.
+// Input pixels 2x .. 2x + 7 split with filter_even into the centre tap and
+// filter_odd into the right tap; the odd pixels shifted up by one, with pixel
+// 2x - 1 from the chunk before (zero at x = 0), give the left tap. Rows
+// dropped by `check` are skipped.
 template <int N, bool Left>
 static inline void k3_chunks(const int8_t *const *lines, const int8_t *wts,
                              uint8_t *__restrict out, const int32_t r0,

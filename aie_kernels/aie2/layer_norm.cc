@@ -12,9 +12,10 @@
 
 // The row statistics run on the vector unit, every lane holding the same
 // value: scalar f32 mul, div and int-to-float are soft-float libcalls on AIE2,
-// and its f32 vector multiply is a 9-mac bf16 emulation. A bf16 mac sums two
-// exact products into each f32 lane, lane i getting a[i] b[i] + a[i+16]
-// b[i+16], so an f32 held as bf16 limbs times a bf16 is one mac per two limbs.
+// and its f32 vector multiply is no better (see activations.h). A bf16 mac
+// sums two exact products into each f32 lane, lane i getting a[i] b[i] +
+// a[i+16] b[i+16], so an f32 held as bf16 limbs times a bf16 is one mac per two
+// limbs.
 static inline v32bfloat16 bf16_pair(v16bfloat16 lo, v16bfloat16 hi) {
   return concat(lo, hi);
 }

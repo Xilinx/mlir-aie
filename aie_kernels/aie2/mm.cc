@@ -170,9 +170,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           C11.mac(A1, B1);
         };
 
-        // Peano only software-pipelines an innermost single-block loop, so
-        // unrolling K folds it into the 'j' body, where the C loads and stores
-        // can overlap the MACs.
+        // Unrolling K lets 'j' pipeline; see the same switch in aie2p/mm.cc.
         if constexpr (unroll_k) {
           AIE_LOOP_UNROLL_FULL
           for (unsigned i = 0; i < colA; ++i)
