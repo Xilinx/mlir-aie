@@ -86,8 +86,7 @@ def _factory(case_id: str):
 
 @pytest.fixture(autouse=True)
 def _aie2p_device(npu2_device):
-    # Factories pick sources and mac_dims from the current device; a few
-    # (mm_activation_epilogue) exist only for aie2p.
+    # Factories pick sources and mac_dims from the current device.
     yield
 
 
@@ -1781,6 +1780,10 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
                 header = Path(ef.source_file).parent / include
                 if header.is_file():
                     src += "\n" + header.read_text()
+        # aie2/lut_kernel.cc includes the kernel named by this flag.
+        for flag in ef.compile_flags or ():
+            if flag.startswith("-DAIE_LUT_KERNEL_SOURCE="):
+                src += "\n" + Path(flag.split("=", 1)[1].strip('"')).read_text()
         src = _active_source(src, ef.compile_flags)
         sets_own = bool(_SET_ROUNDING_CALL.search(src))
         if sets_own:

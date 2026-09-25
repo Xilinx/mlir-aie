@@ -856,14 +856,12 @@ CASES: list[Case] = [
         calls=16,
         scalars=(0,),
         tag="identity",
-        devices=("npu2",),
     ),
     Case(
         "mm_activation_epilogue",
         calls=16,
         scalars=(1,),
         tag="silu",
-        devices=("npu2",),
         smoke=True,
     ),
     Case(
@@ -871,7 +869,6 @@ CASES: list[Case] = [
         calls=16,
         scalars=(2,),
         tag="gelu",
-        devices=("npu2",),
         smoke=True,
     ),
     Case(
@@ -879,7 +876,6 @@ CASES: list[Case] = [
         calls=16,
         scalars=(3,),
         tag="relu",
-        devices=("npu2",),
     ),
     # depthwise 1-D conv: 1024 outputs per call from a padded row
     Case(

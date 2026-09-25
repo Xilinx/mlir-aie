@@ -7,8 +7,8 @@
 
 The bf16 norms and RoPE are re-exported from ``norm`` and ``datamovement``;
 they support aie2 and aie2p, with ``cols`` as an alias for ``tile_size``.
-The activation epilogue is aie2p-only; the f32/affine norms take their aie2p
-source on both generations. Each processes one row
+The activation epilogue and the f32/affine norms take their aie2p source on
+both generations. Each processes one row
 (``cols`` elements) per call; the row length is a scalar ``Param`` the
 factory binds to ``cols``. These are the kernels
 ``programming_examples/ml/{norm,rope,mm_activation_epilogue}`` build.
@@ -27,7 +27,9 @@ from ._common import (
     _default_source_path,
     _detect_arch,
     _make_extern,
+    _runtime_lib_include,
 )
+from .activation import _bf16, tanh_lut_ref
 from .core import conv_even
 from .datamovement import rope as rope
 from .datamovement import rope_ref as rope_ref
@@ -46,11 +48,10 @@ _NORM_F32 = Tolerance.relative(
 )
 
 
-def _aie2p_only(name: str, source: str) -> None:
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError(
-            f"{name}: aie_kernels/aie2p/{source} has no aie2 port; select an NPU2 device"
-        )
+_EPILOGUE_LUT_TOLERANCE = Tolerance.exact(
+    note="model of the aie2 build; measured bit-exact on npu1 over every "
+    "extensive data case, 3 seeds"
+)
 
 
 def _cols(name: str, cols: int) -> None:
@@ -161,31 +162,50 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
     switch activations without recompiling
     (programming_examples/ml/mm_activation_epilogue).
 
+    AIE2 has no tanh instruction, so there SiLU and GELU read getTanhBf16's
+    table, and the build is judged against a model of that arithmetic
+    instead of the true functions.
+
     Args:
         tile_size: Elements per call (multiple of 16).
     """
-    _aie2p_only("mm_activation_epilogue", "mm_activation_epilogue.cc")
     _cols("mm_activation_epilogue", tile_size)
     tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
+    source = _default_source_path("mm_activation_epilogue.cc", subdir="aie2p")
+    lut = _detect_arch() == "aie2"
+    flags = None
+    if lut:
+        # lut_kernel.cc compiles the source next to lut_based_ops.cpp, whose
+        # tables getTanhBf16 reads.
+        flags = [f'-DAIE_LUT_KERNEL_SOURCE="{source}"', f"-I{_runtime_lib_include()}"]
+        source = _default_source_path("lut_kernel.cc")
     return _make_extern(
         "mm_activation_epilogue_row",
-        _default_source_path("mm_activation_epilogue.cc", subdir="aie2p"),
+        source,
         [tile_ty, tile_ty, np.int32, np.int32],
+        compile_flags=flags,
         contract=KernelContract(
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, Out, Param, Param),
             parameter_bindings=((2, tile_size),),
-            reference=mm_activation_epilogue_ref,
+            reference=(
+                mm_activation_epilogue_lut_ref if lut else mm_activation_epilogue_ref
+            ),
             acc_dtype=np.float32,
             reduction=1,
-            tolerance=Tolerance.relative(
-                0.128,
-                0.05,
-                note="programming_examples/ml/mm_activation_epilogue: atol 0.05 "
-                "for the bf16-internal SiLU / GELU, identity and ReLU are exact",
+            tolerance=(
+                _EPILOGUE_LUT_TOLERANCE
+                if lut
+                else Tolerance.relative(
+                    0.128,
+                    0.05,
+                    note="programming_examples/ml/mm_activation_epilogue: atol 0.05 "
+                    "for the bf16-internal SiLU / GELU, identity and ReLU are exact",
+                )
             ),
             ops_per_call=8 * tile_size,
+            uses_lut=lut,
         ),
     )
 
@@ -240,3 +260,42 @@ def mm_activation_epilogue_ref(x, mode):
     if mode == 3:
         return np.maximum(x32, 0.0).astype(x.dtype)
     raise ValueError(f"mm_activation_epilogue mode must be 0, 1, 2 or 3, got {mode}")
+
+
+def mm_activation_epilogue_lut_ref(x, mode):
+    """Model of [`mm_activation_epilogue`][iron.kernels.transformer.mm_activation_epilogue] on aie2.
+
+    Follows mm_activation_epilogue.cc's roundings around getTanhBf16
+    ([`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref]). SiLU splits
+    ``x`` into bf16 ``hi`` and ``lo`` terms and multiplies each by the bf16
+    sigmoid ``(bf16(t + 1)) / 2``, where ``t`` is the table's tanh of
+    ``x / 2`` narrowed to bf16. The device's f32 ``x - hi`` first rounds
+    ``x`` (half to even) onto ``hi``'s f32 grid, which moves ``lo`` where
+    ``hi`` rounded up across a power of two. GELU runs in bf16: ``x``,
+    ``x * x`` and the inner polynomial are each rounded before the next step,
+    and the output is ``bf16(x / 2) * bf16(t + 1)``. Both return +0 where
+    IEEE arithmetic gives -0, as the accumulator does. Identity and ReLU are
+    exact.
+    """
+    x32 = np.asarray(x, np.float32)
+    mode = int(mode)
+    if mode not in (1, 2):
+        return mm_activation_epilogue_ref(x, mode)
+    with np.errstate(over="ignore", invalid="ignore"):
+        if mode == 1:
+            hi = _bf16(x32)
+            grid = np.spacing(np.abs(hi)).astype(np.float64)
+            x_on_grid = (np.round(x32 / grid) * grid).astype(np.float32)
+            lo = _bf16(np.where(np.isfinite(grid), x_on_grid, x32) - hi)
+            t = tanh_lut_ref(_bf16(hi * np.float32(0.5) + lo * np.float32(0.5)))
+            sig = _bf16(_bf16(t + np.float32(1.0)) * np.float32(0.5))
+            out = hi * sig + lo * sig
+        else:
+            c0 = _bf16(np.float32(0.7978845608))
+            c0c1 = _bf16(np.float32(0.7978845608) * np.float32(0.044715))
+            xb = _bf16(x32)
+            poly = _bf16(c0 + c0c1 * _bf16(xb * xb))
+            t = tanh_lut_ref(_bf16(xb * poly))
+            half_x = _bf16(np.float32(0.5) * xb)
+            out = half_x * _bf16(t + np.float32(1.0))
+    return (out + np.float32(0.0)).astype(x.dtype)

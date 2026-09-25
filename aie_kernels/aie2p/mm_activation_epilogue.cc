@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
+#include "../generic/activations.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -49,11 +50,11 @@ mul_split(const bf16_split &x, const aie::vector<bfloat16, 16> &y) {
   return aie::mac(aie::mul(x.hi, y), x.lo, y).to_vector<float>();
 }
 
-// SiLU: out = x * sigmoid(x), sigmoid built from the tanh SFU as
-// 0.5*(1 + tanh(x/2)). Both multipliers of x are exact in bf16 - 0.5, and
-// sigmoid's [0, 1] result - so a two-term split of x carries the whole f32
-// input into each product. An all-f32 chain overruns the per-tile cycle
-// budget and hangs.
+// SiLU: out = x * sigmoid(x), sigmoid built from tanh (the SFU on aie2p,
+// getTanhBf16's table on aie2) as 0.5*(1 + tanh(x/2)). Both multipliers of x
+// are exact in bf16 - 0.5, and sigmoid's [0, 1] result - so a two-term split of
+// x carries the whole f32 input into each product. An all-f32 chain overruns
+// the per-tile cycle budget and hangs.
 static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
                                       float *__restrict out) {
   event0();
@@ -65,7 +66,7 @@ static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
     aie::vector<float, 16> x = *it_in++;
     bf16_split xs = split_f32(x);
     aie::vector<float, 16> half_x = mul_split(xs, halfb);
-    aie::vector<bfloat16, 16> tanh_half_x = aie::tanh<bfloat16>(half_x);
+    aie::vector<bfloat16, 16> tanh_half_x = tanh_bf16_vec<16>(half_x);
     aie::vector<bfloat16, 16> tanh_p1 = aie::add(tanh_half_x, one);
     aie::vector<bfloat16, 16> sig = aie::mul(tanh_p1, halfb);
     *it_out++ = mul_split(xs, sig);
@@ -101,7 +102,7 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
     aie::vector<bfloat16, 16> x2 = aie::mul(x, x);
     aie::vector<bfloat16, 16> poly = aie::mac(c0acc, c0c1, x2);
     auto inner = aie::mul(x, poly);
-    aie::vector<bfloat16, 16> t = aie::tanh<bfloat16>(inner.to_vector<float>());
+    aie::vector<bfloat16, 16> t = tanh_bf16_v16(inner);
     aie::vector<bfloat16, 16> t_p1 = aie::add(t, one);
     *it_out++ = aie::mul(half_x, t_p1).to_vector<float>();
   }

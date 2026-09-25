@@ -177,6 +177,7 @@ from .transformer import (
     layer_norm_f32,
     layer_norm_f32_ref,
     mm_activation_epilogue,
+    mm_activation_epilogue_lut_ref,
     mm_activation_epilogue_ref,
 )
 from .vision import (
@@ -231,6 +232,7 @@ __all__ = [
     "rope_ref",
     "mm_activation_epilogue",
     "mm_activation_epilogue_ref",
+    "mm_activation_epilogue_lut_ref",
     "reduce_add",
     "reduce_min",
     "reduce_max",

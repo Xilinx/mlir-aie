@@ -81,7 +81,7 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | gemm | [mm.cc](./aie2p/mm.cc) | AIE API | Matrix/Matrix multiplication | `int8_t`,`int16_t`,`bfloat16` |
 | gemm | [mm_bfp.cc](./aie2p/mm_bfp.cc) | AIE API | Block-floating-point matmul | `bfp16` |
 | gemm | [mm_bfp_mixed.cc](./aie2p/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul | `bfp16` |
-| gemm | [mm_activation_epilogue.cc](./aie2p/mm_activation_epilogue.cc) | AIE API | Matmul with fused activation epilogue | `bfloat16` |
+| gemm | [mm_activation_epilogue.cc](./aie2p/mm_activation_epilogue.cc) | AIE API | Matmul with fused activation epilogue | `float32` |
 | |
 | activation | [gelu.cc](./aie2p/gelu.cc) | AIE API | GELU activation. Kept separate from the AIE2 copy: this one is MAC-fused with an `s*beta` precompute and post-RA pipelining (II=18), which is tuning, not an arch constant | `bfloat16` |
 | activation | [silu.cc](./generic/silu.cc) | AIE API | SiLU / Swish activation (shared; tanh path from `activations.h`) | `bfloat16` |
