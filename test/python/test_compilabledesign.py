@@ -606,6 +606,18 @@ def test_artifact_hash_names_the_kernel_source_tree(monkeypatch):
     assert len({installed, base, change}) == 3
 
 
+def test_artifact_hash_reads_the_kernel_source_tree(monkeypatch, tmp_path):
+    # A candidate edited in place under one tree must not reuse its old build.
+    generator = _gemm_gen()
+    source = tmp_path / "aie_kernels" / "k.cc"
+    source.parent.mkdir()
+    source.write_text("int k;")
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(tmp_path))
+    before = _compute_artifact_hash(generator, [], [], True)
+    source.write_text("int k2;")
+    assert _compute_artifact_hash(generator, [], [], True) != before
+
+
 _ADD_STACK = {"bytes": 1024}
 
 
