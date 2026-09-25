@@ -775,8 +775,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,  # f32 in, bf16 out, size
         expected_name="cast_f32_bf16_row",
         # Binds aie2p/cast_f32_bf16.cc (upstream's cast, chosen over the dropped
-        # IRON convert_copy.cc — see KERNEL_DEDUP_REPORT §4.1); aie2p-only source.
-        requires_npu2=True,
+        # IRON convert_copy.cc — see KERNEL_DEDUP_REPORT §4.1).
         invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
     ),
     KernelSpec(

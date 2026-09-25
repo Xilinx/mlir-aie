@@ -9,7 +9,7 @@ Most wrap arch-agnostic sources under ``aie_kernels/generic/`` — plain
 ``aie_api`` vector code with no LUT dependency, resolved through
 ``_default_source_path``'s ``generic/`` fallback.  ``convert_copy`` is the
 exception: it binds ``aie2p/cast_f32_bf16.cc`` (the maintained f32->bf16 cast
-with host-matching ``conv_even`` rounding), and is aie2p-only.
+with host-matching ``conv_even`` rounding) on both generations.
 """
 
 import numpy as np
@@ -23,7 +23,6 @@ from ._common import (
     KernelContract,
     Param,
     _default_source_path,
-    _detect_arch,
     _make_extern,
     dtypes,
 )
@@ -158,7 +157,7 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
     Backed by ``aie_kernels/aie2p/cast_f32_bf16.cc`` (symbol
     ``cast_f32_bf16_row``), which rounds with ``conv_even`` — bit-for-bit
     agreeing with a host AVX512-BF16 pack — and restores the core's rounding
-    mode on exit.  aie2p-only.
+    mode on exit.  The same source builds for aie2.
 
     Args:
         tile_size: Elements per tile (multiple of 16).
@@ -168,19 +167,16 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
 
     Raises:
         ValueError: When ``tile_size`` is not a multiple of 16.
-        NotImplementedError: On aie2 (the kernel has not been ported).
     """
     if tile_size % 16 != 0:
         raise ValueError(
             f"convert_copy() tile_size must be a multiple of 16, got {tile_size}."
         )
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError("convert_copy() is only available on aie2p.")
     in_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
         "cast_f32_bf16_row",
-        _default_source_path("cast_f32_bf16.cc"),
+        _default_source_path("cast_f32_bf16.cc", subdir="aie2p"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
             trace=Trace.whole_call(),
