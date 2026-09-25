@@ -37,10 +37,11 @@ using namespace aie;
 // with seven of its bundles empty -- so four iterations are unrolled into it,
 // which packs the same II with four times the work.
 //
-// Only where tanh is the single vtanh, though. The LUT path's body is already
-// around eighty bundles and is limited by its table loads rather than by an
-// unfilled schedule, so unrolling it buys 13% and costs 848 bytes of program
-// memory (II77 over 32 iterations at 576 bytes, against II269 over 8 at 1424).
+// Only where tanh is the single vtanh, though. The LUT path's body in aie2p's
+// use_lut build (AIE2 runs silu_aie2 below instead) is already around eighty
+// bundles and is limited by its table loads rather than by an unfilled
+// schedule, so unrolling it buys 13% and costs 848 bytes of program memory
+// (II77 over 32 iterations at 576 bytes, against II269 over 8 at 1424).
 template <int lanes>
 static inline void silu_impl(bfloat16 *restrict input_vector,
                              bfloat16 *restrict output_vector,

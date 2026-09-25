@@ -262,8 +262,9 @@ CASES: list[Case] = [
     Case("mul_sized", calls=16, smoke=True, perf=False),
     Case("relu_sized", calls=16, smoke=True, perf=False),
     Case("silu_sized", calls=16, smoke=True, perf=False),
-    # Same remainder pass as the leaky_relu case above: 160 steps the 32-lane
-    # loop five times, where its unrolled body consumes four.
+    # Same remainder pass as the leaky_relu case above on aie2p: 160 steps the
+    # 32-lane loop five times, where its unrolled body consumes four. On aie2,
+    # 160 is two 64-element trips and a 32-element remainder.
     Case(
         "silu_sized",
         dict(tile_size=160),
@@ -282,8 +283,9 @@ CASES: list[Case] = [
         perf=False,
     ),
     Case("gelu_sized", calls=16, smoke=True, perf=False),
-    # gelu's 32-lane loop is unrolled four ways too, so it has the same
-    # remainder pass and the same need for a size that is not a multiple of it.
+    # On aie2p gelu's 32-lane loop is unrolled four ways too, so it has the
+    # same remainder pass and the same need for a size that is not a multiple
+    # of it. On aie2, as for silu, 160 leaves a remainder after two trips.
     Case(
         "gelu_sized",
         dict(tile_size=160),
