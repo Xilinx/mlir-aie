@@ -585,6 +585,10 @@ CASES: list[Case] = [
     Case("swiglu", calls=256),
     # vision: uint8 lines of 1920 pixels
     Case("gray2rgba", calls=16, smoke=True),
+    # AIE2 steps 32 pixels at a time, pipelined from 4 steps, then 16 at a
+    # time: 4 steps and a tail, and 3 steps and a tail.
+    Case("gray2rgba", dict(line_width=144), calls=4, tag="tail", perf=False),
+    Case("gray2rgba", dict(line_width=112), calls=4, tag="short-row", perf=False),
     Case("rgba2gray", calls=16, smoke=True),
     # Five vectors, one under the count the AIE2 pipelined loop requires.
     Case("rgba2gray", dict(line_width=160), calls=4, tag="short-row", perf=False),
