@@ -210,19 +210,36 @@ inline void scale_by_inv_l(bf16 *o, float *l, float *y) {
   aie::store_v(o, AL00.template to_vector<bf16>());
 }
 
-/// Lanes 8i .. 8i+7 of v repeated four times.
-inline aie::vector<bf16, 32> broadcast_128(aie::vector<bf16, 32> v, int i) {
-#if __AIE_ARCH__ == 20
-  aie::vector<bf16, 8> e = v.extract<8>(i);
-  return aie::concat(e, e, e, e);
-#else
-  return (v32bfloat16)::broadcast_elem_128((v16int32)v, i);
-#endif
-}
-
 /// Y += S * V across one 8-row block of y: kTiles 8x8 output tiles, the i-th
 /// taking its V tile from pV + i * kVStride.
-///
+#if __AIE_ARCH__ == 20
+// AIE2 has no vextbcst to build the operands below from, so each tile is one
+// mmul<8, 8, 8>. It sums in a different order from ascending k, which the aie2
+// tolerance in linalg.py allows for. y is loaded one tile pair ahead so that
+// the next pair's load need not wait for this pair's store.
+template <unsigned kTiles, unsigned kVStride>
+void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
+                  const bf16 *__restrict pV) {
+  using MMUL = aie::mmul<8, 8, 8, bf16, bf16, accauto>;
+  const aie::vector<bf16, 64> S = aie::load_v<64>(pS);
+  aie::vector<float, 64> y0 = aie::load_v<64>(pY);
+  aie::vector<float, 64> y1 = aie::load_v<64>(pY + 64);
+  for (unsigned j = 0; j < kTiles; j += 2) {
+    float *pYn = j + 2 < kTiles ? pY + 128 : pY;
+    aie::vector<float, 64> yn0 = aie::load_v<64>(pYn);
+    aie::vector<float, 64> yn1 = aie::load_v<64>(pYn + 64);
+    MMUL Y0(y0), Y1(y1);
+    Y0.mac(S, aie::load_v<64>(pV));
+    Y1.mac(S, aie::load_v<64>(pV + kVStride));
+    aie::store_v(pY, Y0.template to_vector<float>());
+    aie::store_v(pY + 64, Y1.template to_vector<float>());
+    y0 = yn0;
+    y1 = yn1;
+    pY = pYn;
+    pV += 2 * kVStride;
+  }
+}
+#else
 /// The emulated mmul spends two 32-lane macs and a shuffle per k on one 8x8
 /// tile. Two neighbouring output tiles fill one 64-lane accumulator instead,
 /// rows 0-3 of both in L and rows 4-7 in H, and then one native mac per k
@@ -244,8 +261,8 @@ void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
   AIE_LOOP_UNROLL_FULL
   for (int k = 0; k < 8; k++) {
     // Lane (r, c) of A holds S[r][k].
-    aie::vector<bf16, 32> b =
-        broadcast_128(St.template extract<32>(k / 4), k % 4);
+    aie::vector<bf16, 32> b = (v32bfloat16)::broadcast_elem_128(
+        (v16int32)St.template extract<32>(k / 4), k % 4);
     aie::vector<bf16, 64> A = aie::transpose(aie::concat(b, b), 8, 8);
     AL[k] = aie::concat(A.template extract<32>(0), A.template extract<32>(0));
     AH[k] = aie::concat(A.template extract<32>(1), A.template extract<32>(1));
@@ -269,10 +286,10 @@ void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
     aie::vector<bf16, 64> V1 = aie::load_v<64>(pV + kVStride);
     AIE_LOOP_UNROLL_FULL
     for (int k = 0; k < 8; k++) {
-      aie::vector<bf16, 32> b0 =
-          broadcast_128(V0.template extract<32>(k / 4), k % 4);
-      aie::vector<bf16, 32> b1 =
-          broadcast_128(V1.template extract<32>(k / 4), k % 4);
+      aie::vector<bf16, 32> b0 = (v32bfloat16)::broadcast_elem_128(
+          (v16int32)V0.template extract<32>(k / 4), k % 4);
+      aie::vector<bf16, 32> b1 = (v32bfloat16)::broadcast_elem_128(
+          (v16int32)V1.template extract<32>(k / 4), k % 4);
       aie::vector<bf16, 64> B = aie::concat(b0, b1);
       L = aie::mac(L, AL[k], B);
       H = aie::mac(H, AH[k], B);
@@ -290,6 +307,7 @@ void sv_row_block(float *__restrict pY, const bf16 *__restrict pS,
     pV += 2 * kVStride;
   }
 }
+#endif
 
 //===----------------------------------------------------------------------===//
 // Per-geometry steps

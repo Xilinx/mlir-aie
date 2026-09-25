@@ -1125,9 +1125,9 @@ def mha_softmax_ref(a, idx, s_q_eff, s_kv_eff, *, scale):
 # deepest call the five entry points reach, and both geometries share
 # sv_row_block's frame, so they need the same stack. On aie2 both need
 # _PREFILL_STACK_AIE2 under Peano 22, measured with all five entry points on
-# one core (test_flash_attn_prefill_e2e.py); fv_step alone needs 2400.
+# one core (test_flash_attn_prefill_e2e.py); prefill_epilogue is the deepest.
 _PREFILL_GEOM = {512: (8, 8, 1984), 256: (16, 16, 1984)}
-_PREFILL_STACK_AIE2 = 2432
+_PREFILL_STACK_AIE2 = 1152
 
 
 def prefill_fv(head_dim: int = 512) -> ExternalFunction:
@@ -1159,7 +1159,8 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     if head_dim not in _PREFILL_GEOM:
         raise ValueError(f"prefill_fv: head_dim must be 512 or 256, got {head_dim}")
     lq, lk, stack_bytes = _PREFILL_GEOM[head_dim]
-    if _detect_arch() == "aie2":
+    aie2 = _detect_arch() == "aie2"
+    if aie2:
         stack_bytes = _PREFILL_STACK_AIE2
     # flash_attn_prefill.h's MMUL is aie::mmul<8, 8, 8, bf16, bf16>, the native
     # bf16 micro-tile, not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.
@@ -1202,12 +1203,24 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             # (8 + 8 < 24) and the only error against a float64 reference is
             # f32 summation order over lk terms, bounded by lk * 2**-24 ~ 1e-6.
             # The margin below that is ~10x, not the ~50000x inheriting would
-            # have given, which would hide nearly any real bug.
-            tolerance=Tolerance.relative(
-                1e-5,
-                1e-5,
-                note="f32 accumulation order over lk<=16 exact bf16 products: "
-                "lk * 2**-24 ~ 1e-6; verified on npu1 and npu2 at this bound",
+            # have given, which would hide nearly any real bug. On aie2 the
+            # mmul sums in a different order, and on large inputs whose
+            # products cancel that order error exceeds any relative bound, so
+            # it is judged against the order bound itself.
+            tolerance=(
+                Tolerance.bounded(
+                    partial(_prefill_fv_bound, dim_m=lq, dim_k=lk, dim_n=head_dim),
+                    note="f32 summation order over lk exact bf16 products, in "
+                    "the kernel and the reference; measured worst 0.12 of it "
+                    "on npu1",
+                )
+                if aie2
+                else Tolerance.relative(
+                    1e-5,
+                    1e-5,
+                    note="f32 accumulation order over lk<=16 exact bf16 "
+                    "products: lk * 2**-24 ~ 1e-6; verified on npu2 at this bound",
+                )
             ),
             ops_per_call=2 * lq * lk * head_dim,
         ),
@@ -1235,6 +1248,18 @@ def prefill_fv_ref(s, v, *, dim_m: int, dim_k: int, dim_n: int):
     s = np.asarray(s).reshape(-1, dim_m, dim_k).astype(np.float32)
     v = np.asarray(v).reshape(-1, dim_k, dim_n).astype(np.float32)
     return (s @ v).reshape(len(s), dim_m * dim_n)
+
+
+def _prefill_fv_bound(s, v, *, dim_m: int, dim_k: int, dim_n: int):
+    """Per-output bound on ``|y - prefill_fv_ref|`` from summation order alone.
+
+    Every product is exact in float32, so a ``dim_k``-term float32 sum in any
+    order is within ``dim_k * 2**-24 * sum|s*v|`` of the exact dot product.
+    The kernel and the float32 reference each carry that error, hence 2.
+    """
+    s = np.abs(np.asarray(s, np.float64)).reshape(-1, dim_m, dim_k)
+    v = np.abs(np.asarray(v, np.float64)).reshape(-1, dim_k, dim_n)
+    return 2 * dim_k * 2.0**-24 * (s @ v).reshape(len(s), dim_m * dim_n)
 
 
 def mm_bfp_shuffle_ref(tile, tile_width, tile_height, unshuffle):
