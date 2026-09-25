@@ -252,8 +252,8 @@ def rope(
     HuggingFace-style ``rope_two_halves`` over the Llama-paper interleave
     ``rope``. ``cols`` aliases ``tile_size``. Both architectures use the generic
     source; rows must be positive multiples of 16 (interleaved) or 32
-    (two halves, keeping each half 32-byte aligned). Two-halves rows may end
-    with a scalar tail. Each input row has its own streamed (cos, sin) LUT.
+    (two halves, keeping each half 32-byte aligned). Each input row has its own
+    streamed (cos, sin) LUT.
     """
     tile_size = _row_size("rope", tile_size, cols, 32 if two_halves else 16)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
