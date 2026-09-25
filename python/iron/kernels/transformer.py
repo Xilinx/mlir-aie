@@ -33,7 +33,7 @@ from .activation import _bf16, tanh_lut_ref
 from .core import conv_even
 from .datamovement import rope as rope
 from .datamovement import rope_ref as rope_ref
-from .norm import _NORM_BF16
+from .norm import _LAYER_NORM_BF16_AIE2, _NORM_BF16
 from .norm import layer_norm as layer_norm
 from .norm import layer_norm_ref as layer_norm_ref
 from .norm import rms_norm as rms_norm
@@ -45,6 +45,12 @@ _EPS = 1e-5
 # canonical bf16 rtol; the f32 LayerNorm pins rtol = 0 so a 1e-3 atol governs.
 _NORM_F32 = Tolerance.relative(
     0.0, 1e-3, note="programming_examples/ml/norm layer_f32: atol 1e-3, rtol 0"
+)
+# The aie2 kernel multiplies in three bf16 limbs. Its error measured on npu1
+# grows with cols: 9.5e-7 at 1024 and 2048, 1.4e-6 at 3072 and 1.9e-6 at
+# 4096. For |y| >= 1, |got - ref| / (|got| + |ref|) reaches 3.1e-7.
+_NORM_F32_AIE2 = Tolerance.relative(
+    2.0**-21, 2e-6, note="aie2, measured on npu1 for cols up to 4096"
 )
 
 
@@ -101,9 +107,9 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
     A separate factory rather than a dtype of
     [`layer_norm`][iron.kernels.norm.layer_norm], though both come from
     one templated core in ``layer_norm.cc``: this one is held to atol 1e-3
-    instead of the bf16 tolerance, which its reference meets only by computing
-    the variance two-pass in float64. Merging them would put that numerical
-    difference behind a dtype switch.
+    (2e-6 on aie2) instead of the bf16 tolerance, which its reference meets
+    only by computing the variance two-pass in float64. Merging them would
+    put that numerical difference behind a dtype switch.
 
     Args:
         cols: Elements per row (multiple of 16).
@@ -116,7 +122,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         np.float32,
         np.float32,
         layer_norm_f32_ref,
-        _NORM_F32,
+        _NORM_F32_AIE2 if _detect_arch() == "aie2" else _NORM_F32,
         6 * cols,
         # Headroom: the frame measures 256 bytes on AIE2P and 64 on AIE2, and
         # neither build calls a soft-float helper.
@@ -149,7 +155,9 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
             reference=layer_norm_affine_cast_ref,
             acc_dtype=np.float32,
             reduction=cols,
-            tolerance=_NORM_BF16,
+            tolerance=(
+                _LAYER_NORM_BF16_AIE2 if _detect_arch() == "aie2" else _NORM_BF16
+            ),
             ops_per_call=8 * cols,
         ),
     )
