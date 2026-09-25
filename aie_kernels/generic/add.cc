@@ -17,6 +17,7 @@
 
 #ifndef ADD_ELEMS
 #define ADD_ELEMS size
+#define ADD_ELEMS_RUNTIME
 #endif
 
 // One bf16 vector register: 512 bits on AIE2P, 256 on AIE2.
@@ -46,8 +47,33 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
 // registers.
 #define ADD_UNROLL 4
 
+// AIE2 instead runs one chain per iteration, which the pipeliner overlaps to
+// one vector per cycle once the pointers are restrict and the loop is kept
+// rolled.  Only a converts on load (vlda.conv is a-port only); b loads as bf16
+// on the b port and is added as b * 1 in a mac.
+#if __AIE_ARCH__ == 20
+#define ADD_RESTRICT __restrict
+
+template <typename T_in, typename T_out, int vec_factor>
+void eltwise_vadd_aie2(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
+                       aie::restrict_vector_iterator<T_in, vec_factor> &pB,
+                       aie::restrict_vector_iterator<T_out, vec_factor> &pC,
+                       int n) {
+  const auto ones = aie::broadcast<T_in, vec_factor>(1.0f);
+  AIE_LOOP_NO_UNROLL
+  for (int i = 0; i < n; i++) {
+    aie::accum<accfloat, vec_factor> acc;
+    acc.from_vector(*pA++);
+    *pC++ = aie::mac(acc, *pB++, ones).template to_vector<T_out>();
+  }
+}
+#else
+#define ADD_RESTRICT
+#endif
+
 template <typename T_in, typename T_out, const int N>
-void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
+void eltwise_vadd(T_in *ADD_RESTRICT a, T_in *ADD_RESTRICT b,
+                  T_out *ADD_RESTRICT c) {
 
   constexpr int vec_factor = ADD_VEC_FACTOR;
   event0();
@@ -55,6 +81,10 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   constexpr int F = N / vec_factor;
+#if __AIE_ARCH__ == 20
+  eltwise_vadd_aie2<T_in, T_out, vec_factor>(pA1, pB1, pC1,
+                                             F / ADD_UNROLL * ADD_UNROLL);
+#else
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F / ADD_UNROLL; i++) {
     auto A0 = *pA1++;
@@ -70,6 +100,7 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
     *pC1++ = aie::add(A2, B2);
     *pC1++ = aie::add(A3, B3);
   }
+#endif
   // Whole vectors past the last full group of four.  N is a compile-time
   // constant, so for the 1024-element tile the factories build this is zero
   // iterations and folds away entirely.
@@ -82,7 +113,8 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
 // Runtime size (need not divide vec_factor); scalar tail avoids the full-width
 // load_v/store_v reading/writing past the buffer on a short final vector.
 template <typename T_in, typename T_out>
-void eltwise_vadd_size(T_in *a, T_in *b, T_out *c, int size) {
+void eltwise_vadd_size(T_in *ADD_RESTRICT a, T_in *ADD_RESTRICT b,
+                       T_out *ADD_RESTRICT c, int size) {
   constexpr int vec_factor = ADD_VEC_FACTOR;
   event0();
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
@@ -93,6 +125,11 @@ void eltwise_vadd_size(T_in *a, T_in *b, T_out *c, int size) {
   // it is a mask.  The leftovers sit behind one branch so a size that is a
   // multiple of the unrolled step pays for a single test, not two.
   const int F = (uint32_t)ADD_ELEMS / vec_factor;
+// The single chain needs its 14-stage schedule's trip count at compile time.
+#if __AIE_ARCH__ == 20 && !defined(ADD_ELEMS_RUNTIME)
+  eltwise_vadd_aie2<T_in, T_out, vec_factor>(pA1, pB1, pC1,
+                                             F / ADD_UNROLL * ADD_UNROLL);
+#else
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F / ADD_UNROLL; i++) { // see eltwise_vadd
     auto A0 = *pA1++;
@@ -108,6 +145,7 @@ void eltwise_vadd_size(T_in *a, T_in *b, T_out *c, int size) {
     *pC1++ = aie::add(A2, B2);
     *pC1++ = aie::add(A3, B3);
   }
+#endif
   if ((uint32_t)ADD_ELEMS % (vec_factor * ADD_UNROLL)) {
     for (int i = 0; i < F % ADD_UNROLL; i++) {
       *pC1++ = aie::add(*pA1++, *pB1++);
