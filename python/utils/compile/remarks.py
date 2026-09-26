@@ -47,6 +47,8 @@ neighbouring memory without a fault.
 ``--baseline-sources DIR`` compiles everything a second time from ``DIR``
 and prints each row that differs, for a before/after of a kernel change;
 a loop LLVM only renamed, its rows unchanged, is counted but not listed.
+It names the ``aie_kernels/`` this tree compiled and warns when that is the
+installed copy (``MLIR_AIE_KERNEL_SOURCES`` unset) or the baseline itself.
 ``--keep DIR`` keeps the objects, which ``--meta`` names per build.
 
 The loop-scheduling pass reports as ``pipeliner`` (a ``postpipeliner``
@@ -1014,6 +1016,33 @@ def _analyze_builds(builds, target: str, workdir: Path, jobs: int) -> list:
         return list(pool.map(compile_one, enumerate(builds)))
 
 
+def current_kernel_sources(baseline: str) -> tuple[str, str | None]:
+    """Return the ``aie_kernels/`` "this tree" compiles, and a warning if suspect.
+
+    Without ``MLIR_AIE_KERNEL_SOURCES`` the factories compile the installed
+    copy, which is the checkout as of its last build or install: a
+    before/after of an uncommitted edit then compares the baseline against
+    the old kernels and reads as no change.
+    """
+    from aie.utils import config
+
+    current = config.aie_kernels_dir()
+    if not os.environ.get("MLIR_AIE_KERNEL_SOURCES"):
+        return current, (
+            f"MLIR_AIE_KERNEL_SOURCES is unset, so this tree's kernels are the "
+            f"installed copy {current}, as of the last build or install; set it "
+            "to the checkout under test"
+        )
+    if os.path.realpath(current) == os.path.realpath(
+        os.path.join(baseline, "aie_kernels")
+    ):
+        return current, (
+            f"this tree and the baseline are both {baseline}; set "
+            "MLIR_AIE_KERNEL_SOURCES to the checkout under test"
+        )
+    return current, None
+
+
 def _baseline(
     tree: str, only, target: str, workdir: Path, jobs: int, rows, builds=kernel_builds
 ) -> dict:
@@ -1161,6 +1190,10 @@ def main(argv=None) -> int:
     workdir = Path(a.keep or tempfile.mkdtemp(prefix="aie-static-"))
     print(f"compiling into {workdir}")
     source_root = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    if a.baseline_sources:
+        current_sources, suspect = current_kernel_sources(a.baseline_sources)
+        if suspect:
+            print(f"warning: {suspect}", file=sys.stderr)
     rows: list[dict] = []
     failed: list[str] = []
     meta: dict = {"kernels": {}}
@@ -1236,11 +1269,15 @@ def main(argv=None) -> int:
         )
         meta["baseline"] = {
             "sources": a.baseline_sources,
+            "current_sources": current_sources,
+            "warning": suspect,
             "changed": changed["rows"],
             "renamed": changed["renamed"],
         }
+        if suspect:
+            print(f"warning: {suspect}")
         print(
-            f"baseline {a.baseline_sources} -> this tree: "
+            f"baseline {a.baseline_sources} -> this tree ({current_sources}): "
             f"{len(changed['rows'])} rows differ"
             + (
                 f"; {len(changed['renamed'])} loops renamed with the same rows, "

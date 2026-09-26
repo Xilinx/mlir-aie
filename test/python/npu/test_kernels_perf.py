@@ -40,6 +40,7 @@ import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.benchmark import preflight, provenance, run_iters
+from aie.utils.compile.remarks import current_kernel_sources
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
 
@@ -272,7 +273,15 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
     ]
     cycles_range = [cycles(base), cycles(current)]
     npu_us_range = [npu_us(base), npu_us(current)]
-    baseline = config._perf_meta.setdefault("baseline", {"sources": tree, "cases": {}})
+    if "baseline" not in config._perf_meta:
+        current_sources, suspect = current_kernel_sources(tree)
+        config._perf_meta["baseline"] = {
+            "sources": tree,
+            "current_sources": current_sources,
+            "warning": suspect,
+            "cases": {},
+        }
+    baseline = config._perf_meta["baseline"]
     baseline["cases"][case.name] = {
         "cycles": [r and r["min"] for r in cycles_range],
         "npu_us_min": [r and r["min"] for r in npu_us_range],
