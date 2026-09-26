@@ -14,7 +14,7 @@
 // RUN: cat %t/ckpt/*/input_with_symbols.mlir | FileCheck --check-prefix=MLIR %s
 
 // The routing failure is reported and a resumable checkpoint is written.
-// CHECK: slave port packet rules exceed the 4-slot limit
+// CHECK: need 5 packet rules, and a slave port holds 4
 // CHECK: aiecc: wrote checkpoint to
 // CHECK: To reproduce, run: aiecc --resume={{.*}}/manifest.json
 

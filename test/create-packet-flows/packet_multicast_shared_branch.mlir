@@ -15,6 +15,8 @@
 // (0,0) and (0,1). If id 23 splits at (0,2) and takes two channels down, the
 // link is one short and routing never converges. It must split at (0,1).
 
+// Nothing programs the DMAs, so the design itself may deadlock.
+// NOWARN: warning: Flows can deadlock however they are routed
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%tile_0_2)

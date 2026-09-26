@@ -2129,6 +2129,14 @@ void AIEPathfinderPass::runOnOperation() {
   // the router finds is checked by planning the arbiters on it, and one that
   // cannot be planned counts as illegal, so routing and allocation agree.
   StreamConflicts conflicts(d);
+  if (auto pairs = conflicts.unavoidable(); !pairs.empty()) {
+    InFlightDiagnostic warning =
+        emitWarning(d.getLoc(), "Flows can deadlock however they are routed: ")
+        << conflicts.explain(pairs[0].first, pairs[0].second);
+    if (pairs.size() > 1)
+      warning << " So can " << pairs.size() - 1 << " other pair"
+              << (pairs.size() > 2 ? "s" : "") << " of flows.";
+  }
   DynamicTileAnalysis &analyzer = getAnalysis<DynamicTileAnalysis>();
   std::map<PathEndPoint, SmallVector<size_t, 4>> streamsFrom;
   if (clRoutePacket && !d.getOps<PacketFlowOp>().empty()) {

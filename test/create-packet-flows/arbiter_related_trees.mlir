@@ -16,6 +16,8 @@
 // wait. Counting it as a conflict kept them apart where they must meet, and
 // routing failed.
 
+// Nothing programs the DMAs, so the design itself may deadlock.
+// NOWARN: warning: Flows can deadlock however they are routed
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)

@@ -15,6 +15,8 @@
 // flow at a time used up its msels on a design with arbiters to spare, and
 // then crashed. The master sets now spread over two arbiters.
 
+// Nothing programs the DMAs, so the design itself may deadlock.
+// NOWARN: warning: Flows can deadlock however they are routed
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_5_1)

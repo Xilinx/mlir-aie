@@ -234,8 +234,13 @@ public:
   /// so the same holds for any two streams of such trees.
   bool conflict(size_t s, size_t t);
 
-  /// Why `s` and `t` conflict. Requires conflict(s, t).
+  /// Why `s` and `t` conflict. Requires conflict(s, t), or (s, t) from
+  /// unavoidable().
   std::string explain(size_t s, size_t t);
+
+  /// The requested streams where the first can hold up the second however
+  /// they are routed, as one source or receiver already orders them.
+  llvm::SmallVector<std::pair<size_t, size_t>> unavoidable();
 
   /// A cycle of waits the packet streams can deadlock in when routed along
   /// `routes`, indexed like getStreams(), that the routing of some requested

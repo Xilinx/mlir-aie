@@ -1648,6 +1648,16 @@ class Analysis:
             )
         return self._conflicts[(s, t)]
 
+    def unavoidable(self):
+        """StreamConflicts::unavoidable."""
+        n = self.num_requested
+        return [
+            (s, t)
+            for s in range(n)
+            for t in range(n)
+            if s != t and self.related(s, t) and self.can_block(s, t)
+        ]
+
     def explain(self, s, t):
         self.graph
         return (
@@ -4327,6 +4337,28 @@ def debug_flags():
     return (DEBUG_ONLY,) if _debug_ok[0] else ()
 
 
+def unavoidable_warning(an):
+    """The warning the router gives for pairs no routing keeps from deadlocking."""
+    pairs = an.unavoidable()
+    if not pairs:
+        return None
+    s = "Flows can deadlock however they are routed: " + an.explain(*pairs[0])
+    if len(pairs) > 1:
+        s += f" So can {len(pairs) - 1} other pair{'s' if len(pairs) > 2 else ''} of flows."
+    return s
+
+
+def router_warning(stderr):
+    return next(
+        (
+            l.split(" warning: ", 1)[1].strip()
+            for l in stderr.splitlines()
+            if "however they are routed" in l
+        ),
+        None,
+    )
+
+
 def first_error(stderr):
     return next(
         (l.strip() for l in stderr.splitlines() if "error" in l), stderr.strip()[:300]
@@ -4564,6 +4596,14 @@ def main(argv=None):
         return outs, errs, route_batch(tagged, hops_on, debug_flags()), spent
 
     failed, illegal, nondet = [], [], 0
+    inherent, inherent_wrong = Counter(), []
+
+    def check_inherent(tag, an, stderr):
+        want, got = unavoidable_warning(an), router_warning(stderr)
+        inherent[want is not None] += 1
+        if want != got:
+            inherent_wrong.append(f"{tag}: router {got!r}, model {want!r}")
+
     known = Counter()
     totals = defaultdict(int)
     route_time = 0.0
@@ -4594,6 +4634,8 @@ def main(argv=None):
                 continue
             if outs[seed] != again[0].get(seed):
                 nondet += 1
+            if seed in again[2]:
+                check_inherent(f"seed {seed}{mode}", c["analysis"], again[2][seed])
             problems, stats = verify(d, c["analysis"], outs[seed], hops_on)
             if problems and (label := known_bug(d, problems)):
                 known[label] += 1
@@ -4680,6 +4722,8 @@ def main(argv=None):
     for c, p in zip(kcases, run_cases(kcases, route_one)):
         outcomes[c["shape"]][p.returncode != 0] += 1
         tag = f"seed {c['seed']} ({c['shape']})"
+        if p.returncode >= 0:
+            check_inherent(tag, c["analysis"], p.stderr)
         if p.returncode < 0:
             unknown_illegal.append(f"{tag}: crashed: {first_error(p.stderr)[:300]}")
             save(c, "crash", c["design"].emit(), p.stderr)
@@ -4703,6 +4747,14 @@ def main(argv=None):
         "unknown-legality",
         not unknown_illegal,
         f"{len(unknown_illegal)} illegal or crashed of {len(kcases)}",
+    )
+    for line in inherent_wrong[:10]:
+        print("WRONG WARNING:", line)
+    report(
+        "inherent",
+        not inherent_wrong,
+        f"{sum(inherent.values()) - len(inherent_wrong)}/{sum(inherent.values())} "
+        f"warn as the model predicts ({inherent[True]} warn)",
     )
 
     for label, count in sorted(known.items()):
