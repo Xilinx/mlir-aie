@@ -166,6 +166,18 @@ def test_draw_row_rejects_n53_outside_53_bits(n53):
         sample.draw_row(1.0, 1, n53)
 
 
+@pytest.mark.parametrize("top_k", [0, -1, 1.0, True])
+def test_draw_row_rejects_non_positive_top_k(top_k):
+    with pytest.raises(ValueError, match="top_k must be a positive integer"):
+        sample.draw_row(1.0, top_k, 0)
+
+
+def test_draw_row_rejects_top_k_beyond_int32():
+    assert sample.draw_row(1.0, (1 << 31) - 1, 0)[1] == (1 << 31) - 1
+    with pytest.raises(ValueError, match="int32"):
+        sample.draw_row(1.0, 1 << 31, 0)
+
+
 # --- exp64 -----------------------------------------------------------------
 
 
@@ -403,6 +415,39 @@ def test_reference_rejects_nan_and_plus_infinity(bad):
     for temperature in (0.0, 1.0):
         with pytest.raises(ValueError, match="NaN or \\+inf"):
             sample.sample_ref(logits, temperature, 4, 0)
+
+
+@pytest.mark.parametrize("top_k", [0, -1, 2.0, True])
+def test_reference_rejects_non_positive_top_k(top_k):
+    logits = np.zeros(8, dtype=bfloat16)
+    # Temperature 0 ignores top_k, but not an invalid one.
+    for temperature in (0.0, 1.0):
+        with pytest.raises(ValueError, match="top_k must be a positive integer"):
+            sample.sample_ref(logits, temperature, top_k, 0)
+    with pytest.raises(ValueError, match="top_k must be a positive integer"):
+        sample.sample_weights(logits, 1.0, top_k)
+    with pytest.raises(ValueError, match="k_max must be a positive integer"):
+        sample.sample_ref(logits, 1.0, 4, 0, k_max=top_k)
+
+
+@pytest.mark.parametrize("k_max", [1, 8, 64])
+def test_reference_clamps_top_k_to_k_max(k_max):
+    # Distinct logits falling in index order: the top k are the first k, so
+    # the last draw is the k-th, and tells a clamped top-k from the rest.
+    logits = (-np.arange(4 * k_max) / 64).astype(bfloat16)
+    last = (1 << 53) - 1
+    for top_k in (k_max + 1, 2 * k_max, 1 << 30):
+        assert sample.sample_ref(logits, 1.0, top_k, last) == min(top_k, 4 * k_max) - 1
+        assert sample.sample_ref(logits, 1.0, top_k, last, k_max=k_max) == k_max - 1
+    rng = np.random.default_rng(k_max)
+    logits = _logits(rng, 500, ties=3)
+    for top_k in (1, k_max, k_max + 1, 3 * k_max, 1 << 30):
+        for n53 in rng.integers(0, 1 << 53, 10, dtype=np.int64):
+            args = (logits, 0.7, top_k, int(n53))
+            want = sample.sample_ref(logits, 0.7, min(top_k, k_max), int(n53))
+            assert sample.sample_ref(*args, k_max=k_max) == want
+            if top_k <= k_max:
+                assert sample.sample_ref(*args) == want
 
 
 def test_reference_rejects_a_non_finite_scaled_maximum():
