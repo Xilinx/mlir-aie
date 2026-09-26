@@ -236,6 +236,11 @@ def _rows(vocab, cores, k_max, seed):
     for i in sorted(inner, key=lambda i: weights[i])[:8]:
         add(logits, 1.0, k_max, int(firsts[i]))
         add(logits, 1.0, k_max, int(firsts[i]) - 1)
+    # The same number of positions for every k_max: at some trip counts LLVM
+    # unrolls the combine core's loop over them, which overflows its program
+    # memory.
+    while len(rows) < 31:
+        add(logits, 1.0, k_max)
 
     logits = np.stack([r[0] for r in rows])
     draws = np.stack([sample.draw_row(t, k, n) for _, t, k, n in rows])
