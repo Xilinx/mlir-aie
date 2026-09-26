@@ -436,7 +436,15 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
         ],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            stack_bytes=1280,  # aiecc measured_stack_size
+            # aiecc measured_stack_size over 32 to 1280 channels: tuned for
+            # aie2p, 1280 B on the 64-lane path and 1024 B on the generic
+            # one; portable, 1280 B on aie2p and 416 B on aie2. The tuned
+            # aie2 build unrolls every channel: 672 B up to 384 channels,
+            # then up to 9 B per channel (8608 B at 960).
+            stack_bytes={
+                "aie2": None if channels <= 384 else 9 * channels - 32,
+                "aie2p": 1280 if channels % 64 == 0 else None,
+            }.get(_tuned_arch(), 1280),
             setup=conv_even,
             # lo/hi are buffers the design writes, so they are Param like
             # mha's idx gate: bound here rather than sampled, which also keeps
