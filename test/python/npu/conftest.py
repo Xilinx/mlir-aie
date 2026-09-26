@@ -100,7 +100,8 @@ def pytest_addoption(parser):
         default=None,
         help="also measure every case with its kernels from DIR (a checkout root, "
         "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words; the pair "
-        "goes to --perf-meta and the terminal summary, the rows stay this tree's",
+        "goes to --perf-meta and the terminal summary, the rows stay this tree's; "
+        "a baseline that fails this tree's contract is reported, not failed",
     )
     parser.addoption(
         "--report-error",
@@ -269,6 +270,11 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     for name, c in baseline["cases"].items():
         words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
         tr.write_line(f"{name}  words {words}")
+        if c["baseline_failed"]:
+            tr.write_line(
+                f"  baseline fails this tree's contract: {c['baseline_failed']}",
+                yellow=True,
+            )
         base, cur = c.get("accuracy", ([], []))
         for b, a in zip(base, cur):
             tr.write_line(f"  error[{b['output']}] {_accuracy_line(b)}")

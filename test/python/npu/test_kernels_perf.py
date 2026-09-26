@@ -72,8 +72,12 @@ def _param(case: Case):
 _PERF_CASES = [_param(c) for c in CASES if c.perf and c.name != SMOKE_TEST.name]
 
 
-def _measure(case: Case, config, workdir: Path) -> dict:
-    """Build, check and time one case. Raises if it is wrong."""
+def _measure(case: Case, config, workdir: Path, *, strict: bool = True) -> dict:
+    """Build, check and time one case. Raises if it is wrong, unless not ``strict``.
+
+    Not ``strict``, a wrong output is timed anyway and its verdict's detail
+    is the result's ``"failed"`` (None when it passed).
+    """
     fn = case.fn()
     factory = getattr(kernels, case.factory)
     inputs = inputs_for(case, "random", np.random.default_rng(0))
@@ -101,8 +105,12 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         inputs=inputs,
         scalars=case.scalars,
     )
-    assert verdict, f"{case.name}: {verdict.detail}"
-    measured: dict = {"outputs": got, "sizes": _sizes(design)}
+    assert verdict or not strict, f"{case.name}: {verdict.detail}"
+    measured: dict = {
+        "outputs": got,
+        "sizes": _sizes(design),
+        "failed": None if verdict else verdict.detail,
+    }
     measured["error"] = error_report(
         fn,
         got if len(got) > 1 else got[0],
@@ -241,10 +249,12 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
     """Measure ``case`` from the ``--baseline-sources`` tree beside the current one.
 
     Both sides get the same inputs, so their raw output words are compared
-    exactly, and both must pass the contract. The rows stay the current
-    tree's; the pair, each arm's min, max and n, and each arm's error against
-    the reference (``cases.error_report``) go to ``--perf-meta`` and
-    the terminal summary.
+    exactly. The current tree must pass the contract; the baseline is judged
+    by it too but only recorded, since the contract is this tree's and a
+    change can tighten it along with the kernel. The rows stay the current
+    tree's; the pair, each arm's min, max and n, each arm's error against
+    the reference (``cases.error_report``) and the baseline's verdict go to
+    ``--perf-meta`` and the terminal summary.
     """
     tree = config.getoption("--baseline-sources")
     # The baseline's kernels share their object names with this tree's but
@@ -253,7 +263,7 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("MLIR_AIE_KERNEL_SOURCES", tree)
         try:
-            base = _measure(case, config, workdir / "baseline")
+            base = _measure(case, config, workdir / "baseline", strict=False)
         except AssertionError as e:
             raise AssertionError(f"baseline tree {tree}: {e}") from None
 
@@ -289,6 +299,7 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
         "npu_us_range": npu_us_range,
         "differing_words": sum(words),
         "accuracy": [base["error"], current["error"]],
+        "baseline_failed": base["failed"],
     }
 
 
