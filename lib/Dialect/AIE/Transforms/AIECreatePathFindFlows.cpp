@@ -586,7 +586,9 @@ orderedRules(ArrayRef<GroupClaims> groups,
       return llvm::popcount(a.first) > llvm::popcount(b.first);
     });
     SmallVector<std::pair<uint64_t, size_t>> tried;
-    for (auto [own, g] : moves) {
+    for (auto move : moves) {
+      uint64_t own = move.first;
+      size_t g = move.second;
       if (llvm::any_of(tried, [&](auto t) {
             return t.second == g && (t.first & own) == own;
           }))
@@ -901,7 +903,9 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
            amselOp.arbiterIndex() + amselOp.getMselValue() * numArbiters});
 
   ArrayRef<RoutedStream> streams = conflicts.getStreams();
-  for (const auto &[tileId, candidates] : pinned) {
+  for (const auto &entry : pinned) {
+    TileID tileId = entry.first;
+    const SmallVector<size_t, 8> &candidates = entry.second;
     size_t free = 0;
     for (int a = 0; a < numArbiters; a++)
       free += llvm::any_of(llvm::seq(numMselsPerArbiter), [&](int m) {
@@ -1208,7 +1212,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     return bundle == WireBundle::North || bundle == WireBundle::South ||
            bundle == WireBundle::East || bundle == WireBundle::West;
   };
-  for (auto &[tileId, connects] : switchboxes) {
+  for (auto &entry : switchboxes) {
+    TileID tileId = entry.first;
+    auto &connects = entry.second;
     if (!clCircuitSwitchHops ||
         targetModel.isShimNOCorPLTile(tileId.col, tileId.row))
       continue;
@@ -1417,7 +1423,8 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   };
   std::optional<std::string> planFailure;
   for (const auto &[slaveFlow, sources] : slaveFlowSources) {
-    const auto &[first, firstMasters] = *sources.begin();
+    const PathEndPoint &first = sources.begin()->first;
+    const auto &firstMasters = sources.begin()->second;
     auto other = llvm::find_if(sources, [&](const auto &source) {
       return source.second != firstMasters;
     });
@@ -1913,7 +1920,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
             llvm::any_of(statedRules[gi], [&](std::pair<int, int> c) {
               return (id & c.first) == (c.second & c.first);
             });
-        [[maybe_unused]] auto first =
+        [[maybe_unused]] auto *first =
             llvm::find_if(plan.rules, [&](const PortRule &r) {
               return (id & r.mask) == r.value;
             });

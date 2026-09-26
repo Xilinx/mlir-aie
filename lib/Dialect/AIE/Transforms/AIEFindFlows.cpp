@@ -502,7 +502,7 @@ static std::vector<PacketConnection> exactPacketEndpoints(
   };
   SmallVector<PortConnection> dests;
   auto destIndex = [&](const PortConnection &d) {
-    auto it = llvm::find_if(
+    auto *it = llvm::find_if(
         dests, [&](const PortConnection &e) { return sameDest(d, e); });
     if (it != dests.end()) {
       return static_cast<unsigned>(it - dests.begin());

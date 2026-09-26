@@ -808,7 +808,7 @@ Pathfinder::findPaths(const int maxIterations) {
                                 packetId ? &conflicting[flow] : nullptr,
                                 &branchAvoid);
           // The nearest destination joins the tree next.
-          auto nearest = llvm::min_element(
+          auto *nearest = llvm::min_element(
               pending, [&](const PathEndPoint &a, const PathEndPoint &b) {
                 return distance[dstState(a)] < distance[dstState(b)];
               });
