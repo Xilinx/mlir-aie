@@ -520,6 +520,15 @@ def test_mm_i8_i32_stack_covers_measured_core(
 
 
 @pytest.mark.parametrize(
+    "input_width,kernel_width", [(112, 14), (336, 14), (230, 14), (240, 15)]
+)
+def test_conv2dk14_rejects_shapes_the_vector_paths_skip(input_width, kernel_width):
+    # The vector paths step 16 patches and 2 pixels at a time.
+    with pytest.raises(ValueError, match="conv2dk14"):
+        kernels.conv2dk14(input_width=input_width, kernel_width=kernel_width)
+
+
+@pytest.mark.parametrize(
     "device,portable,channels,minimum",
     [
         (NPU2Col1, False, 448, 1280),

@@ -71,6 +71,7 @@ conv2dk1/2048x8/uint8
 conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks
 conv2dk14/12544x4/uint8_int8
 conv2dk14/12544x4/uint8_int8/output_channels=24/three-groups
+conv2dk14/16384x4/uint8_int8/input_width=256/kernel_width=16/kernel-width-16
 conv2dk14/25088x4/uint8_int8/input_width=448/output_channels=8/two-tile-groups
 conv2dk1_i8/2048x8/int8
 conv2dk1_i8/4096x8/int8/input_width=64/two-blocks
