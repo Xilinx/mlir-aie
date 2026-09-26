@@ -16,9 +16,9 @@
 # nothing. The constructed layout is a solution by construction, so a failure to
 # allocate is an allocator bug and not an infeasible input.
 #
-# Completeness and quality are ratchets, not absolutes: packing around fixed
-# obstacles is NP-hard, so the allocator is a heuristic and a few adversarial
-# layouts defeat it. Tighten the bounds when the allocator improves; a drop
+# Completeness is absolute: when its ranked search fails, the allocator falls
+# back to an exhaustive one, so a feasible design that does not place is a bug.
+# Quality bounds are ratchets: tighten them when the allocator improves; a drop
 # below them is a regression.
 
 import argparse
@@ -76,6 +76,12 @@ def align_up(v, a):
     return ((v + a - 1) // a) * a
 
 
+def required_align(cfg, size):
+    """Alignment the allocator gives an `aligned` buffer it places: a buffer
+    holding a full-width vector gets the vector alignment, others the bus."""
+    return cfg["vec"] if size >= cfg["vec"] else cfg["bus"]
+
+
 def oracle_largest_free_run(cap, stack, blocks, vec):
     """Largest contiguous free run above the stack in the as-constructed
     (pre-hide) oracle layout. Caps a randomly chosen data_size to a
@@ -108,8 +114,6 @@ def build_design(rng, cfg):
         if rng.random() < 0.30:  # leave a hole for a later buffer to find
             cursor += rng.randint(1, max(1, bank // 2))
         aligned = rng.random() > 0.15
-        if aligned:
-            cursor = align_up(cursor, bus)
         roll = rng.random()
         if roll < 0.10:  # zero-sized: covers no bytes, placeable anywhere
             size = 0
@@ -119,6 +123,8 @@ def build_design(rng, cfg):
             size = rng.randint(1, max(1, bank // (2 * bus))) * bus
         else:  # deliberately larger than one bank
             size = rng.randint(bank + 1, min(3 * bank, cap - stack))
+        if aligned:
+            cursor = align_up(cursor, required_align(cfg, size))
         if cursor + size > cap:
             break
         blocks.append(dict(addr=cursor, size=size, aligned=aligned))
@@ -157,7 +163,10 @@ def build_design(rng, cfg):
     # and the block is checked like any other.
     core_data = None
     if cfg["stack"]:
-        free = [b for b in blocks if b["role"] == "free" and b["size"] > 0]
+        # The allocator always aligns the core's data region.
+        free = [
+            b for b in blocks if b["role"] == "free" and b["size"] > 0 and b["aligned"]
+        ]
         if free and rng.random() < 0.35:
             core_data = rng.choice(free)
             core_data["name"] = f'core_data_{cfg["tile"][0]}_{cfg["tile"][1]}'
@@ -195,14 +204,8 @@ def build_design(rng, cfg):
 # Object-derived per-bank reservations, on their own seed set so the numbers
 # above keep measuring exactly what they measured before.
 BANKRES_SEEDS = 12000
-# Set at the answer, not at what the allocator manages today: these two bounds
-# are the one place here that is not a ratchet. A ratchet guards what works,
-# which is right for a healthy metric and wrong for a known defect. Every design
-# counted is feasible by construction, so the only correct score is all of them.
-#
-# Currently ~97%: bank-pinned blocks go first and then largest-first, so on a
-# nearly full tile the allocator cannot rebuild the packing the oracle
-# constructed. Failures concentrate above 75% density, none at or below 70%.
+# Every design counted is feasible by construction, so the only correct score
+# is all of them.
 MIN_BANKRES_RATE = 1.0
 # Tiles whose ranked first choice does not work out, so only backtracking
 # places them, summed over the corpus from the pass's own statistics. A floor
@@ -740,6 +743,9 @@ def legality_violations(cfg, blocks, placed, stack_run=None):
             out.append(f"{name} overlaps the stack at {addr}")
         if spec["aligned"] and addr % bus:
             out.append(f"{name} misaligned at {addr}")
+        elif spec["aligned"] and spec["role"] != "pin":
+            if addr % required_align(cfg, size):
+                out.append(f"{name} placed below vector alignment at {addr}")
         if spec["role"] == "pin" and addr != spec["addr"]:
             out.append(f'{name} pinned at {spec["addr"]} but placed at {addr}')
         if spec["role"] == "bank":
@@ -1042,7 +1048,7 @@ def main(argv=None):
     report("determinism", nondet == 0, f"{nondet} unstable")
     for line in unsolved[:10]:
         print("UNSOLVED:", line)
-    report("completeness", solved >= args.seeds, f"{solved}/{total} solved")
+    report("completeness", solved == total, f"{solved}/{total} solved")
     for line in bankres_illegal[:10]:
         print("ILLEGAL:", line)
     for line in bankres_bogus[:10]:
