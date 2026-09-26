@@ -896,7 +896,6 @@ def mm_bfp(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            stack_bytes=0xF00,  # programming_examples/ml/block_datatypes
             setup=conv_even,
             roles=(In, In, InOut),
             reference=partial(
