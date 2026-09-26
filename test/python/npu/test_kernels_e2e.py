@@ -43,7 +43,6 @@ import numpy as np
 import pytest
 from aie.iron import (
     CompileTime,
-    In,
     InOut,
     ObjectFifo,
     Out,
@@ -301,7 +300,7 @@ def test_activation_saturates_for_huge_inputs(factory, limit):
 
 @pytest.mark.supported_devices("npu1")
 def test_swiglu_zero_gate_hides_overflow():
-    """x * w1 overflowing to inf, times a silu of exactly 0, gives 0, not NaN."""
+    """An x * w1 overflowing to inf, times a silu of exactly 0, gives 0, not NaN."""
     fn = kernels.swiglu()
     x = _huge_tile(bfloat16, [1e20, 1e20, 1e20, 2, 1, 1])
     w1 = _huge_tile(bfloat16, [1e20, 1e20, -1e20, np.inf, 1, 1])
