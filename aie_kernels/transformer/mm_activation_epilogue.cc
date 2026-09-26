@@ -15,11 +15,14 @@ using namespace aie;
 static inline void mm_identity_row(uint32_t n, const float *__restrict acc,
                                    float *__restrict out) {
   event0();
-  auto it_in = aie::begin_restrict_vector<16>(acc);
-  auto it_out = aie::begin_restrict_vector<16>(out);
-  for (uint32_t off = 0; off < n; off += 16) {
-    *it_out++ = *it_in++;
-  }
+  // Through begin_restrict_vector iterators, this copy gets no zero-overhead
+  // loop on aie2p.
+  auto body = [&]() __attribute__((always_inline)) {
+    aie::store_v(out, aie::load_v<16>(acc));
+    acc += 16;
+    out += 16;
+  };
+  VERSIONED_LOOP(4, n / 16, body);
   event1();
 }
 
@@ -102,21 +105,6 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
     aie::vector<bfloat16, 16> t = tanh_bf16_v16(inner);
     aie::vector<bfloat16, 16> t_p1 = aie::add(t, one);
     *it_out++ = aie::mul(half_x, t_p1).to_vector<float>();
-  }
-  event1();
-}
-
-// ReLU: out = max(x, 0), the epilogue a conv2d-as-GEMM patch-embed stem
-// applies after its bias-augmented matmul (e.g. the two 1x1 convs on either
-// side of a strided depthwise block). Purely f32; no SFU transcendental.
-static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
-                               float *__restrict out) {
-  event0();
-  const aie::vector<float, 16> zero = aie::zeros<float, 16>();
-  auto it_in = aie::begin_restrict_vector<16>(acc);
-  auto it_out = aie::begin_restrict_vector<16>(out);
-  for (uint32_t off = 0; off < n; off += 16) {
-    *it_out++ = aie::max(*it_in++, zero);
   }
   event1();
 }
@@ -220,11 +208,13 @@ static inline aie::vector<float, 16> mm_gelu_lut(aie::vector<float, 16> xf) {
   return aie::mul(half_x, t_p1).to_vector<float>();
 }
 
-// aie2 has no f32 max, and a bare copy loop gets no zero-overhead loop, so
-// identity and ReLU share one integer select on the bit pattern: lanes where
+#endif
+
+// ReLU, the epilogue a conv2d-as-GEMM patch-embed stem applies after its
+// bias-augmented matmul, as an integer select on the bit pattern: lanes where
 // x - 1 is below `neg` become +0. With neg = -inf's pattern those are the
-// negative floats other than -0 and -NaN, which mm_relu_row passes through
-// too; with INT32_MIN there are none.
+// negative floats other than -0 and -NaN; with INT32_MIN there are none, which
+// aie2 uses for identity. aie2 has no f32 max and aie2p's is emulated.
 static inline void mm_floor_row(uint32_t n, const float *__restrict acc,
                                 float *__restrict out, int32_t neg) {
   event0();
@@ -239,8 +229,6 @@ static inline void mm_floor_row(uint32_t n, const float *__restrict acc,
   VERSIONED_LOOP(4, n / 16, body);
   event1();
 }
-#endif
-
 extern "C" {
 
 // mode: 0 = identity, 1 = SiLU, 2 = GELU, 3 = ReLU. `n` a positive multiple
@@ -263,7 +251,7 @@ void mm_activation_epilogue_row(const float *__restrict c_in,
   } else if (mode == 2) {
     mm_gelu_row((uint32_t)n, c_in, c_out);
   } else if (mode == 3) {
-    mm_relu_row((uint32_t)n, c_in, c_out);
+    mm_floor_row((uint32_t)n, c_in, c_out, (int32_t)0xff800000);
   } else {
     mm_identity_row((uint32_t)n, c_in, c_out);
   }
