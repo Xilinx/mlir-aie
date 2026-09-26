@@ -339,27 +339,42 @@ def _target(u: np.float64, h: np.float64, l: np.float64):
     return _fast_two_sum(p, e + u * l)
 
 
-def sample_ref(logits, temperature, top_k: int, n53: int) -> int:
-    """The token ``sample_combine`` draws from one row of bf16 logits."""
+def _row(logits) -> np.ndarray:
     row = np.ascontiguousarray(logits, dtype=bfloat16).reshape(-1)
-    keys = order_keys(row)
     values = row.astype(np.float32)
     if np.isnan(values).any() or (values == np.inf).any():
-        raise ValueError("sample_ref: the logits contain NaN or +inf")
+        raise ValueError("the logits contain NaN or +inf")
+    return row
+
+
+def sample_weights(logits, temperature, top_k: int) -> tuple[np.ndarray, np.ndarray]:
+    """``(candidates, weights)`` of a draw at a positive temperature.
+
+    The candidates are the indices of every logit at or above the
+    ``top_k``-th largest (ties with it included), in index order; each weight
+    is ``exp64(fl32(v / T) - fl32(max / T))``, unnormalised.
+    """
+    row = _row(logits)
+    keys = order_keys(row)
+    values = row.astype(np.float32)
     temperature = np.float32(temperature)
-    if temperature.view(np.uint32) & 0x7FFFFFFF == 0:
-        return int(np.argmax(keys))
     n = keys.size
     k = min(top_k, n)
     tau = np.partition(keys, n - k)[n - k]
     candidates = np.flatnonzero(keys >= tau)
-
     with np.errstate(over="ignore"):
         xm = values[int(np.argmax(keys))] / temperature
         xv = values[candidates] / temperature
     if not np.isfinite(xm):
-        raise ValueError("sample_ref: the largest logit / T is not finite in float32")
-    weights = exp64_ref((xv - xm).astype(np.float64))
+        raise ValueError("the largest logit / T is not finite in float32")
+    return candidates, exp64_ref((xv - xm).astype(np.float64))
+
+
+def sample_ref(logits, temperature, top_k: int, n53: int) -> int:
+    """The token ``sample_combine`` draws from one row of bf16 logits."""
+    if np.float32(temperature).view(np.uint32) & 0x7FFFFFFF == 0:
+        return int(np.argmax(order_keys(_row(logits))))
+    candidates, weights = sample_weights(logits, temperature, top_k)
 
     s = np.add.accumulate(weights)  # sequential, unlike np.sum's pairwise tree
     s_before = np.concatenate(([0.0], s[:-1]))
