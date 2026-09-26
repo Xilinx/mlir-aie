@@ -166,4 +166,51 @@ static void k1_rows(const TI *input, const int8_t *kernels, TO *output,
   }
 }
 
+#if AIE_TUNED_AIE2P
+// The cascade-split pairs: a call is one output channel block of 7 pixels,
+// as 4-pixel chunks at pixels 0 and 3, and each pixel's 8 partial sums cross
+// the cascade as the low lanes of a v16acc64.
+constexpr int K1_CAS_PIXELS = 7;
+constexpr int K1_CAS_LAST = 8 * (K1_CAS_PIXELS - 4);
+
+template <typename TI>
+static inline void
+k1_cas_conv(const TI *__restrict in, const int8_t *__restrict wts,
+            const int32_t row, const int32_t ic_blocks,
+            aie::accum<acc32, 32> &lo, aie::accum<acc32, 32> &hi) {
+  using MMUL = aie::mmul<4, 8, 8, TI, int8>;
+  MMUL a, b;
+  aie::vector<int8, 64> w = aie::load_v<64>(wts);
+  a.mul(k1_load<false>(in), w);
+  b.mul(k1_load<false>(in + K1_CAS_LAST), w);
+  if (ic_blocks > 1) {
+#pragma clang loop min_iteration_count(1)
+    for (int ic = 1; ic < ic_blocks; ic++) {
+      in += row;
+      wts += 64;
+      w = aie::load_v<64>(wts);
+      a.mac(k1_load<false>(in), w);
+      b.mac(k1_load<false>(in + K1_CAS_LAST), w);
+    }
+  }
+  lo = a.to_accum();
+  hi = b.to_accum();
+}
+
+template <typename TI>
+static void k1_cas_put(const TI *in, const int8_t *wts, const int32_t row,
+                       const int32_t ic_blocks) {
+  aie::accum<acc32, 32> lo, hi;
+  k1_cas_conv(in, wts, row, ic_blocks, lo, hi);
+  const aie::vector<int32, 32> a = lo.template to_vector<int32>();
+  const aie::vector<int32, 32> b = hi.template to_vector<int32>();
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < 4; p++)
+    put_mcd(lups(a.extract<8>(p).template grow<16>(), 0));
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 1; p < 4; p++)
+    put_mcd(lups(b.extract<8>(p).template grow<16>(), 0));
+}
+#endif
+
 #endif
