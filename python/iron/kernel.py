@@ -107,6 +107,27 @@ def _maybe_collapse_to_match(arg, expected_ty):
     return memref.collapse_shape(exp_mr, arg, reassociation)
 
 
+def _view_byte_offset(arg) -> tuple[int | None, str | None]:
+    """Return the byte offset of ``arg`` into its buffer, and the buffer's name.
+
+    Follows ``memref.view`` ops down to the buffer they carve. The offset is
+    ``None`` when a shift is only known at run time; a value that is not a
+    view sits at offset 0.
+    """
+    offset = 0
+    owner = getattr(arg, "owner", None)
+    while getattr(owner, "name", None) == "memref.view":
+        shift = getattr(owner.operands[1], "owner", None)
+        if getattr(shift, "name", None) != "arith.constant":
+            return None, None
+        offset += ir.IntegerAttr(shift.attributes["value"]).value
+        owner = getattr(owner.operands[0], "owner", None)
+    attributes = getattr(owner, "attributes", None)
+    if attributes is not None and "sym_name" in attributes:
+        return offset, ir.StringAttr(attributes["sym_name"]).value
+    return offset, None
+
+
 def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
     """Return the symbol table a declaration or call at ``ip`` resolves against."""
     op = ip.block.owner.operation
@@ -501,6 +522,15 @@ class Kernel(Resolvable):
                 f"Kernel '{self._name}' expects {len(self._arg_types)} "
                 f"argument(s), but {len(args)} were provided."
             )
+        for index, align in getattr(self.contract, "alignments", ()):
+            offset, buffer = _view_byte_offset(args[index])
+            if offset is not None and offset % align:
+                raise ValueError(
+                    f"Kernel '{self._name}' loads argument {index} as "
+                    f"{align}-byte aligned vectors, but it is a view at byte "
+                    f"offset {offset} of buffer '{buffer}'. Place the view at "
+                    f"a multiple of {align} bytes."
+                )
         arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
         expected_input_types = callee.function_type.value.inputs
         adapted = [
