@@ -487,6 +487,33 @@ def test_layer_norm_f32_stack_covers_measured_core(
     assert all(int(size) >= minimum for size in stack_sizes)
 
 
+@pytest.mark.parametrize(
+    "device,portable,channels,minimum",
+    [
+        (NPU2Col1, False, 448, 1280),
+        (NPU2Col1, False, 224, 1024),
+        (NPU2Col1, True, 256, 1280),
+        (NPU1Col1, True, 192, 416),
+        (NPU1Col1, False, 416, 1056),
+        (NPU1Col1, False, 1248, 9760),
+    ],
+)
+def test_dwconv1d_channels_last_stack_covers_measured_core(
+    monkeypatch, device, portable, channels, minimum
+):
+    # aiecc's measured_stack_size at the worst channel count of each build,
+    # and at the first aie2 count that needs more than the default
+    if portable:
+        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
+    set_current_device(device())
+    mlir = str(
+        kd.design(kernels.dwconv1d_channels_last, channels=channels, calls=1).as_mlir()
+    )
+    stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
+    assert stack_sizes
+    assert all(int(size) >= minimum for size in stack_sizes)
+
+
 @pytest.mark.parametrize("device", [NPU1Col1, NPU2Col1])
 @pytest.mark.parametrize("dim_m,dim_n", [(32, 16), (64, 32)])
 @pytest.mark.parametrize("epilogue", ["none", "gelu", "silu", "sigmoid"])
