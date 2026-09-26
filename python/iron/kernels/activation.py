@@ -624,7 +624,9 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
                 note="measured 9.2e-6 on aie2p and 8.9e-5 on aie2; clamping "
                 "[127.999, 128) costs up to 7.8e-4",
             ),
-            stack_bytes=2048,
+            # aiecc measured 1984 on aie2p (448 portable); remarks gives the
+            # kernel 1792 on aie2 (832 portable).
+            stack_bytes={"aie2": 2048, "aie2p": 2048}.get(_tuned_arch()),
         ),
     )
 
