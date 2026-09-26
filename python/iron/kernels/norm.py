@@ -36,6 +36,11 @@ _RMS_NORM_BF16_AIE2 = Tolerance.bf16_ulps(
     atol=2.0**-126,
     note="aie2, measured on npu1: one ulp; atol is the smallest normal bf16",
 )
+_RMS_NORM_BF16_AIE2P = Tolerance.bf16_ulps(
+    1,
+    atol=2.0**-126,
+    note="aie2p, measured on npu2: one ulp; atol is the smallest normal bf16",
+)
 _LAYER_NORM_BF16_AIE2 = Tolerance.bf16_ulps(
     1,
     atol=1e-5,
@@ -97,7 +102,10 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
             reference=rms_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance=_RMS_NORM_BF16_AIE2 if _tuned_arch() == "aie2" else _NORM_BF16,
+            tolerance={
+                "aie2": _RMS_NORM_BF16_AIE2,
+                "aie2p": _RMS_NORM_BF16_AIE2P,
+            }.get(_tuned_arch(), _NORM_BF16),
             ops_per_call=4 * tile_size,
         ),
     )
@@ -119,7 +127,10 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
             reference=lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance=_RMS_NORM_BF16_AIE2 if _tuned_arch() == "aie2" else _NORM_BF16,
+            tolerance={
+                "aie2": _RMS_NORM_BF16_AIE2,
+                "aie2p": _RMS_NORM_BF16_AIE2P,
+            }.get(_tuned_arch(), _NORM_BF16),
             ops_per_call=4 * tile_size,
         ),
     )
