@@ -109,6 +109,12 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [reduce_max.cc](./reduce/reduce_max.cc) | Intrinsics | Max value across a tensor | `int32_t`, `bfloat16` |
 | [reduce_min.cc](./reduce/reduce_min.cc) | Intrinsics | Min value across a tensor | `int32_t` |
 
+## sample
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [sample_select.cc](./sample/sample_select.cc) | AIE API | One column's half of exact temperature/top-k sampling: reduces its slice of a logit row to a summary of its top k (AIE2P only); geometry via `-DSAMPLE_*` | `bfloat16` → `int32_t` |
+| [sample_combine.cc](./sample/sample_combine.cc) | Scalar | Draws the token from every column's summary, bit for bit as `sample_ref`; float64 `exp` from [exp64.h](./sample/exp64.h) (AIE2P only) | `int32_t` |
+
 ## transformer
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|

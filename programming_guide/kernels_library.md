@@ -120,6 +120,7 @@ on each submodule's `__doc__`:
 | [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: axpy, convert_copy, expand, transpose |
 | [`kernels.zero`](../python/iron/kernels/zero.py) | target-vectorized zero fill, including partial vectors and packed BFP blocks |
 | [`kernels.quant`](../python/iron/kernels/quant.py) | q4nx dequantization to GEMM-ordered bfp16ebs8 (AIE2P), with byte-exact verification |
+| [`kernels.sample`](../python/iron/kernels/sample.py) | exact temperature/top-k sampling split over columns: sample_select, sample_combine (AIE2P), with a bit-exact reference |
 | [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm, mv, cascade_mm, mm_bfp, mm_bfp_shuffle, mha |
 | [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
 | [`kernels.transformer`](../python/iron/kernels/transformer.py) | transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue |
