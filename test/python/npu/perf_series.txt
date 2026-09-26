@@ -271,7 +271,9 @@ scale/1024x16/int16
 scale/1024x16/int32
 scale/1024x16/int32/edge-negfactor
 scale/1024x256/int16
+scale/16x4/int32/edge-one-vector
 scale/32x4/int16/edge-one-vector
+scale/48x4/int32/edge-tail
 scale/64x4/int32/edge-tiny
 sigmoid/1024x16/bfloat16
 sigmoid/1024x16/bfloat16/use_lut=True/lut

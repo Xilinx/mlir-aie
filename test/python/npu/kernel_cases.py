@@ -89,6 +89,8 @@ CASES: list[Case] = [
     Case("scale", dict(dtype=np.int32), calls=16, smoke=True),
     check("scale", dict(tile_size=64), tag="edge-tiny"),
     check("scale", dict(tile_size=32, dtype=np.int16), tag="edge-one-vector"),
+    check("scale", dict(tile_size=16), tag="edge-one-vector"),
+    check("scale", dict(tile_size=48), tag="edge-tail"),
     # No int16 overflow case: scale.cc stores acc32 with to_vector(0) and no
     # set_sat, so whether a product beyond int16 wraps or saturates is a core
     # setting the source leaves open (overflow="undefined"); the judge refuses

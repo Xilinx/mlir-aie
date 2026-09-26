@@ -56,7 +56,13 @@ template <>
 void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
                                int32_t factor, const int32_t N) {
   event0();
+#if AIE_TUNED_AIE2P
+  // An AIE2P accumulator holds 32 acc64 lanes; a 16-lane multiply leaves half
+  // of it idle.
+  constexpr int vec_factor = 32;
+#else
   constexpr int vec_factor = 16;
+#endif
   int32_t *__restrict pA1 = a;
   int32_t *__restrict pC1 = c;
   const int F = SCALE_ELEMS / vec_factor;
@@ -69,6 +75,12 @@ void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
     aie::store_v(pC1, cout.template to_vector<int32_t>(0));
     pC1 += vec_factor;
   }
+#if AIE_TUNED_AIE2P
+  if (SCALE_ELEMS % vec_factor) {
+    aie::accum<acc64, 16> cout = aie::mul(aie::load_v<16>(pA1), factor);
+    aie::store_v(pC1, cout.template to_vector<int32_t>(0));
+  }
+#endif
   event1();
 }
 
