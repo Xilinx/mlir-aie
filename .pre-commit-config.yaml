@@ -70,7 +70,8 @@ repos:
           programming_examples/(algorithms|basic|getting_started|vision)/.*\.py|
           programming_examples/lit\.cfg\.py|
           programming_examples/ml/(block_datatypes|mobilenet|bottleneck|cast_f32_bf16|conv2d|conv2d_14x14|dwconv1d|eltwise|eltwise_unary|magika|mm_activation_epilogue|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py|
-          utils/kernel_checks/.*\.py
+          utils/kernel_checks/.*\.py|
+          utils/component_checks/.*\.py
         )$
 
 # Baseline hygiene: validators run on every commit, fixers gated to pre-push
