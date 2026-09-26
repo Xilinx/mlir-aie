@@ -228,9 +228,12 @@ q4nx_dequant/1536x2/uint8/ct_k=16/group=24/k_tile=48/m_tile=48
 q4nx_dequant/5120x4/uint8
 q4nx_dequant/512x2/uint8/ct_k=16/group=8/k_tile=32/m_tile=16
 reduce_add/1024x1/int32/edge-single
+reduce_add/1024x16/bfloat16
 reduce_add/1024x16/int32
+reduce_add/1024x256/bfloat16
 reduce_add/1024x256/int32
 reduce_add/16x4/int32/edge-one-vector
+reduce_add/32x4/bfloat16/edge-one-vector
 reduce_add/64x4/int32/edge-tiny
 reduce_max/1024x16/bfloat16
 reduce_max/1024x16/int32
@@ -238,9 +241,12 @@ reduce_max/1024x256/bfloat16
 reduce_max/1024x256/int32
 reduce_max/16x4/int32/edge-one-vector
 reduce_max/32x4/bfloat16/edge-one-vector
+reduce_min/1024x16/bfloat16
 reduce_min/1024x16/int32
+reduce_min/1024x256/bfloat16
 reduce_min/1024x256/int32
 reduce_min/16x4/int32/edge-one-vector
+reduce_min/32x4/bfloat16/edge-one-vector
 relu/1024x16/bfloat16
 relu/1024x256/bfloat16
 relu_sized/1024x16/bfloat16
