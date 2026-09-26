@@ -314,6 +314,15 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
                     (prodTypeIt->second == AIETileType::ShimNOCTile ||
                      prodTypeIt->second == AIETileType::ShimPLTile);
 
+  // A fifo that already has an aie.objectfifo.allocate keeps its shared-memory
+  // objects on that delegate tile.
+  std::optional<TileID> delegatePos;
+  if (auto it = currentPlacement.find(fb.delegate);
+      fb.delegate && it != currentPlacement.end())
+    delegatePos = it->second;
+  else if (auto tile = dyn_cast_or_null<TileOp>(fb.delegate))
+    delegatePos = tile.getTileID();
+
   // Charge memory based on connection topology:
   //   intratile     → max(sizes) * max(depths) on shared tile
   //   shared-mem    → max(sizes) * max(depths) on chosen adjacent tile
@@ -360,7 +369,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       int depth = std::max(fb.producerDepth, consDeclDepth);
       int64_t maxSize = std::max(fb.producerSizeBytes, fb.consumerSizeBytes);
       int64_t bytes = maxSize * depth;
-      currentMemUsage[prodPos] += sign * bytes;
+      currentMemUsage[delegatePos.value_or(prodPos)] += sign * bytes;
     } else if (isSharedMem) {
       // Shared memory: use declared depths
       bool rightShared = targetModel->isLegalMemAffinity(
@@ -368,7 +377,9 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       bool leftShared = targetModel->isLegalMemAffinity(
           consPos.col, consPos.row, prodPos.col, prodPos.row);
       TileID bufTile;
-      if (rightShared && leftShared) {
+      if (delegatePos) {
+        bufTile = *delegatePos;
+      } else if (rightShared && leftShared) {
         if (sign > 0) {
           int64_t prodUsed =
               currentMemUsage.count(prodPos) ? currentMemUsage[prodPos] : 0;
@@ -462,6 +473,8 @@ void SAPlacer::initResourceTracking() {
     for (auto *cons : fb.consumers)
       if (cons)
         tileToFifoIndices[cons].push_back(i);
+    if (fb.delegate)
+      tileToFifoIndices[fb.delegate].push_back(i);
   }
 
   // Static buffers and stacks go first: a shared-memory fifo picks the emptier
@@ -659,7 +672,8 @@ int SAPlacer::computeCoreOverflowPenalty() const {
           if (!seen.insert(fi).second)
             continue;
           const auto &fb = fifoBuffers[fi];
-          if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0])
+          if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0] ||
+              fb.delegate)
             continue;
           auto prodIt = currentPlacement.find(fb.producer);
           auto consIt = currentPlacement.find(fb.consumers[0]);
@@ -815,7 +829,8 @@ void SAPlacer::generateAllocates() {
       if (!seen.insert(fi).second)
         continue;
       const auto &fb = fifoBuffers[fi];
-      if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0])
+      if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0] ||
+          fb.delegate)
         continue;
       auto prodIt = currentPlacement.find(fb.producer);
       auto consIt = currentPlacement.find(fb.consumers[0]);
@@ -1218,9 +1233,14 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
                                    ArrayRef<ObjectFifoLinkOp> objectFifoLinks) {
   mlir::DataLayout dataLayout(device->getParentOfType<ModuleOp>());
 
+  llvm::StringMap<Operation *> delegates;
+  for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
+    delegates[alloc.getObjFifoName()] = alloc.getDelegateTile().getDefiningOp();
+
   for (auto ofOp : objectFifos) {
     FifoBufferInfo fb;
     fb.fifoOp = ofOp.getOperation();
+    fb.delegate = delegates.lookup(ofOp.getSymName());
 
     // Get producer
     auto *prodOp = ofOp.getProducerTile().getDefiningOp();
