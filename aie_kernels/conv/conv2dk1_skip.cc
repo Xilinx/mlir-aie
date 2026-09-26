@@ -376,8 +376,8 @@ static void conv2dk1_skip_vector(uint8_t *input0, uint8_t *input1,
         aie::accum<acc32, 64> accj;
         accj.from_vector(aie::load_v<64>(skip_ptr), 0);
         skip_ptr += 64;
-        accj = aie::mac(accj, acc[x8].template to_vector<int8>(scale),
-                        (int8_t)1);
+        accj =
+            aie::mac(accj, acc[x8].template to_vector<int8>(scale), (int8_t)1);
         aie::store_v(out_ptr, accj.template to_vector<uint8>(skip_scale));
         out_ptr += 64;
       }
