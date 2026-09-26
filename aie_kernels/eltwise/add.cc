@@ -38,9 +38,9 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 template <typename T_in, typename T_out, int vec_factor>
 void eltwise_vadd_mac(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
-                       aie::restrict_vector_iterator<T_in, vec_factor> &pB,
-                       aie::restrict_vector_iterator<T_out, vec_factor> &pC,
-                       int n) {
+                      aie::restrict_vector_iterator<T_in, vec_factor> &pB,
+                      aie::restrict_vector_iterator<T_out, vec_factor> &pC,
+                      int n) {
   const auto ones = aie::broadcast<T_in, vec_factor>(1.0f);
   AIE_LOOP_NO_UNROLL
   for (int i = 0; i < n; i++) {
@@ -52,8 +52,7 @@ void eltwise_vadd_mac(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
 #endif
 
 template <typename T_in, typename T_out, const int N>
-void eltwise_vadd(T_in *__restrict a, T_in *__restrict b,
-                  T_out *__restrict c) {
+void eltwise_vadd(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c) {
 
   constexpr int vec_factor = AIE_BF16_LANES;
   event0();
@@ -63,7 +62,7 @@ void eltwise_vadd(T_in *__restrict a, T_in *__restrict b,
   constexpr int F = N / vec_factor;
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   eltwise_vadd_mac<T_in, T_out, vec_factor>(pA1, pB1, pC1,
-                                             F / ADD_UNROLL * ADD_UNROLL);
+                                            F / ADD_UNROLL * ADD_UNROLL);
 #else
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F / ADD_UNROLL; i++) {
@@ -103,7 +102,7 @@ void eltwise_vadd_size(T_in *__restrict a, T_in *__restrict b,
 // The single chain pipelines only with a compile-time trip count.
 #if (AIE_TUNED_AIE2 || AIE_TUNED_AIE2P) && !defined(ADD_ELEMS_RUNTIME)
   eltwise_vadd_mac<T_in, T_out, vec_factor>(pA1, pB1, pC1,
-                                             F / ADD_UNROLL * ADD_UNROLL);
+                                            F / ADD_UNROLL * ADD_UNROLL);
 #else
   AIE_PREPARE_FOR_PIPELINING
   for (int i = 0; i < F / ADD_UNROLL; i++) { // see eltwise_vadd
