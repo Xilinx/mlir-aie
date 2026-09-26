@@ -810,18 +810,19 @@ static void conv2dk1_skip_ui8_i8_i8_scalar(
 // See k1_chunks in bn_conv2dk1_aie2.h; skip is offset like in and out. The
 // requantized conv and the skip are added in 32-bit lanes and requantized by
 // skip_scale.
-template <bool Aligned, int N, typename TS>
+template <bool Aligned, int P, int N, typename TS>
 static inline void
 k1_skip_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,
                const TS *__restrict skip, int8_t *__restrict out,
                const int32_t row, const int32_t ic_blocks,
                const int32_t last_off, const int scale, const int skip_scale) {
-  using MMUL = aie::mmul<4, 8, 8, uint8, int8>;
+  constexpr int E = 8 * P;
+  using MMUL = aie::mmul<P, 8, 8, uint8, int8>;
   MMUL acc[N];
   aie::vector<int8, 64> b = aie::load_v<64>(wts);
   K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++)
-    acc[j].mul(k1_load<Aligned>(in + (j == N - 1 ? last_off : 32 * j)), b);
+    acc[j].mul(k1_load<Aligned, E>(in + (j == N - 1 ? last_off : E * j)), b);
 #pragma clang loop min_iteration_count(1)
   for (int ic = 1; ic < ic_blocks; ic++) {
     in += row;
@@ -829,60 +830,78 @@ k1_skip_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,
     b = aie::load_v<64>(wts);
     K1_UNROLL_CHUNKS
     for (int j = 0; j < N; j++)
-      acc[j].mac(k1_load<Aligned>(in + (j == N - 1 ? last_off : 32 * j)), b);
+      acc[j].mac(k1_load<Aligned, E>(in + (j == N - 1 ? last_off : E * j)), b);
   }
-  const aie::vector<int8, 32> ones = aie::broadcast<int8, 32>(1);
+  const aie::vector<int8, E> ones = aie::broadcast<int8, E>(1);
   K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++) {
-    const int32_t o = j == N - 1 ? last_off : 32 * j;
-    aie::accum<acc32, 32> t = aie::mul(k1_load<Aligned>(skip + o), ones);
+    const int32_t o = j == N - 1 ? last_off : E * j;
+    aie::accum<acc32, E> t = aie::mul(k1_load<Aligned, E>(skip + o), ones);
     t = aie::mac(t, acc[j].template to_vector<int8>(scale), ones);
     k1_store<Aligned>(out + o, t.template to_vector<int8>(skip_scale));
   }
 }
 
-template <bool Aligned, typename TS>
+template <bool Aligned, int P, typename TS>
 static void
 k1_skip_rows(const uint8_t *input, const int8_t *kernels, const TS *skip,
              int8_t *output, const int32_t input_width,
              const int32_t input_channels, const int32_t output_channels,
              const int scale, const int skip_scale) {
   constexpr int N = 4;
+  constexpr int E = 8 * P;
   const int32_t row = input_width * 8;
   const int32_t ic_blocks = input_channels / 8;
-  const int32_t chunks = (input_width + 3) / 4;
+  const int32_t chunks = (input_width + P - 1) / P;
   const int32_t groups = chunks / N;
   const int32_t rem = chunks % N;
-  const int32_t tail = (input_width - 4) * 8;
+  const int32_t tail = (input_width - P) * 8;
   for (int oc = 0; oc < output_channels / 8; oc++) {
     const int8_t *wts = kernels + oc * ic_blocks * 64;
     const TS *s = skip + oc * row;
     int8_t *out = output + oc * row;
     for (int g = 0; g < groups; g++) {
-      const int32_t x = g * N * 32;
+      const int32_t x = g * N * E;
       const int32_t last =
-          (rem == 0 && g == groups - 1) ? tail - x : 32 * (N - 1);
-      k1_skip_chunks<Aligned, N>(input + x, wts, s + x, out + x, row, ic_blocks,
-                                 last, scale, skip_scale);
+          (rem == 0 && g == groups - 1) ? tail - x : E * (N - 1);
+      k1_skip_chunks<Aligned, P, N>(input + x, wts, s + x, out + x, row,
+                                    ic_blocks, last, scale, skip_scale);
     }
-    const int32_t x = groups * N * 32;
+    const int32_t x = groups * N * E;
     switch (rem) {
     case 1:
-      k1_skip_chunks<Aligned, 1>(input + x, wts, s + x, out + x, row, ic_blocks,
-                                 tail - x, scale, skip_scale);
+      k1_skip_chunks<Aligned, P, 1>(input + x, wts, s + x, out + x, row,
+                                    ic_blocks, tail - x, scale, skip_scale);
       break;
     case 2:
-      k1_skip_chunks<Aligned, 2>(input + x, wts, s + x, out + x, row, ic_blocks,
-                                 tail - x, scale, skip_scale);
+      k1_skip_chunks<Aligned, P, 2>(input + x, wts, s + x, out + x, row,
+                                    ic_blocks, tail - x, scale, skip_scale);
       break;
     case 3:
-      k1_skip_chunks<Aligned, 3>(input + x, wts, s + x, out + x, row, ic_blocks,
-                                 tail - x, scale, skip_scale);
+      k1_skip_chunks<Aligned, P, 3>(input + x, wts, s + x, out + x, row,
+                                    ic_blocks, tail - x, scale, skip_scale);
       break;
     }
   }
 }
 
+template <int P, typename TS>
+static void
+k1_skip_chunked(const uint8_t *input, const int8_t *kernels, int8_t *output,
+                const TS *skip, const int32_t input_width,
+                const int32_t input_channels, const int32_t output_channels,
+                const int scale, const int skip_scale) {
+  if (input_width % P == 0 &&
+      (((uintptr_t)input | (uintptr_t)output | (uintptr_t)skip) &
+       (8 * P - 1)) == 0)
+    k1_skip_rows<true, P>(input, kernels, skip, output, input_width,
+                          input_channels, output_channels, scale, skip_scale);
+  else
+    k1_skip_rows<false, P>(input, kernels, skip, output, input_width,
+                           input_channels, output_channels, scale, skip_scale);
+}
+
+// See k1_vector in bn_conv2dk1_relu.cc for when 8-pixel chunks pay off.
 template <typename TS>
 static void
 k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
@@ -892,13 +911,14 @@ k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
   event0();
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
-  if (input_width % 4 == 0 &&
-      (((uintptr_t)input | (uintptr_t)output | (uintptr_t)skip) & 31) == 0)
-    k1_skip_rows<true>(input, kernels, skip, output, input_width,
+#if AIE_TUNED_AIE2P
+  if (input_width >= 8 && (input_width % 8 == 0 || input_channels >= 64))
+    k1_skip_chunked<8>(input, kernels, output, skip, input_width,
                        input_channels, output_channels, scale, skip_scale);
   else
-    k1_skip_rows<false>(input, kernels, skip, output, input_width,
-                        input_channels, output_channels, scale, skip_scale);
+#endif
+    k1_skip_chunked<4>(input, kernels, output, skip, input_width,
+                       input_channels, output_channels, scale, skip_scale);
   event1();
 }
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
