@@ -107,6 +107,28 @@ def test_sigmoid_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
     assert (old[tail & (x <= -6.9)] == 0).all()
 
 
+def test_lut_models_flush_subnormal_products():
+    # The accumulator flushes a subnormal product to zero before storing it.
+    # Without that, silu_lut_ref gave 506 subnormals over every bf16 where
+    # npu2 gave 0.
+    x = all_bf16()
+    one = np.ones_like(x)
+    with np.errstate(over="ignore", invalid="ignore"):
+        outs = {
+            "silu_lut_ref(x)": kernels.silu_lut_ref(x),
+            "swiglu_lut_ref(x, 1, 1)": kernels.swiglu_lut_ref(x, one, one),
+            "swiglu_lut_ref(1, 1, x)": kernels.swiglu_lut_ref(one, one, x),
+        }
+    for name, got in outs.items():
+        a = np.abs(got.astype(np.float32))
+        sub = (a > 0) & (a < 2.0**-126)
+        assert not sub.any(), f"{name}: {sub.sum()} subnormal outputs"
+    # x * w2 = 2**-128 flushes, so silu is 0 and the gate zeroes the output
+    # however large x * w1 is.
+    x, w1, w2 = (np.array([v], bfloat16) for v in (2.0**-64, 2.0**100, 2.0**-64))
+    assert kernels.swiglu_lut_ref(x, w1, w2)[0] == 0
+
+
 def test_swiglu_ref_rounds_the_products_then_is_float64():
     rng = np.random.default_rng(0)
     x, w1, w2 = (
