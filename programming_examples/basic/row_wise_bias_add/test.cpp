@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <vector>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -106,7 +107,9 @@ int main(int argc, const char *argv[]) {
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  float ref[SIZE_M * SIZE_N] = {};
+  // Heap, not stack: the default M=768 N=2304 makes this 6.75 MB, which fits
+  // Linux's 8 MB stack but overflows Windows' 1 MB one (STATUS_STACK_OVERFLOW).
+  std::vector<float> ref(SIZE_M * SIZE_N);
   for (int i = 0; i < SIZE_M; i++) {
     for (int j = 0; j < SIZE_N; j++) {
       ref[i * SIZE_N + j] = buf_in[i * SIZE_N + j] + buf_bias[j];
@@ -119,12 +122,12 @@ int main(int argc, const char *argv[]) {
     std::cout << "Bias:" << std::endl;
     print_matrix(buf_bias, 1, SIZE_N);
     std::cout << "Expected:" << std::endl;
-    print_matrix(ref, SIZE_M, SIZE_N);
+    print_matrix(ref.data(), SIZE_M, SIZE_N);
     std::cout << "Output:" << std::endl;
     print_matrix(buf_out, SIZE_M, SIZE_N);
   }
 
-  if (memcmp(ref, buf_out, sizeof(ref)) != 0) {
+  if (memcmp(ref.data(), buf_out, OUT_SIZE) != 0) {
     std::cout << "FAIL." << std::endl;
     return 1;
   }

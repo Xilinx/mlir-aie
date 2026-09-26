@@ -13,6 +13,10 @@ cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
+# Set example-specific TARGET_NAME before mlir_aie_init_example() so its
+# CACHE-form default (`test_exe`) becomes a no-op.
+set(TARGET_NAME edge_detect CACHE STRING "Target to be built")
+
 include(../../mlir_aie_init.cmake)
 mlir_aie_init_example()
 
@@ -65,3 +69,20 @@ target_link_libraries(${currentTarget} PUBLIC
 )
 
 target_link_test_utils(${currentTarget})
+
+# -----------------------------------------------------------------------------
+# CMake-driven design build + NPU run (run_cmake.lit)
+# -----------------------------------------------------------------------------
+# The CMake equivalent of the Makefile's jit_xclbin plus its `run` target.
+# The `run_live` target is not converted: it opens a webcam.
+#
+# The design keeps the helper's default final.xclbin rather than the Makefile's
+# build/final_<width>.xclbin: that name only ever existed so the `run` recipe
+# could find it, and each configure has its own build directory here.
+if(AIE_BUILD_DESIGN)
+
+add_aie_design(TARGET ${currentTarget} PY edge_detect.py DEVICE ${AIE_DEVICE}
+               ARGS -W ${EDGEDETECT_WIDTH} -H ${EDGEDETECT_HEIGHT})
+add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} EXE ${currentTarget})
+
+endif() # AIE_BUILD_DESIGN

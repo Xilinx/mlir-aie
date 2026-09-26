@@ -47,3 +47,31 @@ target_link_libraries(${currentTarget} PUBLIC
 )
 
 target_link_test_utils(${currentTarget})
+
+# -----------------------------------------------------------------------------
+# CMake-driven design build + NPU run (run_cmake.lit)
+# -----------------------------------------------------------------------------
+# The CMake equivalent of the Makefile's jit_xclbin plus the run halves of
+# `run_trace` (test.cpp) and `run_trace_py` (test.py). The trace post-processing
+# those recipes do afterwards -- parse.py + get_trace_summary.py -- lives in
+# run_cmake.lit instead, so the ctests stay pure NPU runs.
+#
+# Each writes its own trace file rather than sharing the Makefile's trace.txt:
+# both tests run in this one directory, so a shared name would leave only the
+# last one's trace behind for the lit to parse.
+if(AIE_BUILD_DESIGN)
+
+set(TENSOR_SIZE 4096 CACHE STRING "Elements in the input tensor")
+set(TILE_SIZE 1024 CACHE STRING "Elements per AIE tile iteration")
+set(TRACE_SIZE 8192 CACHE STRING "Trace buffer size in bytes")
+
+add_aie_design(TARGET ${currentTarget} PY aie_trace.py DEVICE ${AIE_DEVICE}
+               ARGS --tensor-size ${TENSOR_SIZE} --tile-size ${TILE_SIZE}
+                    --trace-size ${TRACE_SIZE})
+add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} EXE ${currentTarget}
+                 RUN_ARGS -t ${TRACE_SIZE} --trace_file trace_cpp.txt)
+add_aie_run_test(NAME ${currentTarget}_py DEVICE ${AIE_DEVICE} PY test.py
+                 RUN_ARGS --verbosity 1 --trace_size ${TRACE_SIZE}
+                          --trace-file trace_py.txt)
+
+endif() # AIE_BUILD_DESIGN

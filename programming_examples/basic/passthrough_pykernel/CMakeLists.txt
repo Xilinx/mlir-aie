@@ -40,3 +40,19 @@ target_link_libraries(${currentTarget} PUBLIC
 
 target_link_test_utils(${currentTarget})
 
+# -----------------------------------------------------------------------------
+# CMake-driven design build + NPU run (run_cmake.lit)
+# -----------------------------------------------------------------------------
+# The CMake equivalent of the Makefile's jit_xclbin plus both of its run
+# recipes, `run` (test.cpp) and `run_py` (test.py). Skipped when make drives the
+# build -- its ${targetname}_${data_size}.exe rule passes -DAIE_BUILD_DESIGN=OFF
+# so the design is not JIT-ed a second time.
+if(AIE_BUILD_DESIGN)
+
+add_aie_design(TARGET ${currentTarget} PY passthrough_pykernel.py DEVICE ${AIE_DEVICE}
+               ARGS -s ${PASSTHROUGH_SIZE})
+add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} EXE ${currentTarget})
+add_aie_run_test(NAME ${currentTarget}_py DEVICE ${AIE_DEVICE} PY test.py
+                 RUN_ARGS -s ${PASSTHROUGH_SIZE})
+
+endif() # AIE_BUILD_DESIGN

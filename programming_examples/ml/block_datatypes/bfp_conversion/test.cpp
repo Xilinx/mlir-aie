@@ -5,13 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <random>
 #include <string>
-#include <sys/types.h>
 #include <vector>
 
 #include "xrt/xrt_bo.h"

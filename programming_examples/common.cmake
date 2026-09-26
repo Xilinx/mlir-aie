@@ -305,12 +305,75 @@ macro(_aie_require_python)
   endif()
 endmacro()
 
-# add_aie_design(TARGET <t> PY <design.py> [DEVICE <npu|npu2>] [ELF] [ARGS ...])
+# Artifact paths for a design. Without OUTPUT_PREFIX a design keeps
+# final.xclbin / insts.bin / final.elf, which is what every existing example and
+# every Makefile expects. A prefix is only needed when one directory builds more
+# than one design, where the default names would collide -- the prefixed
+# spelling mirrors what those Makefiles already do by hand (basic/packet_switch
+# writes build/add.xclbin + build/add_insts.bin beside build/mult.xclbin).
+function(_aie_design_artifacts _prefix _xclbin_var _insts_var _elf_var)
+  if(_prefix)
+    set(${_xclbin_var} "${CMAKE_CURRENT_BINARY_DIR}/${_prefix}.xclbin" PARENT_SCOPE)
+    set(${_insts_var} "${CMAKE_CURRENT_BINARY_DIR}/${_prefix}_insts.bin" PARENT_SCOPE)
+    set(${_elf_var} "${CMAKE_CURRENT_BINARY_DIR}/${_prefix}.elf" PARENT_SCOPE)
+  else()
+    set(${_xclbin_var} "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin" PARENT_SCOPE)
+    set(${_insts_var} "${CMAKE_CURRENT_BINARY_DIR}/insts.bin" PARENT_SCOPE)
+    set(${_elf_var} "${CMAKE_CURRENT_BINARY_DIR}/final.elf" PARENT_SCOPE)
+  endif()
+endfunction()
+
+# Record what a design emits, so add_aie_run_test() can resolve XCLBIN/INSTS by
+# name and reject a name nothing produces. Called before the AIE_BUILD_DESIGN
+# early return: under make the JIT happens outside CMake, but the artifacts the
+# design describes are still the ones a test would consume.
+function(_aie_register_design _target _xclbin _insts _elf _has_elf)
+  set_property(DIRECTORY APPEND PROPERTY AIE_DESIGNS "${_target}")
+  set_property(DIRECTORY APPEND PROPERTY AIE_DESIGN_ARTIFACTS "${_xclbin}" "${_insts}")
+  if(_has_elf)
+    set_property(DIRECTORY APPEND PROPERTY AIE_DESIGN_ARTIFACTS "${_elf}")
+    set_property(DIRECTORY APPEND PROPERTY AIE_DESIGN_ELFS "${_elf}")
+  endif()
+endfunction()
+
+# Resolve an XCLBIN/INSTS argument -- a bare artifact name or an absolute path --
+# and require it to be something a design in this directory actually emits.
+# A name that matches nothing is the quiet failure this guards: the test would
+# still be registered, and the only symptom would be an abort inside XRT naming
+# neither the test nor the typo.
+function(_aie_resolve_artifact _fn _keyword _name _var)
+  if(IS_ABSOLUTE "${_name}")
+    set(_path "${_name}")
+  else()
+    set(_path "${CMAKE_CURRENT_BINARY_DIR}/${_name}")
+  endif()
+  get_directory_property(_known AIE_DESIGN_ARTIFACTS)
+  if(NOT "${_path}" IN_LIST _known)
+    list(JOIN _known "\n    " _listed)
+    if(NOT _listed)
+      set(_listed "(none -- this directory declares no design)")
+    endif()
+    # "Declared artifacts:" gets its own line: message() re-wraps running text
+    # at a width we do not control, and it split that phrase across two lines.
+    message(FATAL_ERROR
+      "${_fn}: ${_keyword} '${_name}' is not emitted by any add_aie_design() or "
+      "add_aie_mlir_design() in this directory."
+      "\nDeclared artifacts:\n    ${_listed}")
+  endif()
+  set(${_var} "${_path}" PARENT_SCOPE)
+endfunction()
+
+# add_aie_design(TARGET <t> PY <design.py> [DEVICE <npu|npu2>] [ELF]
+#                [OUTPUT_PREFIX <p>] [ARGS ...])
 #   JITs the design into final.xclbin/insts.bin (+ final.elf with ELF) in the
-#   build dir. TARGET is required. Creates target <t>_xclbin, and makes <t>
-#   depend on it when <t> is an existing target; <t> need not be one, since
-#   pure-Python designs have no host exe, and then no dependency is added.
-#   DEVICE defaults to ${AIE_DEVICE}.
+#   build dir. Creates target <t>_xclbin, and makes <t> depend on it when <t> is
+#   an existing target (pure-Python designs have no host exe, so that is
+#   optional). DEVICE defaults to ${AIE_DEVICE}.
+#
+#   OUTPUT_PREFIX renames the artifacts to <p>.xclbin / <p>_insts.bin / <p>.elf.
+#   Needed only when a directory builds more than one design, which would
+#   otherwise have them overwrite each other; add_aie_run_test() then selects
+#   between them with XCLBIN/INSTS.
 #
 # The design is only built when AIE_BUILD_DESIGN is ON. This matters because
 # makefile-common's build_host_exe configures and builds this same CMakeLists to
@@ -322,25 +385,30 @@ endmacro()
 option(AIE_BUILD_DESIGN "Build the example's AIE design (off when make drives the build)" ON)
 
 function(add_aie_design)
-  cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE" "ARGS" ${ARGN})
+  cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE;DEVICE_FLAG;PY_DIR;OUTPUT_PREFIX"
+                          "ARGS" ${ARGN})
   _aie_validate_args("add_aie_design" D TARGET PY)
   if(NOT D_DEVICE)
     set(D_DEVICE "${AIE_DEVICE}")
   endif()
   _aie_validate_device("add_aie_design" "${D_DEVICE}")
-  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}")
-    message(FATAL_ERROR
-      "add_aie_design: design script not found: ${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}")
+  # Sweep families keep the design .py in a parent dir and drive it from a
+  # per-parameterization subdir, so the script is not always beside the caller.
+  # Resolved here rather than at first use so the existence check below sees it.
+  set(_pydir "${CMAKE_CURRENT_SOURCE_DIR}")
+  if(D_PY_DIR)
+    set(_pydir "${D_PY_DIR}")
+  endif()
+  if(NOT EXISTS "${_pydir}/${D_PY}")
+    message(FATAL_ERROR "add_aie_design: design script not found: ${_pydir}/${D_PY}")
   endif()
 
-  # Record whether this directory produces final.elf, so add_aie_run_test can
-  # reject USE_ELF against a design that never emits one. Set before the
-  # AIE_BUILD_DESIGN early-return: under make the JIT happens outside CMake, but
-  # the ELF keyword still describes the artifacts that will be there.
-  set_property(DIRECTORY APPEND PROPERTY AIE_DESIGNS "${D_TARGET}")
-  if(D_ELF)
-    set_property(DIRECTORY PROPERTY AIE_DESIGN_HAS_ELF TRUE)
-  endif()
+  # Record what this design emits, so add_aie_run_test can resolve XCLBIN/INSTS
+  # by name and reject USE_ELF against a design that never emits one.
+  _aie_design_artifacts("${D_OUTPUT_PREFIX}" _xclbin _insts _elf)
+  _aie_register_design("${D_TARGET}" "${_xclbin}" "${_insts}" "${_elf}" "${D_ELF}")
+
+  _aie_require_python()
 
   # Still define the target so callers' add_dependencies() stays valid; it just
   # has nothing to do.
@@ -351,25 +419,25 @@ function(add_aie_design)
     endif()
     return()
   endif()
-
-  # Probed here, past the early return: the interpreter is only needed for the
-  # JIT command below.
-  _aie_require_python()
+  # Most designs take -d/--dev; the matmul family passes short_dev=None to
+  # add_compile_args and so accepts only --dev.
+  set(_devflag "-d")
+  if(D_DEVICE_FLAG)
+    set(_devflag "${D_DEVICE_FLAG}")
+  endif()
   set(_out "${CMAKE_CURRENT_BINARY_DIR}")
-  set(_xclbin "${_out}/final.xclbin")
-  set(_insts "${_out}/insts.bin")
   set(_outs ${_xclbin} ${_insts})
   set(_elfarg "")
   if(D_ELF)
-    list(APPEND _outs "${_out}/final.elf")
-    set(_elfarg "--elf-path=${_out}/final.elf")
+    list(APPEND _outs "${_elf}")
+    set(_elfarg "--elf-path=${_elf}")
   endif()
   add_custom_command(
     OUTPUT ${_outs}
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}"
-            -d ${D_DEVICE} ${D_ARGS}
+    COMMAND ${Python3_EXECUTABLE} "${_pydir}/${D_PY}"
+            ${_devflag} ${D_DEVICE} ${D_ARGS}
             "--xclbin-path=${_xclbin}" "--insts-path=${_insts}" ${_elfarg}
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}"
+    DEPENDS "${_pydir}/${D_PY}"
     WORKING_DIRECTORY "${_out}"
     COMMENT "JIT-compiling ${D_PY} for ${D_DEVICE}"
     VERBATIM)
@@ -380,7 +448,8 @@ function(add_aie_design)
 endfunction()
 
 # add_aie_run_test(NAME <t> [DEVICE <npu|npu2>] [EXE <host_target>] [PY <test.py>]
-#                  [KERNEL <name>] [PY_STANDALONE] [USE_ELF] [TIMEOUT <secs>]
+#                  [KERNEL <name>] [PY_STANDALONE] [USE_ELF] [NO_DEFAULT_ARGS]
+#                  [XCLBIN <name>] [INSTS <name>] [TIMEOUT <secs>]
 #                  [RUN_ARGS ...] [ENVIRONMENT ...])
 #   Registers a ctest that runs on the NPU via utils/run_on_npu.py. Exactly one
 #   of EXE or PY selects the host side:
@@ -390,13 +459,23 @@ endfunction()
 #                       designs) instead of passing it the built artifacts
 #     USE_ELF        => pass final.elf instead of insts.bin as -i (xrt::elf +
 #                       xrt::module testbenches; requires add_aie_design's ELF)
+#     XCLBIN/INSTS   => select which design's artifacts, for a directory that
+#                       builds several (see add_aie_design's OUTPUT_PREFIX).
+#                       Each must name an artifact a design here declares.
+#     NO_DEFAULT_ARGS => drop the -x/-i/-k flags and pass only RUN_ARGS. For
+#                       host code that does not take them: basic/packet_switch
+#                       reads <app_id> <insts> <xclbin> positionally, and
+#                       basic/row_wise_bias_add reads no argv at all (its paths
+#                       are compile definitions). The artifacts are still
+#                       asserted via REQUIRED_FILES.
 #     RUN_ARGS       => extra args appended to the host command, mirroring the
 #                       Makefile `run:` recipe (e.g. -l 4096 --op add)
 #     ENVIRONMENT    => "VAR=value" entries set for the test (e.g. NORM_OP=rms)
 #     TIMEOUT        => seconds, default ${AIE_TEST_TIMEOUT}
 #   DEVICE defaults to ${AIE_DEVICE}.
 function(add_aie_run_test)
-  cmake_parse_arguments(R "PY_STANDALONE;USE_ELF" "NAME;DEVICE;EXE;PY;KERNEL;TIMEOUT"
+  cmake_parse_arguments(R "PY_STANDALONE;USE_ELF;NO_DEFAULT_ARGS"
+                          "NAME;DEVICE;EXE;PY;KERNEL;TIMEOUT;XCLBIN;INSTS"
                           "RUN_ARGS;ENVIRONMENT" ${ARGN})
   _aie_validate_args("add_aie_run_test" R NAME)
 
@@ -422,6 +501,25 @@ function(add_aie_run_test)
     message(FATAL_ERROR "add_aie_run_test(${R_NAME}): PY_STANDALONE requires PY")
   endif()
 
+  # PY_STANDALONE runs an @iron.jit script that builds and loads its own design,
+  # so it is handed no artifacts at all. Accepting keywords that only describe
+  # artifacts would silently do nothing.
+  if(R_PY_STANDALONE AND (R_XCLBIN OR R_INSTS OR R_USE_ELF OR R_NO_DEFAULT_ARGS))
+    message(FATAL_ERROR
+      "add_aie_run_test(${R_NAME}): PY_STANDALONE takes no artifact arguments, "
+      "so XCLBIN/INSTS/USE_ELF/NO_DEFAULT_ARGS do not apply")
+  endif()
+  if(R_USE_ELF AND R_INSTS)
+    message(FATAL_ERROR
+      "add_aie_run_test(${R_NAME}): USE_ELF and INSTS both choose the "
+      "instruction stream; pass INSTS <name>.elf alone instead")
+  endif()
+  # KERNEL only ever reaches the host as -k, which NO_DEFAULT_ARGS removes.
+  if(R_NO_DEFAULT_ARGS AND R_KERNEL)
+    message(FATAL_ERROR
+      "add_aie_run_test(${R_NAME}): NO_DEFAULT_ARGS drops -k, so KERNEL has no effect")
+  endif()
+
   if(NOT R_DEVICE)
     set(R_DEVICE "${AIE_DEVICE}")
   endif()
@@ -436,18 +534,34 @@ function(add_aie_run_test)
     set(_k ${R_KERNEL})
   endif()
 
+  # Which design's xclbin. Only a name given explicitly is checked against the
+  # registry: the default has to stay usable by a directory whose artifacts are
+  # produced outside CMake.
+  if(R_XCLBIN)
+    _aie_resolve_artifact("add_aie_run_test(${R_NAME})" XCLBIN "${R_XCLBIN}" _xclbin)
+  else()
+    set(_xclbin "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin")
+  endif()
+
   # The instruction stream is either the raw insts.bin or the ELF-wrapped form.
   # USE_ELF without a matching add_aie_design(... ELF) would hand the testbench
   # a file nothing ever writes; this is the reverse of the mismatch that made
   # vector_scalar_add abort inside XRT.
-  if(R_USE_ELF)
-    get_directory_property(_has_elf AIE_DESIGN_HAS_ELF)
-    if(NOT _has_elf)
+  if(R_INSTS)
+    _aie_resolve_artifact("add_aie_run_test(${R_NAME})" INSTS "${R_INSTS}" _instr)
+  elseif(R_USE_ELF)
+    get_directory_property(_elfs AIE_DESIGN_ELFS)
+    list(LENGTH _elfs _n_elfs)
+    if(_n_elfs EQUAL 0)
       message(FATAL_ERROR
         "add_aie_run_test(${R_NAME}): USE_ELF requires a preceding "
         "add_aie_design(... ELF) in this directory to emit final.elf")
+    elseif(_n_elfs GREATER 1)
+      message(FATAL_ERROR
+        "add_aie_run_test(${R_NAME}): this directory declares ${_n_elfs} ELF "
+        "designs, so USE_ELF is ambiguous; pass INSTS <name>.elf instead")
     endif()
-    set(_instr "${CMAKE_CURRENT_BINARY_DIR}/final.elf")
+    list(GET _elfs 0 _instr)
   else()
     set(_instr "${CMAKE_CURRENT_BINARY_DIR}/insts.bin")
   endif()
@@ -457,14 +571,22 @@ function(add_aie_run_test)
   # Artifacts the test consumes, asserted via REQUIRED_FILES below so a missing
   # xclbin is reported by ctest instead of aborting inside XRT.
   set(_required "")
+  # NO_DEFAULT_ARGS keeps the artifacts asserted but off the command line; the
+  # host either takes them positionally or was compiled knowing their paths.
+  if(R_NO_DEFAULT_ARGS)
+    set(_default_exe_args "")
+    set(_default_py_args "")
+  else()
+    set(_default_exe_args -x "${_xclbin}" -i "${_instr}" -k ${_k})
+    set(_default_py_args --xclbin "${_xclbin}" --instr "${_instr}" -k ${_k})
+  endif()
+
   if(R_EXE)
-    set(_required "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin" "${_instr}")
+    set(_required "${_xclbin}" "${_instr}")
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
               $<TARGET_FILE:${R_EXE}>
-              -x "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
-              -i "${_instr}"
-              -k ${_k} ${R_RUN_ARGS})
+              ${_default_exe_args} ${R_RUN_ARGS})
   elseif(R_PY_STANDALONE)
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
@@ -472,13 +594,11 @@ function(add_aie_run_test)
               ${R_RUN_ARGS})
   else()
     # `run_py` flow: a Python host test driven against the built artifacts.
-    set(_required "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin" "${_instr}")
+    set(_required "${_xclbin}" "${_instr}")
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
               ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}"
-              --xclbin "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
-              --instr "${_instr}"
-              -k ${_k} ${R_RUN_ARGS})
+              ${_default_py_args} ${R_RUN_ARGS})
   endif()
 
   if(NOT R_TIMEOUT)
@@ -490,5 +610,187 @@ function(add_aie_run_test)
   endif()
   if(R_ENVIRONMENT)
     set_tests_properties(${R_NAME} PROPERTIES ENVIRONMENT "${R_ENVIRONMENT}")
+  endif()
+endfunction()
+
+# -----------------------------------------------------------------------------
+# Explicit aiecc path (designs that are not @iron.jit)
+# -----------------------------------------------------------------------------
+# A handful of examples emit MLIR from their design script and then drive aiecc
+# themselves, instead of letting @iron.jit do both. basic/custom_dma and
+# ml/magika are the two. add_aie_mlir_design() is the CMake shape of that
+# two-step recipe; everything downstream (add_aie_run_test, XCLBIN/INSTS
+# selection, REQUIRED_FILES) works the same as for a JIT-ed design.
+
+# aiecc ships beside the Python interpreter in a wheel install and in the build
+# tree's bin/ from source, so look there before falling back to PATH. Resolved
+# on demand rather than at include time: an example that never calls
+# add_aie_mlir_design() must still configure without aiecc present.
+macro(_aie_require_aiecc)
+  if(NOT AIE_AIECC_EXECUTABLE)
+    _aie_require_python()
+    get_filename_component(_py_bin "${Python3_EXECUTABLE}" DIRECTORY)
+    find_program(AIE_AIECC_EXECUTABLE NAMES aiecc
+                 HINTS "${_py_bin}" "${MLIR_AIE_DIR}/bin" "${MLIR_AIE_DIR}/build/bin")
+    if(NOT AIE_AIECC_EXECUTABLE)
+      message(FATAL_ERROR
+        "add_aie_mlir_design() needs 'aiecc', which was not found next to "
+        "${Python3_EXECUTABLE}, under ${MLIR_AIE_DIR}/bin, or on PATH. "
+        "Source utils/env_setup.sh, or set -DAIE_AIECC_EXECUTABLE=<path>.")
+    endif()
+  endif()
+endmacro()
+
+# add_aie_kernel_object(OUTPUT <name.o> SOURCE <kernel.cc> [DEVICE <npu|npu2>]
+#                       [CHESS] [DEFINES ...] [INCLUDE_DIRS ...])
+#   Compiles one AIE core function into ${CMAKE_CURRENT_BINARY_DIR}/<name.o>,
+#   which is where aiecc resolves the `link_with` name from. Pass the same bare
+#   <name.o> to add_aie_mlir_design's OBJECTS.
+#
+#   The compiler flags are not spelled out here. utils/compile_aie_kernel.py
+#   forwards to compile_cxx_core_function(), which is the same code the JIT uses
+#   and the single place the Peano/Chess flag sets live -- makefile-common's
+#   PEANOWRAP2_FLAGS / CHESSCCWRAP2P_FLAGS are that list written out a second
+#   time, and a third copy in CMake would be a third thing to keep in step.
+function(add_aie_kernel_object)
+  cmake_parse_arguments(K "CHESS" "OUTPUT;SOURCE;DEVICE" "DEFINES;INCLUDE_DIRS" ${ARGN})
+  _aie_validate_args("add_aie_kernel_object" K OUTPUT SOURCE)
+  if(NOT K_DEVICE)
+    set(K_DEVICE "${AIE_DEVICE}")
+  endif()
+  _aie_validate_device("add_aie_kernel_object" "${K_DEVICE}")
+
+  if(IS_ABSOLUTE "${K_SOURCE}")
+    set(_src "${K_SOURCE}")
+  else()
+    set(_src "${CMAKE_CURRENT_SOURCE_DIR}/${K_SOURCE}")
+  endif()
+  if(NOT EXISTS "${_src}")
+    message(FATAL_ERROR "add_aie_kernel_object: kernel source not found: ${_src}")
+  endif()
+
+  _aie_require_python()
+
+  set(_defargs "")
+  foreach(_d IN LISTS K_DEFINES)
+    list(APPEND _defargs -D "${_d}")
+  endforeach()
+  set(_incargs "")
+  foreach(_i IN LISTS K_INCLUDE_DIRS)
+    list(APPEND _incargs -I "${_i}")
+  endforeach()
+  set(_chessarg "")
+  if(K_CHESS)
+    set(_chessarg --chess)
+  endif()
+
+  add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${K_OUTPUT}"
+    COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/compile_aie_kernel.py"
+            "${_src}" -o "${K_OUTPUT}" -d ${K_DEVICE}
+            ${_defargs} ${_incargs} ${_chessarg}
+    DEPENDS "${_src}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Compiling AIE kernel ${K_OUTPUT} for ${K_DEVICE}"
+    VERBATIM)
+endfunction()
+
+# add_aie_mlir_design(TARGET <t> PY <design.py> [DEVICE <npu|npu2>]
+#                     [OUTPUT_PREFIX <p>] [EMIT_MLIR_FLAG <flag>]
+#                     [INPUT_WITH_ADDRESSES] [ARGS ...] [AIECC_ARGS ...]
+#                     [OBJECTS ...])
+#   Runs `python <design.py> -d <dev> [EMIT_MLIR_FLAG] [ARGS...] > <p>.mlir`,
+#   then aiecc over that MLIR to produce the same artifacts add_aie_design()
+#   does. OBJECTS names kernel objects (from add_aie_kernel_object) that the
+#   design links, so aiecc reruns when a kernel changes.
+#
+#   EMIT_MLIR_FLAG is the switch the script needs to print MLIR instead of
+#   building -- ml/magika takes --emit-mlir, basic/custom_dma prints by default.
+#   INPUT_WITH_ADDRESSES additionally keeps input_with_addresses.mlir, which is
+#   what python/utils/trace/parse.py reads to name the traced cores.
+#
+#   Guarded by AIE_BUILD_DESIGN for the same reason add_aie_design() is: under
+#   make the design is built outside CMake, and doing it twice is wasted work.
+function(add_aie_mlir_design)
+  cmake_parse_arguments(M "INPUT_WITH_ADDRESSES"
+                          "TARGET;PY;DEVICE;OUTPUT_PREFIX;EMIT_MLIR_FLAG"
+                          "ARGS;AIECC_ARGS;OBJECTS" ${ARGN})
+  _aie_validate_args("add_aie_mlir_design" M TARGET PY)
+  if(NOT M_DEVICE)
+    set(M_DEVICE "${AIE_DEVICE}")
+  endif()
+  _aie_validate_device("add_aie_mlir_design" "${M_DEVICE}")
+  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${M_PY}")
+    message(FATAL_ERROR
+      "add_aie_mlir_design: design script not found: ${CMAKE_CURRENT_SOURCE_DIR}/${M_PY}")
+  endif()
+
+  # This path never emits an ELF: aiecc's --get-npu-insts writes the raw stream.
+  _aie_design_artifacts("${M_OUTPUT_PREFIX}" _xclbin _insts _elf)
+  _aie_register_design("${M_TARGET}" "${_xclbin}" "${_insts}" "${_elf}" FALSE)
+
+  _aie_require_python()
+
+  if(NOT AIE_BUILD_DESIGN)
+    add_custom_target(${M_TARGET}_xclbin)
+    if(TARGET ${M_TARGET})
+      add_dependencies(${M_TARGET} ${M_TARGET}_xclbin)
+    endif()
+    return()
+  endif()
+
+  _aie_require_aiecc()
+
+  set(_stem "aie")
+  if(M_OUTPUT_PREFIX)
+    set(_stem "${M_OUTPUT_PREFIX}")
+  endif()
+  set(_mlir "${CMAKE_CURRENT_BINARY_DIR}/${_stem}.mlir")
+
+  # The script prints MLIR on stdout, as the Makefile's `> $@` expects. VERBATIM
+  # escapes a `>` into a literal argument, so the capture is done by the shim
+  # rather than by giving up VERBATIM's quoting for the whole rule.
+  add_custom_command(
+    OUTPUT "${_mlir}"
+    COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/emit_design_mlir.py"
+            -o "${_mlir}" --
+            ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${M_PY}"
+            -d ${M_DEVICE} ${M_EMIT_MLIR_FLAG} ${M_ARGS}
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${M_PY}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Emitting MLIR from ${M_PY} for ${M_DEVICE}"
+    VERBATIM)
+
+  # aiecc takes artifact *names* relative to its working directory, and resolves
+  # each kernel object the design links the same way, so it has to run in the
+  # directory those objects were compiled into.
+  get_filename_component(_xclbin_name "${_xclbin}" NAME)
+  get_filename_component(_insts_name "${_insts}" NAME)
+  set(_outs "${_xclbin}" "${_insts}")
+  set(_iwa "")
+  if(M_INPUT_WITH_ADDRESSES)
+    set(_iwa --get-input-with-addresses)
+    list(APPEND _outs "${CMAKE_CURRENT_BINARY_DIR}/input_with_addresses.mlir")
+  endif()
+
+  set(_objs "")
+  foreach(_o IN LISTS M_OBJECTS)
+    list(APPEND _objs "${CMAKE_CURRENT_BINARY_DIR}/${_o}")
+  endforeach()
+
+  add_custom_command(
+    OUTPUT ${_outs}
+    COMMAND "${AIE_AIECC_EXECUTABLE}" ${M_AIECC_ARGS}
+            --get-xclbin "--xclbin-name=${_xclbin_name}"
+            --get-npu-insts "--npu-insts-name=${_insts_name}"
+            ${_iwa} "${_mlir}"
+    DEPENDS "${_mlir}" ${_objs}
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Compiling ${_stem}.mlir with aiecc for ${M_DEVICE}"
+    VERBATIM)
+
+  add_custom_target(${M_TARGET}_xclbin ALL DEPENDS ${_outs})
+  if(TARGET ${M_TARGET})
+    add_dependencies(${M_TARGET} ${M_TARGET}_xclbin)
   endif()
 endfunction()
