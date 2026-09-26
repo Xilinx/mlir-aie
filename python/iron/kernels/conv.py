@@ -699,7 +699,10 @@ def conv2dk1_i8(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            stack_bytes=1504,  # aiecc measured_stack_size
+            # aiecc measured_stack_size: at most 480 B tuned for aie2,
+            # 128 B tuned for aie2p and 256 B portable, all under the
+            # 1024 B default
+            stack_bytes=None,
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_i8_ref,
             acc_dtype=np.int32,
