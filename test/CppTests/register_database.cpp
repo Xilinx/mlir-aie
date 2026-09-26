@@ -202,13 +202,16 @@ void test_encode_field_value() {
     throw std::runtime_error("Failed to find Cnt0_Start_Event field");
   }
 
-  uint32_t encoded0 = db->encodeFieldValue(*cnt0Start, 0x25);
-  if (encoded0 != 0x25) {
-    std::cerr << "Expected 0x25, got 0x" << std::hex << encoded0 << std::dec
+  auto encoded0 = db->encodeFieldValue(*cnt0Start, 0x25);
+  if (!encoded0) {
+    throw std::runtime_error("Cnt0_Start_Event encoding unexpectedly failed");
+  }
+  if (*encoded0 != 0x25) {
+    std::cerr << "Expected 0x25, got 0x" << std::hex << *encoded0 << std::dec
               << "\n";
     throw std::runtime_error("Cnt0_Start_Event encoding failed");
   }
-  std::cout << "  ✓ Cnt0_Start_Event(0x25) = 0x" << std::hex << encoded0
+  std::cout << "  ✓ Cnt0_Start_Event(0x25) = 0x" << std::hex << *encoded0
             << std::dec << "\n";
 
   // Test encoding Cnt0_Stop_Event (bits 14:8)
@@ -218,13 +221,16 @@ void test_encode_field_value() {
     throw std::runtime_error("Failed to find Cnt0_Stop_Event field");
   }
 
-  uint32_t encoded1 = db->encodeFieldValue(*cnt0Stop, 0x21);
-  if (encoded1 != 0x2100) {
-    std::cerr << "Expected 0x2100, got 0x" << std::hex << encoded1 << std::dec
+  auto encoded1 = db->encodeFieldValue(*cnt0Stop, 0x21);
+  if (!encoded1) {
+    throw std::runtime_error("Cnt0_Stop_Event encoding unexpectedly failed");
+  }
+  if (*encoded1 != 0x2100) {
+    std::cerr << "Expected 0x2100, got 0x" << std::hex << *encoded1 << std::dec
               << "\n";
     throw std::runtime_error("Cnt0_Stop_Event encoding failed");
   }
-  std::cout << "  ✓ Cnt0_Stop_Event(0x21) = 0x" << std::hex << encoded1
+  std::cout << "  ✓ Cnt0_Stop_Event(0x21) = 0x" << std::hex << *encoded1
             << std::dec << "\n";
 }
 
@@ -248,13 +254,16 @@ void test_encode_single_bit_field() {
     throw std::runtime_error("Failed to find Enable field");
   }
 
-  uint32_t enableEncoded = db->encodeFieldValue(*enableField, 1);
-  if (enableEncoded != 0x1) {
-    std::cerr << "Expected 0x1, got 0x" << std::hex << enableEncoded << std::dec
-              << "\n";
+  auto enableEncoded = db->encodeFieldValue(*enableField, 1);
+  if (!enableEncoded) {
+    throw std::runtime_error("Enable encoding unexpectedly failed");
+  }
+  if (*enableEncoded != 0x1) {
+    std::cerr << "Expected 0x1, got 0x" << std::hex << *enableEncoded
+              << std::dec << "\n";
     throw std::runtime_error("Enable encoding failed");
   }
-  std::cout << "  ✓ Enable(1) = 0x" << std::hex << enableEncoded << std::dec
+  std::cout << "  ✓ Enable(1) = 0x" << std::hex << *enableEncoded << std::dec
             << "\n";
 
   // Test Reset field (bit 1)
@@ -263,14 +272,44 @@ void test_encode_single_bit_field() {
     throw std::runtime_error("Failed to find Reset field");
   }
 
-  uint32_t resetEncoded = db->encodeFieldValue(*resetField, 1);
-  if (resetEncoded != 0x2) {
-    std::cerr << "Expected 0x2, got 0x" << std::hex << resetEncoded << std::dec
+  auto resetEncoded = db->encodeFieldValue(*resetField, 1);
+  if (!resetEncoded) {
+    throw std::runtime_error("Reset encoding unexpectedly failed");
+  }
+  if (*resetEncoded != 0x2) {
+    std::cerr << "Expected 0x2, got 0x" << std::hex << *resetEncoded << std::dec
               << "\n";
     throw std::runtime_error("Reset encoding failed");
   }
-  std::cout << "  ✓ Reset(1) = 0x" << std::hex << resetEncoded << std::dec
+  std::cout << "  ✓ Reset(1) = 0x" << std::hex << *resetEncoded << std::dec
             << "\n";
+}
+
+void test_encode_field_value_overflow() {
+  std::cout << "Test: Encode Field Value Overflow\n";
+
+  auto db = RegisterDatabase::loadAIE2();
+  if (!db) {
+    throw std::runtime_error("Failed to load database");
+  }
+
+  // Core_Control's single-bit Enable field cannot hold a value above 1.
+  auto coreControl = db->lookupRegister("Core_Control", "core");
+  if (!coreControl) {
+    throw std::runtime_error("Failed to find Core_Control");
+  }
+  const BitFieldInfo *enableField = coreControl->getField("Enable");
+  if (!enableField) {
+    throw std::runtime_error("Failed to find Enable field");
+  }
+
+  auto overflowed = db->encodeFieldValue(*enableField, 2);
+  if (overflowed.has_value()) {
+    throw std::runtime_error(
+        "Expected nullopt when a value overflows its field width");
+  }
+  std::cout << "  ✓ Correctly returns nullopt when a value overflows its "
+               "field width\n";
 }
 
 int main() {
@@ -289,6 +328,7 @@ int main() {
     test_register_bit_fields();
     test_encode_field_value();
     test_encode_single_bit_field();
+    test_encode_field_value_overflow();
 
     std::cout << "\n==============================================\n";
     std::cout << "All tests passed! ✓\n";

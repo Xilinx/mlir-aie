@@ -57,6 +57,10 @@ struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
     if (!resetMask)
       return op.emitOpError("Core_Control Reset field does not fit in a 32-bit "
                             "register");
+    std::optional<uint32_t> resetValue = tm.encodeFieldValue(*resetField, 1);
+    if (!resetValue)
+      return op.emitOpError(
+          "Core_Control Reset field value does not fit in its bit width");
 
     Location loc = op.getLoc();
     IntegerAttr colAttr = rewriter.getI32IntegerAttr(col);
@@ -73,8 +77,7 @@ struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
     // MaskWrite32. Constants are materialized in named locals so the emitted IR
     // order does not depend on unspecified C++ argument-evaluation order.
     Value assertAddr = createConstantI32(rewriter, loc, ctrlReg->offset);
-    Value assertVal =
-        createConstantI32(rewriter, loc, tm.encodeFieldValue(*resetField, 1));
+    Value assertVal = createConstantI32(rewriter, loc, *resetValue);
     Value assertMask = createConstantI32(rewriter, loc, *resetMask);
     NpuMaskWrite32Op::create(rewriter, loc, assertAddr, assertVal, assertMask,
                              nullptr, colAttr, rowAttr);
