@@ -89,18 +89,16 @@ def test_cycle_efficiency_is_independent_of_call_count():
 def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():
     from test_kernels_perf import _record
 
-    case = Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=4, devices=("npu2",))
+    case = Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=3, devices=("npu2",))
     # One call stalled; zero's intervals are their own population.
-    traced = kd.CallCycles(
-        kernel=(900, 1400, 905), initializers={2: (60, 61, 60)}, truncated=True
-    )
+    traced = kd.CallCycles(kernel=(900, 1400, 905), initializers={2: (60, 61, 60)})
     rows = []
     _record(lambda *row: rows.append(row), case, {"cycles": traced})
     assert rows[0][1:] == (
         "cycles",
         "cycles",
         900,
-        "median 905 max 1400 n=3; init[2] min 60; truncated",
+        "median 905 max 1400 n=3; init[2] min 60",
     )
 
 
