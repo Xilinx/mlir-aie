@@ -828,6 +828,16 @@ def _bf16(v):
     return np.asarray(v, np.float32).astype(bfloat16).astype(np.float32)
 
 
+def _bf16_ftz(v):
+    """Round an f32 product to bf16 as an accumulator store does.
+
+    A subnormal product is flushed to zero first, keeping its sign, so it
+    does not round to a subnormal bf16 or up to 2**-126.
+    """
+    v = np.asarray(v, np.float32)
+    return _bf16(np.where(np.abs(v) < 2.0**-126, np.copysign(np.float32(0), v), v))
+
+
 def sigmoid_lut_ref(x):
     """Model of [`sigmoid`][iron.kernels.activation.sigmoid]'s LUT build on aie2.
 
@@ -868,11 +878,11 @@ def silu_lut_ref(x):
     activation/silu.cc narrows the sigmoid factor to bf16 before the final
     multiply, so that rounding is modelled too, not folded away. The sigmoid
     is exactly 0 from x = -8 down, and x is clamped there before the multiply,
-    so -inf gives 0 rather than NaN.
+    so -inf gives 0 rather than NaN. A subnormal product is flushed to zero.
     """
     xf = np.asarray(x).astype(np.float32)
     sig = np.asarray(sigmoid_lut_ref(xf), np.float32)
-    return _bf16(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
+    return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
 
 
 def swiglu_lut_ref(x, w1, w2):
@@ -883,13 +893,15 @@ def swiglu_lut_ref(x, w1, w2):
     the next step -- which is what this reproduces. ``x*w2`` is clamped at -8
     before its multiply, as in silu_lut_ref, and where the silu product is 0
     the output is 0, so an overflowed ``x*w1`` does not make ``inf * 0``.
+    Each subnormal product is flushed to zero, so a subnormal ``x*w2`` zeroes
+    the output through the gate.
     """
     with np.errstate(over="ignore", invalid="ignore"):
-        xw1 = _bf16(np.asarray(x, np.float32) * np.asarray(w1, np.float32))
-        xw2 = _bf16(np.asarray(x, np.float32) * np.asarray(w2, np.float32))
+        xw1 = _bf16_ftz(np.asarray(x, np.float32) * np.asarray(w1, np.float32))
+        xw2 = _bf16_ftz(np.asarray(x, np.float32) * np.asarray(w2, np.float32))
         sig = np.asarray(sigmoid_lut_ref(xw2), np.float32)
-        silu_out = _bf16(np.maximum(xw2, -8.0) * sig)
-        out = np.where(silu_out == 0, np.float32(0.0), _bf16(xw1 * silu_out))
+        silu_out = _bf16_ftz(np.maximum(xw2, -8.0) * sig)
+        out = np.where(silu_out == 0, np.float32(0.0), _bf16_ftz(xw1 * silu_out))
     return out.astype(np.asarray(x).dtype)
 
 
