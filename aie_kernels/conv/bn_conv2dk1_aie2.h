@@ -244,6 +244,43 @@ static void k1_cas_get(const TI *in, const int8_t *wts, TO *out,
     o[6 + i] = b[i];
   aie::set_saturation(sat);
 }
+
+// Channels per split for a power-of-two split. A runtime divide is a
+// libcall, and a kernel that calls anything saves registers on every call,
+// so the cascade wrappers try the vector path, which calls nothing, before
+// the scalar helpers.
+static inline int32_t k1_per_split(const int32_t c, const int32_t split) {
+  return c >> __builtin_ctz(split);
+}
 #endif
+
+static inline bool k1_cas_fits(const int8_t *kernels, const int32_t in_split,
+                               const int32_t out_split) {
+#if AIE_TUNED_AIE2P
+  const int32_t pow2 =
+      (in_split & (in_split - 1)) | (out_split & (out_split - 1));
+  return k1_wts_aligned(kernels) && in_split > 0 && out_split > 0 && pow2 == 0;
+#else
+  return false;
+#endif
+}
+
+template <typename TI>
+static inline bool k1_cas_put_new(const TI *input, const int8_t *kernels,
+                                  const int32_t input_width,
+                                  const int32_t input_channels,
+                                  const int32_t input_split, const int32_t oc) {
+#if AIE_TUNED_AIE2P
+  if (!k1_cas_fits(kernels, input_split, 1))
+    return false;
+  event0();
+  const int32_t blocks = k1_per_split(input_channels, input_split) / 8;
+  k1_cas_put(input, kernels + oc * blocks * 64, input_width * 8, blocks);
+  event1();
+  return true;
+#else
+  return false;
+#endif
+}
 
 #endif
