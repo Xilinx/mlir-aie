@@ -611,7 +611,23 @@ def mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            stack_bytes=0xD00,  # programming_examples/basic/matrix_multiplication
+            # aiecc measured_stack_size, tuned or not: at most 512 B on aie2
+            # and 192 B on aie2p, but for aie2p's int8 -> int32 kernel, whose
+            # fully unrolled K loop spills 16 B per unit of K (16 * K - 64 B
+            # from K = 144, no more than 1024 B up to K = 64). chess builds
+            # keep the matrix_multiplication examples' number.
+            stack_bytes=(
+                0xD00
+                if use_chess
+                else (
+                    16 * dim_k
+                    if arch == "aie2p"
+                    and vectorized
+                    and key == (np.int8, np.int32)
+                    and dim_k > 64
+                    else None
+                )
+            ),
             # mm_aie2p.h sets conv_even itself and restores it; mm_aie2.h
             # does so only under round_conv_even, and otherwise stores bf16
             # in whatever mode the core is in.
