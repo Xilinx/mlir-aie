@@ -901,7 +901,6 @@ k1_skip_chunked(const uint8_t *input, const int8_t *kernels, int8_t *output,
                            input_channels, output_channels, scale, skip_scale);
 }
 
-// See k1_vector in bn_conv2dk1_relu.cc for when 8-pixel chunks pay off.
 template <typename TS>
 static void
 k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
@@ -912,13 +911,12 @@ k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
 #if AIE_TUNED_AIE2P
-  if (input_width >= 8 && (input_width % 8 == 0 || input_channels >= 64))
-    k1_skip_chunked<8>(input, kernels, output, skip, input_width,
-                       input_channels, output_channels, scale, skip_scale);
-  else
+  k1_skip_rows<true, 4>(input, kernels, skip, output, input_width,
+                        input_channels, output_channels, scale, skip_scale);
+#else
+  k1_skip_chunked<4>(input, kernels, output, skip, input_width, input_channels,
+                     output_channels, scale, skip_scale);
 #endif
-    k1_skip_chunked<4>(input, kernels, output, skip, input_width,
-                       input_channels, output_channels, scale, skip_scale);
   event1();
 }
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
@@ -1039,7 +1037,8 @@ void conv2dk1_skip_ui8_ui8_i8(uint8_t *input0, int8_t *kernels, int8_t *output,
                               const int32_t output_channels, const int scale,
                               const int skip_scale) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 4 && skip_scale > 0 && k1_wts_aligned(kernels)) {
+  if (input_width >= 4 && skip_scale > 0 &&
+      k1_fits(input_width, kernels, input0, output, skip)) {
     k1_skip_vector(input0, kernels, output, skip, input_width, input_channels,
                    output_channels, scale, skip_scale);
     return;
@@ -1058,7 +1057,8 @@ void conv2dk1_skip_ui8_i8_i8(uint8_t *input0, int8_t *kernels, int8_t *output,
                              const int32_t output_channels, const int scale,
                              const int skip_scale) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 4 && skip_scale > 0 && k1_wts_aligned(kernels)) {
+  if (input_width >= 4 && skip_scale > 0 &&
+      k1_fits(input_width, kernels, input0, output, skip)) {
     k1_skip_vector(input0, kernels, output, skip, input_width, input_channels,
                    output_channels, scale, skip_scale);
     return;
