@@ -11,6 +11,8 @@
         --out static.json --sources . --baseline-sources ../mlir-aie-base
     python -m aie.utils.compile.remarks --target aie2p --only '^tanh/' \
         --cases test/python/npu/kernel_cases.py --out static.json
+    python -m aie.utils.compile.remarks --target aie2p --out static.json \
+        --build cascade_mm:dim_m=16,dim_k=24,dim_n=32 --build cascade_mm
 
 CPU-only. Every factory in ``aie.iron.kernels`` (at its defaults and for each
 entry of its ``.dtypes`` table) is compiled exactly as the JIT compiles it
@@ -22,7 +24,8 @@ here before anyone looks at device numbers. With ``--sources DIR`` (or
 ``aie_kernels/`` and ``aie_runtime_lib/`` are compiled instead of the
 installed copies. With ``--cases``, the builds
 are the ones a cases file's tests run (shape and options baked in), each
-named by its case.
+named by its case; with ``--build``, the factory builds named on the
+command line, for a shape that picks a code path no default reaches.
 
 Record shapes, as llvm-aie 22.0.0.2026090201 emits them (they are Peano's,
 not LLVM's documented ones):
@@ -73,6 +76,8 @@ import argparse
 import collections
 import concurrent.futures
 import contextlib
+import enum
+import inspect
 import json
 import os
 import re
@@ -81,6 +86,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import get_args
 
 import yaml
 
@@ -911,7 +917,6 @@ def kernel_builds():
     not on the shape a test runs, so this is the whole surface.
     """
     from aie.iron import kernels
-    from aie.utils.bfp import dtype_name
 
     for name in kernels.factories():
         f = getattr(kernels, name)
@@ -925,11 +930,81 @@ def kernel_builds():
             if ef.object_file_name in seen:
                 continue  # the default build is one of the dtypes entries
             seen.add(ef.object_file_name)
-            suffix = "".join(
-                f"/{k}={dtype_name(v) if isinstance(v, type) else v}"
-                for k, v in sorted(combo.items())
+            yield _build_name(name, combo), ef
+
+
+def _build_name(factory: str, kwargs: dict) -> str:
+    from aie.utils.bfp import dtype_name
+
+    def text(v):
+        if isinstance(v, enum.Enum):
+            return v.value
+        return dtype_name(v) if isinstance(v, type) else v
+
+    return factory + "".join(f"/{k}={text(v)}" for k, v in sorted(kwargs.items()))
+
+
+def _parameter_value(param: inspect.Parameter, text: str):
+    import numpy as np
+    from aie.utils import bfp
+
+    kind = type(param.default)
+    if param.default is None or param.default is param.empty:
+        kind = next(
+            (t for t in get_args(param.annotation) if t is not type(None)),
+            param.annotation,
+        )
+    if isinstance(param.default, type) or kind is type:
+        return bfp.v8bfp16ebs8 if text == "bfp16ebs8" else np.dtype(text).type
+    if kind is bool:
+        if text not in ("True", "False"):
+            raise ValueError(f"{param.name} takes True or False, not {text!r}")
+        return text == "True"
+    if isinstance(kind, type) and issubclass(kind, enum.Enum):
+        return kind(text)
+    if kind in (int, float, str):
+        return kind(text)
+    raise ValueError(f"{param.name} is not settable from the command line")
+
+
+def parse_build(spec: str) -> tuple[str, dict]:
+    """``FACTORY:KEY=VALUE,...`` -> ``(factory, kwargs)``, each value parsed as its parameter's type.
+
+    A dtype parameter takes a numpy name (``int16``, ``bfloat16``) or
+    ``bfp16ebs8``, a bool ``True`` or ``False``, an enum a member's value.
+    """
+    from aie.iron import kernels
+
+    factory, _, rest = spec.partition(":")
+    if factory not in kernels.factories():
+        raise ValueError(f"{spec}: {factory!r} is not a kernel factory")
+    params = inspect.signature(getattr(kernels, factory)).parameters
+    kwargs = {}
+    for item in filter(None, rest.split(",")):
+        key, eq, text = item.partition("=")
+        if not eq or key not in params:
+            raise ValueError(
+                f"{spec}: {item!r} is not KEY=VALUE for a parameter of "
+                f"{factory} ({', '.join(params)})"
             )
-            yield f"{name}{suffix}", ef
+        try:
+            kwargs[key] = _parameter_value(params[key], text)
+        except (KeyError, TypeError, ValueError) as e:
+            raise ValueError(f"{spec}: {item!r}: {e}") from None
+    return factory, kwargs
+
+
+def spec_builds(specs):
+    """Yield ``(name, ExternalFunction)`` for each ``parse_build`` result, named as :func:`kernel_builds` names a dtypes entry."""
+    from aie.iron import kernels
+
+    for factory, kwargs in specs:
+        name = _build_name(factory, kwargs)
+        try:
+            ef = getattr(kernels, factory)(**kwargs)
+        except (NotImplementedError, ValueError) as e:
+            raise ValueError(f"--build {name}: {e}") from None
+        yield name, ef
 
 
 def case_builds(
@@ -1181,6 +1256,14 @@ def main(argv=None) -> int:
         "kernel_cases.py), named by case, instead of each factory's defaults",
     )
     ap.add_argument(
+        "--build",
+        action="append",
+        metavar="FACTORY:KEY=VALUE,...",
+        help="compile this factory build instead of each factory's defaults "
+        "(repeatable), e.g. cascade_mm:dim_m=16,dim_k=24,dim_n=32 or "
+        "scale:dtype=bfloat16; a shape can pick another code path",
+    )
+    ap.add_argument(
         "--jobs",
         type=int,
         default=os.cpu_count() or 1,
@@ -1214,6 +1297,12 @@ def main(argv=None) -> int:
         "installed copy",
     )
     a = ap.parse_args(argv)
+    if a.build and a.cases:
+        ap.error("--build and --cases each pick the builds; give one")
+    try:
+        a.build = [parse_build(spec) for spec in a.build or ()]
+    except ValueError as e:
+        ap.error(str(e))
     if not a.sources:
         return _run(a)
     with kernel_sources(a.sources):
@@ -1244,13 +1333,22 @@ def _run(a: argparse.Namespace) -> int:
 
     sweep = kernel_builds
     coverage: collections.Counter = collections.Counter()
+    if a.build:
+
+        def sweep():
+            return spec_builds(a.build)
+
     if a.cases:
 
         def sweep():
             coverage.clear()
             return case_builds(a.cases, generation, a.only, coverage)
 
-    builds = _selected_builds(a.only, sweep)
+    try:
+        builds = _selected_builds(a.only, sweep)
+    except ValueError as e:  # a --build its factory refuses
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     if a.cases:
         print(case_coverage(coverage))
     analyzed = _analyze_builds(builds, a.target, workdir, a.jobs)

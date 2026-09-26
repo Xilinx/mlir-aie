@@ -547,6 +547,85 @@ def test_case_builds_reach_the_library_cases_the_default_sweep_misses():
     assert lut.object_file_name not in defaults
 
 
+def test_a_build_spec_parses_each_value_as_its_parameters_type():
+    assert remarks.parse_build(
+        "cascade_mm:dim_m=12,input_dtype=int32,output_dtype=bfloat16,use_chess=False"
+    ) == (
+        "cascade_mm",
+        dict(
+            dim_m=12,
+            input_dtype=np.int32,
+            output_dtype=np.dtype("bfloat16").type,
+            use_chess=False,
+        ),
+    )
+    factory, kwargs = remarks.parse_build("set_rounding:mode=conv_even")
+    [(name, _)] = remarks.spec_builds([(factory, kwargs)])
+    assert name == "set_rounding/mode=conv_even"
+    assert remarks.parse_build("exp2f_vec:min_x=-3.5")[1] == {"min_x": -3.5}
+    assert remarks.parse_build("rms_norm:cols=64")[1] == {"cols": 64}
+
+
+@pytest.mark.parametrize(
+    "spec,error",
+    [
+        ("nope:x=1", "not a kernel factory"),
+        ("cascade_mm:dim_q=1", "dim_m, dim_k, dim_n"),
+        ("cascade_mm:dim_m", "not KEY=VALUE"),
+        ("cascade_mm:dim_m=x", "invalid literal"),
+        ("cascade_mm:use_chess=yes", "True or False"),
+        ("cascade_mm:input_dtype=int77", "not understood"),
+        ("fused_mm:clamp=1", "not settable"),
+    ],
+)
+def test_a_bad_build_spec_names_what_is_wrong(spec, error):
+    with pytest.raises(ValueError, match=error):
+        remarks.parse_build(spec)
+
+
+def test_a_build_its_factory_refuses_exits_with_the_factorys_reason(tmp_path, capsys):
+    code = remarks.main(
+        [f"--out={tmp_path / 'rows.json'}", "--build=scale:dtype=bfloat16"]
+    )
+    assert code == 2
+    assert "--build scale/dtype=bfloat16: scale() dtype" in capsys.readouterr().err
+
+
+def test_build_and_cases_are_exclusive(tmp_path):
+    with pytest.raises(SystemExit):
+        remarks.main(
+            [
+                f"--out={tmp_path / 'rows.json'}",
+                "--build=cascade_mm",
+                f"--cases={KERNEL_CASES}",
+            ]
+        )
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_build_on_the_command_line_reaches_a_shapes_own_code_path(tmp_path):
+    # M not a multiple of 8 takes cascade_mm's scalar fallback, which no
+    # default build compiles.
+    meta = tmp_path / "meta.json"
+    code = remarks.main(
+        [
+            "--target=aie2p",
+            f"--out={tmp_path / 'rows.json'}",
+            f"--meta={meta}",
+            "--build=cascade_mm",
+            "--build=cascade_mm:dim_m=12,dim_k=16,dim_n=16",
+        ]
+    )
+    assert code == 0
+    written = json.loads(meta.read_text())["kernels"]
+    default, fallback = (
+        written["cascade_mm"],
+        written["cascade_mm/dim_k=16/dim_m=12/dim_n=16"],
+    )
+    assert len(fallback["loops"]) < len(default["loops"])
+    assert fallback["pm_bytes"] != default["pm_bytes"]
+
+
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_compile_command_uses_the_kernels_own_directory(tmp_path):
     ef = kernels.scale()
