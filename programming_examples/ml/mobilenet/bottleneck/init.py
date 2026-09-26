@@ -20,7 +20,7 @@ from ..network_spec import block as nsblock
 from ._common import wts_buffer
 
 
-def init_conv(sf, *, tile=None, data_dir):
+def init_conv(sf, *, data_dir):
     """Build the init 3x3 stride-2 conv block.
 
     Returns:
@@ -109,7 +109,6 @@ def init_conv(sf, *, tile=None, data_dir):
             init_OutC,
             init_scaleFactor,
         ],
-        tile=tile,
     )
 
     return [w_init], act_in, act_init_out

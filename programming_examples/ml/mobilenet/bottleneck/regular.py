@@ -46,7 +46,7 @@ from ._common import (
 # build_3layer — 1x1-relu -> DW-3x3 -> (1x1 or 1x1-skip)
 # Used for bn1, bn2, bn3, bn6, bn7.
 # ---------------------------------------------------------------------------
-def build_3layer(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
+def build_3layer(blk, act_in, sf, *, data_dir, wts_tag="chain"):
     """Build a 3-layer bottleneck on a single compute tile.
 
     Returns (out_fifo, worker).
@@ -269,7 +269,6 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
             k_dw,
             k_l3,
         ],
-        tile=tile,
     )
     return out_fifo, worker
 
@@ -278,7 +277,7 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
 # build_2layer_skip — DW-3x3-stride1 -> 1x1-skip (the bn0 shape)
 # Input is uint8 (init-conv output); output is int8.
 # ---------------------------------------------------------------------------
-def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
+def build_2layer_skip(blk, act_in, sf, *, data_dir, wts_tag="chain"):
     """Build the bn0-shaped 2-layer block on a single compute tile.
 
     Returns (out_fifo, worker).
@@ -385,7 +384,6 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
             k_dw,
             k_skip,
         ],
-        tile=tile,
     )
     return out_fifo, worker
 
@@ -402,8 +400,6 @@ def build_fused_pair(
     sf,
     *,
     data_dir,
-    compute_tile=None,
-    alloc_tile=None,
     out_depth=2,
     out_prod_depth=None,
 ):
@@ -466,7 +462,6 @@ def build_fused_pair(
             _u8((in_w, 1, ch)),
             depth=depth,
             disable_synchronization=True,
-            delegate_tile=alloc_tile,
         )
 
     f_a12 = _of(a_dw_ch, 3)
@@ -475,7 +470,6 @@ def build_fused_pair(
         _i8((in_w, 1, a_out_c)),
         depth=2,
         disable_synchronization=True,
-        delegate_tile=alloc_tile,
     )
     f_b12 = _of(b_dw_ch, 3)
     f_b23 = _of(b_dw_ch, 1)
@@ -651,7 +645,6 @@ def build_fused_pair(
             kb_dw,
             kb_skip,
         ],
-        tile=compute_tile,
     )
     return out_fifo, worker
 
@@ -663,36 +656,31 @@ def regular_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
-    placement: dict | None = None,
     data_dir: str,
 ) -> tuple:
     """Build bn0..bn9 from network_spec.NETWORK + scale-factor JSON.
 
     Returns (workers, act_bn9_out).
     """
-    p = placement or {}
     workers = []
 
     # bn0: stride-1 DW-3x3 + 1x1-skip (2-layer, unique to first stage)
-    act, w = build_2layer_skip(
-        nsblock("bn0"), act_in, sf, data_dir=data_dir, tile=p.get("bn0")
-    )
+    act, w = build_2layer_skip(nsblock("bn0"), act_in, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn1: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(nsblock("bn1"), act, sf, data_dir=data_dir, tile=p.get("bn1"))
+    act, w = build_3layer(nsblock("bn1"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn2: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    act, w = build_3layer(nsblock("bn2"), act, sf, data_dir=data_dir, tile=p.get("bn2"))
+    act, w = build_3layer(nsblock("bn2"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn3: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(nsblock("bn3"), act, sf, data_dir=data_dir, tile=p.get("bn3"))
+    act, w = build_3layer(nsblock("bn3"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn4+bn5: fused pair on one tile (stride-1 with skip on both)
-    fp45 = p.get("bn4_5", {})
     act, w = build_fused_pair(
         nsblock("bn4"),
         nsblock("bn5"),
@@ -700,22 +688,19 @@ def regular_bottlenecks(
         act,
         sf,
         data_dir=data_dir,
-        compute_tile=fp45.get("compute"),
-        alloc_tile=fp45.get("alloc"),
     )
     workers.append(w)
 
     # bn6: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(nsblock("bn6"), act, sf, data_dir=data_dir, tile=p.get("bn6"))
+    act, w = build_3layer(nsblock("bn6"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn7: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    act, w = build_3layer(nsblock("bn7"), act, sf, data_dir=data_dir, tile=p.get("bn7"))
+    act, w = build_3layer(nsblock("bn7"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn8+bn9: fused pair on one tile (stride-1 with skip on both); final output.
     # out_prod_depth=1 — bn89 boundary: prod side depth=1 (cons inherits 2).
-    fp89 = p.get("bn8_9", {})
     act, w = build_fused_pair(
         nsblock("bn8"),
         nsblock("bn9"),
@@ -723,8 +708,6 @@ def regular_bottlenecks(
         act,
         sf,
         data_dir=data_dir,
-        compute_tile=fp89.get("compute"),
-        alloc_tile=fp89.get("alloc"),
         out_prod_depth=1,
     )
     workers.append(w)

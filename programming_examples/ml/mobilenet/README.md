@@ -23,7 +23,7 @@ Open in this order to grasp the design:
 |---|---|
 | [`network_spec.py`](network_spec.py) | The whole network in one file — block names, layer kinds, in/out shapes, scale-factor keys |
 | [`mobilenet_numpy.py`](mobilenet_numpy.py) | Pure-numpy reference; bit-exact int8 inference matching the AIE kernels (algorithm onramp) |
-| [`aie2_mobilenet_iron.py`](aie2_mobilenet_iron.py) | Full IRON design — orchestrates init + bottlenecks + post-processing on a fixed PLACEMENT |
+| [`aie2_mobilenet_iron.py`](aie2_mobilenet_iron.py) | Full IRON design — orchestrates init + bottlenecks + post-processing; aiecc's SA placer picks the tiles |
 | [`bottleneck/{regular,pipeline,cascade}.py`](bottleneck/) | Three families of bottleneck builders, grouped by tile-mapping strategy |
 | [`aie2_iron_per_block.py`](aie2_iron_per_block.py) | Build any single bottleneck standalone (debugging / profiling) |
 | [`aie2_iron_chain.py`](aie2_iron_chain.py) | Build a chained subset (`pipeline` = bn10..12, `cascade` = bn13..14) |

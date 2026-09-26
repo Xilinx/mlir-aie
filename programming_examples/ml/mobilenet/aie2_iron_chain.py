@@ -39,75 +39,16 @@ from aie.iron import (
     Runtime,
     TaskGroup,
 )
-from aie.iron.device import Tile
 from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 
 from .bottleneck._common import i8 as _i8
+from .bottleneck._common import sa_placer_flags
 from .bottleneck._common import u8 as _u8
 from .bottleneck.cascade import cascade_bottlenecks
 from .bottleneck.pipeline import pipeline_bottlenecks
 from .bottleneck.regular import regular_bottlenecks
 from .network_spec import block as nsblock
-
-T = Tile
-
-# Test placements for chain designs — single-column-ish layouts that don't
-# collide with the main mobilenet's PLACEMENT (which packs every column).
-# Started from placement.py's PLACEMENT; keeps explicit mem_skip and
-# single-block tiles that the network now lets the placer choose.
-CHAIN_PLACEMENT = {
-    # The fused-pair alloc tiles (bn4_5, bn8_9) host disable-sync self-loop
-    # fifos and don't need their own worker.
-    "regular": {
-        "bn0": T(0, 3),
-        "bn1": T(0, 4),
-        "bn2": T(0, 5),
-        "bn3": T(1, 3),
-        "bn4_5": {"compute": T(1, 2), "alloc": T(0, 2)},
-        "bn6": T(1, 4),
-        "bn7": T(2, 3),
-        "bn8_9": {"compute": T(3, 3), "alloc": T(3, 4)},
-    },
-    # Spread across multiple columns so the AIE memory allocator has room.
-    "pipeline": {
-        "bn10": {"l1": T(1, 5), "l2": T(2, 4), "l3": T(2, 5)},
-        "bn11": {
-            "l1": T(3, 2),
-            "l2": T(3, 4),
-            "l3": T(2, 2),
-            "mem_skip": T(2, 1),
-        },
-        "bn12": {"l1": T(3, 5), "l23": T(4, 4)},
-    },
-    "cascade": {
-        "bn13": {
-            "l1_put": T(4, 5),
-            "l1_get": T(5, 5),
-            "l2": T(5, 4),
-            "l3_put": T(4, 3),
-            "l3_get": T(5, 3),
-            "mem_l1": T(0, 1),
-            "mem_l3": T(1, 1),
-            "mem_skip": T(5, 1),
-        },
-        "bn14": {
-            "l1_put": T(6, 5),
-            "l1_get": T(7, 5),
-            "l2": T(6, 2),
-            "l3_put": T(4, 2),
-            "l3_get": T(5, 2),
-            "mem_l1": T(2, 1),
-            "mem_l3": T(3, 1),
-            "mem_skip": T(7, 1),
-        },
-    },
-    # Shim DMAs (separate tiles for input vs. output).
-    "shim_input": T(0, 0),
-    "shim_output": T(1, 0),
-    # Cascade weight fills (bn13_l1, bn13_l3, bn14_l1, bn14_l3).
-    "shim_wts": [T(c, 0) for c in (4, 5, 6, 7)],
-}
 
 
 def _chain_iron(
@@ -143,7 +84,6 @@ def _chain_iron(
         workers, act_out = regular_bottlenecks(
             act_in,
             sf,
-            placement=CHAIN_PLACEMENT["regular"],
             data_dir=data_dir,
         )
         wts_fifos = []
@@ -151,7 +91,6 @@ def _chain_iron(
         workers, act_out = pipeline_bottlenecks(
             act_in,
             sf,
-            placement=CHAIN_PLACEMENT["pipeline"],
             data_dir=data_dir,
         )
         wts_fifos = []
@@ -159,7 +98,6 @@ def _chain_iron(
         workers, act_out, wts_fifos = cascade_bottlenecks(
             act_in,
             sf,
-            placement=CHAIN_PLACEMENT["cascade"],
             data_dir=data_dir,
         )
 
@@ -197,12 +135,9 @@ def _chain_iron(
                 in_ty,
                 wts_ty,
                 out_ty,
-                act_in.prod(depth=1, tile=CHAIN_PLACEMENT["shim_input"]),
-                [
-                    fifo.prod(tile=shim)
-                    for fifo, shim in zip(wts_fifos, CHAIN_PLACEMENT["shim_wts"])
-                ],
-                act_out.cons(tile=CHAIN_PLACEMENT["shim_output"]),
+                act_in.prod(depth=1),
+                [fifo.prod() for fifo in wts_fifos],
+                act_out.cons(),
             ],
         )
     else:
@@ -218,15 +153,15 @@ def _chain_iron(
             [
                 in_ty,
                 out_ty,
-                act_in.prod(depth=1, tile=CHAIN_PLACEMENT["shim_input"]),
-                act_out.cons(tile=CHAIN_PLACEMENT["shim_output"]),
+                act_in.prod(depth=1),
+                act_out.cons(),
             ],
         )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
-@iron.jit
+@iron.jit(aiecc_flags=sa_placer_flags())
 def chain_design(
     *buffers: InOut,
     mode: CompileTime[str],

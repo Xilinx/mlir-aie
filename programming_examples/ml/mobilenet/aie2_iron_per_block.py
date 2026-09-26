@@ -17,7 +17,7 @@ Examples:
 
 Useful for isolating one block to debug or measure independently — the IRON
 analogue of bottleneck_A/test_bn_*.py. The block is wrapped in a minimal
-shim-fill -> block -> shim-drain skeleton on a small set of test tiles.
+shim-fill -> block -> shim-drain skeleton; the SA placer picks the tiles.
 Reuses the lifted module-level builders from bottleneck/{regular,pipeline,
 cascade}.py — same builder, different runtime wiring.
 """
@@ -36,11 +36,11 @@ from aie.iron import (
     Runtime,
     TaskGroup,
 )
-from aie.iron.device import Tile
 from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 
 from .bottleneck._common import i8 as _i8
+from .bottleneck._common import sa_placer_flags
 from .bottleneck._common import u8 as _u8
 from .bottleneck.cascade import build_cascade
 from .bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
@@ -58,39 +58,6 @@ def _resolve_scales(scales_json_path):
         scales_json_path = DATA_DIR + "scale_factors_final.json"
     with open(scales_json_path) as f:
         return json.load(f)
-
-
-# ---------------------------------------------------------------------------
-# Test placements — minimal sets sufficient to isolate one block.
-# Real-network placements (in aie2_mobilenet_iron.py) optimize for inter-block
-# data flow; here we just need correctness for one block at a time.
-# ---------------------------------------------------------------------------
-T = Tile  # alias for brevity below
-TEST_PLACEMENT = {
-    "single_compute": T(0, 2),  # bn0..bn3, bn6, bn7
-    "fused_pair": {"compute": T(0, 2), "alloc": T(0, 3)},  # bn4_5, bn8_9
-    "pipeline_3": {  # bn10, bn11
-        "l1": T(0, 2),
-        "l2": T(0, 3),
-        "l3": T(0, 4),
-        "mem_skip": T(0, 1),
-    },
-    "pipeline_2": {"l1": T(0, 2), "l23": T(0, 3)},  # bn12
-    "cascade": {  # bn13, bn14
-        "l1_put": T(0, 2),
-        "l1_get": T(1, 2),
-        "l2": T(1, 3),
-        "l3_put": T(0, 4),
-        "l3_get": T(1, 4),
-        "mem_l1": T(0, 1),
-        "mem_l3": T(1, 1),
-        "mem_skip": T(2, 1),
-    },
-    "shim_input": T(0, 0),
-    "shim_output": T(1, 0),
-    "shim_wts_l1": T(2, 0),
-    "shim_wts_l3": T(3, 0),
-}
 
 
 # Block-name → builder dispatch.
@@ -111,7 +78,6 @@ def _build_one(block_name, act_in):
             act_in,
             _SCALES,
             data_dir=_DATA_DIR,
-            tile=TEST_PLACEMENT["single_compute"],
             wts_tag=_WTS_TAG,
         )
         return out_fifo, [w], []
@@ -125,7 +91,6 @@ def _build_one(block_name, act_in):
             act_in,
             _SCALES,
             data_dir=_DATA_DIR,
-            tile=TEST_PLACEMENT["single_compute"],
             wts_tag=_WTS_TAG,
         )
         return out_fifo, [w], []
@@ -140,8 +105,6 @@ def _build_one(block_name, act_in):
             act_in,
             _SCALES,
             data_dir=_DATA_DIR,
-            compute_tile=TEST_PLACEMENT["fused_pair"]["compute"],
-            alloc_tile=TEST_PLACEMENT["fused_pair"]["alloc"],
         )
         return out_fifo, [w], []
 
@@ -151,21 +114,17 @@ def _build_one(block_name, act_in):
             act_in,
             _SCALES,
             data_dir=_DATA_DIR,
-            tiles={k: TEST_PLACEMENT["pipeline_3"][k] for k in ("l1", "l2", "l3")},
         )
         return out_fifo, ws, []
 
     if block_name == "bn11":
         # bn11 has a skip path forwarded through a memtile.
-        skip_in = act_in.cons(depth=6).forward(
-            depth=2, tile=TEST_PLACEMENT["pipeline_3"]["mem_skip"]
-        )
+        skip_in = act_in.cons(depth=6).forward(depth=2)
         out_fifo, ws = build_3tile_pipeline(
             nsblock("bn11"),
             act_in,
             _SCALES,
             data_dir=_DATA_DIR,
-            tiles={k: TEST_PLACEMENT["pipeline_3"][k] for k in ("l1", "l2", "l3")},
             skip_in=skip_in,
         )
         return out_fifo, ws, []
@@ -176,7 +135,6 @@ def _build_one(block_name, act_in):
             act_in,
             _SCALES,
             data_dir=_DATA_DIR,
-            tiles=TEST_PLACEMENT["pipeline_2"],
         )
         return out_fifo, ws, []
 
@@ -187,7 +145,6 @@ def _build_one(block_name, act_in):
             skip_in=act_in,
             sf=_SCALES,
             data_dir=_DATA_DIR,
-            tiles=TEST_PLACEMENT["cascade"],
         )
         return out_fifo, ws, [wts_l1, wts_l3]
 
@@ -263,10 +220,10 @@ def per_block_iron(
                 wts_ty,
                 wts_ty,
                 out_ty,
-                act_in.prod(tile=TEST_PLACEMENT["shim_input"]),
-                wts_fifos[0].prod(tile=TEST_PLACEMENT["shim_wts_l1"]),
-                wts_fifos[1].prod(tile=TEST_PLACEMENT["shim_wts_l3"]),
-                out_fifo.cons(tile=TEST_PLACEMENT["shim_output"]),
+                act_in.prod(),
+                wts_fifos[0].prod(),
+                wts_fifos[1].prod(),
+                out_fifo.cons(),
             ],
         )
     else:
@@ -282,15 +239,15 @@ def per_block_iron(
             [
                 in_ty,
                 out_ty,
-                act_in.prod(tile=TEST_PLACEMENT["shim_input"]),
-                out_fifo.cons(tile=TEST_PLACEMENT["shim_output"]),
+                act_in.prod(),
+                out_fifo.cons(),
             ],
         )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
-@iron.jit
+@iron.jit(aiecc_flags=sa_placer_flags())
 def per_block_design(
     *buffers: InOut,
     block_name: CompileTime[str],

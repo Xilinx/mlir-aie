@@ -78,3 +78,9 @@ def layer_sf(blk, sf, idx):
 def skip_sf(blk, sf):
     """Scale factor for the skip-add (only valid when blk.skip is True)."""
     return sf[sf_key(blk.name)][blk.skip_sf_key]
+
+
+def sa_placer_flags(seed=3):
+    """aiecc flags that place the design with the SA placer. The default
+    sequential placer can't seat the cascade pairs next to each other."""
+    return ["--placer=sa_placer", f"--sa-seed={seed}"]
