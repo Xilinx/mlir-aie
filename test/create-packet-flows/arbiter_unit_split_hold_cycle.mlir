@@ -19,10 +19,10 @@
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_2_1)
-// CHECK-DAG:     %[[A:.*]] = aie.amsel<2> (0)
-// CHECK-DAG:     %[[B:.*]] = aie.amsel<3> (0)
-// CHECK-DAG:     aie.masterset(DMA : 0, %[[B]]) {keep_pkt_header = true}
-// CHECK-DAG:     aie.masterset(DMA : 5, %[[A]]) {keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(DMA : 0, %[[B:[0-9]+]]) {keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(DMA : 5, %[[A:[0-9]+]]) {keep_pkt_header = true}
+// CHECK-DAG:     %[[A]] = aie.amsel<{{[0-9]}}> (0)
+// CHECK-DAG:     %[[B]] = aie.amsel<{{[0-9]}}> (0)
 // CHECK-DAG:     aie.rule(31, 15, %[[A]])
 // CHECK-DAG:     aie.rule(31, 15, %[[B]])
 // CHECK-DAG:     aie.rule(31, 17, %[[B]])

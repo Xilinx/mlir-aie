@@ -82,7 +82,7 @@ PARAMS = dict(
     min_routed_rate=1.0,
     max_hop_ratio=1.10,
     max_amsels=19.5,
-    max_low_priority=0.16,
+    max_low_priority=0.03,
     max_ms_per_design=250,
     # Generator knobs: share of routable designs given pre-placed switchbox
     # configuration, and parallel aie-opt runs.
@@ -1513,6 +1513,15 @@ class Analysis:
         self.streams += trace_routed_streams(d)
         self._graph = None
         self._stalls, self._blocks, self._conflicts = {}, {}, {}
+        tree_ids, self.tree_members, self.tree_of = {}, [], []
+        for i, s in enumerate(self.streams):
+            tree = len(self.tree_members)
+            if s.pid is not None:
+                tree = tree_ids.setdefault((s.src, s.pid, i < self.num_requested), tree)
+            if tree == len(self.tree_members):
+                self.tree_members.append([])
+            self.tree_members[tree].append(i)
+            self.tree_of.append(tree)
 
     @property
     def graph(self):
@@ -1614,9 +1623,20 @@ class Analysis:
             return False
         return self.can_block(s, t)
 
+    def related(self, s, t):
+        if self.streams[s].src == self.streams[t].src:
+            return True
+        return any(
+            self.streams[m].dst == self.streams[n].dst
+            for m in self.tree_members[self.tree_of[s]]
+            for n in self.tree_members[self.tree_of[t]]
+        )
+
     def conflict(self, s, t):
         if (s, t) not in self._conflicts:
-            self._conflicts[(s, t)] = self.blocks(s, t) or self.blocks(t, s)
+            self._conflicts[(s, t)] = not self.related(s, t) and (
+                self.blocks(s, t) or self.blocks(t, s)
+            )
         return self._conflicts[(s, t)]
 
     def explain(self, s, t):
@@ -1655,14 +1675,7 @@ class Analysis:
                 prev = h
 
         def related(a, b):
-            x, y = trees[a], trees[b]
-            if streams[x["members"][0]].src == streams[y["members"][0]].src:
-                return True
-            return any(
-                streams[m].dst == streams[n].dst
-                for m in x["members"]
-                for n in y["members"]
-            )
+            return self.related(trees[a]["members"][0], trees[b]["members"][0])
 
         nodes = []
         for t, tree in enumerate(trees):
