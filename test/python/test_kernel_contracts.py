@@ -71,8 +71,8 @@ NOT_JUDGED = {
     "cascade_mm": "the GET half of a cascade pair; test_kernels_e2e.py builds and judges the pair",
     "cascade_mm_put": "the PUT half of that pair; its result leaves on the cascade stream",
     "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
-    "sample_select": "a state machine across 3 * slice / chunk calls of one position; judged with sample_combine, against sample_ref",
-    "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; judged with sample_select, against sample_ref",
+    "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
+    "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
     **{
         name: "one half of a MobileNet bottleneck cascade pair, not validated yet (see the guide)"
         for name in (
