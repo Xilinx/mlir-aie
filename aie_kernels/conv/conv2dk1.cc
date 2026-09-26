@@ -202,12 +202,11 @@ conv2dk1_vector(ActT *input, int8_t *kernels, uint8_t *__restrict output,
 // accumulators of 8 pixels, one native 8x8x8 mac each.
 //*****************************************************************************
 template <typename ActT>
-static void conv2dk1_vector(ActT *__restrict input, int8_t *__restrict kernels,
-                            uint8_t *__restrict output,
-                            const int32_t runtime_input_width,
-                            const int32_t runtime_input_channels,
-                            const int32_t runtime_output_channels,
-                            const int scale) {
+static void
+conv2dk1_vector(ActT *__restrict input, int8_t *__restrict kernels,
+                uint8_t *__restrict output, const int32_t runtime_input_width,
+                const int32_t runtime_input_channels,
+                const int32_t runtime_output_channels, const int scale) {
   const int32_t input_width = CONV_INPUT_WIDTH;
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
