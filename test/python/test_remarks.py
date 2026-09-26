@@ -721,6 +721,41 @@ def test_a_baseline_tree_prints_the_rows_that_differ(tmp_path, capsys):
     assert "relu/libcalls:" in capsys.readouterr().out
 
 
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_failed_build_keeps_the_rows_of_the_others(tmp_path, monkeypatch, capsys):
+    trees = {}
+    for tree in ("base", "broken"):
+        trees[tree] = tmp_path / tree
+        shutil.copytree(config.aie_kernels_dir(), trees[tree] / "aie_kernels")
+        shutil.copytree(config.aie_runtime_lib_dir(), trees[tree] / "aie_runtime_lib")
+    for tree, source in (("broken", "relu_aie2p.h"), ("base", "scale.cc")):
+        path = trees[tree] / "aie_kernels" / "eltwise" / source
+        path.write_text("#error broken\n" + path.read_text())
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(trees["broken"]))
+    out, meta = tmp_path / "rows.json", tmp_path / "meta.json"
+    code = remarks.main(
+        [
+            "--target=aie2p",
+            "--only=^(relu|scale)$",
+            f"--out={out}",
+            f"--meta={meta}",
+            f"--baseline-sources={trees['base']}",
+        ]
+    )
+    # Neither failure is a change: this tree's relu is not compiled again,
+    # and the baseline's scale leaves this tree's rows out of the diff.
+    assert code == 3
+    printed = capsys.readouterr()
+    assert "RESULTS INVALID: relu: compile failed" in printed.err
+    assert "baseline fails to compile scale, not compared" in printed.out
+    names = {r["name"].split("/")[0] for r in json.loads(out.read_text())}
+    assert names == {"scale"}
+    written = json.loads(meta.read_text())
+    assert list(written["failed"]) == ["relu"]
+    assert list(written["baseline"]["failed"]) == ["scale"]
+    assert written["baseline"]["changed"] == {}
+
+
 def test_an_unset_kernel_tree_warns_that_it_is_the_installed_copy(
     tmp_path, monkeypatch
 ):
