@@ -148,10 +148,22 @@ void conv2dk3_i8_stride2_scalar(
 #define K3_SHAPE(arg, flag) (arg)
 #endif
 
+// The line buffers and weights are read 64 bytes at a time, which AIE2P
+// rounds down to a 64-byte boundary; the output is stored 32 bytes at a time.
 #if AIE_TUNED_AIE2P
 #define K3_RESTRICT __restrict
+#define K3_LOAD_ALIGN 64
+#define K3_MISALIGNED(l0, l1, l2, w, o)                                        \
+  ((((uintptr_t)(l0) | (uintptr_t)(l1) | (uintptr_t)(l2) | (uintptr_t)(w)) &   \
+    63) |                                                                      \
+   ((uintptr_t)(o) & 31))
 #else
 #define K3_RESTRICT
+#define K3_LOAD_ALIGN 32
+#define K3_MISALIGNED(l0, l1, l2, w, o)                                        \
+  (((uintptr_t)(l0) | (uintptr_t)(l1) | (uintptr_t)(l2) | (uintptr_t)(w) |     \
+    (uintptr_t)(o)) &                                                          \
+   31)
 #endif
 
 // Stride-2 3x3, input_width a multiple of 8; see k1_load in
@@ -205,7 +217,7 @@ static inline void k3_chunks(const int8_t *const *lines, const int8_t *wts,
 // input_channels == 8: one pass over the row per output channel block, each
 // row's odd pixels carried from chunk to chunk. A row dropped by `check` gets
 // zero weights.
-alignas(32) static const int8_t k3_zero_wts[3 * 64] = {};
+alignas(K3_LOAD_ALIGN) static const int8_t k3_zero_wts[3 * 64] = {};
 
 template <int N>
 static inline void
@@ -431,9 +443,7 @@ void conv2dk3_stride2_i8(int8_t *line0, int8_t *line1, int8_t *line2,
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   const int32_t width = K3_SHAPE(input_width, CONV_INPUT_WIDTH);
   if (kernel_width == 3 && width >= 8 && width % 8 == 0 &&
-      (((uintptr_t)line0 | (uintptr_t)line1 | (uintptr_t)line2 |
-        (uintptr_t)wts | (uintptr_t)output) &
-       31) == 0) {
+      K3_MISALIGNED(line0, line1, line2, wts, output) == 0) {
     k3_stride2_vector(line0, line1, line2, wts, output, width,
                       K3_SHAPE(input_channels, CONV_INPUT_CHANNELS),
                       K3_SHAPE(output_channels, CONV_OUTPUT_CHANNELS), check,
