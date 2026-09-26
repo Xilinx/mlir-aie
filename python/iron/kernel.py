@@ -526,11 +526,13 @@ class Kernel(Resolvable):
         for index, align in getattr(contract, "alignments", ()):
             offset, buffer = _view_byte_offset(args[index])
             if offset is not None and offset % align:
+                pad = align - offset % align
                 raise ValueError(
                     f"Kernel '{self._name}' loads argument {index} as "
                     f"{align}-byte aligned vectors, but it is a view at byte "
                     f"offset {offset} of buffer '{buffer}'. Place the view at "
-                    f"a multiple of {align} bytes."
+                    f"a multiple of {align} bytes: {pad} bytes of padding "
+                    f"before it put it at byte {offset + pad}."
                 )
         arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
         expected_input_types = callee.function_type.value.inputs
