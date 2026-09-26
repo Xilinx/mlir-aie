@@ -22,6 +22,10 @@
 #include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
+#if AIE_TUNED_AIE2P
+#include "bn_conv2dk1_aie2.h"
+#endif
+
 const int32_t MIN = 128;
 const int32_t MAX = 127;
 const int32_t UMAX = 255;
@@ -30,7 +34,8 @@ const int32_t MAX_VALUES = 16;
 // #define INT8_MAX 127
 // #define INT8_MIN -128
 
-#if defined(BN13_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW)
+#if defined(BN13_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW) ||         \
+    defined(BN14_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW)
 // 8 Pixels Width Processing Approach: Processes 8 spatial pixels (x_start to
 // x_start + 8) simultaneously within each output channel (oc8 iteration).
 void conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
@@ -40,107 +45,25 @@ void conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
     const int32_t input_split, int32_t output_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
   event0();
-  int ic, ic8, oc8;
-  const int skip_scaleT = skip_scale;
-
-  int pixel_limit = 7;
-
-  // static v16acc64 v16acc_partial[8]; // Using an array for accumulators
-
-  // Determine the start and end of the loop based on the chunk index for
-  // weights
-  int input_channel_chunk_size = input_channels / input_split;
-  int start_ic = 0 * input_channel_chunk_size;
-  int end_ic = start_ic + input_channel_chunk_size;
-  int pixel = 0;
-  int oc_offset = 0;
-  int oc8_iter = output_channels / (8 * output_split);
-
-  v16acc64 acc_cas = undef_v16acc64();
-  v16int32 v16vec_partial[8] = {};
-  v16int32 v16vec_cas[8] = {};
-
-  // Process each pixel across all output channels
-  for (pixel = 0; pixel < pixel_limit; pixel++) {
-    // Loop over output channels (oc8)
-    for (oc8 = 0; oc8 < 8; oc8++) {
-      int sum = 0;
-      int current_sum = 0;
-      int last_sum = 0;
-      int final_sum = 0;
-
-      // Loop over input channels in chunks of 8
-      for (ic = start_ic / 8; ic < end_ic / 8; ic++) {
-        for (ic8 = 0; ic8 < 8; ic8++) {
-          // int k_base = (0 * (input_channel_chunk_size / 8) * 64) + ((ic -
-          // start_ic / 8) * 64) + (ic8 * 8);
-          int val = input[(ic * input_width * 8) + (pixel * 8) + ic8];
-          int k = kernels[(oc * (input_channel_chunk_size / 8) * 64) +
-                          ((ic) * 64) + (ic8 * 8) + oc8];
-          current_sum += val * k;
-        }
-      }
-
-      sum = current_sum;
-      v16vec_partial[pixel] = upd_elem(v16vec_partial[pixel], oc8, sum);
-    }
-
-    v16vec_cas[pixel] = lsrs(get_scd_v16acc64(), 0, 0);
-    for (oc8 = 0; oc8 < 8; oc8++) {
-      int sum = 0;
-      int sum_srs = 0;
-      int cascade_sum = 0;
-      int skip_temp = 0;
-      int32_t skip_sum = 0;
-      int skip_sum_srs_final = 0;
-      int skip_sum_srs_final_out = 0;
-
-      sum = ext_elem(v16vec_partial[pixel], oc8);
-      cascade_sum = ext_elem(v16vec_cas[pixel], oc8);
-      // sum_srs = ((sum+cascade_sum) + (1 << (scale - 1))) >> scale;
-      sum_srs = (((sum + cascade_sum) + (1 << (scale - 1)) - 1 +
-                  (((sum + cascade_sum) >> scale) & 1)) >>
-                 scale);
-      sum_srs = (sum_srs > MAX) ? MAX : (sum_srs < -MAX) ? -MIN : sum_srs;
-      oc_offset =
-          oc + oc8_iter * (weight_index); // works fine when oc8_iter is 4
-      skip_temp = skip[(oc_offset * input_width * 8) + (pixel * 8) + oc8];
-      skip_sum = sum_srs + skip_temp;
-
-      if (skip_scaleT > 0)
-        skip_sum_srs_final = ((skip_sum + (1 << (skip_scaleT - 1)) - 1 +
-                               ((skip_sum >> skip_scaleT) & 1)) >>
-                              skip_scaleT);
-      else
-        skip_sum_srs_final =
-            (skip_sum + (1 << (skip_scaleT - 1))) >> skip_scaleT;
-
-      // skip_sum_srs_final = (((skip_sum) + (1 << (skip_scaleT - 1)) - 1 +
-      // (((skip_sum) >> skip_scaleT) & 1)) >> skip_scaleT);
-      skip_sum_srs_final_out = (skip_sum_srs_final > MAX) ? MAX
-                               : (skip_sum_srs_final < -MAX)
-                                   ? -MIN
-                                   : skip_sum_srs_final; // clip
-
-      output[(oc_offset * input_width * 8) + (pixel * 8) + oc8] =
-          skip_sum_srs_final_out;
-    }
+#if AIE_TUNED_AIE2P
+  if (k1_wts_aligned(kernels)) {
+    const int32_t blocks = input_channels / input_split / 8;
+    const int32_t row = input_width * 8;
+    const int32_t oc_out =
+        oc + output_channels / (8 * output_split) * weight_index;
+    const aie::vector<int8, 32> ones = aie::broadcast<int8, 32>(1);
+    k1_cas_get(
+        input, kernels + oc * blocks * 64, output + oc_out * row, row, blocks,
+        [=](auto &acc, const int8_t *s) {
+          aie::accum<acc32, 32> t = aie::mul(k1_load<false>(s), ones);
+          t = aie::mac(t, acc.template to_vector<int8>(scale), ones);
+          return t.template to_vector<int8>(skip_scale);
+        },
+        skip + oc_out * row);
+    event1();
+    return;
   }
-
-  event1();
-}
 #endif
-
-#if defined(BN14_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW)
-// 8 Pixels Width Processing Approach: Processes 8 spatial pixels (x_start to
-// x_start + 8) simultaneously within each output channel (oc8 iteration).
-void conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
-    uint8_t *input, int8_t *kernels, int8_t *output, int8_t *skip,
-    const int32_t input_width, const int32_t input_channels,
-    const int32_t output_channels, const int scale, const int skip_scale,
-    const int32_t input_split, int32_t output_split, const int32_t weight_index,
-    const int32_t x_start, const int32_t oc) {
-  event0();
   int ic, ic8, oc8;
   const int skip_scaleT = skip_scale;
 
