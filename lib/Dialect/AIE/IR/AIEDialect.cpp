@@ -1484,22 +1484,26 @@ LogicalResult ObjectFifoLinkOp::verify() {
       }
     }
 
-    std::vector<int> repeat_counts;
-    for (auto fifoOut : getOutputObjectFifos()) {
-      if (auto repeatCount = fifoOut.getRepeatCount()) {
-        repeat_counts.push_back(*repeatCount);
-      } else {
-        repeat_counts.push_back(0);
-      }
-    }
-    for (auto repeat : repeat_counts)
-      if (repeat_counts[0] != repeat)
-        return emitError("repeat counts of output object FIFOs must be equal");
-
   } else {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "
                          "join or distribute");
+  }
+
+  // A join or distribute's shared pool has one repeat_count, so every
+  // participant that sets one -- on either side -- must agree.
+  // getOutputObjectFifos() is a single element for a join, so the comparison
+  // has to run over all participants to bite on that side.
+  if (isJoin() || isDistribute()) {
+    std::optional<int> shared;
+    for (ObjectFifoCreateOp fifo : participants(*this)) {
+      std::optional<int> repeat = fifo.getRepeatCount();
+      if (!repeat)
+        continue;
+      if (shared && *shared != *repeat)
+        return emitError("repeat counts of linked object FIFOs must be equal");
+      shared = repeat;
+    }
   }
 
   return success();
