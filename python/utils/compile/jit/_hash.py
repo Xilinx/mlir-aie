@@ -264,6 +264,7 @@ def _compute_recipe_hash(
                 repr(getattr(v, "__defaults__", None)),
                 repr(getattr(v, "__kwdefaults__", None)),
                 closure_repr,
+                _callees_identity(v).hex(),
             )
         return str(v)
 

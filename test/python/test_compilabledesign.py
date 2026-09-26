@@ -930,6 +930,32 @@ def test_hash_of_a_callable_compile_time_value_is_stable_and_not_blind():
     assert key(build(2)) != key(build(3))
 
 
+def test_hash_of_a_callable_compile_time_value_follows_its_callees():
+    """The callable branch of _kwarg_repr needs _callees_identity too.
+
+    ``act`` calls ``helper`` from its own module; only recursion into the
+    callee's body (not just ``act``'s own bytecode, which only names
+    ``helper``) can tell the two builds apart.
+    """
+
+    def build(leaf):
+        return _design(
+            f"def helper(x):\n"
+            f"    return x + {leaf}\n"
+            "def act(x):\n"
+            "    return helper(x)\n",
+            name="act",
+        )
+
+    gen = _design("def design(a, b):\n    return a\n")
+
+    def key(act):
+        return _compute_hash(gen, {"act": act}, [], [], [], [])
+
+    assert key(build(1)) == key(build(1))
+    assert key(build(1)) != key(build(2))
+
+
 def test_hash_survives_a_move_of_the_design_file():
     """co_filename and line info are not part of the design."""
     src = "def design(a):\n    def core(x):\n        return x + 1\n    return core\n"
