@@ -32,6 +32,7 @@ restarts its chart on gh-pages.
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -39,6 +40,7 @@ import numpy as np
 import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
+from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
 from aie.utils.compile.remarks import current_kernel_sources
 from cases import Case, error_report, inputs_for
@@ -246,17 +248,31 @@ def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
 
 
 def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
-    """Measure ``case`` from the ``--baseline-sources`` tree beside the current one.
+    """Record ``_compare`` against the ``--baseline-sources`` tree in the meta."""
+    tree = config.getoption("--baseline-sources")
+    entry = _compare(case, config, workdir, current, tree)
+    if "baseline" not in config._perf_meta:
+        current_sources, suspect = current_kernel_sources(tree)
+        config._perf_meta["baseline"] = {
+            "sources": tree,
+            "current_sources": current_sources,
+            "warning": suspect,
+            "cases": {},
+        }
+    config._perf_meta["baseline"]["cases"][case.name] = entry
+
+
+def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dict:
+    """Measure ``case`` from the kernel tree ``tree`` beside the current one.
 
     Both sides get the same inputs, so their raw output words are compared
     exactly. The current tree must pass the contract; the baseline is judged
     by it too but only recorded, since the contract is this tree's and a
-    change can tighten it along with the kernel. The rows stay the current
-    tree's; the pair, each arm's min, max and n, each arm's error against
-    the reference (``cases.error_report``) and the baseline's verdict go to
-    ``--perf-meta`` and the terminal summary.
+    change can tighten it along with the kernel. Returns the pair of each
+    arm's cycles and npu_us (min, and min, max and n), each arm's error
+    against the reference (``cases.error_report``), the differing words and
+    the baseline's verdict.
     """
-    tree = config.getoption("--baseline-sources")
     # The baseline's kernels share their object names with this tree's but
     # not their sources; the registry would refuse them as a collision.
     ExternalFunction._instances.clear()
@@ -283,16 +299,7 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
     ]
     cycles_range = [cycles(base), cycles(current)]
     npu_us_range = [npu_us(base), npu_us(current)]
-    if "baseline" not in config._perf_meta:
-        current_sources, suspect = current_kernel_sources(tree)
-        config._perf_meta["baseline"] = {
-            "sources": tree,
-            "current_sources": current_sources,
-            "warning": suspect,
-            "cases": {},
-        }
-    baseline = config._perf_meta["baseline"]
-    baseline["cases"][case.name] = {
+    return {
         "cycles": [r and r["min"] for r in cycles_range],
         "npu_us_min": [r and r["min"] for r in npu_us_range],
         "cycles_range": cycles_range,
@@ -310,3 +317,31 @@ def test_kernel_perf(case, request, record_perf, workdir):
     _record(record_perf, case, m)
     if request.config.getoption("--baseline-sources"):
         _against_baseline(case, request.config, workdir, m)
+
+
+@pytest.mark.perf
+def test_a_baseline_that_fails_the_contract_is_timed(request, workdir, tmp_path):
+    """A baseline the current contract rejects is recorded and timed, not failed.
+
+    The contract is this tree's, so a change that fixes a kernel and tightens
+    its tolerance must still be able to time the kernel it replaced.
+    """
+    tree = tmp_path / "base"
+    shutil.copytree(aie_kernels_dir(), tree / "aie_kernels")
+    shutil.copytree(aie_runtime_lib_dir(), tree / "aie_runtime_lib")
+    for header in ("relu_aie2.h", "relu_aie2p.h"):
+        path = tree / "aie_kernels" / "eltwise" / header
+        assert path.read_text().count("  event1();") == 1
+        path.write_text(
+            path.read_text().replace(
+                "  event1();", "  c[0] = (bfloat16)-1.0f;\n  event1();"
+            )
+        )
+    case = Case("relu", calls=4)
+    current = _measure(case, request.config, workdir)
+    entry = _compare(case, request.config, workdir, current, str(tree))
+    assert "mismatches" in entry["baseline_failed"]
+    assert entry["differing_words"] == case.calls
+    assert entry["npu_us_min"][0] is not None
+    if not request.config.getoption("--no-cycles"):
+        assert entry["cycles"][0] is not None
