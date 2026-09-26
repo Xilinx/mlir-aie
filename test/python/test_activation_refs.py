@@ -107,6 +107,22 @@ def test_sigmoid_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
     assert (old[tail & (x <= -6.9)] == 0).all()
 
 
+def test_silu_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
+    # silu on AIE2P's sigmoid table, against aie2's tanh-path model.
+    x = all_bf16(nan=False)
+    x = x[(x >= -8) & (x < -2)]
+    xf = x.astype(np.float64)
+    true = xf / (1.0 + np.exp(-xf))
+    tail = x >= -7.5
+    table = kernels.silu_table_ref(x).astype(np.float64)
+    assert (table[~tail] == 0).all()
+    # At worst 7.17% off, at x = -7.
+    assert (np.abs(table[tail] - true[tail]) <= 0.072 * np.abs(true[tail])).all()
+    old = kernels.silu_lut_ref(x).astype(np.float64)
+    assert (old[tail & (x <= -6.9)] == 0).all()
+    assert kernels.silu_table_ref(np.array([-np.inf], bfloat16))[0] == 0
+
+
 def test_lut_models_flush_subnormal_products():
     # The accumulator flushes a subnormal product to zero before storing it.
     # Without that, silu_lut_ref gave 506 subnormals over every bf16 where

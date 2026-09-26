@@ -8,6 +8,7 @@
 
 #include "../aie_kernel_utils.h"
 #include "../common/activations.h" // tanh_bf16_v16
+#include "sigmoid_lut.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -108,33 +109,28 @@ static inline void silu_aie2(bfloat16 *restrict input_vector,
 #endif
 
 #if AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
-// The LUT tanh in three passes, as in sigmoid.cc: x/2 to the output,
-// tanh_lut_map, then x * 0.5 * (1 + t) reading x again, clamped at -8 as in
-// silu_aie2.
+// sigmoid.cc's table to the output, then x times it, clamped at -8 as in
+// silu_aie2, in a second pass at II 1.
 static inline void silu_lut_aie2p(bfloat16 *restrict input_vector,
                                   bfloat16 *restrict output_vector,
                                   const int32_t vector_size) {
   const int num_elems = SILU_ELEMS;
-  aie::vector<bfloat16, 32> register_0_5_wide =
-      aie::broadcast<bfloat16, 32>(0.5f);
   auto it_in = aie::begin_restrict_vector<32>(input_vector);
-  auto it_half_x = aie::begin_restrict_vector<32>(output_vector);
-  for (int i = 0; i < num_elems; i += 32)
-    *it_half_x++ = aie::mul(*it_in++, register_0_5_wide).to_vector<bfloat16>();
-
-  tanh_lut_map(output_vector, output_vector, num_elems);
-
-  aie::accum<accfloat, 32> half;
-  half.from_vector(register_0_5_wide);
-  auto it_x = aie::begin_restrict_vector<32>(input_vector);
-  auto it_tanh = aie::begin_vector<32>(output_vector);
-  auto it_out = aie::begin_vector<32>(output_vector);
+  auto it_sig = aie::begin_restrict_vector<32>(output_vector);
+#pragma clang loop pipeline_initiation_interval(16)
   for (int i = 0; i < num_elems; i += 32) {
-    aie::vector<bfloat16, 32> sigmoid_approx =
-        aie::mac(half, *it_tanh++, register_0_5_wide).to_vector<bfloat16>();
-    *it_out++ = aie::mul(aie::max(*it_x++, bfloat16(-8.0f)), sigmoid_approx)
-                    .to_vector<bfloat16>();
+    const aie::vector<bfloat16, 32> x = *it_in++;
+    *it_sig++ = aie::concat(sigmoid_lut_bf16(x.extract<16>(0)),
+                            sigmoid_lut_bf16(x.extract<16>(1)));
   }
+
+  auto it_x = aie::begin_restrict_vector<32>(input_vector);
+  auto it_s = aie::begin_vector<32>(output_vector);
+  auto it_out = aie::begin_vector<32>(output_vector);
+#pragma clang loop pipeline_initiation_interval(1)
+  for (int i = 0; i < num_elems; i += 32)
+    *it_out++ = aie::mul(aie::max(*it_x++, bfloat16(-8.0f)), *it_s++)
+                    .to_vector<bfloat16>();
 }
 #endif
 
