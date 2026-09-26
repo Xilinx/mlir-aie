@@ -5,9 +5,12 @@
 """Viewing a kernel argument where its vector loads can't reach is a design
 error (no NPU)."""
 
+import typing
+
 import numpy as np
 import pytest
 from aie.extras.dialects.memref import view as memref_view
+from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker, kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.utils import get_current_device
@@ -75,3 +78,82 @@ def test_misaligned_view_raises(device, factory, shift):
 )
 def test_aligned_view_builds(device, factory, shift):
     assert "memref.view" in str(_design(device, factory, shift))
+
+
+def _views_design(device, factory, kwargs, index, shift):
+    """Every array argument is a view of its own buffer; ``index``'s is shifted."""
+    previous = get_current_device(probe_runtime=False)
+    set_current_device(device)
+    try:
+        kernel = getattr(kernels, factory)(**kwargs)
+        arrays = {}
+        for i, ty in enumerate(kernel.arg_types()):
+            if typing.get_origin(ty) is np.ndarray:
+                shape, dt = typing.get_args(ty)
+                arrays[i] = (shape, np.dtype(typing.get_args(dt)[0]))
+        buffers = [
+            Buffer(
+                np.ndarray[(int(np.prod(s)) * d.itemsize + 64,), np.dtype[np.int8]],
+                initial_value=np.zeros(int(np.prod(s)) * d.itemsize + 64, np.int8),
+                name=f"arg{i}",
+            )
+            for i, (s, d) in arrays.items()
+        ]
+        of_in = ObjectFifo(np.ndarray[(16,), np.dtype[np.int8]], name="unused")
+
+        def core_fn(of_in, k, *bufs):
+            elem = of_in.acquire(1)
+            views = {
+                i: memref_view(
+                    b.op,
+                    list(s),
+                    dtype=np_dtype_to_mlir_type(d.type),
+                    shift=(shift if i == index else 0) // d.itemsize,
+                )
+                for (i, (s, d)), b in zip(arrays.items(), bufs)
+            }
+            k(*(views.get(i, 0) for i in range(len(kernel.arg_types()))))
+            of_in.release(1)
+
+        worker = Worker(core_fn, [of_in.cons(), kernel, *buffers])
+        in_ty = np.ndarray[(16,), np.dtype[np.int8]]
+
+        def sequence(inp, in_h):
+            in_h.fill(inp)
+
+        rt = Runtime(sequence, [in_ty, of_in.prod()])
+        return Program(device, rt, workers=[worker]).resolve_program()
+    finally:
+        set_current_device(previous)
+
+
+_CONV_VECTOR_ARGS = [
+    ("conv2dk1", {}, (0, 1, 2)),
+    ("conv2dk3", dict(input_channels=16, output_channels=16), (0, 1, 2, 3, 4)),
+    ("conv2dk1_skip", {}, (0, 1, 2, 3, 4)),
+    ("conv2dk1_skip_init", {}, (0, 1, 2, 3, 4)),
+    ("dwconv1d_channels_last", {}, tuple(range(11))),
+    ("conv2dk14", {}, (0, 1, 2)),
+]
+
+
+@pytest.mark.parametrize("portable", [False, True])
+@pytest.mark.parametrize("device,shift", [(NPU2Col1(), 32), (NPU1Col1(), 16)])
+@pytest.mark.parametrize("factory,kwargs,indices", _CONV_VECTOR_ARGS)
+def test_conv_misaligned_vector_arg_raises(
+    monkeypatch, factory, kwargs, indices, device, shift, portable
+):
+    if portable:
+        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
+    for index in indices:
+        with pytest.raises(ValueError, match=f"argument {index} as"):
+            _views_design(device, factory, kwargs, index, shift)
+
+
+@pytest.mark.parametrize("device,shift", [(NPU2Col1(), 64), (NPU1Col1(), 32)])
+@pytest.mark.parametrize("factory,kwargs,indices", _CONV_VECTOR_ARGS)
+def test_conv_aligned_vector_args_build(factory, kwargs, indices, device, shift):
+    for index in indices:
+        assert "memref.view" in str(
+            _views_design(device, factory, kwargs, index, shift)
+        )

@@ -54,6 +54,12 @@ def _vector_loads(*indices):
     return tuple((i, align) for i in indices) if align else ()
 
 
+def _vector_args(*indices):
+    """``alignments`` for arguments every build, portable too, loads as whole vectors."""
+    align = {"aie2": 32, "aie2p": 64}.get(_detect_arch())
+    return tuple((i, align) for i in indices) if align else ()
+
+
 def _requant(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8):
     """``(acc + 2**(scale-1)) >> scale`` saturated to ``[lo, hi]``, as the kernels do."""
     scale = int(scale)
@@ -441,6 +447,7 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
             f"-DDWCONV1D_CL_CLAMP={int(clamp)}",
         ],
         contract=KernelContract(
+            alignments=_vector_args(*range(2 * _TAPS + 1)),
             trace=Trace.whole_call(),
             # aiecc measured_stack_size over 32 to 1280 channels: tuned for
             # aie2p, 1280 B on the 64-lane path and 1024 B on the generic
@@ -539,6 +546,7 @@ def conv2dk1(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2),
             trace=Trace.whole_call(),
             # aiecc measured_stack_size: 1088 B tuned for aie2p, which keeps
             # the oc-invariant input block on the stack; 2752 B untuned on
@@ -603,6 +611,7 @@ def conv2dk3(
         + _conv_dimensions(input_width, input_channels, output_channels)
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
             # aiecc measured_stack_size: 384 B tuned for aie2p, 4736 B
             # untuned; 0 B tuned for aie2
@@ -662,6 +671,7 @@ def conv2dk1_skip(
         compile_flags=flags
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
             # aiecc measured_stack_size with an int8 skip: 512 B tuned for
             # aie2p, 2816 B untuned; 32 B tuned for aie2
@@ -764,6 +774,7 @@ def conv2dk14(
         compile_flags=_conv_dimensions(input_width, input_channels, output_channels)
         + [f"-DCONV_KERNEL_WIDTH={kernel_width}"],
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, *((Param,) * 5)),
             reference=conv2dk14_ref,
@@ -848,6 +859,7 @@ def conv2dk1_skip_init(
         + _conv_dimensions(input_width, input_channels, output_channels)
         + [f"-DCONV_SKIP_INPUT_CHANNELS={skip_input_channels}"],
         contract=KernelContract(
+            alignments=_vector_args(0, 1, 2, 3, 4),
             trace=Trace.whole_call(),
             # aiecc measured_stack_size: 1728 B tuned for aie2p, the largest
             # over input_channels 16..256; untuned >=2144 plus __modsi3,
