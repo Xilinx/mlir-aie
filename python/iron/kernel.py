@@ -522,7 +522,8 @@ class Kernel(Resolvable):
                 f"Kernel '{self._name}' expects {len(self._arg_types)} "
                 f"argument(s), but {len(args)} were provided."
             )
-        for index, align in getattr(self.contract, "alignments", ()):
+        contract = getattr(self, "contract", None)
+        for index, align in getattr(contract, "alignments", ()):
             offset, buffer = _view_byte_offset(args[index])
             if offset is not None and offset % align:
                 raise ValueError(
