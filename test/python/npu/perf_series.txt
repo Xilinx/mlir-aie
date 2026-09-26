@@ -44,6 +44,8 @@ bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=
 bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/first-row
 bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=120/mid-row
 bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=128/weight_chunk_count=5120/split
+bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=1280/weight_chunk_count=9600/mobilenet-last-row
+bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=7/output_channels=1280/weight_chunk_count=9600/mobilenet-mid-row
 bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40
 bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40/arg1@16
 bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8
