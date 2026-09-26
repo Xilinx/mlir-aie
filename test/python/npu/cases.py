@@ -82,7 +82,10 @@ class Case:
     generations whose kernels exist (``("npu2",)``), as IRON's
     ``supported_devices`` marker does; empty means every device.
     ``smoke`` marks the one case per kernel the per-PR device test runs;
-    the extensive sweep runs them all.
+    the extensive sweep runs them all. ``arg_byte_offsets`` binds tensor
+    ``Param`` arguments at a byte offset (``((1, 16),)``: argument 1 sits 16
+    bytes past an aligned address), as a design packing several weights
+    into one buffer hands them; the name carries ``arg1@16``.
     """
 
     factory: str
@@ -95,13 +98,17 @@ class Case:
     smoke: bool = False
     data_cases: tuple[str, ...] | None = None  # None: derived from the contract
     devices: tuple[str, ...] = ()
+    arg_byte_offsets: tuple = ()
 
     def fn(self):
         with device_for(self.devices):
             return getattr(kernels, self.factory)(**self.kwargs)
 
     def harness_opts(self) -> dict:
-        return dict(calls=self.calls, scalars=self.scalars)
+        opts = dict(calls=self.calls, scalars=self.scalars)
+        if self.arg_byte_offsets:
+            opts["arg_byte_offsets"] = self.arg_byte_offsets
+        return opts
 
     # Factory kwargs that the dims / dtype segments of the name already encode.
     # skip_dtype is absent on purpose: it types neither the first input nor
@@ -154,6 +161,7 @@ class Case:
             for k, v in sorted(self.kwargs.items())
             if k not in self._NAMED_KWARGS
         ]
+        extra += [f"arg{i}@{offset}" for i, offset in self.arg_byte_offsets]
         parts = [self.factory, dims, dtypes, *extra] + ([self.tag] if self.tag else [])
         return "/".join(parts)
 

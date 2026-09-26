@@ -430,6 +430,67 @@ def test_guard_poisons_the_core_tile():
     )
 
 
+def _adds_param(vector_loads=False):
+    # The scalar loop reads w wherever it sits; aie::load_v assumes a
+    # 64-byte aligned w and rounds a misaligned address down.
+    name = f"adds_param_{'vector' if vector_loads else 'scalar'}"
+    body = (
+        "aie::store_v(out + i, aie::add(aie::load_v<16>(in + i), "
+        "aie::load_v<16>(w + i)));"
+        if vector_loads
+        else "for (int j = i; j < i + 16; j++) out[j] = in[j] + w[j];"
+    )
+    tile = np.ndarray[(64,), np.dtype[np.int32]]
+    return iron.ExternalFunction(
+        name,
+        source_string=f"""#include <aie_api/aie.hpp>
+extern "C" void {name}(int *in, int *w, int *out) {{
+  for (int i = 0; i < 64; i += 16) {{
+    {body}
+  }}
+}}""",
+        arg_types=[tile, tile, tile],
+        contract=kernels.KernelContract(
+            roles=(In, kernels.Param, Out), reference=lambda x, w: x + w
+        ),
+    )
+
+
+def _run_adds_param(vector_loads, offset):
+    calls = 2
+    fn = _adds_param(vector_loads)
+    x = np.arange(calls * 64, dtype=np.int32).reshape(calls, 64)
+    w = np.arange(64, dtype=np.int32) * 1000 + 7
+    design = kd.design(
+        _adds_param,
+        calls=calls,
+        params=[w],
+        arg_byte_offsets=((1, offset),),
+        vector_loads=vector_loads,
+    )
+    got = _run(design, fn, [x, w], kd.output_size(fn, calls=calls), np.int32)
+    return got.reshape(calls, 64), x + w
+
+
+@pytest.mark.parametrize("offset", [4, 16])
+def test_a_param_at_a_byte_offset_is_read_there(offset):
+    got, ref = _run_adds_param(False, offset)
+    np.testing.assert_array_equal(got, ref)
+
+
+@pytest.mark.supported_devices("npu2")
+def test_a_vector_load_from_a_param_at_a_byte_offset_is_caught():
+    """The misaligned-weights bug: 16 bytes past a 64-byte boundary, load_v reads the wrong words.
+
+    mobilenet packs several layers' weights into one buffer, and a view 16
+    bytes past alignment passed every aligned harness case.
+    """
+    got, ref = _run_adds_param(True, 0)
+    np.testing.assert_array_equal(got, ref)
+    got, ref = _run_adds_param(True, 16)
+    assert (got != ref).any(), "a load_v from a misaligned param read it right"
+
+
 # ---------------------------------------------------------------------------
 # cascade_mm: a two-tile design. The PUT half streams A * B onto the cascade
 # and the GET half adds its own product and the cascade term into C, so the
