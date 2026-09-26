@@ -1668,16 +1668,32 @@ void fused_conv2dk1_xy_pool_i8_large_scalar(
 #include "bn_conv2dk1_aie2.h"
 
 // Rounds half to even and saturates like the scalar.
-template <bool Aligned>
+template <bool Aligned, int P = 4>
 static void k1_relu_rows(const int8_t *input, const int8_t *kernels,
                          uint8_t *output, const int32_t input_width,
                          const int32_t input_channels,
                          const int32_t output_channels, const int scale) {
-  k1_rows<Aligned>(
+  k1_rows<Aligned, P>(
       input, kernels, output, input_width, input_channels, output_channels,
       [=](auto &acc) { return acc.template to_vector<uint8>(scale); });
 }
 
+template <int P>
+static void k1_relu_chunked(const int8_t *input, const int8_t *kernels,
+                            uint8_t *output, const int32_t input_width,
+                            const int32_t input_channels,
+                            const int32_t output_channels, const int scale) {
+  if (input_width % P == 0 &&
+      (((uintptr_t)input | (uintptr_t)output) & (8 * P - 1)) == 0)
+    k1_relu_rows<true, P>(input, kernels, output, input_width, input_channels,
+                          output_channels, scale);
+  else
+    k1_relu_rows<false, P>(input, kernels, output, input_width, input_channels,
+                           output_channels, scale);
+}
+
+// On AIE2P, 8-pixel chunks pay off unless their unaligned loads meet a
+// shallow input-channel loop.
 static void k1_vector(const int8_t *input, const int8_t *kernels,
                       uint8_t *output, const int32_t input_width,
                       const int32_t input_channels,
@@ -1685,13 +1701,14 @@ static void k1_vector(const int8_t *input, const int8_t *kernels,
   event0();
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
-  if (input_width % 4 == 0 &&
-      (((uintptr_t)input | (uintptr_t)output) & 31) == 0)
-    k1_relu_rows<true>(input, kernels, output, input_width, input_channels,
+#if AIE_TUNED_AIE2P
+  if (input_width >= 8 && (input_width % 8 == 0 || input_channels >= 64))
+    k1_relu_chunked<8>(input, kernels, output, input_width, input_channels,
                        output_channels, scale);
   else
-    k1_relu_rows<false>(input, kernels, output, input_width, input_channels,
-                        output_channels, scale);
+#endif
+    k1_relu_chunked<4>(input, kernels, output, input_width, input_channels,
+                       output_channels, scale);
   event1();
 }
 
