@@ -277,6 +277,9 @@ def mm_activation_epilogue_ref(x, mode):
         with np.errstate(over="ignore"):
             return (x32 / (1.0 + np.exp(-x32))).astype(x.dtype)
     if mode == 2:
+        # gelu's limit at -inf is 0, which the most negative float gives
+        # rather than -inf * 0.
+        x32 = np.maximum(x32, -np.finfo(np.float32).max)
         inner = 0.7978845608 * (x32 + 0.044715 * x32**3)
         return (0.5 * x32 * (1.0 + np.tanh(inner))).astype(x.dtype)
     if mode == 3:

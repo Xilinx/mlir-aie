@@ -329,7 +329,6 @@ def test_swiglu_zero_gate_hides_overflow(kwargs):
     assert verdict, verdict.detail
 
 
-@pytest.mark.supported_devices("npu1")
 def test_epilogue_gelu_saturates_for_huge_inputs():
     """The matmul epilogue's gelu, which narrows its f32 input to bf16 first."""
     fn = kernels.mm_activation_epilogue()
@@ -341,7 +340,6 @@ def test_epilogue_gelu_saturates_for_huge_inputs():
     assert verdict, verdict.detail
 
 
-@pytest.mark.supported_devices("npu1")
 def test_epilogue_silu_saturates_for_huge_inputs():
     """The epilogue's silu keeps f32 inputs past bf16's range finite."""
     fn = kernels.mm_activation_epilogue()
