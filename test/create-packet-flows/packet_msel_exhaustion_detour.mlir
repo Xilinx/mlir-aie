@@ -16,6 +16,8 @@
 // down to DMA:1, which takes a second arbiter at (0,2). Id 5 goes up too, so
 // ids 3 and 5 share a msel, and one rule after the rule for id 1 takes both.
 
+// Nothing programs the DMAs, so the design itself may deadlock.
+// NOWARN: warning: Flows can deadlock however they are routed
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%tile_0_2)

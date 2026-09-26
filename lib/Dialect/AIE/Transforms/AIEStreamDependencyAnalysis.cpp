@@ -933,6 +933,15 @@ std::string StreamConflicts::explain(size_t s, size_t t) {
   return a.canBlock(s, t) ? a.explainBlock(s, t) : a.explainBlock(t, s);
 }
 
+SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() {
+  SmallVector<std::pair<size_t, size_t>> pairs;
+  for (size_t s = 0; s < numRequested; s++)
+    for (size_t t = 0; t < numRequested; t++)
+      if (s != t && related(s, t) && getAnalysis().canBlock(s, t))
+        pairs.push_back({s, t});
+  return pairs;
+}
+
 std::optional<HoldCycle>
 StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
   // The packets one source sends with one id move down every branch as one.

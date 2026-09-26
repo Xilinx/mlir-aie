@@ -16,6 +16,8 @@
 // other. Neither flow is to blame: the multicast that ties the ports together
 // must come back in on two ports instead.
 
+// Nothing programs the DMAs, so the design itself may deadlock.
+// NOWARN: warning: Flows can deadlock however they are routed
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_2_1)
