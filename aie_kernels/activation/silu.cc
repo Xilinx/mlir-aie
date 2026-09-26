@@ -91,7 +91,7 @@ static inline void silu_aie2(bfloat16 *restrict input_vector,
 
 #if AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
 // The LUT tanh in three passes, as in sigmoid.cc: x/2 to the output,
-// tanh_lut_inplace, then x * 0.5 * (1 + t) reading x again.
+// tanh_lut_map, then x * 0.5 * (1 + t) reading x again.
 static inline void silu_lut_aie2p(bfloat16 *restrict input_vector,
                                   bfloat16 *restrict output_vector,
                                   const int32_t vector_size) {
@@ -103,7 +103,7 @@ static inline void silu_lut_aie2p(bfloat16 *restrict input_vector,
   for (int i = 0; i < num_elems; i += 32)
     *it_half_x++ = aie::mul(*it_in++, register_0_5_wide).to_vector<bfloat16>();
 
-  tanh_lut_inplace(output_vector, num_elems);
+  tanh_lut_map(output_vector, output_vector, num_elems);
 
   aie::accum<accfloat, 32> half;
   half.from_vector(register_0_5_wide);

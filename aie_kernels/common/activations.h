@@ -46,16 +46,18 @@
 // member escapes, so each call stored the whole object to the stack and read
 // the input back through it. x is clamped to the table's range first; the end
 // segments are the constants -1 and 1, so no finite result changes and +-inf
-// no longer makes 0 * inf.
+// no longer makes 0 * inf. The tables' centring offset goes on the index, not
+// the pointers: a table pointer offset from the array loses the reads' memory
+// operands, and every load and store around them is then kept in order.
 __attribute__((always_inline)) inline aie::accum<accfloat, 16>
 tanh_lut_acc(aie::vector<bfloat16, 16> x) {
   constexpr int bias_bytes = 16 << 4;
-  const float *lut_ab = tanh_lut_ab + bias_bytes / sizeof(float);
-  const float *lut_cd = tanh_lut_cd + bias_bytes / sizeof(float);
   const aie::vector<bfloat16, 16> xc =
       aie::max(aie::min(x, bfloat16(4.0f - 1.0f / 64)), bfloat16(-4.0f));
+  const aie::vector<int32, 16> index =
+      aie::add(aie::vector<int32, 16>(bfloat16_to_int(xc, 6)), bias_bytes);
   v32bfloat16 coeff0, coeff1;
-  load_lut_2x_float(lut_ab, lut_cd, bfloat16_to_int(xc, 6), coeff0, coeff1);
+  load_lut_2x_float(tanh_lut_ab, tanh_lut_cd, index, coeff0, coeff1);
   aie::accum<accfloat, 32> offset;
   offset.insert(1, aie::accum<accfloat, 16>(
                        (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi)));
@@ -77,15 +79,18 @@ tanh_lut_bf16(aie::vector<bfloat16, 16> x) {
 }
 
 #if AIE_TUNED_AIE2P
-// tanh over buf in place, 32 lanes a trip, n a multiple of 32. The table reads
-// carry no memory operands, so every load and store in a trip is ordered
-// around them: a loop holding only the reads pipelines at II 25, one that also
-// holds a caller's multiplies does not (II 48-78). Callers put their arithmetic
-// in separate passes before and after this one.
-__attribute__((always_inline)) inline void tanh_lut_inplace(bfloat16 *buf,
-                                                            int n) {
-  auto it_in = aie::begin_vector<32>(buf);
-  auto it_out = aie::begin_vector<32>(buf);
+// tanh from in to out, which may be the same buffer, 32 lanes a trip, n a
+// multiple of 32. A loop holding only the table reads pipelines best, so
+// callers put their arithmetic in separate passes before and after this one
+// (sigmoid's multiply inside it: II 30, against 1 + 22 + 1 split). The pre-RA
+// pipeliner keeps each store ahead of the next trip's table reads (recurrence
+// 18) and settles on II 27; asked for 16, it gives up, and the post-RA
+// pipeliner reaches 22-23.
+__attribute__((always_inline)) inline void tanh_lut_map(const bfloat16 *in,
+                                                        bfloat16 *out, int n) {
+  auto it_in = aie::begin_vector<32>(in);
+  auto it_out = aie::begin_vector<32>(out);
+#pragma clang loop pipeline_initiation_interval(16)
   for (int i = 0; i < n; i += 32) {
     const aie::vector<bfloat16, 32> x = *it_in++;
     *it_out++ = aie::concat(tanh_lut_bf16(x.extract<16>(0)),
