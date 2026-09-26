@@ -594,9 +594,16 @@ def conv2dk3(
         ExternalFunction configured for the conv2dk3 kernel.
 
     Raises:
-        ValueError: When ``act_dtype`` is not ``np.int8`` or ``np.uint8``.
+        ValueError: When ``act_dtype`` is not ``np.int8`` or ``np.uint8``, or
+            when ``input_width`` is not 32.
 
     """
+    if input_width != 32:
+        # Every compiled variant of the vector kernel (aie2, aie2p, and the
+        # portable branch) hard-codes a 32-pixel row inside conv2dk3.cc and
+        # ignores the runtime_input_width arg; a different width would
+        # silently compute over the wrong pixels instead of raising.
+        raise ValueError(f"conv2dk3: input_width must be 32, got {input_width}")
     func_name, flags = _conv_act_dtype_info(
         "conv2dk3", act_dtype, factory_name="conv2dk3"
     )
