@@ -218,6 +218,8 @@ def test_rows_carry_ii_with_context(report):
     assert ii_rows[0]["value"] == 18
     assert "via=postpipeliner" in ii_rows[0]["range"]
     assert ii_rows[0]["range"].endswith("at k.cc:21")
+    assert "trips=None" in ii_rows[0]["range"]
+    assert not [x for x in out if x["name"].endswith("/II_x_trips")]
     # The aggregate rows always come first, in a fixed order.
     assert [x["name"].rsplit("/", 1)[1] for x in out[:6]] == [
         "unpipelined_loops",
@@ -227,6 +229,37 @@ def test_rows_carry_ii_with_context(report):
         "pm_bytes",
         "libcalls",
     ]
+
+
+def test_a_loop_with_known_trips_gets_ii_times_trips(report):
+    report.loops["foo", "for.body"].trips = 32
+    out = {x["name"]: x for x in report_rows(report, "k/case", "extra")}
+    assert out["k/case/loop/foo/for.body/II_x_trips"]["value"] == 18 * 32
+    assert "trips=32 " in out["k/case/loop/foo/for.body/II"]["range"]
+
+
+# What Peano's opt -passes=print<scalar-evolution> prints, abridged.
+SCEV = textwrap.dedent("""\
+    Classifying expressions for: @transpose_8x8
+      %i = phi i32 [ 0, %entry ], [ %inc, %for.body.i ]
+    Determining loop execution counts for: @transpose_8x8
+    Loop %for.body.i: backedge-taken count is i32 31
+    Loop %for.body.i: constant max backedge-taken count is i32 31
+    Loop %for.body.i: symbolic max backedge-taken count is i32 31
+    Loop %for.body.i: Trip multiple is 32
+    Determining loop execution counts for: @"eltwise_add_bf16_vector"
+    Loop %for.body: backedge-taken count is (-1 + (%vector_size /u 32))<nsw>
+    Loop %for.body: constant max backedge-taken count is i32 134217726
+    Loop %"for.body20.i": backedge-taken count is i32 3
+    Loop %while.body: Unpredictable backedge-taken count.
+    """)
+
+
+def test_trip_counts_are_the_constant_backedge_counts_plus_one():
+    assert remarks.parse_trip_counts(SCEV) == {
+        ("transpose_8x8", "for.body.i"): 32,
+        ("eltwise_add_bf16_vector", "for.body20.i"): 4,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -580,6 +613,20 @@ def test_a_real_build_produces_the_documented_record_shapes(tmp_path):
     assert any(loop.pipelined is not None for loop in rep.loops.values())
     assert rep.pass_failed == []
     assert rep.libcalls == [] and rep.shipped
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_real_build_knows_its_trip_counts(tmp_path):
+    # The llama-decode transpose bakes DIM_m=256, DIM_n=32; the AIE2P 8x8
+    # kernel does a 32-column block per iteration, (32 / 8) * (256 / 32).
+    name = "transpose/8192x16/bfloat16/subtile=8/llama-decode"
+    ef = dict(remarks.case_builds(str(KERNEL_CASES), "npu2", f"^{name}$"))[name]
+    rep, detail = remarks.analyze(ef, "aie2p", tmp_path)
+    assert rep is not None, detail
+    loop = rep.loops["transpose_8x8", "for.body.i"]
+    assert loop.trips == 32 and loop.ii
+    rows = {x["name"]: x["value"] for x in report_rows(rep, "t", "")}
+    assert rows["t/loop/transpose_8x8/for.body.i/II_x_trips"] == loop.ii * 32
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")

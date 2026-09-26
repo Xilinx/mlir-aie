@@ -37,6 +37,7 @@ not LLVM's documented ones):
 | stderr | ``-Wpass-failed`` | a ``#pragma clang loop`` / ``AIE_*`` macro the compiler dropped | ``pass_failed_warnings``, text kept |
 | the object | ``llvm-readobj`` sections, symbols, relocations | what the entry symbol reaches | the shipped functions; ``libcalls`` (e.g. ``__divsf3``) |
 | the object | ``llvm-readobj --stack-sizes`` (``-fstack-size-section``) | frame bytes per function | ``stack_bytes`` on the deepest path from the entry |
+| the IR (``-emit-llvm``) | ``opt`` ``print<scalar-evolution>`` | a constant backedge-taken count | ``loop/<fn>/<bb>/II_x_trips`` |
 
 The loop counts and ``pm_bytes`` cover only the functions the entry symbol
 reaches in the object, which are the ones the core link keeps.
@@ -182,6 +183,8 @@ class LoopInfo:
     zol: bool | None = None
     bundle_count: int | None = None
     byte_count: int | None = None
+    # Iterations per entry into the loop, when the IR's is a constant.
+    trips: int | None = None
     # Where the scheduled (or declined) loop lives, from the record's DebugLoc.
     file: str | None = None
     line: int | None = None
@@ -694,9 +697,21 @@ def report_rows(report: StaticReport, prefix: str, extra: str) -> list[dict]:
                     extra,
                     f"NS={loop.ns} pro={loop.prologue_bundles} "
                     f"epi={loop.epilogue_bundles} zol={loop.zol} "
-                    f"via={loop.pipeliner}{where}",
+                    f"trips={loop.trips} via={loop.pipeliner}{where}",
                 )
             )
+            if loop.trips is not None:
+                # II alone reads a loop that does 4 blocks per iteration as
+                # slower than one that does 1; II x trips compares them.
+                out.append(
+                    _row(
+                        f"{prefix}/loop/{fn}/{bb}/II_x_trips",
+                        "cycles",
+                        loop.ii * loop.trips,
+                        extra,
+                        f"{loop.trips} trips per entry{where}",
+                    )
+                )
         if loop.zol is not None:
             # 1 when the loop is not a zero-overhead loop: an inner loop that
             # falls off the hardware loop unit costs its bundle count in
@@ -815,6 +830,55 @@ def compile_command(ext_fn, target: str, out_dir: Path) -> tuple[list[str], Path
     return cmd, yaml_out
 
 
+_SCEV_FUNCTION = re.compile(r"^Determining loop execution counts for: @\"?([^\"]+)\"?$")
+_SCEV_COUNT = re.compile(
+    r"^Loop %\"?([^\":]+)\"?: backedge-taken count is (?:i\d+ )?(\d+)$"
+)
+
+
+def parse_trip_counts(scev: str) -> dict[tuple[str, str], int]:
+    """Map ``(function, header block)`` to trips, from ``print<scalar-evolution>``.
+
+    Only loops whose backedge-taken count is a constant; the trip count is
+    one more.
+    """
+    trips, fn = {}, None
+    for line in scev.splitlines():
+        if m := _SCEV_FUNCTION.match(line):
+            fn = m.group(1)
+        elif (m := _SCEV_COUNT.match(line)) and fn is not None:
+            trips[fn, m.group(1)] = int(m.group(2)) + 1
+    return trips
+
+
+def trip_counts(ext_fn, target: str, out_dir: Path) -> dict[tuple[str, str], int]:
+    """Constant trip counts of the loops in the optimized IR the backend compiles.
+
+    The build's command, stopped before code generation, with value names
+    kept so its blocks carry the names the remarks use. Empty if it fails:
+    trips annotate the report, they do not gate it.
+    """
+    src, include_dirs = _kernel_file(ext_fn, out_dir)
+    ll = out_dir / f"{ext_fn.name}.ll"
+    cmd = cxx_core_compile_command(
+        str(src),
+        target,
+        str(ll),
+        include_dirs=include_dirs,
+        compile_args=[*ext_fn.compile_flags, "-fno-discard-value-names"],
+        inline=True,
+    )
+    if subprocess.run(cmd, capture_output=True).returncode != 0:
+        return {}
+    opt = Path(cmd[0]).with_name("opt")
+    p = subprocess.run(
+        [str(opt), "-passes=print<scalar-evolution>", "-disable-output", str(ll)],
+        capture_output=True,
+        text=True,
+    )
+    return parse_trip_counts(p.stderr) if p.returncode == 0 else {}
+
+
 def analyze(ext_fn, target: str, workdir: Path) -> tuple[StaticReport | None, str]:
     """Compile one kernel and parse its records; ``(None, reason)`` when it fails to compile."""
     cmd, yaml_out = compile_command(ext_fn, target, workdir)
@@ -822,6 +886,9 @@ def analyze(ext_fn, target: str, workdir: Path) -> tuple[StaticReport | None, st
     if p.returncode != 0:
         return None, f"compile failed: {compile_failure(p.stderr)}"
     rep = parse_yaml(yaml_out) if yaml_out.exists() else StaticReport()
+    for key, trips in trip_counts(ext_fn, target, workdir).items():
+        if key in rep.loops:
+            rep.loops[key].trips = trips
     parse_stderr(p.stderr, rep)
     reached = linked(workdir / f"{ext_fn.name}.o", entry_symbol(ext_fn))
     rep.shipped, rep.libcalls = reached.functions, reached.undefined
