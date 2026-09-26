@@ -128,7 +128,7 @@ def post_l1(act_in, sf, *, tiles=None, data_dir):
         fn_args=[
             act_in.cons(),
             act_out_post_avgpool_shim.prod(),
-            post_l1_wts_of.cons(),
+            post_l1_wts_of.cons(depth=2),
             k_post_l1,
             post_L1_InW,
             post_L1_InH,
