@@ -28,6 +28,9 @@ _TRUE = {
     "gelu_ref": lambda x: 0.5
     * x
     * (1.0 + np.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x**3))),
+    # The kernel clamps before its table lookup. float32 gave 936 at
+    # x = 6.84375, where exp is 938.00005 and rounds up to 940.
+    "bf16_exp_ref": lambda x: np.exp(np.clip(x, -88.0, 88.0)),
 }
 
 
@@ -67,3 +70,15 @@ def test_swiglu_ref_rounds_the_products_then_is_float64():
         want = round_to(a * (b / (1.0 + np.exp(-b))), bfloat16)
     got = kernels.swiglu_ref(x, w1, w2)
     assert (got.view(np.uint16) == want.view(np.uint16)).all()
+
+
+def test_softmax_ref_is_correctly_rounded_per_tile():
+    # float32 rounded 4 of these 65536 outputs the wrong way.
+    x = np.random.default_rng(2).standard_normal((64, 1024)).astype(bfloat16)
+    xf = x.astype(np.float64)
+    e = np.exp(xf - xf.max(axis=1, keepdims=True))
+    want = round_to(e / e.sum(axis=1, keepdims=True), bfloat16)
+    got = kernels.softmax_ref(x.reshape(-1)).reshape(x.shape)
+    assert got.dtype == bfloat16
+    bad = got.view(np.uint16) != want.view(np.uint16)
+    assert not bad.any(), f"softmax_ref: {bad.sum()} outputs not correctly rounded"

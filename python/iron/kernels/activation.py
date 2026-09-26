@@ -940,16 +940,16 @@ def bf16_exp_ref(x):
     ``exp(-88)`` is a nonzero bf16 subnormal (about ``6.06e-39``), not
     zero: AIE2P preserves it through integer exponent reconstruction,
     whereas the AIE2 LUT may flush the tail under the absolute tolerance.
-    The clamp also keeps the reference itself in range:
-    ``exp(88) = 1.65e+38`` fits float32 where ``exp(89)`` would not.
+    The clamp also keeps the result in range: ``exp(88) = 1.65e+38`` fits
+    bf16 and float32 where ``exp(89)`` would not.
     """
-    xf = np.clip(x.astype(np.float32), -_EXP_BF16_CLAMP, _EXP_BF16_CLAMP)
+    xf = np.clip(_f64(x), -_EXP_BF16_CLAMP, _EXP_BF16_CLAMP)
     # The clamp rules out overflow, so that warning stays un-suppressed and
     # would now be a real signal. A NaN input still reaches exp -- the kernel
     # declares nonfinite="unspecified" and callers do feed raw bit patterns
     # (programming_examples/basic/vector_exp sweeps all 65536 of them).
     with np.errstate(invalid="ignore"):
-        return np.exp(xf).astype(x.dtype)
+        return _rounded(np.exp(xf), x)
 
 
 def exp2f_vec_ref(x, min_x: float = -111.0):
@@ -974,10 +974,10 @@ def softmax_ref(x, *, tile_size: int = 1024):
 
     The AIE kernel computes softmax independently per ``tile_size``-element
     tile (no cross-tile reduction), so the reference splits ``x`` the same
-    way before applying the float32 softmax.  ``x.size`` must be a
+    way before applying the softmax, in float64.  ``x.size`` must be a
     multiple of ``tile_size``.
     """
-    xf = x.astype(np.float32)
+    xf = _f64(x)
     if xf.size % tile_size != 0:
         raise ValueError(
             f"softmax_ref: x has {xf.size} elements; not a multiple of "
@@ -987,4 +987,4 @@ def softmax_ref(x, *, tile_size: int = 1024):
     flat = flat - flat.max(axis=1, keepdims=True)
     exp = np.exp(flat)
     out = exp / exp.sum(axis=1, keepdims=True)
-    return out.reshape(x.shape).astype(x.dtype)
+    return _rounded(out.reshape(x.shape), x)
