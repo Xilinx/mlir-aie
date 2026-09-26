@@ -263,6 +263,9 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         return f"{r['min']}..{r['max']} n={r['n']}" if r else "-"
 
     tr.section(f"baseline {baseline['sources']} -> this tree")
+    tr.write_line(f"this tree's kernels: {baseline['current_sources']}")
+    if baseline["warning"]:
+        tr.write_line(f"warning: {baseline['warning']}", yellow=True, bold=True)
     for name, c in baseline["cases"].items():
         words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
         tr.write_line(f"{name}  words {words}")

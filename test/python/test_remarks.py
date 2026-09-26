@@ -721,6 +721,24 @@ def test_a_baseline_tree_prints_the_rows_that_differ(tmp_path, capsys):
     assert "relu/libcalls:" in capsys.readouterr().out
 
 
+def test_an_unset_kernel_tree_warns_that_it_is_the_installed_copy(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("MLIR_AIE_KERNEL_SOURCES", raising=False)
+    current, warning = remarks.current_kernel_sources(str(tmp_path))
+    assert current == config.aie_kernels_dir()
+    assert "MLIR_AIE_KERNEL_SOURCES is unset" in warning and current in warning
+
+
+def test_a_kernel_tree_that_is_the_baseline_warns(tmp_path, monkeypatch):
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(tmp_path))
+    current, warning = remarks.current_kernel_sources(f"{tmp_path}/")
+    assert current == str(tmp_path / "aie_kernels")
+    assert "both" in warning
+    other = tmp_path / "other"
+    assert remarks.current_kernel_sources(str(other)) == (current, None)
+
+
 def test_a_renamed_loop_with_the_same_rows_is_not_a_change():
     loop = "mm/loop/matmul_bf16"
     base = {
