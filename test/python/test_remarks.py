@@ -756,6 +756,28 @@ def test_a_failed_build_keeps_the_rows_of_the_others(tmp_path, monkeypatch, caps
     assert written["baseline"]["changed"] == {}
 
 
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_sources_names_the_tree_compiled(tmp_path, monkeypatch):
+    tree = tmp_path / "tree"
+    shutil.copytree(config.aie_kernels_dir(), tree / "aie_kernels")
+    shutil.copytree(config.aie_runtime_lib_dir(), tree / "aie_runtime_lib")
+    monkeypatch.delenv("MLIR_AIE_KERNEL_SOURCES", raising=False)
+    meta = tmp_path / "meta.json"
+    code = remarks.main(
+        [
+            "--target=aie2p",
+            "--only=^relu$",
+            f"--out={tmp_path / 'rows.json'}",
+            f"--meta={meta}",
+            f"--sources={tree}",
+        ]
+    )
+    assert code == 0
+    source = json.loads(meta.read_text())["kernels"]["relu"]["source"]
+    assert Path(source).is_relative_to(tree / "aie_kernels")
+    assert "MLIR_AIE_KERNEL_SOURCES" not in os.environ
+
+
 def test_an_unset_kernel_tree_warns_that_it_is_the_installed_copy(
     tmp_path, monkeypatch
 ):

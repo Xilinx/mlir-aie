@@ -8,7 +8,7 @@
     python -m aie.utils.compile.remarks --target aie2p --out static.json \
         --out-pm static-pm.json --meta static-meta.json
     python -m aie.utils.compile.remarks --target aie2p --only '^gelu' \
-        --out static.json --baseline-sources ../mlir-aie-base
+        --out static.json --sources . --baseline-sources ../mlir-aie-base
     python -m aie.utils.compile.remarks --target aie2p --only '^tanh/' \
         --cases test/python/npu/kernel_cases.py --out static.json
 
@@ -17,9 +17,10 @@ entry of its ``.dtypes`` table) is compiled exactly as the JIT compiles it
 (``aie.utils.compile.utils.cxx_core_compile_command``), plus the
 optimization-record flags below, and the records become per-kernel series
 for benchmark-action: a Peano bump that changes a loop's schedule shows up
-here before anyone looks at device numbers. With ``MLIR_AIE_KERNEL_SOURCES``
-set to a checkout, that checkout's ``aie_kernels/`` and ``aie_runtime_lib/``
-are compiled instead of the installed copies. With ``--cases``, the builds
+here before anyone looks at device numbers. With ``--sources DIR`` (or
+``MLIR_AIE_KERNEL_SOURCES=DIR``) naming a checkout, that checkout's
+``aie_kernels/`` and ``aie_runtime_lib/`` are compiled instead of the
+installed copies. With ``--cases``, the builds
 are the ones a cases file's tests run (shape and options baked in), each
 named by its case.
 
@@ -71,6 +72,7 @@ from __future__ import annotations
 import argparse
 import collections
 import concurrent.futures
+import contextlib
 import json
 import os
 import re
@@ -1044,6 +1046,26 @@ def current_kernel_sources(baseline: str) -> tuple[str, str | None]:
     return current, None
 
 
+@contextlib.contextmanager
+def kernel_sources(tree: str):
+    """Take the factories' kernels from the checkout ``tree`` while inside."""
+    from aie.iron import ExternalFunction
+
+    saved = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    # Factories resolve their source when called, so the builds are taken
+    # again under ``tree`` -- after forgetting the ones made before, which
+    # share their object names with a different source.
+    os.environ["MLIR_AIE_KERNEL_SOURCES"] = tree
+    ExternalFunction._instances.clear()
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop("MLIR_AIE_KERNEL_SOURCES")
+        else:
+            os.environ["MLIR_AIE_KERNEL_SOURCES"] = saved
+
+
 def _baseline(
     tree: str,
     only,
@@ -1060,22 +1082,9 @@ def _baseline(
     the builds the baseline fails are listed under ``"failed"`` with their
     rows left out of the comparison: either side missing is no change to show.
     """
-    from aie.iron import ExternalFunction
-
-    saved = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
-    # Factories resolve their source when called, so the builds are taken
-    # again under the baseline tree -- after forgetting this tree's, which
-    # share their object names with a different source.
-    os.environ["MLIR_AIE_KERNEL_SOURCES"] = tree
-    ExternalFunction._instances.clear()
-    try:
+    with kernel_sources(tree):
         selected = [b for b in _selected_builds(only, builds) if b[0] not in skip]
         analyzed = _analyze_builds(selected, target, workdir / "baseline", jobs)
-    finally:
-        if saved is None:
-            os.environ.pop("MLIR_AIE_KERNEL_SOURCES")
-        else:
-            os.environ["MLIR_AIE_KERNEL_SOURCES"] = saved
     failed = {
         name: detail
         for (name, _), (rep, detail) in zip(selected, analyzed)
@@ -1197,8 +1206,21 @@ def main(argv=None) -> int:
         "root, as MLIR_AIE_KERNEL_SOURCES) and print each row that differs; "
         "the rows written stay this tree's",
     )
+    ap.add_argument(
+        "--sources",
+        metavar="DIR",
+        help="take this tree's kernels from DIR (a checkout root), as "
+        "MLIR_AIE_KERNEL_SOURCES=DIR does; without either they are the "
+        "installed copy",
+    )
     a = ap.parse_args(argv)
+    if not a.sources:
+        return _run(a)
+    with kernel_sources(a.sources):
+        return _run(a)
 
+
+def _run(a: argparse.Namespace) -> int:
     from aie.iron.device import from_name
     from aie.utils.benchmark import provenance
     from aie.utils.hostruntime import set_current_device
