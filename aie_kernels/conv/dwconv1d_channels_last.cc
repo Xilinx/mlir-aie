@@ -111,21 +111,71 @@ dwconv1d_channels_last_generic(const bf16 *const *__restrict w,
   }
 }
 
+template <int K, int C, bool CLAMP, bool GROUPED>
+static inline void dwconv1d_channels_last_body(const bf16 *const *__restrict w,
+                                               const bf16 *const *__restrict x,
+                                               bf16 lo, bf16 hi,
+                                               bf16 *__restrict y) {
+  if constexpr (GROUPED)
+    dwconv1d_channels_last_grouped<K, C, CLAMP, 64>(w, x, lo, hi, y);
+  else
+    dwconv1d_channels_last_generic<K, C, CLAMP>(w, x, lo, hi, y);
+}
+
+// Walks C in chunks of CH channels in a loop kept rolled. Unrolled over all of
+// C, the scheduler hoisted every chunk's loads and parked them on the stack,
+// which grew by about 8 B per channel.
+template <int K, int C, bool CLAMP, int CH, bool GROUPED>
+static inline void
+dwconv1d_channels_last_chunked(const bf16 *const *__restrict w,
+                               const bf16 *const *__restrict x, bf16 lo,
+                               bf16 hi, bf16 *__restrict y) {
+  constexpr int TAIL = C % CH;
+  const bf16 *wc[K];
+  const bf16 *xc[K];
+  AIE_LOOP_NO_UNROLL
+  for (int o = 0; o < C - TAIL; o += CH) {
+    AIE_LOOP_UNROLL_FULL
+    for (int t = 0; t < K; t++) {
+      wc[t] = w[t] + o;
+      xc[t] = x[t] + o;
+    }
+    dwconv1d_channels_last_body<K, CH, CLAMP, GROUPED>(wc, xc, lo, hi, y + o);
+  }
+  if constexpr (TAIL != 0) {
+    AIE_LOOP_UNROLL_FULL
+    for (int t = 0; t < K; t++) {
+      wc[t] = w[t] + (C - TAIL);
+      xc[t] = x[t] + (C - TAIL);
+    }
+    dwconv1d_channels_last_body<K, TAIL, CLAMP, GROUPED>(wc, xc, lo, hi,
+                                                         y + (C - TAIL));
+  }
+}
+
 template <int K, int C, bool CLAMP>
 static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
                                                const bf16 *const *__restrict x,
                                                bf16 lo, bf16 hi,
                                                bf16 *__restrict y) {
+  // Up to 256 channels the generic loop is fastest unrolled whole; past that
+  // it takes four groups at a time, since a 256-channel chunk plus its tail
+  // parked as much as the whole loop did.
+  constexpr int GENERIC_CHUNK = C <= 256 ? 256 : 128;
 #if AIE_TUNED_AIE2
   dwconv1d_channels_last_grouped<K, C, CLAMP, 32>(w, x, lo, hi, y);
 #elif AIE_TUNED_AIE2P
-  // Four 32-lane groups measured slower than the generic loop at C = 96.
+  // Four 32-lane groups measured slower than the generic loop at C = 96. A
+  // chunk of four 64-lane groups keeps C = 256 at its unrolled speed; smaller
+  // chunks measured 1.6x to 3x slower.
   if constexpr (C % 64 == 0)
-    dwconv1d_channels_last_grouped<K, C, CLAMP, 64>(w, x, lo, hi, y);
+    dwconv1d_channels_last_chunked<K, C, CLAMP, 256, true>(w, x, lo, hi, y);
   else
-    dwconv1d_channels_last_generic<K, C, CLAMP>(w, x, lo, hi, y);
+    dwconv1d_channels_last_chunked<K, C, CLAMP, GENERIC_CHUNK, false>(w, x, lo,
+                                                                      hi, y);
 #else
-  dwconv1d_channels_last_generic<K, C, CLAMP>(w, x, lo, hi, y);
+  dwconv1d_channels_last_chunked<K, C, CLAMP, GENERIC_CHUNK, false>(w, x, lo,
+                                                                    hi, y);
 #endif
 }
 
