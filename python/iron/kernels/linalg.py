@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Linear algebra kernel factories: mm, mv, cascade_mm."""
+"""Linear algebra kernel factories: mm, mv, mv_col_maj, cascade_mm."""
 
 from functools import partial
 from typing import NamedTuple, get_args
@@ -702,6 +702,7 @@ def mv(
     use_chess: bool = False,
     vec_size: int = 64,
     output_rows: int | None = None,
+    a_col_maj: bool = False,
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
@@ -713,6 +714,8 @@ def mv(
     ``aie_kernels/linalg/mv_bf16.cc``, IRON's ``GEMV`` kernel, whose signature
     is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
     ``c`` so one core can fill several output blocks; A is row-major.
+    ``a_col_maj`` builds the same file's column-major variant instead, as
+    [`mv_col_maj`][iron.kernels.linalg.mv_col_maj] does.
 
     Args:
         dim_m: Number of rows of A (output vector length).
@@ -730,6 +733,9 @@ def mv(
             held for all of them, as amd/IRON's GEMV core does (its
             ``tile_size_output``). ``None``: every call writes its own
             ``dim_m`` rows.
+        a_col_maj: bf16 only: A is stored ``(dim_k, dim_m)``, the transpose,
+            and ``dim_k`` is the stored rows of it one call takes. See
+            [`mv_col_maj`][iron.kernels.linalg.mv_col_maj].
 
     Returns:
         ExternalFunction configured for the matvec kernel.
@@ -738,7 +744,16 @@ def mv(
         ValueError: When the dtype combination is not supported.
     """
     if (input_dtype, output_dtype) == (bfloat16, bfloat16):
+        if a_col_maj:
+            if not vectorized or output_rows is not None:
+                raise ValueError(
+                    "mv(): a_col_maj is vectorized only, and a call writes all "
+                    "dim_m of its outputs, so it takes no output_rows"
+                )
+            return mv_col_maj(dim_m, dim_k, vec_size=vec_size, use_chess=use_chess)
         return _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size, output_rows)
+    if a_col_maj:
+        raise ValueError("mv(): a_col_maj is a bf16 layout")
     if output_rows is not None:
         raise ValueError("mv(): output_rows needs the bf16 kernel's row_offset")
     if input_dtype != np.int16 or output_dtype != np.int32:
@@ -832,6 +847,95 @@ def _mv_bf16(
                 "cmk,k->cm" if tiled else "cmk,ck->cm",
                 a.astype(np.float32),
                 b.astype(np.float32),
+            ),
+            acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
+            reduction=dim_k,
+            tolerance=_linalg_tolerance(bfloat16),
+            ops_per_call=2 * dim_m * dim_k,
+        ),
+    )
+
+
+# The column-major matvec's flags: FIRST starts the partial sums, LAST
+# rounds them into c. A whole K in one call takes both.
+MV_COL_MAJ_FIRST = 1
+MV_COL_MAJ_LAST = 2
+
+
+def mv_col_maj(
+    dim_m: int = 64,
+    dim_k: int = 128,
+    *,
+    vec_size: int = 64,
+    use_chess: bool = False,
+) -> ExternalFunction:
+    """bf16 matvec over a column-major A, bit-identical to the row-major one.
+
+    ``aie_kernels/linalg/mv_bf16.cc`` built with ``-DA_COL_MAJ``, signature
+    ``(flags, A, b, acc, c)``: ``A`` is ``dim_k`` stored rows of a ``(K, M)``
+    matrix, ``dim_m`` elements each (the transpose of
+    [`mv`][iron.kernels.linalg.mv]'s A), and ``b`` their ``dim_k`` elements of
+    the vector. ``acc`` holds ``vec_size * dim_m`` float32 partial sums that
+    carry from call to call, so a whole ``K`` is a ``MV_COL_MAJ_FIRST`` call,
+    calls with no flags, and a ``MV_COL_MAJ_LAST`` call, which writes the
+    ``dim_m`` outputs to ``c`` (or one call with both flags).
+
+    The sums are ``mv``'s at the same ``vec_size`` over that ``K``, in its
+    order, so over ``A.T`` it returns the same bits, on rows it computes in
+    whole groups of four (the source spells out the order). Choose
+    ``vec_size`` as the row-major kernel would for the whole ``K``.
+
+    Args:
+        dim_m: Outputs per call: 16, 32 or a multiple of 64.
+        dim_k: Stored rows of A per call, a positive multiple of ``vec_size``.
+        vec_size: The row-major kernel's ``VEC_SIZE``: 16, 32 or 64.
+        use_chess: Build with ``xchesscc_wrapper`` instead of Peano.
+    """
+    if vec_size not in (16, 32, 64):
+        raise ValueError(f"mv_col_maj(): vec_size ({vec_size}) must be 16, 32 or 64")
+    if dim_k <= 0 or dim_k % vec_size:
+        raise ValueError(
+            f"mv_col_maj(): dim_k ({dim_k}) must be a positive multiple of vec_size ({vec_size})"
+        )
+    if dim_m not in (16, 32) and (dim_m <= 0 or dim_m % 64):
+        raise ValueError(
+            f"mv_col_maj(): dim_m ({dim_m}) must be 16, 32 or a multiple of 64"
+        )
+    return _make_extern(
+        "matvec_vectorized_col_maj_bf16_bf16",
+        _kernel_source("linalg/mv_bf16.cc"),
+        [
+            np.int32,
+            np.ndarray[(dim_k * dim_m,), np.dtype[bfloat16]],
+            np.ndarray[(dim_k,), np.dtype[bfloat16]],
+            np.ndarray[(vec_size * dim_m,), np.dtype[np.float32]],
+            np.ndarray[(dim_m,), np.dtype[bfloat16]],
+        ],
+        compile_flags=[
+            "-DA_COL_MAJ",
+            f"-DDIM_M={dim_m}",
+            f"-DDIM_K={dim_k}",
+            f"-DVEC_SIZE={vec_size}",
+        ],
+        use_chess=use_chess,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Param, In, In, Param, Out),
+            # Judged a whole K per call: the sums start and finish in one
+            # call, so acc is scratch the core keeps rather than an input.
+            parameter_bindings=(
+                (0, MV_COL_MAJ_FIRST | MV_COL_MAJ_LAST),
+                (3, np.zeros(vec_size * dim_m, np.float32)),
+            ),
+            layouts=(
+                None,
+                TensorLayout((dim_k, dim_m)),
+                TensorLayout((dim_k,)),
+                None,
+                TensorLayout((dim_m,)),
+            ),
+            reference=lambda a, b: np.einsum(
+                "ckm,ck->cm", a.astype(np.float32), b.astype(np.float32)
             ),
             acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
             reduction=dim_k,

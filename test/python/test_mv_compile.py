@@ -35,3 +35,39 @@ def test_matvec_invalid_chunks_fail_compilation(tmp_path, dim_k):
             str(tmp_path / "mv.o"),
             compile_args=[f"-DDIM_K={dim_k}", "-DVEC_SIZE=64"],
         )
+
+
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+@pytest.mark.parametrize(
+    "vec_size, dim_k, dim_m", [(64, 128, 64), (32, 64, 32), (16, 32, 16), (64, 64, 128)]
+)
+def test_col_maj_matvec_compiles(tmp_path, arch, vec_size, dim_k, dim_m):
+    output = tmp_path / "mv_col_maj.o"
+    compile_cxx_core_function(
+        str(_SOURCE),
+        arch,
+        str(output),
+        compile_args=[
+            "-DA_COL_MAJ",
+            f"-DDIM_M={dim_m}",
+            f"-DDIM_K={dim_k}",
+            f"-DVEC_SIZE={vec_size}",
+        ],
+    )
+    assert output.stat().st_size > 0
+
+
+@pytest.mark.parametrize("dim_k, dim_m", [(96, 64), (128, 48)])
+def test_col_maj_matvec_invalid_shapes_fail_compilation(tmp_path, dim_k, dim_m):
+    with pytest.raises(RuntimeError, match="static assertion failed"):
+        compile_cxx_core_function(
+            str(_SOURCE),
+            "aie2",
+            str(tmp_path / "mv_col_maj.o"),
+            compile_args=[
+                "-DA_COL_MAJ",
+                f"-DDIM_M={dim_m}",
+                f"-DDIM_K={dim_k}",
+                "-DVEC_SIZE=64",
+            ],
+        )

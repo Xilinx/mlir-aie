@@ -1221,6 +1221,52 @@ def test_bf16_matvec_matches_the_iron_gemv_signature():
         kernels.mv(dim_k=100, input_dtype=bfloat16, output_dtype=bfloat16)
 
 
+def test_col_maj_matvec_is_an_mv_layout():
+    # (flags, A, b, acc, c): A is dim_k stored rows of dim_m, acc carries
+    # vec_size * dim_m float sums from call to call.
+    fn = kernels.mv_col_maj(dim_m=64, dim_k=128, vec_size=64)
+    types = fn.arg_types()
+    assert types[0] is np.int32
+    assert [kd.shape_dtype(t) for t in types[1:]] == [
+        ((128 * 64,), bfloat16),
+        ((128,), bfloat16),
+        ((64 * 64,), np.float32),
+        ((64,), bfloat16),
+    ]
+    assert Path(fn.source_file).name == "mv_bf16.cc"
+    assert {"-DA_COL_MAJ", "-DDIM_M=64", "-DDIM_K=128", "-DVEC_SIZE=64"} <= set(
+        fn.compile_flags
+    )
+    via_mv = kernels.mv(
+        dim_m=64,
+        dim_k=128,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+        vec_size=64,
+        a_col_maj=True,
+    )
+    assert via_mv.name == fn.name
+    assert kernels.MV_COL_MAJ_FIRST & kernels.MV_COL_MAJ_LAST == 0
+    for kwargs, match in (
+        (dict(dim_k=96), "multiple of vec_size"),
+        (dict(dim_m=48), "dim_m"),
+        (dict(vec_size=8), "vec_size"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            kernels.mv_col_maj(**kwargs)
+    with pytest.raises(ValueError, match="output_rows"):
+        kernels.mv(
+            dim_m=64,
+            dim_k=128,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            output_rows=128,
+            a_col_maj=True,
+        )
+    with pytest.raises(ValueError, match="bf16"):
+        kernels.mv(dim_m=32, dim_k=32, a_col_maj=True)
+
+
 @pytest.mark.parametrize("case_id", list(CASES))
 def test_host_args_match_what_the_sampler_and_uploader_produce(case_id):
     """The declared host buffers are the ones the harness actually builds."""
