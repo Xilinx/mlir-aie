@@ -1738,6 +1738,20 @@ constexpr int32_t K1_POOL_MAX_WIDTH = 32;
 #define K1_POOL_NOINLINE
 #endif
 
+K1_POOL_NOINLINE static void k1_pool_pad(uint16_t *output, const int32_t start,
+                                         const int32_t end) {
+#if AIE_TUNED_AIE2P
+  if (((uintptr_t)(output + start) & 31) == 0 && ((end - start) & 15) == 0) {
+    aie::vector<uint16, 16> *p = (aie::vector<uint16, 16> *)(output + start);
+    for (int32_t i = (end - start) / 16; i > 0; i--)
+      *p++ = aie::zeros<uint16, 16>();
+    return;
+  }
+#endif
+  for (int32_t c = start; c < end; c++)
+    output[c] = 0;
+}
+
 K1_POOL_NOINLINE static aie::vector<int32, 16>
 k1_pool_avg(const aie::vector<int32, 16> res) {
   // (acc * 42799) >> 21 as (acc << 16) - acc * 22737, rounded down.
@@ -1812,8 +1826,7 @@ k1_xy_pool_vector(const int8_t *input, const int8_t *kernels, uint16_t *output,
     aie::store_v(o, aie::filter_even(aie::vector_cast<uint16>(res), 1)
                         .template extract<8>(0));
   }
-  for (int oc = output_channels; oc < output_channels_padd; oc++)
-    output[oc] = 0;
+  k1_pool_pad(output, output_channels, output_channels_padd);
 }
 
 #if AIE_TUNED_AIE2P
@@ -1903,8 +1916,7 @@ k1_xy_pool_narrow(const int8_t *input, const int8_t *kernels, uint16_t *output,
   for (; oc < blocks; oc++)
     k1_pool_group<1>(input, kernels + oc * ic_blocks * 64, end, o + oc * 8, row,
                      ic_blocks, scale, keep, prior, last);
-  for (int c = output_channels; c < output_channels_padd; c++)
-    output[c] = 0;
+  k1_pool_pad(output, output_channels, output_channels_padd);
 }
 #endif
 

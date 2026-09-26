@@ -1102,8 +1102,8 @@ def bn_conv2dk1_relu_xy_pool_padded_ref(
     pixels. On the last row (``y_index == input_width - 1``) the sum is
     averaged over 49 pixels in ``float32`` as the kernel does: an average
     whose first decimal is 5 rounds to even, any other rounds half up.
-    Channels outside the slice stay 0; ``output_channels_padd`` must not
-    exceed ``output_channels``.
+    Channels outside the slice stay 0, as do the pad channels from
+    ``output_channels`` up to ``output_channels_padd``.
     """
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
     tile = OC // int(output_split)
@@ -1116,10 +1116,9 @@ def bn_conv2dk1_relu_xy_pool_padded_ref(
         tie = (avg * np.float32(10)).astype(np.int32) % 10 == 5
         even = np.where(whole % 2 == 0, whole, whole + 1)
         total = np.where(tie, even, (avg + np.float32(0.5)).astype(np.int32))
-    out = np.zeros((*lead, OC), dtype=np.uint16)
+    out = np.zeros((*lead, max(OC, int(output_channels_padd))), dtype=np.uint16)
     start = tile * int(weight_index)
     out[..., start : start + tile] = total.astype(np.uint16)
-    del output_channels_padd
     return out
 
 
