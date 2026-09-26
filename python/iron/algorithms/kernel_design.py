@@ -29,6 +29,7 @@ from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_
 from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
+from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels._common import Param, _is_tensor_type
 from aie.utils import bfp, ensure_current_device, tensor
 from aie.utils.compile.jit import CompileTime, In, InOut, Out
@@ -40,7 +41,6 @@ from aie.utils.verify import poisoned
 from ._pipeline import Stage, pipeline
 
 GUARD_BYTES = 64
-_GUARD_WORDS = np.ndarray[(GUARD_BYTES // 4,), np.dtype[np.int32]]
 
 
 def _contract(fn):
@@ -103,6 +103,27 @@ def _guarded(fn, guard):
 
 def _guard_elems(arg_type):
     return GUARD_BYTES // np.dtype(shape_dtype(arg_type)[1]).itemsize
+
+
+def _poison_fill(words, use_chess):
+    """Return a kernel that fills ``words`` words with the value it is passed.
+
+    Not a loop in the core's main: that keeps the object FIFO lowering from
+    unrolling the calls, and the buffer selects it leaves spill into main's
+    frame, past the stack the contracts measured. The value is an argument
+    because a constant fill becomes a memset libcall, whose stack aiecc
+    cannot measure.
+    """
+    name = f"kd_poison_{words}"
+    return ExternalFunction(
+        name,
+        source_string=f"""extern "C" void {name}(int *tile, int value) {{
+  for (int i = 0; i < {words}; i++)
+    tile[i] = value;
+}}""",
+        arg_types=[np.ndarray[(words,), np.dtype[np.int32]], np.int32],
+        use_chess=use_chess,
+    )
 
 
 def _view(raw, arg_type, byte_shift):
@@ -259,8 +280,10 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
         )
         for j, (i, (dt, shape, vals)) in enumerate(zip(param_pos, params))
     ]
+    words = {i: (nbytes(i) + GUARD_BYTES) // 4 for i in guarded}
+    fills = {n: _poison_fill(n, fn.use_chess) for n in words.values()}
     # The Worker's constants: the param buffers, the kernel, the
-    # initializer kernels and the setup callable.
+    # initializer kernels, the poison fills and the setup callable.
     n_param, n_init = len(buffers), len(initializers)
     slot = {i: j for j, i in enumerate(outs)}
 
@@ -279,9 +302,12 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
     def initialize(outputs, constants):
         for i, raw in zip(outs, outputs):
             if i in guarded:
-                words = _view(raw, _GUARD_WORDS, nbytes(i))
-                for k in range(GUARD_BYTES // 4):
-                    words[k] = 0x55555555
+                # The tile too, not just the guard: the DMA drains what the
+                # core holds, so an element the kernel skips would otherwise
+                # read back as zero or as an earlier call's value.
+                fill = constants[n_param + 1 + n_init + list(fills).index(words[i])]
+                tile = _view(raw, fill.arg_types()[0], 0)
+                fill(tile, int(poisoned(1, np.int32)[0]))
         if initializers:
             views = typed(outputs)
             kernels = constants[n_param + 1 : n_param + 1 + n_init]
@@ -295,6 +321,7 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
         constants=buffers
         + [fn]
         + [init for _, init in initializers]
+        + list(fills.values())
         + ([setter] if setter else []),
         iterations=calls,
         outputs_span_iterations=offset is not None,
@@ -390,9 +417,10 @@ def design(
     ``stack_bytes`` replaces the core stack the contract declares, for a
     kernel built from sources other than the ones the contract was sized for.
 
-    With ``guard=True`` the core writes ``GUARD_BYTES`` of ``0x55`` after each
-    output tile in its memory before every call and drains them with the
-    tile, so a kernel that writes past its output shows up on the host:
+    With ``guard=True`` the core fills each output tile and ``GUARD_BYTES``
+    after it with ``0x55`` before every call and drains the guard with the
+    tile, so a kernel that skips part of its output or writes past it shows
+    up on the host:
     size the outputs with ``output_size(..., guard=True)`` and split them
     with ``strip_guard``. bfp outputs carry no guard.
     """

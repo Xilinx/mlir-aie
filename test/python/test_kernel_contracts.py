@@ -339,7 +339,16 @@ def test_guarded_design_hands_the_kernel_a_view_of_its_tile():
     )
     assert "!aie.objectfifo<memref<128xi8>>" in mlir
     assert "memref<128xi8> to memref<64xui8>" in mlir
-    assert mlir.count("memref.store") == kd.GUARD_BYTES // 4
+    # The tile and its guard are poisoned by a call: a loop in main would keep
+    # the object FIFO lowering from unrolling the calls.
+    assert "memref<128xi8> to memref<32xi32>" in mlir
+    assert "func.call @kd_poison_32(" in mlir
+    plain = str(
+        kd.design(
+            kernels.add_weighted, line_width=64, calls=2, scalars=(8192, 8192, 0)
+        ).as_mlir()
+    )
+    assert mlir.count("scf.for") == plain.count("scf.for")
 
 
 def test_guard_covers_an_initialized_output():
