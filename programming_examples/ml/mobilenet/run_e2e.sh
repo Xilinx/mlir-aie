@@ -59,29 +59,16 @@ case "$MODE:$TARGET" in
         ;;
 esac
 
-# 1. Generate IRON MLIR for this design.
-mkdir -p "build_${TAG}"
+# 1. Compile this design, and the kernels it calls, to an xclbin.
+BUILD="$(pwd)/build_${TAG}"
+mkdir -p "${BUILD}"
 (cd "${SRCDIR}/.." && python3 -m mobilenet.${BUILDER} \
     --data-dir "${DATA_DIR}" \
-    --scales-json "${SCALES}") \
-    > "build_${TAG}/${TAG}.mlir"
+    --scales-json "${SCALES}" \
+    --xclbin-path "${BUILD}/${TAG}.xclbin" \
+    --insts-path "${BUILD}/${TAG}_insts.bin")
 
-# 2. Compile MLIR -> xclbin (link the .o files from main mobilenet build).
-cd "build_${TAG}"
-# .o files are built into ../build/final_mobilenet.prj/ by
-# `make -f %S/Makefile objs` in run_e2e.lit (the @iron.jit pipeline
-# writes per-kernel .o files into the xclbin's .prj scratch dir).
-# Fall back to ${SRCDIR}/build/final_mobilenet.prj/ for local runs.
-ln -sf ../build/final_mobilenet.prj/*.o . 2>/dev/null || true
-ln -sf "${SRCDIR}/build/final_mobilenet.prj/"*.o . 2>/dev/null || true
-aiecc --get-xclbin \
-    --xclbin-name="${TAG}.xclbin" \
-    --dynamic-objFifos=false \
-    --get-npu-insts --npu-insts-name="${TAG}_insts.bin" \
-    "${TAG}.mlir"
-cd ..
-
-# 3. Run on NPU and bit-exact compare against brevitas golden.
+# 2. Run on NPU and bit-exact compare against brevitas golden.
 python3 "${SRCDIR}/test_e2e.py" "${MODE}" "${TARGET}" \
     --xclbin "build_${TAG}/${TAG}.xclbin" \
     --insts "build_${TAG}/${TAG}_insts.bin" \

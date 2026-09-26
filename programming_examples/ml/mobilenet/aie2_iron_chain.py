@@ -21,6 +21,8 @@ Usage:
         --scales-json bottleneck_B/data/scale_factors.json       > chain.mlir
     python3 aie2_iron_chain.py cascade   --data-dir bottleneck_C/data \\
         --scales-json bottleneck_C/data/scale_factors.json       > chain.mlir
+
+Pass --xclbin-path/--insts-path to compile instead, kernels included.
 """
 
 import argparse
@@ -29,7 +31,14 @@ import json
 import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
+from aie.iron import (
+    CompilableDesign,
+    CompileTime,
+    ObjectFifo,
+    Program,
+    Runtime,
+    TaskGroup,
+)
 from aie.iron.device import Tile
 from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -102,7 +111,9 @@ CHAIN_PLACEMENT = {
 }
 
 
-def _chain_iron(mode, data_dir, scales_json):
+def _chain_iron(
+    mode: CompileTime[str], data_dir: CompileTime[str], scales_json: CompileTime[str]
+):
     """Build a chained design (mode='pipeline' or 'cascade'). Returns MLIR."""
     if not data_dir.endswith("/"):
         data_dir = data_dir + "/"
@@ -228,7 +239,17 @@ def _make_argparser():
 def main():
     opts = _make_argparser().parse_args()
     set_current_device(device_from_args(opts, n_cols=None))
-    print(_chain_iron(opts.mode, opts.data_dir, opts.scales_json))
+    compile_kwargs = dict(
+        mode=opts.mode, data_dir=opts.data_dir, scales_json=opts.scales_json
+    )
+    if opts.xclbin_path:
+        CompilableDesign(
+            _chain_iron,
+            compile_kwargs=compile_kwargs,
+            aiecc_flags=["--dynamic-objFifos=false"],
+        ).compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+    else:
+        print(_chain_iron(**compile_kwargs))
 
 
 if __name__ == "__main__":

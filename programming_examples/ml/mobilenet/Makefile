@@ -13,13 +13,6 @@ TEST_FILE = test_mobilenet
 
 all: build/final_mobilenet.xclbin run_py
 
-# objs: alias for the xclbin build, used by run_e2e.lit to bootstrap the
-# per-kernel .o files.  Under @iron.jit those .o files land inside
-# build/final_mobilenet.prj/ (the per-xclbin scratch dir), so run_e2e.sh
-# symlinks from there.
-.PHONY: objs
-objs: build/final_mobilenet.xclbin
-
 # aie2_mobilenet_iron is @iron.jit; the design's compile path builds
 # every .o file itself (via the kernels.bn_* library) and invokes aiecc
 # directly with the right flags (incl. --dynamic-objFifos=false, set on
