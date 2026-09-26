@@ -46,7 +46,8 @@ prints a warning: the design reserves that much and an overflow corrupts the
 neighbouring memory without a fault.
 ``--baseline-sources DIR`` compiles everything a second time from ``DIR``
 and prints each row that differs, for a before/after of a kernel change;
-a loop LLVM only renamed, its rows unchanged, is counted but not listed.
+a loop LLVM only renamed, its rows unchanged, is counted but not listed,
+and a build either tree fails to compile is named and left out.
 It names the ``aie_kernels/`` this tree compiled and warns when that is the
 installed copy (``MLIR_AIE_KERNEL_SOURCES`` unset) or the baseline itself.
 ``--keep DIR`` keeps the objects, which ``--meta`` names per build.
@@ -61,8 +62,8 @@ included, so its change is the signal, not its value.
 The integer series alert on any increase; ``pm_bytes`` goes to its own file
 (``--out-pm``) so it can carry a percentage threshold. Nothing gates: under
 GitHub Actions a dropped pragma is a ``::warning`` at its file and line, a
-kernel that fails to compile an ``::error``, and the run then exits 3 and
-writes nothing.
+kernel that fails to compile an ``::error``, and the run then exits 3 with
+"RESULTS INVALID", after writing the rows of the builds that compiled.
 """
 
 from __future__ import annotations
@@ -1044,9 +1045,21 @@ def current_kernel_sources(baseline: str) -> tuple[str, str | None]:
 
 
 def _baseline(
-    tree: str, only, target: str, workdir: Path, jobs: int, rows, builds=kernel_builds
+    tree: str,
+    only,
+    target: str,
+    workdir: Path,
+    jobs: int,
+    rows,
+    builds=kernel_builds,
+    skip=frozenset(),
 ) -> dict:
-    """Every row whose value differs when the kernels come from ``tree``."""
+    """Every row whose value differs when the kernels come from ``tree``.
+
+    The builds named in ``skip`` (this tree's failures) are not compiled, and
+    the builds the baseline fails are listed under ``"failed"`` with their
+    rows left out of the comparison: either side missing is no change to show.
+    """
     from aie.iron import ExternalFunction
 
     saved = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
@@ -1056,21 +1069,29 @@ def _baseline(
     os.environ["MLIR_AIE_KERNEL_SOURCES"] = tree
     ExternalFunction._instances.clear()
     try:
-        selected = _selected_builds(only, builds)
+        selected = [b for b in _selected_builds(only, builds) if b[0] not in skip]
         analyzed = _analyze_builds(selected, target, workdir / "baseline", jobs)
     finally:
         if saved is None:
             os.environ.pop("MLIR_AIE_KERNEL_SOURCES")
         else:
             os.environ["MLIR_AIE_KERNEL_SOURCES"] = saved
+    failed = {
+        name: detail
+        for (name, _), (rep, detail) in zip(selected, analyzed)
+        if rep is None
+    }
     base = {
         r["name"]: r["value"]
         for (name, _), (rep, _) in zip(selected, analyzed)
         if rep is not None
         for r in report_rows(rep, name, "")
     }
-    current = {r["name"]: r["value"] for r in rows}
-    return diff_rows(base, current)
+    prefixes = tuple(f"{name}/" for name in failed)
+    current = {
+        r["name"]: r["value"] for r in rows if not r["name"].startswith(prefixes)
+    }
+    return {**diff_rows(base, current), "failed": failed}
 
 
 _LOOP_ROW = re.compile(r"^(.*/loop/[^/]+)/([^/]+)/([^/]+)$")
@@ -1195,7 +1216,7 @@ def main(argv=None) -> int:
         if suspect:
             print(f"warning: {suspect}", file=sys.stderr)
     rows: list[dict] = []
-    failed: list[str] = []
+    failed: dict[str, str] = {}
     meta: dict = {"kernels": {}}
     annotated: set[tuple] = set()
 
@@ -1218,7 +1239,7 @@ def main(argv=None) -> int:
             ef.contract and ef.contract.stack_bytes
         ) or device.default_core_stack_bytes
         if rep is None:
-            failed.append(f"{name}: {detail}")
+            failed[name] = detail
         else:
             rows += report_rows(rep, name, extra)
             meta["kernels"][name] = {
@@ -1263,9 +1284,9 @@ def main(argv=None) -> int:
             )
 
     meta["failed"] = failed
-    if a.baseline_sources and not failed:
+    if a.baseline_sources:
         changed = _baseline(
-            a.baseline_sources, a.only, a.target, workdir, a.jobs, rows, sweep
+            a.baseline_sources, a.only, a.target, workdir, a.jobs, rows, sweep, failed
         )
         meta["baseline"] = {
             "sources": a.baseline_sources,
@@ -1273,9 +1294,12 @@ def main(argv=None) -> int:
             "warning": suspect,
             "changed": changed["rows"],
             "renamed": changed["renamed"],
+            "failed": changed["failed"],
         }
         if suspect:
             print(f"warning: {suspect}")
+        for name, detail in changed["failed"].items():
+            print(f"  baseline fails to compile {name}, not compared: {detail}")
         print(
             f"baseline {a.baseline_sources} -> this tree ({current_sources}): "
             f"{len(changed['rows'])} rows differ"
@@ -1290,16 +1314,23 @@ def main(argv=None) -> int:
             print(f"  {name}: {before} -> {after}")
     if a.meta:
         Path(a.meta).write_text(json.dumps(meta, indent=1, default=str))
-    if failed:  # every kernel must compile
-        print("RESULTS INVALID: " + "; ".join(failed), file=sys.stderr)
-        return 3
+    # The builds that compiled keep their rows even when another fails.
     if a.out_pm:
         pm_rows = [r for r in rows if r["name"].endswith("/pm_bytes")]
         rows = [r for r in rows if not r["name"].endswith("/pm_bytes")]
-        _write_rows(a.out_pm, pm_rows)
-        print(f"wrote {len(pm_rows)} pm_bytes rows to {a.out_pm}")
-    _write_rows(a.out, rows)
-    print(f"wrote {len(rows)} rows to {a.out}")
+        if pm_rows or not failed:
+            _write_rows(a.out_pm, pm_rows)
+            print(f"wrote {len(pm_rows)} pm_bytes rows to {a.out_pm}")
+    if rows or not failed:
+        _write_rows(a.out, rows)
+        print(f"wrote {len(rows)} rows to {a.out}")
+    if failed:  # every kernel must compile
+        print(
+            "RESULTS INVALID: "
+            + "; ".join(f"{name}: {detail}" for name, detail in failed.items()),
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 
