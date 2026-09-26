@@ -412,7 +412,9 @@ _CASCADE_CALLS = 2
 def _cascade_design(
     *tensors: InOut,
     combo: CompileTime[str],
-    dim: CompileTime[int],
+    m: CompileTime[int],
+    k: CompileTime[int],
+    n: CompileTime[int],
     tiles: CompileTime[int],
 ):
     from aie.iron import CascadeFlow
@@ -420,7 +422,7 @@ def _cascade_design(
     from aie.iron.device import Tile
 
     in_dt, out_dt = _CASCADE_DTYPES[combo]
-    kw = dict(dim_m=dim, dim_k=dim, dim_n=dim, input_dtype=in_dt, output_dtype=out_dt)
+    kw = dict(dim_m=m, dim_k=k, dim_n=n, input_dtype=in_dt, output_dtype=out_dt)
     get = kernels.cascade_mm(**kw)
     put = kernels.cascade_mm_put(**kw)
     zero = get.contract.initializers[0][1](get)
@@ -429,7 +431,7 @@ def _cascade_design(
     of_a = [ObjectFifo(a_ty, name=f"a{i}", depth=1) for i in range(tiles)]
     of_b = [ObjectFifo(b_ty, name=f"b{i}", depth=1) for i in range(tiles)]
     of_c = ObjectFifo(c_ty, name="c", depth=1)
-    unused = np.zeros(dim * dim, dtype=np.dtype(out_dt))
+    unused = np.zeros(m * n, dtype=np.dtype(out_dt))
 
     def put_core(of_a, of_b, scratch, k_put):
         a, b = of_a.acquire(1), of_b.acquire(1)
@@ -484,64 +486,69 @@ def _cascade_cases():
                     # AIE2's scalar kernel truncates the partial sum to an int.
                     marks.append(pytest.mark.supported_devices("npu2"))
                 yield pytest.param(
-                    combo, dim, tiles, False, marks=marks, id=f"{combo}-{dim}-{tiles}"
+                    combo,
+                    (dim, dim, dim),
+                    tiles,
+                    False,
+                    marks=marks,
+                    id=f"{combo}-{dim}-{tiles}",
                 )
+    extensive = [pytest.mark.extensive]
     for combo in ("i16_i16", "i16_i32"):
         # 24 does not tile, so AIE2P falls back to the scalar kernel.
         yield pytest.param(
-            combo, 24, 3, False, marks=[pytest.mark.extensive], id=f"{combo}-24-3"
+            combo, (24,) * 3, 3, False, marks=extensive, id=f"{combo}-24-3"
+        )
+        # K = 24 tiles, but in K steps of 8 rather than 16.
+        yield pytest.param(
+            combo, (16, 24, 16), 3, False, marks=extensive, id=f"{combo}-16x24x16-3"
         )
         yield pytest.param(
-            combo,
-            64,
-            3,
-            True,
-            marks=[pytest.mark.extensive],
-            id=f"{combo}-64-3-full_range",
+            combo, (64,) * 3, 3, True, marks=extensive, id=f"{combo}-64-3-full_range"
         )
 
 
-@pytest.mark.parametrize("combo,dim,tiles,full_range", list(_cascade_cases()))
-def test_cascade_mm_chain(combo, dim, tiles, full_range):
+@pytest.mark.parametrize("combo,shape,tiles,full_range", list(_cascade_cases()))
+def test_cascade_mm_chain(combo, shape, tiles, full_range):
     in_dt, out_dt = _CASCADE_DTYPES[combo]
+    m, k, n = shape
     get = kernels.cascade_mm(
-        dim_m=dim, dim_k=dim, dim_n=dim, input_dtype=in_dt, output_dtype=out_dt
+        dim_m=m, dim_k=k, dim_n=n, input_dtype=in_dt, output_dtype=out_dt
     )
     rng = np.random.default_rng(3)
+    sizes = [m * k, k * n] * tiles
     if in_dt is bfloat16:
-        xs = [rng.standard_normal(dim * dim).astype(bfloat16) for _ in range(2 * tiles)]
+        xs = [rng.standard_normal(s).astype(bfloat16) for s in sizes]
     else:
         # Full range overflows the output type: C wraps like the scalar kernel.
         limit = 32767 if full_range else get.input_limit(np.int16)
-        xs = [
-            rng.integers(-limit, limit, size=dim * dim).astype(np.int16)
-            for _ in range(2 * tiles)
-        ]
+        xs = [rng.integers(-limit, limit, size=s).astype(np.int16) for s in sizes]
     tensors = [iron.tensor(x, dtype=in_dt, device="npu") for x in xs]
-    c = iron.tensor(np.zeros(dim * dim, out_dt), dtype=out_dt, device="npu")
-    _cascade_design(*tensors, c, combo=combo, dim=dim, tiles=tiles)
+    c = iron.tensor(np.zeros(m * n, out_dt), dtype=out_dt, device="npu")
+    _cascade_design(*tensors, c, combo=combo, m=m, k=k, n=n, tiles=tiles)
     got = c.numpy().copy()
 
     wide = np.float64 if in_dt is bfloat16 else np.int64
-    mats = [x.astype(wide).reshape(dim, dim) for x in xs]
-    exact = _CASCADE_CALLS * sum(a @ b for a, b in zip(mats[0::2], mats[1::2]))
+    a_s = [x.astype(wide).reshape(m, k) for x in xs[0::2]]
+    b_s = [x.astype(wide).reshape(k, n) for x in xs[1::2]]
+    exact = _CASCADE_CALLS * sum(a @ b for a, b in zip(a_s, b_s))
     if in_dt is not bfloat16:
         expected = exact.astype(out_dt).reshape(-1)
         bad = int((got != expected).sum())
-        assert bad == 0, f"{bad} of {dim * dim} outputs differ"
+        assert bad == 0, f"{bad} of {m * n} outputs differ"
         return
     # Every bf16 product is exact in fp32, so an fp32 sum of n terms, in any
     # order, is within n * 2**-24 * sum|a*b| of the exact result. A bf16 C is
     # rounded once a call, half a bf16 ulp each: 2**-8 of the final value
     # covers both roundings of two calls.
-    terms = sum(abs(a) @ abs(b) for a, b in zip(mats[0::2], mats[1::2]))
-    n = _CASCADE_CALLS * (tiles * dim + 1)
-    bound = n * 2.0**-24 * _CASCADE_CALLS * terms
+    terms = sum(abs(a) @ abs(b) for a, b in zip(a_s, b_s))
+    n_terms = _CASCADE_CALLS * (tiles * k + 1)
+    bound = n_terms * 2.0**-24 * _CASCADE_CALLS * terms
     if out_dt is bfloat16:
         bound = bound + 2.0**-8 * np.abs(exact)
-    err = np.abs(got.astype(np.float64).reshape(dim, dim) - exact)
+    err = np.abs(got.astype(np.float64).reshape(m, n) - exact)
     assert (err <= bound).all(), (
-        f"{int((err > bound).sum())} of {dim * dim} outputs outside the fp32 "
+        f"{int((err > bound).sum())} of {m * n} outputs outside the fp32 "
         f"summation bound; max |err| {err.max():.4g}"
     )
 
