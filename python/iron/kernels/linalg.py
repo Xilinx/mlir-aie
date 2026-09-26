@@ -1346,13 +1346,12 @@ def cascade_mm(
     ``.zero`` initializes accumulators using independent ``kernels.zero``.
     The pair is a two-tile
     design, which the generic builder does not run; the device test builds
-    and judges it (``test/python/npu/test_kernels_e2e.py``). On AIE2 the
-    partial sum crosses the cascade as a 32-bit integer lane: with a
-    floating-point output type the PUT half's product is truncated toward
-    zero. On AIE2P, when ``dim_m`` and ``dim_k`` are multiples of 8 and
-    ``dim_n`` of 16, the whole accumulator crosses the cascade and a float
-    chain rounds once, to nearest even, at the GET half; other shapes run
-    the AIE2 kernel.
+    and judges it (``test/python/npu/test_kernels_e2e.py``). On AIE2 each
+    output's partial sum crosses the cascade as one 32-bit lane, a float
+    chain as the float's bits. On AIE2P, when ``dim_m`` and ``dim_k`` are
+    multiples of 8 and ``dim_n`` of 16, the whole accumulator crosses the
+    cascade; other shapes run the AIE2 kernel. Either way a float chain
+    sums in float and rounds once, to nearest even, at the GET half.
 
     Args:
         dim_m: Number of rows of A / C.
