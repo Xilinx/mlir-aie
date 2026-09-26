@@ -54,6 +54,11 @@ def _vector_loads(*indices):
     return tuple((i, align) for i in indices) if align else ()
 
 
+def _vector_32b(*indices):
+    """``alignments`` for arguments the tuned build accesses 32 bytes at a time."""
+    return tuple((i, 32) for i in indices) if _tuned_arch() else ()
+
+
 def _vector_args(*indices):
     """``alignments`` for arguments every build, portable too, loads as whole vectors."""
     align = {"aie2": 32, "aie2p": 64}.get(_detect_arch())
@@ -1215,6 +1220,7 @@ def bn_conv2dk3(
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
+            alignments=_vector_loads(0, 1, 2, 3) + _vector_32b(4),
             reference=bn_conv2dk3_ref,
             acc_dtype=np.int32,
             reduction=9 * input_channels,
@@ -1358,6 +1364,10 @@ def bn_conv2dk3_dw(
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
+            # The weights are read unaligned.
+            alignments=(
+                _vector_32b(0, 1, 2, 4) if stride == 1 else _vector_loads(0, 1, 2, 4)
+            ),
             reference=partial(bn_conv2dk3_dw_ref, stride=stride),
             acc_dtype=np.int32,
             reduction=9,
@@ -1575,6 +1585,7 @@ def bn_conv2dk3_dw_out_split(
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, Out, *((Param,) * 8)),
+            alignments=_vector_32b(0, 1, 2, 4, 5),
             reference=bn_conv2dk3_dw_out_split_ref,
             acc_dtype=np.int32,
             reduction=9,

@@ -162,3 +162,35 @@ def test_conv_aligned_vector_args_build(factory, kwargs, indices, device, shift)
         assert "memref.view" in str(
             _views_design(device, factory, kwargs, index, shift)
         )
+
+
+# Bytes each array argument of the tuned npu2 build needs; npu1 needs at most
+# 32. The depthwise kernels read their weights (argument 3) unaligned.
+_BN_CONV3X3_ARGS = [
+    ("bn_conv2dk3", {}, {0: 64, 1: 64, 2: 64, 3: 64, 4: 32}),
+    ("bn_conv2dk3_dw", {}, {0: 32, 1: 32, 2: 32, 3: 1, 4: 32}),
+    ("bn_conv2dk3_dw", dict(stride=2), {0: 64, 1: 64, 2: 64, 3: 1, 4: 64}),
+    ("bn_conv2dk3_dw_out_split", {}, {0: 32, 1: 32, 2: 32, 3: 1, 4: 32, 5: 32}),
+]
+
+
+@pytest.mark.parametrize("device", [NPU2Col1(), NPU1Col1()])
+@pytest.mark.parametrize("factory,kwargs,needs", _BN_CONV3X3_ARGS)
+def test_bn_conv3x3_vector_args(factory, kwargs, needs, device):
+    for index, need in needs.items():
+        need = need if isinstance(device, NPU2Col1) else min(need, 32)
+        if need > 1:
+            with pytest.raises(ValueError, match=f"argument {index} as"):
+                _views_design(device, factory, kwargs, index, need // 2)
+        assert "memref.view" in str(
+            _views_design(device, factory, kwargs, index, need if need > 1 else 8)
+        )
+
+
+@pytest.mark.parametrize("factory,kwargs,needs", _BN_CONV3X3_ARGS)
+def test_bn_conv3x3_portable_needs_no_alignment(monkeypatch, factory, kwargs, needs):
+    monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
+    for index in needs:
+        assert "memref.view" in str(
+            _views_design(NPU2Col1(), factory, kwargs, index, 8)
+        )
