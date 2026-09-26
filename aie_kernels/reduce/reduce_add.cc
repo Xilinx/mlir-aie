@@ -66,7 +66,67 @@ static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
   return;
 }
 
+// A bf16 sum accumulates in fp32 and rounds to bf16 once, on the result, to
+// nearest even (the core's default mode rounds down).
+static bfloat16 _round_bf16(float x) {
+  aie::rounding_mode saved = aie::swap_rounding(aie::rounding_mode::conv_even);
+  bfloat16 r = (bfloat16)x;
+  aie::set_rounding(saved);
+  return r;
+}
+
+static void _reduce_add_vector_bf16(bfloat16 *restrict in,
+                                    bfloat16 *restrict out,
+                                    const int32_t input_size) {
+  event0();
+  constexpr int32_t L = AIE_BF16_LANES;
+  const bfloat16 *p = in;
+  aie::accum<accfloat, L> t0 = aie::zeros<accfloat, L>();
+  if constexpr (REDUCE_ADD_ELEMS % (4 * L) == 0) {
+    // The adds chain on their latency; four independent sums hide it.
+    aie::accum<accfloat, L> t1 = t0, t2 = t0, t3 = t0;
+    AIE_LOOP_NO_UNROLL
+    for (int32_t i = 0; i < REDUCE_ADD_ELEMS; i += 4 * L) {
+      t0 = aie::add(t0, aie::load_v<L>(p));
+      t1 = aie::add(t1, aie::load_v<L>(p + L));
+      t2 = aie::add(t2, aie::load_v<L>(p + 2 * L));
+      t3 = aie::add(t3, aie::load_v<L>(p + 3 * L));
+      p += 4 * L;
+    }
+    t0 = aie::add(t0, t1.to_vector<float>());
+    t2 = aie::add(t2, t3.to_vector<float>());
+    t0 = aie::add(t0, t2.to_vector<float>());
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int32_t i = 0; i < REDUCE_ADD_ELEMS; i += L) {
+      t0 = aie::add(t0, aie::load_v<L>(p));
+      p += L;
+    }
+  }
+  *out = _round_bf16(aie::reduce_add(t0.to_vector<float>()));
+  event1();
+}
+
+static void _reduce_add_scalar_bf16(bfloat16 *restrict in,
+                                    bfloat16 *restrict out,
+                                    const int32_t input_size) {
+  event0();
+  float running_total = 0.0f;
+  for (int32_t i = 0; i < REDUCE_ADD_ELEMS; i++)
+    running_total += (float)in[i];
+  *out = _round_bf16(running_total);
+  event1();
+}
+
 extern "C" {
+void reduce_add_vector_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
+                                int32_t input_size) {
+  _reduce_add_vector_bf16(a_in, c_out, input_size);
+}
+void reduce_add_scalar_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
+                                int32_t input_size) {
+  _reduce_add_scalar_bf16(a_in, c_out, input_size);
+}
 void reduce_add_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
   _reduce_add_vector(a_in, c_out, input_size);
 }
