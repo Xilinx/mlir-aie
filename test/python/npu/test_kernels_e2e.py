@@ -277,6 +277,13 @@ def _assert_gelu_saturates(got, tile):
     np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), _relu(edge))
 
 
+# aie2 has only the LUT build, so use_lut=True is npu2's other one.
+def _lut_on_npu2(*args):
+    return pytest.param(
+        *args, dict(use_lut=True), marks=pytest.mark.supported_devices("npu2")
+    )
+
+
 @pytest.mark.supported_devices("npu1")
 @pytest.mark.parametrize(
     "factory,limit",
@@ -299,14 +306,14 @@ def test_activation_saturates_for_huge_inputs(factory, limit):
     np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), limit(edge))
 
 
-@pytest.mark.supported_devices("npu1")
-def test_swiglu_zero_gate_hides_overflow():
+@pytest.mark.parametrize("kwargs", [{}, _lut_on_npu2()], ids=["default", "lut"])
+def test_swiglu_zero_gate_hides_overflow(kwargs):
     """An x * w1 overflowing to inf, times a silu of exactly 0, gives 0, not NaN."""
-    fn = kernels.swiglu()
+    fn = kernels.swiglu(**kwargs)
     x = _huge_tile(bfloat16, [1e20, 1e20, 1e20, 2, 1, 1])
     w1 = _huge_tile(bfloat16, [1e20, 1e20, -1e20, np.inf, 1, 1])
-    w2 = _huge_tile(bfloat16, [-1e20, 1e20, 1e20, -8, np.inf, -np.inf])
-    design = kd.design(kernels.swiglu, calls=1)
+    w2 = _huge_tile(bfloat16, [-1e20, 1e20, 1e20, -1e3, np.inf, -np.inf])
+    design = kd.design(kernels.swiglu, calls=1, **kwargs)
     got = _run(design, fn, [x, w1, w2], 1024, np.dtype(bfloat16))
     np.testing.assert_array_equal(
         got[:6].astype(np.float32), [0, np.inf, -np.inf, 0, np.inf, 0]
