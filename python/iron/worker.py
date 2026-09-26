@@ -282,20 +282,28 @@ class Worker(ObjectFifoEndpoint):
             barrier_lock = lock(my_tile)
             barrier._add_worker_lock(barrier_lock)
 
-        @core(
-            my_tile,
-            stack_size=self.stack_size,
-            data_size=self.data_size,
-            dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
-        )
-        def core_body():
-            # Always wrap in an scf.for so the lowered MLIR matches expectations
-            # downstream (the lower-level aie dialect uses the same pattern with
-            # bound=1 for single-shot workers). Using Python range(1) here would
-            # emit the body inline with no scf.for wrapper, which the dataflow
-            # lowerer treats differently and can cause runtime hangs.
-            for _ in range_(sys.maxsize if self._while_true else 1):
-                self.core_fn(*self.fn_args)
+        try:
+
+            @core(
+                my_tile,
+                stack_size=self.stack_size,
+                data_size=self.data_size,
+                dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
+            )
+            def core_body():
+                # Always wrap in an scf.for so the lowered MLIR matches expectations
+                # downstream (the lower-level aie dialect uses the same pattern with
+                # bound=1 for single-shot workers). Using Python range(1) here would
+                # emit the body inline with no scf.for wrapper, which the dataflow
+                # lowerer treats differently and can cause runtime hangs.
+                for _ in range_(sys.maxsize if self._while_true else 1):
+                    self.core_fn(*self.fn_args)
+
+        finally:
+            # Only this Worker's lock may be live in each barrier while its core
+            # body is being built; see _add_worker_lock below.
+            for barrier in self._barriers:
+                barrier._clear_pending_lock()
 
 
 class WorkerRuntimeBarrier:
@@ -309,6 +317,12 @@ class WorkerRuntimeBarrier:
         """
         self.initial_value = initial_value
         self.worker_locks = []
+        # Lock most recently appended by _add_worker_lock(), cleared by
+        # Worker.resolve() once its core_fn has run. wait_for_value()/
+        # release_with_value() check worker_locks[-1] against this instead of
+        # trusting position alone -- Worker identity isn't available at their
+        # call site, so this turns a silent resolve-order mis-bind into a loud one.
+        self._pending_lock = None
 
     def wait_for_value(self, value: int):
         """Wait for the barrier to be set to `value`.
@@ -318,13 +332,7 @@ class WorkerRuntimeBarrier:
         Args:
             value (int): The value to wait for.
         """
-        # Here this is assuming that the we are currently placing the last added lock
-        # And therefore that wait_for_value operations are placed just after their corresponding Worker...
-        # This is a pretty bad assumption, think about an alternative way to solve this
-        if len(self.worker_locks) == 0:
-            raise ValueError(
-                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
-            )
+        self._check_pending_lock()
         use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
 
     def set(self, value: int):
@@ -337,7 +345,32 @@ class WorkerRuntimeBarrier:
 
     def _add_worker_lock(self, lock):
         """Register an additional lock in the barrier."""
+        if self._pending_lock is not None:
+            raise RuntimeError(
+                "WorkerRuntimeBarrier registered a second Worker's lock before "
+                "the first Worker's core body finished resolving. "
+                "wait_for_value()/release_with_value() bind to worker_locks[-1] "
+                "positionally, so resolve() must fully finish one Worker before "
+                "starting the next."
+            )
         self.worker_locks.append(lock)
+        self._pending_lock = lock
+
+    def _clear_pending_lock(self):
+        """Mark the current pending lock as consumed; called by Worker.resolve()."""
+        self._pending_lock = None
+
+    def _check_pending_lock(self):
+        if len(self.worker_locks) == 0:
+            raise ValueError(
+                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
+            )
+        if self.worker_locks[-1] is not self._pending_lock:
+            raise RuntimeError(
+                "WorkerRuntimeBarrier.wait_for_value()/release_with_value() called "
+                "outside their registering Worker's resolve() -- the positional "
+                "worker_locks[-1] binding is stale."
+            )
 
     def _set_barrier_value(self, value: int):
         """Set the value of the barrier."""
@@ -350,10 +383,7 @@ class WorkerRuntimeBarrier:
         Args:
             value (int): The value to decrement by in Release.
         """
-        if len(self.worker_locks) == 0:
-            raise ValueError(
-                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
-            )
+        self._check_pending_lock()
         use_lock(self.worker_locks[-1], LockAction.Release, value=value)
 
 
