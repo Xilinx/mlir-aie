@@ -1009,6 +1009,61 @@ CASES: list[Case] = [
         scalars=(1, 48, 1280, 8, 8),
         tag="short",
     ),
+    # Weights 16 bytes past a 64-byte boundary, as MobileNet's packed weight
+    # views handed them before 7c1cde46072; AIE2P's 64-byte weight loads
+    # would read the words below them.
+    *[
+        check(
+            f,
+            kw,
+            calls=8,
+            scalars=s,
+            arg_byte_offsets=((1, 16),),
+            devices=("npu2",),
+        )
+        for f, kw, s in (
+            (
+                "bn_conv2dk1_relu",
+                dict(input_width=28, input_channels=40, output_channels=120),
+                (28, 40, 120, 8),
+            ),
+            (
+                "bn_conv2dk1_relu",
+                dict(input_width=14, input_channels=80, output_channels=184),
+                (14, 80, 184, 8),
+            ),
+            (
+                "bn_conv2dk1_i8",
+                dict(input_width=28, input_channels=120, output_channels=40),
+                (28, 120, 40, 10),
+            ),
+            (
+                "bn_conv2dk1_i8",
+                dict(input_width=7, input_channels=336, output_channels=80),
+                (7, 336, 80, 11),
+            ),
+            (
+                "bn_conv2dk1_skip",
+                dict(input_width=28, input_channels=120, output_channels=40),
+                (28, 120, 40, 10, 1),
+            ),
+            (
+                "bn_conv2dk1_skip",
+                dict(input_width=7, input_channels=240, output_channels=40),
+                (7, 240, 40, 11, 1),
+            ),
+            (
+                "bn_conv2dk1_relu_xy_pool_padded",
+                dict(input_width=7, input_channels=80, output_channels=120),
+                (7, 80, 120, 120, 8, 6, 1, 0),
+            ),
+            (
+                "bn_fc_relu_ui16_pad",
+                dict(input_channels=1280, output_channels=8),
+                (1, 1280, 1280, 8, 12),
+            ),
+        )
+    ],
     # eltwise mul/add selected per call (programming_examples/ml/scale_shift)
     Case("mul_add", calls=16, scalars=(1,), smoke=True),
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),

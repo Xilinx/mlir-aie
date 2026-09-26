@@ -54,6 +54,7 @@ def _case_id(case) -> str:
         parts.append("scalars=" + ",".join(str(v) for v in case.scalars))
     if case.tag:
         parts.append(case.tag)
+    parts += [f"arg{i}@{offset}" for i, offset in case.arg_byte_offsets]
     return "/".join(parts)
 
 
