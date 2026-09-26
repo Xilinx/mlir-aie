@@ -569,24 +569,21 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
 
 
 def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
-    """Software f32 ``2**x`` kernel: a degree-5 minimax poly, not a LUT.
+    """Software f32 ``2**x`` kernel: a minimax poly, not a LUT.
 
     A float32-output alternative to [`bf16_exp`]
     [iron.kernels.activation.bf16_exp] with a separately configurable
-    input domain. See
-    ``aie_kernels/activation/exp2f_vec.cc`` for the accuracy rationale and the
-    ``noinline`` codegen hazard this kernel carries.
+    input domain. See ``aie_kernels/activation/exp2f_vec.cc`` for the
+    accuracy rationale: 9.2e-6 relative error on aie2p, 8.9e-5 on aie2.
 
     The same source builds for aie2.
 
     Args:
         tile_size: Number of elements per tile; must be a multiple of 16
             (the kernel's vector width).
-        min_x: Input is clamped to this before evaluation. The default
-            -111 is the lowest exponent that still holds the kernel's
-            8.9e-5 relative error; -126 is the hard floor (one f32
-            exponent field), reachable at up to 6.5e-3. See
-            ``aie_kernels/activation/exp2f_vec.cc`` for the measured table.
+        min_x: Input is clamped to this before evaluation. -126 is the
+            hard floor (one f32 exponent field); on aie2p the kernel holds
+            its accuracy down to it.
 
     Returns:
         ExternalFunction configured for the exp2f_vec kernel.
@@ -621,9 +618,10 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
             acc_dtype=np.float32,
             tolerance=Tolerance.relative(
                 1e-3,
-                note="minimax poly targets 8.9e-5 relative error; see exp2f_vec_ref",
+                note="measured 9.2e-6 on aie2p and 8.9e-5 on aie2; clamping "
+                "[127.999, 128) costs up to 7.8e-4",
             ),
-            stack_bytes=2048 if _detect_arch() == "aie2" else None,
+            stack_bytes=2048,
         ),
     )
 
@@ -938,8 +936,8 @@ def exp2f_vec_ref(x, min_x: float = -111.0):
     """Numpy reference for [`exp2f_vec`][iron.kernels.activation.exp2f_vec]: exact ``2**x``.
 
     Unlike the LUT-based refs above, this is float64 ``2**x`` (not a
-    reimplementation of the on-device poly): the kernel targets ~8.9e-5
-    relative error by design, several orders tighter than the LUT-based
+    reimplementation of the on-device poly): the kernel holds 8.9e-5
+    relative error or better, several orders tighter than the LUT-based
     kernels' 12.8% default, so pair with a correspondingly tight
     tolerance (e.g. ``rtol=1e-3``) rather than the LUT default.
 
