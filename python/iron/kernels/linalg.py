@@ -618,6 +618,13 @@ def mm(
             # than 1024 B up to K = 48. mm_aie2p.h rolls K up from K = 416
             # (192 B), and a 16x16 tile does not spill (640 B). chess builds
             # keep the matrix_multiplication examples' number.
+            # Fit only for aie2p, vectorized, int8 -> int32, 48 < dim_k < 416
+            # (787 scanned M/N/K/layout combos, see 0c60e6be3f2); every other
+            # case's None (1024 B default) is covered by the measurements
+            # above. Underestimating either is a loud aiecc build failure
+            # (checkStackSizeRequirements measures real .stack_sizes), not
+            # silent corruption -- except an unmeasurable core (e.g. Chess),
+            # which is why use_chess keeps its own fixed constant.
             stack_bytes=(
                 0xD00
                 if use_chess

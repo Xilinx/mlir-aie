@@ -528,6 +528,55 @@ def test_mm_i8_i32_stack_covers_measured_core(
 
 
 @pytest.mark.parametrize(
+    "kwargs,expected",
+    [
+        # In the fitted range: 16 * dim_k + 256.
+        (dict(dim_k=56, input_dtype=np.int8, output_dtype=np.int32), 16 * 56 + 256),
+        (dict(dim_k=408, input_dtype=np.int8, output_dtype=np.int32), 16 * 408 + 256),
+        # Excluded at both ends: the device default (None) covers these.
+        (dict(dim_k=48, input_dtype=np.int8, output_dtype=np.int32), None),
+        (dict(dim_k=416, input_dtype=np.int8, output_dtype=np.int32), None),
+        # Excluded by not being the tuned aie2p/vectorized/int8->int32 case.
+        (
+            dict(
+                dim_k=200,
+                input_dtype=np.int8,
+                output_dtype=np.int32,
+                vectorized=False,
+            ),
+            None,
+        ),
+        (dict(dim_k=200, input_dtype=np.int16, output_dtype=np.int32), None),
+    ],
+)
+def test_mm_i8_i32_stack_formula_envelope(kwargs, expected):
+    # Pins the 48 < dim_k < 416 fit boundaries themselves (kernel_cases.py and
+    # test_mm_i8_i32_stack_covers_measured_core pin measured values inside
+    # them), so a change to the envelope is caught even where it still
+    # happens to satisfy every measured minimum above.
+    set_current_device(NPU2Col1())
+    fn = kernels.mm(dim_m=32, dim_n=16, **kwargs)
+    assert fn.contract.stack_bytes == expected
+
+
+def test_mm_stack_falls_back_off_aie2p_and_under_chess():
+    set_current_device(NPU1Col1())
+    assert (
+        kernels.mm(
+            dim_k=200, input_dtype=np.int8, output_dtype=np.int32
+        ).contract.stack_bytes
+        is None
+    )
+    set_current_device(NPU2Col1())
+    assert (
+        kernels.mm(
+            dim_k=200, input_dtype=np.int8, output_dtype=np.int32, use_chess=True
+        ).contract.stack_bytes
+        == 0xD00
+    )
+
+
+@pytest.mark.parametrize(
     "input_width,kernel_width", [(112, 14), (336, 14), (230, 14), (240, 15)]
 )
 def test_conv2dk14_rejects_shapes_the_vector_paths_skip(input_width, kernel_width):
