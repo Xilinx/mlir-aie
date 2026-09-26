@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include "../aie_arch.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 #define REL_WRITE 0
@@ -365,7 +366,15 @@ conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
 
 #endif // Vector
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+// AIE2P keeps these short loops rolled and their register arrays on the
+// stack unless told to unroll them; the AIE2 build is left as tuned.
+#if AIE_TUNED_AIE2P
+#define BN3_UNROLL_FULL AIE_LOOP_UNROLL_FULL
+#else
+#define BN3_UNROLL_FULL
+#endif
+
 // One [W][8] row of a channel block per call; 32 lanes are 4 pixels x 8
 // channels. A row dropped by `check` gets zero weights, so its line contents
 // never reach the sum.
@@ -373,9 +382,11 @@ using dw_v = aie::vector<uint8, 32>;
 using dw_w = aie::vector<int8, 32>;
 
 static inline void dw_taps(const int8_t *wts, int32_t check, dw_w *w) {
+  BN3_UNROLL_FULL
   for (int r = 0; r < 3; r++) {
     const int32_t m =
         ((r == 0 && check == top) || (r == 2 && check == bottom)) ? 0 : -1;
+    BN3_UNROLL_FULL
     for (int ki = 0; ki < 3; ki++) {
       const int32_t *p = (const int32_t *)(wts + (r * 3 + ki) * 8);
       aie::vector<int32, 8> pair = aie::select(
@@ -391,6 +402,7 @@ static inline aie::accum<acc32, 32> dw_sum(const dw_v *l, const dw_v *c,
   aie::accum<acc32, 32> acc = aie::mul(l[0], w[0]);
   acc = aie::mac(acc, c[0], w[1]);
   acc = aie::mac(acc, r[0], w[2]);
+  BN3_UNROLL_FULL
   for (int i = 1; i < 3; i++) {
     acc = aie::mac(acc, l[i], w[3 * i]);
     acc = aie::mac(acc, c[i], w[3 * i + 1]);
@@ -425,23 +437,27 @@ static void dw_s1_row_aligned(const uint8_t *line0, const uint8_t *line1,
                               const int32_t input_width, const int scale) {
   const uint8_t *in[3] = {line0, line1, line2};
   dw_v l[3], c[3], r[3], prev[3], next[3];
+  BN3_UNROLL_FULL
   for (int i = 0; i < 3; i++) {
     prev[i] = aie::zeros<uint8, 32>();
     c[i] = aie::load_v<32>(in[i]);
   }
   const int last = input_width - 4;
   for (int x = 0; x < last; x += 4) {
+    BN3_UNROLL_FULL
     for (int i = 0; i < 3; i++) {
       next[i] = aie::load_v<32>(in[i] + x * 8 + 32);
       l[i] = aie::shuffle_up_fill(c[i], prev[i], 8);
       r[i] = aie::shuffle_down_fill(c[i], next[i], 8);
     }
     dw_store<true>(out + x * 8, dw_sum(l, c, r, w), scale);
+    BN3_UNROLL_FULL
     for (int i = 0; i < 3; i++) {
       prev[i] = c[i];
       c[i] = next[i];
     }
   }
+  BN3_UNROLL_FULL
   for (int i = 0; i < 3; i++) {
     l[i] = aie::shuffle_up_fill(c[i], prev[i], 8);
     r[i] = aie::shuffle_down_fill(c[i], aie::zeros<uint8, 32>(), 8);
@@ -457,6 +473,7 @@ static void dw_s1_row(const uint8_t *line0, const uint8_t *line1,
                       const int scale) {
   const uint8_t *in[3] = {line0, line1, line2};
   dw_v l[3], c[3], r[3];
+  BN3_UNROLL_FULL
   for (int i = 0; i < 3; i++) {
     c[i] = dw_load<false, 32>(in[i]);
     r[i] = dw_load<false, 32>(in[i] + 8);
@@ -466,6 +483,7 @@ static void dw_s1_row(const uint8_t *line0, const uint8_t *line1,
 
   const int last = input_width - 4;
   for (int x = 4; x < last; x += 4) {
+    BN3_UNROLL_FULL
     for (int i = 0; i < 3; i++) {
       l[i] = dw_load<false, 32>(in[i] + (x - 1) * 8);
       c[i] = dw_load<false, 32>(in[i] + x * 8);
@@ -474,6 +492,7 @@ static void dw_s1_row(const uint8_t *line0, const uint8_t *line1,
     dw_store<false>(out + x * 8, dw_sum(l, c, r, w), scale);
   }
 
+  BN3_UNROLL_FULL
   for (int i = 0; i < 3; i++) {
     l[i] = dw_load<false, 32>(in[i] + (last - 1) * 8);
     c[i] = dw_load<false, 32>(in[i] + last * 8);
@@ -491,10 +510,12 @@ static void dw_s2_row(const uint8_t *line0, const uint8_t *line1,
                       const int scale) {
   const uint8_t *in[3] = {line0, line1, line2};
   dw_v l[3], c[3], r[3], prev[3];
+  BN3_UNROLL_FULL
   for (int i = 0; i < 3; i++)
     prev[i] = aie::zeros<uint8, 32>();
   const int full = output_width & ~3;
   for (int x = 0; x < full; x += 4) {
+    BN3_UNROLL_FULL
     for (int i = 0; i < 3; i++) {
       aie::vector<uint8, 64> v = dw_load<Aligned, 64>(in[i] + x * 16);
       c[i] = aie::filter_even(v, 8);
@@ -506,6 +527,7 @@ static void dw_s2_row(const uint8_t *line0, const uint8_t *line1,
   }
   if (full != output_width) {
     const int x = output_width - 4;
+    BN3_UNROLL_FULL
     for (int i = 0; i < 3; i++) {
       aie::vector<uint8, 64> v = dw_load<false, 64>(in[i] + x * 16);
       c[i] = aie::filter_even(v, 8);
@@ -551,7 +573,7 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
   }
   event1();
 }
-#endif // AIE_TUNED_AIE2
+#endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 
 extern "C" {
 
@@ -564,7 +586,7 @@ void conv2dk3_dw_stride2_relu_ui8_ui8(
     const int32_t output_channels, const int32_t kernel_width,
     const int32_t kernel_height, const int32_t check, const int scale,
     const int channel_offset) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width / 2 >= 4) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 2, check, scale);
@@ -582,7 +604,7 @@ void conv2dk3_dw_stride1_relu_ui8_ui8(
     const int32_t output_channels, const int32_t kernel_width,
     const int32_t kernel_height, const int32_t check, const int scale,
     const int channel_offset) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);
@@ -606,7 +628,7 @@ void bn13_conv2dk3_ui8_out_split(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t check, const int scale, const int channel_offset) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output1, output2, input_width,
               output_channels, output_channels / 16, 1, check, scale);
@@ -628,7 +650,7 @@ void bn13_conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                        const int32_t kernel_width, const int32_t kernel_height,
                        const int32_t check, const int scale,
                        const int channel_offset) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);
@@ -652,7 +674,7 @@ void bn14_conv2dk3_ui8_out_split(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t check, const int scale, const int channel_offset) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output1, output2, input_width,
               output_channels, output_channels / 16, 1, check, scale);
@@ -674,7 +696,7 @@ void bn14_conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                        const int32_t kernel_width, const int32_t kernel_height,
                        const int32_t check, const int scale,
                        const int channel_offset) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);
