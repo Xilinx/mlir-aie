@@ -19,6 +19,8 @@ zeros, rows that are mostly -inf, both ends of the uniform, and slices whose
 chunks leave a scalar tail after the 32-lane vectors.
 """
 
+from fractions import Fraction
+
 import aie.iron as iron
 import numpy as np
 import pytest
@@ -212,6 +214,28 @@ def _rows(vocab, cores, k_max, seed):
     add(logits, 1.0, k_max, 0)
     add(logits, 1.0, k_max, (1 << 53) - 1)
     add(logits, 0.5, k_max)
+    # Weights 1, e^-40, e^-100, 1, e^-40 across the columns: at u = 1/2 the
+    # exact prefix passes u * S at the e^-100, which a double-double sum
+    # loses (it took the second 1).
+    logits = np.full(vocab, -np.inf)
+    logits[np.linspace(0, vocab - 1, 5).astype(int)] = [0, -40, -100, 0, -40]
+    add(logits, 1.0, min(5, k_max), 1 << 52)
+    # Weights through every binade down to subnormal float64 and 0, drawn on
+    # both sides of the boundaries after the smallest nonzero ones.
+    logits = np.full(vocab, -np.inf)
+    at = np.sort(rng.choice(vocab, k_max, replace=False))
+    x = np.concatenate([np.geomspace(1e-3, 700, k_max - 4), [712, 730, 744, 750]])
+    logits[at] = rng.permutation(-x)
+    logits[at[rng.integers(k_max)]] = 0.0
+    _, weights = sample.sample_weights(logits, 1.0, k_max)
+    prefix = np.cumsum([Fraction(w) for w in weights.tolist()])
+    # (Not where what follows weighs under 2**-53 of the total: no u gets
+    # past it.)
+    firsts = [-(-p * (1 << 53) // prefix[-1]) for p in prefix]  # ceil
+    inner = [i for i in np.flatnonzero(weights) if firsts[i] < 1 << 53]
+    for i in sorted(inner, key=lambda i: weights[i])[:8]:
+        add(logits, 1.0, k_max, int(firsts[i]))
+        add(logits, 1.0, k_max, int(firsts[i]) - 1)
 
     logits = np.stack([r[0] for r in rows])
     draws = np.stack([sample.draw_row(t, k, n) for _, t, k, n in rows])
