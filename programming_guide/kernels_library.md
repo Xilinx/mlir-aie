@@ -487,10 +487,11 @@ loop counts and program memory cover only the functions the entry symbol
 reaches, which are the ones the core link keeps, and `libcalls` names the
 runtime-library routines it calls (`__divsf3`, `__mulsf3`, `__floatsisf`:
 on AIE2P, scalar float divide, multiply and int-to-float are software
-routines). `stack_bytes` is the deepest call path's frames from the entry,
-without those routines' own; above the contract's `stack_bytes` (else the
-target default) it prints a warning, since an overflow corrupts the
-neighbouring memory silently. Each build prints its entry symbol and
+routines). `kernel_stack_bytes` is the deepest call path's frames from the
+entry, without those routines' own and without the core's `main`, which
+aiecc's measured stack also counts; above the contract's `stack_bytes`
+(else the target default) it prints a warning, since an overflow corrupts
+the neighbouring memory silently. Each build prints its entry symbol and
 source file, and `--meta` names its object (kept with `--keep DIR`). The record shapes and the
 regression rules are documented on the module
 ([API](../api/kernels.md#static-checks)). These checks run on demand; there

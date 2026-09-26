@@ -40,14 +40,17 @@ not LLVM's documented ones):
 | ``aie-multi-slot-pseudo`` | ``Missed`` / ``missing-memory-bank`` | ``Instruction`` | ``missing_bank_loads`` |
 | stderr | ``-Wpass-failed`` | a ``#pragma clang loop`` / ``AIE_*`` macro the compiler dropped | ``pass_failed_warnings``, text kept |
 | the object | ``llvm-readobj`` sections, symbols, relocations | what the entry symbol reaches | the shipped functions; ``libcalls`` (e.g. ``__divsf3``) |
-| the object | ``llvm-readobj --stack-sizes`` (``-fstack-size-section``) | frame bytes per function | ``stack_bytes`` on the deepest path from the entry |
+| the object | ``llvm-readobj --stack-sizes`` (``-fstack-size-section``) | frame bytes per function | ``kernel_stack_bytes``, the deepest path from the entry |
 | the IR (``-emit-llvm``) | ``opt`` ``print<scalar-evolution>`` | a constant backedge-taken count | ``loop/<fn>/<bb>/II_x_trips`` |
 
 The loop counts and ``pm_bytes`` cover only the functions the entry symbol
 reaches in the object, which are the ones the core link keeps.
-``stack_bytes`` over the contract's ``stack_bytes`` (else the device default)
-prints a warning: the design reserves that much and an overflow corrupts the
-neighbouring memory without a fault.
+``kernel_stack_bytes`` counts the kernel's frames only: the core that calls
+it also holds ``main``'s, which aiecc's measured stack size includes
+(dwconv1d_channels_last on AIE2P: 64 here, 256 for the core). Over the
+contract's ``stack_bytes`` (else the device default) it prints a warning:
+the design reserves that much for the whole core, and an overflow corrupts
+the neighbouring memory without a fault.
 ``--baseline-sources DIR`` compiles everything a second time from ``DIR``
 and prints each row that differs, for a before/after of a kernel change;
 a loop LLVM only renamed, its rows unchanged, is counted but not listed,
@@ -219,7 +222,8 @@ class StaticReport:
     # None until it has been read, and the runtime-library calls among them.
     shipped: set[str] | None = None
     libcalls: list[str] = field(default_factory=list)
-    stack_bytes: int | None = None
+    # The kernel's own call path, not the core's: main's frame is not in it.
+    kernel_stack_bytes: int | None = None
 
     def loop(self, fn: str, bb: str) -> LoopInfo:
         return self.loops.setdefault((fn, bb), LoopInfo(fn, bb))
@@ -682,14 +686,15 @@ def report_rows(report: StaticReport, prefix: str, extra: str) -> list[dict]:
             " ".join(report.libcalls) or None,
         ),
     ]
-    if report.stack_bytes is not None:
+    if report.kernel_stack_bytes is not None:
         out.append(
             _row(
-                f"{prefix}/stack_bytes",
+                f"{prefix}/kernel_stack_bytes",
                 "bytes",
-                report.stack_bytes,
+                report.kernel_stack_bytes,
                 extra,
-                "plus the runtime routines' own" if report.libcalls else None,
+                "the kernel's frames; the core adds main's"
+                + (" and the runtime routines'" if report.libcalls else ""),
             )
         )
     for (fn, bb), loop in sorted(report.loops.items()):
@@ -904,7 +909,7 @@ def analyze(ext_fn, target: str, workdir: Path) -> tuple[StaticReport | None, st
     parse_stderr(p.stderr, rep)
     reached = linked(workdir / f"{ext_fn.name}.o", entry_symbol(ext_fn))
     rep.shipped, rep.libcalls = reached.functions, reached.undefined
-    rep.stack_bytes = reached.stack
+    rep.kernel_stack_bytes = reached.stack
     return rep, "ok"
 
 
@@ -1377,7 +1382,7 @@ def _run(a: argparse.Namespace) -> int:
                     fn: n for fn, n in rep.pm_bytes_by_function.items() if rep.ships(fn)
                 },
                 "libcalls": rep.libcalls,
-                "stack_bytes": rep.stack_bytes,
+                "kernel_stack_bytes": rep.kernel_stack_bytes,
                 "stack_budget": budget,
                 "schedule_notes": rep.schedule_notes,
             }
@@ -1389,10 +1394,15 @@ def _run(a: argparse.Namespace) -> int:
             print("\n".join(f"  dropped pragma: {w}" for w in rep.pass_failed))
         if rep and rep.libcalls:
             print(f"  calls the runtime library: {' '.join(rep.libcalls)}")
-        if rep and rep.stack_bytes is not None and rep.stack_bytes > budget:
+        if (
+            rep
+            and rep.kernel_stack_bytes is not None
+            and rep.kernel_stack_bytes > budget
+        ):
             print(
-                f"  stack: {rep.stack_bytes} bytes deep, over the {budget} the "
-                "design reserves; the core overwrites its neighbours silently"
+                f"  stack: the kernel alone takes {rep.kernel_stack_bytes} bytes, "
+                f"over the {budget} the design reserves for the whole core; "
+                "the core overwrites its neighbours silently"
             )
         if a.annotate:
             print(
