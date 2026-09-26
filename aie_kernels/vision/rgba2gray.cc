@@ -42,8 +42,8 @@ __attribute__((inline)) void xf_extract_rgb(uint8_t *ptr_rgba,
   b = ::aie::filter_even(ba_temp, 1);
 }
 
-__attribute__((noinline)) void rgba2gray_aie(uint8_t *AIE2_RESTRICT rgba_in,
-                                             uint8_t *AIE2_RESTRICT y_out,
+__attribute__((noinline)) void rgba2gray_aie(uint8_t *__restrict rgba_in,
+                                             uint8_t *__restrict y_out,
                                              const int32_t height,
                                              const int32_t width) {
   event0();
@@ -86,6 +86,45 @@ __attribute__((noinline)) void rgba2gray_aie(uint8_t *AIE2_RESTRICT rgba_in,
     for (int j = 0; (j < (width * height) / 32); j += 1) {
       body();
     }
+  }
+#elif AIE_TUNED_AIE2P
+  // AIE2's rounding-seeded chain at AIE2P's width: 64 pixels a step from four
+  // 512-bit loads, split into channels by two rounds of unzip.
+  ::aie::accum<acc32, 64> rnd64;
+  rnd64.from_vector(::aie::broadcast<int32_t, 64>(1 << (SRS_SHIFT - 1)));
+  auto body64 = [&]() __attribute__((always_inline)) {
+    ::aie::vector<uint8_t, 64> v0 = ::aie::load_v<64>(rgba_in);
+    ::aie::vector<uint8_t, 64> v1 = ::aie::load_v<64>(rgba_in + 64);
+    ::aie::vector<uint8_t, 64> v2 = ::aie::load_v<64>(rgba_in + 128);
+    ::aie::vector<uint8_t, 64> v3 = ::aie::load_v<64>(rgba_in + 192);
+    auto [rg01, ba01] = ::aie::interleave_unzip(v0, v1, 2);
+    auto [rg23, ba23] = ::aie::interleave_unzip(v2, v3, 2);
+    auto [r64, g64] = ::aie::interleave_unzip(rg01, rg23, 1);
+    auto b64 = ::aie::interleave_unzip(ba01, ba23, 1).first;
+    ::aie::accum<acc32, 64> acc = ::aie::mac(
+        ::aie::mac(::aie::mac(rnd64, r64, WT[0]), g64, WT[1]), b64, WT[2]);
+    ::aie::store_v(y_out, acc.template to_vector<uint8_t>(SRS_SHIFT));
+    rgba_in += 256;
+    y_out += 64;
+  };
+  const int steps = (width * height) / 64;
+  if (steps >= 4) {
+    AIE_LOOP_NO_UNROLL
+    AIE_LOOP_MIN_ITERATION_COUNT(4)
+    for (int j = 0; j < steps; j++)
+      body64();
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int j = 0; j < steps; j++)
+      body64();
+  }
+  if ((width * height) % 64) {
+    xf_extract_rgb(rgba_in, r, g, b);
+    ::aie::accum<acc32, 32> acc = ::aie::mac(
+        ::aie::mac(::aie::mac(rnd64.template extract<32>(0), r, WT[0]), g,
+                   WT[1]),
+        b, WT[2]);
+    ::aie::store_v(y_out, acc.template to_vector<uint8_t>(SRS_SHIFT));
   }
 #else
   AIE_PREPARE_FOR_PIPELINING

@@ -176,12 +176,18 @@ def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
 
 def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
     """Convert an RGBA line to grayscale."""
+    flags = []
+    if not use_chess and _tuned_arch() == "aie2p":
+        # The pre-RA pipeliner's schedule of the 64-pixel loop ends up at II13
+        # after register allocation; the postpipeliner finds II11.
+        flags += ["-mllvm", "--aie-force-postpipeliner"]
     return _color_convert_kernel(
         "rgba2grayLine",
         "rgba2gray.cc",
         line_width * 4,
         line_width,
         use_chess=use_chess,
+        compile_flags=flags,
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Out, Param),
