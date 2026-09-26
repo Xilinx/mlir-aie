@@ -226,6 +226,8 @@ public:
   /// Whether `s` and `t` can deadlock if they share an arbiter or a link.
   /// Streams from one source are serialized there anyway, and streams into
   /// one destination already wait on each other there, so neither conflicts.
+  /// The packets one source sends with one id move down every branch as one,
+  /// so the same holds for any two streams of such trees.
   bool conflict(size_t s, size_t t);
 
   /// Why `s` and `t` conflict. Requires conflict(s, t).
@@ -242,10 +244,14 @@ public:
 
 private:
   bool blocks(size_t s, size_t t);
+  bool related(size_t s, size_t t) const;
 
   DeviceOp device;
   std::vector<RoutedStream> streams;
   size_t numRequested;
+  /// The streams of each tree, and the tree of each stream.
+  std::vector<llvm::SmallVector<size_t, 2>> treeMembers;
+  std::vector<size_t> treeOf;
   std::optional<StreamDeadlockAnalysis> analysis;
 };
 

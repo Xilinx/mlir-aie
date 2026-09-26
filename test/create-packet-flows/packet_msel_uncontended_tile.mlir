@@ -18,10 +18,10 @@
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_5_1)
-// CHECK-DAG:     %[[A:.*]] = aie.amsel<0> (0)
-// CHECK-DAG:     %[[B:.*]] = aie.amsel<1> (0)
-// CHECK-DAG:     aie.masterset(DMA : 2, %[[A]])
-// CHECK-DAG:     aie.masterset(DMA : 5, %[[B]]) {keep_pkt_header = true}
+// CHECK-DAG:     aie.masterset(DMA : 2, %[[A:[0-9]+]]){{$}}
+// CHECK-DAG:     aie.masterset(DMA : 5, %[[B:[0-9]+]]) {keep_pkt_header = true}
+// CHECK-DAG:     %[[A]] = aie.amsel<{{[0-9]}}> (0)
+// CHECK-DAG:     %[[B]] = aie.amsel<{{[0-9]}}> (0)
 
 module {
   aie.device(npu2) {

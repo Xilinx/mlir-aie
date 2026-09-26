@@ -863,6 +863,21 @@ StreamConflicts::StreamConflicts(DeviceOp device)
       numRequested(streams.size()) {
   for (RoutedStream &s : traceRoutedStreams(device))
     streams.push_back(std::move(s));
+  std::map<std::tuple<TileID, Port, int, bool>, size_t> treeIDs;
+  for (size_t i = 0; i < streams.size(); i++) {
+    const RoutedStream &s = streams[i];
+    size_t tree = treeMembers.size();
+    if (s.packetID)
+      tree =
+          treeIDs
+              .try_emplace(
+                  {s.src.tile, s.src.port, *s.packetID, i < numRequested}, tree)
+              .first->second;
+    if (tree == treeMembers.size())
+      treeMembers.emplace_back();
+    treeMembers[tree].push_back(i);
+    treeOf.push_back(tree);
+  }
 }
 
 static bool sameEndpoint(const StreamEndpoint &x, const StreamEndpoint &y) {
@@ -878,8 +893,20 @@ bool StreamConflicts::blocks(size_t s, size_t t) {
   return analysis->canBlock(s, t);
 }
 
+// Trees from one source, or into one receiver, already wait on each other
+// there whatever the routing.
+bool StreamConflicts::related(size_t s, size_t t) const {
+  if (sameEndpoint(streams[s].src, streams[t].src))
+    return true;
+  for (size_t m : treeMembers[treeOf[s]])
+    for (size_t n : treeMembers[treeOf[t]])
+      if (sameEndpoint(streams[m].dst, streams[n].dst))
+        return true;
+  return false;
+}
+
 bool StreamConflicts::conflict(size_t s, size_t t) {
-  return blocks(s, t) || blocks(t, s);
+  return !related(s, t) && (blocks(s, t) || blocks(t, s));
 }
 
 std::string StreamConflicts::explain(size_t s, size_t t) {
@@ -924,18 +951,8 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
     }
   }
 
-  // Trees from one source, or into one receiver, already wait on each other
-  // there whatever the routing.
   auto related = [&](size_t a, size_t b) {
-    const Tree &x = trees[a], &y = trees[b];
-    if (sameEndpoint(streams[x.members.front()].src,
-                     streams[y.members.front()].src))
-      return true;
-    for (size_t m : x.members)
-      for (size_t n : y.members)
-        if (sameEndpoint(streams[m].dst, streams[n].dst))
-          return true;
-    return false;
+    return this->related(trees[a].members.front(), trees[b].members.front());
   };
 
   // Per tree, a node for a head of it stuck entering each hop or at each
