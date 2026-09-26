@@ -9,8 +9,10 @@ self-hosted-runner:
     - aie2-4col      # NPU1, 4 columns
     - aie2p-8col     # NPU2, 8 columns
     - bench          # runners reserved for benchmark timing
+    - devlab-dispatch
     - npu2
     - ryzenai
+    - strix-halo
     - ubuntu-vitis   # Vitis toolchain image
 
 # GitHub supports concurrency.queue, but actionlint v1.7.12 does not yet.
