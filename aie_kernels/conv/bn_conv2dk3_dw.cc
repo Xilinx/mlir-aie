@@ -538,6 +538,171 @@ static void dw_s2_row(const uint8_t *line0, const uint8_t *line1,
   }
 }
 
+#if AIE_TUNED_AIE2P
+// AIE2P convolves 8 pixels x 8 channels over 8 taps in one op: output pixel j
+// sums tap p times window pixel j + p. With a filter row at taps 0..2 and the
+// window starting one pixel before the chunk, each input row is one op per 8
+// pixels; of the window's upper 8 pixels only the first two reach the sum.
+using dw8_conv = aie::sliding_mul_ch_ops<8, 8, 8, 1, 1, 1, int8, uint8>;
+using dw8_v = aie::vector<uint8, 64>;
+using dw8_w = aie::vector<int8, 64>;
+
+template <bool Aligned>
+static inline void dw8_put(uint8_t *p, dw_v v) {
+  if constexpr (Aligned)
+    aie::store_v(p, v);
+  else
+    aie::store_unaligned_v(p, v, 8);
+}
+
+template <bool Aligned>
+static inline void dw8_store(uint8_t *p, dw8_v v) {
+  dw8_put<Aligned>(p, v.extract<32>(0));
+  dw8_put<Aligned>(p + 32, v.extract<32>(1));
+}
+
+static inline dw8_v dw8_out(aie::accum<acc32, 64> acc, int scale) {
+  return acc.to_vector<uint8>(scale);
+}
+
+static inline dw8_v dw8_low(dw_v v) {
+  return aie::concat(v, aie::zeros<uint8, 32>());
+}
+
+// Window of chunk k of a row whose last chunk ends at `end`: from one pixel
+// before the chunk, zero outside the row. `keep` is the pixels of a single
+// chunk.
+template <int Chunks, bool Aligned>
+static inline aie::vector<uint8, 128> dw8_window(const uint8_t *row,
+                                                 const int k, const int32_t end,
+                                                 const aie::mask<64> keep) {
+  const dw8_v zero = aie::zeros<uint8, 64>();
+  if constexpr (Chunks == 1) {
+    const dw8_v u = aie::select(zero, aie::load_unaligned_v<64>(row, 8), keep);
+    return aie::concat(aie::shuffle_up_fill(u, zero, 8),
+                       aie::shuffle_down_fill(u, zero, 56));
+  } else if (k == Chunks - 1) {
+    return aie::concat(
+        aie::load_unaligned_v<64>(row + end - 72, 8),
+        dw8_low(aie::shuffle_down_fill(dw_load<Aligned, 32>(row + end - 32),
+                                       aie::zeros<uint8, 32>(), 24)));
+  } else {
+    const dw8_v lo =
+        k == 0
+            ? aie::shuffle_up_fill(aie::concat(dw_load<Aligned, 32>(row),
+                                               dw_load<Aligned, 32>(row + 32)),
+                                   zero, 8)
+            : aie::load_unaligned_v<64>(row + k * 64 - 8, 8);
+    return aie::concat(lo, dw8_low(dw_load<false, 32>(row + k * 64 + 56)));
+  }
+}
+
+// One channel block, 8 * (Chunks - 1) < input_width <= 8 * Chunks: chunks at
+// pixels 0, 8, ... and the last one ending at the row end. keep[0..2] are the
+// filter rows' taps (none for a row `check` drops), keep[3] the pixels of a
+// single chunk.
+template <int Chunks, bool Aligned>
+static inline void dw8_block(const uint8_t *line0, const uint8_t *line1,
+                             const uint8_t *line2, const int8_t *wts,
+                             const aie::mask<64> *keep, uint8_t *__restrict out,
+                             const int32_t input_width, const int scale) {
+  const uint8_t *in[3] = {line0, line1, line2};
+  const int32_t end = input_width * 8;
+  dw8_w w[3];
+  BN3_UNROLL_FULL
+  for (int i = 0; i < 3; i++)
+    w[i] = aie::select(aie::zeros<int8, 64>(),
+                       aie::concat(aie::load_unaligned_v<32>(wts + i * 24, 8),
+                                   aie::zeros<int8, 32>()),
+                       keep[i]);
+  BN3_UNROLL_FULL
+  for (int k = 0; k < Chunks; k++) {
+    aie::accum<acc32, 64> acc = dw8_conv::mul(
+        w[0], 0, dw8_window<Chunks, Aligned>(in[0], k, end, keep[3]), 0);
+    BN3_UNROLL_FULL
+    for (int i = 1; i < 3; i++)
+      acc = dw8_conv::mac(
+          acc, w[i], 0, dw8_window<Chunks, Aligned>(in[i], k, end, keep[3]), 0);
+    const dw8_v v = dw8_out(acc, scale);
+    if constexpr (Chunks == 1) {
+      dw8_put<Aligned>(out, v.extract<32>(0));
+      dw8_put<Aligned>(out + end - 32, aie::shuffle_down_fill(
+                                           v, aie::zeros<uint8, 64>(), end - 32)
+                                           .extract<32>(0));
+    } else {
+      dw8_store<Aligned>(k == Chunks - 1 ? out + end - 64 : out + k * 64, v);
+    }
+  }
+}
+
+// The block loop only overlaps blocks given a minimum trip count.
+#define DW8_MIN_BLOCKS 4
+
+template <int Chunks, bool Aligned>
+static void
+dw8_rows(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
+         const uint8_t *__restrict line2, const int8_t *__restrict wts,
+         uint8_t *__restrict output1, uint8_t *__restrict output2,
+         const int32_t input_width, const int32_t blocks, const int32_t split,
+         const aie::mask<64> *keep, const int scale) {
+  const int32_t step = input_width * 8;
+  uint8_t *__restrict out = output1;
+  AIE_LOOP_MIN_ITERATION_COUNT(DW8_MIN_BLOCKS)
+  for (int cd = 0; cd < blocks; cd++) {
+    dw8_block<Chunks, Aligned>(line0, line1, line2, wts, keep, out, input_width,
+                               scale);
+    line0 += step;
+    line1 += step;
+    line2 += step;
+    wts += 72;
+    out = cd + 1 == split ? output2 : out + step;
+  }
+}
+
+// Stride 1, input_width <= 32 only; returns how many channel blocks it
+// covered.
+static int32_t dw8_blocks(uint8_t *line0, uint8_t *line1, uint8_t *line2,
+                          int8_t *wts, uint8_t *output1, uint8_t *output2,
+                          const int32_t input_width, const int32_t channels,
+                          const int32_t split, const int32_t stride,
+                          const int32_t check, const int scale,
+                          const bool aligned) {
+  const int32_t blocks = channels / 8;
+  if (stride != 1 || input_width > 32 || blocks < DW8_MIN_BLOCKS)
+    return 0;
+  const uint64_t taps = (1ull << 24) - 1;
+  const aie::mask<64> keep[4] = {
+      aie::mask<64>::from_uint64(check == top ? 0 : taps),
+      aie::mask<64>::from_uint64(taps),
+      aie::mask<64>::from_uint64(check == bottom ? 0 : taps),
+      aie::mask<64>::from_uint64(
+          input_width >= 8 ? ~0ull : (1ull << (input_width * 8)) - 1)};
+  // Aligned rows only pay off at 25..32 pixels; narrower rows keep one copy.
+#define DW8_ROWS(n, a)                                                         \
+  dw8_rows<n, a>(line0, line1, line2, wts, output1, output2, input_width,      \
+                 blocks, split, keep, scale)
+  switch ((input_width + 7) / 8) {
+  case 1:
+    DW8_ROWS(1, false);
+    break;
+  case 2:
+    DW8_ROWS(2, false);
+    break;
+  case 3:
+    DW8_ROWS(3, false);
+    break;
+  default:
+    if (aligned)
+      DW8_ROWS(4, true);
+    else
+      DW8_ROWS(4, false);
+    break;
+  }
+#undef DW8_ROWS
+  return blocks;
+}
+#endif
+
 static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                       int8_t *wts, uint8_t *output1, uint8_t *output2,
                       const int32_t input_width, const int32_t channels,
@@ -547,13 +712,26 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
   const int32_t output_width = input_width / stride;
+#if AIE_TUNED_AIE2P
+  // Stride 2 loads 64 bytes at a time, which AIE2P wants 64-byte aligned.
+  const uintptr_t align = stride == 1 ? 31 : 63;
+#else
+  const uintptr_t align = 31;
+#endif
   const bool aligned =
       (((uintptr_t)line0 | (uintptr_t)line1 | (uintptr_t)line2 |
         (uintptr_t)output1 | (uintptr_t)output2) &
-       31) == 0 &&
+       align) == 0 &&
       (stride == 1 ? input_width % 4 : input_width % 8 + output_width % 4) == 0;
+#if AIE_TUNED_AIE2P
+  const int32_t first =
+      dw8_blocks(line0, line1, line2, wts, output1, output2, input_width,
+                 channels, split, stride, check, scale, aligned);
+#else
+  const int32_t first = 0;
+#endif
   dw_w w[9];
-  for (int cd = 0; cd < channels / 8; cd++) {
+  for (int cd = first; cd < channels / 8; cd++) {
     const int32_t in_off = cd * input_width * 8;
     uint8_t *out = cd < split ? output1 + cd * output_width * 8
                               : output2 + (cd - split) * output_width * 8;

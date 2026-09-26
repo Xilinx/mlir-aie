@@ -848,6 +848,32 @@ CASES: list[Case] = [
         scalars=(7, 480, 480, 3, 3, 1, 7, 0),
         smoke=True,
     ),
+    check(
+        "bn_conv2dk3_dw_out_split",
+        dict(input_width=7, input_channels=480, output_split_channels=240),
+        calls=8,
+        scalars=(7, 480, 480, 3, 3, 0, 7, 0),
+        tag="top-row",
+    ),
+    # Row widths of one to four 8-pixel chunks, unaligned ones, and fewer
+    # channel blocks than AIE2P's chunked path takes.
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=w, input_channels=c, output_channels=c),
+            calls=8,
+            scalars=(w, c, c, 3, 3, row, 7, 0),
+            tag=tag,
+        )
+        for w, c, row, tag in (
+            (5, 40, 0, "top-row"),
+            (8, 32, 1, "middle-row"),
+            (20, 48, 2, "bottom-row"),
+            (30, 32, 1, "middle-row"),
+            (32, 32, 0, "top-row"),
+            (12, 24, 1, "middle-row"),
+        )
+    ],
     # One of MobileNet's eight 120-channel weight slices, on the last row so
     # the average is taken.
     Case(
