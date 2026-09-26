@@ -1039,7 +1039,7 @@ void conv2dk1_skip_ui8_ui8_i8(uint8_t *input0, int8_t *kernels, int8_t *output,
                               const int32_t output_channels, const int scale,
                               const int skip_scale) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 4 && skip_scale > 0) {
+  if (input_width >= 4 && skip_scale > 0 && k1_wts_aligned(kernels)) {
     k1_skip_vector(input0, kernels, output, skip, input_width, input_channels,
                    output_channels, scale, skip_scale);
     return;
@@ -1058,7 +1058,7 @@ void conv2dk1_skip_ui8_i8_i8(uint8_t *input0, int8_t *kernels, int8_t *output,
                              const int32_t output_channels, const int scale,
                              const int skip_scale) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 4 && skip_scale > 0) {
+  if (input_width >= 4 && skip_scale > 0 && k1_wts_aligned(kernels)) {
     k1_skip_vector(input0, kernels, output, skip, input_width, input_channels,
                    output_channels, scale, skip_scale);
     return;
