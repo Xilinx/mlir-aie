@@ -136,8 +136,7 @@ void conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
                                ((skip_sum >> skip_scaleT) & 1)) >>
                               skip_scaleT);
       else
-        skip_sum_srs_final =
-            (skip_sum + (1 << (skip_scaleT - 1))) >> skip_scaleT;
+        skip_sum_srs_final = skip_sum;
 
       // skip_sum_srs_final = (((skip_sum) + (1 << (skip_scaleT - 1)) - 1 +
       // (((skip_sum) >> skip_scaleT) & 1)) >> skip_scaleT);
