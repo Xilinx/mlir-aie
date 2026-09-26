@@ -893,9 +893,11 @@ def _requant_even(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.
     """``acc >> scale`` rounded half to even and saturated to ``[lo, hi]``.
 
     The bottleneck kernels' ``(sum + 2**(scale-1) - 1 + ((sum >> scale) & 1))
-    >> scale``; defined for ``scale >= 1`` only, as in the kernels.
+    >> scale``; ``scale`` 0 saturates without a shift, as the skip kernels do.
     """
     scale = int(scale)
+    if scale == 0:
+        return np.clip(acc, lo, hi).astype(dtype)
     out = (acc + (1 << (scale - 1)) - 1 + ((acc >> scale) & 1)) >> scale
     return np.clip(out, lo, hi).astype(dtype)
 
@@ -968,7 +970,7 @@ def bn_conv2dk1_skip_ref(
     out  = sat_i8(round_even(conv + skip, skip_scale))
     ```
 
-    Both shifts must be at least 1.
+    ``scale`` must be at least 1; ``skip_scale`` 0 is a saturating add.
     """
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
     acc, lead = _conv1x1_acc(x, weights, W, IC, OC)

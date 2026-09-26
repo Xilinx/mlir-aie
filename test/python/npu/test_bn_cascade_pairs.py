@@ -217,10 +217,7 @@ def _run_pair(kind, block, ic, oc, output_split, rows, scale, skip_scale, seed):
     else:
         conv = _requant_even(acc, scale, -128, 127, np.int64)
         total = conv + skip.reshape(rows, oc // 8, _W, 8)
-        if skip_scale:
-            expected = _requant_even(total, skip_scale, -128, 127, np.int8)
-        else:
-            expected = np.clip(total, -128, 127).astype(np.int8)
+        expected = _requant_even(total, skip_scale, -128, 127, np.int8)
     out = np.full(rows * oc * _W, 0x5A, dtype=expected.dtype)
     tensors = [iron.tensor(t, dtype=t.dtype, device="npu") for t in [*ins, out]]
     _pair_design(

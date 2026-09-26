@@ -789,6 +789,26 @@ CASES: list[Case] = [
         calls=8,
         scalars=(14, 184, 80, 11, 1),
     ),
+    # MobileNet's bn4, bn7 and bn8 add their skip unscaled.
+    *[
+        Case(
+            "bn_conv2dk1_skip",
+            dict(
+                input_width=w,
+                input_channels=ic,
+                output_channels=oc,
+                skip_dtype=np.int8,
+            ),
+            calls=8,
+            scalars=(w, ic, oc, scale, 0),
+            tag="skip-scale-0",
+        )
+        for w, ic, oc, scale in (
+            (28, 120, 40, 11),
+            (14, 200, 80, 12),
+            (14, 184, 80, 12),
+        )
+    ],
     Case(
         "bn_conv2dk3",
         dict(input_width=224, input_channels=8, output_channels=16),
