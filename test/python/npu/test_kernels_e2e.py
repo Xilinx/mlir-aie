@@ -473,6 +473,13 @@ def _cascade_design(
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
+def _cascade_device_marks(combo):
+    # The bf16 chains have only been run on npu2.
+    if combo.startswith("bf16"):
+        return [pytest.mark.supported_devices("npu2")]
+    return []
+
+
 def _cascade_cases():
     for combo in _CASCADE_DTYPES:
         for dim in (16, 32, 64):
@@ -482,23 +489,26 @@ def _cascade_cases():
                     ("bf16_f32", 32, 3),
                 )
                 marks = [] if smoke else [pytest.mark.extensive]
-                if combo.startswith("bf16"):
-                    # AIE2's scalar kernel truncates the partial sum to an int.
-                    marks.append(pytest.mark.supported_devices("npu2"))
                 yield pytest.param(
                     combo,
                     (dim, dim, dim),
                     tiles,
                     False,
-                    marks=marks,
+                    marks=marks + _cascade_device_marks(combo),
                     id=f"{combo}-{dim}-{tiles}",
                 )
     extensive = [pytest.mark.extensive]
-    for combo in ("i16_i16", "i16_i32"):
+    for combo in _CASCADE_DTYPES:
         # 24 does not tile, so AIE2P falls back to the scalar kernel.
         yield pytest.param(
-            combo, (24,) * 3, 3, False, marks=extensive, id=f"{combo}-24-3"
+            combo,
+            (24,) * 3,
+            3,
+            False,
+            marks=extensive + _cascade_device_marks(combo),
+            id=f"{combo}-24-3",
         )
+    for combo in ("i16_i16", "i16_i32"):
         # K = 24 tiles, but in K steps of 8 rather than 16.
         yield pytest.param(
             combo, (16, 24, 16), 3, False, marks=extensive, id=f"{combo}-16x24x16-3"
