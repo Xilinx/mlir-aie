@@ -30,13 +30,13 @@ module {
 
 // -----
 
-// dma_configure_task (concrete shim tile): 4 dims -> accepted (iteration hoist).
+// dma_configure_task (concrete shim tile): 3 dims -> accepted.
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 64] strides = [0, 0, 1])
         aie.end
       }
     }
@@ -63,7 +63,7 @@ module {
 
 // -----
 
-// dma_configure_task_for (resolved shim symbol): 4 dims -> accepted, the common
+// dma_configure_task_for (resolved shim symbol): 3 dims -> accepted, the common
 // case for a shim_dma_single_bd_task tap.
 module {
   aie.device(npu1) {
@@ -71,7 +71,7 @@ module {
     aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0)
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       %t = aiex.dma_configure_task_for @alloc0 {
-        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 64] strides = [0, 0, 1])
         aie.end
       }
     }
@@ -88,7 +88,7 @@ module {
     %memtile_0_1 = aie.tile(0, 1)
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       %t = aiex.dma_configure_task(%memtile_0_1, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 64] strides = [0, 0, 1])
         aie.end
       }
     }

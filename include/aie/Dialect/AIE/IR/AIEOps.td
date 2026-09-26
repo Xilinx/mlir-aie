@@ -1122,7 +1122,10 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
                                              IntMaxValue<15>]>>:$axcache,
       // The BD's iteration state; see the "## BD iteration" section above.
+      // Can be given as a compile-time BDIterationAttr or runtime SSA values
+      // (iteration_size_val / iteration_stride_val); mutually exclusive.
       OptionalAttr<BDIterationAttr>:$iteration,
+      Optional<I32>:$iteration_size_val, Optional<I32>:$iteration_stride_val,
       // if set, the aiex.scratchpad_parameter value added to the BD's address
       // as an offset. The value is an ELEMENT count, scaled by the buffer's
       // element size at lowering. The firmware masks the address register
@@ -1150,6 +1153,8 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     ( `pad` $pad_dimensions^ )?
     `)`
     ( `bd_id_val` $bd_id_val^ `:` type($bd_id_val) )?
+    ( `iteration_size_val` $iteration_size_val^ `:` type($iteration_size_val) )?
+    ( `iteration_stride_val` $iteration_stride_val^ `:` type($iteration_stride_val) )?
     attr-dict
   }];
 
@@ -1213,6 +1218,26 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         return ::mlir::IntegerAttr::get(
             ::mlir::IntegerType::get(getContext(), 32), *id);
       return {};
+    }
+
+    // The effective iteration size/stride: the static BDIterationAttr values if
+    // the attribute is set, otherwise the runtime SSA operand. Returns nullopt
+    // when neither source is present or when the SSA value is non-constant.
+    std::optional<int32_t> getEffectiveIterationSize() {
+      if (auto attr = getIteration())
+        return static_cast<int32_t>(attr->getSize());
+      if (::mlir::Value v = getIterationSizeVal())
+        return static_cast<int32_t>(
+            ::mlir::getConstantIntValue(v).value_or(-1));
+      return std::nullopt;
+    }
+    std::optional<int32_t> getEffectiveIterationStride() {
+      if (auto attr = getIteration())
+        return static_cast<int32_t>(attr->getStride());
+      if (::mlir::Value v = getIterationStrideVal())
+        return static_cast<int32_t>(
+            ::mlir::getConstantIntValue(v).value_or(-1));
+      return std::nullopt;
     }
 
     // True when the BD carries an explicit length (runtime operand or

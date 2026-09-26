@@ -540,6 +540,14 @@ struct AIEDMATasksToNPUPass
                          AIE::TileOp &tile,
                          std::optional<xilinx::AIE::PacketInfoAttr> packet,
                          Value runtimeBdId = nullptr, bool outOfOrder = false) {
+    // The compile-time BDIterationAttr is not yet handled on the dynamic path.
+    // Runtime iteration is handled below via iteration_size_val/stride_val.
+    if (bd_op.getIteration())
+      return bd_op->emitOpError(
+          "the iteration attribute is not yet supported on the dynamic "
+          "(runtime-valued) BD path; use compile-time constant sizes/strides "
+          "and a pinned bd_id instead.");
+
     const auto &target_model = AIE::getTargetModel(bd_op);
     Location loc = bd_op.getLoc();
     auto i32ty = builder.getIntegerType(32);
@@ -574,15 +582,38 @@ struct AIEDMATasksToNPUPass
     // are outermost-first and variable-length (0..4 dims).
     SmallVector<OpFoldResult> sizes(bd_op.getMixedSizes());
     SmallVector<OpFoldResult> strides(bd_op.getMixedStrides());
-    if (sizes.size() > 4 || strides.size() > 4)
-      return bd_op->emitOpError("At most four data layout transformation "
-                                "dimensions may be provided.");
+
+    // When runtime iteration operands are present the BD carries only the 3
+    // inner access dimensions; the outermost (iteration) slot is filled from
+    // the SSA values below.  Without them the BD may carry up to 4 dims.
+    Value iterSizeVal = bd_op.getIterationSizeVal();
+    Value iterStrideVal = bd_op.getIterationStrideVal();
+    size_t maxBdDims = iterSizeVal ? 3u : 4u;
+    if (sizes.size() > maxBdDims || strides.size() > maxBdDims)
+      return bd_op->emitOpError("At most ")
+             << maxBdDims
+             << " data layout transformation dimensions may be provided"
+             << (iterSizeVal ? " when iteration_size_val is set" : "") << ".";
+
     OpFoldResult one = builder.getI64IntegerAttr(1);
     OpFoldResult zeroOfr = builder.getI64IntegerAttr(0);
     SmallVector<OpFoldResult, 4> sizes4(4, one), strides4(4, zeroOfr);
     for (size_t i = 0; i < sizes.size(); i++) {
       sizes4[4 - sizes.size() + i] = sizes[i];
       strides4[4 - strides.size() + i] = strides[i];
+    }
+
+    // Override the outermost (iteration) slot with the runtime SSA values when
+    // iteration_size_val/iteration_stride_val are present.  The hardware
+    // word[6] encoder in buildShimBdWords uses sizesRev[3]/stridesRev[3]
+    // (i.e. sizes4[0]/strides4[0] after outermost-first reversal).
+    if (iterSizeVal) {
+      // Cast i32 → i64 to match the I64 type expected by buildShimBdWords.
+      auto i64ty = builder.getIntegerType(64);
+      sizes4[0] =
+          arith::ExtSIOp::create(builder, loc, i64ty, iterSizeVal).getResult();
+      strides4[0] = arith::ExtSIOp::create(builder, loc, i64ty, iterStrideVal)
+                        .getResult();
     }
 
     // buffer_length override = len (elements) * elemWidth / addressGranularity,
@@ -660,7 +691,19 @@ struct AIEDMATasksToNPUPass
                      [](OpFoldResult s) { return !getConstantIntValue(s); }) ||
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
-    if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId) {
+    // Runtime iteration SSA values require the dynamic BD-word path, but a
+    // constant-foldable iteration_size_val/stride_val (e.g. a dynamic design
+    // specialized to compile-time M/N, where the outer dim folds to a
+    // constant) is encoded into the static BD word below instead, so it does
+    // not by itself force the dynamic path.
+    Value iterSizeVal = bd_op.getIterationSizeVal();
+    Value iterStrideVal = bd_op.getIterationStrideVal();
+    bool constIteration =
+        iterSizeVal && getConstantIntValue(iterSizeVal) &&
+        (!iterStrideVal || getConstantIntValue(iterStrideVal));
+    bool runtimeIteration = iterSizeVal && !constIteration;
+    if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId ||
+        runtimeIteration) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow()))
         return bd_op->emitOpError(
             "runtime-valued BD size/stride/len/bd_id is only supported on shim "
@@ -737,6 +780,7 @@ struct AIEDMATasksToNPUPass
     auto d2stride = 0;
     auto iteration_size = 0;
     auto iteration_stride = 0;
+    auto iteration_current = 0;
 
     if (dims && !dims->empty()) {
       llvm::SmallVector<int64_t, 4> input_sizes =
@@ -798,35 +842,62 @@ struct AIEDMATasksToNPUPass
         return failure();
       }
 
-      iteration_size = sizes[3];
-      iteration_stride = strides[3];
+      // See AIEOps.td ## BD iteration; encoding matches
+      // encodeHardwareStridesWraps.
+      if (auto iter = bd_op.getIteration()) {
+        uint32_t elemWidthInBytes = bd_op.getBufferElementTypeWidthInBytes();
+        uint32_t gran = target_model.getAddressGenGranularity();
+        if (iter->getSize() > 1) {
+          iteration_size = iter->getSize() - 1;
+          if (iter->getStride() > 0) {
+            iteration_stride =
+                (iter->getStride() * elemWidthInBytes * 8 / gran) - 1;
+          }
+          iteration_current = iter->getCurrent();
+        }
+      } else if (bd_op.getIterationSizeVal()) {
+        // Constant iteration operands reach the static path when a dynamic
+        // design is specialized to compile-time dims (runtime operands were
+        // routed to the dynamic BD-word path above). Encode them exactly like
+        // the BDIterationAttr case; a zero iteration stride is a pure repeat
+        // carried by the task's repeat_count queue push, so the BD iteration
+        // fields stay at zero (matching the implicit stride-0 handling below).
+        std::optional<int64_t> iterSize =
+            getConstantIntValue(bd_op.getIterationSizeVal());
+        std::optional<int64_t> iterStride =
+            bd_op.getIterationStrideVal()
+                ? getConstantIntValue(bd_op.getIterationStrideVal())
+                : std::optional<int64_t>(0);
+        if (iterSize && iterStride && *iterStride > 0 && *iterSize > 1) {
+          uint32_t elemWidthInBytes = bd_op.getBufferElementTypeWidthInBytes();
+          uint32_t gran = target_model.getAddressGenGranularity();
+          iteration_size = *iterSize - 1;
+          iteration_stride = (*iterStride * elemWidthInBytes * 8 / gran) - 1;
+        }
+      } else {
+        // Implicit path: outermost dim hoisted; getHardwareStridesWraps has
+        // already applied the -1 bias and word-scaling.
+        iteration_size = sizes[3];
+        iteration_stride = strides[3];
+        if (input_sizes[3] > 1 && input_strides[3] == 0) {
+          // stride-0 encodes a pure repeat_count; zero out so NpuPushQueueOp
+          // carries the count instead.
+          iteration_size = 0;
+          iteration_stride = 0;
+        }
+      }
 
       if (!treatAsLinear) {
-        // d0_size, d0_stride
         d0size = sizes[0];
         d0stride = strides[0];
-
-        // d1_size, d1_stride
         d1size = sizes[1];
         d1stride = strides[1];
-
-        // d2_stride
         d2stride = strides[2];
-
-        // TODO: d2_size is a dead field; AIEDmaToNpu.cpp memtile word-packing
-        // never writes it (see its `// TODO: D2Size`); the real D2 repeat
-        // count is carried entirely by buffer_length, same as on shim tiles.
+        // d2_size is a dead field on shim tiles (buffer_length carries the
+        // repeat count); set it only for MemTiles.
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
                      ? sizes[2]
                      : 0;
-      }
-      if (input_sizes[3] > 1 && input_strides[3] == 0) {
-        // We allow users to encode the repeat_count as a dimension 3 stride
-        // of 0. This must lower to a iteration wrap of 0, so no stride is
-        // ever added. We then repeat the BD using the repeat_count in
-        // NpuPushQueueOp.
-        iteration_size = 0;
-        iteration_stride = 0;
       }
 
       // Ensure the total transfer length and the length expressed in the lowest
@@ -881,7 +952,8 @@ struct AIEDMATasksToNPUPass
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
-        /*iteration_current=*/0, /*iteration_size=*/iteration_size,
+        /*iteration_current=*/iteration_current,
+        /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
         /*next_bd=*/f.next_bd_id,
         /*row=*/tile.getRow(),

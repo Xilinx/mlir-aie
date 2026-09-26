@@ -3211,6 +3211,8 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*burst_length=*/nullptr,
         /*axcache=*/nullptr,
         /*iteration=*/nullptr,
+        /*iteration_size_val=*/nullptr,
+        /*iteration_stride_val=*/nullptr,
         /*offset_parameter=*/nullptr,
         /*offset_state_table_idx=*/nullptr,
         /*next_bd_id=*/nullptr);
@@ -3339,6 +3341,22 @@ LogicalResult DMABDOp::verify() {
       return emitOpError("offset_parameter requires a whole-byte element type");
   }
 
+  // Mutual exclusivity checks apply regardless of parent op type.
+  if (getBdIdVal() && getBdId().has_value())
+    return emitOpError("bd_id and bd_id_val are mutually exclusive");
+
+  if (getIteration() && (getIterationSizeVal() || getIterationStrideVal()))
+    return emitOpError(
+        "iteration attribute and iteration_size_val/iteration_stride_val "
+        "operands are mutually exclusive");
+
+  if (getIterationSizeVal() && !getIterationStrideVal())
+    return emitOpError(
+        "iteration_size_val requires iteration_stride_val to also be set");
+  if (getIterationStrideVal() && !getIterationSizeVal())
+    return emitOpError(
+        "iteration_stride_val requires iteration_size_val to also be set");
+
   // Skip verification of the BDOp outside of mem operations.
   // BDOps may appear elsewhere and subsequent lowerings will place them in the
   // correct mem ops.
@@ -3381,9 +3399,6 @@ LogicalResult DMABDOp::verify() {
   if (std::optional<int32_t> nextBdId = getNextBdId();
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
-
-  if (getBdIdVal() && getBdId().has_value())
-    return emitOpError("bd_id and bd_id_val are mutually exclusive");
 
   // Issue #1097: the buffer_length field of a DMA buffer descriptor has a
   // tile-type-specific bit width (e.g. on AIE2: 32-bit shim, 17-bit mem tile,
