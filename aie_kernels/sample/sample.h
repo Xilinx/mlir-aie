@@ -16,6 +16,8 @@
 
 #include <stdint.h>
 
+#include "../aie_arch.h"
+
 #ifndef SAMPLE_SLICE
 #error "SAMPLE_SLICE (logits per column) must be defined"
 #endif
@@ -72,6 +74,16 @@ static inline int32_t sample_pick(const int32_t *hist, int32_t *need) {
     *need -= hist[b];
   }
   return 0;
+}
+
+// The trailing zeros of a nonzero word. AIE2 has no lowering for ctz, so
+// there it isolates the lowest set bit and counts the zeros above it.
+static inline int32_t sample_ctz(uint32_t x) {
+#if AIE_HAS_CTZ_POPCOUNT
+  return __builtin_ctz(x);
+#else
+  return 31 - __builtin_clz(x & (0u - x));
+#endif
 }
 
 #endif

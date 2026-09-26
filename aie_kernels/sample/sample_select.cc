@@ -128,7 +128,7 @@ void keep(select_state *s, keys_v keys, uint32_t bits) {
   alignas(64) int16_t lane[LANES];
   aie::store_v(lane, keys);
   for (; bits; bits &= bits - 1)
-    s->keys[s->count++] = lane[__builtin_ctz(bits)];
+    s->keys[s->count++] = lane[sample_ctz(bits)];
   maybe_cut(s);
 }
 
@@ -177,14 +177,20 @@ void collect(select_state *s, const uint16_t *x, int32_t *summary) {
       alignas(64) int16_t lane[LANES];
       aie::store_v(lane, keys);
       for (; above; above &= above - 1) {
-        const int32_t i = __builtin_ctz(above);
+        const int32_t i = sample_ctz(above);
         entry(s, summary, index + i, lane[i]);
       }
     }
     const aie::mask<LANES> equal = aie::eq(keys, tau);
     if (!equal.empty()) {
       tie_bits(summary, index, equal.to_uint32());
+#if AIE_HAS_CTZ_POPCOUNT
       s->ties += equal.count();
+#else
+      // aie::mask::count() is a popcount, which AIE2 cannot lower.
+      for (uint32_t bits = equal.to_uint32(); bits; bits &= bits - 1)
+        s->ties++;
+#endif
     }
   }
   for (int32_t i = vectors * LANES; i < SAMPLE_CHUNK; ++i) {
@@ -208,7 +214,7 @@ int32_t argmax(const select_state *s, const int32_t *summary) {
   const uint32_t *bitmap = (const uint32_t *)(summary + SAMPLE_BITMAP);
   for (int32_t w = 0;; ++w)
     if (bitmap[w])
-      return w * 32 + __builtin_ctz(bitmap[w]);
+      return w * 32 + sample_ctz(bitmap[w]);
 }
 
 // The end of a pass: what the next one needs.
