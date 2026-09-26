@@ -1,0 +1,46 @@
+//===- help_output_selectors.mlir ------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// The `--get-<name>` output-selector shorthands are resolved by
+// applyOutputSelectorFlags() before llvm::cl ever parses argv, so none of
+// them are registered as a cl::opt and would not otherwise appear in
+// --help/--help-hidden. cl::extrahelp appends the list to both.
+
+// RUN: aiecc --help 2>&1 | FileCheck %s
+// RUN: aiecc --help-hidden 2>&1 | FileCheck %s
+
+// CHECK: OUTPUT SELECTORS:
+// CHECK-DAG: --get-scratchpad-parameters  (params.txt)
+// CHECK-DAG: --get-xclbin  (aie.xclbin)
+// CHECK-DAG: --get-full-elf  (aie.elf)
+
+module {
+  aie.device(npu1_1col) {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_2 = aie.tile(0, 2)
+
+    aie.objectfifo @of_in(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    %core_0_2 = aie.core(%tile_0_2) {
+      %input = aie.objectfifo.acquire @of_in (Consume, 1) : memref<16xi32>
+      %output = aie.objectfifo.acquire @of_out (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @of_in (Consume, 1)
+      aie.objectfifo.release @of_out (Produce, 1)
+      aie.end
+    }
+
+    aie.runtime_sequence(%in : memref<16xi32>, %out : memref<16xi32>) {
+      %c0 = arith.constant 0 : i64
+      %c1 = arith.constant 1 : i64
+      %c16 = arith.constant 16 : i64
+      aiex.npu.dma_memcpy_nd(%out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @of_out, id = 1 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @of_in, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @of_out}
+    }
+  }
+}
