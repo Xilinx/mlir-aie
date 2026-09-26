@@ -520,9 +520,10 @@ ones carry contracts with round-half-even integer references and run in the
 hardware sweeps at MobileNet V3 layer shapes; `bn_conv2dk1_relu_xy_pool_padded`
 accumulates into its output across calls, so its case zeroes that buffer
 first. The cascade halves (`bn_conv2dk1_partial_*` and
-`bn_conv2dk1_input_split_partial_*`) exist as one symbol per network block
-and are still validated only through the composed MobileNet designs; the
-contract test lists them by name as not judged.
+`bn_conv2dk1_input_split_partial_*`) exist as one symbol per network block;
+`test/python/npu/test_bn_cascade_pairs.py` builds each pair the way the
+MobileNet cascade block calls it and judges it against a numpy model of
+the whole conv, and the contract test lists them by name as not judged.
 
 `mm_bfp_shuffle` validates the forward permutation through declared plain-BFP
 input and blocked-BFP output codecs, comparing exactly the represented values.

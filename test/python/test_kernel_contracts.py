@@ -72,7 +72,7 @@ NOT_JUDGED = {
     "cascade_mm_put": "the PUT half of that pair; its result leaves on the cascade stream",
     "set_rounding": "sets core state and has no data output; the rounding-mode tests cover it",
     **{
-        name: "one half of a MobileNet bottleneck cascade pair, not validated yet (see the guide)"
+        name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
         for name in (
             "bn_conv2dk1_partial_put_i8",
             "bn_conv2dk1_partial_get_relu_i8",
