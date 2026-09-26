@@ -242,6 +242,30 @@ CASES: list[Case] = [
         dict(**_mm, input_dtype=np.int8, output_dtype=np.int32),
         calls=16,
     ),
+    # Peano miscompiles the fully unrolled int8 -> int32 K loop from K = 416,
+    # so mm_aie2p.h rolls K up there; the 16x16 tile still unrolls.
+    *[
+        check(
+            "mm",
+            dict(
+                dim_m=m,
+                dim_k=k,
+                dim_n=n,
+                **layout,
+                input_dtype=np.int8,
+                output_dtype=np.int32,
+            ),
+            devices=("npu2",),
+        )
+        for m, k, n, layout in (
+            (16, 512, 32, {}),
+            (16, 512, 32, dict(b_col_maj=True)),
+            (16, 512, 32, dict(c_col_maj=True)),
+            (32, 512, 16, dict(b_col_maj=True)),
+            (48, 416, 16, dict(c_col_maj=True)),
+            (16, 1008, 16, {}),
+        )
+    ],
     check("mm", _mm_bf16, calls=1, tag="edge-single-tile"),
     # Bounded fused composition: two A bands and multiple K/drain chunks.
     Case("fused_mm", calls=4, smoke=True),
