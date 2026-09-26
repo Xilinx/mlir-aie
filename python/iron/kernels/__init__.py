@@ -14,6 +14,7 @@ Submodules:
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
+- `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `linalg` — mm, mv, cascade_mm, mm_bfp (a ``MatrixKernel``: ``.mac_dims``
   and ``.stream_dims`` read the blocking and DMA transforms off the
@@ -164,6 +165,7 @@ from .linalg import (
 )
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .quant import q4nx_dequant, q4nx_dequant_ref
+from .sample import exp64_ref, sample_combine, sample_ref, sample_select
 from .reduce import (
     compute_max,
     compute_max_ref,
@@ -224,6 +226,10 @@ __all__ = [
     "rms_norm",
     "q4nx_dequant",
     "q4nx_dequant_ref",
+    "sample_select",
+    "sample_combine",
+    "sample_ref",
+    "exp64_ref",
     "rms_norm_ref",
     "layer_norm",
     "layer_norm_ref",
