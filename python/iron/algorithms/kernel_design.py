@@ -30,7 +30,7 @@ from aie.helpers.util import np_ndarray_type_to_memref_type
 from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernels._common import Param, _is_tensor_type
-from aie.utils import bfp, get_current_device, tensor
+from aie.utils import bfp, ensure_current_device, tensor
 from aie.utils.compile.jit import CompileTime, In, InOut, Out
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
@@ -77,7 +77,9 @@ def _calls(calls, shape=None):
 
 
 def _device():
-    device = get_current_device()
+    # Bound, not just probed: a factory reads the arch from the bound device,
+    # so one called with none bound builds the aie2 variant of its contract.
+    device = ensure_current_device()
     if device is None:
         raise RuntimeError(
             "no device is bound; select one with iron.set_current_device()"
@@ -391,6 +393,7 @@ def design(
     with ``strip_guard``. bfp outputs carry no guard.
     """
     calls = _calls(calls, shape)
+    _device()
     fn = factory(**factory_kwargs)
     c = _contract(fn)
     if c.unsupported:
