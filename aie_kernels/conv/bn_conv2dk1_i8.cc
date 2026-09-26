@@ -44,14 +44,6 @@ void conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
     const int32_t input_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
   event0();
-#if AIE_TUNED_AIE2P
-  if (k1_wts_aligned(kernels)) {
-    const int32_t blocks = input_channels / input_split / 8;
-    k1_cas_put(input, kernels + oc * blocks * 64, input_width * 8, blocks);
-    event1();
-    return;
-  }
-#endif
   int ic, ic8, oc8;
 
   v16acc64 acc_cas = undef_v16acc64();
@@ -201,14 +193,6 @@ void conv2dk1_i8_ui8_scalar_partial_width_put_new(
     const int32_t input_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
   event0();
-#if AIE_TUNED_AIE2P
-  if (k1_wts_aligned(kernels)) {
-    const int32_t blocks = input_channels / input_split / 8;
-    k1_cas_put(input, kernels + oc * blocks * 64, input_width * 8, blocks);
-    event1();
-    return;
-  }
-#endif
   int ic, ic8, oc8;
 
   v16acc64 acc_cas = undef_v16acc64();
@@ -787,6 +771,9 @@ void bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t input_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
   conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
       input, kernels, input_width, input_channels, output_channels, input_split,
       weight_index, x_start, oc);
@@ -799,6 +786,9 @@ void bn14_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new(
     const int32_t input_channels, const int32_t output_channels,
     const int32_t input_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
   conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
       input, kernels, input_width, input_channels, output_channels, input_split,
       weight_index, x_start, oc);
@@ -887,6 +877,9 @@ void bn14_1_conv2dk1_i8_ui8_partial_width_put_new(
     int8_t *input, int8_t *kernels, const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     int32_t input_split, int32_t weight_index, int32_t x_start, int32_t oc) {
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
   conv2dk1_i8_ui8_scalar_partial_width_put_new(
       input, kernels, input_width, input_channels, output_channels, input_split,
       weight_index, x_start, oc);
@@ -899,6 +892,9 @@ void bn13_1_conv2dk1_i8_ui8_partial_width_put_new(
     int8_t *input, int8_t *kernels, const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     int32_t input_split, int32_t weight_index, int32_t x_start, int32_t oc) {
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
   conv2dk1_i8_ui8_scalar_partial_width_put_new(
       input, kernels, input_width, input_channels, output_channels, input_split,
       weight_index, x_start, oc);
@@ -911,6 +907,9 @@ void conv2dk1_i8_ui8_partial_width_put_new(
     int8_t *input, int8_t *kernels, const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     int32_t input_split, int32_t weight_index, int32_t x_start, int32_t oc) {
+  if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
+                     oc))
+    return;
   conv2dk1_i8_ui8_scalar_partial_width_put_new(
       input, kernels, input_width, input_channels, output_channels, input_split,
       weight_index, x_start, oc);

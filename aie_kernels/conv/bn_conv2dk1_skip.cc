@@ -36,6 +36,37 @@ const int32_t MAX_VALUES = 16;
 
 #if defined(BN13_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW) ||         \
     defined(BN14_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW)
+static inline bool
+k1_cas_skip_get_new(uint8_t *input, int8_t *kernels, int8_t *output,
+                    int8_t *skip, const int32_t input_width,
+                    const int32_t input_channels, const int32_t output_channels,
+                    const int scale, const int skip_scale,
+                    const int32_t input_split, const int32_t output_split,
+                    const int32_t weight_index, const int32_t oc) {
+#if AIE_TUNED_AIE2P
+  if (!k1_cas_fits(kernels, input_split, output_split))
+    return false;
+  event0();
+  const int32_t blocks = k1_per_split(input_channels, input_split) / 8;
+  const int32_t row = input_width * 8;
+  const int32_t oc_out =
+      oc + k1_per_split(output_channels, output_split) / 8 * weight_index;
+  const aie::vector<int8, 32> ones = aie::broadcast<int8, 32>(1);
+  k1_cas_get(
+      input, kernels + oc * blocks * 64, output + oc_out * row, row, blocks,
+      [=](auto &acc, const int8_t *s) {
+        aie::accum<acc32, 32> t = aie::mul(k1_load<false>(s), ones);
+        t = aie::mac(t, acc.template to_vector<int8>(scale), ones);
+        return t.template to_vector<int8>(skip_scale);
+      },
+      skip + oc_out * row);
+  event1();
+  return true;
+#else
+  return false;
+#endif
+}
+
 // 8 Pixels Width Processing Approach: Processes 8 spatial pixels (x_start to
 // x_start + 8) simultaneously within each output channel (oc8 iteration).
 void conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
@@ -45,25 +76,6 @@ void conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
     const int32_t input_split, int32_t output_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
   event0();
-#if AIE_TUNED_AIE2P
-  if (k1_wts_aligned(kernels)) {
-    const int32_t blocks = input_channels / input_split / 8;
-    const int32_t row = input_width * 8;
-    const int32_t oc_out =
-        oc + output_channels / (8 * output_split) * weight_index;
-    const aie::vector<int8, 32> ones = aie::broadcast<int8, 32>(1);
-    k1_cas_get(
-        input, kernels + oc * blocks * 64, output + oc_out * row, row, blocks,
-        [=](auto &acc, const int8_t *s) {
-          aie::accum<acc32, 32> t = aie::mul(k1_load<false>(s), ones);
-          t = aie::mac(t, acc.template to_vector<int8>(scale), ones);
-          return t.template to_vector<int8>(skip_scale);
-        },
-        skip + oc_out * row);
-    event1();
-    return;
-  }
-#endif
   int ic, ic8, oc8;
   const int skip_scaleT = skip_scale;
 
@@ -572,6 +584,10 @@ void bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
     const int32_t input_split, int32_t output_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
 
+  if (k1_cas_skip_get_new(input, kernels, output, skip, input_width,
+                          input_channels, output_channels, scale, skip_scale,
+                          input_split, output_split, weight_index, oc))
+    return;
   conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
       input, kernels, output, skip, input_width, input_channels,
       output_channels, scale, skip_scale, input_split, output_split,
@@ -587,6 +603,10 @@ void bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
     const int32_t input_split, int32_t output_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
 
+  if (k1_cas_skip_get_new(input, kernels, output, skip, input_width,
+                          input_channels, output_channels, scale, skip_scale,
+                          input_split, output_split, weight_index, oc))
+    return;
   conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
       input, kernels, output, skip, input_width, input_channels,
       output_channels, scale, skip_scale, input_split, output_split,
