@@ -15,6 +15,7 @@ partly the reference's.
 
 import math
 
+import ml_dtypes
 import numpy as np
 import pytest
 from aie.iron import kernels
@@ -34,9 +35,21 @@ _TRUE = {
 }
 
 
+_MAX = float(ml_dtypes.finfo(bfloat16).max)
+_ENDS = np.array([-np.inf, -_MAX, _MAX, np.inf], bfloat16)
+# silu and gelu at -inf are -inf / inf and -inf * 0 as written, so NaN, where
+# the limit is -0.
+_LIMITS = {
+    "tanh_ref": [-1, -1, 1, 1],
+    "sigmoid_ref": [0, 0, 1, 1],
+    "silu_ref": [-0.0, -0.0, _MAX, np.inf],
+    "gelu_ref": [-0.0, -0.0, _MAX, np.inf],
+}
+
+
 @pytest.mark.parametrize("name", sorted(_TRUE))
 def test_unary_ref_is_correctly_rounded_on_every_bf16(name):
-    x = all_bf16(nan=False)
+    x = all_bf16(nan=False, inf=False)
     with np.errstate(over="ignore", invalid="ignore"):
         want = round_to(_TRUE[name](x.astype(np.float64)), bfloat16)
     got = getattr(kernels, name)(x)
@@ -46,6 +59,26 @@ def test_unary_ref_is_correctly_rounded_on_every_bf16(name):
         f"{name}: {bad.sum()} inputs, first x={float(x[bad][0])} "
         f"got {float(got[bad][0])} want {float(want[bad][0])}"
     )
+
+
+@pytest.mark.parametrize("name", sorted(_LIMITS))
+def test_unary_ref_takes_the_limit_at_the_ends(name):
+    with np.errstate(invalid="raise", divide="raise"):
+        got = getattr(kernels, name)(_ENDS)
+    want = np.array(_LIMITS[name], bfloat16)
+    assert (got.view(np.uint16) == want.view(np.uint16)).all(), f"{name}: {got}"
+
+
+def test_swiglu_ref_is_zero_where_silu_is():
+    # x * w1 overflows to inf in the last two, and silu is -0 in all but the
+    # middle two.
+    x = np.array([-np.inf, -_MAX, _MAX, np.inf, 1e20, 1], bfloat16)
+    w1 = np.array([1, 1, 1, 1, 1e20, np.inf], bfloat16)
+    w2 = np.array([1, 1, 1, 1, -1e20, -np.inf], bfloat16)
+    with np.errstate(invalid="raise", divide="raise"):
+        got = kernels.swiglu_ref(x, w1, w2)
+    want = np.array([0.0, 0.0, np.inf, np.inf, -0.0, -0.0], bfloat16)
+    assert (got.view(np.uint16) == want.view(np.uint16)).all(), got
 
 
 @pytest.mark.parametrize("name", ["sigmoid_ref", "silu_ref"])

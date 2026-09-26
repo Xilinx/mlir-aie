@@ -745,6 +745,16 @@ def _f64(x):
     return np.asarray(x).astype(np.float64)
 
 
+def _no_neg_inf(xf):
+    """``xf`` with -inf as the most negative float64.
+
+    silu and gelu go to -0 as x goes to -inf, but at -inf itself they are
+    ``-inf / inf`` and ``-inf * 0``; at any finite x the float64 arithmetic
+    rounds to the limit.
+    """
+    return np.maximum(xf, -np.finfo(np.float64).max)
+
+
 def _rounded(v, like):
     """Correctly round float64 ``v`` to ``like``'s dtype (a cast rounds twice)."""
     return round_to(v, np.asarray(like).dtype)
@@ -765,7 +775,7 @@ def silu_ref(x):
     LUT-approximation territory; pair with ``rtol=0.128`` (the default
     in `count_mismatches`) when verifying.
     """
-    xf = _f64(x)
+    xf = _no_neg_inf(_f64(x))
     with np.errstate(over="ignore"):
         return _rounded(xf / (1.0 + np.exp(-xf)), x)
 
@@ -778,8 +788,9 @@ def gelu_ref(x):
     in float32, ``1 + tanh`` cancels for x below about -4.5 and leaves
     values over ten times too large.
     """
-    xf = x.astype(np.float64)
-    inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
+    xf = _no_neg_inf(x.astype(np.float64))
+    with np.errstate(over="ignore"):
+        inner = math.sqrt(2.0 / math.pi) * (xf + 0.044715 * xf**3)
     return (0.5 * xf * (1.0 + np.tanh(inner))).astype(x.dtype)
 
 
@@ -941,12 +952,18 @@ def swiglu_ref(x, w1, w2):
     through the tanh LUT (``0.5 * (1 + tanh(z / 2))``). The reference rounds
     the two products to bf16 as the kernel does and computes the rest in
     float64; LUT-approximation territory, pair with ``rtol=0.128``.
+
+    Where silu is 0 (``x * w2`` is -inf, or low enough to underflow) the
+    output is 0, as swiglu_lut_ref's is, even where ``x * w1`` overflowed:
+    0 is the limit as x goes to -inf, and ``inf * 0`` would be NaN.
     """
     xf = _f64(x)
     xw1 = _f64(round_to(xf * _f64(w1), bfloat16))
-    xw2 = _f64(round_to(xf * _f64(w2), bfloat16))
+    xw2 = _no_neg_inf(_f64(round_to(xf * _f64(w2), bfloat16)))
     with np.errstate(over="ignore", invalid="ignore"):
-        return _rounded(xw1 * (xw2 / (1.0 + np.exp(-xw2))), x)
+        silu = xw2 / (1.0 + np.exp(-xw2))
+        out = np.where(silu == 0, np.copysign(0.0, xw1) * silu, xw1 * silu)
+    return _rounded(out, x)
 
 
 def bf16_exp_ref(x):
