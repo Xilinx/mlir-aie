@@ -13,14 +13,14 @@
 // RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
 
 // CHECK-NOT: aie.switchbox
-// CHECK:     aie.packet_flow(9) {
-// CHECK-NEXT:  aie.packet_source<%{{.*}}, DMA : 1>
-// CHECK-NEXT:  aie.packet_dest<%{{.*}}tile_0_2, DMA : 1>
-// CHECK-NEXT: }{{$}}
 // CHECK:     aie.packet_flow(1) {
 // CHECK-NEXT:  aie.packet_source<%{{.*}}, DMA : 1>
 // CHECK-NEXT:  aie.packet_dest<%{{.*}}mem_tile_0_1, DMA : 0>
 // CHECK-NEXT: } {priority_route = true}
+// CHECK:     aie.packet_flow(9) {
+// CHECK-NEXT:  aie.packet_source<%{{.*}}, DMA : 1>
+// CHECK-NEXT:  aie.packet_dest<%{{.*}}tile_0_2, DMA : 1>
+// CHECK-NEXT: }{{$}}
 // CHECK-NOT: aie.switchbox
 
 module {
