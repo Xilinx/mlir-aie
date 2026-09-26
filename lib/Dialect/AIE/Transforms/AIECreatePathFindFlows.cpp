@@ -506,6 +506,143 @@ groupRules(ArrayRef<std::pair<int, int>> stated, ArrayRef<int> derived,
 }
 
 namespace {
+/// What a group of flows on one slave port claims: the rules its flows state,
+/// and the ids they leave to the router.
+struct GroupClaims {
+  ArrayRef<std::pair<int, int>> stated;
+  ArrayRef<int> derived;
+};
+
+/// A packet rule of a slave port, and the group it selects.
+struct PortRule {
+  int mask;
+  int value;
+  size_t group;
+};
+} // namespace
+
+static uint64_t cubeIds(int mask, int value, int idBits) {
+  uint64_t ids = 0;
+  for (int id = 0; id < (1 << idBits); ++id)
+    if ((id & mask) == (value & mask))
+      ids |= uint64_t(1) << id;
+  return ids;
+}
+
+// The fewest rules, at most `budget`, that send every id a group claims to
+// that group, where a packet takes the first rule it matches. A rule may then
+// claim ids of another group that an earlier rule already takes.
+static std::optional<SmallVector<PortRule>>
+orderedRules(ArrayRef<GroupClaims> groups,
+             ArrayRef<std::pair<int, int>> existing, int idBits,
+             size_t budget) {
+  if (idBits > 6)
+    return std::nullopt;
+  const int idMask = (1 << idBits) - 1;
+  SmallVector<uint64_t> claims;
+  for (const GroupClaims &group : groups) {
+    uint64_t ids = 0;
+    for (auto [mask, value] : group.stated)
+      ids |= cubeIds(mask, value, idBits);
+    for (int id : group.derived)
+      ids |= uint64_t(1) << id;
+    claims.push_back(ids);
+  }
+  uint64_t claimed = 0;
+  for (uint64_t ids : claims)
+    claimed |= ids;
+  uint64_t taken = 0;
+  for (auto [mask, value] : existing)
+    taken |= cubeIds(mask, value, idBits);
+  if (taken & claimed)
+    return std::nullopt;
+  SmallVector<uint64_t> cubes;
+  for (int mask = 0; mask <= idMask; ++mask)
+    for (int value = 0; value <= idMask; ++value)
+      if ((value & mask) == value)
+        cubes.push_back(cubeIds(mask, value, idBits));
+
+  // A rule is worth only the claimed ids it newly takes, all of one group, so
+  // the tightest cube around them serves, and fewer ids of the same group
+  // never serve better.
+  SmallVector<PortRule> rules;
+  std::set<std::pair<uint64_t, size_t>> dead;
+  std::function<bool(uint64_t, size_t)> search = [&](uint64_t taken,
+                                                     size_t left) {
+    uint64_t open = claimed & ~taken;
+    size_t openGroups =
+        llvm::count_if(claims, [&](uint64_t ids) { return ids & open; });
+    if (openGroups == 0)
+      return true;
+    if (openGroups > left || dead.count({taken, left}))
+      return false;
+    SmallVector<std::pair<uint64_t, size_t>> moves;
+    for (uint64_t cube : cubes)
+      for (auto [g, ids] : llvm::enumerate(claims))
+        if ((cube & open) && (cube & open & ~ids) == 0 &&
+            !llvm::is_contained(moves, std::pair{cube & open, g}))
+          moves.push_back({cube & open, g});
+    llvm::stable_sort(moves, [](auto a, auto b) {
+      return llvm::popcount(a.first) > llvm::popcount(b.first);
+    });
+    SmallVector<std::pair<uint64_t, size_t>> tried;
+    for (auto [own, g] : moves) {
+      if (llvm::any_of(tried, [&](auto t) {
+            return t.second == g && (t.first & own) == own;
+          }))
+        continue;
+      tried.push_back({own, g});
+      int all = idMask, any = 0;
+      for (int id = 0; id <= idMask; ++id)
+        if ((own >> id) & 1) {
+          all &= id;
+          any |= id;
+        }
+      int mask = idMask & ~(all ^ any);
+      rules.push_back({mask, all, g});
+      if (search(taken | own, left - 1))
+        return true;
+      rules.pop_back();
+    }
+    dead.insert({taken, left});
+    return false;
+  };
+  for (size_t length = 1; length <= budget; ++length)
+    if (search(taken, length))
+      return rules;
+  return std::nullopt;
+}
+
+// The rules of a slave port, in slot order after the `existing` ones. Each
+// group takes its own cover, which claims no id another group claims, unless
+// those outnumber the free slots and first-match order fits them.
+static SmallVector<PortRule> portRules(ArrayRef<GroupClaims> groups,
+                                       ArrayRef<std::pair<int, int>> existing,
+                                       int idBits, size_t slots) {
+  const int idMask = (1 << idBits) - 1;
+  SmallVector<PortRule> rules;
+  for (auto [g, group] : llvm::enumerate(groups)) {
+    SmallVector<std::pair<int, int>> avoid(existing);
+    for (auto [o, other] : llvm::enumerate(groups)) {
+      if (o == g)
+        continue;
+      avoid.append(other.stated.begin(), other.stated.end());
+      for (int id : other.derived)
+        avoid.push_back({idMask, id});
+    }
+    for (auto [mask, value] :
+         groupRules(group.stated, group.derived, avoid, idBits))
+      rules.push_back({mask, value, g});
+  }
+  if (existing.size() + rules.size() <= slots || existing.size() >= slots)
+    return rules;
+  if (std::optional<SmallVector<PortRule>> ordered =
+          orderedRules(groups, existing, idBits, slots - existing.size()))
+    return *ordered;
+  return rules;
+}
+
+namespace {
 constexpr int numArbiters = 6;
 constexpr int numMselsPerArbiter = 4;
 
@@ -1316,18 +1453,13 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     for (const auto &[slave, groups] : ports) {
       SmallVector<std::pair<int, int>> existing =
           existingCubes[{tileId, slave}];
-      size_t needed = existing.size();
-      for (const auto &[masters, group] : groups) {
-        SmallVector<std::pair<int, int>> avoid = existing;
-        for (const auto &[otherMasters, other] : groups) {
-          if (otherMasters == masters)
-            continue;
-          avoid.append(other.stated.begin(), other.stated.end());
-          for (int id : other.derived)
-            avoid.push_back({idMask, id});
-        }
-        needed += groupRules(group.stated, group.derived, avoid, idBits).size();
-      }
+      SmallVector<GroupClaims> claims;
+      for (const auto &[masters, group] : groups)
+        claims.push_back({group.stated, group.derived});
+      size_t needed =
+          existing.size() +
+          portRules(claims, existing, idBits, targetModel.getNumSlaveSlots())
+              .size();
       if (needed <= targetModel.getNumSlaveSlots())
         continue;
       for (const auto &[key, f] : byFlow)
@@ -1672,6 +1804,12 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     // Generate the packet rules, adding to any the switchbox already has.
     DenseMap<Port, PacketRulesOp> slaveRules;
     DenseMap<Port, SmallVector<PacketRuleOp>> existingRules;
+    struct PortPlan {
+      SmallVector<size_t, 4> groups;
+      SmallVector<PortRule> rules;
+      size_t emitted = 0;
+    };
+    std::map<Port, PortPlan> portPlans;
     for (auto rulesOp : b.getOps<PacketRulesOp>()) {
       slaveRules[rulesOp.sourcePort()] = rulesOp;
       llvm::append_range(existingRules[rulesOp.sourcePort()],
@@ -1741,47 +1879,53 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
         }
       }
 
-      // The group keeps the rules its flows state, and the cover describes the
-      // ids that state none. A stated rule also constrains that cover, so the
-      // two never claim one id twice.
-      SmallVector<std::pair<int, int>> avoid = avoidCubes;
-      for (PacketRuleOp rule : existingRules.lookup(slave))
-        avoid.push_back({rule.maskInt(), rule.valueInt()});
-      SmallVector<std::pair<int, int>> cover =
-          groupRules(statedRules[gi], derivedIds[gi], avoid, idBits);
-
-      LLVM_DEBUG({
-        llvm::dbgs() << "packet cover " << stringifyWireBundle(bundle)
-                     << channel << ": matchIds {";
-        for (int id : matchIds)
-          llvm::dbgs() << ' ' << id;
-        llvm::dbgs() << " } avoid {";
-        for (auto [m, v] : avoidCubes) {
-          llvm::dbgs() << " (" << m << ", " << v << ")";
+      // The rules of the slave port, planned at its first group, go out in
+      // order: each group adds those up to its last.
+      auto [planIt, fresh] = portPlans.try_emplace(slave);
+      PortPlan &plan = planIt->second;
+      if (fresh) {
+        SmallVector<GroupClaims> claims;
+        for (size_t oi = 0; oi < slaveGroups.size(); ++oi) {
+          if (slaveGroups[oi].front().first != port)
+            continue;
+          plan.groups.push_back(oi);
+          claims.push_back({statedRules[oi], derivedIds[oi]});
         }
-        llvm::dbgs() << " } ->";
-        for (auto [m, v] : cover)
-          llvm::dbgs() << " rule(" << m << ", " << v << ")";
-        llvm::dbgs() << '\n';
-      });
-
-      // A stated rule takes part in the same constraints as a derived one, so
-      // both checks cover every group.
-      for ([[maybe_unused]] int id : matchIds)
-        assert(llvm::any_of(cover,
-                            [&](std::pair<int, int> c) {
-                              return (id & c.first) == c.second;
-                            }) &&
-               "packet rule cover misses a match id");
-      for ([[maybe_unused]] std::pair<int, int> other : avoidCubes) {
-        assert(llvm::none_of(cover,
-                             [&](std::pair<int, int> c) {
-                               return cubesIntersect(c, other);
-                             }) &&
-               "packet rule cover claims another group's ids");
+        SmallVector<std::pair<int, int>> existing;
+        for (PacketRuleOp rule : existingRules.lookup(slave))
+          existing.push_back({rule.maskInt(), rule.valueInt()});
+        plan.rules = portRules(claims, existing, idBits,
+                               device.getTargetModel().getNumSlaveSlots());
+        LLVM_DEBUG({
+          llvm::dbgs() << "packet rules " << stringifyWireBundle(bundle)
+                       << channel << ":";
+          for (const PortRule &r : plan.rules)
+            llvm::dbgs() << " rule(" << r.mask << ", " << r.value
+                         << ") -> group " << plan.groups[r.group];
+          llvm::dbgs() << '\n';
+        });
       }
 
-      Value amsel = amselOps[slaveAMSels[group.front()]];
+      // Every id the group claims takes one of its rules first.
+      for ([[maybe_unused]] int id = 0; id <= idMask; ++id) {
+        [[maybe_unused]] bool own =
+            llvm::is_contained(derivedIds[gi], id) ||
+            llvm::any_of(statedRules[gi], [&](std::pair<int, int> c) {
+              return (id & c.first) == (c.second & c.first);
+            });
+        [[maybe_unused]] auto first =
+            llvm::find_if(plan.rules, [&](const PortRule &r) {
+              return (id & r.mask) == r.value;
+            });
+        assert((!own || (first != plan.rules.end() &&
+                         plan.groups[first->group] == gi)) &&
+               "packet rules send a claimed id elsewhere");
+      }
+
+      size_t last = plan.emitted;
+      for (size_t r = plan.emitted; r < plan.rules.size(); ++r)
+        if (plan.groups[plan.rules[r].group] == gi)
+          last = r + 1;
 
       // Check if this group is a ctrl-pkt overlay flow
       bool isCtrlPktGroup = ctrlPacketFlows.count(group.front()) > 0;
@@ -1810,16 +1954,20 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
         (void)rule;
         existingSlots++;
       }
-      if (existingSlots + cover.size() > slotLimit) {
+      if (existingSlots + (last - plan.emitted) > slotLimit) {
         packetrules->emitOpError("slave port packet rules exceed the ")
             << slotLimit << "-slot limit (" << existingSlots << " + "
-            << cover.size() << ").";
+            << last - plan.emitted << ").";
         return failure();
       }
 
       builder.setInsertionPoint(rules.getTerminator());
-      for (auto [mask, value] : cover)
-        PacketRuleOp::create(builder, tileLoc, mask, value, amsel);
+      for (; plan.emitted < last; ++plan.emitted) {
+        const PortRule &r = plan.rules[plan.emitted];
+        PacketRuleOp::create(
+            builder, tileLoc, r.mask, r.value,
+            amselOps[slaveAMSels[slaveGroups[plan.groups[r.group]].front()]]);
+      }
     }
   }
 
