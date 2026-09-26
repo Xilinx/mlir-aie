@@ -14,9 +14,13 @@ template <typename T, int N>
 void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
   event0();
   constexpr float epsilon = 1e-5f;
+  constexpr int H = N / 2;
 
   // cols is non-negative, so the unsigned divide lowers to a shift.
   const int vector_chunks = (uint32_t)cols / N;
+  // A row of an odd number of H-lane halves ends in one half vector.
+  const int tail = vector_chunks * N;
+  const bool half = N == 32 && (cols & H);
 
   // Reduce the row sum in an f32 accumulator, not a bf16 vector: a bf16 running
   // sum drops low-order bits as the reduction length grows (embedding_dim is
@@ -36,6 +40,12 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
       sum_sq_acc = ::aie::mac_square(sum_sq_acc, reg_a);
       p += N;
     }
+  }
+  if (half) {
+    ::aie::vector<T, N> reg_a =
+        ::aie::concat(::aie::load_v<H>(input + tail), ::aie::zeros<T, H>());
+    sum_acc = ::aie::add(sum_acc, reg_a);
+    sum_sq_acc = ::aie::mac_square(sum_sq_acc, reg_a);
   }
 
   const float inv_cols = ::aie::inv(::aie::to_float<float>(cols));
@@ -63,6 +73,14 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
       pi += N;
       po += N;
     }
+  }
+  if (half) {
+    ::aie::vector<T, N> diff_v = ::aie::sub(
+        ::aie::concat(::aie::load_v<H>(input + tail), ::aie::zeros<T, H>()),
+        mean_v);
+    ::aie::store_v(output + tail, ::aie::mul(diff_v, inv_std_v)
+                                      .template to_vector<T>()
+                                      .template extract<H>(0));
   }
   event1();
 }
