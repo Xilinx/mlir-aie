@@ -16,6 +16,7 @@ skipped when no Peano is installed.
 
 from __future__ import annotations
 
+import collections
 import json
 import os
 import shutil
@@ -490,11 +491,20 @@ def test_case_builds_name_the_build_each_case_runs(tmp_path):
             Case("tanh/lut-npu1", dict(use_lut=True), devices=("npu1",)),
         ]
         """))
-    builds = dict(remarks.case_builds(str(cases), "npu2"))
+    coverage = collections.Counter()
+    builds = dict(remarks.case_builds(str(cases), "npu2", coverage=coverage))
     # a and b build one object; the npu1-only case is not this device's.
     assert list(builds) == ["tanh/a", "tanh/lut"]
     assert builds["tanh/lut"].object_file_name != builds["tanh/a"].object_file_name
-    assert list(dict(remarks.case_builds(str(cases), "npu2", "b$"))) == ["tanh/b"]
+    assert remarks.case_coverage(coverage) == (
+        "cases: 2 builds for 3 cases (1 share an earlier case's build); "
+        "skipped 1 by devices, 0 other-architecture only"
+    )
+    coverage.clear()
+    assert list(dict(remarks.case_builds(str(cases), "npu2", "b$", coverage))) == [
+        "tanh/b"
+    ]
+    assert remarks.case_coverage(coverage).endswith(", 3 not matching --only")
 
 
 def test_case_builds_reach_the_library_cases_the_default_sweep_misses():
@@ -665,7 +675,7 @@ def test_a_baseline_tree_prints_the_rows_that_differ(tmp_path, capsys):
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
-def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path):
+def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
     # Only the LUT build compiles the loop the pragma lands in.
     base = tmp_path / "base"
     shutil.copytree(config.aie_kernels_dir(), base / "aie_kernels")
@@ -692,6 +702,7 @@ def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path):
         ]
     )
     assert code == 0
+    assert "\ncases: 2 builds for " in capsys.readouterr().out
     written = json.loads(meta.read_text())
     lut = "tanh/1024x16/bfloat16/use_lut=True/lut"
     assert set(written["kernels"]) == {"tanh/1024x16/bfloat16", lut}

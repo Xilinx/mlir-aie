@@ -64,6 +64,7 @@ writes nothing.
 from __future__ import annotations
 
 import argparse
+import collections
 import concurrent.futures
 import json
 import os
@@ -747,7 +748,7 @@ _ERROR_LINE = re.compile(r"(?i)\berror:|\bAssertion .* failed")
 
 
 def compile_failure(stderr: str, *, first: int = 5, tail: int = 2000) -> str:
-    """What a failed compile said: its first error lines, then its last ``tail`` characters.
+    """Keep a failed compile's first error lines, then its last ``tail`` characters.
 
     The first error names the cause, and a template error's notes or a
     crash's stack dump push it far above the end of the output, which ends
@@ -858,7 +859,12 @@ def kernel_builds():
             yield f"{name}{suffix}", ef
 
 
-def case_builds(path: str, device: str, only: str | None = None):
+def case_builds(
+    path: str,
+    device: str,
+    only: str | None = None,
+    coverage: collections.Counter | None = None,
+):
     """Yield ``(name, ExternalFunction)`` for every build the cases in ``path`` run.
 
     ``path`` is a Python file defining ``CASES`` (``kernel_cases.py``); each
@@ -868,11 +874,13 @@ def case_builds(path: str, device: str, only: str | None = None):
     ``-D`` flags, so most cases build an object no factory default does; the
     rows carry the case's name, the key its device series use too. Of the
     cases ``only`` matches, those that share an object compile once, under
-    the first name.
+    the first name. ``coverage`` counts where every case went, for
+    :func:`case_coverage`.
     """
     import dataclasses
     import importlib.util
 
+    coverage = collections.Counter() if coverage is None else coverage
     directory = str(Path(path).resolve().parent)
     sys.path.insert(0, directory)  # a cases file imports its sibling modules
     try:
@@ -883,10 +891,12 @@ def case_builds(path: str, device: str, only: str | None = None):
         sys.path.remove(directory)
     seen: set[str] = set()
     for case in module.CASES:
+        if only and not re.search(only, case.name):
+            coverage["only"] += 1
+            continue
         devices = getattr(case, "devices", ())
         if devices and device not in devices:
-            continue
-        if only and not re.search(only, case.name):
+            coverage["devices"] += 1
             continue
         if len(devices) > 1:
             # fn() binds the case's first device, which need not be this one.
@@ -894,10 +904,24 @@ def case_builds(path: str, device: str, only: str | None = None):
         try:
             ef = case.fn()
         except NotImplementedError:
-            continue  # exists only for the other architecture
-        if ef.object_file_name not in seen:
+            coverage["arch"] += 1  # exists only for the other architecture
+            continue
+        if ef.object_file_name in seen:
+            coverage["shared"] += 1
+        else:
+            coverage["builds"] += 1
             seen.add(ef.object_file_name)
             yield case.name, ef
+
+
+def case_coverage(c: collections.Counter) -> str:
+    """One line accounting for every case :func:`case_builds` was given."""
+    line = (
+        f"cases: {c['builds']} builds for {c['builds'] + c['shared']} cases "
+        f"({c['shared']} share an earlier case's build); "
+        f"skipped {c['devices']} by devices, {c['arch']} other-architecture only"
+    )
+    return line + (f", {c['only']} not matching --only" if c["only"] else "")
 
 
 def _selected_builds(only: str | None, builds=kernel_builds) -> list:
@@ -1026,12 +1050,16 @@ def main(argv=None) -> int:
     annotated: set[tuple] = set()
 
     sweep = kernel_builds
+    coverage: collections.Counter = collections.Counter()
     if a.cases:
 
         def sweep():
-            return case_builds(a.cases, generation, a.only)
+            coverage.clear()
+            return case_builds(a.cases, generation, a.only, coverage)
 
     builds = _selected_builds(a.only, sweep)
+    if a.cases:
+        print(case_coverage(coverage))
     analyzed = _analyze_builds(builds, a.target, workdir, a.jobs)
 
     for index, ((name, ef), (rep, detail)) in enumerate(zip(builds, analyzed)):
