@@ -72,7 +72,7 @@ def _finfo(dtype):
 
 
 def ulp_size(x, dtype) -> np.ndarray:
-    """The spacing of ``dtype`` at each value of ``x``, in float64.
+    """Return the spacing of ``dtype`` at each value of ``x``, in float64.
 
     The gap between the two representable values around ``|x|`` (below the
     smallest normal, the subnormal spacing). Infinity and NaN give NaN.
@@ -158,7 +158,7 @@ class ErrorStats:
     nan_mismatch: int
 
     def as_dict(self) -> dict:
-        """The fields, with the histogram keyed by string for JSON."""
+        """Return the fields, with the histogram keyed by string for JSON."""
         d = asdict(self)
         d["ulp_histogram"] = {str(k): v for k, v in self.ulp_histogram.items()}
         return d
