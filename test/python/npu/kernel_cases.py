@@ -918,6 +918,23 @@ CASES: list[Case] = [
         )
         for row, tag in ((0, "top-row"), (2, "bottom-row"))
     ],
+    # MobileNet bn6's depthwise layer, with the network's scalars.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=28, input_channels=240, output_channels=240, stride=2),
+        calls=8,
+        scalars=(28, 1, 240, 3, 3, 1, 7, 0),
+    ),
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=28, input_channels=240, output_channels=240, stride=2),
+            calls=8,
+            scalars=(28, 1, 240, 3, 3, row, 7, 0),
+            tag=tag,
+        )
+        for row, tag in ((0, "top-row"), (2, "bottom-row"))
+    ],
     # MobileNet bn1's depthwise layer.
     Case(
         "bn_conv2dk3_dw",
@@ -1006,6 +1023,46 @@ CASES: list[Case] = [
             (9, 16, 0, "top-row"),
             (9, 16, 1, "middle-row"),
             (42, 32, 1, "middle-row"),
+        )
+    ],
+    # MobileNet bn0's depthwise layer: two channel blocks of 112 pixels.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=112, input_channels=16, output_channels=16),
+        calls=8,
+        scalars=(112, 1, 16, 3, 3, 1, 9, 0),
+    ),
+    # Wide stride-1 rows of one to three channel blocks.
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=w, input_channels=c, output_channels=c),
+            calls=8,
+            scalars=(w, c, c, 3, 3, row, 7, 0),
+            tag=tag,
+        )
+        for w, c, row, tag in (
+            (112, 16, 0, "top-row"),
+            (48, 8, 2, "bottom-row"),
+            (40, 24, 1, "middle-row"),
+        )
+    ],
+    # Stride-2 rows of 9 to 32 pixels that are not a whole number of 8-pixel
+    # chunks.
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=w, input_channels=c, output_channels=c, stride=2),
+            calls=8,
+            scalars=(w, c, c, 3, 3, row, 7, 0),
+            tag=tag,
+        )
+        for w, c, row, tag in (
+            (10, 40, 1, "middle-row"),
+            (18, 16, 0, "top-row"),
+            (20, 24, 2, "bottom-row"),
+            (28, 8, 1, "middle-row"),
+            (30, 48, 1, "middle-row"),
         )
     ],
     # One of MobileNet's eight 120-channel weight slices, on the last row so
