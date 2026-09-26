@@ -19,8 +19,10 @@ Scale factors are compile-time Python int constants loaded from
 scale_factors_final.json and passed directly in Worker fn_args — no RTP
 buffers or NpuWriteRTPOp calls are needed.
 
-Usage:
-    python3 aie2_mobilenet_iron.py > mobilenet_iron.mlir
+Usage (from programming_examples/ml):
+    python3 -m mobilenet.aie2_mobilenet_iron               # compile, run, verify
+    python3 -m mobilenet.aie2_mobilenet_iron --emit-mlir   # print the MLIR
+    python3 -m mobilenet.aie2_mobilenet_iron --no-placement --sa-seed 3
 """
 
 import argparse
@@ -30,9 +32,16 @@ import sys
 import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, TaskGroup
-from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
+from aie.iron import In, InOut, ObjectFifo, Out, Program, Runtime, TaskGroup
+from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.hostruntime.argparse import (
+    add_benchmark_args,
+    add_compile_args,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.ml import DataShaper
+from aie.utils.verify import Tolerance, compare
 
 from . import mb_utils
 from .bottleneck.cascade import cascade_bottlenecks
@@ -79,24 +88,20 @@ def make_mobilenet_iron(use_placement: bool = True):
     """
     P = PLACEMENT if use_placement else {}
 
-    @iron.jit(aiecc_flags=["--dynamic-objFifos=false"])
-    def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
+    @iron.jit
+    def mobilenet_iron(inp: In, cascade_wts: In, scratch: InOut, out: Out):
         """Build the full mobilenet IRON design and return the resolved Program.
 
         Runtime args (declared via In/Out so @iron.jit knows the design takes
-        three host tensors): activations + scratch, cascade weights, final FC2
-        output.  The runtime ``sequence(...)`` body's args match.
-
-        aiecc_flags=["--dynamic-objFifos=false"]: the init core's constant-trip
-        loops fully unroll under the global dynamic-objfifo lowering to ~3360
-        kernel calls, producing an ELF that overflows the 64KB AIE tile
-        program memory.  Per-core dynamic_objfifo_lowering attribute is only
-        honoured when the global flag is false.
+        four host tensors): activations, cascade weights, the scratch the
+        post-L1 / FC1 outputs round-trip through, final FC2 output.  The
+        runtime ``sequence(...)`` body's args match.
         """
 
         # Runtime arg types: i32 element view over the underlying byte buffers.
-        #   arg0 (act_in / scratch):  100352 i32 = 401408 bytes
-        #   arg2 (final FC2 output):    640 i32 =   2560 bytes
+        #   arg0 (act_in):            100352 i32 = 401408 bytes
+        #   arg2 (post-L1/FC1 scratch): 1280 i32 =   5120 bytes
+        #   arg3 (final FC2 output):    640 i32 =   2560 bytes
         in_ty = np.ndarray[
             (tensorInW * tensorInH * tensorInC // 4,), np.dtype[np.int32]
         ]
@@ -144,7 +149,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             init_workers + a_workers + b_workers + c_workers + l1_workers + l2_workers
         )
 
-        # Combined cascade weight tensor — test_mobilenet.py concatenates 4 chunks
+        # Combined cascade weight tensor — _run_and_verify concatenates 4 chunks
         # into a single buffer in this exact order:
         #   bn13_L1(76800) | bn13_L3(76800) | bn14_L1(76800) | bn14_L3(76800)
         _BN_L1_SZ = 80 * 960  # 76800 bytes per L1 weight chunk
@@ -153,6 +158,9 @@ def make_mobilenet_iron(use_placement: bool = True):
         _CASCADE_SIZES = [_BN_L1_SZ, _BN_L3_SZ, _BN_L1_SZ, _BN_L3_SZ]
         _cascade_wts_sz_i32 = sum(_CASCADE_SIZES) // 4  # 76800 i32 = 307200 bytes
         cascade_wts_ty = np.ndarray[(_cascade_wts_sz_i32,), np.dtype[np.int32]]
+        _post_l1_out_sz_i32 = post_L1_OutW * post_L1_OutH * post_L2_InC * 2 // 4
+        _scratch_sz_i32 = 2 * _post_l1_out_sz_i32
+        scratch_ty = np.ndarray[(_scratch_sz_i32,), np.dtype[np.int32]]
 
         def _wts_tap(byte_offset, byte_size):
             return TensorAccessPattern(
@@ -174,6 +182,7 @@ def make_mobilenet_iron(use_placement: bool = True):
         def sequence(
             inp,
             cascade_wts,
+            scratch,
             out,
             act_in_prod,
             wts_prods,
@@ -191,24 +200,19 @@ def make_mobilenet_iron(use_placement: bool = True):
             # bn13/14 L1+L3 weight chunks from the combined cascade buffer
             for wts_prod, off, sz in zip(wts_prods, _CASCADE_OFFSETS, _CASCADE_SIZES):
                 wts_prod.fill(cascade_wts, _wts_tap(off, sz), group=tg1)
-            # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
-            # as scratch — input is fully consumed by the time PostL1 emits output.
-            # Offsets/sizes are i32 elements (4 bytes each):
-            #   avgpool / FC1-input scratch: i32 offset 640  (byte 2560)
-            #   FC1-output / FC2-input scratch: i32 offset 1280 (byte 5120)
+            # Round-trip avgpool output through L3 (shim 30/40 hop). Offsets
+            # and sizes are i32 elements (4 bytes each):
+            #   avgpool / FC1-input scratch:    i32 offset 0
+            #   FC1-output / FC2-input scratch: i32 offset 640 (byte 2560)
             #   transfer length: 640 i32 = 2560 B = 1280 ui16
-            _post_l1_out_sz_i32 = (
-                post_L1_OutW * post_L1_OutH * post_L2_InC * 2 // 4
-            )  # 640
-            _inp_sz_i32 = tensorInW * tensorInH * tensorInC // 4  # 100352
             _post_l1_scratch_tap = TensorAccessPattern(
-                (_inp_sz_i32,),
-                offset=_post_l1_out_sz_i32,
+                (_scratch_sz_i32,),
+                offset=0,
                 sizes=[1, 1, 1, _post_l1_out_sz_i32],
                 strides=[0, 0, 0, 1],
             )
             avgpool_cons.drain(
-                inp,
+                scratch,
                 tap=_post_l1_scratch_tap,
                 wait=True,
                 group=tg1,
@@ -222,18 +226,18 @@ def make_mobilenet_iron(use_placement: bool = True):
             # completed.
             tg2 = TaskGroup()
             fc_prod.fill(
-                inp,
+                scratch,
                 tap=_post_l1_scratch_tap,
                 group=tg2,
             )
             _post_fc_out_tap = TensorAccessPattern(
-                (_inp_sz_i32,),
-                offset=_post_l1_out_sz_i32 * 2,  # i32 offset 1280
+                (_scratch_sz_i32,),
+                offset=_post_l1_out_sz_i32,
                 sizes=[1, 1, 1, _post_l1_out_sz_i32],
                 strides=[0, 0, 0, 1],
             )
             fc_cons.drain(
-                inp,
+                scratch,
                 tap=_post_fc_out_tap,
                 wait=True,
                 group=tg2,
@@ -243,7 +247,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             # ---- Group 3: FC2 fill + FC2 final drain to host ----
             tg3 = TaskGroup()
             fc_prod.fill(
-                inp,
+                scratch,
                 tap=_post_fc_out_tap,
                 group=tg3,
             )
@@ -259,6 +263,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             [
                 in_ty,
                 cascade_wts_ty,
+                scratch_ty,
                 out_ty,
                 act_in.prod(depth=1, tile=shim.get("input")),
                 [fifo.prod(tile=s) for fifo, s in zip(wts_fifos, wts_shims)],
@@ -284,30 +289,83 @@ def _make_argparser():
     p.add_argument(
         "--no-placement",
         action="store_true",
-        help="emit unplaced logical tiles (for the SA placer) instead of the "
+        help="emit unplaced logical tiles for the SA placer instead of the "
         "placement.py hints",
     )
+    p.add_argument(
+        "--sa-seed",
+        type=int,
+        default=3,
+        help="SA placer seed, with --no-placement (default: %(default)s)",
+    )
+    add_benchmark_args(p, default_warmup=1, default_iters=5)
     return p
 
 
-def _run_and_verify(opts):
-    sys.exit(
-        "aie2_mobilenet_iron.py has no built-in NPU host harness — "
-        "use test_mobilenet.py for end-to-end NPU runs, or pass "
-        "--xclbin-path/--insts-path to compile only, or --emit-mlir "
-        "to print the resolved MLIR."
+def _loadtxt_i8(name):
+    return np.loadtxt(data_dir + name, delimiter=",", dtype=np.int32).astype(np.int8)
+
+
+def _run_and_verify(design, opts):
+    ds = DataShaper()
+    chw = _loadtxt_i8("before_ifm_mem_fmt_1x1.txt").reshape(
+        tensorInC, tensorInH, tensorInW
     )
+    inp = iron.tensor(
+        ds.reorder_mat(chw, "YCXC8", "CYX").flatten().view(np.int32), dtype=np.int32
+    )
+    wts = np.concatenate(
+        [
+            _loadtxt_i8(f"{bn}_{part}_chain.txt")
+            for bn in ("bn13", "bn14")
+            for part in ("1", "3_put", "3_get")
+        ]
+    )
+    cascade_wts = iron.tensor(wts.view(np.int32), dtype=np.int32)
+    scratch = iron.zeros((post_L2_OutC * 2 // 4 * 2,), dtype=np.int32)
+    out = iron.zeros((post_L2_OutC * 2 // 4,), dtype=np.int32)
+
+    bench = run_iters(
+        design,
+        inp,
+        cascade_wts,
+        scratch,
+        out,
+        warmup=opts.warmup,
+        iters=opts.iters,
+    )
+
+    actual = ds.reorder_mat(
+        out.numpy().view(np.uint16).reshape(1, post_L2_OutC // 8, 1, 8),
+        "CDYX",
+        "YCXD",
+    ).reshape(post_L2_OutC)
+    golden = _loadtxt_i8("golden_output.txt")
+    verdict = compare(
+        actual.astype(np.int32),
+        golden.astype(np.int32),
+        Tolerance.lsb(9, note="should be 1; #3009"),
+    )
+    print_benchmark(bench)
+    print(f"max_difference: {verdict.max_abs_err:g}")
+    if not verdict.ok:
+        sys.exit(f"FAIL: {verdict.detail}")
+    print("PASS!")
 
 
 def main():
     opts = _make_argparser().parse_args()
     design = make_mobilenet_iron(use_placement=not opts.no_placement)
+    if opts.no_placement:
+        design = design.specialize(
+            aiecc_flags=["--placer=sa_placer", f"--sa-seed={opts.sa_seed}"]
+        )
     run_design_cli(
         design,
         opts,
         compile_kwargs={},
         device=lambda o: device_from_args(o, n_cols=None),
-        run_and_verify=_run_and_verify,
+        run_and_verify=lambda o: _run_and_verify(design, o),
     )
 
 
