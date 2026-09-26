@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include "../aie_arch.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 #define REL_WRITE 0
@@ -130,7 +131,15 @@ void conv2dk3_i8_stride2_scalar(
   event1();
 }
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+// AIE2P keeps these short loops rolled and their register arrays on the
+// stack unless told to unroll them; the AIE2 build is left as tuned.
+#if AIE_TUNED_AIE2P
+#define BN3_UNROLL_FULL AIE_LOOP_UNROLL_FULL
+#else
+#define BN3_UNROLL_FULL
+#endif
+
 // Stride-2 3x3, input_width a multiple of 8; see k1_load in
 // bn_conv2dk1_aie2.h for the layout and mmul tiling.
 // Input pixels 2x .. 2x + 7 split with filter_even into the centre tap and
@@ -144,6 +153,7 @@ static inline void k3_chunks(const int8_t *const *lines, const int8_t *wts,
                              const int32_t ic_blocks, const int scale) {
   using MMUL = aie::mmul<4, 8, 8, int8, int8>;
   MMUL acc[N];
+  BN3_UNROLL_FULL
   for (int j = 0; j < N; j++)
     acc[j] = MMUL(aie::zeros<acc32, 32>());
   for (int r = r0; r < r1; r++) {
@@ -159,6 +169,7 @@ static inline void k3_chunks(const int8_t *const *lines, const int8_t *wts,
       const aie::vector<int8, 64> b0 = aie::load_v<64>(w);
       const aie::vector<int8, 64> b1 = aie::load_v<64>(w + 64);
       const aie::vector<int8, 64> b2 = aie::load_v<64>(w + 128);
+      BN3_UNROLL_FULL
       for (int j = 0; j < N; j++) {
         const aie::vector<int8, 64> v = aie::load_v<64>(in + 64 * j);
         const aie::vector<int8, 32> c = aie::filter_even(v, 8);
@@ -172,6 +183,7 @@ static inline void k3_chunks(const int8_t *const *lines, const int8_t *wts,
       w += 576;
     }
   }
+  BN3_UNROLL_FULL
   for (int j = 0; j < N; j++)
     aie::store_v(out + 32 * j, acc[j].template to_vector<uint8>(scale));
 }
@@ -192,6 +204,7 @@ k3_ic1_step(const int8_t *const *lines, const int8_t *const *wr,
     const aie::vector<int8, 64> b0 = aie::load_v<64>(wr[r]);
     const aie::vector<int8, 64> b1 = aie::load_v<64>(wr[r] + 64);
     const aie::vector<int8, 64> b2 = aie::load_v<64>(wr[r] + 128);
+    BN3_UNROLL_FULL
     for (int j = 0; j < N; j++) {
       const aie::vector<int8, 64> v = aie::load_v<64>(lines[r] + 64 * j);
       const aie::vector<int8, 32> c = aie::filter_even(v, 8);
@@ -205,6 +218,7 @@ k3_ic1_step(const int8_t *const *lines, const int8_t *const *wr,
       prev[r] = rt;
     }
   }
+  BN3_UNROLL_FULL
   for (int j = 0; j < N; j++)
     aie::store_v(out + 32 * j, acc[j].template to_vector<uint8>(scale));
 }
@@ -226,6 +240,7 @@ static void k3_ic1_rows(const int8_t *line0, const int8_t *line1,
     uint8_t *out = output + oc * output_width * 8;
     for (int x = 0; x + 2 <= chunks; x += 2) {
       k3_ic1_step<2>(l, wr, prev, out, scale);
+      BN3_UNROLL_FULL
       for (int i = 0; i < 3; i++)
         l[i] += 128;
       out += 64;
@@ -264,11 +279,13 @@ static void k3_stride2_vector(const int8_t *line0, const int8_t *line1,
     uint8_t *out = output + oc * output_width * 8;
     const int8_t *l[3] = {line0, line1, line2};
     k3_chunks<1, true>(l, w, out, r0, r1, row, ic_blocks, scale);
+    BN3_UNROLL_FULL
     for (int i = 0; i < 3; i++)
       l[i] += 64;
     out += 32;
     for (int g = 0; g < groups; g++) {
       k3_chunks<N, false>(l, w, out, r0, r1, row, ic_blocks, scale);
+      BN3_UNROLL_FULL
       for (int i = 0; i < 3; i++)
         l[i] += 64 * N;
       out += 32 * N;
@@ -287,7 +304,7 @@ static void k3_stride2_vector(const int8_t *line0, const int8_t *line1,
   }
   event1();
 }
-#endif // AIE_TUNED_AIE2
+#endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 
 extern "C" {
 
@@ -299,7 +316,7 @@ void conv2dk3_stride2_i8(int8_t *line0, int8_t *line1, int8_t *line2,
                          const int32_t kernel_width,
                          const int32_t kernel_height, const int32_t check,
                          const int scale, const int channel_offset) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (kernel_width == 3 && input_width >= 8 && input_width % 8 == 0 &&
       (((uintptr_t)line0 | (uintptr_t)line1 | (uintptr_t)line2 |
         (uintptr_t)wts | (uintptr_t)output) &
