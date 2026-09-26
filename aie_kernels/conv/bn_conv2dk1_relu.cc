@@ -2263,7 +2263,7 @@ void conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8(
   event0();
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 4 && input_width <= K1_POOL_MAX_WIDTH &&
-      ((uintptr_t)output & 15) == 0) {
+      ((uintptr_t)output & 15) == 0 && k1_wts_aligned(kernels)) {
     k1_xy_pool_vector(input, kernels, output, input_width, input_channels,
                       output_channels, output_channels_padd, scale, y_index,
                       output_split, weight_index);
@@ -2312,7 +2312,7 @@ void conv2dk1_relu_i8_ui8(int8_t *input, int8_t *kernels, uint8_t *output,
                           const int32_t input_channels,
                           const int32_t output_channels, const int scale) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 4) {
+  if (input_width >= 4 && k1_wts_aligned(kernels)) {
     k1_vector(input, kernels, output, input_width, input_channels,
               output_channels, scale);
     return;
