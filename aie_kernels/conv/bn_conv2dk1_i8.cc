@@ -742,14 +742,16 @@ static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
   event0();
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
-#if AIE_TUNED_AIE2P
-  if (input_width >= 8)
-    k1_i8_chunked<8>(input, kernels, output, input_width, input_channels,
-                     output_channels, scale);
-  else
+#if defined(K1_WIDTH)
+  k1_i8_rows<K1_ALIGNED, K1_P>(input, kernels, output, K1_WIDTH, input_channels,
+                               output_channels, scale);
+#elif AIE_TUNED_AIE2P
+  k1_i8_rows<true, 4>(input, kernels, output, input_width, input_channels,
+                      output_channels, scale);
+#else
+  k1_i8_chunked<4>(input, kernels, output, input_width, input_channels,
+                   output_channels, scale);
 #endif
-    k1_i8_chunked<4>(input, kernels, output, input_width, input_channels,
-                     output_channels, scale);
   event1();
 }
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
@@ -954,7 +956,7 @@ void conv2dk1_ui8_i8(uint8_t *input, int8_t *kernels, int8_t *output,
                      const int32_t input_width, const int32_t input_channels,
                      const int32_t output_channels, const int scale) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 4 && k1_wts_aligned(kernels)) {
+  if (input_width >= 4 && k1_fits(input_width, kernels, input, output)) {
     k1_i8_vector(input, kernels, output, input_width, input_channels,
                  output_channels, scale);
     return;

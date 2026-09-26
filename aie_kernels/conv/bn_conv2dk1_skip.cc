@@ -910,7 +910,11 @@ k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
   event0();
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
-#if AIE_TUNED_AIE2P
+#if defined(K1_WIDTH)
+  k1_skip_rows<K1_ALIGNED, K1_P>(input, kernels, skip, output, K1_WIDTH,
+                                 input_channels, output_channels, scale,
+                                 skip_scale);
+#elif AIE_TUNED_AIE2P
   k1_skip_rows<true, 4>(input, kernels, skip, output, input_width,
                         input_channels, output_channels, scale, skip_scale);
 #else

@@ -1699,7 +1699,10 @@ static void k1_vector(const int8_t *input, const int8_t *kernels,
   event0();
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
-#if AIE_TUNED_AIE2P
+#if defined(K1_WIDTH)
+  k1_relu_rows<K1_ALIGNED, K1_P>(input, kernels, output, K1_WIDTH,
+                                 input_channels, output_channels, scale);
+#elif AIE_TUNED_AIE2P
   k1_relu_rows<true>(input, kernels, output, input_width, input_channels,
                      output_channels, scale);
 #else

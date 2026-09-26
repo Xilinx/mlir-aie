@@ -1152,7 +1152,8 @@ def bn_conv2dk1_relu(
         "conv2dk1_relu_i8_ui8",
         _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
-        compile_flags=["-DREGULAR", "-DINT8_ACT"],
+        compile_flags=["-DREGULAR", "-DINT8_ACT"]
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
@@ -1232,7 +1233,8 @@ def bn_conv2dk1_i8(
         "conv2dk1_ui8_i8",
         _kernel_source("conv/bn_conv2dk1_i8.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
-        compile_flags=["-DREGULAR", "-DSCALAR"],
+        compile_flags=["-DREGULAR", "-DSCALAR"]
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
@@ -1287,7 +1289,8 @@ def bn_conv2dk1_skip(
         func_name,
         _kernel_source("conv/bn_conv2dk1_skip.cc"),
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
-        compile_flags=flags,
+        compile_flags=flags
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             alignments=_vector_loads(1),
             trace=Trace.whole_call(),
