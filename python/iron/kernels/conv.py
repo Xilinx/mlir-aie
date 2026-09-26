@@ -1199,6 +1199,7 @@ def bn_conv2dk3(
         "conv2dk3_stride2_i8",
         _kernel_source("conv/bn_conv2dk3.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
+        compile_flags=_conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
