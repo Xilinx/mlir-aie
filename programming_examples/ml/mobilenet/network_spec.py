@@ -5,7 +5,7 @@
 """MobileNet V3 logical network specification — single source of truth.
 
 Pure Python, no AIE imports. Describes the algorithm in one place so a reader
-can grasp the network shape without reading any IRON / placement code:
+can grasp the network shape without reading any IRON code:
 
     init    : 3x3 stride-2 conv     (224,224,8)  -> (112,112,16)
     bn0     : DW + 1x1-skip          (112,112,16) -> (112,112,16)
@@ -17,9 +17,6 @@ can grasp the network shape without reading any IRON / placement code:
 
 Shapes are (W, H, C). The IRON design and the numpy reference both consume
 NETWORK; the per-block test generator builds standalone designs from it.
-
-The PLACEMENT dict (which logical block runs on which physical tile) is
-deliberately kept separate in aie2_mobilenet_iron.py — algorithm vs. mapping.
 """
 
 from dataclasses import dataclass, field
