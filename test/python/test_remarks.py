@@ -351,10 +351,23 @@ def test_recursion_leaves_the_stack_unbounded():
     assert remarks.parse_readobj(doc, "k").stack is None
 
 
+def test_the_stack_row_names_the_kernel_frame_not_the_core(report):
+    # dwconv1d_channels_last on AIE2P: 64 bytes here, 256 for its core,
+    # whose main holds a frame of its own.
+    report.kernel_stack_bytes = 64
+    rows = {r["name"]: r for r in report_rows(report, "k", "")}
+    assert "k/stack_bytes" not in rows
+    row = rows["k/kernel_stack_bytes"]
+    assert row["value"] == 64 and "main's" in row["range"]
+    assert "runtime" not in row["range"]
+
+
 def test_a_stack_row_notes_the_runtime_calls_it_leaves_out(report):
-    report.stack_bytes = 96
+    report.kernel_stack_bytes = 96
     report.libcalls = ["__divsf3"]
-    (row,) = [r for r in report_rows(report, "k", "") if r["name"] == "k/stack_bytes"]
+    (row,) = [
+        r for r in report_rows(report, "k", "") if r["name"] == "k/kernel_stack_bytes"
+    ]
     assert row["value"] == 96 and "runtime" in row["range"]
 
 
@@ -767,7 +780,7 @@ def test_a_real_object_reports_the_stack_its_entry_needs(tmp_path):
     )
     rep, detail = remarks.analyze(ef, "aie2p", tmp_path)
     assert rep is not None, detail
-    assert rep.stack_bytes >= 64 * 4
+    assert rep.kernel_stack_bytes >= 64 * 4
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
