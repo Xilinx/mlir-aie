@@ -27,6 +27,10 @@ constexpr int32_t gelu_tile_elems = 1024;
 // chain:
 //   inner1 = s*x + s_beta*x*x^2      (one MAC instead of mul+add+mul)
 //   result = mac(0.5x, tanh, 0.5x)   (one MAC instead of add+mul+mul)
+//
+// 1 + tanh is 0 from x = -8 down, so 0.5x is clamped there rather than making
+// -inf * 0. tanh(-inf) is already -1, so the clamp stays off its input, where
+// it costs 35 cycles a tile rather than 19.
 static inline aie::vector<bfloat16, 32>
 gelu_tanh_approx(aie::vector<bfloat16, 32> x) {
   const bfloat16 k0_5 = 0.5f;
@@ -40,7 +44,7 @@ gelu_tanh_approx(aie::vector<bfloat16, 32> x) {
   aie::vector<bfloat16, 32> x2 = aie::mul(x, x).to_vector<bfloat16>();
   aie::vector<bfloat16, 32> sbeta_x = aie::mul(x, vsBeta).to_vector<bfloat16>();
   auto sx = aie::mul(x, vs2opi);
-  auto half_x = aie::mul(x, v05);
+  auto half_x = aie::mul(aie::max(x, bfloat16(-8.0f)), v05);
 
   auto inner1 = aie::mac(sx, sbeta_x, x2);
   auto tanh_out = tanh_bf16_vec<32>(inner1.to_vector<float>());

@@ -214,8 +214,9 @@ def _gelu_vtanh_bound(x):
     ``1 - t*t`` carries that through. vtanh adds its own error, and
     ``x/2 * (1 + t)`` scales the sum by ``|x|/2``. One output ulp covers the
     final store, and the smallest normal covers a subnormal flushed to zero.
+    The kernel clamps -inf, so it is bounded as the most negative f32.
     """
-    x = np.asarray(x, np.float64)
+    x = np.maximum(np.asarray(x, np.float64), -np.finfo(np.float32).max)
     s = math.sqrt(2 / math.pi)
     with np.errstate(over="ignore", invalid="ignore"):
         cubic = 0.044715 * x**3
