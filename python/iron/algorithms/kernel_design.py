@@ -379,12 +379,16 @@ def design(
     params=None,
     aiecc_flags=None,
     guard=False,
+    stack_bytes=None,
     **factory_kwargs,
 ):
     """Wrap tile calls; ``params``/``scalars`` supply unbound tensor/scalar Params.
 
     This harness embeds these values for every call; changing them recompiles
     the design. Direct designs can supply different operands on each call.
+
+    ``stack_bytes`` replaces the core stack the contract declares, for a
+    kernel built from sources other than the ones the contract was sized for.
 
     With ``guard=True`` the core writes ``GUARD_BYTES`` of ``0x55`` after each
     output tile in its memory before every call and drains them with the
@@ -417,7 +421,7 @@ def design(
         calls=calls,
         # A key of its own: the contract that sets it can change in a module
         # the cache key never reads, and a stale stack overflows silently.
-        stack_bytes=_stack_bytes(fn),
+        stack_bytes=stack_bytes or _stack_bytes(fn),
         scalars=tuple(scalars),
         params=_encode_params(fn, params or ()),
         guard=guard,
