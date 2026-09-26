@@ -11,6 +11,7 @@ from typing import Callable
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.accuracy import round_to
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -729,10 +730,22 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
 # Reference (numpy) implementations
 # ---------------------------------------------------------------------------
 # The kernels above are LUT approximations.  The functions below compute the
-# corresponding op in float32 numpy so host harnesses can verify the AIE
-# output without each design re-implementing the math.  Output dtype matches
-# the input (so a bf16 input yields a bf16 reference, comparable to the AIE
+# corresponding op in numpy so host harnesses can verify the AIE output
+# without each design re-implementing the math.  Output dtype matches the
+# input (so a bf16 input yields a bf16 reference, comparable to the AIE
 # kernel output via ``aie.utils.verify.{nearly_equal, count_mismatches}``).
+# The transcendental ones work in float64 and round once to the output
+# dtype: float32's exp(-x) overflows from x = -88.7 down, which made
+# sigmoid and silu 0 where the true result is a nonzero bf16.
+
+
+def _f64(x):
+    return np.asarray(x).astype(np.float64)
+
+
+def _rounded(v, like):
+    """Correctly round float64 ``v`` to ``like``'s dtype (a cast rounds twice)."""
+    return round_to(v, np.asarray(like).dtype)
 
 
 def relu_ref(x):
@@ -750,8 +763,9 @@ def silu_ref(x):
     LUT-approximation territory; pair with ``rtol=0.128`` (the default
     in `count_mismatches`) when verifying.
     """
-    xf = x.astype(np.float32)
-    return (xf / (1.0 + np.exp(-xf))).astype(x.dtype)
+    xf = _f64(x)
+    with np.errstate(over="ignore"):
+        return _rounded(xf / (1.0 + np.exp(-xf)), x)
 
 
 def gelu_ref(x):
@@ -874,7 +888,7 @@ def tanh_ref(x):
 
     LUT/native-approximation territory; pair with ``rtol=0.128`` when verifying.
     """
-    return np.tanh(x.astype(np.float32)).astype(x.dtype)
+    return _rounded(np.tanh(_f64(x)), x)
 
 
 def sigmoid_ref(x):
@@ -882,8 +896,8 @@ def sigmoid_ref(x):
 
     LUT-approximation territory; pair with ``rtol=0.128`` when verifying.
     """
-    xf = x.astype(np.float32)
-    return (1.0 / (1.0 + np.exp(-xf))).astype(x.dtype)
+    with np.errstate(over="ignore"):
+        return _rounded(1.0 / (1.0 + np.exp(-_f64(x))), x)
 
 
 def leaky_relu_ref(x, alpha=0.01):
@@ -903,12 +917,13 @@ def swiglu_ref(x, w1, w2):
     ``swiglu.cc`` forms the two products in bf16, then ``silu`` of the second
     through the tanh LUT (``0.5 * (1 + tanh(z / 2))``). The reference rounds
     the two products to bf16 as the kernel does and computes the rest in
-    float32; LUT-approximation territory, pair with ``rtol=0.128``.
+    float64; LUT-approximation territory, pair with ``rtol=0.128``.
     """
-    xf = x.astype(np.float32)
-    xw1 = (xf * w1.astype(np.float32)).astype(bfloat16).astype(np.float32)
-    xw2 = (xf * w2.astype(np.float32)).astype(bfloat16).astype(np.float32)
-    return (xw1 * (xw2 / (1.0 + np.exp(-xw2)))).astype(x.dtype)
+    xf = _f64(x)
+    xw1 = _f64(round_to(xf * _f64(w1), bfloat16))
+    xw2 = _f64(round_to(xf * _f64(w2), bfloat16))
+    with np.errstate(over="ignore", invalid="ignore"):
+        return _rounded(xw1 * (xw2 / (1.0 + np.exp(-xw2))), x)
 
 
 def bf16_exp_ref(x):
