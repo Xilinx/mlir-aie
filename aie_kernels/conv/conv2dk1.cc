@@ -193,6 +193,64 @@ conv2dk1_vector(ActT *input, int8_t *kernels, uint8_t *__restrict output,
 
   event1();
 }
+#elif AIE_TUNED_AIE2P
+//*****************************************************************************
+// conv2d 1x1 - vector
+// act: int8 or uint8, wts: int8, out: uint8
+//
+// input_width must be a multiple of 32: each block of 32 pixels keeps 4
+// accumulators of 8 pixels, one native 8x8x8 mac each.
+//*****************************************************************************
+template <typename ActT>
+static void conv2dk1_vector(ActT *__restrict input, int8_t *__restrict kernels,
+                            uint8_t *__restrict output,
+                            const int32_t runtime_input_width,
+                            const int32_t runtime_input_channels,
+                            const int32_t runtime_output_channels,
+                            const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  event0();
+
+  using MMUL8x8x8 = aie::mmul<8, 8, 8, ActT, int8>;
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+
+  constexpr int NUM_ACC = 4;
+  const int iw = input_width;
+  const int iw_32 = input_width / 32;
+
+  uint8_t *__restrict out_ptr = output;
+
+  for (int oc = 0; oc < (output_channels / 8); oc++) {
+    for (int x = 0; x < iw_32; x++) {
+      MMUL8x8x8 acc[NUM_ACC];
+      AIE_LOOP_UNROLL_FULL
+      for (int i = 0; i < NUM_ACC; i++)
+        acc[i] = aie::zeros<acc32, 64>();
+      const ActT *__restrict in = input + x * 256;
+      const int8_t *__restrict w = kernels;
+      AIE_LOOP_UNROLL(8)
+      for (int ic = 0; ic < (input_channels / 8); ic++) {
+        aie::vector<int8, 64> b = aie::load_v<64>(w);
+        w += 64;
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          acc[x8].mac(aie::load_v<64>(in + x8 * 64), b);
+        in += iw * 8;
+      }
+      AIE_LOOP_UNROLL_FULL
+      for (int x8 = 0; x8 < NUM_ACC; x8++) {
+        aie::store_v(out_ptr, acc[x8].template to_vector<uint8>(scale));
+        out_ptr += 64;
+      }
+    }
+    kernels += (input_channels / 8) * 64; // next oc/8 weights
+  }
+
+  event1();
+}
 #else
 #ifdef INT8_ACT
 
@@ -482,7 +540,7 @@ void conv2dk1_ui8(uint8_t *input, int8_t *kernels, uint8_t *output,
 
 #else // Vector
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 #ifdef INT8_ACT
 
 void conv2dk1_i8(int8_t *input, int8_t *kernels, uint8_t *output,
