@@ -41,7 +41,17 @@ from types import SimpleNamespace
 import aie.iron as iron
 import numpy as np
 import pytest
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import (
+    CompileTime,
+    In,
+    InOut,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+    kernels,
+)
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.verify import compare
 from cases import error_report, inputs_for
@@ -383,93 +393,157 @@ def test_setup_reaches_the_core():
 # ---------------------------------------------------------------------------
 # cascade_mm: a two-tile design. The PUT half streams A * B onto the cascade
 # and the GET half adds its own product and the cascade term into C, so the
-# generic one-Worker builder cannot run it; this test builds the pair by hand
-# and judges it against the two products.
+# generic one-Worker builder cannot run it; this test builds the chain by hand
+# (PUT, then PUT_GET tiles, then GET) and judges it against the products.
 # ---------------------------------------------------------------------------
 
-_CASCADE_DIM = 16
+_CASCADE_DTYPES = {
+    "i16_i16": (np.int16, np.int16),
+    "i16_i32": (np.int16, np.int32),
+    "bf16_bf16": (bfloat16, bfloat16),
+    "bf16_f32": (bfloat16, np.float32),
+}
+# Each tile runs its kernel twice on the same operands, so the GET half's
+# second call must add into the C its first call wrote.
+_CASCADE_CALLS = 2
 
 
 @iron.jit
-def _cascade_design(a_put: In, b_put: In, a_get: In, b_get: In, c_out: Out):
+def _cascade_design(
+    *tensors: InOut,
+    combo: CompileTime[str],
+    dim: CompileTime[int],
+    tiles: CompileTime[int],
+):
     from aie.iron import CascadeFlow
+    from aie.iron.buffer import Buffer
     from aie.iron.device import Tile
 
-    m = k = n = _CASCADE_DIM
-    get = kernels.cascade_mm(dim_m=m, dim_k=k, dim_n=n)
-    put = kernels.cascade_mm_put(dim_m=m, dim_k=k, dim_n=n)
+    in_dt, out_dt = _CASCADE_DTYPES[combo]
+    kw = dict(dim_m=dim, dim_k=dim, dim_n=dim, input_dtype=in_dt, output_dtype=out_dt)
+    get = kernels.cascade_mm(**kw)
+    put = kernels.cascade_mm_put(**kw)
     zero = get.contract.initializers[0][1](get)
     a_ty, b_ty, c_ty = get.arg_types()
-    fifos = {
-        name: ObjectFifo(ty, name=name)
-        for name, ty in (("ap", a_ty), ("bp", b_ty), ("ag", a_ty), ("bg", b_ty))
-    }
-    of_c = ObjectFifo(c_ty, name="c")
-    unused = np.zeros(m * n, dtype=np.dtype(kd.shape_dtype(c_ty)[1]))
+    # Single-buffered, so 64x64 with a 32-bit C fits in a core tile's memory.
+    of_a = [ObjectFifo(a_ty, name=f"a{i}", depth=1) for i in range(tiles)]
+    of_b = [ObjectFifo(b_ty, name=f"b{i}", depth=1) for i in range(tiles)]
+    of_c = ObjectFifo(c_ty, name="c", depth=1)
+    unused = np.zeros(dim * dim, dtype=np.dtype(out_dt))
 
     def put_core(of_a, of_b, scratch, k_put):
         a, b = of_a.acquire(1), of_b.acquire(1)
-        k_put(a, b, scratch)
+        for _ in range(_CASCADE_CALLS):
+            k_put(a, b, scratch)
         of_a.release(1)
         of_b.release(1)
 
     def get_core(of_a, of_b, of_c, k_zero, k_get):
         a, b, c = of_a.acquire(1), of_b.acquire(1), of_c.acquire(1)
         k_zero(c)
-        k_get(a, b, c)
+        for _ in range(_CASCADE_CALLS):
+            k_get(a, b, c)
         of_a.release(1)
         of_b.release(1)
         of_c.release(1)
 
-    from aie.iron.buffer import Buffer
+    # The cascade runs north to south: tile i sits above tile i + 1.
+    workers = []
+    for i in range(tiles):
+        ins = [of_a[i].cons(), of_b[i].cons()]
+        if i == tiles - 1:
+            fn, args = get_core, ins + [of_c.prod(), zero, get]
+        else:
+            scratch = Buffer(c_ty, name=f"scratch{i}", initial_value=unused)
+            fn, args = put_core, ins + [scratch, put if i == 0 else get.put_get]
+        workers.append(Worker(fn, args, tile=Tile(0, 1 + tiles - i)))
+    for up, down in zip(workers, workers[1:]):
+        CascadeFlow(up, down)
 
-    scratch = Buffer(c_ty, name="scratch", initial_value=unused)
-    # The cascade runs north to south: the PUT tile sits above the GET tile.
-    w_put = Worker(
-        put_core,
-        [fifos["ap"].cons(), fifos["bp"].cons(), scratch, put],
-        tile=Tile(0, 3),
-    )
-    w_get = Worker(
-        get_core,
-        [fifos["ag"].cons(), fifos["bg"].cons(), of_c.prod(), zero, get],
-        tile=Tile(0, 2),
-    )
-    CascadeFlow(w_put, w_get)
-
-    def seq(ap, bp, ag, bg, c, h_ap, h_bp, h_ag, h_bg, h_c):
-        for handle, host in ((h_ap, ap), (h_bp, bp), (h_ag, ag), (h_bg, bg)):
+    def seq(*args):
+        hosts, handles = args[: 2 * tiles + 1], args[2 * tiles + 1 :]
+        for handle, host in zip(handles[:-1], hosts[:-1]):
             handle.fill(host)
-        h_c.drain(c, wait=True)
+        handles[-1].drain(hosts[-1], wait=True)
 
-    rt = Runtime(
-        seq,
-        [a_ty, b_ty, a_ty, b_ty, c_ty]
-        + [fifos[name].prod() for name in ("ap", "bp", "ag", "bg")]
-        + [of_c.cons()],
+    producers = [f.prod() for pair in zip(of_a, of_b) for f in pair]
+    rt = Runtime(seq, [a_ty, b_ty] * tiles + [c_ty] + producers + [of_c.cons()])
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+def _cascade_cases():
+    for combo in _CASCADE_DTYPES:
+        for dim in (16, 32, 64):
+            for tiles in (2, 3):
+                smoke = (combo, dim, tiles) in (
+                    ("i16_i16", 16, 2),
+                    ("bf16_f32", 32, 3),
+                )
+                marks = [] if smoke else [pytest.mark.extensive]
+                if combo.startswith("bf16"):
+                    # AIE2's scalar kernel truncates the partial sum to an int.
+                    marks.append(pytest.mark.supported_devices("npu2"))
+                yield pytest.param(
+                    combo, dim, tiles, False, marks=marks, id=f"{combo}-{dim}-{tiles}"
+                )
+    for combo in ("i16_i16", "i16_i32"):
+        # 24 does not tile, so AIE2P falls back to the scalar kernel.
+        yield pytest.param(
+            combo, 24, 3, False, marks=[pytest.mark.extensive], id=f"{combo}-24-3"
+        )
+        yield pytest.param(
+            combo,
+            64,
+            3,
+            True,
+            marks=[pytest.mark.extensive],
+            id=f"{combo}-64-3-full_range",
+        )
+
+
+@pytest.mark.parametrize("combo,dim,tiles,full_range", list(_cascade_cases()))
+def test_cascade_mm_chain(combo, dim, tiles, full_range):
+    in_dt, out_dt = _CASCADE_DTYPES[combo]
+    get = kernels.cascade_mm(
+        dim_m=dim, dim_k=dim, dim_n=dim, input_dtype=in_dt, output_dtype=out_dt
     )
-    return Program(
-        iron.get_current_device(), rt, workers=[w_put, w_get]
-    ).resolve_program()
-
-
-def test_cascade_mm_pair():
-    m = k = n = _CASCADE_DIM
-    get = kernels.cascade_mm(dim_m=m, dim_k=k, dim_n=n)
     rng = np.random.default_rng(3)
-    limit = get.input_limit(np.int16)
-    a1, b1, a2, b2 = (
-        rng.integers(-limit, limit, size=(m * k,)).astype(np.int16) for _ in range(4)
+    if in_dt is bfloat16:
+        xs = [rng.standard_normal(dim * dim).astype(bfloat16) for _ in range(2 * tiles)]
+    else:
+        # Full range overflows the output type: C wraps like the scalar kernel.
+        limit = 32767 if full_range else get.input_limit(np.int16)
+        xs = [
+            rng.integers(-limit, limit, size=dim * dim).astype(np.int16)
+            for _ in range(2 * tiles)
+        ]
+    tensors = [iron.tensor(x, dtype=in_dt, device="npu") for x in xs]
+    c = iron.tensor(np.zeros(dim * dim, out_dt), dtype=out_dt, device="npu")
+    _cascade_design(*tensors, c, combo=combo, dim=dim, tiles=tiles)
+    got = c.numpy().copy()
+
+    wide = np.float64 if in_dt is bfloat16 else np.int64
+    mats = [x.astype(wide).reshape(dim, dim) for x in xs]
+    exact = _CASCADE_CALLS * sum(a @ b for a, b in zip(mats[0::2], mats[1::2]))
+    if in_dt is not bfloat16:
+        expected = exact.astype(out_dt).reshape(-1)
+        bad = int((got != expected).sum())
+        assert bad == 0, f"{bad} of {dim * dim} outputs differ"
+        return
+    # Every bf16 product is exact in fp32, so an fp32 sum of n terms, in any
+    # order, is within n * 2**-24 * sum|a*b| of the exact result. A bf16 C is
+    # rounded once a call, half a bf16 ulp each: 2**-8 of the final value
+    # covers both roundings of two calls.
+    terms = sum(abs(a) @ abs(b) for a, b in zip(mats[0::2], mats[1::2]))
+    n = _CASCADE_CALLS * (tiles * dim + 1)
+    bound = n * 2.0**-24 * _CASCADE_CALLS * terms
+    if out_dt is bfloat16:
+        bound = bound + 2.0**-8 * np.abs(exact)
+    err = np.abs(got.astype(np.float64).reshape(dim, dim) - exact)
+    assert (err <= bound).all(), (
+        f"{int((err > bound).sum())} of {dim * dim} outputs outside the fp32 "
+        f"summation bound; max |err| {err.max():.4g}"
     )
-    tensors = [iron.tensor(x, dtype=np.int16, device="npu") for x in (a1, b1, a2, b2)]
-    c = iron.tensor(np.zeros(m * n, np.int16), dtype=np.int16, device="npu")
-    _cascade_design(*tensors, c)
-    expected = (
-        a1.astype(np.int64).reshape(m, k) @ b1.astype(np.int64).reshape(k, n)
-        + a2.astype(np.int64).reshape(m, k) @ b2.astype(np.int64).reshape(k, n)
-    ).astype(np.int16)
-    verdict = get.judge(c.numpy().copy(), expected.reshape(1, -1), calls=1)
-    assert verdict, verdict.detail
 
 
 _LUT_PAIR_SRC = """#include <aie_api/aie.hpp>
