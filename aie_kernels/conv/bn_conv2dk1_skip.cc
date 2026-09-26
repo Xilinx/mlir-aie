@@ -804,7 +804,7 @@ static void conv2dk1_skip_ui8_i8_i8_scalar(
 
 #endif
 #endif //
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 #include "bn_conv2dk1_aie2.h"
 
 // See k1_chunks in bn_conv2dk1_aie2.h; skip is offset like in and out. The
@@ -819,6 +819,7 @@ k1_skip_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,
   using MMUL = aie::mmul<4, 8, 8, uint8, int8>;
   MMUL acc[N];
   aie::vector<int8, 64> b = aie::load_v<64>(wts);
+  K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++)
     acc[j].mul(k1_load<Aligned>(in + (j == N - 1 ? last_off : 32 * j)), b);
 #pragma clang loop min_iteration_count(1)
@@ -826,10 +827,12 @@ k1_skip_chunks(const uint8_t *__restrict in, const int8_t *__restrict wts,
     in += row;
     wts += 64;
     b = aie::load_v<64>(wts);
+    K1_UNROLL_CHUNKS
     for (int j = 0; j < N; j++)
       acc[j].mac(k1_load<Aligned>(in + (j == N - 1 ? last_off : 32 * j)), b);
   }
   const aie::vector<int8, 32> ones = aie::broadcast<int8, 32>(1);
+  K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++) {
     const int32_t o = j == N - 1 ? last_off : 32 * j;
     aie::accum<acc32, 32> t = aie::mul(k1_load<Aligned>(skip + o), ones);
@@ -898,7 +901,7 @@ k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
                         input_channels, output_channels, scale, skip_scale);
   event1();
 }
-#endif // AIE_TUNED_AIE2
+#endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 
 //*****************************************************************************
 // conv2d 1x1 skip wrappers
@@ -1015,7 +1018,7 @@ void conv2dk1_skip_ui8_ui8_i8(uint8_t *input0, int8_t *kernels, int8_t *output,
                               const int32_t input_channels,
                               const int32_t output_channels, const int scale,
                               const int skip_scale) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 4 && skip_scale > 0) {
     k1_skip_vector(input0, kernels, output, skip, input_width, input_channels,
                    output_channels, scale, skip_scale);
@@ -1034,7 +1037,7 @@ void conv2dk1_skip_ui8_i8_i8(uint8_t *input0, int8_t *kernels, int8_t *output,
                              const int32_t input_channels,
                              const int32_t output_channels, const int scale,
                              const int skip_scale) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 4 && skip_scale > 0) {
     k1_skip_vector(input0, kernels, output, skip, input_width, input_channels,
                    output_channels, scale, skip_scale);
