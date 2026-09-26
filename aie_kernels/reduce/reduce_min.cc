@@ -25,7 +25,7 @@ void _reduce_min_vector(int32_t *restrict in, int32_t *restrict out,
   const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_min = massive;
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   // Walked pointer, rolled loop: see reduce_add.cc.
   const v16int32 *p = (const v16int32 *)in;
   AIE_LOOP_NO_UNROLL
