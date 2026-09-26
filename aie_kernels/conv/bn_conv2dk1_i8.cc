@@ -711,14 +711,28 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 #include "bn_conv2dk1_aie2.h"
 
-template <bool Aligned>
+template <bool Aligned, int P>
 static void k1_i8_rows(const uint8_t *input, const int8_t *kernels,
                        int8_t *output, const int32_t input_width,
                        const int32_t input_channels,
                        const int32_t output_channels, const int scale) {
-  k1_rows<Aligned>(
+  k1_rows<Aligned, P>(
       input, kernels, output, input_width, input_channels, output_channels,
       [=](auto &acc) { return acc.template to_vector<int8>(scale); });
+}
+
+template <int P>
+static void k1_i8_chunked(const uint8_t *input, const int8_t *kernels,
+                          int8_t *output, const int32_t input_width,
+                          const int32_t input_channels,
+                          const int32_t output_channels, const int scale) {
+  if (input_width % P == 0 &&
+      (((uintptr_t)input | (uintptr_t)output) & (8 * P - 1)) == 0)
+    k1_i8_rows<true, P>(input, kernels, output, input_width, input_channels,
+                        output_channels, scale);
+  else
+    k1_i8_rows<false, P>(input, kernels, output, input_width, input_channels,
+                         output_channels, scale);
 }
 
 static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
@@ -728,13 +742,14 @@ static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
   event0();
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
-  if (input_width % 4 == 0 &&
-      (((uintptr_t)input | (uintptr_t)output) & 31) == 0)
-    k1_i8_rows<true>(input, kernels, output, input_width, input_channels,
+#if AIE_TUNED_AIE2P
+  if (input_width >= 8)
+    k1_i8_chunked<8>(input, kernels, output, input_width, input_channels,
                      output_channels, scale);
   else
-    k1_i8_rows<false>(input, kernels, output, input_width, input_channels,
-                      output_channels, scale);
+#endif
+    k1_i8_chunked<4>(input, kernels, output, input_width, input_channels,
+                     output_channels, scale);
   event1();
 }
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
