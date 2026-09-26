@@ -561,6 +561,8 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             lut_tolerance=_EXP_LUT_TOLERANCE,
             use_lut=True,
             tolerance=_EXP_POLY_TOLERANCE,
+            # The polynomial sets conv_even itself.
+            setup=conv_even if _tuned_arch() == "aie2" else None,
             stack_bytes=(
                 None if _tuned_arch() == "aie2" else _BF16_EXP_POLY_STACK_BYTES
             ),
@@ -611,7 +613,8 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            setup=conv_even,
+            # The aie2p branch sets conv_even itself.
+            setup=None if _tuned_arch() == "aie2p" else conv_even,
             roles=(In, Out, Param),
             parameter_bindings=((2, tile_size),),
             reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
