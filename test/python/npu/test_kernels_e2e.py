@@ -284,26 +284,33 @@ def _lut_on_npu2(*args):
     )
 
 
-@pytest.mark.supported_devices("npu1")
 @pytest.mark.parametrize(
-    "factory,limit",
+    "factory,limit,kwargs",
     [
-        ("tanh", np.sign),
-        ("sigmoid", _step),
-        ("silu", _relu),
-        ("silu_sized", _relu),
-        ("gelu", _relu),
-        ("gelu_sized", _relu),
+        ("tanh", np.sign, {}),
+        _lut_on_npu2("tanh", np.sign),
+        ("sigmoid", _step, {}),
+        _lut_on_npu2("sigmoid", _step),
+        ("silu", _relu, {}),
+        _lut_on_npu2("silu", _relu),
+        ("silu_sized", _relu, {}),
+        ("gelu", _relu, {}),
+        ("gelu_sized", _relu, {}),
     ],
+    ids=lambda v: (
+        ("lut" if v.get("use_lut") else "default") if isinstance(v, dict) else None
+    ),
 )
-def test_activation_saturates_for_huge_inputs(factory, limit):
+def test_activation_saturates_for_huge_inputs(factory, limit, kwargs):
     """Each activation takes its limit for large and infinite inputs."""
-    fn = getattr(kernels, factory)()
+    fn = getattr(kernels, factory)(**kwargs)
     tile = _huge_tile(bfloat16)
-    design = kd.design(getattr(kernels, factory), calls=1)
+    design = kd.design(getattr(kernels, factory), calls=1, **kwargs)
     got = _run(design, fn, [tile], 1024, np.dtype(bfloat16))
     edge = tile.ravel()[: len(_HUGE)].astype(np.float32)
     np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), limit(edge))
+    verdict = fn.judge(got, fn.expected([tile]), calls=1, inputs=[tile])
+    assert verdict, verdict.detail
 
 
 @pytest.mark.parametrize("kwargs", [{}, _lut_on_npu2()], ids=["default", "lut"])
