@@ -580,11 +580,13 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
     forEachInProgram<UseLockOp>(p,
                                 [&](UseLockOp use) { noteLock(use, agent); });
   }
-  for (auto &[lock, waiting] : acquirers) {
-    auto it = releasers.find(lock);
-    if (it == releasers.end())
+  // Document order, not pointer order: edge order picks the chain a
+  // diagnostic reports.
+  for (auto lock : device.getOps<LockOp>()) {
+    auto waiting = acquirers.find(lock), it = releasers.find(lock);
+    if (waiting == acquirers.end() || it == releasers.end())
       continue;
-    for (unsigned p : waiting)
+    for (unsigned p : waiting->second)
       for (unsigned q : it->second)
         if (p != q)
           addEdge(p, q, EdgeKind::Lock);
