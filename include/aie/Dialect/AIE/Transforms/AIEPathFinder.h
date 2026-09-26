@@ -12,7 +12,10 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
+#include "llvm/ADT/BitVector.h"
+
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <list>
 #include <optional>
@@ -26,6 +29,12 @@ namespace xilinx::AIE {
 #define DEMAND_BASE 1.0
 #define MAX_CIRCUIT_STREAM_CAPACITY 1
 #define MAX_PACKET_STREAM_CAPACITY 32
+#define ROUTING_CHECK_PENALTY 5
+#define CONFLICT_SHARE_PENALTY 4
+// A multicast's next destination may branch off any hop its tree already
+// takes, starting at this fraction of that hop's cost from the source: enough
+// of a discount to share hops, not so much that a costly trunk never moves.
+#define TREE_SEED_FACTOR 0.9
 
 enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
 
@@ -53,8 +62,16 @@ using SwitchboxConnect = struct SwitchboxConnect {
   // packet ids currently routed through each channel (and its crossbar
   // row/column); a channel may be shared only among distinct ids.
   std::vector<std::vector<std::set<int>>> packetIds;
+  // dst ports a packet flow branches to from one src port share an arbiter;
+  // each dst port links to such a unit, and a unit's root lists the packet
+  // flows (indices into the router's flows) leaving by any of its ports
+  std::vector<int> dstUnit;
+  std::vector<llvm::SmallVector<int, 2>> unitPacketFlows;
   // flags indicating priority routings
   std::vector<std::vector<bool>> isPriority;
+  // source ports the design already gives packet rules, which circuit streams
+  // cannot enter
+  std::vector<bool> packetOnlySrc;
 
   // resize the matrices to the size of srcPorts and dstPorts
   void resize() {
@@ -71,6 +88,40 @@ using SwitchboxConnect = struct SwitchboxConnect {
                      std::vector<std::set<int>>(dstPorts.size()));
     isPriority.resize(srcPorts.size(),
                       std::vector<bool>(dstPorts.size(), false));
+    packetOnlySrc.resize(srcPorts.size(), false);
+    unitPacketFlows.resize(dstPorts.size());
+    resetUnits();
+  }
+
+  void resetUnits() {
+    dstUnit.resize(dstPorts.size());
+    for (size_t j = 0; j < dstPorts.size(); j++)
+      dstUnit[j] = j;
+    for (auto &flows : unitPacketFlows)
+      flows.clear();
+  }
+
+  int unitOf(int j) {
+    while (dstUnit[j] != j)
+      j = dstUnit[j] = dstUnit[dstUnit[j]];
+    return j;
+  }
+
+  void addToUnit(int j, int flow) {
+    auto &flows = unitPacketFlows[unitOf(j)];
+    if (!llvm::is_contained(flows, flow))
+      flows.push_back(flow);
+  }
+
+  void joinUnits(int j, int k) {
+    j = unitOf(j);
+    k = unitOf(k);
+    if (j == k)
+      return;
+    dstUnit[k] = j;
+    for (int flow : unitPacketFlows[k])
+      addToUnit(j, flow);
+    unitPacketFlows[k].clear();
   }
 
   // update demand at the beginning of each dijkstraShortestPaths iteration
@@ -187,6 +238,16 @@ using SwitchSetting = struct SwitchSetting {
 
 using SwitchSettings = std::map<TileID, SwitchSetting>;
 
+/// Whether packet flows from the two sources can deadlock if they share an
+/// arbiter.
+using PacketConflict =
+    std::function<bool(const PathEndPoint &, const PathEndPoint &)>;
+
+/// Checks a routing that fits the fabric. Returns the switchbox connections
+/// that make it unusable, empty when it is accepted.
+using RoutingCheck = std::function<std::vector<std::pair<TileID, Connect>>(
+    const std::map<PathEndPoint, SwitchSettings> &)>;
+
 class Router {
 public:
   Router() = default;
@@ -202,6 +263,14 @@ public:
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
+  /// Routings the check rejects count as illegal; the connections it names
+  /// are penalized like overused channels so later iterations avoid them.
+  virtual void setRoutingCheck(RoutingCheck check) {}
+  /// Packet flows that conflict are steered off each other's master ports,
+  /// where they would have to share an arbiter.
+  virtual void setPacketConflict(PacketConflict conflict) {}
+  /// Why the last findPaths found no routing, empty if it cannot say.
+  virtual std::string getFailureReason() const { return {}; }
 };
 
 class Pathfinder : public Router {
@@ -215,6 +284,13 @@ public:
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
+  void setRoutingCheck(RoutingCheck check) override {
+    routingCheck = std::move(check);
+  }
+  void setPacketConflict(PacketConflict conflict) override {
+    packetConflict = std::move(conflict);
+  }
+  std::string getFailureReason() const override { return failureReason; }
 
 private:
   // A directed edge in the dense routing graph: from some node to node `dst`,
@@ -248,11 +324,17 @@ private:
   // preserve identical routing output.
   void buildRoutingGraph();
 
-  // Dijkstra over the dense graph from dense node `srcId`, whose port is the
-  // stream's entry into its switchbox and so starts on the In side. Fills
+  // Dijkstra over the dense graph from the states in `seeds`, each starting at
+  // its cost in `seedCosts`. Fills
   // `preds` (predecessor state id, or -1) and `predEdge` (the edge taken to
-  // reach each state). Reuses the scratch buffers below.
-  void dijkstraShortestPaths(int srcId);
+  // reach each state). Reuses the scratch buffers below. Master ports on an
+  // arbiter with flows in `avoid` cost CONFLICT_SHARE_PENALTY more, and from a
+  // state in `branchAvoid`, as much again for the flows it maps to. A channel
+  // a flow with the same `packetId` already shares costs as a full one.
+  void dijkstraShortestPaths(
+      llvm::ArrayRef<int> seeds, llvm::ArrayRef<double> seedCosts,
+      std::optional<int> packetId, const llvm::BitVector *avoid = nullptr,
+      const llvm::DenseMap<int, llvm::BitVector> *branchAvoid = nullptr);
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -278,6 +360,10 @@ private:
   std::vector<Edge> predEdge;
 
   int getOrAddNodeId(const PathEndPoint &pep);
+
+  RoutingCheck routingCheck;
+  PacketConflict packetConflict;
+  std::string failureReason;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
@@ -290,6 +376,9 @@ public:
   std::shared_ptr<Router> pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
+  /// Why the last routing the routing check rejected was unusable, reported
+  /// if no usable routing is found.
+  std::string routingFailureReason;
 
   llvm::DenseMap<TileID, TileOp> coordToTile;
   llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;

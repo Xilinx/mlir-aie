@@ -10,7 +10,7 @@
 // must fail the routing cleanly rather than indexing with a -1 predecessor.
 
 // RUN: not aie-opt --aie-create-pathfinder-flows %s 2>&1 | FileCheck %s
-// CHECK: error: Unable to find a legal routing
+// CHECK: error: Unable to find a legal routing: no path leads from (0, 0) DMA:0 to (0, 1) Core:0
 
 module {
   aie.device(npu1) {

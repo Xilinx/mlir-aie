@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEStreamDependencyAnalysis.h"
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -96,6 +97,13 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// that lower `aie.objectfifo`.
 void registerAIEObjectFifoPipeline();
 
+/// Where a candidate routing would make packet flows that can deadlock share
+/// an arbiter, and why they can deadlock.
+struct RoutingHazards {
+  std::vector<std::pair<TileID, Connect>> connections;
+  std::string reason;
+};
+
 /// \brief Routes flows in a device by lowering them to stream-switch
 /// configurations.
 ///
@@ -113,8 +121,12 @@ struct AIEPathfinderPass
 
   void runOnOperation() override;
   mlir::LogicalResult runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
-  mlir::LogicalResult runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder,
-                                      DynamicTileAnalysis &analyzer);
+  /// Lowers the packet flows along `solution`. With `hazards` set, only plans
+  /// the arbiters, leaving the IR alone, and collects where that fails.
+  mlir::LogicalResult runOnPacketFlow(
+      DeviceOp d, mlir::OpBuilder &builder, DynamicTileAnalysis &analyzer,
+      const std::map<PathEndPoint, SwitchSettings> &solution,
+      StreamConflicts &conflicts, RoutingHazards *hazards = nullptr);
 
   typedef std::pair<TileID, Port> PhysPort;
 

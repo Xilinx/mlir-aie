@@ -5,18 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
 
-// Direct coupling is symmetric, but the order the allocator meets it in is
-// not: an emitted flow's slave port is DMA, which sorts ahead of the North an
-// inbound flow arrives on. arbiter_deadlock_exhausted.mlir covers that order;
-// here it is reversed, since control flow 9 is placed before everything.
-//
-// Flows 0..4 fill msel 0 on arbiters 0..4, leaving flow 5 with nothing free:
-// arbiter 5 holds flow 9, which feeds the very DMA flow 5 drains. So flow 5
-// wraps onto arbiter 0, a StallShape hazard (flow 0 can stall, flow 5 has yet
-// to leave the switchbox) -- preferred over the demonstrated cycle, and named.
+// Control flow 9 is placed before everything else and consumed by the
+// memtile DMA that flows 0..5 leave. Nothing programs that DMA, so each MM2S
+// is assumed to wait on flow 9's S2MM, and flow 9 must not share an arbiter
+// with any of them. Flows 0..5 end at separate shims and can share: seven
+// flows fit on six arbiters.
 
 module {
   aie.device(npu2) {
@@ -47,9 +43,10 @@ module {
   }
 }
 
-// WARN: warning: at tile (0, 1), packet flow 5 shares arbiter 0 with packet flow 0, which it can deadlock against
+// NOWARN-NOT: warning
 
-// Flow 9 keeps arbiter 5 to itself; flow 5 doubles up on arbiter 0.
+// Flow 9 keeps arbiter 5 to itself; flow 5 doubles up on arbiter 0 with
+// flow 0.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[FILLER:.*]] = aie.amsel<0> (0)

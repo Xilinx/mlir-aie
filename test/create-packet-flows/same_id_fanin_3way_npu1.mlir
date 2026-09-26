@@ -13,7 +13,7 @@
 // Three packet flows share packet id 0 AND share the destination
 // (shim_noc_tile_0_0 DMA:0). Because id-gated channel sharing (PR #3472) forbids
 // two same-id flows from sharing a link, the router must find three disjoint
-// physical paths -- here it detours two of them through column 1 rather than
+// physical paths -- here three parallel channels down column 0 rather than
 // merging them early.
 //
 // The property under test is that no amsel drives more than one master port.
@@ -30,35 +30,27 @@
 // CHECK-LABEL: aie.device(npu1)
 
 // Every masterset below is fed by its own amsel, never a shared one. tile_0_2
-// carries two streams -- its own DMA:0 and tile_0_3's passing through -- so it
-// has two amsels and two master ports, one each.
-// CHECK:      %[[tile_0_2:.*]] = aie.tile(0, 2)
-// CHECK:      aie.switchbox(%[[tile_0_2]]) {
+// carries three streams -- its own DMA:0 and the two from above passing
+// through -- so it has three amsels and three master ports, one each.
+// CHECK-LABEL: aie.switchbox(%tile_0_2) {
 // CHECK-NEXT:   %[[a0:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:   %[[a1:.*]] = aie.amsel<1> (0)
-// CHECK-NEXT:   aie.masterset(South : 1, %[[a1]])
-// CHECK-NEXT:   aie.masterset(South : 3, %[[a0]])
-// CHECK-NEXT:   aie.packet_rules(North : 3) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[a1]])
-// CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[a0]])
-// CHECK-NEXT:   }
-// CHECK-NEXT: }
+// CHECK-NEXT:   %[[a2:.*]] = aie.amsel<2> (0)
+// CHECK-DAG:    aie.masterset(South : {{[0-9]+}}, %[[a0]])
+// CHECK-DAG:    aie.masterset(South : {{[0-9]+}}, %[[a1]])
+// CHECK-DAG:    aie.masterset(South : {{[0-9]+}}, %[[a2]])
+// CHECK-NOT:    aie.masterset
 
-// CHECK:      %[[tile_0_3:.*]] = aie.tile(0, 3)
-// CHECK:      aie.switchbox(%[[tile_0_3]]) {
-// CHECK-NEXT:   %[[b:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(South : 3, %[[b]])
-// CHECK-NEXT:   aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[b]])
-// CHECK-NEXT:   }
-// CHECK-NEXT: }
+// CHECK-LABEL: aie.switchbox(%tile_0_3) {
+// CHECK-NEXT:   %[[b0:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   %[[b1:.*]] = aie.amsel<1> (0)
+// CHECK-DAG:    aie.masterset(South : {{[0-9]+}}, %[[b0]])
+// CHECK-DAG:    aie.masterset(South : {{[0-9]+}}, %[[b1]])
+// CHECK-NOT:    aie.masterset
 
-// CHECK:      %[[tile_0_4:.*]] = aie.tile(0, 4)
-// CHECK:      aie.switchbox(%[[tile_0_4]]) {
+// CHECK-LABEL: aie.switchbox(%tile_0_4) {
 // CHECK-NEXT:   %[[c:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(East : 3, %[[c]])
+// CHECK-NEXT:   aie.masterset(South : {{[0-9]+}}, %[[c]])
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[c]])
 // CHECK-NEXT:   }

@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
 
 // Two flows on one slave port never arbitrate against each other -- the port
 // hands over one stream, so the arbiter sees the second only once the first
@@ -14,8 +14,8 @@
 //
 // Flows 0..4 fill msel 0 on arbiters 0..4. Flows 5 and 6 then leave DMA : 5
 // together, south and north, needing separate master ports and amsels. Flow 5
-// takes the last free arbiter; flow 6, finding none, takes a second msel on
-// its own slave port's arbiter rather than crowding a stranger.
+// takes the last free arbiter and flow 6 a second msel on arbiter 0: none of
+// these flows' receivers waits on another flow, so no sharing can deadlock.
 
 module {
   aie.device(npu2) {
@@ -44,7 +44,7 @@ module {
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[SOUTH:.*]] = aie.amsel<5> (0)
-// CHECK:         %[[NORTH:.*]] = aie.amsel<5> (1)
+// CHECK:         %[[NORTH:.*]] = aie.amsel<0> (1)
 // CHECK:         aie.packet_rules(DMA : 5) {
 // CHECK-NEXT:      aie.rule(31, 6, %[[NORTH]])
 // CHECK-NEXT:      aie.rule(31, 5, %[[SOUTH]])

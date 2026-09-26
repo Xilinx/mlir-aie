@@ -19,26 +19,26 @@
 
 
 // CHECK:      aie.switchbox(%[[tile_0_0]]) {
-// CHECK-NEXT:   aie.connect<South : 3, North : 3>
-// CHECK-NEXT:   aie.connect<South : 7, North : 5>
-// CHECK-NEXT:   aie.connect<North : 2, South : 2>
+// CHECK-NEXT:   aie.connect<South : 3, North : 4>
+// CHECK-NEXT:   aie.connect<South : 7, North : 0>
+// CHECK-NEXT:   aie.connect<North : 0, South : 2>
 // CHECK-NEXT:   %[[v0:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:   aie.masterset(South : 3, %[[v0]]) {keep_pkt_header = true}
-// CHECK-NEXT:   aie.packet_rules(North : 3) {
+// CHECK-NEXT:   aie.packet_rules(North : 1) {
 // CHECK-NEXT:     aie.rule(31, 8, %[[v0]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 // CHECK:      aie.switchbox(%[[tile_0_1]]) {
-// CHECK-NEXT:   aie.connect<South : 3, DMA : 0>
-// CHECK-NEXT:   aie.connect<South : 5, DMA : 1>
-// CHECK-NEXT:   aie.connect<DMA : 2, North : 5>
-// CHECK-NEXT:   aie.connect<North : 0, DMA : 2>
-// CHECK-NEXT:   aie.connect<DMA : 3, South : 2>
+// CHECK-NEXT:   aie.connect<South : 4, DMA : 0>
+// CHECK-NEXT:   aie.connect<South : 0, DMA : 1>
+// CHECK-NEXT:   aie.connect<DMA : 2, North : 4>
+// CHECK-NEXT:   aie.connect<North : 2, DMA : 2>
+// CHECK-NEXT:   aie.connect<DMA : 3, South : 0>
 // CHECK-NEXT:   %[[v0:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:   %[[v1:.*]] = aie.amsel<1> (0)
-// CHECK-NEXT:   aie.masterset(South : 3, %[[v1]])
-// CHECK-NEXT:   aie.masterset(North : 1, %[[v0]])
-// CHECK-NEXT:   aie.packet_rules(North : 3) {
+// CHECK-NEXT:   aie.masterset(South : 1, %[[v1]])
+// CHECK-NEXT:   aie.masterset(North : 0, %[[v0]])
+// CHECK-NEXT:   aie.packet_rules(North : 1) {
 // CHECK-NEXT:     aie.rule(31, 8, %[[v1]])
 // CHECK-NEXT:   }
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
@@ -46,54 +46,61 @@
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 // CHECK:      aie.switchbox(%[[tile_1_0]]) {
-// CHECK-NEXT:   aie.connect<South : 3, North : 1>
-// CHECK-NEXT:   aie.connect<South : 7, North : 5>
-// CHECK-NEXT:   aie.connect<North : 2, South : 2>
+// CHECK-NEXT:   aie.connect<South : 3, North : 4>
+// CHECK-NEXT:   aie.connect<South : 7, North : 3>
+// CHECK-NEXT:   aie.connect<North : 3, South : 2>
 // CHECK-NEXT: }
 // CHECK:      aie.switchbox(%[[tile_1_1]]) {
-// CHECK-NEXT:   aie.connect<South : 1, DMA : 0>
-// CHECK-NEXT:   aie.connect<South : 5, DMA : 1>
-// CHECK-NEXT:   aie.connect<DMA : 2, North : 5>
-// CHECK-NEXT:   aie.connect<North : 3, DMA : 2>
-// CHECK-NEXT:   aie.connect<DMA : 3, South : 2>
+// CHECK-NEXT:   aie.connect<South : 4, DMA : 0>
+// CHECK-NEXT:   aie.connect<South : 3, DMA : 1>
+// CHECK-NEXT:   aie.connect<DMA : 2, North : 4>
+// CHECK-NEXT:   aie.connect<North : 2, DMA : 2>
+// CHECK-NEXT:   aie.connect<DMA : 3, South : 3>
 // CHECK-NEXT:   %[[v0:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(North : 1, %[[v0]])
+// CHECK-NEXT:   aie.masterset(North : 0, %[[v0]])
+// CHECK-NEXT:   aie.masterset(North : 3, %[[v0]])
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
 // CHECK-NEXT:     aie.rule(27, 1, %[[v0]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 // CHECK:      aie.switchbox(%[[tile_2_0]]) {
-// CHECK-NEXT:   aie.connect<South : 3, North : 1>
-// CHECK-NEXT:   aie.connect<South : 7, North : 5>
-// CHECK-NEXT:   aie.connect<North : 2, South : 2>
+// CHECK-NEXT:   aie.connect<South : 3, North : 4>
+// CHECK-NEXT:   aie.connect<South : 7, North : 3>
+// CHECK-NEXT:   aie.connect<North : 3, South : 2>
 // CHECK-NEXT: }
 // CHECK:      aie.switchbox(%[[tile_2_1]]) {
-// CHECK-NEXT:   aie.connect<South : 1, DMA : 0>
-// CHECK-NEXT:   aie.connect<South : 5, DMA : 1>
-// CHECK-NEXT:   aie.connect<DMA : 2, North : 5>
+// CHECK-NEXT:   aie.connect<South : 4, DMA : 0>
+// CHECK-NEXT:   aie.connect<South : 3, DMA : 1>
+// CHECK-NEXT:   aie.connect<DMA : 2, North : 4>
 // CHECK-NEXT:   aie.connect<North : 3, DMA : 2>
-// CHECK-NEXT:   aie.connect<DMA : 3, South : 2>
+// CHECK-NEXT:   aie.connect<DMA : 3, South : 3>
 // CHECK-NEXT:   %[[v0:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(North : 1, %[[v0]])
+// CHECK-NEXT:   %[[v1:.*]] = aie.amsel<0> (1)
+// CHECK-NEXT:   aie.masterset(North : 2, %[[v0]], %[[v1]])
+// CHECK-NEXT:   aie.masterset(North : 3, %[[v0]])
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:     aie.rule(27, 2, %[[v0]])
+// CHECK-NEXT:     aie.rule(31, 6, %[[v1]])
+// CHECK-NEXT:     aie.rule(31, 2, %[[v0]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 // CHECK:      aie.switchbox(%[[tile_3_0]]) {
-// CHECK-NEXT:   aie.connect<South : 3, North : 0>
-// CHECK-NEXT:   aie.connect<South : 7, North : 1>
-// CHECK-NEXT:   aie.connect<North : 2, South : 2>
+// CHECK-NEXT:   aie.connect<South : 3, North : 5>
+// CHECK-NEXT:   aie.connect<South : 7, North : 4>
+// CHECK-NEXT:   aie.connect<North : 3, South : 2>
 // CHECK-NEXT: }
 // CHECK:      aie.switchbox(%[[tile_3_1]]) {
-// CHECK-NEXT:   aie.connect<South : 0, DMA : 0>
-// CHECK-NEXT:   aie.connect<South : 1, DMA : 1>
-// CHECK-NEXT:   aie.connect<DMA : 2, North : 5>
+// CHECK-NEXT:   aie.connect<South : 5, DMA : 0>
+// CHECK-NEXT:   aie.connect<South : 4, DMA : 1>
+// CHECK-NEXT:   aie.connect<DMA : 2, North : 2>
 // CHECK-NEXT:   aie.connect<North : 3, DMA : 2>
-// CHECK-NEXT:   aie.connect<DMA : 3, South : 2>
+// CHECK-NEXT:   aie.connect<DMA : 3, South : 3>
 // CHECK-NEXT:   %[[v0:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(North : 1, %[[v0]])
+// CHECK-NEXT:   %[[v1:.*]] = aie.amsel<0> (1)
+// CHECK-NEXT:   aie.masterset(North : 0, %[[v0]], %[[v1]])
+// CHECK-NEXT:   aie.masterset(North : 4, %[[v0]])
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:     aie.rule(27, 3, %[[v0]])
+// CHECK-NEXT:     aie.rule(31, 7, %[[v1]])
+// CHECK-NEXT:     aie.rule(31, 3, %[[v0]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 

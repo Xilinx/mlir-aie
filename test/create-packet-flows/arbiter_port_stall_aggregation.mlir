@@ -5,18 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
 
 // Memtile (0,1) sends flows 0 and 1 from one DMA channel -- flow 0 to a core's
 // DMA, flow 1 as control packets to the shim -- on different master ports, and
 // so different arbiters. One slave port is one ordered stream, so flow 1 sits
-// behind flow 0 and stops whenever the core stops draining. Flow 6 has yet to
-// leave this switchbox and must not join it; flow 5 ends at a DMA here and is
-// drained locally, so flow 6 joins that.
-//
-// Nothing this memtile sends reaches (0,5), keeping the test on that point: if
-// it did, flow 5 would close a cycle back to flow 6's producer and be rejected
-// for that instead (arbiter_multi_hop_cycle.mlir).
+// behind flow 0 and stops whenever the core stops draining. But it stops
+// between packets: an arbiter is held from a packet's header to its tlast, and
+// a packet still queued behind another holds none. Flow 6, placed last and on
+// its way south, has to share an arbiter, and none of the flows here can
+// deadlock against it -- nothing they feed waits on (0,5) or on shim (0,0)'s
+// S2MM -- so it takes the first arbiter, flow 2's, and nothing is reported.
 
 module {
   aie.device(npu2) {
@@ -41,14 +41,17 @@ module {
   }
 }
 
+// NOWARN-NOT: warning
+
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK:         %[[CTRL:.*]] = aie.amsel<1> (0)
-// CHECK:         %[[ENDSHERE:.*]] = aie.amsel<5> (0)
-// CHECK:         %[[SHARED:.*]] = aie.amsel<5> (1)
-// CHECK:         aie.masterset(DMA : 0, %[[ENDSHERE]])
+// CHECK:         %[[FIRST:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[CTRL:.*]] = aie.amsel<5> (0)
+// CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
 // CHECK:         aie.masterset(South : 2, %[[CTRL]])
 // CHECK:         aie.masterset(South : 3, %[[SHARED]])
 // CHECK:         aie.packet_rules(North : 3) {
 // CHECK-NEXT:      aie.rule(31, 6, %[[SHARED]])
+// CHECK:         aie.packet_rules(DMA : 1) {
+// CHECK-NEXT:      aie.rule(31, 2, %[[FIRST]])
 // CHECK:         aie.packet_rules(DMA : 0) {
 // CHECK-NEXT:      aie.rule(31, 1, %[[CTRL]])

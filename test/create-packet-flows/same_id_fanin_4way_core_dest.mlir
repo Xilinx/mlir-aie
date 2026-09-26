@@ -34,16 +34,16 @@
 // CHECK:      aie.switchbox(%[[tile_0_2]]) {
 // CHECK-NEXT:   %[[a:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:   aie.masterset(DMA : 0, %[[a]]) {keep_pkt_header = true}
-// CHECK-NEXT:   aie.packet_rules(North : 3) {
+// CHECK-NEXT:   aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[a]])
 // CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules(North : 2) {
+// CHECK-NEXT:   aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[a]])
 // CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules(East : 0) {
+// CHECK-NEXT:   aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[a]])
 // CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules(South : 4) {
+// CHECK-NEXT:   aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[a]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
