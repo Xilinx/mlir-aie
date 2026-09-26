@@ -123,6 +123,20 @@ def test_silu_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
     assert kernels.silu_table_ref(np.array([-np.inf], bfloat16))[0] == 0
 
 
+def test_swiglu_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
+    x = all_bf16(nan=False)
+    x = x[(x >= -8) & (x < -2)]
+    one = np.ones_like(x)
+    tail = x >= -7.5
+    table = kernels.swiglu_table_ref(x, one, one).astype(np.float64)
+    assert (table[~tail] == 0).all()
+    assert (table[tail] > 0).all()
+    old = kernels.swiglu_lut_ref(x, one, one).astype(np.float64)
+    assert (old[tail & (x <= -6.9)] == 0).all()
+    ninf = np.array([-np.inf], bfloat16)
+    assert kernels.swiglu_table_ref(-ninf, np.array([1], bfloat16), ninf)[0] == 0
+
+
 def test_lut_models_flush_subnormal_products():
     # The accumulator flushes a subnormal product to zero before storing it.
     # Without that, silu_lut_ref gave 506 subnormals over every bf16 where
@@ -134,6 +148,9 @@ def test_lut_models_flush_subnormal_products():
             "silu_lut_ref(x)": kernels.silu_lut_ref(x),
             "swiglu_lut_ref(x, 1, 1)": kernels.swiglu_lut_ref(x, one, one),
             "swiglu_lut_ref(1, 1, x)": kernels.swiglu_lut_ref(one, one, x),
+            "silu_table_ref(x)": kernels.silu_table_ref(x),
+            "swiglu_table_ref(x, 1, 1)": kernels.swiglu_table_ref(x, one, one),
+            "swiglu_table_ref(1, 1, x)": kernels.swiglu_table_ref(one, one, x),
         }
     for name, got in outs.items():
         a = np.abs(got.astype(np.float32))
