@@ -275,6 +275,12 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                 f"  baseline fails this tree's contract: {c['baseline_failed']}",
                 yellow=True,
             )
+        if stack := c.get("baseline_stack"):
+            tr.write_line(
+                f"  baseline built with a {stack[1]} B stack: it needs more than "
+                f"the {stack[0]} B this tree's contract gives",
+                yellow=True,
+            )
         base, cur = c.get("accuracy", ([], []))
         for b, a in zip(base, cur):
             tr.write_line(f"  error[{b['output']}] {_accuracy_line(b)}")
