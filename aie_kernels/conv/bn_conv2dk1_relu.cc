@@ -1664,7 +1664,7 @@ void fused_conv2dk1_xy_pool_i8_large_scalar(
 // #endif // UINT8_ACT
 // #endif
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 #include "bn_conv2dk1_aie2.h"
 
 // Rounds half to even and saturates like the scalar.
@@ -1767,6 +1767,9 @@ static void k1_xy_pool_vector(const int8_t *input, const int8_t *kernels,
     output[oc] = 0;
 }
 
+#endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+
+#if AIE_TUNED_AIE2
 // Fully connected: a single pixel, so the input is input_channels contiguous
 // uint16 and each output channel block's weights are [input_channels][8].
 // mmul<2,8,8> takes 16 inputs as a 2 x 8 matrix against the next 8 rows of
@@ -2214,7 +2217,7 @@ void conv2dk1_relu_i8_ui8(int8_t *input, int8_t *kernels, uint8_t *output,
                           const int32_t input_width,
                           const int32_t input_channels,
                           const int32_t output_channels, const int scale) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 4) {
     k1_vector(input, kernels, output, input_width, input_channels,
               output_channels, scale);
