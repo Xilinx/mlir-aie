@@ -19,17 +19,39 @@
 
 #include "../aie_kernel_utils.h"
 
+// A float chain sums in float and sends the float's bits over the cascade.
+template <typename T_out>
+using cascade_sum_t =
+    std::conditional_t<std::is_same_v<T_out, bfloat16>, float, T_out>;
+
+template <typename T>
+static inline int to_cascade_word(T sum) {
+  if constexpr (std::is_same_v<T, float>)
+    return __builtin_bit_cast(int, sum);
+  else
+    return (int)sum;
+}
+
+template <typename T>
+static inline T from_cascade_word(int word) {
+  if constexpr (std::is_same_v<T, float>)
+    return __builtin_bit_cast(float, word);
+  else
+    return word;
+}
+
 template <typename T_in, typename T_out, int rowA, int colA, int colB>
 void matmul_scalar_cascade_put_only(T_in *a, T_in *b, T_out *c) {
+  using T_sum = cascade_sum_t<T_out>;
   event0();
   for (int row = 0; row < rowA; row++) {
     for (int col = 0; col < colB; col++) {
-      T_out running_sum = 0;
+      T_sum running_sum = 0;
       for (int i = 0; i < colA; i++) {
-        running_sum += a[row * colA + i] * b[i * colB + col];
+        running_sum += (T_sum)a[row * colA + i] * (T_sum)b[i * colB + col];
       }
       v16int32 v16 = undef_v16int32();
-      v16 = upd_elem(v16, 0, (int)running_sum);
+      v16 = upd_elem(v16, 0, to_cascade_word(running_sum));
       put_mcd(v16);
     }
   }
@@ -38,33 +60,40 @@ void matmul_scalar_cascade_put_only(T_in *a, T_in *b, T_out *c) {
 
 template <typename T_in, typename T_out, int rowA, int colA, int colB>
 void matmul_scalar_cascade_get_only(T_in *a, T_in *b, T_out *c) {
+  using T_sum = cascade_sum_t<T_out>;
   event0();
+  aie::rounding_mode saved_rounding = aie::rounding_mode::floor;
+  if constexpr (std::is_same_v<T_out, bfloat16>)
+    saved_rounding = aie::swap_rounding(aie::rounding_mode::conv_even);
   for (int row = 0; row < rowA; row++) {
     for (int col = 0; col < colB; col++) {
-      T_out running_sum = 0;
+      T_sum running_sum = 0;
       for (int i = 0; i < colA; i++) {
-        running_sum += a[row * colA + i] * b[i * colB + col];
+        running_sum += (T_sum)a[row * colA + i] * (T_sum)b[i * colB + col];
       }
       v16int32 v16 = get_scd_v16int32();
-      running_sum += ext_elem(v16, 0U);
+      running_sum += from_cascade_word<T_sum>(ext_elem(v16, 0U));
       c[row * colB + col] += running_sum;
     }
   }
+  if constexpr (std::is_same_v<T_out, bfloat16>)
+    aie::set_rounding(saved_rounding);
   event1();
 }
 
 template <typename T_in, typename T_out, int rowA, int colA, int colB>
 void matmul_scalar_cascade_put_get(T_in *a, T_in *b, T_out *c) {
+  using T_sum = cascade_sum_t<T_out>;
   event0();
   for (int row = 0; row < rowA; row++) {
     for (int col = 0; col < colB; col++) {
-      T_out running_sum = 0;
+      T_sum running_sum = 0;
       for (int i = 0; i < colA; i++) {
-        running_sum += a[row * colA + i] * b[i * colB + col];
+        running_sum += (T_sum)a[row * colA + i] * (T_sum)b[i * colB + col];
       }
       v16int32 v16 = get_scd_v16int32();
-      running_sum += ext_elem(v16, 0U);
-      v16 = upd_elem(v16, 0, (int)running_sum);
+      running_sum += from_cascade_word<T_sum>(ext_elem(v16, 0U));
+      v16 = upd_elem(v16, 0, to_cascade_word(running_sum));
       put_mcd(v16);
     }
   }
