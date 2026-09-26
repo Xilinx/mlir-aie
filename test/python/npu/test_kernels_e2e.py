@@ -43,6 +43,7 @@ import numpy as np
 import pytest
 from aie.iron import (
     CompileTime,
+    In,
     InOut,
     ObjectFifo,
     Out,
@@ -52,7 +53,7 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.algorithms import kernel_design as kd
-from aie.utils.verify import compare
+from aie.utils.verify import compare, poisoned
 from cases import error_report, inputs_for
 from kernel_cases import CASES
 from ml_dtypes import bfloat16
@@ -386,6 +387,46 @@ def test_setup_reaches_the_core():
     assert np.array_equal(got, conv_even_result), (
         f"{int((got == floor_result).sum())} of {n} ties rounded floor: the "
         "contract's setup did not reach the core"
+    )
+
+
+def _skips_first_vector():
+    tile = np.ndarray[(64,), np.dtype[np.int32]]
+    return iron.ExternalFunction(
+        "skips_first_vector",
+        source_string="""extern "C" {
+void skips_first_vector(int *in, int *out) {
+  for (int i = 16; i < 64; i++)
+    out[i] = in[i];
+}
+}""",
+        arg_types=[tile, tile],
+        contract=kernels.KernelContract(roles=(In, Out), reference=lambda x: x),
+    )
+
+
+def test_guard_poisons_the_core_tile():
+    """An output element the kernel never writes reads back as poison.
+
+    Poisoning the host buffer alone is not enough: the DMA overwrites it with
+    the core's tile, which held zeros, so a kernel that skipped a vector
+    passed every data case whose reference was zero there.
+    """
+    calls = 3
+    fn = _skips_first_vector()
+    x = np.arange(calls * 64, dtype=np.int32).reshape(calls, 64) + 1
+    design = kd.design(_skips_first_vector, calls=calls, guard=True)
+    out_n = kd.output_size(fn, calls=calls, guard=True)
+    got, overrun = kd.strip_guard(
+        fn, _run(design, fn, [x], out_n, np.int32), calls=calls
+    )
+    assert not any(np.atleast_1d(overrun))
+    got = got.reshape(calls, 64)
+    np.testing.assert_array_equal(got[:, 16:], x[:, 16:])
+    skipped = got[:, :16]
+    assert (skipped == poisoned(1, np.int32)[0]).all(), (
+        f"the elements the kernel skipped read back as {np.unique(skipped)}, "
+        "not the poison"
     )
 
 
