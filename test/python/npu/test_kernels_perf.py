@@ -268,31 +268,50 @@ def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
     return int(np.count_nonzero(a.view(word) != b.view(word)))
 
 
-def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
-    """Record ``_compare`` against the ``--baseline-sources`` tree in the meta."""
-    tree = config.getoption("--baseline-sources")
-    entry = _compare(case, config, workdir, current, tree)
-    if "baseline" not in config._perf_meta:
-        current_sources, suspect = current_kernel_sources(tree)
-        config._perf_meta["baseline"] = {
-            "sources": tree,
-            "current_sources": current_sources,
-            "warning": suspect,
-            "cases": {},
-        }
-    config._perf_meta["baseline"]["cases"][case.name] = entry
+def _measure_and_compare(
+    case: Case,
+    config,
+    workdir: Path,
+    *,
+    tree: str | None = None,
+    meta: dict | None = None,
+    timed: bool = True,
+) -> dict:
+    """``_measure`` ``case``, compared with ``tree`` before it is judged.
+
+    ``tree`` defaults to ``--baseline-sources`` and ``meta`` to the run's
+    meta. A kernel that fails its contract still gets its words compared --
+    a mutant has to show up in that diff for a ``same`` to mean anything --
+    and then fails.
+    """
+    tree = tree or config.getoption("--baseline-sources")
+    m = _measure(case, config, workdir, strict=not tree, timed=timed)
+    if tree:
+        entry = _compare(case, config, workdir, m, tree)
+        meta = config._perf_meta if meta is None else meta
+        if "baseline" not in meta:
+            current_sources, suspect = current_kernel_sources(tree)
+            meta["baseline"] = {
+                "sources": tree,
+                "current_sources": current_sources,
+                "warning": suspect,
+                "cases": {},
+            }
+        meta["baseline"]["cases"][case.name] = entry
+    assert m["failed"] is None, f"{case.name}: {m['failed']}"
+    return m
 
 
 def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dict:
     """Measure ``case`` from the kernel tree ``tree`` beside the current one.
 
     Both sides get the same inputs, so their raw output words are compared
-    exactly. The current tree must pass the contract; the baseline is judged
-    by it too but only recorded, since the contract is this tree's and a
-    change can tighten it along with the kernel. Returns the pair of each
+    exactly. Both arms are judged by this tree's contract and only recorded
+    here: the caller fails the current arm, and the baseline's miss can be a
+    tolerance tightened along with the kernel. Returns the pair of each
     arm's cycles and npu_us (min, and min, max and n), each arm's error
     against the reference (``cases.error_report``), the differing words and
-    the baseline's verdict.
+    each arm's verdict.
 
     The contract's stack is sized for this tree's kernel too, and aiecc
     refuses a baseline that needs more; that one is built with the stack
@@ -351,6 +370,7 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
         "differing_words": sum(words),
         "accuracy": [base["error"], current["error"]],
         "baseline_failed": base["failed"],
+        "current_failed": current["failed"],
         "baseline_stack": stack,
     }
 
@@ -358,10 +378,8 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
 @pytest.mark.perf
 @pytest.mark.parametrize("case", _PERF_CASES)
 def test_kernel_perf(case, request, record_perf, workdir):
-    m = _measure(case, request.config, workdir)
+    m = _measure_and_compare(case, request.config, workdir)
     _record(record_perf, case, m)
-    if request.config.getoption("--baseline-sources"):
-        _against_baseline(case, request.config, workdir, m)
 
 
 def pytest_generate_tests(metafunc):
@@ -378,8 +396,7 @@ def test_kernel_same_as_baseline(check_case, request, workdir):
     It gets the raw-word comparison and both arms' verdicts, not a row;
     without --baseline-sources nothing is collected.
     """
-    m = _measure(check_case, request.config, workdir, timed=False)
-    _against_baseline(check_case, request.config, workdir, m)
+    _measure_and_compare(check_case, request.config, workdir, timed=False)
 
 
 @pytest.mark.perf
@@ -432,3 +449,46 @@ def test_a_baseline_that_needs_more_stack_is_timed(request, workdir, tmp_path):
     assert contract == kd._stack_bytes(case.fn()) and needed > 4096
     assert entry["baseline_failed"] is None and entry["differing_words"] == 0
     assert entry["npu_us_min"][0] is not None
+
+
+@pytest.mark.perf
+def test_a_wrong_kernel_is_compared_before_it_fails(request, workdir, tmp_path):
+    """A kernel that fails its contract still gets its words compared, then fails.
+
+    Otherwise a mutant, the one way to show the word diff sees a change,
+    fails on the reference before the diff is taken.
+    """
+    trees = {}
+    for name in ("base", "wrong"):
+        trees[name] = tmp_path / name
+        shutil.copytree(aie_kernels_dir(), trees[name] / "aie_kernels")
+        shutil.copytree(aie_runtime_lib_dir(), trees[name] / "aie_runtime_lib")
+    for header in ("relu_aie2.h", "relu_aie2p.h"):
+        path = trees["wrong"] / "aie_kernels" / "eltwise" / header
+        assert path.read_text().count("  event1();") == 1
+        path.write_text(
+            path.read_text().replace(
+                "  event1();", "  c[0] = (bfloat16)-1.0f;\n  event1();"
+            )
+        )
+    case = Case("relu", calls=4)
+    meta: dict = {}
+    # This tree's relu, and later tests', share the wrong one's object name.
+    ExternalFunction._instances.clear()
+    try:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setenv("MLIR_AIE_KERNEL_SOURCES", str(trees["wrong"]))
+            with pytest.raises(AssertionError, match="mismatches"):
+                _measure_and_compare(
+                    case,
+                    request.config,
+                    workdir,
+                    tree=str(trees["base"]),
+                    meta=meta,
+                    timed=False,
+                )
+    finally:
+        ExternalFunction._instances.clear()
+    entry = meta["baseline"]["cases"][case.name]
+    assert entry["differing_words"] == case.calls
+    assert "mismatches" in entry["current_failed"] and entry["baseline_failed"] is None

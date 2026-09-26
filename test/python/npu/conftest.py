@@ -271,6 +271,10 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     for name, c in baseline["cases"].items():
         words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
         tr.write_line(f"{name}  words {words}")
+        if c.get("current_failed"):
+            tr.write_line(
+                f"  this tree fails its contract: {c['current_failed']}", red=True
+            )
         if c["baseline_failed"]:
             tr.write_line(
                 f"  baseline fails this tree's contract: {c['baseline_failed']}",
