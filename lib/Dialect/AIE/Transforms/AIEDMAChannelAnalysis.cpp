@@ -171,16 +171,18 @@ Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
   return streamedChannels.lookup(key);
 }
 
-void DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile, DMAChannel chan) {
+LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,
+                                                      DMAChannel chan,
+                                                      bool diagnose) {
   if (usedStreams
           .insert(
               {getTileKey(tile->getResult(0)), chan.direction, chan.channel})
           .second) {
-    return;
+    return success();
   }
-  if (chan.direction == DMAChannelDir::MM2S) {
-    tile->emitOpError("number of output Core channels exceeded!");
-  } else {
-    tile->emitOpError("number of input Core channels exceeded!");
-  }
+  if (!diagnose)
+    return failure();
+  if (chan.direction == DMAChannelDir::MM2S)
+    return tile->emitOpError("number of output Core channels exceeded!");
+  return tile->emitOpError("number of input Core channels exceeded!");
 }

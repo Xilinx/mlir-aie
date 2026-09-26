@@ -62,8 +62,10 @@ public:
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 
-  /// Claim a raw stream port, reporting on `tile` when it is already taken.
-  void checkAIEStreamIndex(TileLike tile, DMAChannel chan);
+  /// Claim a raw stream port; fails when it is already taken, reporting on
+  /// `tile` if `diagnose`.
+  mlir::LogicalResult checkAIEStreamIndex(TileLike tile, DMAChannel chan,
+                                          bool diagnose = true);
 };
 
 } // namespace xilinx::AIE

@@ -776,7 +776,9 @@ struct AIEObjectFifoAllocatePass
             return failure();
           return endpoint->emitOpError("a stream port names its own channel");
         }
-        channels.checkAIEStreamIndex(tileOf(endpoint), {dir, *channel});
+        if (failed(channels.checkAIEStreamIndex(tileOf(endpoint),
+                                                {dir, *channel}, diagnose)))
+          return failure();
         continue;
       }
 

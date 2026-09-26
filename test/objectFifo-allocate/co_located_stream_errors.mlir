@@ -5,6 +5,7 @@
 
 // Core stream ports are also hardware resources shared by tile aliases.
 module @existing_source {
+  // expected-remark @+1 {{could not find a spill-aware allocation}}
   aie.device(npu2) {
     %home = aie.tile(0, 2)
     // expected-error @+1 {{number of output Core channels exceeded}}
@@ -20,6 +21,7 @@ module @existing_source {
 // -----
 
 module @existing_dest {
+  // expected-remark @+1 {{could not find a spill-aware allocation}}
   aie.device(npu2) {
     %home = aie.tile(0, 2)
     // expected-error @+1 {{number of input Core channels exceeded}}
