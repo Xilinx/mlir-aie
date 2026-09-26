@@ -8,8 +8,17 @@
 #ifndef AIE_KERNELS_CONV_BN_CONV2DK1_AIE2_H
 #define AIE_KERNELS_CONV_BN_CONV2DK1_AIE2_H
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
+
+// AIE2 unrolls the loops over a group's N chunks by itself; AIE2P keeps them,
+// and with them acc[] on the stack, unless told to unroll.
+#if AIE_TUNED_AIE2P
+#define K1_UNROLL_CHUNKS AIE_LOOP_UNROLL_FULL
+#else
+#define K1_UNROLL_CHUNKS
+#endif
 
 // 1x1 conv on [C/8][W][8] rows: each mmul<4,8,8> takes 4 pixels x 8 input
 // channels against one [8][8] weight block. A row is covered by 4-pixel
@@ -46,6 +55,7 @@ k1_chunks(const TI *__restrict in, const int8_t *__restrict wts,
   using MMUL = aie::mmul<4, 8, 8, TI, int8>;
   MMUL acc[N];
   aie::vector<int8, 64> b = aie::load_v<64>(wts);
+  K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++)
     acc[j].mul(k1_load<Aligned>(in + (j == N - 1 ? last_off : 32 * j)), b);
 #pragma clang loop min_iteration_count(1)
@@ -53,9 +63,11 @@ k1_chunks(const TI *__restrict in, const int8_t *__restrict wts,
     in += row;
     wts += 64;
     b = aie::load_v<64>(wts);
+    K1_UNROLL_CHUNKS
     for (int j = 0; j < N; j++)
       acc[j].mac(k1_load<Aligned>(in + (j == N - 1 ? last_off : 32 * j)), b);
   }
+  K1_UNROLL_CHUNKS
   for (int j = 0; j < N; j++) {
     const int32_t o = j == N - 1 ? last_off : 32 * j;
     k1_store<Aligned>(out + o, epi(acc[j], (side + o)...));

@@ -708,7 +708,7 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 
 #endif
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 #include "bn_conv2dk1_aie2.h"
 
 template <bool Aligned>
@@ -737,7 +737,7 @@ static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
                       output_channels, scale);
   event1();
 }
-#endif // AIE_TUNED_AIE2
+#endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 
 //*****************************************************************************
 // conv2d 1x1 wrappers
@@ -938,7 +938,7 @@ void conv2dk1_i8_ui8_get(int8_t *input0, int8_t *kernels, uint8_t *output,
 void conv2dk1_ui8_i8(uint8_t *input, int8_t *kernels, int8_t *output,
                      const int32_t input_width, const int32_t input_channels,
                      const int32_t output_channels, const int scale) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 4) {
     k1_i8_vector(input, kernels, output, input_width, input_channels,
                  output_channels, scale);
