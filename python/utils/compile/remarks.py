@@ -46,6 +46,7 @@ prints a warning: the design reserves that much and an overflow corrupts the
 neighbouring memory without a fault.
 ``--baseline-sources DIR`` compiles everything a second time from ``DIR``
 and prints each row that differs, for a before/after of a kernel change;
+a loop LLVM only renamed, its rows unchanged, is counted but not listed.
 ``--keep DIR`` keeps the objects, which ``--meta`` names per build.
 
 The loop-scheduling pass reports as ``pipeliner`` (a ``postpipeliner``
@@ -1040,11 +1041,60 @@ def _baseline(
         for r in report_rows(rep, name, "")
     }
     current = {r["name"]: r["value"] for r in rows}
-    return {
+    return diff_rows(base, current)
+
+
+_LOOP_ROW = re.compile(r"^(.*/loop/[^/]+)/([^/]+)/([^/]+)$")
+
+
+def _loops(rows: dict) -> dict:
+    """``{(prefix/loop/fn, bb): {metric: value}}`` for the loop rows."""
+    loops = collections.defaultdict(dict)
+    for name, value in rows.items():
+        if m := _LOOP_ROW.match(name):
+            loops[m[1], m[2]][m[3]] = value
+    return loops
+
+
+def diff_rows(base: dict, current: dict) -> dict:
+    """Map each row that differs to ``[base, current]``, less renamed loops.
+
+    LLVM numbers its blocks per function, so an edit anywhere in a function
+    can rename every loop after it (``for.body20.i`` -> ``for.body23.i``)
+    without changing one. Within a function, a changed loop whose rows
+    match another changed loop's in the other tree is taken to be that loop
+    renamed; ``"renamed"`` pairs them, and their rows are left out.
+    """
+    changed = {
         name: [base.get(name), current.get(name)]
         for name in sorted(base.keys() | current.keys())
         if base.get(name) != current.get(name)
     }
+    before, after = _loops(base), _loops(current)
+    moved = {m.group(1, 2) for n in changed if (m := _LOOP_ROW.match(n))}
+    unmatched = collections.defaultdict(list)
+    for key in sorted(moved & before.keys()):
+        unmatched[key[0], tuple(sorted(before[key].items()))].append(key[1])
+    renamed, matched_before, matched_after = [], set(), set()
+    for key in sorted(moved & after.keys()):
+        olds = unmatched[key[0], tuple(sorted(after[key].items()))]
+        if olds:
+            old = olds.pop(0)
+            renamed.append([f"{key[0]}/{old}", f"{key[0]}/{key[1]}"])
+            matched_before.add((key[0], old))
+            matched_after.add(key)
+
+    def settled(key):
+        return (key not in before or key in matched_before) and (
+            key not in after or key in matched_after
+        )
+
+    changed = {
+        n: v
+        for n, v in changed.items()
+        if not ((m := _LOOP_ROW.match(n)) and settled(m.group(1, 2)))
+    }
+    return {"rows": changed, "renamed": renamed}
 
 
 def main(argv=None) -> int:
@@ -1184,9 +1234,22 @@ def main(argv=None) -> int:
         changed = _baseline(
             a.baseline_sources, a.only, a.target, workdir, a.jobs, rows, sweep
         )
-        meta["baseline"] = {"sources": a.baseline_sources, "changed": changed}
-        print(f"baseline {a.baseline_sources} -> this tree: {len(changed)} rows differ")
-        for name, (before, after) in changed.items():
+        meta["baseline"] = {
+            "sources": a.baseline_sources,
+            "changed": changed["rows"],
+            "renamed": changed["renamed"],
+        }
+        print(
+            f"baseline {a.baseline_sources} -> this tree: "
+            f"{len(changed['rows'])} rows differ"
+            + (
+                f"; {len(changed['renamed'])} loops renamed with the same rows, "
+                "not listed"
+                if changed["renamed"]
+                else ""
+            )
+        )
+        for name, (before, after) in changed["rows"].items():
             print(f"  {name}: {before} -> {after}")
     if a.meta:
         Path(a.meta).write_text(json.dumps(meta, indent=1, default=str))
