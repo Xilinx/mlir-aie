@@ -49,6 +49,8 @@ from ._common import KernelContract, Trace, _kernel_source, _make_extern
 ROW_WORDS = 4
 # int32 words of sample_select's worker-local state (sample_select.cc).
 SELECT_STATE_WORDS = 272
+# sample_select's passes over its slice (sample_select.cc).
+SELECT_PASSES = 2
 # int32 words before a summary's (index, key) entries (sample.h).
 SUMMARY_HEADER = 8
 
@@ -78,12 +80,20 @@ def _check_slice(owner: str, slice_size: int, k_max: int) -> None:
         raise ValueError(f"{owner}: slice_size must be below 2**24")
 
 
+def select_streams(slice_size: int, chunk: int) -> int:
+    """How often ``sample_select`` takes its slice per position: once when a
+    chunk is the whole slice, which one call passes over ``SELECT_PASSES``
+    times; ``SELECT_PASSES`` times otherwise."""
+    return 1 if chunk == slice_size else SELECT_PASSES
+
+
 def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction:
     """One column's half of sampling: its slice's summary, for ``sample_combine``.
 
     ``sample_select(x, row, state, summary)`` takes ``chunk`` bf16 logits per
-    call; the slice passes three times, so a position is
-    ``3 * slice_size // chunk`` calls with the same ``row`` and ``summary``.
+    call; the slice arrives ``select_streams(slice_size, chunk)`` times, so a
+    position is that many times ``slice_size // chunk`` calls with the same
+    ``row`` and ``summary``.
     ``state`` is ``SELECT_STATE_WORDS`` int32 of worker-local memory, zero
     before the first call; the last call of a position leaves it ready for the
     next. ``summary`` is ``summary_words(slice_size, k_max)`` int32.
