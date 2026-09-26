@@ -590,8 +590,9 @@ def conv2dk3(
         + ["-DCONV_KERNEL_WIDTH=3", "-DCONV_KERNEL_HEIGHT=3"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # 0 B tuned for aie2; see conv2dk1 for the other figure's source
-            stack_bytes=None if _tuned_arch() == "aie2" else 4736,
+            # aiecc measured_stack_size: 384 B tuned for aie2p, 4736 B
+            # untuned; 0 B tuned for aie2
+            stack_bytes={"aie2": None, "aie2p": 384}.get(_tuned_arch(), 4736),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,

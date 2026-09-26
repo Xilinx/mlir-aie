@@ -502,6 +502,103 @@ static void conv2dk3_vector(T *line0, T *line1, T *line2, int8_t *wts,
   }
   event1();
 }
+#elif AIE_TUNED_AIE2P
+//*****************************************************************************
+// conv2d 3x3 - vector
+// act: int8 or uint8, wts: int8, out: uint8
+//*****************************************************************************
+// Each call computes one output row: 4 accumulators hold the 4 blocks of 8
+// pixels across the row, one native 8x8x8 mac per block and tap, so the
+// zero-padded borders are the edge blocks' shift-in zeros.
+template <typename T>
+static void conv2dk3_vector(T *line0, T *line1, T *line2, int8_t *wts,
+                            uint8_t *__restrict output,
+                            const int32_t runtime_input_width,
+                            const int32_t runtime_input_channels,
+                            const int32_t runtime_output_channels,
+                            const int32_t runtime_kernel_width,
+                            const int32_t runtime_kernel_height,
+                            const int32_t check, const int scale,
+                            const int channel_offset) {
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t kernel_width = CONV_KERNEL_WIDTH;
+  const int32_t kernel_height = CONV_KERNEL_HEIGHT;
+  event0();
+
+  using MMUL8x8x8 = aie::mmul<8, 8, 8, T, int8>;
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+
+  // The row width is fixed at 32 pixels; input_width is unused.
+  constexpr int iw = 32;
+  constexpr int blocks = iw / 8;
+  const int wts_ic_stride = kernel_height * kernel_width * 64;
+
+  int kernel_height_start = 0;
+  int kernel_height_end = kernel_height;
+  // Zero border: skip the kernel row that would read outside the tile.
+  switch (check) {
+  case top:
+    kernel_height_start = 1;
+    break;
+  case bottom:
+    kernel_height_end = kernel_height - 1;
+    break;
+  default:
+    break;
+  }
+
+  const aie::vector<T, 64> zero64 = aie::zeros<T, 64>();
+  int8_t *wts_oc = wts + (channel_offset / 8) * (input_channels / 8) *
+                             wts_ic_stride; // oc,ic,ky,kx,ic8,oc8
+
+  for (int oc = 0; oc < (output_channels / 8); oc++) {
+    MMUL8x8x8 acc[blocks];
+    AIE_LOOP_UNROLL_FULL
+    for (int b = 0; b < blocks; b++)
+      acc[b] = aie::zeros<acc32, 64>();
+
+    for (int i = kernel_height_start; i < kernel_height_end; i++) {
+      const T *__restrict in = i == 0 ? line0 : (i == 1 ? line1 : line2);
+      const int8_t *__restrict w = wts_oc + i * kernel_width * 64;
+      AIE_LOOP_UNROLL(8)
+      for (int ic = 0; ic < (input_channels / 8); ic++) {
+        aie::vector<int8, 64> w0 = aie::load_v<64>(w);
+        aie::vector<int8, 64> w1 = aie::load_v<64>(w + 64);
+        aie::vector<int8, 64> w2 = aie::load_v<64>(w + 128);
+        w += wts_ic_stride;
+
+        // p0..p3 hold pixels 8b..8b+7 (8 channels each) of block b. kx = 0
+        // and 2 read the window shifted one pixel left or right.
+        auto p0 = aie::load_v<64>(in);
+        auto p1 = aie::load_v<64>(in + 64);
+        auto p2 = aie::load_v<64>(in + 128);
+        auto p3 = aie::load_v<64>(in + 192);
+        auto block = [&](const aie::vector<T, 64> &lo,
+                         const aie::vector<T, 64> &pk,
+                         const aie::vector<T, 64> &hi, MMUL8x8x8 &a) {
+          a.mac(aie::shuffle_down_fill(lo, pk, 56), w0);
+          a.mac(pk, w1);
+          a.mac(aie::shuffle_down_fill(pk, hi, 8), w2);
+        };
+        block(zero64, p0, p1, acc[0]);
+        block(p0, p1, p2, acc[1]);
+        block(p1, p2, p3, acc[2]);
+        block(p2, p3, zero64, acc[3]);
+        in += iw * 8;
+      }
+    }
+
+    AIE_LOOP_UNROLL_FULL
+    for (int b = 0; b < blocks; b++) {
+      aie::store_v(output, acc[b].template to_vector<uint8>(scale));
+      output += 64;
+    }
+    wts_oc += (input_channels / 8) * wts_ic_stride;
+  }
+  event1();
+}
 #else
 #ifdef INT8_ACT
 
@@ -1468,7 +1565,7 @@ void conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
 
 #else // Vector
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 #ifdef INT8_ACT
 
 void conv2dk3_i8(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
