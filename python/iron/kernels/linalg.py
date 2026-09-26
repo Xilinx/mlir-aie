@@ -42,15 +42,14 @@ _CASCADE_COMBOS = {
 
 # Mirror of the ``combos(X)`` macro in aie_kernels/linalg/cascade_mm.cc.
 # Designs use ``kernels.cascade_mm(...).mac_dims`` to look up the
-# scalar-block geometry the compiled cascade kernel expects.  cascade_mm
-# only ships an aie2 .cc today; if an aie2p variant lands the table
-# needs the new arch added.
+# scalar-block geometry the compiled cascade kernel expects.
 #
-# The cascade_mm.cc kernel is fully scalar — `a[row * colA + i]` walks A
-# element-by-element with no SIMD tiling — so the L2->L1 buffer must be
-# plain row-major.  mac_dims (1, 1, 1) yields the identity dim_to_stream
-# pattern when designs build it as [(m//r, r*k), (k//s, s), (r, k), (s, 1)].
-# Larger values would shuffle A/B into a tiled layout the scalar kernel
+# The cascade_mm.cc kernel reads its operands row-major on both targets —
+# the AIE2 kernel is scalar and the AIE2P one tiles A and B in registers —
+# so the L2->L1 buffer must be plain row-major.  mac_dims (1, 1, 1) yields
+# the identity dim_to_stream pattern when designs build it as
+# [(m//r, r*k), (k//s, s), (r, k), (s, 1)].
+# Larger values would shuffle A/B into a tiled layout the kernel
 # does not understand, producing garbage outputs (262144-element mismatch
 # observed in CI with the previous (4, 4, 4) entries).
 _CASCADE_MM_SCALAR_DIMS = {
@@ -61,8 +60,7 @@ _CASCADE_MM_SCALAR_DIMS = {
 }
 
 _CASCADE_MM_MAC_DIMS = {
-    # cascade_mm.cc is one source for both targets and scalar on both, so
-    # the required stream layout remains plain row-major.
+    # cascade_mm.cc is one source for both targets and row-major on both.
     "aie2": _CASCADE_MM_SCALAR_DIMS,
     "aie2p": _CASCADE_MM_SCALAR_DIMS,
 }
@@ -1348,9 +1346,13 @@ def cascade_mm(
     ``.zero`` initializes accumulators using independent ``kernels.zero``.
     The pair is a two-tile
     design, which the generic builder does not run; the device test builds
-    and judges it (``test/python/npu/test_kernels_e2e.py``). The partial sum
-    crosses the cascade as a 32-bit integer lane: with a floating-point
-    output type the PUT half's product is truncated toward zero.
+    and judges it (``test/python/npu/test_kernels_e2e.py``). On AIE2 the
+    partial sum crosses the cascade as a 32-bit integer lane: with a
+    floating-point output type the PUT half's product is truncated toward
+    zero. On AIE2P, when ``dim_m`` and ``dim_k`` are multiples of 8 and
+    ``dim_n`` of 16, the whole accumulator crosses the cascade and a float
+    chain rounds once, to nearest even, at the GET half; other shapes run
+    the AIE2 kernel.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -1389,7 +1391,7 @@ def cascade_mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, InOut),
-            # Scalar on both targets: row-major operands, nothing streamed
+            # Row-major operands on both targets, nothing streamed
             # transformed, so the layouts carry the 1x1x1 blocking and no
             # stream (see _CASCADE_MM_SCALAR_DIMS).
             layouts=(
