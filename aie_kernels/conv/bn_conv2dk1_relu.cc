@@ -18,6 +18,10 @@
 #include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
+#if AIE_TUNED_AIE2P
+#include "bn_conv2dk1_aie2.h"
+#endif
+
 #define REL_WRITE 0
 #define REL_READ 1
 
@@ -227,6 +231,19 @@ void conv2dk1_i8_ui8_scalar_partial_width_get_new(
     const int scale, int32_t input_split, int32_t output_split,
     int32_t weight_index, int32_t x_start, int32_t oc) {
   event0();
+#if AIE_TUNED_AIE2P
+  if (k1_wts_aligned(kernels)) {
+    const int32_t blocks = input_channels / input_split / 8;
+    const int32_t row = input_width * 8;
+    const int32_t oc_out =
+        oc + output_channels / (8 * output_split) * weight_index;
+    k1_cas_get(input + blocks * row, kernels + oc * blocks * 64,
+               output + oc_out * row, row, blocks,
+               [=](auto &acc) { return acc.template to_vector<uint8>(scale); });
+    event1();
+    return;
+  }
+#endif
   int ic, ic8, oc8;
 
   int pixel_limit = 7;

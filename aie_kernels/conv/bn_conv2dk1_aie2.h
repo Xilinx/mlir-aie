@@ -211,6 +211,39 @@ static void k1_cas_put(const TI *in, const int8_t *wts, const int32_t row,
   for (int p = 1; p < 4; p++)
     put_mcd(lups(b.extract<8>(p).template grow<16>(), 0));
 }
+
+// epi(acc, side...) gives a chunk's 4 requantized pixels; side buffers share
+// the output's layout. Each pixel is stored as two words, as a vector store
+// here could rewrite bytes past the end of the output. The saturation mode
+// goes back as it was: the scalar path reads the cascade with an unsigned
+// lsrs.
+template <typename TI, typename TO, typename Epi, typename... S>
+static void k1_cas_get(const TI *in, const int8_t *wts, TO *out,
+                       const int32_t row, const int32_t ic_blocks, Epi epi,
+                       const S *...side) {
+  const aie::saturation_mode sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  aie::set_rounding(aie::rounding_mode::conv_even);
+  aie::accum<acc32, 32> lo, hi;
+  k1_cas_conv(in, wts, row, ic_blocks, lo, hi);
+  aie::vector<int32, 8> c[K1_CAS_PIXELS];
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < K1_CAS_PIXELS; p++)
+    c[p] = aie::vector<int32, 16>(lsrs(get_scd_v16acc64(), 0, 1)).extract<8>(0);
+  lo = aie::add(lo, aie::concat(c[0], c[1], c[2], c[3]));
+  hi = aie::add(hi, aie::concat(c[3], c[4], c[5], c[6]));
+  const aie::vector<uint32, 8> a = aie::vector_cast<uint32>(epi(lo, side...));
+  const aie::vector<uint32, 8> b =
+      aie::vector_cast<uint32>(epi(hi, (side + K1_CAS_LAST)...));
+  uint32_t *o = (uint32_t *)out;
+  AIE_LOOP_UNROLL_FULL
+  for (int i = 0; i < 8; i++)
+    o[i] = a[i];
+  AIE_LOOP_UNROLL_FULL
+  for (int i = 2; i < 8; i++)
+    o[6 + i] = b[i];
+  aie::set_saturation(sat);
+}
 #endif
 
 #endif
