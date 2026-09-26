@@ -730,15 +730,20 @@ def conv2dk14(
     well, where the vector path has its own AIE2 variant.
 
     Args:
-        input_width: Spatial width of the input.
+        input_width: Spatial width of the input, a multiple of 16 patches.
         input_channels: Number of input channels.
         output_channels: Number of output channels.
-        kernel_width: Width (and height) of the convolution kernel.
+        kernel_width: Width (and height) of the convolution kernel, even.
 
     Returns:
         ExternalFunction configured for the conv2dk14 kernel.
     """
     tiles = input_width // kernel_width
+    if kernel_width % 2 or tiles * kernel_width != input_width or tiles % 16:
+        raise ValueError(
+            "conv2dk14: kernel_width must be even and input_width a multiple "
+            f"of 16 * kernel_width, got {input_width} and {kernel_width}"
+        )
     pixels = kernel_width * kernel_width
     _RGBA = 4
     in_ty = np.ndarray[(tiles * pixels * _RGBA,), np.dtype[np.uint8]]

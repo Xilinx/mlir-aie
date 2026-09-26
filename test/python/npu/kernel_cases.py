@@ -622,6 +622,12 @@ CASES: list[Case] = [
         scalars=(448, 4, 8, 14, 17),
         tag="two-tile-groups",
     ),
+    check(
+        "conv2dk14",
+        dict(input_width=256, kernel_width=16),
+        scalars=(256, 4, 16, 16, 17),
+        tag="kernel-width-16",
+    ),
     Case(
         "conv2dk1",
         dict(act_dtype=np.uint8),
