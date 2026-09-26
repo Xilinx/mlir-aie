@@ -465,6 +465,45 @@ def test_kernel_builds_cover_every_factory_once():
     assert all(not ef.use_chess for ef in builds.values())
 
 
+KERNEL_CASES = Path(__file__).parent / "npu" / "kernel_cases.py"
+
+
+def test_case_builds_name_the_build_each_case_runs(tmp_path):
+    cases = tmp_path / "some_cases.py"
+    cases.write_text(textwrap.dedent("""\
+        from dataclasses import dataclass, field
+        from aie.iron import kernels
+
+        @dataclass
+        class Case:
+            name: str
+            kwargs: dict = field(default_factory=dict)
+            devices: tuple = ()
+
+            def fn(self):
+                return kernels.tanh(**self.kwargs)
+
+        CASES = [
+            Case("tanh/a"),
+            Case("tanh/b"),
+            Case("tanh/lut", dict(use_lut=True), devices=("npu2",)),
+            Case("tanh/lut-npu1", dict(use_lut=True), devices=("npu1",)),
+        ]
+        """))
+    builds = dict(remarks.case_builds(str(cases), "npu2"))
+    # a and b build one object; the npu1-only case is not this device's.
+    assert list(builds) == ["tanh/a", "tanh/lut"]
+    assert builds["tanh/lut"].object_file_name != builds["tanh/a"].object_file_name
+    assert list(dict(remarks.case_builds(str(cases), "npu2", "b$"))) == ["tanh/b"]
+
+
+def test_case_builds_reach_the_library_cases_the_default_sweep_misses():
+    defaults = {ef.object_file_name for _, ef in kernel_builds()}
+    builds = dict(remarks.case_builds(str(KERNEL_CASES), "npu2", "^tanh/"))
+    lut = builds["tanh/1024x16/bfloat16/use_lut=True/lut"]
+    assert lut.object_file_name not in defaults
+
+
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_compile_command_uses_the_kernels_own_directory(tmp_path):
     ef = kernels.scale()
@@ -623,3 +662,39 @@ def test_a_baseline_tree_prints_the_rows_that_differ(tmp_path, capsys):
     before, after = changed["relu/libcalls"]
     assert before > 0 and after == 0
     assert "relu/libcalls:" in capsys.readouterr().out
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path):
+    # Only the LUT build compiles the loop the pragma lands in.
+    base = tmp_path / "base"
+    shutil.copytree(config.aie_kernels_dir(), base / "aie_kernels")
+    shutil.copytree(config.aie_runtime_lib_dir(), base / "aie_runtime_lib")
+    tanh = base / "aie_kernels" / "activation" / "tanh.cc"
+    loop = "  AIE_PREPARE_FOR_PIPELINING\n  for (int i = 0; i < num_elems; i += 32) {"
+    assert loop in tanh.read_text()
+    tanh.write_text(
+        tanh.read_text().replace(
+            loop,
+            "#if !ACTIVATIONS_NATIVE_TANH\n#pragma clang loop unroll_count(2)\n"
+            f"#endif\n{loop}",
+        )
+    )
+    meta = tmp_path / "meta.json"
+    code = remarks.main(
+        [
+            "--target=aie2p",
+            "--only=^tanh/1024x16/",
+            f"--cases={KERNEL_CASES}",
+            f"--out={tmp_path / 'rows.json'}",
+            f"--meta={meta}",
+            f"--baseline-sources={base}",
+        ]
+    )
+    assert code == 0
+    written = json.loads(meta.read_text())
+    lut = "tanh/1024x16/bfloat16/use_lut=True/lut"
+    assert set(written["kernels"]) == {"tanh/1024x16/bfloat16", lut}
+    changed = written["baseline"]["changed"]
+    assert changed and all(name.startswith(f"{lut}/") for name in changed)
+    assert changed[f"{lut}/pm_bytes"][0] > changed[f"{lut}/pm_bytes"][1]
