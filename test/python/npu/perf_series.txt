@@ -98,6 +98,10 @@ dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024
 dwconv1d_channels_first/64x16/bfloat16/kernel_size=17/seq_len=48/short-row
 dwconv1d_channels_last/256x16/bfloat16/channels=256
 dwconv1d_channels_last/256x16/bfloat16/channels=256/clamp=False/unclamped
+dwconv1d_channels_last/320x16/bfloat16/channels=320/chunk-tail
+dwconv1d_channels_last/480x16/bfloat16/channels=480/odd-chunk-tail
+dwconv1d_channels_last/512x16/bfloat16/channels=512/two-chunks
+dwconv1d_channels_last/96x16/bfloat16/channels=96/odd-group
 exp2f_vec/1024x16/float32
 exp2f_vec/1024x256/float32
 exp2f_vec/48x4/float32/vector-tail

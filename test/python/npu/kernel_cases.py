@@ -1128,6 +1128,13 @@ CASES: list[Case] = [
         calls=16,
         tag="odd-chunk-tail",
     ),
+    # overflowed its declared stack on three builds when every channel unrolled
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=512),
+        calls=16,
+        tag="two-chunks",
+    ),
     # amd/IRON model shapes: Llama 3.2 1B. Each is one core's per-call tile as
     # IRON instantiates the model at a 2048-token context. The decode GEMVs over
     # 2048 and 64 columns are the mv cases above. The one-row ffn down GEMV is
