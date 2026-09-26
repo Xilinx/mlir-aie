@@ -2636,7 +2636,7 @@ def trace_output(out, src, pid):
     what = f"{'circuit' if pid is None else f'id {pid}'} from {fmt_ep(src)}"
     ends, problems, seen = {}, [], set()
     c, r = src[:2]
-    if t.kind(src[:2]) == "shim":
+    if t.kind(src[:2]) == "shim" and src[2] not in (TRACE, CTRL):
         outs = [m for s, m in out.muxes.get((c, r), []) if s == src[2:]]
         if len(outs) != 1 or outs[0][0] != NORTH:
             return ends, [f"{fmt_ep(src)} has shim mux outputs {outs}"]
@@ -2676,10 +2676,10 @@ def trace_output(out, src, pid):
             hop_path = path + [(tile, slave, m, arb)]
             if t.kind(tile) == "shim" and m[0] == SOUTH:
                 outs = [d for s, d in out.muxes.get(tile, []) if s == (NORTH, m[1])]
-                if len(outs) != 1 or outs[0][0] != DMA:
+                if outs and (len(outs) != 1 or outs[0][0] != DMA):
                     problems.append(f"{what} leaves {tile} South:{m[1]} to {outs}")
                     continue
-                ep = (*tile, DMA, outs[0][1])
+                ep = (*tile, DMA, outs[0][1]) if outs else (*tile, *m)
             elif m[0] in DIRECTIONAL:
                 ntile, nport = linked_input(tile, m)
                 if not t.exists(ntile):
