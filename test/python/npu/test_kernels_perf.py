@@ -52,7 +52,8 @@ from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
 
 TRACE_SIZE = 16384
-# The add/256 case filled 16 KB after 91 intervals (180 B each); size for
+# The add/256 case filled 16 KB after 91 intervals (180 B each) when every
+# default core event was traced; markers alone take about 5 B. Size for
 # every declared interval with headroom, so the split sees whole calls.
 TRACE_BYTES_PER_INTERVAL = 512
 
@@ -164,6 +165,11 @@ def _measure(
         # Every kernel checked here is timed; one that is not would chart only
         # wall clock and still pass.
         assert not traced.untimed, f"{case.name}: untimed, {traced.untimed}"
+        # A short trace would chart the min of the calls that fit.
+        assert not traced.truncated, (
+            f"{case.name}: {len(traced.kernel)} of {case.calls} "
+            "calls traced; the rest never reached the host"
+        )
         measured["cycles"] = traced
     return measured
 
@@ -180,8 +186,6 @@ def _cycles_span(traced: kd.CallCycles) -> str:
     k = traced.kernel
     parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
     parts += [f"init[{i}] min {min(v)}" for i, v in traced.initializers.items() if v]
-    if traced.truncated:
-        parts.append("truncated")
     return "; ".join(parts)
 
 

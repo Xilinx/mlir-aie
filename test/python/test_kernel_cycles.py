@@ -114,13 +114,33 @@ def test_more_intervals_than_declared_is_an_error():
         kd.split_intervals([1, 17, 1, 19], calls=2, per_call=1)
 
 
+def test_the_flush_pairs_after_the_last_call_are_dropped():
+    # What npu2 decoded: the core's flush pairs follow the kernel's last call.
+    setup, (k,), truncated = kd.split_intervals(
+        [3907, 3906, 1, 8, 18], calls=2, per_call=1, flush=3
+    )
+    assert (k, truncated) == ((3907, 3906), False)
+
+
+@pytest.mark.parametrize("tail", [[3905], [1, 33, 18], [1, 8, 33]])
+def test_a_long_interval_after_the_last_call_is_not_a_flush(tail):
+    with pytest.raises(RuntimeError, match="does not declare"):
+        kd.split_intervals([3907, 3906, *tail], calls=2, per_call=1, flush=3)
+
+
+def test_more_flush_intervals_than_pairs_is_an_error():
+    with pytest.raises(RuntimeError, match="does not declare"):
+        kd.split_intervals([3907, 3906, 1, 1, 1, 18], calls=2, per_call=1, flush=3)
+
+
 @pytest.mark.parametrize(
     "intervals,expected",
     [
         ([17, 19], kd.CallCycles(kernel=(17, 19))),
         ([17], kd.CallCycles(kernel=(17,), truncated=True)),
         ([], RuntimeError),
-        ([1, 17, 1, 19], RuntimeError),
+        # Each call emitted two pairs, longer than a flush pair.
+        ([170, 190, 170, 190], RuntimeError),
     ],
 )
 def test_cycle_protocol_requires_one_complete_pair_per_call(

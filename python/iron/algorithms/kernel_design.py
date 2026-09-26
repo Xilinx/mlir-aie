@@ -35,12 +35,19 @@ from aie.utils import bfp, ensure_current_device, tensor
 from aie.utils.compile.jit import CompileTime, In, InOut, Out
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
+from aie.utils.trace.events import CoreEvent
 from aie.utils.trace.utils import get_cycles_summary
 from aie.utils.verify import poisoned
 
 from ._pipeline import Stage, pipeline
 
 GUARD_BYTES = 64
+# The traced core emits this many event0/event1 pairs after its last call:
+# the trace unit sends only whole packets, and without them the last two
+# of bn_conv2dk3_dw_out_split's 8 calls never left the tile (1 or 2 pairs
+# still lost them). The pairs decoded as 1 to 18 cycles.
+TRACE_FLUSH = 16
+FLUSH_CYCLES = 32
 
 
 def _contract(fn):
@@ -345,6 +352,7 @@ def _build_stream(
     fn = factory(**factory_kwargs)
     stage = _stage(fn, calls, tuple(scalars), params, stack_bytes, guard)
     stage.trace = trace_config is not None
+    stage.trace_flush = TRACE_FLUSH
     types = fn.arg_types()
 
     guarded = _guarded(fn, guard)
@@ -366,6 +374,9 @@ def _build_stream(
         host_types,
         transfers,
         trace_size=trace_config.trace_size if trace_config else 0,
+        # cycles_per_call reads only the markers; the default events add an
+        # INSTR_VECTOR per vector op, which filled a 64 KB buffer mid-run.
+        coretile_events=[CoreEvent.INSTR_EVENT_0, CoreEvent.INSTR_EVENT_1],
     )
 
 
@@ -658,22 +669,29 @@ def traced_intervals(fn, *, calls=1) -> int:
     return int(setup) + _calls(calls) * (len(inits) + 1)
 
 
-def split_intervals(durations, *, calls, per_call, setup=0):
+def split_intervals(durations, *, calls, per_call, setup=0, flush=0):
     """Label an interval stream: ``setup`` intervals, then ``per_call`` per call.
 
     The harness runs the setup kernel once, then each call runs its traced
     initializers in contract order and the kernel last, so interval ``j`` of
     call ``n`` sits at ``setup + n * per_call + j``. Returns ``(setup
-    intervals, one tuple per per-call kernel, truncated)``. A stream longer
-    than that is some kernel emitting markers it does not declare.
+    intervals, one tuple per per-call kernel, truncated)``. Up to ``flush``
+    intervals of at most ``FLUSH_CYCLES`` may follow, the pairs the core
+    emits to push the trace out. Anything else is some kernel emitting
+    markers it does not declare; one whose extra intervals are that short
+    and that few passes as a flush.
     """
     durations = [int(d) for d in durations]
     expected = setup + calls * per_call
-    if len(durations) > expected:
+    tail = durations[expected:]
+    if len(tail) > flush or any(d > FLUSH_CYCLES for d in tail):
         raise RuntimeError(
-            f"expected {expected} trace intervals, got {len(durations)}; a kernel "
-            "on the core emits markers its contract's trace does not declare"
+            f"expected {expected} trace intervals and up to {flush} flush pairs, "
+            f"got {len(durations)}, the extra {tail[:flush + 1]} cycles; a "
+            "kernel on the core emits markers its contract's trace does not "
+            "declare"
         )
+    durations = durations[:expected]
     head, stream = durations[:setup], durations[setup:]
     return (
         tuple(head),
@@ -712,7 +730,11 @@ def cycles_per_call(
     cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
     durations = [d for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
     head, per_kernel, truncated = split_intervals(
-        durations, calls=calls, per_call=len(inits) + 1, setup=int(setup)
+        durations,
+        calls=calls,
+        per_call=len(inits) + 1,
+        setup=int(setup),
+        flush=TRACE_FLUSH,
     )
     if not per_kernel[-1]:
         raise RuntimeError(
