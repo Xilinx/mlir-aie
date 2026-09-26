@@ -12,25 +12,31 @@
 
 // Five ids leave (0,2) DMA:0 for five different sets of master ports, all
 // holding Core:0. Routed straight, they need one arbiter with five msels, and
-// an arbiter has four; this used to crash. Sending all five up to (0,3) and back
-// down to Core:0 splits them over two arbiters at (0,2): one for the ports
-// DMA:0 feeds, one for those North:0 feeds.
+// an arbiter has four; this used to crash. Ids 3 and 4 go up to (0,3) and back
+// down to DMA:1, which takes a second arbiter at (0,2). Id 5 goes up too, so
+// ids 3 and 5 share a msel, and one rule after the rule for id 1 takes both.
 
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%tile_0_2)
-// CHECK-DAG:     %[[A0:.*]] = aie.amsel<0> (0)
-// CHECK-DAG:     %[[B0:.*]] = aie.amsel<1> (0)
-// CHECK-DAG:     %[[A1:.*]] = aie.amsel<0> (1)
-// CHECK-DAG:     %[[B1:.*]] = aie.amsel<1> (1)
-// CHECK-DAG:     aie.masterset(Core : 0, %[[B0]], %[[B1]])
-// CHECK-DAG:     aie.masterset(DMA : 0, %[[A1]])
-// CHECK-DAG:     aie.masterset(DMA : 1, %[[B1]])
-// CHECK-DAG:     aie.masterset(North : 0, %[[A0]], %[[A1]])
-// CHECK:         aie.packet_rules(North : 0) {
+// CHECK-DAG:     aie.masterset(DMA : 1, %[[DOWN:[0-9]+]])
+// CHECK-DAG:     aie.masterset(North : 1, %[[UP35:[0-9]+]], %[[UP4:[0-9]+]])
+// CHECK:         aie.packet_rules(North : 1) {
+// CHECK-NEXT:      aie.rule(24, 0, %[[DOWN]])
 // CHECK:         aie.packet_rules(DMA : 0) {
+// CHECK-NEXT:      aie.rule(31, 4, %[[UP4]])
+// CHECK-NEXT:      aie.rule(31, 2, %{{.*}})
+// CHECK-NEXT:      aie.rule(31, 1, %{{.*}})
+// CHECK-NEXT:      aie.rule(25, 1, %[[UP35]])
+// CHECK-NEXT:    }
 // CHECK-LABEL: aie.switchbox(%tile_0_3)
-// CHECK:         aie.masterset(South : 0,
+// CHECK-DAG:     aie.masterset(DMA : 0, %[[DMA:[0-9]+]])
+// CHECK-DAG:     aie.masterset(South : 1, %[[BACK:[0-9]+]])
+// CHECK:         aie.packet_rules(South : 1) {
+// CHECK-NEXT:      aie.rule(31, 5, %[[DMA]])
+// CHECK-NEXT:      aie.rule(31, 4, %[[BACK]])
+// CHECK-NEXT:      aie.rule(31, 3, %[[BACK]])
+// CHECK-NEXT:    }
 
 module {
   aie.device(npu1_1col) {

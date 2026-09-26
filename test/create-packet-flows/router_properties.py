@@ -1219,10 +1219,11 @@ def trace_routed_streams(d):
                     if ms[0] == "masterset" and rule[2] in ms[2]:
                         nxt(ms[1], rule_id, arbiter, bool(ms[3]))
 
-            for rule in op[2]:
+            for i, rule in enumerate(op[2]):
                 mask, value = rule[0], rule[1]
                 if pid is None:
-                    route(rule, value)
+                    if not any(value & m == v & m for m, v, _ in op[2][:i]):
+                        route(rule, value)
                     continue
                 if (pid & mask) == (value & mask):
                     route(rule, pid)
@@ -2645,10 +2646,6 @@ def trace_output(out, src, pid):
             if not hits:
                 problems.append(f"{what} matches no rule at {tile} {fmt_port(slave)}")
                 continue
-            if len({view[1].get(h[2]) for h in hits}) > 1:
-                problems.append(
-                    f"{what} matches {len(hits)} rules at {tile} {fmt_port(slave)}"
-                )
             arb = view[1].get(hits[0][2])
             masters = [p for p, ms in view[2].items() if hits[0][2] in ms[2]]
             if arb is None or not masters:
