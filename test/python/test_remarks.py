@@ -927,6 +927,50 @@ def test_a_renamed_loop_with_the_same_rows_is_not_a_change():
     ]
 
 
+def test_diff_rows_needs_matching_locations_to_call_it_a_rename():
+    """Two different loops sharing a metric tuple by coincidence, not a rename.
+
+    Loop A regresses (II 4 -> 6); loop B, an unrelated loop elsewhere in the
+    same function, is truly just renamed (II 6 -> 6, same source line). Once
+    A's new II happens to equal B's own II, the metric tuple alone cannot
+    tell them apart: without locations, A's regression is hidden by folding
+    B's old identity onto A's new one. With locations, only B's true rename
+    (same file:line on both sides) pairs; A's rows are left disappeared and
+    appeared under their real values.
+    """
+    loop = "mm/loop/matmul_bf16"
+    base = {
+        f"{loop}/for.body10.i/II": 4,  # loop A, about to regress
+        f"{loop}/for.body20.i/II": 6,  # loop B, elsewhere, coincidentally II=6
+    }
+    current = {
+        f"{loop}/for.body12.i/II": 6,  # loop A, renamed and regressed to II=6
+        f"{loop}/for.body25.i/II": 6,  # loop B, renamed, still II=6
+    }
+    base_locations = {
+        (f"{loop}", "for.body10.i"): ("mm.cc", 50),
+        (f"{loop}", "for.body20.i"): ("mm.cc", 80),
+    }
+    current_locations = {
+        (f"{loop}", "for.body12.i"): ("mm.cc", 50),
+        (f"{loop}", "for.body25.i"): ("mm.cc", 80),
+    }
+
+    # Without locations, the old metric-only heuristic folds unrelated loop B
+    # into loop A's new slot, hiding A's regression.
+    blind = remarks.diff_rows(base, current)
+    assert blind["renamed"] == [[f"{loop}/for.body20.i", f"{loop}/for.body12.i"]]
+
+    # With locations, only the true rename (B, same file:line) pairs; A's
+    # regression surfaces as its own disappeared/appeared rows.
+    diff = remarks.diff_rows(base, current, base_locations, current_locations)
+    assert diff["renamed"] == [[f"{loop}/for.body20.i", f"{loop}/for.body25.i"]]
+    assert diff["rows"] == {
+        f"{loop}/for.body10.i/II": [4, None],
+        f"{loop}/for.body12.i/II": [None, 6],
+    }
+
+
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
     # Only the LUT build compiles the extra loop.

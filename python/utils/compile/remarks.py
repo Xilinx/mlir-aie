@@ -1153,6 +1153,7 @@ def _baseline(
     workdir: Path,
     jobs: int,
     rows,
+    locations=None,
     builds=kernel_builds,
     skip=frozenset(),
 ) -> dict:
@@ -1161,6 +1162,7 @@ def _baseline(
     The builds named in ``skip`` (this tree's failures) are not compiled, and
     the builds the baseline fails are listed under ``"failed"`` with their
     rows left out of the comparison: either side missing is no change to show.
+    ``locations`` is this tree's per-loop ``(file, line)``, from ``_run``.
     """
     with kernel_sources(tree):
         selected = [b for b in _selected_builds(only, builds) if b[0] not in skip]
@@ -1176,11 +1178,18 @@ def _baseline(
         if rep is not None
         for r in report_rows(rep, name, "")
     }
+    base_locations = {}
+    for (name, _), (rep, _) in zip(selected, analyzed):
+        if rep is not None:
+            base_locations.update(_loop_locations(name, rep))
     prefixes = tuple(f"{name}/" for name in failed)
     current = {
         r["name"]: r["value"] for r in rows if not r["name"].startswith(prefixes)
     }
-    return {**diff_rows(base, current), "failed": failed}
+    return {
+        **diff_rows(base, current, base_locations, locations or {}),
+        "failed": failed,
+    }
 
 
 _LOOP_ROW = re.compile(r"^(.*/loop/[^/]+)/([^/]+)/([^/]+)$")
@@ -1195,15 +1204,45 @@ def _loops(rows: dict) -> dict:
     return loops
 
 
-def diff_rows(base: dict, current: dict) -> dict:
+def _loop_locations(
+    prefix: str, rep: StaticReport
+) -> dict[tuple[str, str], tuple[str | None, int | None]]:
+    """``{(prefix/loop/fn, bb): (file, line)}``, keyed like ``_loops()``.
+
+    Fed to ``diff_rows`` so its rename heuristic can tell two loops with the
+    same metrics apart by where they live, not just by the metrics.
+    """
+    return {
+        (f"{prefix}/loop/{fn}", bb): (loop.file, loop.line)
+        for (fn, bb), loop in rep.loops.items()
+    }
+
+
+def diff_rows(
+    base: dict,
+    current: dict,
+    base_locations: dict[tuple[str, str], tuple[str | None, int | None]] | None = None,
+    current_locations: (
+        dict[tuple[str, str], tuple[str | None, int | None]] | None
+    ) = None,
+) -> dict:
     """Map each row that differs to ``[base, current]``, less renamed loops.
 
     LLVM numbers its blocks per function, so an edit anywhere in a function
     can rename every loop after it (``for.body20.i`` -> ``for.body23.i``)
     without changing one. Within a function, a changed loop whose rows
     match another changed loop's in the other tree is taken to be that loop
-    renamed; ``"renamed"`` pairs them, and their rows are left out.
+    renamed -- provided their source locations agree too, when both sides'
+    are known: several loops sharing one metric tuple by coincidence (the
+    same trip count and II turning up twice in a function) is common enough
+    that the tuple alone is not a safe identity, and pairing the wrong two
+    would misreport a loop that actually regressed as merely renamed.
+    ``"renamed"`` pairs them, and their rows are left out; a metric match
+    whose locations disagree falls through to a disappeared loop and an
+    appeared one, same as no match at all.
     """
+    base_locations = base_locations or {}
+    current_locations = current_locations or {}
     changed = {
         name: [base.get(name), current.get(name)]
         for name in sorted(base.keys() | current.keys())
@@ -1213,10 +1252,20 @@ def diff_rows(base: dict, current: dict) -> dict:
     moved = {m.group(1, 2) for n in changed if (m := _LOOP_ROW.match(n))}
     unmatched = collections.defaultdict(list)
     for key in sorted(moved & before.keys()):
-        unmatched[key[0], tuple(sorted(before[key].items()))].append(key[1])
+        bucket = (
+            key[0],
+            tuple(sorted(before[key].items())),
+            base_locations.get(key, (None, None)),
+        )
+        unmatched[bucket].append(key[1])
     renamed, matched_before, matched_after = [], set(), set()
     for key in sorted(moved & after.keys()):
-        olds = unmatched[key[0], tuple(sorted(after[key].items()))]
+        bucket = (
+            key[0],
+            tuple(sorted(after[key].items())),
+            current_locations.get(key, (None, None)),
+        )
+        olds = unmatched[bucket]
         if olds:
             old = olds.pop(0)
             renamed.append([f"{key[0]}/{old}", f"{key[0]}/{key[1]}"])
@@ -1332,6 +1381,7 @@ def _run(a: argparse.Namespace) -> int:
         if suspect:
             print(f"warning: {suspect}", file=sys.stderr)
     rows: list[dict] = []
+    locations: dict = {}
     failed: dict[str, str] = {}
     meta: dict = {"kernels": {}}
     annotated: set[tuple] = set()
@@ -1367,6 +1417,7 @@ def _run(a: argparse.Namespace) -> int:
             failed[name] = detail
         else:
             rows += report_rows(rep, name, extra)
+            locations.update(_loop_locations(name, rep))
             meta["kernels"][name] = {
                 "source": source,
                 "symbol": entry_symbol(ef),
@@ -1416,7 +1467,15 @@ def _run(a: argparse.Namespace) -> int:
     meta["failed"] = failed
     if a.baseline_sources:
         changed = _baseline(
-            a.baseline_sources, a.only, a.target, workdir, a.jobs, rows, sweep, failed
+            a.baseline_sources,
+            a.only,
+            a.target,
+            workdir,
+            a.jobs,
+            rows,
+            locations,
+            sweep,
+            failed,
         )
         meta["baseline"] = {
             "sources": a.baseline_sources,
