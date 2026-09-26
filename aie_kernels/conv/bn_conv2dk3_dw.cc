@@ -854,21 +854,82 @@ static void dw8_s2_row(const uint8_t *__restrict line0,
   }
 }
 
-// Stride 2 when dw8_s2_row applies; returns how many channel blocks it
-// covered.
+// Stride 1 over the same rows, wider than dw8_blocks takes: each window of
+// two chunks gives the sums at pixels 1..8 of the first, as in dw8_s2_row.
+static inline void dw8_s1_row(const uint8_t *__restrict line0,
+                              const uint8_t *__restrict line1,
+                              const uint8_t *__restrict line2, const dw8_w *w,
+                              uint8_t *__restrict out,
+                              const int32_t input_width, const int scale) {
+  const uint8_t *in[3] = {line0, line1, line2};
+  const dw8_v zero = aie::zeros<uint8, 64>();
+  aie::accum<acc32, 64> acc;
+  BN3_UNROLL_FULL
+  for (int i = 0; i < 3; i++) {
+    const aie::vector<uint8, 128> d = aie::concat(zero, aie::load_v<64>(in[i]));
+    acc = i == 0 ? dw8_conv::mul(w[0], 0, d, 0)
+                 : dw8_conv::mac(acc, w[i], 0, d, 0);
+  }
+  dw8_v prev = dw8_out(acc, scale);
+  const int32_t last = input_width * 8 - 64;
+  BN3_UNROLL_FULL
+  for (int32_t at = 0; at < last; at += 64) {
+    BN3_UNROLL_FULL
+    for (int i = 0; i < 3; i++) {
+      const aie::vector<uint8, 128> d = dw8_pair(in[i] + at);
+      acc = i == 0 ? dw8_conv::mul(w[0], 0, d, 0)
+                   : dw8_conv::mac(acc, w[i], 0, d, 0);
+    }
+    const dw8_v cur = dw8_out(acc, scale);
+    const dw8_v v = aie::shuffle_up_fill(cur, prev, 8);
+    aie::store_v(out + at, v.extract<32>(0));
+    aie::store_v(out + at + 32, v.extract<32>(1));
+    prev = cur;
+  }
+  BN3_UNROLL_FULL
+  for (int i = 0; i < 3; i++) {
+    const aie::vector<uint8, 128> d =
+        aie::concat(aie::load_v<64>(in[i] + last), zero);
+    acc = i == 0 ? dw8_conv::mul(w[0], 0, d, 0)
+                 : dw8_conv::mac(acc, w[i], 0, d, 0);
+  }
+  const dw8_v v = aie::shuffle_up_fill(dw8_out(acc, scale), prev, 8);
+  aie::store_v(out + last, v.extract<32>(0));
+  aie::store_v(out + last + 32, v.extract<32>(1));
+}
+
+// Stride 2 when dw8_s2_row applies, and stride 1 over rows wider than
+// dw8_blocks takes; returns how many channel blocks it covered.
 static int32_t dw8_s2_blocks(const uint8_t *line0, const uint8_t *line1,
                              const uint8_t *line2, const int8_t *wts,
                              uint8_t *output1, uint8_t *output2,
                              const int32_t input_width, const int32_t channels,
-                             const int32_t split, const int32_t check,
-                             const int scale) {
-  const int32_t output_width = input_width / 2;
+                             const int32_t split, const int32_t stride,
+                             const int32_t check, const int scale) {
+  const int32_t output_width = input_width / stride;
   const uint64_t taps = (1ull << 24) - 1;
   const aie::mask<64> keep[3] = {
       aie::mask<64>::from_uint64(check == top ? 0 : taps),
       aie::mask<64>::from_uint64(taps),
       aie::mask<64>::from_uint64(check == bottom ? 0 : taps)};
   const int32_t step = input_width * 8;
+  if (stride == 1) {
+    AIE_LOOP_MIN_ITERATION_COUNT(DW8_MIN_BLOCKS)
+    for (int cd = 0; cd < channels / 8; cd++) {
+      dw8_w w[3];
+      BN3_UNROLL_FULL
+      for (int i = 0; i < 3; i++)
+        w[i] = aie::select(
+            aie::zeros<int8, 64>(),
+            dw8_load((const uint8_t *)(wts + cd * 72 + i * 24)).cast_to<int8>(),
+            keep[i]);
+      uint8_t *out = cd < split ? output1 + cd * output_width * 8
+                                : output2 + (cd - split) * output_width * 8;
+      dw8_s1_row(line0 + cd * step, line1 + cd * step, line2 + cd * step, w,
+                 out, input_width, scale);
+    }
+    return channels / 8;
+  }
   for (int cd = 0; cd < channels / 8; cd++) {
     dw8_w w[3];
     BN3_UNROLL_FULL
@@ -908,10 +969,15 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
        align) == 0 &&
       (stride == 1 ? input_width % 4 : input_width % 8 + output_width % 4) == 0;
 #if AIE_TUNED_AIE2P
+  const bool rows64 = (((uintptr_t)line0 | (uintptr_t)line1 | (uintptr_t)line2 |
+                        (uintptr_t)output1 | (uintptr_t)output2) &
+                       63) == 0 &&
+                      input_width % 8 == 0;
   const int32_t first =
-      stride == 2 && aligned
+      (stride == 2 && aligned) || (stride == 1 && rows64 && input_width > 32 &&
+                                   channels / 8 >= DW8_MIN_BLOCKS)
           ? dw8_s2_blocks(line0, line1, line2, wts, output1, output2,
-                          input_width, channels, split, check, scale)
+                          input_width, channels, split, stride, check, scale)
           : dw8_blocks(line0, line1, line2, wts, output1, output2,
                        input_width <= 8 ? input_width : row_width, channels,
                        split, stride, check, scale, aligned);
