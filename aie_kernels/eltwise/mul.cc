@@ -39,8 +39,7 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
 // The tuned paths run one chain per iteration instead, which pipelines (II1
 // on AIE2P) with restrict pointers and a rolled loop.
 template <typename T_in, typename T_out, const int N>
-void eltwise_vmul(T_in *__restrict a, T_in *__restrict b,
-                  T_out *__restrict c) {
+void eltwise_vmul(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c) {
 
   constexpr int vec_factor = AIE_BF16_LANES;
   event0();
