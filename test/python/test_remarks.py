@@ -721,6 +721,45 @@ def test_a_baseline_tree_prints_the_rows_that_differ(tmp_path, capsys):
     assert "relu/libcalls:" in capsys.readouterr().out
 
 
+def test_a_renamed_loop_with_the_same_rows_is_not_a_change():
+    loop = "mm/loop/matmul_bf16"
+    base = {
+        "mm/pm_bytes": 900,
+        f"{loop}/for.body20.i/II": 8,
+        f"{loop}/for.body20.i/not_zol": 0,
+        f"{loop}/for.body31.i/II": 4,
+        f"{loop}/for.body40.i/II": 2,
+        f"{loop}/for.body50.i/II": 6,
+        "mv/loop/matvec/for.body.i/II": 3,
+    }
+    current = {
+        "mm/pm_bytes": 912,
+        # Renamed, rows the same: dropped.
+        f"{loop}/for.body23.i/II": 8,
+        f"{loop}/for.body23.i/not_zol": 0,
+        # body40 took body31's name as body31 moved to body34: both match.
+        f"{loop}/for.body31.i/II": 2,
+        f"{loop}/for.body34.i/II": 4,
+        # Renamed and changed: kept, under both names.
+        f"{loop}/for.body52.i/II": 5,
+        # Another function's loop with the same II is no match.
+        "mv/loop/matvec/for.body.i/II": 3,
+        "mv/loop/other/for.body.i/II": 6,
+    }
+    diff = remarks.diff_rows(base, current)
+    assert diff["rows"] == {
+        "mm/pm_bytes": [900, 912],
+        f"{loop}/for.body50.i/II": [6, None],
+        f"{loop}/for.body52.i/II": [None, 5],
+        "mv/loop/other/for.body.i/II": [None, 6],
+    }
+    assert sorted(diff["renamed"]) == [
+        [f"{loop}/for.body20.i", f"{loop}/for.body23.i"],
+        [f"{loop}/for.body31.i", f"{loop}/for.body34.i"],
+        [f"{loop}/for.body40.i", f"{loop}/for.body31.i"],
+    ]
+
+
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
     # Only the LUT build compiles the extra loop.
