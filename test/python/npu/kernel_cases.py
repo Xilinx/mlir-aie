@@ -1064,6 +1064,45 @@ CASES: list[Case] = [
             ),
         )
     ],
+    # Weights 32 bytes past a 64-byte boundary, which AIE2P's 64-byte loads
+    # would round down; the depthwise kernels load weights unaligned.
+    *[
+        check(
+            f,
+            kw,
+            calls=8,
+            scalars=s,
+            arg_byte_offsets=((3, 32),),
+            devices=("npu2",),
+        )
+        for f, kw, s in (
+            (
+                "bn_conv2dk3",
+                dict(input_width=224, input_channels=8, output_channels=16),
+                (224, 8, 16, 3, 3, 0, 8, 0),
+            ),
+            (
+                "bn_conv2dk3",
+                dict(input_width=112, input_channels=32, output_channels=16),
+                (112, 32, 16, 3, 3, 1, 10, 0),
+            ),
+            (
+                "bn_conv2dk3_dw",
+                dict(input_width=28, input_channels=120, output_channels=120),
+                (28, 120, 120, 3, 3, 1, 7, 0),
+            ),
+            (
+                "bn_conv2dk3_dw",
+                dict(input_width=56, input_channels=72, output_channels=72, stride=2),
+                (56, 72, 72, 3, 3, 1, 7, 0),
+            ),
+            (
+                "bn_conv2dk3_dw_out_split",
+                dict(input_width=7, input_channels=480, output_split_channels=240),
+                (7, 480, 480, 3, 3, 1, 7, 0),
+            ),
+        )
+    ],
     # eltwise mul/add selected per call (programming_examples/ml/scale_shift)
     Case("mul_add", calls=16, scalars=(1,), smoke=True),
     Case("mul_add", calls=16, scalars=(0,), tag="add", smoke=True),
