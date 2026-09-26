@@ -1740,6 +1740,71 @@ def AIEX_DmaChannelResetForOp
   let hasVerifier = 1;
 }
 
+def AIEX_BufferClearOp: AIEX_Op<"buffer_clear", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Zero a range of tile-local data memory from a runtime sequence";
+  let description = [{
+    Zeros `length` 32-bit words of `tile`'s local data memory, starting at the
+    word-aligned byte offset `address`. Intended for resetting a resident
+    accumulator or normalization state between dispatches in a residency loop
+    that keeps state on-chip, without reloading the design.
+
+    The op lowers to a single `npu.blockwrite` of a zero-filled
+    `memref<lengthxi32>` to `address` on `tile`. This is the same mechanism
+    aie-rt's own host driver uses to write tile data memory in bulk
+    (`XAie_DataMemBlockWrite` builds the payload in a caller buffer and issues a
+    block write; the driver has no dedicated memset entry point either, so this
+    op does not skip a step that exists a layer down and was merely
+    unpromoted). Unlike `aiex.core_reset` / `aiex.dma_channel_reset`, this is
+    not a fixed-size register pulse: the emitted instruction carries `length`
+    literal zero words, so the cost of this op in the runtime sequence (and in
+    a control-packet lowering, which splits it further) scales with the region
+    size. That is a real hardware property, not unwritten code: AIE2P's DMA
+    buffer descriptors have a constant-value padding field, but it augments the
+    MM2S (read) side of a transfer for halo-style stream padding, is available
+    only on mem tile BDs, and is capped at a handful of words per dimension --
+    it cannot fill an S2MM destination and so cannot make a large clear free.
+
+    For a region cleared on every dispatch, keep `length` small (an
+    accumulator or norm state, not a whole KV-cache). A large, infrequent clear
+    (for example a KV-cache reset at sequence start) is usually cheaper as a
+    DMA transfer from a zeroed source region using the existing DMA-task ops
+    (`aiex.dma_configure_task` / `aie.dma_bd` / `aie.flow`) directly, which this
+    op does not attempt to set up: that composition needs a persistent zero
+    source buffer and a routed flow between two DMA channels, both compile-time
+    resources a runtime-sequence-scoped lowering cannot safely synthesize on
+    its own the way it synthesizes a fixed register pulse.
+
+    Only core and mem tiles have local data memory to clear; shim tiles are
+    rejected by the verifier, matching aie-rt's own `XAie_DataMemBlockWrite`,
+    which only accepts `AIETILE` and `MEMTILE` tile types.
+
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.core_reset` and `aiex.dma_channel_reset`.
+
+    Example:
+    ```
+      %tile = aie.tile(0, 2)
+      // Clear 16 words (64 bytes) of tile-local data memory starting at offset 0.
+      aiex.buffer_clear(%tile, 0, 16)
+    ```
+  }];
+  let arguments = (
+    ins Index:$tile,
+        UI32Attr:$address,
+        UI32Attr:$length
+  );
+  let assemblyFormat = [{ `(` $tile `,` $address `,` $length `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp BufferClearOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // ScratchpadParameter ops
 //===----------------------------------------------------------------------===//

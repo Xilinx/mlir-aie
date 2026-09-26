@@ -1505,8 +1505,6 @@ LogicalResult AIEX::CoreResetOp::verify() {
     return emitOpError() << "tile operand must be produced by an aie.tile op";
   int col = tile.getCol();
   int row = tile.getRow();
-  // The tile coordinates are bounded by aie.tile's own verifier, so this op
-  // does not re-check them for range.
 
   // Only core tiles have a CORE_CONTROL register with a reset bit. Mem and shim
   // tiles have no compute core, so there is nothing valid to lower to. This
@@ -1516,6 +1514,58 @@ LogicalResult AIEX::CoreResetOp::verify() {
     return emitOpError() << "tile (" << col << ", " << row
                          << ") has no core to reset (only core tiles have a "
                             "CORE_CONTROL register)";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BufferClearOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::BufferClearOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  // The op lowers to an npu.blockwrite; the runtime sequence has no meaning on
+  // AIE1. Reject it explicitly, as CoreResetOp and SetLockOp do.
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return emitOpError("aiex.buffer_clear is not supported on AIE1.");
+
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  int col = tile.getCol();
+  int row = tile.getRow();
+  // The tile coordinates are bounded by aie.tile's own verifier, so this op
+  // does not re-check them for range.
+
+  // Only core and mem tiles have a data memory module, matching aie-rt's
+  // XAie_DataMemBlockWrite (driver/src/memory/xaie_mem.c).
+  bool isCoreTile = targetModel.isCoreTile(col, row);
+  bool isMemTile = targetModel.isMemTile(col, row);
+  if (!isCoreTile && !isMemTile)
+    return emitOpError() << "tile (" << col << ", " << row
+                         << ") has no local data memory to clear (only core "
+                            "and mem tiles do)";
+
+  if (getLength() == 0)
+    return emitOpError() << "length must be nonzero";
+
+  // npu.blockwrite writes whole 32-bit words, so a word-aligned address keeps
+  // the lowering one unconditional blockwrite with no maskwrite32 edge case.
+  if (getAddress() % 4 != 0)
+    return emitOpError() << "address " << getAddress()
+                         << " is not 4-byte (word) aligned";
+
+  // Both data memories sit at local offset 0 in aie-rt's register map, so
+  // `address` is a direct offset and only the size needs bounding.
+  uint64_t memSize = isCoreTile ? targetModel.getLocalMemorySize()
+                                : targetModel.getMemTileSize();
+  uint64_t regionEnd = (uint64_t)getAddress() + (uint64_t)getLength() * 4;
+  if (regionEnd > memSize)
+    return emitOpError() << "region [" << getAddress() << ", " << regionEnd
+                         << ") exceeds tile (" << col << ", " << row
+                         << ")'s local data memory size (" << memSize
+                         << " bytes)";
 
   return success();
 }
