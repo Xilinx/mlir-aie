@@ -42,9 +42,8 @@ struct StackRequirementResult {
   std::string error;
   StackRequirementFailure failureKind = StackRequirementFailure::Unmeasurable;
   // Functions with no frame size: the ELF holds no `.stack_sizes` entry for
-  // them and the fallback table does not name them. Their frames count as 0,
-  // so `bytes` is a lower bound while this list is non-empty. A kernel
-  // compiled without -fstack-size-section lands here.
+  // them. Their frames count as 0, so `bytes` is a lower bound while this list
+  // is non-empty. A kernel compiled without -fstack-size-section lands here.
   std::vector<std::string> unmeasured;
 };
 
