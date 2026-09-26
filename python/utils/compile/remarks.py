@@ -87,6 +87,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import get_args
@@ -1000,7 +1001,7 @@ def parse_build(spec: str) -> tuple[str, dict]:
 
 
 def spec_builds(specs):
-    """Yield ``(name, ExternalFunction)`` for each ``parse_build`` result, named as :func:`kernel_builds` names a dtypes entry."""
+    """Yield ``(name, ExternalFunction)`` for each ``parse_build`` result, named as ``kernel_builds`` names a dtypes entry."""
     from aie.iron import kernels
 
     for factory, kwargs in specs:
@@ -1028,7 +1029,7 @@ def case_builds(
     rows carry the case's name, the key its device series use too. Of the
     cases ``only`` matches, those that share an object compile once, under
     the first name. ``coverage`` counts where every case went, for
-    :func:`case_coverage`.
+    ``case_coverage``.
     """
     import dataclasses
     import importlib.util
@@ -1038,6 +1039,8 @@ def case_builds(
     sys.path.insert(0, directory)  # a cases file imports its sibling modules
     try:
         spec = importlib.util.spec_from_file_location("_remarks_cases", path)
+        if spec is None or spec.loader is None:
+            raise ValueError(f"{path}: not a Python module")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     finally:
@@ -1068,7 +1071,7 @@ def case_builds(
 
 
 def case_coverage(c: collections.Counter) -> str:
-    """One line accounting for every case :func:`case_builds` was given."""
+    """One line accounting for every case ``case_builds`` was given."""
     line = (
         f"cases: {c['builds']} builds for {c['builds'] + c['shared']} cases "
         f"({c['shared']} share an earlier case's build); "
@@ -1155,7 +1158,7 @@ def _baseline(
     rows,
     locations=None,
     builds=kernel_builds,
-    skip=frozenset(),
+    skip: Collection[str] = frozenset(),
 ) -> dict:
     """Every row whose value differs when the kernels come from ``tree``.
 
@@ -1249,7 +1252,7 @@ def diff_rows(
         if base.get(name) != current.get(name)
     }
     before, after = _loops(base), _loops(current)
-    moved = {m.group(1, 2) for n in changed if (m := _LOOP_ROW.match(n))}
+    moved = {(m[1], m[2]) for n in changed if (m := _LOOP_ROW.match(n))}
     unmatched = collections.defaultdict(list)
     for key in sorted(moved & before.keys()):
         bucket = (
@@ -1376,6 +1379,7 @@ def _run(a: argparse.Namespace) -> int:
     workdir = Path(a.keep or tempfile.mkdtemp(prefix="aie-static-"))
     print(f"compiling into {workdir}")
     source_root = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    current_sources = suspect = None
     if a.baseline_sources:
         current_sources, suspect = current_kernel_sources(a.baseline_sources)
         if suspect:
@@ -1386,18 +1390,15 @@ def _run(a: argparse.Namespace) -> int:
     meta: dict = {"kernels": {}}
     annotated: set[tuple] = set()
 
-    sweep = kernel_builds
     coverage: collections.Counter = collections.Counter()
-    if a.build:
 
-        def sweep():
-            return spec_builds(a.build)
-
-    if a.cases:
-
-        def sweep():
+    def sweep():
+        if a.cases:
             coverage.clear()
             return case_builds(a.cases, generation, a.only, coverage)
+        if a.build:
+            return spec_builds(a.build)
+        return kernel_builds()
 
     try:
         builds = _selected_builds(a.only, sweep)

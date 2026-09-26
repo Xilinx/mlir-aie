@@ -27,7 +27,7 @@ from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
 )
 from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.helpers.util import np_ndarray_type_to_memref_type
-from aie.ir import IndexType
+from aie.ir import IndexType  # pyright: ignore[reportAttributeAccessIssue]
 from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction

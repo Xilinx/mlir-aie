@@ -9,7 +9,7 @@ import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
+from typing import Callable, Iterable, Mapping, TypeVar, get_args, get_origin, overload
 
 import numpy as np
 from aie.helpers.npdtypes import (
@@ -401,6 +401,15 @@ def _tuned_arch() -> str | None:
     ``_portable()`` holds.
     """
     return None if _portable() else _detect_arch()
+
+
+_T = TypeVar("_T")
+
+
+def _by_tuned_arch(table: Mapping[str, _T], default: _T | None = None) -> _T | None:
+    """Return ``table``'s entry for ``_tuned_arch()``, else ``default``."""
+    arch = _tuned_arch()
+    return default if arch is None else table.get(arch, default)
 
 
 def _portable_flags() -> tuple[str, ...]:

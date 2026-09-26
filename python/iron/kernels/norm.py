@@ -17,6 +17,7 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
+    _by_tuned_arch,
     _detect_arch,
     _kernel_source,
     _make_extern,
@@ -102,10 +103,13 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
             reference=rms_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance={
-                "aie2": _RMS_NORM_BF16_AIE2,
-                "aie2p": _RMS_NORM_BF16_AIE2P,
-            }.get(_tuned_arch(), _NORM_BF16),
+            tolerance=_by_tuned_arch(
+                {
+                    "aie2": _RMS_NORM_BF16_AIE2,
+                    "aie2p": _RMS_NORM_BF16_AIE2P,
+                },
+                _NORM_BF16,
+            ),
             ops_per_call=4 * tile_size,
         ),
     )
@@ -127,10 +131,13 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
             reference=lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance={
-                "aie2": _RMS_NORM_BF16_AIE2,
-                "aie2p": _RMS_NORM_BF16_AIE2P,
-            }.get(_tuned_arch(), _NORM_BF16),
+            tolerance=_by_tuned_arch(
+                {
+                    "aie2": _RMS_NORM_BF16_AIE2,
+                    "aie2p": _RMS_NORM_BF16_AIE2P,
+                },
+                _NORM_BF16,
+            ),
             ops_per_call=4 * tile_size,
         ),
     )
@@ -155,10 +162,13 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
             reference=layer_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance={
-                "aie2": _LAYER_NORM_BF16_AIE2,
-                "aie2p": _LAYER_NORM_BF16_AIE2P,
-            }.get(_tuned_arch(), _NORM_BF16),
+            tolerance=_by_tuned_arch(
+                {
+                    "aie2": _LAYER_NORM_BF16_AIE2,
+                    "aie2p": _LAYER_NORM_BF16_AIE2P,
+                },
+                _NORM_BF16,
+            ),
             ops_per_call=6 * tile_size,
         ),
     )

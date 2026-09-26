@@ -21,6 +21,7 @@ Usage (from programming_examples/ml):
 import argparse
 import os
 import sys
+from typing import Any
 
 import aie.iron as iron
 import numpy as np
@@ -96,7 +97,7 @@ def _load_cascade_weights(fix):
     return full
 
 
-def _design(mode, target, fix):
+def _design(mode, target, fix) -> tuple[Any, dict]:
     if mode == "block":
         kwargs = dict(
             block_name=target,

@@ -22,6 +22,7 @@ from ._common import (
     Param,
     Trace,
     _arch_traits,
+    _by_tuned_arch,
     _detect_arch,
     _include_dirs,
     _kernel_source,
@@ -632,7 +633,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
             ),
             # aiecc measured 1984 on aie2p (448 portable); remarks gives the
             # kernel 1792 on aie2 (832 portable).
-            stack_bytes={"aie2": 2048, "aie2p": 2048}.get(_tuned_arch()),
+            stack_bytes=_by_tuned_arch({"aie2": 2048, "aie2p": 2048}),
         ),
     )
 

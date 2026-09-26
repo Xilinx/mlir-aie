@@ -23,6 +23,7 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
+    _by_tuned_arch,
     _conv_act_dtype_info,
     _detect_arch,
     _kernel_source,
@@ -50,7 +51,7 @@ def _conv_dimensions(input_width, input_channels, output_channels):
 
 def _vector_loads(*indices):
     """``alignments`` for arguments the tuned build loads as whole vectors."""
-    align = {"aie2": 32, "aie2p": 64}.get(_tuned_arch())
+    align = _by_tuned_arch({"aie2": 32, "aie2p": 64})
     return tuple((i, align) for i in indices) if align else ()
 
 
@@ -459,10 +460,13 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
             # one; portable, 1280 B on aie2p and 416 B on aie2. The tuned
             # aie2 build unrolls every channel: 672 B up to 384 channels,
             # then up to 9 B per channel (8608 B at 960).
-            stack_bytes={
-                "aie2": None if channels <= 384 else 9 * channels - 32,
-                "aie2p": 1280 if channels % 64 == 0 else None,
-            }.get(_tuned_arch(), 1280),
+            stack_bytes=_by_tuned_arch(
+                {
+                    "aie2": None if channels <= 384 else 9 * channels - 32,
+                    "aie2p": 1280 if channels % 64 == 0 else None,
+                },
+                1280,
+            ),
             setup=conv_even,
             # lo/hi are buffers the design writes, so they are Param like
             # mha's idx gate: bound here rather than sampled, which also keeps
@@ -556,7 +560,7 @@ def conv2dk1(
             # aiecc measured_stack_size: 1088 B tuned for aie2p, which keeps
             # the oc-invariant input block on the stack; 2752 B untuned on
             # aie2p (1504 B on aie2); 288 B tuned for aie2
-            stack_bytes={"aie2": None, "aie2p": 1088}.get(_tuned_arch(), 2752),
+            stack_bytes=_by_tuned_arch({"aie2": None, "aie2p": 1088}, 2752),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,
@@ -627,7 +631,7 @@ def conv2dk3(
             trace=Trace.whole_call(),
             # aiecc measured_stack_size: 384 B tuned for aie2p, 4736 B
             # untuned; 0 B tuned for aie2
-            stack_bytes={"aie2": None, "aie2p": 384}.get(_tuned_arch(), 4736),
+            stack_bytes=_by_tuned_arch({"aie2": None, "aie2p": 384}, 4736),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
@@ -687,7 +691,7 @@ def conv2dk1_skip(
             trace=Trace.whole_call(),
             # aiecc measured_stack_size with an int8 skip: 512 B tuned for
             # aie2p, 2816 B untuned; 32 B tuned for aie2
-            stack_bytes={"aie2": None, "aie2p": 512}.get(_tuned_arch(), 2816),
+            stack_bytes=_by_tuned_arch({"aie2": None, "aie2p": 512}, 2816),
             roles=(In, In, Param, Out, In, *((Param,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
@@ -876,7 +880,7 @@ def conv2dk1_skip_init(
             # aiecc measured_stack_size: 1728 B tuned for aie2p, the largest
             # over input_channels 16..256; untuned >=2144 plus __modsi3,
             # which has no .stack_sizes; 288 B tuned for aie2
-            stack_bytes={"aie2": None, "aie2p": 1728}.get(_tuned_arch(), 0x2000),
+            stack_bytes=_by_tuned_arch({"aie2": None, "aie2p": 1728}, 0x2000),
             roles=(In, In, Param, Out, In, *((Param,) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,

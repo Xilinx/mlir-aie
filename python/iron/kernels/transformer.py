@@ -25,6 +25,7 @@ from ._common import (
     Param,
     Trace,
     _arch_traits,
+    _by_tuned_arch,
     _kernel_source,
     _make_extern,
     _runtime_lib_include,
@@ -135,7 +136,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         np.float32,
         np.float32,
         layer_norm_f32_ref,
-        _NORM_F32_TOLERANCE.get(_tuned_arch(), _NORM_F32),
+        _by_tuned_arch(_NORM_F32_TOLERANCE, _NORM_F32),
         6 * cols,
         # aiecc measured_stack_size: 896 B tuned for aie2p, 160 B tuned for
         # aie2, 832 B untuned on aie2p (672 B on aie2); the 1024 B default
@@ -168,7 +169,7 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
             reference=layer_norm_affine_cast_ref,
             acc_dtype=np.float32,
             reduction=cols,
-            tolerance=_AFFINE_TOLERANCE.get(_tuned_arch(), _NORM_BF16),
+            tolerance=_by_tuned_arch(_AFFINE_TOLERANCE, _NORM_BF16),
             ops_per_call=8 * cols,
         ),
     )

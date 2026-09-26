@@ -115,9 +115,9 @@ def _view_byte_offset(arg) -> tuple[int | None, str | None]:
     view sits at offset 0.
     """
     offset = 0
-    owner = getattr(arg, "owner", None)
+    owner: Any = getattr(arg, "owner", None)
     while getattr(owner, "name", None) == "memref.view":
-        shift = getattr(owner.operands[1], "owner", None)
+        shift: Any = getattr(owner.operands[1], "owner", None)
         if getattr(shift, "name", None) != "arith.constant":
             return None, None
         offset += ir.IntegerAttr(shift.attributes["value"]).value
@@ -883,6 +883,8 @@ class ExternalFunction(Kernel):
 
         self._original_name = name
         self.contract = contract
+        # The arch a library factory picked this kernel's source and flags for.
+        self.built_for_arch: str | None = None
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if not object_file_name:
