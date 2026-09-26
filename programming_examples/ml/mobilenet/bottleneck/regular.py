@@ -46,7 +46,7 @@ from ._common import (
 # build_3layer — 1x1-relu -> DW-3x3 -> (1x1 or 1x1-skip)
 # Used for bn1, bn2, bn3, bn6, bn7.
 # ---------------------------------------------------------------------------
-def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
+def build_3layer(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
     """Build a 3-layer bottleneck on a single compute tile.
 
     Returns (out_fifo, worker).
@@ -65,7 +65,7 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
     l3_sz = dw_ch * out_c
     wts_sz = l1_sz + l2_sz + l3_sz
 
-    wts_buf = _wts_buffer(data_dir, f"{name}_chain.txt", wts_sz)
+    wts_buf = _wts_buffer(data_dir, f"{name}_{wts_tag}.txt", wts_sz)
 
     l3_out_ty = _i8((out_w, 1, out_c))
 
@@ -252,6 +252,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
                 p23.release(1)
                 _l3()
 
+            # The last L1 row is still held; free it so the next frame starts clean.
+            c12.release(1)
+
     worker = Worker(
         worker_fn,
         fn_args=[
@@ -266,7 +269,6 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
             k_dw,
             k_l3,
         ],
-        while_true=False,
         tile=tile,
     )
     return out_fifo, worker
@@ -276,7 +278,7 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
 # build_2layer_skip — DW-3x3-stride1 -> 1x1-skip (the bn0 shape)
 # Input is uint8 (init-conv output); output is int8.
 # ---------------------------------------------------------------------------
-def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
+def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
     """Build the bn0-shaped 2-layer block on a single compute tile.
 
     Returns (out_fifo, worker).
@@ -293,7 +295,7 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
     skip_wts_sz = dw_ch * out_c
     wts_sz = dw_wts_sz + skip_wts_sz
 
-    wts_buf = _wts_buffer(data_dir, f"{name}_chain.txt", wts_sz)
+    wts_buf = _wts_buffer(data_dir, f"{name}_{wts_tag}.txt", wts_sz)
 
     dw_out_ty = _u8((in_w, 1, dw_ch))
     out_ty = _i8((in_w, 1, out_c))
@@ -383,7 +385,6 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
             k_dw,
             k_skip,
         ],
-        while_true=False,
         tile=tile,
     )
     return out_fifo, worker
@@ -658,7 +659,6 @@ def build_fused_pair(
             kb_dw,
             kb_skip,
         ],
-        while_true=False,
         tile=compute_tile,
     )
     return out_fifo, worker

@@ -29,8 +29,8 @@ import os
 import aie.iron as iron
 import numpy as np
 from aie.iron import (
-    CompilableDesign,
     CompileTime,
+    InOut,
     ObjectFifo,
     Program,
     Runtime,
@@ -100,6 +100,7 @@ _FUSED_PAIRS = {"bn4_5": ("bn4", "bn5"), "bn8_9": ("bn8", "bn9")}
 # files and scale factors get baked into the design.
 _DATA_DIR = DATA_DIR
 _SCALES = None
+_WTS_TAG = "chain"
 
 
 def _build_one(block_name, act_in):
@@ -111,6 +112,7 @@ def _build_one(block_name, act_in):
             _SCALES,
             data_dir=_DATA_DIR,
             tile=TEST_PLACEMENT["single_compute"],
+            wts_tag=_WTS_TAG,
         )
         return out_fifo, [w], []
 
@@ -124,6 +126,7 @@ def _build_one(block_name, act_in):
             _SCALES,
             data_dir=_DATA_DIR,
             tile=TEST_PLACEMENT["single_compute"],
+            wts_tag=_WTS_TAG,
         )
         return out_fifo, [w], []
 
@@ -198,14 +201,17 @@ def per_block_iron(
     block_name: CompileTime[str],
     data_dir: CompileTime[str | None] = None,
     scales_json: CompileTime[str | None] = None,
+    wts_tag: CompileTime[str] = "chain",
 ):
     """Build a standalone IRON design for one bottleneck and return MLIR.
 
     data_dir / scales_json default to the main mobilenet calibration; pass the
     bottleneck_A|B|C/data/ path + matching scale_factors.json to build a design
-    that targets the per-bn brevitas fixtures.
+    that targets the per-bn brevitas fixtures. Single-tile blocks load weights
+    from <bn>_<wts_tag>.txt; bottleneck_A keeps its per-bn weights as "single".
     """
-    global _DATA_DIR, _SCALES
+    global _DATA_DIR, _SCALES, _WTS_TAG
+    _WTS_TAG = wts_tag
     _DATA_DIR = (
         data_dir + "/"
         if data_dir and not data_dir.endswith("/")
@@ -284,6 +290,17 @@ def per_block_iron(
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
+@iron.jit
+def per_block_design(
+    *buffers: InOut,
+    block_name: CompileTime[str],
+    data_dir: CompileTime[str | None] = None,
+    scales_json: CompileTime[str | None] = None,
+    wts_tag: CompileTime[str] = "chain",
+):
+    return per_block_iron(block_name, data_dir, scales_json, wts_tag)
+
+
 def _make_argparser():
     p = argparse.ArgumentParser(description="Build per-block IRON MLIR.")
     add_compile_args(p, default_dev="npu2")
@@ -310,11 +327,9 @@ def main():
         block_name=opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json
     )
     if opts.xclbin_path:
-        CompilableDesign(
-            per_block_iron,
-            compile_kwargs=compile_kwargs,
-            aiecc_flags=["--dynamic-objFifos=false"],
-        ).compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+        per_block_design.specialize(**compile_kwargs).compile(
+            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
+        )
     else:
         print(per_block_iron(**compile_kwargs))
 

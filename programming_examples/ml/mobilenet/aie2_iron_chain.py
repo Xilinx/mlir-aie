@@ -32,8 +32,8 @@ import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
-    CompilableDesign,
     CompileTime,
+    InOut,
     ObjectFifo,
     Program,
     Runtime,
@@ -227,6 +227,16 @@ def _chain_iron(
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
+@iron.jit
+def chain_design(
+    *buffers: InOut,
+    mode: CompileTime[str],
+    data_dir: CompileTime[str],
+    scales_json: CompileTime[str],
+):
+    return _chain_iron(mode, data_dir, scales_json)
+
+
 def _make_argparser():
     p = argparse.ArgumentParser(description="Build a chained IRON mobilenet subset.")
     add_compile_args(p, default_dev="npu2")
@@ -243,11 +253,9 @@ def main():
         mode=opts.mode, data_dir=opts.data_dir, scales_json=opts.scales_json
     )
     if opts.xclbin_path:
-        CompilableDesign(
-            _chain_iron,
-            compile_kwargs=compile_kwargs,
-            aiecc_flags=["--dynamic-objFifos=false"],
-        ).compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+        chain_design.specialize(**compile_kwargs).compile(
+            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
+        )
     else:
         print(_chain_iron(**compile_kwargs))
 

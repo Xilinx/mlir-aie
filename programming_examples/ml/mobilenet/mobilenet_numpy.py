@@ -129,7 +129,7 @@ def _decode_dw3x3(flat_i8, channels):
 def _load_input_image(data_dir, in_h, in_w, in_c):
     """Read before_ifm_mem_fmt_1x1.txt as (H, W, C) int8.
 
-    File holds quantized int8 in (C, H, W) order per test_mobilenet.py.
+    File holds quantized int8 in (C, H, W) order.
     """
     path = os.path.join(data_dir, "before_ifm_mem_fmt_1x1.txt")
     raw = np.loadtxt(path, delimiter=",", dtype=np.int8)

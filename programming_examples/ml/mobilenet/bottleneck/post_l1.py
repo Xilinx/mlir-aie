@@ -137,14 +137,6 @@ def post_l1(act_in, sf, *, tiles=None, data_dir):
             post_L2_InC,  # outC_padd=1280 (next layer's input width)
             post_sf,
         ],
-        # dynamic_objfifo_lowering keeps the inner loop intact instead of
-        # unrolling for ping-pong; kernel uses runtime modulo indexing.
-        # Without this attribute, the static objfifo lowering UNROLLS the
-        # inner loops to handle ping-pong buffer alternation explicitly,
-        # producing 15 func.call ops in 9 basic blocks (lowlevel keeps the
-        # loop intact with 1 call site). The dynamic lowering uses runtime
-        # modulo indexing, preserving the loop structure.
-        dynamic_objfifo_lowering=True,
         tile=tiles["compute"] if tiles else None,
     )
 
