@@ -228,8 +228,10 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
 
           // Peano only software-pipelines an innermost single-block loop, so
           // unrolling K lets 'j', with its C loads and stores, pipeline. The
-          // caller enables it only where one mmul step is one instruction and
-          // the unrolled reduction fits the register file.
+          // caller enables it only where one mmul step is one instruction.
+          // The unrolled reduction does not fit the register file: int8 ->
+          // int32 spills 16 bytes of stack per unit of K. Rolling long
+          // reductions back up is not a uniform win on hardware either.
           if constexpr (unroll_k) {
             AIE_LOOP_UNROLL_FULL
             for (unsigned i = 0; i < colA; ++i)
