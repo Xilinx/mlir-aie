@@ -11,8 +11,8 @@ kernel against its contract, then times it. Checking first is the point --
 timings from a kernel that returns the wrong answer are noise, so the
 assertion runs before anything is recorded. A failing kernel drops only its
 own rows; the JSON is still written, unless the device itself is suspect --
-preflight or ``test_measurement_is_sane`` did not pass -- in which case
-``pytest_sessionfinish`` writes none of it.
+preflight did not pass, or ``test_measurement_is_sane`` ran and failed -- in
+which case ``pytest_sessionfinish`` writes none of it.
 With ``--correctness-results correctness.xml``, publication also excludes
 cases with any extensive-suite failure or no passing correctness test.
 
@@ -22,8 +22,9 @@ Run it the way the nightly workflow does::
         --perf-out perf.json --perf-meta meta.json --pmode turbo
         --warmup 10 --iters 50
 
-``-k`` selects a subset; include the sanity test, for example
-``-k '(softmax) or test_measurement_is_sane'``, to allow publication.
+``-k`` selects a subset. A subset that leaves out the sanity test still
+writes its rows, with ``measurement_sane`` null in the meta; include it, for
+example ``-k '(softmax) or test_measurement_is_sane'``, to vouch for them.
 The series a row lands in is ``<case>/<metric>``;
 ``test_perf_series_names.py`` pins those names, because renaming one
 restarts its chart on gh-pages.
@@ -233,7 +234,8 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
 
     Both sides get the same inputs, so their raw output words are compared
     exactly, and both must pass the contract. The rows stay the current
-    tree's; the pair goes to ``--perf-meta`` and the terminal summary.
+    tree's; the pair, each arm's min, max and n, goes to ``--perf-meta`` and
+    the terminal summary.
     """
     tree = config.getoption("--baseline-sources")
     # The baseline's kernels share their object names with this tree's but
@@ -247,18 +249,27 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
             raise AssertionError(f"baseline tree {tree}: {e}") from None
 
     def cycles(m):
-        return min(m["cycles"].kernel) if "cycles" in m else None
+        if "cycles" not in m:
+            return None
+        k = m["cycles"].kernel
+        return {"min": min(k), "max": max(k), "n": len(k)}
 
     def npu_us(m):
-        return round(m["wall"].npu.min_us, 2) if m["wall"].npu else None
+        if not (s := m["wall"].npu):
+            return None
+        return {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
 
     words = [
         _differing_words(a, b) for a, b in zip(base["outputs"], current["outputs"])
     ]
+    cycles_range = [cycles(base), cycles(current)]
+    npu_us_range = [npu_us(base), npu_us(current)]
     baseline = config._perf_meta.setdefault("baseline", {"sources": tree, "cases": {}})
     baseline["cases"][case.name] = {
-        "cycles": [cycles(base), cycles(current)],
-        "npu_us_min": [npu_us(base), npu_us(current)],
+        "cycles": [r and r["min"] for r in cycles_range],
+        "npu_us_min": [r and r["min"] for r in npu_us_range],
+        "cycles_range": cycles_range,
+        "npu_us_range": npu_us_range,
         "differing_words": sum(words),
     }
 
