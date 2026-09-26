@@ -178,4 +178,3 @@ module {
     aie.packet_flow(28) { aie.packet_source<%t_5_4, DMA : 1> aie.packet_dest<%t_4_1, DMA : 4> aie.packet_dest<%t_5_1, DMA : 2> aie.packet_dest<%t_6_1, DMA : 2> }
   }
 }
-

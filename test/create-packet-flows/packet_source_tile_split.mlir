@@ -144,4 +144,3 @@ module {
     aie.packet_flow(8) { aie.packet_source<%t_0_5, DMA : 1> aie.packet_dest<%t_0_1, DMA : 3> } {keep_pkt_header = true}
   }
 }
-
