@@ -24,7 +24,7 @@
   return ::aie::vector<uint8, 64>(lli);
 }
 
-void gray2rgba_aie(uint8_t *AIE2_RESTRICT y_in, uint8_t *AIE2_RESTRICT rgba_out,
+void gray2rgba_aie(uint8_t *__restrict y_in, uint8_t *__restrict rgba_out,
                    const int32_t height, const int32_t width) {
   event0();
   // Initialize alpha vector
@@ -75,6 +75,51 @@ void gray2rgba_aie(uint8_t *AIE2_RESTRICT y_in, uint8_t *AIE2_RESTRICT rgba_out,
       ::aie::store_v(rgba_out, ::aie::vector<uint8, 64>(fout));
       rgba_out += 64;
     }
+  }
+#elif AIE_TUNED_AIE2P
+  // AIE2's zip at AIE2P's 64-byte width: 64 pixels a step, eight shuffles for
+  // four 512-bit stores. The rows are contiguous and each pixel stands alone,
+  // so the whole tile is one run, and every 64-pixel load stays 64-byte
+  // aligned. The step overlaps its neighbours only when known to run at least
+  // twice, so a one-step run takes the plain loop. The rest goes 16 pixels at
+  // a time.
+  const v64uint8 alpha = ::aie::broadcast<uint8, 64>(255);
+  const int pixels = width * height;
+  const int steps = pixels / 64;
+  auto body = [&]() __attribute__((always_inline)) {
+    v64uint8 y = ::aie::load_v<64>(y_in);
+    y_in += 64;
+    v64uint8 yy_lo = shuffle(y, y, INTLV_lo_8o16);
+    v64uint8 yy_hi = shuffle(y, y, INTLV_hi_8o16);
+    v64uint8 ya_lo = shuffle(y, alpha, INTLV_lo_8o16);
+    v64uint8 ya_hi = shuffle(y, alpha, INTLV_hi_8o16);
+    ::aie::store_v(rgba_out, ::aie::vector<uint8, 64>(
+                                 shuffle(yy_lo, ya_lo, INTLV_lo_16o32)));
+    rgba_out += 64;
+    ::aie::store_v(rgba_out, ::aie::vector<uint8, 64>(
+                                 shuffle(yy_lo, ya_lo, INTLV_hi_16o32)));
+    rgba_out += 64;
+    ::aie::store_v(rgba_out, ::aie::vector<uint8, 64>(
+                                 shuffle(yy_hi, ya_hi, INTLV_lo_16o32)));
+    rgba_out += 64;
+    ::aie::store_v(rgba_out, ::aie::vector<uint8, 64>(
+                                 shuffle(yy_hi, ya_hi, INTLV_hi_16o32)));
+    rgba_out += 64;
+  };
+  if (steps >= 2) {
+    AIE_LOOP_MIN_ITERATION_COUNT(2)
+    for (int j = 0; j < steps; j++)
+      body();
+  } else {
+    for (int j = 0; j < steps; j++)
+      body();
+  }
+  for (int j = steps * 64; j < pixels; j += 16) {
+    ::aie::vector<uint8, 16> data_buf = ::aie::load_v<16>(y_in);
+    y_in += 16;
+    v64uint8 fout = bor(vector_broadcast(data_buf), alpha255);
+    ::aie::store_v(rgba_out, ::aie::vector<uint8, 64>(fout));
+    rgba_out += 64;
   }
 #else
   for (int i = 0; i < height; i++)
