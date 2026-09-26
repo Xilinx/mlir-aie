@@ -528,6 +528,11 @@ CASES: list[Case] = [
     Case("rgba2hue", calls=16, smoke=True),
     # Under four vectors, so AIE2 takes the loop that is not software-pipelined.
     check("rgba2hue", dict(line_width=96), tag="short-row"),
+    # AIE2P steps 64 pixels at a time, pipelined from 4 steps, then a last
+    # 32 pixels when the row has them: a pipelined row with a tail, and a row
+    # that is only the tail.
+    check("rgba2hue", dict(line_width=288), tag="tail"),
+    check("rgba2hue", dict(line_width=32), tag="one-vector"),
     # conv: full-range int8 data (the kernels saturate, so `input_limit` only
     # keeps the int32 accumulator safe); the shift puts random sums around
     # uint8's range (64 channels x 127^2 ~ 2**20 >> 12 for k1; 9x that >> 15

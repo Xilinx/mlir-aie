@@ -256,6 +256,8 @@ rgba2gray/1152x4/uint8/line_width=288/tail
 rgba2gray/128x4/uint8/line_width=32/one-vector
 rgba2gray/640x4/uint8/line_width=160/short-row
 rgba2gray/7680x16/uint8
+rgba2hue/1152x4/uint8/line_width=288/tail
+rgba2hue/128x4/uint8/line_width=32/one-vector
 rgba2hue/384x4/uint8/line_width=96/short-row
 rgba2hue/7680x16/uint8
 rms_norm/1000x16/bfloat16/cols=1000/row-tail
