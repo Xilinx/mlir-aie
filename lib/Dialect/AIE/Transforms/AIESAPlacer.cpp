@@ -39,6 +39,20 @@ getMemAffinityNeighbors(const AIETargetModel &targetModel, TileID tilePos) {
   return neighbors;
 }
 
+/// Bytes a buffer takes on a tile once assign-buffer-addresses aligns it: to
+/// the bus width, or on a core tile to the widest vector access once the buffer
+/// can hold one.
+static int64_t alignedBufferBytes(const AIETargetModel &targetModel,
+                                  AIETileType tileType, int64_t bytes) {
+  if (tileType == AIETileType::MemTile)
+    return llvm::alignTo(bytes, targetModel.getMemTileLoadStoreBusWidth() / 8);
+  uint32_t alignBits = targetModel.getComputeTileLoadStoreBusWidth();
+  uint32_t vecAlignBits = targetModel.getComputeTileMaxVectorAlignBits();
+  if (bytes * 8 >= vecAlignBits)
+    alignBits = std::max(alignBits, vecAlignBits);
+  return llvm::alignTo(bytes, alignBits / 8);
+}
+
 //===----------------------------------------------------------------------===//
 // SASchedule
 //===----------------------------------------------------------------------===//
@@ -1238,7 +1252,11 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     auto *tileOp = bufOp.getTile().getDefiningOp();
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
-    staticBufferSizes[tileOp] += bufOp.getAllocationSize();
+    int64_t bytes = bufOp.getAllocationSize();
+    staticBufferSizes[tileOp] +=
+        bufOp.getAligned()
+            ? alignedBufferBytes(*targetModel, tileTypes.lookup(tileOp), bytes)
+            : bytes;
   });
 
   // Collect core stack sizes (reserved by assign-buffer-addresses pass)
@@ -1246,7 +1264,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
-    stackSizes[tileOp] = coreOp.getEffectiveStackSize();
+    stackSizes[tileOp] = alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                                            coreOp.getEffectiveStackSize());
   });
 
   // Build net model, fifo buffer info, and cascade groups
@@ -1289,17 +1308,30 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
     int64_t elementBits =
         dataLayout.getTypeSizeInBits(elemType.getElementType());
-    fb.producerSizeBytes = elemType.getNumElements() * elementBits / 8;
+    int64_t producerBytes = elemType.getNumElements() * elementBits / 8;
+    AIETileType prodType =
+        fb.producer ? tileTypes.lookup(fb.producer) : AIETileType::CoreTile;
+    fb.producerSizeBytes =
+        alignedBufferBytes(*targetModel, prodType, producerBytes);
 
     // Consumer element size (may differ with consumerElemType)
-    fb.consumerSizeBytes = fb.producerSizeBytes;
+    int64_t consumerBytes = producerBytes;
     if (auto consType = ofOp.getConsumerElemType()) {
       auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
       auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
       int64_t consBits =
           dataLayout.getTypeSizeInBits(consMemref.getElementType());
-      fb.consumerSizeBytes = consMemref.getNumElements() * consBits / 8;
+      consumerBytes = consMemref.getNumElements() * consBits / 8;
     }
+    // One size serves every consumer, so align it for a core tile if any
+    // consumer is one.
+    bool coreConsumer = llvm::any_of(fb.consumers, [&](Operation *cons) {
+      return tileTypes.lookup(cons) == AIETileType::CoreTile;
+    });
+    fb.consumerSizeBytes = alignedBufferBytes(
+        *targetModel,
+        coreConsumer ? AIETileType::CoreTile : AIETileType::MemTile,
+        consumerBytes);
 
     // Get per-endpoint depths: [producer, consumer0, consumer1, ...]
     if (auto arrayAttr = dyn_cast<ArrayAttr>(ofOp.getElemNumber())) {

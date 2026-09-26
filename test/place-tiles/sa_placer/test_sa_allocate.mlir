@@ -118,3 +118,19 @@ module @unpinned_delegate_reachable {
     aie.core(%coreC) { aie.end }
   }
 }
+
+// -----
+
+// 1024B stack + 54208B weights + 4 x 2576B fifo buffers sum to exactly 64KB,
+// but assign-buffer-addresses aligns each 2576B buffer to 64B (2624B), so the
+// fifo can't stay on coreA.
+// CHECK-LABEL: @exact_fit_needs_padding
+// CHECK: aie.objectfifo.allocate @intra0
+module @exact_fit_needs_padding {
+  aie.device(npu2) {
+    %coreA = aie.logical_tile<CoreTile>(?, ?)
+    %wts = aie.buffer(%coreA) {sym_name = "weights"} : memref<54208xi8>
+    aie.objectfifo @intra0(%coreA, {%coreA}, 4 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2576xi8>>
+    aie.core(%coreA) { aie.end }
+  }
+}
