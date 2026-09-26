@@ -958,6 +958,25 @@ CASES: list[Case] = [
         scalars=(6, 80, 80, 3, 3, 2, 7, 0),
         tag="bottom-row",
     ),
+    # AIE2P's unaligned per-row path, whose loads Peano's post-increment
+    # combine moved to the wrong address while the row width was a constant.
+    *[
+        check(
+            "bn_conv2dk3_dw",
+            dict(input_width=w, input_channels=c, output_channels=c),
+            calls=8,
+            scalars=(w, c, c, 3, 3, row, 7, 0),
+            tag=tag,
+            devices=("npu2",),
+        )
+        for w, c, row, tag in (
+            (7, 24, 0, "top-row"),
+            (7, 24, 1, "middle-row"),
+            (9, 16, 0, "top-row"),
+            (9, 16, 1, "middle-row"),
+            (42, 32, 1, "middle-row"),
+        )
+    ],
     # One of MobileNet's eight 120-channel weight slices, on the last row so
     # the average is taken.
     Case(
