@@ -27,8 +27,8 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
   }
 }
 
-// Four independent load/mul/store chains per iteration; see ADD_UNROLL in
-// add.cc.
+// The untuned path runs four independent load/mul/store chains per iteration;
+// see ADD_UNROLL in add.cc.
 #define MUL_UNROLL 4
 
 // aie::mul on bf16 yields an accumulator (fp32 products); convert back to
@@ -36,11 +36,11 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
 // produces garbage at the 32-wide AIE2P width.
 #define MUL_ONE(A, B) (aie::mul((A), (B)).template to_vector<T_out>())
 
-// AIE2 runs one chain per iteration instead, which pipelines with restrict
-// pointers and a rolled loop.
+// The tuned paths run one chain per iteration instead, which pipelines (II1
+// on AIE2P) with restrict pointers and a rolled loop.
 template <typename T_in, typename T_out, const int N>
-void eltwise_vmul(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
-                  T_out *AIE2_RESTRICT c) {
+void eltwise_vmul(T_in *__restrict a, T_in *__restrict b,
+                  T_out *__restrict c) {
 
   constexpr int vec_factor = AIE_BF16_LANES;
   event0();
@@ -48,7 +48,7 @@ void eltwise_vmul(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   constexpr int F = N / vec_factor;
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   AIE_LOOP_NO_UNROLL
   for (int i = 0; i < F / MUL_UNROLL * MUL_UNROLL; i++) {
     *pC1++ = MUL_ONE(*pA1++, *pB1++);
@@ -82,8 +82,8 @@ void eltwise_vmul(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
 // Runtime size (need not divide vec_factor); scalar tail avoids the full-width
 // load_v/store_v reading/writing past the buffer on a short final vector.
 template <typename T_in, typename T_out>
-void eltwise_vmul_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
-                       T_out *AIE2_RESTRICT c, int size) {
+void eltwise_vmul_size(T_in *__restrict a, T_in *__restrict b,
+                       T_out *__restrict c, int size) {
   constexpr int vec_factor = AIE_BF16_LANES;
   event0();
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
@@ -91,7 +91,7 @@ void eltwise_vmul_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   const int F = (uint32_t)MUL_ELEMS / vec_factor; // see eltwise_vadd_size
 // The single chain pipelines only with a compile-time trip count.
-#if AIE_TUNED_AIE2 && !defined(MUL_ELEMS_RUNTIME)
+#if (AIE_TUNED_AIE2 || AIE_TUNED_AIE2P) && !defined(MUL_ELEMS_RUNTIME)
   AIE_LOOP_NO_UNROLL
   for (int i = 0; i < F / MUL_UNROLL * MUL_UNROLL; i++) {
     *pC1++ = MUL_ONE(*pA1++, *pB1++);
