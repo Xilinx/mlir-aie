@@ -16,9 +16,9 @@
 # nothing. The constructed layout is a solution by construction, so a failure to
 # allocate is an allocator bug and not an infeasible input.
 #
-# Completeness and quality are ratchets, not absolutes: packing around fixed
-# obstacles is NP-hard, so the allocator is a heuristic and a few adversarial
-# layouts defeat it. Tighten the bounds when the allocator improves; a drop
+# Completeness is absolute: when its ranked search fails, the allocator falls
+# back to an exhaustive one, so a feasible design that does not place is a bug.
+# Quality bounds are ratchets: tighten them when the allocator improves; a drop
 # below them is a regression.
 
 import argparse
@@ -31,6 +31,26 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 SEEDS = 200
+# Seeds beyond the default corpus that only the exhaustive fallback places,
+# found by the nightly run. Always included so a default run covers the fallback.
+FALLBACK_SEEDS = [756]
+FALLBACK_BANKRES_SEEDS = [
+    20477,
+    41211,
+    64637,
+    74693,
+    79731,
+    83421,
+    87019,
+    111343,
+    152031,
+    154031,
+    169383,
+    173497,
+    186185,
+    187359,
+    199423,
+]
 # All 200 fixed seeds solve, and placement backtracks rather than giving up on
 # the first ranked choice, so there is no slack here to absorb an adversarial
 # seed: one that defeats the search should fail this and be looked at.
@@ -76,6 +96,12 @@ def align_up(v, a):
     return ((v + a - 1) // a) * a
 
 
+def required_align(cfg, size):
+    """Alignment the allocator gives an `aligned` buffer it places: a buffer
+    holding a full-width vector gets the vector alignment, others the bus."""
+    return cfg["vec"] if size >= cfg["vec"] else cfg["bus"]
+
+
 def oracle_largest_free_run(cap, stack, blocks, vec):
     """Largest contiguous free run above the stack in the as-constructed
     (pre-hide) oracle layout. Caps a randomly chosen data_size to a
@@ -108,8 +134,6 @@ def build_design(rng, cfg):
         if rng.random() < 0.30:  # leave a hole for a later buffer to find
             cursor += rng.randint(1, max(1, bank // 2))
         aligned = rng.random() > 0.15
-        if aligned:
-            cursor = align_up(cursor, bus)
         roll = rng.random()
         if roll < 0.10:  # zero-sized: covers no bytes, placeable anywhere
             size = 0
@@ -119,6 +143,8 @@ def build_design(rng, cfg):
             size = rng.randint(1, max(1, bank // (2 * bus))) * bus
         else:  # deliberately larger than one bank
             size = rng.randint(bank + 1, min(3 * bank, cap - stack))
+        if aligned:
+            cursor = align_up(cursor, required_align(cfg, size))
         if cursor + size > cap:
             break
         blocks.append(dict(addr=cursor, size=size, aligned=aligned))
@@ -157,7 +183,10 @@ def build_design(rng, cfg):
     # and the block is checked like any other.
     core_data = None
     if cfg["stack"]:
-        free = [b for b in blocks if b["role"] == "free" and b["size"] > 0]
+        # The allocator always aligns the core's data region.
+        free = [
+            b for b in blocks if b["role"] == "free" and b["size"] > 0 and b["aligned"]
+        ]
         if free and rng.random() < 0.35:
             core_data = rng.choice(free)
             core_data["name"] = f'core_data_{cfg["tile"][0]}_{cfg["tile"][1]}'
@@ -195,21 +224,15 @@ def build_design(rng, cfg):
 # Object-derived per-bank reservations, on their own seed set so the numbers
 # above keep measuring exactly what they measured before.
 BANKRES_SEEDS = 12000
-# Set at the answer, not at what the allocator manages today: these two bounds
-# are the one place here that is not a ratchet. A ratchet guards what works,
-# which is right for a healthy metric and wrong for a known defect. Every design
-# counted is feasible by construction, so the only correct score is all of them.
-#
-# Currently ~97%: bank-pinned blocks go first and then largest-first, so on a
-# nearly full tile the allocator cannot rebuild the packing the oracle
-# constructed. Failures concentrate above 75% density, none at or below 70%.
+# Every design counted is feasible by construction, so the only correct score
+# is all of them.
 MIN_BANKRES_RATE = 1.0
 # Tiles whose ranked first choice does not work out, so only backtracking
 # places them, summed over the corpus from the pass's own statistics. A floor
 # rather than a ceiling: it guards the *corpus*, not the allocator. If a
 # generator change stops producing contested layouts this drops, and
 # bank-reservations would still read 100% while testing nothing hard.
-MIN_SEARCHED_TILES = 216
+MIN_SEARCHED_TILES = 231
 # Designs per aie-opt invocation. Startup dominates the per-design cost, so
 # batching is what makes a corpus of thousands fit in the time budget.
 BATCH_SIZE = 200
@@ -289,7 +312,7 @@ def build_bank_reservation_design(rng, cfg, tag=None):
     Feasible by construction, like `build_design`: reservations sit at the
     bottom of their banks and buffers are sized to the space genuinely left.
     """
-    cap, bus, vec, stack = cfg["cap"], cfg["bus"], cfg["vec"], cfg["stack"]
+    cap, vec, stack = cfg["cap"], cfg["vec"], cfg["stack"]
     nbanks = cfg["banks"]
     bank = cap // nbanks
     # Sizes come from the modelled objects, so a bank several kernels pin to
@@ -740,6 +763,9 @@ def legality_violations(cfg, blocks, placed, stack_run=None):
             out.append(f"{name} overlaps the stack at {addr}")
         if spec["aligned"] and addr % bus:
             out.append(f"{name} misaligned at {addr}")
+        elif spec["aligned"] and spec["role"] != "pin":
+            if addr % required_align(cfg, size):
+                out.append(f"{name} placed below vector alignment at {addr}")
         if spec["role"] == "pin" and addr != spec["addr"]:
             out.append(f'{name} pinned at {spec["addr"]} but placed at {addr}')
         if spec["role"] == "bank":
@@ -792,7 +818,6 @@ def bank_pair_sharing(cfg, placed, core_data=None):
     buffers can share one bank in a layout whose banks hold equal bytes. The
     data region stays out of this: it is one extent, and its size follows from
     where the buffers land rather than from a request of its own."""
-    bank = cfg["cap"] // cfg["banks"]
     per_bank = defaultdict(int)
     total = 0
     for name, (_, size, bk) in placed.items():
@@ -948,7 +973,7 @@ def main(argv=None):
     pool = ThreadPoolExecutor(args.jobs)
 
     designs = []
-    for seed in range(args.seeds):
+    for seed in sorted(set(range(args.seeds)) | set(FALLBACK_SEEDS)):
         cfg = DEVICES[seed % len(DEVICES)]
         mlir, blocks, core_data = build_design(random.Random(seed), cfg)
         if mlir is not None:
@@ -965,19 +990,22 @@ def main(argv=None):
         bad = legality_violations(cfg, blocks, placed)
         if bad:
             illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
+        if again != placed:
+            nondet += 1
+        # The quality ratchets were recorded over range(args.seeds) alone.
+        if seed >= args.seeds:
+            continue
         needless += quality(cfg, blocks, placed)
         share = bank_pair_sharing(cfg, placed, core_data)
         if share is not None:
             sharing.append(share)
-        if again != placed:
-            nondet += 1
 
     # Object-derived per-bank reservations, kept on their own seeds so the
     # metrics above stay comparable with their recorded bounds.
     bankres_solved = bankres_total = 0
     bankres_illegal, bankres_bogus, bankres_unsolved = [], [], []
     bankres_designs = []
-    for seed in range(args.bankres_seeds):
+    for seed in sorted(set(range(args.bankres_seeds)) | set(FALLBACK_BANKRES_SEEDS)):
         cfg = DEVICES[seed % len(DEVICES)]
         mlir, blocks, extra = build_bank_reservation_design(
             random.Random(seed), cfg, tag=seed
@@ -1042,7 +1070,7 @@ def main(argv=None):
     report("determinism", nondet == 0, f"{nondet} unstable")
     for line in unsolved[:10]:
         print("UNSOLVED:", line)
-    report("completeness", solved >= args.seeds, f"{solved}/{total} solved")
+    report("completeness", solved == total, f"{solved}/{total} solved")
     for line in bankres_illegal[:10]:
         print("ILLEGAL:", line)
     for line in bankres_bogus[:10]:
