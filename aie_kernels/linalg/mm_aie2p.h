@@ -181,12 +181,22 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                 aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C));
           }
 
-          MMUL C00(acc_C00);
-          MMUL C01(acc_C01);
-          MMUL C10(acc_C10);
-          MMUL C11(acc_C11);
+          // Starting a short unrolled reduction with mul and adding the loaded
+          // C tiles after it keeps them off the MAC chain. Longer reductions
+          // spill more this way. Integer sums are exact in any order.
+          constexpr bool add_c_last = unroll_k && colA <= 4 &&
+                                      AIE_TUNED_AIE2P &&
+                                      std::is_integral_v<T_out>;
 
-          auto k_step = [&]() {
+          MMUL C00, C01, C10, C11;
+          if constexpr (!add_c_last) {
+            C00 = MMUL(acc_C00);
+            C01 = MMUL(acc_C01);
+            C10 = MMUL(acc_C10);
+            C11 = MMUL(acc_C11);
+          }
+
+          auto k_step = [&](bool first) {
             A0 = aie::load_v<MMUL::size_A>(pA1);
             pA1 += MMUL::size_A;
             A1 = aie::load_v<MMUL::size_A>(pA2);
@@ -203,10 +213,17 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
               pB2 += MMUL::size_B;
             }
 
-            C00.mac(A0, B0);
-            C01.mac(A0, B1);
-            C10.mac(A1, B0);
-            C11.mac(A1, B1);
+            if (add_c_last && first) {
+              C00.mul(A0, B0);
+              C01.mul(A0, B1);
+              C10.mul(A1, B0);
+              C11.mul(A1, B1);
+            } else {
+              C00.mac(A0, B0);
+              C01.mac(A0, B1);
+              C10.mac(A1, B0);
+              C11.mac(A1, B1);
+            }
           };
 
           // Peano only software-pipelines an innermost single-block loop, so
@@ -216,13 +233,19 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           if constexpr (unroll_k) {
             AIE_LOOP_UNROLL_FULL
             for (unsigned i = 0; i < colA; ++i)
-              k_step();
+              k_step(i == 0);
           } else {
             for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
               chess_flatten_loop
 #endif
-              k_step();
+                  k_step(false);
+          }
+          if constexpr (add_c_last) {
+            C00 = MMUL(aie::add(C00.to_accum(), acc_C00));
+            C01 = MMUL(aie::add(C01.to_accum(), acc_C01));
+            C10 = MMUL(aie::add(C10.to_accum(), acc_C10));
+            C11 = MMUL(aie::add(C11.to_accum(), acc_C11));
           }
 
           // TODO make shift right here to keep most significat bits
