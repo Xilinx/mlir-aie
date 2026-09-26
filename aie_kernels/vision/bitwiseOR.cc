@@ -30,8 +30,8 @@ void bitwiseOR_aie_scalar(const T *in1, const T *in2, T *out,
 }
 
 template <typename T, int N>
-void bitwiseOR_aie(const T *AIE2_RESTRICT src1, const T *AIE2_RESTRICT src2,
-                   T *AIE2_RESTRICT dst, const int32_t width,
+void bitwiseOR_aie(const T *__restrict src1, const T *__restrict src2,
+                   T *__restrict dst, const int32_t width,
                    const int32_t height) {
   event0();
 
