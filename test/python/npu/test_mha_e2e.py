@@ -190,7 +190,7 @@ def softmax_blocks(
     worker = Worker(
         core,
         fn_args=[of_a.cons(), of_p.prod(), of_scale.prod(), softmax, init, *idx],
-        stack_size=mha.contract.stack_bytes,
+        stack_size=kernels.mha_softmax().contract.stack_bytes,
     )
 
     host = [
@@ -464,7 +464,7 @@ def mha_round(
             scale_buf,
             *idx_bufs,
         ],
-        stack_size=qkt.contract.stack_bytes,
+        stack_size=kernels.mha_softmax().contract.stack_bytes,
     )
 
     host = [np.ndarray[(2 * n_kv * _B * _B,), BF], np.ndarray[(_B * _B,), BF]]
