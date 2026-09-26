@@ -526,9 +526,10 @@ def conv2dk1(
         + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # aiecc measured_stack_size of the untuned code on aie2p
-            # (1504 B on aie2); 288 B tuned for aie2
-            stack_bytes=None if _tuned_arch() == "aie2" else 2752,
+            # aiecc measured_stack_size: 1088 B tuned for aie2p, which keeps
+            # the oc-invariant input block on the stack; 2752 B untuned on
+            # aie2p (1504 B on aie2); 288 B tuned for aie2
+            stack_bytes={"aie2": None, "aie2p": 1088}.get(_tuned_arch(), 2752),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,

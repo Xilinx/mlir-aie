@@ -454,7 +454,7 @@ def test_rounding_mode_preserves_string_api(mode):
 @pytest.mark.parametrize(
     "factory,minimum",
     [
-        (kernels.conv2dk1, 2752),
+        (kernels.conv2dk1, 1088),
         (kernels.conv2dk1_skip, 2752),
         (kernels.conv2dk3, 4736),
         (kernels.layer_norm_f32, 1216),
