@@ -53,6 +53,17 @@ static inline void k1_store(T *p, aie::vector<T, 64> v) {
   }
 }
 
+// AIE2P loads each [8][8] weight block as one 64-byte aligned vector, and
+// designs that pack several layers' weights into one buffer can hand in
+// weights that are not 64-byte aligned.
+static inline bool k1_wts_aligned(const int8_t *kernels) {
+#if AIE_TUNED_AIE2P
+  return ((uintptr_t)kernels & 63) == 0;
+#else
+  return true;
+#endif
+}
+
 // N chunks of one output channel block. Chunk j is at byte offset 8 * P * j
 // from in, except the last at last_off; epi(acc, side + offset...) gives the
 // vector stored at out + offset.
