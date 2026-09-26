@@ -26,6 +26,11 @@ Two tiers share one table (``kernel_cases.py``):
   lines above) runs every case under every edge-data case its contract
   admits, for ``--seeds`` random seeds.
 
+A pass says the kernel is within tolerance, not how close it is.
+``--report-error PATH`` records, for every run of either tier, pass or fail,
+its error against the contract's reference run on float64 inputs
+(``cases.error_report``): ulps, results not correctly rounded, max abs/rel.
+
 Cases whose kernels exist only for one NPU generation carry
 ``supported_devices`` (see ``conftest.py``), so they skip elsewhere.
 """
@@ -39,7 +44,7 @@ import pytest
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.verify import compare
-from cases import inputs_for
+from cases import error_report, inputs_for
 from kernel_cases import CASES
 from ml_dtypes import bfloat16
 
@@ -62,7 +67,7 @@ def _run(design, fn, inputs, out_n, out_dt):
     return got if len(got) > 1 else got[0]
 
 
-def _run_case(case, data_case: str, seed: int):
+def _run_case(case, data_case: str, seed: int, report_error=None):
     fn = case.fn()
     inputs = inputs_for(case, data_case, np.random.default_rng(1000 + seed))
     design = kd.design(
@@ -84,12 +89,15 @@ def _run_case(case, data_case: str, seed: int):
         f"({kd.GUARD_BYTES} after each tile)"
     )
     verdict = fn.judge(got, ref, calls=case.calls, inputs=inputs, scalars=case.scalars)
+    if report_error:
+        entries = error_report(fn, got, inputs, calls=case.calls, scalars=case.scalars)
+        report_error(f"{case.name}/{data_case}/s{seed}", entries, bool(verdict))
     assert verdict, f"{case.name} [{data_case}, seed {seed}]: {verdict.detail}"
 
 
 @pytest.mark.parametrize("case", [_param(c) for c in CASES if c.smoke])
-def test_kernel(case):
-    _run_case(case, "random", 0)
+def test_kernel(case, report_error):
+    _run_case(case, "random", 0, report_error)
 
 
 def pytest_generate_tests(metafunc):
@@ -111,8 +119,8 @@ def pytest_generate_tests(metafunc):
 
 
 @pytest.mark.extensive
-def test_kernel_extensive(case, data_case, seed):
-    _run_case(case, data_case, seed)
+def test_kernel_extensive(case, data_case, seed, report_error):
+    _run_case(case, data_case, seed, report_error)
 
 
 def test_case_names_are_unique():

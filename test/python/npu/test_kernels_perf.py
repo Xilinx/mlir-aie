@@ -40,7 +40,7 @@ import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.benchmark import preflight, provenance, run_iters
-from cases import Case, inputs_for
+from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
 
 TRACE_SIZE = 16384
@@ -102,6 +102,13 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     )
     assert verdict, f"{case.name}: {verdict.detail}"
     measured: dict = {"outputs": got, "sizes": _sizes(design)}
+    measured["error"] = error_report(
+        fn,
+        got if len(got) > 1 else got[0],
+        inputs,
+        calls=case.calls,
+        scalars=case.scalars,
+    )
     measured["wall"] = run_iters(
         design,
         *ins,
@@ -234,7 +241,8 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
 
     Both sides get the same inputs, so their raw output words are compared
     exactly, and both must pass the contract. The rows stay the current
-    tree's; the pair, each arm's min, max and n, goes to ``--perf-meta`` and
+    tree's; the pair, each arm's min, max and n, and each arm's error against
+    the reference (``cases.error_report``) go to ``--perf-meta`` and
     the terminal summary.
     """
     tree = config.getoption("--baseline-sources")
@@ -271,6 +279,7 @@ def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
         "cycles_range": cycles_range,
         "npu_us_range": npu_us_range,
         "differing_words": sum(words),
+        "accuracy": [base["error"], current["error"]],
     }
 
 
