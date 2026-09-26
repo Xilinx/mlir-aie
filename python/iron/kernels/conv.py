@@ -1340,7 +1340,8 @@ def bn_conv2dk3_dw(
         func_name,
         _kernel_source("conv/bn_conv2dk3_dw.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
-        compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"],
+        compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"]
+        + _conv_dimensions(input_width, input_channels, output_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, *((Param,) * 8)),
@@ -1556,7 +1557,8 @@ def bn_conv2dk3_dw_out_split(
         f"bn{block_index}_conv2dk3_ui8_out_split",
         _kernel_source("conv/bn_conv2dk3_dw.cc"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty, *_i32s(8)],
-        compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"],
+        compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"]
+        + _conv_dimensions(input_width, input_channels, input_channels),
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, In, Param, Out, Out, *((Param,) * 8)),
