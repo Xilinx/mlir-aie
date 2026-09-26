@@ -248,6 +248,7 @@ def mul_add(tile_size: int = 1024) -> ExternalFunction:
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
             trace=Trace.whole_call(),
+            setup=conv_even,
             roles=(In, In, Out, Param),
             reference=mul_add_ref,
             acc_dtype=np.float32,
