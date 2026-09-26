@@ -11,11 +11,14 @@ Tests that exercise compile() or end-to-end kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
+import __future__
 import dataclasses
+import inspect
 import json
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from types import CodeType
 
@@ -25,11 +28,12 @@ import pytest
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
 from aie.iron import kernels
+from aie.iron.algorithms import _pipeline
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
-from aie.utils.compile.jit._hash import _compute_artifact_hash
+from aie.utils.compile.jit._hash import _compute_artifact_hash, _compute_recipe_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
@@ -809,9 +813,9 @@ def test_unreadable_input_does_not_alias_onto_a_readable_one(tmp_path):
     assert absent != _hash_mod._content_digest(empty)
 
 
-def _design(body, name="design"):
+def _design(body, name="design", module="designs.probe"):
     """A generator built from source, so a pair can differ in exactly one way."""
-    ns = {"__name__": "designs.probe"}
+    ns = {"__name__": module}
     exec(body, ns)  # noqa: S102 -- controlling the source is the point
     return ns[name]
 
@@ -970,6 +974,119 @@ def test_hash_distinguishes_bodies_nested_past_any_fixed_depth():
 def test_hash_handles_deeply_nested_functions():
     """The walk must terminate on pathological nesting."""
     assert len(_compute_hash(_nest("pass"), {}, [], [], [], [])) == 24
+
+
+def test_hash_follows_the_helpers_a_generator_calls():
+    """The generator's bytecode names a helper; the helper's body is elsewhere."""
+
+    def build(leaf, limit=4):
+        return _design(
+            f"LIMIT = {limit}\n"
+            "def helper(x):\n"
+            f"    return min(x + {leaf}, LIMIT)\n"
+            "def design(a):\n"
+            "    return helper(a)\n"
+        )
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    assert key(build(1)) == key(build(1))
+    assert key(build(1)) != key(build(2))
+    assert key(build(1)) != key(build(1, limit=8))
+
+
+def test_hash_stops_at_the_generators_package():
+    """A sibling module's helper is followed; another package's is not."""
+
+    def key(module, leaf):
+        gen = _design("def design(a):\n    return helper(a)\n")
+        helper = f"def helper(x):\n    return x + {leaf}\n"
+        gen.__globals__["helper"] = _design(helper, "helper", module)
+        return _compute_hash(gen, {}, [], [], [], [])
+
+    assert key("designs.util", 1) != key("designs.util", 2)
+    assert key("elsewhere.util", 1) == key("elsewhere.util", 2)
+
+
+def _harness_key():
+    return _compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ())
+
+
+_FUTURE = sum(
+    getattr(__future__, n).compiler_flag for n in __future__.all_feature_names
+)
+
+
+def _redefine(monkeypatch, module, fn, old="", new=""):
+    """Run ``fn``'s source again in its module, edited, as reloading the file would."""
+    src = textwrap.dedent(inspect.getsource(fn))
+    assert not old or src.count(old) == 1, f"{fn.__name__} no longer has {old!r}"
+    monkeypatch.setattr(module, fn.__name__, fn)
+    flags = fn.__code__.co_flags & _FUTURE
+    exec(  # noqa: S102 -- the edited source is the point
+        compile(
+            src.replace(old, new), "<edit>", "exec", flags=flags, dont_inherit=True
+        ),
+        vars(module),
+    )
+    edited = getattr(module, fn.__name__)
+    assert edited is not fn
+    return edited
+
+
+def _edit_pipeline(monkeypatch, old="", new=""):
+    edited = _redefine(monkeypatch, _pipeline, _pipeline.pipeline, old, new)
+    monkeypatch.setattr(kd, "pipeline", edited)
+
+
+_HARNESS_EDITS = {
+    "_build_stream": lambda mp: _redefine(
+        mp, kd, kd._build_stream, "trace_flush = TRACE_FLUSH", "trace_flush = 1"
+    ),
+    "pipeline": lambda mp: _edit_pipeline(mp, "wait=True", "wait=False"),
+    "Stage default": lambda mp: mp.setattr(_pipeline.Stage, "trace_flush", 1),
+    "module constant": lambda mp: mp.setattr(kd, "TRACE_FLUSH", 8),
+}
+
+
+@pytest.mark.parametrize("edit", _HARNESS_EDITS.values(), ids=_HARNESS_EDITS.keys())
+def test_an_edit_to_the_kernel_harness_changes_its_key(monkeypatch, edit):
+    """kernel_design's one generator builds every kernel test through helpers.
+
+    An edit to one used to keep the key, so a design cached before the edit
+    ran in place of the edited one.
+    """
+    before = _harness_key()
+    edit(monkeypatch)
+    assert _harness_key() != before
+
+
+def test_rebuilding_the_kernel_harness_unchanged_keeps_its_key(monkeypatch):
+    before = _harness_key()
+    _redefine(monkeypatch, kd, kd._build_stream)
+    _edit_pipeline(monkeypatch)
+    assert _harness_key() == before
+
+
+def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
+    script = tmp_path / "probe.py"
+    script.write_text(
+        "from aie.iron.algorithms import kernel_design as kd\n"
+        "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "print(_compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ()))\n"
+    )
+    seen = {
+        subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "PYTHONHASHSEED": seed},
+        ).stdout.strip()
+        for seed in ("1", "2")
+    }
+    assert seen == {_harness_key()}
 
 
 def test_hash_is_24_hex_chars():
