@@ -511,15 +511,12 @@ static void conv2dk3_vector(T *line0, T *line1, T *line2, int8_t *wts,
 // pixels across the row, one native 8x8x8 mac per block and tap, so the
 // zero-padded borders are the edge blocks' shift-in zeros.
 template <typename T>
-static void conv2dk3_vector(T *line0, T *line1, T *line2, int8_t *wts,
-                            uint8_t *__restrict output,
-                            const int32_t runtime_input_width,
-                            const int32_t runtime_input_channels,
-                            const int32_t runtime_output_channels,
-                            const int32_t runtime_kernel_width,
-                            const int32_t runtime_kernel_height,
-                            const int32_t check, const int scale,
-                            const int channel_offset) {
+static void conv2dk3_vector(
+    T *line0, T *line1, T *line2, int8_t *wts, uint8_t *__restrict output,
+    const int32_t runtime_input_width, const int32_t runtime_input_channels,
+    const int32_t runtime_output_channels, const int32_t runtime_kernel_width,
+    const int32_t runtime_kernel_height, const int32_t check, const int scale,
+    const int channel_offset) {
   const int32_t input_channels = CONV_INPUT_CHANNELS;
   const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   const int32_t kernel_width = CONV_KERNEL_WIDTH;
