@@ -41,6 +41,11 @@ _LAYER_NORM_BF16_AIE2 = Tolerance.bf16_ulps(
     atol=1e-5,
     note="aie2, measured on npu1: one ulp; atol covers the cancellation near 0",
 )
+_LAYER_NORM_BF16_AIE2P = Tolerance.bf16_ulps(
+    1,
+    atol=1e-5,
+    note="aie2p, measured on npu2: one ulp; atol covers the cancellation near 0",
+)
 
 
 def _norm_extern(
@@ -139,9 +144,10 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
             reference=layer_norm_ref,
             acc_dtype=np.float32,
             reduction=tile_size,
-            tolerance=(
-                _LAYER_NORM_BF16_AIE2 if _tuned_arch() == "aie2" else _NORM_BF16
-            ),
+            tolerance={
+                "aie2": _LAYER_NORM_BF16_AIE2,
+                "aie2p": _LAYER_NORM_BF16_AIE2P,
+            }.get(_tuned_arch(), _NORM_BF16),
             ops_per_call=6 * tile_size,
         ),
     )
