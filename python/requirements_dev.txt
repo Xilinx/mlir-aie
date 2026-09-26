@@ -39,7 +39,7 @@ lit<24
 # matplotlib) and lag the wheel builds. numpy 2.5.1 drops py3.11, hence the split
 # marker.
 numpy>=2.4.6,<2.5; python_version == "3.11"
-numpy>=2.5.2; python_version >= "3.12"
+numpy>=2.5.3; python_version >= "3.12"
 matplotlib
 psutil
 pytest
