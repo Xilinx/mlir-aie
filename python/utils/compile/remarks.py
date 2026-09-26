@@ -9,6 +9,8 @@
         --out-pm static-pm.json --meta static-meta.json
     python -m aie.utils.compile.remarks --target aie2p --only '^gelu' \
         --out static.json --baseline-sources ../mlir-aie-base
+    python -m aie.utils.compile.remarks --target aie2p --only '^tanh/' \
+        --cases test/python/npu/kernel_cases.py --out static.json
 
 CPU-only. Every factory in ``aie.iron.kernels`` (at its defaults and for each
 entry of its ``.dtypes`` table) is compiled exactly as the JIT compiles it
@@ -17,7 +19,9 @@ optimization-record flags below, and the records become per-kernel series
 for benchmark-action: a Peano bump that changes a loop's schedule shows up
 here before anyone looks at device numbers. With ``MLIR_AIE_KERNEL_SOURCES``
 set to a checkout, that checkout's ``aie_kernels/`` and ``aie_runtime_lib/``
-are compiled instead of the installed copies.
+are compiled instead of the installed copies. With ``--cases``, the builds
+are the ones a cases file's tests run (shape and options baked in), each
+named by its case.
 
 Record shapes, as llvm-aie 22.0.0.2026090201 emits them (they are Peano's,
 not LLVM's documented ones):
@@ -854,11 +858,51 @@ def kernel_builds():
             yield f"{name}{suffix}", ef
 
 
-def _selected_builds(only: str | None) -> list:
+def case_builds(path: str, device: str, only: str | None = None):
+    """Yield ``(name, ExternalFunction)`` for every build the cases in ``path`` run.
+
+    ``path`` is a Python file defining ``CASES`` (``kernel_cases.py``); each
+    case needs a ``name``, a ``fn()`` that returns its kernel, and optionally
+    the ``devices`` it runs on. The file is read at run time, so the test tree
+    stays out of this package's imports. A case's shape and options become
+    ``-D`` flags, so most cases build an object no factory default does; the
+    rows carry the case's name, the key its device series use too. Of the
+    cases ``only`` matches, those that share an object compile once, under
+    the first name.
+    """
+    import dataclasses
+    import importlib.util
+
+    directory = str(Path(path).resolve().parent)
+    sys.path.insert(0, directory)  # a cases file imports its sibling modules
+    try:
+        spec = importlib.util.spec_from_file_location("_remarks_cases", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(directory)
+    seen: set[str] = set()
+    for case in module.CASES:
+        devices = getattr(case, "devices", ())
+        if devices and device not in devices:
+            continue
+        if only and not re.search(only, case.name):
+            continue
+        if len(devices) > 1:
+            # fn() binds the case's first device, which need not be this one.
+            case = dataclasses.replace(case, devices=(device,))
+        try:
+            ef = case.fn()
+        except NotImplementedError:
+            continue  # exists only for the other architecture
+        if ef.object_file_name not in seen:
+            seen.add(ef.object_file_name)
+            yield case.name, ef
+
+
+def _selected_builds(only: str | None, builds=kernel_builds) -> list:
     return [
-        (name, ef)
-        for name, ef in kernel_builds()
-        if not (only and not re.search(only, name))
+        (name, ef) for name, ef in builds() if not (only and not re.search(only, name))
     ]
 
 
@@ -878,7 +922,9 @@ def _analyze_builds(builds, target: str, workdir: Path, jobs: int) -> list:
         return list(pool.map(compile_one, enumerate(builds)))
 
 
-def _baseline(tree: str, only, target: str, workdir: Path, jobs: int, rows) -> dict:
+def _baseline(
+    tree: str, only, target: str, workdir: Path, jobs: int, rows, builds=kernel_builds
+) -> dict:
     """Every row whose value differs when the kernels come from ``tree``."""
     from aie.iron import ExternalFunction
 
@@ -889,8 +935,8 @@ def _baseline(tree: str, only, target: str, workdir: Path, jobs: int, rows) -> d
     os.environ["MLIR_AIE_KERNEL_SOURCES"] = tree
     ExternalFunction._instances.clear()
     try:
-        builds = _selected_builds(only)
-        analyzed = _analyze_builds(builds, target, workdir / "baseline", jobs)
+        selected = _selected_builds(only, builds)
+        analyzed = _analyze_builds(selected, target, workdir / "baseline", jobs)
     finally:
         if saved is None:
             os.environ.pop("MLIR_AIE_KERNEL_SOURCES")
@@ -898,7 +944,7 @@ def _baseline(tree: str, only, target: str, workdir: Path, jobs: int, rows) -> d
             os.environ["MLIR_AIE_KERNEL_SOURCES"] = saved
     base = {
         r["name"]: r["value"]
-        for (name, _), (rep, _) in zip(builds, analyzed)
+        for (name, _), (rep, _) in zip(selected, analyzed)
         if rep is not None
         for r in report_rows(rep, name, "")
     }
@@ -928,6 +974,12 @@ def main(argv=None) -> int:
     ap.add_argument("--meta", help="per-kernel loops, notes and warnings, as JSON")
     ap.add_argument("--target", default="aie2p", choices=["aie2", "aie2p"])
     ap.add_argument("--only", help="regex on kernel names")
+    ap.add_argument(
+        "--cases",
+        metavar="FILE",
+        help="compile the builds the CASES in FILE run (test/python/npu/"
+        "kernel_cases.py), named by case, instead of each factory's defaults",
+    )
     ap.add_argument(
         "--jobs",
         type=int,
@@ -961,7 +1013,8 @@ def main(argv=None) -> int:
     from aie.utils.hostruntime import set_current_device
 
     # Factories pick their source and mac_dims through the current device.
-    device = from_name("npu1" if a.target == "aie2" else "npu2", n_cols=1)
+    generation = "npu1" if a.target == "aie2" else "npu2"
+    device = from_name(generation, n_cols=1)
     set_current_device(device)
     extra = provenance(target=a.target)
     workdir = Path(a.keep or tempfile.mkdtemp(prefix="aie-static-"))
@@ -972,7 +1025,13 @@ def main(argv=None) -> int:
     meta: dict = {"kernels": {}}
     annotated: set[tuple] = set()
 
-    builds = _selected_builds(a.only)
+    sweep = kernel_builds
+    if a.cases:
+
+        def sweep():
+            return case_builds(a.cases, generation, a.only)
+
+    builds = _selected_builds(a.only, sweep)
     analyzed = _analyze_builds(builds, a.target, workdir, a.jobs)
 
     for index, ((name, ef), (rep, detail)) in enumerate(zip(builds, analyzed)):
@@ -1027,7 +1086,9 @@ def main(argv=None) -> int:
 
     meta["failed"] = failed
     if a.baseline_sources and not failed:
-        changed = _baseline(a.baseline_sources, a.only, a.target, workdir, a.jobs, rows)
+        changed = _baseline(
+            a.baseline_sources, a.only, a.target, workdir, a.jobs, rows, sweep
+        )
         meta["baseline"] = {"sources": a.baseline_sources, "changed": changed}
         print(f"baseline {a.baseline_sources} -> this tree: {len(changed)} rows differ")
         for name, (before, after) in changed.items():
