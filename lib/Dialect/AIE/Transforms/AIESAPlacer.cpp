@@ -514,10 +514,13 @@ int SAPlacer::computePenalty() const {
 }
 
 // Simulates per-buffer MemTile allocation with neighbor spillover.
-// Matches the stateful transform's allocation strategy: buffers are
+// Approximates the objectfifo allocator's strategy: buffers are
 // collected globally across all MemTile columns, sorted largest-first,
 // and each buffer is placed on its home column when possible, spilling
 // to the neighbor with the most remaining capacity when the home is full.
+// Equal-size buffers may be visited in a different order than the
+// allocator's, so the two can break spill ties differently; the
+// allocator backtracks over its spill choices to cover that.
 int SAPlacer::computeMemSpilloverPenalty() const {
   int64_t memTileCapacity = targetModel->getMemTileSize();
   int numCols = targetModel->columns();
