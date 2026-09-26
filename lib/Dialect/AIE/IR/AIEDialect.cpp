@@ -2064,6 +2064,70 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   return failure(result.wasInterrupted());
 }
 
+// Rejects two aie.flows into one port and a packet flow sharing an endpoint
+// with an aie.flow: a circuit sends every word from its source, packets
+// included, and its destination takes words from nothing else.
+LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
+  std::map<PortKey, FlowOp> circuitSources, circuitDests;
+  WalkResult result =
+      device.walk([&](FlowOp flow) {
+        std::optional<PortKey> src = tryGetPortKey(
+            flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
+        std::optional<PortKey> dst = tryGetPortKey(
+            flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
+        if (src)
+          circuitSources.try_emplace(*src, flow);
+        if (!dst)
+          return WalkResult::advance();
+        auto [it, inserted] = circuitDests.try_emplace(*dst, flow);
+        if (inserted)
+          return WalkResult::advance();
+        InFlightDiagnostic diag =
+            flow.emitOpError()
+            << "ends at " << to_string(*dst)
+            << ", where another circuit flow ends; a port takes one circuit";
+        diag.attachNote(it->second.getLoc())
+            << "the other circuit flow is here";
+        return WalkResult::interrupt();
+      });
+  if (result.wasInterrupted())
+    return failure();
+  result = device.walk([&](PacketFlowOp packetFlow) {
+    Region &body = packetFlow.getPorts();
+    if (body.empty())
+      return WalkResult::advance();
+    for (Operation &op : body.front()) {
+      std::optional<PortKey> port;
+      std::map<PortKey, FlowOp> *circuits = nullptr;
+      StringRef role;
+      if (auto source = dyn_cast<PacketSourceOp>(op)) {
+        port = tryGetPortKey(source.getTile(), source.getBundle(),
+                             source.getChannel());
+        circuits = &circuitSources;
+        role = "starts";
+      } else if (auto dest = dyn_cast<PacketDestOp>(op)) {
+        port =
+            tryGetPortKey(dest.getTile(), dest.getBundle(), dest.getChannel());
+        circuits = &circuitDests;
+        role = "ends";
+      }
+      if (!port)
+        continue;
+      auto it = circuits->find(*port);
+      if (it == circuits->end())
+        continue;
+      InFlightDiagnostic diag =
+          packetFlow.emitOpError()
+          << role << " at " << to_string(*port) << ", where a circuit flow "
+          << role << "; a port carries either one circuit or packets";
+      diag.attachNote(it->second.getLoc()) << "the circuit flow is here";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
 // `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
 // `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` name themselves
 // with `sym_name` but define an SSA value, so they are not `Symbol` ops and
@@ -2136,6 +2200,8 @@ LogicalResult DeviceOp::verify() {
   if (failed(verifyNoDuplicateFlows(*this)))
     return failure();
   if (failed(verifyNoDuplicatePacketFlows(*this)))
+    return failure();
+  if (failed(verifyNoSharedCircuitPorts(*this)))
     return failure();
 
   if (failed(verifyNoDuplicateNames(*this))) {
@@ -3953,6 +4019,9 @@ LogicalResult SwitchboxOp::verify() {
   const auto &targetModel = getTargetModel(tile);
   if (body.empty())
     return emitOpError("should have non-empty body");
+  // A circuit connection claims its source port wherever it appears.
+  for (auto connectOp : body.front().getOps<ConnectOp>())
+    sourceset.insert({connectOp.getSourceBundle(), connectOp.sourceIndex()});
   for (auto &ops : body.front()) {
     // Would be simpler if this could be templatized.
     auto checkBound = [&ops](StringRef dir, WireBundle bundle, int index,
@@ -3972,7 +4041,6 @@ LogicalResult SwitchboxOp::verify() {
 
     if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
       Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
-      sourceset.insert(source);
 
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest)) {

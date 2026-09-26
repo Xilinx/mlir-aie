@@ -444,12 +444,26 @@ struct AIEGenerateColumnControlOverlayPass
 
   // Return true when `device` already contains a control-packet overlay,
   // identified by the `is_ctrl_pkt_overlay` marker the overlay's routed
-  // switchbox configuration carries.
+  // switchbox configuration carries at a TileControl port. Any priority_route
+  // flow carries the marker, so elsewhere it says nothing about the overlay.
   static bool deviceHasControlOverlay(DeviceOp device) {
+    auto isCtrl = [](Port port) {
+      return port.bundle == WireBundle::TileControl;
+    };
     return device
-        .walk([](Operation *op) {
-          return op->hasAttr("is_ctrl_pkt_overlay") ? WalkResult::interrupt()
-                                                    : WalkResult::advance();
+        .walk([&](Operation *op) {
+          if (!op->hasAttr("is_ctrl_pkt_overlay"))
+            return WalkResult::advance();
+          bool atTileControl = false;
+          if (auto connect = dyn_cast<AIE::ConnectOp>(op))
+            atTileControl =
+                isCtrl(connect.sourcePort()) || isCtrl(connect.destPort());
+          else if (auto masterSet = dyn_cast<AIE::MasterSetOp>(op))
+            atTileControl = isCtrl(masterSet.destPort());
+          else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op))
+            atTileControl = isCtrl(rules.sourcePort());
+          return atTileControl ? WalkResult::interrupt()
+                               : WalkResult::advance();
         })
         .wasInterrupted();
   }

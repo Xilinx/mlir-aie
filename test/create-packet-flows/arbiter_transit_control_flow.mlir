@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
 
 // The emitted-vs-transit hazard is symmetric and both orders reach the
 // allocator. arbiter_stall_isolation.mlir has the transit flow arriving
@@ -14,10 +14,12 @@
 // are allocated ahead of everything and DMA otherwise sorts before North.
 //
 // Control flow 9 transits (0,1) southward, taking the highest arbiter, 5.
-// Flows 0..4 fill msel 0 on arbiters 0..4, so flow 5 -- emitted here, and able
-// to stall on its consumer -- first finds a free amsel on arbiter 5. That is
-// exactly the deadlock, but no arbiter is free of one, so the allocation
-// stands and the conflict is reported instead.
+// Flows 0..5 need the other five, so two of them share. Flow 5 ends beside
+// flow 9 at shim (0,0), whose unprogrammed DMAs are assumed to wait on either,
+// and the memtile's unprogrammed DMAs on each other, so draining flow 9 can
+// wait on any flow the memtile sends: flow 5 on arbiter 5, or on the arbiter
+// of any flow 0..4, closes a cycle through flow 9. It takes an arbiter of its
+// own, and flows 0 and 4, which end at shims unrelated to both, share.
 
 module {
   aie.device(npu2) {
@@ -48,14 +50,20 @@ module {
   }
 }
 
-// WARN: warning: at tile (0, 1), packet flow 5 shares arbiter 5 with packet flow 9, which it can deadlock against
-
-// Both on arbiter 5: the allocation is unchanged, the warning is the reaction.
+// NOWARN-NOT: warning
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK:         %[[SHARED:.*]] = aie.amsel<5> (0)
+// CHECK:         %[[FIRST:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[OWN:.*]] = aie.amsel<1> (0)
+// CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
+// CHECK-NOT:     aie.amsel<1>
 // CHECK:         %[[TRANSIT:.*]] = aie.amsel<5> (3)
+// CHECK-NOT:     aie.amsel<5>
 // CHECK:         aie.packet_rules(DMA : 5) {
-// CHECK-NEXT:      aie.rule(31, 5, %[[SHARED]])
+// CHECK-NEXT:      aie.rule(31, 5, %[[OWN]])
+// CHECK:         aie.packet_rules(DMA : 4) {
+// CHECK-NEXT:      aie.rule(31, 4, %[[SHARED]])
+// CHECK:         aie.packet_rules(DMA : 0) {
+// CHECK-NEXT:      aie.rule(31, 0, %[[FIRST]])
 // CHECK:         aie.packet_rules(North : 2) {
 // CHECK-NEXT:      aie.rule(31, 9, %[[TRANSIT]])

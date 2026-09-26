@@ -103,10 +103,16 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
   // check whether the pathfinder algorithm creates a legal routing
-  if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations))
+  if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations)) {
     flowSolutions = maybeFlowSolutions.value();
-  else
-    return device.emitError("Unable to find a legal routing");
+  } else {
+    std::string reason = pathfinder->getFailureReason();
+    if (reason.empty())
+      reason = routingFailureReason;
+    if (reason.empty())
+      return device.emitError("Unable to find a legal routing");
+    return device.emitError("Unable to find a legal routing: ") << reason;
+  }
 
   // initialize all flows as unprocessed to prep for rewrite
   for (const auto &[PathEndPoint, switchSetting] : flowSolutions) {
@@ -338,6 +344,8 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
           break;
         }
       }
+      if (found)
+        break;
       packetGroupId = std::max(packetGroupId, existingId);
     }
     if (!found) {
@@ -458,6 +466,12 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
       sb.connectivity[i][dstIdx] = Connectivity::INVALID;
     }
   }
+  for (PacketRulesOp rulesOp : switchboxOp.getOps<PacketRulesOp>()) {
+    auto it = llvm::find(sb.srcPorts, rulesOp.sourcePort());
+    if (it == sb.srcPorts.end())
+      return false;
+    sb.packetOnlySrc[it - sb.srcPorts.begin()] = true;
+  }
   return true;
 }
 
@@ -562,12 +576,15 @@ void Pathfinder::buildRoutingGraph() {
   graphBuilt = true;
 }
 
-// Dijkstra over the dense graph from dense node `srcId`, searching states
+// Dijkstra over the dense graph from the states in `seeds`, searching states
 // (node, PortSide) rather than bare nodes. Fills the `preds` and `predEdge`
 // scratch buffers, both indexed by state id. The push/relax control flow
 // (including the WHITE-node always-push behavior and the absence of a heap
 // decrease-key) is inherited from the legacy PathEndPoint-keyed version.
-void Pathfinder::dijkstraShortestPaths(int srcId) {
+void Pathfinder::dijkstraShortestPaths(
+    ArrayRef<int> seeds, ArrayRef<double> seedCosts,
+    std::optional<int> packetId, const llvm::BitVector *avoid,
+    const llvm::DenseMap<int, llvm::BitVector> *branchAvoid) {
   llvm::fill(distance, INF);
   llvm::fill(colors, static_cast<int8_t>(WHITE));
   llvm::fill(preds, -1);
@@ -580,11 +597,11 @@ void Pathfinder::dijkstraShortestPaths(int srcId) {
       /*Compare=*/std::less<>>;
   MutableQueue Q(distance, indexInHeap);
 
-  // The flow source port feeds into its switchbox, so the search starts on the
-  // In side and the first edge taken is necessarily a crossbar hop.
-  int srcState = stateId(srcId, In);
-  distance[srcState] = 0.0;
-  Q.push(srcState);
+  for (auto [seed, cost] : llvm::zip_equal(seeds, seedCosts)) {
+    distance[seed] = cost;
+    colors[seed] = GRAY;
+    Q.push(seed);
+  }
   while (!Q.empty()) {
     int s = Q.top();
     Q.pop();
@@ -593,12 +610,27 @@ void Pathfinder::dijkstraShortestPaths(int srcId) {
     // other pairing would either turn the stream around inside a switchbox or
     // ride a wire the crossbar was never set to drive.
     const bool sIsOut = (s & 1) == Out;
+    const llvm::BitVector *avoidBranch = nullptr;
+    if (branchAvoid)
+      if (auto it = branchAvoid->find(s); it != branchAvoid->end())
+        avoidBranch = &it->second;
     for (Edge &e : adjacency[stateNode(s)]) {
       const bool isIntra = e.sb->srcCoords == e.sb->dstCoords;
-      if (sIsOut == isIntra)
+      if (sIsOut == isIntra ||
+          (isIntra && !packetId && e.sb->packetOnlySrc[e.i]))
         continue;
       int dst = stateId(e.dst, isIntra ? Out : In);
       double w = e.sb->demand[e.i][e.j];
+      // Sharing it would take a second stream's capacity, which the demand
+      // only shows once the group is routed.
+      if (packetId && e.sb->packetFlowCount[e.i][e.j] > 0 &&
+          e.sb->packetIds[e.i][e.j].count(*packetId))
+        w *= DEMAND_COEFF;
+      if (isIntra)
+        for (const llvm::BitVector *flows : {avoid, avoidBranch})
+          if (flows && llvm::any_of(e.sb->unitPacketFlows[e.sb->unitOf(e.j)],
+                                    [&](int f) { return flows->test(f); }))
+            w += CONFLICT_SHARE_PENALTY;
       bool relax = distance[s] + w < distance[dst];
       if (colors[dst] == WHITE) {
         if (relax) {
@@ -627,6 +659,7 @@ void Pathfinder::dijkstraShortestPaths(int srcId) {
 std::optional<std::map<PathEndPoint, SwitchSettings>>
 Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
+  failureReason.clear();
   std::map<PathEndPoint, SwitchSettings> routingSolution;
   // Build the dense routing graph once; topology is invariant across
   // iterations.
@@ -654,6 +687,21 @@ Pathfinder::findPaths(const int maxIterations) {
     }
     groupedFlows[f.packetGroupId].push_back(f);
   }
+
+  // Packet flows that conflict, by source; a source has one flow.
+  std::map<PathEndPoint, int> flowIndex;
+  for (auto [k, f] : llvm::enumerate(flows))
+    flowIndex[f.src] = k;
+  std::vector<llvm::BitVector> conflicting(flows.size(),
+                                           llvm::BitVector(flows.size()));
+  if (packetConflict)
+    for (size_t a = 0; a < flows.size(); a++)
+      for (size_t b = a + 1; b < flows.size(); b++)
+        if (flows[a].packetId && flows[b].packetId &&
+            packetConflict(flows[a].src, flows[b].src)) {
+          conflicting[a].set(b);
+          conflicting[b].set(a);
+        }
 
   int iterationCount = -1;
   int illegalEdges = 0;
@@ -692,6 +740,7 @@ Pathfinder::findPaths(const int maxIterations) {
           sb.packetIds[i][j].clear();
         }
       }
+      sb.resetUnits();
     }
 
     // for each flow, find the shortest path from source to destination
@@ -700,37 +749,91 @@ Pathfinder::findPaths(const int maxIterations) {
     for (const auto &[_, flows] : groupedFlows) {
       for (const auto &[packetGroupId, isPriority, src, dsts, packetId] :
            flows) {
-        // Use dijkstra to find path given current demand from the start
-        // switchbox; find the shortest paths to each other switchbox. Output is
-        // in the predecessor arrays, which must then be processed to get
-        // individual switchbox settings
+        // Grow the flow's tree one destination at a time: Dijkstra, given the
+        // current demand, from everything the tree reaches so far to the next
+        // destination, whose path is then traced back to the tree. Growing
+        // from the tree rather than the source lets destinations share hops.
+        // Each hop of the tree keeps its cost from the source, which a branch
+        // off it starts from, discounted by TREE_SEED_FACTOR.
         int srcId = nodeIds.at(src);
-        dijkstraShortestPaths(srcId);
-
-        // trace the path of the flow backwards via predecessors
-        // increment used_capacity for the associated channels
+        int flow = flowIndex.at(src);
         SwitchSettings switchSettings;
         ++curStamp;
-        processedStamp[stateId(srcId, In)] = curStamp;
+        // The flow source port feeds into its switchbox, so the tree starts
+        // on its In side and the first edge taken is necessarily a crossbar
+        // hop.
+        SmallVector<int, 16> tree{stateId(srcId, In)};
+        SmallVector<double, 16> treeCost{0.0}, seedCosts;
+        processedStamp[tree.front()] = curStamp;
+        // A branch off a port the tree already crosses puts its master port on
+        // the arbiter of the port the tree leaves by there, so it avoids the
+        // flows conflicting with any flow on that arbiter too.
+        llvm::DenseMap<int, std::pair<SwitchboxConnect *, int>> branchPort;
+        llvm::DenseMap<int, llvm::BitVector> branchAvoid;
+        SmallVector<PathEndPoint, 4> pending;
         for (auto endPoint : dsts) {
-          if (endPoint == src) {
-            // Route to self: the port is both ends, so there is no path to
-            // trace. The source was stamped on the In side, so falling through
-            // would trace back from an Out state Dijkstra never reached.
+          // Route to self: the port is both ends. Where its switchbox cannot
+          // connect it to itself (Core to Core), the stream has to leave and
+          // come back, which Dijkstra finds from the In side to the Out side.
+          if (endPoint == src &&
+              llvm::any_of(adjacency[srcId],
+                           [&](const Edge &e) { return e.dst == srcId; })) {
             switchSettings[src.coords].srcs.push_back(src.port);
             switchSettings[src.coords].dsts.push_back(src.port);
             continue;
           }
-          // A destination port is driven by its switchbox, so it is reached on
-          // the Out side.
-          int currId = stateId(nodeIds.at(endPoint), Out);
+          pending.push_back(endPoint);
+        }
+        // A destination port is driven by its switchbox, so it is reached on
+        // the Out side.
+        auto dstState = [&](const PathEndPoint &p) {
+          return stateId(nodeIds.at(p), Out);
+        };
+        while (!pending.empty()) {
+          if (packetId)
+            for (auto &[state, port] : branchPort) {
+              auto &[sb, j] = port;
+              llvm::BitVector &avoid = branchAvoid[state] =
+                  llvm::BitVector(conflicting.size());
+              for (int other : sb->unitPacketFlows[sb->unitOf(j)])
+                if (other != flow)
+                  avoid |= conflicting[other];
+              // A flow sharing an arbiter with itself is no conflict.
+              avoid.reset(flow);
+            }
+          seedCosts.clear();
+          for (double cost : treeCost)
+            seedCosts.push_back(TREE_SEED_FACTOR * cost);
+          dijkstraShortestPaths(tree, seedCosts, packetId,
+                                packetId ? &conflicting[flow] : nullptr,
+                                &branchAvoid);
+          // The nearest destination joins the tree next.
+          auto nearest = llvm::min_element(
+              pending, [&](const PathEndPoint &a, const PathEndPoint &b) {
+                return distance[dstState(a)] < distance[dstState(b)];
+              });
+          PathEndPoint endPoint = *nearest;
+          pending.erase(nearest);
+          int currId = dstState(endPoint);
+          size_t grown = tree.size();
           // trace backwards until a vertex already processed is reached
           while (processedStamp[currId] != curStamp) {
             // If Dijkstra never reached this node it has no predecessor; the
             // destination is unroutable under the current demand. Bail out of
             // this iteration rather than indexing with a -1 predecessor.
-            if (preds[currId] < 0)
+            if (preds[currId] < 0) {
+              auto endpoint = [](const PathEndPoint &p) {
+                return "(" + std::to_string(p.coords.col) + ", " +
+                       std::to_string(p.coords.row) + ") " +
+                       stringifyWireBundle(p.port.bundle).str() + ":" +
+                       std::to_string(p.port.channel);
+              };
+              failureReason = "no path leads from " + endpoint(src) + " to " +
+                              endpoint(endPoint) +
+                              " through the connections the switchboxes "
+                              "allow and existing routing leaves free.";
               return std::nullopt;
+            }
             const PathEndPoint &curr = nodes[stateNode(currId)];
             const Edge &e = predEdge[currId];
             int predId = preds[currId];
@@ -778,10 +881,21 @@ Pathfinder::findPaths(const int maxIterations) {
             if (pred.coords == curr.coords) {
               switchSettings[pred.coords].srcs.push_back(pred.port);
               switchSettings[curr.coords].dsts.push_back(curr.port);
+              if (packetId) {
+                sb.addToUnit(j, flow);
+                auto [it, first] = branchPort.try_emplace(predId, &sb, j);
+                if (!first)
+                  sb.joinUnits(it->second.second, j);
+              }
             }
             processedStamp[currId] = curStamp;
+            tree.push_back(currId);
             currId = predId;
           }
+          double joinCost = treeCost[llvm::find(tree, currId) - tree.begin()];
+          for (int state : llvm::drop_begin(tree, grown))
+            treeCost.push_back(distance[state] +
+                               (1 - TREE_SEED_FACTOR) * joinCost);
         }
         // add this flow to the proposed solution
         routingSolution[src] = switchSettings;
@@ -824,6 +938,23 @@ Pathfinder::findPaths(const int maxIterations) {
           }
 #endif
         }
+      }
+    }
+
+    // A routing that fits the fabric can still be one the caller cannot use;
+    // steer away from the connections it names as if they were overused.
+    if (illegalEdges == 0 && routingCheck) {
+      for (const auto &[tile, conn] : routingCheck(routingSolution)) {
+        illegalEdges++;
+        auto it = graph.find({tile, tile});
+        if (it == graph.end())
+          continue;
+        SwitchboxConnect &sb = it->second;
+        auto i = llvm::find(sb.srcPorts, conn.src);
+        auto j = llvm::find(sb.dstPorts, conn.dst);
+        if (i != sb.srcPorts.end() && j != sb.dstPorts.end())
+          sb.overCapacity[i - sb.srcPorts.begin()][j - sb.dstPorts.begin()] +=
+              ROUTING_CHECK_PENALTY;
       }
     }
 

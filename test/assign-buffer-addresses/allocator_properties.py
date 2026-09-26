@@ -16,19 +16,19 @@
 # nothing. The constructed layout is a solution by construction, so a failure to
 # allocate is an allocator bug and not an infeasible input.
 #
-# Completeness and quality are ratchets, not absolutes: packing around fixed
-# obstacles is NP-hard, so the allocator is a heuristic and a few adversarial
-# layouts defeat it. Tighten the bounds when the allocator improves; a drop
+# Completeness is absolute: when its ranked search fails, the allocator falls
+# back to an exhaustive one, so a feasible design that does not place is a bug.
+# Quality bounds are ratchets: tighten them when the allocator improves; a drop
 # below them is a regression.
 
+import argparse
 import random
 import re
 import subprocess
 import sys
-import tempfile
 import time
 from collections import defaultdict
-from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 SEEDS = 200
 # All 200 fixed seeds solve, and placement backtracks rather than giving up on
@@ -36,7 +36,6 @@ SEEDS = 200
 # seed: one that defeats the search should fail this and be looked at.
 # Note these 200 are solvable without backtracking -- search coverage comes from
 # the bank-reservation corpus below, which search-exercised counts.
-MIN_SOLVED = SEEDS
 MAX_CROSSINGS = 0
 # Co-residency: how many buffer pairs share a bank, against the fewest the bank
 # count allows. Two buffers a kernel reads together serialize on one bank, and
@@ -77,6 +76,12 @@ def align_up(v, a):
     return ((v + a - 1) // a) * a
 
 
+def required_align(cfg, size):
+    """Alignment the allocator gives an `aligned` buffer it places: a buffer
+    holding a full-width vector gets the vector alignment, others the bus."""
+    return cfg["vec"] if size >= cfg["vec"] else cfg["bus"]
+
+
 def oracle_largest_free_run(cap, stack, blocks, vec):
     """Largest contiguous free run above the stack in the as-constructed
     (pre-hide) oracle layout. Caps a randomly chosen data_size to a
@@ -109,8 +114,6 @@ def build_design(rng, cfg):
         if rng.random() < 0.30:  # leave a hole for a later buffer to find
             cursor += rng.randint(1, max(1, bank // 2))
         aligned = rng.random() > 0.15
-        if aligned:
-            cursor = align_up(cursor, bus)
         roll = rng.random()
         if roll < 0.10:  # zero-sized: covers no bytes, placeable anywhere
             size = 0
@@ -120,6 +123,8 @@ def build_design(rng, cfg):
             size = rng.randint(1, max(1, bank // (2 * bus))) * bus
         else:  # deliberately larger than one bank
             size = rng.randint(bank + 1, min(3 * bank, cap - stack))
+        if aligned:
+            cursor = align_up(cursor, required_align(cfg, size))
         if cursor + size > cap:
             break
         blocks.append(dict(addr=cursor, size=size, aligned=aligned))
@@ -158,7 +163,10 @@ def build_design(rng, cfg):
     # and the block is checked like any other.
     core_data = None
     if cfg["stack"]:
-        free = [b for b in blocks if b["role"] == "free" and b["size"] > 0]
+        # The allocator always aligns the core's data region.
+        free = [
+            b for b in blocks if b["role"] == "free" and b["size"] > 0 and b["aligned"]
+        ]
         if free and rng.random() < 0.35:
             core_data = rng.choice(free)
             core_data["name"] = f'core_data_{cfg["tile"][0]}_{cfg["tile"][1]}'
@@ -196,14 +204,8 @@ def build_design(rng, cfg):
 # Object-derived per-bank reservations, on their own seed set so the numbers
 # above keep measuring exactly what they measured before.
 BANKRES_SEEDS = 12000
-# Set at the answer, not at what the allocator manages today: these two bounds
-# are the one place here that is not a ratchet. A ratchet guards what works,
-# which is right for a healthy metric and wrong for a known defect. Every design
-# counted is feasible by construction, so the only correct score is all of them.
-#
-# Currently ~97%: bank-pinned blocks go first and then largest-first, so on a
-# nearly full tile the allocator cannot rebuild the packing the oracle
-# constructed. Failures concentrate above 75% density, none at or below 70%.
+# Every design counted is feasible by construction, so the only correct score
+# is all of them.
 MIN_BANKRES_RATE = 1.0
 # Tiles whose ranked first choice does not work out, so only backtracking
 # places them, summed over the corpus from the pass's own statistics. A floor
@@ -588,13 +590,13 @@ def zero_size_reserved_data_case(cfg):
     return "\n".join(lines), blocks, name
 
 
-def check_forced_cases(workdir):
+def check_forced_cases():
     """Regressions specific enough that leaving them to the random generator
     would be a coin flip; run every time instead."""
     problems = []
     cfg = DEVICES[0]  # "core": data_size only applies where there's a core
     mlir, blocks, _ = zero_size_reserved_data_case(cfg)
-    placed = allocate(mlir, workdir)
+    placed = allocate(mlir)
     if placed is None:
         problems.append(
             "zero_size_reserved_data: allocator rejected a provably-fitting design"
@@ -633,18 +635,16 @@ def stress_design(cfg, n_buffers):
 SEARCH_STAT_RE = re.compile(r"\(S\)\s+(\d+)\s+tiles-needing-search")
 
 
-def allocate(mlir, workdir, stats=None):
+def allocate(mlir, stats=None):
     """Run the pass; returns {name: (addr, size, bank)} or None.
 
     Pass a dict as `stats` to also collect the pass's own search counters, which
     say how much backtracking a design actually cost.
     """
-    src = workdir / "case.mlir"
-    src.write_text(mlir)
-    cmd = ["aie-opt", "--aie-assign-buffer-addresses", str(src)]
+    cmd = ["aie-opt", "--aie-assign-buffer-addresses", "-"]
     if stats is not None:
         cmd.append("--mlir-pass-statistics")
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(cmd, input=mlir, capture_output=True, text=True)
     if stats is not None:
         m = SEARCH_STAT_RE.search(p.stderr)
         stats["tiles_searched"] = int(m.group(1)) if m else 0
@@ -671,7 +671,7 @@ def allocate(mlir, workdir, stats=None):
 MODULE_TAG_RE = re.compile(r"^module @s(\d+)\b")
 
 
-def allocate_batch(tagged, workdir, stats=None):
+def allocate_batch(tagged, stats=None):
     """Place many tagged designs in one aie-opt run.
 
     `tagged` is [(tag, mlir)] where each mlir names its module @s<tag>. Returns
@@ -680,12 +680,15 @@ def allocate_batch(tagged, workdir, stats=None):
     process. Splitting the work this way is what keeps a corpus of thousands
     affordable: nearly all of the per-design cost is process startup.
     """
-    src = workdir / "batch.mlir"
-    src.write_text("\n// -----\n".join(m for _, m in tagged))
-    cmd = ["aie-opt", "--split-input-file", "--aie-assign-buffer-addresses", str(src)]
+    cmd = ["aie-opt", "--split-input-file", "--aie-assign-buffer-addresses", "-"]
     if stats is not None:
         cmd.append("--mlir-pass-statistics")
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(
+        cmd,
+        input="\n// -----\n".join(m for _, m in tagged),
+        capture_output=True,
+        text=True,
+    )
     if stats is not None:
         # One statistics report per chunk, so sum them rather than reading the
         # first.
@@ -740,6 +743,9 @@ def legality_violations(cfg, blocks, placed, stack_run=None):
             out.append(f"{name} overlaps the stack at {addr}")
         if spec["aligned"] and addr % bus:
             out.append(f"{name} misaligned at {addr}")
+        elif spec["aligned"] and spec["role"] != "pin":
+            if addr % required_align(cfg, size):
+                out.append(f"{name} placed below vector alignment at {addr}")
         if spec["role"] == "pin" and addr != spec["addr"]:
             out.append(f'{name} pinned at {spec["addr"]} but placed at {addr}')
         if spec["role"] == "bank":
@@ -937,145 +943,169 @@ def check_metrics():
     return out
 
 
-def main():
-    with tempfile.TemporaryDirectory(prefix="aie-alloc-props-") as workdir_str:
-        workdir = Path(workdir_str)
-        solved = total = needless = nondet = 0
-        sharing, illegal = [], []
-        for seed in range(SEEDS):
-            cfg = DEVICES[seed % len(DEVICES)]
-            mlir, blocks, core_data = build_design(random.Random(seed), cfg)
-            if mlir is None:
-                continue
-            total += 1
-            placed = allocate(mlir, workdir)
+def main(argv=None):
+    cli = argparse.ArgumentParser()
+    cli.add_argument("--seeds", type=int, default=SEEDS)
+    # Seeds count up from 0, so a larger corpus contains the default one and
+    # MIN_SEARCHED_TILES still holds.
+    cli.add_argument("--bankres-seeds", type=int, default=BANKRES_SEEDS)
+    cli.add_argument("--jobs", type=int, default=4, help="parallel aie-opt runs")
+    args = cli.parse_args(argv)
+    pool = ThreadPoolExecutor(args.jobs)
+
+    designs = []
+    for seed in range(args.seeds):
+        cfg = DEVICES[seed % len(DEVICES)]
+        mlir, blocks, core_data = build_design(random.Random(seed), cfg)
+        if mlir is not None:
+            designs.append((seed, cfg, mlir, blocks, core_data))
+    total = len(designs)
+    solved = needless = nondet = 0
+    sharing, illegal, unsolved = [], [], []
+    runs = pool.map(lambda d: (allocate(d[2]), allocate(d[2])), designs)
+    for (seed, cfg, _, blocks, core_data), (placed, again) in zip(designs, runs):
+        if placed is None:
+            unsolved.append(f"seed {seed} ({cfg['name']})")
+            continue
+        solved += 1
+        bad = legality_violations(cfg, blocks, placed)
+        if bad:
+            illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
+        needless += quality(cfg, blocks, placed)
+        share = bank_pair_sharing(cfg, placed, core_data)
+        if share is not None:
+            sharing.append(share)
+        if again != placed:
+            nondet += 1
+
+    # Object-derived per-bank reservations, kept on their own seeds so the
+    # metrics above stay comparable with their recorded bounds.
+    bankres_solved = bankres_total = 0
+    bankres_illegal, bankres_bogus, bankres_unsolved = [], [], []
+    bankres_designs = []
+    for seed in range(args.bankres_seeds):
+        cfg = DEVICES[seed % len(DEVICES)]
+        mlir, blocks, extra = build_bank_reservation_design(
+            random.Random(seed), cfg, tag=seed
+        )
+        if mlir is None:
+            continue
+        faults = oracle_problems(cfg, blocks)
+        if faults:
+            bankres_bogus.append(f"seed {seed} ({cfg['name']}): {faults[0]}")
+            continue
+        bankres_total += 1
+        bankres_designs.append((seed, cfg, blocks, mlir))
+
+    # One aie-opt run per chunk of designs. Sized so a failure still points
+    # at a manageable slice of input, while keeping startup cost negligible.
+    def place(group):
+        stats = {}
+        results = allocate_batch([(seed, mlir) for seed, _, _, mlir in group], stats)
+        return results, stats["tiles_searched"]
+
+    groups = [
+        bankres_designs[start : start + BATCH_SIZE]
+        for start in range(0, len(bankres_designs), BATCH_SIZE)
+    ]
+    bankres_searched = 0
+    for group, (results, searched) in zip(groups, pool.map(place, groups)):
+        bankres_searched += searched
+        for seed, cfg, blocks, _ in group:
+            placed = results.get(seed)
             if placed is None:
+                bankres_unsolved.append(f"seed {seed} ({cfg['name']})")
                 continue
-            solved += 1
+            bankres_solved += 1
             bad = legality_violations(cfg, blocks, placed)
             if bad:
-                illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
-            needless += quality(cfg, blocks, placed)
-            share = bank_pair_sharing(cfg, placed, core_data)
-            if share is not None:
-                sharing.append(share)
-            if allocate(mlir, workdir) != placed:
-                nondet += 1
+                bankres_illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
+    pool.shutdown()
 
-        # Object-derived per-bank reservations, kept on their own seeds so the
-        # metrics above stay comparable with their recorded bounds.
-        bankres_solved = bankres_total = 0
-        bankres_illegal, bankres_bogus = [], []
-        bankres_designs, bankres_stats = [], {}
-        for seed in range(BANKRES_SEEDS):
-            cfg = DEVICES[seed % len(DEVICES)]
-            mlir, blocks, extra = build_bank_reservation_design(
-                random.Random(seed), cfg, tag=seed
-            )
-            if mlir is None:
-                continue
-            faults = oracle_problems(cfg, blocks)
-            if faults:
-                bankres_bogus.append(f"seed {seed} ({cfg['name']}): {faults[0]}")
-                continue
-            bankres_total += 1
-            bankres_designs.append((seed, cfg, blocks, mlir))
+    # A metric with no samples across solved designs means the property was
+    # never exercised. Report that instead of passing it by default.
+    share_has_data = bool(sharing) or solved == 0
+    mean_share = sum(sharing) / len(sharing) if sharing else 0.0
+    for line in illegal[:10]:
+        print("ILLEGAL:", line)
 
-        # One aie-opt run per chunk of designs. Sized so a failure still points
-        # at a manageable slice of input, while keeping startup cost negligible.
-        for start in range(0, len(bankres_designs), BATCH_SIZE):
-            group = bankres_designs[start : start + BATCH_SIZE]
-            results = allocate_batch(
-                [(seed, mlir) for seed, _, _, mlir in group], workdir, bankres_stats
-            )
-            for seed, cfg, blocks, _ in group:
-                placed = results.get(seed)
-                if placed is None:
-                    continue
-                bankres_solved += 1
-                bad = legality_violations(cfg, blocks, placed)
-                if bad:
-                    bankres_illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
-        bankres_searched = bankres_stats.get("tiles_searched", 0)
+    regressions = []
 
-        # A metric with no samples across solved designs means the property was
-        # never exercised. Report that instead of passing it by default.
-        share_has_data = bool(sharing) or solved == 0
-        mean_share = sum(sharing) / len(sharing) if sharing else 0.0
-        for line in illegal[:10]:
-            print("ILLEGAL:", line)
+    def report(label, ok, detail):
+        print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}")
+        if not ok:
+            regressions.append(label)
 
-        def report(label, ok, detail):
-            print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}")
+    metric_problems = check_metrics()
+    for line in metric_problems:
+        print("WRONG METRIC:", line)
+    report(
+        "metric-validation",
+        not metric_problems,
+        f"{len(metric_problems)} wrong answer(s)",
+    )
+    report("legality", not illegal, f"{len(illegal)} illegal of {solved} placed")
+    report("determinism", nondet == 0, f"{nondet} unstable")
+    for line in unsolved[:10]:
+        print("UNSOLVED:", line)
+    report("completeness", solved == total, f"{solved}/{total} solved")
+    for line in bankres_illegal[:10]:
+        print("ILLEGAL:", line)
+    for line in bankres_bogus[:10]:
+        print("BOGUS ORACLE:", line)
+    for line in bankres_unsolved[:10]:
+        print("UNSOLVED:", line)
+    bankres_rate = bankres_solved / bankres_total if bankres_total else 0.0
+    report(
+        "bank-reservations",
+        bankres_rate >= MIN_BANKRES_RATE and not bankres_illegal and not bankres_bogus,
+        f"{bankres_solved}/{bankres_total} solved ({bankres_rate:.1%}, "
+        f"min {MIN_BANKRES_RATE:.0%}), "
+        f"{len(bankres_illegal)} illegal, "
+        f"{len(bankres_bogus)} unsolvable-by-construction",
+    )
+    report(
+        "search-exercised",
+        bankres_searched >= MIN_SEARCHED_TILES,
+        f"{bankres_searched} tile(s) needed backtracking "
+        f"(min {MIN_SEARCHED_TILES})",
+    )
+    report(
+        "bank-crossings",
+        needless <= MAX_CROSSINGS,
+        f"{needless} avoidable (max {MAX_CROSSINGS})",
+    )
+    report(
+        "bank-sharing",
+        share_has_data and mean_share <= MAX_BANK_PAIR_SHARING,
+        (
+            f"mean shared pairs {mean_share:.3f} (max {MAX_BANK_PAIR_SHARING})"
+            if share_has_data
+            else "0 samples despite solved designs"
+        ),
+    )
 
-        metric_problems = check_metrics()
-        for line in metric_problems:
-            print("WRONG METRIC:", line)
-        report(
-            "metric-validation",
-            not metric_problems,
-            f"{len(metric_problems)} wrong answer(s)",
-        )
-        report("legality", not illegal, f"{len(illegal)} illegal of {solved} placed")
-        report("determinism", nondet == 0, f"{nondet} unstable")
-        report("completeness", solved >= MIN_SOLVED, f"{solved}/{total} solved")
-        for line in bankres_illegal[:10]:
-            print("ILLEGAL:", line)
-        for line in bankres_bogus[:10]:
-            print("BOGUS ORACLE:", line)
-        bankres_rate = bankres_solved / bankres_total if bankres_total else 0.0
-        report(
-            "bank-reservations",
-            bankres_rate >= MIN_BANKRES_RATE
-            and not bankres_illegal
-            and not bankres_bogus,
-            f"{bankres_solved}/{bankres_total} solved ({bankres_rate:.1%}, "
-            f"min {MIN_BANKRES_RATE:.0%}), "
-            f"{len(bankres_illegal)} illegal, "
-            f"{len(bankres_bogus)} unsolvable-by-construction",
-        )
-        report(
-            "search-exercised",
-            bankres_searched >= MIN_SEARCHED_TILES,
-            f"{bankres_searched} tile(s) needed backtracking "
-            f"(min {MIN_SEARCHED_TILES})",
-        )
-        report(
-            "bank-crossings",
-            needless <= MAX_CROSSINGS,
-            f"{needless} avoidable (max {MAX_CROSSINGS})",
-        )
-        report(
-            "bank-sharing",
-            share_has_data and mean_share <= MAX_BANK_PAIR_SHARING,
-            (
-                f"mean shared pairs {mean_share:.3f} (max {MAX_BANK_PAIR_SHARING})"
-                if share_has_data
-                else "0 samples despite solved designs"
-            ),
-        )
+    forced_problems = check_forced_cases()
+    for line in forced_problems:
+        print("ILLEGAL:", line)
+    report(
+        "forced-regressions",
+        not forced_problems,
+        f"{len(forced_problems)} problem(s)",
+    )
 
-        forced_problems = check_forced_cases(workdir)
-        for line in forced_problems:
-            print("ILLEGAL:", line)
-        report(
-            "forced-regressions",
-            not forced_problems,
-            f"{len(forced_problems)} problem(s)",
-        )
-
-        stress_cfg = DEVICES[1]  # memtile: 512 KB, plenty of room for 300 tiny buffers
-        stress_mlir = stress_design(stress_cfg, STRESS_BUFFERS)
-        t0 = time.monotonic()
-        stress_placed = allocate(stress_mlir, workdir)
-        stress_elapsed = time.monotonic() - t0
-        report(
-            "stress",
-            stress_placed is not None and stress_elapsed <= STRESS_MAX_SECONDS,
-            f"{len(stress_placed) if stress_placed else 0}/{STRESS_BUFFERS} placed "
-            f"in {stress_elapsed:.1f}s (max {STRESS_MAX_SECONDS}s)",
-        )
-        return 0
+    stress_cfg = DEVICES[1]  # memtile: 512 KB, plenty of room for 300 tiny buffers
+    stress_mlir = stress_design(stress_cfg, STRESS_BUFFERS)
+    t0 = time.monotonic()
+    stress_placed = allocate(stress_mlir)
+    stress_elapsed = time.monotonic() - t0
+    report(
+        "stress",
+        stress_placed is not None and stress_elapsed <= STRESS_MAX_SECONDS,
+        f"{len(stress_placed) if stress_placed else 0}/{STRESS_BUFFERS} placed "
+        f"in {stress_elapsed:.1f}s (max {STRESS_MAX_SECONDS}s)",
+    )
+    return 1 if regressions else 0
 
 
 # Every property must report OK; any REGRESSION fails the test.

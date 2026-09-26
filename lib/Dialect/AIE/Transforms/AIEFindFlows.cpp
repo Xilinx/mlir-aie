@@ -11,6 +11,7 @@
 
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
+#include <map>
 #include <optional>
 #include <set>
 #include <tuple>
@@ -19,6 +20,7 @@
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEFINDFLOWS
@@ -113,10 +115,10 @@ private:
                    << "Packet From: "
                    << stringifyWireBundle(connectOp.sourcePort().bundle) << " "
                    << sourcePort.channel << "\n");
-        for (auto masterSetOp : b.getOps<MasterSetOp>())
-          for (Value amsel : masterSetOp.getAmsels())
-            for (auto ruleOp :
-                 connectOp.getRules().front().getOps<PacketRuleOp>()) {
+        // In rule order, which is slot order.
+        for (auto ruleOp : connectOp.getRules().front().getOps<PacketRuleOp>())
+          for (auto masterSetOp : b.getOps<MasterSetOp>())
+            for (Value amsel : masterSetOp.getAmsels()) {
               if (ruleOp.getAmsel() == amsel) {
                 LLVM_DEBUG(llvm::dbgs()
                            << "To:"
@@ -140,9 +142,19 @@ private:
       bool keepPartialFlows,
       std::vector<PacketConnection> &partialEndpoints) const {
     std::vector<PacketConnection> worklist;
+    // A slave port hands a packet to the first rule that matches its id, so
+    // once a rule matches every id that can arrive, later rules get none.
+    Operation *takenBy = nullptr;
     for (auto &nextPortMaskValue : nextPortMaskValues) {
       Port nextPort = nextPortMaskValue.port;
       MaskValue nextMaskValue = nextPortMaskValue.mv;
+      Operation *rule = nextPortMaskValue.ops.front();
+      if (!isa<PacketRuleOp>(rule)) {
+        rule = nullptr;
+      }
+      if (takenBy && rule != takenBy) {
+        continue;
+      }
       int maskConflicts = nextMaskValue.mask & maskValue.mask;
       LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.mask << " "
                               << maskValue.value << "\n");
@@ -154,6 +166,9 @@ private:
           (maskConflicts & maskValue.value)) {
         // Incoming packets cannot match this rule. Skip it.
         continue;
+      }
+      if (rule && (nextMaskValue.mask & ~maskValue.mask) == 0) {
+        takenBy = rule;
       }
       MaskValue newMaskValue = {maskValue.mask | nextMaskValue.mask,
                                 maskValue.value |
@@ -261,8 +276,10 @@ public:
   // Get the tiles connected to the given tile, starting from the given
   // output port of the tile.  This is 1:N relationship because each
   // switchbox can broadcast.
-  std::vector<PacketConnection> getConnectedTiles(TileOp tileOp, Port port,
-                                                  bool keepPartialFlows) const {
+  // `claim` selects the packet ids followed; the default follows them all.
+  std::vector<PacketConnection>
+  getConnectedTiles(TileOp tileOp, Port port, bool keepPartialFlows,
+                    MaskValue claim = {0, 0}) const {
     LLVM_DEBUG(llvm::dbgs()
                << "getConnectedTile(" << stringifyWireBundle(port.bundle) << " "
                << port.channel << ")");
@@ -273,14 +290,15 @@ public:
     if (!t) {
       return {};
     }
-    return traverse({PacketConnection{*t, {0, 0}, {}}}, keepPartialFlows);
+    return traverse({PacketConnection{*t, claim, {}}}, keepPartialFlows);
   }
 
   std::vector<PacketConnection>
   getConnectedTilesFromInput(Operation *switchOp, Port inputPort,
-                             bool keepPartialFlows) const {
+                             bool keepPartialFlows,
+                             MaskValue claim = {0, 0}) const {
     return traverse(
-        {PacketConnection{PortConnection{switchOp, inputPort}, {0, 0}, {}}},
+        {PacketConnection{PortConnection{switchOp, inputPort}, claim, {}}},
         keepPartialFlows);
   }
 };
@@ -337,11 +355,21 @@ static Value resolveEndpointTile(Operation *op) {
   return nullptr;
 }
 
+// The interconnect ops the lifted flows make redundant, and those a route left
+// materialized still needs. An op can be on both, such as a shim-mux connect
+// that user flows and the control overlay share, and then it stays. Each lifted
+// packet flow is listed with the ops it traversed.
+struct LiftedOps {
+  llvm::DenseSet<Operation *> consumed;
+  llvm::DenseSet<Operation *> kept;
+  std::vector<std::pair<PacketFlowOp, SmallVector<Operation *, 8>>> packetFlows;
+};
+
 static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
                       WireBundle srcBundle, int srcChannel,
                       const std::vector<PacketConnection> &endpoints,
                       bool dropIntraTile, int idMask, FlowKeySet &seen,
-                      llvm::DenseSet<Operation *> &consumed) {
+                      LiftedOps &lifted) {
   for (const PacketConnection &c : endpoints) {
     Operation *destOp = c.portConnection.op;
     Port destPort = c.portConnection.port;
@@ -350,19 +378,22 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     if (!destTile) {
       continue;
     }
-    // A control overlay stays materialized. Its switchbox configuration carries
-    // the is_ctrl_pkt_overlay marker, and a lifted flow cannot rebuild it.
-    bool keepMaterialized = false;
-    for (Operation *op : c.usedOps) {
+    // The routing of a priority_route flow carries the is_ctrl_pkt_overlay
+    // marker. The control overlay's flows, which start or end at a TileControl
+    // port, stay materialized, since a lifted flow cannot rebuild the overlay.
+    bool marked = llvm::any_of(c.usedOps, [](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
-      if (op->hasAttr("is_ctrl_pkt_overlay") ||
-          (rulesParent && rulesParent->hasAttr("is_ctrl_pkt_overlay"))) {
-        keepMaterialized = true;
-        break;
+      return (op && op->hasAttr("is_ctrl_pkt_overlay")) ||
+             (rulesParent && rulesParent->hasAttr("is_ctrl_pkt_overlay"));
+    });
+    if (marked && (srcBundle == WireBundle::TileControl ||
+                   destPort.bundle == WireBundle::TileControl)) {
+      for (Operation *op : c.usedOps) {
+        if (op) {
+          lifted.kept.insert(op);
+        }
       }
-    }
-    if (keepMaterialized) {
       continue;
     }
     // A packet endpoint becomes a logical packet flow, and the pass erases
@@ -383,17 +414,22 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     if (isPacket) {
       for (Operation *op : c.usedOps) {
         if (op) {
-          consumed.insert(op);
+          lifted.consumed.insert(op);
         }
       }
-      // The lowering stores keep_pkt_header on the master set that drives the
-      // destination. Carry it onto the recovered flow.
-      BoolAttr keepPktHeader;
+      // The lowering stores keep_pkt_header, and the marker of a
+      // priority_route flow, on the master set that drives the destination.
+      // Carry them onto the recovered flow. Hops before it can be shared with
+      // other flows, so their markers say nothing about this one.
+      BoolAttr keepPktHeader, priorityRoute;
       for (Operation *op : c.usedOps) {
         if (auto ms = dyn_cast_or_null<MasterSetOp>(op)) {
           if (ms.getDestBundle() == destPort.bundle &&
               ms.getDestChannel() == destPort.channel) {
             keepPktHeader = ms.getKeepPktHeaderAttr();
+            if (ms->hasAttr("is_ctrl_pkt_overlay")) {
+              priorityRoute = rewriter.getBoolAttr(true);
+            }
           }
         }
       }
@@ -410,7 +446,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
       }
       auto flowOp = PacketFlowOp::create(
           rewriter, loc, rewriter.getI8IntegerAttr(maskValue.value), mask,
-          keepPktHeader, BoolAttr());
+          keepPktHeader, priorityRoute);
       PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
       OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
       rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
@@ -418,6 +454,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
       PacketDestOp::create(rewriter, loc, destTile, destPort.bundle,
                            destPort.channel);
       rewriter.restoreInsertionPoint(ip);
+      lifted.packetFlows.emplace_back(flowOp, c.usedOps);
       continue;
     }
     // No switchbox configuration stands between the endpoints, so there is no
@@ -432,7 +469,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     }
     for (Operation *op : c.usedOps) {
       if (op) {
-        consumed.insert(op);
+        lifted.consumed.insert(op);
       }
     }
     FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
@@ -440,10 +477,143 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
   }
 }
 
+// Where rules on a port overlap, which ids each one takes depends on the rules
+// before it, and a traversal of cubes cannot follow that. So each packet id is
+// traced on its own, and the ids that reach the same destinations are
+// described by disjoint cubes. Two flows from one source then claim either the
+// same ids or none in common.
+static std::vector<PacketConnection> exactPacketEndpoints(
+    std::vector<PacketConnection> endpoints, int idMask,
+    llvm::function_ref<std::vector<PacketConnection>(MaskValue)> trace) {
+  auto isPacket = [](const PacketConnection &c) {
+    return llvm::any_of(c.usedOps, [](Operation *op) {
+      return isa_and_nonnull<PacketRuleOp>(op);
+    });
+  };
+  if (llvm::none_of(endpoints, isPacket)) {
+    return endpoints;
+  }
+  std::vector<PacketConnection> result;
+  llvm::copy_if(endpoints, std::back_inserter(result),
+                [&](const PacketConnection &c) { return !isPacket(c); });
+
+  auto sameDest = [](const PortConnection &a, const PortConnection &b) {
+    return a.op == b.op && a.port == b.port;
+  };
+  SmallVector<PortConnection> dests;
+  auto destIndex = [&](const PortConnection &d) {
+    auto it = llvm::find_if(
+        dests, [&](const PortConnection &e) { return sameDest(d, e); });
+    if (it != dests.end()) {
+      return static_cast<unsigned>(it - dests.begin());
+    }
+    dests.push_back(d);
+    return static_cast<unsigned>(dests.size() - 1);
+  };
+  for (const PacketConnection &c : endpoints) {
+    if (isPacket(c)) {
+      destIndex(c.portConnection);
+    }
+  }
+
+  // The destinations each id reaches, and the ops it passes to reach each.
+  std::map<SmallVector<unsigned>, SmallVector<int>> idsByDests;
+  std::map<std::pair<int, unsigned>, SmallVector<Operation *, 8>> opsTo;
+  for (int id = 0; id <= idMask; ++id) {
+    SmallVector<unsigned> reached;
+    for (const PacketConnection &c : trace({idMask, id})) {
+      if (!isPacket(c)) {
+        continue;
+      }
+      unsigned d = destIndex(c.portConnection);
+      if (!llvm::is_contained(reached, d)) {
+        reached.push_back(d);
+      }
+      SmallVector<Operation *, 8> &ops = opsTo[{id, d}];
+      for (Operation *op : c.usedOps) {
+        if (!llvm::is_contained(ops, op)) {
+          ops.push_back(op);
+        }
+      }
+    }
+    if (!reached.empty()) {
+      llvm::sort(reached);
+      idsByDests[reached].push_back(id);
+    }
+  }
+
+  // Largest cube first, each inside the ids not yet described.
+  auto disjointCubes = [&](ArrayRef<int> ids) {
+    llvm::SmallBitVector left(idMask + 1);
+    for (int id : ids) {
+      left.set(id);
+    }
+    SmallVector<MaskValue> cubes;
+    while (left.any()) {
+      MaskValue best = {idMask, left.find_first()};
+      int bestSize = 1;
+      for (int mask = 0; mask <= idMask; ++mask) {
+        int size = 1 << llvm::popcount(static_cast<unsigned>(idMask & ~mask));
+        if (size <= bestSize) {
+          continue;
+        }
+        for (int value = 0; value <= idMask && size > bestSize; ++value) {
+          if ((value & mask) != value) {
+            continue;
+          }
+          bool inside = true;
+          for (int id = value; id <= idMask && inside; ++id) {
+            inside = (id & mask) != value || left.test(id);
+          }
+          if (inside) {
+            best = {mask, value};
+            bestSize = size;
+          }
+        }
+      }
+      for (int id = 0; id <= idMask; ++id) {
+        if ((id & best.mask) == best.value) {
+          left.reset(id);
+        }
+      }
+      cubes.push_back(best);
+    }
+    return cubes;
+  };
+
+  // In id order, which is the order of each group's lowest id.
+  SmallVector<std::pair<const SmallVector<unsigned> *, ArrayRef<int>>> groups;
+  for (const auto &[reached, ids] : idsByDests) {
+    groups.push_back({&reached, ids});
+  }
+  llvm::sort(groups, [](const auto &a, const auto &b) {
+    return a.second.front() < b.second.front();
+  });
+  for (const auto &[reached, ids] : groups) {
+    SmallVector<MaskValue> cubes = disjointCubes(ids);
+    for (unsigned d : *reached) {
+      for (MaskValue cube : cubes) {
+        SmallVector<Operation *, 8> ops;
+        for (int id : ids) {
+          if ((id & cube.mask) != cube.value) {
+            continue;
+          }
+          for (Operation *op : opsTo[{id, d}]) {
+            if (!llvm::is_contained(ops, op)) {
+              ops.push_back(op);
+            }
+          }
+        }
+        result.push_back({dests[d], cube, ops});
+      }
+    }
+  }
+  return result;
+}
+
 static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
                           OpBuilder &rewriter, bool keepPartialFlows,
-                          int idMask, FlowKeySet &seen,
-                          llvm::DenseSet<Operation *> &consumed) {
+                          int idMask, FlowKeySet &seen, LiftedOps &lifted) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
 
@@ -453,11 +623,16 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
                << op << stringifyWireBundle(bundle) << " has "
                << op.getNumSourceConnections(bundle) << " Connections\n");
     for (size_t i = 0; i < op.getNumSourceConnections(bundle); i++) {
-      std::vector<PacketConnection> tiles =
-          analysis.getConnectedTiles(op, {bundle, (int)i}, keepPartialFlows);
+      Port port = {bundle, (int)i};
+      std::vector<PacketConnection> tiles = exactPacketEndpoints(
+          analysis.getConnectedTiles(op, port, keepPartialFlows), idMask,
+          [&](MaskValue claim) {
+            return analysis.getConnectedTiles(op, port, keepPartialFlows,
+                                              claim);
+          });
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
       emitFlows(rewriter, Op->getLoc(), Op->getResult(0), bundle, (int)i, tiles,
-                /*dropIntraTile=*/false, idMask, seen, consumed);
+                /*dropIntraTile=*/false, idMask, seen, lifted);
     }
   }
 }
@@ -472,8 +647,7 @@ static void findFlowsFromInterconnect(Operation *switchOp,
                                       ConnectivityAnalysis &analysis,
                                       OpBuilder &rewriter,
                                       bool keepPartialFlows, int idMask,
-                                      FlowKeySet &seen,
-                                      llvm::DenseSet<Operation *> &consumed) {
+                                      FlowKeySet &seen, LiftedOps &lifted) {
   Region *connections = nullptr;
   if (auto sb = dyn_cast<SwitchboxOp>(switchOp)) {
     connections = &sb.getConnections();
@@ -531,10 +705,14 @@ static void findFlowsFromInterconnect(Operation *switchOp,
     if (!srcTile) {
       continue;
     }
-    std::vector<PacketConnection> tiles =
-        analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows);
+    std::vector<PacketConnection> tiles = exactPacketEndpoints(
+        analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows),
+        idMask, [&](MaskValue claim) {
+          return analysis.getConnectedTilesFromInput(switchOp, p,
+                                                     keepPartialFlows, claim);
+        });
     emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel,
-              tiles, /*dropIntraTile=*/true, idMask, seen, consumed);
+              tiles, /*dropIntraTile=*/true, idMask, seen, lifted);
   }
 }
 
@@ -563,23 +741,23 @@ struct AIEFindFlowsPass
     const int idMask =
         (1 << llvm::Log2_32_Ceil(d.getTargetModel().getMaxPacketId() + 1)) - 1;
 
-    llvm::DenseSet<Operation *> consumed;
+    LiftedOps lifted;
     FlowKeySet seen;
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
     for (auto tile : d.getOps<TileOp>()) {
       findFlowsFrom(tile, analysis, builder, clKeepPartialFlows, idMask, seen,
-                    consumed);
+                    lifted);
     }
     // Lift flows whose source is not a core/DMA (transit fills, packet routing
     // steered at runtime, PLIO/edge entries) directly from the interconnect.
     if (clKeepPartialFlows) {
       for (auto switchOp : d.getOps<SwitchboxOp>()) {
         findFlowsFromInterconnect(switchOp, analysis, builder,
-                                  clKeepPartialFlows, idMask, seen, consumed);
+                                  clKeepPartialFlows, idMask, seen, lifted);
       }
       for (auto shimMuxOp : d.getOps<ShimMuxOp>()) {
         findFlowsFromInterconnect(shimMuxOp, analysis, builder,
-                                  clKeepPartialFlows, idMask, seen, consumed);
+                                  clKeepPartialFlows, idMask, seen, lifted);
       }
     }
 
@@ -590,8 +768,31 @@ struct AIEFindFlowsPass
     // Every recovered flow makes the interconnect ops it traversed redundant;
     // drop exactly those, leaving any configuration that could not be lifted
     // (e.g. an unreachable connect) in place.
-    for (Operation *op : consumed) {
-      if (isa<ConnectOp, PacketRuleOp, MasterSetOp>(op)) {
+    // A packet flow that shares a rule with a route left materialized stays
+    // materialized too: the rule claims its ids, so a rerouted copy of the flow
+    // could not claim them again.
+    for (bool changed = true; changed;) {
+      changed = false;
+      for (auto &[flow, usedOps] : lifted.packetFlows) {
+        if (!flow || llvm::none_of(usedOps, [&](Operation *op) {
+              return isa_and_nonnull<PacketRuleOp>(op) &&
+                     lifted.kept.contains(op);
+            })) {
+          continue;
+        }
+        for (Operation *op : usedOps) {
+          if (op) {
+            lifted.kept.insert(op);
+          }
+        }
+        flow.erase();
+        flow = nullptr;
+        changed = true;
+      }
+    }
+    for (Operation *op : lifted.consumed) {
+      if (isa<ConnectOp, PacketRuleOp, MasterSetOp>(op) &&
+          !lifted.kept.contains(op)) {
         op->erase();
       }
     }
