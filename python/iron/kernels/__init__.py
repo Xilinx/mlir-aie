@@ -28,7 +28,7 @@ Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
 cannot say. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
 run and check any kernel, and the ``*_ref`` functions exported here are those
-references. :func:`factories` lists the factory names.
+references. ``factories`` lists the factory names.
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 

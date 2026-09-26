@@ -8,6 +8,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
@@ -321,6 +322,9 @@ struct AIEGenerateColumnControlOverlayPass
           colsToCover.push_back(tId.col);
     }
 
+    llvm::SmallSet<AIE::TileID, 4> tokenTiles =
+        collectTokenIssuingTiles(device);
+
     auto tileIDMap = getTileToControllerIdMap(true, targetModel);
     for (int col : colsToCover) {
       builder.setInsertionPointToStart(device.getBody());
@@ -335,7 +339,8 @@ struct AIEGenerateColumnControlOverlayPass
         for (auto &[tId, tOp] : tiles) {
           if (tId.col != col)
             continue;
-          if (clRouteShimCTRLToTCT == "shim-only" && !tOp.isShimNOCorPLTile())
+          if (clRouteShimCTRLToTCT == "shim-only" && !tOp.isShimNOCorPLTile() &&
+              !tokenTiles.contains(tId))
             continue;
           tilesOnCol.push_back(tOp);
         }
@@ -378,6 +383,37 @@ struct AIEGenerateColumnControlOverlayPass
       }
     }
     return success();
+  }
+
+  // Tiles a runtime sequence asks a task-complete token of. The token leaves
+  // the tile through its TileControl port, so without a route from there to
+  // the shim an await on it never returns.
+  static llvm::SmallSet<AIE::TileID, 4>
+  collectTokenIssuingTiles(DeviceOp device) {
+    llvm::SmallSet<AIE::TileID, 4> tiles;
+    auto addTile = [&](Value tileValue) {
+      if (!tileValue)
+        return;
+      if (auto tile = dyn_cast_or_null<TileOp>(tileValue.getDefiningOp()))
+        tiles.insert({tile.colIndex(), tile.rowIndex()});
+    };
+    device.walk([&](Operation *op) {
+      if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
+        if (task.getIssueToken())
+          addTile(task.getTile());
+      } else if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
+        if (!task.getIssueToken())
+          return;
+        if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
+                SymbolTable::lookupSymbolIn(device, task.getAlloc())))
+          addTile(endpoint.getTile());
+      } else if (auto push = dyn_cast<AIEX::NpuPushQueueOp>(op)) {
+        if (push.getIssueToken())
+          tiles.insert({static_cast<int>(push.getColumn()),
+                        static_cast<int>(push.getRow())});
+      }
+    });
+    return tiles;
   }
 
   // Return true when the user has explicitly disabled overlay generation for

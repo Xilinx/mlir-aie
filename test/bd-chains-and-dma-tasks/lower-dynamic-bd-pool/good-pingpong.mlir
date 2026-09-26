@@ -24,17 +24,17 @@
 //     later walks that loop result to a configure for the physical channel.
 
 // CHECK-LABEL: @runtime_bound_pingpong
-// CHECK: %[[INIT:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK: %[[INIT:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK: %[[INIT_T:.*]] = aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
 // CHECK:   aie.dma_bd(%{{.*}} : memref<1024xi32> offset = 0 len = 256) bd_id_val %[[INIT]] : i32
 // CHECK: %[[LOOP:.*]]:2 = scf.for {{.*}} iter_args(%[[PREVT:.*]] = %[[INIT_T]], %[[PREVID:.*]] = %[[INIT]]) -> (index, i32)
-// CHECK:   %[[T:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK:   %[[T:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
 // CHECK:     aie.dma_bd(%{{.*}} : memref<1024xi32> offset = 0 len = 256) bd_id_val %[[T]] : i32
-// CHECK:   aiex.dma_bd_pool_push(0, 0) bd_id %[[PREVID]] : i32
+// CHECK:   aiex.dma_bd_pool_push(0, 0, 0) bd_id %[[PREVID]] : i32
 // CHECK:   scf.yield %{{.*}}, %[[T]] : index, i32
 // CHECK: aiex.dma_await_task(%[[LOOP]]#0)
-// CHECK: aiex.dma_bd_pool_push(0, 0) bd_id %[[LOOP]]#1 : i32
+// CHECK: aiex.dma_bd_pool_push(0, 0, 0) bd_id %[[LOOP]]#1 : i32
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)

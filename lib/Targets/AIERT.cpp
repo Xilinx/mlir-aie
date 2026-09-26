@@ -931,7 +931,7 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
       for (Block *block : blockVector) {
         for (auto op : block->getOps<DMAStartOp>()) {
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
-          int chNum = op.getChannelIndex();
+          int chNum = op.getChannel();
           auto channelDir = op.getChannelDir();
           auto bdId = bd.getBdId();
           assert(bdId.has_value() &&

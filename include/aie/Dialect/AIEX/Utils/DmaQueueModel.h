@@ -52,7 +52,9 @@ public:
   }
 
   /// Record a push. Every push occupies a slot, not just issue_token ones, and
-  /// a repeat_count of N still occupies exactly one.
+  /// one push occupies exactly one whatever its repeat_count. (A task start
+  /// whose count overflows the push's field is several pushes; the BD-ID pass
+  /// splits it before counting.)
   void push(const ChannelKey &key, bool issuesToken) {
     auto &q = queued[key];
     q.pushes.push_back(issuesToken && !q.unknownTokens);

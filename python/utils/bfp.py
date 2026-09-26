@@ -21,9 +21,9 @@ below supplies that conversion, not a replacement scalar dtype.
 
 The block-floating-point matmul kernels (``aie.iron.kernels.mm_bfp``) load
 8x8 sub-tiles as one 72-byte block vector, which a DMA cannot gather at
-9-byte granularity, so tiles are :func:`shuffle` d on the host: within each
+9-byte granularity, so tiles are rearranged by ``shuffle`` on the host: within each
 ``(tile_height, tile_width)`` tile the 8-row by 8-block sub-tiles are made
-contiguous in raster order. :func:`quantize` is what a kernel sees of a
+contiguous in raster order. ``quantize`` is what a kernel sees of a
 float input, and what a reference should multiply.
 """
 

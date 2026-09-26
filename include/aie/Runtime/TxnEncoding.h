@@ -101,6 +101,21 @@ inline BdPool bd_pool_init(uint32_t n) {
   return p;
 }
 
+// Initialize a pool over the half-open id range [lo, hi). A mem tile splits
+// its BD table by channel parity -- an even channel can only submit ids below
+// the split, an odd channel only those at or above it -- so each partition
+// needs its own pool; one flat list would hand a channel ids it cannot submit.
+// Ordered like bd_pool_init: pop returns the lowest id in the range first.
+inline BdPool bd_pool_init_range(uint32_t lo, uint32_t hi) {
+  BdPool p;
+  p.head = 0;
+  if (hi > kMaxBDsPerTile)
+    hi = kMaxBDsPerTile;
+  for (uint32_t i = hi; i > lo; --i)
+    p.free_ids[p.head++] = i - 1; // top of stack is `lo`
+  return p;
+}
+
 // Withhold `id` from the pool -- a static BD already owns that slot in the
 // tile's shared BD table, and popping it here would silently overwrite it.
 // `free_ids[0..head)` is kept sorted highest-to-lowest (see bd_pool_init) so

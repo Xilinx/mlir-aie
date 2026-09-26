@@ -21,6 +21,7 @@ from ..dialects.aie import (
 from ..dialects.aie import (
     use_lock as _use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ..dialects.aiex import set_lock_value as _set_lock_value
 from .device import Tile
 from .resolvable import NotResolvedError, Resolvable
 
@@ -105,3 +106,39 @@ class Lock(Resolvable):
     def release(self, value: int = 1) -> None:
         """Emit `aie.use_lock(self, Release, value=value)`."""
         _use_lock(self.op, LockAction.Release, value=value)
+
+    def set(self, value: int) -> None:
+        """Emit `aiex.set_lock(self, value)` from a runtime sequence body.
+
+        Overwrites the lock's value from the host side, e.g. to re-arm a
+        producer lock before a runtime-sequence DMA chain starts reusing a
+        buffer. The write is not ordered against anything the array is doing,
+        so pair it with a blocking op (an await, or a lock the core waits on)
+        that makes it safe.
+
+        Raises:
+            RuntimeError: If called outside a runtime sequence body.
+            ValueError: If value is negative.
+        """
+        if not _in_runtime_sequence():
+            raise RuntimeError(
+                f"Lock.set on {self.name} must be called from within the "
+                "function passed to Runtime(seq_fn, fn_args); inside a Worker "
+                "body use acquire()/release()."
+            )
+        if value < 0:
+            raise ValueError("Lock.set value must be non-negative.")
+        _set_lock_value(self.op, value)
+
+
+def _in_runtime_sequence() -> bool:
+    """Whether the current insertion point is inside an ``aie.runtime_sequence``."""
+    try:
+        op = ir.InsertionPoint.current.block.owner
+    except ValueError:
+        return False
+    while op is not None:
+        if op.operation.name == "aie.runtime_sequence":
+            return True
+        op = op.operation.parent
+    return False

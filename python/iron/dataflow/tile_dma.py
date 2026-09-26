@@ -46,6 +46,7 @@ from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
 from ..resolvable import Resolvable
+from .flow import FlowEndpoint
 
 
 @dataclass
@@ -148,7 +149,10 @@ class DmaChannel:
     Args:
         direction: `DMAChannelDir.S2MM` (host→tile) or `DMAChannelDir.MM2S`
             (tile→host).
-        channel: hardware channel index.
+        channel: hardware channel index, or the
+            [`FlowEndpoint`][iron.FlowEndpoint] from
+            [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint] to run on whichever channel
+            the compiler assigns that end.
         bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
             (in-order) or n-way merge (out-of-order).
         repeat_count: extra repeats of the task (0 = run once), where the task
@@ -177,7 +181,7 @@ class DmaChannel:
     """
 
     direction: DMAChannelDir
-    channel: int
+    channel: int | FlowEndpoint
     bds: list[Bd]
     pad_value: int = 0
     repeat_count: int = 0
@@ -186,6 +190,44 @@ class DmaChannel:
     # field ahead of the existing optional ones would silently rebind any
     # positional caller's argument.
     loop: bool = True
+
+
+def _emit_bd(bd: "Bd", bd_id: int | None, packet_attr: bool = False) -> None:
+    """Emit one BD's acquires, packet header, ``aie.dma_bd`` and releases.
+
+    They go at the current insertion point. The caller supplies the block and the
+    ``next_bd``/``aie.end`` that closes it, and the ``bd_id`` to stamp (which on
+    an out-of-order channel is not ``bd.bd_id``). ``packet_attr`` puts the packet
+    header on the ``aie.dma_bd`` itself, as a runtime-sequence BD needs.
+    """
+    for acq in bd.acquires:
+        acq.emit()
+    bd_kwargs: dict[str, Any] = dict(sizes=bd.sizes, strides=bd.strides)
+    if bd.offset:
+        bd_kwargs["offset"] = bd.offset
+    if bd.length is not None:
+        bd_kwargs["transfer_len"] = bd.length
+    if bd.pad_dimensions is not None:
+        bd_kwargs["pad_dimensions"] = bd.pad_dimensions
+    if bd.iteration is not None:
+        it = bd.iteration
+        bd_kwargs["iteration"] = (it.size, it.stride, it.current)
+    if bd_id is not None:
+        bd_kwargs["bd_id"] = bd_id
+    if bd.out_of_order_id is not None:
+        bd_kwargs["out_of_order_id"] = bd.out_of_order_id
+    # A packet header must be a distinct aie.dma_bd_packet op placed BEFORE the
+    # aie.dma_bd: the CDO/xclbin backends (AIERT / AIETargetXAIEV2) read the
+    # header only from that op, not from a `packet` attribute on the dma_bd.
+    # The runtime-sequence lowering is the reverse: it reads only the attribute.
+    if bd.packet is not None and packet_attr:
+        bd_kwargs["packet"] = bd.packet
+    elif bd.packet is not None:
+        pkt_type, pkt_id = bd.packet
+        dma_bd_packet(pkt_type, pkt_id)
+    dma_bd(bd.buffer.op, **bd_kwargs)
+    for rel in bd.releases:
+        rel.emit()
 
 
 def _channel_pad_word(ch: "DmaChannel") -> int | None:
@@ -214,6 +256,31 @@ def _channel_pad_word(ch: "DmaChannel") -> int | None:
             f"but they have differing element sizes {sorted(elem_sizes)}."
         )
     return pack_pad_value(ch.pad_value, elem_sizes.pop())
+
+
+def check_flow_endpoint(tile: Tile, direction: DMAChannelDir, channel) -> None:
+    """Reject a [`FlowEndpoint`][iron.FlowEndpoint] on the wrong tile or direction.
+
+    This catches an endpoint used on another tile or against its route's
+    direction before the compiler would.
+    """
+    if not isinstance(channel, FlowEndpoint):
+        return
+    if channel.tile != tile:
+        raise ValueError(
+            f"Flow endpoint {channel} is on {channel.tile}, not {tile}; a DMA "
+            "program can only run its own tile's channels."
+        )
+    if channel.direction != direction:
+        raise ValueError(
+            f"Flow endpoint {channel} is {channel.direction} (its Flow decides "
+            f"which way it points), not {direction}."
+        )
+
+
+def _channel_operand(channel: "int | FlowEndpoint") -> int | str:
+    """Return what ``aie.dma_start`` names: an index, or the endpoint's symbol."""
+    return channel.symbol if isinstance(channel, FlowEndpoint) else channel
 
 
 def _dma_start_repeat_count(ch: "DmaChannel") -> int:
@@ -272,6 +339,7 @@ class TileDma(Resolvable):
         channels = list(channels)
         keys = {(channel.direction, channel.channel) for channel in self._channels}
         for channel in channels:
+            check_flow_endpoint(self._tile, channel.direction, channel.channel)
             key = (channel.direction, channel.channel)
             if key in keys:
                 raise ValueError(
@@ -339,7 +407,7 @@ class TileDma(Resolvable):
         def _ooo_slot_id(bd: Bd, pos: int) -> int:
             return bd.bd_id if bd.bd_id is not None else pos
 
-        pinned_bd_ids: dict[int, int] = {}  # slot id -> owning channel
+        pinned_bd_ids: dict[int, int | FlowEndpoint] = {}  # slot id -> channel
         for ch in channels:
             if ch.out_of_order and ch.direction != DMAChannelDir.S2MM:
                 raise ValueError(
@@ -402,7 +470,7 @@ class TileDma(Resolvable):
             ch = channels[0]
             dma_start(
                 ch.direction,
-                ch.channel,
+                _channel_operand(ch.channel),
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
                 pad_value=_channel_pad_word(ch) or 0,
@@ -415,7 +483,7 @@ class TileDma(Resolvable):
                 with block[chan_chain_idx[i - 1]]:
                     dma_start(
                         ch_i.direction,
-                        ch_i.channel,
+                        _channel_operand(ch_i.channel),
                         dest=block[chan_head_idx[i]],
                         chain=block[chan_chain_idx[i]],
                         pad_value=_channel_pad_word(ch_i) or 0,
@@ -428,36 +496,10 @@ class TileDma(Resolvable):
                 bd_block_idx = [chan_head_idx[i], *chan_extra_idx[i]]
                 for bd_pos, bd in enumerate(ch.bds):
                     with block[bd_block_idx[bd_pos]]:
-                        for acq in bd.acquires:
-                            acq.emit()
-                        bd_kwargs: dict[str, Any] = dict(
-                            sizes=bd.sizes, strides=bd.strides
+                        _emit_bd(
+                            bd,
+                            (_ooo_slot_id(bd, bd_pos) if ch.out_of_order else bd.bd_id),
                         )
-                        if bd.offset:
-                            bd_kwargs["offset"] = bd.offset
-                        if bd.length is not None:
-                            bd_kwargs["transfer_len"] = bd.length
-                        if bd.pad_dimensions is not None:
-                            bd_kwargs["pad_dimensions"] = bd.pad_dimensions
-                        if bd.iteration is not None:
-                            it = bd.iteration
-                            bd_kwargs["iteration"] = (it.size, it.stride, it.current)
-                        if ch.out_of_order:
-                            bd_kwargs["bd_id"] = _ooo_slot_id(bd, bd_pos)
-                        elif bd.bd_id is not None:
-                            bd_kwargs["bd_id"] = bd.bd_id
-                        if bd.out_of_order_id is not None:
-                            bd_kwargs["out_of_order_id"] = bd.out_of_order_id
-                        # A packet header must be a distinct aie.dma_bd_packet op
-                        # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
-                        # (AIERT / AIETargetXAIEV2) read the header only from that
-                        # op, not from a `packet` attribute on the dma_bd.
-                        if bd.packet is not None:
-                            pkt_type, pkt_id = bd.packet
-                            dma_bd_packet(pkt_type, pkt_id)
-                        dma_bd(bd.buffer.op, **bd_kwargs)
-                        for rel in bd.releases:
-                            rel.emit()
                         # next_bd target
                         if ch.out_of_order:
                             # Chain BDs only for configuration; the hardware

@@ -5,8 +5,8 @@
 #
 """One Worker per stage, fed and drained through fifos: the loop the single-core templates run.
 
-A :class:`Stage` is what one core does: acquire its input fifos, acquire its
-outputs, call its body, release. :func:`pipeline` builds the Workers and
+A ``Stage`` is what one core does: acquire its input fifos, acquire its
+outputs, call its body, release. ``pipeline`` builds the Workers and
 writes the runtime sequence that fills and drains the host buffers.
 ``transform``, ``for_each``, ``reduce`` and the kernel-validation builder are
 each a few lines on top of it.

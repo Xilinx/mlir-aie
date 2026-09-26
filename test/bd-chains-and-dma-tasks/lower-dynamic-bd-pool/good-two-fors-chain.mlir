@@ -15,10 +15,10 @@
 // walk mis-ordered (consumer grown before producer).
 
 // CHECK-LABEL: @two_fors_chain
-// CHECK: %[[ID:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK: %[[ID:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK: %[[L1:.*]]:2 = scf.for {{.*}} iter_args({{.*}}, %{{.*}} = %[[ID]]) -> (index, i32)
 // CHECK: %[[L2:.*]]:2 = scf.for {{.*}} iter_args(%{{.*}} = %[[L1]]#0, %{{.*}} = %[[L1]]#1) -> (index, i32)
-// CHECK: aiex.dma_bd_pool_push(0, 0) bd_id %[[L2]]#1 : i32
+// CHECK: aiex.dma_bd_pool_push(0, 0, 0) bd_id %[[L2]]#1 : i32
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)

@@ -58,14 +58,16 @@ construction time (or bound by ``@iron.jit(...)``).
 Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
 Required unless a default is given.
 
-Example::
+For example:
 
-    from ml_dtypes import bfloat16
+```python
+from ml_dtypes import bfloat16
 
-    def gemm(a: In, b: In, c: Out,
-             M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
-             dtype: CompileTime[type] = bfloat16):
-        ...
+def gemm(a: In, b: In, c: Out,
+         M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
+         dtype: CompileTime[type] = bfloat16):
+    ...
+```
 """
 
 
@@ -104,12 +106,14 @@ require ``CompileTime`` or specialization instead.
 The Python bridge supports one runtime sequence, rejects remaining load-PDI
 operations, and cannot use ``full_elf=True`` while any parameters remain dynamic.
 
-Example::
+For example:
 
-    import numpy as np
+```python
+import numpy as np
 
-    def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
-        ...
+def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
+    ...
+```
 """
 
 

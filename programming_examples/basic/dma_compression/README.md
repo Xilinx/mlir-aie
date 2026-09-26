@@ -29,8 +29,8 @@ What this probe establishes about the AIE compute-tile compression hardware:
   config=...)` returns an MLIR module per config. Most configs use
   `ObjectFifo.forward(tile=...)` + raw ops written directly in the runtime
   sequence body; `multi_cmp_only`
-  drops to low-level `aie.mem` / `aie.dma_start` for per-side BD sizing,
-  and `regdump` uses an output-only Worker that calls the kernel.
+  spells each tile's DMA explicitly with `TileDma` / `Bd` / `Flow` for
+  per-side BD sizing, and `regdump` uses an output-only Worker that calls the kernel.
 - `kernel.cc` — peano core-side kernel used by the `core_*` and `regdump`
   configs. Arch-guarded include selects `aie2pintrin.h` on AIE2P or
   `aiev2intrin.h` on AIE-ML; both expose `write_tm` and `read_tm`. A
@@ -66,7 +66,7 @@ complete in well under one second (data dispatches) or ~1.5 s
 | `memtile_both`       | ✓         | ✓               | host runtime    | 2944 / 0 / 1152                          |
 | `lossless_roundtrip` | CT MM2S   | memtile S2MM    | host runtime    | **4096 / 0 / 0** (true lossless roundtrip)  |
 | `multi_base`               | —     | —               | —               | 4096 / 0 / 0                                |
-| `multi_cmp_only`           | CT MM2S | —             | host runtime    | 1024 / 1920 / 1152 (asymmetric, low-level dialect) |
+| `multi_cmp_only`           | CT MM2S | —             | host runtime    | 1024 / 1920 / 1152 (asymmetric, explicit `TileDma`) |
 | `multi_lossless_roundtrip` | CT MM2S | CT S2MM       | host runtime    | **4096 / 0 / 0** (CT(0,2)→CT(0,3) roundtrip)|
 | `regdump`        | —             | —               | core `write_tm`+`read_tm` | 4× post-write reads of BD0/1/2/3_1 == 0x80000000 |
 
@@ -116,10 +116,11 @@ proof: it compresses on CT(0,2) MM2S but does NOT decompress on
 CT(0,3) S2MM, so the inter-tile wire carries fewer bytes than the
 consumer would normally expect. To avoid the consumer DMA stalling,
 the CT(0,3) BDs are hand-sized to `RATIOED_PER_LINE = 736` ints/BD.
-IRON's `forward()` / object-fifo lowering doesn't expose per-side BD
-sizing (the linked fifo's `line_ty` sizes both ends), so this config
-is built from low-level `aie.mem` / `aie.dma_start` / `aie.flow` ops
-in `_build_multi_cmp_only()` instead of the IRON `ObjectFifo` API. The
+A forwarded `ObjectFifo` sizes both ends with the same `line_ty`, so
+`_build_multi_cmp_only()` instead describes each tile's DMA with an
+explicit `TileDma`: ping-pong `Bd`s over `Buffer`s sized per side,
+`Lock`s, and channel-pinned `Flow`s, with `bd_id`s pinned so the
+compression maskwrites hit the MM2S BDs. The
 asymmetric output pattern (1024 / 1920 / 1152, matching single-tile
 `cmp_only`) proves DMA compression actually engages on the inter-CT
 link.

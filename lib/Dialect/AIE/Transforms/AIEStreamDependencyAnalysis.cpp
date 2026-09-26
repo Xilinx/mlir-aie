@@ -57,10 +57,10 @@ std::optional<DmaChannelProgram> makeProgram(Operation *op, DeviceOp device) {
   };
   if (auto start = dyn_cast<DMAStartOp>(op)) {
     std::optional<TileID> tile = parentTile(op);
-    if (!tile)
+    std::optional<int32_t> channel = start.getChannelIndex();
+    if (!tile || !channel)
       return std::nullopt;
-    DmaChannelProgram p{op, *tile, start.getChannelDir(),
-                        static_cast<int>(start.getChannelIndex())};
+    DmaChannelProgram p{op, *tile, start.getChannelDir(), *channel};
     llvm::SmallPtrSet<Block *, 8> seen;
     for (Block *b = start.getDest(); b;) {
       if (!seen.insert(b).second) {

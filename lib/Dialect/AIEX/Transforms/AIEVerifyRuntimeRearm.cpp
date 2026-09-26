@@ -59,9 +59,10 @@ struct AIEVerifyRuntimeRearmPass
 
   // channel -> the objectFIFO locks its BD chain uses, built in one device
   // walk.
-  std::map<ChannelKey, SmallVector<LockOp>> mapChannelLocks(DeviceOp dev) {
+  FailureOr<std::map<ChannelKey, SmallVector<LockOp>>>
+  mapChannelLocks(DeviceOp dev) {
     std::map<ChannelKey, SmallVector<LockOp>> m;
-    dev.walk([&](DMAStartOp start) {
+    WalkResult wr = dev.walk([&](DMAStartOp start) -> WalkResult {
       Operation *memOp = start->getParentOp();
       TileOp tile;
       if (auto x = dyn_cast<MemOp>(memOp))
@@ -69,10 +70,17 @@ struct AIEVerifyRuntimeRearmPass
       else if (auto x = dyn_cast<MemTileDMAOp>(memOp))
         tile = x.getTileOp();
       if (!tile)
-        return;
+        return WalkResult::advance();
+      auto channel = start.getChannelIndex();
+      if (!channel) {
+        start.emitOpError("requires an allocated DMA channel; run "
+                          "--aie-objectfifo-allocate before "
+                          "--aie-verify-runtime-rearm");
+        return WalkResult::interrupt();
+      }
       ChannelKey key{tile.getCol(), tile.getRow(),
                      static_cast<int>(start.getChannelDir()),
-                     static_cast<int>(start.getChannelIndex())};
+                     static_cast<int>(*channel)};
       SmallVector<LockOp> &locks = m[key];
       // Walk the BD chain (dest, then next_bd successors); the last next_bd
       // loops back, so stop on a revisit.
@@ -83,14 +91,20 @@ struct AIEVerifyRuntimeRearmPass
           if (auto l = dyn_cast_or_null<LockOp>(use.getLock().getDefiningOp()))
             if (!llvm::is_contained(locks, l))
               locks.push_back(l);
+      return WalkResult::advance();
     });
+    if (wr.wasInterrupted())
+      return failure();
     return m;
   }
 
   void runOnOperation() override {
     DeviceOp dev = getOperation();
-    std::map<ChannelKey, SmallVector<LockOp>> channelLocks =
-        mapChannelLocks(dev);
+    auto channelLocks = mapChannelLocks(dev);
+    if (failed(channelLocks)) {
+      signalPassFailure();
+      return;
+    }
 
     // Locks re-armed anywhere in the module by an aiex.set_lock. Module-wide so
     // a re-arm in another dispatch's sequence counts. The pass runs before
@@ -112,8 +126,8 @@ struct AIEVerifyRuntimeRearmPass
       ChannelKey key{tile.getCol(), tile.getRow(),
                      static_cast<int>(reset.getDirection()),
                      static_cast<int>(reset.getChannel())};
-      auto it = channelLocks.find(key);
-      if (it == channelLocks.end())
+      auto it = channelLocks->find(key);
+      if (it == channelLocks->end())
         return WalkResult::advance();
       SmallVector<LockOp> frozen;
       for (LockOp l : it->second)

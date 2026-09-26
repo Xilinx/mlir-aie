@@ -1320,7 +1320,8 @@ def AIE_DMAStartOp
     : AIE_Op<"dma_start", [ParentOneOf<["MemOp", "MemTileDMAOp",
                                         "mlir::func::FuncOp", "ShimDMAOp"]>,
                            Terminator,
-                           DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+                           DeclareOpInterfaceMethods<InferTypeOpInterface>,
+                           DeclareOpInterfaceMethods<SymbolUserOpInterface>]>,
       Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
@@ -1342,6 +1343,16 @@ def AIE_DMAStartOp
         aie.end
     ```
 
+    In place of the index, the channel may be named by an `aie.route_endpoint`
+    on the same tile with a `DMA` bundle. `--aie-objectfifo-allocate` then picks
+    the index, together with the route's other channels, and writes it here:
+    ```
+      aie.route_endpoint @in(%tile) DMA
+      aie.route from @src to [@in]
+      ...
+        aie.dma_start(S2MM, @in, ^bd0, ^end)
+    ```
+
     Conceptually, the aie.dma_start operation is a terminator that either passes
     control to a basic block containing DMA operations (through its first successor)
     or to a basic block for another dma_start, to an aie.end operation.
@@ -1356,8 +1367,11 @@ def AIE_DMAStartOp
     nonzero `pad_value` elsewhere.
   }];
 
+  // Exactly one of channel_index and endpoint is set; allocation replaces the
+  // endpoint with the index it assigns.
   let arguments = (ins DMAChannelDir:$channel_dir,
-      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$channel_index,
+      OptionalAttr<FlatSymbolRefAttr>:$endpoint,
       // repeat_count==0 means "do it once" and don't repeat
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
@@ -1365,12 +1379,32 @@ def AIE_DMAStartOp
       UnitAttr:$out_of_order);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
+    `(` $channel_dir `,` custom<DMAStartChannel>($channel_index, $endpoint) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
   }];
+
+  let builders = [OpBuilder<(ins "DMAChannelDir":$channel_dir,
+                                "int":$channel_index, "int":$repeat_count,
+                                "int":$pad_value, "bool":$out_of_order,
+                                "mlir::Block *":$dest, "mlir::Block *":$chain),
+                            [{
+      build($_builder, $_state, channel_dir,
+            $_builder.getI32IntegerAttr(channel_index),
+            mlir::FlatSymbolRefAttr(), repeat_count, pad_value, out_of_order,
+            dest, chain);
+    }]>];
 
   let extraClassDeclaration = [{
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
+    /// The channel index. Only valid once allocation has resolved an endpoint.
+    int getChannel() {
+      std::optional<int32_t> channel = getChannelIndex();
+      assert(channel && "dma_start still names an endpoint; run "
+                        "--aie-objectfifo-allocate");
+      return *channel;
+    }
+    /// The route endpoint this start names in place of an index, if any.
+    RouteEndpointOp getEndpointOp();
   }];
 
   let hasCanonicalizer = 1;
@@ -1973,17 +2007,29 @@ def AIE_RouteEndpointOp
     `--aie-objectfifo-allocate` is free to pick the index, and the route can be
     written before that decision is made.
 
-    `bundle` says what kind of port it is. A `DMA` bundle on a shim tile names a
-    DMA the host runtime programs itself; the chosen channel is recorded as an
-    `aie.shim_dma_allocation` under `fifoName` for the runtime sequence to
-    address. A `Core` bundle names a core's stream port, which the core reads
-    and writes directly and which needs no DMA. Setting `channelIndex` pins the
-    channel instead of leaving it to allocation.
+    `bundle` says what kind of port it is. A `DMA` bundle names a DMA channel
+    the design programs itself, so allocation only picks its index:
+    - On a shim tile the host runtime programs it. With `fifoName` set, the
+      chosen channel is recorded as an `aie.shim_dma_allocation` named
+      `{fifoName}_shim_alloc`, and every use of this symbol is renamed to it.
+    - On any tile, an `aie.dma_start` in the tile's DMA program, or an
+      `aiex.dma_configure_task_for` in the runtime sequence, may name this
+      symbol in place of a channel index. Allocation resolves both.
+
+    A `Core` bundle names a core's stream port, which the core reads and writes
+    directly and which needs no DMA. Setting `channelIndex` pins the channel
+    instead of leaving it to allocation.
+
+    Allocation assigns these after the channels objectFIFOs use. On a tile
+    whose BD ids are split between channels (a MemTile's by channel parity), it
+    picks the free channel whose BDs have the most room left after the other
+    channels' programs and runtime tasks.
 
     Example:
     ```
       aie.route_endpoint @in(%shim) DMA {fifoName = "in"}
       aie.route_endpoint @out(%tile) Core {channelIndex = 0}
+      aie.route_endpoint @b_in(%memtile) DMA
     ```
   }];
 
@@ -2655,6 +2701,11 @@ def AIE_ObjectFifoDmaEndpointOp
 
     /// Segments this endpoint is responsible for.
     std::vector<ObjectFifoSegmentOp> getSelectedSegments();
+
+    /// Buffer descriptors `--aie-objectfifo-lower-dmas` emits for this
+    /// endpoint: one per object and selected segment, copied per repeat
+    /// unless the channel's own repeat count can replay a single one.
+    int64_t getNumBDs();
   }];
 }
 

@@ -654,7 +654,9 @@ def AIEGenerateColumnControlOverlay
            "clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string",
            /*default=*/"\"shim-only\"",
            "Flag to generate TCT routing between tile CTRL and shim SOUTH "
-           "ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,
+           "ports. Available options: ['shim-only', 'all-tiles', 'disable']. "
+           "'shim-only' also routes any tile a runtime sequence task issues "
+           "a token from.">,
        Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool",
               /*default=*/"false",
               "Flag to generate routing between shim dma DMA and tile CTRL "

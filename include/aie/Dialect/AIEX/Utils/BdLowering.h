@@ -6,13 +6,19 @@
 //===----------------------------------------------------------------------===//
 //
 // Shared BD (buffer-descriptor) size/stride encoding used by both the static
-// (constant-folded) and dynamic (runtime SSA) shim-NOC DMA lowering paths.
+// (constant-folded) and dynamic (runtime SSA) DMA lowering paths.
 //
 // The hardware size/stride computation lives here ONCE as a policy-templated
 // algorithm (encodeHardwareStridesWraps) so the constant path and the dynamic
 // arith-emitting path cannot drift -- a divergence would silently miscompile a
 // descriptor. The constant path instantiates it with ConstStridePolicy (plain
 // integer math); the dynamic path uses SsaStridePolicy (emits arith ops).
+//
+// The same reasoning extends across TILE TYPES: the arithmetic is shared, and
+// only the register bit layout -- which genuinely differs between shim NOC,
+// mem tile and core tile BDs -- is written per tile, in packers that read
+// line-for-line against their static counterparts in AIEDmaToNpu.cpp's
+// WriteBdToBlockWritePattern.
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,19 +41,6 @@ class AIETargetModel;
 } // namespace xilinx::AIE
 
 namespace xilinx::AIEX {
-
-// Shim-NOC BD hardware field widths (bits), shared by the dynamic verifier and
-// the runtime-value guard so both reject the same field overflows.
-// TODO: fold into a getDmaBdWrapBits(tileType) accessor on AIETargetModel (also
-// covers the widths hardcoded per tile type in verifyStridesWraps).
-struct ShimBdFieldWidths {
-  static constexpr int64_t kD0WrapBits = 10;
-  static constexpr int64_t kD1WrapBits = 10;
-  static constexpr int64_t kIterWrapBits = 6;
-  static constexpr int64_t d0WrapMax() { return (1 << kD0WrapBits) - 1; }
-  static constexpr int64_t d1WrapMax() { return (1 << kD1WrapBits) - 1; }
-  static constexpr int64_t iterWrapMax() { return (1 << kIterWrapBits) - 1; }
-};
 
 // The address generator transfers whole granules only, so a size or stride is
 // realizable iff its byte extent (value * elemWidth) is a granule multiple.
@@ -113,17 +106,25 @@ verifyConstBdRealizability(mlir::Operation *op,
   // by the queue push), matching verifyStridesWraps' dim-3 `< 0` rule. Lists
   // are innermost-first, so d3 is index 3 (present only for a full 4D
   // descriptor). Runtime strides are trusted (the caller controls them).
+  //
+  // A RUNTIME size does NOT excuse the stride. The encoder scales a stride as
+  // stride * elemWidth / granularity - 1, so a zero stride becomes -1 and the
+  // packer masks that into an all-ones field -- a huge bogus step, which on
+  // hardware walks the BD out of its buffer and hangs the channel. The
+  // dimension is only safe when the size is a compile-time 1, the one case
+  // where the stride is never applied.
   constexpr int kIterDim = 3;
   for (int i = 0; i < (int)sizes.size() && i < (int)strides.size(); i++) {
     auto sz = mlir::getConstantIntValue(sizes[i]);
     auto st = mlir::getConstantIntValue(strides[i]);
-    if (!sz || !st || *sz <= 1)
+    if (!st || (sz && *sz <= 1))
       continue;
     if (i == kIterDim ? *st < 0 : *st < 1)
       return op->emitOpError("stride ")
              << i
-             << (i == kIterDim ? " must be non-negative when size > 1."
-                               : " must be positive when size > 1.");
+             << (i == kIterDim
+                     ? " must be non-negative unless its size is statically 1."
+                     : " must be positive unless its size is statically 1.");
   }
   return mlir::success();
 }
@@ -257,32 +258,38 @@ struct BdTemplateFields {
   int32_t lock_acq_enable = 0, lock_acq_val = 0, lock_acq_id = 0;
 };
 
-// Build a shim-NOC BD's full 8-word register block as i32 SSA values, for the
-// dynamic lowering shared by dma_memcpy_nd and dma_task. Every word is written
-// (unset slots are zero), so a BD slot reused from the runtime pool cannot
-// inherit a stale field.
+// Build a BD's full register block as i32 SSA values, for the dynamic lowering
+// shared by dma_memcpy_nd and dma_task. The block is 8 words on a shim NOC or
+// mem tile and 6 on a core tile. Every word is written (unset slots are zero),
+// so a BD slot reused from the runtime pool cannot inherit a stale field.
 //
 // `mixedSizes`/`mixedStrides` are outermost-first (d3..d0), matching
 // NpuDmaMemcpyNdOp::getMixedSizes and AIE::DMABDOp::getMixedSizes.
-// `bufLenOverride`, if non-null, becomes buffer_length (word 0) -- dma_task
-// passes its runtime `len`; dma_memcpy_nd passes null, so buffer_length is the
-// d0*d1*d2 hardware-unit size-product. Emits `npu.assert_bd_field` /
-// `npu.assert_bd_divisible` guards for runtime values that a constant would
-// have had verified at compile time. `repeatCountOut` receives the outer-dim
-// hardware repeat for the caller's queue push.
+// `bufLenOverride`, if non-null, becomes buffer_length -- dma_task passes its
+// runtime `len`; dma_memcpy_nd passes null, so buffer_length is the d0*d1*d2
+// hardware-unit size-product. `burstLength`/`axcache` are shim-NOC-only fields
+// and are ignored on the other tile types (their verifiers already require the
+// defaults there). Emits `npu.assert_bd_field` / `npu.assert_bd_divisible`
+// guards for runtime values that a constant would have had verified at compile
+// time. `repeatCountOut` receives the outer-dim hardware repeat for the
+// caller's queue push.
 //
 // The words do not depend on the BD id -- only the register ADDRESS does, and
 // that is the caller's `getBdRegisterBase` + `npu.blockwrite_values` -- so one
 // routine serves both a pinned bd_id and one drawn from the runtime pool.
+//
+// The tile at (`tileCol`, `tileRow`) must be a shim NOC, mem or core tile; the
+// caller is responsible for rejecting anything else with a user-facing
+// diagnostic before calling.
 mlir::LogicalResult
-buildShimBdWords(mlir::OpBuilder &builder, mlir::Location loc,
-                 const xilinx::AIE::AIETargetModel &targetModel,
-                 const BdTemplateFields &fields,
-                 llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
-                 llvm::ArrayRef<mlir::OpFoldResult> mixedStrides,
-                 uint64_t elemWidth, uint32_t burstLength, uint32_t axcache,
-                 mlir::Value bufLenOverride, mlir::Value &repeatCountOut,
-                 llvm::SmallVectorImpl<mlir::Value> &wordsOut);
+buildBdWords(mlir::OpBuilder &builder, mlir::Location loc,
+             const xilinx::AIE::AIETargetModel &targetModel, int tileCol,
+             int tileRow, const BdTemplateFields &fields,
+             llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
+             llvm::ArrayRef<mlir::OpFoldResult> mixedStrides,
+             uint64_t elemWidth, uint32_t burstLength, uint32_t axcache,
+             mlir::Value bufLenOverride, mlir::Value &repeatCountOut,
+             llvm::SmallVectorImpl<mlir::Value> &wordsOut);
 
 } // namespace xilinx::AIEX
 

@@ -325,7 +325,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     for (auto op : block->getOps<DMAStartOp>()) {
       int bdNum = blockMap[op.getDest()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
-      int chNum = op.getChannelIndex();
+      int chNum = op.getChannel();
       const auto &target_model = xilinx::AIE::getTargetModel(op);
       if (target_model.getTargetArch() == AIEArch::AIE1) {
         output << "__mlir_aie_try(XAie_DmaChannelPushBdToQueue("
@@ -575,7 +575,7 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
 
     for (auto &block : memOp.getBody()) {
       for (auto op : block.getOps<DMAStartOp>()) {
-        int chNum = op.getChannelIndex();
+        int chNum = op.getChannel();
         channelMap[&block] = chNum;
         auto *dest = op.getDest();
         while (dest) {

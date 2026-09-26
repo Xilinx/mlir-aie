@@ -112,6 +112,25 @@ class Device(Resolvable):
         """Address-generation granularity of the device, in bits."""
         return self._tm.get_address_gen_granularity()
 
+    @property
+    def max_lock_value(self) -> int:
+        """Largest value a lock register holds."""
+        return self._tm.get_max_lock_value()
+
+    @property
+    def max_repeat_count(self) -> int:
+        """Largest repeat count one DMA task queue push carries (0 = none).
+
+        A task started with a larger repeat count is issued as several pushes
+        of the same task.
+        """
+        return self._tm.get_max_repeat_count()
+
+    @property
+    def dma_task_queue_depth(self) -> int:
+        """How many tasks one DMA channel's task queue holds (0 = no queue)."""
+        return self._tm.get_dma_task_queue_depth()
+
     def get_num_bds(self, tile_type: AIETileType) -> int:
         """Return how many DMA buffer descriptors (BDs) a tile of ``tile_type`` has.
 

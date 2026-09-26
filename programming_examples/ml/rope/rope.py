@@ -6,10 +6,12 @@
 """Row-wise bf16 RoPE (Rotary Position Embedding) — IRON API design.
 
 Four cores process ``sequence_length // 4`` rows each.  Per row, on
-even/odd element pairs::
+even/odd element pairs:
 
-    out[2i]   = x[2i]   * cos(theta) - x[2i+1] * sin(theta)
-    out[2i+1] = x[2i]   * sin(theta) + x[2i+1] * cos(theta)
+```text
+out[2i]   = x[2i]   * cos(theta) - x[2i+1] * sin(theta)
+out[2i+1] = x[2i]   * sin(theta) + x[2i+1] * cos(theta)
+```
 
 The cos/sin LUT (interleaved as cos, sin, cos, sin, ...) is generated
 host-side from ``theta = 10000`` per the canonical RoPE formula.

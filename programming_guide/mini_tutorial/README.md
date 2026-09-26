@@ -320,7 +320,7 @@ for(int i = 0; i < size_2; i++)
             //                                   + k * stride_0]
 ```
 
-To better support DMA on-the-fly data transformations **at runtime** IRON provides [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). The sizes and strides are grouped together and the dimensions should be given from highest to lowest (up to 4 dimensions):
+To better support DMA on-the-fly data transformations **at runtime** IRON provides [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). The sizes and strides are grouped together and the dimensions should be given from highest to lowest. A buffer descriptor holds 4 dimensions; a `fill()` or `drain()` whose sizes and strides are all constant may use more, and the compiler splits the extra ones into further tasks:
 ```python
 tap = TensorAccessPattern(
     tensor_dims=(2, 3),

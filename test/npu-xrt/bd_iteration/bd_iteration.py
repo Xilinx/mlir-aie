@@ -45,16 +45,6 @@ import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,
-    WireBundle,
-)
-from aie.dialects.aie import EndOp  # pyright: ignore[reportAttributeAccessIssue]
-from aie.dialects.aiex import (
-    bds,
-    dma_await_task,
-    dma_configure_task,
-    dma_free_task,
-    dma_start_task,
-    shim_dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.iron import (
     Acquire,
@@ -110,22 +100,8 @@ def bd_iteration(
     slot_credit = Lock(tile=mem_tile, lock_id=0, init=N_CHUNKS, name="slot_credit")
     fill_count = Lock(tile=mem_tile, lock_id=1, init=0, name="fill_count")
 
-    in_flow = Flow(
-        src=shim_tile,
-        dst=mem_tile,
-        src_port=WireBundle.DMA,
-        src_channel=0,
-        dst_port=WireBundle.DMA,
-        dst_channel=0,
-    )
-    out_flow = Flow(
-        src=mem_tile,
-        dst=shim_tile,
-        src_port=WireBundle.DMA,
-        src_channel=0,
-        dst_port=WireBundle.DMA,
-        dst_channel=0,
-    )
+    in_flow = Flow(src=shim_tile, dst=mem_tile)
+    out_flow = Flow(src=mem_tile, dst=shim_tile)
 
     # One self-chained S2MM BD receives the stream in CHUNK-sized chunks; chunk k
     # lands at offset ((start + k) % n_slots) * CHUNK -- one BD, no BD chain.
@@ -134,7 +110,7 @@ def bd_iteration(
         channels=[
             DmaChannel(
                 direction=DMAChannelDir.S2MM,
-                channel=0,
+                channel=in_flow.endpoint(mem_tile),
                 bds=[
                     Bd(
                         buffer=mem_buf,
@@ -150,7 +126,7 @@ def bd_iteration(
             ),
             DmaChannel(
                 direction=DMAChannelDir.MM2S,
-                channel=0,
+                channel=out_flow.endpoint(mem_tile),
                 bds=[
                     Bd(
                         buffer=mem_buf,
@@ -167,27 +143,8 @@ def bd_iteration(
     )
 
     def sequence(a, c):
-        in_task = dma_configure_task(shim_tile.op, DMAChannelDir.MM2S, 0)
-        with bds(in_task) as bd:
-            with bd[0]:
-                shim_dma_bd(
-                    a.op, offset=0, sizes=[1, 1, 1, TOTAL], strides=[0, 0, 0, 1]
-                )
-                EndOp()
-
-        out_task = dma_configure_task(
-            shim_tile.op, DMAChannelDir.S2MM, 0, issue_token=True
-        )
-        with bds(out_task) as bd:
-            with bd[0]:
-                shim_dma_bd(
-                    c.op, offset=0, sizes=[1, 1, 1, TOTAL], strides=[0, 0, 0, 1]
-                )
-                EndOp()
-
-        dma_start_task(in_task, out_task)
-        dma_await_task(out_task)
-        dma_free_task(in_task)
+        in_flow.fill(a)
+        out_flow.drain(c, wait=True)
 
     rt = Runtime(sequence, [vector_ty, vector_ty])
     rt.add_flow(in_flow)

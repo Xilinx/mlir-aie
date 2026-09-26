@@ -129,4 +129,20 @@ rt.add_flow(pf)
 
 Constructing a `Flow`/`PacketFlow` does not register it anywhere by itself — you must call `rt.add_flow(...)` on your `Runtime` instance (both share the same registration method). Without that call, `Program.resolve_program()` never sees the flow and it silently never resolves. Both resolve to `aie.flow`/packet-switching ops when the program is placed — they only declare the topology edge; you still own the `TileDma`/`Buffer`/`Lock` wiring on each end. Reach for `ObjectFifo` first; these are for the rare case where you need routing control without the full ObjectFifo abstraction.
 
+A `Flow` or `PacketFlow` with a shim end has `fill()`/`drain()` like an `ObjectFifoHandle` (`PacketFlow.fill` stamps its `pkt_id` on the shim descriptor; see `programming_examples/basic/packet_switch`), and `flow.endpoint(tile)` gives the DMA channel it uses on `tile`. To program a mem or core tile DMA from the runtime sequence (per-dispatch lengths, offsets and access patterns) rather than once at load time with `TileDma`, use `tile_dma_task` (one BD) or `tile_dma_chain` (a `Bd` list); see `programming_guide/section-2/section-2g/README.md` and `test/python/npu-xrt/test_tile_dma_task_dispatch.py`:
+
+```python
+from aie.iron import Acquire, Release, tile_dma_task
+
+def sequence(A, C, n):
+    into.fill(A)
+    tile_dma_task(mem, DMAChannelDir.S2MM, into.endpoint(mem), buf,
+                  acquire=Acquire(empty), release=Release(full))
+    tile_dma_task(mem, DMAChannelDir.MM2S, out.endpoint(mem), buf,
+                  transfer_len=n, acquire=Acquire(full), release=Release(empty))
+    out.drain(C, transfer_len=n, wait=True)
+```
+
+Give `acquire` and `release` together or neither (anything else raises `ValueError`). Register the flows, locks and buffer with `rt.add_flow`/`rt.add_lock`/`rt.add_buffer`. `wait=True` works on mem/core tile tasks too: the compiler routes their completion token back to the shim, so `task.await_()` returns (`test/python/npu-xrt/test_tile_dma_task_token.py`).
+
 Both `Flow` and `PacketFlow` (and `CascadeFlow`, documented in `python_api.md`) implement the `Resolvable` protocol (`aie.iron.resolvable.Resolvable`) — a structural `Protocol` requiring `resolve(loc, ip)` and `tiles()`. This is the advertised way to work with low-level primitives from an otherwise high-level design: implement `Resolvable` on your primitive and pass it to `rt.add_flow(...)` so `Program.resolve_program()` picks it up during placement/resolution, rather than dropping the whole design down to the `@device`/`@core` skeleton above. There's generally no reason to write a full design in low-level primitives — reach for `Resolvable` when you need one custom piece of topology, and keep everything else on `Worker`/`ObjectFifo`.

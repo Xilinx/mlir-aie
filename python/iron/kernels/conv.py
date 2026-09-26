@@ -112,10 +112,12 @@ def conv2dk1_skip_ref(
     lines, ``x1`` the upper half); weights are ``[OC/8][IC/8][ic8][oc8]``
     over all of them and ``skip`` is an ``[OC/8][W][8]`` line. The conv sum
     is requantized and saturated to ``int8`` first, then the residual is
-    added and the total requantized to ``uint8``::
+    added and the total requantized to ``uint8``:
 
-        conv = sat_i8((sum_ic x * w + 2**(scale-1)) >> scale)
-        out  = sat_u8((conv + skip + 2**(skip_scale-1)) >> skip_scale)
+    ```text
+    conv = sat_i8((sum_ic x * w + 2**(scale-1)) >> scale)
+    out  = sat_u8((conv + skip + 2**(skip_scale-1)) >> skip_scale)
+    ```
 
     Exact for the scalar path of ``conv2dk1_skip.cc``. A shift of 0 is no
     shift (the scalar path's ``1 << -1`` is not defined for it; the vector
@@ -232,11 +234,13 @@ def conv2dk1_skip_init_ref(
     Like [`conv2dk1_skip_ref`][iron.kernels.conv.conv2dk1_skip_ref], but the
     residual is itself a 1x1 conv of ``skip`` (``[ICs/8][W][8]``) with the
     weights stored after the main ones (``[OC/8][ICs/8][ic8][oc8]`` at
-    offset ``OC * IC``)::
+    offset ``OC * IC``):
 
-        conv = sat_i8((sum_ic x * w + 2**(scale-1)) >> scale)
-        proj = sat_i8((sum_ics skip * ws + 2**(scale_skip_conv-1)) >> scale_skip_conv)
-        out  = sat_u8((conv + proj + 2**(skip_scale-1)) >> skip_scale)
+    ```text
+    conv = sat_i8((sum_ic x * w + 2**(scale-1)) >> scale)
+    proj = sat_i8((sum_ics skip * ws + 2**(scale_skip_conv-1)) >> scale_skip_conv)
+    out  = sat_u8((conv + proj + 2**(skip_scale-1)) >> skip_scale)
+    ```
 
     Exact for the scalar path of ``conv2dk1_skip_init.cc``; a shift of 0
     is no shift.

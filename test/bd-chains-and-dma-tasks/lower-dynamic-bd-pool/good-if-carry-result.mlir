@@ -14,13 +14,13 @@
 
 // CHECK-LABEL: @if_carry_result
 // CHECK: %[[R:.*]]:2 = scf.if %{{.*}} -> (index, i32) {
-// CHECK:   %[[TID:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK:   %[[TID:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK:   scf.yield %{{.*}}, %[[TID]] : index, i32
 // CHECK: } else {
-// CHECK:   %[[EID:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK:   %[[EID:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK:   scf.yield %{{.*}}, %[[EID]] : index, i32
 // CHECK: }
-// CHECK: aiex.dma_bd_pool_push(0, 0) bd_id %[[R]]#1 : i32
+// CHECK: aiex.dma_bd_pool_push(0, 0, 0) bd_id %[[R]]#1 : i32
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)

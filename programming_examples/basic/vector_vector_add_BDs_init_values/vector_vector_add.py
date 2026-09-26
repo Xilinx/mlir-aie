@@ -34,13 +34,6 @@ import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,
-    WireBundle,
-)
-from aie.dialects.aiex import (
-    dma_await_task,
-    dma_free_task,
-    dma_start_task,
-    shim_dma_single_bd_task,
 )
 from aie.iron import (
     Acquire,
@@ -120,34 +113,17 @@ def vector_vector_add(
     out_prod_lock = Lock(tile=compute_tile, lock_id=4, init=1, name="out_prod_lock")
     out_cons_lock = Lock(tile=compute_tile, lock_id=5, init=0, name="out_cons_lock")
 
-    # Explicit routes: shim → compute → shim, plus the shim_dma_allocation
-    # symbols the runtime sequence references by name.
-    in_flow = Flow(
-        src=shim_tile,
-        dst=compute_tile,
-        src_port=WireBundle.DMA,
-        src_channel=0,
-        dst_port=WireBundle.DMA,
-        dst_channel=0,
-        shim_symbol="of_in1",
-    )
-    out_flow = Flow(
-        src=compute_tile,
-        dst=shim_tile,
-        src_port=WireBundle.DMA,
-        src_channel=0,
-        dst_port=WireBundle.DMA,
-        dst_channel=0,
-        shim_symbol="of_out",
-    )
+    # Explicit routes: shim → compute → shim.  The compiler picks the channels.
+    in_flow = Flow(src=shim_tile, dst=compute_tile)
+    out_flow = Flow(src=compute_tile, dst=shim_tile)
 
-    # Per-tile DMA program: S2MM ch0 fills in1_buff; MM2S ch0 drains out_buff.
+    # Per-tile DMA program: S2MM fills in1_buff; MM2S drains out_buff.
     compute_dma = TileDma(
         tile=compute_tile,
         channels=[
             DmaChannel(
                 direction=DMAChannelDir.S2MM,
-                channel=0,
+                channel=in_flow.endpoint(compute_tile),
                 bds=[
                     Bd(
                         buffer=in1_buff,
@@ -158,7 +134,7 @@ def vector_vector_add(
             ),
             DmaChannel(
                 direction=DMAChannelDir.MM2S,
-                channel=0,
+                channel=out_flow.endpoint(compute_tile),
                 bds=[
                     Bd(
                         buffer=out_buff,
@@ -201,13 +177,8 @@ def vector_vector_add(
     )
 
     def sequence(A, C):
-        in1_task = shim_dma_single_bd_task("of_in1", A.op, sizes=[1, 1, 1, N])
-        out_task = shim_dma_single_bd_task(
-            "of_out", C.op, sizes=[1, 1, 1, N], issue_token=True
-        )
-        dma_start_task(in1_task, out_task)
-        dma_await_task(out_task)
-        dma_free_task(in1_task)
+        in_flow.fill(A)
+        out_flow.drain(C, wait=True)
 
     rt = Runtime(sequence, [tensor_ty, tensor_ty])
     rt.add_flow(in_flow)

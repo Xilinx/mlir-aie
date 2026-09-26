@@ -18,7 +18,8 @@
 #  - leave the common rank-4 leading-unit case unchanged
 #  - keep repeat_count for a genuine rank-4 iteration dim (no over-correction)
 #  - work the same for the explicit sizes=/strides= path as for tap=
-#  - reject rank > 4 instead of silently emitting a wrong BD
+#  - pass a constant rank > 4 through for the compiler to split, with the
+#    repeat count covering every iteration dimension, and reject a runtime one
 
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
@@ -100,7 +101,104 @@ case("rank3_explicit", None, [64, 4, 1024], [1024, 65536, 1], use_tap=False)
 # CHECK-NOT: repeat_count
 case("explicit_contiguous", None, [1, 1, 1, 4096], None, use_tap=False)
 
-# rank 5: unsupported, must raise rather than silently emit a wrong BD.
+# rank 5, constant: every dimension before the last three is iterated, so the
+# task repeats 2 * 2 times over [2, 2, 2]; the compiler splits the BD into BDs
+# of 4 dimensions.
 # CHECK-LABEL: CASE rank5
-# CHECK: RAISED ValueError
+# CHECK: aie.dma_bd(%{{.*}} : memref<32xbf16> offset = {{.*}} len = 8 sizes = [2, 2, 2, 2, 2] strides = [16, 8, 4, 2, 1])
+# CHECK: repeat_count = 3
 case("rank5", (2, 2, 2, 2, 2), [2, 2, 2, 2, 2], [16, 8, 4, 2, 1])
+
+# CHECK-LABEL: CASE rank5_explicit
+# CHECK: aie.dma_bd(%{{.*}} : memref<32xbf16> offset = {{.*}} len = 8 sizes = [2, 2, 2, 2, 2] strides = [16, 8, 4, 2, 1])
+# CHECK: repeat_count = 3
+case("rank5_explicit", None, [2, 2, 2, 2, 2], [16, 8, 4, 2, 1], use_tap=False)
+
+# rank 5 without strides: the default strides take the rank of sizes.
+# CHECK-LABEL: CASE rank5_no_strides
+# CHECK: aie.dma_bd(%{{.*}} : memref<64xbf16> offset = {{.*}} len = 16 sizes = [2, 2, 1, 1, 16] strides = [0, 0, 0, 0, 1])
+# CHECK: repeat_count = 3
+case("rank5_no_strides", None, [2, 2, 1, 1, 16], None, use_tap=False)
+
+
+# rank 5 with a runtime size: the compiler cannot split it, so it must raise
+# rather than emit a BD it cannot lower.
+# CHECK-LABEL: CASE rank5_runtime
+# CHECK: RAISED ValueError: a DMA BD with more than 4 dimensions (got 5) needs constant sizes and strides
+print("// CASE rank5_runtime")
+try:
+    with mlir_mod_ctx() as ctx:
+
+        @device(AIEDevice.npu1_1col)
+        def device_body():
+            shim = tile(0, 0)
+            core = tile(0, 2)
+            of = object_fifo("of", core, shim, 2, T.memref(16, T.bf16()))
+
+            @runtime_sequence(T.memref(64, T.bf16()), T.i64())
+            def seq(out, n):
+                shim_dma_single_bd_task(
+                    of,
+                    out,
+                    sizes=[n, 2, 1, 1, 16],
+                    strides=[32, 16, 0, 0, 1],
+                    issue_token=True,
+                )
+
+        print(ctx.module)
+except ValueError as e:
+    print(f"RAISED ValueError: {e}")
+
+
+# Unlike shim_dma_bd, a tile BD has no default strides: sizes alone would reach
+# aie.dma_bd without strides and fail its verifier.
+# CHECK-LABEL: CASE tile_sizes_only
+# CHECK: RAISED ValueError: tile_dma_single_bd_task needs sizes and strides together, got sizes=[4, 16] and strides=None
+print("// CASE tile_sizes_only")
+try:
+    with mlir_mod_ctx() as ctx:
+
+        @device(AIEDevice.npu1_1col)
+        def device_body():
+            mem = tile(0, 1)
+            resident = buffer(mem, T.memref(64, T.bf16(), memory_space=1), name="r")
+
+            @runtime_sequence(T.memref(64, T.bf16()))
+            def seq(out):
+                tile_dma_single_bd_task(
+                    mem, DMAChannelDir.MM2S, 0, resident, sizes=[4, 16]
+                )
+
+        print(ctx.module)
+except ValueError as e:
+    print(f"RAISED ValueError: {e}")
+
+
+# tile_dma_single_bd_task takes the same rank-5 form.
+# CHECK-LABEL: CASE tile_rank5
+# CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
+# CHECK: aie.dma_bd(%{{.*}} : memref<64xbf16, 1> offset = 0 sizes = [2, 2, 1, 1, 16] strides = [32, 16, 0, 0, 1])
+# CHECK: repeat_count = 3
+print("// CASE tile_rank5")
+with mlir_mod_ctx() as ctx:
+
+    @device(AIEDevice.npu1_1col)
+    def device_body():
+        mem = tile(0, 1)
+        resident = buffer(mem, T.memref(64, T.bf16(), memory_space=1), name="resident")
+
+        @runtime_sequence(T.memref(64, T.bf16()))
+        def seq(out):
+            task = tile_dma_single_bd_task(
+                mem,
+                DMAChannelDir.MM2S,
+                0,
+                resident,
+                sizes=[2, 2, 1, 1, 16],
+                strides=[32, 16, 0, 0, 1],
+                issue_token=True,
+            )
+            dma_start_task(task)
+            dma_await_task(task)
+
+    print(ctx.module)

@@ -187,7 +187,7 @@ mlir::LogicalResult AIE::AIETranslateShimSolution(mlir::ModuleOp module,
                << R"("aie_engine_0", "PortName" : ")" << port_name << "\"},\n";
 
         std::string col = std::to_string(shimOp.colIndex());
-        int ch = startOp.getChannelIndex();
+        int ch = startOp.getChannel();
         std::string channel = std::to_string(ch);
         // "name" field appears to be arbitrary, but we try to be descriptive
         std::string physical_name = "";

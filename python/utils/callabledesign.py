@@ -53,24 +53,28 @@ class CallableDesign:
 
     Supports two ``CompileTime[T]`` binding patterns:
 
-    * **Pre-bound** — pass compile params at decoration time (Triton style)::
+    * **Pre-bound** — pass compile params at decoration time (Triton style):
 
-          @iron.jit(M=512, K=512, N=512)
-          def gemm(a: In, b: In, c: Out,
-                   M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-              ...
+      ```python
+      @iron.jit(M=512, K=512, N=512)
+      def gemm(a: In, b: In, c: Out,
+               M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+          ...
 
-          gemm(a, b, c)  # compiles once, cached thereafter
+      gemm(a, b, c)  # compiles once, cached thereafter
+      ```
 
-    * **Call-time** — pass compile params as kwargs at each call site::
+    * **Call-time** — pass compile params as kwargs at each call site:
 
-          @iron.jit
-          def gemm(a: In, b: In, c: Out,
-                   M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-              ...
+      ```python
+      @iron.jit
+      def gemm(a: In, b: In, c: Out,
+               M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+          ...
 
-          gemm(a, b, c, M=512, K=512, N=512)  # compiled for this shape
-          gemm(a2, b2, c2, M=1024, K=1024, N=1024)  # separate cached kernel
+      gemm(a, b, c, M=512, K=512, N=512)  # compiled for this shape
+      gemm(a2, b2, c2, M=1024, K=1024, N=1024)  # separate cached kernel
+      ```
 
     Args:
         mlir_generator: A callable, ``Path`` to a ``.mlir`` file, or an
@@ -458,12 +462,14 @@ class CallableDesign:
         full-ELF path, symmetric with ``@iron.jit(full_elf=True)``.
 
         Use together with ``compile`` to perform ahead-of-time compilation
-        of a JIT-decorated design at known shapes::
+        of a JIT-decorated design at known shapes:
 
-            @iron.jit
-            def matmul(...): ...
+        ```python
+        @iron.jit
+        def matmul(...): ...
 
-            matmul.specialize(M=256, K=256, N=256, element_type=np.int16).compile()
+        matmul.specialize(M=256, K=256, N=256, element_type=np.int16).compile()
+        ```
         """
         # trace_config is dual-natured: it configures the CallableDesign wrapper
         # (buffer read-back after the run) AND, for designs that declare it as a

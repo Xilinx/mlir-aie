@@ -14,13 +14,13 @@ the ``--op`` flag picks which packet ID to use:
   * ``--op mul`` → packet (0, 1) → routes to core_0_3 (mul)
 
 The whole topology is expressed in iron-level primitives:
-:class:`PacketFlow` for the routes (with explicit ``pkt_id`` + the
+``PacketFlow`` for the routes (with explicit ``pkt_id`` + the
 ``keep_pkt_header=True`` option ObjectFifo doesn't expose),
-:class:`TileDma` for each tile's DMA program (compute tile + memtile),
-:class:`Worker` for the compute body, plus iron :class:`Buffer` and
-:class:`Lock` for shared state.  The runtime sequence still needs the
-dialect-level ``shim_dma_bd(packet=...)`` primitive to stamp the input
-packet ID, so use ``rt.inline_ops`` as the escape hatch there.
+``TileDma`` for each tile's DMA program (compute tile + memtile),
+``Worker`` for the compute body, plus iron ``Buffer`` and
+``Lock`` for shared state.  The runtime sequence fills the ingress
+PacketFlow for the chosen op, which stamps that route's packet ID on the
+input, and drains the egress one.
 
 Two invocation modes:
 
@@ -36,15 +36,6 @@ import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,
-    WireBundle,
-)
-from aie.dialects.aie import EndOp  # pyright: ignore[reportAttributeAccessIssue]
-from aie.dialects.aiex import (
-    bds,
-    dma_await_task,
-    dma_configure_task,
-    dma_start_task,
-    shim_dma_bd,
 )
 from aie.iron import (
     Acquire,
@@ -312,9 +303,7 @@ def packet_switch(
         pkt_id=0,
         src=shim,
         dst=memtile,
-        src_port=WireBundle.DMA,
         src_channel=0,
-        dst_port=WireBundle.DMA,
         dst_channel=0,
         keep_pkt_header=True,
     )
@@ -322,9 +311,7 @@ def packet_switch(
         pkt_id=1,
         src=shim,
         dst=memtile,
-        src_port=WireBundle.DMA,
         src_channel=0,
-        dst_port=WireBundle.DMA,
         dst_channel=0,
         keep_pkt_header=True,
     )
@@ -333,9 +320,7 @@ def packet_switch(
         pkt_id=2,
         src=memtile,
         dst=shim,
-        src_port=WireBundle.DMA,
         src_channel=2,
-        dst_port=WireBundle.DMA,
         dst_channel=0,
     )
     # memtile → core_0_2 (pkt 0) ; core_0_2 → memtile (pkt 4).
@@ -343,18 +328,14 @@ def packet_switch(
         pkt_id=0,
         src=memtile,
         dst=ct_0_2,
-        src_port=WireBundle.DMA,
         src_channel=0,
-        dst_port=WireBundle.DMA,
         dst_channel=0,
     )
     flow_c02_to_mem = PacketFlow(
         pkt_id=4,
         src=ct_0_2,
         dst=memtile,
-        src_port=WireBundle.DMA,
         src_channel=0,
-        dst_port=WireBundle.DMA,
         dst_channel=2,
     )
     # memtile → core_0_3 (pkt 1) ; core_0_3 → memtile (pkt 6).
@@ -362,50 +343,25 @@ def packet_switch(
         pkt_id=1,
         src=memtile,
         dst=ct_0_3,
-        src_port=WireBundle.DMA,
         src_channel=0,
-        dst_port=WireBundle.DMA,
         dst_channel=0,
     )
     flow_c03_to_mem = PacketFlow(
         pkt_id=6,
         src=ct_0_3,
         dst=memtile,
-        src_port=WireBundle.DMA,
         src_channel=0,
-        dst_port=WireBundle.DMA,
         dst_channel=2,
     )
 
     # ----- Runtime sequence -----
-    # The shim DMA stamps each input task with input_packet_id (chosen by
-    # --op).  This per-task packet stamping needs the dialect-level
-    # shim_dma_bd(packet=...) primitive, so use rt.inline_ops as the
-    # escape hatch.
+    # Both ingress routes leave shim MM2S 0; filling one stamps its pkt_id
+    # into the shim descriptor, which picks the core (chosen by --op).
+    ingress = (flow_shim_to_mem_pkt0, flow_shim_to_mem_pkt1)
+
     def sequence(A, B):
-        in_task = dma_configure_task(shim.op, DMAChannelDir.MM2S, 0)
-        with bds(in_task) as bd:
-            with bd[0]:
-                shim_dma_bd(
-                    A.op,
-                    offset=0,
-                    sizes=[1, 1, 1, in_out_size],
-                    strides=[0, 0, 0, 1],
-                    packet=(0, input_packet_id),  # pyright: ignore[reportArgumentType]
-                )
-                EndOp()
-        out_task = dma_configure_task(shim.op, DMAChannelDir.S2MM, 0, issue_token=True)
-        with bds(out_task) as bd:
-            with bd[0]:
-                shim_dma_bd(
-                    B.op,
-                    offset=0,
-                    sizes=[1, 1, 1, in_out_size],
-                    strides=[0, 0, 0, 1],
-                )
-                EndOp()
-        dma_start_task(in_task, out_task)
-        dma_await_task(out_task)
+        ingress[input_packet_id].fill(A)
+        flow_mem_to_shim.drain(B, wait=True)
 
     rt = Runtime(sequence, [vector_ty, vector_ty])
     for f in (

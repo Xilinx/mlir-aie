@@ -18,12 +18,22 @@
 // NPU instruction stream); such forms are rejected here for the dynamic EmitC
 // path (Phase 2).
 //
+// A start whose constant repeat count is past the hardware field is first
+// issued as several starts of the same task (see splitLongRepeats), so every
+// start below is exactly one queue push.
+//
 // Before allocating, the pass also checks the per-channel hardware resources a
 // sequence can exhaust (see verifyChannelUsage): task-completion-token (TCT)
 // imbalance -- an await with no matching issue_token push on its channel would
 // deadlock the host -- and DMA task-queue overflow, where more transfers are
 // pushed onto a channel than its queue holds. On the straight-line IR the
 // allocator sees, both are single-pass per-channel counts.
+//
+// When a tile runs out of ids, the pass takes them back from a started task
+// that was never released (see reclaimFor) rather than failing: from one some
+// status poll already proves finished, or else by inserting a poll that does.
+// Only allocations that would fail change, so a sequence that fits compiles to
+// the same instructions either way.
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,6 +45,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -158,9 +169,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // Queue counting differs from token counting in three ways: every push takes
   // a slot, not just issue_token ones; a non-token push is still retired
   // implicitly, since in-order execution means awaiting a token drains
-  // everything queued ahead of it too; and repeat_count does not multiply
-  // slots. rejectRuntimeControlFlow has already run, so one program-order pass
-  // over straight-line IR is exact.
+  // everything queued ahead of it too; and a repeat_count the hardware field
+  // holds does not multiply slots (splitLongRepeats has already made one start
+  // per push of a larger one). rejectRuntimeControlFlow has already run, so one
+  // program-order pass over straight-line IR is exact.
   LogicalResult verifyChannelUsage(AIE::RuntimeSequenceOp seq) {
     using ChannelKey = DmaQueueModel::ChannelKey;
     auto keyOf = [](DMAConfigureTaskOp cfg) -> ChannelKey {
@@ -187,8 +199,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
         if (queue.wouldOverflow(key, depth))
           guardQueueOverflow(queue, start, tm, key, depth, enforceQueueDepth);
-        queue.push(key, cfg.getIssueToken());
-        if (cfg.getIssueToken())
+        bool issuesToken = start.getPushIssueToken(cfg);
+        queue.push(key, issuesToken);
+        if (issuesToken)
           avail[key]++;
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
         DMAConfigureTaskOp cfg = await.getTaskOp();
@@ -223,11 +236,47 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return failure(wr.wasInterrupted());
   }
 
+  // Issue each start whose constant repeat count does not fit the queue push's
+  // field as several starts of the same task: full-size ones first, then the
+  // remainder, which is the original op. Leading starts withhold the token, so
+  // an await on the task still returns only after the last pass. Splitting
+  // here, not at lowering, makes each push its own start, so the queue-depth
+  // guard below can poll between them. A runtime-valued count is left alone;
+  // aie-dma-to-npu guards it.
+  void splitLongRepeats(AIE::RuntimeSequenceOp seq) {
+    uint32_t maxRepeat = seq->getParentOfType<AIE::DeviceOp>()
+                             .getTargetModel()
+                             .getMaxRepeatCount();
+    // A target without a repeat field (maxRepeat 0) cannot be split into
+    // anything; its push verifier reports the count instead.
+    if (maxRepeat == 0)
+      return;
+    SmallVector<DMAStartTaskOp> starts;
+    seq.walk([&](DMAStartTaskOp start) { starts.push_back(start); });
+    for (DMAStartTaskOp start : starts) {
+      DMAConfigureTaskOp cfg = start.getTaskOp();
+      if (!cfg)
+        continue;
+      std::optional<int64_t> rc =
+          getConstantIntValue(start.getPushRepeatCount(cfg));
+      if (!rc || *rc <= maxRepeat)
+        continue;
+      OpBuilder b(start);
+      int64_t runs = *rc + 1;
+      for (; runs > maxRepeat + 1; runs -= maxRepeat + 1)
+        DMAStartTaskOp::create(b, start.getLoc(), start.getTask(),
+                               b.getI32IntegerAttr(maxRepeat),
+                               /*no_token=*/b.getUnitAttr());
+      start.setRepeatCountAttr(b.getI32IntegerAttr(runs - 1));
+    }
+  }
+
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
     // Reject runtime control flow first, so the token-balance pass below runs
     // on straight-line IR and needs no control-flow reasoning.
     if (failed(rejectRuntimeControlFlow(seq)))
       return failure();
+    splitLongRepeats(seq);
     if (failed(verifyChannelUsage(seq)))
       return failure();
     return success();
@@ -237,9 +286,24 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::TileOp tile = op.getTileOp();
     BdIdGenerator &gen = getGeneratorForTile(tile);
 
+    const AIETargetModel &targetModel =
+        tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+
     // First, honor all the user-specified BD IDs.
     WalkResult result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
       if (bd_op.getBdId().has_value()) {
+        if (!targetModel.isBdChannelAccessible(tile.getCol(), tile.getRow(),
+                                               bd_op.getBdId().value(),
+                                               op.getChannel())) {
+          bd_op.emitOpError("Buffer descriptor ID ")
+              << bd_op.getBdId().value() << " cannot be submitted on channel "
+              << op.getChannel() << " of tile (" << tile.getCol() << ","
+              << tile.getRow()
+              << "), which partitions its buffer descriptors by channel "
+                 "parity: an even channel reaches only the low half of the "
+                 "ids and an odd channel only the high half.";
+          return WalkResult::interrupt();
+        }
         if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
           op.emitOpError("Specified buffer descriptor ID ")
               << bd_op.getBdId().value()
@@ -260,49 +324,94 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return failure();
 
     // Now allocate BD IDs for all unspecified BDs.
-    result =
-        op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
-          if (bd_op.getBdId().has_value())
-            return WalkResult::advance();
-          // channelIndex only affects allocation on MemTiles, where the AIE2
-          // model partitions BDs by channel parity (isBdChannelAccessible).
-          // Runtime sequences configure BDs on shim (and compute) tiles only,
-          // which are channel-agnostic (always accessible), so passing 0 is
-          // correct here.
-          std::optional<int32_t> next_id = gen.nextBdId(/*channelIndex=*/0);
-          if (!next_id) {
-            const AIETargetModel &tm =
-                tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+    result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
+      if (bd_op.getBdId().has_value())
+        return WalkResult::advance();
+      // channelIndex matters on a MemTile, where the AIE2 model partitions
+      // BDs by channel parity (isBdChannelAccessible: an even channel can
+      // only submit ids below 24, an odd channel only 24 and above).
+      std::optional<int32_t> next_id = gen.nextBdId(op.getChannel());
+      while (!next_id && reclaimBds && succeeded(reclaimFor(op)))
+        next_id = gen.nextBdId(op.getChannel());
+      if (!next_id) {
+        auto diag =
             op.emitOpError()
-                << "Too many simultaneously active buffer descriptors on tile ("
-                << tile.getCol() << "," << tile.getRow()
-                << "), which supports up to "
-                << tm.getNumBDs(tile.getCol(), tile.getRow())
-                << ". Emit an aiex.dma_await_task to free BDs for reuse; it "
-                   "waits for hardware completion, so the recycled ids are no "
-                   "longer in flight. aiex.dma_free_task also recycles ids but "
-                   "does NOT wait for completion -- using it before the task "
-                   "has finished is a race -- so reach for it only when some "
-                   "other synchronization already guarantees completion (see "
-                   "programming_guide/section-2/section-2d/DMATasks.md).";
-            return WalkResult::interrupt();
-          }
-          checkReallocation(tile, *next_id, bd_op);
-          bd_op.setBdId(next_id);
-          return WalkResult::advance();
-        });
+            << "Too many simultaneously active buffer descriptors on tile ("
+            << tile.getCol() << "," << tile.getRow()
+            << "), which supports up to "
+            << targetModel.getNumBDsForChannel(tile.getCol(), tile.getRow(),
+                                               op.getChannel())
+            << ". Emit an aiex.dma_await_task to free BDs for reuse; it "
+               "waits for hardware completion, so the recycled ids are no "
+               "longer in flight. aiex.dma_free_task also recycles ids but "
+               "does NOT wait for completion -- using it before the task "
+               "has finished is a race -- so reach for it only when some "
+               "other synchronization already guarantees completion (see "
+               "programming_guide/section-2/section-2d/DMATasks.md).";
+        if (reclaimBds)
+          diag << " The compiler could not take any back either: every "
+                  "task holding one is not started yet, is started again "
+                  "later, or runs on a channel whose status it cannot "
+                  "poll.";
+        return WalkResult::interrupt();
+      }
+      checkReallocation(tile, *next_id, bd_op);
+      bd_op.setBdId(next_id);
+      return WalkResult::advance();
+    });
     if (result.wasInterrupted())
       return failure();
 
+    liveByTile[tile].push_back(op);
     return success();
   }
 
-  // Tasks started on each channel, in program order, that are not yet known to
-  // have completed.
-  std::map<DmaQueueModel::ChannelKey, SmallVector<DMAConfigureTaskOp, 8>>
+  // One push onto a channel: the task it started (null for a raw push or
+  // memcpy transfer) and whether that push issues a token. A task started more
+  // than once may issue a token on only some of its pushes.
+  struct StartedTask {
+    DMAConfigureTaskOp task;
+    bool issuesToken;
+    // Program order of the push, for picking the oldest task to reclaim.
+    uint64_t order;
+    // A status poll proved it finished. Its token, if any, is still waiting
+    // for an await, so it stays here until one consumes it.
+    bool finished = false;
+  };
+  // Pushes on each channel, in program order, whose tokens no await has
+  // consumed yet.
+  std::map<DmaQueueModel::ChannelKey, SmallVector<StartedTask, 8>>
       startedOnChannel;
+  uint64_t pushCount = 0;
+
+  void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
+                bool issuesToken) {
+    startedOnChannel[key].push_back({task, issuesToken, pushCount++});
+  }
+
+  static bool isStarted(ArrayRef<StartedTask> started,
+                        DMAConfigureTaskOp task) {
+    return llvm::any_of(started,
+                        [&](const StartedTask &s) { return s.task == task; });
+  }
+  static bool isRunning(ArrayRef<StartedTask> started,
+                        DMAConfigureTaskOp task) {
+    return llvm::any_of(started, [&](const StartedTask &s) {
+      return s.task == task && !s.finished;
+    });
+  }
   // Configures whose completion an await has established.
   llvm::SmallPtrSet<Operation *, 16> knownComplete;
+  // Configures whose completion a status poll has established. Kept apart from
+  // knownComplete so that the ids an await releases do not move: only
+  // reclaimFor reads this.
+  llvm::SmallPtrSet<Operation *, 16> pollProven;
+  // Configures whose ids reclaimFor took back.
+  llvm::SmallPtrSet<Operation *, 16> reclaimed;
+  // Configures whose ids went back to the pool by any route.
+  llvm::SmallPtrSet<Operation *, 16> releasedTasks;
+  // Configures allocated on each tile, in program order.
+  llvm::DenseMap<AIE::TileOp, SmallVector<DMAConfigureTaskOp, 16>> liveByTile;
   // BD ids released by aiex.dma_free_task while the task could still have been
   // in flight, keyed by tile, with the task and the free that released them.
   struct ReleasedTask {
@@ -322,24 +431,66 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // the tasks queued ahead of it are known to have finished.
   void noteAwaited(const DmaQueueModel::ChannelKey &key) {
     auto &started = startedOnChannel[key];
-    // A null configure represents a token from a raw push or memcpy transfer.
-    auto *it = llvm::find_if(started, [](DMAConfigureTaskOp task) {
-      return !task || task.getIssueToken();
-    });
+    auto *it = llvm::find_if(
+        started, [](const StartedTask &s) { return s.issuesToken; });
     if (it == started.end())
       return;
-    SmallVector<DMAConfigureTaskOp, 8> retired(started.begin(), std::next(it));
+    SmallVector<StartedTask, 8> retired(started.begin(), std::next(it));
     started.erase(started.begin(), std::next(it));
-    for (DMAConfigureTaskOp task : retired)
-      if (task && !llvm::is_contained(started, task))
-        knownComplete.insert(task);
+    for (const StartedTask &s : retired)
+      if (s.task && !isStarted(started, s.task))
+        knownComplete.insert(s.task);
+  }
+
+  // A status poll proved at most `unfinished` pushes on `key` are still queued
+  // or running. The channel runs its queue in order, so those are the newest.
+  void noteDrained(const DmaQueueModel::ChannelKey &key, size_t unfinished) {
+    auto &started = startedOnChannel[key];
+    if (started.size() <= unfinished)
+      return;
+    auto done = MutableArrayRef<StartedTask>(started).drop_back(unfinished);
+    for (StartedTask &s : done)
+      s.finished = true;
+    for (StartedTask &s : done)
+      if (s.task && !isRunning(started, s.task))
+        pollProven.insert(s.task);
+  }
+
+  // Credit a maskpoll on a channel's status register, whether the queue-depth
+  // guard, reclaimFor or the design emitted it. A poll bounding the queue size
+  // by b leaves at most b + 1 unfinished (see getDmaTaskQueueSizeMask); one
+  // that also clears the running and stall bits leaves none.
+  void notePoll(NpuMaskPollOp poll) {
+    std::optional<uint32_t> address = poll.getAbsoluteAddress();
+    std::optional<uint32_t> mask = getConstantIntOperand(poll.getMask());
+    std::optional<uint32_t> value = getConstantIntOperand(poll.getValue());
+    const AIETargetModel &tm =
+        poll->getParentOfType<AIE::DeviceOp>().getTargetModel();
+    uint32_t field = tm.getDmaTaskQueueSizeMask();
+    uint32_t idle = tm.getDmaChannelIdleMask();
+    if (!address || !mask || !value || !field)
+      return;
+    for (auto &[key, started] : startedOnChannel) {
+      if (tm.getDmaStatusAddress(key[0], key[1], key[3],
+                                 static_cast<AIE::DMAChannelDir>(key[2])) !=
+          address)
+        continue;
+      if (idle && (*mask & idle) == idle && (*value & idle) == 0)
+        return noteDrained(key, 0);
+      unsigned shift = llvm::countr_zero(field);
+      uint32_t bound = 0;
+      for (uint32_t size = 0; size <= field >> shift; ++size)
+        if (((size << shift) & *mask & field) == (*value & *mask & field))
+          bound = size;
+      return noteDrained(key, bound + 1);
+    }
   }
 
   // Record ids released without any completion guarantee. nextBdId scans upward
   // from 0, so a just-freed low id is the first one handed out again -- the
   // worst case for aliasing a BD that is still running.
   void noteFreedInFlight(DMAConfigureTaskOp cfg, Operation *freeOp) {
-    if (!llvm::is_contained(startedOnChannel[channelOf(cfg)], cfg))
+    if (!isStarted(startedOnChannel[channelOf(cfg)], cfg))
       return;
     AIE::TileOp tile = cfg.getTileOp();
     auto &ids = freedInFlight[{tile.getCol(), tile.getRow()}];
@@ -361,7 +512,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return;
     ReleasedTask released = idIt->second;
     tileIt->second.erase(idIt);
-    if (knownComplete.contains(released.configure))
+    if (knownComplete.contains(released.configure) ||
+        pollProven.contains(released.configure))
       return;
     auto diag =
         bd->emitWarning()
@@ -394,7 +546,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pendingAwaitReleases.erase(task_op);
     // Those IDs may now belong to another configure. A redundant release must
     // not inspect or change the generator's current ownership.
-    if (awaitedConfigures.contains(task_op))
+    if (awaitedConfigures.contains(task_op) || reclaimed.contains(task_op))
       return success();
     BdIdGenerator &gen = getGeneratorForTile(task_op.getTileOp());
     WalkResult result = task_op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd) {
@@ -416,6 +568,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     });
     if (result.wasInterrupted())
       return failure();
+    releasedTasks.insert(task_op);
     if (isAwait)
       awaitedConfigures.insert(task_op);
     else
@@ -471,6 +624,119 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return success();
   }
 
+  static bool isStartedAfter(DMAConfigureTaskOp task, Operation *op) {
+    return llvm::any_of(task.getResult().getUsers(), [&](Operation *user) {
+      return isa<DMAStartTaskOp>(user) && user->getBlock() == op->getBlock() &&
+             op->isBeforeInBlock(user);
+    });
+  }
+
+  // Take back the ids of a started task that is not started again after `op`
+  // and holds an id `op`'s channel can use (on a mem tile, its parity's half).
+  // One a poll already proved finished is taken as is. Otherwise a poll before
+  // `op` proves one finished: the oldest with j >= 1 pushes queued behind it,
+  // for which Task_Queue_Size <= j - 1 is proof (as a masked equality, the
+  // largest 2^k - 1 <= j - 1), so it waits on no push not yet issued; failing
+  // that, the oldest, until its channel is idle. The poll never returns if that
+  // task's inputs come from a later push through a core, which the compiler
+  // cannot see; a design with such a dependence releases its own BDs.
+  LogicalResult reclaimFor(DMAConfigureTaskOp op) {
+    AIE::TileOp tile = op.getTileOp();
+    const AIETargetModel &tm =
+        tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+    auto isCandidate = [&](DMAConfigureTaskOp task) {
+      if (releasedTasks.contains(task) || isStartedAfter(task, op))
+        return false;
+      bool usable = false;
+      task.walk([&](AIE::DMABDOp bd) {
+        usable |= bd.getBdId() &&
+                  tm.isBdChannelAccessible(tile.getCol(), tile.getRow(),
+                                           *bd.getBdId(), op.getChannel());
+      });
+      return usable;
+    };
+    auto take = [&](DMAConfigureTaskOp task) {
+      BdIdGenerator &gen = getGeneratorForTile(tile);
+      task.walk([&](AIE::DMABDOp bd) { gen.freeBdId(*bd.getBdId()); });
+      reclaimed.insert(task);
+      releasedTasks.insert(task);
+      pendingAwaitReleases.erase(task);
+    };
+
+    ArrayRef<DMAConfigureTaskOp> live = liveByTile[tile];
+    for (DMAConfigureTaskOp task : live)
+      if ((knownComplete.contains(task) || pollProven.contains(task)) &&
+          isCandidate(task)) {
+        take(task);
+        return success();
+      }
+
+    uint32_t field = tm.getDmaTaskQueueSizeMask();
+    uint32_t idle = tm.getDmaChannelIdleMask();
+    DMAConfigureTaskOp victim;
+    size_t victimQueuedBehind = 0;
+    uint64_t victimOrder = 0;
+    for (DMAConfigureTaskOp task : live) {
+      if (!isCandidate(task))
+        continue;
+      DmaQueueModel::ChannelKey key = channelOf(task);
+      if (!tm.getDmaStatusAddress(key[0], key[1], key[3],
+                                  static_cast<AIE::DMAChannelDir>(key[2])))
+        continue;
+      ArrayRef<StartedTask> started = startedOnChannel[key];
+      auto last =
+          llvm::find_if(llvm::reverse(started),
+                        [&](const StartedTask &s) { return s.task == task; });
+      // Never started, or retired by an await and caught above.
+      if (last == started.rend() || last->finished)
+        continue;
+      size_t queuedBehind = std::distance(started.rbegin(), last);
+      if (queuedBehind == 0 ? !idle : !field)
+        continue;
+      // Rule 1 before rule 2, then oldest.
+      if (victim && std::make_pair(queuedBehind == 0, last->order) >=
+                        std::make_pair(victimQueuedBehind == 0, victimOrder))
+        continue;
+      victim = task;
+      victimQueuedBehind = queuedBehind;
+      victimOrder = last->order;
+    }
+    if (!victim)
+      return failure();
+
+    DmaQueueModel::ChannelKey key = channelOf(victim);
+    std::optional<uint32_t> status = tm.getDmaStatusAddress(
+        key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
+    if (!status)
+      return failure();
+    uint32_t mask = idle;
+    size_t unfinished = 0;
+    if (victimQueuedBehind > 0) {
+      unsigned shift = llvm::countr_zero(field);
+      uint32_t bound =
+          std::min<uint32_t>(llvm::bit_floor(victimQueuedBehind),
+                             llvm::bit_floor((field >> shift) + 1) / 2) -
+          1;
+      mask = field & ~(bound << shift);
+      unfinished = bound + 1;
+    }
+    OpBuilder b(op);
+    auto cst = [&](uint32_t v) {
+      return arith::ConstantOp::create(b, op.getLoc(), b.getI32Type(),
+                                       b.getI32IntegerAttr(v))
+          .getResult();
+    };
+    Value maskValue = cst(mask);
+    Value compareValue = cst(0);
+    Value statusValue = cst(*status);
+    NpuMaskPollOp::create(b, op.getLoc(), statusValue, compareValue, maskValue,
+                          /*buffer=*/nullptr, /*column=*/nullptr,
+                          /*row=*/nullptr);
+    noteDrained(key, unfinished);
+    take(victim);
+    return success();
+  }
+
   // All of this is scoped to one runtime sequence. `gens` restarts BD id
   // allocation per sequence, so hazard state left over from an earlier one
   // describes ids that no longer name the same tasks. freedInFlight is the
@@ -482,7 +748,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     awaitedConfigures.clear();
     pendingAwaitReleases.clear();
     startedOnChannel.clear();
+    pushCount = 0;
     knownComplete.clear();
+    pollProven.clear();
+    reclaimed.clear();
+    releasedTasks.clear();
+    liveByTile.clear();
     freedInFlight.clear();
   }
 
@@ -523,8 +794,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         } else if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = start.getTaskOp()) {
             knownComplete.erase(cfg);
-            startedOnChannel[channelOf(cfg)].push_back(cfg);
+            pollProven.erase(cfg);
+            notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg));
           }
+        } else if (auto poll = dyn_cast<NpuMaskPollOp>(op)) {
+          notePoll(poll);
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = await.getTaskOp())
             if (cfg.getIssueToken())
@@ -540,7 +814,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             return WalkResult::interrupt();
           frees.push_back(freeOp);
         } else if (auto key = otherTokenChannel(op)) {
-          startedOnChannel[*key].push_back(DMAConfigureTaskOp{});
+          notePush(*key, DMAConfigureTaskOp{}, true);
         }
         return WalkResult::advance();
       });

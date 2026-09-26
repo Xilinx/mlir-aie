@@ -236,6 +236,13 @@ public:
           rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
           createConstantI32(rewriter, loc, bdIdMask));
       cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
+      // The 0xFF mask would wrap a runtime repeat_count past the field (256
+      // pushes a task that runs once), so guard it as the verifier does a
+      // constant one.
+      if (!repeat_cnt)
+        NpuAssertBdFieldOp::create(
+            rewriter, loc, op.getRepeatCount(),
+            rewriter.getI32IntegerAttr(tm.getMaxRepeatCount()));
       Value masked =
           arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),
                                 createConstantI32(rewriter, loc, 0xFF));
@@ -622,11 +629,11 @@ public:
     // returns the hw repeat_count for the queue push.
     SmallVector<Value> words;
     Value repeatCount;
-    if (failed(buildShimBdWords(
-            rewriter, loc, targetModel, fields, op.getMixedSizes(),
-            op.getMixedStrides(), op.getElementTypeBitwidth(),
-            op.getBurstLength(), op.getAxcacheOrDefault(),
-            /*bufLenOverride=*/Value(), repeatCount, words)))
+    if (failed(buildBdWords(rewriter, loc, targetModel, tileCol, tileRow,
+                            fields, op.getMixedSizes(), op.getMixedStrides(),
+                            op.getElementTypeBitwidth(), op.getBurstLength(),
+                            op.getAxcacheOrDefault(),
+                            /*bufLenOverride=*/Value(), repeatCount, words)))
       return failure();
     Value bdBase =
         getBdRegisterBase(rewriter, loc, targetModel, tileCol, tileRow,

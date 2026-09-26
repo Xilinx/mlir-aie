@@ -24,3 +24,25 @@ module {
     }
   }
 }
+
+// -----
+
+// Two lock ops that are not one acquire and one release would otherwise lower
+// with no locks at all.
+module {
+  aie.device(npu2) {
+    %tile_0_1 = aie.tile(0, 1)
+    %lock = aie.lock(%tile_0_1, 0) {init = 0 : i32}
+    aie.runtime_sequence(%arg0: memref<4xi32>) {
+      %t = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
+        %c1 = arith.constant 1 : i32
+        // expected-error@+1 {{BD block lock operations must be one acquire and one release}}
+        aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+        aie.dma_bd(%arg0 : memref<4xi32> offset = 0 len = 4) {bd_id = 0 : i32}
+        aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}

@@ -39,10 +39,12 @@ def compile_context(**kwargs: Any):
     Args:
         **kwargs: Compile-time parameter names and values to inject.
 
-    Example::
+    For example:
 
-        with compile_context(M=512, K=512, N=512):
-            module = generate_mlir()   # can call get_compile_arg("M") etc.
+    ```python
+    with compile_context(M=512, K=512, N=512):
+        module = generate_mlir()   # can call get_compile_arg("M") etc.
+    ```
     """
     # Merge with any outer context so inner callers still see outer values
     # for keys they don't override.
@@ -68,8 +70,10 @@ def get_compile_arg(key: str, default: Any = None) -> Any:
     Returns:
         The value injected for ``key``, or ``default``.
 
-    Example::
+    For example:
 
-        M = get_compile_arg("M")   # returns 512 if CompileContext(M=512) is active
+    ```python
+    M = get_compile_arg("M")   # returns 512 if CompileContext(M=512) is active
+    ```
     """
     return _compile_context_var.get().get(key, default)

@@ -10,7 +10,7 @@
 
 CPU-only. Every factory in ``aie.iron.kernels`` (at its defaults and for each
 entry of its ``.dtypes`` table) is compiled exactly as the JIT compiles it
-(:func:`aie.utils.compile.utils.cxx_core_compile_command`), plus the
+(``aie.utils.compile.utils.cxx_core_compile_command``), plus the
 optimization-record flags below, and the records become per-kernel series
 for benchmark-action: a Peano bump that changes a loop's schedule shows up
 here before anyone looks at device numbers. With ``MLIR_AIE_KERNEL_SOURCES``

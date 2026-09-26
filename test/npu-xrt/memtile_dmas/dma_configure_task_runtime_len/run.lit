@@ -1,0 +1,37 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// A mem tile DMA reprogrammed from a dispatch-time tile count. The mem tile
+// buffer descriptors carry a runtime transfer length and a runtime d1 wrap,
+// which the dynamic BD-word encoder only started supporting off shim tiles
+// recently; the static sibling of this design is dma_configure_task_token.
+//
+// --get-npu-cpp is required, not a convenience: npu.blockwrite_values has no
+// encoding on the static binary target, so a runtime-valued BD can only be
+// emitted through the generated C++ TXN builder.
+//
+// RUN: mkdir -p %t.prj
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
+// RUN:   --output-dir=%t.prj \
+// RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj aie_arch.mlir
+//
+// RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
+// RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \
+// RUN:   -I%S/../../../../include %xrt_flags %host_link_flags %test_utils_flags
+//
+// One xclbin, several tile counts: the mem tile BD is rebuilt per call, and
+// the host checks the output tail past len is untouched each time -- without
+// that check the test would pass just as well if the runtime length were
+// ignored and a max-sized transfer ran every time. The exit status is the
+// assertion (no FileCheck), so the inactive device's runner can no-op.
+// RUN: %run_on_npu1% %t.exe 1
+// RUN: %run_on_npu1% %t.exe 3
+// RUN: %run_on_npu1% %t.exe 8
+// RUN: %run_on_npu2% %t.exe 1
+// RUN: %run_on_npu2% %t.exe 3
+// RUN: %run_on_npu2% %t.exe 8

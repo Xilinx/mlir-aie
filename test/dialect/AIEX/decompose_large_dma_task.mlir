@@ -276,3 +276,44 @@ module {
     }
   }
 }
+
+// -----
+
+// Scaling 201 executions by 8 gives 1608 runs, past one push's 256. That is
+// no longer an error: the BD-ID pass issues it as six full pushes and a
+// 72-run remainder, and only the last push carries the token. A start that
+// overrides the count repeats the same BD, so decomposition scales it too:
+// 2 runs become 16.
+// REPEAT-LEN-LABEL: @split_repeat_task_bd
+// REPEAT-LEN:         aie.dma_bd
+// REPEAT-LEN-SAME:        len = 32768
+// REPEAT-LEN:         repeat_count = 1607 : i32
+// REPEAT-LEN:         aiex.dma_start_task(%{{.*}}) {repeat_count = 15 : i32}
+// REPEAT-LOWER-LABEL: @split_repeat_task_bd
+// REPEAT-LOWER:         %[[FULL:.*]] = arith.constant 255 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[FULL]] {issue_token = false}
+// REPEAT-LOWER-COUNT-5: repeat %c255_i32_{{[0-9]+}} {issue_token = false}
+// REPEAT-LOWER:         %[[REST:.*]] = arith.constant 71 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[REST]] {issue_token = true}
+// REPEAT-LOWER:         %[[OVERRIDE:.*]] = arith.constant 15 : i32
+// REPEAT-LOWER:         aiex.npu.push_queue
+// REPEAT-LOWER-SAME:        repeat %[[OVERRIDE]] {issue_token = true}
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @split_repeat_task_bd(%in: memref<16x16x4096xi8>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<16x16x4096xi8> offset = 4096 len = 262144 sizes = [1, 8, 8, 4096] strides = [0, 131072, 8192, 1])
+          {burst_length = 0 : i32}
+        aie.end
+      } {issue_token = true, repeat_count = 200 : i32}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+      aiex.dma_start_task(%tk) {repeat_count = 1 : i32}
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

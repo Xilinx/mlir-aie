@@ -236,12 +236,14 @@ def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
     ``linkonce_odr`` linkage (so the now-dead definition is DCE'd post-inline
     instead of being codegen'd).
 
-    Both edits have to respect the ``define`` grammar::
+    Both edits have to respect the ``define`` grammar:
 
-        define [linkage] [preemption] [visibility] [dll] [cconv] [ret attrs]
-               <ty> @<name>(<params>) [unnamed_addr] [addrspace(N)] [fn attrs]
-               [section] [partition] [comdat] [align] [gc] [prefix] [prologue]
-               [personality] (!name !N)* { ...
+    ```llvm
+    define [linkage] [preemption] [visibility] [dll] [cconv] [ret attrs]
+           <ty> @<name>(<params>) [unnamed_addr] [addrspace(N)] [fn attrs]
+           [section] [partition] [comdat] [align] [gc] [prefix] [prologue]
+           [personality] (!name !N)* { ...
+    ```
 
     so ``alwaysinline`` is inserted right after the parameter list (and any
     ``unnamed_addr`` / ``addrspace``), not next to the opening brace: placing a

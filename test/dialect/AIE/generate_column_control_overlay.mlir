@@ -262,3 +262,62 @@ aie.device(npu2) {
   %tile_2_1 = aie.tile(2, 1)
   %tile_2_5 = aie.tile(2, 5)
 }
+
+// -----
+
+// shim-only still routes TCTs from a mem or core tile whose runtime task
+// issues a token, since an await on that token otherwise never returns.
+
+// CHECK-LABEL: module {
+// CHECK-DAG: %[[tile_0_0:.*]] = aie.tile(0, 0)
+// CHECK-DAG: %[[tile_0_1:.*]] = aie.tile(0, 1)
+// CHECK-DAG: %[[tile_0_2:.*]] = aie.tile(0, 2)
+// CHECK-DAG: %[[tile_0_4:.*]] = aie.tile(0, 4)
+// CHECK: aie.packet_flow(15) {
+// CHECK:   aie.packet_source<%[[tile_0_0]], TileControl : 0>
+// CHECK:   aie.packet_dest<%[[tile_0_0]], South : 0>
+// CHECK: aie.packet_flow(26) {
+// CHECK:   aie.packet_source<%[[tile_0_1]], TileControl : 0>
+// CHECK:   aie.packet_dest<%[[tile_0_0]], South : 0>
+// CHECK: aie.packet_flow(27) {
+// CHECK:   aie.packet_source<%[[tile_0_2]], TileControl : 0>
+// CHECK:   aie.packet_dest<%[[tile_0_0]], South : 0>
+// CHECK-NOT: aie.packet_source<%{{.*}}tile_0_3{{.*}}, TileControl
+// CHECK: aie.packet_flow(30) {
+// CHECK:   aie.packet_source<%[[tile_0_4]], TileControl : 0>
+// CHECK:   aie.packet_dest<%[[tile_0_0]], South : 0>
+
+aie.device(npu2_1col) {
+  %tile_0_0 = aie.tile(0, 0)
+  %tile_0_1 = aie.tile(0, 1)
+  %tile_0_2 = aie.tile(0, 2)
+  %tile_0_3 = aie.tile(0, 3)
+  %tile_0_4 = aie.tile(0, 4)
+  %buf = aie.buffer(%tile_0_1) : memref<16xi32>
+  %buf3 = aie.buffer(%tile_0_3) : memref<16xi32>
+  %buf4 = aie.buffer(%tile_0_4) : memref<16xi32>
+  aie.route_endpoint @into4(%tile_0_4) DMA
+  aie.route_endpoint @from0(%tile_0_0) DMA
+  aie.route from @from0 to [@into4]
+  aie.runtime_sequence(%arg0: memref<16xi32>) {
+    %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%t)
+    aiex.dma_await_task(%t)
+    %u = aiex.dma_configure_task(%tile_0_3, MM2S, 0) {
+      aie.dma_bd(%buf3 : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    }
+    aiex.dma_start_task(%u)
+    %v = aiex.dma_configure_task_for @into4 {
+      aie.dma_bd(%buf4 : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%v)
+    aiex.dma_await_task(%v)
+    %c0 = arith.constant 0 : i32
+    aiex.npu.push_queue (0, 2, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
+  }
+}

@@ -75,6 +75,7 @@ from .dataflow import (
     CascadeFlow,
     DmaChannel,
     Flow,
+    FlowEndpoint,
     ObjectFifo,
     PacketDest,
     PacketFlow,
@@ -87,7 +88,15 @@ from .dtype import dtype_to_str, str_to_dtype
 from .kernel import ExternalFunction, Kernel, KernelObject, ObjectFile
 from .lock import Lock
 from .program import Program
-from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
+from .runtime import (
+    Runtime,
+    RuntimeData,
+    Task,
+    TaskGroup,
+    sync_parameters,
+    tile_dma_chain,
+    tile_dma_task,
+)
 from .scratchpad_parameter import ScratchpadParameter
 from .worker import Worker, WorkerRuntimeBarrier
 
@@ -106,6 +115,8 @@ __all__ = [
     "RuntimeData",
     "Task",
     "sync_parameters",
+    "tile_dma_chain",
+    "tile_dma_task",
     "ObjectFifo",
     "PadDims",
     "StreamDims",
@@ -116,6 +127,7 @@ __all__ = [
     "CascadeFlow",
     "DmaChannel",
     "Flow",
+    "FlowEndpoint",
     "Lock",
     "ScratchpadParameter",
     "PacketDest",

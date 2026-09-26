@@ -24,9 +24,11 @@ if TYPE_CHECKING:
 class CascadeFlow(Resolvable):
     """A directed cascade stream connection from one Worker to another.
 
-    Construct one of these for each cascade edge in your design::
+    Construct one of these for each cascade edge in your design:
 
-        CascadeFlow(producer_worker, consumer_worker)
+    ```python
+    CascadeFlow(producer_worker, consumer_worker)
+    ```
 
     Lowers to ``aie.cascade_flow(producer.tile, consumer.tile)`` after both
     Workers are placed. The kernel functions are responsible for using the

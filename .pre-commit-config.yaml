@@ -152,6 +152,17 @@ repos:
       pass_filenames: true
       stages: [pre-push]
 
+    # The docs site renders docstrings as Markdown (mkdocstrings, Google
+    # style), so Sphinx roles (:class:`X`), RST literal blocks (`Example::`)
+    # and directives (`.. note::`) show up as raw text there, and
+    # `mkdocs build --strict` cannot flag them. Use ``X``, [`X`][iron.X],
+    # fenced code blocks and a `Note:` section instead.
+    - id: no-rst-docstring-markup
+      name: Check docstrings for Sphinx/RST markup
+      language: pygrep
+      entry: ':(py:)?(class|meth|func|attr|mod|obj|data|exc|ref):`|\S::$|^\s*\.\. [a-z-]+::'
+      files: ^(python|programming_examples|programming_guide)/.*\.py$
+
     # Static analysis for C++, growing one file at a time (see .clang-tidy and
     # docs/CONTRIBUTING.md's clang-tidy section). Unlike clang-format this
     # needs a real build (compile_commands.json) to resolve headers, so it

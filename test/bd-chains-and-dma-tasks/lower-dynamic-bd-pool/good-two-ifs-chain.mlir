@@ -16,10 +16,10 @@
 
 // CHECK-LABEL: @two_ifs_chain
 // CHECK: %[[IF1:.*]]:2 = scf.if %{{.*}} -> (index, i32) {
-// CHECK:   %[[ID1:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK:   %[[ID1:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK:   scf.yield %{{.*}}, %[[ID1]] : index, i32
 // CHECK: } else {
-// CHECK:   %[[ID2:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK:   %[[ID2:.*]] = aiex.dma_bd_pool_pop(0, 0, 0) : i32
 // CHECK:   scf.yield %{{.*}}, %[[ID2]] : index, i32
 // CHECK: }
 // CHECK: %[[IF2:.*]]:2 = scf.if %{{.*}} -> (index, i32) {
@@ -27,7 +27,7 @@
 // CHECK: } else {
 // CHECK:   scf.yield %[[IF1]]#0, %[[IF1]]#1 : index, i32
 // CHECK: }
-// CHECK: aiex.dma_bd_pool_push(0, 0) bd_id %[[IF2]]#1 : i32
+// CHECK: aiex.dma_bd_pool_push(0, 0, 0) bd_id %[[IF2]]#1 : i32
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)

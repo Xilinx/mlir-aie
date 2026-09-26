@@ -34,7 +34,8 @@ both lower into the same `aie.flow` / `aie.lock` / `aie.mem` /
 * **IRON Python primitives** (the rest of this section).  First-class
   Python classes — `Flow`, `Lock`, `TileDma`, `DmaChannel`, `Bd`,
   `Acquire`, `Release` — that compose into a regular `@iron.jit`
-  design alongside `Worker` and `Runtime`.  Use this tier when you
+  design alongside `Worker` and `Runtime`, plus `tile_dma_task` /
+  `tile_dma_chain` for tile DMAs driven from the runtime sequence.  Use this tier when you
   want to hand-wire DMA programs but still get the `@iron.jit`
   lifecycle (content-addressed caching, `iron.tensor` host I/O,
   `aiecc` lowering).
@@ -74,11 +75,12 @@ These classes live under `aie.iron`:
 |-------|-------------------|-----------|
 | `Buffer(tile, type, initial_value=None, name)` | `aie.buffer` on the given tile | [`python/iron/buffer.py`](../../../python/iron/buffer.py) |
 | `Lock(tile, lock_id=None, init=0, name)` | `aie.lock` with explicit id + init count | [`python/iron/lock.py`](../../../python/iron/lock.py) |
-| `Flow(src, dst, *, src_port=DMA, src_channel, dst_port=DMA, dst_channel)` | `aie.flow` — one circuit-switched route | [`python/iron/dataflow/flow.py`](../../../python/iron/dataflow/flow.py) |
-| `PacketFlow(src, dsts: list[PacketDest], *, pkt_id, ...)` | `aie.packetflow` with explicit packet IDs | same file |
+| `Flow(src, dst \| [dsts], *, src_port=DMA, src_channel=None, dst_port=DMA, dst_channel=None)` | `aie.flow` when both channels are given; otherwise `aie.route_endpoint`s joined by an `aie.route`, whose DMA channels the compiler assigns.  A list of `dst`s broadcasts | [`python/iron/dataflow/flow.py`](../../../python/iron/dataflow/flow.py) |
+| `PacketFlow(pkt_id, src, dst, *, src_channel=0, dst_channel=0, extra_dsts=[PacketDest(...)], keep_pkt_header=False)` | `aie.packetflow` tagged with `pkt_id`.  With a shim end it has `fill` / `drain` like a `Flow`, and `fill` stamps `pkt_id` on the input | same file |
 | `TileDma(tile, channels=[DmaChannel(...)])` | `aie.mem` (compute), `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim) — picked by tile type | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
-| `DmaChannel(direction, channel, bds=[Bd(...)], loop=True)` | One `@dma(dir, ch)` chain inside the TileDma's region | same |
-| `Bd(buffer, offset=0, length=None, sizes=[], strides=[], acquires=[...], releases=[...], next=None\|"self"\|int, packet=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd` | same |
+| `DmaChannel(direction, channel, bds=[Bd(...)], pad_value=0, repeat_count=0, out_of_order=False, loop=True)` | One `@dma(dir, ch)` chain inside the TileDma's region.  `channel` is an index or a `flow.endpoint(tile)` | same |
+| `Bd(buffer, offset=0, length=None, sizes=[], strides=[], acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, pad_dimensions=None, iteration=None, out_of_order_id=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd` | same |
+| `BdIteration(size, stride, current=0)` | The `iteration` state of one `aie.dma_bd`: the BD's base advances by `stride` elements per execution and wraps after `size` | same |
 | `Acquire(lock, value=1, greater_equal=True)` | `aie.use_lock(..., AcquireGreaterEqual\|Acquire)` at BD start | same |
 | `Release(lock, value=1)` | `aie.use_lock(..., Release)` at BD end | same |
 
@@ -104,7 +106,27 @@ These classes live under `aie.iron`:
 
 `Bd.packet = (pkt_type, pkt_id)` stamps a packet header on every
 transfer this BD emits — pair it with a `PacketFlow` carrying the same
-`pkt_id` so the routing fabric dispatches correctly.
+`pkt_id` so the routing fabric dispatches correctly.  From the shim,
+`packet_flow.fill(a)` stamps the header itself, so several `PacketFlow`s
+leaving one shim channel are told apart by which one you fill (see
+[`packet_switch`](../../../programming_examples/basic/packet_switch/)).  `Bd.bd_id` pins
+the descriptor's hardware id; the others are allocated around it.
+
+A few more `Bd` fields cover hardware features that would otherwise need
+extra descriptors:
+
+* `iteration=BdIteration(size, stride)` lets one BD walk `size`
+  sub-buffers, advancing its base by `stride` elements on each execution,
+  where an unrolled chain would need `size` BDs.  Values are in elements;
+  the lowering applies the hardware's `-1` bias.  See
+  [`test/npu-xrt/bd_iteration`](../../../test/npu-xrt/bd_iteration/bd_iteration.py).
+* `pad_dimensions=[(before, after), ...]` (mem tile only) pads each
+  dimension of the access pattern with `DmaChannel.pad_value`.  See
+  [`dma_padding`](../../../programming_examples/basic/dma_padding/).
+* `DmaChannel(..., out_of_order=True)` on an S2MM channel places each
+  arriving packet in the BD whose `bd_id` matches the out-of-order id in
+  its header.  The sender stamps that id with `Bd.out_of_order_id`.  See
+  [`test/npu-xrt/dma_s2mm_ooo`](../../../test/npu-xrt/dma_s2mm_ooo/).
 
 ### Wiring everything into the `Runtime`
 
@@ -122,15 +144,16 @@ rt.add_lock(my_lock)        # one call per Lock
 rt.add_tile_dma(my_dma)     # one call per TileDma program
 ```
 
-Inside the sequence body, if even the BD-level abstraction is too
-high — typically because you're driving BD writes from the host
-runtime sequence rather than from the tile DMA program — drop into
-raw `npu_*` ops (`npu_writebd`, `npu_address_patch`, `npu_push_queue`,
-`npu_sync`, `npu_write32`) directly:
+The sequence body can also program mem and compute tile DMAs itself
+(see [Tile DMAs from the runtime sequence](#tile-dmas-from-the-runtime-sequence)).
+If even that is too high a level, drop into raw `npu_*` ops
+(`npu_writebd`, `npu_address_patch`, `npu_push_queue`, `npu_sync`,
+`npu_write32`) directly.  Setting a lock doesn't need a raw register
+write: `lock.set(value)` resolves the lock's address for you.
 
 ```python
 def sequence(a, b):
-    npu_write32(column=col, row=1, address=0xC0000, value=1)
+    memtile_lock.set(1)
     npu_writebd(bd_id=0, buffer_length=..., column=col, row=0, ...)
     npu_address_patch(...)
     npu_push_queue(...)
@@ -263,6 +286,87 @@ the cycle is not simply "in order, then back to the start".
 
 <img src="../../assets/DMA_BDs.png" height=300 width="400">
 
+### Letting the compiler pick channels
+
+The worked example names a channel at both ends of its `Flow` and
+repeats each index in the matching `DmaChannel`.  Leave the channels
+off the `Flow` and the compiler assigns them; each DMA program then
+names the end of the flow it runs on with `flow.endpoint(tile)` instead
+of an index:
+
+```python
+a_to_b = Flow(tile_a, tile_b)          # no channels: the compiler picks
+
+dma_a = TileDma(tile=tile_a, channels=[
+    DmaChannel(direction=DMAChannelDir.MM2S, channel=a_to_b.endpoint(tile_a),
+               bds=[...]),
+])
+dma_b = TileDma(tile=tile_b, channels=[
+    DmaChannel(direction=DMAChannelDir.S2MM, channel=a_to_b.endpoint(tile_b),
+               bds=[...]),
+])
+```
+
+The endpoints lower to `aie.route_endpoint`s, and
+`--aie-objectfifo-allocate` gives each one a channel that no ObjectFifo
+and no explicitly numbered channel on that tile uses.  The tiles need not be
+pinned either: `Tile(tile_type=AIETileType.MemTile)` and friends are
+placed alongside everything else.  A list of destinations,
+`Flow(mem, [core0, core1])`, is a circuit-switched broadcast with one
+endpoint per destination.  A flow with a shim end still supports
+`flow.fill(...)` / `flow.drain(...)` from the sequence.
+
+[`test/npu-xrt/flow_endpoints`](../../../test/npu-xrt/flow_endpoints/flow_endpoints.py)
+is a hardware-tested design built this way, with no tile or channel
+pinned anywhere.
+
+### Tile DMAs from the runtime sequence
+
+A `TileDma` is configured once, when the design is loaded.  The
+sequence body can instead configure and start a mem or compute tile
+DMA itself, which lets a descriptor change from one call to the next —
+for example to re-read an operand held in a mem tile with a size that
+is only known at dispatch time:
+
+| Call | What it does |
+|------|--------------|
+| `tile_dma_task(tile, direction, channel, buffer, sizes=, strides=, offset=, transfer_len=, wait=False, acquire=, release=)` | One BD, configured and started.  Its fields may be dispatch-time values, and `channel` may be a `flow.endpoint(tile)` |
+| `tile_dma_chain(tile, direction, channel, bds=[Bd(...)], repeat_count=0, wait=False, out_of_order=False)` | A chain of `Bd`s run in order as one task, `repeat_count + 1` times.  `channel` may be a `flow.endpoint(tile)`.  With `out_of_order=True` it arms an S2MM channel as `DmaChannel.out_of_order` does, and `repeat_count` counts packets |
+| `task.start(repeat_count=None)` | Push an already-configured task again, optionally with a different repeat count |
+| `lock.set(value)` | Overwrite a `Lock`'s value from the host (`aiex.set_lock`) |
+| `rt.add_buffer(buf)` | Register a `Buffer` that only the sequence body touches |
+
+The `Bd`s are the same class a `TileDma` uses, so locks, packet headers
+and access patterns are written the same way.  The one exception is
+`iteration`: a runtime chain takes it from the outermost `sizes` /
+`strides` dimension instead.  A runtime BD takes both lock operations
+or neither, so `tile_dma_task` needs `acquire` and `release` together,
+and both calls reject anything else.  With `wait=True`, a mem or
+compute tile reports completion over a route back to the shim that the
+compiler adds, so `task.await_()` works on any tile.  A repeat count larger
+than one queue push carries is split into several pushes by the
+compiler, so the chain below can run any number of passes:
+
+```python
+def sequence(a, c):
+    into.fill(a)
+    task = tile_dma_chain(
+        mem, DMAChannelDir.MM2S, spread.endpoint(mem),
+        [Bd(staged, acquires=[Acquire(staged_full)], releases=[Release(staged_free)])],
+        repeat_count=passes - 1,
+    )
+    out.drain(c, wait=True)
+
+rt.add_buffer(staged)
+```
+
+A tile's DMA can only address buffers on that tile; only a shim DMA
+reaches host memory, and that is still what `fill` / `drain` do.  The
+device limits these calls work within are available from the device
+itself — `dev.max_lock_value`, `dev.max_repeat_count`,
+`dev.dma_task_queue_depth` and `dev.get_num_bds(tile_type)` — rather
+than being hardcoded.
+
 ### Canonical end-to-end demo
 
 The runnable example for this whole surface is
@@ -276,7 +380,8 @@ tile S2MM with:
   acquire/release lock-protocol pairs;
 * a `Worker` running a tiny lock-flipping spinner on the compute
   tile;
-* a runtime sequence whose body opens the data flow with `npu_writebd` /
+* a runtime sequence whose body sets the MemTile lock with `lock.set`
+  and opens the data flow with `npu_writebd` /
   `npu_address_patch` / `npu_push_queue` / `npu_sync` written directly
   — the *teaching point* of the example, because the manual BD writes
   are exactly what `fill` / `drain` normally hide.

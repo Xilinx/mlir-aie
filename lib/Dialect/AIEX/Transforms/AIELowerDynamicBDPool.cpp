@@ -153,9 +153,10 @@ struct AIELowerDynamicBDPoolPass
 
     AIE::TileOp tile = cfg.getTileOp();
     OpBuilder b(cfg);
-    Value bdId = DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(),
-                                        tile.getCol(), tile.getRow())
-                     .getBdId();
+    Value bdId =
+        DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(), tile.getCol(),
+                               tile.getRow(), cfg.getChannel())
+            .getBdId();
     theBd.getBdIdValMutable().assign(bdId);
     pairedId[cfg.getResult()] = bdId;
     return success();
@@ -434,8 +435,12 @@ struct AIELowerDynamicBDPoolPass
           "does not resolve to a task allocated from the runtime pool; cannot "
           "return its buffer descriptor ID");
     auto tile = tileForTask.lookup(task);
+    // The pool is per (tile, channel): the originating configure names the
+    // channel this id came from, and it must go back to that same pool.
+    DMAConfigureTaskOp origin = originConfigure.lookup(task);
     OpBuilder b(op);
-    DMABdPoolPushOp::create(b, op->getLoc(), tile.first, tile.second, id);
+    DMABdPoolPushOp::create(b, op->getLoc(), tile.first, tile.second,
+                            origin.getChannel(), id);
     return success();
   }
 
@@ -451,9 +456,11 @@ struct AIELowerDynamicBDPoolPass
     auto effectOf = [&](Operation *op) -> QueueEffect {
       DMAConfigureTaskOp cfg;
       bool isPush = false;
+      bool issuesToken = false;
       if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
         cfg = originConfigure.lookup(start.getTask());
         isPush = true;
+        issuesToken = cfg && start.getPushIssueToken(cfg);
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
         cfg = originConfigure.lookup(await.getTask());
         // Only a token-issuing await retires anything.
@@ -470,7 +477,7 @@ struct AIELowerDynamicBDPoolPass
       DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
                                     static_cast<int>(cfg.getDirection()),
                                     static_cast<int>(cfg.getChannel())};
-      return isPush ? QueueEffect::push(key, cfg.getIssueToken())
+      return isPush ? QueueEffect::push(key, issuesToken)
                     : QueueEffect::await(key);
     };
 
