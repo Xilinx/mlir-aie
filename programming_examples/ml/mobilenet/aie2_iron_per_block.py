@@ -6,6 +6,7 @@
 
 Usage:
     python3 aie2_iron_per_block.py <block_name>   > /tmp/<block_name>.mlir
+    python3 aie2_iron_per_block.py <block_name> --xclbin-path x.xclbin --insts-path i.bin
 
 Examples:
     python3 aie2_iron_per_block.py bn3            # regular (single tile)
@@ -27,7 +28,14 @@ import os
 
 import aie.iron as iron
 import numpy as np
-from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
+from aie.iron import (
+    CompilableDesign,
+    CompileTime,
+    ObjectFifo,
+    Program,
+    Runtime,
+    TaskGroup,
+)
 from aie.iron.device import Tile
 from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -186,7 +194,11 @@ def _build_one(block_name, act_in):
     )
 
 
-def per_block_iron(block_name, data_dir=None, scales_json=None):
+def per_block_iron(
+    block_name: CompileTime[str],
+    data_dir: CompileTime[str | None] = None,
+    scales_json: CompileTime[str | None] = None,
+):
     """Build a standalone IRON design for one bottleneck and return MLIR.
 
     data_dir / scales_json default to the main mobilenet calibration; pass the
@@ -294,9 +306,17 @@ def _make_argparser():
 def main():
     opts = _make_argparser().parse_args()
     set_current_device(device_from_args(opts, n_cols=None))
-    print(
-        per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json)
+    compile_kwargs = dict(
+        block_name=opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json
     )
+    if opts.xclbin_path:
+        CompilableDesign(
+            per_block_iron,
+            compile_kwargs=compile_kwargs,
+            aiecc_flags=["--dynamic-objFifos=false"],
+        ).compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+    else:
+        print(per_block_iron(**compile_kwargs))
 
 
 if __name__ == "__main__":
