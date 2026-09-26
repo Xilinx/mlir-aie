@@ -19,6 +19,19 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+#ifndef CONV_INPUT_WIDTH
+#define CONV_INPUT_WIDTH runtime_input_width
+#endif
+#ifndef CONV_INPUT_CHANNELS
+#define CONV_INPUT_CHANNELS runtime_input_channels
+#endif
+#ifndef CONV_OUTPUT_CHANNELS
+#define CONV_OUTPUT_CHANNELS runtime_output_channels
+#endif
+#ifndef CONV_SKIP_INPUT_CHANNELS
+#define CONV_SKIP_INPUT_CHANNELS runtime_input_channels_skip
+#endif
+
 #ifdef SCALAR
 
 const int32_t MIN = 128;
@@ -241,6 +254,122 @@ static void conv2dk1_skip_init_vector(
                                         input_width, input_channels,
                                         output_channels, input_channels_skip,
                                         scale, skip_scale, scale_skip_conv);
+  event1();
+}
+#elif AIE_TUNED_AIE2P
+// Each block of 32 pixels keeps 4 accumulators of 8 pixels, one native
+// 8x8x8 mac each. The activations are not __restrict: with it the compiler
+// parks every oc-invariant input vector on the stack.
+template <typename SkipT>
+static void conv2dk1_skip_init_vector(
+    uint8_t *input0, uint8_t *input1, int8_t *kernels, uint8_t *output,
+    SkipT *skip, const int32_t runtime_input_width,
+    const int32_t runtime_input_channels, const int32_t runtime_output_channels,
+    const int32_t runtime_input_channels_skip, const int scale,
+    const int skip_scale, const int scale_skip_conv) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  const int32_t input_channels_skip = CONV_SKIP_INPUT_CHANNELS;
+  event0();
+
+  using MMUL8x8x8 = aie::mmul<8, 8, 8, uint8, int8>;
+  using MMULSkip = aie::mmul<8, 8, 8, SkipT, int8>;
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+
+  constexpr int NUM_ACC = 4;
+  const int iw = input_width;
+  const int iw_32 = input_width / 32;
+  // input0 and input1 each hold half the input channels; the weights of
+  // input0's channels come first within each oc/8 group. The skip
+  // projection's weights follow all of the main conv's.
+  const int ic_half = input_channels / 16;
+  const int ic_skip = input_channels_skip / 8;
+  int8_t *kernels_skip = kernels + output_channels * input_channels;
+
+  uint8_t *out_ptr = output;
+
+  for (int oc = 0; oc < (output_channels / 8); oc++) {
+    for (int x = 0; x < iw_32; x++) {
+      aie::vector<int8, 64> conv[NUM_ACC];
+      {
+        MMUL8x8x8 acc[NUM_ACC];
+        const uint8_t *in0 = input0 + x * 256;
+        const uint8_t *in1 = input1 + x * 256;
+        const int8_t *__restrict w0 = kernels;
+        const int8_t *__restrict w1 = kernels + ic_half * 64;
+        // The first step multiplies, so no accumulator starts from zero.
+        {
+          aie::vector<int8, 64> b0 = aie::load_v<64>(w0);
+          aie::vector<int8, 64> b1 = aie::load_v<64>(w1);
+          w0 += 64;
+          w1 += 64;
+          AIE_LOOP_UNROLL_FULL
+          for (int x8 = 0; x8 < NUM_ACC; x8++)
+            acc[x8].mul(aie::load_v<64>(in0 + x8 * 64), b0);
+          AIE_LOOP_UNROLL_FULL
+          for (int x8 = 0; x8 < NUM_ACC; x8++)
+            acc[x8].mac(aie::load_v<64>(in1 + x8 * 64), b1);
+          in0 += iw * 8;
+          in1 += iw * 8;
+        }
+        AIE_LOOP_UNROLL(8)
+        for (int ic = 1; ic < ic_half; ic++) {
+          aie::vector<int8, 64> b0 = aie::load_v<64>(w0);
+          aie::vector<int8, 64> b1 = aie::load_v<64>(w1);
+          w0 += 64;
+          w1 += 64;
+          AIE_LOOP_UNROLL_FULL
+          for (int x8 = 0; x8 < NUM_ACC; x8++)
+            acc[x8].mac(aie::load_v<64>(in0 + x8 * 64), b0);
+          AIE_LOOP_UNROLL_FULL
+          for (int x8 = 0; x8 < NUM_ACC; x8++)
+            acc[x8].mac(aie::load_v<64>(in1 + x8 * 64), b1);
+          in0 += iw * 8;
+          in1 += iw * 8;
+        }
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          conv[x8] = acc[x8].template to_vector<int8>(scale);
+      }
+      MMULSkip acc[NUM_ACC];
+      const SkipT *in = skip + x * 256;
+      const int8_t *__restrict w = kernels_skip;
+      {
+        aie::vector<int8, 64> b = aie::load_v<64>(w);
+        w += 64;
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          acc[x8].mul(aie::load_v<64>(in + x8 * 64), b);
+        in += iw * 8;
+      }
+      AIE_LOOP_UNROLL(8)
+      for (int ic = 1; ic < ic_skip; ic++) {
+        aie::vector<int8, 64> b = aie::load_v<64>(w);
+        w += 64;
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          acc[x8].mac(aie::load_v<64>(in + x8 * 64), b);
+        in += iw * 8;
+      }
+      AIE_LOOP_UNROLL_FULL
+      for (int x8 = 0; x8 < NUM_ACC; x8++) {
+        aie::accum<acc32, 64> accj;
+        accj.from_vector(conv[x8], 0);
+        accj = aie::mac(accj, acc[x8].template to_vector<int8>(scale_skip_conv),
+                        (int8_t)1);
+        aie::store_v(out_ptr, accj.template to_vector<uint8>(skip_scale));
+        out_ptr += 64;
+      }
+    }
+    kernels += (input_channels / 8) * 64; // next oc/8 weights
+    kernels_skip += ic_skip * 64;         // next oc/8 skip weights
+  }
+
+  // Only whole 32-wide blocks are computed; kernels.conv2dk1_skip_init
+  // rejects other widths.
+
   event1();
 }
 #else

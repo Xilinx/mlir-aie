@@ -822,12 +822,15 @@ def conv2dk1_skip_init(
         func_name,
         _kernel_source("conv/conv2dk1_skip_init.cc"),
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(7)],
-        compile_flags=flags,
+        compile_flags=flags
+        + _conv_dimensions(input_width, input_channels, output_channels)
+        + [f"-DCONV_SKIP_INPUT_CHANNELS={skip_input_channels}"],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            # aie2p: >=2144 measured; __modsi3 has no .stack_sizes. 288 B tuned
-            # for aie2
-            stack_bytes=None if _tuned_arch() == "aie2" else 0x2000,
+            # aiecc measured_stack_size: 1728 B tuned for aie2p, the largest
+            # over input_channels 16..256; untuned >=2144 plus __modsi3,
+            # which has no .stack_sizes; 288 B tuned for aie2
+            stack_bytes={"aie2": None, "aie2p": 1728}.get(_tuned_arch(), 0x2000),
             roles=(In, In, Param, Out, In, *((Param,) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,

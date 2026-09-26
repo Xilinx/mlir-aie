@@ -456,6 +456,7 @@ def test_rounding_mode_preserves_string_api(mode):
     [
         (kernels.conv2dk1, 1088),
         (kernels.conv2dk1_skip, 512),
+        (kernels.conv2dk1_skip_init, 1216),
         (kernels.conv2dk3, 384),
         (kernels.layer_norm_f32, 1216),
     ],
