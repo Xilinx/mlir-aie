@@ -30,6 +30,8 @@ void tanh_bf16_vectorized(bfloat16 *restrict input_vector,
                          [](aie::vector<bfloat16, 16> x) {
                            return aie::vector<bfloat16, 16>(tanh_bf16_v16(x));
                          });
+#elif AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
+  tanh_lut_map(input_vector, output_vector, num_elems);
 #else
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);

@@ -128,7 +128,7 @@ static inline void swiglu_aie2(const bfloat16 *restrict x,
 
 #if AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
 // The LUT tanh in passes, as in sigmoid.cc: (x * w2)/2 to the output,
-// tanh_lut_inplace, silu(x * w2), then the product with x * w1. Each x * w is
+// tanh_lut_map, silu(x * w2), then the product with x * w1. Each x * w is
 // recomputed rather than kept. In one loop the last two pipeline at II 17; the
 // pipeline_initiation_interval hints keep the pre-RA pipeliner, which orders
 // each in-place loop's store before the next trip's load, from settling on II
@@ -150,7 +150,7 @@ static inline void swiglu_lut_aie2p(bfloat16 *restrict input_vector,
         aie::mul(mul_input_weight_2, register_0_5_wide).to_vector<bfloat16>();
   }
 
-  tanh_lut_inplace(output_vector, num_elems);
+  tanh_lut_map(output_vector, output_vector, num_elems);
 
   aie::accum<accfloat, 32> half;
   half.from_vector(register_0_5_wide);
