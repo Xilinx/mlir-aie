@@ -58,6 +58,22 @@ def test_ref_keeps_the_tail_float32_loses(name):
     assert (getattr(kernels, name)(x).astype(np.float64) != 0).all()
 
 
+def test_sigmoid_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
+    # AIE2P's sigmoid table against aie2's 0.5 * (1 + tanh(x/2)), which
+    # rounds tanh to bf16 first: from x = -7.5 to -6.9 that is -1, and the
+    # sigmoid 0. Both are 0 below -7.5, the table's flat end segment.
+    x = all_bf16(nan=False)
+    x = x[(x >= -8) & (x < -2)]
+    true = 1.0 / (1.0 + np.exp(-x.astype(np.float64)))
+    tail = x >= -7.5
+    table = kernels.sigmoid_table_ref(x).astype(np.float64)
+    assert (table[~tail] == 0).all()
+    # At worst 7.05% off, at x = -7.
+    assert (np.abs(table[tail] - true[tail]) <= 0.071 * true[tail]).all()
+    old = kernels.sigmoid_lut_ref(x).astype(np.float64)
+    assert (old[tail & (x <= -6.9)] == 0).all()
+
+
 def test_swiglu_ref_rounds_the_products_then_is_float64():
     rng = np.random.default_rng(0)
     x, w1, w2 = (
