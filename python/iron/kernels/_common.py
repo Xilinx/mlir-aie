@@ -727,4 +727,7 @@ def _make_extern(
     )
     if contract is not None:
         contract.validate_types(extern.arg_types())
+    # The factory picked its source, flags and contract for this arch; a
+    # design that compiles it for another one fails there, not in Peano.
+    extern.built_for_arch = _detect_arch()
     return extern
