@@ -815,6 +815,18 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
 }
 } // namespace
 
+static void getOrCreateConnect(OpBuilder &builder, ShimMuxOp shimMux,
+                               Location loc, WireBundle srcBundle, int srcCh,
+                               WireBundle destBundle, int destCh) {
+  for (auto connect : shimMux.getConnections().getOps<ConnectOp>())
+    if (connect.getSourceBundle() == srcBundle &&
+        connect.getSourceChannel() == srcCh &&
+        connect.getDestBundle() == destBundle &&
+        connect.getDestChannel() == destCh)
+      return;
+  ConnectOp::create(builder, loc, srcBundle, srcCh, destBundle, destCh);
+}
+
 LogicalResult AIEPathfinderPass::runOnPacketFlow(
     DeviceOp device, OpBuilder &builder, DynamicTileAnalysis &analyzer,
     const std::map<PathEndPoint, SwitchSettings> &solution,
@@ -1856,13 +1868,13 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
           pktrules.setSourceBundle(WireBundle::South);
           if (pktrules.getSourceChannel() == 0) {
             pktrules.setSourceChannel(3);
-            ConnectOp::create(builder, tileOp.getLoc(), WireBundle::DMA, 0,
-                              WireBundle::North, 3);
+            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
+                               WireBundle::DMA, 0, WireBundle::North, 3);
           }
           if (pktrules.getSourceChannel() == 1) {
             pktrules.setSourceChannel(7);
-            ConnectOp::create(builder, tileOp.getLoc(), WireBundle::DMA, 1,
-                              WireBundle::North, 7);
+            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
+                               WireBundle::DMA, 1, WireBundle::North, 7);
           }
         }
       }
@@ -1887,13 +1899,13 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
           mtset.setDestBundle(WireBundle::South);
           if (mtset.getDestChannel() == 0) {
             mtset.setDestChannel(2);
-            ConnectOp::create(builder, tileOp.getLoc(), WireBundle::North, 2,
-                              WireBundle::DMA, 0);
+            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
+                               WireBundle::North, 2, WireBundle::DMA, 0);
           }
           if (mtset.getDestChannel() == 1) {
             mtset.setDestChannel(3);
-            ConnectOp::create(builder, tileOp.getLoc(), WireBundle::North, 3,
-                              WireBundle::DMA, 1);
+            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
+                               WireBundle::North, 3, WireBundle::DMA, 1);
           }
         }
       }
@@ -1910,6 +1922,43 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   return success();
 }
 
+// The router names a shim DMA by its own port, and the end of
+// runOnPacketFlow moves it behind the shim mux onto a South channel. Rules and
+// master sets a previous run left there are moved back first, so new flows on
+// the same DMA channel share them.
+static void unmuxShimDMAPacketPorts(DeviceOp device) {
+  for (auto shimMux : device.getOps<ShimMuxOp>()) {
+    auto hasConnect = [&](WireBundle srcBundle, int srcCh,
+                          WireBundle destBundle, int destCh) {
+      return llvm::any_of(shimMux.getConnections().getOps<ConnectOp>(),
+                          [&](ConnectOp c) {
+                            return c.sourcePort() == Port{srcBundle, srcCh} &&
+                                   c.destPort() == Port{destBundle, destCh};
+                          });
+    };
+    for (auto switchbox : device.getOps<SwitchboxOp>()) {
+      if (switchbox.getTileOp() != shimMux.getTileOp())
+        continue;
+      for (auto rules : switchbox.getConnections().getOps<PacketRulesOp>())
+        for (int ch : {0, 1})
+          if (rules.sourcePort() == Port{WireBundle::South, ch ? 7 : 3} &&
+              hasConnect(WireBundle::DMA, ch, WireBundle::North, ch ? 7 : 3)) {
+            rules.setSourceBundle(WireBundle::DMA);
+            rules.setSourceChannel(ch);
+            break;
+          }
+      for (auto masterSet : switchbox.getConnections().getOps<MasterSetOp>())
+        for (int ch : {0, 1})
+          if (masterSet.destPort() == Port{WireBundle::South, ch ? 3 : 2} &&
+              hasConnect(WireBundle::North, ch ? 3 : 2, WireBundle::DMA, ch)) {
+            masterSet.setDestBundle(WireBundle::DMA);
+            masterSet.setDestChannel(ch);
+            break;
+          }
+    }
+  }
+}
+
 void AIEPathfinderPass::runOnOperation() {
 
   // create analysis pass with routing graph for entire device
@@ -1917,6 +1966,8 @@ void AIEPathfinderPass::runOnOperation() {
 
   DeviceOp d = getOperation();
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
+  if (clRoutePacket)
+    unmuxShimDMAPacketPorts(d);
 
   // Packet flows that can deadlock must not share an arbiter. Every routing
   // the router finds is checked by planning the arbiters on it, and one that
