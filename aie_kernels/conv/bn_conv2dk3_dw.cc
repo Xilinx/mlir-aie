@@ -681,6 +681,52 @@ dw8_rows(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
   }
 }
 
+// Rows of 6 to 8 pixels into a 32-byte aligned buffer. A block ends in the
+// granule the next one starts in, and an unaligned store reads that granule
+// back, which chains the blocks. Instead each block stores the two granules
+// from its start, with the previous block's tail in front; what runs past
+// them the next block stores. The last block stores as before, after the
+// previous one's tail.
+static inline __attribute__((always_inline)) void
+dw8_stream(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
+           const uint8_t *__restrict line2, const int8_t *__restrict wts,
+           uint8_t *__restrict out, const int32_t input_width,
+           const int32_t blocks, const aie::mask<64> *keep, const int scale) {
+  const int32_t end = input_width * 8;
+  dw8_v tail = aie::zeros<uint8, 64>();
+  int32_t at = 0;
+  AIE_LOOP_MIN_ITERATION_COUNT(DW8_MIN_BLOCKS)
+  for (int cd = 1; cd < blocks; cd++) {
+    const uint8_t *in[3] = {line0, line1, line2};
+    aie::accum<acc32, 64> acc;
+    BN3_UNROLL_FULL
+    for (int i = 0; i < 3; i++) {
+      const dw8_w w = aie::select(
+          aie::zeros<int8, 64>(),
+          dw8_load((const uint8_t *)(wts + i * 24)).cast_to<int8>(), keep[i]);
+      const aie::vector<uint8, 128> d =
+          dw8_window<1, false>(in[i], 0, end, keep[3]);
+      acc = i == 0 ? dw8_conv::mul(w, 0, d, 0) : dw8_conv::mac(acc, w, 0, d, 0);
+    }
+    const dw8_v v = dw8_out(acc, scale);
+    const int32_t r = at & 31;
+    uint8_t *__restrict p = out + (at - r);
+    const dw8_v head = aie::shuffle_up_fill(v, tail, r);
+    aie::store_v(p, head.extract<32>(0));
+    aie::store_v(p + 32, head.extract<32>(1));
+    tail = aie::shuffle_up_fill(v, v, 64 - end);
+    line0 += end;
+    line1 += end;
+    line2 += end;
+    wts += 72;
+    at += end;
+  }
+  aie::store_v(out + (at & ~31),
+               aie::shuffle_up_fill(tail, tail, at & 31).extract<32>(0));
+  dw8_block<1, false>(line0, line1, line2, wts, keep, out + at, input_width,
+                      scale);
+}
+
 // Stride 1, input_width <= 32 only; returns how many channel blocks it
 // covered.
 static int32_t dw8_blocks(uint8_t *line0, uint8_t *line1, uint8_t *line2,
@@ -707,9 +753,22 @@ static int32_t dw8_blocks(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                  blocks, split, keep, scale)
   // Rows of more than 8 pixels read the width at run time: a constant one made
   // their loops slower.
+  const int32_t step = input_width * 8;
+  const int32_t rest = blocks - split;
   switch ((DW_WIDTH(input_width) + 7) / 8) {
   case 1:
-    DW8_ROWS(1, false);
+    if (DW_WIDTH(input_width) >= 6 && split > DW8_MIN_BLOCKS &&
+        (rest == 0 || rest > DW8_MIN_BLOCKS) &&
+        (((uintptr_t)output1 | (uintptr_t)output2) & 31) == 0) {
+      for (int h = 0; h < (rest ? 2 : 1); h++) {
+        const int32_t at = h ? split * step : 0;
+        dw8_stream(line0 + at, line1 + at, line2 + at,
+                   wts + (h ? split : 0) * 72, h ? output2 : output1,
+                   input_width, h ? rest : split, keep, scale);
+      }
+    } else {
+      DW8_ROWS(1, false);
+    }
     break;
   case 2:
     DW8_ROWS(2, false);
