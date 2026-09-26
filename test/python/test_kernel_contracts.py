@@ -458,19 +458,29 @@ def test_rounding_mode_preserves_string_api(mode):
         (kernels.conv2dk1_skip, 512),
         (kernels.conv2dk1_skip_init, 1216),
         (kernels.conv2dk3, 384),
-        (kernels.layer_norm_f32, 1216),
     ],
 )
 def test_stack_contract_covers_measured_core(factory, minimum):
     assert factory().contract.stack_bytes >= minimum
 
 
-def test_layer_norm_f32_stack_includes_scalar_division():
-    # The measured core's 1152 bytes omit __divsf3's 64-byte frame because
-    # compiler-rt does not emit .stack_sizes. Exercise the CI case's design.
-    minimum = 1152 + 64
-    fn = kernels.layer_norm_f32(cols=1024)
-    assert fn.contract.stack_bytes >= minimum
+@pytest.mark.parametrize(
+    "device,portable,minimum",
+    [
+        (NPU2Col1, False, 896),
+        (NPU2Col1, True, 896),
+        (NPU1Col1, False, 160),
+        (NPU1Col1, True, 736),
+    ],
+)
+def test_layer_norm_f32_stack_covers_measured_core(
+    monkeypatch, device, portable, minimum
+):
+    # aiecc's measured_stack_size, plus the 64-byte frame of __mulsf3 or
+    # __divsf3 where the build calls one: compiler-rt emits no .stack_sizes.
+    if portable:
+        monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
+    set_current_device(device())
     mlir = str(kd.design(kernels.layer_norm_f32, cols=1024, calls=16).as_mlir())
     stack_sizes = re.findall(r"stack_size = (\d+) : i32", mlir)
     assert stack_sizes
