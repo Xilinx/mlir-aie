@@ -182,14 +182,24 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=1024, vectorized=True), "reduce_add_vector"),
             (dict(tile_size=1024, vectorized=False), "reduce_add_scalar"),
             (dict(tile_size=512, dtype=np.int32), "reduce_add_vector"),
+            (dict(tile_size=1024, dtype=bfloat16), "reduce_add_vector_bfloat16"),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=False),
+                "reduce_add_scalar_bfloat16",
+            ),
         ],
         invalid_kwargs=[
-            (dict(tile_size=1024, dtype=bfloat16), "dtype must be np.int32"),
+            (
+                dict(tile_size=1024, dtype=np.float32),
+                "dtype must be np.int32 or bfloat16",
+            ),
         ],
         shape_checks=[
             (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
             # int32 output: 1 element = 4 bytes → already DMA-aligned.
             (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
+            # bfloat16: out is padded to 2 elements (4 bytes) for DMA alignment.
+            (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
         ],
         tile_size_checks=[(dict(tile_size=2048, dtype=np.int32), 2048)],
     ),
@@ -203,13 +213,23 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=1024, vectorized=True), "reduce_min_vector"),
             (dict(tile_size=1024, vectorized=False), "reduce_min_scalar"),
             (dict(tile_size=512, dtype=np.int32), "reduce_min_vector"),
+            (dict(tile_size=1024, dtype=bfloat16), "reduce_min_vector_bfloat16"),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=False),
+                "reduce_min_scalar_bfloat16",
+            ),
         ],
         invalid_kwargs=[
-            (dict(tile_size=1024, dtype=bfloat16), "dtype must be np.int32"),
+            (
+                dict(tile_size=1024, dtype=np.float32),
+                "dtype must be np.int32 or bfloat16",
+            ),
         ],
         shape_checks=[
             (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
             (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
+            # bfloat16: out is padded to 2 elements (4 bytes) for DMA alignment.
+            (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
         ],
         tile_size_checks=[(dict(tile_size=2048, dtype=np.int32), 2048)],
     ),
