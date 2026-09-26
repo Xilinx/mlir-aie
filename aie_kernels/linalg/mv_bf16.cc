@@ -8,6 +8,11 @@
 // IRON's bf16 GEMV: c[row_offset ..] += A * b over a row-major A, signature
 // (m, row_offset, A, b, c). mv_i16.cc is the int16 counterpart, which reads A
 // word-transposed. They shared the name mv.cc, in two directories.
+//
+// Built with -DA_COL_MAJ, the file exports the column-major variant instead:
+// A stored (K, M), the transpose, a chunk of its stored rows per call. It
+// sums in the row-major kernel's order, operation for operation, so the two
+// layouts give the same bits (see matvec_vectorized_col_maj).
 
 #define NOCPP
 
@@ -30,6 +35,8 @@
 #ifndef DIM_K
 #error Please define DIM_K at compile time (for example, -DDIM_K=128).
 #endif
+
+#ifndef A_COL_MAJ
 
 void matvec_scalar(uint32_t m, uint32_t k, const bfloat16 *__restrict a,
                    const bfloat16 *__restrict b, bfloat16 *__restrict c) {
@@ -259,3 +266,114 @@ void matvec_vectorized_bf16_bf16(uint32_t m, uint32_t row_offset,
 }
 
 } // extern "C"
+
+#else // A_COL_MAJ
+
+#ifndef DIM_M
+#error Please define DIM_M, the outputs per call, at compile time.
+#endif
+
+// The flags argument: FIRST starts the partial sums (acc is not read), LAST
+// finishes them into c. One call with both takes a whole K.
+#define MV_COL_MAJ_FIRST 1
+#define MV_COL_MAJ_LAST 2
+
+// matvec_vectorized<r, K> sums lane j of a row over positions r * i + j in
+// order (mul, then macs), then halves: lane j += lane j + r / 2, ... 1. With
+// A stored (K, M), lane j of all m outputs is row j of acc, and position t is
+// one mac of stored row t by b[t] into row t % r; a halving adds whole rows.
+// Same float32 ops on the same operands, so the same bits, on rows the
+// row-major kernel computes in groups of four (its tail uses reduce_add).
+// acc carries across calls, so K is any number of k-row chunks.
+//  - k: stored rows per call, a multiple of r; m: 16, 32 or a multiple of 64
+//  - acc: r * m floats, lane-major; c: m outputs, written by the LAST call
+template <uint32_t r, uint32_t k, uint32_t m, bool first>
+static inline void accumulate_col_maj(const bfloat16 *__restrict a,
+                                      const bfloat16 *__restrict b,
+                                      float *__restrict acc) {
+  constexpr uint32_t n = m < 64 ? m : 64;
+  constexpr uint32_t rounds = k / r;
+  for (uint32_t j = 0; j < r; j++) {
+    for (uint32_t v = 0; v < m; v += n) {
+      const bfloat16 *__restrict aj = a + j * m + v;
+      float *__restrict row = acc + j * m + v;
+      aie::accum<accfloat, n> sum;
+      uint32_t i = 0;
+      if constexpr (first) {
+        sum = aie::mul(aie::load_v<n>(aj), aie::broadcast<bfloat16, n>(b[j]));
+        i = 1;
+      } else {
+        sum.from_vector(aie::load_v<n>(row));
+      }
+      AIE_LOOP_UNROLL_FULL
+      for (; i < rounds; i++)
+        sum = aie::mac(sum, aie::load_v<n>(aj + i * r * m),
+                       aie::broadcast<bfloat16, n>(b[i * r + j]));
+      aie::store_v(row, sum.template to_vector<float>());
+    }
+  }
+}
+
+// The row-major kernel's halvings over the rows of acc, then its rounding.
+template <uint32_t r, uint32_t m>
+static inline void finish_col_maj(float *__restrict acc,
+                                  bfloat16 *__restrict c) {
+  constexpr uint32_t n = m < 64 ? m : 64;
+  for (uint32_t half = r / 2; half >= 1; half /= 2) {
+    for (uint32_t j = 0; j < half; j++) {
+      for (uint32_t v = 0; v < m; v += n) {
+        float *__restrict lo = acc + j * m + v;
+        const float *__restrict hi = acc + (j + half) * m + v;
+        if (half >= 16) {
+          aie::accum<accfloat, n> x, y;
+          x.from_vector(aie::load_v<n>(lo));
+          y.from_vector(aie::load_v<n>(hi));
+          aie::store_v(lo, aie::add(x, y).template to_vector<float>());
+        } else {
+          aie::store_v(lo, aie::add(aie::load_v<n>(lo), aie::load_v<n>(hi)));
+        }
+      }
+    }
+  }
+  for (uint32_t v = 0; v < m; v += n) {
+    aie::accum<accfloat, n> sum;
+    sum.from_vector(aie::load_v<n>(acc + v));
+    aie::store_v(c + v, sum.template to_vector<bfloat16>());
+  }
+}
+
+template <uint32_t r, uint32_t k, uint32_t m>
+void matvec_vectorized_col_maj(uint32_t flags, const bfloat16 *__restrict a,
+                               const bfloat16 *__restrict b,
+                               float *__restrict acc, bfloat16 *__restrict c) {
+  constexpr uint32_t n = m < 64 ? m : 64;
+  static_assert(k % r == 0, "a call takes whole rounds of the r lanes");
+  static_assert(n % 16 == 0 && m % n == 0,
+                "outputs come in vectors of 16, 32 or 64");
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
+  if (flags & MV_COL_MAJ_FIRST)
+    accumulate_col_maj<r, k, m, true>(a, b, acc);
+  else
+    accumulate_col_maj<r, k, m, false>(a, b, acc);
+  if (flags & MV_COL_MAJ_LAST)
+    finish_col_maj<r, m>(acc, c);
+  ::aie::set_rounding(saved_rounding);
+}
+
+extern "C" {
+
+void matvec_vectorized_col_maj_bf16_bf16(uint32_t flags,
+                                         const bfloat16 *__restrict a_in,
+                                         const bfloat16 *__restrict b_in,
+                                         float *__restrict acc,
+                                         bfloat16 *__restrict c_out) {
+  event0();
+  matvec_vectorized_col_maj<VEC_SIZE, DIM_K, DIM_M>(flags, a_in, b_in, acc,
+                                                    c_out);
+  event1();
+}
+
+} // extern "C"
+
+#endif // A_COL_MAJ

@@ -482,6 +482,27 @@ CASES: list[Case] = [
         calls=256,
         tag="llama-decode-ffn-down",
     ),
+    # The column-major bf16 matvec, a whole K per call: llama 3.2 1B's
+    # attention context shape (64 head dims, 128 cached positions per call),
+    # and the narrowest output block at the narrowest VEC_SIZE. Calls that
+    # carry sums across K are test_mv_col_maj_e2e.py's.
+    Case("mv_col_maj", dict(dim_m=64, dim_k=128, vec_size=64), calls=4, smoke=True),
+    Case(
+        "mv_col_maj",
+        dict(dim_m=32, dim_k=256, vec_size=32),
+        calls=4,
+        tag="edge-eight-vectors",
+        smoke=True,
+        perf=False,
+    ),
+    Case(
+        "mv_col_maj",
+        dict(dim_m=16, dim_k=32, vec_size=16),
+        calls=4,
+        tag="edge-narrowest",
+        smoke=True,
+        perf=False,
+    ),
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
