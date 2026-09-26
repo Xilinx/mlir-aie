@@ -560,16 +560,14 @@ using dw8_conv = aie::sliding_mul_ch_ops<8, 8, 8, 1, 1, 1, int8, uint8>;
 using dw8_v = aie::vector<uint8, 64>;
 using dw8_w = aie::vector<int8, 64>;
 
-template <bool Aligned>
-static inline void dw8_put(uint8_t *p, dw_v v) {
+template <bool Aligned> static inline void dw8_put(uint8_t *p, dw_v v) {
   if constexpr (Aligned)
     aie::store_v(p, v);
   else
     aie::store_unaligned_v(p, v, 8);
 }
 
-template <bool Aligned>
-static inline void dw8_store(uint8_t *p, dw8_v v) {
+template <bool Aligned> static inline void dw8_store(uint8_t *p, dw8_v v) {
   dw8_put<Aligned>(p, v.extract<32>(0));
   dw8_put<Aligned>(p + 32, v.extract<32>(1));
 }
@@ -1039,6 +1037,212 @@ static int32_t dw8_s2_narrow(const uint8_t *line0, const uint8_t *line1,
 }
 #endif
 
+#if AIE_TUNED_AIE2P && defined(CONV_INPUT_WIDTH) &&                            \
+    defined(CONV_OUTPUT_CHANNELS)
+#define DWG_ENABLED 1
+#include <utility>
+
+template <int N, typename F>
+static inline __attribute__((always_inline)) void dwg_for(F &&f) {
+  [&]<int... K>(std::integer_sequence<int, K...>)
+      __attribute__((always_inline)) {
+        (f(std::integral_constant<int, K>{}), ...);
+      }(std::make_integer_sequence<int, N>{});
+}
+
+// A group of NB channel blocks whose rows start and end 64-byte aligned,
+// taken as one run of NB * W pixels. Chunk k convolves words k and k + 1 into
+// pixels 8k+1..8k+8; chunk -1, over a zero word, gives pixel 0. A chunk sums
+// once per block its outputs belong to, with the pixels across that block's
+// edges zeroed, and takes each lane from its own block. Stride 2 keeps the
+// even pixels.
+template <int W, int NB, int S> struct dwg_geo {
+  static constexpr int P = NB * W;
+  static constexpr int NW = (P + 7) / 8;
+  static constexpr int first(int k, int b) {
+    const int a = 8 * k + 1 > b * W ? 8 * k + 1 : b * W;
+    return S == 2 && a % 2 ? a + 1 : a;
+  }
+  static constexpr int last(int k, int b) {
+    const int z = 8 * k + 8 < b * W + W - 1 ? 8 * k + 8 : b * W + W - 1;
+    return S == 2 && z % 2 ? z - 1 : z;
+  }
+  static constexpr bool has(int k, int b) { return first(k, b) <= last(k, b); }
+  static constexpr int bmin(int k) {
+    for (int b = 0; b < NB; b++)
+      if (has(k, b))
+        return b;
+    return NB;
+  }
+  static constexpr int kmin(int b) {
+    for (int k = -1; k < NW; k++)
+      if (has(k, b))
+        return k;
+    return NW;
+  }
+  static constexpr bool loaded(int i) { return i >= 0 && 8 * i < P; }
+  static constexpr int accs(int k) {
+    int n = 0;
+    for (int j = -1; j <= k; j++)
+      for (int b = 0; b < NB; b++)
+        n += has(j, b);
+    return n;
+  }
+};
+
+template <int Bytes>
+static inline __attribute__((always_inline)) void dwg_put(uint8_t *p, dw8_v v) {
+  if constexpr (Bytes >= 64) {
+    aie::store_v(p, v);
+  } else {
+    if constexpr (Bytes >= 32)
+      aie::store_v(p, v.extract<32>(0));
+    if constexpr (Bytes % 32)
+      aie::store_v(p + (Bytes & 32), v.extract<16>((Bytes & 32) / 16));
+  }
+}
+
+template <int W, int NB, int S>
+static inline __attribute__((always_inline)) void
+dwg_group(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
+          const uint8_t *__restrict line2, const int8_t *__restrict wts,
+          uint8_t *__restrict out, const aie::mask<64> *keep, const int scale) {
+  using G = dwg_geo<W, NB, S>;
+  constexpr int P = G::P, NW = G::NW;
+  const uint8_t *in[3] = {line0, line1, line2};
+  const dw8_v zero = aie::zeros<uint8, 64>();
+  const auto word = [&](auto r, auto i) __attribute__((always_inline)) {
+    if constexpr (G::loaded(i))
+      return aie::load_v<64>(in[r] + 64 * i);
+    else
+      return zero;
+  };
+  // Only the first two pixels of a window's upper word reach the sum.
+  const auto head = [&](auto r, auto i) __attribute__((always_inline)) {
+    if constexpr (G::loaded(i))
+      return aie::load_v<32>(in[r] + 64 * i).template grow<64>();
+    else
+      return zero;
+  };
+  const auto clear = [&](dw8_v x, int z,
+                         int base) __attribute__((always_inline)) {
+    return aie::select(x, zero,
+                       aie::mask<64>::from_uint64(0xffull << (8 * (z - base))));
+  };
+  dw8_w w[NB][3];
+  dw8_v v[NW + 1];
+  dw8_v prev;
+  dwg_for<NW + 1>([&](auto kk) __attribute__((always_inline)) {
+    constexpr int k = kk - 1;
+    dwg_for<NB>([&](auto bb) __attribute__((always_inline)) {
+      constexpr int b = bb;
+      if constexpr (G::has(k, b)) {
+        if constexpr (G::kmin(b) == k) {
+          dwg_for<3>([&](auto r) __attribute__((always_inline)) {
+            w[b][r] =
+                aie::select(aie::zeros<int8, 64>(),
+                            dw8_load((const uint8_t *)(wts + b * 72 + r * 24))
+                                .cast_to<int8>(),
+                            keep[r]);
+          });
+        }
+        constexpr int f = G::first(k, b), bs = b * W, be = bs + W;
+        constexpr bool zl = f == bs && bs > 0;
+        constexpr bool zr = G::last(k, b) == be - 1 && G::loaded(be / 8);
+        static_assert(!zr || be < 8 * k + 8);
+        aie::accum<acc32, 64> acc;
+        dwg_for<3>([&](auto r) __attribute__((always_inline)) {
+          dw8_v lo = word(r, std::integral_constant<int, k>{});
+          const dw8_v hi = head(r, std::integral_constant<int, k + 1>{});
+          if constexpr (zl)
+            lo = clear(lo, bs - 1, 8 * k);
+          if constexpr (zr)
+            lo = clear(lo, be, 8 * k);
+          const aie::vector<uint8, 128> d = aie::concat(lo, hi);
+          acc = r == 0 ? dw8_conv::mul(w[b][r], 0, d, 0)
+                       : dw8_conv::mac(acc, w[b][r], 0, d, 0);
+        });
+        const dw8_v o = dw8_out(acc, scale);
+        if constexpr (G::bmin(k) == b)
+          v[k + 1] = o;
+        else
+          v[k + 1] = aie::select(
+              v[k + 1], o,
+              aie::mask<64>::from_uint64(~0ull << (8 * (f - 8 * k - 1))));
+      }
+    });
+    if constexpr (G::accs(k) / 4 != G::accs(k - 1) / 4)
+      __builtin_aie2p_sched_barrier();
+    if constexpr (G::bmin(k) == NB)
+      v[k + 1] = zero;
+    if constexpr (S == 1 && k >= 0) {
+      dwg_put<8 * P - 64 * k>(out + 64 * k,
+                              aie::shuffle_up_fill(v[k + 1], v[k], 8));
+    } else if constexpr (S == 2 && k == -1) {
+      prev = v[0];
+    } else if constexpr (S == 2 && (k % 2 == 1 || k == NW - 1)) {
+      constexpr int m = k / 2;
+      const dw8_v e = aie::filter_odd(
+          aie::concat(v[2 * m + 1], k % 2 ? v[k + 1] : zero), 8);
+      dwg_put<4 * P - 64 * m>(out + 64 * m, aie::shuffle_up_fill(e, prev, 8));
+      prev = e;
+    }
+  });
+}
+
+template <int W, int NB, int S>
+static __attribute__((noinline)) void
+dwg_tail(const uint8_t *line0, const uint8_t *line1, const uint8_t *line2,
+         const int8_t *wts, uint8_t *out, const aie::mask<64> *keep,
+         const int scale) {
+  dwg_group<W, NB, S>(line0, line1, line2, wts, out, keep, scale);
+}
+static constexpr int dwg_sb(int w, int s) {
+  for (int n = 1; n <= 64; n++)
+    if ((n * w * 8) % 64 == 0 && (n * w * 8 / s) % 64 == 0)
+      return n;
+  return 0;
+}
+
+// Takes the call when the shape and alignment fit; returns whether it did.
+template <int W, int C, int S>
+static bool dwg_run(const uint8_t *line0, const uint8_t *line1,
+                    const uint8_t *line2, const int8_t *wts, uint8_t *output,
+                    const int32_t check, const int scale) {
+  constexpr int blocks = C / 8, SB = dwg_sb(W, S);
+  constexpr int groups = SB ? blocks / SB : 0, rest = SB ? blocks % SB : 0;
+  if constexpr (W < 8 || W % 2 || C % 8 || SB < 2 || SB * W > 112 ||
+                (rest * W * 8 / S) % 16)
+    return false;
+  else {
+    if ((((uintptr_t)line0 | (uintptr_t)line1 | (uintptr_t)line2 |
+          (uintptr_t)output) &
+         63) != 0)
+      return false;
+    event0();
+    aie::set_saturation(aie::saturation_mode::saturate);
+    aie::set_rounding(aie::rounding_mode::conv_even);
+    const uint64_t taps = (1ull << 24) - 1;
+    const aie::mask<64> keep[3] = {
+        aie::mask<64>::from_uint64(check == top ? 0 : taps),
+        aie::mask<64>::from_uint64(taps),
+        aie::mask<64>::from_uint64(check == bottom ? 0 : taps)};
+    constexpr int in_step = SB * W * 8, out_step = in_step / S;
+    constexpr int tail_in = groups * in_step, tail_out = groups * out_step;
+    if constexpr (rest > 0)
+      dwg_tail<W, rest, S>(line0 + tail_in, line1 + tail_in, line2 + tail_in,
+                           wts + groups * SB * 72, output + tail_out, keep,
+                           scale);
+    for (int g = 0; g < groups; g++)
+      dwg_group<W, SB, S>(line0 + g * in_step, line1 + g * in_step,
+                          line2 + g * in_step, wts + g * SB * 72,
+                          output + g * out_step, keep, scale);
+    event1();
+    return true;
+  }
+}
+#endif
+
 static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                       int8_t *wts, uint8_t *output1, uint8_t *output2,
                       const int32_t row_width, const int32_t channels,
@@ -1114,6 +1318,11 @@ void conv2dk3_dw_stride2_relu_ui8_ui8(
     const int32_t output_channels, const int32_t kernel_width,
     const int32_t kernel_height, const int32_t check, const int scale,
     const int channel_offset) {
+#ifdef DWG_ENABLED
+  if (dwg_run<CONV_INPUT_WIDTH, CONV_OUTPUT_CHANNELS, 2>(
+          line0, line1, line2, wts, output, check, scale))
+    return;
+#endif
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (DW_WIDTH(input_width) / 2 >= 4) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
@@ -1133,6 +1342,11 @@ void conv2dk3_dw_stride1_relu_ui8_ui8(
     const int32_t output_channels, const int32_t kernel_width,
     const int32_t kernel_height, const int32_t check, const int scale,
     const int channel_offset) {
+#ifdef DWG_ENABLED
+  if (dwg_run<CONV_INPUT_WIDTH, CONV_OUTPUT_CHANNELS, 1>(
+          line0, line1, line2, wts, output, check, scale))
+    return;
+#endif
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (DW_WIDTH(input_width) >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
