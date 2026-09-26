@@ -164,6 +164,10 @@ class KernelContract:
             pair, so a build should verify the two tables land in different
             banks. Set it on the contract, not per source file: the LUT often
             comes in through a header (``lut_based_ops.h``, ``lut_inv.h``).
+        alignments: ``(index, bytes)`` pairs for arguments the kernel loads
+            as whole vectors from their start, so they must begin at a
+            multiple of ``bytes``. A call handed a ``memref.view`` at a
+            constant offset that breaks one raises.
 
     Overflow, rounding and NaN handling are not declared twice: the
     reference is the arithmetic model and the tolerance the slack against it.
@@ -186,6 +190,7 @@ class KernelContract:
     out_offset: tuple[int, int] | None = None
     trace: Trace | None = None
     uses_lut: bool = False
+    alignments: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -230,6 +235,10 @@ class KernelContract:
             raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
+        if any(
+            not 0 <= i < len(self.roles) or align < 1 for i, align in self.alignments
+        ):
+            raise ValueError("alignments must name arguments with positive byte counts")
 
     @property
     def out_indices(self) -> tuple[int, ...]:

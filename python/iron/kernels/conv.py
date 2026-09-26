@@ -48,6 +48,12 @@ def _conv_dimensions(input_width, input_channels, output_channels):
     ]
 
 
+def _vector_loads(*indices):
+    """``alignments`` for arguments the tuned build loads as whole vectors."""
+    align = {"aie2": 32, "aie2p": 64}.get(_tuned_arch())
+    return tuple((i, align) for i in indices) if align else ()
+
+
 def _requant(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8):
     """``(acc + 2**(scale-1)) >> scale`` saturated to ``[lo, hi]``, as the kernels do."""
     scale = int(scale)
@@ -1148,6 +1154,7 @@ def bn_conv2dk1_relu(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DINT8_ACT"],
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=bn_conv2dk1_relu_ref,
@@ -1227,6 +1234,7 @@ def bn_conv2dk1_i8(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DSCALAR"],
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, Param, Param, Param, Param),
             reference=bn_conv2dk1_i8_ref,
@@ -1281,6 +1289,7 @@ def bn_conv2dk1_skip(
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, In, *((Param,) * 5)),
             reference=bn_conv2dk1_skip_ref,
@@ -1383,6 +1392,7 @@ def bn_conv2dk1_relu_xy_pool_padded(
         [in_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, InOut, *((Param,) * 8)),
             reference=bn_conv2dk1_relu_xy_pool_padded_ref,
@@ -1676,6 +1686,7 @@ def bn_fc_relu_ui16_pad(
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
         contract=KernelContract(
+            alignments=_vector_loads(1),
             trace=Trace.whole_call(),
             roles=(In, Param, Out, *((Param,) * 5)),
             reference=bn_fc_relu_ui16_pad_ref,
