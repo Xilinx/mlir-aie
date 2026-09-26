@@ -723,18 +723,18 @@ def test_a_baseline_tree_prints_the_rows_that_differ(tmp_path, capsys):
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
-    # Only the LUT build compiles the loop the pragma lands in.
+    # Only the LUT build compiles the extra loop.
     base = tmp_path / "base"
     shutil.copytree(config.aie_kernels_dir(), base / "aie_kernels")
     shutil.copytree(config.aie_runtime_lib_dir(), base / "aie_runtime_lib")
     tanh = base / "aie_kernels" / "activation" / "tanh.cc"
-    loop = "  AIE_PREPARE_FOR_PIPELINING\n  for (int i = 0; i < num_elems; i += 32) {"
-    assert loop in tanh.read_text()
+    marker = "  event0();\n"
+    assert tanh.read_text().count(marker) == 1
     tanh.write_text(
         tanh.read_text().replace(
-            loop,
-            "#if !ACTIVATIONS_NATIVE_TANH\n#pragma clang loop unroll_count(2)\n"
-            f"#endif\n{loop}",
+            marker,
+            f"{marker}#if !ACTIVATIONS_NATIVE_TANH\n"
+            "  for (volatile int k = 0; k < 3; ++k)\n    ;\n#endif\n",
         )
     )
     meta = tmp_path / "meta.json"
