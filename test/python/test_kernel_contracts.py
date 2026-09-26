@@ -498,23 +498,30 @@ def test_layer_norm_f32_stack_covers_measured_core(
 
 @pytest.mark.parametrize("portable", [False, True])
 @pytest.mark.parametrize(
-    "device,dim_k,minimum",
+    "device,dim_k,dim_n,minimum",
     [
-        (NPU2Col1, 72, 1024),
-        (NPU2Col1, 144, 2240),
-        (NPU2Col1, 256, 4032),
-        (NPU1Col1, 256, 512),
+        (NPU2Col1, 56, 16, 1088),
+        (NPU2Col1, 72, 32, 1024),
+        (NPU2Col1, 144, 32, 2240),
+        (NPU2Col1, 256, 16, 4160),
+        (NPU2Col1, 256, 32, 4032),
+        (NPU2Col1, 384, 16, 6208),
+        (NPU1Col1, 256, 32, 512),
     ],
 )
 def test_mm_i8_i32_stack_covers_measured_core(
-    monkeypatch, device, dim_k, minimum, portable
+    monkeypatch, device, dim_k, dim_n, minimum, portable
 ):
     # aiecc's measured_stack_size, worst of the b_col_maj/c_col_maj builds.
     if portable:
         monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
     set_current_device(device())
     fn = kernels.mm(
-        dim_m=32, dim_k=dim_k, dim_n=32, input_dtype=np.int8, output_dtype=np.int32
+        dim_m=32,
+        dim_k=dim_k,
+        dim_n=dim_n,
+        input_dtype=np.int8,
+        output_dtype=np.int32,
     )
     assert kd._stack_bytes(fn) >= minimum
 

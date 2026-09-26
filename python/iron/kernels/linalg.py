@@ -613,18 +613,20 @@ def mm(
             layouts=layouts,
             # aiecc measured_stack_size, tuned or not: at most 512 B on aie2
             # and 192 B on aie2p, but for aie2p's int8 -> int32 kernel, whose
-            # fully unrolled K loop spills 16 B per unit of K (16 * K - 64 B
-            # from K = 144, no more than 1024 B up to K = 64). chess builds
+            # fully unrolled K loop spills about 16 B per unit of K: with
+            # c_col_maj, 1088 B at K = 56 and 6208 B at K = 384, but no more
+            # than 1024 B up to K = 48. mm_aie2p.h rolls K up from K = 416
+            # (192 B), and a 16x16 tile does not spill (640 B). chess builds
             # keep the matrix_multiplication examples' number.
             stack_bytes=(
                 0xD00
                 if use_chess
                 else (
-                    16 * dim_k
+                    16 * dim_k + 256
                     if arch == "aie2p"
                     and vectorized
                     and key == (np.int8, np.int32)
-                    and dim_k > 64
+                    and 48 < dim_k < 416
                     else None
                 )
             ),
