@@ -451,7 +451,7 @@ def silu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             silu_ref,
             count=False,
             use_lut=use_lut,
-            elementwise=silu_lut_ref,
+            elementwise=silu_table_ref if _tuned_arch() == "aie2p" else silu_lut_ref,
             tolerance=_vtanh_family_tolerance("silu"),
         ),
         use_lut_tanh=use_lut,
@@ -873,8 +873,10 @@ def sigmoid_table_ref(x):
 
 
 def silu_lut_ref(x):
-    """Model of [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
+    """Model of [`silu`][iron.kernels.activation.silu]'s LUT build on aie2.
 
+    AIE2P's multiplies by its sigmoid table instead; see
+    [`silu_table_ref`][iron.kernels.activation.silu_table_ref].
     activation/silu.cc narrows the sigmoid factor to bf16 before the final
     multiply, so that rounding is modelled too, not folded away. The sigmoid
     is exactly 0 from x = -8 down, and x is clamped there before the multiply,
@@ -882,6 +884,19 @@ def silu_lut_ref(x):
     """
     xf = np.asarray(x).astype(np.float32)
     sig = np.asarray(sigmoid_lut_ref(xf), np.float32)
+    return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
+
+
+def silu_table_ref(x):
+    """Model of AIE2P's [`silu`][iron.kernels.activation.silu] built with ``use_lut=True``.
+
+    [`silu_lut_ref`][iron.kernels.activation.silu_lut_ref] with AIE2P's
+    sigmoid table,
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref], as the
+    bf16 factor.
+    """
+    xf = np.asarray(x).astype(np.float32)
+    sig = np.asarray(sigmoid_table_ref(xf), np.float32)
     return _bf16_ftz(np.maximum(xf, -8.0) * sig).astype(np.asarray(x).dtype)
 
 
