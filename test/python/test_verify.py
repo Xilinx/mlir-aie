@@ -170,6 +170,16 @@ def test_bf16_negative_ulp_direction():
     assert bf16_ulp_distance(*zeros)[0] == 0
 
 
+def test_ulps_reference_is_rounded_directly_not_through_float32():
+    """Rounding the float64 reference through float32 first picks the wrong
+    neighbour on this tie: 1 + 2**-8 + 2**-30 is correctly rounded to
+    1.0078125, but casting it to float32 then bfloat16 lands on 1.0.
+    """
+    ref = np.array([1 + 2**-8 + 2**-30], np.float64)
+    correct = np.array([1.0078125], bfloat16)
+    assert compare(correct, ref, Tolerance.bf16_ulps(0)).ok
+
+
 def test_ulps_atol_floor_admits_a_flushed_subnormal():
     """A subnormal the device flushed to zero meets the floor, not the ulps."""
     smallest_normal = 2.0**-126

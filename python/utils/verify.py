@@ -563,7 +563,13 @@ def compare(
             raise ValueError(
                 f"Tolerance in ULPs is defined for bfloat16 outputs, got {actual.dtype}"
             )
-        e_bf = e32.astype(bfloat16)
+        from aie.utils.accuracy import round_to
+
+        # e32 is already float32, so casting it to bfloat16 rounds twice
+        # (float64 -> float32 -> bfloat16); round_to rounds the float64 e
+        # directly, so ties break the same way a correctly rounded bf16
+        # implementation would.
+        e_bf = round_to(e, bfloat16)
         ulp = np.zeros(n, np.int64)
         ulp[finite] = bf16_ulp_distance(a[finite], e_bf[finite])
         err[finite] = np.abs(a32[finite] - e_bf[finite].astype(np.float32))
