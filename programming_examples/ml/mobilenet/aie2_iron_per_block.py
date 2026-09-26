@@ -274,17 +274,26 @@ def _make_argparser():
         help="scale_factors JSON file path (default: data/scale_factors_final.json). "
         "Use bottleneck_*/data/scale_factors.json for per-bn fixture testing.",
     )
+    p.add_argument(
+        "--sa-effort",
+        type=float,
+        help="SA placer search budget scale (default: 1.0; lower trades "
+        "placement cost for compile time)",
+    )
     return p
 
 
 def main():
     opts = _make_argparser().parse_args()
     set_current_device(device_from_args(opts, n_cols=None))
+    design = per_block_design
+    if opts.sa_effort is not None:
+        design = design.specialize(aiecc_flags=sa_placer_flags(effort=opts.sa_effort))
     compile_kwargs = dict(
         block_name=opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json
     )
     if opts.xclbin_path:
-        per_block_design.specialize(**compile_kwargs).compile(
+        design.specialize(**compile_kwargs).compile(
             xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
         )
     else:
