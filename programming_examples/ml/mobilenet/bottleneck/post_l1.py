@@ -138,6 +138,7 @@ def post_l1(act_in, sf, *, tiles=None, data_dir):
             post_sf,
         ],
         tile=tiles["compute"] if tiles else None,
+        stack_size=2048,
     )
 
     return [w_post_l1], act_out_post_avgpool_shim
