@@ -29,8 +29,8 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
         act_in: ObjectFifo  — host-scratch fill of the avgpool output (uint16).
         sf: dict            — full scale-factor mapping; uses sf["POST"]["FC1"], ["FC2"].
         tiles: dict | None  — PLACEMENT["post_l2"] with keys "wts_memtiles",
-            "compute", "join_memtile". None leaves placement to the compiler
-            (SA placer).
+            "compute", "join_memtile" (the last two optional). None leaves
+            placement to the compiler (SA placer).
         data_dir: str       — directory holding FC{1,2}_{0..3}_chain.txt.
 
     Returns:
@@ -155,7 +155,7 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
                 post_fc1_sf,
                 post_fc2_sf,
             ],
-            tile=tiles["compute"][i] if tiles else None,
+            tile=(t("compute") or [None] * n_fc_tiles)[i],
         )
         post_l2_workers.append(w)
 
