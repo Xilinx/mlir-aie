@@ -732,10 +732,11 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
 
   auto &traced =
       input
-          .map<ModRef>("placed.mlir",
-                       PassPipeline{getPlacementPipeline(
-                           &context, coresPerCol.getValue(),
-                           placerType.getValue(), saSeed.getValue())})
+          .map<ModRef>(
+              "placed.mlir",
+              PassPipeline{getPlacementPipeline(
+                  &context, coresPerCol.getValue(), placerType.getValue(),
+                  saSeed.getValue(), saEffort.getValue())})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
   // --default-stack-size stands in for the target's built-in default on any

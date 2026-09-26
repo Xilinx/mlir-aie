@@ -1629,6 +1629,9 @@ void SAPlacer::runSAMainLoop() {
 
   int greedyIters = config.greedyMultiplier * numMovable;
 
+  movesPerIter = std::max(1, static_cast<int>(movesPerIter * config.effort));
+  greedyIters = static_cast<int>(greedyIters * config.effort);
+
   int numSamples = std::max(10 * numMovable, 50);
   double estimatedT = estimateInitialTemperature(numSamples);
   double initTemp =
@@ -1842,11 +1845,15 @@ void SAPlacer::printPlacementStats(int64_t elapsedMs) const {
 LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
   // Restore best placement found during SA. Skip if SA loop didn't run
   // (bestOverallCost stays at INT_MAX when runSAMainLoop returns early).
+  finalCost = totalCost;
   if (bestOverallCost < INT_MAX) {
-    if (bestCost < INT_MAX)
+    if (bestCost < INT_MAX) {
       currentPlacement = bestPlacement;
-    else
+      finalCost = bestCost;
+    } else {
       currentPlacement = bestOverallPlacement;
+      finalCost = bestOverallCost;
+    }
     physToLogical.clear();
     for (auto &[op, pos] : currentPlacement)
       physToLogical[pos] = op;

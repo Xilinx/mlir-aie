@@ -502,6 +502,7 @@ struct SAConfig {
   int maxMovesPerIter = 2000;
   int minMaxIters = 10000;
   int greedyMultiplier = 50;       // greedyIters = multiplier * numMovable
+  double effort = 1.0;             // scales movesPerIter and greedyIters
   double tempScaleEstimate = 10.0; // initTemp cap: scale * estimated T
   double tempScaleCost = 2.0;      // initTemp cap: scale * totalCost
 
@@ -584,11 +585,13 @@ public:
 
   mlir::LogicalResult place(DeviceOp device) override;
   llvm::StringRef getName() const override { return "sa_placer"; }
+  int getFinalCost() const { return finalCost; }
 
 private:
   // Configuration
   unsigned rngSeed;
   SAConfig config;
+  int finalCost = 0;
   std::mt19937 rng;
   SASchedule schedule;
 
