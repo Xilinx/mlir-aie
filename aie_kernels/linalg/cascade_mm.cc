@@ -82,29 +82,57 @@ struct cascade_tile;
 template <typename T_out>
 struct cascade_tile<int16, T_out> {
   using MMUL = aie::mmul<4, 4, 8, int16, int16>;
-  static constexpr int ks = 8;
+  using A = aie::vector<int16, 16>;
+  // Steps of 16 when the A rows allow 256-bit loads.
+  template <int colA>
+  static constexpr int ks = colA % 16 == 0 ? 16 : 8;
 
-  // A rows i..i+3, columns k..k+7: the tiles for k and k + 4.
+  template <int colA>
   static inline void mac_step(MMUL &C00, MMUL &C01, MMUL &C10, MMUL &C11,
                               const int16 *__restrict a0,
                               const int16 *__restrict a1,
-                              const int16 *__restrict b, int colA, int colB) {
-    auto [a00, a01] = split_a(a0, colA);
-    auto [a10, a11] = split_a(a1, colA);
-    auto [b00, b01] = split_b(b, colB);
-    auto [b10, b11] = split_b(b + 4 * colB, colB);
-    C00.mac(a00, b00);
-    C01.mac(a00, b01);
-    C10.mac(a10, b00);
-    C11.mac(a10, b01);
-    C00.mac(a01, b10);
-    C01.mac(a01, b11);
-    C10.mac(a11, b10);
-    C11.mac(a11, b11);
+                              const int16 *__restrict b, int colB) {
+    if constexpr (ks<colA> == 16) {
+      auto [a00, a01, a02, a03] = split_a16(a0, colA);
+      auto [a10, a11, a12, a13] = split_a16(a1, colA);
+      mac4(C00, C01, C10, C11, a00, a10, b, colB);
+      mac4(C00, C01, C10, C11, a01, a11, b + 4 * colB, colB);
+      mac4(C00, C01, C10, C11, a02, a12, b + 8 * colB, colB);
+      mac4(C00, C01, C10, C11, a03, a13, b + 12 * colB, colB);
+    } else {
+      auto [a00, a01] = split_a(a0, colA);
+      auto [a10, a11] = split_a(a1, colA);
+      mac4(C00, C01, C10, C11, a00, a10, b, colB);
+      mac4(C00, C01, C10, C11, a01, a11, b + 4 * colB, colB);
+    }
   }
 
-  static inline std::pair<aie::vector<int16, 16>, aie::vector<int16, 16>>
-  split_a(const int16 *__restrict a, int colA) {
+  static inline void mac4(MMUL &C00, MMUL &C01, MMUL &C10, MMUL &C11, A a0,
+                          A a1, const int16 *__restrict b, int colB) {
+    auto [b0, b1] = split_b(b, colB);
+    C00.mac(a0, b0);
+    C01.mac(a0, b1);
+    C10.mac(a1, b0);
+    C11.mac(a1, b1);
+  }
+
+  // A rows i..i+3, columns k..k+15: the tiles for k, k + 4, k + 8, k + 12.
+  static inline std::array<A, 4> split_a16(const int16 *__restrict a,
+                                           int colA) {
+    auto [e, o] = aie::interleave_unzip(
+        aie::concat(aie::load_v<16>(a), aie::load_v<16>(a + colA)),
+        aie::concat(aie::load_v<16>(a + 2 * colA),
+                    aie::load_v<16>(a + 3 * colA)),
+        4);
+    auto [t0, t8] =
+        aie::interleave_unzip(e.extract<16>(0), e.extract<16>(1), 4);
+    auto [t4, t12] =
+        aie::interleave_unzip(o.extract<16>(0), o.extract<16>(1), 4);
+    return {t0, t4, t8, t12};
+  }
+
+  // A rows i..i+3, columns k..k+7: the tiles for k and k + 4.
+  static inline std::pair<A, A> split_a(const int16 *__restrict a, int colA) {
     aie::vector<int16, 32> v =
         aie::concat(aie::load_v<8>(a), aie::load_v<8>(a + colA),
                     aie::load_v<8>(a + 2 * colA), aie::load_v<8>(a + 3 * colA));
@@ -124,13 +152,14 @@ struct cascade_tile<int16, T_out> {
 template <typename T_out>
 struct cascade_tile<bfloat16, T_out> {
   using MMUL = aie::mmul<4, 8, 8, bfloat16, bfloat16>;
+  template <int colA>
   static constexpr int ks = 8;
 
+  template <int colA>
   static inline void mac_step(MMUL &C00, MMUL &C01, MMUL &C10, MMUL &C11,
                               const bfloat16 *__restrict a0,
                               const bfloat16 *__restrict a1,
-                              const bfloat16 *__restrict b, int colA,
-                              int colB) {
+                              const bfloat16 *__restrict b, int colB) {
     aie::vector<bfloat16, 32> A0 = load_a(a0, colA);
     aie::vector<bfloat16, 32> A1 = load_a(a1, colA);
     auto [t0, t1] = split_b(b, colB);
@@ -226,6 +255,7 @@ static inline void cascade_vector(const T_in *__restrict a,
                                   T_out *__restrict c) {
   using tile = cascade_tile<T_in, T_out>;
   using MMUL = typename tile::MMUL;
+  constexpr int ks = tile::template ks<colA>;
   for (int i = 0; i < rowA; i += 8) {
     for (int j = 0; j < colB; j += 16) {
       // Zeroed explicitly: with the first-mac zero flag, Peano drops the
@@ -236,10 +266,11 @@ static inline void cascade_vector(const T_in *__restrict a,
       const T_in *__restrict a1 = a0 + 4 * colA;
       const T_in *__restrict pb = b + j;
       AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_MIN_ITERATION_COUNT(colA / tile::ks)
-      for (int k = 0; k < colA; k += tile::ks) {
-        tile::mac_step(C00, C01, C10, C11, a0 + k, a1 + k, pb, colA, colB);
-        pb += tile::ks * colB;
+      AIE_LOOP_MIN_ITERATION_COUNT(colA / ks)
+      for (int k = 0; k < colA; k += ks) {
+        tile::template mac_step<colA>(C00, C01, C10, C11, a0 + k, a1 + k, pb,
+                                      colB);
+        pb += ks * colB;
       }
       T_out *pc = c + i * colB + j;
       cascade_finish<get, put, T_out>(C00, pc, colB);
