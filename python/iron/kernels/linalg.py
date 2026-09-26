@@ -1087,7 +1087,6 @@ def mha(
                 _tile_layout((dim_m, dim_n), streams.C, inverse=True, block=(r, t)),
                 *(() if pv else (None,)),
             ),
-            stack_bytes=0xD00,  # mm.cc's product: programming_examples/basic/matrix_multiplication
             roles=(In, In, InOut) if pv else (In, In, InOut, Param),
             parameter_bindings=(() if pv else ((3, np.array([0, 0], np.int32)),)),
             reference=partial(mm_tile_ref, dim_m=dim_m, dim_k=dim_k, dim_n=dim_n),
