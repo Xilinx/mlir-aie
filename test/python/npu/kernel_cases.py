@@ -473,6 +473,10 @@ CASES: list[Case] = [
     Case("rgba2gray", calls=16, smoke=True),
     # Five vectors, one under the count the AIE2 pipelined loop requires.
     check("rgba2gray", dict(line_width=160), tag="short-row"),
+    # AIE2P steps 64 pixels at a time, pipelined from 4 steps, then 32: 4
+    # steps and a tail, and the tail alone.
+    check("rgba2gray", dict(line_width=288), tag="tail"),
+    check("rgba2gray", dict(line_width=32), tag="one-vector"),
     Case("threshold", calls=16, scalars=(100, 255, 0), smoke=True),
     check("threshold", calls=16, scalars=(100, 255, 2), tag="trunc"),
     check("threshold", calls=16, scalars=(100, 255, 4), tag="tozero-inv"),
