@@ -311,6 +311,82 @@ static void conv2dk1_skip_vector(uint8_t *input0, uint8_t *input1,
 
   event1();
 }
+#elif AIE_TUNED_AIE2P
+//*****************************************************************************
+// conv2d 1x1 skip - vector
+// act: uint8, wts: int8, skip: int8 or uint8, out: uint8
+//
+// input_width must be a multiple of 32: each block of 32 pixels keeps 4
+// accumulators of 8 pixels, one native 8x8x8 mac each.
+//*****************************************************************************
+template <typename TSKIP>
+static void conv2dk1_skip_vector(uint8_t *input0, uint8_t *input1,
+                                 int8_t *kernels, uint8_t *__restrict output,
+                                 TSKIP *__restrict skip,
+                                 const int32_t runtime_input_width,
+                                 const int32_t runtime_input_channels,
+                                 const int32_t runtime_output_channels,
+                                 const int scale, const int skip_scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
+  event0();
+
+  using MMUL8x8x8 = aie::mmul<8, 8, 8, uint8, int8>;
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+
+  constexpr int NUM_ACC = 4;
+  const int iw = input_width;
+  const int iw_32 = input_width / 32;
+  // input0 and input1 each hold half the input channels; the weights of
+  // input0's channels come first within each oc/8 group.
+  const int ic_half = input_channels / 16;
+
+  uint8_t *__restrict out_ptr = output;
+  TSKIP *__restrict skip_ptr = skip;
+
+  for (int oc = 0; oc < (output_channels / 8); oc++) {
+    for (int x = 0; x < iw_32; x++) {
+      MMUL8x8x8 acc[NUM_ACC];
+      AIE_LOOP_UNROLL_FULL
+      for (int i = 0; i < NUM_ACC; i++)
+        acc[i] = aie::zeros<acc32, 64>();
+      const uint8_t *__restrict in0 = input0 + x * 256;
+      const uint8_t *__restrict in1 = input1 + x * 256;
+      const int8_t *__restrict w0 = kernels;
+      const int8_t *__restrict w1 = kernels + ic_half * 64;
+      AIE_LOOP_UNROLL(4)
+      for (int ic = 0; ic < ic_half; ic++) {
+        aie::vector<int8, 64> b0 = aie::load_v<64>(w0);
+        aie::vector<int8, 64> b1 = aie::load_v<64>(w1);
+        w0 += 64;
+        w1 += 64;
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          acc[x8].mac(aie::load_v<64>(in0 + x8 * 64), b0);
+        AIE_LOOP_UNROLL_FULL
+        for (int x8 = 0; x8 < NUM_ACC; x8++)
+          acc[x8].mac(aie::load_v<64>(in1 + x8 * 64), b1);
+        in0 += iw * 8;
+        in1 += iw * 8;
+      }
+      AIE_LOOP_UNROLL_FULL
+      for (int x8 = 0; x8 < NUM_ACC; x8++) {
+        aie::accum<acc32, 64> accj;
+        accj.from_vector(aie::load_v<64>(skip_ptr), 0);
+        skip_ptr += 64;
+        accj = aie::mac(accj, acc[x8].template to_vector<int8>(scale),
+                        (int8_t)1);
+        aie::store_v(out_ptr, accj.template to_vector<uint8>(skip_scale));
+        out_ptr += 64;
+      }
+    }
+    kernels += (input_channels / 8) * 64; // next oc/8 weights
+  }
+
+  event1();
+}
 #else
 #ifdef INT8_ACT
 
@@ -844,7 +920,7 @@ void conv2dk1_skip_ui8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 
 #else // Vector
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 #ifdef INT8_ACT
 
 void conv2dk1_skip_i8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
