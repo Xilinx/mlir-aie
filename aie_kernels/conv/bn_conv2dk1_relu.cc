@@ -1697,6 +1697,32 @@ static void k1_vector(const int8_t *input, const int8_t *kernels,
 
 constexpr int32_t K1_POOL_MAX_WIDTH = 32;
 
+// Out of line on AIE2P, where the pooled sums' divide constants otherwise stay
+// live across the conv and spill, and the kernel's stack outgrows the default.
+#if AIE_TUNED_AIE2P
+#define K1_POOL_NOINLINE __attribute__((noinline))
+#else
+#define K1_POOL_NOINLINE
+#endif
+
+K1_POOL_NOINLINE static aie::vector<int32, 16>
+k1_pool_avg(const aie::vector<int32, 16> res) {
+  // (acc * 42799) >> 21 as (acc << 16) - acc * 22737, rounded down.
+  aie::accum<acc64, 16> m;
+  m.from_vector(res, 16);
+  m = aie::mac(m, res, aie::broadcast<int16, 16>(-22737));
+  aie::set_rounding(aie::rounding_mode::floor);
+  const aie::vector<int32, 16> q = m.template to_vector<int32>(21);
+  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::vector<int32, 16> r = aie::sub(
+      res,
+      aie::mul(q, aie::broadcast<int16, 16>(49)).template to_vector<int32>(0));
+  const auto up = aie::ge(r, 30) |
+                  (aie::ge(r, 25) &
+                   aie::eq(aie::bit_and(q, aie::broadcast<int32, 16>(1)), 1));
+  return aie::select(q, aie::add(q, 1), up);
+}
+
 // Pools one output channel block at a time. The requantized conv row goes to
 // a stack buffer, where the overlapping last chunk just rewrites the same
 // pixels and the bytes past the row stay zero, and is summed 4 pixels at a
@@ -1705,13 +1731,13 @@ constexpr int32_t K1_POOL_MAX_WIDTH = 32;
 // q odd. The divide by 49 is a 32-bit multiply-shift. For sums below 100353
 // (the largest here is 65535 + 255 * K1_POOL_MAX_WIDTH) it is one low only on
 // multiples of 49, where the remainder 49 still rounds q up to the quotient.
-static void k1_xy_pool_vector(const int8_t *input, const int8_t *kernels,
-                              uint16_t *output, const int32_t input_width,
-                              const int32_t input_channels,
-                              const int32_t output_channels,
-                              const int32_t output_channels_padd,
-                              const int scale, const int y_index,
-                              int32_t output_split, int32_t weight_index) {
+K1_POOL_NOINLINE static void
+k1_xy_pool_vector(const int8_t *input, const int8_t *kernels, uint16_t *output,
+                  const int32_t input_width, const int32_t input_channels,
+                  const int32_t output_channels,
+                  const int32_t output_channels_padd, const int scale,
+                  const int y_index, int32_t output_split,
+                  int32_t weight_index) {
   alignas(32) uint8_t row[K1_POOL_MAX_WIDTH * 8];
   for (int i = 0; i < K1_POOL_MAX_WIDTH * 8; i += 32)
     aie::store_v(row + i, aie::zeros<uint8, 32>());
@@ -1737,29 +1763,19 @@ static void k1_xy_pool_vector(const int8_t *input, const int8_t *kernels,
     const aie::vector<uint16, 16> s16 =
         aie::add(sum.extract<16>(0), sum.extract<16>(1));
     uint16_t *o = output + (oc_offset + oc) * 8;
+#if AIE_TUNED_AIE2P
+    // Peano can't legalize a 128-bit vector and on AIE2P, so mask unpacked.
+    const auto above = aie::bit_and(aie::load_v<8>(o).unpack(), prior.unpack());
+#else
+    const auto above = aie::bit_and(aie::load_v<8>(o), prior).unpack();
+#endif
     const aie::vector<int32, 8> acc =
-        aie::add(aie::vector_cast<int32>(
-                     aie::bit_and(aie::load_v<8>(o), prior).unpack()),
+        aie::add(aie::vector_cast<int32>(above),
                  aie::vector_cast<int32>(
                      aie::add(s16.extract<8>(0), s16.extract<8>(1)).unpack()));
     aie::vector<int32, 16> res = aie::concat(acc, aie::zeros<int32, 8>());
-    if (last) {
-      // (acc * 42799) >> 21 as (acc << 16) - acc * 22737, rounded down.
-      aie::accum<acc64, 16> m;
-      m.from_vector(res, 16);
-      m = aie::mac(m, res, aie::broadcast<int16, 16>(-22737));
-      aie::set_rounding(aie::rounding_mode::floor);
-      const aie::vector<int32, 16> q = m.template to_vector<int32>(21);
-      aie::set_rounding(aie::rounding_mode::conv_even);
-      const aie::vector<int32, 16> r =
-          aie::sub(res, aie::mul(q, aie::broadcast<int16, 16>(49))
-                            .template to_vector<int32>(0));
-      const auto up =
-          aie::ge(r, 30) |
-          (aie::ge(r, 25) &
-           aie::eq(aie::bit_and(q, aie::broadcast<int32, 16>(1)), 1));
-      res = aie::select(q, aie::add(q, 1), up);
-    }
+    if (last)
+      res = k1_pool_avg(res);
     aie::store_v(o, aie::filter_even(aie::vector_cast<uint16>(res), 1)
                         .template extract<8>(0));
   }
@@ -2167,7 +2183,7 @@ void conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8(
     const int32_t output_channels_padd, const int scale, const int y_index,
     int32_t output_split, int32_t weight_index) {
   event0();
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 4 && input_width <= K1_POOL_MAX_WIDTH &&
       ((uintptr_t)output & 15) == 0) {
     k1_xy_pool_vector(input, kernels, output, input_width, input_channels,
