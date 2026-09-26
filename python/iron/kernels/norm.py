@@ -17,7 +17,6 @@ from ._common import (
     KernelContract,
     Param,
     Trace,
-    _arch_traits,
     _detect_arch,
     _kernel_source,
     _make_extern,
@@ -124,10 +123,10 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
 def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunction:
     """Layer-norm a bf16 row; ``(in, out, cols)``, gamma=1, beta=0, eps=1e-5.
 
-    ``cols`` aliases ``tile_size``, a positive multiple of 16 on aie2 or 32 on
-    aie2p (the source processes whole vectors, without a scalar tail).
+    ``cols`` aliases ``tile_size``, a positive multiple of 16 (the source
+    processes whole 16-lane halves, without a scalar tail).
     """
-    tile_size = _row_size("layer_norm", tile_size, cols, _arch_traits().bf16_lanes)
+    tile_size = _row_size("layer_norm", tile_size, cols, 16)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _norm_extern(
         "layer_norm",
