@@ -1630,7 +1630,11 @@ void SAPlacer::runSAMainLoop() {
   int greedyIters = config.greedyMultiplier * numMovable;
 
   movesPerIter = std::max(1, static_cast<int>(movesPerIter * config.effort));
-  greedyIters = static_cast<int>(greedyIters * config.effort);
+  // Same floor as movesPerIter above: a small positive effort must still
+  // scale the greedy stage down, but never to zero -- skipping it entirely
+  // is what leaves violations unresolved (see finalizePlacement's legality
+  // check).
+  greedyIters = std::max(1, static_cast<int>(greedyIters * config.effort));
 
   int numSamples = std::max(10 * numMovable, 50);
   double estimatedT = estimateInitialTemperature(numSamples);
@@ -1872,6 +1876,22 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
       endTime - startTime);
 
   LLVM_DEBUG(printPlacementStats(elapsed.count()));
+
+  // SA optimizes for legality but is not guaranteed to reach it (e.g. a very
+  // low --sa-effort can starve the greedy stage that normally drives hard
+  // violations to zero). Falling back to bestOverallPlacement in that case
+  // would silently emit a placement that overflows resources or violates
+  // cascade adjacency, so surface it as a pass failure instead.
+  int finalHardPenalty = getResourcePenalty();
+  int finalCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
+                                             config.cascadeWeightPerDist);
+  if (finalHardPenalty != 0 || finalCascade != 0) {
+    device.emitError("SA placer failed to find a legal placement (resource "
+                     "penalty=")
+        << finalHardPenalty << ", cascade penalty=" << finalCascade
+        << "); try increasing --sa-effort";
+    return failure();
+  }
 
   result = currentPlacement;
   return success();
