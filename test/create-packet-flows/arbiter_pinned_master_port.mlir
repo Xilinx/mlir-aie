@@ -5,25 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
+// RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
 
 // A master port is tied to one arbiter, so the second flow to leave by it has
-// nothing to choose. Still worth reporting when that arbiter is one it can
-// deadlock against: the fix is separate master ports, not a different amsel.
-//
-// The two flows meet twice, and only the first meeting is a hazard:
+// nothing to choose. The two flows meet twice:
 //
 //   (1,4) --.
-//           |          both southbound on one link, and reported
+//           |          both southbound on one link
 //   (1,3) --+--.
-//              |       both into one DMA channel, and exempt
+//              |       both into one DMA channel
 //           (1,2)
 //
 // Flow 0 sends 256 bytes a descriptor into a channel taking 64, holding the
-// arbiter across four of them. At (1,3) flow 1 has somewhere else to be and so
-// waits needlessly; by (1,2) one DMA drains both in any order, so sharing
-// there costs nothing. arbiter_fan_in_one_dma.mlir is just the second meeting.
+// arbiter across four of them, so at (1,3) flow 1 can wait on flow 0. But both
+// end at one DMA channel, which takes their packets in whatever order they
+// come: flow 1 waiting at (1,3) is no worse than waiting at (1,2), and neither
+// meeting can deadlock. arbiter_fan_in_one_dma.mlir is just the second one.
 
 module {
   aie.device(npu2) {
@@ -66,12 +64,9 @@ module {
   }
 }
 
-// One warning, at the transit tile only -- nothing is said about (1,2).
+// NOWARN-NOT: warning
 
-// WARN:      warning: at tile (1, 3), packet flow 1 shares arbiter 0 with packet flow 0, which it can deadlock against; a master port of this flow is already tied to that arbiter
-// WARN-NOT:  warning
-
-// Routing is unchanged by the warning: one arbiter at each tile, shared.
+// One arbiter at each tile, shared.
 
 // CHECK-LABEL: aie.switchbox(%tile_1_3)
 // CHECK:         %[[SOUTH:.*]] = aie.amsel<0> (0)

@@ -9,7 +9,7 @@
 
 // Five destinations on one slave port need five rules, over the 4-slot budget.
 
-// CHECK: error{{.*}} slave port packet rules exceed the 4-slot limit
+// CHECK: error: Unable to find a legal routing: at tile (1, 1), the packet flows entering on {{[A-Za-z]+:[0-9]+}} need 5 packet rules, and a slave port holds 4.
 
 module @overbudget {
  aie.device(xcvc1902) {

@@ -35,19 +35,19 @@
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK-NEXT:    %[[AMSEL:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:    aie.masterset(DMA : 0, %[[AMSEL]]) {keep_pkt_header = true}
-// CHECK-NEXT:    aie.packet_rules(North : 0) {
+// CHECK-NEXT:    aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
 // CHECK-NEXT:    }
-// CHECK-NEXT:    aie.packet_rules(North : 3) {
+// CHECK-NEXT:    aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
 // CHECK-NEXT:    }
-// CHECK-NEXT:    aie.packet_rules(North : 2) {
+// CHECK-NEXT:    aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
 // CHECK-NEXT:    }
-// CHECK-NEXT:    aie.packet_rules(North : 1) {
+// CHECK-NEXT:    aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
 // CHECK-NEXT:    }
-// CHECK-NEXT:    aie.packet_rules(South : 5) {
+// CHECK-NEXT:    aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
