@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 import numpy as np
+from aie.dialects.aie import event  # pyright: ignore[reportAttributeAccessIssue]
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.device import Tile
@@ -40,7 +41,9 @@ class Stage:
     the same order. With ``outputs_span_iterations`` the outputs are
     acquired once around the loop instead. ``prologue(constants)`` runs
     before the loop and ``initialize(outs, constants)`` right after the
-    outputs are acquired.
+    outputs are acquired. A traced stage emits ``trace_flush`` ``event0``,
+    ``event1`` pairs after the loop: the trace unit sends only whole
+    packets, so without them the last intervals never leave the tile.
     """
 
     body: Callable
@@ -55,6 +58,7 @@ class Stage:
     tile: Tile | None = None
     stack_size: int | None = None
     trace: bool = False
+    trace_flush: int = 0
     worker: Worker | None = field(default=None, init=False)
 
     def _core(self):
@@ -97,6 +101,12 @@ class Stage:
                     f.release(1)
             for f in f_held:
                 f.release(1)
+            if self.trace:
+                # Back to back, a run of event1s is one event; alternating,
+                # each pair is one.
+                for _ in range(self.trace_flush):
+                    event(0)
+                    event(1)
 
         return core
 
@@ -153,13 +163,14 @@ def kernel_params(func, params, first: int) -> KernelParams:
     return result
 
 
-def pipeline(stages, host_types, transfers, *, trace_size=0):
+def pipeline(stages, host_types, transfers, *, trace_size=0, coretile_events=None):
     """Build the stages' Workers and the sequence that moves their host buffers.
 
     ``host_types`` are the design's host buffers in argument order and
     ``transfers`` the ``(fifo, "fill" | "drain", host index)`` triples that
     connect them; fills are issued first, then drains, each in the order
-    given. A positive ``trace_size`` traces the stages that asked for it.
+    given. A positive ``trace_size`` traces the stages that asked for it,
+    with ``coretile_events`` in place of the default core events if given.
     """
     device = get_current_device()
     if device is None:
@@ -189,5 +200,9 @@ def pipeline(stages, host_types, transfers, *, trace_size=0):
         # The placer fills shims from column 0, where a kernel with two
         # outputs takes both S2MM channels; the far column leaves the trace
         # one.
-        prog.enable_trace(trace_size, egress_shim_col=device.cols - 1)
+        prog.enable_trace(
+            trace_size,
+            egress_shim_col=device.cols - 1,
+            coretile_events=coretile_events,
+        )
     return prog.resolve_program()
