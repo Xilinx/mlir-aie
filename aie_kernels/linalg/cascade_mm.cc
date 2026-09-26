@@ -214,36 +214,56 @@ static inline Acc cascade_get() {
   return acc;
 }
 
-template <typename T_out, typename Acc>
-static inline Acc load_c(const T_out *__restrict c, int colB) {
-  aie::vector<T_out, 32> v =
-      aie::concat(aie::load_v<8>(c), aie::load_v<8>(c + colB),
-                  aie::load_v<8>(c + 2 * colB), aie::load_v<8>(c + 3 * colB));
-  Acc acc;
-  acc.from_vector(v);
-  return acc;
+// A pair of side-by-side C tiles: rows 16 wide, split like B.
+template <typename T_out>
+static inline std::pair<aie::vector<T_out, 32>, aie::vector<T_out, 32>>
+load_c(const T_out *__restrict c, int colB) {
+  aie::vector<T_out, 64> v =
+      aie::concat(aie::load_v<16>(c), aie::load_v<16>(c + colB),
+                  aie::load_v<16>(c + 2 * colB), aie::load_v<16>(c + 3 * colB));
+  return aie::interleave_unzip(v.template extract<32>(0),
+                               v.template extract<32>(1), 8);
 }
 
-template <typename T_out, typename Acc>
-static inline void store_c(T_out *__restrict c, const Acc &acc, int colB) {
-  aie::vector<T_out, 32> v = acc.template to_vector<T_out>();
-  AIE_LOOP_UNROLL_FULL
-  for (int r = 0; r < 4; r++)
-    aie::store_v(c + r * colB, v.template extract<8>(r));
+template <typename T_out>
+static inline void store_c(T_out *__restrict c, aie::vector<T_out, 32> v0,
+                           aie::vector<T_out, 32> v1, int colB) {
+  auto [lo, hi] = aie::interleave_zip(v0, v1, 8);
+  aie::store_v(c, lo.template extract<16>(0));
+  aie::store_v(c + colB, lo.template extract<16>(1));
+  aie::store_v(c + 2 * colB, hi.template extract<16>(0));
+  aie::store_v(c + 3 * colB, hi.template extract<16>(1));
 }
 
-template <bool get, bool put, typename T_out, typename MMUL>
-static inline void cascade_finish(const MMUL &C, T_out *__restrict c,
-                                  int colB) {
+template <bool get, typename MMUL>
+static inline typename MMUL::accum_type own_plus_cascade(const MMUL &C) {
   using Acc = typename MMUL::accum_type;
   Acc acc = C.to_accum();
   if constexpr (get)
     acc = aie::add(acc, cascade_get<Acc>());
+  return acc;
+}
+
+template <typename T_out, typename Acc>
+static inline aie::vector<T_out, 32> add_c(const Acc &acc,
+                                           aie::vector<T_out, 32> v) {
+  Acc old;
+  old.from_vector(v);
+  return aie::add(acc, old).template to_vector<T_out>();
+}
+
+// Finishes C0 and C1 one at a time: two live accumulators spill.
+template <bool get, bool put, typename T_out, typename MMUL>
+static inline void cascade_finish(const MMUL &C0, const MMUL &C1,
+                                  T_out *__restrict c, int colB) {
   if constexpr (put) {
-    cascade_put(acc);
+    cascade_put(own_plus_cascade<get>(C0));
+    cascade_put(own_plus_cascade<get>(C1));
   } else {
-    acc = aie::add(acc, load_c<T_out, Acc>(c, colB));
-    store_c(c, acc, colB);
+    auto [v0, v1] = load_c(c, colB);
+    v0 = add_c(own_plus_cascade<get>(C0), v0);
+    v1 = add_c(own_plus_cascade<get>(C1), v1);
+    store_c(c, v0, v1, colB);
   }
 }
 
@@ -273,10 +293,8 @@ static inline void cascade_vector(const T_in *__restrict a,
         pb += ks * colB;
       }
       T_out *pc = c + i * colB + j;
-      cascade_finish<get, put, T_out>(C00, pc, colB);
-      cascade_finish<get, put, T_out>(C01, pc + 8, colB);
-      cascade_finish<get, put, T_out>(C10, pc + 4 * colB, colB);
-      cascade_finish<get, put, T_out>(C11, pc + 4 * colB + 8, colB);
+      cascade_finish<get, put, T_out>(C00, C01, pc, colB);
+      cascade_finish<get, put, T_out>(C10, C11, pc + 4 * colB, colB);
     }
   }
 }
