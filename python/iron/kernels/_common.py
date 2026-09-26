@@ -140,7 +140,8 @@ class KernelContract:
             means one.
         setup: A kernel to run once on the core first (``conv_even`` sets
             the rounding mode a bf16 store needs); ``None`` when the source
-            sets its own mode or narrows nothing.
+            sets its own mode or narrows nothing. A Worker handed the kernel
+            calls it before its loop.
         stack_bytes: Core stack a Worker calling this kernel needs, when
             more than the target's default. Say where the number came from.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
