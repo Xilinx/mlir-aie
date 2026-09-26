@@ -786,6 +786,104 @@ static int32_t dw8_blocks(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 #undef DW8_ROWS
   return blocks;
 }
+
+// Stride 2 over 64-byte aligned rows of a multiple of 8 pixels. A window of
+// two chunks gives the stride-1 sums at pixels 1..8 of the first, whose even
+// ones are stride-2 outputs; stored one output later, after the one before.
+// Output 0 is the sum at pixel 0.
+static inline aie::vector<uint8, 128> dw8_pair(const uint8_t *p) {
+  return aie::concat(aie::load_v<64>(p), aie::load_v<64>(p + 64));
+}
+
+static void dw8_s2_row(const uint8_t *__restrict line0,
+                       const uint8_t *__restrict line1,
+                       const uint8_t *__restrict line2, const dw8_w *w,
+                       uint8_t *__restrict out, const int32_t output_width,
+                       const int scale) {
+  const uint8_t *in[3] = {line0, line1, line2};
+  const dw8_v zero = aie::zeros<uint8, 64>();
+  aie::accum<acc32, 64> acc;
+  BN3_UNROLL_FULL
+  for (int i = 0; i < 3; i++) {
+    const aie::vector<uint8, 128> d = aie::concat(zero, aie::load_v<64>(in[i]));
+    acc = i == 0 ? dw8_conv::mul(w[0], 0, d, 0)
+                 : dw8_conv::mac(acc, w[i], 0, d, 0);
+  }
+  dw8_v prev = dw8_out(acc, scale);
+  const int32_t last = output_width * 16 - 64;
+  const int32_t pairs = output_width / 8;
+  for (int m = 0; m < pairs; m++) {
+    // Past the row, `next` only feeds the sum at pixel input_width, not an
+    // output. `mid` never clamps, but a load of its own keeps d1 out of d0's
+    // registers, without which the loop does not pipeline.
+    const int32_t at = m * 128;
+    const int32_t mid = at + 64 < last ? at + 64 : last;
+    const int32_t next = at + 128 < last ? at + 128 : last;
+    aie::accum<acc32, 64> acc0, acc1;
+    BN3_UNROLL_FULL
+    for (int i = 0; i < 3; i++) {
+      const aie::vector<uint8, 128> d0 = dw8_pair(in[i] + at);
+      const aie::vector<uint8, 128> d1 = aie::concat(
+          aie::load_v<64>(in[i] + mid), aie::load_v<64>(in[i] + next));
+      if (i == 0) {
+        acc0 = dw8_conv::mul(w[0], 0, d0, 0);
+        acc1 = dw8_conv::mul(w[0], 0, d1, 0);
+      } else {
+        acc0 = dw8_conv::mac(acc0, w[i], 0, d0, 0);
+        acc1 = dw8_conv::mac(acc1, w[i], 0, d1, 0);
+      }
+    }
+    const dw8_v cur = aie::filter_odd(
+        aie::concat(dw8_out(acc0, scale), dw8_out(acc1, scale)), 8);
+    const dw8_v v = aie::shuffle_up_fill(cur, prev, 8);
+    aie::store_v(out + m * 64, v.extract<32>(0));
+    aie::store_v(out + m * 64 + 32, v.extract<32>(1));
+    prev = cur;
+  }
+  if (output_width & 4) {
+    BN3_UNROLL_FULL
+    for (int i = 0; i < 3; i++) {
+      const aie::vector<uint8, 128> d =
+          aie::concat(aie::load_v<64>(in[i] + pairs * 128), zero);
+      acc = i == 0 ? dw8_conv::mul(w[0], 0, d, 0)
+                   : dw8_conv::mac(acc, w[i], 0, d, 0);
+    }
+    aie::store_v(out + pairs * 64,
+                 aie::shuffle_up_fill(aie::filter_odd(dw8_out(acc, scale), 8),
+                                      prev.extract<32>(1), 8));
+  }
+}
+
+// Stride 2 when dw8_s2_row applies; returns how many channel blocks it
+// covered.
+static int32_t dw8_s2_blocks(const uint8_t *line0, const uint8_t *line1,
+                             const uint8_t *line2, const int8_t *wts,
+                             uint8_t *output1, uint8_t *output2,
+                             const int32_t input_width, const int32_t channels,
+                             const int32_t split, const int32_t check,
+                             const int scale) {
+  const int32_t output_width = input_width / 2;
+  const uint64_t taps = (1ull << 24) - 1;
+  const aie::mask<64> keep[3] = {
+      aie::mask<64>::from_uint64(check == top ? 0 : taps),
+      aie::mask<64>::from_uint64(taps),
+      aie::mask<64>::from_uint64(check == bottom ? 0 : taps)};
+  const int32_t step = input_width * 8;
+  for (int cd = 0; cd < channels / 8; cd++) {
+    dw8_w w[3];
+    BN3_UNROLL_FULL
+    for (int i = 0; i < 3; i++)
+      w[i] = aie::select(
+          aie::zeros<int8, 64>(),
+          dw8_load((const uint8_t *)(wts + cd * 72 + i * 24)).cast_to<int8>(),
+          keep[i]);
+    uint8_t *out = cd < split ? output1 + cd * output_width * 8
+                              : output2 + (cd - split) * output_width * 8;
+    dw8_s2_row(line0 + cd * step, line1 + cd * step, line2 + cd * step, w, out,
+               output_width, scale);
+  }
+  return channels / 8;
+}
 #endif
 
 static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
@@ -811,9 +909,12 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       (stride == 1 ? input_width % 4 : input_width % 8 + output_width % 4) == 0;
 #if AIE_TUNED_AIE2P
   const int32_t first =
-      dw8_blocks(line0, line1, line2, wts, output1, output2,
-                 input_width <= 8 ? input_width : row_width, channels, split,
-                 stride, check, scale, aligned);
+      stride == 2 && aligned
+          ? dw8_s2_blocks(line0, line1, line2, wts, output1, output2,
+                          input_width, channels, split, check, scale)
+          : dw8_blocks(line0, line1, line2, wts, output1, output2,
+                       input_width <= 8 ? input_width : row_width, channels,
+                       split, stride, check, scale, aligned);
 #else
   const int32_t first = 0;
 #endif
