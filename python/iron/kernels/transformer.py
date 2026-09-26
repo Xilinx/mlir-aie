@@ -137,9 +137,9 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         layer_norm_f32_ref,
         _NORM_F32_TOLERANCE.get(_tuned_arch(), _NORM_F32),
         6 * cols,
-        # Headroom: the frame measures 768 bytes on AIE2P and 64 on AIE2, and
-        # neither build calls a soft-float helper.
-        stack_bytes=2048,
+        # aiecc measured_stack_size: 896 B tuned for aie2p, 160 B tuned for
+        # aie2, 832 B untuned on aie2p (672 B on aie2); the 1024 B default
+        # covers every build.
     )
 
 
