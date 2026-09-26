@@ -27,16 +27,17 @@ void eltwise_add(T_in *a, T_in *b, T_out *c) {
   }
 }
 
-// Four independent load/add/store chains per iteration. One chain is
-// latency-bound: both operand loads are vlda.conv, which only the a port has.
+// The untuned path runs four independent load/add/store chains per iteration.
+// One aie::add chain is latency-bound: both operand loads are vlda.conv, which
+// only the a port has.
 #define ADD_UNROLL 4
 
-// AIE2 instead runs one chain per iteration, which pipelines with restrict
-// pointers and a rolled loop. Only a converts on load (vlda.conv is a-port
-// only); b loads as bf16 on the b port and is added as b * 1 in a mac.
-#if AIE_TUNED_AIE2
+// The tuned paths run one chain per iteration, which pipelines (II1 on AIE2P)
+// with restrict pointers and a rolled loop. Only a converts on load; b loads
+// as bf16 on the b port and is added as b * 1 in a mac.
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 template <typename T_in, typename T_out, int vec_factor>
-void eltwise_vadd_aie2(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
+void eltwise_vadd_mac(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
                        aie::restrict_vector_iterator<T_in, vec_factor> &pB,
                        aie::restrict_vector_iterator<T_out, vec_factor> &pC,
                        int n) {
@@ -51,8 +52,8 @@ void eltwise_vadd_aie2(aie::restrict_vector_iterator<T_in, vec_factor> &pA,
 #endif
 
 template <typename T_in, typename T_out, const int N>
-void eltwise_vadd(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
-                  T_out *AIE2_RESTRICT c) {
+void eltwise_vadd(T_in *__restrict a, T_in *__restrict b,
+                  T_out *__restrict c) {
 
   constexpr int vec_factor = AIE_BF16_LANES;
   event0();
@@ -60,8 +61,8 @@ void eltwise_vadd(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   auto pB1 = aie::begin_restrict_vector<vec_factor>(b);
   auto pC1 = aie::begin_restrict_vector<vec_factor>(c);
   constexpr int F = N / vec_factor;
-#if AIE_TUNED_AIE2
-  eltwise_vadd_aie2<T_in, T_out, vec_factor>(pA1, pB1, pC1,
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
+  eltwise_vadd_mac<T_in, T_out, vec_factor>(pA1, pB1, pC1,
                                              F / ADD_UNROLL * ADD_UNROLL);
 #else
   AIE_PREPARE_FOR_PIPELINING
@@ -90,8 +91,8 @@ void eltwise_vadd(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
 // Runtime size (need not divide vec_factor); scalar tail avoids the full-width
 // load_v/store_v reading/writing past the buffer on a short final vector.
 template <typename T_in, typename T_out>
-void eltwise_vadd_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
-                       T_out *AIE2_RESTRICT c, int size) {
+void eltwise_vadd_size(T_in *__restrict a, T_in *__restrict b,
+                       T_out *__restrict c, int size) {
   constexpr int vec_factor = AIE_BF16_LANES;
   event0();
   auto pA1 = aie::begin_restrict_vector<vec_factor>(a);
@@ -100,8 +101,8 @@ void eltwise_vadd_size(T_in *AIE2_RESTRICT a, T_in *AIE2_RESTRICT b,
   // Unsigned, so F % ADD_UNROLL is a mask rather than a __modsi3 call.
   const int F = (uint32_t)ADD_ELEMS / vec_factor;
 // The single chain pipelines only with a compile-time trip count.
-#if AIE_TUNED_AIE2 && !defined(ADD_ELEMS_RUNTIME)
-  eltwise_vadd_aie2<T_in, T_out, vec_factor>(pA1, pB1, pC1,
+#if (AIE_TUNED_AIE2 || AIE_TUNED_AIE2P) && !defined(ADD_ELEMS_RUNTIME)
+  eltwise_vadd_mac<T_in, T_out, vec_factor>(pA1, pB1, pC1,
                                              F / ADD_UNROLL * ADD_UNROLL);
 #else
   AIE_PREPARE_FOR_PIPELINING
