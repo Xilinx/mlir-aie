@@ -25,7 +25,7 @@ def hooks():
 
 @pytest.fixture
 def finish(hooks, tmp_path):
-    def run(meta, correctness=None, exitstatus=0, failed=()):
+    def run(meta, correctness=None, exitstatus=0, failed=(), sanity_selected=True):
         options = {
             "--perf-out": str(tmp_path / "perf.json"),
             "--perf-meta": str(tmp_path / "meta.json"),
@@ -45,7 +45,13 @@ def finish(hooks, tmp_path):
             getoption=options.get,
             pluginmanager=SimpleNamespace(get_plugin=lambda _: reporter),
         )
-        hooks.pytest_sessionfinish(SimpleNamespace(config=config), exitstatus)
+        selected = ["test_kernel_perf[softmax/1024x16/bfloat16]"]
+        if sanity_selected:
+            selected.append("test_measurement_is_sane")
+        items = [SimpleNamespace(name=name) for name in selected]
+        hooks.pytest_sessionfinish(
+            SimpleNamespace(config=config, items=items), exitstatus
+        )
         out = tmp_path / "perf.json"
         return (
             json.loads(out.read_text()) if out.exists() else None,
@@ -72,6 +78,21 @@ def test_publication_requires_explicit_sanity_success(
 ):
     rows, _ = finish(meta, exitstatus=exitstatus)
     assert bool(rows) == publishes
+
+
+@pytest.mark.parametrize(
+    "meta,publishes",
+    [
+        ({"preflight": {}}, True),
+        ({"preflight": {}, "measurement_sane": False}, False),
+        ({}, False),
+    ],
+)
+def test_deselected_sanity_check_still_publishes(finish, meta, publishes):
+    """``-k '[case]'`` deselects the sanity check; its rows are still wanted."""
+    rows, written = finish(meta, sanity_selected=False)
+    assert bool(rows) == publishes
+    assert written["measurement_sane"] is meta.get("measurement_sane")
 
 
 def report(tmp_path, tests):

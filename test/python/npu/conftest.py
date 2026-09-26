@@ -157,7 +157,9 @@ def pytest_sessionfinish(session, exitstatus):
     kernel's series shows a gap for this run. What a partial file
     cannot survive is a bad device: if preflight (power mode) or the
     measurement sanity check failed, no number from the run is trustworthy
-    and nothing is written. Meta is written either way and lists the failed
+    and nothing is written; a sanity check that was selected must pass. A
+    ``-k`` that deselects it leaves ``measurement_sane`` null in the meta and
+    still writes the rows. Meta is written either way and lists the failed
     tests, so a missing series or an empty run is explained.
     """
     import json
@@ -178,13 +180,18 @@ def pytest_sessionfinish(session, exitstatus):
             meta["correctness_error"] = str(exc)
             rows = []
 
+    sanity_selected = any(i.name == "test_measurement_is_sane" for i in session.items)
+    meta.setdefault("measurement_sane", None)
     if meta_path := config.getoption("--perf-meta"):
         meta["exitstatus"] = int(exitstatus)
         meta["n_rows"] = len(rows)
         meta["failed"] = failed
         Path(meta_path).write_text(json.dumps(meta, indent=1))
 
-    npu_ok = "preflight" in meta and meta.get("measurement_sane") is True
+    sane = meta["measurement_sane"]
+    npu_ok = "preflight" in meta and (
+        sane is True or (sane is None and not sanity_selected)
+    )
     completed = exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED)
     if out := config.getoption("--perf-out"):
         if npu_ok and completed and rows:
@@ -192,18 +199,26 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    """Print the ``--baseline-sources`` comparison, one line per case."""
+    """Print the ``--baseline-sources`` comparison, one block per case.
+
+    Each arm shows its min..max over n calls (cycles) or iterations (npu_us),
+    so "the candidate's max is below the base's min" reads off one line.
+    """
     baseline = getattr(config, "_perf_meta", {}).get("baseline")
     if not baseline:
         return
+
+    def span(r):
+        return f"{r['min']}..{r['max']} n={r['n']}" if r else "-"
+
     tr = terminalreporter
     tr.section(f"baseline {baseline['sources']} -> this tree")
-    tr.write_line(f"{'case':<48} {'cycles':>17} {'npu_us min':>19}  words")
     for name, c in baseline["cases"].items():
-        cycles = "{} -> {}".format(*c["cycles"])
-        npu = "{} -> {}".format(*c["npu_us_min"])
         words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
-        tr.write_line(f"{name:<48} {cycles:>17} {npu:>19}  {words}")
+        tr.write_line(f"{name}  words {words}")
+        for metric in ("cycles", "npu_us"):
+            base, cur = c[f"{metric}_range"]
+            tr.write_line(f"  {metric:<7} {span(base):>26} -> {span(cur)}")
 
 
 def _device_generation() -> str | None:
