@@ -75,6 +75,24 @@ tanh_lut_bf16(aie::vector<bfloat16, 16> x) {
   return getTanhBf16(x);
 #endif
 }
+
+#if AIE_TUNED_AIE2P
+// tanh over buf in place, 32 lanes a trip, n a multiple of 32. The table reads
+// carry no memory operands, so every load and store in a trip is ordered
+// around them: a loop holding only the reads pipelines at II 25, one that also
+// holds a caller's multiplies does not (II 48-78). Callers put their arithmetic
+// in separate passes before and after this one.
+__attribute__((always_inline)) inline void tanh_lut_inplace(bfloat16 *buf,
+                                                            int n) {
+  auto it_in = aie::begin_vector<32>(buf);
+  auto it_out = aie::begin_vector<32>(buf);
+  for (int i = 0; i < n; i += 32) {
+    const aie::vector<bfloat16, 32> x = *it_in++;
+    *it_out++ = aie::concat(tanh_lut_bf16(x.extract<16>(0)),
+                            tanh_lut_bf16(x.extract<16>(1)));
+  }
+}
+#endif
 #endif
 
 // tanh of 16 bf16 lanes, on whichever path this architecture has. This is the

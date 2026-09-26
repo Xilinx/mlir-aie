@@ -42,6 +42,26 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
                      register_0_5)
                 .to_vector<bfloat16>());
       });
+#elif AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
+  // The LUT tanh pipelines only alone in its loop, so x/2 goes to the output
+  // first, tanh_lut_inplace rewrites it, and a third pass makes 0.5 * (1 + t).
+  // The LUT narrows x/2 to bf16 either way, so the result is the same.
+  aie::vector<bfloat16, 32> register_0_5_wide =
+      aie::broadcast<bfloat16, 32>(0.5f);
+  auto it_in = aie::begin_restrict_vector<32>(input_vector);
+  auto it_half_x = aie::begin_restrict_vector<32>(output_vector);
+  for (int i = 0; i < num_elems; i += 32)
+    *it_half_x++ = aie::mul(*it_in++, register_0_5_wide).to_vector<bfloat16>();
+
+  tanh_lut_inplace(output_vector, num_elems);
+
+  aie::accum<accfloat, 32> half;
+  half.from_vector(register_0_5_wide);
+  auto it_tanh = aie::begin_vector<32>(output_vector);
+  auto it_out = aie::begin_vector<32>(output_vector);
+  for (int i = 0; i < num_elems; i += 32)
+    *it_out++ =
+        aie::mac(half, *it_tanh++, register_0_5_wide).to_vector<bfloat16>();
 #else
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
