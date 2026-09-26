@@ -177,17 +177,26 @@ def _make_argparser():
     p.add_argument("mode", choices=["regular", "pipeline", "cascade"])
     p.add_argument("--data-dir", required=True, help="weights directory")
     p.add_argument("--scales-json", required=True, help="scale_factors JSON path")
+    p.add_argument(
+        "--sa-effort",
+        type=float,
+        help="SA placer search budget scale (default: 1.0; lower trades "
+        "placement cost for compile time)",
+    )
     return p
 
 
 def main():
     opts = _make_argparser().parse_args()
     set_current_device(device_from_args(opts, n_cols=None))
+    design = chain_design
+    if opts.sa_effort is not None:
+        design = design.specialize(aiecc_flags=sa_placer_flags(effort=opts.sa_effort))
     compile_kwargs = dict(
         mode=opts.mode, data_dir=opts.data_dir, scales_json=opts.scales_json
     )
     if opts.xclbin_path:
-        chain_design.specialize(**compile_kwargs).compile(
+        design.specialize(**compile_kwargs).compile(
             xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
         )
     else:

@@ -20,12 +20,13 @@ scale_factors_final.json and passed directly in Worker fn_args — no RTP
 buffers or NpuWriteRTPOp calls are needed.
 
 The design pins no tiles; aiecc's SA placer places it (--sa-seed picks the
-seed).
+seed, --sa-effort trades placement cost for compile time).
 
 Usage (from programming_examples/ml):
     python3 -m mobilenet.aie2_mobilenet_iron               # compile, run, verify
     python3 -m mobilenet.aie2_mobilenet_iron --emit-mlir   # print the MLIR
     python3 -m mobilenet.aie2_mobilenet_iron --sa-seed 7
+    python3 -m mobilenet.aie2_mobilenet_iron --sa-effort 0.25
 """
 
 import argparse
@@ -261,6 +262,12 @@ def _make_argparser():
     p = argparse.ArgumentParser(prog="MobileNet V3 — IRON API design")
     add_compile_args(p, default_dev="npu2", with_emit_mlir=True)
     p.add_argument("--sa-seed", type=int, help="SA placer seed (default: 3)")
+    p.add_argument(
+        "--sa-effort",
+        type=float,
+        help="SA placer search budget scale (default: 1.0; lower trades "
+        "placement cost for compile time)",
+    )
     # The NPU takes 6-13 launches after load to reach its steady latency.
     add_benchmark_args(p, default_warmup=20, default_iters=5)
     return p
@@ -320,8 +327,13 @@ def _run_and_verify(design, opts):
 def main():
     opts = _make_argparser().parse_args()
     design = mobilenet_iron
-    if opts.sa_seed is not None:
-        design = design.specialize(aiecc_flags=sa_placer_flags(opts.sa_seed))
+    if opts.sa_seed is not None or opts.sa_effort is not None:
+        design = design.specialize(
+            aiecc_flags=sa_placer_flags(
+                opts.sa_seed if opts.sa_seed is not None else 3,
+                opts.sa_effort if opts.sa_effort is not None else 1.0,
+            )
+        )
     run_design_cli(
         design,
         opts,

@@ -36,6 +36,7 @@ from aie.utils.verify import Tolerance, compare
 
 from .aie2_iron_chain import chain_design
 from .aie2_iron_per_block import per_block_design
+from .bottleneck._common import sa_placer_flags
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VEC = 8
@@ -115,6 +116,12 @@ def _make_argparser():
     p.add_argument(
         "target", help="block: bn1|bn2|bn3|bn6|bn7|bn8; chain: regular|pipeline|cascade"
     )
+    p.add_argument(
+        "--sa-effort",
+        type=float,
+        help="SA placer search budget scale (default: 1.0; lower trades "
+        "placement cost for compile time)",
+    )
     # The NPU takes 6-13 launches after load to reach its steady latency.
     add_benchmark_args(p, default_warmup=20, default_iters=1)
     return p
@@ -149,6 +156,8 @@ def main():
     buffers.append(out)
 
     design, kwargs = _design(opts.mode, opts.target, fix)
+    if opts.sa_effort is not None:
+        design = design.specialize(aiecc_flags=sa_placer_flags(effort=opts.sa_effort))
     bench = run_iters(design, *buffers, warmup=opts.warmup, iters=opts.iters, **kwargs)
 
     # HCWC8 -> CHW, compared against the brevitas golden.
