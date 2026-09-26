@@ -236,16 +236,26 @@ def _rows(vocab, cores, k_max, seed):
     for i in sorted(inner, key=lambda i: weights[i])[:8]:
         add(logits, 1.0, k_max, int(firsts[i]))
         add(logits, 1.0, k_max, int(firsts[i]) - 1)
+    # The largest top_k: the kernels clamp it to k_max. Distinct logits
+    # falling in index order, so the last draw is the k_max-th candidate, not
+    # an unclamped draw's last.
+    ordered = np.full(vocab, -np.inf)
+    at = np.sort(rng.choice(vocab, 2 * k_max + 1, replace=False))
+    ordered[at] = -np.arange(2 * k_max + 1) / 64
+    add(ordered, 1.0, (1 << 31) - 1, (1 << 53) - 1)
+    assert sample.sample_ref(*rows[-1]) != sample.sample_ref(*rows[-1], k_max=k_max)
     # The same number of positions for every k_max: at some trip counts LLVM
     # unrolls the combine core's loop over them, which overflows its program
-    # memory.
-    while len(rows) < 31:
+    # memory. Llama's vocabulary also caps them at 32: past that, aiecc cannot
+    # lower the one logits fill.
+    while len(rows) < 32:
         add(logits, 1.0, k_max)
 
     logits = np.stack([r[0] for r in rows])
     draws = np.stack([sample.draw_row(t, k, n) for _, t, k, n in rows])
     expected = np.array(
-        [sample.sample_ref(lg, t, k, n) for lg, t, k, n in rows], dtype=np.int32
+        [sample.sample_ref(lg, t, k, n, k_max=k_max) for lg, t, k, n in rows],
+        dtype=np.int32,
     )
     assert slice_size >= k_max
     return logits, draws, expected

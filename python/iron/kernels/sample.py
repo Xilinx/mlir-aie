@@ -325,7 +325,13 @@ def check_order_preserving(temperature) -> None:
 
 
 def draw_row(temperature, top_k: int, n53: int) -> np.ndarray:
-    """Pack the four int32 words ``sample_select`` and ``sample_combine`` read for one draw."""
+    """Pack the four int32 words ``sample_select`` and ``sample_combine`` read for one draw.
+
+    The kernels clamp ``top_k`` to their ``k_max``.
+    """
+    _positive("draw_row", top_k=top_k)
+    if top_k >= 1 << 31:
+        raise ValueError(f"draw_row: top_k {top_k} does not fit int32")
     if not 0 <= n53 < 1 << 53:
         raise ValueError(f"n53 {n53} is not in [0, 2**53)")
     row = np.empty(ROW_WORDS, dtype=np.uint32)
@@ -360,6 +366,7 @@ def sample_weights(logits, temperature, top_k: int) -> tuple[np.ndarray, np.ndar
     ``top_k``-th largest (ties with it included), in index order; each weight
     is ``exp64(fl32(v / T) - fl32(max / T))``, unnormalised.
     """
+    _positive("sample_weights", top_k=top_k)
     row = _row(logits)
     keys = order_keys(row)
     values = row.astype(np.float32)
@@ -376,8 +383,18 @@ def sample_weights(logits, temperature, top_k: int) -> tuple[np.ndarray, np.ndar
     return candidates, exp64_ref((xv - xm).astype(np.float64))
 
 
-def sample_ref(logits, temperature, top_k: int, n53: int) -> int:
-    """Return the token ``sample_combine`` draws from one row of bf16 logits."""
+def sample_ref(
+    logits, temperature, top_k: int, n53: int, *, k_max: int | None = None
+) -> int:
+    """Return the token ``sample_combine`` draws from one row of bf16 logits.
+
+    With ``k_max``, ``top_k`` is clamped to it, as kernels built with that
+    ``k_max`` clamp it; without, ``top_k`` is taken as it is.
+    """
+    _positive("sample_ref", top_k=top_k)
+    if k_max is not None:
+        _positive("sample_ref", k_max=k_max)
+        top_k = min(top_k, k_max)
     if np.float32(temperature).view(np.uint32) & 0x7FFFFFFF == 0:
         return int(np.argmax(order_keys(_row(logits))))
     candidates, weights = sample_weights(logits, temperature, top_k)
