@@ -81,6 +81,8 @@ def test_factories_reject_non_positive_integers(factory, name, bad):
     [
         (kernels.sample_select, dict(slice_size=32, chunk=32, k_max=33), "k_max"),
         (kernels.sample_combine, dict(slice_size=32, k_max=33), "k_max"),
+        (kernels.sample_select, dict(slice_size=1024, chunk=256, k_max=129), "stack"),
+        (kernels.sample_combine, dict(slice_size=1024, k_max=129), "stack"),
         (kernels.sample_select, dict(slice_size=1 << 24, chunk=1 << 12), "2\\*\\*24"),
         (kernels.sample_combine, dict(slice_size=1 << 24, columns=1), "2\\*\\*24"),
         (kernels.sample_select, dict(slice_size=1024, chunk=384), "divide"),
@@ -98,6 +100,8 @@ def test_factories_accept_their_edges(npu2_device):
     kernels.sample_select(slice_size=(1 << 24) - 2, chunk=2, k_max=1)
     kernels.sample_select(slice_size=np.int64(1030), chunk=np.int32(206), k_max=8)
     kernels.sample_combine(slice_size=(1 << 23) - 1, columns=256, k_max=1)
+    kernels.sample_select(slice_size=1024, chunk=256, k_max=sample.K_MAX_LIMIT)
+    kernels.sample_combine(slice_size=1024, k_max=sample.K_MAX_LIMIT)
 
 
 # --- geometry --------------------------------------------------------------
@@ -125,11 +129,16 @@ def test_constants_match_the_c_sources():
     def define(name):
         return int(re.search(rf"#define {name} (\d+)", select).group(1))
 
+    def constant(name):
+        return int(re.search(rf"constexpr int32_t {name} = (\d+);", select).group(1))
+
     def enum(name):
         return int(re.search(rf"\b{name} = (\d+)", header).group(1))
 
     assert define("SAMPLE_SELECT_STATE_WORDS") == sample.SELECT_STATE_WORDS
     assert define("SAMPLE_SELECT_PASSES") == sample.SELECT_PASSES
+    # sample_select's static_assert: no k_max the factories take fails in C.
+    assert sample.K_MAX_LIMIT + constant("LANES") <= constant("CANDIDATES")
     assert enum("SAMPLE_HEADER") == sample.SUMMARY_HEADER
     rows = re.findall(r"\bSAMPLE_ROW_\w+ = (\d+)", header)
     assert sorted(map(int, rows)) == list(range(sample.ROW_WORDS))
