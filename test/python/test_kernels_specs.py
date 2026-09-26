@@ -1082,13 +1082,10 @@ def test_norm_tail_and_vector_constraints(kernel_arch):
     np.testing.assert_array_equal(
         fn.contract.reference(x, 0.5), kernels.rms_norm_ref(x, eps=0.5)
     )
-    width = 32 if kernel_arch == "aie2p" else 16
-    assert kernels.layer_norm(cols=width).arg_shape(0) == (width,)
-    with pytest.raises(ValueError, match=f"multiple of {width}"):
-        kernels.layer_norm(cols=width + 1)
-    if kernel_arch == "aie2p":
-        with pytest.raises(ValueError, match="multiple of 32"):
-            kernels.layer_norm(cols=16)
+    for cols in (16, 208):
+        assert kernels.layer_norm(cols=cols).arg_shape(0) == (cols,)
+    with pytest.raises(ValueError, match="multiple of 16"):
+        kernels.layer_norm(cols=17)
 
 
 @pytest.mark.parametrize("two_halves", [False, True])
