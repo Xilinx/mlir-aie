@@ -65,10 +65,15 @@ def _design(device, factory, shift):
 
 @pytest.mark.parametrize("factory", ["bn_conv2dk1_i8", "bn_conv2dk1_relu"])
 @pytest.mark.parametrize(
-    "device,shift", [(NPU2Col1(), 16), (NPU2Col1(), 32), (NPU1Col1(), 16)]
+    "device,shift,pad",
+    [(NPU2Col1(), 16, 48), (NPU2Col1(), 32, 32), (NPU1Col1(), 16, 16)],
 )
-def test_misaligned_view_raises(device, factory, shift):
-    with pytest.raises(ValueError, match=f"byte offset {shift} of buffer 'packed_wts'"):
+def test_misaligned_view_raises(device, factory, shift, pad):
+    with pytest.raises(
+        ValueError,
+        match=f"byte offset {shift} of buffer 'packed_wts'.*: {pad} bytes of "
+        f"padding before it put it at byte {shift + pad}",
+    ):
         _design(device, factory, shift)
 
 
