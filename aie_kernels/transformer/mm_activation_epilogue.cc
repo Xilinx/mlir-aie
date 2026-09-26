@@ -29,17 +29,20 @@ static inline void mm_identity_row(uint32_t n, const float *__restrict acc,
 // aie2p has no f32 multiplier: `aie::mul` on two float vectors expands to a
 // three-way bf16 split of *both* operands. Where one operand is already exact
 // in bf16, splitting the other in two keeps ~16 mantissa bits and stays on the
-// native bf16 multiplier.
+// native bf16 multiplier. hi stops at bf16's largest finite value: an x past
+// it would round to inf and leave x - hi -inf.
 struct bf16_split {
   aie::vector<bfloat16, 16> hi;
   aie::vector<bfloat16, 16> lo;
 };
 
 static inline bf16_split split_f32(const aie::vector<float, 16> &x) {
+  const bfloat16 bf16_max = 3.38953139e38f;
   aie::accum<accfloat, 16> a;
   a.from_vector(x);
   bf16_split s;
-  s.hi = a.to_vector<bfloat16>();
+  s.hi = aie::max(aie::min(a.to_vector<bfloat16>(), bf16_max),
+                  bfloat16(-bf16_max));
   aie::accum<accfloat, 16> h;
   h.from_vector(s.hi);
   aie::accum<accfloat, 16> r;
@@ -73,6 +76,7 @@ static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
     aie::vector<bfloat16, 16> sig = aie::mul(tanh_p1, halfb);
     *it_out++ = mul_split(xs, sig);
   };
+  // Unrolled by 2, this loop gives wrong results on npu2.
   VERSIONED_LOOP(8, n / 16, body, AIE_LOOP_UNROLL(4));
   event1();
 }
@@ -99,7 +103,10 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
     aie::accum<accfloat, 16> a;
     a.from_vector(*it_in++);
     aie::vector<bfloat16, 16> x = a.to_vector<bfloat16>();
-    aie::vector<bfloat16, 16> half_x = aie::mul(half, x);
+    // 1 + tanh is 0 from x = -8 down, so 0.5x is clamped there rather than
+    // making -inf * 0.
+    aie::vector<bfloat16, 16> half_x =
+        aie::mul(half, aie::max(x, bfloat16(-8.0f)));
     aie::vector<bfloat16, 16> x2 = aie::mul(x, x);
     aie::vector<bfloat16, 16> poly = aie::mac(c0acc, c0c1, x2);
     auto inner = aie::mul(x, poly);
