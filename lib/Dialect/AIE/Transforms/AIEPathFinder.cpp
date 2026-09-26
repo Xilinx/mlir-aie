@@ -798,6 +798,8 @@ Pathfinder::findPaths(const int maxIterations) {
               for (int other : sb->unitPacketFlows[sb->unitOf(j)])
                 if (other != flow)
                   avoid |= conflicting[other];
+              // A flow sharing an arbiter with itself is no conflict.
+              avoid.reset(flow);
             }
           seedCosts.clear();
           for (double cost : treeCost)
