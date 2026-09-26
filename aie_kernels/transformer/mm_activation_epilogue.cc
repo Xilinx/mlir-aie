@@ -64,7 +64,7 @@ static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
   const aie::vector<bfloat16, 16> halfb = aie::broadcast<bfloat16, 16>(0.5f);
   auto it_in = aie::begin_restrict_vector<16>(acc);
   auto it_out = aie::begin_restrict_vector<16>(out);
-  for (uint32_t off = 0; off < n; off += 16) {
+  auto body = [&]() __attribute__((always_inline)) {
     aie::vector<float, 16> x = *it_in++;
     bf16_split xs = split_f32(x);
     aie::vector<float, 16> half_x = mul_split(xs, halfb);
@@ -72,7 +72,8 @@ static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
     aie::vector<bfloat16, 16> tanh_p1 = aie::add(tanh_half_x, one);
     aie::vector<bfloat16, 16> sig = aie::mul(tanh_p1, halfb);
     *it_out++ = mul_split(xs, sig);
-  }
+  };
+  VERSIONED_LOOP(8, n / 16, body, AIE_LOOP_UNROLL(4));
   event1();
 }
 
@@ -94,7 +95,7 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
   c0acc.from_vector(c0);
   auto it_in = aie::begin_restrict_vector<16>(acc);
   auto it_out = aie::begin_restrict_vector<16>(out);
-  for (uint32_t off = 0; off < n; off += 16) {
+  auto body = [&]() __attribute__((always_inline)) {
     aie::accum<accfloat, 16> a;
     a.from_vector(*it_in++);
     aie::vector<bfloat16, 16> x = a.to_vector<bfloat16>();
@@ -105,7 +106,9 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
     aie::vector<bfloat16, 16> t = tanh_bf16_v16(inner);
     aie::vector<bfloat16, 16> t_p1 = aie::add(t, one);
     *it_out++ = aie::mul(half_x, t_p1).to_vector<float>();
-  }
+  };
+  // Unrolled by 4, this loop gives wrong results on npu2.
+  VERSIONED_LOOP(4, n / 16, body, AIE_LOOP_UNROLL(2));
   event1();
 }
 
