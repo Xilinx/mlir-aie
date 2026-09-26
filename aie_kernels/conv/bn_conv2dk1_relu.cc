@@ -315,7 +315,6 @@ void conv2dk1_i8_ui8_scalar_partial_width_get_new(
 #endif
 
 #if defined(PARTIAL_GET_I8_CAS_WIDTH) ||                                       \
-    defined(BN13_2_PARTIAL_GET_I8_CAS_WIDTH) ||                                \
     defined(BN13_1_PARTIAL_GET_I8_CAS_WIDTH) ||                                \
     defined(BN14_1_PARTIAL_GET_I8_CAS_WIDTH)
 // 8 Pixels Width Processing Approach: Processes 8 spatial pixels (x_start to
@@ -2061,20 +2060,6 @@ void bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_get(
     const int32_t x_start, const int32_t oc) {
 
   conv2dk1_ui8_ui8_scalar_input_split_partial_width_get(
-      input, kernels, output, input_width, input_channels, output_channels,
-      scale, input_split, weight_index, x_start, oc);
-}
-#endif
-
-#ifdef BN13_2_PARTIAL_GET_I8_CAS_WIDTH
-
-void bn13_2_conv2dk1_i8_ui8_partial_width_get(
-    int8_t *input, int8_t *kernels, uint8_t *output, const int32_t input_width,
-    const int32_t input_channels, const int32_t output_channels,
-    const int scale, int32_t input_split, int32_t weight_index, int32_t x_start,
-    int32_t oc) {
-
-  conv2dk1_i8_ui8_scalar_partial_width_get(
       input, kernels, output, input_width, input_channels, output_channels,
       scale, input_split, weight_index, x_start, oc);
 }
