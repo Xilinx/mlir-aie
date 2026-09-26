@@ -297,6 +297,15 @@ bool SAPlacer::isLegalPosition(Operation *tile, TileID pos) const {
 // Memory capacity tracking
 //===----------------------------------------------------------------------===//
 
+std::optional<TileID> SAPlacer::positionOf(Operation *tile) const {
+  if (auto it = currentPlacement.find(tile);
+      tile && it != currentPlacement.end())
+    return it->second;
+  if (auto tileOp = dyn_cast_or_null<TileOp>(tile))
+    return tileOp.getTileID();
+  return std::nullopt;
+}
+
 // Add a single fifo's contributions to memory and DMA usage maps.
 void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   const auto &fb = fifoBuffers[fifoIdx];
@@ -316,12 +325,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
 
   // A fifo that already has an aie.objectfifo.allocate keeps its shared-memory
   // objects on that delegate tile.
-  std::optional<TileID> delegatePos;
-  if (auto it = currentPlacement.find(fb.delegate);
-      fb.delegate && it != currentPlacement.end())
-    delegatePos = it->second;
-  else if (auto tile = dyn_cast_or_null<TileOp>(fb.delegate))
-    delegatePos = tile.getTileID();
+  std::optional<TileID> delegatePos = positionOf(fb.delegate);
 
   // Charge memory based on connection topology:
   //   intratile     → max(sizes) * max(depths) on shared tile
@@ -523,7 +527,34 @@ int SAPlacer::computeMemoryPressure() const {
 
 int SAPlacer::computePenalty() const {
   return computeMemSpilloverPenalty() + computeCoreOverflowPenalty() +
-         computeDMAChannelPenalty() + computeBDCountPenalty();
+         computeDMAChannelPenalty() + computeBDCountPenalty() +
+         computeDelegatePenalty();
+}
+
+// Both ends of a fifo with an aie.objectfifo.allocate must reach the delegate
+// tile's memory module, or the objectfifo split pass rejects the allocate.
+int SAPlacer::computeDelegatePenalty() const {
+  int penalty = 0;
+  for (const auto &fb : fifoBuffers) {
+    std::optional<TileID> delegatePos = positionOf(fb.delegate);
+    if (!delegatePos)
+      continue;
+    SmallVector<Operation *, 2> ends = {fb.producer};
+    llvm::append_range(ends, fb.consumers);
+    for (Operation *end : ends) {
+      std::optional<TileID> endPos = positionOf(end);
+      if (!endPos)
+        continue;
+      auto shared = targetModel->getSharedMemory(*delegatePos, *endPos);
+      if (shared == AIETargetModel::SharedMemory::First ||
+          shared == AIETargetModel::SharedMemory::Either)
+        continue;
+      int dist = std::abs(delegatePos->col - endPos->col) +
+                 std::abs(delegatePos->row - endPos->row);
+      penalty += config.delegateWeightPerDist * std::max(dist - 1, 1);
+    }
+  }
+  return penalty;
 }
 
 // Simulates per-buffer MemTile allocation with neighbor spillover.

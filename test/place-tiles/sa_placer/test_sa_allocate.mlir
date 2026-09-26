@@ -96,3 +96,25 @@ module @user_allocate_kept {
     aie.core(%coreC) { aie.end }
   }
 }
+
+// -----
+
+// An unpinned delegate is pulled toward coreC, but must stay where coreA,
+// both ends of @intra0, can reach its memory.
+// CHECK-LABEL: @unpinned_delegate_reachable
+// CHECK: aie.objectfifo.allocate @intra0(%tile_{{1_3|2_2|2_4}})
+module @unpinned_delegate_reachable {
+  aie.device(npu2) {
+    %coreA = aie.logical_tile<CoreTile>(2, 3)
+    %coreB = aie.logical_tile<CoreTile>(?, ?)
+    %coreC = aie.logical_tile<CoreTile>(7, 5)
+
+    aie.objectfifo @far(%coreB, {%coreC}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+    aie.objectfifo @intra0(%coreA, {%coreA}, 2 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
+    aie.objectfifo.allocate @intra0(%coreB)
+
+    aie.core(%coreA) { aie.end }
+    aie.core(%coreB) { aie.end }
+    aie.core(%coreC) { aie.end }
+  }
+}
