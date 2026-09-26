@@ -1007,7 +1007,8 @@ CASES: list[Case] = [
         scalars=(7, 80, 120, 120, 8, 0, 1, 0),
         tag="first-row",
     ),
-    check(
+    # MobileNet's post_l1 averages on 1 row in 7.
+    Case(
         "bn_conv2dk1_relu_xy_pool_padded",
         dict(input_width=7, input_channels=80, output_channels=120),
         calls=8,
