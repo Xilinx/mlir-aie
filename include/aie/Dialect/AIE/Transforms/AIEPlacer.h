@@ -490,8 +490,8 @@ private:
 //    across all nets.
 //
 // 2. Resource penalty (hard, blocks legality): penalizes MemTile buffer
-//    overflow, core tile overflow, DMA channel overuse, and BD count
-//    overuse.
+//    overflow, core tile overflow, DMA channel overuse, BD count
+//    overuse, and fifo ends that can't reach their allocate's delegate.
 //
 // 3. Cascade penalty (hard, blocks legality): penalizes cascade put/get
 //    pairs that aren't adjacent.
@@ -504,8 +504,9 @@ struct SAConfig {
   int multicastMultiplier = 2; // HPWL multiplier for multicast nets
 
   // Resource penalty (cost 2)
-  int memPenaltyPerKB = 30;      // per KB of unresolved memory overflow
-  int dmaPenaltyPerChannel = 20; // per DMA channel or BD over limit
+  int memPenaltyPerKB = 30;       // per KB of unresolved memory overflow
+  int dmaPenaltyPerChannel = 20;  // per DMA channel or BD over limit
+  int delegateWeightPerDist = 30; // per distance from an allocate's delegate
 
   // Cascade penalty (cost 3)
   int cascadeWeightPerDist = 30; // per Manhattan distance to valid position
@@ -526,6 +527,7 @@ struct SAConfig {
   int maxMovesPerIter = 2000;
   int minMaxIters = 10000;
   int greedyMultiplier = 50;       // greedyIters = multiplier * numMovable
+  double effort = 1.0;             // scales movesPerIter and greedyIters
   double tempScaleEstimate = 10.0; // initTemp cap: scale * estimated T
   double tempScaleCost = 2.0;      // initTemp cap: scale * totalCost
 
@@ -608,11 +610,13 @@ public:
 
   mlir::LogicalResult place(DeviceOp device) override;
   llvm::StringRef getName() const override { return "sa_placer"; }
+  int getFinalCost() const { return finalCost; }
 
 private:
   // Configuration
   unsigned rngSeed;
   SAConfig config;
+  int finalCost = 0;
   std::mt19937 rng;
   SASchedule schedule;
 
@@ -627,6 +631,7 @@ private:
     mlir::Operation *fifoOp = nullptr;
     mlir::Operation *producer = nullptr;
     llvm::SmallVector<mlir::Operation *> consumers;
+    mlir::Operation *delegate = nullptr;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;
     int producerDepth = 0;
@@ -695,6 +700,8 @@ private:
   int computeCoreOverflowPenalty() const;
   int computeDMAChannelPenalty() const;
   int computeBDCountPenalty() const;
+  int computeDelegatePenalty() const;
+  std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
   int computeAdjacencyPenalty(const Adjacency &adj,
                               llvm::ArrayRef<std::pair<int, int>> validOffsets,

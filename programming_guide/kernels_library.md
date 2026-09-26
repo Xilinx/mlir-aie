@@ -13,7 +13,7 @@ ready-to-bind [`ExternalFunction`](../python/iron/kernel.py) objects.
 Each factory bundles three things that designs would otherwise repeat
 by hand:
 
-* The source path (e.g. `aie_kernels/aie2/mm.cc`).
+* The source path (e.g. `aie_kernels/linalg/mm.cc`).
 * The compile flags (e.g. `-DDIM_M=64 -DDIM_K=64 -DDIM_N=64 -DBIT_WIDTH=16`).
 * The typed argument list (e.g. `[a_ty, b_ty, c_ty]`).
 
@@ -180,6 +180,12 @@ verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
 assert verdict, verdict.detail
 ```
 
+`kd.design(..., guard=True)` also catches writes past an output. Each output
+tile gets `kd.GUARD_BYTES` of `0x55` after it, which the kernel never sees.
+Size the output with `kd.output_size(fn, calls=16, guard=True)` and split the
+result with `kd.strip_guard(fn, out.numpy(), calls=16)`, which returns the
+data and the number of changed guard bytes. bfp outputs are not guarded.
+
 Every design validates independent tile calls, including matrix kernels.
 `kd.design(kernels.mm, calls=16)` repeats sixteen tile products, initializing
 each output before its call. The factory's dimensions size a tile; `calls`
@@ -291,7 +297,7 @@ Three things make this work for more than one kernel per design:
   they are baked into the design. A caller that only needs to size
   buffers reads this instead of running the sampler.
 
-`kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
+`kernels.mha()` compiles `aie_kernels/linalg/mha.cc` once and binds its
 selected entry point, the `QK^T` product: `mm.cc`'s bf16 tile matmul with
 its index gate bound open, validated by the generic builder like `mm`. The
 other symbols of the translation unit bind from the same object. The bf16
@@ -333,7 +339,7 @@ A new factory is complete when one line each in two places covers it:
 1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
    with the argument roles (`In`, `Out`, `InOut`, or `Param`), a
    numpy reference exported as `<name>_ref`, `ops_per_call` for the
-   benchmark's throughput series, and a `Tolerance` with its evidence in
+   performance checks' throughput series, and a `Tolerance` with its evidence in
    `note` — or none, to get the dtype default. Reductions set `out_valid`
    to the number of meaningful output elements. Say what the kernel
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
@@ -341,19 +347,29 @@ A new factory is complete when one line each in two places covers it:
    A factory with more than one dtype lists them in a `.dtypes` table.
    Bind fixed parameters explicitly with `parameter_bindings`, publish nontrivial
    storage with `layouts`, and initialize `InOut` tiles with `initializers`.
+   Declare what the kernel's trace markers measure with `trace=`:
+   `Trace.whole_call()` when one `event0()` before the work and one
+   `event1()` after it bracket every call of the entry symbol, or
+   `Trace.none(reason)` / `Trace.partial(reason)` when they do not. A
+   kernel the performance checks time must be `whole_call`.
 2. **Case.** Add one `Case(...)` to
    [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
    the shape to run and, with `smoke=True`, that it is the kernel's
    representative shape for the per-PR device test. The same table drives
-   the nightly correctness sweep and the benchmark, so there is nothing
+   the nightly correctness sweep and the performance checks, so there is nothing
    else to register.
 
 The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
 then checks the roles against the real `arg_types()`, the reference's
 arity, that the generated design lowers to MLIR, and that `setup`
 agrees with the source.
+[`test/python/test_kernel_trace_markers.py`](../test/python/test_kernel_trace_markers.py)
+compiles every build to optimized IR and checks the markers the entry
+symbol reaches against `trace=`. Markers in a sibling kernel of the same
+file, around an inner loop, or skipped by an early return do not count as
+`whole_call`.
 
-## Testing, benchmarking and static checks
+## Testing, performance and static checks
 
 Every tier below reads the contract and the case table; none restates
 what a kernel computes.
@@ -361,6 +377,7 @@ what a kernel computes.
 | Tier | What | Where | When |
 | --- | --- | --- | --- |
 | host | contract vs. factory; design lowers to MLIR | `test/python/test_kernel_contracts.py` | every PR (lit) |
+| host, Peano | trace markers vs. the contract's `trace` | `test/python/test_kernel_trace_markers.py` | every PR (lit) |
 | device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
 | device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
 | host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | on demand |
@@ -373,9 +390,23 @@ architectures each PR, and the nightly builds every case's.
 pytest test/python/test_kernel_contracts.py                        # host
 pytest test/python/npu/test_kernels_e2e.py -k eltwise              # NPU, smoke
 pytest test/python/npu/test_kernels_e2e.py -m extensive --seeds 3  # NPU, everything
-pytest test/python/npu/test_kernels_bench.py -m benchmark -k mul   # time one kernel
-pytest test/python/npu/test_kernels_bench.py -m benchmark --bench-out bench.json
+pytest test/python/npu/test_kernels_perf.py -m perf -k mul          # time one kernel
+pytest test/python/npu/test_kernels_perf.py -m perf --perf-out perf.json
 python -m aie.utils.compile.remarks --target aie2p --out static.json
+```
+
+To measure a kernel change against the code before it, point
+`--baseline-sources` at a second checkout (any directory holding
+`aie_kernels/` and `aie_runtime_lib/`). The static checks then compile both
+and print each row that differs; the performance checks run each case from both,
+back to back, on the same inputs:
+
+```bash
+mkdir ../base && git archive HEAD aie_kernels aie_runtime_lib | tar -x -C ../base
+python -m aie.utils.compile.remarks --target aie2p --only '^gelu' \
+    --out static.json --baseline-sources ../base
+pytest test/python/npu/test_kernels_perf.py -m perf -k gelu \
+    --baseline-sources ../base --perf-meta meta.json
 ```
 
 ### Data policy
@@ -417,24 +448,33 @@ either owns its mode or assumes the caller set one), not the whole of it:
 around their body, and nothing yet boots a core into `conv_even` by
 default. Both remain to do under that issue.
 
-### What the benchmark records
+### What the performance checks record
 
-`test/python/npu/test_kernels_bench.py` measures a kernel only after it has
+`test/python/npu/test_kernels_perf.py` measures a kernel only after it has
 produced a correct result under its declared tolerance; a wrong result fails
-the test, and a failed session writes no `--bench-out` file at all. Per case it records core
-`cycles` (trace, median over the run's kernel calls) and
-`cycles_per_kop`, `npu_us` / `e2e_us` from `aie.utils.benchmark`, and
-`compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced
-rebuild. Preflight reads the device and its power mode through the host
-runtime (`HostRuntime.power_mode()`); the benchmark workflow tries to switch
-to `performance` first, but always records the active mode in the results. A
-bit-exact `passthrough` smoke test inside a cycle band guards
-the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
-at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
-and the sizes alert at 3 %, the wall times are advisory, and nothing
-gates a pull request. A Peano-bump PR is compared against the cached
-nightly baseline and gets one comment only if a hard-threshold series
-regressed.
+the test, and a failed session writes no `--perf-out` file at all. Per case it records core
+`cycles` and `cycles_per_kop`, `npu_us` from `aie.utils.benchmark`, and
+the `xclbin`, `insts` and core-ELF sizes of the build it ran.
+
+`cycles` is recorded only for a kernel whose contract declares
+`Trace.whole_call()`. The trace holds one interval per call of the kernel
+and one per call of each traced initializer (`zero` before `mm`), in the
+order the harness calls them, and `kd.cycles_per_call` splits it by that
+position. The row is the kernel's minimum. Every call does the same work,
+so anything above the minimum is the core waiting. The median, the maximum,
+each initializer's minimum and whether the trace buffer filled go in the
+row's `range`. The trace buffer is sized to the number of intervals the
+contract declares. Preflight reads the device and its power mode through the
+host runtime (`HostRuntime.power_mode()`); the nightly workflow tries to
+switch to `performance` first, but always records the active mode in the
+results. A bit-exact `passthrough` smoke test inside a cycle band guards
+the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/` and is
+graphed at `https://xilinx.github.io/mlir-aie/kernel-checks/`, whose kernels
+view lists every factory with the builds each NPU offers, how its cases fared that
+night and their latest numbers (`utils/kernel_checks/catalogue.py` writes the
+catalogue); nothing gates a pull request. A Peano-bump PR is compared against the
+cached nightly baseline by `utils/kernel_checks/pr_report.py`, which keeps one PR
+comment listing failing cases and `cycles` or core ELF size regressions of 2 % or more.
 
 ### Static checks
 
@@ -442,7 +482,17 @@ regressed.
 each `.dtypes` entry) exactly as the JIT does, with Peano's
 optimization-record flags, and turns the records into per-kernel series:
 each loop's II and whether it is a zero-overhead loop, program memory,
-missing-bank loads and dropped `#pragma`s. The record shapes and the
+missing-bank loads and dropped `#pragma`s. It then reads the object: the
+loop counts and program memory cover only the functions the entry symbol
+reaches, which are the ones the core link keeps, and `libcalls` names the
+runtime-library routines it calls (`__divsf3`, `__mulsf3`, `__floatsisf`:
+on AIE2P, scalar float divide, multiply and int-to-float are software
+routines). `kernel_stack_bytes` is the deepest call path's frames from the
+entry, without those routines' own and without the core's `main`, which
+aiecc's measured stack also counts; above the contract's `stack_bytes`
+(else the target default) it prints a warning, since an overflow corrupts
+the neighbouring memory silently. Each build prints its entry symbol and
+source file, and `--meta` names its object (kept with `--keep DIR`). The record shapes and the
 regression rules are documented on the module
 ([API](../api/kernels.md#static-checks)). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
@@ -450,8 +500,8 @@ emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With
 `MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
 `aie_kernels/` is compiled against an installed wheel. The separate
-`benchmarkKernels.yml` workflow runs hardware correctness and benchmarks
-nightly, on demand, and on Peano-pin pull requests; it does not run these
+`nightlyKernelChecks.yml` workflow runs the hardware correctness and
+performance checks nightly and on Peano-pin pull requests; it does not run these
 static checks.
 
 ### Kernels the generic builder cannot run
@@ -465,12 +515,15 @@ builds the pair by hand and judges it against the two products.
 covered by the rounding-mode tests above.
 
 The MobileNet bottleneck kernels (`bn_*`) are exported for the
-[`mobilenet`](../programming_examples/ml/mobilenet) examples but carry no
-contract yet: their sources take between four and ten trailing scalars in
-per-kernel orders, several write only part of their output buffer per call,
-and the cascade halves exist as one symbol per network block. They are
-validated through the composed MobileNet designs until the sources are
-regularized; the contract test lists them by name as not judged.
+[`mobilenet`](../programming_examples/ml/mobilenet) examples. The single-core
+ones carry contracts with round-half-even integer references and run in the
+hardware sweeps at MobileNet V3 layer shapes; `bn_conv2dk1_relu_xy_pool_padded`
+accumulates into its output across calls, so its case zeroes that buffer
+first. The cascade halves (`bn_conv2dk1_partial_*` and
+`bn_conv2dk1_input_split_partial_*`) exist as one symbol per network block;
+`test/python/npu/test_bn_cascade_pairs.py` builds each pair the way the
+MobileNet cascade block calls it and judges it against a numpy model of
+the whole conv, and the contract test lists them by name as not judged.
 
 `mm_bfp_shuffle` validates the forward permutation through declared plain-BFP
 input and blocked-BFP output codecs, comparing exactly the represented values.
@@ -484,7 +537,7 @@ the GEMM-ordered bfp16ebs8 byte stream. Both are exposed as byte buffers so
 the harness checks exponents, mantissas and ordering exactly, including the
 kernel's floor-rounded bf16 intermediate. The default block and two smaller
 geometries participate in the compile and extensive hardware sweeps; the
-default also runs as a hardware smoke test and benchmark.
+default also runs as a hardware smoke test and performance check.
 
 ## Related reading
 

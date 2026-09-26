@@ -1413,6 +1413,11 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (objFifo.getAieStream().has_value())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "using stream port");
+  for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
+    if (auto other = dyn_cast<ObjectFifoAllocateOp>(op);
+        other && other.getObjFifoName() == getObjFifoName())
+      return emitOpError("objectfifo ")
+             << getObjFifoNameAttr() << " already has an allocate operation";
   return success();
 }
 

@@ -1,0 +1,220 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Nightly Component Checks
+
+# Checks on individual compiler components, as opposed to kernels end to end.
+# Currently just the SA tile placer: a CPU-only seed sweep (does every seed
+# still place, how long does it take, how much memory, how good a placement)
+# plus a small fixed-seed hardware check on mobilenet (does the placed design
+# still compile, verify, and run at its expected latency). Never gates PRs;
+# publishes to the same site as the kernel checks, one metric set per check.
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'seeds to sweep in the CPU-only check'
+        required: false
+        default: '20'
+  schedule:
+    - cron: '30 6 * * *'          # after the kernel checks' 6:00 run
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PERF_PMODE: performance
+
+jobs:
+  seed-sweep:
+    name: SA placer seed sweep (CPU-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-component-checks-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup virtual environment / prerequisites
+        run: source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: Build from source
+        run: |
+          source aie-venv/bin/activate
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF"
+          ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+
+      - name: Run the seed sweep
+        run: |
+          source aie-venv/bin/activate
+          python utils/component_checks/sa_placer.py \
+            --aie-opt build/bin/aie-opt \
+            --seeds "${{ inputs.seeds || '20' }}" \
+            --out perf.json | tee sweep.log
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: component-checks-sweep-${{ github.run_id }}
+          path: |
+            perf.json
+            sweep.log
+          if-no-files-found: ignore
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$PIP_CACHE_DIR"
+
+  hw-check:
+    name: SA placer hardware check (mobilenet, npu2)
+    runs-on: [self-hosted, bench, aie2p-8col]
+    timeout-minutes: 60
+    # Shares the kernel checks' own npu2 lock, so the two nightlies queue
+    # rather than risk landing on the same physical NPU at once.
+    concurrency:
+      group: kernel-checks-aie2p-8col
+      cancel-in-progress: false
+      queue: max
+    env:
+      AIE_EXPECTED_NPU: npu2
+      NPU_CACHE_HOME: ${{ github.workspace }}/component-checks-cache-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-component-checks-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup virtual environment / prerequisites
+        run: source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: Build from source
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) \
+            -DXRT_ROOT=/opt/xilinx/xrt -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON"
+          ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+
+      - name: NPU preflight and preferred performance mode
+        id: preflight
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          XRT_SMI=$(command -v xrt-smi || command -v xrt-smi.exe)
+          [ -n "$XRT_SMI" ]
+          EXAMINE=$("$XRT_SMI" examine)
+          printf '%s\n' "$EXAMINE"
+          BDF=$(printf '%s\n' "$EXAMINE" | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
+          [ -n "$BDF" ]
+          echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
+          if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$PERF_PMODE"; then
+            :
+          else
+            echo "::warning::Cannot set --pmode $PERF_PMODE non-interactively with $XRT_SMI; the hardware check will continue and record the active mode"
+          fi
+          "$XRT_SMI" examine -d "$BDF" --report platform
+
+      - name: Run the mobilenet seed check
+        if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          source utils/env_setup.sh mlir_aie
+          export XRT_CONTEXT_CACHE_SIZE=2
+          rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
+          python utils/component_checks/sa_placer_hw.py --out perf.json | tee hw.log
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: component-checks-hw-${{ github.run_id }}
+          path: |
+            perf.json
+            hw.log
+          if-no-files-found: ignore
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$NPU_CACHE_HOME" "$PIP_CACHE_DIR"
+
+  publish:
+    needs: [seed-sweep, hw-check]
+    # Publish whichever check produced results, even if the other failed.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Same lock publishKernelResults.yml uses, so the nightlies queue instead
+    # of racing on the gh-pages branch.
+    concurrency:
+      group: gh-pages-publish
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: component-checks-sweep-${{ github.run_id }}
+          path: results/sweep
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: component-checks-hw-${{ github.run_id }}
+          path: results/hw
+
+      - name: Fetch publication branch
+        run: git fetch origin gh-pages:gh-pages --depth=1
+
+      - name: Record seed-sweep results
+        if: hashFiles('results/sweep/perf.json') != ''
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
+        with:
+          name: SA placer seed sweep
+          tool: customSmallerIsBetter
+          output-file-path: results/sweep/perf.json
+          benchmark-data-dir-path: component-checks/sa-placer
+          gh-pages-branch: gh-pages
+          skip-fetch-gh-pages: true
+          auto-push: false
+          github-token: ${{ github.token }}
+          ref: ${{ github.sha }}
+          alert-threshold: '103%'
+          comment-on-alert: false
+          fail-on-alert: false
+          summary-always: true
+          max-items-in-chart: 400
+
+      - name: Record hardware check results
+        if: hashFiles('results/hw/perf.json') != ''
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
+        with:
+          name: SA placer hardware check (mobilenet, npu2)
+          tool: customSmallerIsBetter
+          output-file-path: results/hw/perf.json
+          benchmark-data-dir-path: component-checks/sa-placer-hw
+          gh-pages-branch: gh-pages
+          skip-fetch-gh-pages: true
+          auto-push: false
+          github-token: ${{ github.token }}
+          ref: ${{ github.sha }}
+          alert-threshold: '103%'
+          comment-on-alert: false
+          fail-on-alert: false
+          summary-always: true
+          max-items-in-chart: 400
+
+      - name: Publish all series
+        run: git push origin gh-pages:gh-pages

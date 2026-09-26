@@ -4,33 +4,42 @@
 #
 """End-to-end hardware test for one IRON block or chain design.
 
-Two modes:
+Compiles the design with @iron.jit, runs it on the NPU, and compares the output
+against the matching brevitas golden fixture.
 
-  block <bn>          per-block standalone (bn1, bn2, bn3, bn6, bn7, bn8).
-                      Inputs: input_bnN_single.txt + golden_output_bnN_single.txt
-                      from bottleneck_A/data/.
+  block <bn>          per-block standalone (bn1, bn2, bn3, bn6, bn7, bn8), with
+                      the per-bn fixtures and weights from bottleneck_A/data/.
+  chain regular       bn0 -> bn9, fixtures from bottleneck_A/data/.
+  chain pipeline      bn10 -> bn12, fixtures from bottleneck_B/data/.
+  chain cascade       bn13 -> bn14 (with cascade weight DMAs), bottleneck_C/data/.
 
-  chain pipeline      bn10 -> bn11 -> bn12. Inputs: before_ifm_mem_fmt_1x1.txt +
-                      golden_output.txt from bottleneck_B/data/.
-  chain cascade       bn13 -> bn14 (with cascade weight DMAs). Same fixture
-                      pattern, fixtures from bottleneck_C/data/.
-
-Compares the NPU output bit-exact against the brevitas golden reference.
-
-Usage:
-    python3 test_e2e.py block bn3 --xclbin <p> --insts <p> \\
-        --fixture-dir bottleneck_A/data
-    python3 test_e2e.py chain pipeline --xclbin <p> --insts <p> \\
-        --fixture-dir bottleneck_B/data
+Usage (from programming_examples/ml):
+    python3 -m mobilenet.test_e2e block bn3
+    python3 -m mobilenet.test_e2e chain cascade --iters 20
 """
 
 import argparse
+import os
 import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.utils import DefaultNPURuntime, NPUKernel
+from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import (
+    add_benchmark_args,
+    add_compile_args,
+    device_from_args,
+)
 from aie.utils.ml import DataShaper
+from aie.utils.verify import Tolerance, compare
+
+from .aie2_iron_chain import chain_design
+from .aie2_iron_per_block import per_block_design
+from .bottleneck._common import sa_placer_flags
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+VEC = 8
 
 # (in_w, in_h, in_c, out_w, out_h, out_c) per supported test target.
 SHAPES = {
@@ -44,34 +53,28 @@ SHAPES = {
     "chain:pipeline": (14, 14, 80, 7, 7, 80),
     "chain:cascade": (7, 7, 80, 7, 7, 80),
 }
-VEC = 8
+
+# Fixture directory and scale-factor file per chain; every block uses
+# bottleneck_A with its per-bn scales and bnN_single.txt weights.
+CHAINS = {
+    "regular": ("bottleneck_A", "scale_factors_fused.json"),
+    "pipeline": ("bottleneck_B", "scale_factors.json"),
+    "cascade": ("bottleneck_C", "scale_factors.json"),
+}
 
 
-def _load_input_chw(fix, mode, target, shape):
-    """Return the (CHW) int8 input tensor for this test target."""
-    in_c, in_h, in_w = shape
-    if mode == "block":
-        path = fix + f"input_bn{target[2:]}_single.txt"
-    else:
-        path = fix + "before_ifm_mem_fmt_1x1.txt"
+def _tolerance(key):
+    if key == "chain:regular":
+        # The placed-API bottleneck_A chain test accepted the same drift (#3009).
+        return Tolerance.lsb(14, note="bottleneck_A chain drift, #3009")
+    return Tolerance.exact()
+
+
+def _loadtxt_i8(path):
     # bottleneck_A's IFM is in [0,255]; numpy 2.x rejects direct dtype=int8.
-    raw = np.loadtxt(path, delimiter=",", dtype=np.int64).astype(np.uint8).view(np.int8)
-    assert raw.size == in_h * in_w * in_c, f"{path}: {raw.size} != {in_h*in_w*in_c}"
-    return raw.reshape(in_c, in_h, in_w)
-
-
-def _load_golden_chw(fix, mode, target, shape):
-    """Return the (CHW) int8 golden tensor for this test target."""
-    out_c, out_h, out_w = shape
-    if mode == "block":
-        path = fix + f"golden_output_bn{target[2:]}_single.txt"
-    else:
-        path = fix + "golden_output.txt"
-    raw = np.loadtxt(path, delimiter=",", dtype=np.int64).astype(np.uint8).view(np.int8)
-    assert (
-        raw.size == out_h * out_w * out_c
-    ), f"{path}: {raw.size} != {out_h*out_w*out_c}"
-    return raw.reshape(out_c, out_h, out_w)
+    return (
+        np.loadtxt(path, delimiter=",", dtype=np.int64).astype(np.uint8).view(np.int8)
+    )
 
 
 def _load_cascade_weights(fix):
@@ -87,76 +90,98 @@ def _load_cascade_weights(fix):
         )
         put = np.loadtxt(fix + f"{bn}_3_put_chain.txt", delimiter=",", dtype=np.int8)
         get = np.loadtxt(fix + f"{bn}_3_get_chain.txt", delimiter=",", dtype=np.int8)
-        chunks.append(np.concatenate([put, get]))  # bn_l3 (put + get)
+        chunks.append(np.concatenate([put, get]))
     full = np.concatenate(chunks)
     assert full.size == 4 * 80 * 960
     return full
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["block", "chain"])
-    ap.add_argument(
-        "target", help="block: bn1|bn2|bn3|bn6|bn7|bn8; chain: pipeline|cascade"
-    )
-    ap.add_argument("--xclbin", required=True)
-    ap.add_argument("--insts", required=True)
-    ap.add_argument("--fixture-dir", required=True)
-    ap.add_argument("--atol", type=int, default=0)
-    args = ap.parse_args()
+def _design(mode, target, fix):
+    if mode == "block":
+        kwargs = dict(
+            block_name=target,
+            data_dir=fix,
+            scales_json=fix + "scale_factors_per_bn.json",
+            wts_tag="single",
+        )
+        return per_block_design, kwargs
+    kwargs = dict(mode=target, data_dir=fix, scales_json=fix + CHAINS[target][1])
+    return chain_design, kwargs
 
-    key = f"{args.mode}:{args.target}"
+
+def _make_argparser():
+    p = argparse.ArgumentParser(description="Run one IRON mobilenet block or chain.")
+    add_compile_args(p, default_dev="npu2")
+    p.add_argument("mode", choices=["block", "chain"])
+    p.add_argument(
+        "target", help="block: bn1|bn2|bn3|bn6|bn7|bn8; chain: regular|pipeline|cascade"
+    )
+    p.add_argument(
+        "--sa-effort",
+        type=float,
+        help="SA placer search budget scale (default: 1.0; lower trades "
+        "placement cost for compile time)",
+    )
+    # The NPU takes 6-13 launches after load to reach its steady latency.
+    add_benchmark_args(p, default_warmup=20, default_iters=1)
+    return p
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    key = f"{opts.mode}:{opts.target}"
     if key not in SHAPES:
         print(f"FAIL_E2E {key}: unsupported target")
         return 1
+    set_current_device(device_from_args(opts, n_cols=None))
     in_w, in_h, in_c, out_w, out_h, out_c = SHAPES[key]
-    fix = args.fixture_dir.rstrip("/") + "/"
-
-    npu = NPUKernel(args.xclbin, args.insts)
-    handle = DefaultNPURuntime.load(npu)
+    bottleneck = "bottleneck_A" if opts.mode == "block" else CHAINS[opts.target][0]
+    fix = os.path.join(HERE, bottleneck, "data") + "/"
+    single = f"_bn{opts.target[2:]}_single" if opts.mode == "block" else ""
     ds = DataShaper()
 
-    # Input: CHW int8 → YCXC8 layout the AIE design expects.
-    chw = _load_input_chw(fix, args.mode, args.target, (in_c, in_h, in_w))
-    in_tensor = iron.tensor(
-        ds.reorder_mat(chw, "YCXC8", "CYX").flatten().view(np.int32), dtype=np.int32
-    )
-    out_tensor = iron.zeros((out_w * out_h * out_c // 4,), dtype=np.int32)
-
-    buffers = [in_tensor]
+    ifm = f"input{single}.txt" if single else "before_ifm_mem_fmt_1x1.txt"
+    chw = _loadtxt_i8(fix + ifm).reshape(in_c, in_h, in_w)
+    buffers = [
+        iron.tensor(
+            ds.reorder_mat(chw, "YCXC8", "CYX").flatten().view(np.int32),
+            dtype=np.int32,
+        )
+    ]
     if key == "chain:cascade":
         buffers.append(
             iron.tensor(_load_cascade_weights(fix).view(np.int32), dtype=np.int32)
         )
-    buffers.append(out_tensor)
+    out = iron.zeros((out_w * out_h * out_c // 4,), dtype=np.int32)
+    buffers.append(out)
 
-    print(f"  Running {args.mode} {args.target} on NPU ...")
-    DefaultNPURuntime.run(handle, buffers)
+    design, kwargs = _design(opts.mode, opts.target, fix)
+    if opts.sa_effort is not None:
+        design = design.specialize(aiecc_flags=sa_placer_flags(effort=opts.sa_effort))
+    bench = run_iters(design, *buffers, warmup=opts.warmup, iters=opts.iters, **kwargs)
 
-    # Decode output: HCWC8 → CHW; bit-exact compare vs brevitas golden.
-    aie_chw = ds.reorder_mat(
-        out_tensor.numpy().view(np.int8).reshape(out_h, out_c // VEC, out_w, VEC),
+    # HCWC8 -> CHW, compared against the brevitas golden.
+    actual = ds.reorder_mat(
+        out.numpy().view(np.int8).reshape(out_h, out_c // VEC, out_w, VEC),
         "CDYX",
         "YCXD",
     ).reshape(out_c, out_h, out_w)
-    gold = _load_golden_chw(fix, args.mode, args.target, (out_c, out_h, out_w))
+    golden = _loadtxt_i8(fix + f"golden_output{single}.txt")
+    golden = golden.reshape(out_c, out_h, out_w)
+    diff = np.abs(actual.astype(np.int32) - golden.astype(np.int32))
+    verdict = compare(actual.astype(np.int32), golden.astype(np.int32), _tolerance(key))
 
-    diff = aie_chw.astype(np.int32) - gold.astype(np.int32)
+    print_benchmark(bench)
+    n_total = diff.size
     n_match = int((diff == 0).sum())
-    n_total = aie_chw.size
-    max_d = int(np.abs(diff).max())
-    mean_d = float(np.abs(diff).mean())
-    pct = 100.0 * n_match / n_total
+    status = "PASS_E2E" if verdict.ok else "FAIL_E2E"
     print(
-        f"PASS_E2E {args.mode}:{args.target} {n_match}/{n_total} ({pct:.1f}%)  "
-        f"max={max_d}  mean={mean_d:.3f}"
+        f"{status} {key} {n_match}/{n_total} ({100.0 * n_match / n_total:.1f}%)  "
+        f"max={int(diff.max())}  mean={diff.mean():.3f}"
     )
-    if max_d > args.atol:
-        print(
-            f"FAIL_E2E {args.mode}:{args.target} max diff {max_d} exceeds atol={args.atol}"
-        )
-        return 1
-    return 0
+    if not verdict.ok:
+        print(verdict.detail)
+    return 0 if verdict.ok else 1
 
 
 if __name__ == "__main__":

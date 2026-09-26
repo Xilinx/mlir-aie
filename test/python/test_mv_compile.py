@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from aie.utils.compile.utils import compile_cxx_core_function
 
-_SOURCE = Path(__file__).resolve().parents[2] / "aie_kernels" / "generic" / "mv_bf16.cc"
+_SOURCE = Path(__file__).resolve().parents[2] / "aie_kernels" / "linalg" / "mv_bf16.cc"
 
 
 @pytest.mark.parametrize("arch", ["aie2", "aie2p"])

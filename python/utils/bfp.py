@@ -71,12 +71,22 @@ def dtype_name(dt) -> str:
     return "bfp16ebs8" if is_bfp(dt) else np.dtype(dt).name
 
 
-def encode(x) -> np.ndarray:
+def encode(x, *, rounding: str = "floor") -> np.ndarray:
     """float32 ``(..., n)`` with ``n % 8 == 0`` -> ``uint8`` ``(..., n * 9 // 8)``.
 
     Blocks are taken along the last axis. Inputs must be finite (the C++
     silently drops inf and NaN, which shifts every later value).
+
+    ``floor`` is the header's truncation. ``conv_even`` rounds each mantissa
+    to nearest, ties to even, as amd/IRON's ``f32_to_bfp16ebs8`` packs
+    weights, byte for byte. A mantissa that rounds to +128 saturates to 127
+    there, so ``decode(encode(x, rounding="conv_even"))`` differs from
+    ``quantize``, which models the core raising the exponent instead.
     """
+    if rounding not in ("floor", "conv_even"):
+        raise ValueError(
+            f"bfp.encode: rounding must be 'floor' or 'conv_even', got {rounding!r}"
+        )
     x = np.ascontiguousarray(x, dtype=np.float32)
     n = x.shape[-1]
     if n % BLOCK:
@@ -88,19 +98,28 @@ def encode(x) -> np.ndarray:
     sign = (bits >> 31).astype(bool)
     exp = (bits >> 23) & 0xFF
     mant = (bits & 0x7FFFFF) | np.where(exp != 0, np.uint32(0x800000), np.uint32(0))
-    # Two's complement in 32 bits, logical shift, low byte: the header's
-    # `(uint8_t)((sign ? ~m + 1 : m) >> 17)`.
-    m32 = np.where(sign, (-mant.astype(np.int64)) & 0xFFFFFFFF, mant).astype(np.uint32)
-    v = (
-        ((m32 >> _MANTISSA_SHIFT) & 0xFF)
-        .astype(np.uint8)
-        .view(np.int8)
-        .astype(np.int32)
-    )
     max_exp = exp.max(axis=-1, keepdims=True)
     shift = (max_exp - exp).astype(np.int64)
     far = shift >= 32
-    v = np.right_shift(v, np.minimum(shift, 31).astype(np.int32))  # arithmetic
+    if rounding == "conv_even":
+        # The quotient of a 24-bit magnitude by a power of two is exact in
+        # float64, so rint is the only rounding.
+        signed = np.where(sign, -mant.astype(np.int64), mant.astype(np.int64))
+        v = np.rint(signed / np.exp2(np.minimum(_MANTISSA_SHIFT + shift, 62)))
+        v = np.clip(v, -128, 127)
+    else:
+        # Two's complement in 32 bits, logical shift, low byte: the header's
+        # `(uint8_t)((sign ? ~m + 1 : m) >> 17)`.
+        m32 = np.where(sign, (-mant.astype(np.int64)) & 0xFFFFFFFF, mant).astype(
+            np.uint32
+        )
+        v = (
+            ((m32 >> _MANTISSA_SHIFT) & 0xFF)
+            .astype(np.uint8)
+            .view(np.int8)
+            .astype(np.int32)
+        )
+        v = np.right_shift(v, np.minimum(shift, 31).astype(np.int32))  # arithmetic
     out = np.empty(lead + (n // BLOCK,), dtype=_BLOCK_DTYPE)
     out["exponent"] = max_exp[..., 0]
     out["mantissas"] = np.where(far, np.where(sign, -1, 0), v)
@@ -133,14 +152,15 @@ def quantize(x, *, rounding: str = "floor") -> np.ndarray:
     round-to-nearest-ties-to-even, which is what ``mm_bfp``'s mixed kernel
     pins so its K reduction does not accumulate a one-sided bias.
 
-    The mode is load-bearing, not a detail: on a 64x64x64 mixed tile of large
-    inputs, pairing the kernel with the wrong one costs 2791 mismatching
-    outputs against 10 for the right one.
+    The mode is load-bearing, not a detail: on 64x64x64 mixed tiles of random
+    and large inputs, the right one reproduces the kernel's bf16 output bit
+    for bit, and floor mismatches about 3550 of each tile's 4096 outputs.
 
-    A mantissa that rounds up to 128 does not fit the 8-bit field, so the
+    A mantissa that rounds up to +128 does not fit the 8-bit field, so the
     block's exponent goes up by one and the block is requantized. Clamping
     instead would cost a whole step to the one element the shared exponent
-    was chosen for.
+    was chosen for. The carry is one-sided, as on the core: -128 fits, so a
+    block whose most negative value rounds to -128 keeps its exponent.
     """
     if rounding == "floor":
         return decode(encode(x))
@@ -156,7 +176,7 @@ def quantize(x, *, rounding: str = "floor") -> np.ndarray:
     exp = (blocks.view(np.uint32) >> 23) & 0xFF
     scale = np.ldexp(1.0, exp.max(axis=-1, keepdims=True).astype(np.int32) - 127 - 6)
     mant = np.rint(blocks.astype(np.float64) / scale)
-    carry = (np.abs(mant).max(axis=-1, keepdims=True) > 127)[..., 0]
+    carry = (mant.max(axis=-1, keepdims=True) > 127)[..., 0]
     if carry.any():
         scale = np.where(carry[..., None], scale * 2, scale)
         mant = np.rint(blocks.astype(np.float64) / scale)

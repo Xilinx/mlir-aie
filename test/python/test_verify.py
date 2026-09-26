@@ -170,6 +170,16 @@ def test_bf16_negative_ulp_direction():
     assert bf16_ulp_distance(*zeros)[0] == 0
 
 
+def test_ulps_reference_is_rounded_directly_not_through_float32():
+    """Rounding the float64 reference through float32 first picks the wrong
+    neighbour on this tie: 1 + 2**-8 + 2**-30 is correctly rounded to
+    1.0078125, but casting it to float32 then bfloat16 lands on 1.0.
+    """
+    ref = np.array([1 + 2**-8 + 2**-30], np.float64)
+    correct = np.array([1.0078125], bfloat16)
+    assert compare(correct, ref, Tolerance.bf16_ulps(0)).ok
+
+
 def test_ulps_atol_floor_admits_a_flushed_subnormal():
     """A subnormal the device flushed to zero meets the floor, not the ulps."""
     smallest_normal = 2.0**-126
@@ -368,6 +378,36 @@ def test_verdict_detail_names_the_evidence():
     tol = Tolerance.relative(0.01, note="measured on npu2, 2026-09")
     v = compare(np.array([2.0], np.float32), np.array([1.0], np.float32), tol)
     assert not v.ok and "measured on npu2" in v.detail
+
+
+def test_a_bound_tolerance_holds_each_element_to_its_own_bound():
+    tol = Tolerance.bounded(lambda x: np.abs(x) / 8, note="half-width band")
+    assert tol.kind == "bound"
+    ref = np.array([1.0, 8.0, -4.0, np.inf], np.float32).astype(bfloat16)
+    x = np.array([0.0, 8.0, 16.0, 1.0])
+    bound = tol.bound(x)
+    got = np.array([1.0, 9.0, -6.0, np.inf], np.float32).astype(bfloat16)
+    assert compare(got[1:], ref[1:], tol, bound=bound[1:])
+    # The first element's input admits nothing; its neighbours' slack does
+    # not carry over.
+    v = compare(got + np.array([0.5, 0, 0, 0], np.float32), ref, tol, bound=bound)
+    assert not v and v.n_mismatch == 1 and "abs_err/bound=inf" in v.detail
+    v = compare(ref.copy(), ref, tol, bound=bound)
+    assert v
+    v = compare(got[:3] * 2, ref[:3], tol, bound=bound[:3])
+    assert not v and "half-width band" in v.detail
+    # Non-finite values still have to match, whatever the bound says.
+    assert not compare(np.zeros(1, bfloat16), ref[3:], tol, bound=np.array([np.inf]))
+
+
+def test_a_bound_tolerance_needs_its_bound_and_stands_alone():
+    tol = Tolerance.bounded(np.abs)
+    with pytest.raises(ValueError, match="bound evaluated"):
+        compare(np.zeros(2, np.float32), np.zeros(2, np.float32), tol)
+    with pytest.raises(ValueError, match="floating-point"):
+        compare(np.zeros(2, np.int32), np.zeros(2, np.int32), tol, bound=1)
+    with pytest.raises(ValueError, match="whole comparison"):
+        Tolerance(bound=np.abs, atol=1e-3)
 
 
 def test_integers_honor_an_lsb_slack_only_under_a_relative_tolerance():

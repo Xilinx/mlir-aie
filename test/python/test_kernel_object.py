@@ -69,7 +69,9 @@ def test_sibling_alone_rediscovers_source_owner_after_registry_reset(
     assert len(ExternalFunction._instances) == 1
 
 
-def test_reduce_max_specializations_do_not_share_objects(tmp_path, monkeypatch):
+def test_reduce_max_specializations_do_not_share_objects(
+    tmp_path, monkeypatch, npu2_device
+):
     from aie.iron.kernels.reduce import compute_max, reduce_max
 
     first, second, third = (

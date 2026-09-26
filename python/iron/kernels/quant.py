@@ -14,7 +14,13 @@ from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, _default_source_path, _detect_arch, _make_extern
+from ._common import (
+    KernelContract,
+    Trace,
+    _arch_traits,
+    _kernel_source,
+    _make_extern,
+)
 
 
 def _geometry(m_tile, k_tile, group, ct_k, s, t):
@@ -130,25 +136,25 @@ def q4nx_dequant(
     """
     geometry = _geometry(m_tile, k_tile, group, ct_k, s, t)
     m_tile, k_tile, group, ct_k, s, t = geometry.values()
-    if _detect_arch() != "aie2p":
+    if not _arch_traits().bfp16:
         raise NotImplementedError("q4nx_dequant() is only available on aie2p.")
     input_bytes = m_tile * k_tile // 2 + 4 * m_tile * k_tile // group
     output_bytes = m_tile * k_tile * 9 // 8
     return _make_extern(
         "q4nx_dequant_bfp",
-        _default_source_path("q4nx_dequant.cc", subdir="generic"),
+        _kernel_source("quant/q4nx_dequant.cc"),
         [
             np.ndarray[(input_bytes,), np.dtype[np.uint8]],
             np.ndarray[(output_bytes,), np.dtype[np.uint8]],
         ],
+        # The inner loop is one long latency chain, so it is allowed five
+        # pipeline stages instead of the default three.
         compile_flags=[
             f"-DQ4NX_{name.upper()}={value}" for name, value in geometry.items()
-        ],
+        ]
+        + ["-mllvm", "--aie-pipeliner-max-stagecount=5"],
         contract=KernelContract(
-            # aiecc measured_stack_size (Peano 22). A group size that is not a
-            # power of two makes the `/ GROUP` in the inner loop call __muldi3,
-            # which needs 64 bytes more than the power-of-two geometries.
-            stack_bytes=1280,
+            trace=Trace.whole_call(),
             roles=(In, Out),
             reference=partial(q4nx_dequant_ref, **geometry),
             sample=partial(_q4nx_sample, **geometry),

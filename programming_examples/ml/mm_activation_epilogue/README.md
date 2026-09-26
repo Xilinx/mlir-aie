@@ -7,12 +7,11 @@
 
 # mm_activation_epilogue: one resident program, four RTP-selected GEMM epilogues
 
-This design implements a fused, `float32`-in/`float32`-out GEMM epilogue for
-`aie2p` that applies one of `{identity, SiLU, GELU, ReLU}` to a matmul's f32
+This design implements a fused, `float32`-in/`float32`-out GEMM epilogue
+that applies one of `{identity, SiLU, GELU, ReLU}` to a matmul's f32
 accumulator tile. All four modes are compiled into ONE xclbin; which one
 runs is selected per dispatch by a single runtime-parameter (RTP) word, not
-by loading a different xclbin. NPU2-only (the underlying kernel lives under
-`aie_kernels/aie2p/`).
+by loading a different xclbin. It runs on NPU1 and NPU2.
 
 ## Why a runtime-selected epilogue
 
@@ -32,6 +31,11 @@ range it matches `numpy.maximum` bit-exactly in host emulation, which is
 weaker evidence than the other three modes carry but is what a pure
 comparison with no SFU transcendental is expected to give.
 
+On NPU1, where AIE2 has no tanh instruction, SiLU and GELU take tanh from
+the `getTanhBf16` lookup table in `aie_runtime_lib/AIE2/`. All four modes
+pass the same gates there: identity and ReLU bit-exact, SiLU and GELU
+within `atol=0.05`.
+
 ## Source Files Overview
 
 1. `mm_activation_epilogue.py`: IRON design. Two cores split a flat
@@ -43,12 +47,14 @@ comparison with no SFU transcendental is expected to give.
    independently. Follows [`ml/scale_shift`](../scale_shift)'s RTP-parameter
    dispatch, extended to four phases and four outputs.
 
-1. `mm_activation_epilogue.cc`: AIE2P kernel, from
-   [`aie_kernels/aie2p/`](../../../aie_kernels/aie2p/). One `mode` argument
-   (0/1/2/3) selects identity, SiLU, GELU, or ReLU.
+1. `mm_activation_epilogue.cc`: kernel, from
+   [`aie_kernels/transformer/`](../../../aie_kernels/transformer/), built for both
+   AIE2 and AIE2P. One `mode` argument (0/1/2/3) selects identity, SiLU,
+   GELU, or ReLU.
 
 ## Usage
 
 ```shell
-python3 mm_activation_epilogue.py --dev npu2
+python3 mm_activation_epilogue.py --dev npu2   # NPU2
+python3 mm_activation_epilogue.py --dev npu    # NPU1
 ```

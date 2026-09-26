@@ -13,11 +13,13 @@ from aie.utils.verify import Tolerance
 from ._common import (
     KernelContract,
     Param,
-    _default_source_path,
+    Trace,
     _dtype_to_bit_width,
+    _kernel_source,
     _make_extern,
     _require_vector_alignment,
     _runtime_lib_include,
+    _tuned_arch,
     dtypes,
 )
 
@@ -36,7 +38,7 @@ def _color_convert_kernel(
     out_ty = np.ndarray[(out_size,), np.dtype[np.uint8]]
     return _make_extern(
         func_name,
-        _default_source_path(filename),
+        _kernel_source(f"vision/{filename}"),
         [in_ty, out_ty, np.int32],
         compile_flags=compile_flags,
         use_chess=use_chess,
@@ -55,11 +57,12 @@ def _bitwise_kernel(
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         f"bitwise{op}Line",
-        _default_source_path(f"bitwise{op}.cc"),
+        _kernel_source(f"vision/bitwise{op}.cc"),
         [line_ty, line_ty, line_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DBITWISE_ELEMS={line_width}"],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, Out, Param),
             parameter_bindings=((3, line_width),),
             reference={"OR": bitwise_or_ref, "AND": bitwise_and_ref}[op],
@@ -70,15 +73,23 @@ def _bitwise_kernel(
 
 def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
     """Convert a line of RGBA pixels to hue values (full-range, 0..255)."""
+    _require_vector_alignment("rgba2hue", line_width, 32, param="line_width")
+    # lut_inv.h pins its gather pair with AIE_BANK_A/AIE_BANK_B.
+    flags = [f"-I{_runtime_lib_include()}"]
+    if not use_chess and _tuned_arch() == "aie2p":
+        # LICM hoists the three accumulator constants out of the loop, where
+        # they spill. Capping its MemorySSA walk at zero keeps them in the
+        # loop.
+        flags += ["-mllvm", "--licm-mssa-optimization-cap=0"]
     return _color_convert_kernel(
         "rgba2hueLine",
         "rgba2hue.cc",
         line_width * 4,
         line_width,
         use_chess=use_chess,
-        # lut_inv.h pins its gather pair with AIE_BANK_A/AIE_BANK_B.
-        compile_flags=[f"-I{_runtime_lib_include()}"],
+        compile_flags=flags,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, line_width),),
             reference=rgba2hue_ref,
@@ -115,11 +126,12 @@ def threshold(
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         "thresholdLine",
-        _default_source_path("threshold.cc"),
+        _kernel_source("vision/threshold.cc"),
         [line_ty, line_ty, np.int32, scalar_ty, scalar_ty, np.int8],
         compile_flags=[f"-DBIT_WIDTH={bit_width}", f"-DTHRESHOLD_ELEMS={line_width}"],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param, Param, Param, Param),
             parameter_bindings=((2, line_width),),
             reference=threshold_ref,
@@ -153,6 +165,7 @@ def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
         line_width * 4,
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, line_width),),
             reference=gray2rgba_ref,
@@ -163,13 +176,20 @@ def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
 
 def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
     """Convert an RGBA line to grayscale."""
+    flags = []
+    if not use_chess and _tuned_arch() == "aie2p":
+        # The pre-RA pipeliner's schedule of the 64-pixel loop ends up at II13
+        # after register allocation; the postpipeliner finds II11.
+        flags += ["-mllvm", "--aie-force-postpipeliner"]
     return _color_convert_kernel(
         "rgba2grayLine",
         "rgba2gray.cc",
         line_width * 4,
         line_width,
         use_chess=use_chess,
+        compile_flags=flags,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, Out, Param),
             parameter_bindings=((2, line_width),),
             reference=rgba2gray_ref,
@@ -194,10 +214,11 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
     kernel_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
     return _make_extern(
         "filter2dLine",
-        _default_source_path("filter2d.cc"),
+        _kernel_source("vision/filter2d.cc"),
         [line_ty, line_ty, line_ty, line_ty, np.int32, kernel_ty],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, In, Out, Param, Param),
             parameter_bindings=((4, line_width),),
             reference=filter2d_ref,
@@ -237,14 +258,14 @@ def add_weighted(
             "add_weighted: no int32 build; addWeighted.cc has no int32 x int16 MAC. "
             "Use np.uint8 or np.int16."
         )
-    gamma_ty = {8: np.int8, 16: np.int16, 32: np.int32}[bit_width]
+    gamma_ty = {8: np.int8, 16: np.int16}[bit_width]
     _require_vector_alignment(
         "add_weighted", line_width, 256 // bit_width, param="line_width"
     )
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
         "addWeightedLine",
-        _default_source_path("addWeighted.cc"),
+        _kernel_source("vision/addWeighted.cc"),
         [line_ty, line_ty, line_ty, np.int32, np.int16, np.int16, gamma_ty],
         compile_flags=[
             f"-DBIT_WIDTH={bit_width}",
@@ -252,6 +273,7 @@ def add_weighted(
         ],
         use_chess=use_chess,
         contract=KernelContract(
+            trace=Trace.whole_call(),
             roles=(In, In, Out, Param, Param, Param, Param),
             parameter_bindings=((3, line_width),),
             reference=add_weighted_ref,
@@ -267,7 +289,7 @@ def add_weighted(
 
 # --------------------------------------------------------------------------
 # Numpy references. Each follows the *vector* path of its kernel (the one the
-# ``*Line`` entry points call), read off aie_kernels/aie2/*.cc.
+# ``*Line`` entry points call), read off aie_kernels/vision/*.cc.
 # --------------------------------------------------------------------------
 
 
@@ -303,10 +325,10 @@ def rgba2gray_ref(rgba):
 def rgba2hue_ref(rgba):
     """Numpy reference for [`rgba2hue`][iron.kernels.vision.rgba2hue]: full-range hue.
 
-    Both paths of ``rgba2hue.cc`` multiply by a Q7.9 reciprocal rather than
-    dividing, so with ``d = max - min`` of R, G, B and ``inv = 85 * 512 / d``
-    the hue is ``(offset * 512 + c * inv) >> 10`` for whichever channel holds
-    the max: ``c = G - B`` at offset 1, ``B - R`` at 171, ``R - G`` at 341.
+    ``rgba2hue.cc`` multiplies by a Q7.9 reciprocal rather than dividing, so
+    with ``d = max - min`` of R, G, B and ``inv = 85 * 512 / d`` the hue is
+    ``(offset * 512 + c * inv) >> 10`` for whichever channel holds the max:
+    ``c = G - B`` at offset 1, ``B - R`` at 171, ``R - G`` at 341.
     Each offset carries the ``+ 1`` that rounds the final halving, so there is
     one rounding step rather than two. The cast to ``uint8`` wraps, so a
     negative hue (R max, G < B) comes out as ``256 + h`` -- the right circular
@@ -369,19 +391,18 @@ def bitwise_and_ref(a, b):
 def add_weighted_ref(a, b, alpha, beta, gamma):
     """Numpy reference for [`add_weighted`][iron.kernels.vision.add_weighted]: Q2.14 blend.
 
-    ``out = sat((alpha * a + beta * b + gamma) >> 14)`` with ``alpha`` and
-    ``beta`` as Q2.14 fixed point (``8192`` is 0.5). This is what the vector
-    path in ``addWeighted.cc`` computes: it seeds the accumulator with
-    ``gamma`` *before* the shift, so ``gamma`` contributes ``gamma / 2**14``
-    and is effectively ignored. The scalar path in the same file adds
-    ``gamma`` *after* the shift, as OpenCV does; the two disagree for any
-    non-zero ``gamma``. Within one LSB otherwise.
+    ``out = sat(((alpha * a + beta * b) >> 14) + gamma)`` with ``alpha`` and
+    ``beta`` as Q2.14 fixed point (``8192`` is 0.5) and ``gamma`` in output
+    units, as OpenCV's ``addWeighted`` has it; the kernel reads ``gamma`` as
+    the data type, so for ``uint8`` data ``-56`` is ``200``. The vector path in
+    ``addWeighted.cc`` rounds the shift down; its scalar path rounds to
+    nearest, so the two differ by at most one LSB.
     """
     a = np.asarray(a)
     info = np.iinfo(a.dtype)
     acc = a.astype(np.int64) * int(alpha) + np.asarray(b).astype(np.int64) * int(beta)
-    acc = acc + int(gamma)
-    return np.clip(acc >> 14, info.min, info.max).astype(a.dtype)
+    acc = (acc >> 14) + int(np.array(gamma).astype(a.dtype))
+    return np.clip(acc, info.min, info.max).astype(a.dtype)
 
 
 def filter2d_ref(line0, line1, line2, kernel):

@@ -16,21 +16,18 @@ import numpy as np
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
-from aie.iron.device import AnyMemTile, Tile
+from aie.iron.device import AnyMemTile
 
 from ..network_spec import block as nsblock
 from ._common import i8, load_wts
 
 
-def post_l2(act_in, sf, *, tiles=None, data_dir):
+def post_l2(act_in, sf, *, data_dir):
     """Build the post-L2 (4-tile FC1+FC2) block.
 
     Args:
         act_in: ObjectFifo  — host-scratch fill of the avgpool output (uint16).
         sf: dict            — full scale-factor mapping; uses sf["POST"]["FC1"], ["FC2"].
-        tiles: dict | None  — PLACEMENT["post_l2"] with keys "wts_memtiles",
-            "compute", "join_memtile". None leaves placement to the compiler
-            (SA placer).
         data_dir: str       — directory holding FC{1,2}_{0..3}_chain.txt.
 
     Returns:
@@ -71,15 +68,11 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
     # `co` = channels per ObjectFifo element (one WeightIndex iteration's output slice).
     co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
 
-    def t(k) -> Tile | None:
-        return tiles.get(k) if tiles else None
-
     # Split the output fifo into 4 channel-segments, one per FC tile.
     act_post_l2_tiles = act_out_of.prod().join(
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
-        tile=t("join_memtile"),
     )
 
     def _u16(shape):
@@ -110,10 +103,9 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
                 fc2_data.reshape(fc_full_per_tile),
             ],
         )
-        # Pin the producer to a MemTile. Normally a Worker sets its fifo
+        # Put the producer on a MemTile. Normally a Worker sets its fifo
         # endpoint implicitly, but this fifo has no producing Worker.
-        wts_mt = tiles["wts_memtiles"][i] if tiles else AnyMemTile.copy()
-        fc_wts_of.prod().endpoint = ObjectFifoEndpoint(wts_mt)
+        fc_wts_of.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
 
         def post_l2_fn(
             act_in,
@@ -155,7 +147,6 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
                 post_fc1_sf,
                 post_fc2_sf,
             ],
-            tile=tiles["compute"][i] if tiles else None,
         )
         post_l2_workers.append(w)
 

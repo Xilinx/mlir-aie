@@ -39,6 +39,20 @@ getMemAffinityNeighbors(const AIETargetModel &targetModel, TileID tilePos) {
   return neighbors;
 }
 
+/// Bytes a buffer takes on a tile once assign-buffer-addresses aligns it: to
+/// the bus width, or on a core tile to the widest vector access once the buffer
+/// can hold one.
+static int64_t alignedBufferBytes(const AIETargetModel &targetModel,
+                                  AIETileType tileType, int64_t bytes) {
+  if (tileType == AIETileType::MemTile)
+    return llvm::alignTo(bytes, targetModel.getMemTileLoadStoreBusWidth() / 8);
+  uint32_t alignBits = targetModel.getComputeTileLoadStoreBusWidth();
+  uint32_t vecAlignBits = targetModel.getComputeTileMaxVectorAlignBits();
+  if (bytes * 8 >= vecAlignBits)
+    alignBits = std::max(alignBits, vecAlignBits);
+  return llvm::alignTo(bytes, alignBits / 8);
+}
+
 //===----------------------------------------------------------------------===//
 // SASchedule
 //===----------------------------------------------------------------------===//
@@ -297,6 +311,15 @@ bool SAPlacer::isLegalPosition(Operation *tile, TileID pos) const {
 // Memory capacity tracking
 //===----------------------------------------------------------------------===//
 
+std::optional<TileID> SAPlacer::positionOf(Operation *tile) const {
+  if (auto it = currentPlacement.find(tile);
+      tile && it != currentPlacement.end())
+    return it->second;
+  if (auto tileOp = dyn_cast_or_null<TileOp>(tile))
+    return tileOp.getTileID();
+  return std::nullopt;
+}
+
 // Add a single fifo's contributions to memory and DMA usage maps.
 void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   const auto &fb = fifoBuffers[fifoIdx];
@@ -313,6 +336,10 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   bool prodIsShim = prodTypeIt != tileTypes.end() &&
                     (prodTypeIt->second == AIETileType::ShimNOCTile ||
                      prodTypeIt->second == AIETileType::ShimPLTile);
+
+  // A fifo that already has an aie.objectfifo.allocate keeps its shared-memory
+  // objects on that delegate tile.
+  std::optional<TileID> delegatePos = positionOf(fb.delegate);
 
   // Charge memory based on connection topology:
   //   intratile     → max(sizes) * max(depths) on shared tile
@@ -360,7 +387,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       int depth = std::max(fb.producerDepth, consDeclDepth);
       int64_t maxSize = std::max(fb.producerSizeBytes, fb.consumerSizeBytes);
       int64_t bytes = maxSize * depth;
-      currentMemUsage[prodPos] += sign * bytes;
+      currentMemUsage[delegatePos.value_or(prodPos)] += sign * bytes;
     } else if (isSharedMem) {
       // Shared memory: use declared depths
       bool rightShared = targetModel->isLegalMemAffinity(
@@ -368,7 +395,9 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       bool leftShared = targetModel->isLegalMemAffinity(
           consPos.col, consPos.row, prodPos.col, prodPos.row);
       TileID bufTile;
-      if (rightShared && leftShared) {
+      if (delegatePos) {
+        bufTile = *delegatePos;
+      } else if (rightShared && leftShared) {
         if (sign > 0) {
           int64_t prodUsed =
               currentMemUsage.count(prodPos) ? currentMemUsage[prodPos] : 0;
@@ -462,13 +491,12 @@ void SAPlacer::initResourceTracking() {
     for (auto *cons : fb.consumers)
       if (cons)
         tileToFifoIndices[cons].push_back(i);
+    if (fb.delegate)
+      tileToFifoIndices[fb.delegate].push_back(i);
   }
 
-  // Add all fifo contributions
-  for (size_t i = 0; i < fifoBuffers.size(); i++)
-    addFifoContribution(i, +1);
-
-  // Add static buffers
+  // Static buffers and stacks go first: a shared-memory fifo picks the emptier
+  // of its two tiles as it is added, and must see what they already hold.
   for (auto &[op, bufSize] : staticBufferSizes) {
     auto posIt = currentPlacement.find(op);
     if (posIt != currentPlacement.end())
@@ -483,6 +511,9 @@ void SAPlacer::initResourceTracking() {
     if (it != stackSizes.end())
       currentMemUsage[pos] += it->second;
   }
+
+  for (size_t i = 0; i < fifoBuffers.size(); i++)
+    addFifoContribution(i, +1);
   cachedResourcePenalty = computePenalty();
 }
 
@@ -510,14 +541,44 @@ int SAPlacer::computeMemoryPressure() const {
 
 int SAPlacer::computePenalty() const {
   return computeMemSpilloverPenalty() + computeCoreOverflowPenalty() +
-         computeDMAChannelPenalty() + computeBDCountPenalty();
+         computeDMAChannelPenalty() + computeBDCountPenalty() +
+         computeDelegatePenalty();
+}
+
+// Both ends of a fifo with an aie.objectfifo.allocate must reach the delegate
+// tile's memory module, or the objectfifo split pass rejects the allocate.
+int SAPlacer::computeDelegatePenalty() const {
+  int penalty = 0;
+  for (const auto &fb : fifoBuffers) {
+    std::optional<TileID> delegatePos = positionOf(fb.delegate);
+    if (!delegatePos)
+      continue;
+    SmallVector<Operation *, 2> ends = {fb.producer};
+    llvm::append_range(ends, fb.consumers);
+    for (Operation *end : ends) {
+      std::optional<TileID> endPos = positionOf(end);
+      if (!endPos)
+        continue;
+      auto shared = targetModel->getSharedMemory(*delegatePos, *endPos);
+      if (shared == AIETargetModel::SharedMemory::First ||
+          shared == AIETargetModel::SharedMemory::Either)
+        continue;
+      int dist = std::abs(delegatePos->col - endPos->col) +
+                 std::abs(delegatePos->row - endPos->row);
+      penalty += config.delegateWeightPerDist * std::max(dist - 1, 1);
+    }
+  }
+  return penalty;
 }
 
 // Simulates per-buffer MemTile allocation with neighbor spillover.
-// Matches the stateful transform's allocation strategy: buffers are
+// Approximates the objectfifo allocator's strategy: buffers are
 // collected globally across all MemTile columns, sorted largest-first,
 // and each buffer is placed on its home column when possible, spilling
 // to the neighbor with the most remaining capacity when the home is full.
+// Equal-size buffers may be visited in a different order than the
+// allocator's, so the two can break spill ties differently; the
+// allocator backtracks over its spill choices to cover that.
 int SAPlacer::computeMemSpilloverPenalty() const {
   int64_t memTileCapacity = targetModel->getMemTileSize();
   int numCols = targetModel->columns();
@@ -656,7 +717,8 @@ int SAPlacer::computeCoreOverflowPenalty() const {
           if (!seen.insert(fi).second)
             continue;
           const auto &fb = fifoBuffers[fi];
-          if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0])
+          if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0] ||
+              fb.delegate)
             continue;
           auto prodIt = currentPlacement.find(fb.producer);
           auto consIt = currentPlacement.find(fb.consumers[0]);
@@ -812,7 +874,8 @@ void SAPlacer::generateAllocates() {
       if (!seen.insert(fi).second)
         continue;
       const auto &fb = fifoBuffers[fi];
-      if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0])
+      if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0] ||
+          fb.delegate)
         continue;
       auto prodIt = currentPlacement.find(fb.producer);
       auto consIt = currentPlacement.find(fb.consumers[0]);
@@ -1189,7 +1252,11 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     auto *tileOp = bufOp.getTile().getDefiningOp();
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
-    staticBufferSizes[tileOp] += bufOp.getAllocationSize();
+    int64_t bytes = bufOp.getAllocationSize();
+    staticBufferSizes[tileOp] +=
+        bufOp.getAligned()
+            ? alignedBufferBytes(*targetModel, tileTypes.lookup(tileOp), bytes)
+            : bytes;
   });
 
   // Collect core stack sizes (reserved by assign-buffer-addresses pass)
@@ -1197,7 +1264,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
-    stackSizes[tileOp] = coreOp.getEffectiveStackSize();
+    stackSizes[tileOp] = alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                                            coreOp.getEffectiveStackSize());
   });
 
   // Build net model, fifo buffer info, and cascade groups
@@ -1215,9 +1283,14 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
                                    ArrayRef<ObjectFifoLinkOp> objectFifoLinks) {
   mlir::DataLayout dataLayout(device->getParentOfType<ModuleOp>());
 
+  llvm::StringMap<Operation *> delegates;
+  for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
+    delegates[alloc.getObjFifoName()] = alloc.getDelegateTile().getDefiningOp();
+
   for (auto ofOp : objectFifos) {
     FifoBufferInfo fb;
     fb.fifoOp = ofOp.getOperation();
+    fb.delegate = delegates.lookup(ofOp.getSymName());
 
     // Get producer
     auto *prodOp = ofOp.getProducerTile().getDefiningOp();
@@ -1235,17 +1308,30 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
     int64_t elementBits =
         dataLayout.getTypeSizeInBits(elemType.getElementType());
-    fb.producerSizeBytes = elemType.getNumElements() * elementBits / 8;
+    int64_t producerBytes = elemType.getNumElements() * elementBits / 8;
+    AIETileType prodType =
+        fb.producer ? tileTypes.lookup(fb.producer) : AIETileType::CoreTile;
+    fb.producerSizeBytes =
+        alignedBufferBytes(*targetModel, prodType, producerBytes);
 
     // Consumer element size (may differ with consumerElemType)
-    fb.consumerSizeBytes = fb.producerSizeBytes;
+    int64_t consumerBytes = producerBytes;
     if (auto consType = ofOp.getConsumerElemType()) {
       auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
       auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
       int64_t consBits =
           dataLayout.getTypeSizeInBits(consMemref.getElementType());
-      fb.consumerSizeBytes = consMemref.getNumElements() * consBits / 8;
+      consumerBytes = consMemref.getNumElements() * consBits / 8;
     }
+    // One size serves every consumer, so align it for a core tile if any
+    // consumer is one.
+    bool coreConsumer = llvm::any_of(fb.consumers, [&](Operation *cons) {
+      return tileTypes.lookup(cons) == AIETileType::CoreTile;
+    });
+    fb.consumerSizeBytes = alignedBufferBytes(
+        *targetModel,
+        coreConsumer ? AIETileType::CoreTile : AIETileType::MemTile,
+        consumerBytes);
 
     // Get per-endpoint depths: [producer, consumer0, consumer1, ...]
     if (auto arrayAttr = dyn_cast<ArrayAttr>(ofOp.getElemNumber())) {
@@ -1543,6 +1629,13 @@ void SAPlacer::runSAMainLoop() {
 
   int greedyIters = config.greedyMultiplier * numMovable;
 
+  movesPerIter = std::max(1, static_cast<int>(movesPerIter * config.effort));
+  // Same floor as movesPerIter above: a small positive effort must still
+  // scale the greedy stage down, but never to zero -- skipping it entirely
+  // is what leaves violations unresolved (see finalizePlacement's legality
+  // check).
+  greedyIters = std::max(1, static_cast<int>(greedyIters * config.effort));
+
   int numSamples = std::max(10 * numMovable, 50);
   double estimatedT = estimateInitialTemperature(numSamples);
   double initTemp =
@@ -1756,11 +1849,15 @@ void SAPlacer::printPlacementStats(int64_t elapsedMs) const {
 LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
   // Restore best placement found during SA. Skip if SA loop didn't run
   // (bestOverallCost stays at INT_MAX when runSAMainLoop returns early).
+  finalCost = totalCost;
   if (bestOverallCost < INT_MAX) {
-    if (bestCost < INT_MAX)
+    if (bestCost < INT_MAX) {
       currentPlacement = bestPlacement;
-    else
+      finalCost = bestCost;
+    } else {
       currentPlacement = bestOverallPlacement;
+      finalCost = bestOverallCost;
+    }
     physToLogical.clear();
     for (auto &[op, pos] : currentPlacement)
       physToLogical[pos] = op;
@@ -1779,6 +1876,22 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
       endTime - startTime);
 
   LLVM_DEBUG(printPlacementStats(elapsed.count()));
+
+  // SA optimizes for legality but is not guaranteed to reach it (e.g. a very
+  // low --sa-effort can starve the greedy stage that normally drives hard
+  // violations to zero). Falling back to bestOverallPlacement in that case
+  // would silently emit a placement that overflows resources or violates
+  // cascade adjacency, so surface it as a pass failure instead.
+  int finalHardPenalty = getResourcePenalty();
+  int finalCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
+                                             config.cascadeWeightPerDist);
+  if (finalHardPenalty != 0 || finalCascade != 0) {
+    device.emitError("SA placer failed to find a legal placement (resource "
+                     "penalty=")
+        << finalHardPenalty << ", cascade penalty=" << finalCascade
+        << "); try increasing --sa-effort";
+    return failure();
+  }
 
   result = currentPlacement;
   return success();

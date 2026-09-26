@@ -12,7 +12,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 from aie.iron import In, Out, kernels
-from aie.iron.kernels import quant
+from aie.iron.device import NPU1Col1
+from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
 
@@ -168,7 +169,7 @@ def test_factory_metadata_and_finite_sample(npu2_device):
     assert fn._original_name == "q4nx_dequant_bfp"
     assert fn._name.endswith("_q4nx_dequant_bfp")
     assert Path(fn._source_file).name == "q4nx_dequant.cc"
-    assert Path(fn._source_file).parent.name == "generic"
+    assert Path(fn._source_file).parent.name == "quant"
     assert fn.arg_shape(0) == (5120,)
     assert fn.arg_shape(1) == (9216,)
     assert fn.arg_dtype(0) == fn.arg_dtype(1) == np.uint8
@@ -200,13 +201,13 @@ def test_factory_metadata_and_finite_sample(npu2_device):
     assert fn == kernels.q4nx_dequant()
 
 
-def test_nondefault_factory_and_architecture(npu2_device, monkeypatch):
+def test_nondefault_factory_and_architecture(npu2_device):
     fn = kernels.q4nx_dequant(m_tile=48, k_tile=96, group=24, ct_k=32)
     assert fn.arg_shape(0) == (3072,)
     assert fn.arg_shape(1) == (5184,)
     sample = fn.contract.sample(np.random.default_rng(9), 2)
     assert sample[0].shape == (2, 3072)
     assert fn.contract.reference(*sample).shape == (2, 5184)
-    monkeypatch.setattr(quant, "_detect_arch", lambda: "aie2")
+    set_current_device(NPU1Col1())
     with pytest.raises(NotImplementedError, match="only available on aie2p"):
         kernels.q4nx_dequant()

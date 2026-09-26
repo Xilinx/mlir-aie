@@ -130,18 +130,28 @@ def _write_tool(directory, name, exit_code=0):
     return tool
 
 
-def _resolve(expr, path_dirs=None, **env_overrides):
+def _resolve(expr, path_dirs=None, llvm_bin=None, **env_overrides):
     """Evaluate `expr` against aie.utils.config in a fresh interpreter.
 
     Returns (stdout, stderr, returncode). The subprocess is the point: the
     resolver reads the real process environment and the real PATH, exactly as
-    it does during a build.
+    it does during a build. `llvm_bin` stands in for the LLVM bin directory
+    recorded in the generated configure.py.
     """
     env = {**os.environ, **env_overrides}
     if path_dirs is not None:
         env["PATH"] = os.pathsep.join(str(d) for d in path_dirs)
+    setup = (
+        ""
+        if llvm_bin is None
+        else f"config.config.llvm_tools_binary_dir = {str(llvm_bin)!r}\n"
+    )
     proc = subprocess.run(
-        [sys.executable, "-c", f"import aie.utils.config as config\nprint({expr})"],
+        [
+            sys.executable,
+            "-c",
+            f"import aie.utils.config as config\n{setup}print({expr})",
+        ],
         env=env,
         capture_output=True,
         text=True,
@@ -283,6 +293,39 @@ def test_nothing_found_raises(tmp_path):
     assert code != 0
     assert "Could not find llvm-faketool" in stderr
     assert f"PATH directories: {empty}" in stderr
+
+
+@posix_only
+def test_configured_llvm_bin_dir_is_searched(tmp_path):
+    """A build tree bundles no llvm-objcopy; the LLVM it was built against has one."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    tool = _write_tool(tmp_path / "llvm" / "bin", "llvm-faketool")
+    stdout, _, code = _resolve(_FAKE, path_dirs=[empty], llvm_bin=tool.parent)
+    assert code == 0
+    assert stdout == str(tool)
+
+
+@posix_only
+def test_configured_llvm_bin_dir_beats_path(tmp_path):
+    on_path = _write_tool(tmp_path / "bin", "llvm-faketool")
+    configured = _write_tool(tmp_path / "llvm" / "bin", "llvm-faketool")
+    stdout, _, code = _resolve(
+        _FAKE, path_dirs=[on_path.parent], llvm_bin=configured.parent
+    )
+    assert code == 0
+    assert stdout == str(configured)
+
+
+def test_missing_configured_llvm_bin_dir_is_not_searched(tmp_path):
+    """A wheel records its build machine's LLVM directory, absent on this one."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    gone = tmp_path / "build-machine" / "bin"
+    _, stderr, code = _resolve(_FAKE, path_dirs=[empty], llvm_bin=gone)
+    assert code != 0
+    assert "Could not find llvm-faketool" in stderr
+    assert str(gone) not in stderr
 
 
 def test_nm_path_lists_symbols_of_a_real_aie_object(aie_object):

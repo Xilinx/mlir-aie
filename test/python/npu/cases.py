@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""One kernel at one tile size: what a test checks and a benchmark times.
+"""One kernel at one tile size: what a test checks and a performance check times.
 
 A :class:`Case` names a factory, its keyword arguments and the harness
 options (call count, runtime scalars, ``Param`` values). What the kernel
@@ -13,7 +13,7 @@ must survive.
 
 The case tables themselves live with the tests
 (``test/python/npu/kernel_cases.py``): the device smoke test, the extensive
-sweep and the benchmark module all read the same table.
+sweep and the performance checks all read the same table.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from aie.iron.device import from_name
 from aie.iron.kernels import Param
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
+from ml_dtypes import bfloat16
 
 
 @contextmanager
@@ -81,7 +82,10 @@ class Case:
     generations whose kernels exist (``("npu2",)``), as IRON's
     ``supported_devices`` marker does; empty means every device.
     ``smoke`` marks the one case per kernel the per-PR device test runs;
-    the extensive sweep runs them all.
+    the extensive sweep runs them all. ``arg_byte_offsets`` binds tensor
+    ``Param`` arguments at a byte offset (``((1, 16),)``: argument 1 sits 16
+    bytes past an aligned address), as a design packing several weights
+    into one buffer hands them; the name carries ``arg1@16``.
     """
 
     factory: str
@@ -94,13 +98,17 @@ class Case:
     smoke: bool = False
     data_cases: tuple[str, ...] | None = None  # None: derived from the contract
     devices: tuple[str, ...] = ()
+    arg_byte_offsets: tuple = ()
 
     def fn(self):
         with device_for(self.devices):
             return getattr(kernels, self.factory)(**self.kwargs)
 
     def harness_opts(self) -> dict:
-        return dict(calls=self.calls, scalars=self.scalars)
+        opts = dict(calls=self.calls, scalars=self.scalars)
+        if self.arg_byte_offsets:
+            opts["arg_byte_offsets"] = self.arg_byte_offsets
+        return opts
 
     # Factory kwargs that the dims / dtype segments of the name already encode.
     # skip_dtype is absent on purpose: it types neither the first input nor
@@ -153,6 +161,7 @@ class Case:
             for k, v in sorted(self.kwargs.items())
             if k not in self._NAMED_KWARGS
         ]
+        extra += [f"arg{i}@{offset}" for i, offset in self.arg_byte_offsets]
         parts = [self.factory, dims, dtypes, *extra] + ([self.tag] if self.tag else [])
         return "/".join(parts)
 
@@ -280,6 +289,82 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     return inputs
 
 
+_FLOATS = {np.dtype(t) for t in (bfloat16, np.float16, np.float32, np.float64)}
+
+
+def _reference_outputs(fn, inputs, scalars, widen: bool) -> list[np.ndarray]:
+    wide = [
+        a.astype(np.float64) if widen and a.dtype in _FLOATS else a
+        for a in map(np.asarray, inputs)
+    ]
+    result = fn.contract.reference(*fn._reference_args(wide, tuple(scalars)))
+    multiple = len(fn.contract.out_indices) > 1
+    return [np.asarray(r) for r in (result if multiple else (result,))]
+
+
+def error_report(fn, got, inputs, *, calls: int, scalars=()) -> list[dict]:
+    """Error stats of each floating output against the contract's reference.
+
+    The reference is run on the inputs widened to float64. ``reference`` in
+    each entry names what its values fit: ``float64``, or ``float32`` when
+    every value is a float32 (a reference that computes in float32, or an
+    exact result). A reference that cannot take float64 inputs, or returns
+    other shapes for them, runs on the inputs as given and is named by the
+    dtype it returns. Where the reference models the kernel (a LUT), this
+    measures against that model; ``reference_max_ulp`` is how far the
+    reference ``judge`` uses (the contract's, on the inputs as given, in the
+    output dtype) is from the one measured against. ``got`` is what
+    ``judge`` takes, normalized the same way: decoded, per call, padding
+    trimmed.
+    """
+    from aie.utils.accuracy import error_stats
+
+    c = fn.contract
+    plain = _reference_outputs(fn, inputs, scalars, widen=False)
+    try:
+        refs = _reference_outputs(fn, inputs, scalars, widen=True)
+        if [r.shape for r in refs] != [r.shape for r in plain]:
+            refs = plain
+    except Exception:  # noqa: BLE001 - a reference written for its own dtype
+        refs = plain
+    actuals = got if len(c.out_indices) > 1 else (got,)
+    entries = []
+    for k, (i, actual, ref, own) in enumerate(zip(c.out_indices, actuals, refs, plain)):
+        dt = np.dtype(fn.arg_dtype(i)) if not bfp.is_bfp(fn.arg_dtype(i)) else None
+        if dt not in _FLOATS or ref.dtype not in _FLOATS:
+            continue
+        layout = c.layouts[i] if c.layouts else None
+        actual = layout.decode(actual, calls=calls) if layout else np.asarray(actual)
+        actual = actual.reshape(calls, -1)
+        if c.out_valid is not None:
+            actual = actual[:, : c.out_valid]
+        if In not in c.roles and ref.size == actual.shape[1]:
+            ref = np.broadcast_to(ref.reshape(1, -1), actual.shape)
+            own = np.broadcast_to(own.reshape(1, -1), actual.shape)
+        else:
+            ref, own = ref.reshape(calls, -1), own.reshape(calls, -1)
+        ref64 = ref.astype(np.float64)
+        if ref.dtype != np.float64:
+            precision = ref.dtype.name
+        else:
+            with np.errstate(over="ignore"):
+                narrow = ref.astype(np.float32).astype(np.float64)
+            fits = (narrow == ref64) | np.isnan(ref64)
+            precision = "float32" if fits.all() else "float64"
+        stats = error_stats(actual, ref64, dt)
+        judged = error_stats(own.astype(np.float64), ref64, dt)
+        entries.append(
+            dict(
+                output=k,
+                arg=i,
+                reference=precision,
+                reference_max_ulp=judged.max_ulp,
+                **stats.as_dict(),
+            )
+        )
+    return entries
+
+
 __all__ = [
     "Case",
     "INT_DATA",
@@ -287,5 +372,6 @@ __all__ = [
     "MATRIX_DATA",
     "data_policy",
     "device_for",
+    "error_report",
     "inputs_for",
 ]

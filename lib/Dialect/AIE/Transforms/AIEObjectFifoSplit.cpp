@@ -47,22 +47,17 @@ std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
   return {};
 }
 
-/// The aie.objectfifo.allocate naming `op`, if any. Reports when several claim
-/// the same fifo, since only one delegate tile can hold its objects.
+/// The aie.objectfifo.allocate naming `op`, if any. The allocate verifier
+/// rejects a second one for the same fifo.
 std::optional<ObjectFifoAllocateOp>
 getOptionalAllocateOp(ObjectFifoCreateOp op) {
-  std::optional<ObjectFifoAllocateOp> found;
   for (auto alloc :
        op->getParentOfType<DeviceOp>().getOps<ObjectFifoAllocateOp>()) {
-    if (alloc.getObjFifoName() != op.name().getValue()) {
-      continue;
+    if (alloc.getObjFifoName() == op.name().getValue()) {
+      return alloc;
     }
-    if (found) {
-      op.emitOpError("has more than one allocate operation");
-    }
-    found = alloc;
   }
-  return found;
+  return std::nullopt;
 }
 
 /// Whether `delegate`'s memory module is reachable from both ends of `op`.

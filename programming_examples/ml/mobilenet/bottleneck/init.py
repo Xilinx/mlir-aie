@@ -20,7 +20,7 @@ from ..network_spec import block as nsblock
 from ._common import wts_buffer
 
 
-def init_conv(sf, *, tile=None, data_dir):
+def init_conv(sf, *, data_dir):
     """Build the init 3x3 stride-2 conv block.
 
     Returns:
@@ -55,7 +55,7 @@ def init_conv(sf, *, tile=None, data_dir):
     init_wts = wts_buffer(data_dir, "init_chain.txt", init_wts_sz)
 
     # Init conv kernel: 3x3 stride-2, int8 in, uint8 out.
-    # C++ signature (aie_kernels/aie2/bottleneck/bn_conv2dk3.cc):
+    # C++ signature (aie_kernels/conv/bn_conv2dk3.cc):
     #   (in0, in0, in1, wts, out, W, InC, OutC, kW, kH, check, scale, channel_offset)
     k_init = kernels.bn_conv2dk3(
         input_width=tensorInW,
@@ -109,7 +109,6 @@ def init_conv(sf, *, tile=None, data_dir):
             init_OutC,
             init_scaleFactor,
         ],
-        tile=tile,
     )
 
     return [w_init], act_in, act_init_out

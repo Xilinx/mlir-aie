@@ -163,6 +163,8 @@ def _llvm_tool_dirs():
     the MLIR-AIE wheel bundles llvm-objcopy, while the Peano (llvm-aie) wheel
     ships llvm-ar and llvm-nm. Searching only one of them leaves a stock
     install unable to find a tool that is sitting on disk in the other.
+    A build tree bundles nothing (llvm-objcopy is copied at install time),
+    so the bin directory of the LLVM it was configured against comes last.
     """
     dirs = []
     for get_dir in (root_path, peano_install_dir):
@@ -171,6 +173,11 @@ def _llvm_tool_dirs():
         except RuntimeError:
             # A source or dev install may configure only one of the two.
             continue
+    # Absent from a configure.py generated before it was recorded; a wheel
+    # records its build machine's directory, which is skipped for not existing.
+    llvm_bin = getattr(config, "llvm_tools_binary_dir", "")
+    if llvm_bin and os.path.isdir(llvm_bin):
+        dirs.append(llvm_bin)
     return dirs
 
 
@@ -215,10 +222,10 @@ def _find_llvm_tool(name, env_var):
     """Resolve an LLVM binutil, preferring a candidate that actually runs.
 
     Resolution order: ``env_var``, the bundled MLIR-AIE and Peano bin
-    directories, then PATH. Candidates that fail to execute are passed over in
-    favour of a later one; if every candidate is broken the first is returned
-    anyway, so the caller surfaces that tool's own error rather than a
-    misleading "not found".
+    directories, the configured LLVM's bin directory, then PATH. Candidates
+    that fail to execute are passed over in favour of a later one; if every
+    candidate is broken the first is returned anyway, so the caller surfaces
+    that tool's own error rather than a misleading "not found".
     """
     override = os.environ.get(env_var)
     if override:
@@ -248,7 +255,8 @@ def _find_llvm_tool(name, env_var):
 
     raise RuntimeError(
         f"Could not find {name}. Resolves in the order of the {env_var} "
-        f"environment variable, the MLIR-AIE and Peano bin directories, then "
+        f"environment variable, the MLIR-AIE and Peano bin directories, the "
+        "LLVM bin directory the build was configured against, then "
         f"PATH (including versioned spellings such as {name}-18). Searched: "
         + (", ".join(searched) if searched else "(no bundled bin directories)")
         + ". PATH directories: "
@@ -299,6 +307,16 @@ def ar_path():
     compiler that produced the objects.
     """
     return _find_llvm_tool("llvm-ar", "AIE_AR_PATH")
+
+
+def readobj_path():
+    """Return the llvm-readobj the static checks read kernel objects with.
+
+    Its JSON output (sections, symbols, relocations) is what tells which
+    functions a linked kernel keeps and which runtime helpers it calls; GNU
+    readelf has no JSON form and does not decode the AIE relocations.
+    """
+    return _find_llvm_tool("llvm-readobj", "AIE_READOBJ_PATH")
 
 
 def aie_kernels_dir():

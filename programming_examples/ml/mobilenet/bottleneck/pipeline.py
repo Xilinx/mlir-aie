@@ -16,10 +16,9 @@ import numpy as np
 from aie.extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     view as memref_view,
 )
-from aie.iron import Buffer, ObjectFifo, Worker, kernels
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.algorithms import row_at_a_time, row_at_a_time_with_skip, sliding_3row
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile
 
 from ..network_spec import block as nsblock
 from ._common import (
@@ -29,7 +28,7 @@ from ._common import (
     layer_sf as _layer_sf,
 )
 from ._common import (
-    load_wts as _load_weights,
+    packed_wts_buffer as _packed_wts_buffer,
 )
 from ._common import (
     skip_sf as _skip_sf,
@@ -46,7 +45,7 @@ from ._common import (
 # build_3tile_pipeline — 1x1-relu -> DW-3x3 -> 1x1[-skip], one tile per layer
 # Used for bn10 (no skip) and bn11 (with element-wise skip add fused into L3).
 # ---------------------------------------------------------------------------
-def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None):
+def build_3tile_pipeline(blk, act_in, sf, *, data_dir, skip_in=None):
     """3-tile pipelined bottleneck: 1x1-relu -> DW-3x3-stride1 -> 1x1[-skip].
 
     bn10-style (skip_in=None): plain L3 1x1.
@@ -141,13 +140,10 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
         l3_args.append(skip_in.cons())
     l3_args += [out_fifo.prod(), l3_wts, k_l3]
 
-    def t(k) -> Tile | None:
-        return tiles.get(k) if tiles else None
-
     workers = [
-        Worker(l1_fn, [l1_in_h, of_12.prod(), l1_wts, k_l1], tile=t("l1")),
-        Worker(l2_fn, [of_12.cons(), of_23.prod(), l2_wts, k_l2], tile=t("l2")),
-        Worker(l3_fn, l3_args, tile=t("l3")),
+        Worker(l1_fn, [l1_in_h, of_12.prod(), l1_wts, k_l1]),
+        Worker(l2_fn, [of_12.cons(), of_23.prod(), l2_wts, k_l2]),
+        Worker(l3_fn, l3_args),
     ]
     return out_fifo, workers
 
@@ -158,7 +154,7 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
 # DW + PW kernels are interleaved per output row via a depth-1 self-loop fifo.
 # Weights for L2+L3 are stored in one combined buffer, sliced by memref_view.
 # ---------------------------------------------------------------------------
-def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
+def build_bn12_2tile(blk, act_in, sf, *, data_dir):
     """bn12: 2-tile design with fused DW-stride2 + 1x1 on the second tile.
 
     Returns (out_fifo, [workers]).
@@ -177,12 +173,11 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
     bn12_l1_wts_sz = in_c * l1_c  # 112*336 = 37632
     bn12_dw_wts_sz = 3 * 3 * l1_c  # 3024
     bn12_pw_wts_sz = l1_c * out_c  # 26880
-    bn12_l23_wts_sz = bn12_dw_wts_sz + bn12_pw_wts_sz  # 29904
-
-    bn12_l23_data = _load_weights(data_dir, "bn12_2_3_chain.txt", bn12_l23_wts_sz)
 
     bn12_l1_wts = _wts_buf(data_dir, "bn12_1_chain.txt", bn12_l1_wts_sz)
-    bn12_l23_wts = Buffer(_i8((bn12_l23_wts_sz,)), initial_value=bn12_l23_data)
+    bn12_l23_wts, (bn12_dw_off, bn12_pw_off) = _packed_wts_buffer(
+        data_dir, "bn12_2_3_chain.txt", [bn12_dw_wts_sz, bn12_pw_wts_sz]
+    )
 
     bn12_l1_ty = _u8((in_w, 1, l1_c))
     bn12_dw_ty = _u8((out_w, 1, l1_c))
@@ -218,11 +213,11 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
             of_12.release(1)
 
     def bn12_l23_fn(of_12, dw_tmp_prod, dw_tmp_cons, act_out, wts, k_dw, k_pw):
-        # L2+L3 combined buffer sliced via memref_view: DW at 0, PW at +bn12_dw_wts_sz.
+        # L2+L3 combined buffer sliced via memref_view.
         # act_out.acquire is LAZY (just before the PW call) — eager acquire
         # would hold an of_12 slot while waiting on act_out and risk deadlock.
-        dw_wts = memref_view(wts.op, [bn12_dw_wts_sz], shift=0)
-        pw_wts = memref_view(wts.op, [bn12_pw_wts_sz], shift=bn12_dw_wts_sz)
+        dw_wts = memref_view(wts.op, [bn12_dw_wts_sz], shift=bn12_dw_off)
+        pw_wts = memref_view(wts.op, [bn12_pw_wts_sz], shift=bn12_pw_off)
 
         def _pw():
             dw_tmp_c = dw_tmp_cons.acquire(1)
@@ -296,14 +291,10 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
         dw_tmp_prod.release(1)
         _pw()
 
-    def t(k) -> Tile | None:
-        return tiles.get(k) if tiles else None
-
     workers = [
         Worker(
             bn12_l1_fn,
             [act_in.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1],
-            tile=t("l1"),
         ),
         Worker(
             bn12_l23_fn,
@@ -316,7 +307,6 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
                 k_bn12_dw,
                 k_bn12_pw,
             ],
-            tile=t("l23"),
         ),
     ]
     return act_bn12_out, workers
@@ -329,14 +319,12 @@ def pipeline_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
-    placement: dict | None = None,
     data_dir: str,
 ) -> tuple:
     """Build bn10..bn12 from network_spec.NETWORK + scale-factor JSON.
 
     Returns (workers, act_bn12_out).
     """
-    p = placement or {}
     # bn10 / bn11 share the 3-tile builder; bn11 adds a MemTile-forwarded skip.
     # depth=6 on the bn10 cons handle lets the skip path buffer enough rows to
     # outlive bn11's L1→L2→L3 lag (1 + 1 + ping-pong slack).
@@ -345,24 +333,14 @@ def pipeline_bottlenecks(
     workers = []
     act = act_in
     for name, has_skip in P3:
-        tiles = p.get(name)
-        skip_in = None
-        if has_skip:
-            skip_in = act.cons(depth=6).forward(
-                depth=2, tile=tiles.get("mem_skip") if tiles else None
-            )
-            # Strip mem_skip so only l1/l2/l3 are passed to the builder.
-            if tiles is not None:
-                tiles = {k: tiles[k] for k in ("l1", "l2", "l3")}
+        skip_in = act.cons(depth=6).forward(depth=2) if has_skip else None
         act, ws = build_3tile_pipeline(
-            nsblock(name), act, sf, data_dir=data_dir, tiles=tiles, skip_in=skip_in
+            nsblock(name), act, sf, data_dir=data_dir, skip_in=skip_in
         )
         workers += ws
 
     # bn12 (2-tile): L1 on one tile, fused DW-stride2 + 1x1 on a second tile.
-    act, ws = build_bn12_2tile(
-        nsblock("bn12"), act, sf, data_dir=data_dir, tiles=p.get("bn12")
-    )
+    act, ws = build_bn12_2tile(nsblock("bn12"), act, sf, data_dir=data_dir)
     workers += ws
 
     return workers, act

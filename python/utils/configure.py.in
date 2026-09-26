@@ -48,6 +48,10 @@ if not os.path.exists(peano_install_dir):
 if not os.path.exists(peano_install_dir):
     peano_install_dir = "peano_not_found"
 
+# The bin directory of the LLVM this tree was configured against. Only an
+# installed tree bundles its llvm-objcopy; a build tree finds it here.
+llvm_tools_binary_dir = r"""@LLVM_TOOLS_BINARY_DIR@"""
+
 
 def install_path():
     path = os.path.dirname(os.path.realpath(__file__))

@@ -162,3 +162,39 @@ module @lateral_fallback_full_shim {
     // CHECK: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 1>
   }
 }
+
+// -----
+
+// Test: The nearest spare past a full shim already has a flow on the
+// default channel, so the trace takes its other channel.
+// CHECK-LABEL: module @lateral_spare_partly_used
+module @lateral_spare_partly_used {
+  aie.device(npu1) {
+    %tile02 = aie.tile(0, 2)
+    %tile00 = aie.tile(0, 0)
+    %tile10 = aie.tile(1, 0)
+    %tile11 = aie.tile(1, 1)
+    %tile20 = aie.tile(2, 0)
+    %tile21 = aie.tile(2, 1)
+
+    %core = aie.core(%tile02) { aie.end }
+
+    aie.flow(%tile11, DMA : 0, %tile10, DMA : 0)
+    aie.flow(%tile11, DMA : 1, %tile10, DMA : 1)
+    aie.flow(%tile21, DMA : 0, %tile20, DMA : 1)
+
+    aie.trace @trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      aie.trace.start_config @trace
+    }
+
+    // CHECK: aie.packet_dest<%{{.*}}2_0{{.*}}, DMA : 0>
+  }
+}

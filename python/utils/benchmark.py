@@ -12,15 +12,19 @@ jitter, not just central tendency. The numbers are numpy's.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
+from aie.utils import config
 
 
 @dataclass
@@ -159,13 +163,60 @@ def print_benchmark(result: BenchmarkResult) -> None:
     )
 
 
+def peano_version() -> str | None:
+    """Return the Peano that compiles the kernels, as ``21.0.0+c9c5ecb7``.
+
+    Asked of the compiler itself rather than read from the ``llvm-aie``
+    distribution: ``PEANO_INSTALL_DIR`` can select any build, and the
+    installed wheel then names a compiler that never ran. ``None`` when no
+    compiler is found.
+    """
+    try:
+        out = subprocess.run(
+            [config.peano_cxx_path(), "--version"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except (OSError, RuntimeError, subprocess.CalledProcessError):
+        return None
+    m = re.match(r"clang version (\S+) \(\S+ ([0-9a-f]{8})", out)
+    if m:
+        return f"{m[1]}+{m[2]}"
+    return out.splitlines()[0] if out else None
+
+
+def kernel_tree_digest() -> str | None:
+    """Return a 12-hex digest of the kernel sources the library factories compile.
+
+    Every file under ``aie_kernels_dir()`` and ``aie_runtime_lib_dir()``, by
+    relative path and content. The commit alone cannot say which kernels
+    ran: ``MLIR_AIE_KERNEL_SOURCES`` can name another tree, and a checkout
+    can carry uncommitted edits. ``None`` when neither directory exists.
+    """
+    h = hashlib.sha256()
+    found = False
+    for top in (config.aie_kernels_dir(), config.aie_runtime_lib_dir()):
+        root = Path(top)
+        if not root.is_dir():
+            continue
+        found = True
+        for path in sorted(p for p in root.rglob("*") if p.is_file()):
+            h.update(f"{root.name}/{path.relative_to(root)}\0".encode())
+            h.update(path.read_bytes())
+    return h.hexdigest()[:12] if found else None
+
+
 def provenance(**extra: str | None) -> str:
     """Return a one-line description of what produced a measurement.
 
-    The git commit (``GITHUB_SHA`` or ``git rev-parse HEAD``), the installed
-    ``llvm-aie`` (Peano) and ``mlir_aie`` versions, and any ``extra`` fields
-    (``device="NPU Strix"``, ``pmode="performance"``) as ``key value`` pairs.
-    A benchmark row records it so a number can be traced to a toolchain.
+    The git commit (``GITHUB_SHA`` or ``git rev-parse HEAD``), the Peano that
+    compiles the kernels (``peano_version()``), the installed ``mlir_aie``
+    version, the kernel tree
+    (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),
+    and any ``extra`` fields (``device="NPU Strix"``, ``pmode="performance"``)
+    as ``key value`` pairs. A benchmark row records it so a number can be
+    traced to a toolchain and to the kernel sources.
 
     A package that is not installed is left out rather than recorded as
     unknown. CI builds ``mlir_aie`` from source and puts it on ``PYTHONPATH``,
@@ -190,8 +241,10 @@ def provenance(**extra: str | None) -> str:
             commit = "unknown"
     fields = {
         "commit": commit[:10],
-        "peano": pkg("llvm-aie"),
+        "peano": peano_version(),
         "mlir_aie": pkg("mlir_aie"),
+        "kernel_sources": os.environ.get("MLIR_AIE_KERNEL_SOURCES"),
+        "kernels": kernel_tree_digest(),
         **extra,
     }
     return " | ".join(f"{k} {v}" for k, v in fields.items() if v)

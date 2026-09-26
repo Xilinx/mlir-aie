@@ -17,6 +17,7 @@
 
 #include <limits>
 #include <optional>
+#include <set>
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEASSIGNBUFFERADDRESSES
@@ -1024,7 +1025,7 @@ struct PlacementStats {
 // NP-hard, so the tree has no useful worst-case bound; this keeps a design the
 // search cannot solve to bounded compile time instead of exponential. A node
 // count rather than a time limit, so a build stays reproducible.
-static constexpr int64_t kPlacementBudget = 20000;
+static constexpr int64_t kPlacementBudget = 100000;
 
 // Depth-first placement over `order`, trying each buffer's addresses in rank
 // order and undoing a choice that leaves a later buffer nowhere to go.
@@ -1056,9 +1057,23 @@ struct PlacementSearch {
   BufferOp deepest = nullptr;
   SmallVector<std::pair<BufferOp, Placement>> deepestLayout = {};
 
+  // Subproblems already searched in full without a layout, keyed by the next
+  // buffer's index and the free runs left. The candidates a buffer gets depend
+  // on nothing else -- the cursor only orders them -- so one of these can never
+  // succeed. Same-sized buffers reach the same free runs in every order they
+  // are placed in; without this the search retries each order.
+  std::set<SmallVector<int64_t>> failedStates = {};
+
   bool run(size_t index, int startBankIndex, int64_t remaining) {
     if (index == order.size()) {
       return true;
+    }
+    SmallVector<int64_t> state = {static_cast<int64_t>(index)};
+    for (MemoryRun gap : occupancy.gapsIn(0, occupancy.size())) {
+      state.append({gap.start, gap.size});
+    }
+    if (failedStates.count(state)) {
+      return false;
     }
     BufferOp buffer = order[index];
     int64_t size = buffer.getAllocationSize();
@@ -1094,6 +1109,9 @@ struct PlacementSearch {
       } else {
         buffer.setMemBank(required->second.front());
       }
+    }
+    if (!exhausted) {
+      failedStates.insert(std::move(state));
     }
     return false;
   }

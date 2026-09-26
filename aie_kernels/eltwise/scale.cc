@@ -1,0 +1,123 @@
+//===- scale.cc -------------------------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <type_traits>
+
+#include "../aie_kernel_utils.h"
+#include <aie_api/aie.hpp>
+
+#ifndef SCALE_ELEMS
+#define SCALE_ELEMS N
+#endif
+
+// Scalar scale template
+template <typename T>
+void scale_scalar(T *a, T *c, T factor, const int32_t N) {
+  event0();
+  for (int i = 0; i < SCALE_ELEMS; i++) {
+    c[i] = factor * a[i];
+  }
+  event1();
+}
+
+// Vectorized scale template (general case)
+// Assume N is multiple of 32
+template <typename T>
+void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
+                      const int32_t N) {
+  event0();
+  constexpr int vec_factor = 32;
+  T *__restrict pA1 = a;
+  T *__restrict pC1 = c;
+  const int F = SCALE_ELEMS / vec_factor;
+  T fac = factor;
+
+  AIE_PREPARE_FOR_PIPELINING
+  for (int i = 0; i < F; i++) {
+    aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
+    pA1 += vec_factor;
+    aie::accum<acc32, vec_factor> cout = aie::mul(A0, fac);
+    aie::store_v(pC1, cout.template to_vector<T>(0));
+    pC1 += vec_factor;
+  }
+  event1();
+}
+
+// Vectorized scale template (int32_t case, acc64 used)
+// Assume N is multiple of 16
+template <>
+void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
+                               int32_t factor, const int32_t N) {
+  event0();
+#if AIE_TUNED_AIE2P
+  // An AIE2P accumulator holds 32 acc64 lanes; a 16-lane multiply leaves half
+  // of it idle.
+  constexpr int vec_factor = 32;
+#else
+  constexpr int vec_factor = 16;
+#endif
+  int32_t *__restrict pA1 = a;
+  int32_t *__restrict pC1 = c;
+  const int F = SCALE_ELEMS / vec_factor;
+
+  AIE_PREPARE_FOR_PIPELINING
+  for (int i = 0; i < F; i++) {
+    aie::vector<int32_t, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
+    pA1 += vec_factor;
+    aie::accum<acc64, vec_factor> cout = aie::mul(A0, factor);
+    aie::store_v(pC1, cout.template to_vector<int32_t>(0));
+    pC1 += vec_factor;
+  }
+#if AIE_TUNED_AIE2P
+  if (SCALE_ELEMS % vec_factor) {
+    aie::accum<acc64, 16> cout = aie::mul(aie::load_v<16>(pA1), factor);
+    aie::store_v(pC1, cout.template to_vector<int32_t>(0));
+  }
+#endif
+  event1();
+}
+
+extern "C" {
+
+#ifndef BIT_WIDTH
+#error                                                                         \
+    "scale.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default. Pass -DBIT_WIDTH=16 or 32."
+#endif
+
+#if BIT_WIDTH == 16
+
+void vector_scalar_mul_scalar(int16_t *a_in, int16_t *c_out, int32_t *factor,
+                              int32_t N) {
+  scale_scalar<int16_t>(a_in, c_out, *factor, N);
+}
+
+void vector_scalar_mul_vector(int16_t *a_in, int16_t *c_out, int32_t *factor,
+                              int32_t N) {
+  scale_vectorized<int16_t>(a_in, c_out, *factor, N);
+}
+
+#elif BIT_WIDTH == 32
+
+void vector_scalar_mul_scalar(int32_t *a_in, int32_t *c_out, int32_t *factor,
+                              int32_t N) {
+  scale_scalar<int32_t>(a_in, c_out, *factor, N);
+}
+
+void vector_scalar_mul_vector(int32_t *a_in, int32_t *c_out, int32_t *factor,
+                              int32_t N) {
+  scale_vectorized<int32_t>(a_in, c_out, *factor, N);
+}
+
+#else
+#error                                                                         \
+    "scale.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default -- an unset BIT_WIDTH expands to 0 and would silently select the widest branch. Pass -DBIT_WIDTH=16 or 32."
+#endif
+
+} // extern "C"

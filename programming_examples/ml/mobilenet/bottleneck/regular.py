@@ -32,13 +32,13 @@ from ._common import (
     layer_sf as _layer_sf,
 )
 from ._common import (
+    packed_wts_buffer as _packed_wts_buffer,
+)
+from ._common import (
     skip_sf as _skip_sf,
 )
 from ._common import (
     u8 as _u8,
-)
-from ._common import (
-    wts_buffer as _wts_buffer,
 )
 
 
@@ -46,7 +46,7 @@ from ._common import (
 # build_3layer — 1x1-relu -> DW-3x3 -> (1x1 or 1x1-skip)
 # Used for bn1, bn2, bn3, bn6, bn7.
 # ---------------------------------------------------------------------------
-def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
+def build_3layer(blk, act_in, sf, *, data_dir, wts_tag="chain"):
     """Build a 3-layer bottleneck on a single compute tile.
 
     Returns (out_fifo, worker).
@@ -63,9 +63,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
     l1_sz = in_c * dw_ch
     l2_sz = 9 * dw_ch
     l3_sz = dw_ch * out_c
-    wts_sz = l1_sz + l2_sz + l3_sz
-
-    wts_buf = _wts_buffer(data_dir, f"{name}_chain.txt", wts_sz)
+    wts_buf, (off_l1, off_l2, off_l3) = _packed_wts_buffer(
+        data_dir, f"{name}_{wts_tag}.txt", [l1_sz, l2_sz, l3_sz]
+    )
 
     l3_out_ty = _i8((out_w, 1, out_c))
 
@@ -106,9 +106,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
         ):
             # Sliding-window 3-layer pipeline (stride-1, with skip add).
             # Phases — preamble (rows 0,1) → middle (rows 2..in_h-2) → postamble (last row).
-            wts_l1 = memref_view(wts.op, [l1_sz], shift=0)
-            wts_l2 = memref_view(wts.op, [l2_sz], shift=l1_sz)
-            wts_l3 = memref_view(wts.op, [l3_sz], shift=l1_sz + l2_sz)
+            wts_l1 = memref_view(wts.op, [l1_sz], shift=off_l1)
+            wts_l2 = memref_view(wts.op, [l2_sz], shift=off_l2)
+            wts_l3 = memref_view(wts.op, [l3_sz], shift=off_l3)
 
             def _dw(top, mid, bot, border, c12_release):
                 """Run DW kernel for one output row; release `c12_release` L1 slots."""
@@ -182,9 +182,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
         out_h = in_h // stride
 
         def worker_fn(act_in_fifo, wts, out_f, p12, c12, p23, c23, k_pw, k_dw, k_l3):
-            wts_l1 = memref_view(wts.op, [l1_sz], shift=0)
-            wts_l2 = memref_view(wts.op, [l2_sz], shift=l1_sz)
-            wts_l3 = memref_view(wts.op, [l3_sz], shift=l1_sz + l2_sz)
+            wts_l1 = memref_view(wts.op, [l1_sz], shift=off_l1)
+            wts_l2 = memref_view(wts.op, [l2_sz], shift=off_l2)
+            wts_l3 = memref_view(wts.op, [l3_sz], shift=off_l3)
 
             def _l3():
                 """L3 step (no skip): emit one output row."""
@@ -252,6 +252,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
                 p23.release(1)
                 _l3()
 
+            # The last L1 row is still held; free it so the next frame starts clean.
+            c12.release(1)
+
     worker = Worker(
         worker_fn,
         fn_args=[
@@ -266,8 +269,6 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
             k_dw,
             k_l3,
         ],
-        while_true=False,
-        tile=tile,
     )
     return out_fifo, worker
 
@@ -276,7 +277,7 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
 # build_2layer_skip — DW-3x3-stride1 -> 1x1-skip (the bn0 shape)
 # Input is uint8 (init-conv output); output is int8.
 # ---------------------------------------------------------------------------
-def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
+def build_2layer_skip(blk, act_in, sf, *, data_dir, wts_tag="chain"):
     """Build the bn0-shaped 2-layer block on a single compute tile.
 
     Returns (out_fifo, worker).
@@ -291,9 +292,9 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
 
     dw_wts_sz = 9 * dw_ch
     skip_wts_sz = dw_ch * out_c
-    wts_sz = dw_wts_sz + skip_wts_sz
-
-    wts_buf = _wts_buffer(data_dir, f"{name}_chain.txt", wts_sz)
+    wts_buf, (off_dw, off_skip) = _packed_wts_buffer(
+        data_dir, f"{name}_{wts_tag}.txt", [dw_wts_sz, skip_wts_sz]
+    )
 
     dw_out_ty = _u8((in_w, 1, dw_ch))
     out_ty = _i8((in_w, 1, out_c))
@@ -315,8 +316,8 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
     f23 = ObjectFifo(dw_out_ty, depth=1)
 
     def worker_fn(act_in_fifo, wts, out_f, p23, c23, k_dw, k_skip):
-        wts_dw = memref_view(wts.op, [dw_wts_sz], shift=0)
-        wts_skip = memref_view(wts.op, [skip_wts_sz], shift=dw_wts_sz)
+        wts_dw = memref_view(wts.op, [dw_wts_sz], shift=off_dw)
+        wts_skip = memref_view(wts.op, [skip_wts_sz], shift=off_skip)
 
         def _dw(top, mid, bot, border):
             row_out = p23.acquire(1)
@@ -383,8 +384,6 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
             k_dw,
             k_skip,
         ],
-        while_true=False,
-        tile=tile,
     )
     return out_fifo, worker
 
@@ -401,8 +400,6 @@ def build_fused_pair(
     sf,
     *,
     data_dir,
-    compute_tile=None,
-    alloc_tile=None,
     out_depth=2,
     out_prod_depth=None,
 ):
@@ -427,17 +424,9 @@ def build_fused_pair(
 
     a_l1, a_l2, a_l3 = in_c * a_dw_ch, 9 * a_dw_ch, a_dw_ch * a_out_c
     b_l1, b_l2, b_l3 = a_out_c * b_dw_ch, 9 * b_dw_ch, b_dw_ch * b_out_c
-    offs = [
-        0,
-        a_l1,
-        a_l1 + a_l2,
-        a_l1 + a_l2 + a_l3,
-        a_l1 + a_l2 + a_l3 + b_l1,
-        a_l1 + a_l2 + a_l3 + b_l1 + b_l2,
-    ]
-    wts_sz = a_l1 + a_l2 + a_l3 + b_l1 + b_l2 + b_l3
-
-    wts_buf = _wts_buffer(data_dir, chain_filename, wts_sz)
+    wts_buf, offs = _packed_wts_buffer(
+        data_dir, chain_filename, [a_l1, a_l2, a_l3, b_l1, b_l2, b_l3]
+    )
 
     def _kernels(name, dw_ch, in_c_local, out_c_local, l1_sz, l2_sz, l3_sz):
         return (
@@ -473,7 +462,6 @@ def build_fused_pair(
             _u8((in_w, 1, ch)),
             depth=depth,
             disable_synchronization=True,
-            delegate_tile=alloc_tile,
         )
 
     f_a12 = _of(a_dw_ch, 3)
@@ -482,7 +470,6 @@ def build_fused_pair(
         _i8((in_w, 1, a_out_c)),
         depth=2,
         disable_synchronization=True,
-        delegate_tile=alloc_tile,
     )
     f_b12 = _of(b_dw_ch, 3)
     f_b23 = _of(b_dw_ch, 1)
@@ -658,8 +645,6 @@ def build_fused_pair(
             kb_dw,
             kb_skip,
         ],
-        while_true=False,
-        tile=compute_tile,
     )
     return out_fifo, worker
 
@@ -671,36 +656,31 @@ def regular_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
-    placement: dict | None = None,
     data_dir: str,
 ) -> tuple:
     """Build bn0..bn9 from network_spec.NETWORK + scale-factor JSON.
 
     Returns (workers, act_bn9_out).
     """
-    p = placement or {}
     workers = []
 
     # bn0: stride-1 DW-3x3 + 1x1-skip (2-layer, unique to first stage)
-    act, w = build_2layer_skip(
-        nsblock("bn0"), act_in, sf, data_dir=data_dir, tile=p.get("bn0")
-    )
+    act, w = build_2layer_skip(nsblock("bn0"), act_in, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn1: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(nsblock("bn1"), act, sf, data_dir=data_dir, tile=p.get("bn1"))
+    act, w = build_3layer(nsblock("bn1"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn2: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    act, w = build_3layer(nsblock("bn2"), act, sf, data_dir=data_dir, tile=p.get("bn2"))
+    act, w = build_3layer(nsblock("bn2"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn3: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(nsblock("bn3"), act, sf, data_dir=data_dir, tile=p.get("bn3"))
+    act, w = build_3layer(nsblock("bn3"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn4+bn5: fused pair on one tile (stride-1 with skip on both)
-    fp45 = p.get("bn4_5", {})
     act, w = build_fused_pair(
         nsblock("bn4"),
         nsblock("bn5"),
@@ -708,22 +688,19 @@ def regular_bottlenecks(
         act,
         sf,
         data_dir=data_dir,
-        compute_tile=fp45.get("compute"),
-        alloc_tile=fp45.get("alloc"),
     )
     workers.append(w)
 
     # bn6: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(nsblock("bn6"), act, sf, data_dir=data_dir, tile=p.get("bn6"))
+    act, w = build_3layer(nsblock("bn6"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn7: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    act, w = build_3layer(nsblock("bn7"), act, sf, data_dir=data_dir, tile=p.get("bn7"))
+    act, w = build_3layer(nsblock("bn7"), act, sf, data_dir=data_dir)
     workers.append(w)
 
     # bn8+bn9: fused pair on one tile (stride-1 with skip on both); final output.
     # out_prod_depth=1 — bn89 boundary: prod side depth=1 (cons inherits 2).
-    fp89 = p.get("bn8_9", {})
     act, w = build_fused_pair(
         nsblock("bn8"),
         nsblock("bn9"),
@@ -731,8 +708,6 @@ def regular_bottlenecks(
         act,
         sf,
         data_dir=data_dir,
-        compute_tile=fp89.get("compute"),
-        alloc_tile=fp89.get("alloc"),
         out_prod_depth=1,
     )
     workers.append(w)

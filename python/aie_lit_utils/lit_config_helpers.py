@@ -948,6 +948,10 @@ class LitConfigHelper:
         # IRON_CACHE_HOME is kept as a no-op safety for any straggler caller.
         llvm_config.with_system_environment(["NPU_CACHE_HOME", "IRON_CACHE_HOME"])
 
+        # A kernel-source override must reach the JIT, or a design test
+        # silently compiles the configure-time copy under build/include.
+        llvm_config.with_system_environment(["MLIR_AIE_KERNEL_SOURCES"])
+
     @staticmethod
     def setup_test_lib_substitutions(
         config_obj, aie_obj_root: str, aie_host_target: str

@@ -120,7 +120,7 @@ $helper:
     def test_direct_module_compile_retains_bitcode_when_requested(self):
         from aie.iron.kernel import ExternalFunction
 
-        func = SimpleNamespace(_source_file=str(self.source))
+        func = SimpleNamespace(_source_file=str(self.source), name="kernel")
         for options, enabled in (
             (None, False),
             ([], False),
@@ -141,7 +141,7 @@ $helper:
                 compile_utils, "_run_aiecc"
             ) as run:
                 compile_utils.compile_mlir_module(
-                    "module {}",
+                    "module { func.func private @kernel() }",
                     options=options,
                     device="npu2",
                     work_dir=self.work,

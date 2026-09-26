@@ -18,7 +18,7 @@ All code targets `aie_api/aie.hpp`. Always include `aie_kernel_utils.h` for port
 #define NOCPP
 #include <cstdint>
 #include <type_traits>
-#include "aie_kernel_utils.h"        // copy from aie_kernels/aie_kernel_utils.h, or adjust path
+#include "aie_kernel_utils.h"        // copy from aie_kernels/ with its aie_arch.h, or adjust path
 #include <aie_api/aie.hpp>
 
 // Templated implementation
@@ -26,7 +26,7 @@ template <typename T_in, typename T_out, int N>
 static inline void eltwise_add_impl(const T_in *__restrict a,
                                     const T_in *__restrict b,
                                     T_out      *__restrict c) {
-    constexpr int VEC = 32;              // natural bf16 width; see architecture.md
+    constexpr int VEC = 32;              // natural bf16 width; multiplies: AIE_BF16_LANES
     static_assert(N % VEC == 0, "N must be divisible by VEC");
     constexpr int F = N / VEC;
 
@@ -59,8 +59,8 @@ void eltwise_add_bf16_vector(const bfloat16 *__restrict a,
 
 | Macro | What it does |
 |-------|--------------|
-| `AIE_PREPARE_FOR_PIPELINING` | Ask the modulo scheduler to make the loop body a single-cycle pipeline |
-| `AIE_LOOP_MIN_ITERATION_COUNT(n)` | Promise the loop runs at least `n` times — required for scheduling |
+| `AIE_PREPARE_FOR_PIPELINING` | Pipelining hint for **Chess only**; expands to nothing under Peano |
+| `AIE_LOOP_MIN_ITERATION_COUNT(n)` | Promise the loop runs at least `n` times — a trip-count hint. On AIE2 it let runtime-count loops overlap (`axpy` 269 → 87); under Peano it can also cost the zero-overhead loop, so check `non_zol_loops` in the remarks report |
 | `AIE_LOOP_MAX_ITERATION_COUNT(n)` | Promise the loop runs at most `n` times |
 | `AIE_LOOP_RANGE(min, max)` | Combo of the two above |
 | `AIE_LOOP_UNROLL(n)` | Unroll by factor `n` |
@@ -68,9 +68,9 @@ void eltwise_add_bf16_vector(const bfloat16 *__restrict a,
 | `AIE_LOOP_NO_UNROLL` | Block unrolling |
 | `AIE_TRY_INITIATION_INTERVAL(n)` | Request an initiation interval of `n` (**Peano only**) |
 | `AIE_PREPARE_FOR_POSTPIPELINING` | Disable Peano's pipeliner for this loop (**Peano only**) |
-| `AIE_NO_PREPARE_FOR_PIPELINING` | Block pipelining (rare; for setup loops) |
+| `AIE_NO_PREPARE_FOR_PIPELINING` | Block pipelining (**Chess only**; rare, for setup loops) |
 
-Use the macros rather than backend-specific pragmas. Note they don't all map onto both backends: `AIE_LOOP_MIN_ITERATION_COUNT` / `AIE_LOOP_RANGE` / `AIE_LOOP_UNROLL*` become `clang loop` pragmas under Peano/AIECC and the equivalent under Chess, but `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_FLATTEN` map to `chess::` hints only — they are **no-ops under Peano**. All expand to nothing on host builds. Keep them in (free under Chess) but rely on `AIE_LOOP_MIN_ITERATION_COUNT` for pipelining on Peano.
+Use the macros rather than backend-specific pragmas. Note they don't all map onto both backends: `AIE_LOOP_MIN_ITERATION_COUNT` / `AIE_LOOP_RANGE` / `AIE_LOOP_UNROLL*` become `clang loop` pragmas under Peano/AIECC and the equivalent under Chess, but `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_FLATTEN` map to `chess::` hints only — they are **no-ops under Peano**. All expand to nothing on host builds. Peano pipelines inner loops without any hint, so none of these is needed to get a pipelined loop; for which hints have measurably helped, see the `aie-kernel-opt` skill.
 
 ## Vector load / store
 
@@ -145,7 +145,7 @@ aie::store_v(pC, C00.template to_vector<T_out>());
 
 ### Outer expansion (per-tile macro-kernel)
 
-For real GEMMs you unroll the MMUL across an outer block (e.g., 4×4 expansion: hold 16 MMUL accumulators in registers, share each loaded A across 4 Bs and vice versa). See `mlir-aie/aie_kernels/aie2/mm.cc` for canonical implementations.
+For real GEMMs you unroll the MMUL across an outer block (e.g., 4×4 expansion: hold 16 MMUL accumulators in registers, share each loaded A across 4 Bs and vice versa). See `mlir-aie/aie_kernels/linalg/mm_aie2.h` for canonical implementations.
 
 ```cpp
 // Sketch of 2x2 expansion
@@ -195,7 +195,7 @@ T reduce_sum(const T *__restrict in, int total) {
 ::aie::set_rounding  (aie::rounding_mode::symmetric_inf); // shift rounding mode
 ```
 
-Call once at the top of the kernel (or in a wrapper) before any vector op that could overflow.
+Call once at the top of the kernel (or in a wrapper) before any vector op that could overflow, never inside the hot loop (see `pitfalls.md`). `aie::swap_rounding` returns the previous mode for restoring it.
 
 ## Accumulator type quick-pick
 

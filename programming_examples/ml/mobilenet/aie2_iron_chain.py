@@ -21,6 +21,8 @@ Usage:
         --scales-json bottleneck_B/data/scale_factors.json       > chain.mlir
     python3 aie2_iron_chain.py cascade   --data-dir bottleneck_C/data \\
         --scales-json bottleneck_C/data/scale_factors.json       > chain.mlir
+
+Pass --xclbin-path/--insts-path to compile instead, kernels included.
 """
 
 import argparse
@@ -29,80 +31,29 @@ import json
 import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
-from aie.iron.device import Tile
+from aie.iron import (
+    CompileTime,
+    InOut,
+    ObjectFifo,
+    Program,
+    Runtime,
+    TaskGroup,
+)
 from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 
 from .bottleneck._common import i8 as _i8
+from .bottleneck._common import sa_placer_flags
 from .bottleneck._common import u8 as _u8
 from .bottleneck.cascade import cascade_bottlenecks
 from .bottleneck.pipeline import pipeline_bottlenecks
 from .bottleneck.regular import regular_bottlenecks
 from .network_spec import block as nsblock
 
-T = Tile
 
-# Test placements for chain designs — single-column-ish layouts that don't
-# collide with the main mobilenet's PLACEMENT (which packs every column).
-CHAIN_PLACEMENT = {
-    # Regular bn0..bn9 placement mirrors aie2_mobilenet_iron.py
-    # PLACEMENT["regular"]. The fused-pair alloc tiles (bn4_5, bn8_9) host
-    # disable-sync self-loop fifos and don't need their own worker.
-    "regular": {
-        "bn0": T(0, 3),
-        "bn1": T(0, 4),
-        "bn2": T(0, 5),
-        "bn3": T(1, 3),
-        "bn4_5": {"compute": T(1, 2), "alloc": T(0, 2)},
-        "bn6": T(1, 4),
-        "bn7": T(2, 3),
-        "bn8_9": {"compute": T(3, 3), "alloc": T(3, 4)},
-    },
-    # Pipeline placement mirrors aie2_mobilenet_iron.py PLACEMENT["pipeline"] —
-    # spread across multiple columns so the AIE memory allocator has room.
-    "pipeline": {
-        "bn10": {"l1": T(1, 5), "l2": T(2, 4), "l3": T(2, 5)},
-        "bn11": {
-            "l1": T(3, 2),
-            "l2": T(3, 4),
-            "l3": T(2, 2),
-            "mem_skip": T(2, 1),
-        },
-        "bn12": {"l1": T(3, 5), "l23": T(4, 4)},
-    },
-    # Cascade placement also mirrors PLACEMENT["cascade"].
-    "cascade": {
-        "bn13": {
-            "l1_put": T(4, 5),
-            "l1_get": T(5, 5),
-            "l2": T(5, 4),
-            "l3_put": T(4, 3),
-            "l3_get": T(5, 3),
-            "mem_l1": T(0, 1),
-            "mem_l3": T(1, 1),
-            "mem_skip": T(5, 1),
-        },
-        "bn14": {
-            "l1_put": T(6, 5),
-            "l1_get": T(7, 5),
-            "l2": T(6, 2),
-            "l3_put": T(4, 2),
-            "l3_get": T(5, 2),
-            "mem_l1": T(2, 1),
-            "mem_l3": T(3, 1),
-            "mem_skip": T(7, 1),
-        },
-    },
-    # Shim DMAs (separate tiles for input vs. output).
-    "shim_input": T(0, 0),
-    "shim_output": T(1, 0),
-    # Cascade weight fills (bn13_l1, bn13_l3, bn14_l1, bn14_l3).
-    "shim_wts": [T(c, 0) for c in (4, 5, 6, 7)],
-}
-
-
-def _chain_iron(mode, data_dir, scales_json):
+def _chain_iron(
+    mode: CompileTime[str], data_dir: CompileTime[str], scales_json: CompileTime[str]
+):
     """Build a chained design (mode='pipeline' or 'cascade'). Returns MLIR."""
     if not data_dir.endswith("/"):
         data_dir = data_dir + "/"
@@ -133,7 +84,6 @@ def _chain_iron(mode, data_dir, scales_json):
         workers, act_out = regular_bottlenecks(
             act_in,
             sf,
-            placement=CHAIN_PLACEMENT["regular"],
             data_dir=data_dir,
         )
         wts_fifos = []
@@ -141,7 +91,6 @@ def _chain_iron(mode, data_dir, scales_json):
         workers, act_out = pipeline_bottlenecks(
             act_in,
             sf,
-            placement=CHAIN_PLACEMENT["pipeline"],
             data_dir=data_dir,
         )
         wts_fifos = []
@@ -149,7 +98,6 @@ def _chain_iron(mode, data_dir, scales_json):
         workers, act_out, wts_fifos = cascade_bottlenecks(
             act_in,
             sf,
-            placement=CHAIN_PLACEMENT["cascade"],
             data_dir=data_dir,
         )
 
@@ -187,12 +135,9 @@ def _chain_iron(mode, data_dir, scales_json):
                 in_ty,
                 wts_ty,
                 out_ty,
-                act_in.prod(depth=1, tile=CHAIN_PLACEMENT["shim_input"]),
-                [
-                    fifo.prod(tile=shim)
-                    for fifo, shim in zip(wts_fifos, CHAIN_PLACEMENT["shim_wts"])
-                ],
-                act_out.cons(tile=CHAIN_PLACEMENT["shim_output"]),
+                act_in.prod(depth=1),
+                [fifo.prod() for fifo in wts_fifos],
+                act_out.cons(),
             ],
         )
     else:
@@ -208,12 +153,22 @@ def _chain_iron(mode, data_dir, scales_json):
             [
                 in_ty,
                 out_ty,
-                act_in.prod(depth=1, tile=CHAIN_PLACEMENT["shim_input"]),
-                act_out.cons(tile=CHAIN_PLACEMENT["shim_output"]),
+                act_in.prod(depth=1),
+                act_out.cons(),
             ],
         )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+@iron.jit(aiecc_flags=sa_placer_flags())
+def chain_design(
+    *buffers: InOut,
+    mode: CompileTime[str],
+    data_dir: CompileTime[str],
+    scales_json: CompileTime[str],
+):
+    return _chain_iron(mode, data_dir, scales_json)
 
 
 def _make_argparser():
@@ -222,13 +177,30 @@ def _make_argparser():
     p.add_argument("mode", choices=["regular", "pipeline", "cascade"])
     p.add_argument("--data-dir", required=True, help="weights directory")
     p.add_argument("--scales-json", required=True, help="scale_factors JSON path")
+    p.add_argument(
+        "--sa-effort",
+        type=float,
+        help="SA placer search budget scale (default: 1.0; lower trades "
+        "placement cost for compile time)",
+    )
     return p
 
 
 def main():
     opts = _make_argparser().parse_args()
     set_current_device(device_from_args(opts, n_cols=None))
-    print(_chain_iron(opts.mode, opts.data_dir, opts.scales_json))
+    design = chain_design
+    if opts.sa_effort is not None:
+        design = design.specialize(aiecc_flags=sa_placer_flags(effort=opts.sa_effort))
+    compile_kwargs = dict(
+        mode=opts.mode, data_dir=opts.data_dir, scales_json=opts.scales_json
+    )
+    if opts.xclbin_path:
+        design.specialize(**compile_kwargs).compile(
+            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
+        )
+    else:
+        print(_chain_iron(**compile_kwargs))
 
 
 if __name__ == "__main__":

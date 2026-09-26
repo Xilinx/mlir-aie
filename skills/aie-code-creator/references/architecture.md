@@ -55,7 +55,7 @@ AIE2/AIE2P has 512-bit vector registers. The number of lanes per `aie::vector<T,
 | `int8_t`, `uint8_t` | 8 | 64 | `acc32` |
 | `int16_t`, `uint16_t` | 16 | 32 | `acc32` (or `acc64` for wide multiplies) |
 | `int32_t`, `uint32_t` | 32 | 16 | `acc64` |
-| `bfloat16` | 16 | 32 | `accfloat` (or `accauto` in MMUL) |
+| `bfloat16` | 16 | 32 (a multiply is 16 on AIE2: `AIE_BF16_LANES`) | `accfloat` (or `accauto` in MMUL) |
 | `float` (fp32) | 32 | 16 | `accfloat` |
 
 Default to the **natural lane count** for the dtype (the middle column above: 32 for `bfloat16`/16-bit, 64 for `int8`, 16 for 32-bit). This is what the examples in this skill use. Drop to a narrower width only if the compiler reports register spills at the natural width.
@@ -113,7 +113,7 @@ Violate these and you get either a compile error or silently wrong results.
 |----|----------------|---------------|
 | int8 MAC / cycle | 256 | 512 |
 | bf16 MAC / cycle | 128 | 256 |
-| Clock | ~1.0–1.3 GHz | ~1.5 GHz |
+| Clock | ~1.0–1.3 GHz | ~1.5 GHz nominal; 1.76 GHz measured on Strix |
 
 Multiply per-tile peak by `(rows × columns)` for the full array. You won't hit peak without MMUL, restrict pointers, and pipelined loops.
 

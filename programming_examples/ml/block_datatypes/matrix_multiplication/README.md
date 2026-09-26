@@ -48,7 +48,7 @@ The (impossible) equivalent transformation for block datatypes:
 
 ### Core Computations
 
-Once the data has reached a compute tile, block datatypes also have additional complexities. They require additional manipulation in order to be loaded in and stored out of registers. The additional manipulations required to achieve this can be seen in [mm_bfp.cc](../../../../aie_kernels/aie2p/mm_bfp.cc).
+Once the data has reached a compute tile, block datatypes also have additional complexities. They require additional manipulation in order to be loaded in and stored out of registers. The additional manipulations required to achieve this can be seen in [mm_bfp.cc](../../../../aie_kernels/linalg/mm_bfp.cc).
 
 The main difference is due to the difficulty of loading the block_vector into the appropriate registers (illustrated below). To fully understand this problem, it is important to keep in mind how memory is accessed by the cores to load into the registers. For more information, please consult the [programming guide](../../../../programming_guide/section-4/section-4c/README.md).
 <img src="./res/core_alignment.png" alt="Representation of difficulties of bfp vector loading"/>

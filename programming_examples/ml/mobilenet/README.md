@@ -23,26 +23,34 @@ Open in this order to grasp the design:
 |---|---|
 | [`network_spec.py`](network_spec.py) | The whole network in one file — block names, layer kinds, in/out shapes, scale-factor keys |
 | [`mobilenet_numpy.py`](mobilenet_numpy.py) | Pure-numpy reference; bit-exact int8 inference matching the AIE kernels (algorithm onramp) |
-| [`aie2_mobilenet_iron.py`](aie2_mobilenet_iron.py) | Full IRON design — orchestrates init + bottlenecks + post-processing on a fixed PLACEMENT |
+| [`aie2_mobilenet_iron.py`](aie2_mobilenet_iron.py) | Full IRON design — orchestrates init + bottlenecks + post-processing; aiecc's SA placer picks the tiles |
 | [`bottleneck/{regular,pipeline,cascade}.py`](bottleneck/) | Three families of bottleneck builders, grouped by tile-mapping strategy |
 | [`aie2_iron_per_block.py`](aie2_iron_per_block.py) | Build any single bottleneck standalone (debugging / profiling) |
 | [`aie2_iron_chain.py`](aie2_iron_chain.py) | Build a chained subset (`pipeline` = bn10..12, `cascade` = bn13..14) |
 
 ## Build + run end-to-end
 
+From `programming_examples/ml`:
+
 ```bash
-make run_py
+python3 -m mobilenet.aie2_mobilenet_iron                  # compile, run 5 launches, verify
+python3 -m mobilenet.aie2_mobilenet_iron -w 2 -i 20       # warmup / timed launches
+python3 -m mobilenet.test_e2e block bn3                   # one bottleneck standalone
+python3 -m mobilenet.test_e2e chain cascade               # bn13 -> bn14
 ```
 
-This compiles `aie2_mobilenet_iron.py` to xclbin and runs `test_mobilenet.py`
-against `data/golden_output.txt`. Per Xilinx/mlir-aie issue #3009 the AIE
-design currently differs from brevitas by max=9 (atol=9 in the assertion).
+Each command compiles the design with `@iron.jit` (cached under
+`NPU_CACHE_HOME`), times the launches with `aie.utils.benchmark` and checks the
+last output with `aie.utils.verify` against the brevitas golden. Per
+Xilinx/mlir-aie issue #3009 the full network currently differs from brevitas by
+up to 9 (atol=9). `MLIR_AIE_KERNEL_SOURCES=<tree>` builds the kernels from
+another source tree, for an A/B of kernel changes on the same design.
 
 ## Lit-driven verification
 
 | Lit test | Hardware? | What it covers |
 |---|---|---|
-| [`run_strix_makefile.lit`](run_strix_makefile.lit) | yes | Full mobilenet end-to-end (atol=9 per #3009) |
+| [`run_mobilenet.lit`](run_mobilenet.lit) | yes | Full mobilenet end-to-end, three launches (atol=9 per #3009) |
 | [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone (atol=0), pipeline (bn10..12) + cascade (bn13..14) chains (atol=0), plus the regular bn0..bn9 chain (atol=14, matches the original perf-benchmark tolerance — see #3009) |
 | [`run_numpy_per_bn.lit`](run_numpy_per_bn.lit) | no | numpy reference vs brevitas — every kernel arithmetic verified bit-exact |
 
@@ -74,9 +82,9 @@ that subdirectory. Calibration images are not in this repo.
 
 ```
 mobilenet/
-├── aie2_mobilenet_iron.py         # full network (IRON)
+├── aie2_mobilenet_iron.py         # full network (IRON) + host run/verify
 ├── aie2_iron_per_block.py         # standalone block builder
-├── aie2_iron_chain.py             # standalone chain builder (pipeline | cascade)
+├── aie2_iron_chain.py             # standalone chain builder (regular | pipeline | cascade)
 ├── network_spec.py                # declarative algorithm description
 ├── mobilenet_numpy.py             # bit-exact numpy reference
 ├── bottleneck/                    # IRON builders by tile-mapping strategy
@@ -88,9 +96,7 @@ mobilenet/
 ├── gen_golden.py                  # brevitas reference generator
 ├── bottleneck_{A,B,C}/data/       # brevitas fixtures for per-block / per-chain tests
 ├── bottleneck_{A,B,C}/gen_golden*.py  # brevitas generators for those fixtures
-├── test_mobilenet.py              # full-network host runtime harness
 ├── test_e2e.py                    # per-block / per-chain hardware harness
 ├── test_numpy_per_bn.py           # numpy bit-exactness driver
-├── run_e2e.sh                     # build+compile+run shell driver for run_e2e.lit
 └── run_*.lit                      # lit tests (see table above)
 ```
