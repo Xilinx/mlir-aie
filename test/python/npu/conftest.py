@@ -49,6 +49,7 @@ def pytest_configure(config):
     )
     config._perf_rows = []
     config._perf_meta = {}
+    config._error_report = {}
 
 
 def _running_on_hrx() -> bool:
@@ -101,6 +102,15 @@ def pytest_addoption(parser):
         "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words; the pair "
         "goes to --perf-meta and the terminal summary, the rows stay this tree's",
     )
+    parser.addoption(
+        "--report-error",
+        metavar="PATH",
+        default=None,
+        help="write each kernel test's error against its contract's reference "
+        "run on float64 inputs (ulps, not correctly rounded, max abs/rel; each "
+        "entry names the precision the reference reached), passing or not, to "
+        "PATH as JSON, and summarize it after the run",
+    )
 
 
 @pytest.fixture
@@ -124,6 +134,22 @@ def record_perf(request):
         if span:
             row["range"] = span
         config._perf_rows.append(row)
+
+    return record
+
+
+@pytest.fixture
+def report_error(request):
+    """Record one run's ``cases.error_report`` entries, or None without the option.
+
+    Keyed by ``<case>/<data>/s<seed>``; ``passed`` is the contract's verdict.
+    """
+    config = request.config
+    if not config.getoption("--report-error"):
+        return None
+
+    def record(key: str, entries: list[dict], passed: bool):
+        config._error_report[key] = {"passed": passed, "outputs": entries}
 
     return record
 
@@ -160,7 +186,8 @@ def pytest_sessionfinish(session, exitstatus):
     and nothing is written; a sanity check that was selected must pass. A
     ``-k`` that deselects it leaves ``measurement_sane`` null in the meta and
     still writes the rows. Meta is written either way and lists the failed
-    tests, so a missing series or an empty run is explained.
+    tests, so a missing series or an empty run is explained. The
+    ``--report-error`` JSON is written whatever happened.
     """
     import json
     from pathlib import Path
@@ -196,14 +223,38 @@ def pytest_sessionfinish(session, exitstatus):
     if out := config.getoption("--perf-out"):
         if npu_ok and completed and rows:
             Path(out).write_text(json.dumps(rows, indent=1))
+    if out := config.getoption("--report-error"):
+        Path(out).write_text(json.dumps(config._error_report, indent=1))
+
+
+def _accuracy_line(entry: dict) -> str:
+    return (
+        f"{entry['dtype']} vs {entry['reference']}: "
+        f"{entry['not_correctly_rounded']}/{entry['n']} not correctly rounded, "
+        f"max {entry['max_ulp']} ulp ({entry['max_ulp_error']:.3g} exact), "
+        f"mean {entry['mean_ulp']:.3g}"
+    )
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    """Print the ``--baseline-sources`` comparison, one block per case.
+    """Print the ``--report-error`` stats and the ``--baseline-sources`` comparison.
 
-    Each arm shows its min..max over n calls (cycles) or iterations (npu_us),
-    so "the candidate's max is below the base's min" reads off one line.
+    Each baseline arm shows its min..max over n calls (cycles) or iterations
+    (npu_us), so "the candidate's max is below the base's min" reads off one
+    line, and its error against the reference (``cases.error_report``)
+    below the words.
     """
+    tr = terminalreporter
+    if errors := getattr(config, "_error_report", None):
+        tr.section(f"error vs reference -> {config.getoption('--report-error')}")
+        for key, run in errors.items():
+            verdict = "" if run["passed"] else "  [FAILED]"
+            if not run["outputs"]:
+                tr.write_line(f"{key}  no floating output{verdict}")
+            for entry in run["outputs"]:
+                tr.write_line(
+                    f"{key}[{entry['output']}]  {_accuracy_line(entry)}{verdict}"
+                )
     baseline = getattr(config, "_perf_meta", {}).get("baseline")
     if not baseline:
         return
@@ -211,11 +262,14 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     def span(r):
         return f"{r['min']}..{r['max']} n={r['n']}" if r else "-"
 
-    tr = terminalreporter
     tr.section(f"baseline {baseline['sources']} -> this tree")
     for name, c in baseline["cases"].items():
         words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
         tr.write_line(f"{name}  words {words}")
+        base, cur = c.get("accuracy", ([], []))
+        for b, a in zip(base, cur):
+            tr.write_line(f"  error[{b['output']}] {_accuracy_line(b)}")
+            tr.write_line(f"  {'':>8} -> {_accuracy_line(a)}")
         for metric in ("cycles", "npu_us"):
             base, cur = c[f"{metric}_range"]
             tr.write_line(f"  {metric:<7} {span(base):>26} -> {span(cur)}")

@@ -29,6 +29,7 @@ from aie.iron.device import from_name
 from aie.iron.kernels import Param
 from aie.utils import bfp, get_current_device
 from aie.utils.hostruntime import set_current_device
+from ml_dtypes import bfloat16
 
 
 @contextmanager
@@ -280,6 +281,82 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     return inputs
 
 
+_FLOATS = {np.dtype(t) for t in (bfloat16, np.float16, np.float32, np.float64)}
+
+
+def _reference_outputs(fn, inputs, scalars, widen: bool) -> list[np.ndarray]:
+    wide = [
+        a.astype(np.float64) if widen and a.dtype in _FLOATS else a
+        for a in map(np.asarray, inputs)
+    ]
+    result = fn.contract.reference(*fn._reference_args(wide, tuple(scalars)))
+    multiple = len(fn.contract.out_indices) > 1
+    return [np.asarray(r) for r in (result if multiple else (result,))]
+
+
+def error_report(fn, got, inputs, *, calls: int, scalars=()) -> list[dict]:
+    """Error stats of each floating output against the contract's reference.
+
+    The reference is run on the inputs widened to float64. ``reference`` in
+    each entry names what its values fit: ``float64``, or ``float32`` when
+    every value is a float32 (a reference that computes in float32, or an
+    exact result). A reference that cannot take float64 inputs, or returns
+    other shapes for them, runs on the inputs as given and is named by the
+    dtype it returns. Where the reference models the kernel (a LUT), this
+    measures against that model; ``reference_max_ulp`` is how far the
+    reference ``judge`` uses (the contract's, on the inputs as given, in the
+    output dtype) is from the one measured against. ``got`` is what
+    ``judge`` takes, normalized the same way: decoded, per call, padding
+    trimmed.
+    """
+    from aie.utils.accuracy import error_stats
+
+    c = fn.contract
+    plain = _reference_outputs(fn, inputs, scalars, widen=False)
+    try:
+        refs = _reference_outputs(fn, inputs, scalars, widen=True)
+        if [r.shape for r in refs] != [r.shape for r in plain]:
+            refs = plain
+    except Exception:  # noqa: BLE001 - a reference written for its own dtype
+        refs = plain
+    actuals = got if len(c.out_indices) > 1 else (got,)
+    entries = []
+    for k, (i, actual, ref, own) in enumerate(zip(c.out_indices, actuals, refs, plain)):
+        dt = np.dtype(fn.arg_dtype(i)) if not bfp.is_bfp(fn.arg_dtype(i)) else None
+        if dt not in _FLOATS or ref.dtype not in _FLOATS:
+            continue
+        layout = c.layouts[i] if c.layouts else None
+        actual = layout.decode(actual, calls=calls) if layout else np.asarray(actual)
+        actual = actual.reshape(calls, -1)
+        if c.out_valid is not None:
+            actual = actual[:, : c.out_valid]
+        if In not in c.roles and ref.size == actual.shape[1]:
+            ref = np.broadcast_to(ref.reshape(1, -1), actual.shape)
+            own = np.broadcast_to(own.reshape(1, -1), actual.shape)
+        else:
+            ref, own = ref.reshape(calls, -1), own.reshape(calls, -1)
+        ref64 = ref.astype(np.float64)
+        if ref.dtype != np.float64:
+            precision = ref.dtype.name
+        else:
+            with np.errstate(over="ignore"):
+                narrow = ref.astype(np.float32).astype(np.float64)
+            fits = (narrow == ref64) | np.isnan(ref64)
+            precision = "float32" if fits.all() else "float64"
+        stats = error_stats(actual, ref64, dt)
+        judged = error_stats(own.astype(np.float64), ref64, dt)
+        entries.append(
+            dict(
+                output=k,
+                arg=i,
+                reference=precision,
+                reference_max_ulp=judged.max_ulp,
+                **stats.as_dict(),
+            )
+        )
+    return entries
+
+
 __all__ = [
     "Case",
     "INT_DATA",
@@ -287,5 +364,6 @@ __all__ = [
     "MATRIX_DATA",
     "data_policy",
     "device_for",
+    "error_report",
     "inputs_for",
 ]

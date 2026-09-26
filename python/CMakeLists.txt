@@ -40,6 +40,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   SOURCES
     utils/__init__.py
     utils/_log_setup.py
+    utils/accuracy.py
     utils/benchmark.py
     utils/bfp.py
     utils/config.py

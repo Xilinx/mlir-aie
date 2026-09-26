@@ -428,14 +428,11 @@ def bf16_ulp_distance(a, b) -> np.ndarray:
     Bit patterns are mapped to a monotonic integer scale (sign-magnitude to
     two's-complement style) so the distance is a plain subtraction. -0 and +0
     map to the same point, so a kernel that produces the other zero is not
-    penalized.
+    penalized. ``aie.utils.accuracy.ulp_distance`` takes other dtypes.
     """
+    from aie.utils.accuracy import ulp_distance
 
-    def ordinal(x):
-        bits = np.asarray(x).astype(bfloat16).view(np.uint16).astype(np.int32)
-        return np.where(bits & 0x8000, 0x8000 - bits, bits)
-
-    return np.abs(ordinal(a) - ordinal(b))
+    return ulp_distance(a, b, bfloat16)
 
 
 def poisoned(n: int, dtype) -> np.ndarray:
