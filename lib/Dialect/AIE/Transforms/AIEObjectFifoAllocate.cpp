@@ -181,6 +181,7 @@ struct AIEObjectFifoAllocatePass
       }
       plannedMemory[tile].append(count, size);
     }
+    SmallVector<ObjectFifoPoolOp> generated;
     for (auto pool : pools) {
       if (pool.getBuffers()) {
         for (auto buffer : pool.getBufferOps()) {
@@ -199,20 +200,39 @@ struct AIEObjectFifoAllocatePass
       }
       if (pool.getTileLike().isShimTile())
         continue;
-      for (int i = 0; i < pool.getDepth(); ++i) {
-        Value tile = localPools.contains(pool)
-                         ? localPools.lookup(pool)
-                         : placementFor(pool, pool.getObjectSizeInBytes());
-        if (!tile) {
-          bufferFailure = pool;
-          return failure();
-        }
-        bufferPlacements[pool].push_back(tile);
-        if (!localPools.contains(pool))
-          plannedMemory[tile].push_back(pool.getObjectSizeInBytes());
-      }
+      if (localPools.contains(pool))
+        bufferPlacements[pool].append(pool.getDepth(), localPools.lookup(pool));
+      else
+        generated.append(pool.getDepth(), pool);
     }
-    return success();
+    int retries = kSpillRetries;
+    return success(placeBuffers(generated, retries));
+  }
+
+  /// The first layout tried is the greedy one. When a buffer fits nowhere,
+  /// an earlier buffer may have spilled to the one neighbor it could use, so
+  /// earlier spills are revisited, latest first, a bounded number of times.
+  static constexpr int kSpillRetries = 256;
+
+  bool placeBuffers(ArrayRef<ObjectFifoPoolOp> buffers, int &retries) {
+    if (buffers.empty())
+      return true;
+    ObjectFifoPoolOp pool = buffers.front();
+    int64_t size = pool.getObjectSizeInBytes();
+    SmallVector<Value> candidates = placementsFor(pool, size);
+    if (candidates.empty() && !bufferFailure)
+      bufferFailure = pool;
+    for (auto [index, tile] : llvm::enumerate(candidates)) {
+      if (index > 0 && retries-- <= 0)
+        break;
+      plannedMemory[tile].push_back(size);
+      bufferPlacements[pool].push_back(tile);
+      if (placeBuffers(buffers.drop_front(), retries))
+        return true;
+      plannedMemory[tile].pop_back();
+      bufferPlacements[pool].pop_back();
+    }
+    return false;
   }
 
   /// FIXME: choosing which tile a buffer lives on is the buffer allocator's
@@ -224,12 +244,12 @@ struct AIEObjectFifoAllocatePass
   /// by its DMAs, preferring the emptier one so adjacent MemTiles
   /// keep room for their own spills. Which tiles neighbor an unplaced one is
   /// not yet known, so its buffers stay at home.
-  Value placementFor(ObjectFifoPoolOp pool, int64_t sizeBytes) {
+  SmallVector<Value> placementsFor(ObjectFifoPoolOp pool, int64_t sizeBytes) {
     TileLike home = pool.getTileLike();
     auto &target = device.getTargetModel();
     Value homeTile = home->getResult(0);
     if (canPlace(pool, homeTile, sizeBytes)) {
-      return homeTile;
+      return {homeTile};
     }
     if (!home.isMemTile())
       return {};
@@ -255,12 +275,13 @@ struct AIEObjectFifoAllocatePass
     llvm::stable_sort(neighbors, [&](TileOp a, TileOp b) {
       return memoryUsed(a.getResult()) < memoryUsed(b.getResult());
     });
+    SmallVector<Value> fitting;
     for (TileOp neighbor : neighbors) {
       if (canPlace(pool, neighbor.getResult(), sizeBytes)) {
-        return neighbor.getResult();
+        fitting.push_back(neighbor.getResult());
       }
     }
-    return {};
+    return fitting;
   }
 
   /// Buffers and locks sit directly below the tile whose memory holds them,
