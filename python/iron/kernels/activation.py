@@ -152,7 +152,7 @@ _VTANH_FAMILY_BOUNDS = {
 _EXP_POLY_TOLERANCE = Tolerance.relative(
     0.005,
     1e-38,
-    note="AIE2P exp2_poly range reduction, measured on npu2; aie2 uses the "
+    note="AIE2P range-reduced polynomial, measured on npu2; aie2 uses the "
     "LUT and is judged against bf16_exp_lut_ref instead",
 )
 _EXP_LUT_TOLERANCE = Tolerance.bf16_ulps(
@@ -539,8 +539,8 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
 
     Computes ``exp(clip(x, -88, 88))``: the kernel saturates rather than
     overflowing for real inputs, including infinities. On AIE2P a
-    range-reduced polynomial and integer exponent reconstruction replace
-    the hardware exp2 approximation, preserving subnormal outputs. See
+    range-reduced polynomial replaces the table and rounds every result
+    correctly, subnormal outputs included. See
     [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref] for why that
     clamp matches the AIE2 table's domain.
     """
@@ -554,9 +554,9 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
             bf16_exp_ref,
             count=False,
             # Only aie2's tuned branch reaches getExpBf16. The other computes a
-            # range-reduced polynomial (exp2_poly.h), which this model does
-            # not describe, so it keeps the true-function reference and a
-            # measured bound, whether or not there is a tanh instruction.
+            # range-reduced polynomial, which this model does not describe,
+            # so it keeps the true-function reference and a measured bound,
+            # whether or not there is a tanh instruction.
             elementwise=bf16_exp_lut_ref if _tuned_arch() == "aie2" else None,
             lut_tolerance=_EXP_LUT_TOLERANCE,
             use_lut=True,
@@ -572,8 +572,8 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
     """Software f32 ``2**x`` kernel: a degree-5 minimax poly, not a LUT.
 
     A float32-output alternative to [`bf16_exp`]
-    [iron.kernels.activation.bf16_exp], sharing its AIE2P range-reduced
-    polynomial but with a separately configurable input domain. See
+    [iron.kernels.activation.bf16_exp] with a separately configurable
+    input domain. See
     ``aie_kernels/activation/exp2f_vec.cc`` for the accuracy rationale and the
     ``noinline`` codegen hazard this kernel carries.
 
