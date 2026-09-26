@@ -179,3 +179,55 @@ def test_copy_object_files_missing_source(compile_utils, tmp_path):
         compile_utils._copy_object_files([source], tmp_path)
 
     assert dest.read_bytes() == b"stale object"
+
+
+def test_compile_mlir_module_ignores_stale_external_functions(
+    compile_utils, monkeypatch, tmp_path
+):
+    """Only kernels the current module actually declares reach the auto-build
+    (and its built_for_arch check) -- ``ExternalFunction._instances`` also holds
+    unrelated entries left over from an earlier, unrelated compile in the same
+    process, and those must not be treated as belonging to this one."""
+    monkeypatch.chdir(tmp_path)
+    work_dir = tmp_path / "build"
+    work_dir.mkdir()
+
+    class FakeExternalFunction:
+        def __init__(self, name, built_for_arch):
+            self.name = name
+            self._source_file = "kernel.cc"
+            self.built_for_arch = built_for_arch
+
+    referenced = FakeExternalFunction("referenced_kernel", "aie2")
+    stale = FakeExternalFunction("stale_kernel_from_earlier_compile", "aie2p")
+    FakeExternalFunction._instances = {referenced, stale}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "aie.iron.kernel",
+        types.SimpleNamespace(ExternalFunction=FakeExternalFunction),
+    )
+    monkeypatch.setattr(compile_utils, "resolve_target_arch", lambda device: "aie2")
+
+    captured = {}
+
+    def fake_compile_external_kernels(funcs, kernel_dir, target_arch, **kwargs):
+        captured["funcs"] = list(funcs)
+
+    monkeypatch.setattr(
+        compile_utils, "compile_external_kernels", fake_compile_external_kernels
+    )
+    monkeypatch.setattr(
+        compile_utils.subprocess,
+        "run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, "", ""),
+    )
+
+    compile_utils.compile_mlir_module(
+        "module { func.func private @referenced_kernel() }",
+        insts_path="insts.bin",
+        work_dir=work_dir,
+        device=object(),
+    )
+
+    assert [f.name for f in captured["funcs"]] == ["referenced_kernel"]

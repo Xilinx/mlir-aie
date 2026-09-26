@@ -770,6 +770,18 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
+    # Stringify once: ``ExternalFunction._instances`` is a process-wide registry
+    # that outlives any single compile (kernels can be reused, and shared by
+    # name, across designs -- see ``resolve()`` -- so it is never cleared here).
+    # ``resolve()`` declares every kernel actually used by this module as an
+    # ``@name`` symbol in its own text, so that text -- not the registry -- is
+    # what scopes "belongs to the current compile": it is what keeps a stale
+    # instance left over from an earlier, unrelated compile (e.g. a prior aie2
+    # design in the same long-lived process) from being auto-built, and from
+    # tripping the cross-arch ``built_for_arch`` check below, against a design
+    # that never referenced it.
+    mlir_text = mlir_module if isinstance(mlir_module, str) else str(mlir_module)
+
     # Auto-build any source-bearing ExternalFunction kernels into work_dir
     # so aiecc's linker can find the .o referenced by link_with.  Mirrors
     # the loop in compilabledesign.py but for callers (e.g. low-level
@@ -785,6 +797,7 @@ def compile_mlir_module(
                 f
                 for f in ExternalFunction._instances
                 if getattr(f, "_source_file", None)
+                and re.search(rf"@{re.escape(f.name)}\b", mlir_text)
             ],
             str(work_dir),
             target_arch,
@@ -800,11 +813,11 @@ def compile_mlir_module(
     if work_dir:
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
-            f.write(str(mlir_module))
+            f.write(mlir_text)
         _run_aiecc(mlir_file, args, cwd=work_dir)
     else:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
-            f.write(str(mlir_module))
+            f.write(mlir_text)
             mlir_file = f.name
         try:
             _run_aiecc(mlir_file, args)
