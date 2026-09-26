@@ -1,0 +1,157 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# The model-based property tests at scale. check-aie runs the same tests on
+# every PR over a fixed corpus sized to stay fast; this runs them over a
+# corpus that contains it and is many times larger.
+
+name: Model-based tests
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      router_seeds:
+        description: 'Routable designs per device (router_properties.py --seeds)'
+        default: '2000'
+      allocator_seeds:
+        description: 'Designs for allocator_properties.py --seeds'
+        default: '5000'
+      allocator_bankres_seeds:
+        description: 'Designs for allocator_properties.py --bankres-seeds'
+        default: '200000'
+  schedule:
+    - cron: '17 3 * * *'
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  ROUTER_SEEDS: ${{ inputs.router_seeds || '2000' }}
+  ALLOCATOR_SEEDS: ${{ inputs.allocator_seeds || '5000' }}
+  ALLOCATOR_BANKRES_SEEDS: ${{ inputs.allocator_bankres_seeds || '200000' }}
+
+concurrency:
+  group: model-based-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  model-based-tests:
+    name: Router and allocator property tests at scale
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 2
+          submodules: "true"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+
+      - name: Setup Cpp
+        uses: aminya/setup-cpp@15a6bd8cf39030f88b5da3d203a829ec4eea4955  # v1.10.1
+        with:
+          compiler: llvm
+          cmake: true
+          ninja: true
+          cppcheck: false
+          clangtidy: false
+          clangformat: false
+
+      # Shares the cache of the matching buildAndTestMulti.yml configuration.
+      - uses: ./.github/actions/setup_ccache
+        id: setup_ccache
+        with:
+          MATRIX_OS: ubuntu-24.04
+          MATRIX_ARCH: x86
+          EXTRA_KEY: compile-and-test-llvm-assert=ON-rtti=ON
+
+      - name: Get MLIR
+        run: |
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          for attempt in 1 2 3; do
+            rm -f mlir-*.whl
+            if pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+          unzip -q mlir-*.whl
+
+      # Assertions on, so the router test also reads the router's DEBUG_ONLY
+      # output and measures route-space coverage of its internals.
+      - name: Build
+        id: build
+        run: |
+          mkdir -p build_release
+          cd build_release
+          cmake .. \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
+            -DLLVM_EXTERNAL_LIT="$(which lit)"
+          ninja
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+          echo "PYTHONPATH=$PWD/python" >> "$GITHUB_ENV"
+
+      # Each script exits nonzero on any REGRESSION line. Failing designs are
+      # saved under failures/ for the artifact below.
+      - name: Router, npu1
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          python test/create-packet-flows/router_properties.py --device npu1 \
+            --seeds "$ROUTER_SEEDS" --out failures/router-npu1
+
+      - name: Router, npu2
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          python test/create-packet-flows/router_properties.py --device npu2 \
+            --seeds "$ROUTER_SEEDS" --out failures/router-npu2
+
+      - name: Allocator
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          python test/assign-buffer-addresses/allocator_properties.py \
+            --seeds "$ALLOCATOR_SEEDS" --bankres-seeds "$ALLOCATOR_BANKRES_SEEDS"
+
+      - name: Upload failing designs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: model-based-test-failures
+          path: failures/
+          if-no-files-found: ignore
