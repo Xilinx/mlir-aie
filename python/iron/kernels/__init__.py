@@ -165,7 +165,6 @@ from .linalg import (
 )
 from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
 from .quant import q4nx_dequant, q4nx_dequant_ref
-from .sample import exp64_ref, sample_combine, sample_ref, sample_select
 from .reduce import (
     compute_max,
     compute_max_ref,
@@ -176,6 +175,7 @@ from .reduce import (
     reduce_min,
     reduce_min_ref,
 )
+from .sample import exp64_ref, sample_combine, sample_ref, sample_select
 from .transformer import (
     layer_norm_affine_cast,
     layer_norm_affine_cast_ref,

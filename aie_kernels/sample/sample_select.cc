@@ -137,8 +137,8 @@ void scan(select_state *s, const uint16_t *x) {
   for (int32_t v = 0; v < vectors; ++v) {
     const keys_v keys =
         signed_keys(aie::load_v<LANES>((const int16_t *)x + v * LANES));
-    const uint32_t bits = s->cut ? aie::gt(keys, (int16_t)s->thr).to_uint32()
-                                 : 0xffffffffu;
+    const uint32_t bits =
+        s->cut ? aie::gt(keys, (int16_t)s->thr).to_uint32() : 0xffffffffu;
     if (bits)
       keep(s, keys, bits);
   }

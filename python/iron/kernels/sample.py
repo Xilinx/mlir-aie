@@ -81,9 +81,11 @@ def _check_slice(owner: str, slice_size: int, k_max: int) -> None:
 
 
 def select_streams(slice_size: int, chunk: int) -> int:
-    """How often ``sample_select`` takes its slice per position: once when a
-    chunk is the whole slice, which one call passes over ``SELECT_PASSES``
-    times; ``SELECT_PASSES`` times otherwise."""
+    """How often ``sample_select`` takes its slice per position.
+
+    Once when a chunk is the whole slice, which one call passes over
+    ``SELECT_PASSES`` times; ``SELECT_PASSES`` times otherwise.
+    """
     return 1 if chunk == slice_size else SELECT_PASSES
 
 
@@ -127,7 +129,7 @@ def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction
 
 
 def sample_combine(*, columns=4, slice_size=32064, k_max=64) -> ExternalFunction:
-    """The draw from ``columns`` summaries of ``sample_select``: ``sample_ref``.
+    """Draw from ``columns`` summaries of ``sample_select``, as ``sample_ref`` does.
 
     ``sample_combine(summaries, row, token, record)`` reads the summaries
     column 0 first, and writes the drawn token (an index into the whole row
@@ -181,14 +183,17 @@ def _exp64_constants() -> tuple[dict[str, np.float64], np.ndarray]:
         [int(bits, 16) for bits in re.findall(r"UINT64_C\(0x([0-9a-f]{16})\)", body)],
         dtype=np.uint64,
     )
-    n = 1 << int(re.search(r"#define EXP64_TABLE_BITS (\d+)", text).group(1))
+    table_bits = re.search(r"#define EXP64_TABLE_BITS (\d+)", text)
+    if table_bits is None:
+        raise ValueError("exp64_table.h: no EXP64_TABLE_BITS")
+    n = 1 << int(table_bits.group(1))
     if table.size != 2 * n:
         raise ValueError(f"exp64_table.h: {table.size} table words, expected {2 * n}")
     return scalars, table
 
 
 def exp64_ref(x):
-    """exp over float64, bit for bit as ``aie_kernels/sample/exp64.h``.
+    """Compute exp over float64, bit for bit as ``aie_kernels/sample/exp64.h``.
 
     numpy's elementwise float64 +, -, * and comparisons are correctly
     rounded, so evaluating exp64.h's sequence of them gives its bits; np.exp
@@ -310,7 +315,7 @@ def check_order_preserving(temperature) -> None:
 
 
 def draw_row(temperature, top_k: int, n53: int) -> np.ndarray:
-    """The four int32 words ``sample_select`` and ``sample_combine`` read for one draw."""
+    """Pack the four int32 words ``sample_select`` and ``sample_combine`` read for one draw."""
     if not 0 <= n53 < 1 << 53:
         raise ValueError(f"n53 {n53} is not in [0, 2**53)")
     row = np.empty(ROW_WORDS, dtype=np.uint32)
@@ -322,7 +327,7 @@ def draw_row(temperature, top_k: int, n53: int) -> np.ndarray:
 
 
 def _two_sum_error(a, b, s):
-    """The exact error of s = fl(a + b) (Knuth)."""
+    """Return the exact error of s = fl(a + b) (Knuth)."""
     bb = s - a
     return (a - (s - bb)) + (b - bb)
 
@@ -334,19 +339,19 @@ def _fast_two_sum(a, b):
 
 
 def _split(a: np.float64) -> tuple[np.float64, np.float64]:
-    """a = hi + lo exactly, each with at most 26 significant bits (Veltkamp)."""
+    """Split a = hi + lo exactly, each with at most 26 significant bits (Veltkamp)."""
     g = np.float64(2.0**27 + 1.0) * a
     hi = g - (g - a)
     return hi, a - hi
 
 
-def _target(u: np.float64, h: np.float64, l: np.float64):
-    """u * (h + l) as a normalised double-double: TwoProduct(u, h), then + u * l."""
+def _target(u: np.float64, h: np.float64, lo: np.float64):
+    """Return u * (h + lo) as a normalised double-double: TwoProduct(u, h), then + u * lo."""
     p = u * h
     u_hi, u_lo = _split(u)
     h_hi, h_lo = _split(h)
     e = ((u_hi * h_hi - p) + u_hi * h_lo + u_lo * h_hi) + u_lo * h_lo
-    return _fast_two_sum(p, e + u * l)
+    return _fast_two_sum(p, e + u * lo)
 
 
 def _row(logits) -> np.ndarray:
@@ -381,7 +386,7 @@ def sample_weights(logits, temperature, top_k: int) -> tuple[np.ndarray, np.ndar
 
 
 def sample_ref(logits, temperature, top_k: int, n53: int) -> int:
-    """The token ``sample_combine`` draws from one row of bf16 logits."""
+    """Return the token ``sample_combine`` draws from one row of bf16 logits."""
     if np.float32(temperature).view(np.uint32) & 0x7FFFFFFF == 0:
         return int(np.argmax(order_keys(_row(logits))))
     candidates, weights = sample_weights(logits, temperature, top_k)
@@ -389,11 +394,11 @@ def sample_ref(logits, temperature, top_k: int, n53: int) -> int:
     s = np.add.accumulate(weights)  # sequential, unlike np.sum's pairwise tree
     s_before = np.concatenate(([0.0], s[:-1]))
     c = np.add.accumulate(_two_sum_error(s_before, weights, s))
-    h, l = _fast_two_sum(s, c)
+    h, lo = _fast_two_sum(s, c)
     u = np.float64(n53) * np.float64(2.0**-53)
-    t_h, t_l = _target(u, h[-1], l[-1])
+    t_h, t_l = _target(u, h[-1], lo[-1])
     # A linear scan, not a bisection: (h, l) can step down by the rounding
     # of c after a tiny weight, and the first candidate over the target is
     # the rule. The last candidate if none is (u < 1, so one always is).
-    above = np.flatnonzero((h > t_h) | ((h == t_h) & (l > t_l)))
+    above = np.flatnonzero((h > t_h) | ((h == t_h) & (lo > t_l)))
     return int(candidates[above[0] if above.size else -1])
