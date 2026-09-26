@@ -19,9 +19,7 @@
 #include "../aie_arch.h"
 #include <aie_api/aie.hpp>
 
-#if AIE_TUNED_AIE2P
 #include "bn_conv2dk1_aie2.h"
-#endif
 
 #define REL_WRITE 0
 #define REL_READ 1
@@ -713,8 +711,6 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 #endif
 
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-#include "bn_conv2dk1_aie2.h"
-
 template <bool Aligned, int P>
 static void k1_i8_rows(const uint8_t *input, const int8_t *kernels,
                        int8_t *output, const int32_t input_width,
