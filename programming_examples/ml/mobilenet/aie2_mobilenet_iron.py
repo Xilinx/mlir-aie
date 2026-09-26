@@ -298,7 +298,8 @@ def _make_argparser():
         default=3,
         help="SA placer seed, with --no-placement (default: %(default)s)",
     )
-    add_benchmark_args(p, default_warmup=1, default_iters=5)
+    # The NPU takes 6-13 launches after load to reach its steady latency.
+    add_benchmark_args(p, default_warmup=20, default_iters=5)
     return p
 
 

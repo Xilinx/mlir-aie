@@ -115,7 +115,8 @@ def _make_argparser():
     p.add_argument(
         "target", help="block: bn1|bn2|bn3|bn6|bn7|bn8; chain: regular|pipeline|cascade"
     )
-    add_benchmark_args(p, default_warmup=1, default_iters=1)
+    # The NPU takes 6-13 launches after load to reach its steady latency.
+    add_benchmark_args(p, default_warmup=20, default_iters=1)
     return p
 
 
