@@ -105,8 +105,11 @@ expand/400x16/uint8_bfloat16/group_size=96/group-96
 expand/544x16/uint8_bfloat16/group_size=64/group-64
 expand/576x16/uint8_bfloat16
 expand/576x256/uint8_bfloat16
+filter2d/128x4/uint8/line_width=128/two-blocks
 filter2d/160x4/uint8/line_width=160/short-row
 filter2d/1920x16/uint8
+filter2d/352x4/uint8/line_width=352/odd-pipelined
+filter2d/96x4/uint8/line_width=96/one-block
 fused_mm/16x64x16x4/bfloat16/band_m=16/bfp16_b=True/chunk_k=32/out_chunk=64
 fused_mm/32x32x16x4/bfloat16
 fused_mm/32x48x16x4/bfloat16/clamp=(-0.125, 0.75)

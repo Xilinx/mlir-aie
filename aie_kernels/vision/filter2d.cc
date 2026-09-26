@@ -33,11 +33,11 @@ constexpr unsigned DataStepXY = 1;
 using mul_ops =
     aie::sliding_mul_xy_ops<Lanes, Points, CoeffStep, DataStepXY, int8, uint8>;
 
-void filter2d_3lines_aie(uint8_t *AIE2_RESTRICT lineIn0,
-                         uint8_t *AIE2_RESTRICT lineIn1,
-                         uint8_t *AIE2_RESTRICT lineIn2,
-                         uint8_t *AIE2_RESTRICT output, const int32_t width,
-                         int16_t *AIE2_RESTRICT kernel) {
+void filter2d_3lines_aie(uint8_t *__restrict lineIn0,
+                         uint8_t *__restrict lineIn1,
+                         uint8_t *__restrict lineIn2,
+                         uint8_t *__restrict output, const int32_t width,
+                         int16_t *__restrict kernel) {
   event0();
 
   set_sat(); // Needed for int16 to saturate properly to uint8
@@ -50,6 +50,19 @@ void filter2d_3lines_aie(uint8_t *AIE2_RESTRICT lineIn0,
 
   const uint32_t kernel_side = KERNEL_WIDTH / 2;
 
+#if AIE_TUNED_AIE2P
+  // Each row's three taps are the high bytes of three int16s, packed into the
+  // first 32-bit word of its eight-byte group; the rest of the group is zero.
+  aie::vector<int32, 8> packed = aie::zeros<int32, 8>();
+  AIE_LOOP_UNROLL_FULL
+  for (int j = 0; j < KERNEL_WIDTH; j++) {
+    uint32_t k0 = (uint16_t)kernel[0], k1 = (uint16_t)kernel[1],
+             k2 = (uint16_t)kernel[2];
+    packed[2 * j] = (int32)((k0 >> 8) | (k1 & 0xff00) | ((k2 & 0xff00) << 8));
+    kernel += KERNEL_WIDTH;
+  }
+  kernel_vec = packed.template cast_to<int8>();
+#else
   for (int j = 0; j < KERNEL_WIDTH; j++) {
     for (int i = 0; i < KERNEL_WIDTH; i++) {
       kernel_vec[j * Points + i] =
@@ -60,7 +73,96 @@ void filter2d_3lines_aie(uint8_t *AIE2_RESTRICT lineIn0,
       kernel_vec[j * Points + KERNEL_WIDTH + i2] = 0;
     }
   }
+#endif
 
+#if AIE_TUNED_AIE2P
+  // AIE2P's 8-bit sliding mul is 64 lanes over a 128-pixel window, so one mac
+  // per row covers a 64-pixel block. The window is two whole blocks as
+  // loaded, which puts each result one pixel ahead of its block; the store
+  // shifts it back, taking the first pixel from the previous result. The
+  // 32-lane form shifted each row's input instead, and loading every chunk
+  // twice and carrying the previous one held its loop at II18 on moves.
+  using mul64_ops =
+      aie::sliding_mul_xy_ops<64, Points, CoeffStep, DataStepXY, int8, uint8>;
+  aie::vector<uint8, 64> blk[KERNEL_WIDTH], nxt[KERNEL_WIDTH];
+  auto conv =
+      [&](const aie::vector<uint8, 64> *lo,
+          const aie::vector<uint8, 64> *hi) __attribute__((always_inline)) {
+        auto a = mul64_ops::mul(kernel_vec, 0, aie::concat(lo[0], hi[0]), 0);
+        AIE_LOOP_UNROLL_FULL
+        for (int r = 1; r < KERNEL_WIDTH; r++)
+          a = mul64_ops::mac(a, kernel_vec, r * Points,
+                             aie::concat(lo[r], hi[r]), 0);
+        return a.template to_vector<uint8>(SRS_SHIFT - 8);
+      };
+  auto load_block = [&](int r) __attribute__((always_inline)) {
+    aie::vector<uint8, 64> b = aie::concat(
+        aie::load_v<32>(line[r]), aie::load_v<32>(line[r] + VecFactor));
+    line[r] += 2 * VecFactor;
+    return b;
+  };
+
+  // left of line, border extension by mirroring: the last lane of this
+  // result is the first pixel's
+  AIE_LOOP_UNROLL_FULL
+  for (int r = 0; r < KERNEL_WIDTH; r++) {
+    nxt[r] = load_block(r);
+    blk[r] = ::aie::shuffle_up_replicate(nxt[r], 2 * VecFactor - 1);
+  }
+  aie::vector<uint8, 64> prev = conv(blk, nxt);
+
+  auto step = [&]() __attribute__((always_inline)) {
+    AIE_LOOP_UNROLL_FULL
+    for (int r = 0; r < KERNEL_WIDTH; r++) {
+      blk[r] = aie::concat(aie::load_v<32>(line[r] - 2 * VecFactor),
+                           aie::load_v<32>(line[r] - VecFactor));
+      nxt[r] = load_block(r);
+    }
+    aie::vector<uint8, 64> res = conv(blk, nxt);
+    ::aie::store_v(output, ::aie::shuffle_up_fill(res, prev, kernel_side));
+    output += 2 * VecFactor;
+    prev = res;
+  };
+  const int blocks = width / (2 * VecFactor);
+  if (blocks - 1 >= 4) {
+    AIE_LOOP_NO_UNROLL
+    AIE_LOOP_MIN_ITERATION_COUNT(4)
+    for (int j = 1; j < blocks; j++)
+      step();
+  } else {
+    AIE_LOOP_NO_UNROLL
+    for (int j = 1; j < blocks; j++)
+      step();
+  }
+
+  // right of line, border extension by mirroring
+  AIE_LOOP_UNROLL_FULL
+  for (int r = 0; r < KERNEL_WIDTH; r++)
+    blk[r] = aie::concat(aie::load_v<32>(line[r] - 2 * VecFactor),
+                         aie::load_v<32>(line[r] - VecFactor));
+  if (width % (2 * VecFactor) == 0) {
+    AIE_LOOP_UNROLL_FULL
+    for (int r = 0; r < KERNEL_WIDTH; r++)
+      nxt[r] =
+          ::aie::shuffle_down_replicate(blk[r], 2 * VecFactor - kernel_side);
+    ::aie::store_v(output,
+                   ::aie::shuffle_up_fill(conv(blk, nxt), prev, kernel_side));
+  } else {
+    // A last 32 pixels, replicated past the end, follow the last block and
+    // then take a conv of their own.
+    AIE_LOOP_UNROLL_FULL
+    for (int r = 0; r < KERNEL_WIDTH; r++) {
+      aie::vector<uint8, 32> c = aie::load_v<32>(line[r]);
+      nxt[r] = ::aie::shuffle_down_replicate(aie::concat(c, c), VecFactor);
+    }
+    aie::vector<uint8, 64> res = conv(blk, nxt);
+    ::aie::store_v(output, ::aie::shuffle_up_fill(res, prev, kernel_side));
+    output += 2 * VecFactor;
+    ::aie::store_v(output,
+                   ::aie::shuffle_up_fill(conv(nxt, nxt), res, kernel_side)
+                       .template extract<32>(0));
+  }
+#else
   // left of line, border extension by mirroring
   for (int r = 0; r < KERNEL_WIDTH; r++) {
     data_buf[r].insert(0, aie::load_v<32>(line[r]));
@@ -131,6 +233,7 @@ void filter2d_3lines_aie(uint8_t *AIE2_RESTRICT lineIn0,
   }
   ::aie::store_v(output, acc.to_vector<uint8>(SRS_SHIFT - 8));
   output += VecFactor;
+#endif
 
   event1();
 }

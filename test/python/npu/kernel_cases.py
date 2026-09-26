@@ -504,6 +504,12 @@ CASES: list[Case] = [
     Case("filter2d", calls=16, smoke=True),
     # Three middle vectors, one under the count the AIE2 pipelined loop needs.
     check("filter2d", dict(line_width=160), tag="short-row"),
+    # AIE2P steps 64 pixels at a time, pipelined from 4 steps, then a last
+    # 32 pixels when the row has them: one block with a tail, two blocks, and
+    # a pipelined row with a tail.
+    check("filter2d", dict(line_width=96), tag="one-block"),
+    check("filter2d", dict(line_width=128), tag="two-blocks"),
+    check("filter2d", dict(line_width=352), tag="odd-pipelined"),
     Case("rgba2hue", calls=16, smoke=True),
     # Under four vectors, so AIE2 takes the loop that is not software-pipelined.
     check("rgba2hue", dict(line_width=96), tag="short-row"),
