@@ -16,7 +16,7 @@ import numpy as np
 from aie.extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     view as memref_view,
 )
-from aie.iron import Buffer, ObjectFifo, Worker, kernels
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.algorithms import row_at_a_time, row_at_a_time_with_skip, sliding_3row
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
@@ -29,7 +29,7 @@ from ._common import (
     layer_sf as _layer_sf,
 )
 from ._common import (
-    load_wts as _load_weights,
+    packed_wts_buffer as _packed_wts_buffer,
 )
 from ._common import (
     skip_sf as _skip_sf,
@@ -177,12 +177,11 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
     bn12_l1_wts_sz = in_c * l1_c  # 112*336 = 37632
     bn12_dw_wts_sz = 3 * 3 * l1_c  # 3024
     bn12_pw_wts_sz = l1_c * out_c  # 26880
-    bn12_l23_wts_sz = bn12_dw_wts_sz + bn12_pw_wts_sz  # 29904
-
-    bn12_l23_data = _load_weights(data_dir, "bn12_2_3_chain.txt", bn12_l23_wts_sz)
 
     bn12_l1_wts = _wts_buf(data_dir, "bn12_1_chain.txt", bn12_l1_wts_sz)
-    bn12_l23_wts = Buffer(_i8((bn12_l23_wts_sz,)), initial_value=bn12_l23_data)
+    bn12_l23_wts, (bn12_dw_off, bn12_pw_off) = _packed_wts_buffer(
+        data_dir, "bn12_2_3_chain.txt", [bn12_dw_wts_sz, bn12_pw_wts_sz]
+    )
 
     bn12_l1_ty = _u8((in_w, 1, l1_c))
     bn12_dw_ty = _u8((out_w, 1, l1_c))
@@ -218,11 +217,11 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
             of_12.release(1)
 
     def bn12_l23_fn(of_12, dw_tmp_prod, dw_tmp_cons, act_out, wts, k_dw, k_pw):
-        # L2+L3 combined buffer sliced via memref_view: DW at 0, PW at +bn12_dw_wts_sz.
+        # L2+L3 combined buffer sliced via memref_view.
         # act_out.acquire is LAZY (just before the PW call) — eager acquire
         # would hold an of_12 slot while waiting on act_out and risk deadlock.
-        dw_wts = memref_view(wts.op, [bn12_dw_wts_sz], shift=0)
-        pw_wts = memref_view(wts.op, [bn12_pw_wts_sz], shift=bn12_dw_wts_sz)
+        dw_wts = memref_view(wts.op, [bn12_dw_wts_sz], shift=bn12_dw_off)
+        pw_wts = memref_view(wts.op, [bn12_pw_wts_sz], shift=bn12_pw_off)
 
         def _pw():
             dw_tmp_c = dw_tmp_cons.acquire(1)

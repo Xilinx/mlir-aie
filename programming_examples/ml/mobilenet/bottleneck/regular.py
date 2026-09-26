@@ -32,13 +32,13 @@ from ._common import (
     layer_sf as _layer_sf,
 )
 from ._common import (
+    packed_wts_buffer as _packed_wts_buffer,
+)
+from ._common import (
     skip_sf as _skip_sf,
 )
 from ._common import (
     u8 as _u8,
-)
-from ._common import (
-    wts_buffer as _wts_buffer,
 )
 
 
@@ -63,9 +63,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
     l1_sz = in_c * dw_ch
     l2_sz = 9 * dw_ch
     l3_sz = dw_ch * out_c
-    wts_sz = l1_sz + l2_sz + l3_sz
-
-    wts_buf = _wts_buffer(data_dir, f"{name}_{wts_tag}.txt", wts_sz)
+    wts_buf, (off_l1, off_l2, off_l3) = _packed_wts_buffer(
+        data_dir, f"{name}_{wts_tag}.txt", [l1_sz, l2_sz, l3_sz]
+    )
 
     l3_out_ty = _i8((out_w, 1, out_c))
 
@@ -106,9 +106,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
         ):
             # Sliding-window 3-layer pipeline (stride-1, with skip add).
             # Phases — preamble (rows 0,1) → middle (rows 2..in_h-2) → postamble (last row).
-            wts_l1 = memref_view(wts.op, [l1_sz], shift=0)
-            wts_l2 = memref_view(wts.op, [l2_sz], shift=l1_sz)
-            wts_l3 = memref_view(wts.op, [l3_sz], shift=l1_sz + l2_sz)
+            wts_l1 = memref_view(wts.op, [l1_sz], shift=off_l1)
+            wts_l2 = memref_view(wts.op, [l2_sz], shift=off_l2)
+            wts_l3 = memref_view(wts.op, [l3_sz], shift=off_l3)
 
             def _dw(top, mid, bot, border, c12_release):
                 """Run DW kernel for one output row; release `c12_release` L1 slots."""
@@ -182,9 +182,9 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
         out_h = in_h // stride
 
         def worker_fn(act_in_fifo, wts, out_f, p12, c12, p23, c23, k_pw, k_dw, k_l3):
-            wts_l1 = memref_view(wts.op, [l1_sz], shift=0)
-            wts_l2 = memref_view(wts.op, [l2_sz], shift=l1_sz)
-            wts_l3 = memref_view(wts.op, [l3_sz], shift=l1_sz + l2_sz)
+            wts_l1 = memref_view(wts.op, [l1_sz], shift=off_l1)
+            wts_l2 = memref_view(wts.op, [l2_sz], shift=off_l2)
+            wts_l3 = memref_view(wts.op, [l3_sz], shift=off_l3)
 
             def _l3():
                 """L3 step (no skip): emit one output row."""
@@ -293,9 +293,9 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
 
     dw_wts_sz = 9 * dw_ch
     skip_wts_sz = dw_ch * out_c
-    wts_sz = dw_wts_sz + skip_wts_sz
-
-    wts_buf = _wts_buffer(data_dir, f"{name}_{wts_tag}.txt", wts_sz)
+    wts_buf, (off_dw, off_skip) = _packed_wts_buffer(
+        data_dir, f"{name}_{wts_tag}.txt", [dw_wts_sz, skip_wts_sz]
+    )
 
     dw_out_ty = _u8((in_w, 1, dw_ch))
     out_ty = _i8((in_w, 1, out_c))
@@ -317,8 +317,8 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None, wts_tag="chain"):
     f23 = ObjectFifo(dw_out_ty, depth=1)
 
     def worker_fn(act_in_fifo, wts, out_f, p23, c23, k_dw, k_skip):
-        wts_dw = memref_view(wts.op, [dw_wts_sz], shift=0)
-        wts_skip = memref_view(wts.op, [skip_wts_sz], shift=dw_wts_sz)
+        wts_dw = memref_view(wts.op, [dw_wts_sz], shift=off_dw)
+        wts_skip = memref_view(wts.op, [skip_wts_sz], shift=off_skip)
 
         def _dw(top, mid, bot, border):
             row_out = p23.acquire(1)
@@ -428,17 +428,9 @@ def build_fused_pair(
 
     a_l1, a_l2, a_l3 = in_c * a_dw_ch, 9 * a_dw_ch, a_dw_ch * a_out_c
     b_l1, b_l2, b_l3 = a_out_c * b_dw_ch, 9 * b_dw_ch, b_dw_ch * b_out_c
-    offs = [
-        0,
-        a_l1,
-        a_l1 + a_l2,
-        a_l1 + a_l2 + a_l3,
-        a_l1 + a_l2 + a_l3 + b_l1,
-        a_l1 + a_l2 + a_l3 + b_l1 + b_l2,
-    ]
-    wts_sz = a_l1 + a_l2 + a_l3 + b_l1 + b_l2 + b_l3
-
-    wts_buf = _wts_buffer(data_dir, chain_filename, wts_sz)
+    wts_buf, offs = _packed_wts_buffer(
+        data_dir, chain_filename, [a_l1, a_l2, a_l3, b_l1, b_l2, b_l3]
+    )
 
     def _kernels(name, dw_ch, in_c_local, out_c_local, l1_sz, l2_sz, l3_sz):
         return (

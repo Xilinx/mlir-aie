@@ -43,6 +43,24 @@ def wts_buffer(data_dir, filename, sz):
     return Buffer(i8((sz,)), initial_value=load_wts(data_dir, filename, sz))
 
 
+def packed_wts_buffer(data_dir, filename, sizes, align=64):
+    """Static Buffer holding the weight segments of `filename`, each starting at
+    a multiple of `align` bytes so the kernels' vector loads can read them.
+
+    Returns the buffer and the byte offset of each segment.
+    """
+    offsets, end = [], 0
+    for sz in sizes:
+        start = -(-end // align) * align
+        offsets.append(start)
+        end = start + sz
+    data = load_wts(data_dir, filename, sum(sizes))
+    packed = np.zeros(end, np.int8)
+    for off, seg in zip(offsets, np.split(data, np.cumsum(sizes)[:-1])):
+        packed[off : off + seg.size] = seg
+    return Buffer(i8((end,)), initial_value=packed), offsets
+
+
 def sf_key(blk_name):
     """JSON key for a block — 'bn3' -> 'BN3', 'init' -> 'INIT', 'post_l1' -> 'POST'."""
     if blk_name.startswith("bn"):
