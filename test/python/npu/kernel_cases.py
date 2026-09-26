@@ -806,6 +806,15 @@ CASES: list[Case] = [
         scalars=(40, 24, 8, 3, 3, 0, 9, 0),
         tag="top-row",
     ),
+    *[
+        check(
+            "bn_conv2dk3",
+            dict(input_width=w, input_channels=8, output_channels=16),
+            calls=8,
+            scalars=(w, 8, 16, 3, 3, 1, 8, 0),
+        )
+        for w in (8, 24, 88)
+    ],
     # The second of two workers sharing the weights buffer.
     *[
         check(
