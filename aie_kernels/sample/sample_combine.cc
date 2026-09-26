@@ -205,7 +205,7 @@ __attribute__((noinline)) int32_t visit(const int32_t *summaries, weights *t,
       if (ties > 0) {
         while (bits == 0)
           bits = bitmap[++word];
-        tie = word * 32 + __builtin_ctz(bits);
+        tie = word * 32 + sample_ctz(bits);
       }
       int32_t index;
       double w;

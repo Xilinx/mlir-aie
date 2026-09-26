@@ -21,7 +21,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 from aie.iron import In, InOut, Out, kernels
+from aie.iron.device import from_name
 from aie.iron.kernels import sample
+from aie.iron.kernels._common import ARCH_TRAITS
+from aie.utils import config, get_current_device
+from aie.utils.compile.utils import compile_cxx_core_function
+from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -497,3 +502,43 @@ def test_combine_factory_metadata(npu2_device):
     assert all(fn.arg_dtype(i) == np.int32 for i in range(4))
     assert fn.contract.roles == (In, In, Out, Out)
     assert fn.contract.stack_bytes == 4096
+
+
+# --- builds ----------------------------------------------------------------
+
+
+def _peano_available() -> bool:
+    try:
+        return Path(config.peano_cxx_path()).is_file()
+    except RuntimeError:
+        return False
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+@pytest.mark.parametrize("arch", list(ARCH_TRAITS))
+@pytest.mark.parametrize(
+    "factory, kwargs",
+    [
+        ("sample_select", dict(slice_size=2048, chunk=512, k_max=32)),
+        ("sample_select", dict(slice_size=1024, chunk=1024, k_max=64)),
+        ("sample_combine", dict(columns=3, slice_size=2048, k_max=32)),
+    ],
+)
+def test_kernels_build_for_every_architecture(arch, factory, kwargs, tmp_path):
+    # An object, not a syntax check: a builtin the backend cannot lower (ctz
+    # and popcount on aie2) passes -fsyntax-only.
+    previous = get_current_device(probe_runtime=False)
+    set_current_device(from_name(ARCH_TRAITS[arch].device, n_cols=1))
+    try:
+        fn = getattr(kernels, factory)(**kwargs)
+    finally:
+        set_current_device(previous)
+    source = Path(fn._source_file)
+    compile_cxx_core_function(
+        str(source),
+        arch,
+        str(tmp_path / f"{fn.name}.o"),
+        include_dirs=[*fn.include_dirs, str(source.parent)],
+        compile_args=list(fn._compile_flags),
+    )
+    assert (tmp_path / f"{fn.name}.o").stat().st_size > 0
