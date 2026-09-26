@@ -472,6 +472,9 @@ CASES: list[Case] = [
     # time: 4 steps and a tail, and 3 steps and a tail.
     check("gray2rgba", dict(line_width=144), tag="tail"),
     check("gray2rgba", dict(line_width=112), tag="short-row"),
+    # AIE2P steps 64 pixels at a time: 144 and 112 are 2 and 1 steps and a
+    # tail, and 48 is the tail alone.
+    check("gray2rgba", dict(line_width=48), tag="tail-only"),
     Case("rgba2gray", calls=16, smoke=True),
     # Five vectors, one under the count the AIE2 pipelined loop requires.
     check("rgba2gray", dict(line_width=160), tag="short-row"),

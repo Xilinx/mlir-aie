@@ -129,6 +129,7 @@ gelu_sized/96x4/bfloat16/short-trip
 gray2rgba/112x4/uint8/line_width=112/short-row
 gray2rgba/144x4/uint8/line_width=144/tail
 gray2rgba/1920x16/uint8
+gray2rgba/48x4/uint8/line_width=48/tail-only
 layer_norm/1008x16/bfloat16/cols=1008/row-tail
 layer_norm/1024x16/bfloat16/cols=1024
 layer_norm/208x16/bfloat16/cols=208/row-tail
