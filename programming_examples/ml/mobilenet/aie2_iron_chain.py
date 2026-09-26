@@ -54,10 +54,11 @@ T = Tile
 
 # Test placements for chain designs — single-column-ish layouts that don't
 # collide with the main mobilenet's PLACEMENT (which packs every column).
+# Started from placement.py's PLACEMENT; keeps explicit mem_skip and
+# single-block tiles that the network now lets the placer choose.
 CHAIN_PLACEMENT = {
-    # Regular bn0..bn9 placement mirrors aie2_mobilenet_iron.py
-    # PLACEMENT["regular"]. The fused-pair alloc tiles (bn4_5, bn8_9) host
-    # disable-sync self-loop fifos and don't need their own worker.
+    # The fused-pair alloc tiles (bn4_5, bn8_9) host disable-sync self-loop
+    # fifos and don't need their own worker.
     "regular": {
         "bn0": T(0, 3),
         "bn1": T(0, 4),
@@ -68,8 +69,7 @@ CHAIN_PLACEMENT = {
         "bn7": T(2, 3),
         "bn8_9": {"compute": T(3, 3), "alloc": T(3, 4)},
     },
-    # Pipeline placement mirrors aie2_mobilenet_iron.py PLACEMENT["pipeline"] —
-    # spread across multiple columns so the AIE memory allocator has room.
+    # Spread across multiple columns so the AIE memory allocator has room.
     "pipeline": {
         "bn10": {"l1": T(1, 5), "l2": T(2, 4), "l3": T(2, 5)},
         "bn11": {
@@ -80,7 +80,6 @@ CHAIN_PLACEMENT = {
         },
         "bn12": {"l1": T(3, 5), "l23": T(4, 4)},
     },
-    # Cascade placement also mirrors PLACEMENT["cascade"].
     "cascade": {
         "bn13": {
             "l1_put": T(4, 5),
