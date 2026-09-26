@@ -901,6 +901,20 @@ CASES: list[Case] = [
         calls=8,
         scalars=(14, 336, 336, 3, 3, 1, 7, 0),
     ),
+    # MobileNet bn1's depthwise layer.
+    Case(
+        "bn_conv2dk3_dw",
+        dict(input_width=112, input_channels=64, output_channels=64, stride=2),
+        calls=8,
+        scalars=(112, 64, 64, 3, 3, 1, 7, 0),
+    ),
+    check(
+        "bn_conv2dk3_dw",
+        dict(input_width=112, input_channels=64, output_channels=64, stride=2),
+        calls=8,
+        scalars=(112, 64, 64, 3, 3, 2, 7, 0),
+        tag="bottom-row",
+    ),
     Case(
         "bn_conv2dk3_dw",
         dict(input_width=14, input_channels=184, output_channels=184),
