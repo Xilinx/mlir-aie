@@ -464,11 +464,8 @@ void SAPlacer::initResourceTracking() {
         tileToFifoIndices[cons].push_back(i);
   }
 
-  // Add all fifo contributions
-  for (size_t i = 0; i < fifoBuffers.size(); i++)
-    addFifoContribution(i, +1);
-
-  // Add static buffers
+  // Static buffers and stacks go first: a shared-memory fifo picks the emptier
+  // of its two tiles as it is added, and must see what they already hold.
   for (auto &[op, bufSize] : staticBufferSizes) {
     auto posIt = currentPlacement.find(op);
     if (posIt != currentPlacement.end())
@@ -483,6 +480,9 @@ void SAPlacer::initResourceTracking() {
     if (it != stackSizes.end())
       currentMemUsage[pos] += it->second;
   }
+
+  for (size_t i = 0; i < fifoBuffers.size(); i++)
+    addFifoContribution(i, +1);
   cachedResourcePenalty = computePenalty();
 }
 
