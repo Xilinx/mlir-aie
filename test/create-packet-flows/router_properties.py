@@ -2033,15 +2033,13 @@ def cut_tiles(target, src, dst):
 
 
 def reserved_amsels(d):
-    """Per tile, arbiter + 6 * msel of every amsel an existing masterset uses."""
+    """Per tile, arbiter + 6 * msel of every declared amsel. An amsel no
+    masterset uses can still have rules steering packets to it."""
     out = defaultdict(set)
     for tile, ops in d.boxes.items():
-        amsels = {
-            op[1]: op[2] + op[3] * PARAMS["arbiters"] for op in ops if op[0] == "amsel"
+        out[tile] |= {
+            op[2] + op[3] * PARAMS["arbiters"] for op in ops if op[0] == "amsel"
         }
-        for op in ops:
-            if op[0] == "masterset":
-                out[tile] |= {amsels[n] for n in op[2] if n in amsels}
     return out
 
 
