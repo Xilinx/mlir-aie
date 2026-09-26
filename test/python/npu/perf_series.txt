@@ -174,7 +174,13 @@ mha/64x64x64x4/bfloat16/pv=True
 mha_softmax/4096x4/bfloat16_bfloat16+bfloat16
 mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal
 mha_softmax/4096x4/bfloat16_bfloat16+bfloat16/diagonal-padded
+mm/16x1008x16x4/int8_int32
+mm/16x512x32x4/int8_int32
+mm/16x512x32x4/int8_int32/b_col_maj=True
+mm/16x512x32x4/int8_int32/c_col_maj=True
 mm/32x32x32x16/bfloat16_float32/edge-small-tile
+mm/32x512x16x4/int8_int32/b_col_maj=True
+mm/48x416x16x4/int8_int32/c_col_maj=True
 mm/64x32x64x1/bfloat16_float32/edge-single-tile
 mm/64x32x64x16/bfloat16_float32
 mm/64x32x64x16/int16_int32
