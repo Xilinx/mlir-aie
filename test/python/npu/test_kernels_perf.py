@@ -28,6 +28,10 @@ example ``-k '(softmax) or test_measurement_is_sane'``, to vouch for them.
 The series a row lands in is ``<case>/<metric>``;
 ``test_perf_series_names.py`` pins those names, because renaming one
 restarts its chart on gh-pages.
+
+With ``--baseline-sources DIR`` each case also runs with its kernels from
+``DIR`` and the two arms' raw output words are compared; the ``check()``
+cases, which are not timed, join that comparison untimed.
 """
 
 from __future__ import annotations
@@ -86,12 +90,13 @@ def _measure(
     *,
     strict: bool = True,
     stack_bytes: int | None = None,
+    timed: bool = True,
 ) -> dict:
     """Build, check and time one case. Raises if it is wrong, unless not ``strict``.
 
     Not ``strict``, a wrong output is timed anyway and its verdict's detail
     is the result's ``"failed"`` (None when it passed). ``stack_bytes``
-    replaces the contract's core stack.
+    replaces the contract's core stack. Not ``timed``, it only runs once.
     """
     fn = case.fn()
     factory = getattr(kernels, case.factory)
@@ -134,6 +139,8 @@ def _measure(
         calls=case.calls,
         scalars=case.scalars,
     )
+    if not timed:
+        return measured
     measured["wall"] = run_iters(
         design,
         *ins,
@@ -290,7 +297,9 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
     The contract's stack is sized for this tree's kernel too, and aiecc
     refuses a baseline that needs more; that one is built with the stack
     aiecc measured, recorded as ``"baseline_stack"`` ``[contract, needed]``.
+    The baseline is timed only if ``current`` was.
     """
+    timed = "wall" in current
     # The baseline's kernels share their object names with this tree's but
     # not their sources; the registry would refuse them as a collision.
     ExternalFunction._instances.clear()
@@ -299,7 +308,9 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
         mp.setenv("MLIR_AIE_KERNEL_SOURCES", tree)
         try:
             try:
-                base = _measure(case, config, workdir / "baseline", strict=False)
+                base = _measure(
+                    case, config, workdir / "baseline", strict=False, timed=timed
+                )
             except RuntimeError as e:
                 if not (short := _STACK_SHORT.search(str(e))):
                     raise
@@ -311,6 +322,7 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
                     workdir / "baseline",
                     strict=False,
                     stack_bytes=stack[1],
+                    timed=timed,
                 )
         except AssertionError as e:
             raise AssertionError(f"baseline tree {tree}: {e}") from None
@@ -322,7 +334,7 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
         return {"min": min(k), "max": max(k), "n": len(k)}
 
     def npu_us(m):
-        if not (s := m["wall"].npu):
+        if "wall" not in m or not (s := m["wall"].npu):
             return None
         return {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
 
@@ -350,6 +362,24 @@ def test_kernel_perf(case, request, record_perf, workdir):
     _record(record_perf, case, m)
     if request.config.getoption("--baseline-sources"):
         _against_baseline(case, request.config, workdir, m)
+
+
+def pytest_generate_tests(metafunc):
+    if "check_case" in metafunc.fixturenames:
+        compared = metafunc.config.getoption("--baseline-sources")
+        cases = [c for c in CASES if not c.perf] if compared else []
+        metafunc.parametrize("check_case", [_param(c) for c in cases])
+
+
+@pytest.mark.perf
+def test_kernel_same_as_baseline(check_case, request, workdir):
+    """A case the run checks but does not time, compared with --baseline-sources.
+
+    It gets the raw-word comparison and both arms' verdicts, not a row;
+    without --baseline-sources nothing is collected.
+    """
+    m = _measure(check_case, request.config, workdir, timed=False)
+    _against_baseline(check_case, request.config, workdir, m)
 
 
 @pytest.mark.perf

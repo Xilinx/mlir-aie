@@ -99,7 +99,8 @@ def pytest_addoption(parser):
         metavar="DIR",
         default=None,
         help="also measure every case with its kernels from DIR (a checkout root, "
-        "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words; the pair "
+        "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words, the "
+        "check() cases untimed; the pair "
         "goes to --perf-meta and the terminal summary, the rows stay this tree's; "
         "a baseline that fails this tree's contract is reported, not failed",
     )
@@ -286,6 +287,8 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
             tr.write_line(f"  error[{b['output']}] {_accuracy_line(b)}")
             tr.write_line(f"  {'':>8} -> {_accuracy_line(a)}")
         for metric in ("cycles", "npu_us"):
+            if not any(c[f"{metric}_range"]):
+                continue
             base, cur = c[f"{metric}_range"]
             tr.write_line(f"  {metric:<7} {span(base):>26} -> {span(cur)}")
 
