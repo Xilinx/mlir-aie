@@ -71,6 +71,7 @@ struct AIEPlaceTilesPass
 
     // Create placer
     std::shared_ptr<Placer> placer;
+    std::shared_ptr<SAPlacer> saPlacer;
     switch (clPlacerType) {
     case PlacerType::SequentialPlacer: {
       std::optional<int> coresPerCol = std::nullopt;
@@ -80,14 +81,23 @@ struct AIEPlaceTilesPass
           coresPerCol, clMergeLogicalTiles, clSpreadUnanchoredTiles);
       break;
     }
-    case PlacerType::SAPlacer:
-      placer = std::make_shared<SAPlacer>(clSASeed);
+    case PlacerType::SAPlacer: {
+      if (clSAEffort <= 0) {
+        device.emitError("sa-effort must be positive, got ") << clSAEffort;
+        return signalPassFailure();
+      }
+      SAConfig config;
+      config.effort = clSAEffort;
+      placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
+    }
     }
 
     placer->initialize(device.getTargetModel());
     if (failed(placer->place(device)))
       return signalPassFailure();
+    if (saPlacer)
+      saFinalCost += saPlacer->getFinalCost();
 
     ConversionTarget target(getContext());
     target.addLegalOp<TileOp>();
