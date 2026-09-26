@@ -49,15 +49,22 @@
 // no longer makes 0 * inf. The tables' centring offset goes on the index, not
 // the pointers: a table pointer offset from the array loses the reads' memory
 // operands, and every load and store around them is then kept in order.
+//
+// Any table laid out as tanh_lut_ab/cd reads the same way; shift sets the
+// segment width, 2^(4 - shift), and so the range, [-2^(8 - shift), 2^(8 -
+// shift)). sigmoid.cc's table is the other one.
+template <int shift>
 __attribute__((always_inline)) inline aie::accum<accfloat, 16>
-tanh_lut_acc(aie::vector<bfloat16, 16> x) {
+lut_segments_acc(const float *ab, const float *cd,
+                 aie::vector<bfloat16, 16> x) {
   constexpr int bias_bytes = 16 << 4;
-  const aie::vector<bfloat16, 16> xc =
-      aie::max(aie::min(x, bfloat16(4.0f - 1.0f / 64)), bfloat16(-4.0f));
+  constexpr float range = 1 << (8 - shift);
+  const aie::vector<bfloat16, 16> xc = aie::max(
+      aie::min(x, bfloat16(range - 1.0f / (1 << shift))), bfloat16(-range));
   const aie::vector<int32, 16> index =
-      aie::add(aie::vector<int32, 16>(bfloat16_to_int(xc, 6)), bias_bytes);
+      aie::add(aie::vector<int32, 16>(bfloat16_to_int(xc, shift)), bias_bytes);
   v32bfloat16 coeff0, coeff1;
-  load_lut_2x_float(tanh_lut_ab, tanh_lut_cd, index, coeff0, coeff1);
+  load_lut_2x_float(ab, cd, index, coeff0, coeff1);
   aie::accum<accfloat, 32> offset;
   offset.insert(1, aie::accum<accfloat, 16>(
                        (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi)));
@@ -66,6 +73,11 @@ tanh_lut_acc(aie::vector<bfloat16, 16> x) {
   aie::accum<accfloat, 32> result =
       mac_elem_32(::shuffle(coeff0, coeff1, T16_16x4_lo), xx, offset);
   return result.extract<16>(1);
+}
+
+__attribute__((always_inline)) inline aie::accum<accfloat, 16>
+tanh_lut_acc(aie::vector<bfloat16, 16> x) {
+  return lut_segments_acc<6>(tanh_lut_ab, tanh_lut_cd, x);
 }
 #endif
 

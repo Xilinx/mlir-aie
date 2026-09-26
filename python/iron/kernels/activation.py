@@ -682,7 +682,9 @@ def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
             sigmoid_ref,
             count=tile_size,
             use_lut=use_lut,
-            elementwise=sigmoid_lut_ref,
+            elementwise=(
+                sigmoid_table_ref if _tuned_arch() == "aie2p" else sigmoid_lut_ref
+            ),
             tolerance=_vtanh_family_tolerance("sigmoid"),
         ),
         use_lut_tanh=use_lut,
@@ -815,16 +817,37 @@ def _bf16(v):
 
 
 def sigmoid_lut_ref(x):
-    """Model of [`sigmoid`][iron.kernels.activation.sigmoid] built with ``use_lut=True``.
+    """Model of [`sigmoid`][iron.kernels.activation.sigmoid]'s LUT build on aie2.
 
-    Follows activation/sigmoid.cc step for step: ``x/2`` is exact (0.5 is a power
-    of two), the accumulator overload of ``tanh_bf16_v16`` narrows to bf16
+    AIE2P's reads a table of its own; see
+    [`sigmoid_table_ref`][iron.kernels.activation.sigmoid_table_ref]. This
+    follows activation/sigmoid.cc's aie2 branch step for step: ``x/2`` is
+    exact (0.5 is a power of two), the accumulator overload of ``tanh_bf16_v16`` narrows to bf16
     before the table, and the ``+1`` and ``*0.5`` stay in the accumulator so
     there is a single store rounding at the end.
     """
     xf = np.asarray(x).astype(np.float32)
     t = np.asarray(tanh_lut_ref(_bf16(xf * 0.5)), np.float32)
     return _bf16((t + 1.0) * 0.5).astype(np.asarray(x).dtype)
+
+
+def sigmoid_table_ref(x):
+    """Model of AIE2P's [`sigmoid`][iron.kernels.activation.sigmoid] built with ``use_lut=True``.
+
+    activation/sigmoid.cc reads its own table there: getTanhBf16's segments
+    rewritten for ``0.5 + 0.5 * tanh(x/2)``, so segment ``e`` has slope
+    ``slope[e] / 4`` and offset ``0.5 + 0.5 * offset[e]`` and covers 0.5 of x.
+    x is clamped to ``[-8, 8 - 1/32]``; the one rounding is the store to bf16,
+    as in [`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref].
+    [`sigmoid_lut_ref`][iron.kernels.activation.sigmoid_lut_ref] also rounds
+    ``tanh`` to bf16 before ``0.5 * (1 + t)``, which makes it 0 over
+    ``[-7.5, -6.9]``, where this is not.
+    """
+    xf = np.clip(np.asarray(x).astype(np.float32), -8.0, 8.0 - 1.0 / 32)
+    e = np.clip(np.floor(xf * 2.0).astype(np.int64), -16, 15) + 16
+    slope = np.asarray(_TANH_LUT_SLOPE, np.float32)[e] / 4
+    offset = 0.5 + 0.5 * np.asarray(_TANH_LUT_OFFSET, np.float32)[e]
+    return (slope * xf + offset).astype(bfloat16).astype(np.asarray(x).dtype)
 
 
 def silu_lut_ref(x):
