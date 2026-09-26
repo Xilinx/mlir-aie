@@ -24,6 +24,14 @@
 
 enum region { top, middle, bottom };
 
+// On AIE2P the factories pass the row width, which keeps only the code that
+// width takes; the width argument is then not read.
+#if AIE_TUNED_AIE2P && defined(CONV_INPUT_WIDTH)
+#define DW_WIDTH(w) CONV_INPUT_WIDTH
+#else
+#define DW_WIDTH(w) (w)
+#endif
+
 #ifdef SCALAR
 
 const int32_t MAX = 255;
@@ -565,6 +573,16 @@ static inline dw8_v dw8_out(aie::accum<acc32, 64> acc, int scale) {
   return acc.to_vector<uint8>(scale);
 }
 
+// aie_api's unaligned loads read at the address as given, leaving the hardware
+// to round it down (to 32 bytes for a 256-bit load, to 64 for a 512-bit one),
+// but tell the compiler it is aligned. The compiler may then take a load's
+// data from another load that covers it, which is wrong where the two round
+// differently. Every load here is 512 bits, so a load only covers another at
+// the same address.
+static inline dw8_v dw8_load(const uint8_t *p) {
+  return aie::load_unaligned_v<64>(p, 8);
+}
+
 static inline dw8_v dw8_low(dw_v v) {
   return aie::concat(v, aie::zeros<uint8, 32>());
 }
@@ -578,22 +596,27 @@ static inline aie::vector<uint8, 128> dw8_window(const uint8_t *row,
                                                  const aie::mask<64> keep) {
   const dw8_v zero = aie::zeros<uint8, 64>();
   if constexpr (Chunks == 1) {
-    const dw8_v u = aie::select(zero, aie::load_unaligned_v<64>(row, 8), keep);
+    const dw8_v u = aie::select(zero, dw8_load(row), keep);
     return aie::concat(aie::shuffle_up_fill(u, zero, 8),
                        aie::shuffle_down_fill(u, zero, 56));
   } else if (k == Chunks - 1) {
+    // Two chunks schedule shorter with the upper half zeroed: II 99, not 107.
+    if constexpr (Chunks == 2)
+      return aie::concat(dw8_load(row + end - 72),
+                         dw8_low(aie::shuffle_down_fill(
+                             dw8_load(row + end - 64).extract<32>(1),
+                             aie::zeros<uint8, 32>(), 24)));
     return aie::concat(
-        aie::load_unaligned_v<64>(row + end - 72, 8),
-        dw8_low(aie::shuffle_down_fill(dw_load<Aligned, 32>(row + end - 32),
-                                       aie::zeros<uint8, 32>(), 24)));
+        dw8_load(row + end - 72),
+        aie::shuffle_down_fill(dw8_load(row + end - 64), zero, 56));
   } else {
-    const dw8_v lo =
-        k == 0
-            ? aie::shuffle_up_fill(aie::concat(dw_load<Aligned, 32>(row),
-                                               dw_load<Aligned, 32>(row + 32)),
-                                   zero, 8)
-            : aie::load_unaligned_v<64>(row + k * 64 - 8, 8);
-    return aie::concat(lo, dw8_low(dw_load<false, 32>(row + k * 64 + 56)));
+    const dw8_v lo = k == 0 ? aie::shuffle_up_fill(dw8_load(row), zero, 8)
+                            : dw8_load(row + k * 64 - 8);
+    if constexpr (Chunks == 2)
+      return aie::concat(lo,
+                         dw8_low(dw8_load(row + k * 64 + 56).extract<32>(0)));
+    // Taps 3..7 have zero weights, so what lies past tap 2 does not matter.
+    return aie::concat(lo, dw8_load(row + k * 64 + 56));
   }
 }
 
@@ -611,10 +634,9 @@ static inline void dw8_block(const uint8_t *line0, const uint8_t *line1,
   dw8_w w[3];
   BN3_UNROLL_FULL
   for (int i = 0; i < 3; i++)
-    w[i] = aie::select(aie::zeros<int8, 64>(),
-                       aie::concat(aie::load_unaligned_v<32>(wts + i * 24, 8),
-                                   aie::zeros<int8, 32>()),
-                       keep[i]);
+    w[i] = aie::select(
+        aie::zeros<int8, 64>(),
+        dw8_load((const uint8_t *)(wts + i * 24)).cast_to<int8>(), keep[i]);
   BN3_UNROLL_FULL
   for (int k = 0; k < Chunks; k++) {
     aie::accum<acc32, 64> acc = dw8_conv::mul(
@@ -668,20 +690,24 @@ static int32_t dw8_blocks(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                           const int32_t check, const int scale,
                           const bool aligned) {
   const int32_t blocks = channels / 8;
-  if (stride != 1 || input_width > 32 || blocks < DW8_MIN_BLOCKS)
+  if (stride != 1 || DW_WIDTH(input_width) > 32 || blocks < DW8_MIN_BLOCKS)
     return 0;
   const uint64_t taps = (1ull << 24) - 1;
   const aie::mask<64> keep[4] = {
       aie::mask<64>::from_uint64(check == top ? 0 : taps),
       aie::mask<64>::from_uint64(taps),
       aie::mask<64>::from_uint64(check == bottom ? 0 : taps),
-      aie::mask<64>::from_uint64(
-          input_width >= 8 ? ~0ull : (1ull << (input_width * 8)) - 1)};
+      aie::mask<64>::from_uint64(DW_WIDTH(input_width) >= 8
+                                     ? ~0ull
+                                     : (1ull << (DW_WIDTH(input_width) * 8)) -
+                                           1)};
   // Aligned rows only pay off at 25..32 pixels; narrower rows keep one copy.
 #define DW8_ROWS(n, a)                                                         \
   dw8_rows<n, a>(line0, line1, line2, wts, output1, output2, input_width,      \
                  blocks, split, keep, scale)
-  switch ((input_width + 7) / 8) {
+  // Rows of more than 8 pixels read the width at run time: a constant one made
+  // their loops slower.
+  switch ((DW_WIDTH(input_width) + 7) / 8) {
   case 1:
     DW8_ROWS(1, false);
     break;
@@ -705,12 +731,13 @@ static int32_t dw8_blocks(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
 static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                       int8_t *wts, uint8_t *output1, uint8_t *output2,
-                      const int32_t input_width, const int32_t channels,
+                      const int32_t row_width, const int32_t channels,
                       const int32_t split, const int32_t stride,
                       const int32_t check, const int scale) {
   event0();
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
+  const int32_t input_width = DW_WIDTH(row_width);
   const int32_t output_width = input_width / stride;
 #if AIE_TUNED_AIE2P
   // Stride 2 loads 64 bytes at a time, which AIE2P wants 64-byte aligned.
@@ -725,8 +752,9 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
       (stride == 1 ? input_width % 4 : input_width % 8 + output_width % 4) == 0;
 #if AIE_TUNED_AIE2P
   const int32_t first =
-      dw8_blocks(line0, line1, line2, wts, output1, output2, input_width,
-                 channels, split, stride, check, scale, aligned);
+      dw8_blocks(line0, line1, line2, wts, output1, output2,
+                 input_width <= 8 ? input_width : row_width, channels, split,
+                 stride, check, scale, aligned);
 #else
   const int32_t first = 0;
 #endif
@@ -765,7 +793,7 @@ void conv2dk3_dw_stride2_relu_ui8_ui8(
     const int32_t kernel_height, const int32_t check, const int scale,
     const int channel_offset) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width / 2 >= 4) {
+  if (DW_WIDTH(input_width) / 2 >= 4) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 2, check, scale);
     return;
@@ -783,7 +811,7 @@ void conv2dk3_dw_stride1_relu_ui8_ui8(
     const int32_t kernel_height, const int32_t check, const int scale,
     const int channel_offset) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 5) {
+  if (DW_WIDTH(input_width) >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);
     return;
@@ -807,7 +835,7 @@ void bn13_conv2dk3_ui8_out_split(
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t check, const int scale, const int channel_offset) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 5) {
+  if (DW_WIDTH(input_width) >= 5) {
     dw_vector(line0, line1, line2, wts, output1, output2, input_width,
               output_channels, output_channels / 16, 1, check, scale);
     return;
@@ -829,7 +857,7 @@ void bn13_conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                        const int32_t check, const int scale,
                        const int channel_offset) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 5) {
+  if (DW_WIDTH(input_width) >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);
     return;
@@ -853,7 +881,7 @@ void bn14_conv2dk3_ui8_out_split(
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t check, const int scale, const int channel_offset) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 5) {
+  if (DW_WIDTH(input_width) >= 5) {
     dw_vector(line0, line1, line2, wts, output1, output2, input_width,
               output_channels, output_channels / 16, 1, check, scale);
     return;
@@ -875,7 +903,7 @@ void bn14_conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                        const int32_t check, const int scale,
                        const int channel_offset) {
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-  if (input_width >= 5) {
+  if (DW_WIDTH(input_width) >= 5) {
     dw_vector(line0, line1, line2, wts, output, output, input_width,
               output_channels, output_channels / 8, 1, check, scale);
     return;
