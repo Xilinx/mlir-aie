@@ -738,6 +738,29 @@ def _kernel_file(ext_fn, out_dir: Path) -> tuple[Path, list[str]]:
     return src, include_dirs
 
 
+# clang's "error:" and "fatal error:", "LLVM ERROR:", and a failed assertion.
+_ERROR_LINE = re.compile(r"(?i)\berror:|\bAssertion .* failed")
+
+
+def compile_failure(stderr: str, *, first: int = 5, tail: int = 2000) -> str:
+    """What a failed compile said: its first error lines, then its last ``tail`` characters.
+
+    The first error names the cause, and a template error's notes or a
+    crash's stack dump push it far above the end of the output, which ends
+    in "3 errors generated." or a backtrace. The error lines already inside
+    the tail are not repeated.
+    """
+    text = stderr.strip()
+    if len(text) <= tail:
+        return text
+    end = text[-tail:]
+    errors = [ln for ln in text.splitlines() if _ERROR_LINE.search(ln)]
+    head = [ln for ln in errors[:first] if ln not in end]
+    if len(errors) > first:
+        head.append(f"({len(errors) - first} more error lines)")
+    return "\n".join([*head, "...", end]) if head else end
+
+
 def entry_symbol(ext_fn) -> str:
     """Return the symbol the kernel source defines, before the JIT's per-build prefix."""
     return getattr(ext_fn, "_original_name", ext_fn.name)
@@ -756,7 +779,7 @@ def trace_shape(ext_fn, target: str, out_dir: Path) -> str:
     )
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
-        raise RuntimeError(f"{ext_fn.name}: {p.stderr.strip()[-2000:]}")
+        raise RuntimeError(f"{ext_fn.name}: {compile_failure(p.stderr)}")
     ir = (out_dir / f"{ext_fn.name}.ll").read_text()
     return trace_markers(ir, entry_symbol(ext_fn))
 
@@ -792,7 +815,7 @@ def analyze(ext_fn, target: str, workdir: Path) -> tuple[StaticReport | None, st
     cmd, yaml_out = compile_command(ext_fn, target, workdir)
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
-        return None, f"compile failed: {p.stderr.strip()[-2000:]}"
+        return None, f"compile failed: {compile_failure(p.stderr)}"
     rep = parse_yaml(yaml_out) if yaml_out.exists() else StaticReport()
     parse_stderr(p.stderr, rep)
     reached = linked(workdir / f"{ext_fn.name}.o", entry_symbol(ext_fn))
