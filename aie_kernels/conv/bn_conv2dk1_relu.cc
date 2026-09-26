@@ -1786,6 +1786,8 @@ k1_xy_pool_vector(const int8_t *input, const int8_t *kernels, uint16_t *output,
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 
 #if AIE_TUNED_AIE2
+constexpr uintptr_t FC_ALIGN = 32;
+
 // Fully connected: a single pixel, so the input is input_channels contiguous
 // uint16 and each output channel block's weights are [input_channels][8].
 // mmul<2,8,8> takes 16 inputs as a 2 x 8 matrix against the next 8 rows of
@@ -1844,7 +1846,66 @@ static void fc_ui16_vector(const uint16_t *__restrict input,
   }
   event1();
 }
-#endif // AIE_TUNED_AIE2
+#elif AIE_TUNED_AIE2P
+constexpr uintptr_t FC_ALIGN = 64;
+
+// As above, but AIE2P's smallest dense uint16 x int8 mmul is 4 x 8 x 8: 32
+// inputs as a 4 x 8 matrix, with row j of acc j lining up with weight rows
+// 8j to 8j + 7.
+static void fc_ui16_vector(const uint16_t *__restrict input,
+                           const int8_t *__restrict kernels,
+                           uint16_t *__restrict output,
+                           const int32_t input_channels,
+                           const int32_t input_channels_pad,
+                           const int32_t output_channels, const int scale) {
+  using MMUL = aie::mmul<4, 8, 8, uint16, int8>;
+  event0();
+  aie::set_saturation(aie::saturation_mode::saturate);
+  aie::set_rounding(aie::rounding_mode::conv_even);
+  const uint32_t quads = (uint32_t)input_channels / 32;
+  for (int oc = 0; oc < output_channels / 8; oc++) {
+    const aie::vector<uint16, 32> *__restrict x =
+        (const aie::vector<uint16, 32> *)input;
+    const aie::vector<int8, 64> *__restrict w =
+        (const aie::vector<int8, 64> *)(kernels +
+                                        oc * (input_channels_pad / 8) * 64);
+    MMUL acc0, acc1, acc2, acc3;
+    acc0.mul(x[0], w[0]);
+    acc1.mul(x[0], w[1]);
+    acc2.mul(x[0], w[2]);
+    acc3.mul(x[0], w[3]);
+#pragma clang loop min_iteration_count(1)
+    for (uint32_t c = 1; c < quads; c++) {
+      x += 1;
+      w += 4;
+      acc0.mac(x[0], w[0]);
+      acc1.mac(x[0], w[1]);
+      acc2.mac(x[0], w[2]);
+      acc3.mac(x[0], w[3]);
+    }
+    x += 1;
+    w += 4;
+    if ((uint32_t)input_channels & 16) {
+      const aie::vector<uint16, 32> t = aie::concat(
+          aie::load_v<16>((const uint16_t *)x), aie::zeros<uint16, 16>());
+      acc0.mac(t, w[0]);
+      acc1.mac(t, w[1]);
+    }
+    const aie::vector<int32, 32> v0 = acc0.template to_vector<int32>(0);
+    const aie::vector<int32, 32> v1 = acc1.template to_vector<int32>(0);
+    const aie::vector<int32, 32> v2 = acc2.template to_vector<int32>(0);
+    const aie::vector<int32, 32> v3 = acc3.template to_vector<int32>(0);
+    const aie::vector<int32, 8> sum =
+        aie::add(aie::add(v0.extract<8>(0), v1.extract<8>(1)),
+                 aie::add(v2.extract<8>(2), v3.extract<8>(3)));
+    aie::accum<acc32, 16> a;
+    a.from_vector(aie::concat(sum, aie::zeros<int32, 8>()), 0);
+    aie::store_v(output + oc * 8,
+                 a.template to_vector<uint8>(scale).unpack().extract<8>(0));
+  }
+  event1();
+}
+#endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 
 //*****************************************************************************
 // conv2d 1x1 wrappers
@@ -2119,9 +2180,9 @@ void post_L2_conv2dk1_relu_i16_ui16_pad(uint16_t *input, int8_t *kernels,
                                         const int32_t input_channels_pad,
                                         const int32_t output_channels,
                                         const int scale) {
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width == 1 && input_channels >= 64 && input_channels % 16 == 0 &&
-      (((uintptr_t)input | (uintptr_t)kernels) & 31) == 0 &&
+      (((uintptr_t)input | (uintptr_t)kernels) & (FC_ALIGN - 1)) == 0 &&
       ((uintptr_t)output & 15) == 0) {
     fc_ui16_vector(input, kernels, output, input_channels, input_channels_pad,
                    output_channels, scale);
