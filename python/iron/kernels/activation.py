@@ -530,8 +530,8 @@ def swiglu(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-# aiecc measured 3008 for the polynomial branch on aie2p.
-_BF16_EXP_POLY_STACK_BYTES = 3072
+# aiecc measured 1600 for the polynomial branch on aie2p.
+_BF16_EXP_POLY_STACK_BYTES = 2048
 
 
 def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
