@@ -1015,6 +1015,22 @@ CASES: list[Case] = [
         scalars=(7, 80, 120, 120, 8, 3, 1, 0),
         tag="mid-row",
     ),
+    # As MobileNet calls it: 960 channels padded to 1280, in 8 weight slices.
+    *[
+        Case(
+            "bn_conv2dk1_relu_xy_pool_padded",
+            dict(
+                input_width=7,
+                input_channels=80,
+                output_channels=1280,
+                weight_chunk_count=80 * 120,
+            ),
+            calls=8,
+            scalars=(7, 80, 960, 1280, 8, y, 8, 0),
+            tag=tag,
+        )
+        for y, tag in ((3, "mobilenet-mid-row"), (6, "mobilenet-last-row"))
+    ],
     check(
         "bn_conv2dk1_relu_xy_pool_padded",
         dict(
@@ -1032,22 +1048,6 @@ CASES: list[Case] = [
         dict(input_channels=1280, output_channels=8),
         calls=8,
         scalars=(1, 1280, 1280, 8, 12),
-    # As MobileNet calls it: 960 channels padded to 1280, in 8 weight slices.
-    *[
-        Case(
-            "bn_conv2dk1_relu_xy_pool_padded",
-            dict(
-                input_width=7,
-                input_channels=80,
-                output_channels=1280,
-                weight_chunk_count=80 * 120,
-            ),
-            calls=8,
-            scalars=(7, 80, 960, 1280, 8, y, 8, 0),
-            tag=tag,
-        )
-        for y, tag in ((3, "mobilenet-mid-row"), (6, "mobilenet-last-row"))
-    ],
         smoke=True,
     ),
     # MobileNet's FC1: 960 of the 1280 weight rows used.
