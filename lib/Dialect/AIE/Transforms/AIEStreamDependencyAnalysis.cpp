@@ -424,13 +424,21 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
   if (auto it = programs.find(key); it != programs.end()) {
     for (Operation *op : it->second) {
       std::optional<DmaChannelProgram> p = makeProgram(op, device);
-      if (!p || p->loops)
+      if (!p)
         return std::nullopt;
+      bool carried = false;
       uint64_t bytes = 0;
       forEachInProgram<DMABDOp>(*p, [&](DMABDOp bd) {
-        if (carries(bd.getPacket()))
-          bytes += bd.getLenInBytes() + headerBytes(bd.getPacket());
+        if (!carries(bd.getPacket()))
+          return;
+        carried = true;
+        bytes += bd.getLenInBytes() + headerBytes(bd.getPacket());
       });
+      known = true;
+      if (!carried)
+        continue;
+      if (p->loops)
+        return std::nullopt;
       uint64_t runs = 1;
       if (auto start = dyn_cast<DMAStartOp>(op)) {
         runs = start.getRepeatCount() + 1;
@@ -453,7 +461,6 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
           runs += repeat;
         }
       }
-      known = true;
       total += bytes * runs;
     }
   }
@@ -803,7 +810,15 @@ bool StreamDeadlockAnalysis::canBlock(size_t f, size_t g) const {
   auto [it, inserted] = blocks.try_emplace({f, g}, false);
   if (!inserted)
     return it->second;
-  return blocks[{f, g}] = canStall(f) && !blockingChain(f, g).empty();
+  return blocks[{f, g}] = canStall(f) && !silent(f) && !silent(g) &&
+                          !blockingChain(f, g).empty();
+}
+
+bool StreamDeadlockAnalysis::silent(size_t f) const {
+  auto [it, inserted] = silence.try_emplace(f, false);
+  if (inserted)
+    it->second = volumes.sendVolume(streams[f]) == std::optional<uint64_t>(0);
+  return it->second;
 }
 
 std::string StreamDeadlockAnalysis::explainBlock(size_t f, size_t g) const {
@@ -884,13 +899,17 @@ static bool sameEndpoint(const StreamEndpoint &x, const StreamEndpoint &y) {
   return x.tile == y.tile && x.port == y.port;
 }
 
+StreamDeadlockAnalysis &StreamConflicts::getAnalysis() {
+  if (!analysis)
+    analysis.emplace(device, streams);
+  return *analysis;
+}
+
 bool StreamConflicts::blocks(size_t s, size_t t) {
   const RoutedStream &a = streams[s], &b = streams[t];
   if (sameEndpoint(a.src, b.src) || sameEndpoint(a.dst, b.dst))
     return false;
-  if (!analysis)
-    analysis.emplace(device, streams);
-  return analysis->canBlock(s, t);
+  return getAnalysis().canBlock(s, t);
 }
 
 // Trees from one source, or into one receiver, already wait on each other
@@ -910,10 +929,8 @@ bool StreamConflicts::conflict(size_t s, size_t t) {
 }
 
 std::string StreamConflicts::explain(size_t s, size_t t) {
-  if (!analysis)
-    analysis.emplace(device, streams);
-  return analysis->canBlock(s, t) ? analysis->explainBlock(s, t)
-                                  : analysis->explainBlock(t, s);
+  StreamDeadlockAnalysis &a = getAnalysis();
+  return a.canBlock(s, t) ? a.explainBlock(s, t) : a.explainBlock(t, s);
 }
 
 std::optional<HoldCycle>
@@ -930,7 +947,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
   std::map<std::tuple<TileID, Port, int, bool>, size_t> treeIDs;
   for (size_t i = 0; i < streams.size(); i++) {
     const RoutedStream &s = streams[i];
-    if (!s.packetID)
+    if (!s.packetID || getAnalysis().silent(i))
       continue;
     auto [it, inserted] = treeIDs.try_emplace(
         {s.src.tile, s.src.port, *s.packetID, i < numRequested}, trees.size());
@@ -1179,9 +1196,7 @@ std::string StreamConflicts::explain(const HoldCycle &cycle) {
       s += ".";
       break;
     case HoldCycle::Wait::Drain:
-      if (!analysis)
-        analysis.emplace(device, streams);
-      s += analysis->explainBlock(step.waiting, step.holding);
+      s += getAnalysis().explainBlock(step.waiting, step.holding);
       break;
     }
   }

@@ -190,6 +190,9 @@ public:
   /// waiting, and draining that receiver waits on `g`.
   bool canBlock(size_t f, size_t g) const;
 
+  /// Whether stream `f` carries nothing, so it neither holds nor waits.
+  bool silent(size_t f) const;
+
   /// Why `f` can block `g`: the chain of waits from `f`'s receiver to `g`, and
   /// which links of it are assumed for lack of information. Requires
   /// canBlock(f, g).
@@ -207,6 +210,7 @@ private:
   StreamVolumeAnalysis volumes;
   StreamWaitGraph graph;
   mutable std::map<size_t, bool> stalls;
+  mutable std::map<size_t, bool> silence;
   mutable std::map<std::pair<size_t, size_t>, bool> blocks;
 };
 
@@ -245,6 +249,7 @@ public:
 private:
   bool blocks(size_t s, size_t t);
   bool related(size_t s, size_t t) const;
+  StreamDeadlockAnalysis &getAnalysis();
 
   DeviceOp device;
   std::vector<RoutedStream> streams;

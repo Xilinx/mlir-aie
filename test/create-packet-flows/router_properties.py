@@ -1277,13 +1277,13 @@ class Volumes:
 
         known, total = False, 0
         for p in self.programs.get(key, []):
+            bds = [op for op in program_ops(p) if op[0] == "bd" and carries(op[2])]
+            known = True
+            if not bds:
+                continue
             if p["loops"]:
                 return None
-            nbytes = sum(
-                op[1] + header(op[2])
-                for op in program_ops(p)
-                if op[0] == "bd" and carries(op[2])
-            )
+            nbytes = sum(op[1] + header(op[2]) for op in bds)
             if p["kind"] == "start":
                 runs = p["repeat"] + 1
             else:
@@ -1294,7 +1294,6 @@ class Volumes:
                     if in_loop:
                         return None
                     runs += p["repeat"] + 1
-            known = True
             total += nbytes * runs
         for _, sym, pkt, nbytes, in_loop in self.memcpys:
             a = self.d.allocs.get(sym)
@@ -1577,8 +1576,17 @@ class Analysis:
     def can_block(self, f, g):
         if (f, g) not in self._blocks:
             self.graph
-            self._blocks[(f, g)] = self.can_stall(f) and bool(self.blocking_chain(f, g))
+            self._blocks[(f, g)] = (
+                self.can_stall(f)
+                and not self.silent(f)
+                and not self.silent(g)
+                and bool(self.blocking_chain(f, g))
+            )
         return self._blocks[(f, g)]
+
+    def silent(self, f):
+        self.graph
+        return self.volumes.send_volume(self.streams[f]) == 0
 
     def assumptions(self, f, g):
         fs = self.streams[f]
@@ -1655,7 +1663,7 @@ class Analysis:
         streams, nreq = self.streams, self.num_requested
         trees, tree_ids = [], {}
         for i, s in enumerate(streams):
-            if s.pid is None:
+            if s.pid is None or self.silent(i):
                 continue
             k = (s.src[:2], s.src[2:], s.pid, i < nreq)
             if k not in tree_ids:
