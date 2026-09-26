@@ -44,6 +44,14 @@ void conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
     const int32_t input_split, const int32_t weight_index,
     const int32_t x_start, const int32_t oc) {
   event0();
+#if AIE_TUNED_AIE2P
+  if (k1_wts_aligned(kernels)) {
+    const int32_t blocks = input_channels / input_split / 8;
+    k1_cas_put(input, kernels + oc * blocks * 64, input_width * 8, blocks);
+    event1();
+    return;
+  }
+#endif
   int ic, ic8, oc8;
 
   v16acc64 acc_cas = undef_v16acc64();
