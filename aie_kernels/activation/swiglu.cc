@@ -19,6 +19,7 @@ using namespace aie;
 
 // out = (x * w1) * silu(x * w2), one vector register per iteration. See
 // silu.cc for the lane template and sigmoid.cc for the 0.5 * (1 + tanh) mac.
+// The clamp and the zero gate are swiglu_aie2's.
 template <int lanes>
 static inline void swiglu_impl(bfloat16 *restrict input_vector,
                                bfloat16 *restrict weight_vector_1,
@@ -59,11 +60,15 @@ static inline void swiglu_impl(bfloat16 *restrict input_vector,
         aie::mac(half, tanh_half_x, register_0_5_wide)
             .template to_vector<bfloat16>();
     aie::vector<bfloat16, lanes> silu_output =
-        aie::mul(mul_input_weight_2, sigmoid_approx);
+        aie::mul(aie::max(mul_input_weight_2, bfloat16(-8.0f)), sigmoid_approx);
 
-    auto mul_output = aie::mul(mul_input_weight_1, silu_output);
+    aie::vector<bfloat16, lanes> mul_output =
+        aie::mul(mul_input_weight_1, silu_output)
+            .template to_vector<bfloat16>();
 
-    *it_out++ = mul_output.template to_vector<bfloat16>();
+    *it_out++ = aie::select(
+        mul_output, aie::zeros<bfloat16, lanes>(),
+        aie::eq(silu_output.template cast_to<int16_t>(), int16_t(0)));
   }
 }
 
@@ -126,22 +131,39 @@ static inline void swiglu_aie2(const bfloat16 *restrict x,
 }
 #endif
 
-#if AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
-// The LUT tanh in passes, as in sigmoid.cc: (x * w2)/2 to the output,
-// tanh_lut_map, silu(x * w2), then the product with x * w1. Each x * w is
-// recomputed rather than kept. In one loop the last two pipeline at II 17; the
-// pipeline_initiation_interval hints keep the pre-RA pipeliner, which orders
-// each in-place loop's store before the next trip's load, from settling on II
-// 22 and leaving the post-RA pipeliner nothing to do.
-static inline void swiglu_lut_aie2p(bfloat16 *restrict input_vector,
-                                    bfloat16 *restrict weight_vector_1,
-                                    bfloat16 *restrict weight_vector_2,
-                                    bfloat16 *restrict output_vector) {
+#if AIE_TUNED_AIE2P
+// tanh((x * w2)/2) to the output, then silu(x * w2) and the product with
+// x * w1 in two more passes, with swiglu_aie2's clamp and zero gate. Each
+// x * w is recomputed rather than kept. The LUT tanh gets there as in
+// sigmoid.cc: (x * w2)/2 to the output, then tanh_lut_map. In one loop the
+// vtanh build takes 1670 cycles a tile to these passes' 396, and the LUT
+// build's last two passes pipeline at II 17; the pipeline_initiation_interval
+// hints keep the pre-RA pipeliner, which orders each in-place loop's store
+// before the next trip's load, from settling on II 22 and leaving the post-RA
+// pipeliner nothing to do.
+static inline void swiglu_aie2p(bfloat16 *restrict input_vector,
+                                bfloat16 *restrict weight_vector_1,
+                                bfloat16 *restrict weight_vector_2,
+                                bfloat16 *restrict output_vector) {
   const int num_elems = SWIGLU_ELEMS;
   aie::vector<bfloat16, 32> register_0_5_wide =
       aie::broadcast<bfloat16, 32>(0.5f);
   auto it_in = aie::begin_restrict_vector<32>(input_vector);
   auto it_wt_2 = aie::begin_restrict_vector<32>(weight_vector_2);
+#if ACTIVATIONS_NATIVE_TANH
+  aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
+  auto it_tanh_out = aie::begin_restrict_vector<32>(output_vector);
+  AIE_PREPARE_FOR_PIPELINING
+  for (int i = 0; i < num_elems; i += 32) {
+    aie::vector<bfloat16, 32> mul_input_weight_2 =
+        aie::mul(*it_in++, *it_wt_2++);
+    *it_tanh_out++ =
+        aie::concat(tanh_bf16_v16(aie::mul(mul_input_weight_2.extract<16>(0),
+                                           register_0_5)),
+                    tanh_bf16_v16(aie::mul(mul_input_weight_2.extract<16>(1),
+                                           register_0_5)));
+  }
+#else
   auto it_half_x = aie::begin_restrict_vector<32>(output_vector);
   for (int i = 0; i < num_elems; i += 32) {
     aie::vector<bfloat16, 32> mul_input_weight_2 =
@@ -151,6 +173,7 @@ static inline void swiglu_lut_aie2p(bfloat16 *restrict input_vector,
   }
 
   tanh_lut_map(output_vector, output_vector, num_elems);
+#endif
 
   aie::accum<accfloat, 32> half;
   half.from_vector(register_0_5_wide);
@@ -164,7 +187,8 @@ static inline void swiglu_lut_aie2p(bfloat16 *restrict input_vector,
     aie::vector<bfloat16, 32> sigmoid_approx =
         aie::mac(half, *it_tanh++, register_0_5_wide).to_vector<bfloat16>();
     *it_silu++ =
-        aie::mul(mul_input_weight_2, sigmoid_approx).to_vector<bfloat16>();
+        aie::mul(aie::max(mul_input_weight_2, bfloat16(-8.0f)), sigmoid_approx)
+            .to_vector<bfloat16>();
   }
 
   auto it_x1 = aie::begin_restrict_vector<32>(input_vector);
@@ -174,8 +198,11 @@ static inline void swiglu_lut_aie2p(bfloat16 *restrict input_vector,
 #pragma clang loop pipeline_initiation_interval(2)
   for (int i = 0; i < num_elems; i += 32) {
     aie::vector<bfloat16, 32> mul_input_weight_1 = aie::mul(*it_x1++, *it_w1++);
+    aie::vector<bfloat16, 32> silu = *it_silu_in++;
     *it_out++ =
-        aie::mul(mul_input_weight_1, *it_silu_in++).to_vector<bfloat16>();
+        aie::select(aie::mul(mul_input_weight_1, silu).to_vector<bfloat16>(),
+                    aie::zeros<bfloat16, 32>(),
+                    aie::eq(silu.cast_to<int16_t>(), int16_t(0)));
   }
 }
 #endif
@@ -188,9 +215,8 @@ void swiglu_tanh_approx_bf16(bfloat16 *restrict input_vector,
   event0();
 #if AIE_TUNED_AIE2
   swiglu_aie2(input_vector, weight_vector_1, weight_vector_2, output_vector);
-#elif AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
-  swiglu_lut_aie2p(input_vector, weight_vector_1, weight_vector_2,
-                   output_vector);
+#elif AIE_TUNED_AIE2P
+  swiglu_aie2p(input_vector, weight_vector_1, weight_vector_2, output_vector);
 #else
   swiglu_impl<AIE_BF16_LANES>(input_vector, weight_vector_1, weight_vector_2,
                               output_vector);
