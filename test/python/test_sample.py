@@ -362,6 +362,31 @@ def test_draw_skips_zero_weights():
     assert sample.sample_ref(logits, 0.1, 5, (1 << 53) - 1) == 3
 
 
+def test_draw_keeps_weights_below_a_double_doubles_reach():
+    # At u = 1/2 the exact prefix passes u * S at the e^-100 (index 2); a
+    # double-double sum of 1 + e^-40 + e^-100 drops it, and took index 3.
+    logits = np.array([0, -40, -100, 0, -40], dtype=bfloat16)
+    assert sample.sample_ref(logits, 1.0, 5, 1 << 52) == 2
+    assert sample.sample_ref(logits, 1.0, 5, (1 << 52) + 1) == 3
+
+
+def test_draws_on_the_boundaries_of_every_binade():
+    # Weights from 1 down to subnormal float64 and 0, each drawn at the first
+    # n53 past its prefix and the one before.
+    rng = np.random.default_rng(1074)
+    x = np.concatenate([np.geomspace(1e-3, 700, 60), [712, 730, 744, 750]])
+    logits = rng.permutation(-x).astype(bfloat16)
+    logits[rng.integers(64)] = 0
+    candidates, weights = sample.sample_weights(logits, 1.0, 64)
+    assert weights.min() == 0 and 0 < weights[weights > 0].min() < 2.0**-1022
+    prefix = np.cumsum([Fraction(float(w)) for w in weights])
+    for p in prefix[:-1]:
+        first = -(-p * (1 << 53) // prefix[-1])  # ceil
+        for n53 in (int(first) - 1, int(first)):
+            want = _exact_draw(candidates, weights, n53)
+            assert sample.sample_ref(logits, 1.0, 64, n53) == want
+
+
 @pytest.mark.parametrize("bad", [np.nan, np.inf])
 def test_reference_rejects_nan_and_plus_infinity(bad):
     logits = np.zeros(8, dtype=bfloat16)

@@ -9,7 +9,7 @@ A row of bf16 logits is split into columns of ``slice_size``. Each column's
 ``sample_select`` core reduces its slice to a summary (its top k, as entries
 above its k-th largest value and a bitmap of the ties at it); one
 ``sample_combine`` core draws the token from all the summaries. The draw is
-``sample_ref``, operation for operation:
+``sample_ref``:
 
 1. Temperature 0 (or -0): the first index of the largest logit.
 2. tau is the k-th largest logit, with multiplicity, compared on ``order_keys``
@@ -17,26 +17,26 @@ above its k-th largest value and a bitmap of the ties at it); one
    order.
 3. Each candidate value v weighs ``exp64_ref(float64(fl32(fl32(v / T) -
    fl32(max / T))))``.
-4. The prefix sums of the weights, in index order, are double-double: a
-   sequential float64 sum s, the exact error of each addition (TwoSum) summed
-   into c, and ``(h, l) = Fast2Sum(s, c)``.
-5. ``u = n53 * 2**-53``, n53 < 2**53. The target is ``u * (h, l)`` of the last
-   candidate, by Dekker's TwoProduct with Veltkamp splitting, then Fast2Sum.
-   The token is the first candidate whose ``(h, l)`` exceeds the target
-   lexicographically.
+4. ``u = n53 * 2**-53``, n53 < 2**53. The token is the first candidate, in
+   index order, whose exact prefix sum of the weights P exceeds ``u * S``, S
+   the exact total: ``P * 2**53 > n53 * S`` in integers. That is the
+   inverse-CDF draw over the weights, with no rounding after them.
 
-Every step is an IEEE float32 division or subtraction, or a float64 addition,
-subtraction, multiplication or comparison, never fused; the core computes the
-float32 steps with the soft-float builtins and float64 has only those, so
-numpy reproduces the device's bits. A temperature must satisfy
-``check_order_preserving``, which makes the threshold on bf16 keys select what
-a threshold on ``v / T`` would.
+Every weight step is an IEEE float32 division or subtraction, or a float64
+addition, subtraction, multiplication or comparison, never fused; the core
+computes the float32 steps with the soft-float builtins and float64 has only
+those, so numpy reproduces the device's bits. Each weight is an integer
+multiple of 2**-1074, so the core sums them exactly in fixed point. A
+temperature must satisfy ``check_order_preserving``, which makes the threshold
+on bf16 keys select what a threshold on ``v / T`` would.
 
 A draw is passed to the device as a four-word int32 row, ``draw_row``.
 """
 
 import re
+from bisect import bisect_right
 from functools import cache
+from itertools import accumulate
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
@@ -326,32 +326,13 @@ def draw_row(temperature, top_k: int, n53: int) -> np.ndarray:
     return row.view(np.int32)
 
 
-def _two_sum_error(a, b, s):
-    """Return the exact error of s = fl(a + b) (Knuth)."""
-    bb = s - a
-    return (a - (s - bb)) + (b - bb)
-
-
-def _fast_two_sum(a, b):
-    """(fl(a + b), its exact error), for |a| >= |b| or a == 0 (Dekker)."""
-    s = a + b
-    return s, b - (s - a)
-
-
-def _split(a: np.float64) -> tuple[np.float64, np.float64]:
-    """Split a = hi + lo exactly, each with at most 26 significant bits (Veltkamp)."""
-    g = np.float64(2.0**27 + 1.0) * a
-    hi = g - (g - a)
-    return hi, a - hi
-
-
-def _target(u: np.float64, h: np.float64, lo: np.float64):
-    """Return u * (h + lo) as a normalised double-double: TwoProduct(u, h), then + u * lo."""
-    p = u * h
-    u_hi, u_lo = _split(u)
-    h_hi, h_lo = _split(h)
-    e = ((u_hi * h_hi - p) + u_hi * h_lo + u_lo * h_hi) + u_lo * h_lo
-    return _fast_two_sum(p, e + u * lo)
+def _units(weights: np.ndarray) -> list[int]:
+    """Each float64 weight as the integer it is in units of 2**-1074, exactly."""
+    exact = {}
+    for w in set(weights.tolist()):
+        numerator, denominator = w.as_integer_ratio()
+        exact[w] = numerator * ((1 << 1074) // denominator)
+    return [exact[w] for w in weights.tolist()]
 
 
 def _row(logits) -> np.ndarray:
@@ -390,15 +371,9 @@ def sample_ref(logits, temperature, top_k: int, n53: int) -> int:
     if np.float32(temperature).view(np.uint32) & 0x7FFFFFFF == 0:
         return int(np.argmax(order_keys(_row(logits))))
     candidates, weights = sample_weights(logits, temperature, top_k)
-
-    s = np.add.accumulate(weights)  # sequential, unlike np.sum's pairwise tree
-    s_before = np.concatenate(([0.0], s[:-1]))
-    c = np.add.accumulate(_two_sum_error(s_before, weights, s))
-    h, lo = _fast_two_sum(s, c)
-    u = np.float64(n53) * np.float64(2.0**-53)
-    t_h, t_l = _target(u, h[-1], lo[-1])
-    # A linear scan, not a bisection: (h, l) can step down by the rounding
-    # of c after a tiny weight, and the first candidate over the target is
-    # the rule. The last candidate if none is (u < 1, so one always is).
-    above = np.flatnonzero((h > t_h) | ((h == t_h) & (lo > t_l)))
-    return int(candidates[above[0] if above.size else -1])
+    prefix = list(accumulate(_units(weights)))
+    # P * 2**53 > n53 * S is P > floor(n53 * S / 2**53) for an integer P. The
+    # prefixes never step down, so the first above is a bisection; S >= 1
+    # (the maximum weighs 1) and u < 1, so the last always is.
+    target = int(n53) * prefix[-1] >> 53
+    return int(candidates[bisect_right(prefix, target)])

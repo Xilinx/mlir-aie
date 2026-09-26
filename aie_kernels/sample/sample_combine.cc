@@ -6,11 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 // Draw one token from SAMPLE_COLUMNS summaries (sample.h), bit for bit as
-// aie.iron.kernels.sample.sample_ref does; see it for the definition. The
-// prefix sums need their total before any candidate can be judged, so the
-// candidates are visited twice. Float division and subtraction call the
-// soft-float builtins by name: Peano lowers `a - b` on floats to the vector
-// unit, which is not IEEE (about 11.5% of random operands differ).
+// aie.iron.kernels.sample.sample_ref does; see it for the definition. Float
+// division and subtraction call the soft-float builtins by name: Peano lowers
+// `a - b` on floats to the vector unit, which is not IEEE (about 11.5% of
+// random operands differ). The helpers stay out of line and the product's
+// loops rolled: with the builtins and exp64's table the core's 16 KB of
+// program memory is nearly full.
 
 #include <aie_api/aie.hpp>
 
@@ -45,10 +46,14 @@ struct weights {
 double weight_of_key(const weights *t, int32_t key) {
   const float xv = __divsf3(bf16_to_f32(sample_bits(key)), t->temperature);
   const float d = __subsf3(xv, t->xm);
-  return exp64((double)d);
+  // Above 1 (or NaN) takes a NaN logit or a non-finite max / T, which the
+  // contract excludes; clamped to 1 so every sum stays in range.
+  const double w = exp64((double)d);
+  return __builtin_bit_cast(uint64_t, w) > UINT64_C(0x3ff0000000000000) ? 1.0
+                                                                        : w;
 }
 
-double lookup(weights *t, int32_t key) {
+__attribute__((noinline)) double lookup(weights *t, int32_t key) {
   if (key == t->tau)
     return t->w_tau;
   for (int32_t i = 0; i < t->n; ++i)
@@ -61,59 +66,75 @@ double lookup(weights *t, int32_t key) {
   return w;
 }
 
-// The running compensated sum and its normalized (h, l).
-struct prefix {
-  double s, c, h, l;
+// The sums are exact: a float64 weight in [0, 1] is an integer count of
+// 2^-1074, and fewer than 2^31 of them (sample.py checks) sum below 2^1105,
+// which these words hold, least significant first. The token's prefix P is
+// the first with P * 2^53 > n53 * S, i.e. P > q = floor(n53 * S / 2^53):
+// S is summed in any order, then each weight added in index order to
+// 2^1120 - 1 - q until it carries out. Nothing rounds after the weights.
+#define SAMPLE_SUM_WORDS 35
+
+// A weight as m * 2^off counts of 2^-1074: the fields of the double.
+struct units {
+  uint64_t m;
+  int32_t off;
 };
 
-void accumulate(prefix *p, double w) {
-  // TwoSum(s, w)
-  const double s_next = p->s + w;
-  const double bb = s_next - p->s;
-  const double a_part = p->s - (s_next - bb);
-  const double b_part = w - bb;
-  const double e = a_part + b_part;
-  p->c = p->c + e;
-  p->s = s_next;
-  // Fast2Sum(s, c)
-  p->h = p->s + p->c;
-  const double hs = p->h - p->s;
-  p->l = p->c - hs;
+units units_of(double w) {
+  const uint64_t bits = __builtin_bit_cast(uint64_t, w);
+  const int32_t exponent = (int32_t)(bits >> 52);
+  const uint64_t fraction = bits & ((UINT64_C(1) << 52) - 1);
+  if (exponent == 0)
+    return {fraction, 0};
+  return {fraction | UINT64_C(1) << 52, exponent - 1};
 }
 
-// Veltkamp: a = *hi + *lo, each half with at most 26 significant bits.
-void split(double a, double *hi, double *lo) {
-  const double g = 0x1.0000002p27 * a;
-  const double r = g - a;
-  *hi = g - r;
-  *lo = a - *hi;
+// s += m * 2^off, m < 2^64; whether a carry left the top word.
+__attribute__((noinline)) bool add(uint32_t *s, uint64_t m, int32_t off) {
+  const int32_t j = off >> 5;
+  const int32_t shift = off & 31;
+  const uint32_t lo = (uint32_t)m;
+  const uint32_t hi = (uint32_t)(m >> 32);
+  // x >> (32 - shift) is (x >> 1) >> (31 - shift), defined at shift 0.
+  const uint32_t w[3] = {lo << shift, hi << shift | (lo >> 1) >> (31 - shift),
+                         (hi >> 1) >> (31 - shift)};
+  uint32_t carry = 0;
+  for (int32_t i = j; i < SAMPLE_SUM_WORDS; ++i) {
+    const uint64_t t = (uint64_t)s[i] + (i < j + 3 ? w[i - j] : 0) + carry;
+    s[i] = (uint32_t)t;
+    carry = (uint32_t)(t >> 32);
+    if (i >= j + 2 && carry == 0)
+      return false;
+  }
+  return carry != 0;
 }
 
-// u * (h + l) as a normalized double-double: TwoProduct(u, h), then + u * l.
-void target_of(double u, double h, double l, double *t_hi, double *t_lo) {
-  const double p = u * h;
-  double u_hi, u_lo, h_hi, h_lo;
-  split(u, &u_hi, &u_lo);
-  split(h, &h_hi, &h_lo);
-  const double e1 = u_hi * h_hi;
-  const double e2 = e1 - p;
-  const double e3 = u_hi * h_lo;
-  const double e4 = e2 + e3;
-  const double e5 = u_lo * h_hi;
-  const double e6 = e4 + e5;
-  const double e7 = u_lo * h_lo;
-  const double pe = e6 + e7;
-  const double q = u * l;
-  const double f = pe + q;
-  *t_hi = p + f;
-  const double tp = *t_hi - p;
-  *t_lo = f - tp;
+// ~q, q = floor(n53 * s / 2^53), n53 < 2^53.
+__attribute__((noinline)) void not_scaled(const uint32_t *s, uint64_t n53,
+                                          uint32_t *not_q) {
+  uint32_t product[SAMPLE_SUM_WORDS + 2] = {};
+#pragma clang loop unroll(disable)
+  for (int32_t half = 0; half < 2; ++half) {
+    const uint32_t a = (uint32_t)(n53 >> (32 * half));
+    uint64_t carry = 0;
+#pragma clang loop unroll(disable)
+    for (int32_t i = 0; i < SAMPLE_SUM_WORDS; ++i) {
+      const uint64_t t = (uint64_t)a * s[i] + product[i + half] + carry;
+      product[i + half] = (uint32_t)t;
+      carry = t >> 32;
+    }
+    product[SAMPLE_SUM_WORDS + half] = (uint32_t)carry;
+  }
+#pragma clang loop unroll(disable)
+  for (int32_t i = 0; i < SAMPLE_SUM_WORDS; ++i)
+    not_q[i] = ~(product[i + 1] >> 21 | product[i + 2] << 11);
 }
 
 // The row's k-th largest key: every key of the row's top k is in some
 // column's summary, so it is the k-th largest over their union (a 256-bin
 // rank walk, two bytes deep).
-int32_t union_tau(const int32_t *summaries, int32_t k) {
+__attribute__((noinline)) int32_t union_tau(const int32_t *summaries,
+                                            int32_t k) {
   int32_t hist[256];
   int32_t bin = 0;
   int32_t need = k;
@@ -140,11 +161,35 @@ int32_t union_tau(const int32_t *summaries, int32_t k) {
   return bin;
 }
 
-// Every candidate in index order into p. With find, stop at the first whose
-// prefix exceeds (t_hi, t_lo) and return its index; otherwise, or when none
-// does, return the last candidate's index.
-int32_t visit(const int32_t *summaries, weights *t, prefix *p, bool find,
-              double t_hi, double t_lo) {
+// S, in any order: each column's entries at or above tau, and w_tau once
+// per tie.
+__attribute__((noinline)) void total(const int32_t *summaries, weights *t,
+                                     uint32_t *s) {
+  int32_t ties = 0;
+  for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
+    const int32_t *sum = summaries + c * SAMPLE_SUMMARY_WORDS;
+    const int32_t entries = sum[SAMPLE_ENTRIES];
+    for (int32_t e = 0; e < entries; ++e) {
+      const int32_t key = sum[SAMPLE_HEADER + 2 * e + 1];
+      if (key >= t->tau) {
+        const units u = units_of(lookup(t, key));
+        add(s, u.m, u.off);
+      }
+    }
+    if (sum[SAMPLE_TAU] == t->tau)
+      ties += sum[SAMPLE_TIES];
+  }
+  // m * ties exactly, in two halves of m.
+  const units u = units_of(t->w_tau);
+  add(s, (uint64_t)(uint32_t)u.m * (uint32_t)ties, u.off);
+  add(s, (u.m >> 32) * (uint32_t)ties, u.off + 32);
+}
+
+// Every candidate in index order, each weight added to acc = 2^1120 - 1 - q;
+// the first whose prefix P carries acc out of the top word (P > q), or the
+// last candidate when none does.
+__attribute__((noinline)) int32_t visit(const int32_t *summaries, weights *t,
+                                        uint32_t *acc) {
   int32_t last = 0;
   for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
     const int32_t *sum = summaries + c * SAMPLE_SUMMARY_WORDS;
@@ -178,8 +223,8 @@ int32_t visit(const int32_t *summaries, weights *t, prefix *p, bool find,
         w = t->w_tau;
       }
       last = c * SAMPLE_SLICE + index;
-      accumulate(p, w);
-      if (find && (p->h > t_hi || (p->h == t_hi && p->l > t_lo)))
+      const units u = units_of(w);
+      if (add(acc, u.m, u.off))
         return last;
     }
   }
@@ -207,15 +252,13 @@ int32_t combine(const int32_t *summaries, const int32_t *row) {
   t.w_tau = weight_of_key(&t, t.tau);
   t.n = 0;
 
-  prefix p = {0.0, 0.0, 0.0, 0.0};
-  visit(summaries, &t, &p, false, 0.0, 0.0);
+  uint32_t s[SAMPLE_SUM_WORDS] = {};
+  total(summaries, &t, s);
   const uint64_t n53 = (uint64_t)(uint32_t)row[SAMPLE_ROW_N53_HI] << 32 |
                        (uint32_t)row[SAMPLE_ROW_N53_LO];
-  const double u = (double)n53 * 0x1p-53;
-  double t_hi, t_lo;
-  target_of(u, p.h, p.l, &t_hi, &t_lo);
-  p = {0.0, 0.0, 0.0, 0.0};
-  return visit(summaries, &t, &p, true, t_hi, t_lo);
+  uint32_t acc[SAMPLE_SUM_WORDS];
+  not_scaled(s, n53, acc);
+  return visit(summaries, &t, acc);
 }
 
 } // namespace
