@@ -1103,6 +1103,13 @@ CASES: list[Case] = [
         calls=16,
         tag="unclamped",
     ),
+    # a channel count AIE2P's 64-lane groups do not divide
+    check(
+        "dwconv1d_channels_last",
+        dict(channels=96),
+        calls=16,
+        tag="odd-group",
+    ),
     # amd/IRON model shapes: Llama 3.2 1B. Each is one core's per-call tile as
     # IRON instantiates the model at a 2048-token context. The decode GEMVs over
     # 2048 and 64 columns are the mv cases above. The one-row ffn down GEMV is

@@ -30,17 +30,16 @@ using bf16 = bfloat16;
 /// Both operands arrive as K independent pointers. Deriving the weight planes
 /// from one base as `w + t * stride` miscompiled under the full unroll below:
 /// in the first 32-lane group, planes 0..K-2 all resolved to plane 0.
-#if AIE_TUNED_AIE2
-// On AIE2 the taps go outermost over four 32-lane groups at a time: each
-// group still sums its taps in order, but ten pointers walked one group at a
-// time leave the loads single-issued between pointer moves.
-template <int K, int C, bool CLAMP>
-static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
-                                               const bf16 *const *__restrict x,
-                                               bf16 lo, bf16 hi,
-                                               bf16 *__restrict y) {
-  constexpr int vec_size = 32;
-  static_assert(C % vec_size == 0, "C must be a multiple of the 32-lane store");
+// The taps go outermost over four groups at a time: each group still sums its
+// taps in order, but ten pointers walked one group at a time leave the loads
+// single-issued between pointer moves. AIE2 groups are 32 lanes; AIE2P's
+// vmac.f fills a whole accumulator register at 64.
+template <int K, int C, bool CLAMP, int vec_size>
+static inline void
+dwconv1d_channels_last_grouped(const bf16 *const *__restrict w,
+                               const bf16 *const *__restrict x, bf16 lo,
+                               bf16 hi, bf16 *__restrict y) {
+  static_assert(C % vec_size == 0, "C must be a multiple of the group width");
   constexpr int G = 4;
   constexpr int NG = C / vec_size;
 
@@ -79,12 +78,12 @@ static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
     }
   }
 }
-#else
+
 template <int K, int C, bool CLAMP>
-static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
-                                               const bf16 *const *__restrict x,
-                                               bf16 lo, bf16 hi,
-                                               bf16 *__restrict y) {
+static inline void
+dwconv1d_channels_last_generic(const bf16 *const *__restrict w,
+                               const bf16 *const *__restrict x, bf16 lo,
+                               bf16 hi, bf16 *__restrict y) {
   constexpr int vec_size = 32;
   static_assert(C % vec_size == 0, "C must be a multiple of the 32-lane store");
 
@@ -111,7 +110,24 @@ static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
     aie::store_v(y + o, y_vec);
   }
 }
+
+template <int K, int C, bool CLAMP>
+static inline void dwconv1d_channels_last_impl(const bf16 *const *__restrict w,
+                                               const bf16 *const *__restrict x,
+                                               bf16 lo, bf16 hi,
+                                               bf16 *__restrict y) {
+#if AIE_TUNED_AIE2
+  dwconv1d_channels_last_grouped<K, C, CLAMP, 32>(w, x, lo, hi, y);
+#elif AIE_TUNED_AIE2P
+  // Four 32-lane groups measured slower than the generic loop at C = 96.
+  if constexpr (C % 64 == 0)
+    dwconv1d_channels_last_grouped<K, C, CLAMP, 64>(w, x, lo, hi, y);
+  else
+    dwconv1d_channels_last_generic<K, C, CLAMP>(w, x, lo, hi, y);
+#else
+  dwconv1d_channels_last_generic<K, C, CLAMP>(w, x, lo, hi, y);
 #endif
+}
 
 #ifndef DWCONV1D_CL_C
 #define DWCONV1D_CL_C 256
