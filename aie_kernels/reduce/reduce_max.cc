@@ -23,10 +23,9 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   event0();
   constexpr int32_t VECTOR_SIZE = V::size();
   V tiny = aie::broadcast<T>(std::numeric_limits<T>::lowest());
-  V after_vector;
   V running_max = tiny;
 
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   // Walked pointer, rolled loop: see reduce_add.cc.
   const T *p = in;
   AIE_LOOP_NO_UNROLL
@@ -43,7 +42,10 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   }
 #endif
 
-  after_vector = running_max;
+#if AIE_TUNED_AIE2P
+  *(T *)out = aie::reduce_max(running_max);
+#else
+  V after_vector = running_max;
   V first = shift_bytes(after_vector, after_vector, 32U);
   V second = max(after_vector, first);
   V second_shift = shift_bytes(second, second, 16U);
@@ -58,6 +60,7 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   }
   auto last = aie::reduce_max(fifth);
   *(T *)out = last;
+#endif
   event1();
   return;
 }
