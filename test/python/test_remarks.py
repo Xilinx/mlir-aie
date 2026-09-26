@@ -365,6 +365,15 @@ def test_compile_failure_becomes_one_error_annotation():
     )
 
 
+def test_a_compile_failure_keeps_its_first_error_above_the_tail():
+    notes = "".join(f"x.h:{i}:1: note: candidate {i}\n" for i in range(200))
+    stderr = f"k.cc:4:5: error: no matching function\n{notes}1 error generated.\n"
+    detail = remarks.compile_failure(stderr, tail=500)
+    assert detail.startswith("k.cc:4:5: error: no matching function\n...\n")
+    assert detail.endswith("1 error generated.")
+    assert remarks.compile_failure("k.cc:1:1: error: short") == "k.cc:1:1: error: short"
+
+
 # --------------------------------------------------------------------------
 # trace markers, on the -O2 IR shapes Peano emits
 # --------------------------------------------------------------------------
@@ -543,6 +552,26 @@ def test_a_real_object_names_its_runtime_calls_and_drops_what_it_never_calls(
     assert "__floatsisf" in rep.libcalls and "__divsf3" not in rep.libcalls
     assert rep.shipped == {"k"}
     assert 0 < rep.pm_bytes < sum(rep.pm_bytes_by_function.values())
+
+
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
+def test_a_real_template_error_is_reported_by_its_error_line(tmp_path):
+    # Its candidate notes run past the 2000 characters of tail kept.
+    ef = ExternalFunction(
+        "k",
+        source_string=textwrap.dedent("""\
+            #include <aie_api/aie.hpp>
+            extern "C" void k(int *a) {
+              aie::vector<bfloat16, 32> v;
+              auto r = aie::mul(v, aie::vector<int32, 7>());
+            }
+            """),
+        arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+        include_dirs=[config.cxx_header_path()],
+    )
+    rep, detail = remarks.analyze(ef, "aie2p", tmp_path)
+    assert rep is None
+    assert "k.cc:4:12: error: no matching function for call to 'mul'" in detail
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
