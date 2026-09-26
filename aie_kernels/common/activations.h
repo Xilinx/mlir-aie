@@ -38,6 +38,43 @@
 // file's own directory. Its tables need lut_based_ops.cpp linked in, which is
 // what lut_kernel.cc exists to do.
 #include "lut_based_ops.h"
+
+#if AIE_TUNED_AIE2P
+// AIE2P's getTanhBf16 written out, the accumulator kept for a caller to narrow
+// where it likes: 32 segments of 0.25 over [-4, 4), each offset + slope * x.
+// getTanhBf16 builds an aie::linear_approx on every call, and its scratchpad
+// member escapes, so each call stored the whole object to the stack and read
+// the input back through it. x is clamped to the table's range first; the end
+// segments are the constants -1 and 1, so no finite result changes and +-inf
+// no longer makes 0 * inf.
+__attribute__((always_inline)) inline aie::accum<accfloat, 16>
+tanh_lut_acc(aie::vector<bfloat16, 16> x) {
+  constexpr int bias_bytes = 16 << 4;
+  const float *lut_ab = tanh_lut_ab + bias_bytes / sizeof(float);
+  const float *lut_cd = tanh_lut_cd + bias_bytes / sizeof(float);
+  const aie::vector<bfloat16, 16> xc =
+      aie::max(aie::min(x, bfloat16(4.0f - 1.0f / 64)), bfloat16(-4.0f));
+  v32bfloat16 coeff0, coeff1;
+  load_lut_2x_float(lut_ab, lut_cd, bfloat16_to_int(xc, 6), coeff0, coeff1);
+  aie::accum<accfloat, 32> offset;
+  offset.insert(1, aie::accum<accfloat, 16>(
+                       (v16accfloat)::shuffle(coeff0, coeff1, T32_16x2_hi)));
+  aie::vector<bfloat16, 32> xx = aie::zeros<bfloat16, 32>();
+  xx.insert(1, xc);
+  aie::accum<accfloat, 32> result =
+      mac_elem_32(::shuffle(coeff0, coeff1, T16_16x4_lo), xx, offset);
+  return result.extract<16>(1);
+}
+#endif
+
+__attribute__((always_inline)) inline aie::vector<bfloat16, 16>
+tanh_lut_bf16(aie::vector<bfloat16, 16> x) {
+#if AIE_TUNED_AIE2P
+  return tanh_lut_acc(x).to_vector<bfloat16>();
+#else
+  return getTanhBf16(x);
+#endif
+}
 #endif
 
 // tanh of 16 bf16 lanes, on whichever path this architecture has. This is the
@@ -55,7 +92,7 @@ tanh_bf16_v16(aie::accum<accfloat, 16> x) {
 #if ACTIVATIONS_NATIVE_TANH
   return aie::tanh<bfloat16>(x.to_vector<float>());
 #else
-  return getTanhBf16(x.to_vector<bfloat16>());
+  return tanh_lut_bf16(x.to_vector<bfloat16>());
 #endif
 }
 
@@ -70,7 +107,7 @@ tanh_bf16_v16(aie::vector<bfloat16, 16> x) {
   acc.from_vector(x, 0);
   return aie::tanh<bfloat16>(acc.to_vector<float>());
 #else
-  return getTanhBf16(x);
+  return tanh_lut_bf16(x);
 #endif
 }
 
@@ -99,7 +136,7 @@ tanh_bf16_vec(aie::vector<float, vec_size> x) {
       narrowed.template to_vector<bfloat16>();
   aie::vector<bfloat16, vec_size> out;
   for (unsigned i = 0; i < vec_size / 16; i++)
-    out.insert(i, getTanhBf16(n.template extract<16>(i)));
+    out.insert(i, tanh_lut_bf16(n.template extract<16>(i)));
   return out;
 #endif
 }
