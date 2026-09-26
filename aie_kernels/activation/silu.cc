@@ -89,12 +89,43 @@ static inline void silu_aie2(bfloat16 *restrict input_vector,
 }
 #endif
 
+#if AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
+// The LUT tanh in three passes, as in sigmoid.cc: x/2 to the output,
+// tanh_lut_inplace, then x * 0.5 * (1 + t) reading x again.
+static inline void silu_lut_aie2p(bfloat16 *restrict input_vector,
+                                  bfloat16 *restrict output_vector,
+                                  const int32_t vector_size) {
+  const int num_elems = SILU_ELEMS;
+  aie::vector<bfloat16, 32> register_0_5_wide =
+      aie::broadcast<bfloat16, 32>(0.5f);
+  auto it_in = aie::begin_restrict_vector<32>(input_vector);
+  auto it_half_x = aie::begin_restrict_vector<32>(output_vector);
+  for (int i = 0; i < num_elems; i += 32)
+    *it_half_x++ = aie::mul(*it_in++, register_0_5_wide).to_vector<bfloat16>();
+
+  tanh_lut_inplace(output_vector, num_elems);
+
+  aie::accum<accfloat, 32> half;
+  half.from_vector(register_0_5_wide);
+  auto it_x = aie::begin_restrict_vector<32>(input_vector);
+  auto it_tanh = aie::begin_vector<32>(output_vector);
+  auto it_out = aie::begin_vector<32>(output_vector);
+  for (int i = 0; i < num_elems; i += 32) {
+    aie::vector<bfloat16, 32> sigmoid_approx =
+        aie::mac(half, *it_tanh++, register_0_5_wide).to_vector<bfloat16>();
+    *it_out++ = aie::mul(*it_x++, sigmoid_approx).to_vector<bfloat16>();
+  }
+}
+#endif
+
 void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                            bfloat16 *restrict output_vector,
                            const int32_t vector_size) {
   event0();
 #if AIE_TUNED_AIE2
   silu_aie2(input_vector, output_vector, vector_size);
+#elif AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
+  silu_lut_aie2p(input_vector, output_vector, vector_size);
 #else
   silu_impl<AIE_BF16_LANES>(input_vector, output_vector, vector_size);
 #endif
