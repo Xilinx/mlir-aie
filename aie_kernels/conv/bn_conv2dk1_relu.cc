@@ -1817,6 +1817,98 @@ k1_xy_pool_vector(const int8_t *input, const int8_t *kernels, uint16_t *output,
     output[oc] = 0;
 }
 
+#if AIE_TUNED_AIE2P
+// A row of at most 8 pixels is one mmul<8,8,8> per input channel block, the
+// pixels past the row masked off once requantized, so no row goes through
+// memory. G output channel blocks share each input load. The last input
+// block is loaded ending at the input's end and shifted down, so no load
+// reads past it. Needs at least 3 input channel blocks.
+template <int G>
+static inline void
+k1_pool_group(const int8_t *__restrict in, const int8_t *__restrict wts,
+              const int8_t *end, uint16_t *o, const int32_t row,
+              const int32_t ic_blocks, const int scale,
+              const aie::mask<64> keep, const aie::vector<uint16, 8> prior,
+              const bool last) {
+  const int32_t blk = ic_blocks * 64;
+  aie::mmul<8, 8, 8, int8, int8> acc[G];
+  aie::vector<int8, 64> a = k1_load<false, 64>(in);
+  AIE_LOOP_UNROLL_FULL
+  for (int g = 0; g < G; g++)
+    acc[g].mul(a, aie::load_v<64>(wts + g * blk));
+#pragma clang loop min_iteration_count(1)
+  for (int ic = 2; ic < ic_blocks; ic++) {
+    in += row;
+    wts += 64;
+    a = k1_load<false, 64>(in);
+    AIE_LOOP_UNROLL_FULL
+    for (int g = 0; g < G; g++)
+      acc[g].mac(a, aie::load_v<64>(wts + g * blk));
+  }
+  a = aie::shuffle_down(k1_load<false, 64>(end), 64 - row);
+  aie::vector<int32, 8> sums[G];
+  AIE_LOOP_UNROLL_FULL
+  for (int g = 0; g < G; g++) {
+    acc[g].mac(a, aie::load_v<64>(wts + 64 + g * blk));
+    const aie::vector<uint8, 64> v = aie::select(
+        aie::zeros<uint8, 64>(), acc[g].template to_vector<uint8>(scale), keep);
+    const aie::vector<uint16, 32> s =
+        aie::add(v.extract<32>(0).unpack(), v.extract<32>(1).unpack());
+    const aie::vector<uint16, 16> s16 =
+        aie::add(s.extract<16>(0), s.extract<16>(1));
+    const auto above =
+        aie::bit_and(aie::load_v<8>(o + g * 8).unpack(), prior.unpack());
+    sums[g] =
+        aie::add(aie::vector_cast<int32>(above),
+                 aie::vector_cast<int32>(
+                     aie::add(s16.extract<8>(0), s16.extract<8>(1)).unpack()));
+  }
+  AIE_LOOP_UNROLL_FULL
+  for (int g = 0; g < G; g += 2) {
+    aie::vector<int32, 16> res =
+        aie::concat(sums[g], g + 1 < G ? sums[g + 1] : aie::zeros<int32, 8>());
+    if (last)
+      res = k1_pool_avg(res);
+    const aie::vector<uint16, 16> r =
+        aie::filter_even(aie::vector_cast<uint16>(res), 1);
+    aie::store_v(o + g * 8, r.extract<8>(0));
+    if (g + 1 < G)
+      aie::store_v(o + g * 8 + 8, r.extract<8>(1));
+  }
+}
+
+K1_POOL_NOINLINE static void
+k1_xy_pool_narrow(const int8_t *input, const int8_t *kernels, uint16_t *output,
+                  const int32_t input_width, const int32_t input_channels,
+                  const int32_t output_channels,
+                  const int32_t output_channels_padd, const int scale,
+                  const int y_index, int32_t output_split,
+                  int32_t weight_index) {
+  constexpr int G = 5;
+  aie::set_saturation(aie::saturation_mode::saturate);
+  aie::set_rounding(aie::rounding_mode::conv_even);
+  const int32_t blocks = output_channels / output_split / 8;
+  const int32_t row = input_width * 8;
+  const int32_t ic_blocks = input_channels / 8;
+  const aie::vector<uint16, 8> prior =
+      aie::broadcast<uint16, 8>(y_index != 0 ? 0xffffu : 0u);
+  const bool last = y_index == input_width - 1;
+  const aie::mask<64> keep =
+      aie::mask<64>::from_uint64(input_width == 8 ? ~0ull : (1ull << row) - 1);
+  const int8_t *end = input + ic_blocks * row - 64;
+  uint16_t *o = output + blocks * weight_index * 8;
+  int oc = 0;
+  for (; oc + G <= blocks; oc += G)
+    k1_pool_group<G>(input, kernels + oc * ic_blocks * 64, end, o + oc * 8, row,
+                     ic_blocks, scale, keep, prior, last);
+  for (; oc < blocks; oc++)
+    k1_pool_group<1>(input, kernels + oc * ic_blocks * 64, end, o + oc * 8, row,
+                     ic_blocks, scale, keep, prior, last);
+  for (int c = output_channels; c < output_channels_padd; c++)
+    output[c] = 0;
+}
+#endif
+
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 
 #if AIE_TUNED_AIE2
@@ -2281,9 +2373,16 @@ void conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8(
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   if (input_width >= 4 && input_width <= K1_POOL_MAX_WIDTH &&
       ((uintptr_t)output & 15) == 0 && k1_wts_aligned(kernels)) {
-    k1_xy_pool_vector(input, kernels, output, input_width, input_channels,
-                      output_channels, output_channels_padd, scale, y_index,
-                      output_split, weight_index);
+#if AIE_TUNED_AIE2P
+    if (input_width <= 8 && input_channels >= 24)
+      k1_xy_pool_narrow(input, kernels, output, input_width, input_channels,
+                        output_channels, output_channels_padd, scale, y_index,
+                        output_split, weight_index);
+    else
+#endif
+      k1_xy_pool_vector(input, kernels, output, input_width, input_channels,
+                        output_channels, output_channels_padd, scale, y_index,
+                        output_split, weight_index);
     event1();
     return;
   }
