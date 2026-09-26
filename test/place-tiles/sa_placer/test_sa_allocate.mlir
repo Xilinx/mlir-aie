@@ -59,3 +59,40 @@ module @no_allocate_within_capacity {
     aie.core(%coreB) { aie.end }
   }
 }
+
+// -----
+
+// The same overflowing intratile fifos, already allocated to coreB by the
+// user: SA charges them to coreB and adds no allocate of its own.
+// CHECK-LABEL: @user_allocate_kept
+// CHECK: %[[B:.*]] = aie.tile(2, 4)
+// CHECK-NOT: aie.objectfifo.allocate
+// CHECK: aie.objectfifo @intra0
+// CHECK-NEXT: aie.objectfifo.allocate @intra0(%[[B]])
+// CHECK-NEXT: aie.objectfifo @intra1
+// CHECK-NEXT: aie.objectfifo.allocate @intra1(%[[B]])
+// CHECK-NEXT: aie.objectfifo @intra2
+// CHECK-NEXT: aie.objectfifo.allocate @intra2(%[[B]])
+// CHECK-NOT: aie.objectfifo.allocate
+module @user_allocate_kept {
+  aie.device(npu2) {
+    %coreA = aie.logical_tile<CoreTile>(2, 3)
+    %coreB = aie.logical_tile<CoreTile>(2, 4)
+    %coreC = aie.logical_tile<CoreTile>(?, ?)
+
+    aie.objectfifo @data(%coreA, {%coreC}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+
+    %wts = aie.buffer(%coreA) {sym_name = "weights"} : memref<12800xi32>
+
+    aie.objectfifo @intra0(%coreA, {%coreA}, 3 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
+    aie.objectfifo.allocate @intra0(%coreB)
+    aie.objectfifo @intra1(%coreA, {%coreA}, 3 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
+    aie.objectfifo.allocate @intra1(%coreB)
+    aie.objectfifo @intra2(%coreA, {%coreA}, 3 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
+    aie.objectfifo.allocate @intra2(%coreB)
+
+    aie.core(%coreA) { aie.end }
+    aie.core(%coreB) { aie.end }
+    aie.core(%coreC) { aie.end }
+  }
+}

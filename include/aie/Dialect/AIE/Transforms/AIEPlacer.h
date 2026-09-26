@@ -602,6 +602,7 @@ private:
     mlir::Operation *fifoOp = nullptr;
     mlir::Operation *producer = nullptr;
     llvm::SmallVector<mlir::Operation *> consumers;
+    mlir::Operation *delegate = nullptr;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;
     int producerDepth = 0;
