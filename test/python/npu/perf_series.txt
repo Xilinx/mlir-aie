@@ -47,9 +47,12 @@ bn_conv2dk1_relu_xy_pool_padded/560x8/int8_uint16/input_channels=80/input_width=
 bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40
 bn_conv2dk1_skip/1680x8/uint8_int8/input_channels=240/input_width=7/output_channels=40/arg1@16
 bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8
+bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8/skip-scale-0
+bn_conv2dk1_skip/2800x8/uint8_int8/input_channels=200/input_width=14/output_channels=80/skip_dtype=int8/skip-scale-0
 bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40
 bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/arg1@16
 bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8
+bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8/skip-scale-0
 bn_conv2dk1_skip/4032x8/uint8_int8/input_channels=72/input_width=56/output_channels=24
 bn_conv2dk3/1024x8/int8_uint8/input_channels=16/input_width=64/output_channels=8/weight_output_channels=16/channel-offset
 bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16
