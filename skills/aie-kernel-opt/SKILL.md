@@ -66,6 +66,13 @@ python -m aie.utils.compile.remarks --target aie2p --cases test/python/npu/kerne
   `> 0`, no case used 0, and three layers ran scalar at 579k-927k cycles a
   call, 16.2 of the network's 16.3 ms. Relaxing the guard took the network
   to 0.77 ms (9e649eda9d7).
+- **Time the case at the design's scalars.** A case at other widths can
+  take another path. `xy_pool` read 820 at `outC` 120, but MobileNet
+  passes 960 padded to 1280, and a scalar pad loop ran at 3066 a call
+  until it stored vectors (875, 8fafbef845b). bn2's dw row (56 wide) ran
+  the generic path because the 8-pixel path stopped at 32 pixels: 4302 →
+  840 (eb89013e5d8). A gap that is the same on every row is per-call work,
+  not a DMA stall.
 
 ### 2. Gate, and prove the gate
 
@@ -375,6 +382,18 @@ it, c0991c9950f):
 - For a base arm of the whole design, `git archive` the base's Python too,
   put it first on `PYTHONPATH`, and check one known base number before
   trusting the rest (MobileNet 176.4 ms against 176.2).
+- Find the layer that paces the design before optimizing one: make the
+  kernel return at entry for that layer's shape and time the design. The
+  noop is live only if the output changed (MobileNet's residuals can keep
+  it passing, so check that `max_difference` moved). bn2's dw noop took
+  MobileNet 604 → 561-569 µs; the fix then reached 557-588 (eb89013e5d8).
+  Noops of bn6's and bn12's dw moved nothing.
+- The min spread 533-571 µs over 38 runs of one build, so a Δmin under
+  ~15 µs from two ABAB pairs is noise: four 3x3 layers read −9..−13 µs,
+  then +1..+3 in three more pairs.
+- Compile each arm once outside the NPU lock (`--xclbin-path`,
+  `--insts-path`, the arm's `NPU_CACHE_HOME`); a cached timed run holds it
+  ~4 s.
 
 ## Levers that measured faster
 
@@ -665,6 +684,11 @@ failing shape (6e57e9dfc6d) and diff the raw words.
 - **Software pipelining stops at MII 27** (`SwpMaxMii` in `schedule_notes`);
   above it only the postpipeliner runs. A loop over the cap can still win
   if it does more work per trip.
+- **A list-scheduled loop's bundle count moves with edits beside it.**
+  bn2's dw block loop (too much register pressure to pipeline) went 84 →
+  91 → 97 bundles, HW 778 / 840 / 891, from a guard in the caller, a
+  dropped min-trip hint and pointer bumps (eb89013e5d8). Measure every
+  shape after each edit.
 - **`aie::exp2` (AIE2P) is an interpolant** that overshoots true `exp2` by
   up to 6.15%. Keep `np.exp2` in references with a derived envelope
   (`test/python/npu/test_mha_e2e.py`).
@@ -695,6 +719,9 @@ failing shape (6e57e9dfc6d) and diff the raw words.
 - An out-of-line helper for a second path in a hot function: callee-saved
   spills and a longer dispatch, dw 28x120 1606 → 1669, 14x184 2495 → 2551
   (1c32c246a33).
+- A new stride inside an existing loop: dw stride 1 reached 778, but the
+  min-trip hint also reached stride 2 (+10 cycles) and needed a guard for
+  short stride-1 rows. It got its own loop at 840 (eb89013e5d8).
 
 ## When to stop
 
