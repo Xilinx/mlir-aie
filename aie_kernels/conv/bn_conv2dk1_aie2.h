@@ -64,6 +64,20 @@ static inline bool k1_wts_aligned(const int8_t *kernels) {
 #endif
 }
 
+// On AIE2P the unaligned walkers do not fit next to the depthwise conv in a
+// mobilenet core's program memory, so kernels that share its core vectorize
+// only rows the aligned 4-pixel walker takes.
+template <typename... T>
+static inline bool k1_fits(const int32_t input_width, const int8_t *kernels,
+                           const T *...p) {
+#if AIE_TUNED_AIE2P
+  return input_width % 4 == 0 && k1_wts_aligned(kernels) &&
+         (((uintptr_t)p | ...) & 31) == 0;
+#else
+  return true;
+#endif
+}
+
 // N chunks of one output channel block. Chunk j is at byte offset 8 * P * j
 // from in, except the last at last_off; epi(acc, side + offset...) gives the
 // vector stored at out + offset.
