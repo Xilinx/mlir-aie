@@ -19,6 +19,7 @@
 #include <aie_api/aie.hpp>
 
 #if AIE_TUNED_AIE2P
+#define K1_DEEP_WALKER
 #include "bn_conv2dk1_aie2.h"
 #endif
 
@@ -1695,14 +1696,25 @@ void fused_conv2dk1_xy_pool_i8_large_scalar(
 #include "bn_conv2dk1_aie2.h"
 
 // Rounds half to even and saturates like the scalar.
-template <bool Aligned, int P = 4>
+template <bool Aligned, int P = 4, bool Fixed = false>
 static void k1_relu_rows(const int8_t *input, const int8_t *kernels,
                          uint8_t *output, const int32_t input_width,
                          const int32_t input_channels,
                          const int32_t output_channels, const int scale) {
-  k1_rows<Aligned, P>(
-      input, kernels, output, input_width, input_channels, output_channels,
-      [=](auto &acc) { return acc.template to_vector<uint8>(scale); });
+  const auto epi = [=](auto &acc) {
+    return acc.template to_vector<uint8>(scale);
+  };
+#if defined(K1_WIDTH)
+  if constexpr (Fixed) {
+    k1_rows_fixed(input, kernels, output, epi);
+    return;
+  } else if constexpr (K1_DEEP) {
+    k1_rows_deep(input, kernels, output, epi);
+    return;
+  }
+#endif
+  k1_rows<Aligned, P>(input, kernels, output, input_width, input_channels,
+                      output_channels, epi);
 }
 
 template <int P>
@@ -1727,8 +1739,8 @@ static void k1_vector(const int8_t *input, const int8_t *kernels,
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
 #if defined(K1_WIDTH)
-  k1_relu_rows<K1_ALIGNED, K1_P>(input, kernels, output, K1_WIDTH,
-                                 input_channels, output_channels, scale);
+  k1_relu_rows<K1_ALIGNED, K1_P, K1_FIXED>(
+      input, kernels, output, K1_WIDTH, input_channels, output_channels, scale);
 #elif AIE_TUNED_AIE2P
   k1_relu_rows<true>(input, kernels, output, input_width, input_channels,
                      output_channels, scale);

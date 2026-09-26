@@ -729,6 +729,36 @@ CASES: list[Case] = [
         scalars=(7, 80, 120, 8),
     ),
     Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=14, input_channels=112, output_channels=336),
+        calls=8,
+        scalars=(14, 112, 336, 8),
+    ),
+    Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=28, input_channels=40, output_channels=240),
+        calls=8,
+        scalars=(28, 40, 240, 8),
+    ),
+    Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=56, input_channels=24, output_channels=72),
+        calls=8,
+        scalars=(56, 24, 72, 7),
+    ),
+    Case(
+        "bn_conv2dk1_relu",
+        dict(input_width=14, input_channels=80, output_channels=200),
+        calls=8,
+        scalars=(14, 80, 200, 8),
+    ),
+    Case(
+        "bn_conv2dk1_i8",
+        dict(input_width=28, input_channels=72, output_channels=40),
+        calls=8,
+        scalars=(28, 72, 40, 10),
+    ),
+    Case(
         "bn_conv2dk1_i8",
         dict(input_width=28, input_channels=120, output_channels=40),
         calls=8,

@@ -75,6 +75,43 @@ static inline bool k1_wts_aligned(const int8_t *kernels) {
 constexpr int K1_P =
     K1_WIDTH >= 8 && (K1_WIDTH % 8 == 0 || CONV_INPUT_CHANNELS >= 64) ? 8 : 4;
 constexpr bool K1_ALIGNED = K1_WIDTH % K1_P == 0;
+
+// k1_rows_fixed walks an even-width row with the conv's shape as constants;
+// the pipeliner does not take the reduction loop k1_chunks runs once per
+// group, nor a loop with k1_store's alignment branch. An even-width row puts
+// every chunk on a boundary of K1_FIXED_ALIGN bytes, the most a row's length
+// keeps. A kernel without k1_rows_fixed defines K1_NO_FIXED.
+constexpr int K1_IC_BLOCKS = CONV_INPUT_CHANNELS / 8;
+constexpr int K1_OC_BLOCKS = CONV_OUTPUT_CHANNELS / 8;
+#ifdef K1_NO_FIXED
+constexpr bool K1_EVEN = false;
+#else
+constexpr bool K1_EVEN = K1_WIDTH >= 8 && K1_WIDTH % 2 == 0;
+#endif
+constexpr unsigned K1_FIXED_ALIGN = K1_WIDTH % 8 == 0   ? 64
+                                    : K1_WIDTH % 4 == 0 ? 32
+                                                        : 16;
+constexpr int K1_ROW = K1_WIDTH * 8;
+constexpr int K1_CHUNKS = (K1_WIDTH + 7) / 8;
+constexpr int K1_U = 448 % K1_ROW == 0 ? 448 / K1_ROW : 1;
+constexpr int K1_VALID = K1_ROW < 64 ? K1_ROW : 64;
+// k1_rows_deep also beats k1_fixed_reduce where both apply. Kernels that link
+// it define K1_DEEP_WALKER before including this header.
+#if defined(K1_DEEP_WALKER)
+constexpr bool K1_DEEP = K1_WIDTH % 7 == 0 && K1_U >= 2 &&
+                         K1_IC_BLOCKS >= K1_U &&
+                         (!K1_EVEN || K1_IC_BLOCKS > 10);
+#else
+constexpr bool K1_DEEP = false;
+#endif
+constexpr bool K1_FIXED = K1_EVEN && !K1_DEEP;
+// Output channel blocks per pass: more than four accumulators spill.
+constexpr int K1_DEEP_M = K1_CHUNKS >= 4 ? 1 : 2;
+
+constexpr uintptr_t K1_PTR_MASK = K1_FIXED     ? K1_FIXED_ALIGN - 1
+                                  : K1_DEEP    ? 63
+                                  : K1_ALIGNED ? 8 * K1_P - 1
+                                               : 0;
 #endif
 
 template <typename... T>
@@ -82,7 +119,7 @@ static inline bool k1_fits(const int32_t input_width, const int8_t *kernels,
                            const T *...p) {
 #if defined(K1_WIDTH)
   return input_width == K1_WIDTH && k1_wts_aligned(kernels) &&
-         (!K1_ALIGNED || (((uintptr_t)p | ...) & (8 * K1_P - 1)) == 0);
+         (((uintptr_t)p | ...) & K1_PTR_MASK) == 0;
 #elif AIE_TUNED_AIE2P
   return input_width % 4 == 0 && k1_wts_aligned(kernels) &&
          (((uintptr_t)p | ...) & 31) == 0;
@@ -165,6 +202,321 @@ static void k1_rows(const TI *input, const int8_t *kernels, TO *output,
     }
   }
 }
+
+#if defined(K1_WIDTH)
+template <typename T>
+static inline aie::vector<T, 64> k1_load_fixed(const T *p) {
+  if constexpr (K1_FIXED_ALIGN == 64)
+    return aie::load_v<64>(p);
+  else if constexpr (K1_FIXED_ALIGN == 32)
+    return aie::concat(aie::load_v<32>(p), aie::load_v<32>(p + 32));
+  else
+    return aie::load_unaligned_v<64>(p, K1_FIXED_ALIGN);
+}
+
+template <typename T>
+static inline void k1_store_fixed(T *p, aie::vector<T, 64> v) {
+  constexpr unsigned A = K1_FIXED_ALIGN;
+  AIE_LOOP_UNROLL_FULL
+  for (unsigned i = 0; i < 64 / A; i++)
+    aie::store_v(p + A * i, v.template extract<A>(i));
+}
+
+// The pipelined loop steps through one operand while the other's vectors stay
+// in registers: G output channel blocks' weights while it walks the row's
+// 8-pixel chunks, or a chunk's inputs while it walks the output channel
+// blocks GO at a time. The last group of GO blocks ends at the last block, so
+// it recomputes some of the group before it.
+template <int G, typename TI, typename TO, typename Epi>
+static void k1_fixed_hold_wts(const TI *__restrict input,
+                              const int8_t *__restrict kernels,
+                              TO *__restrict output, Epi epi) {
+  constexpr int row = K1_WIDTH * 8;
+  constexpr int chunks = K1_WIDTH / 8;
+  using MMUL = aie::mmul<8, 8, 8, TI, int8>;
+  for (int oc = 0; oc < K1_OC_BLOCKS; oc += G) {
+    aie::vector<int8, 64> b[G][K1_IC_BLOCKS];
+    AIE_LOOP_UNROLL_FULL
+    for (int g = 0; g < G; g++)
+      AIE_LOOP_UNROLL_FULL
+    for (int ic = 0; ic < K1_IC_BLOCKS; ic++)
+      b[g][ic] = aie::load_v<64>(kernels + (g * K1_IC_BLOCKS + ic) * 64);
+    kernels += G * K1_IC_BLOCKS * 64;
+    const TI *__restrict in = input;
+    TO *__restrict out = output + oc * row;
+    for (int c = 0; c < chunks; c++) {
+      aie::vector<TI, 64> a[K1_IC_BLOCKS];
+      AIE_LOOP_UNROLL_FULL
+      for (int ic = 0; ic < K1_IC_BLOCKS; ic++)
+        a[ic] = k1_load_fixed(in + ic * row);
+      in += 64;
+      AIE_LOOP_UNROLL_FULL
+      for (int g = 0; g < G; g++) {
+        MMUL acc;
+        AIE_LOOP_UNROLL_FULL
+        for (int ic = 0; ic < K1_IC_BLOCKS; ic++) {
+          if (ic == 0)
+            acc.mul(a[ic], b[g][ic]);
+          else
+            acc.mac(a[ic], b[g][ic]);
+        }
+        k1_store_fixed(out + g * row, epi(acc));
+      }
+      out += 64;
+    }
+  }
+}
+
+template <int GO, typename TI, typename TO, typename Epi>
+static void k1_fixed_hold_in(const TI *__restrict input,
+                             const int8_t *__restrict kernels,
+                             TO *__restrict output, Epi epi) {
+  constexpr int row = K1_WIDTH * 8;
+  constexpr int last = row - 64;
+  constexpr int chunks = (K1_WIDTH + 7) / 8;
+  constexpr int step = K1_IC_BLOCKS * 64;
+  constexpr int groups = (K1_OC_BLOCKS + GO - 1) / GO;
+  constexpr int back = groups * GO - K1_OC_BLOCKS;
+  using MMUL = aie::mmul<8, 8, 8, TI, int8>;
+  for (int c = 0; c < chunks; c++) {
+    const int x = c < chunks - 1 ? 64 * c : last;
+    aie::vector<TI, 64> a[K1_IC_BLOCKS];
+    AIE_LOOP_UNROLL_FULL
+    for (int ic = 0; ic < K1_IC_BLOCKS; ic++)
+      a[ic] = k1_load_fixed(input + ic * row + x);
+    const int8_t *__restrict wts = kernels;
+    TO *__restrict out = output + x;
+    for (int k = 0; k < groups; k++) {
+      MMUL acc[GO];
+      AIE_LOOP_UNROLL_FULL
+      for (int ic = 0; ic < K1_IC_BLOCKS; ic++) {
+        AIE_LOOP_UNROLL_FULL
+        for (int o = 0; o < GO; o++) {
+          const aie::vector<int8, 64> b = aie::load_v<64>(wts + o * step);
+          if (ic == 0)
+            acc[o].mul(a[ic], b);
+          else
+            acc[o].mac(a[ic], b);
+        }
+        wts += 64;
+      }
+      AIE_LOOP_UNROLL_FULL
+      for (int o = 0; o < GO; o++)
+        k1_store_fixed(out + o * row, epi(acc[o]));
+      const int adv = back && k == groups - 2 ? GO - back : GO;
+      wts += (adv - 1) * step;
+      out += adv * row;
+    }
+  }
+}
+
+// A deeper reduction does not fit in registers, so the pipelined loop is the
+// input-channel loop, for one chunk of G output channel blocks.
+template <int G, typename TI, typename TO, typename Epi>
+static void k1_fixed_reduce(const TI *__restrict input,
+                            const int8_t *__restrict kernels,
+                            TO *__restrict output, Epi epi) {
+  constexpr int row = K1_WIDTH * 8;
+  constexpr int last = row - 64;
+  constexpr int chunks = (K1_WIDTH + 7) / 8;
+  constexpr int step = K1_IC_BLOCKS * 64;
+  using MMUL = aie::mmul<8, 8, 8, TI, int8>;
+  for (int oc = 0; oc < K1_OC_BLOCKS; oc += G) {
+    const int o = oc + G <= K1_OC_BLOCKS ? oc : K1_OC_BLOCKS - G;
+    for (int c = 0; c < chunks; c++) {
+      const int x = c < chunks - 1 ? 64 * c : last;
+      const TI *__restrict in = input + x;
+      const int8_t *__restrict wts = kernels + o * step;
+      MMUL acc[G];
+      aie::vector<TI, 64> a = k1_load_fixed(in);
+      AIE_LOOP_UNROLL_FULL
+      for (int g = 0; g < G; g++)
+        acc[g].mul(a, aie::load_v<64>(wts + g * step));
+      for (int ic = 1; ic < K1_IC_BLOCKS; ic++) {
+        in += row;
+        wts += 64;
+        a = k1_load_fixed(in);
+        AIE_LOOP_UNROLL_FULL
+        for (int g = 0; g < G; g++)
+          acc[g].mac(a, aie::load_v<64>(wts + g * step));
+      }
+      TO *__restrict out = output + o * row + x;
+      AIE_LOOP_UNROLL_FULL
+      for (int g = 0; g < G; g++)
+        k1_store_fixed(out + g * row, epi(acc[g]));
+    }
+  }
+}
+
+// n is the fewest cycles per mac measured for each shape.
+template <typename TI, typename TO, typename Epi>
+static void k1_rows_fixed(const TI *__restrict input,
+                          const int8_t *__restrict kernels,
+                          TO *__restrict output, Epi epi) {
+  constexpr int n = K1_IC_BLOCKS > 10   ? 4
+                    : K1_IC_BLOCKS <= 5 ? 1
+                    : K1_OC_BLOCKS > 6  ? 3
+                                        : 2;
+  constexpr int g = n < K1_OC_BLOCKS ? n : K1_OC_BLOCKS;
+  if constexpr (K1_IC_BLOCKS > 10)
+    k1_fixed_reduce<g>(input, kernels, output, epi);
+  else if constexpr (K1_WIDTH % 8 == 0 && K1_WIDTH / 8 >= K1_OC_BLOCKS)
+    k1_fixed_hold_wts<K1_IC_BLOCKS <= 2 && K1_OC_BLOCKS % 2 == 0 ? 2 : 1>(
+        input, kernels, output, epi);
+  else
+    k1_fixed_hold_in<g>(input, kernels, output, epi);
+}
+
+// As in k1_fixed_reduce, with accumulators for every 8-pixel chunk of a row
+// times M. K1_U rows are 448 bytes, seven aligned 64-byte windows; one step
+// loads those once and shifts each chunk out of them. A row narrower than 8
+// pixels takes one chunk whose last pixel belongs to the next row and is never
+// stored.
+constexpr int k1_deep_x(int j) {
+  return j < K1_CHUNKS - 1 ? 64 * j : K1_ROW - K1_VALID;
+}
+
+// The 64 bytes at offset s of the windows w, of which the first K1_VALID are
+// used.
+template <typename T>
+static inline aie::vector<T, 64> k1_win(const aie::vector<T, 64> *w,
+                                        const int s) {
+  const int i = s / 64, f = s % 64;
+  if (f == 0)
+    return w[i];
+  return ::shift_bytes(w[i], f + K1_VALID <= 64 ? w[i] : w[i + 1], f);
+}
+
+template <typename T>
+static inline aie::vector<T, 64> k1_row_load(const T *__restrict p,
+                                             const int s) {
+  aie::vector<T, 64> w[2];
+  w[0] = aie::load_v<64>(p + s / 64 * 64);
+  if (s % 64 + K1_VALID > 64)
+    w[1] = aie::load_v<64>(p + s / 64 * 64 + 64);
+  return k1_win(w, s % 64);
+}
+
+template <int M, typename TI, typename TO, typename Epi, typename... S>
+static inline void k1_deep_group(const TI *__restrict input,
+                                 const int8_t *__restrict kernels,
+                                 TO *__restrict output, const int oc, Epi epi,
+                                 const S *__restrict... side) {
+  constexpr int N = K1_CHUNKS;
+  constexpr int U = K1_U;
+  constexpr int G = K1_IC_BLOCKS / U;
+  using MMUL = aie::mmul<8, 8, 8, TI, int8>;
+  MMUL acc[N][M];
+  // One input-channel block r: a(j) gives chunk j of its row, and the first
+  // block multiplies instead of accumulating.
+  const auto step = [&](const int8_t *__restrict const *wts, const int r,
+                        const auto &a, const bool first) {
+    aie::vector<int8, 64> b[M];
+    AIE_LOOP_UNROLL_FULL
+    for (int m = 0; m < M; m++)
+      b[m] = aie::load_v<64>(wts[m] + 64 * r);
+    AIE_LOOP_UNROLL_FULL
+    for (int j = 0; j < N; j++) {
+      const aie::vector<TI, 64> x = a(j);
+      AIE_LOOP_UNROLL_FULL
+      for (int m = 0; m < M; m++)
+        if (first)
+          acc[j][m].mul(x, b[m]);
+        else
+          acc[j][m].mac(x, b[m]);
+    }
+  };
+  const int8_t *__restrict wp[M];
+  AIE_LOOP_UNROLL_FULL
+  for (int m = 0; m < M; m++)
+    wp[m] = kernels + (oc + m) * K1_IC_BLOCKS * 64;
+  // The rows after the last whole group go first, so the loop only
+  // accumulates.
+  AIE_LOOP_UNROLL_FULL
+  for (int r = G * U; r < K1_IC_BLOCKS; r++)
+    step(
+        wp, r,
+        [&](int j) { return k1_row_load(input, r * K1_ROW + k1_deep_x(j)); },
+        r == G * U);
+  if constexpr (G * U == K1_IC_BLOCKS) {
+    AIE_LOOP_UNROLL_FULL
+    for (int j = 0; j < N; j++)
+      AIE_LOOP_UNROLL_FULL
+    for (int m = 0; m < M; m++)
+      acc[j][m] = MMUL(aie::zeros<acc32, 64>());
+  }
+  AIE_LOOP_RANGE(G, G)
+  for (int g = 0; g < G; g++) {
+    aie::vector<TI, 64> w[7];
+    AIE_LOOP_UNROLL_FULL
+    for (int i = 0; i < 7; i++)
+      w[i] = aie::load_v<64>(input + g * 448 + 64 * i);
+    AIE_LOOP_UNROLL_FULL
+    for (int u = 0; u < U; u++)
+      step(
+          wp, u, [&](int j) { return k1_win(w, u * K1_ROW + k1_deep_x(j)); },
+          false);
+    AIE_LOOP_UNROLL_FULL
+    for (int m = 0; m < M; m++)
+      wp[m] += 64 * U;
+  }
+  const auto out = [&](const int m, const int j) {
+    const int o = (oc + m) * K1_ROW + k1_deep_x(j);
+    if constexpr (K1_WIDTH < 8) {
+      if (m % 2) {
+        const auto side_load = [](const auto *p) {
+          const auto v = k1_load_fixed(p - 8);
+          return ::shift_bytes(v, v, 8);
+        };
+        return epi(acc[j][m], side_load(side + o)...);
+      }
+    }
+    return epi(acc[j][m], k1_load_fixed(side + o)...);
+  };
+  if constexpr (K1_WIDTH >= 8) {
+    AIE_LOOP_UNROLL_FULL
+    for (int m = 0; m < M; m++)
+      AIE_LOOP_UNROLL_FULL
+    for (int j = 0; j < N; j++)
+      k1_store_fixed(output + (oc + m) * K1_ROW + k1_deep_x(j), out(m, j));
+  } else {
+    // Pairs of 7-pixel rows from an even block are 112 bytes on a 16-byte
+    // boundary; a lone last row ends in an 8-byte tail.
+    AIE_LOOP_UNROLL_FULL
+    for (int m = 0; m < M; m += 2) {
+      TO *__restrict p = output + (oc + m) * K1_ROW;
+      const aie::vector<TO, 64> a = out(m, 0);
+      AIE_LOOP_UNROLL_FULL
+      for (int i = 0; i < 3; i++)
+        aie::store_v(p + 16 * i, a.template extract<16>(i));
+      if (m + 1 < M) {
+        const aie::vector<TO, 64> v =
+            ::shift_bytes(::shift_bytes(a, a, 56), out(m + 1, 0), 56);
+        AIE_LOOP_UNROLL_FULL
+        for (int i = 0; i < 4; i++)
+          aie::store_v(p + 48 + 16 * i, v.template extract<16>(i));
+      } else {
+        const auto t = aie::vector_cast<int32>(a.template extract<16>(3));
+        int32_t *__restrict q = (int32_t *)(p + 48);
+        q[0] = t[0];
+        q[1] = t[1];
+      }
+    }
+  }
+}
+
+template <typename TI, typename TO, typename Epi, typename... S>
+static void
+k1_rows_deep(const TI *__restrict input, const int8_t *__restrict kernels,
+             TO *__restrict output, Epi epi, const S *__restrict... side) {
+  constexpr int M = K1_DEEP_M;
+  constexpr int R = K1_OC_BLOCKS % M;
+  for (int oc = 0; oc < K1_OC_BLOCKS - R; oc += M)
+    k1_deep_group<M>(input, kernels, output, oc, epi, side...);
+  if constexpr (R)
+    k1_deep_group<R>(input, kernels, output, K1_OC_BLOCKS - R, epi, side...);
+}
+#endif
 
 #if AIE_TUNED_AIE2P
 // The cascade-split pairs: a call is one output channel block of 7 pixels,
