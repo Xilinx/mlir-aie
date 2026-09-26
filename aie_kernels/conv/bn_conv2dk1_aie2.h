@@ -64,13 +64,26 @@ static inline bool k1_wts_aligned(const int8_t *kernels) {
 #endif
 }
 
-// On AIE2P the unaligned walkers do not fit next to the depthwise conv in a
-// mobilenet core's program memory, so kernels that share its core vectorize
-// only rows the aligned 4-pixel walker takes.
+// On AIE2P every walker a kernel links in does not fit next to the depthwise
+// conv in a mobilenet core's program memory. When the factory names the conv
+// dimensions, a kernel compiles in only the walker its width takes: 8-pixel
+// chunks unless their unaligned loads meet a shallow input-channel loop, with
+// aligned loads when the chunks tile the row. Without them it vectorizes only
+// rows the aligned 4-pixel walker takes.
+#if AIE_TUNED_AIE2P && defined(CONV_INPUT_WIDTH)
+#define K1_WIDTH CONV_INPUT_WIDTH
+constexpr int K1_P =
+    K1_WIDTH >= 8 && (K1_WIDTH % 8 == 0 || CONV_INPUT_CHANNELS >= 64) ? 8 : 4;
+constexpr bool K1_ALIGNED = K1_WIDTH % K1_P == 0;
+#endif
+
 template <typename... T>
 static inline bool k1_fits(const int32_t input_width, const int8_t *kernels,
                            const T *...p) {
-#if AIE_TUNED_AIE2P
+#if defined(K1_WIDTH)
+  return input_width == K1_WIDTH && k1_wts_aligned(kernels) &&
+         (!K1_ALIGNED || (((uintptr_t)p | ...) & (8 * K1_P - 1)) == 0);
+#elif AIE_TUNED_AIE2P
   return input_width % 4 == 0 && k1_wts_aligned(kernels) &&
          (((uintptr_t)p | ...) & 31) == 0;
 #else
