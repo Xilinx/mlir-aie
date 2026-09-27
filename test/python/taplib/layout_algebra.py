@@ -142,7 +142,7 @@ def group_semantics():
     m, n, r, t = 4, 32, 2, 2
     base = np.arange(m * n).reshape(m, n)
     grid = Layout.full((m, n)).tile((r, t)).group((1, 2), steps=(1, 4))
-    assert grid.grid_shape == [2, 1, 2, 4]
+    assert grid.grid_shape == [2, 8]
     assert grid.tile_shape == [1, 2, r, t]
     assert grid.num_steps == 16
     tiles_per_row = n // t
@@ -215,6 +215,39 @@ def matmul_stream_dims():
     tiles = Layout.full((m, n)).tile((r, t))
     cat = np.concatenate([visited(tiles[i]) for i in range(len(tiles))])
     assert (cat[visited(c)] == np.arange(m * n)).all()
+
+
+# CHECK-LABEL: partition_and_partial
+@construct_test
+def partition_and_partial():
+    # The per-column chunk idiom: [1, 1, 1, N // k] at offset i * N // k.
+    N, k = 4096, 8
+    parts = Layout.full((1, N)).partition(k)
+    assert len(parts) == k
+    for i in range(k):
+        assert parts[i].tap() == TensorAccessPattern(
+            (1, N), i * (N // k), [1, 1, 1, N // k], [0, 0, 0, 1]
+        )
+    # Partition along a leading axis keeps the rows contiguous.
+    rows = Layout.full((64, 32)).partition(4, dim=0)
+    assert rows[1].tap() == TensorAccessPattern(
+        (64, 32), 512, [1, 1, 16, 32], [0, 0, 32, 1]
+    )
+    # A ragged group: 14 tiles, repeat 7 spaced 3 apart -> repeat capped at 5,
+    # then 5, 5, 4 tiles for the three groups.
+    g = Layout.full((3, 28)).tile((3, 2)).group((1, 7), steps=(1, 3), partial=True)
+    assert g.grid_shape == [1, 3]
+    assert [g[i].sizes[1] for i in range(3)] == [5, 5, 4]
+    base = np.arange(3 * 28).reshape(3, 28)
+    for j in range(3):
+        tiles = list(range(j, 14, 3))[: g[j].sizes[1]]
+        want = np.concatenate([base[:, t * 2 : (t + 1) * 2].ravel() for t in tiles])
+        assert (visited(g[j]) == want).all()
+    try:
+        Layout.full((3, 28)).tile((3, 2)).group((1, 7), steps=(1, 3))
+        assert False
+    except ValueError as e:
+        assert "partial=True" in str(e)
 
 
 # CHECK-LABEL: symbolic_helpers_on_ints

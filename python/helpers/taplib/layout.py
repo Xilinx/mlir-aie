@@ -27,11 +27,11 @@ viewed tensor, ranks and permutations are always concrete Python ints.
 from __future__ import annotations
 
 import operator
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, NamedTuple, Sequence
 
 import numpy as np
 
-from .symbolic import is_sym, require, sceildiv, sint, sprod, sym_any
+from .symbolic import is_sym, require, sceildiv, sint, smin, sprod, sselect, sym_any
 from .tap import TensorAccessPattern
 
 __all__ = ["Layout", "TileGrid"]
@@ -364,21 +364,48 @@ class Layout:
     def tile(self, tile_dims: Sequence[IntLike]) -> TileGrid:
         """Divide every dimension into tiles of ``tile_dims``.
 
-        Dimension ``i`` of size ``n_i`` becomes a grid dimension of ``n_i //
-        t_i`` tiles and a tile dimension of ``t_i`` elements; grid dimensions
-        come first. The result is a :class:`TileGrid`, indexable by tile.
+        Dimension ``i`` of size ``n_i`` becomes a grid axis of ``n_i // t_i``
+        tiles (striding ``t_i`` times this view's stride) and a tile dimension
+        of ``t_i`` elements. The result is a :class:`TileGrid`, indexable by
+        tile. ``n_i`` must be divisible by ``t_i``.
         """
         tile_dims = [sint(t) for t in tile_dims]
         if len(tile_dims) != self.rank:
             raise ValueError(
                 f"tile_dims has {len(tile_dims)} entries for a view of rank {self.rank}"
             )
-        out = self
-        for dim in range(self.rank):
-            out = out.split(2 * dim, tile_dims[dim])
-        grid = [2 * i for i in range(self.rank)]
-        inner = [2 * i + 1 for i in range(self.rank)]
-        return TileGrid(out.permute(grid + inner), self.rank)
+        grid: list[_GridAxis] = []
+        for dim, t in enumerate(tile_dims):
+            n, s = self._sizes[dim], self._strides[dim]
+            require(t >= 1, f"tile_dims[{dim}] must be >= 1")
+            require(
+                n % t == 0,
+                f"dimension {dim} of size {n} is not divisible by tile size {t}",
+            )
+            grid.append(_GridAxis(n // t, s * t, n // t, 1, 1, None))
+        return TileGrid(
+            self._tensor_dims, self._offset, grid, list(tile_dims), list(self._strides)
+        )
+
+    def partition(self, parts: IntLike, dim: int = -1) -> TileGrid:
+        """Split dimension ``dim`` into ``parts`` equal contiguous pieces.
+
+        ``Layout.full((1, N)).partition(k)[i]`` is the ``i``-th of ``k`` equal
+        chunks of a flat range: the pattern every per-column or per-channel
+        design writes by hand as ``[1, 1, 1, N // k]`` with offset
+        ``i * N // k``. Other dimensions are kept whole, so the grid has
+        exactly ``parts`` steps.
+        """
+        dim = self._axis(dim)
+        parts = sint(parts)
+        require(parts >= 1, "parts must be >= 1")
+        require(
+            self._sizes[dim] % parts == 0,
+            f"dimension {dim} of size {self._sizes[dim]} is not divisible into {parts} parts",
+        )
+        tile_dims = list(self._sizes)
+        tile_dims[dim] = self._sizes[dim] // parts
+        return self.tile(tile_dims)
 
     # ------------------------------------------------------------- conversions
 
@@ -466,75 +493,99 @@ class Layout:
         )
 
 
-class TileGrid:
-    """A :class:`Layout` whose leading ``n_grid`` dimensions index tiles.
+class _GridAxis(NamedTuple):
+    """One grid axis of a :class:`TileGrid`.
 
-    ``grid[i, j]`` (or ``grid[step]`` with a linearised step index) is the
-    :class:`Layout` of one tile: the grid dimensions are fixed and the tile
-    dimensions remain. Indices may be staged runtime values, in which case the
-    tile's offset is staged arithmetic; that is what lets one compiled runtime
-    sequence walk a runtime-sized tensor.
-
-    Created by :meth:`Layout.tile`; refined by :meth:`group`, :meth:`order`,
-    :meth:`permute_tile` and :meth:`repeat`.
+    ``steps`` grid positions index ``tiles`` tiles that lie ``stride``
+    elements apart. After :meth:`TileGrid.group`, position ``p`` names the
+    group's first tile ``(p // step) * step * repeat + p % step`` and the
+    tile carries a repeat dimension of nominal size ``repeat`` at index
+    ``rep_pos`` among the tile dimensions.
     """
 
-    __slots__ = ("_layout", "_n_grid", "_order", "_axes")
+    steps: IntLike
+    stride: IntLike
+    tiles: IntLike
+    step: IntLike
+    repeat: IntLike
+    rep_pos: int | None
+
+
+class TileGrid:
+    """A tiling: grid axes that index tiles, and the tile's own dimensions.
+
+    ``grid[i, j]`` (or ``grid[step]`` with a linearised step index) is the
+    :class:`Layout` of one tile. Indices may be staged runtime values, in which
+    case the tile's offset is staged arithmetic; that is what lets one compiled
+    runtime sequence walk a runtime-sized tensor.
+
+    Created by :meth:`Layout.tile` and :meth:`Layout.partition`; refined by
+    :meth:`group`, :meth:`order`, :meth:`permute_tile` and :meth:`repeat`.
+    """
+
+    __slots__ = (
+        "_tensor_dims",
+        "_offset",
+        "_grid",
+        "_tile_sizes",
+        "_tile_strides",
+        "_order",
+        "_partial",
+    )
 
     def __init__(
         self,
-        layout: Layout,
-        n_grid: int,
+        tensor_dims: Sequence[IntLike],
+        offset: IntLike,
+        grid: Sequence[_GridAxis],
+        tile_sizes: Sequence[IntLike],
+        tile_strides: Sequence[IntLike],
         order: Sequence[int] | None = None,
-        axes: Sequence[Sequence[int]] | None = None,
+        partial: bool = False,
     ):
-        n_grid = int(n_grid)
-        if not 1 <= n_grid < layout.rank:
+        if len(grid) == 0:
+            raise ValueError("a TileGrid needs at least one grid axis")
+        if len(tile_sizes) == 0 or len(tile_sizes) != len(tile_strides):
             raise ValueError(
-                f"n_grid ({n_grid}) must leave at least one tile dimension of rank {layout.rank}"
+                "a TileGrid needs matching, non-empty tile sizes and strides"
             )
-        self._layout = layout
-        self._n_grid = n_grid
+        self._tensor_dims = list(tensor_dims)
+        self._offset = offset
+        self._grid = tuple(grid)
+        self._tile_sizes = list(tile_sizes)
+        self._tile_strides = list(tile_strides)
         self._order = (
-            tuple(range(n_grid))
+            tuple(range(len(grid)))
             if order is None
-            else _check_perm(order, n_grid, "order")
+            else _check_perm(order, len(grid), "order")
         )
-        # Which grid dimensions descend from each tensor axis (a group() turns
-        # one axis into a (block, group) pair). "row"/"col" orders are stated
-        # per tensor axis, so this is what they permute.
-        self._axes = (
-            tuple((i,) for i in range(n_grid))
-            if axes is None
-            else tuple(tuple(int(d) for d in a) for a in axes)
-        )
+        self._partial = bool(partial)
 
     # --------------------------------------------------------------- shape
 
     @property
-    def layout(self) -> Layout:
-        """The underlying view (grid dimensions first, then tile dimensions)."""
-        return self._layout
-
-    @property
     def n_grid(self) -> int:
-        return self._n_grid
+        """Number of grid axes (one per tensor dimension)."""
+        return len(self._grid)
 
     @property
     def grid_shape(self) -> list[IntLike]:
-        return self._layout._sizes[: self._n_grid]
+        """Steps along each grid axis."""
+        return [a.steps for a in self._grid]
 
     @property
     def grid_strides(self) -> list[IntLike]:
-        return self._layout._strides[: self._n_grid]
+        """Element stride between consecutive tiles along each grid axis."""
+        return [a.stride for a in self._grid]
 
     @property
     def tile_shape(self) -> list[IntLike]:
-        return self._layout._sizes[self._n_grid :]
+        """Nominal tile dimensions (a ragged group's last step may be smaller)."""
+        return list(self._tile_sizes)
 
     @property
     def tile_strides(self) -> list[IntLike]:
-        return self._layout._strides[self._n_grid :]
+        return list(self._tile_strides)
 
     @property
     def num_steps(self) -> IntLike:
@@ -542,8 +593,34 @@ class TileGrid:
         return sprod(self.grid_shape)
 
     @property
+    def is_grouped(self) -> bool:
+        return any(a.rep_pos is not None for a in self._grid)
+
+    @property
     def is_symbolic(self) -> bool:
-        return self._layout.is_symbolic
+        vals = [
+            self._offset,
+            *self._tile_sizes,
+            *self._tile_strides,
+            *self._tensor_dims,
+        ]
+        for a in self._grid:
+            vals += [a.steps, a.stride, a.tiles, a.step, a.repeat]
+        return sym_any(vals)
+
+    @property
+    def layout(self) -> Layout:
+        """The underlying view, grid axes first, for an ungrouped grid."""
+        if self.is_grouped:
+            raise ValueError(
+                "a grouped TileGrid is not a single strided view; index it instead"
+            )
+        return Layout(
+            self._tensor_dims,
+            self._offset,
+            [a.tiles for a in self._grid] + self._tile_sizes,
+            [a.stride for a in self._grid] + self._tile_strides,
+        )
 
     def __len__(self) -> int:
         n = self.num_steps
@@ -557,24 +634,34 @@ class TileGrid:
 
     def at(self, *index: IntLike) -> Layout:
         """Return the tile at a multi-dimensional grid index."""
-        if len(index) != self._n_grid:
-            raise IndexError(f"expected {self._n_grid} grid indices, got {len(index)}")
-        offset: IntLike = self._layout._offset
-        for i, (idx, n, s) in enumerate(zip(index, self.grid_shape, self.grid_strides)):
+        if len(index) != self.n_grid:
+            raise IndexError(f"expected {self.n_grid} grid indices, got {len(index)}")
+        offset: IntLike = self._offset
+        sizes = list(self._tile_sizes)
+        for i, (idx, a) in enumerate(zip(index, self._grid)):
             idx = sint(idx)
-            if is_sym(idx) or is_sym(n):
+            if is_sym(idx) or is_sym(a.steps):
                 require(idx >= 0, f"grid index {i} must be >= 0")
-                require(idx < n, f"grid index {i} exceeds the grid")
-            elif not -n <= idx < n:
+                require(idx < a.steps, f"grid index {i} exceeds the grid")
+            elif not -a.steps <= idx < a.steps:
                 raise IndexError(
-                    f"grid index {idx} out of range for grid dimension {i} of {n}"
+                    f"grid index {idx} out of range for grid axis {i} of {a.steps} steps"
                 )
             elif idx < 0:
-                idx += n
-            offset = offset + idx * s
-        return self._layout._with(
-            offset=offset, sizes=self.tile_shape, strides=self.tile_strides
-        )
+                idx += a.steps
+            plain = (
+                not is_sym(a.step)
+                and not is_sym(a.repeat)
+                and a.step == 1
+                and a.repeat == 1
+            )
+            first = (
+                idx if plain else (idx // a.step) * (a.step * a.repeat) + idx % a.step
+            )
+            offset = offset + first * a.stride
+            if self._partial and a.rep_pos is not None:
+                sizes[a.rep_pos] = smin(a.repeat, sceildiv(a.tiles - first, a.step))
+        return Layout(self._tensor_dims, offset, sizes, self._tile_strides)
 
     def tile_at(self, step: IntLike) -> Layout:
         """Return the tile at linearised ``step``, following :meth:`order`.
@@ -585,10 +672,10 @@ class TileGrid:
         """
         step = sint(step)
         shape = self.grid_shape
-        index: list[IntLike] = [0] * self._n_grid
+        index: list[IntLike] = [0] * self.n_grid
         rest = step
-        # Fastest-varying grid dimension last in ``order``.
-        for pos in reversed(range(self._n_grid)):
+        # Fastest-varying grid axis last in ``order``.
+        for pos in reversed(range(self.n_grid)):
             dim = self._order[pos]
             n = shape[dim]
             if pos == 0:
@@ -615,53 +702,65 @@ class TileGrid:
 
     # --------------------------------------------------------- refinements
 
-    def order(self, order: str | Sequence[int]) -> TileGrid:
-        """Set the step order over the grid: ``"row"`` (default), ``"col"`` or a permutation.
+    def _replace(self, **kw) -> TileGrid:
+        args = dict(
+            tensor_dims=self._tensor_dims,
+            offset=self._offset,
+            grid=self._grid,
+            tile_sizes=self._tile_sizes,
+            tile_strides=self._tile_strides,
+            order=self._order,
+            partial=self._partial,
+        )
+        args.update(kw)
+        return TileGrid(**args)
 
-        The permutation lists grid dimensions slowest-varying first. ``"col"``
-        reverses the default, so for a 2-D grid steps walk down a column
-        before moving to the next.
+    def order(self, order: str | Sequence[int]) -> TileGrid:
+        """Set the step order over the grid axes: ``"row"`` (default), ``"col"`` or a permutation.
+
+        The permutation lists grid axes slowest-varying first. ``"col"``
+        reverses the default, so on a 2-D grid steps walk down a column of
+        tiles before moving to the next column.
         """
         if isinstance(order, str):
             if order == "row":
-                axes = self._axes
+                perm: Sequence[int] = range(self.n_grid)
             elif order == "col":
-                axes = tuple(reversed(self._axes))
+                perm = range(self.n_grid - 1, -1, -1)
             else:
                 raise ValueError(
                     f"order must be 'row', 'col' or a permutation, got {order!r}"
                 )
-            perm: Sequence[int] = [d for a in axes for d in a]
         else:
             perm = order
-        return TileGrid(self._layout, self._n_grid, perm, self._axes)
+        return self._replace(order=perm)
 
     def permute_tile(self, axes: Sequence[int]) -> TileGrid:
-        """Reorder the tile dimensions (walk inside each tile), leaving the grid alone."""
-        axes = _check_perm(axes, self._layout.rank - self._n_grid, "axes")
-        full = list(range(self._n_grid)) + [self._n_grid + a for a in axes]
-        return TileGrid(
-            self._layout.permute(full), self._n_grid, self._order, self._axes
+        """Reorder the tile dimensions (the walk inside each tile), leaving the grid alone."""
+        axes = _check_perm(axes, len(self._tile_sizes), "axes")
+        remap = {old: new for new, old in enumerate(axes)}
+        grid = [
+            a if a.rep_pos is None else a._replace(rep_pos=remap[a.rep_pos])
+            for a in self._grid
+        ]
+        return self._replace(
+            grid=grid,
+            tile_sizes=[self._tile_sizes[a] for a in axes],
+            tile_strides=[self._tile_strides[a] for a in axes],
         )
-
-    def permute_grid(self, axes: Sequence[int]) -> TileGrid:
-        """Reorder the grid dimensions, leaving the tiles alone. Resets the step order."""
-        axes = _check_perm(axes, self._n_grid, "axes")
-        full = list(axes) + list(range(self._n_grid, self._layout.rank))
-        return TileGrid(self._layout.permute(full), self._n_grid)
 
     def repeat(self, count: IntLike) -> TileGrid:
         """Walk each tile ``count`` times (a stride-0 outermost tile dimension)."""
         count = sint(count)
         require(count >= 1, f"repeat count must be >= 1, got {count}")
-        lay = self._layout
-        sizes = lay._sizes[: self._n_grid] + [count] + lay._sizes[self._n_grid :]
-        strides = lay._strides[: self._n_grid] + [0] + lay._strides[self._n_grid :]
-        return TileGrid(
-            lay._with(sizes=sizes, strides=strides),
-            self._n_grid,
-            self._order,
-            self._axes,
+        grid = [
+            a if a.rep_pos is None else a._replace(rep_pos=a.rep_pos + 1)
+            for a in self._grid
+        ]
+        return self._replace(
+            grid=grid,
+            tile_sizes=[count] + self._tile_sizes,
+            tile_strides=[0] + self._tile_strides,
         )
 
     def group(
@@ -669,56 +768,72 @@ class TileGrid:
         repeats: Sequence[IntLike],
         steps: Sequence[IntLike] | None = None,
         col_major: bool = False,
+        partial: bool = False,
     ) -> TileGrid:
         """Gather ``repeats[i]`` tiles spaced ``steps[i]`` tiles apart into each step.
 
-        Along grid dimension ``i`` with ``G`` tiles, a block is ``S * R`` tiles
-        (``S = steps[i]``, ``R = repeats[i]``); within a block, group ``j`` (for
-        ``0 <= j < S``) takes tiles ``j, j + S, ..., j + (R - 1) S``. The grid
-        becomes ``(G // (S R), S)`` per dimension, blocks then groups, and each
-        step's tile gains a leading dimension of ``R`` repeats striding ``S``
-        tiles. With ``steps`` omitted every step is a contiguous ``R``-tile
-        group. ``col_major`` walks the repeat dimensions innermost-first, i.e.
-        all repeats along the last grid dimension before advancing the first.
+        Along grid axis ``i`` with ``G`` tiles, a block is ``S * R`` tiles
+        (``S = steps[i]``, ``R = repeats[i]``); within a block, group ``j``
+        (``0 <= j < S``) takes tiles ``j, j + S, ..., j + (R - 1) S``. Steps
+        along the axis enumerate blocks then groups, and each step's tile
+        gains a leading repeat dimension of ``R`` striding ``S`` tiles. With
+        ``steps`` omitted every step is a contiguous ``R``-tile group.
+        ``col_major`` walks the repeat dimensions innermost-first, i.e. all
+        repeats along the last axis before advancing the first.
 
-        ``G`` must be divisible by ``S * R``; ragged edges are not modelled.
+        With ``partial=False`` (default) ``G`` must be divisible by ``S * R``.
+        With ``partial=True`` the tensor edge may hold an incomplete block:
+        ``R`` is first capped at ``ceildiv(G, S)``, the last block's groups
+        get the tiles that remain, and each step's repeat size is
+        ``min(R, ceildiv(G - first, S))``. That is what ``allow_partial``
+        meant on the old tiler, and it stays branch-free on staged values.
         """
-        ng = self._n_grid
+        if self.is_grouped:
+            raise ValueError("this TileGrid is already grouped")
+        ng = self.n_grid
         repeats = [sint(r) for r in repeats]
         steps = [1] * ng if steps is None else [sint(s) for s in steps]
         if len(repeats) != ng or len(steps) != ng:
             raise ValueError(f"repeats and steps need {ng} entries")
-        lay = self._layout
-        grid_sizes: list[IntLike] = []
-        grid_strides: list[IntLike] = []
         rep_sizes: list[IntLike] = []
         rep_strides: list[IntLike] = []
-        for i in range(ng):
-            g, gs = lay._sizes[i], lay._strides[i]
+        grid: list[_GridAxis] = []
+        for i, a in enumerate(self._grid):
+            g, gs = a.tiles, a.stride
             s, r = steps[i], repeats[i]
             require(s >= 1, f"steps[{i}] must be >= 1")
             require(r >= 1, f"repeats[{i}] must be >= 1")
-            require(
-                g % (s * r) == 0,
-                f"grid dimension {i} of {g} tiles is not divisible by steps*repeats = {s}*{r}",
+            # A step wider than the axis degenerates to 1.
+            s = (
+                sselect(s > g, 1, s)
+                if (is_sym(s) or is_sym(g))
+                else (1 if s > g else s)
             )
-            grid_sizes += [g // (s * r), s]
-            grid_strides += [gs * s * r, gs]
+            if partial:
+                r = smin(r, sceildiv(g, s))
+                blocks = g // (s * r)
+                left = g - blocks * s * r
+                n_steps = blocks * s + smin(left, s)
+            else:
+                require(
+                    g % (s * r) == 0,
+                    f"grid axis {i} of {g} tiles is not divisible by steps*repeats = {s}*{r}; "
+                    "pass partial=True to allow a ragged edge",
+                )
+                n_steps = (g // (s * r)) * s
+            grid.append(_GridAxis(n_steps, gs, g, s, r, i))
             rep_sizes.append(r)
             rep_strides.append(gs * s)
         if col_major:
             rep_sizes.reverse()
             rep_strides.reverse()
-        sizes = grid_sizes + rep_sizes + lay._sizes[ng:]
-        strides = grid_strides + rep_strides + lay._strides[ng:]
-        new_grid = 2 * ng
-        # Keep the current step order, expanded so each old grid dimension's
-        # (block, group) pair stays adjacent, block outermost.
-        order = [x for d in self._order for x in (2 * d, 2 * d + 1)]
-        axes = tuple(
-            tuple(x for d in a for x in (2 * d, 2 * d + 1)) for a in self._axes
+            grid = [a._replace(rep_pos=ng - 1 - a.rep_pos) for a in grid]
+        return self._replace(
+            grid=grid,
+            tile_sizes=rep_sizes + self._tile_sizes,
+            tile_strides=rep_strides + self._tile_strides,
+            partial=partial,
         )
-        return TileGrid(lay._with(sizes=sizes, strides=strides), new_grid, order, axes)
 
     def inverse(self) -> Layout:
         """Return the walk that reads a tile-blocked buffer back in logical row-major order.
@@ -731,18 +846,20 @@ class TileGrid:
         and the inverse of :meth:`Layout.tile` up to that buffer's storage.
 
         Only defined on a grid straight from :meth:`Layout.tile` (no grouping,
-        no repeat).
+        no repeat, no tile permutation).
         """
-        ng = self._n_grid
-        lay = self._layout
-        if lay.rank != 2 * ng:
+        ng = self.n_grid
+        if self.is_grouped or len(self._tile_sizes) != ng:
             raise ValueError(
                 "inverse() is only defined on a plain tile grid (no group/repeat)"
             )
-        blocked = Layout.full(lay._sizes)  # tiles stored consecutively, each contiguous
+        blocked = Layout.full([a.tiles for a in self._grid] + self._tile_sizes)
         interleave = [x for i in range(ng) for x in (i, ng + i)]
         out = blocked.permute(interleave)
-        return Layout(lay._tensor_dims, 0, out._sizes, out._strides)
+        return Layout(self._tensor_dims, 0, out._sizes, out._strides)
 
     def __repr__(self) -> str:
-        return f"TileGrid(grid={self.grid_shape}, tile={self.tile_shape}, order={self._order}, layout={self._layout!r})"
+        return (
+            f"TileGrid(grid={self.grid_shape}, tile={self.tile_shape}, "
+            f"order={self._order}, partial={self._partial}, offset={self._offset})"
+        )

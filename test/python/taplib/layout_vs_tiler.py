@@ -26,6 +26,7 @@ def algebra_tiler(
     tile_group_col_major=False,
     iter_col_major=False,
     pattern_repeat=1,
+    allow_partial=False,
 ):
     """TensorTiler2D.step_tiler spelled on the algebra."""
     grid = Layout.full(tensor_dims).tile(tile_dims)
@@ -33,7 +34,10 @@ def algebra_tiler(
         grid = grid.permute_tile((1, 0))
     grid = grid.order("col" if iter_col_major else "row")
     grid = grid.group(
-        tile_group_repeats, steps=tile_group_steps, col_major=tile_group_col_major
+        tile_group_repeats,
+        steps=tile_group_steps,
+        col_major=tile_group_col_major,
+        partial=allow_partial,
     )
     if pattern_repeat != 1:
         grid = grid.repeat(pattern_repeat)
@@ -225,3 +229,49 @@ def prune_step_merges():
             exact += e
     print(f"prune steps={total} exact={exact} merged={total - exact}")
     # CHECK: prune steps={{[0-9]+}} exact={{[0-9]+}} merged={{[1-9][0-9]*}}
+
+
+# CHECK-LABEL: partial_tilers
+@construct_test
+def partial_tilers():
+    """allow_partial=True: ragged edges, exact with prune_step=False."""
+    total = exact = 0
+    merged_total = merged_exact = 0
+    configs = []
+    for dims in ((45, 24), (36, 28), (36, 24), (45, 28)):
+        for steps in ((1, 1), (3, 3), (1, 3), (2, 2), (2, 1), (2, 3)):
+            for tcm, gcm, icm in itertools.product((False, True), repeat=3):
+                for rep in (1, 2):
+                    configs.append((dims, steps, tcm, gcm, icm, rep))
+    for dims, steps, tcm, gcm, icm, rep in configs:
+        kwargs = dict(
+            tile_dims=(3, 2),
+            tile_group_repeats=(5, 7),
+            tile_group_steps=steps,
+            tile_col_major=tcm,
+            tile_group_col_major=gcm,
+            iter_col_major=icm,
+            pattern_repeat=rep,
+            allow_partial=True,
+        )
+        try:
+            legacy = TensorTiler2D.step_tiler(dims, prune_step=False, **kwargs)
+        except ValueError:
+            continue  # the legacy tiler runs out of dimensions for this combo
+        grid = algebra_tiler(
+            dims, (3, 2), (5, 7), steps, tcm, gcm, icm, rep, allow_partial=True
+        )
+        n, e = compare(legacy, grid)
+        total += n
+        exact += e
+        # With the legacy default prune_step=True the col-major combos merge a
+        # repeat into the tile; the algebra keeps them separate (coalesce() is
+        # explicit), so those are access-equivalent only.
+        legacy_pruned = TensorTiler2D.step_tiler(dims, **kwargs)
+        n, e = compare(legacy_pruned, grid)
+        merged_total += n
+        merged_exact += e
+    print(f"partial steps={total} exact={exact}")
+    print(f"partial pruned steps={merged_total} exact={merged_exact}")
+    # CHECK: partial steps=[[N:[0-9]+]] exact=[[N]]
+    # CHECK: partial pruned steps={{[0-9]+}} exact={{[0-9]+}}
