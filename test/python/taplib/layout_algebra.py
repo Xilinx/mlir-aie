@@ -251,10 +251,10 @@ def partition_and_partial():
     # then 5, 5, 4 tiles for the three groups.
     g = Layout.full((3, 28)).tile((3, 2)).group((1, 7), steps=(1, 3), partial=True)
     assert g.grid_shape == [1, 3]
-    assert [g[i].sizes[1] for i in range(3)] == [5, 5, 4]
+    assert [g[i].sizes[0] for i in range(3)] == [5, 5, 4]
     base = np.arange(3 * 28).reshape(3, 28)
     for j in range(3):
-        tiles = list(range(j, 14, 3))[: g[j].sizes[1]]
+        tiles = list(range(j, 14, 3))[: g[j].sizes[0]]
         want = np.concatenate([base[:, t * 2 : (t + 1) * 2].ravel() for t in tiles])
         assert (visited(g[j]) == want).all()
     try:

@@ -426,10 +426,8 @@ class Layout:
         """
         out = self
         if ndims is not None:
-            # Unit dimensions carry no addressing; the canonical shim form has
-            # none of them except as padding. Rank is structural, so a staged
-            # view keeps its dimensions where they are.
-            if not sym_any(out._sizes):
+            concrete = not out.is_symbolic
+            if out.rank > ndims and concrete:
                 out = out.drop_unit_dims()
             if out.rank > ndims:
                 raise ValueError(
@@ -437,12 +435,13 @@ class Layout:
                     f"{ndims} DMA dimensions; coalesce() or re-tile it"
                 )
             pad = ndims - out.rank
-            if (
-                pad
-                and not is_sym(out._strides[0])
-                and out._strides[0] == 0
+            is_repeat = (
+                concrete
                 and out.rank > 1
-            ):
+                and out._strides[0] == 0
+                and out._sizes[0] != 1
+            )
+            if pad and is_repeat:
                 # Slot 0 of the shim form is the queue repeat: a pure repeat
                 # stays there and the padding goes between it and the
                 # addressing dimensions, so [R, th, tw] becomes [R, 1, th, tw].
@@ -451,6 +450,13 @@ class Layout:
             else:
                 sizes = [1] * pad + out._sizes
                 strides = [0] * pad + out._strides
+            if concrete:
+                # A unit dimension ahead of the first real one never steps, so
+                # its stride is 0; the repeat slot is transparent to that scan.
+                for i in range(1 if is_repeat else 0, len(sizes)):
+                    if sizes[i] != 1:
+                        break
+                    strides[i] = 0
             out = out._with(sizes=sizes, strides=strides)
         return TensorAccessPattern(
             out._tensor_dims, out._offset, out._sizes, out._strides
@@ -661,7 +667,21 @@ class TileGrid:
             offset = offset + first * a.stride
             if self._partial and a.rep_pos is not None:
                 sizes[a.rep_pos] = smin(a.repeat, sceildiv(a.tiles - first, a.step))
-        return Layout(self._tensor_dims, offset, sizes, self._tile_strides)
+        strides = list(self._tile_strides)
+        # A repeat of exactly one tile is no repeat: leave it out, so the tile
+        # keeps only dimensions that step. Tile dimensions stay even when they
+        # are 1 (a 1-row tile is still a tile).
+        drop = [
+            a.rep_pos
+            for a in self._grid
+            if a.rep_pos is not None
+            and not is_sym(sizes[a.rep_pos])
+            and sizes[a.rep_pos] == 1
+        ]
+        if drop:
+            sizes = [v for i, v in enumerate(sizes) if i not in drop]
+            strides = [v for i, v in enumerate(strides) if i not in drop]
+        return Layout(self._tensor_dims, offset, sizes, strides)
 
     def tile_at(self, step: IntLike) -> Layout:
         """Return the tile at linearised ``step``, following :meth:`order`.
