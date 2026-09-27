@@ -14,10 +14,12 @@ shape as ``DispatchTime`` scalars: every call rebuilds the instruction stream
 on the host from the same xclbin, in C++, in microseconds, with no Python in
 the loop. The tiling logic is the same taplib algebra as the static design,
 evaluated inside the runtime-sequence body on staged values: taps come out as
-arithmetic on ``M``, ``K``, ``N``, loops stay rolled (``range_``), the ragged
-last row block is a peeled ``if_``, and the shape constraints the static
-design asserts become ``require`` guards that refuse an illegal dispatch
-before anything reaches the NPU.
+arithmetic on ``M``, ``K``, ``N``, the time-block loop stays rolled
+(``range_``) with the in-flight step's transfers carried as iter_args so two
+halves stay in flight as in the static design, the ragged last row block is
+a peeled ``if_``, and the shape constraints the static design asserts become
+``require`` guards that refuse an illegal dispatch before anything reaches
+the NPU.
 
 Per-core trip counts (``K // k`` and the number of output tiles a core
 produces) reach the workers as runtime parameters: each worker owns an RTP
@@ -48,13 +50,12 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    TaskGroup,
     Worker,
     WorkerRuntimeBarrier,
     kernels,
     str_to_dtype,
 )
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import range_, yield_
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -293,31 +294,69 @@ def _build_design(
         n_ragged_rows = n_row_tiles % tb_n_rows
 
         def issue_step(step, n_rows):
-            """One time block half: n_rows (static) row blocks on every column.
+            """Issue one time block half: n_rows (static) row blocks per column.
 
-            All of a step's tasks are issued and finished in one region, so
-            their handles never cross a loop or branch boundary.
+            Returns the step's transfers as (task, waited) pairs. Every count
+            here is static, so the handles can ride a loop-carried iter_arg.
             """
-            tg = TaskGroup()
+            tasks = []
             row_base = step * tb_n_rows
             for col in range(n_aie_cols):
-                C_hs[col].drain(
-                    C, tap=C_tiles[step * n_aie_cols + col], wait=True, group=tg
+                tasks.append(
+                    (
+                        C_hs[col].drain(
+                            C,
+                            tap=C_tiles[step * n_aie_cols + col],
+                            wait=True,
+                            managed=False,
+                        ),
+                        True,
+                    )
                 )
                 for tile_row in range(n_rows):
                     tile_offset = (
                         (row_base + tile_row) * n_shim_mem_A + col
                     ) % A_tiles.num_steps
                     if col < n_aie_rows:
-                        A_hs[col].fill(A, tap=A_tiles[tile_offset], group=tg)
-                    B_hs[col].fill(B, tap=B_tiles[col], group=tg)
-            tg.finish()
+                        tasks.append(
+                            (
+                                A_hs[col].fill(
+                                    A, tap=A_tiles[tile_offset], managed=False
+                                ),
+                                False,
+                            )
+                        )
+                    tasks.append(
+                        (B_hs[col].fill(B, tap=B_tiles[col], managed=False), False)
+                    )
+            return tasks
 
-        for step in range_(n_full_steps):
-            issue_step(arith.index_cast(step, to=i32), tb_n_rows)
+        def finish(tasks):
+            """Await the waited transfers of a step, then free them all."""
+            for task, waited in tasks:
+                if waited:
+                    task.await_()
+            for task, _ in tasks:
+                task.free()
+
+        # Two time-block halves in flight, as in whole_array.py: a step's
+        # transfers are finished only after the next step's are issued. The
+        # in-flight step rides the loop as iter_args (its transfer count is
+        # static), so the loop stays rolled over the dispatch-time trip count.
+        with if_(n_full_steps > 0, hasElse=False):
+            first = issue_step(0, tb_n_rows)
+            waited = [w for _, w in first]
+            results = [t for t, _ in first]
+            for iv, prev, results in range_(
+                1, n_full_steps, iter_args=[t for t, _ in first], insert_yield=False
+            ):
+                current = issue_step(arith.index_cast(iv, to=i32), tb_n_rows)
+                finish(zip(prev, waited))
+                yield_([t for t, _ in current])
+            finish(zip(results, waited))
         if tb_n_rows > 1:
             with if_(n_ragged_rows > 0, hasElse=False):
-                issue_step(n_full_steps, 1)
+                finish(issue_step(n_full_steps, 1))
 
     rt = Runtime(sequence, [A_ty, B_ty, C_ty, M, K, N, A_prods, B_prods, C_conses])
     return Program(dev, rt, workers=flat_workers).resolve_program()

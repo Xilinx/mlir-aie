@@ -314,11 +314,11 @@ def sequence(A, B, C, M, K, N, A_hs, B_hs, C_hs):
 
 The rules of thumb:
 
-- Keep trip counts static where the hardware needs them static. A `range_`
-  over a staged bound stays rolled; a task issued inside it must be finished
-  in the same loop body (its handle cannot leave the region), so a ragged
-  last block is a peeled `with if_(rem > 0):` rather than a runtime-length
-  inner loop.
+- Keep transfer counts static where the hardware needs them static. A
+  `range_` over a staged bound stays rolled; a task issued inside it is
+  finished in the same loop body or carried to the next iteration as a
+  `range_` iter_arg (`managed=False`), so a ragged last block is a peeled
+  `with if_(rem > 0):` rather than a runtime-length inner loop.
 - Sizes and strides reach `aie.dma_bd` as `i64`; the builder widens a
   narrower staged value for you, and hoists the transfer length and repeat
   count it derives from them before the task region opens.
