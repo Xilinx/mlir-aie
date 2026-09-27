@@ -318,6 +318,19 @@ private:
                 b, loc, "if ({} % " + d + " != 0) return std::nullopt;",
                 ValueRange{g.getValue()});
         })
+        .Case<AIEX::NpuRequireOp>([&](auto g) {
+          // Host-side shape guard: a violated user constraint yields no
+          // stream (std::nullopt), the same contract as the BD-field guards.
+          // The message rides along as a comment so the generated C++ says
+          // which constraint an early return belongs to. Appends nothing.
+          std::string note = g.getMessage().str();
+          for (char &ch : note)
+            if (ch == '\n' || ch == '\r')
+              ch = ' ';
+          emitc::VerbatimOp::create(
+              b, loc, "if (!({})) return std::nullopt; // " + note,
+              ValueRange{g.getCond()});
+        })
         .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
           // Draw a BD id from the tile's runtime pool (declared in the
           // prologue) into a fresh C++ variable; nullopt if the pool is empty.

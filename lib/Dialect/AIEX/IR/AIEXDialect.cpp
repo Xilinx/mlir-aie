@@ -957,6 +957,38 @@ LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuRequireOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuRequireOp::verify() {
+  if (auto c = getConstantIntValue(getCond()))
+    if (*c == 0)
+      return emitOpError("shape constraint is violated at compile time: ")
+             << getMessage();
+  return success();
+}
+
+namespace {
+// A constraint proven at compile time carries no runtime check.
+struct EraseSatisfiedRequire : OpRewritePattern<AIEX::NpuRequireOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(AIEX::NpuRequireOp op,
+                                PatternRewriter &rewriter) const override {
+    auto c = getConstantIntValue(op.getCond());
+    if (!c || *c == 0)
+      return failure();
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+} // namespace
+
+void AIEX::NpuRequireOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &results, mlir::MLIRContext *context) {
+  results.add<EraseSatisfiedRequire>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // NpuAssertBdDivisibleOp
 //===----------------------------------------------------------------------===//
 

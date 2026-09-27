@@ -13,6 +13,7 @@ from ._aiex_ops_gen import (
     npu_sync as _npu_sync,
     npu_address_patch as _npu_address_patch,
     npu_rtp_write as _npu_rtp_write,
+    npu_require as _npu_require,
     npu_push_queue as _npu_push_queue,
 )
 from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
@@ -91,6 +92,17 @@ def npu_address_patch(addr, arg_idx, arg_plus, **kwargs):
 
 def npu_rtp_write(buffer, index, value, **kwargs):
     return _npu_rtp_write(buffer, index, _as_i32(value), **kwargs)
+
+
+def npu_require(cond, message: str, **kwargs):
+    """Guard a shape constraint at dispatch: ``cond`` (an ``i1`` Value or a Python bool) must hold.
+
+    See ``aie.helpers.taplib.symbolic.require`` for the helper that raises on a
+    concrete condition and emits this op on a staged one.
+    """
+    if isinstance(cond, (bool, np.bool_)):
+        cond = constant(bool(cond), T.i1())
+    return _npu_require(cond, message, **kwargs)
 
 
 def npu_push_queue(
