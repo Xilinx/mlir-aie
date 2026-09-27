@@ -24,6 +24,7 @@
 #include "mlir/Conversion/ArithToEmitC/ArithToEmitC.h"
 #include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -33,6 +34,7 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/RegionUtils.h"
 
 #include "llvm/ADT/SmallSet.h"
@@ -578,6 +580,21 @@ struct ConvertAIEXToEmitCPass
   // generated functions in one pass: a rolled dynamic loop is scf.for, and its
   // bounds / iter_args are arith, so both must lower together.
   LogicalResult lowerArithAndScfToEmitC(ModuleOp moduleOp) {
+    // ArithToEmitC has no patterns for the integer ops the Python bindings
+    // emit for `//`, ceildiv, min and max on staged scalars. Expand them to
+    // the divsi/cmpi/select forms it does lower before converting.
+    {
+      RewritePatternSet expand(moduleOp.getContext());
+      arith::populateCeilFloorDivExpandOpsPatterns(expand);
+      arith::populateExpandMinMaxIPatterns(expand);
+      // Rewrite only: folding or CSE here would reshape the sequence the
+      // per-op conversion below expects (and the C++ its tests check).
+      GreedyRewriteConfig config;
+      config.enableFolding(false).enableConstantCSE(false);
+      if (failed(applyPatternsGreedily(moduleOp, std::move(expand), config)))
+        return failure();
+    }
+
     TypeConverter typeConverter;
     typeConverter.addConversion([](Type t) { return t; });
     populateEmitCSizeTTypeConversions(typeConverter);

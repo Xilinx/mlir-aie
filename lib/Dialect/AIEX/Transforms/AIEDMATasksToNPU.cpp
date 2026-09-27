@@ -584,6 +584,14 @@ struct AIEDMATasksToNPUPass
       sizes4[4 - sizes.size() + i] = sizes[i];
       strides4[4 - strides.size() + i] = strides[i];
     }
+    // A BD without addressing dims is a plain linear transfer of `len`
+    // elements (canonicalization strips a contiguous [1, 1, 1, N] to this
+    // form, and the static path encodes it linear). Give it the canonical
+    // [1, 1, 1, 1] / [0, 0, 0, 1] shape so the shared encoder picks linear
+    // mode rather than an ND encoding with unit wraps and zero strides,
+    // which moves the same bytes but does not match the static stream.
+    if (sizes.empty())
+      strides4[3] = builder.getI64IntegerAttr(1);
 
     // buffer_length override = len (elements) * elemWidth / addressGranularity,
     // as an SSA value. dma_task carries the transfer length explicitly (unlike
