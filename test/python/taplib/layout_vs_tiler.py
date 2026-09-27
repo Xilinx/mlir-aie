@@ -11,7 +11,8 @@ CHECKed so a canonical-form change cannot pass silently.
 
 import itertools
 
-from aie.helpers.taplib import Layout, TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import Layout, TensorAccessPattern
+from _legacy_tensortiler2d import TensorTiler2D
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
