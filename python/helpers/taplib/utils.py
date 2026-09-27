@@ -1,12 +1,11 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from copy import deepcopy
 from typing import Sequence
 
 import numpy as np
 
-from .symbolic import is_sym, require, sprod, sym_any
+from .symbolic import is_sym, require, show, sprod, sym_any
 
 
 def validate_and_clean_sizes_strides(
@@ -54,11 +53,11 @@ def validate_and_clean_sizes_strides(
         if expected_dims:
             if len(sizes) != expected_dims:
                 raise ValueError(
-                    f"Num dimensions of sizes ({sizes}) is not expected number of dimensions ({expected_dims})"
+                    f"Num dimensions of sizes ({show(sizes)}) is not expected number of dimensions ({expected_dims})"
                 )
             if len(strides) != expected_dims:
                 raise ValueError(
-                    f"Num dimensions of strides ({strides}) is not expected number of dimensions ({expected_dims})"
+                    f"Num dimensions of strides ({show(strides)}) is not expected number of dimensions ({expected_dims})"
                 )
         elif len(strides) != len(sizes):
             raise ValueError(
@@ -73,13 +72,13 @@ def validate_and_clean_sizes_strides(
     # Validate sizes/strides values. A staged (runtime) value becomes a
     # dispatch-time guard instead of a generation-time check.
     if sizes:
-        sizes = deepcopy(sizes)
+        sizes = list(sizes)
         for s in sizes:
-            require(s >= 1, f"All sizes must be >= 1, but got {sizes}")
+            require(s >= 1, f"All sizes must be >= 1, but got {show(sizes)}")
     if strides:
-        strides = deepcopy(strides)
+        strides = list(strides)
         for s in strides:
-            require(s >= 0, f"All strides must be >= 0, but got {strides}")
+            require(s >= 0, f"All strides must be >= 0, but got {show(strides)}")
 
     # Clean (set size=1, stride=0 for as many dims as possible). Rank and
     # unit-ness are structural, so a staged size stops the scan.
@@ -111,16 +110,17 @@ def validate_tensor_dims(
     if expected_dims is not None:
         if expected_dims < 1:
             raise ValueError(f"Expected dimensions ({expected_dims}) should be >= 1")
-    tensor_dims = deepcopy(tensor_dims)
+    tensor_dims = list(tensor_dims)
 
     # Validate tensor dims and offset, then set
     if len(tensor_dims) == 0:
         raise ValueError(
-            f"Number of tensor dimensions must be >= 1 (dimensions={tensor_dims})"
+            f"Number of tensor dimensions must be >= 1 (dimensions={show(tensor_dims)})"
         )
     for d in tensor_dims:
         require(
-            d >= 1, f"Each tensor dimension must be >= 1 (dimensions={tensor_dims})"
+            d >= 1,
+            f"Each tensor dimension must be >= 1 (dimensions={show(tensor_dims)})",
         )
 
     # We can treat a 1-dimensional tensor as a 2-dimensional tensor,
@@ -129,7 +129,7 @@ def validate_tensor_dims(
 
     if expected_dims is not None and len(tensor_dims) != expected_dims:
         raise ValueError(
-            f"Tensor dimension ({tensor_dims}) does not match expected dimension ({expected_dims})"
+            f"Tensor dimension ({show(tensor_dims)}) does not match expected dimension ({expected_dims})"
         )
 
     return tensor_dims
@@ -150,13 +150,13 @@ def validate_offset(offset: int, tensor_dims: Sequence[int] | None) -> int:
     Returns:
         int: The validated offset.
     """
-    require(offset >= 0, f"Offset must be >= 0 (offset={offset})")
+    require(offset >= 0, f"Offset must be >= 0 (offset={show(offset)})")
     if tensor_dims:
         numel = (
             sprod(tensor_dims) if sym_any(tensor_dims) else int(np.prod(tensor_dims))
         )
         require(
             offset < numel,
-            f"Offset too large: {offset}. Max value allowed for tensor: {numel}",
+            f"Offset too large: {show(offset)}. Max value allowed for tensor: {numel}",
         )
     return offset

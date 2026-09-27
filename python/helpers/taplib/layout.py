@@ -31,7 +31,17 @@ from typing import Any, Iterator, NamedTuple, Sequence
 
 import numpy as np
 
-from .symbolic import is_sym, require, sceildiv, sint, smin, sprod, sselect, sym_any
+from .symbolic import (
+    is_sym,
+    require,
+    sceildiv,
+    show,
+    sint,
+    smin,
+    sprod,
+    sselect,
+    sym_any,
+)
 from .tap import TensorAccessPattern
 
 __all__ = ["Layout", "TileGrid"]
@@ -96,12 +106,12 @@ class Layout:
                 f"len(sizes) ({len(sizes)}) != len(strides) ({len(strides)})"
             )
         for d in tensor_dims:
-            require(d >= 1, f"tensor dimensions must be >= 1, got {tensor_dims}")
+            require(d >= 1, f"tensor dimensions must be >= 1, got {show(tensor_dims)}")
         for s in sizes:
-            require(s >= 1, f"sizes must be >= 1, got {sizes}")
+            require(s >= 1, f"sizes must be >= 1, got {show(sizes)}")
         for s in strides:
-            require(s >= 0, f"strides must be >= 0, got {strides}")
-        require(offset >= 0, f"offset must be >= 0, got {offset}")
+            require(s >= 0, f"strides must be >= 0, got {show(strides)}")
+        require(offset >= 0, f"offset must be >= 0, got {show(offset)}")
         self._tensor_dims = tensor_dims
         self._offset = offset
         self._sizes = sizes
@@ -261,7 +271,7 @@ class Layout:
         memtile it is a plain zero-stride dimension.
         """
         count = sint(count)
-        require(count >= 1, f"repeat count must be >= 1, got {count}")
+        require(count >= 1, f"repeat count must be >= 1, got {show(count)}")
         return self._with(sizes=[count] + self._sizes, strides=[0] + self._strides)
 
     def slice(self, key: Any) -> Layout:
@@ -772,7 +782,7 @@ class TileGrid:
     def repeat(self, count: IntLike) -> TileGrid:
         """Walk each tile ``count`` times (a stride-0 outermost tile dimension)."""
         count = sint(count)
-        require(count >= 1, f"repeat count must be >= 1, got {count}")
+        require(count >= 1, f"repeat count must be >= 1, got {show(count)}")
         grid = [
             a if a.rep_pos is None else a._replace(rep_pos=a.rep_pos + 1)
             for a in self._grid

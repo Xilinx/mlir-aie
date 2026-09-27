@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections import abc
-from copy import deepcopy
+from copy import copy
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
@@ -392,7 +392,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
             raise ValueError(
                 f"Cannot add TensorAccessPattern with tensor dims {tap.tensor_dims} to TensorAccessSequence with tensor dims {self._tensor_dims}"
             )
-        self._taps[idx] = deepcopy(tap)
+        self._taps[idx] = copy(tap)
 
     def __delitem__(self, idx):
         del self._taps[idx]

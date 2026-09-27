@@ -244,6 +244,16 @@ copy(a, b, count=6)               # Same compiled design; a different dispatch.
 copy.specialize(count=3)(a, b)    # Compile with count fixed to 3.
 ```
 
+Inside the sequence body a dispatch scalar is an ordinary staged value: it can
+bound a `range_`, feed `if_`, be written to a worker's RTP buffer, and stand
+in for any size, stride, offset or index in the taplib layout algebra, which
+then emits the tap as arithmetic on it and turns its shape checks into
+`require` guards (see [Staged taps](../../../docs/api/taplib.md#staged-taps-in-a-dispatch-time-sequence)).
+`programming_examples/basic/matrix_multiplication/whole_array/whole_array_dyn.py`
+is a whole-array GEMM with dispatch-time `M`, `K` and `N` built this way, and
+`aie.utils.txn_trace` compares a dispatch-time builder's DMA events with a
+static specialization's without an NPU.
+
 ### Generator-side binding and scope
 
 The generator receives an identity-bearing symbolic parameter for each unbound

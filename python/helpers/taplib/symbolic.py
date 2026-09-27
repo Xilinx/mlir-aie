@@ -65,6 +65,19 @@ def is_sym(value: Any) -> bool:
     return isinstance(value, Value)
 
 
+def show(value: Any) -> str:
+    """Render a value for a message: staged values become ``<runtime>``.
+
+    A guard message travels into the generated C++ as a comment, so it must
+    not quote a staged value's IR.
+    """
+    if is_sym(value):
+        return "<runtime>"
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(show(v) for v in value) + "]"
+    return str(value)
+
+
 def sym_any(values: Iterable[Any]) -> bool:
     """Whether any entry of ``values`` is a staged value."""
     return any(is_sym(v) for v in values)
@@ -102,13 +115,43 @@ def _cmp_lt(a: Any, b: Any) -> Any:
     return b > a
 
 
+def _as_staged(value: Any, like: Any) -> Any:
+    """Return ``value`` as an MLIR value of ``like``'s type (ints become constants)."""
+    if is_sym(value):
+        return value
+    from aie.extras.dialects.arith import (
+        constant,
+    )  # pyright: ignore[reportMissingImports]
+
+    return constant(int(value), like.type)
+
+
 def sselect(cond: Any, if_true: Any, if_false: Any) -> Any:
     """``if_true if cond else if_false``; ``arith.select`` when ``cond`` is staged."""
     if is_sym(cond):
         hook = getattr(cond, "_select", None)
         if hook is not None:
             return hook(if_true, if_false)
-        return _arith().select(cond, if_true, if_false)
+        from aie.extras.dialects.arith import (
+            ScalarValue,
+        )  # pyright: ignore[reportMissingImports]
+
+        if not is_sym(if_true) and not is_sym(if_false):
+            if if_true == if_false:
+                return if_true
+            # Two plain ints: the result takes the type the condition compared.
+            try:
+                ref = cond.owner.operands[0]
+            except (AttributeError, IndexError):
+                from aie.extras.dialects.arith import constant
+
+                ref = constant(0, index=False)
+        else:
+            ref = if_true if is_sym(if_true) else if_false
+        result = _arith().select(
+            cond, _as_staged(if_true, ref), _as_staged(if_false, ref)
+        )
+        return ScalarValue(result, dtype=ref.type)
     return if_true if cond else if_false
 
 

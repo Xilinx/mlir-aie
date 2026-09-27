@@ -325,10 +325,18 @@ private:
           // stream (std::nullopt), the same contract as the BD-field guards.
           // The message rides along as a comment so the generated C++ says
           // which constraint an early return belongs to. Appends nothing.
-          std::string note = g.getMessage().str();
-          for (char &ch : note)
+          // `{}` is an emitc.verbatim placeholder and `{{` its escape, so a
+          // message that quotes a value's IR must double its opening braces;
+          // a line break would end the comment early.
+          std::string note;
+          for (char ch : g.getMessage().str()) {
             if (ch == '\n' || ch == '\r')
-              ch = ' ';
+              note += ' ';
+            else if (ch == '{')
+              note += "{{";
+            else
+              note += ch;
+          }
           emitc::VerbatimOp::create(
               b, loc, "if (!({})) return std::nullopt; // " + note,
               ValueRange{g.getCond()});

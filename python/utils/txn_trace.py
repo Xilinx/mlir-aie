@@ -27,6 +27,7 @@ layouts used by npu1 and npu2 (register offsets from ``AIETargetModel``).
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
@@ -54,6 +55,22 @@ _LAYOUT = {
     "mem": (0xA0000, 0x20, 0xA0600, 0x30, 6),
     "core": (0x1D000, 0x20, 0x1DE00, 0x10, 2),
 }
+
+
+def _contiguous(
+    dims: Sequence[tuple[int, int]], outer_stride: int, length: int
+) -> bool:
+    """Whether dims (innermost first) scan `length` words contiguously.
+
+    Each stride must equal the product of the inner wraps; the outer stride
+    only matters when the transfer runs past one pass over the dims.
+    """
+    extent = 1
+    for wrap, stride in dims:
+        if stride != extent:
+            return False
+        extent *= wrap
+    return length <= extent or outer_stride == extent
 
 
 def _tile_kind(row: int) -> str:
@@ -231,6 +248,11 @@ class Transfer:
         # (no dims) and [1, 1] wraps with an outer stride of 1 move the same
         # bytes.
         dims = tuple(d for d in (d0, d1) if d[0] > 1)
+        # A contiguous ND scan (innermost stride 1, every outer stride the
+        # product of the inner wraps, the next block following on) moves the
+        # same words as linear mode; the static emitter folds it to linear.
+        if dims and _contiguous(dims, d2_stride, w[0]):
+            dims, d2_stride = (), 1
         if patched is None:
             address = ("abs", w[1] | ((w[2] & 0xFFFF) << 32))
         else:
@@ -364,6 +386,21 @@ def trace(
         repeat = (op.value >> 16) & 0xFF
         issue = bool(op.value >> 31)
         w, patched = bd_words(col, row, kind, bd_id)
+        bd = Transfer.from_words(kind, w, patched)
+        # A linear BD re-run repeat+1 times with an iteration dimension that
+        # advances by its own length is one linear transfer that long; the
+        # static emitter folds a contiguous repeat dimension into the length.
+        iter_wrap, iter_stride = bd.iteration[0] + 1, bd.iteration[1]
+        if (
+            kind == "shim"
+            and not bd.dims
+            and bd.outer_stride == 1
+            and repeat
+            and iter_wrap == repeat + 1
+            and iter_stride == bd.length
+        ):
+            bd = dataclasses.replace(bd, length=bd.length * iter_wrap, iteration=(0, 1))
+            repeat = 0
         events.append(
             Event(
                 "push",
@@ -371,7 +408,7 @@ def trace(
                 row=row,
                 direction=direction,
                 channel=ch,
-                bd=Transfer.from_words(kind, w, patched),
+                bd=bd,
                 repeat=repeat,
                 issue_token=issue,
                 ctrl=regs.get(op.addr - 4, 0),

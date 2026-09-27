@@ -4,6 +4,9 @@ from contextlib import contextmanager
 import itertools
 from operator import itemgetter
 
+import functools
+import operator
+
 import numpy as np
 
 from ._aiex_ops_gen import *
@@ -19,6 +22,7 @@ from ._aiex_ops_gen import (
 from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
+    _widen_i64,
     DMAChannelDir,
     LockAction,
     Neighbors,
@@ -396,6 +400,13 @@ def shim_dma_single_bd_task(
             if strides is not None:
                 strides = [0] + list(strides)
 
+    # Everything derived from runtime sizes/strides must be emitted *before*
+    # the task region opens below: a BD block may hold only dma_bd / aie.end,
+    # so the transfer length product, the repeat count and the i64 widening of
+    # the dimension operands all happen here.
+    if sizes is not None and transfer_len is None:
+        transfer_len = functools.reduce(operator.mul, sizes[-3:])
+
     # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
     # constant folds to the repeat_count attribute (static path, unchanged); a
     # runtime Value flows into the repeat_count_val operand so a dynamic tile
@@ -414,6 +425,10 @@ def shim_dma_single_bd_task(
             if s0.type != T.i32():
                 s0_i32 = arith.trunci(T.i32(), s0)
             repeat_count_val = s0_i32 - _as_i32(1)
+    if sizes is not None:
+        sizes = [_widen_i64(v) for v in sizes]
+    if strides is not None:
+        strides = [_widen_i64(v) for v in strides]
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,

@@ -302,3 +302,41 @@ This C++ code demonstrates how to implement matrix multiplication for different 
 1. `matmul_vectorized_b_col_maj` functions: These functions are identical to the `matmul_vectorized_2x2` implementation except for differences in pointer arithmetic for accessing the `B` matrix and issuing a transpose instruction for `B`. This allows us to feed column-major `s`&times;`t`-sized tiles into the compute kernel, which then transposes those into row-major.
 
 This code showcases efficient performance in matrix multiplication-intensive workloads and can be adapted for other types of inputs and operations as needed.
+
+## Dispatch-Time Shapes: `whole_array_dyn.py`
+
+`whole_array.py` bakes `M`, `K` and `N` into the compiled artifact. The
+sibling design `whole_array_dyn.py` compiles once for a *capacity*
+(`--M-max`, `--K-max`, `--N-max`: the largest matrices the host buffers hold)
+and takes the live shape as `DispatchTime` scalars. Every call rebuilds the
+instruction stream on the host in C++ from the same xclbin, in well under a
+millisecond and with no Python in the loop:
+
+```python
+gemm = whole_array_dyn.specialize(M_max=4096, K_max=4096, N_max=4096,
+                                  m=64, k=64, n=32, n_aie_cols=4,
+                                  dtype_in_str="bf16", dtype_out_str="f32")
+gemm(A, B, C, M=512, K=1024, N=2048)    # one compile serves every shape
+gemm(A, B, C, M=4096, K=4096, N=4096)
+gemm(A, B, C, M=100, K=64, N=64)        # refused: M must be a multiple of m * 4
+```
+
+The tiling is the same taplib algebra as the static design, evaluated inside
+the runtime sequence on the staged shape: taps become arithmetic on `M`,
+`K`, `N`; the time-block loop stays rolled (`range_`); the ragged last row
+block is a peeled `if_`; the shape asserts become `require` guards that
+refuse an illegal dispatch before anything reaches the NPU. Each core's trip
+counts (`K // k` and its output-tile count) arrive as runtime parameters
+written by the sequence before it releases a per-worker barrier.
+
+```
+python3 whole_array_dyn.py -M 512 -K 512 -N 512 --M-max 1024 --K-max 1024 --N-max 1024 ...
+```
+
+`whole_array_dyn.specialize(M=.., K=.., N=..)` is a fully static
+specialization that takes the ordinary static path. `test/python/dispatch_taplib_gemm.py`
+compares the dispatch-time builder's DMA events against such specializations
+and against `whole_array.py` with `aie.utils.txn_trace`, which is also how to
+debug a dispatch-time sequence: `python -m aie.utils.txn_trace insts.bin`.
+One difference from the static design remains: it awaits each time-block
+half before issuing the next rather than running two halves in flight.

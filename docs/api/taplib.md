@@ -291,3 +291,64 @@ print("transposes chain: every tile arrives block-transposed")
 ::: helpers.taplib.pipeline
     options:
       show_root_heading: false
+
+## Staged taps in a dispatch-time sequence
+
+Every operation above also accepts staged values: an `aie.ir.Value` (the
+`DispatchTime[T]` scalars a runtime sequence receives, and any arithmetic on
+them) can stand in for a size, stride, offset, grid index, repeat count or
+group size. The algebra then emits its arithmetic as `arith` ops at the point
+of use, and every check it would have raised as a `ValueError` becomes an
+`aiex.npu.require` guard: a fully static specialization folds the guard away
+(or fails at generation time when it is false), while the dispatch-time C++
+builder returns no stream and the host refuses the call.
+
+```python
+def sequence(A, B, C, M, K, N, A_hs, B_hs, C_hs):
+    require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")
+    A_tiles = Layout.full((M, K)).tile((m * rows, k)).group((1, K // k))
+    for step in range_(M // m // rows):
+        idx = arith.index_cast(step, to=T.i32())
+        A_hs[0].fill(A, tap=A_tiles[idx], group=tg)   # offset is staged arithmetic
+```
+
+The rules of thumb:
+
+- Keep trip counts static where the hardware needs them static. A `range_`
+  over a staged bound stays rolled; a task issued inside it must be finished
+  in the same loop body (its handle cannot leave the region), so a ragged
+  last block is a peeled `with if_(rem > 0):` rather than a runtime-length
+  inner loop.
+- Sizes and strides reach `aie.dma_bd` as `i64`; the builder widens a
+  narrower staged value for you, and hoists the transfer length and repeat
+  count it derives from them before the task region opens.
+- Messages must not quote staged values; use `symbolic.show(x)`, which renders
+  them as `<runtime>`, or keep them constant.
+
+`programming_examples/basic/matrix_multiplication/whole_array/whole_array_dyn.py`
+is the whole-array GEMM written this way (dispatch-time `M`, `K`, `N`), and
+`test/python/dispatch_taplib_gemm.py` shows how to check such a design
+without an NPU.
+
+### Checking a dispatch-time design
+
+A dispatch-time builder's stream is never byte-identical to a static
+specialization's: it draws buffer descriptors from a pool, polls before
+reuse and assembles BD words at build time. `aie.utils.txn_trace` reduces
+either stream to the DMA events the hardware acts on (queue pushes resolved
+to the transfer they start, token waits) and compares those:
+
+```python
+from aie.utils.txn_trace import compare, explain
+words = bridge.generate({"M": 256, "K": 128, "N": 128})
+static = np.fromfile(static_design.compile()[1], dtype=np.uint32)
+assert compare(words, static) == []
+print(explain(words))   # one line per DMA event
+```
+
+`python -m aie.utils.txn_trace insts.bin [other.bin]` does the same from the
+command line.
+
+::: utils.txn_trace
+    options:
+      show_root_heading: false

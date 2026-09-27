@@ -4,10 +4,11 @@
 # RUN: %python %s | FileCheck %s
 # REQUIRES: peano, hrxxclbinutil
 
-"""A tiled copy whose tile count and start tile are DispatchTime scalars, with
-the taps computed by taplib *inside* the runtime sequence body (a staged grid
-index into a Layout partition). The design compiles once; its host-side C++
-transaction builder is then driven at several (start, n) pairs and the DMA
+"""Tiled copy with DispatchTime tile count and start tile.
+
+The taps are computed by taplib *inside* the runtime sequence body (a staged
+grid index into a Layout partition). The design compiles once; its host-side
+C++ transaction builder is then driven at several (start, n) pairs and the DMA
 events it produces are compared with a fully static specialization of the
 same generator. A dispatch that steps outside the buffer is refused by the
 `npu.require` guards taplib emitted. No NPU is needed.

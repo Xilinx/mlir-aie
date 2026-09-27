@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import itertools
 import operator
-from copy import deepcopy
 from typing import Any, Generator, Sequence
 
 import numpy as np
@@ -141,7 +140,7 @@ class TensorAccessPattern:
             Sequence[int]: Tensor dimensions
         """
         # Copy to prevent callers from mutating self
-        return deepcopy(self._tensor_dims)
+        return list(self._tensor_dims)
 
     @property
     def offset(self) -> int:
@@ -160,7 +159,7 @@ class TensorAccessPattern:
             Sequence[int]: Transformation sizes
         """
         # Copy to prevent callers from mutating self
-        return deepcopy(self._sizes)
+        return list(self._sizes)
 
     @property
     def strides(self) -> Sequence[int]:
@@ -170,7 +169,7 @@ class TensorAccessPattern:
             Sequence[int]: Transformation strides
         """
         # Copy to prevent callers from mutating self
-        return deepcopy(self._strides)
+        return list(self._strides)
 
     @property
     def transformation_dims(self) -> Sequence[tuple[int, int]]:

@@ -16,7 +16,6 @@ property the dynamic runtime-sequence builder relies on.
 import itertools
 
 import numpy as np
-
 from aie.helpers.taplib import Layout, TensorAccessPattern
 from aie.helpers.taplib.symbolic import (
     is_sym,
@@ -31,7 +30,7 @@ from util import construct_test
 # RUN: %python %s | FileCheck %s
 
 
-REQUIRES: list = []
+REQUIRED: list = []
 
 
 class Sym:
@@ -110,7 +109,7 @@ class Sym:
         return Sym("select", self, self._lift(a), self._lift(b))
 
     def _require(self, message):
-        REQUIRES.append((self, message))
+        REQUIRED.append((self, message))
 
     def __bool__(self):
         raise TypeError("a Sym has no truth value at generation time")
@@ -150,7 +149,7 @@ def ev(v, env):
 
 
 def evaluated_tap(layout, env):
-    """The concrete TensorAccessPattern a staged Layout denotes under ``env``."""
+    """Return the concrete TensorAccessPattern a staged Layout denotes under ``env``."""
     return TensorAccessPattern(
         [ev(d, env) for d in layout.tensor_dims],
         ev(layout.offset, env),
@@ -161,9 +160,9 @@ def evaluated_tap(layout, env):
 
 def check_requires(env, expect_ok):
     """Every recorded guard evaluates to ``expect_ok`` under ``env`` (all of them when ok)."""
-    results = [cond.eval(env) for cond, _ in REQUIRES]
+    results = [cond.eval(env) for cond, _ in REQUIRED]
     if expect_ok:
-        assert all(results), [m for (_, m), r in zip(REQUIRES, results) if not r]
+        assert all(results), [m for (_, m), r in zip(REQUIRED, results) if not r]
     else:
         assert not all(results)
 
@@ -178,16 +177,16 @@ def helpers_stage():
     c = sceildiv(a, b)
     p = sprod([a, 3, b])
     s = sselect(a > b, a, 7)
-    REQUIRES.clear()
+    REQUIRED.clear()
     require(a % 4 == 0, "a must be a multiple of 4")
-    assert len(REQUIRES) == 1
+    assert len(REQUIRED) == 1
     for env in ({"a": 8, "b": 3}, {"a": 3, "b": 8}, {"a": 12, "b": 12}):
         assert m.eval(env) == min(env["a"], env["b"])
         assert c.eval(env) == -(-env["a"] // env["b"])
         assert p.eval(env) == env["a"] * 3 * env["b"]
         assert s.eval(env) == (env["a"] if env["a"] > env["b"] else 7)
     assert (
-        REQUIRES[0][0].eval({"a": 8}) is True and REQUIRES[0][0].eval({"a": 6}) is False
+        REQUIRED[0][0].eval({"a": 8}) is True and REQUIRED[0][0].eval({"a": 6}) is False
     )
     try:
         bool(a)
@@ -199,10 +198,10 @@ def helpers_stage():
 # CHECK-LABEL: whole_array_tilers_stage
 @construct_test
 def whole_array_tilers_stage():
-    """The GEMM's three tilings on symbolic M, K, N and a symbolic step."""
+    """Build the GEMM's three tilings on symbolic M, K, N and a symbolic step."""
     m, k, n, n_aie_rows, n_aie_cols, tb_n_rows = 32, 32, 32, 4, 2, 2
     M, K, N, step = (Sym.var(x) for x in ("M", "K", "N", "step"))
-    REQUIRES.clear()
+    REQUIRED.clear()
     rep = N // n // n_aie_cols
     grids = {
         "A": Layout.full((M, K)).tile((m * 2, k)).group((1, K // k)).repeat(rep),
@@ -222,7 +221,7 @@ def whole_array_tilers_stage():
             assert False
         except TypeError:
             pass
-    n_guards = len(REQUIRES)
+    n_guards = len(REQUIRED)
     assert n_guards > 0
     checked = 0
     for Mv, Kv, Nv in itertools.product((256, 512), (128, 256), (128, 256)):
@@ -266,7 +265,7 @@ def whole_array_tilers_stage():
 @construct_test
 def partial_and_slices_stage():
     N, step, lo, hi = (Sym.var(x) for x in ("N", "step", "lo", "hi"))
-    REQUIRES.clear()
+    REQUIRED.clear()
     g = Layout.full((3, N)).tile((3, 2)).group((1, 7), steps=(1, 3), partial=True)
     t = g[step]
     assert t.sizes[0].op == "select"  # min(R, ceildiv(remaining, S)) as a select tree
@@ -301,7 +300,7 @@ def partial_and_slices_stage():
 def shim_form_stage():
     """tap() keeps a staged view's rank and pads to the shim form; validators become guards."""
     M, K = Sym.var("M"), Sym.var("K")
-    REQUIRES.clear()
+    REQUIRED.clear()
     t = Layout.full((M, K)).tile((32, 32))[Sym.var("step")].tap()
     assert isinstance(t, TensorAccessPattern)
     assert len(t.sizes) == 4 and t.sizes[:2] == [1, 1] and t.strides[:2] == [0, 0]
@@ -312,7 +311,7 @@ def shim_form_stage():
     )
     # The TensorAccessPattern validators recorded guards rather than branching.
     assert any(
-        "sizes" in msg or "Offset" in msg or "divisible" in msg for _, msg in REQUIRES
+        "sizes" in msg or "Offset" in msg or "divisible" in msg for _, msg in REQUIRED
     )
     check_requires(env, expect_ok=True)
     # A repeat keeps slot 0 on the staged path too.

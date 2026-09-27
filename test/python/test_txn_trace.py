@@ -260,6 +260,62 @@ class TestCompare:
         )
         assert compare(linear, strided)
 
+    def test_contiguous_nd_equals_linear(self):
+        # [32 x 1][128 x 32] with the next block at +4096 is a linear 4096-word
+        # scan; the static emitter folds it, the dynamic builder cannot when a
+        # stride is a runtime value.
+        linear = as_stream(
+            blockwrite(SHIM_BD0, bd_words(4096)), write32(S2MM0_QUEUE, 0)
+        )
+        nd = as_stream(
+            blockwrite(
+                SHIM_BD0, bd_words(4096, d0=(32, 1), d1=(128, 32), d2_stride=4096)
+            ),
+            write32(S2MM0_QUEUE, 0),
+        )
+        assert compare(linear, nd) == []
+        # A second pass over the dims needs the next block to follow on: a gap
+        # between blocks is a real difference, and so is a non-unit stride.
+        two_blocks = as_stream(
+            blockwrite(
+                SHIM_BD0, bd_words(8192, d0=(32, 1), d1=(128, 32), d2_stride=4096)
+            ),
+            write32(S2MM0_QUEUE, 0),
+        )
+        linear2 = as_stream(
+            blockwrite(SHIM_BD0, bd_words(8192)), write32(S2MM0_QUEUE, 0)
+        )
+        assert compare(linear2, two_blocks) == []
+        gapped = as_stream(
+            blockwrite(
+                SHIM_BD0, bd_words(8192, d0=(32, 1), d1=(128, 32), d2_stride=8192)
+            ),
+            write32(S2MM0_QUEUE, 0),
+        )
+        assert compare(two_blocks, gapped)
+        strided = as_stream(
+            blockwrite(SHIM_BD0, bd_words(4096, d0=(32, 1), d1=(128, 64))),
+            write32(S2MM0_QUEUE, 0),
+        )
+        assert compare(linear, strided)
+
+    def test_contiguous_repeat_folds_into_length(self):
+        # Two executions (repeat 1) of a 4096-word linear BD whose iteration
+        # dimension steps by 4096 is one 8192-word transfer.
+        folded = as_stream(
+            blockwrite(SHIM_BD0, bd_words(8192)), write32(S2MM0_QUEUE, 0)
+        )
+        repeated = as_stream(
+            blockwrite(SHIM_BD0, bd_words(4096, iteration=(1, 4096))),
+            write32(S2MM0_QUEUE, 0 | (1 << 16)),
+        )
+        assert compare(folded, repeated) == []
+        # A repeat that re-reads the same block (no iteration step) is not.
+        rereading = as_stream(
+            blockwrite(SHIM_BD0, bd_words(4096)), write32(S2MM0_QUEUE, 0 | (1 << 16))
+        )
+        assert compare(folded, rereading)
+
     def test_explain_lists_events(self):
         s = as_stream(
             transfer_static(0, 1, 0x400, 256, S2MM0_QUEUE, token=True), tct(0, 0, 0, 0)
