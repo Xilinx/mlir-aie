@@ -11,7 +11,7 @@ This IRON design flow example, called "Tiling Exploration: Tile Group", demonstr
 
 ## Source Files Overview
 
-1. `tile_group.py`: An `@iron.jit`-decorated design that uses `TensorTiler2D` to specify `TensorAccessPattern`s (*taps*) of data to be transferred out of the design.  When invoked standalone, `@iron.jit` JIT-compiles to an xclbin/insts pair, runs on the NPU, and verifies the output against the expected tile-group pattern.
+1. `tile_group.py`: An `@iron.jit`-decorated design that uses `Layout.full(...).tile(...).group(...)` to build a `TileGrid` whose single grouped tile (a `Layout`) specifies the access pattern (*tap*) of data to be transferred out of the design.  When invoked standalone, `@iron.jit` JIT-compiles to an xclbin/insts pair, runs on the NPU, and verifies the output against the expected tile-group pattern.
 
 ## Design Overview
 
