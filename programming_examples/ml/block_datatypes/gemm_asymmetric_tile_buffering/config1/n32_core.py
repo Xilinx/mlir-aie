@@ -18,7 +18,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -183,9 +183,9 @@ def n32_core_gemm(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
-    A_taps = TensorTiler2D.group_tiler((M, K), (m, mtk), (1, K // mtk))
-    B_taps = TensorTiler2D.group_tiler((1, N * K // 8), (1, n * K // 8), (1, 1))
-    C_taps = TensorTiler2D.group_tiler((M, N), (n_aie_rows * m, n), (1, 1))
+    A_taps = Layout.full((M, K)).tile((m, mtk)).group((1, K // mtk))
+    B_taps = Layout.full((1, N * K // 8)).tile((1, n * K // 8))
+    C_taps = Layout.full((M, N)).tile((n_aie_rows * m, n))
 
     num_row_tile = M // m // n_aie_rows
     num_col_tile = N // n // n_aie_cols

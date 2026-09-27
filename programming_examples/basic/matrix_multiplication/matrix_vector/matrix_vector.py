@@ -12,7 +12,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     In,
@@ -102,13 +102,9 @@ def matrix_vector(
             )
         )
 
-    A_taps = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (M_div_m_div_n_cores, K_div_k), prune_step=False
-    )
-    C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores), prune_step=False)
-    b_tap = TensorTiler2D.simple_tiler(
-        (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
-    )[0]
+    A_taps = Layout.full((M, K)).tile((m, k)).group((M_div_m_div_n_cores, K_div_k))
+    C_taps = Layout.full((1, M)).tile((1, M_div_n_cores))
+    b_tap = Layout.full((1, K)).repeat(M_div_m_div_n_cores)
 
     memA_prods = [f.prod() for f in memA_fifos]
     outC_cons = [f.cons() for f in outC_fifos]

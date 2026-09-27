@@ -23,7 +23,7 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
@@ -80,10 +80,15 @@ def row_wise_bias_add(
         fn_args=[in_fifo.cons(), bias_fifo.cons(), out_fifo.prod(), kernel_func],
     )
 
-    tap = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
-    )[0]
-    bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
+    # Walk the whole matrix one column of (m, n) tiles at a time; coalesce()
+    # merges the contiguous walk down a tile column into one DMA dimension.
+    tap = (
+        Layout.full((M, N))
+        .tile((m, n))
+        .group((M // m, N // n), col_major=True)[0]
+        .coalesce()
+    )
+    bias_tap = Layout.full((1, N)).tile((1, n)).group((1, N // n))[0]
 
     def sequence(a, b, c, in_h, bias_h, out_h):
         in_h.fill(a, tap)

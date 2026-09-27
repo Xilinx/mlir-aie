@@ -6,7 +6,7 @@
 
 Same device/worker/ObjectFifo structure as ``whole_array.py``, but the host
 runtime sequence is written with ``range_`` loops and SSA arithmetic over the
-problem dimensions M/K/N instead of Python-unrolled ``TensorTiler2D`` taps. The
+problem dimensions M/K/N instead of Python-unrolled ``TileGrid`` taps. The
 DMAs use ``fifo.fill``/``fifo.drain`` with runtime-valued sizes / strides /
 offsets, so a single body serves both lowerings.
 
@@ -14,7 +14,7 @@ One design, two lowerings, selected by explicit specialization:
 
 * **static** — call ``specialize(M=..., K=..., N=...)``. The bounds are constant, so
   ``aie-unroll-runtime-sequence-loops`` flattens the loops and everything folds
-  to the same BDs the ``TensorTiler2D`` version emits (binary TXN path).
+  to the same BDs the ``TileGrid`` version emits (binary TXN path).
 * **dynamic** — bind compile-time K, and pass M/N at execution time. The ``scf.for`` loops
   survive to the EmitC path (``--aie-npu-to-cpp``), so one xclbin runs many
   shapes; the C++ builder assembles the TXN per call. K is fixed because the

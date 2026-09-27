@@ -43,7 +43,7 @@ from pathlib import Path
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import Layout, TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyComputeTile
@@ -79,7 +79,7 @@ def _transpose_dma(
         )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
-    tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
+    tap_in = Layout.full((M, K)).permute((1, 0))
     of_in = ObjectFifo(tensor_ty)
     of_out = of_in.cons().forward(AnyComputeTile)
 
@@ -110,7 +110,7 @@ def _transpose_dma_packet(
         )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
-    tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
+    tap_in = Layout.full((M, K)).permute((1, 0))
     of_in = ObjectFifo(tensor_ty, name="in")
     of_out = of_in.cons().forward()
 
