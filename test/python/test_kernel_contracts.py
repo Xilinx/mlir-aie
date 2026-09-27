@@ -1187,6 +1187,28 @@ def test_mha_binds_its_translation_unit_as_one_object():
         kernels.mha(dim_m=17)
 
 
+@pytest.mark.parametrize("emulate", [False, True])
+@pytest.mark.parametrize("pv", [False, True])
+def test_mha_answers_its_micro_tile_without_building_a_kernel(pv, emulate):
+    """``mha.mac_dims`` is the micro-tile ``mha`` declares, for either product."""
+    kw = dict(pv=pv, emulate_bf16_mmul_with_bfp16=emulate)
+    fn = kernels.mha(dim_m=64, dim_k=64, dim_n=64, **kw)
+    assert kernels.mha.mac_dims(**kw) == fn.mac_dims
+    assert fn.stream_dims == kernels.mm_stream_dims(
+        64, 64, 64, fn.mac_dims, b_col_maj=False
+    )
+    # QK^T is mm.cc's product on either architecture; P*V is 8x8x8 on both.
+    for arch in ("aie2", "aie2p"):
+        expected = (
+            (8, 8, 8)
+            if pv
+            else kernels.mm.mac_dims(
+                bfloat16, bfloat16, arch=arch, emulate_bf16_mmul_with_bfp16=emulate
+            )
+        )
+        assert kernels.mha.mac_dims(arch=arch, **kw) == expected
+
+
 _C_ELEMENT_NAMES = {bfloat16: "bf16", np.float32: "float", np.int32: "int"}
 
 

@@ -509,6 +509,33 @@ class _CascadeMatMulFactory:
         return _CASCADE_MM_MAC_DIMS[arch][key]
 
 
+class _MhaFactory:
+    @classmethod
+    def mac_dims(
+        cls,
+        *,
+        pv: bool = False,
+        device=None,
+        arch: str | None = None,
+        emulate_bf16_mmul_with_bfp16: bool = False,
+    ) -> tuple[int, int, int]:
+        """Query geometry without constructing a kernel; ``arch`` overrides ``device``.
+
+        ``QK^T`` is mm.cc's bf16 product, so it takes
+        [`mm`][iron.kernels.linalg.mm]'s micro-tile; ``P*V``
+        (``matmul_bf16_bf16_rowmaj``) expands ``aie::mmul<8, 8, 8>`` itself.
+        """
+        if pv:
+            return (8, 8, 8)
+        return _MatMulFactory.mac_dims(
+            bfloat16,
+            bfloat16,
+            device=device,
+            arch=arch,
+            emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
+        )
+
+
 @_answers_mac_dims(_MatMulFactory.mac_dims)
 @dtypes(
     tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
@@ -998,6 +1025,7 @@ def mm_bfp_shuffle(
     return extern
 
 
+@_answers_mac_dims(_MhaFactory.mac_dims)
 def mha(
     dim_m: int = 64,
     dim_k: int = 64,
@@ -1021,6 +1049,8 @@ def mha(
     the native 8x8x8 micro-tile and ungated. ``matmul_PV`` is that same
     product preceded by a row rescale, which needs the online softmax's
     running state and so is exercised by ``test_mha_e2e.py`` instead.
+    ``mha.mac_dims(pv=...)`` answers either product's micro-tile without
+    building a kernel, as ``mm.mac_dims`` does.
 
     Bind the others from the same object with
     ``fn.object_file.bind(symbol, arg_types)``:
@@ -1067,16 +1097,11 @@ def mha(
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
     # mha.cc includes mm.cc without C_COL_MAJ, and without B_COL_MAJ unless
-    # b_col_maj. matmul_bf16_bf16_rowmaj is always row-major and expands
-    # aie::mmul<8, 8, 8, bf16, bf16> directly, not the micro-tile
-    # _MM_MAC_DIMS records for mm.cc.
+    # b_col_maj. matmul_bf16_bf16_rowmaj is always row-major.
     b_col_maj = b_col_maj and not pv
-    if pv:
-        r, s, t = (8, 8, 8)
-    elif emulate_bf16_mmul_with_bfp16:
-        r, s, t = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[(bfloat16, bfloat16)]
-    else:
-        r, s, t = _MM_MAC_DIMS["aie2p"][(bfloat16, bfloat16)]
+    r, s, t = _MhaFactory.mac_dims(
+        pv=pv, emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16
+    )
     streams = mm_stream_dims(dim_m, dim_k, dim_n, (r, s, t), b_col_maj=b_col_maj)
     return _make_extern(
         "matmul_bf16_bf16_rowmaj" if pv else "matmul_bf16_bf16_wrapper",
