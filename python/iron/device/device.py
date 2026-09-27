@@ -60,24 +60,27 @@ class Device(Resolvable):
         return self._tm.get_default_core_stack_size()
 
     @property
-    def core_dma_channels_in(self) -> int:
-        """Input DMA channels a compute tile has, and so the most fifos one can be fed."""
-        row = next(
+    def core_rows(self) -> list[int]:
+        """Rows of compute tiles, bottom to top."""
+        return [
             r
             for r in range(self.rows)
             if self.get_tile_type(0, r) is AIETileType.CoreTile
+        ]
+
+    @property
+    def core_dma_channels_in(self) -> int:
+        """Input DMA channels a compute tile has, and so the most fifos one can be fed."""
+        return self._tm.get_num_dest_switchbox_connections(
+            0, self.core_rows[0], WireBundle.DMA
         )
-        return self._tm.get_num_dest_switchbox_connections(0, row, WireBundle.DMA)
 
     @property
     def core_dma_channels_out(self) -> int:
         """Output DMA channels available on a compute tile."""
-        row = next(
-            r
-            for r in range(self.rows)
-            if self.get_tile_type(0, r) is AIETileType.CoreTile
+        return self._tm.get_num_source_switchbox_connections(
+            0, self.core_rows[0], WireBundle.DMA
         )
-        return self._tm.get_num_source_switchbox_connections(0, row, WireBundle.DMA)
 
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""
