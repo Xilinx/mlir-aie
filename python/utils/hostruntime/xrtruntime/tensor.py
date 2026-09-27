@@ -41,7 +41,7 @@ class XrtTransport(Transport):
     def host_bytes(self):
         return self._host
 
-    def handle(self, offset, nbytes):
+    def handle(self, offset, nbytes) -> xrt.bo:
         if offset == 0 and nbytes == self.nbytes:
             return self._bo
         key = (offset, nbytes)
@@ -181,9 +181,8 @@ class XRTTensor(NpuTensor):
         """
         if hasattr(self, "_bo"):
             del self._bo
-            self._bo = None
 
-    def buffer_object(self):
+    def buffer_object(self) -> xrt.bo:
         """Return the XRT buffer object associated with this tensor.
 
         Returns:

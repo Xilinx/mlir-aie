@@ -11,6 +11,7 @@ reconciling a range actually does. Those are the `Transport`.
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 
@@ -45,7 +46,7 @@ class Transport(ABC):
     def from_device(self, offset, nbytes):
         """Make the device's writes to ``[offset, offset+nbytes)`` visible to the host."""
 
-    def handle(self, offset, nbytes):
+    def handle(self, offset, nbytes) -> Any:
         """Return a handle a runtime can bind for this region, if the backend has one.
 
         Returning None is a legitimate answer, not a stub: a design where the
@@ -144,6 +145,6 @@ class Storage:
         """Make the device's writes to ``[offset, offset+nbytes)`` visible to the host."""
         self._transport.from_device(offset, nbytes)
 
-    def binding_handle(self, offset, nbytes):
+    def binding_handle(self, offset, nbytes) -> Any:
         """Return a handle a runtime can bind for this region, or None."""
         return self._transport.handle(offset, nbytes)
