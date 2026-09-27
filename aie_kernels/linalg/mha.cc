@@ -397,10 +397,15 @@ void rescale_O(bfloat16 *O, bfloat16 *scale_buffer, int32_t B_q,
   event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
 
+  // A row past S_q attended over nothing: its sum is 0 and its O row is 0,
+  // and 0 * (1 / 0) would make it NaN. It is scaled by 0 instead. Every
+  // other row attends at least its diagonal, so its sum is positive.
+  using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
+  Vec64bf16 zeros_vec = aie::zeros<bfloat16, VECTOR_LENGTH>();
   for (int32_t i = 0; i < B_q; i += VECTOR_LENGTH) {
-    using Vec64bf16 = aie::vector<bfloat16, VECTOR_LENGTH>;
     Vec64bf16 l_vec = aie::load_v<VECTOR_LENGTH>(scale_buffer + 2 * B_q + i);
-    l_vec = aie::inv(l_vec);
+    aie::mask<VECTOR_LENGTH> empty = aie::eq(l_vec, zeros_vec);
+    l_vec = aie::select(aie::inv(l_vec), zeros_vec, empty);
     aie::store_v(scale_buffer + 2 * B_q + i, l_vec);
   }
 
