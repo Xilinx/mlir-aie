@@ -135,8 +135,9 @@ def mm_ref(a, b):
 
 
 def mv_ref(a, b):
-    """Numpy reference for [`mv`][iron.kernels.linalg.mv]: ``a @ b`` accumulated in int64."""
-    return a.astype(np.int64) @ b.astype(np.int64)
+    """Numpy reference for [`mv`][iron.kernels.linalg.mv]: ``a @ b`` accumulated in int64 or float64."""
+    acc = np.int64 if np.issubdtype(a.dtype, np.integer) else np.float64
+    return a.astype(acc) @ b.astype(acc)
 
 
 def mm_bfp_ref(a, b):
@@ -197,8 +198,10 @@ def mm_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int):
 
 def mv_tile_ref(a, b, *, dim_m: int, dim_k: int):
     """One [`mv`][iron.kernels.linalg.mv] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k,)`` vector."""
-    a = np.asarray(a).reshape(-1, dim_m, dim_k).astype(np.int64)
-    b = np.asarray(b).reshape(-1, dim_k).astype(np.int64)
+    a = np.asarray(a)
+    acc = np.int64 if np.issubdtype(a.dtype, np.integer) else np.float64
+    a = a.reshape(-1, dim_m, dim_k).astype(acc)
+    b = np.asarray(b).reshape(-1, dim_k).astype(acc)
     return np.einsum("cmk,ck->cm", a, b)
 
 

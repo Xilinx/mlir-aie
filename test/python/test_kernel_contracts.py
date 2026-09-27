@@ -890,6 +890,16 @@ def test_fifo_plan_groups_hashable_numpy_abi_types():
     assert kd._fifo_plan(fn) == ([[0, 2], [1]], [0, 1, 2], [])
 
 
+def test_a_bf16_mv_reference_keeps_the_fractions():
+    """A float matrix-vector product accumulates in float, not int64."""
+    a = np.full((2, 4), 0.5, dtype=bfloat16)
+    v = np.full(4, 0.25, dtype=bfloat16)
+    assert np.array_equal(kernels.mv_ref(a, v), [0.5, 0.5])
+    assert np.array_equal(
+        kernels.mv_tile_ref(a.ravel(), v, dim_m=2, dim_k=4), [[0.5, 0.5]]
+    )
+
+
 def test_per_tile_matrix_references_agree_with_the_whole_problem_ones():
     """One call of the per-tile form is the whole-problem form on one tile."""
     rng = np.random.default_rng(0)
