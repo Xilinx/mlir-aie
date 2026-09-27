@@ -349,11 +349,12 @@ class TensorAccessPattern:
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
+            # Compare by value: a tuple and a list of the same dims are equal.
             return (
-                self._tensor_dims == other._tensor_dims
+                list(self._tensor_dims) == list(other._tensor_dims)
                 and self._offset == other._offset
-                and self._sizes == other._sizes
-                and self._strides == other._strides
+                and list(self._sizes) == list(other._sizes)
+                and list(self._strides) == list(other._strides)
             )
         else:
             return False
