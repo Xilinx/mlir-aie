@@ -6,7 +6,7 @@
 """Linear algebra kernel factories: mm, mv, cascade_mm."""
 
 from functools import partial
-from typing import NamedTuple, get_args
+from typing import Callable, NamedTuple, ParamSpec, Protocol, TypeVar, cast, get_args
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
@@ -433,6 +433,32 @@ def mm_stream_dims(
     return StreamDimsABC(A=a, B=b, C=c)
 
 
+_P = ParamSpec("_P")
+_K = TypeVar("_K", covariant=True)
+
+
+class _GeometryFactory(Protocol[_P, _K]):
+    """A matrix kernel factory that also answers, as ``.mac_dims``, the
+    micro-tile a kernel it would build takes, without building one."""
+
+    mac_dims: Callable[..., tuple[int, int, int]]
+
+    def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> _K: ...
+
+
+def _answers_mac_dims(query: Callable[..., tuple[int, int, int]]):
+    """Attach ``query`` to a factory as its ``.mac_dims``, typed as such."""
+
+    def decorate(factory: Callable[_P, _K]) -> _GeometryFactory[_P, _K]:
+        # A function attribute: pyright models functions as having a fixed
+        # attribute set, so the one assignment is annotated and the factory
+        # is retyped as the protocol its callers see.
+        factory.mac_dims = query  # pyright: ignore[reportFunctionMemberAccess]
+        return cast(_GeometryFactory[_P, _K], factory)
+
+    return decorate
+
+
 class _MatMulFactory:
     @classmethod
     def mac_dims(
@@ -484,6 +510,7 @@ class _CascadeMatMulFactory:
         return _CASCADE_MM_MAC_DIMS[arch][key]
 
 
+@_answers_mac_dims(_MatMulFactory.mac_dims)
 @dtypes(
     tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
 )
@@ -657,9 +684,6 @@ def mm(
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
-
-
-mm.mac_dims = _MatMulFactory.mac_dims  # pyright: ignore[reportFunctionMemberAccess]
 
 
 @dtypes(
@@ -1353,6 +1377,7 @@ def mm_bfp_shuffle_ref(tile, tile_width, tile_height, unshuffle):
     return bfp.shuffle(tile, w, h, w, h, unshuffle=bool(unshuffle)).ravel()
 
 
+@_answers_mac_dims(_CascadeMatMulFactory.mac_dims)
 def cascade_mm(
     dim_m: int = 64,
     dim_k: int = 64,
@@ -1443,11 +1468,6 @@ def cascade_mm(
         f"matmul_scalar_cascade_put_get_{suffix}", [a_ty, b_ty, c_ty]
     )
     return extern
-
-
-cascade_mm.mac_dims = (  # pyright: ignore[reportFunctionMemberAccess]
-    _CascadeMatMulFactory.mac_dims
-)
 
 
 def cascade_mm_put(
