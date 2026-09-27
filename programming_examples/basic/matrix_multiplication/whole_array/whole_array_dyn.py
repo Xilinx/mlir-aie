@@ -333,6 +333,9 @@ def _build_design(
 
         def finish(tasks):
             """Await the waited transfers of a step, then free them all."""
+            tasks = list(
+                tasks
+            )  # walked twice; a zip would be spent after the first pass
             for task, waited in tasks:
                 if waited:
                     task.await_()

@@ -960,13 +960,11 @@ LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
 // NpuRequireOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AIEX::NpuRequireOp::verify() {
-  if (auto c = getConstantIntValue(getCond()))
-    if (*c == 0)
-      return emitOpError("shape constraint is violated at compile time: ")
-             << getMessage();
-  return success();
-}
+// A constant-false guard is not a verifier error: a specialized sequence may
+// hold one in a region canonicalization later folds away (a peeled ragged
+// tail whose row count is zero). One that survives to the static lowering is
+// diagnosed there (AIETargetNPU) and refuses the dispatch on the C++ path.
+LogicalResult AIEX::NpuRequireOp::verify() { return success(); }
 
 namespace {
 // A constraint proven at compile time carries no runtime check.

@@ -397,10 +397,15 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuRequireOp>([&](auto op) {
             // A static sequence only ever carries a constant-true guard
-            // (false is a verifier error); anything unresolved means a
-            // runtime value reached the binary path.
+            // (canonicalization erases it); a live constant-false one is the
+            // ValueError the static Python path raises, and anything
+            // unresolved means a runtime value reached the binary path.
             auto c = getConstantIntValue(op.getCond());
-            if (!c || *c == 0) {
+            if (c && *c == 0) {
+              op.emitOpError("shape constraint is violated at compile time: ")
+                  << op.getMessage();
+              result = failure();
+            } else if (!c) {
               op.emitOpError("runtime shape constraint cannot be encoded in "
                              "a static TXN binary; use the C++ builder "
                              "(--aie-npu-to-cpp) or specialize the value: ")
