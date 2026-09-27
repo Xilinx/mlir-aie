@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from aie.iron import In, InOut, Out, kernels
+from aie.iron import In, InOut, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
@@ -403,6 +403,58 @@ def test_scalar_counts_are_bound_not_inferred_from_tensor_sizes():
     assert fn.contract.reference_indices() == [0, 3]
     mlir = str(kd.design(kernels.leaky_relu, tile_size=1024, scalars=(0.5,)).as_mlir())
     assert "1024 : i32" in mlir
+
+
+@pytest.mark.parametrize(
+    "factory, kwargs, bound, free",
+    [
+        (kernels.leaky_relu, dict(alpha=0.1), ((2, 64), (3, 0.1)), [0]),
+        (kernels.axpy, dict(a=1.003), ((2, 1.003), (4, 64)), [0, 1]),
+        (kernels.rms_norm_eps, dict(epsilon=1e-6), ((2, 64), (3, 1e-6)), [0]),
+    ],
+)
+def test_a_scalar_given_to_the_factory_is_bound(factory, kwargs, bound, free):
+    fn = factory(64, **kwargs)
+    assert fn.contract.parameter_bindings == bound
+    assert fn.contract.reference_indices() == free
+
+
+def test_a_bf16_scalar_reference_rounds_it_as_the_kernel_does():
+    x = np.full((1, 64), -1.0, dtype=bfloat16)
+    y = np.ones((1, 64), dtype=bfloat16)
+    alpha = kernels.leaky_relu(64, alpha=0.1).contract.reference(x)
+    assert alpha[0, 0] == -bfloat16(0.1)
+    a = np.float32(bfloat16(1.003))
+    assert kernels.axpy(64, a=1.003).contract.reference(x, y)[0, 0] == 1 - a
+    # The product stays in f32 until y is added: only the sum rounds.
+    x = np.full((1, 64), 1.0078125, dtype=bfloat16)
+    y = np.full((1, 64), -1.015625, dtype=bfloat16)
+    z = kernels.axpy(64, a=1.0078125).contract.reference(x, y)
+    assert z[0, 0].astype(bfloat16) == 2.0**-14
+
+
+def test_a_call_passes_the_free_arguments_and_the_bindings_fill_the_rest():
+    tile = np.ndarray[(64,), np.dtype[bfloat16]]
+    fn = kernels.leaky_relu(64, alpha=0.5)
+    of_in, of_out = ObjectFifo(tile, name="x"), ObjectFifo(tile, name="y")
+
+    def core(of_in, of_out, kernel):
+        x, y = of_in.acquire(1), of_out.acquire(1)
+        kernel(x, y)
+        of_in.release(1)
+        of_out.release(1)
+
+    worker = Worker(core, [of_in.cons(), of_out.prod(), fn], while_true=False)
+
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
+
+    rt = Runtime(sequence, [tile, tile, of_in.prod(), of_out.cons()])
+    mlir = str(Program(NPU2Col1(), rt, workers=[worker]).resolve_program())
+    (call,) = [s for s in mlir.splitlines() if "func.call" in s and fn.name in s]
+    assert call.count("%") == 4, call
+    assert "64 : i32" in mlir and "5.000000e-01 : bf16" in mlir
 
 
 def test_rounding_setup_is_merged_alwaysinline_ir():

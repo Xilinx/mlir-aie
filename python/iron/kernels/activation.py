@@ -6,6 +6,7 @@
 """Activation kernel factories and NumPy reference implementations."""
 
 import math
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -697,11 +698,15 @@ def sigmoid(tile_size: int = 1024, use_lut: bool = False) -> ExternalFunction:
     )
 
 
-def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
+def leaky_relu(
+    tile_size: int = 1024, *, alpha: float | None = None
+) -> ExternalFunction:
     """Leaky ReLU for bf16 tiles of at least 64 elements, in multiples of 32.
 
     The count is compiled in, but the ABI retains ``(tile_size, alpha)`` as
-    trailing ``int``/``bfloat16`` arguments. The slope remains runtime-valued.
+    trailing ``int``/``bfloat16`` arguments. The count is bound, so a call
+    passes ``(in, out, alpha)``, or ``(in, out)`` when ``alpha`` is given here
+    (every argument is accepted too).
     """
     if tile_size < 64 or tile_size % _RUNTIME_VECTOR_WIDTH:
         raise ValueError(
@@ -718,8 +723,13 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, Out, Param, Param),
-            parameter_bindings=((2, tile_size),),
-            reference=leaky_relu_ref,
+            parameter_bindings=((2, tile_size),)
+            + (() if alpha is None else ((3, alpha),)),
+            reference=(
+                leaky_relu_ref
+                if alpha is None
+                else partial(leaky_relu_ref, alpha=alpha)
+            ),
             acc_dtype=bfloat16,
             # max(x, alpha*x) introduces exactly one rounding, on alpha*x.
             # Measured bit-exact on npu2 over 262144 elements at alpha=0.5,
@@ -988,10 +998,12 @@ def leaky_relu_ref(x, alpha=0.01):
     """Numpy reference for [`leaky_relu`][iron.kernels.activation.leaky_relu].
 
     ``x if x > 0 else alpha * x``.  ``alpha`` must match the slope the design
-    passes to the kernel at runtime.  Exact up to bf16 rounding; pair with a
-    small ``rtol`` when verifying.
+    passes to the kernel at runtime; the kernel takes it as bf16, so it is
+    rounded to bf16 here.  Exact up to bf16 rounding; pair with a small
+    ``rtol`` when verifying.
     """
     xf = x.astype(np.float32)
+    alpha = np.float32(np.asarray(alpha, dtype=bfloat16))
     return np.where(xf > 0.0, xf, alpha * xf).astype(x.dtype)
 
 

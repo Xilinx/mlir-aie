@@ -5,6 +5,7 @@
 #
 """Normalization kernel factories + numpy references: rms_norm, layer_norm."""
 
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -115,8 +116,15 @@ def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunct
     )
 
 
-def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunction:
-    """RMS-norm a bf16 row (gamma=1); design passes ``(in, out, cols, epsilon)``."""
+def rms_norm_eps(
+    tile_size: int = 1024, *, cols: int | None = None, epsilon: float | None = None
+) -> ExternalFunction:
+    """RMS-norm a bf16 row (gamma=1).
+
+    The kernel takes ``(in, out, cols, epsilon)``. ``cols`` is bound, so a
+    call passes ``(in, out, epsilon)``, or ``(in, out)`` when ``epsilon`` is
+    given here (every argument is accepted too).
+    """
     tile_size = _row_size("rms_norm_eps", tile_size, cols)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _norm_extern(
@@ -127,8 +135,13 @@ def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalF
             trace=Trace.whole_call(),
             setup=None if _tuned_arch() == "aie2" else conv_even,
             roles=(In, Out, Param, Param),
-            parameter_bindings=((2, tile_size),),
-            reference=lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
+            parameter_bindings=((2, tile_size),)
+            + (() if epsilon is None else ((3, epsilon),)),
+            reference=(
+                (lambda x, epsilon: rms_norm_ref(x, eps=epsilon))
+                if epsilon is None
+                else partial(rms_norm_ref, eps=epsilon)
+            ),
             acc_dtype=np.float32,
             reduction=tile_size,
             tolerance=_by_tuned_arch(

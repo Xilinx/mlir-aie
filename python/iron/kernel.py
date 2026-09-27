@@ -497,8 +497,27 @@ class Kernel(Resolvable):
         """
         return self._arg_types.copy()
 
+    def _with_bindings(self, args: tuple) -> tuple:
+        """``args`` with the contract's bound arguments filled in.
+
+        A caller passes every argument, or only those the contract's
+        ``parameter_bindings`` leave free; the latter are completed in order.
+        """
+        contract = getattr(self, "contract", None)
+        bound = dict(contract.parameter_bindings) if contract is not None else {}
+        if not bound or len(args) != len(self._arg_types) - len(bound):
+            return args
+        free = iter(args)
+        return tuple(
+            bound[i] if i in bound else next(free) for i in range(len(self._arg_types))
+        )
+
     def __call__(self, *args, **kwargs):
         """Emit a func.call to this kernel, validating argument count.
+
+        A kernel whose contract binds some arguments (a factory's line length)
+        takes either every argument or only the free ones, in order; the bound
+        values fill the rest.
 
         Each argument is passed through `_maybe_collapse_to_match`
         before the call. This silently inserts a `memref.collapse_shape`
@@ -517,6 +536,7 @@ class Kernel(Resolvable):
             raise ValueError("Kernel must be resolved before it can be called.")
         callee = table[self._name]
         self._check_declaration(callee)
+        args = self._with_bindings(args)
         if len(args) != len(self._arg_types):
             raise ValueError(
                 f"Kernel '{self._name}' expects {len(self._arg_types)} "
@@ -1044,6 +1064,7 @@ class ExternalFunction(Kernel):
         ``**kwargs`` are forwarded to the base ``Kernel.__call__``
         and ultimately to the MLIR ``func.call`` builder.
         """
+        args = self._with_bindings(args)
         if len(args) != len(self._arg_types):
             raise ValueError(
                 f"ExternalFunction '{self._name}' expects "

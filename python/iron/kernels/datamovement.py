@@ -11,6 +11,8 @@ vector code with no LUT dependency.  ``convert_copy`` binds
 rounding.
 """
 
+from functools import partial
+
 import numpy as np
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, Out
@@ -39,8 +41,13 @@ _BF16_ROUNDTRIP = Tolerance.bf16_ulps(
 
 
 def axpy_ref(x, y, a):
-    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32."""
-    return np.float32(a) * x.astype(np.float32) + y.astype(np.float32)
+    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
+
+    Both kernels round ``a`` to bf16 first (``saxpy`` broadcasts
+    ``bfloat16(a)``; ``saxpy_scalar`` takes it as bf16), so the reference does.
+    """
+    a = np.float32(np.asarray(a, dtype=bfloat16))
+    return a * x.astype(np.float32) + y.astype(np.float32)
 
 
 def convert_copy_ref(x):
@@ -101,16 +108,20 @@ def transpose_ref(x, *, dim_m: int, dim_n: int, subtile: int):
 _AXPY_VEC = 64  # saxpy processes 64 bf16/iteration
 
 
-def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
+def axpy(
+    tile_size: int = 1024, vectorized: bool = True, *, a: float | None = None
+) -> ExternalFunction:
     """SAXPY kernel: ``z = a * x + y`` over bf16 tiles.
 
-    The scalar ``a`` and element count are passed to the kernel at runtime, so a
-    design supplies ``(x, y, a, z, size)``.  The vectorized path processes 64
-    elements per iteration; ``tile_size`` must therefore be a multiple of 64.
+    The kernel takes ``(x, y, a, z, size)``. The size is bound, so a call
+    passes ``(x, y, a, z)``, or ``(x, y, z)`` when ``a`` is given here (every
+    argument is accepted too).  The vectorized path processes 64 elements per iteration;
+    ``tile_size`` must therefore be a multiple of 64.
 
     Args:
         tile_size: Elements per tile (multiple of 64 for the vectorized path).
         vectorized: If ``True`` bind ``saxpy``; ``False`` binds ``saxpy_scalar``.
+        a: The scalar, passed on every call; ``None`` leaves it to the caller.
 
     Returns:
         ExternalFunction for the saxpy kernel.
@@ -135,8 +146,8 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
             trace=Trace.whole_call(),
             setup=conv_even,
             roles=(In, In, Param, Out, Param),
-            parameter_bindings=((4, tile_size),),
-            reference=axpy_ref,
+            parameter_bindings=(() if a is None else ((2, a),)) + ((4, tile_size),),
+            reference=axpy_ref if a is None else partial(axpy_ref, a=a),
             acc_dtype=np.float32,
             reduction=1,
             tolerance=_BF16_ROUNDTRIP,
