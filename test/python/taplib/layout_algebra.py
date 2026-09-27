@@ -203,6 +203,20 @@ def matmul_stream_dims():
     assert a == [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
     legacy = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
     assert a == list(legacy.transformation_dims)
+    # All four operand layouts kernels/linalg.py derives, including the
+    # transposed-B and column-major-C variants.
+    assert Layout.full((n, k)).tile((t, s)).layout.stream_dims() == [
+        (n // t, t * k),
+        (k // s, s),
+        (t, k),
+        (s, 1),
+    ]
+    assert Layout.full((n, m)).tile((t, r)).inverse().stream_dims() == [
+        (n // t, t * m),
+        (t, r),
+        (m // r, r * t),
+        (r, 1),
+    ]
     # C operand: the "un-blocking" order that linalg.py hand-writes today.
     c = Layout.full((m, n)).tile((r, t)).inverse()
     assert c.stream_dims() == [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
