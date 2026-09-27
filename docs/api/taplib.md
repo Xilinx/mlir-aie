@@ -65,6 +65,11 @@ print(grid[0].tap()) # TensorAccessPattern([16, 16] offset=0, sizes=[2, 2, 4, 4]
       show_root_heading: true
       heading_level: 2
 
+::: helpers.taplib.layout.PaddedLayout
+    options:
+      show_root_heading: true
+      heading_level: 2
+
 ::: helpers.taplib.tap.TensorAccessPattern
     options:
       show_root_heading: true
@@ -286,6 +291,21 @@ for i in range(M // m):
         assert (kernel_out == tile.T).all(), (i, j)
         t += 1
 print("transposes chain: every tile arrives block-transposed")
+```
+
+A memtile MM2S channel can pad the stream it emits (`ObjectFifo`'s
+`pad_dimensions` / `pad_value`). `Layout.pad([(before, after), ...])` attaches
+that padding to a walk: its `stream_dims()` and `pad_dims()` are the two fifo
+arguments, `padded_sizes` is what the consuming object must hold, and
+`materialize()` shows where the constants land. A `memtile_out` hop accepts the
+`PaddedLayout` directly and `compose()` delivers padded positions as host
+index `-1`, so the composed core object is exactly `np.pad` of the tile.
+
+```python
+padded = Layout.full((rows, N))[:, :cols].pad([(1, 1), (2, 2)])
+of_out = ObjectFifo(padded_ty, dims_to_stream=padded.stream_dims(),
+                    pad_dimensions=padded.pad_dims(), pad_value=0)
+Pipeline().shim(...).memtile_in((rows, N)).memtile_out((rows, N), padded).core_in(padded.padded_sizes)
 ```
 
 ::: helpers.taplib.pipeline

@@ -22,7 +22,9 @@ every hop that a tile's DMA could not execute (dimension count, wrap and
 stride widths, the 32-bit address-generation granule) and every hop whose walk
 does not cover its object exactly. Nothing here talks to the compiler: the
 hop descriptors are what you passed to ``ObjectFifo``, spelled once, and the
-result is what the verifier would only discover on hardware.
+result is what the verifier would only discover on hardware. A memtile_out
+hop may pad (``pad_dimensions``, or a :class:`PaddedLayout`); padded
+positions arrive as host index ``-1``.
 
 Limits are the AIE2 family's (NPU1 and NPU2): see :data:`LIMITS`.
 """
@@ -34,7 +36,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .layout import Layout
+from .layout import Layout, PaddedLayout
 from .tap import TensorAccessPattern
 
 __all__ = ["Hop", "Pipeline", "LIMITS", "KINDS"]
@@ -81,6 +83,11 @@ class Hop:
             the whole object after ``offset`` (a segment's length for a split).
         elem_bytes (int): Element width, for the granule rule.
         name (str): Label used in messages.
+        pad (Sequence[tuple[int, int]] | None): ``(before, after)`` constant
+            elements the walk emits around each pass over each dimension
+            (``pad_dimensions``); memtile_out only, one pair per entry of
+            ``dims``. Padded positions carry host index ``-1`` in
+            :meth:`Pipeline.compose`.
     """
 
     kind: str
@@ -90,14 +97,22 @@ class Hop:
     length: int | None = None
     elem_bytes: int = 4
     name: str = ""
+    pad: tuple | None = None
 
     def __post_init__(self):
         if self.kind not in KINDS:
             raise ValueError(f"kind must be one of {KINDS}, got {self.kind!r}")
         object.__setattr__(self, "shape", tuple(int(d) for d in self.shape))
+        if isinstance(self.dims, PaddedLayout):
+            object.__setattr__(self, "pad", self.dims.pad_dims())
+            object.__setattr__(self, "dims", self.dims.stream_dims())
         if self.dims is not None:
             object.__setattr__(
                 self, "dims", tuple((int(s), int(t)) for s, t in self.dims)
+            )
+        if self.pad is not None:
+            object.__setattr__(
+                self, "pad", tuple((int(b), int(a)) for b, a in self.pad)
             )
 
     @classmethod
@@ -137,12 +152,22 @@ class Hop:
         return Layout(self.shape, self.offset, sizes, strides)
 
     def order(self) -> np.ndarray:
-        """Flat object indices in the order the walk touches them."""
+        """Flat object indices in the order the walk touches them.
+
+        A padded walk (``pad``) emits ``-1`` at every padded position.
+        """
         lay = self.layout()
         idx = np.zeros((), dtype=np.int64) + lay.offset
         for size, stride in zip(lay.sizes, lay.strides):
             idx = idx[..., None] + np.arange(size, dtype=np.int64) * stride
+        if self.pad and len(self.pad) == idx.ndim:
+            idx = np.pad(idx, self.pad, constant_values=-1)
         return idx.reshape(-1)
+
+    @property
+    def emitted(self) -> int:
+        """Elements the walk puts on the stream, padding included."""
+        return len(self.order())
 
     # --------------------------------------------------------------- checks
 
@@ -191,6 +216,22 @@ class Hop:
             out.append(
                 f"{self.label}: offset {self.offset} x {self.elem_bytes} B is not a whole granule"
             )
+        if self.pad:
+            if self.kind != "memtile_out":
+                out.append(
+                    f"{self.label}: padding is only available on a memtile_out hop"
+                )
+            if self.dims is None or len(self.pad) != len(self.dims):
+                out.append(
+                    f"{self.label}: padding has {len(self.pad)} entries for {0 if self.dims is None else len(self.dims)} dims"
+                )
+            else:
+                before, after = self.pad[-1]
+                for what, count in (("before", before), ("after", after)):
+                    if (count * self.elem_bytes) % GRANULE_BYTES:
+                        out.append(
+                            f"{self.label}: innermost padding {what} {count} x {self.elem_bytes} B is not a whole {GRANULE_BYTES}-byte granule"
+                        )
         last = lay.offset + sum((s - 1) * t for s, t in zip(lay.sizes, lay.strides))
         if last >= self.numel:
             out.append(
@@ -231,9 +272,11 @@ class Pipeline:
         length: int | None = None,
         elem_bytes: int = 4,
         name: str = "memtile_out",
+        pad=None,
     ) -> Pipeline:
+        """Add a memtile ``dims_to_stream`` walk; ``dims`` may be a :class:`PaddedLayout`."""
         return self.add(
-            Hop("memtile_out", shape, dims, offset, length, elem_bytes, name)
+            Hop("memtile_out", shape, dims, offset, length, elem_bytes, name, pad)
         )
 
     def core_in(
@@ -260,6 +303,7 @@ class Pipeline:
                     )
             elif h.kind == "memtile_out":
                 o = h.order()
+                o = o[o >= 0]  # padded positions read nothing
                 seg = h.numel - h.offset if h.length is None else h.length
                 if len(np.unique(o)) != len(o):
                     out.append(
@@ -318,7 +362,8 @@ class Pipeline:
         for obj in objs:
             flat = obj.reshape(-1)
             for i, drain in enumerate(mem_out):
-                out_stream = flat[drain.order()]
+                order = drain.order()
+                out_stream = np.where(order >= 0, flat[np.maximum(order, 0)], -1)
                 if not cores:
                     results.append(out_stream)
                     continue

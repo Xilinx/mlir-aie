@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-
 from aie.helpers.taplib import Layout, TensorAccessPattern
 from aie.helpers.taplib.pipeline import Hop, Pipeline
 from util import construct_test
@@ -13,8 +12,11 @@ from util import construct_test
 # CHECK-LABEL: transposes_combined_chain
 @construct_test
 def transposes_combined_chain():
-    """basic/transposes --strategy=combined: the memtile block-shuffles each
-    tile so the kernel only transposes s x s sub-tiles."""
+    """Compose basic/transposes --strategy=combined.
+
+    The memtile block-shuffles each tile so the kernel only transposes s x s
+    sub-tiles.
+    """
     M, K, m, n, s = 64, 64, 16, 16, 8
     host = np.arange(M * K).reshape(M, K)
     tap_in_L3L2 = TensorAccessPattern(
@@ -51,8 +53,11 @@ def transposes_combined_chain():
 # CHECK-LABEL: memtile_4d_core_3d_chain
 @construct_test
 def memtile_4d_core_3d_chain():
-    """test/npu-xrt/dma_complex_dims: linear shim, 4-D memtile MM2S, 3-D core
-    S2MM; test.cpp derives the expected order by hand."""
+    """Compose test/npu-xrt/dma_complex_dims.
+
+    Linear shim, 4-D memtile MM2S, 3-D core S2MM; test.cpp derives the
+    expected order by hand.
+    """
     m, k, K, r, s = 32, 32, 64, 4, 8
     host = np.arange(m * K)  # pre-tiled on the host: [tile][m][k]
     pipe = (
@@ -79,11 +84,14 @@ def memtile_4d_core_3d_chain():
     # CHECK: dma_complex_dims chain matches test.cpp
 
 
-# CHECK-LABEL: matmul_A_chain
+# CHECK-LABEL: matmul_a_chain
 @construct_test
-def matmul_A_chain():
-    """whole_array A operand: host group tiling -> memtile split rows ->
-    (r x s) microtile stream into each core."""
+def matmul_a_chain():
+    """Compose the whole_array A operand.
+
+    Host group tiling -> memtile split rows -> (r x s) microtile stream into
+    each core.
+    """
     M, K, m, k, r, s, rows = 128, 64, 32, 32, 4, 8, 2
     host = np.arange(M * K).reshape(M, K)
     A_tiles = Layout.full((M, K)).tile((m * rows, k)).group((1, K // k))
@@ -137,3 +145,71 @@ def legality_and_coverage():
     assert any("repeat 65" in msg for msg in h.issues())
     # A legal 4-byte transpose is fine.
     assert Hop.shim(Layout.full((8, 8)).permute((1, 0))).issues() == []
+
+
+# CHECK-LABEL: padded_memtile_out
+@construct_test
+def padded_memtile_out():
+    """Compose basic/dma_padding.
+
+    A memtile MM2S pads the stream it emits; the consumer's object is the
+    padded size and the pads arrive as -1.
+    """
+    real, before, after = 8, 4, 4
+    host = np.arange(real)
+    padded = Layout.full((real,)).pad([(before, after)])
+    assert padded.padded_sizes == [before + real + after]
+    assert padded.numel == before + real + after
+    assert padded.stream_dims() == [(real, 1)]
+    assert padded.pad_dims() == [(before, after)]
+    pipe = (
+        Pipeline()
+        .shim(Layout.full((real,)))
+        .memtile_in((real,))
+        .memtile_out((real,), padded)
+        .core_in((before + real + after,))
+    )
+    assert pipe.check() == []
+    (core,) = pipe.compose()
+    assert core.tolist() == [-1] * before + host.tolist() + [-1] * after
+    # Two dimensions: every row of a (rows, cols) tile gets its own pads and
+    # whole padded rows surround the block, exactly np.pad's geometry.
+    rows, cols, N = 4, 8, 16
+    host2 = np.arange(rows * N).reshape(rows, N)
+    padded2 = Layout.full((rows, cols)).pad([(1, 1), (2, 2)])
+    want = np.pad(host2[:, :cols], [(1, 1), (2, 2)], constant_values=-1)
+    assert (
+        padded2.materialize()
+        == np.pad(
+            np.arange(rows * cols).reshape(rows, cols),
+            [(1, 1), (2, 2)],
+            constant_values=-1,
+        )
+    ).all()
+    pipe2 = (
+        Pipeline()
+        .shim(Layout.full((rows, N))[:, :cols])
+        .memtile_in((rows, cols))
+        .memtile_out((rows, cols), padded2)
+        .core_in((rows + 2, cols + 4))
+    )
+    assert pipe2.check() == [], pipe2.check()
+    (core2,) = pipe2.compose()
+    assert (core2 == want).all()
+    # Legality: padding lives on memtile_out only, one pair per dim, and the
+    # innermost counts must be whole 32-bit words.
+    assert any(
+        "only available on a memtile_out" in m
+        for m in Hop("core_in", (8,), [(8, 1)], pad=[(4, 4)]).issues()
+    )
+    assert any(
+        "entries for" in m
+        for m in Hop("memtile_out", (8,), [(8, 1)], pad=[(4, 4), (0, 0)]).issues()
+    )
+    assert any(
+        "granule" in m
+        for m in Hop("memtile_out", (8,), [(8, 1)], elem_bytes=1, pad=[(2, 0)]).issues()
+    )
+    assert Hop("memtile_out", (8,), [(8, 1)], elem_bytes=1, pad=[(4, 8)]).issues() == []
+    print("padding: pads arrive as -1 in the padded object")
+    # CHECK: padding: pads arrive as -1 in the padded object

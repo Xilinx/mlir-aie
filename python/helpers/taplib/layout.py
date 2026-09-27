@@ -44,7 +44,7 @@ from .symbolic import (
 )
 from .tap import TensorAccessPattern
 
-__all__ = ["Layout", "TileGrid"]
+__all__ = ["Layout", "PaddedLayout", "TileGrid"]
 
 IntLike = Any  # int, np.integer, or a staged aie.ir.Value
 
@@ -423,6 +423,26 @@ class Layout:
         """``[(size, stride), ...]`` as ObjectFifo ``dims_to_stream``/``dims_from_stream`` take it."""
         return list(zip(self._sizes, self._strides))
 
+    def pad(self, padding: Sequence[Sequence[int]]) -> PaddedLayout:
+        """Surround every walk of each dimension with constant elements.
+
+        A memtile MM2S channel can pad the stream it emits: for dimension
+        ``i`` it inserts ``before`` constant elements ahead of each pass over
+        the dimension and ``after`` behind it, so the padded stream is
+        ``prod(before_i + size_i + after_i)`` elements long (the pad value is
+        set per channel on the fifo). ``padding`` is one ``(before, after)``
+        pair per dimension of this layout, outermost first, and every count
+        is a compile-time int.
+
+        Returns:
+            PaddedLayout: This layout with its padding, whose
+            :meth:`~PaddedLayout.stream_dims` and :meth:`~PaddedLayout.pad_dims`
+            are what ``ObjectFifo(dims_to_stream=..., pad_dimensions=...)``
+            take, and whose :meth:`~PaddedLayout.materialize` shows where the
+            constants land.
+        """
+        return PaddedLayout(self, padding)
+
     def tap(self, ndims: int | None = 4) -> TensorAccessPattern:
         """Return this view as a :class:`TensorAccessPattern`.
 
@@ -507,6 +527,91 @@ class Layout:
             f"Layout({self._tensor_dims}, offset={self._offset}, "
             f"sizes={self._sizes}, strides={self._strides})"
         )
+
+
+class PaddedLayout:
+    """A :class:`Layout` plus the constant padding a memtile emits around it.
+
+    Built by :meth:`Layout.pad`. Padding is a property of the *emitting*
+    DMA (a memtile ``dims_to_stream``), not of the layout's own elements:
+    the layout still indexes the object it reads; the padded stream is what
+    the consumer receives.
+    """
+
+    def __init__(self, layout: Layout, padding: Sequence[Sequence[int]]):
+        pads = []
+        for entry in padding:
+            if len(entry) != 2:
+                raise ValueError("each padding entry is a (before, after) pair")
+            before, after = (sint(v) for v in entry)
+            if is_sym(before) or is_sym(after):
+                raise TypeError("padding counts must be compile-time ints")
+            if before < 0 or after < 0:
+                raise ValueError(f"padding counts must be >= 0, got {entry}")
+            pads.append((before, after))
+        if len(pads) != layout.rank:
+            raise ValueError(
+                f"padding has {len(pads)} entries for a layout of rank {layout.rank}"
+            )
+        self._layout = layout
+        self._padding = tuple(pads)
+
+    @property
+    def layout(self) -> Layout:
+        """The unpadded walk."""
+        return self._layout
+
+    @property
+    def padding(self) -> tuple[tuple[int, int], ...]:
+        """``(before, after)`` per dimension, outermost first."""
+        return self._padding
+
+    @property
+    def padded_sizes(self) -> list[IntLike]:
+        """Extent of each dimension on the padded stream."""
+        return [b + s + a for (b, a), s in zip(self._padding, self._layout.sizes)]
+
+    @property
+    def numel(self) -> IntLike:
+        """Elements on the padded stream (what the consuming object must hold)."""
+        return sprod(self.padded_sizes)
+
+    def stream_dims(self) -> list[tuple[IntLike, IntLike]]:
+        """Return the layout's ``dims_to_stream``."""
+        return self._layout.stream_dims()
+
+    def pad_dims(self) -> list[tuple[int, int]]:
+        """``pad_dimensions`` as ``ObjectFifo`` takes it (one pair per dim)."""
+        return [tuple(p) for p in self._padding]
+
+    def materialize(self, pad_value: int = -1):
+        """Flat object index of every element of the padded stream.
+
+        Returns a NumPy array shaped :attr:`padded_sizes`; padded positions
+        hold ``pad_value``. Needs a concrete layout.
+        """
+        import numpy as np
+
+        lay = self._layout
+        if lay.is_symbolic:
+            raise TypeError("materialize needs a concrete layout")
+        idx = np.zeros((), dtype=np.int64) + int(lay.offset)
+        for size, stride in zip(lay.sizes, lay.strides):
+            idx = idx[..., None] + np.arange(int(size), dtype=np.int64) * int(stride)
+        return np.pad(idx, self._padding, constant_values=pad_value)
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, PaddedLayout)
+            and self._layout == other._layout
+            and self._padding == other._padding
+        )
+
+    def __hash__(self) -> int:
+        return hash((self._layout, self._padding))
+
+    def __repr__(self) -> str:
+        return f"{self._layout!r}.pad({list(self._padding)!r})"
 
 
 class _GridAxis(NamedTuple):
