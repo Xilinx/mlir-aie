@@ -750,6 +750,24 @@ struct AIEDMATasksToNPUPass
                      [](OpFoldResult s) { return !getConstantIntValue(s); }) ||
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
+    bool sizeParameter =
+        bd_op.getSizeStateTableIdxAttr() || bd_op.getSizeParameterAttr();
+    if (bd_op.getSizeParameterAttr())
+      return bd_op->emitOpError("size_parameter must be lowered to a "
+                                "size_state_table_idx first; run "
+                                "--aie-lower-scratchpad-parameters");
+    if (sizeParameter) {
+      // The update targets the length word of a compile-time BD register, on
+      // a descriptor the runtime sequence rewrites every run: a shim BD's.
+      if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow()))
+        return bd_op->emitOpError(
+            "size_parameter is only supported on shim NOC tiles, whose BDs "
+            "the runtime sequence writes every run");
+      if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId)
+        return bd_op->emitOpError(
+            "size_parameter needs a constant offset, length, sizes, strides "
+            "and bd_id: it patches the statically written BD");
+    }
     if (runtimeLen || runtimeDims || runtimeOffset || runtimeBdId) {
       int col = tile.getCol(), row = tile.getRow();
       if (!target_model.isShimNOCTile(col, row) &&
@@ -959,6 +977,27 @@ struct AIEDMATasksToNPUPass
                << "        Padding is supported only on MemTiles.";
       }
     }
+    // Under a size parameter the BD is written without the units of its D2
+    // dimension, which the scratchpad update adds back per run.
+    uint32_t sizeUnitWords = 0;
+    if (sizeParameter) {
+      SmallVector<int64_t> outerSizes =
+          llvm::map_to_vector(bd_op.getMixedSizes(), [](OpFoldResult s) {
+            return *getConstantIntValue(s);
+          });
+      FailureOr<uint32_t> unitWords =
+          getSizeParameterUnitWords(bd_op, outerSizes, buffer_type);
+      if (failed(unitWords))
+        return failure();
+      sizeUnitWords = *unitWords;
+      uint64_t maxWords = static_cast<uint64_t>(sizeUnitWords) *
+                          static_cast<uint64_t>(outerSizes.end()[-3]);
+      if (maxWords > len_addr_granularity)
+        return bd_op->emitOpError("size_parameter: the BD length is shorter "
+                                  "than the units of its D2 dimension");
+      len_addr_granularity -= maxWords;
+    }
+
     auto fieldsOr = gatherBdTemplateFields(block, bd_op, tile, target_model,
                                            packet, outOfOrder);
     if (failed(fieldsOr))
@@ -994,7 +1033,15 @@ struct AIEDMATasksToNPUPass
         target_model.isShimNOCTile(tile.getCol(), tile.getRow())
             ? builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault())
             : IntegerAttr());
-    return setAddressForSingleBD(builder, bd_op, tile);
+    if (failed(setAddressForSingleBD(builder, bd_op, tile)))
+      return failure();
+    // After the address patch and the offset update: the length update
+    // rewrites the address word beside it with what it reads there.
+    if (sizeParameter)
+      return emitUpdateBdLengthFromSizeParameter(
+          builder, bd_op, sizeUnitWords,
+          target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id));
+    return success();
   }
 
   LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureTaskOp op) {

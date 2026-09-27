@@ -74,9 +74,9 @@ static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
 /// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
 /// should be emitted into this sequence. Reads the explicit attribute if
 /// present; otherwise defaults to true iff the parent device contains any
-/// ReadScratchpadParameterOp in a core, or any 'offset_parameter' attribute on
-/// a DMA BD, and the runtime sequence does not already contain a
-// `aiex.sync_scratchpad_parameters_from_host` marker.
+/// ReadScratchpadParameterOp in a core, or any 'offset_parameter' or
+/// 'size_parameter' attribute on a DMA BD, and the runtime sequence does not
+/// already contain a `aiex.sync_scratchpad_parameters_from_host` marker.
 static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
   if (auto attr = seqOp.getEmitParameterSyncPreambleAttr()) {
     return attr.getValue();
@@ -97,7 +97,8 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
     }
     if (llvm::isa<ReadScratchpadParameterOp>(op) ||
         op->hasAttr("offset_parameter") ||
-        op->hasAttr("offset_state_table_idx")) {
+        op->hasAttr("offset_state_table_idx") ||
+        op->hasAttr("size_parameter") || op->hasAttr("size_state_table_idx")) {
       found = true;
     }
   });
@@ -334,27 +335,33 @@ struct AIELowerScratchpadParametersPass
     // Step 2: determine each parameter's kind from its usage, erroring on
     // mixed use.  A parameter is "core" if any aiex.read_scratchpad_parameter
     // references it; "addr" if any DMA op references it via offset_parameter.
-    // If both, emit an error.
+    // If both, emit an error.  A size_parameter takes either kind: the length
+    // update scales by the unit, so it reads a core word (stored shifted left
+    // by 2) as well as a raw one, and a parameter only DMAs use stays raw.
     DenseMap<StringRef, bool> usedAsCore;
     DenseMap<StringRef, bool> usedAsAddr;
+    DenseMap<StringRef, bool> usedAsSize;
     moduleOp.walk([&](ReadScratchpadParameterOp op) {
       usedAsCore[op.getParameter()] = true;
     });
-    auto markAddr = [&](Operation *op, FlatSymbolRefAttr ref) {
+    auto markUse = [&](DenseMap<StringRef, bool> &uses, FlatSymbolRefAttr ref) {
       if (ref)
-        usedAsAddr[ref.getValue()] = true;
+        uses[ref.getValue()] = true;
     };
     moduleOp.walk([&](NpuDmaMemcpyNdOp op) {
-      markAddr(op, op.getOffsetParameterAttr());
+      markUse(usedAsAddr, op.getOffsetParameterAttr());
+      markUse(usedAsSize, op.getSizeParameterAttr());
     });
-    moduleOp.walk(
-        [&](AIE::DMABDOp op) { markAddr(op, op.getOffsetParameterAttr()); });
+    moduleOp.walk([&](AIE::DMABDOp op) {
+      markUse(usedAsAddr, op.getOffsetParameterAttr());
+      markUse(usedAsSize, op.getSizeParameterAttr());
+    });
 
     for (auto p : allParams) {
       StringRef name = p.getSymName();
       bool core = usedAsCore.lookup(name);
-      bool addr = usedAsAddr.lookup(name);
-      if (core && addr) {
+      bool addr = usedAsAddr.lookup(name) || (usedAsSize.lookup(name) && !core);
+      if (core && usedAsAddr.lookup(name)) {
         p.emitError("parameter '")
             << name
             << "' is used both as an aiex.read_scratchpad_parameter source "
@@ -406,15 +413,49 @@ struct AIELowerScratchpadParametersPass
       warnIfRuntimeOffsetMayRound(op, bufType);
       return success();
     };
+    // Likewise `size_parameter` to `size_state_table_idx`, marking a core-kind
+    // word, which the host stores shifted left by 2.
+    auto rewriteSizeParam = [&](Operation *op, FlatSymbolRefAttr ref) {
+      if (!ref) {
+        return success();
+      }
+      auto paramOp =
+          moduleOp.lookupSymbol<ScratchpadParameterOp>(ref.getAttr());
+      if (!paramOp) {
+        op->emitOpError("size_parameter '")
+            << ref.getValue()
+            << "' not found. Declare it at module scope with "
+               "aiex.scratchpad_parameter.";
+        return failure();
+      }
+      if (!paramOp.getType().isInteger(32)) {
+        auto err = op->emitOpError("size_parameter '")
+                   << ref.getValue() << "' must have type i32, got "
+                   << paramOp.getType() << ".";
+        err.attachNote(paramOp.getLoc()) << "Parameter declared here.";
+        return failure();
+      }
+      uint8_t stateIdx =
+          static_cast<uint8_t>(paramOp.getStateTableIdx().value());
+      op->setAttr("size_state_table_idx",
+                  builder.getIntegerAttr(
+                      builder.getIntegerType(8, /*isSigned=*/false), stateIdx));
+      if (paramOp.getKind() == ScratchpadParameterKind::Core)
+        op->setAttr("size_state_table_shifted", builder.getUnitAttr());
+      op->removeAttr("size_parameter");
+      return success();
+    };
     WalkResult rewriteResult = moduleOp.walk([&](Operation *op) {
       if (auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
         if (failed(rewriteOffsetParam(op, dmaOp.getOffsetParameterAttr(),
-                                      dmaOp.getMemref().getType()))) {
+                                      dmaOp.getMemref().getType())) ||
+            failed(rewriteSizeParam(op, dmaOp.getSizeParameterAttr()))) {
           return WalkResult::interrupt();
         }
       } else if (auto bdOp = dyn_cast<AIE::DMABDOp>(op)) {
         if (failed(rewriteOffsetParam(op, bdOp.getOffsetParameterAttr(),
-                                      bdOp.getBuffer().getType()))) {
+                                      bdOp.getBuffer().getType())) ||
+            failed(rewriteSizeParam(op, bdOp.getSizeParameterAttr()))) {
           return WalkResult::interrupt();
         }
       }

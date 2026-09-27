@@ -34,6 +34,9 @@ struct AIENormalizeDmaBdDimsPass
     device.walk([&](DMABDOp op) {
       if (op.getMixedSizes().empty())
         return;
+      // A size parameter names a dimension by position; dropping one moves it.
+      if (op.getSizeParameterAttr() || op.getSizeStateTableIdxAttr())
+        return;
 
       for (OpFoldResult s : op.getMixedSizes())
         if (!getConstantIntValue(s))

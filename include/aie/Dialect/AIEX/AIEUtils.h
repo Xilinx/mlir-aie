@@ -70,6 +70,25 @@ LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
                                                      BaseMemRefType bufType,
                                                      uint64_t registerAddr);
 
+// The length, in 32-bit words, of one unit of a `size_parameter` transfer:
+// the two innermost of `sizesOuterFirst` (element counts, outermost first, at
+// least three) at the element size of `bufType`. The parameter scales it into
+// the BD's length register, whose low 2 bits the firmware clears, so a unit
+// must hold a multiple of 4 words; otherwise this emits an error on `bdOp`.
+FailureOr<uint32_t> getSizeParameterUnitWords(Operation *bdOp,
+                                              ArrayRef<int64_t> sizesOuterFirst,
+                                              BaseMemRefType bufType);
+
+// Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime extent
+// (held in the scratchpad slot referenced by `bdOp`'s `size_state_table_idx`
+// attribute) times `unitWords` into the BD length register at `registerAddr`.
+// A slot marked `size_state_table_shifted` holds its value shifted left by 2,
+// which the multiplier takes back out.
+LogicalResult emitUpdateBdLengthFromSizeParameter(OpBuilder &builder,
+                                                  Operation *bdOp,
+                                                  uint32_t unitWords,
+                                                  uint64_t registerAddr);
+
 // Emit the params.txt description of every `aiex.scratchpad_parameter` in
 // `moduleOp` (with their assigned `state_table_idx`/`kind`) to `os`.
 //

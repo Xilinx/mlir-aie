@@ -19,6 +19,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -311,7 +312,8 @@ static NpuDmaMemcpyNdOp createDecomposedOp(PatternRewriter &rewriter,
       op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
       op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(), op.getD2ZeroAfterAttr(),
       op.getBurstLengthAttr(), op.getAxcacheAttr(), op.getOffsetParameterAttr(),
-      op.getOffsetStateTableIdxAttr());
+      op.getOffsetStateTableIdxAttr(), op.getSizeParameterAttr(),
+      op.getSizeStateTableIdxAttr(), op.getSizeStateTableShiftedAttr());
 }
 
 static int64_t allocateNextId(NpuDmaMemcpyNdOp op, int64_t startId,
@@ -619,6 +621,11 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
     if (patternPassesVerification(op, bufferType, targetModel, col, row,
                                   pattern))
       return failure();
+    if (op.getSizeParameterAttr() || op.getSizeStateTableIdxAttr())
+      return op.emitOpError()
+             << "has a size_parameter but does not fit one buffer "
+                "descriptor; the parameter patches one descriptor's length, "
+                "so it cannot be split";
 
     auto decomposed =
         decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
@@ -646,7 +653,9 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
           op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
           op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
           op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-          op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+          op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
+          op.getSizeParameterAttr(), op.getSizeStateTableIdxAttr(),
+          op.getSizeStateTableShiftedAttr());
       return success();
     }
 
@@ -745,6 +754,11 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     NdDmaPattern pattern = patternFromDmaBd(op);
     if (lowerable(pattern))
       return failure();
+    if (op.getSizeParameterAttr() || op.getSizeStateTableIdxAttr())
+      return op.emitOpError()
+             << "has a size_parameter but does not fit one buffer "
+                "descriptor; the parameter patches one descriptor's length, "
+                "so it cannot be split";
 
     // Outer iteration dimensions that re-read the same data only repeat what
     // is inside them, as the task's repeat count does. Where dropping them is
@@ -964,7 +978,16 @@ struct AIEDecomposeLargeDmaBdPass
     RewritePatternSet patterns(&getContext());
     patterns.add<DecomposeLargeDmaBdPattern>(&getContext());
     patterns.add<DecomposeLargeDmaBdTaskPattern>(&getContext(), nextGroup);
-    if (failed(applyPatternsGreedily(device, std::move(patterns)))) {
+    // A pattern rejects a descriptor by emitting an error and not matching,
+    // which the driver does not report; fail the pass on it, so the error is
+    // not followed by the lowering's complaint about the same descriptor.
+    bool rejected = false;
+    ScopedDiagnosticHandler rejections(&getContext(), [&](Diagnostic &diag) {
+      rejected |= diag.getSeverity() == DiagnosticSeverity::Error;
+      return failure();
+    });
+    if (failed(applyPatternsGreedily(device, std::move(patterns))) ||
+        rejected) {
       signalPassFailure();
       return;
     }

@@ -169,6 +169,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         axcache: int | None = None,
         packet: tuple[int] | None = None,
         offset_parameter: str | None = None,
+        size_parameter: str | None = None,
     ):
         if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
@@ -213,6 +214,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             axcache=axcache,
             packet=packet,
             offset_parameter=offset_parameter,
+            size_parameter=size_parameter,
         )
 
 
@@ -338,6 +340,7 @@ def shim_dma_bd(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    size_parameter: str | None = None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -371,6 +374,7 @@ def shim_dma_bd(
         axcache=axcache,
         packet=packet,
         offset_parameter=offset_parameter,
+        size_parameter=size_parameter,
     )
 
 
@@ -387,6 +391,7 @@ def shim_dma_single_bd_task(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    size_parameter: str | None = None,
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -404,6 +409,8 @@ def shim_dma_single_bd_task(
         axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
             omitted, the target model's default AxCACHE value is used.
         packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
+        offset_parameter (optional): Name of a scratchpad parameter whose value, in elements, moves the transfer's base address each run.
+        size_parameter (optional): Name of a scratchpad parameter whose value is the extent of ``sizes[1]`` of the four outermost-first sizes (the D2 dimension) each run; the sizes give the most it may be. Needs at most four dimensions.
 
     Example:
         out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
@@ -425,6 +432,11 @@ def shim_dma_single_bd_task(
         offset = int(tap.offset)
 
     sizes, strides, repeat_count, repeat_count_val = _task_dims(sizes, strides)
+    if size_parameter is not None and (sizes is None or len(sizes) != 4):
+        raise ValueError(
+            "size_parameter patches sizes[1] of a four-dimension transfer; a "
+            "longer one is split into several descriptors, which it cannot patch"
+        )
     if transfer_len is None and sizes is not None:
         transfer_len = np.prod(sizes[-3:])
     offset, transfer_len = _as_bd_i32(offset), _as_bd_i32(transfer_len)
@@ -446,6 +458,7 @@ def shim_dma_single_bd_task(
                 axcache=axcache,
                 packet=packet,
                 offset_parameter=offset_parameter,
+                size_parameter=size_parameter,
             )
             EndOp()
     return task

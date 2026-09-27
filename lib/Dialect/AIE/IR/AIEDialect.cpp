@@ -3338,6 +3338,9 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*iteration=*/nullptr,
         /*offset_parameter=*/nullptr,
         /*offset_state_table_idx=*/nullptr,
+        /*size_parameter=*/nullptr,
+        /*size_state_table_idx=*/nullptr,
+        /*size_state_table_shifted=*/nullptr,
         /*next_bd_id=*/nullptr);
 }
 
@@ -3462,6 +3465,18 @@ LogicalResult DMABDOp::verify() {
                                 .getElementTypeBitWidth();
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
+  }
+  if (getSizeParameterAttr() || getSizeStateTableIdxAttr()) {
+    uint64_t elemBitWidth = llvm::cast<BaseMemRefType>(getBuffer().getType())
+                                .getElementTypeBitWidth();
+    if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+      return emitOpError("size_parameter requires a whole-byte element type");
+    // The parameter is the extent of the third-innermost dimension, D2.
+    if (getMixedSizes().size() < 3)
+      return emitOpError("size_parameter patches the third-innermost "
+                         "dimension, so it needs at least three sizes");
+    if (getPadDimensions())
+      return emitOpError("size_parameter is not supported with padding");
   }
 
   // Skip verification of the BDOp outside of mem operations.
@@ -3910,6 +3925,9 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     bool parentIsShim = parentTileLike && parentTileLike.isShimTile();
     bool inShimDMA = (bool)op->getParentOfType<ShimDMAOp>();
     if (!bufferIsExternal && !parentIsShim && !inShimDMA)
+      return mlir::failure();
+    // A size parameter names one of the dimensions this would fold away.
+    if (op.getSizeParameterAttr() || op.getSizeStateTableIdxAttr())
       return mlir::failure();
 
     // Only ND dimensions that are present and all-constant can be linearized;

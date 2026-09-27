@@ -391,6 +391,35 @@ public:
         buffer_length_val *= inputSizes[i];
       }
     }
+    // Under a size parameter the BD is written without the units of its D2
+    // dimension (sizes[1], outermost first), which the scratchpad update adds
+    // back per run.
+    uint32_t sizeUnitWords = 0;
+    if (op.getSizeParameterAttr())
+      return op->emitOpError("size_parameter must be lowered to a "
+                             "size_state_table_idx first; run "
+                             "--aie-lower-scratchpad-parameters");
+    if (op.getSizeStateTableIdxAttr()) {
+      if (!targetModel.isShimNOCTile(tileCol, tileRow))
+        return op->emitOpError(
+            "size_parameter is only supported on shim NOC tiles, whose BDs "
+            "the runtime sequence writes every run");
+      SmallVector<int64_t> outerSizes =
+          llvm::map_to_vector(op.getMixedSizes(), [](OpFoldResult s) {
+            return *getConstantIntValue(s);
+          });
+      FailureOr<uint32_t> unitWords =
+          getSizeParameterUnitWords(op, outerSizes, bufferType);
+      if (failed(unitWords))
+        return failure();
+      sizeUnitWords = *unitWords;
+      uint64_t maxWords = static_cast<uint64_t>(sizeUnitWords) *
+                          static_cast<uint64_t>(outerSizes[1]);
+      if (maxWords > buffer_length_val)
+        return op->emitOpError("size_parameter: the BD length is shorter "
+                               "than the units of its D2 dimension");
+      buffer_length_val -= maxWords;
+    }
     buffer_length = IntegerAttr::get(i32ty, buffer_length_val);
 
     // buffer_offset - zero because the complete address is set by the patch op
@@ -515,6 +544,13 @@ public:
     int arg_idx = -1;
     if (failed(emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow,
                                       arg_idx)))
+      return failure();
+    // After the address patch and the offset update: the length update
+    // rewrites the address word beside it with what it reads there.
+    if (op.getSizeStateTableIdxAttr() &&
+        failed(emitUpdateBdLengthFromSizeParameter(
+            rewriter, op, sizeUnitWords,
+            targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()))))
       return failure();
 
     // push the patched bd onto the dma task queue. bd_id and repeat_count are

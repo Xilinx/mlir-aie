@@ -235,6 +235,47 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   return success();
 }
 
+FailureOr<uint32_t>
+AIEX::getSizeParameterUnitWords(Operation *bdOp,
+                                ArrayRef<int64_t> sizesOuterFirst,
+                                BaseMemRefType bufType) {
+  size_t n = sizesOuterFirst.size();
+  assert(n >= 3 && "a size_parameter transfer has at least three sizes");
+  uint64_t elemBytes = bufType.getElementTypeBitWidth() / 8;
+  uint64_t unitBytes = static_cast<uint64_t>(sizesOuterFirst[n - 1]) *
+                       static_cast<uint64_t>(sizesOuterFirst[n - 2]) *
+                       elemBytes;
+  if (unitBytes % 16 != 0) {
+    return bdOp->emitOpError("size_parameter counts units of the two "
+                             "innermost dimensions, ")
+           << unitBytes
+           << " bytes here; the firmware clears the low 2 bits of the length "
+              "register it patches, so a unit must be a multiple of 16 bytes";
+  }
+  return static_cast<uint32_t>(unitBytes / 4);
+}
+
+LogicalResult AIEX::emitUpdateBdLengthFromSizeParameter(OpBuilder &builder,
+                                                        Operation *bdOp,
+                                                        uint32_t unitWords,
+                                                        uint64_t registerAddr) {
+  auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("size_state_table_idx");
+  assert(idxAttr && "emitUpdateBdLengthFromSizeParameter called without "
+                    "size_state_table_idx attribute");
+
+  uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
+  // StateTable[idx] * func_arg = the length in words: a unit's words per
+  // count, or a quarter of them where the count is stored as n << 2.
+  uint32_t funcArg =
+      bdOp->hasAttr("size_state_table_shifted") ? unitWords / 4 : unitWords;
+  AIEX::NpuUpdateFromScratchpadOp::create(
+      builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
+      /*func_arg=*/funcArg,
+      /*address=*/static_cast<uint32_t>(registerAddr),
+      /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  return success();
+}
+
 void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   SmallVector<AIEX::ScratchpadParameterOp> allParams;
   moduleOp.walk([&](AIEX::ScratchpadParameterOp p) { allParams.push_back(p); });

@@ -645,7 +645,18 @@ def AIE_NpuDmaMemcpyNdOp
       // scratchpad state-table index whose value is used as the BD address
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
-      OptionalAttr<UI8Attr>:$offset_state_table_idx);
+      OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // if set, the aiex.scratchpad_parameter value is the runtime extent of
+      // sizes[1] (outermost first: the hardware D2 wrap, which a shim BD
+      // carries in its buffer length); the static size there is the most it
+      // may be. See aie.dma_bd's size_parameter for the constraints.
+      OptionalAttr<FlatSymbolRefAttr>:$size_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $size_parameter, which
+      // it removes: the scratchpad state-table index the extent is read from.
+      OptionalAttr<UI8Attr>:$size_state_table_idx,
+      // Set with $size_state_table_idx when the parameter is also read by a
+      // core, whose words the host stores shifted left by 2.
+      UnitAttr:$size_state_table_shifted);
 
   let assemblyFormat = [{
     `(` $memref ``
@@ -1839,9 +1850,13 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     cannot also be read from cores.
     If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
 
+    A parameter can also set a shim BD's extent along its D2 dimension each run,
+    as the `size_parameter` attribute. That use takes either kind: a parameter
+    also read from cores stays `core`, and one only DMAs use is `addr`.
+
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
     The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
-    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
+    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op or only as a `size_parameter`).
     Indices are unique across the entire module.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).

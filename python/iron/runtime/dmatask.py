@@ -31,6 +31,7 @@ class DMATask(RuntimeTask):
         strides=None,
         offset=None,
         transfer_len=None,
+        size_parameter: str | None = None,
     ):
         """Construct a RuntimeTask that will resolve to a DMA Operation.
 
@@ -64,6 +65,9 @@ class DMATask(RuntimeTask):
                 ``tap`` for the dynamic path.
             transfer_len (optional): Explicit access-pattern transfer length.
                 Used instead of ``tap`` for the dynamic path.
+            size_parameter (str | None, optional): Name of a ScratchpadParameter
+                whose value is the runtime extent of the transfer's D2 dimension,
+                ``sizes[1]`` of its four outermost-first sizes. Defaults to None.
         """
         if tap is not None and any(
             v is not None for v in (sizes, strides, offset, transfer_len)
@@ -77,6 +81,7 @@ class DMATask(RuntimeTask):
         self._tap = tap
         self._wait = wait
         self._offset_parameter = offset_parameter
+        self._size_parameter = size_parameter
         self._packet = packet
         self._sizes = sizes
         self._strides = strides
@@ -118,6 +123,7 @@ class DMATask(RuntimeTask):
                 issue_token=self._wait,
                 offset_parameter=self._offset_parameter,
                 packet=self._packet,  # pyright: ignore[reportArgumentType]
+                size_parameter=self._size_parameter,
             )
         else:
             # Explicit (possibly runtime-valued) access pattern for the dynamic path.
@@ -131,8 +137,39 @@ class DMATask(RuntimeTask):
                 issue_token=self._wait,
                 offset_parameter=self._offset_parameter,
                 packet=self._packet,  # pyright: ignore[reportArgumentType]
+                size_parameter=self._size_parameter,
             )
         dma_start_task(self._task)
+
+
+def _on_d2(sizes, strides, dim: int) -> tuple[list, list]:
+    """The four outermost-first sizes and strides of a pattern whose
+    dimension ``dim`` is patched per run, laid out with it on D2.
+
+    A shim BD has no D2 size: its length ends D2, so D2 is the one dimension
+    a length patch can bound. Dimension 1 is D2 already. Dimension 2 moves
+    there when nothing iterates outside it: ``[1, a, b, c]`` walks the same
+    addresses as ``[a, b, 1, c]``, with ``a`` the iteration dimension.
+    """
+    if sizes is None or strides is None:
+        raise ValueError("size_parameters needs the transfer's sizes and strides")
+    sizes, strides = list(sizes), list(strides)
+    if len(sizes) > 4 or len(strides) != len(sizes):
+        raise ValueError(
+            f"size_parameters needs at most four sizes, one stride each; got "
+            f"sizes {sizes} and strides {strides}"
+        )
+    pad = 4 - len(sizes)
+    sizes, strides = [1] * pad + sizes, [0] * pad + strides
+    if dim == 1:
+        return sizes, strides
+    if dim == 2 and sizes[0] == 1:
+        return sizes[1:3] + [1, sizes[3]], strides[1:3] + [0, strides[3]]
+    raise ValueError(
+        f"size_parameters patches dimension {dim} of sizes {sizes}: a shim "
+        f"descriptor bounds D2 (dimension 1), or dimension 2 when dimension 0 "
+        f"is 1"
+    )
 
 
 def emit_shim_transfer(
@@ -148,6 +185,7 @@ def emit_shim_transfer(
     offset=None,
     transfer_len=None,
     managed: bool = True,
+    size_parameters=None,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
 
@@ -160,6 +198,17 @@ def emit_shim_transfer(
     ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be
     runtime SSA values (the dynamic path). The two forms are mutually exclusive;
     when neither is given, a linear transfer of the whole buffer is used.
+
+    ``offset_parameter`` (a ScratchpadParameter or its name) moves the
+    transfer's base address by its value in elements each run.
+    ``size_parameters`` (``{dim: parameter}``) sets the extent of dimension
+    ``dim`` of the four outermost-first sizes to its value each run: the
+    access pattern is built for the most it may be, and the transfer moves
+    that many units of the dimensions inside it, which must hold a multiple
+    of 16 bytes. ``dim`` is 1 (D2), or 2 when dimension 0 is 1 (see
+    ``_on_d2``). The same word may be read by a core. Both patch the
+    statically built descriptor, so they need a constant access pattern on a
+    shim tile.
 
     When ``managed`` is True (default), the transfer is enrolled in a TaskGroup
     (explicit ``group`` or the sequence's implicit one), which awaits/frees it at
@@ -199,14 +248,30 @@ def emit_shim_transfer(
             "do not also pass group=."
         )
 
-    offset_param_name = None
-    if offset_parameter is not None:
-        if isinstance(offset_parameter, ScratchpadParameter):
-            offset_param_name = offset_parameter.name
-            if offset_parameter not in rt._scratchpad_parameters:
-                rt._scratchpad_parameters.append(offset_parameter)
+    def param_name(parameter):
+        if parameter is None:
+            return None
+        if isinstance(parameter, ScratchpadParameter):
+            if parameter not in rt._scratchpad_parameters:
+                rt._scratchpad_parameters.append(parameter)
+            return parameter.name
+        return parameter
+
+    offset_param_name = param_name(offset_parameter)
+    size_param_name = None
+    if size_parameters:
+        if len(size_parameters) != 1:
+            raise ValueError(
+                "size_parameters patches one dimension of a transfer; got "
+                f"dimensions {sorted(size_parameters)}"
+            )
+        ((dim, parameter),) = size_parameters.items()
+        if tap is not None:
+            on_d2 = _on_d2(list(tap.sizes), list(tap.strides), dim)
+            tap = TensorAccessPattern(tap.tensor_dims, tap.offset, *on_d2)
         else:
-            offset_param_name = offset_parameter
+            sizes, strides = _on_d2(sizes, strides, dim)
+        size_param_name = param_name(parameter)
 
     task = DMATask(
         alloc,
@@ -220,6 +285,7 @@ def emit_shim_transfer(
         strides=strides,
         offset=offset,
         transfer_len=transfer_len,
+        size_parameter=size_param_name,
     )
     if managed:
         active.emit_transfer(task, group)

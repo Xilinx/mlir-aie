@@ -1137,6 +1137,22 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
       OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // if set, the aiex.scratchpad_parameter value is the runtime extent of
+      // the second-outermost of the four outermost-first `sizes` (the
+      // hardware D2 wrap, which a shim BD carries in its buffer length); the
+      // static size there is the most it may be. The transfer moves that many
+      // units of the two innermost dimensions, which must hold a multiple of
+      // 4 32-bit words: the firmware masks the length register with
+      // 0xFFFFFFFC. Shim NOC tiles only (other BDs are not rewritten per run),
+      // with a compile-time bd_id and no padding. A value of 0 is not a
+      // transfer the hardware defines.
+      OptionalAttr<FlatSymbolRefAttr>:$size_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $size_parameter, which
+      // it removes: the scratchpad state-table index the extent is read from.
+      OptionalAttr<UI8Attr>:$size_state_table_idx,
+      // Set with $size_state_table_idx when the parameter is also read by a
+      // core, whose words the host stores shifted left by 2.
+      UnitAttr:$size_state_table_shifted,
       // should never be assigned by user...
       OptionalAttr<AIEI32Attr>:$next_bd_id);
 

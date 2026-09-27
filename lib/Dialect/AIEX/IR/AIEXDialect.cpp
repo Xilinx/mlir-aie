@@ -401,6 +401,9 @@ struct LinearizeContiguousTransfer
     // Skip ops that are already in canonical linear form.
     if (op.isLinearTransferWithoutTransformation())
       return mlir::failure();
+    // A size parameter names one of the dimensions this would fold away.
+    if (op.getSizeParameterAttr() || op.getSizeStateTableIdxAttr())
+      return mlir::failure();
 
     // getMixedSizes/Strides/Offsets return outermost-first; reverse to
     // innermost-first so index 0 = d0 (innermost) and index 3 = repeat.
@@ -450,7 +453,9 @@ struct LinearizeContiguousTransfer
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
+        op.getSizeParameterAttr(), op.getSizeStateTableIdxAttr(),
+        op.getSizeStateTableShiftedAttr());
     return mlir::success();
   }
 };
@@ -605,6 +610,12 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
   }
+  bool sizeParameter = getSizeParameterAttr() || getSizeStateTableIdxAttr();
+  if (sizeParameter) {
+    uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
+    if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+      return emitOpError("size_parameter requires a whole-byte element type");
+  }
 
   if (getElementTypeBitwidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
@@ -630,8 +641,12 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // the address-patch arg_plus as arith (see AIEDmaToNpu.cpp emitBufferAddress-
   // Patch); runtime sizes/strides use the dynamic BD-word encoder. The shared
   // scope check enforces what the dynamic lowering can represent.
-  if (!allStridesConstant || !allSizesConstant || !allOffsetsConstant)
+  if (!allStridesConstant || !allSizesConstant || !allOffsetsConstant) {
+    if (sizeParameter)
+      return emitOpError("size_parameter needs constant sizes, strides and "
+                         "offsets: it patches the statically written BD");
     return verifyDynamicSizesStrides(targetModel, buffer);
+  }
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
