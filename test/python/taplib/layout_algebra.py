@@ -4,7 +4,8 @@
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 
-from aie.helpers.taplib import Layout, TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import Layout, TensorAccessPattern
+from _legacy_tensortiler2d import TensorTiler2D
 from aie.helpers.taplib.symbolic import sceildiv, smin, sprod
 from util import construct_test
 

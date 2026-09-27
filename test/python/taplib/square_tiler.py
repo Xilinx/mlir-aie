@@ -3,7 +3,7 @@
 
 import numpy as np
 
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import Layout
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -12,7 +12,7 @@ from util import construct_test
 # CHECK-LABEL: square_tiler
 @construct_test
 def square_tiler():
-    tiler = TensorTiler2D.simple_tiler((32, 32), (4, 4))
+    tiler = Layout.full((32, 32)).tile((4, 4)).materialize()
     access_order, access_count = tiler.accesses()
     reference_access = np.array(
         # fmt: off
