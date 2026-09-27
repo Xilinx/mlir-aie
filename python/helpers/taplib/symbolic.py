@@ -45,9 +45,19 @@ class SymbolicError(TypeError):
 
 
 def is_sym(value: Any) -> bool:
-    """Whether ``value`` is a staged MLIR value rather than a Python integer."""
+    """Whether ``value`` is a staged value rather than a Python integer.
+
+    A staged value is an ``aie.ir.Value`` (a runtime scalar inside a runtime
+    sequence body) or any object whose type sets ``__aie_symbolic__ = True``.
+    The latter is the protocol the tests use to drive every staged branch with
+    an expression-tree stand-in and no MLIR bindings: such a type overloads the
+    integer operators and comparisons, and may provide ``_select(a, b)`` and
+    ``_require(message)`` for the two helpers that otherwise emit dialect ops.
+    """
     if isinstance(value, (int, np.integer, bool)):
         return False
+    if getattr(type(value), "__aie_symbolic__", False):
+        return True
     try:
         from aie.ir import Value  # pyright: ignore[reportMissingImports]
     except ImportError:
@@ -95,6 +105,9 @@ def _cmp_lt(a: Any, b: Any) -> Any:
 def sselect(cond: Any, if_true: Any, if_false: Any) -> Any:
     """``if_true if cond else if_false``; ``arith.select`` when ``cond`` is staged."""
     if is_sym(cond):
+        hook = getattr(cond, "_select", None)
+        if hook is not None:
+            return hook(if_true, if_false)
         return _arith().select(cond, if_true, if_false)
     return if_true if cond else if_false
 
@@ -152,6 +165,10 @@ def require(cond: Any, message: str) -> None:
     if not is_sym(cond):
         if not cond:
             raise ValueError(message)
+        return
+    hook = getattr(cond, "_require", None)
+    if hook is not None:
+        hook(message)
         return
     try:
         from aie.dialects import aiex  # pyright: ignore[reportMissingImports]

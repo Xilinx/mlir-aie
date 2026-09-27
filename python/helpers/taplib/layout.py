@@ -426,8 +426,7 @@ class Layout:
         """
         out = self
         if ndims is not None:
-            concrete = not out.is_symbolic
-            if out.rank > ndims and concrete:
+            if out.rank > ndims and not out.is_symbolic:
                 out = out.drop_unit_dims()
             if out.rank > ndims:
                 raise ValueError(
@@ -435,28 +434,29 @@ class Layout:
                     f"{ndims} DMA dimensions; coalesce() or re-tile it"
                 )
             pad = ndims - out.rank
+            # Slot 0 of the shim form is the queue repeat. A leading stride-0
+            # dimension whose size is not the constant 1 is that repeat, staged
+            # or not: it stays in slot 0 and the padding goes between it and
+            # the addressing dimensions, so [R, th, tw] becomes [R, 1, th, tw].
             is_repeat = (
-                concrete
-                and out.rank > 1
+                out.rank > 1
+                and not is_sym(out._strides[0])
                 and out._strides[0] == 0
-                and out._sizes[0] != 1
+                and (is_sym(out._sizes[0]) or out._sizes[0] != 1)
             )
             if pad and is_repeat:
-                # Slot 0 of the shim form is the queue repeat: a pure repeat
-                # stays there and the padding goes between it and the
-                # addressing dimensions, so [R, th, tw] becomes [R, 1, th, tw].
                 sizes = out._sizes[:1] + [1] * pad + out._sizes[1:]
                 strides = out._strides[:1] + [0] * pad + out._strides[1:]
             else:
                 sizes = [1] * pad + out._sizes
                 strides = [0] * pad + out._strides
-            if concrete:
-                # A unit dimension ahead of the first real one never steps, so
-                # its stride is 0; the repeat slot is transparent to that scan.
-                for i in range(1 if is_repeat else 0, len(sizes)):
-                    if sizes[i] != 1:
-                        break
-                    strides[i] = 0
+            # A unit dimension ahead of the first real one never steps, so its
+            # stride is 0; the repeat slot is transparent to that scan, and a
+            # staged size ends it (rank and unit-ness are structural).
+            for i in range(1 if is_repeat else 0, len(sizes)):
+                if is_sym(sizes[i]) or sizes[i] != 1:
+                    break
+                strides[i] = 0
             out = out._with(sizes=sizes, strides=strides)
         return TensorAccessPattern(
             out._tensor_dims, out._offset, out._sizes, out._strides

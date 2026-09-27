@@ -187,9 +187,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         if tap:
             sizes = tap.sizes.copy()
             strides = tap.strides.copy()
-            # For some reason, the type checking of offsets does not mesh well with offset being a property
-            # so here we make sure it is evaluated and properly is seen as an integer.
-            offsets = [0] * 3 + [int(tap.offset)]
+            # A static tap carries an int offset; a symbolic one a runtime Value.
+            offsets = [0] * 3 + [tap.offset]
         else:
             if offsets is None:
                 offsets = [0] * 4
@@ -301,9 +300,8 @@ def shim_dma_bd(
     if tap:
         sizes = tap.sizes.copy()
         strides = tap.strides.copy()
-        # For some reason, the type checking of offsets does not mesh well with offset being a property
-        # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tap.offset)
+        # A static tap carries an int offset; a symbolic one a runtime Value.
+        offset = tap.offset
 
     if offset is None:
         offset = 0
@@ -374,9 +372,8 @@ def shim_dma_single_bd_task(
     if tap:
         sizes = tap.sizes.copy()
         strides = tap.strides.copy()
-        # For some reason, the type checking of offsets does not mesh well with offset being a property
-        # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tap.offset)
+        # A static tap carries an int offset; a symbolic one a runtime Value.
+        offset = tap.offset
 
     # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
     # dimension. The repeat_count below hoists sizes[0] into that iteration
