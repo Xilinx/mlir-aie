@@ -560,14 +560,16 @@ using dw8_conv = aie::sliding_mul_ch_ops<8, 8, 8, 1, 1, 1, int8, uint8>;
 using dw8_v = aie::vector<uint8, 64>;
 using dw8_w = aie::vector<int8, 64>;
 
-template <bool Aligned> static inline void dw8_put(uint8_t *p, dw_v v) {
+template <bool Aligned>
+static inline void dw8_put(uint8_t *p, dw_v v) {
   if constexpr (Aligned)
     aie::store_v(p, v);
   else
     aie::store_unaligned_v(p, v, 8);
 }
 
-template <bool Aligned> static inline void dw8_store(uint8_t *p, dw8_v v) {
+template <bool Aligned>
+static inline void dw8_store(uint8_t *p, dw8_v v) {
   dw8_put<Aligned>(p, v.extract<32>(0));
   dw8_put<Aligned>(p + 32, v.extract<32>(1));
 }
@@ -1056,7 +1058,8 @@ static inline __attribute__((always_inline)) void dwg_for(F &&f) {
 // once per block its outputs belong to, with the pixels across that block's
 // edges zeroed, and takes each lane from its own block. Stride 2 keeps the
 // even pixels.
-template <int W, int NB, int S> struct dwg_geo {
+template <int W, int NB, int S>
+struct dwg_geo {
   static constexpr int P = NB * W;
   static constexpr int NW = (P + 7) / 8;
   static constexpr int first(int k, int b) {
