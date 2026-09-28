@@ -6,7 +6,6 @@
 """Normalization kernel factories + numpy references: rms_norm, layer_norm."""
 
 from functools import partial
-from pathlib import Path
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
@@ -19,7 +18,6 @@ from ._common import (
     Param,
     Trace,
     _by_tuned_arch,
-    _detect_arch,
     _kernel_source,
     _make_extern,
     _tuned_arch,
@@ -58,16 +56,9 @@ _LAYER_NORM_BF16_AIE2P = Tolerance.bf16_ulps(
 def _norm_extern(
     func_name: str, filename: str, arg_types: list, contract: KernelContract
 ) -> ExternalFunction:
-    """Norm kernel with aie_runtime_lib (the arch's vec_math.h) on the include path."""
-    from aie.utils import config
-
-    runtime_dir = Path(config.aie_runtime_lib_dir()) / _detect_arch().upper()
+    """Norm kernel; the arch's vec_math.h is on every kernel's include path."""
     return _make_extern(
-        func_name,
-        _kernel_source(f"norm/{filename}"),
-        arg_types,
-        compile_flags=[f"-I{runtime_dir}"],
-        contract=contract,
+        func_name, _kernel_source(f"norm/{filename}"), arg_types, contract=contract
     )
 
 

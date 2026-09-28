@@ -426,6 +426,9 @@ def cxx_core_compile_command(
     if include_dirs:
         for include_dir in include_dirs:
             cmd.extend(["-I", str(include_dir)])
+    # Last, so a kernel's own headers win: the architecture's aie_runtime_lib,
+    # which holds lut_based_ops, vec_math.h and aie_bank_placement.h.
+    cmd.extend(["-I", os.path.join(config.aie_runtime_lib_dir(), target_arch.upper())])
 
     # Add additional compile arguments
     if compile_args:

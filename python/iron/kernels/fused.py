@@ -3,7 +3,6 @@
 """Single-tile composition of the fused GEMM init, reduction and drain ABI."""
 
 import hashlib
-from pathlib import Path
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
@@ -230,11 +229,6 @@ def fused_mm(
     source = _kernel_source("fused/fused_mm_tile.cc")
     include_dirs = _include_dirs()
     native_tanh = ARCH_TRAITS[arch].native_tanh
-    if not native_tanh:
-        from aie.utils import config
-
-        runtime = Path(config.aie_runtime_lib_dir()) / arch.upper()
-        include_dirs.append(str(runtime))
     # Include the complete recipe, not just geometry: architecture, source
     # location and runtime includes can change without changing the operands.
     key = (

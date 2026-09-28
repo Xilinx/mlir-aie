@@ -33,6 +33,7 @@ from aie.iron import kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.utils import get_current_device
+from aie.utils.compile.utils import cxx_core_compile_command
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
@@ -1068,8 +1069,10 @@ def test_row_factory_aliases_and_arch_ports(name, kernel_arch):
     assert fn.arg_shape(0) == (2048,)
     assert Path(fn._source_file).parent.name == canonical.__name__.split(".")[-1]
     assert len(fn.contract.roles) == len(fn.arg_types())
-    if name != "rope":
-        assert any(kernel_arch.upper() in flag for flag in fn._compile_flags)
+    command = cxx_core_compile_command(
+        fn._source_file, kernel_arch, "-", fn.include_dirs, fn._compile_flags
+    )
+    assert command[-1].endswith(kernel_arch.upper())
     with pytest.raises(ValueError, match="must agree"):
         factory(tile_size=512, cols=2048)
     with pytest.raises(ValueError, match="positive"):

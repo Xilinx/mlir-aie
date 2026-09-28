@@ -441,18 +441,6 @@ def _include_dirs() -> list[str]:
     return [config.cxx_header_path()]
 
 
-def _runtime_lib_include(arch: str | None = None) -> str:
-    """Return the ``aie_runtime_lib/<ARCH>`` include directory.
-
-    It holds the LUT sources and ``aie_bank_placement.h``, whose portable
-    ``AIE_BANK_A``-``AIE_BANK_D`` macros a kernel needs to pin a static to a
-    bank.
-    """
-    from aie.utils import config
-
-    return str(Path(config.aie_runtime_lib_dir()) / (arch or _detect_arch()).upper())
-
-
 _DTYPE_BIT_WIDTHS = {
     np.dtype(np.uint8): 8,
     np.dtype(np.int16): 16,

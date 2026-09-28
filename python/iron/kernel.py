@@ -563,6 +563,43 @@ class Kernel(Resolvable):
         call(callee, adapted, **kwargs)
 
 
+def _source_bytes(source_file, source_string, bundled_sources) -> bytes:
+    """Read what a kernel is compiled from: its source, then its bundle."""
+    if source_file is None and source_string is None:
+        raise ValueError("source_file or source_string must be provided.")
+    if source_file is not None:
+        try:
+            data = Path(source_file).read_bytes()
+        except OSError:
+            data = f"<unreadable:{source_file}>".encode()
+    else:
+        data = source_string.encode()
+    for path in bundled_sources or ():
+        data += Path(path).read_bytes()
+    return data
+
+
+def _bundle(source_file, source_string, bundled_sources, include_dirs):
+    """One translation unit: the bundled sources, then the kernel's own.
+
+    Each unit is included by bare name against its directory, so the text,
+    and the digest taken of it, does not move with the checkout. The brackets
+    keep the search off the staged unit's own directory, where it is written
+    under the kernel's name and would otherwise include itself. A generated
+    source rather than ``-include``: clang reads those before the arch macros
+    are set, and aie_api rejects that.
+    """
+    units = [Path(p) for p in bundled_sources]
+    if source_file is not None:
+        units.append(Path(source_file))
+    dirs = list(include_dirs or ())
+    for path in units:
+        if str(path.parent) not in dirs:
+            dirs.append(str(path.parent))
+    text = "".join(f"#include <{p.name}>\n" for p in units) + (source_string or "")
+    return text, dirs
+
+
 class ExternalFunction(Kernel):
     """An AIE core function compiled from C/C++ source at JIT time.
 
@@ -832,6 +869,8 @@ class ExternalFunction(Kernel):
         compile_flags: list[str] | None = None,
         *,
         symbol_prefix: str | None = None,
+        digest_prefix: bool = False,
+        bundled_sources: list[str] | None = None,
         use_chess: bool = False,
         inline: bool = False,
         stack_size_override: int | None = None,
@@ -863,6 +902,19 @@ class ExternalFunction(Kernel):
                 set, the effective symbol name becomes ``<symbol_prefix>_<name>``
                 and the object file is named accordingly.  The original name is
                 preserved in ``_original_name`` for source file naming.
+            digest_prefix: Prefix the symbols, and an explicit
+                ``object_file_name``, with eight hex digits of the recipe: the
+                source and bundled sources by content, the include directories,
+                the flags, the toolchain and ``symbol_prefix``, which it
+                composes with (``<digest>_<symbol_prefix>_<name>``). Equal
+                recipes then share one symbol and one object, and different ones
+                never meet, so kernels of several designs can be declared in one
+                module whichever flags each was built with.
+            bundled_sources: Translation units compiled into this kernel's
+                own, for code it needs linked but never calls through MLIR
+                (``lut_based_ops.cpp``, whose tables a kernel reads from C++).
+                ``aie-assign-core-link-files`` finds objects by their
+                ``func.call`` edges, so it could not discover a separate one.
             use_chess: When ``True``, this ExternalFunction's source is
                 compiled with ``xchesscc_wrapper`` instead of Peano's
                 ``clang++``.  The JIT compile orchestration auto-detects the
@@ -893,6 +945,31 @@ class ExternalFunction(Kernel):
                 f"ExternalFunction '{name}': inline=True requires the Peano "
                 "toolchain and cannot be combined with use_chess=True."
             )
+        source_bytes = _source_bytes(source_file, source_string, bundled_sources)
+        if bundled_sources:
+            source_string, include_dirs = _bundle(
+                source_file, source_string, bundled_sources, include_dirs
+            )
+            source_file = None
+        if digest_prefix:
+            digest = hashlib.sha256(
+                repr(
+                    (
+                        name,
+                        object_file_name,
+                        hashlib.sha256(source_bytes).hexdigest(),
+                        tuple(str(Path(d).absolute()) for d in include_dirs or ()),
+                        tuple(compile_flags or ()),
+                        use_chess,
+                        symbol_prefix,
+                    )
+                ).encode()
+            ).hexdigest()[:8]
+            symbol_prefix = f"{digest}_{symbol_prefix}" if symbol_prefix else digest
+            if object_file_name is not None:
+                # A default name follows the prefixed symbol; an explicit one
+                # is taken as given, so it carries the digest here.
+                object_file_name = f"{digest}_{object_file_name}"
         if inline and symbol_prefix:
             raise NotImplementedError(
                 f"ExternalFunction '{name}': inline=True combined with symbol_prefix is "
@@ -932,16 +1009,6 @@ class ExternalFunction(Kernel):
             stack_size_override=stack_size_override,
         )
 
-        if source_file is None and source_string is None:
-            raise ValueError("source_file or source_string must be provided.")
-        if source_file is not None:
-            try:
-                source_bytes = Path(source_file).read_bytes()
-            except OSError:
-                source_bytes = f"<unreadable:{source_file}>".encode()
-        else:
-            assert source_string is not None
-            source_bytes = source_string.encode()
         self._object_file = KernelObject(
             object_file_name,
             "merge" if inline else None,

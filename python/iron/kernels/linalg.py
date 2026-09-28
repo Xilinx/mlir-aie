@@ -438,8 +438,11 @@ _K = TypeVar("_K", covariant=True)
 
 
 class _GeometryFactory(Protocol[_P, _K]):
-    """A matrix kernel factory that also answers, as ``.mac_dims``, the
-    micro-tile a kernel it would build takes, without building one."""
+    """A matrix kernel factory that also answers its micro-tile.
+
+    ``.mac_dims`` is the micro-tile a kernel it would build takes, answered
+    without building one.
+    """
 
     mac_dims: Callable[..., tuple[int, int, int]]
 

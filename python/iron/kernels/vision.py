@@ -18,7 +18,6 @@ from ._common import (
     _kernel_source,
     _make_extern,
     _require_vector_alignment,
-    _runtime_lib_include,
     _tuned_arch,
     dtypes,
 )
@@ -74,8 +73,9 @@ def _bitwise_kernel(
 def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
     """Convert a line of RGBA pixels to hue values (full-range, 0..255)."""
     _require_vector_alignment("rgba2hue", line_width, 32, param="line_width")
-    # lut_inv.h pins its gather pair with AIE_BANK_A/AIE_BANK_B.
-    flags = [f"-I{_runtime_lib_include()}"]
+    # lut_inv.h pins its gather pair with AIE_BANK_A/AIE_BANK_B, which
+    # aie_bank_placement.h, on every kernel's include path, defines.
+    flags = []
     if not use_chess and _tuned_arch() == "aie2p":
         # LICM hoists the three accumulator constants out of the loop, where
         # they spill. Capping its MemorySSA walk at zero keeps them in the

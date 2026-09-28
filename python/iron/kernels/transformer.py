@@ -28,7 +28,6 @@ from ._common import (
     _by_tuned_arch,
     _kernel_source,
     _make_extern,
-    _runtime_lib_include,
     _tuned_arch,
 )
 from .activation import _bf16, tanh_lut_ref
@@ -198,7 +197,7 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
     if lut:
         # lut_kernel.cc compiles the source next to lut_based_ops.cpp, whose
         # tables getTanhBf16 reads.
-        flags = [f'-DAIE_LUT_KERNEL_SOURCE="{source}"', f"-I{_runtime_lib_include()}"]
+        flags = [f'-DAIE_LUT_KERNEL_SOURCE="{source}"']
         source = _kernel_source("common/lut_kernel.cc")
     return _make_extern(
         "mm_activation_epilogue_row",

@@ -32,7 +32,8 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import KernelContract, Param
 from aie.iron.kernels._common import ARCH_TRAITS
-from aie.utils import bfp, get_current_device
+from aie.utils import bfp, config, get_current_device
+from aie.utils.compile.utils import cxx_core_compile_command
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
@@ -471,12 +472,13 @@ def test_rounding_setup_is_merged_alwaysinline_ir():
 
 @pytest.mark.parametrize("arch", ["aie2", "aie2p"])
 def test_exp_factory_can_include_shared_clamp_header(arch):
-    from aie.utils import config
-
     set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1())
     fn = kernels.bf16_exp()
     runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
-    assert str(runtime_dir) in fn.include_dirs
+    command = cxx_core_compile_command(
+        fn.source_file, arch, "-", include_dirs=fn.include_dirs
+    )
+    assert command[-2:] == ["-I", str(runtime_dir)]
     if arch == "aie2":
         tolerance = fn.contract.tolerance
         assert tolerance is not None

@@ -7,7 +7,6 @@
 
 import math
 from functools import partial
-from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -323,14 +322,10 @@ def _create_lut_kernel(
     arch = _detect_arch()
     kernel_path = _kernel_source(f"activation/{kernel_filename}")
 
-    from aie.utils import config
-
     include = _include_dirs()
     # lut_kernel.cc lives elsewhere, so the kernel's own directory goes on the
     # include path for its relative includes.
     include.append(str(kernel_path.parent))
-    runtime_dir = Path(config.aie_runtime_lib_dir()) / arch.upper()
-    include.append(str(runtime_dir))
 
     flags = list(compile_flags or [])
     if use_lut_tanh and ARCH_TRAITS[arch].native_tanh:

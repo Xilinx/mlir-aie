@@ -4,11 +4,12 @@
 # RUN: %pytest %s
 """Artifact ownership and concurrent compilation; no compiler or NPU required."""
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from pathlib import Path
 import gc
+import re
 import threading
 import weakref
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from pathlib import Path
 
 import pytest
 from aie.dialects.aie import AIEDevice, device
@@ -278,3 +279,57 @@ def test_failed_compile_removes_partial_object_before_retry(tmp_path, monkeypatc
     )
     utils.compile_external_kernel(first, tmp_path, "aie2p")
     assert utils._compiled_into(first, tmp_path)
+
+
+def test_digest_prefix_shares_equal_recipes_and_separates_different_ones():
+    first = _function("reduce_max", digest_prefix=True)
+    again = _function("reduce_max", digest_prefix=True)
+    other = _function("reduce_max", digest_prefix=True, compile_flags=["-DX"])
+    assert first.name == again.name and first.object_file is again.object_file
+    assert first.name != other.name
+    assert first.object_file_name != other.object_file_name
+    digest = first._symbol_prefix
+    assert re.fullmatch(r"[0-9a-f]{8}", digest)
+    assert first.name == f"{digest}_reduce_max"
+
+
+def test_digest_prefix_composes_with_symbol_prefix_and_names_an_explicit_object():
+    fn = _function(
+        "reduce_max",
+        digest_prefix=True,
+        symbol_prefix="op0",
+        object_file_name="reduce.o",
+    )
+    digest = fn._symbol_prefix.removesuffix("_op0")
+    assert fn.name == f"{digest}_op0_reduce_max"
+    assert fn.object_file_name == f"{digest}_reduce.o"
+
+
+def test_digest_prefix_is_refused_inline():
+    with pytest.raises(NotImplementedError, match="symbol_prefix"):
+        _function("reduce_max", digest_prefix=True, inline=True)
+
+
+def test_bundled_sources_are_one_unit_and_part_of_the_digest(tmp_path):
+    table = tmp_path / "lib" / "table.cpp"
+    table.parent.mkdir()
+    table.write_text("int table[4] = {1, 2, 3, 4};")
+    kernel = tmp_path / "kernel.cc"
+    kernel.write_text("extern int table[4]; int kernel() { return table[2]; }")
+    fn = ExternalFunction(
+        "kernel",
+        source_file=str(kernel),
+        bundled_sources=[str(table)],
+        digest_prefix=True,
+    )
+    assert fn.source_file is None
+    assert fn.source_string == "#include <table.cpp>\n#include <kernel.cc>\n"
+    assert fn.include_dirs == [str(table.parent), str(tmp_path)]
+    table.write_text("int table[4] = {4, 3, 2, 1};")
+    changed = ExternalFunction(
+        "kernel",
+        source_file=str(kernel),
+        bundled_sources=[str(table)],
+        digest_prefix=True,
+    )
+    assert changed.name != fn.name
