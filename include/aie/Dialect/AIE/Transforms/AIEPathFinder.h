@@ -329,6 +329,17 @@ public:
   /// sets of master ports. Returns whether that caps any tile not capped
   /// before.
   virtual bool capCrowdedFanOut() { return false; }
+  /// Where the routing check splits the ids a source sends at a tile its tree
+  /// cannot branch at, since a destination takes both, the second id is routed
+  /// apart from the rest from now on, and flows share channels and tiles are
+  /// capped as at the start. Returns whether a source sends more than one id.
+  virtual bool routeIdsApart() { return false; }
+  /// The switch settings of the packets `src` sends with id `id`, if the last
+  /// findPaths routed them apart from others `src` sends; else null.
+  virtual const SwitchSettings *getIdSettings(const PathEndPoint &src,
+                                              int id) const {
+    return nullptr;
+  }
 };
 
 class Pathfinder : public Router {
@@ -356,6 +367,12 @@ public:
   }
   bool setShareChannels(bool share) override;
   bool capCrowdedFanOut() override;
+  bool routeIdsApart() override;
+  const SwitchSettings *getIdSettings(const PathEndPoint &src,
+                                      int id) const override {
+    auto it = idSettings.find({src, id});
+    return it == idSettings.end() ? nullptr : &it->second;
+  }
 
 private:
   // A directed edge in the dense routing graph: from some node to node `dst`,
@@ -440,8 +457,9 @@ private:
   PacketConflict packetConflict;
   std::string failureReason, overuseReason;
   PacketTrees packetTrees, pinnedTrees;
-  bool shareChannels = false;
+  bool shareChannels = false, idsApart = false;
   std::set<TileID> crowdedTiles, cappedTiles;
+  std::map<std::pair<PathEndPoint, int>, SwitchSettings> idSettings;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

@@ -1055,7 +1055,12 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     for (FlowOp flow : device.getOps<FlowOp>())
       circuitSources.insert(sourceOf(flow));
   const SwitchSettings noSettings;
-  auto settingsOf = [&](const PathEndPoint &src) -> const SwitchSettings & {
+  auto settingsOf = [&](const PathEndPoint &src,
+                        std::optional<int> id =
+                            std::nullopt) -> const SwitchSettings & {
+    if (const SwitchSettings *own =
+            id ? analyzer.pathfinder->getIdSettings(src, *id) : nullptr)
+      return *own;
     auto it = solution.find(src);
     return it == solution.end() ? noSettings : it->second;
   };
@@ -1100,7 +1105,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
         PathEndPoint srcPoint = {srcSB, srcPort};
         if (circuitSources.count(srcPoint))
           continue;
-        const SwitchSettings &settings = settingsOf(srcPoint);
+        const SwitchSettings &settings = settingsOf(srcPoint, flowID);
         auto stream = packetStreamIndex.find(
             {srcCoords, srcPort, destCoords, destPort, flowID});
         if (stream != packetStreamIndex.end()) {
@@ -2506,8 +2511,9 @@ void AIEPathfinderPass::runOnOperation() {
   }
   // Packet flows share channels only where they share a destination, unless
   // the design routes no other way; then any may, where they do not conflict.
-  // Failing that, crowded tiles are capped (Router::capCrowdedFanOut). The
-  // error is the first attempt's.
+  // Failing that, crowded tiles are capped (Router::capCrowdedFanOut). Failing
+  // that too, the routing starts over with ids one tree cannot split routed
+  // apart (Router::routeIdsApart). The error is the first attempt's.
   std::optional<Location> failedAt;
   std::string reason;
   auto routeSharing = [&](DeviceOp dev, DynamicTileAnalysis &an,
@@ -2522,13 +2528,16 @@ void AIEPathfinderPass::runOnOperation() {
     auto routed = [&] {
       return succeeded(route(dev, an, c, clCircuitSwitchHops));
     };
+    auto escalate = [&] {
+      return (an.pathfinder->setShareChannels(true) && routed()) ||
+             (an.pathfinder->capCrowdedFanOut() && routed());
+    };
     if (routed())
       return success();
     std::optional<Location> firstAt = failedAt;
     std::string first = reason;
-    if (an.pathfinder->setShareChannels(true) && routed())
-      return success();
-    if (an.pathfinder->capCrowdedFanOut() && routed())
+    if (escalate() ||
+        (an.pathfinder->routeIdsApart() && (routed() || escalate())))
       return success();
     failedAt = firstAt;
     reason = std::move(first);
