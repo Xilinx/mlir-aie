@@ -115,7 +115,7 @@ for bad in ("next", "iteration", "tile", "empty"):
         emit_ring(bad)
     except ValueError as e:
         print(f"// {bad}: {e}")
-# CHECK: // next: tile_dma_chain Bd 0 sets next='self'; a runtime chain runs its Bds in list order and ends after the last.
-# CHECK: // iteration: tile_dma_chain Bd 1 sets iteration; use the chain's repeat_count or one Bd per sub-buffer instead.
-# CHECK: // tile: tile_dma_chain on {{.*}} was given a buffer on {{.*}} (Bd 2); a tile's DMA can only address buffers on that tile (only a shim BD reaches host memory).
-# CHECK: // empty: tile_dma_chain needs at least one Bd
+# CHECK: // next: TileDmaTask Bd 0 sets next='self'; a runtime chain runs its Bds in list order and ends after the last.
+# CHECK: // iteration: TileDmaTask Bd 1 sets iteration; use the chain's repeat_count or one Bd per sub-buffer instead.
+# CHECK: // tile: TileDmaTask on {{.*}} was given a buffer on {{.*}} (Bd 2); a tile's DMA can only address buffers on that tile (only a shim BD reaches host memory).
+# CHECK: // empty: TileDmaTask needs at least one Bd

@@ -100,13 +100,19 @@ def _emit_shim_dma_alloc(kind: str, shim_symbol, src, src_channel, dst, dst_chan
 
 
 class FlowEndpoint:
-    """One end of a [`Flow`][iron.Flow] whose channel the compiler assigns.
+    """One end of a [`Flow`][iron.Flow], seen from the DMA on that end's tile.
 
-    Obtained from [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint] and passed where a
-    channel index would go -- a [`DmaChannel`][iron.DmaChannel]'s ``channel``
-    or [`tile_dma_task`][iron.tile_dma_task]'s or
-    [`tile_dma_chain`][iron.tile_dma_chain]'s -- so the DMA program runs on
-    whichever channel allocation gives this end.
+    Obtained from [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint]. The end
+    knows its tile, its direction (MM2S at the source, S2MM at a destination)
+    and its channel -- the one the Flow gives, or else the one the compiler
+    assigns. It stands in where a channel index would go, e.g. a
+    [`DmaChannel`][iron.DmaChannel]'s ``channel``, and builds the
+    runtime-sequence tasks that drive this end:
+    [`task`][iron.FlowEndpoint.task] and [`chain`][iron.FlowEndpoint.chain].
+
+    It is not an [`ObjectFifo`][iron.ObjectFifo] endpoint: those are the
+    Workers and runtime a fifo attaches to and places, whereas this names one
+    DMA channel of a route between tiles the design already has.
     """
 
     def __init__(self, flow: "Flow", end: int):
@@ -123,11 +129,64 @@ class FlowEndpoint:
         return DMAChannelDir.MM2S if self._end == 0 else DMAChannelDir.S2MM
 
     @property
+    def channel(self) -> int | None:
+        """The channel the Flow gives this end, or None if the compiler assigns it."""
+        if self._flow._routed:
+            return None
+        return self._flow._src_channel if self._end == 0 else self._flow._dst_channel
+
+    @property
     def symbol(self) -> str:
-        """The ``aie.route_endpoint`` this end lowers to."""
+        """The ``aie.route_endpoint`` a compiler-assigned end lowers to.
+
+        Raises:
+            ValueError: If the Flow gives this end's channel; such a Flow
+                lowers to an ``aie.flow`` with no endpoint symbols.
+        """
+        if self.channel is not None:
+            raise ValueError(
+                f"{self} is a fixed channel; only an end whose channel the "
+                "compiler assigns lowers to an aie.route_endpoint."
+            )
         return self._flow._end_symbol(self._end)
 
+    def task(self, buffer, **kwargs):
+        """Build a [`TileDmaTask`][iron.TileDmaTask] over ``buffer`` on this end.
+
+        ``buffer`` must live on this end's tile. The keyword arguments are
+        those of [`tile_dma_task`][iron.tile_dma_task] (``sizes``,
+        ``strides``, ``offset``, ``transfer_len``, ``wait``, ``packet``,
+        ``bd_id``, ``acquire``, ``release``). Nothing is emitted until the
+        task is started or configured in the runtime sequence.
+        """
+        from ..runtime.tiledmatask import TileDmaTask
+
+        self._check_task_tile()
+        return TileDmaTask.of_buffer(self.tile, self.direction, self, buffer, **kwargs)
+
+    def chain(self, bds, **kwargs):
+        """Build a [`TileDmaTask`][iron.TileDmaTask] walking ``bds`` on this end.
+
+        The keyword arguments are those of
+        [`tile_dma_chain`][iron.tile_dma_chain] (``repeat_count``, ``wait``,
+        ``out_of_order``). Nothing is emitted until the task is started or
+        configured in the runtime sequence.
+        """
+        from ..runtime.tiledmatask import TileDmaTask
+
+        self._check_task_tile()
+        return TileDmaTask.of_bds(self.tile, self.direction, self, bds, **kwargs)
+
+    def _check_task_tile(self) -> None:
+        if self.tile.effective_tile_type in _SHIM_TILE_TYPES:
+            raise ValueError(
+                f"{self} is a shim end, which moves host memory; use the Flow's "
+                "fill()/drain() for it."
+            )
+
     def __str__(self) -> str:
+        if self.channel is not None:
+            return f"{self.direction} channel {self.channel} on {self.tile}"
         return f"@{self.symbol}"
 
 
@@ -255,14 +314,14 @@ class Flow(Resolvable):
             return f"{base}_src"
         return f"{base}_dst{end - 1}" if self._broadcast else f"{base}_dst"
 
-    def endpoint(self, tile: Tile) -> "FlowEndpoint | int":
-        """Return the channel a DMA program on ``tile`` runs this Flow's end on.
+    def endpoint(self, tile: Tile) -> FlowEndpoint:
+        """Return this Flow's end on ``tile``.
 
-        Pass the result as a [`DmaChannel`][iron.DmaChannel]'s ``channel`` or
-        to [`tile_dma_task`][iron.tile_dma_task] or
-        [`tile_dma_chain`][iron.tile_dma_chain]. For a Flow whose channels
-        are all given this is just that end's index; otherwise it is a
-        [`FlowEndpoint`][iron.FlowEndpoint] the compiler resolves.
+        Pass it as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build
+        a runtime-sequence task on it with
+        [`FlowEndpoint.task`][iron.FlowEndpoint.task] or
+        [`FlowEndpoint.chain`][iron.FlowEndpoint.chain]. Its channel is the
+        one given to the Flow, or else the one the compiler assigns.
         """
         ends = [i for i, t in enumerate(self.all_tiles()) if t == tile]
         if len(ends) != 1:
@@ -271,13 +330,28 @@ class Flow(Resolvable):
                 "of this Flow."
             )
         end = ends[0]
-        if not self._routed:
-            channel = self._src_channel if end == 0 else self._dst_channel
-            assert channel is not None
-            return channel
         if end not in self._endpoints:
             self._endpoints[end] = FlowEndpoint(self, end)
         return self._endpoints[end]
+
+    def task(self, buffer, **kwargs):
+        """Build a [`TileDmaTask`][iron.TileDmaTask] over ``buffer``.
+
+        The task runs on this Flow's end on ``buffer.tile``, so its direction
+        and channel come from the route. See
+        [`FlowEndpoint.task`][iron.FlowEndpoint.task].
+        """
+        return self.endpoint(buffer.tile).task(buffer, **kwargs)
+
+    def chain(self, bds, **kwargs):
+        """Build a [`TileDmaTask`][iron.TileDmaTask] walking ``bds`` in order.
+
+        The task runs on this Flow's end on the tile the ``Bd`` buffers live
+        on. See [`FlowEndpoint.chain`][iron.FlowEndpoint.chain].
+        """
+        if not bds:
+            raise ValueError("Flow.chain needs at least one Bd")
+        return self.endpoint(bds[0].buffer.tile).chain(bds, **kwargs)
 
     def _transfer(self, rt_data, direction, **kwargs):
         """Emit a transfer referencing the allocation emitted by resolve()."""

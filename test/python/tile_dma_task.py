@@ -238,14 +238,14 @@ def emit_rejected(name, body):
 
 # A runtime BD takes one acquire and one release or neither; anything else is
 # caught before any IR is built rather than by the lowering.
-# CHECK: RAISED ValueError: tile_dma_task needs acquire and release together
+# CHECK: RAISED ValueError: TileDmaTask needs acquire and release together
 emit_rejected(
     "acq_only",
     lambda t, b, full, empty: tile_dma_task(
         t, DMAChannelDir.MM2S, 0, b, acquire=Acquire(full)
     ),
 )
-# CHECK: RAISED ValueError: tile_dma_chain Bd 0 has 2 acquires and 0 releases
+# CHECK: RAISED ValueError: TileDmaTask Bd 0 has 2 acquires and 0 releases
 emit_rejected(
     "two_acq",
     lambda t, b, full, empty: tile_dma_chain(

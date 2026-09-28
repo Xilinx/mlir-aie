@@ -116,29 +116,21 @@ class Lock(Resolvable):
         so pair it with a blocking op (an await, or a lock the core waits on)
         that makes it safe.
 
+        Only the host can assign a lock: a core's lock instructions add to or
+        subtract from its value, which is what `acquire`/`release` emit, so a
+        Worker body uses those instead. The upper bound depends on the target
+        (`Device.max_lock_value`) and is checked by the `aiex.set_lock`
+        verifier.
+
         Raises:
             RuntimeError: If called outside a runtime sequence body.
             ValueError: If value is negative.
         """
-        if not _in_runtime_sequence():
-            raise RuntimeError(
-                f"Lock.set on {self.name} must be called from within the "
-                "function passed to Runtime(seq_fn, fn_args); inside a Worker "
-                "body use acquire()/release()."
-            )
+        from .runtime._context import require_sequence
+
+        require_sequence(
+            f"Lock.set on {self.name}", "inside a Worker body use acquire()/release()"
+        )
         if value < 0:
             raise ValueError("Lock.set value must be non-negative.")
         _set_lock_value(self.op, value)
-
-
-def _in_runtime_sequence() -> bool:
-    """Whether the current insertion point is inside an ``aie.runtime_sequence``."""
-    try:
-        op = ir.InsertionPoint.current.block.owner
-    except ValueError:
-        return False
-    while op is not None:
-        if op.operation.name == "aie.runtime_sequence":
-            return True
-        op = op.operation.parent
-    return False

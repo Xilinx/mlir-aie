@@ -97,7 +97,7 @@ for bad in ("bd_id", "packet", "direction", "endpoint"):
         emit_merge(bad)
     except ValueError as e:
         print(f"// {bad}: {e}")
-# CHECK: // bd_id: tile_dma_chain out_of_order Bd 1 must set bd_id and packet; senders address it by its bd_id.
-# CHECK: // packet: tile_dma_chain out_of_order Bd 2 must set bd_id and packet; senders address it by its bd_id.
-# CHECK: // direction: tile_dma_chain out_of_order is only valid for S2MM, not {{.*}}MM2S
-# CHECK: // endpoint: tile_dma_chain out_of_order needs an integer channel, not the Flow endpoint @flow0_dst.
+# CHECK: // bd_id: TileDmaTask out_of_order Bd 1 must set bd_id and packet; senders address it by its bd_id.
+# CHECK: // packet: TileDmaTask out_of_order Bd 2 must set bd_id and packet; senders address it by its bd_id.
+# CHECK: // direction: TileDmaTask out_of_order is only valid for S2MM, not {{.*}}MM2S
+# CHECK: // endpoint: TileDmaTask out_of_order needs a fixed channel, not the compiler-assigned Flow endpoint @flow0_dst.

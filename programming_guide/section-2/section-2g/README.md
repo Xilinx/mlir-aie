@@ -34,8 +34,8 @@ both lower into the same `aie.flow` / `aie.lock` / `aie.mem` /
 * **IRON Python primitives** (the rest of this section).  First-class
   Python classes — `Flow`, `Lock`, `TileDma`, `DmaChannel`, `Bd`,
   `Acquire`, `Release` — that compose into a regular `@iron.jit`
-  design alongside `Worker` and `Runtime`, plus `tile_dma_task` /
-  `tile_dma_chain` for tile DMAs driven from the runtime sequence.  Use this tier when you
+  design alongside `Worker` and `Runtime`, plus `flow.task` /
+  `flow.chain` for tile DMAs driven from the runtime sequence.  Use this tier when you
   want to hand-wire DMA programs but still get the `@iron.jit`
   lifecycle (content-addressed caching, `iron.tensor` host I/O,
   `aiecc` lowering).
@@ -330,9 +330,11 @@ is only known at dispatch time:
 
 | Call | What it does |
 |------|--------------|
-| `tile_dma_task(tile, direction, channel, buffer, sizes=, strides=, offset=, transfer_len=, wait=False, acquire=, release=)` | One BD, configured and started.  Its fields may be dispatch-time values, and `channel` may be a `flow.endpoint(tile)` |
-| `tile_dma_chain(tile, direction, channel, bds=[Bd(...)], repeat_count=0, wait=False, out_of_order=False)` | A chain of `Bd`s run in order as one task, `repeat_count + 1` times.  `channel` may be a `flow.endpoint(tile)`.  With `out_of_order=True` it arms an S2MM channel as `DmaChannel.out_of_order` does, and `repeat_count` counts packets |
-| `task.start(repeat_count=None)` | Push an already-configured task again, optionally with a different repeat count |
+| `flow.task(buffer, sizes=, strides=, offset=, transfer_len=, wait=False, acquire=, release=)` | A `TileDmaTask` of one BD over `buffer`, on the end of `flow` that lives on `buffer`'s tile.  The route decides the direction and channel.  Its fields may be dispatch-time values |
+| `flow.chain(bds=[Bd(...)], repeat_count=0, wait=False, out_of_order=False)` | A `TileDmaTask` of `Bd`s run in order, `repeat_count + 1` times.  With `out_of_order=True` it arms an S2MM channel as `DmaChannel.out_of_order` does, and `repeat_count` counts packets |
+| `task.start(repeat_count=None)` | Configure the task on its first start, then push it onto the channel queue, optionally with a different repeat count |
+| `task.configure()` | Write the descriptors without pushing, e.g. before a loop that only starts the task |
+| `tile_dma_task(tile, direction, channel, buffer, ...)`, `tile_dma_chain(tile, direction, channel, bds, ...)` | The same tasks with the tile, direction and channel spelled out, configured and started at once |
 | `lock.set(value)` | Overwrite a `Lock`'s value from the host (`aiex.set_lock`) |
 | `rt.add_buffer(buf)` | Register a `Buffer` that only the sequence body touches |
 
@@ -340,21 +342,24 @@ The `Bd`s are the same class a `TileDma` uses, so locks, packet headers
 and access patterns are written the same way.  The one exception is
 `iteration`: a runtime chain takes it from the outermost `sizes` /
 `strides` dimension instead.  A runtime BD takes both lock operations
-or neither, so `tile_dma_task` needs `acquire` and `release` together,
-and both calls reject anything else.  With `wait=True`, a mem or
+or neither, so `flow.task` needs `acquire` and `release` together,
+and both calls reject anything else.  Building a task emits nothing: it
+can be declared next to its `Flow`, and its first `start()` writes the
+descriptors while later ones only push them again.  With `wait=True`, a mem or
 compute tile reports completion over a route back to the shim that the
 compiler adds, so `task.await_()` works on any tile.  A repeat count larger
 than one queue push carries is split into several pushes by the
 compiler, so the chain below can run any number of passes:
 
 ```python
+broadcast = spread.chain(  # mem tile MM2S end of `spread`
+    [Bd(staged, acquires=[Acquire(staged_full)], releases=[Release(staged_free)])],
+    repeat_count=passes - 1,
+)
+
 def sequence(a, c):
     into.fill(a)
-    task = tile_dma_chain(
-        mem, DMAChannelDir.MM2S, spread.endpoint(mem),
-        [Bd(staged, acquires=[Acquire(staged_full)], releases=[Release(staged_free)])],
-        repeat_count=passes - 1,
-    )
+    broadcast.start()
     out.drain(c, wait=True)
 
 rt.add_buffer(staged)

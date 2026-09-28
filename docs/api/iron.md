@@ -183,11 +183,13 @@ descriptors, and locks.
 Circuit-switched ([`Flow`][iron.Flow]) and packet-switched
 ([`PacketFlow`][iron.PacketFlow]) stream connections, plus the
 [`PacketDest`][iron.PacketDest] endpoint descriptor.  A `Flow` given no DMA
-channels lets the compiler assign them; name the assigned channel with
-`flow.endpoint(tile)`, which returns a [`FlowEndpoint`][iron.FlowEndpoint]
-that DMA programs, `tile_dma_task` and `tile_dma_chain` take in place of a
-channel index.  A `Flow` or `PacketFlow` with one shim end has `fill` /
-`drain`; `PacketFlow.fill` stamps the route's packet ID on the input.
+channels lets the compiler assign them.  `flow.endpoint(tile)` returns the
+[`FlowEndpoint`][iron.FlowEndpoint] on `tile`, which a `DmaChannel` takes in
+place of a channel index.  `flow.task(buffer)` and `flow.chain(bds)` build a
+[`TileDmaTask`][iron.TileDmaTask] on the end where the buffer lives, taking its
+direction and channel from the route.  A `Flow` or `PacketFlow` with one shim
+end has `fill` / `drain`; `PacketFlow.fill` stamps the route's packet ID on the
+input.
 
 ::: iron.dataflow.flow
     options:

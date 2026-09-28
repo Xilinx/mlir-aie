@@ -9,13 +9,14 @@ from .data import RuntimeData
 from .dmataskhandle import Task
 from .runtime import Runtime, sync_parameters
 from .taskgroup import TaskGroup
-from .tiledmatask import tile_dma_chain, tile_dma_task
+from .tiledmatask import TileDmaTask, tile_dma_chain, tile_dma_task
 
 __all__ = [
     "Runtime",
     "RuntimeData",
     "Task",
     "TaskGroup",
+    "TileDmaTask",
     "sync_parameters",
     "tile_dma_chain",
     "tile_dma_task",

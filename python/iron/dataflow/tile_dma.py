@@ -278,9 +278,18 @@ def check_flow_endpoint(tile: Tile, direction: DMAChannelDir, channel) -> None:
         )
 
 
+def _channel_key(channel: "int | FlowEndpoint") -> "int | FlowEndpoint":
+    """Identify a channel before the Flows are named: an index, or the end."""
+    if isinstance(channel, FlowEndpoint) and channel.channel is not None:
+        return channel.channel
+    return channel
+
+
 def _channel_operand(channel: "int | FlowEndpoint") -> int | str:
     """Return what ``aie.dma_start`` names: an index, or the endpoint's symbol."""
-    return channel.symbol if isinstance(channel, FlowEndpoint) else channel
+    if not isinstance(channel, FlowEndpoint):
+        return channel
+    return channel.symbol if channel.channel is None else channel.channel
 
 
 def _dma_start_repeat_count(ch: "DmaChannel") -> int:
@@ -337,10 +346,13 @@ class TileDma(Resolvable):
     def add_channels(self, channels: Iterable[DmaChannel]) -> None:
         """Add channels after checking all hardware channel keys."""
         channels = list(channels)
-        keys = {(channel.direction, channel.channel) for channel in self._channels}
+        keys = {
+            (channel.direction, _channel_key(channel.channel))
+            for channel in self._channels
+        }
         for channel in channels:
             check_flow_endpoint(self._tile, channel.direction, channel.channel)
-            key = (channel.direction, channel.channel)
+            key = (channel.direction, _channel_key(channel.channel))
             if key in keys:
                 raise ValueError(
                     f"TileDma for {self._tile} already has "

@@ -44,6 +44,29 @@ def active_sequence() -> "ActiveSequence":
     return seq
 
 
+def require_sequence(what: str, hint: str | None = None) -> "ActiveSequence":
+    """Return the active sequence, or reject ``what`` as used outside one.
+
+    The one check behind every IRON verb that emits into the runtime sequence
+    (``Lock.set``, the tile DMA tasks), so they all fail the same way when
+    called from a Worker body or after the program was resolved.
+
+    Args:
+        what: the verb being checked, e.g. ``"Lock.set on prod"``.
+        hint: what to use instead outside the sequence, if there is something.
+
+    Raises:
+        RuntimeError: If no runtime sequence body is being emitted.
+    """
+    seq = _active_sequence.get()
+    if seq is None:
+        raise RuntimeError(
+            f"{what} must be called from within the function passed to "
+            "Runtime(seq_fn, fn_args)" + (f"; {hint}." if hint else ".")
+        )
+    return seq
+
+
 @contextmanager
 def active_sequence_scope(seq: "ActiveSequence") -> Iterator["ActiveSequence"]:
     """Bind ``seq`` as the active sequence for the duration of the body."""

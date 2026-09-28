@@ -38,7 +38,8 @@ def build(bad=None):
     into = Flow(shim, mem)
     spread = Flow(mem, cores)
     out = Flow(cores[0], shim)
-    # Both channels given: still a plain aie.flow, and endpoint() is the index.
+    # Both channels given: still a plain aie.flow, and endpoint() lowers to the
+    # index.
     side = Flow(cores[1], mem, src_channel=0, dst_channel=3)
 
     staged = Buffer(tile=mem, type=vec_ty, name="staged")
