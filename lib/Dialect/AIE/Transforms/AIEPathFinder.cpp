@@ -500,6 +500,43 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
       sb.connectivity[i][dstIdx] = Connectivity::INVALID;
     }
   }
+  // At a shim, the DMA, NOC and PLIO ports reach the switchbox through the shim
+  // mux on South channels, so a fixed op on such a channel claims them too.
+  if (switchboxOp.getTileOp().isShimNOCorPLTile()) {
+    auto southDst = [](Port p) {
+      if (p.bundle == WireBundle::DMA)
+        return p.channel == 0 ? 2 : 3;
+      if (p.bundle == WireBundle::NOC)
+        return p.channel + 2;
+      return p.channel;
+    };
+    auto southSrc = [](Port p) {
+      if (p.bundle == WireBundle::DMA)
+        return p.channel == 0 ? 3 : 7;
+      if (p.bundle == WireBundle::NOC)
+        return p.channel >= 2 ? p.channel + 4 : p.channel + 2;
+      return p.channel;
+    };
+    auto isMuxed = [](Port p) {
+      return p.bundle == WireBundle::DMA || p.bundle == WireBundle::NOC ||
+             p.bundle == WireBundle::PLIO;
+    };
+    llvm::SmallDenseSet<int, 8> southDsts, southSrcs;
+    for (int dstIdx : claimedDsts)
+      if (sb.dstPorts[dstIdx].bundle == WireBundle::South)
+        southDsts.insert(sb.dstPorts[dstIdx].channel);
+    for (auto [srcIdx, dstIdx] : reserved)
+      if (sb.srcPorts[srcIdx].bundle == WireBundle::South)
+        southSrcs.insert(sb.srcPorts[srcIdx].channel);
+    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+      if (isMuxed(sb.dstPorts[j]) && southDsts.count(southDst(sb.dstPorts[j])))
+        for (size_t i = 0; i < sb.srcPorts.size(); i++)
+          sb.connectivity[i][j] = Connectivity::INVALID;
+    for (size_t i = 0; i < sb.srcPorts.size(); i++)
+      if (isMuxed(sb.srcPorts[i]) && southSrcs.count(southSrc(sb.srcPorts[i])))
+        for (size_t j = 0; j < sb.dstPorts.size(); j++)
+          sb.connectivity[i][j] = Connectivity::INVALID;
+  }
   for (PacketRulesOp rulesOp : switchboxOp.getOps<PacketRulesOp>()) {
     auto it = llvm::find(sb.srcPorts, rulesOp.sourcePort());
     if (it == sb.srcPorts.end())
