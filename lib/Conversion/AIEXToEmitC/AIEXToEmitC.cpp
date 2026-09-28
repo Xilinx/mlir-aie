@@ -735,7 +735,8 @@ private:
     OpBuilder wb = OpBuilder::atBlockBegin(whyFn.addEntryBlock());
     emitc::ReturnOp::create(
         wb, loc,
-        emitc::LiteralOp::create(wb, loc, charPtrTy, "aie_runtime::txn_refusal"));
+        emitc::LiteralOp::create(wb, loc, charPtrTy,
+                                 "aie_runtime::txn_refusal"));
     return success();
   }
 
