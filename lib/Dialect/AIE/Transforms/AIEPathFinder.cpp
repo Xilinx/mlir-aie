@@ -889,20 +889,54 @@ Pathfinder::findPaths(const int maxIterations) {
       }
       if (!failureReason.empty())
         return std::nullopt;
-      // Name the channel the last iteration overused that was overused in the
-      // most iterations, and the flows the last one routed through it.
-      const SwitchboxConnect *worst = nullptr;
-      int worstI = 0, worstJ = 0, worstCount = 0;
-      for (const auto &[_, sb] : graph)
+      // A link with a channel no flow takes and a free master port driving it
+      // was overused only by the way the flows went; its flows could spread.
+      auto hasRoom = [&](const SwitchboxConnect &sb) {
+        if (sb.srcCoords == sb.dstCoords)
+          return true;
+        auto xbar = graph.find({sb.srcCoords, sb.srcCoords});
         for (size_t i = 0; i < sb.srcPorts.size(); i++)
-          for (size_t j = 0; j < sb.dstPorts.size(); j++)
-            if (sb.usedCapacity[i][j] > MAX_CIRCUIT_STREAM_CAPACITY &&
-                sb.overCapacity[i][j] > worstCount) {
+          for (size_t j = 0; j < sb.dstPorts.size(); j++) {
+            if (sb.connectivity[i][j] != Connectivity::AVAILABLE ||
+                sb.usedCapacity[i][j] > 0)
+              continue;
+            if (xbar == graph.end())
+              return true;
+            const SwitchboxConnect &x = xbar->second;
+            auto k = llvm::find(x.dstPorts, sb.srcPorts[i]);
+            if (k == x.dstPorts.end())
+              return true;
+            size_t col = k - x.dstPorts.begin();
+            if (llvm::any_of(x.connectivity, [&](const auto &row) {
+                  return row[col] == Connectivity::AVAILABLE;
+                }))
+              return true;
+          }
+        return false;
+      };
+      // Name the channel the last iteration overused that was overused in the
+      // most iterations, on a link with no room if there is one, and the flows
+      // the last one routed through it.
+      const SwitchboxConnect *worst = nullptr;
+      int worstI = 0, worstJ = 0;
+      std::pair<bool, int> worstRank{false, 0};
+      for (const auto &[_, sb] : graph) {
+        std::optional<bool> roomless;
+        for (size_t i = 0; i < sb.srcPorts.size(); i++)
+          for (size_t j = 0; j < sb.dstPorts.size(); j++) {
+            if (sb.usedCapacity[i][j] <= MAX_CIRCUIT_STREAM_CAPACITY)
+              continue;
+            if (!roomless)
+              roomless = !hasRoom(sb);
+            std::pair<bool, int> rank{*roomless, sb.overCapacity[i][j]};
+            if (rank > worstRank) {
               worst = &sb;
               worstI = i;
               worstJ = j;
-              worstCount = sb.overCapacity[i][j];
+              worstRank = rank;
             }
+          }
+      }
       if (!worst)
         return std::nullopt;
       bool crossbar = worst->srcCoords == worst->dstCoords;
