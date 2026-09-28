@@ -1732,8 +1732,11 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     }
     if (planFailure)
       continue;
-    auto [s, t] = *conflictingStreams(tileId, flows[blocking.front().first],
-                                      flows[blocking.front().second]);
+    std::optional<std::pair<size_t, size_t>> pair = conflictingStreams(
+        tileId, flows[blocking.front().first], flows[blocking.front().second]);
+    assert(pair && apart.empty() && offArbiter.empty() &&
+           "before the hold-cycle search, only stream conflicts block a plan");
+    auto [s, t] = *pair;
     os << describeStream(conflicts.getStreams()[s]) << " and "
        << describeStream(conflicts.getStreams()[t])
        << " can deadlock if they share an arbiter, and no routing found keeps "

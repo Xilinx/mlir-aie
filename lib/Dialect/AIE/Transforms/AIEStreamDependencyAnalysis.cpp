@@ -14,6 +14,7 @@
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SetVector.h"
 
 #include <deque>
@@ -396,10 +397,33 @@ std::vector<RoutedStream> AIE::requestedStreams(DeviceOp device) {
   return streams;
 }
 
-StreamVolumeAnalysis::StreamVolumeAnalysis(DeviceOp device) : device(device) {
-  for (const DmaChannelProgram &p : collectDmaPrograms(device))
+StreamVolumeAnalysis::StreamVolumeAnalysis(DeviceOp device,
+                                           ArrayRef<RoutedStream> streams)
+    : device(device), streams(streams) {
+  for (const DmaChannelProgram &p : collectDmaPrograms(device)) {
     programs[channelKey(p.tile, p.dir, p.channel)].push_back(p.op);
+    forEachInProgram<UseLockOp>(
+        p, [&](UseLockOp use) { lockUseProgram[use] = p.op; });
+  }
 }
+
+// The BD blocks of a program in the order its channel runs them.
+static SmallVector<Block *> chainBlocks(const DmaChannelProgram &p) {
+  SmallVector<Block *> sequence(p.bds);
+  for (Region *r : p.regions)
+    sequence.push_back(&r->front());
+  return sequence;
+}
+
+static std::optional<int64_t> lockAmount(UseLockOp use) {
+  APInt amount;
+  if (!use.getLock().getDefiningOp<LockOp>() ||
+      !matchPattern(use.getValue(), m_ConstantInt(&amount)))
+    return std::nullopt;
+  return amount.getSExtValue();
+}
+
+constexpr int maxBDSteps = 1024;
 
 static bool inLoop(Operation *op) {
   return op->getParentOfType<LoopLikeOpInterface>() != nullptr;
@@ -437,8 +461,18 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
       known = true;
       if (!carried)
         continue;
-      if (p->loops)
-        return std::nullopt;
+      if (p->loops) {
+        std::optional<uint64_t> looped =
+            loopedVolume(op, [&](DMABDOp bd) -> uint64_t {
+              if (!carries(bd.getPacket()))
+                return 0;
+              return bd.getLenInBytes() + headerBytes(bd.getPacket());
+            });
+        if (!looped)
+          return std::nullopt;
+        total += *looped;
+        continue;
+      }
       uint64_t runs = 1;
       if (auto start = dyn_cast<DMAStartOp>(op)) {
         runs = start.getRepeatCount() + 1;
@@ -497,15 +531,131 @@ StreamVolumeAnalysis::sendVolume(const RoutedStream &stream) const {
   return total;
 }
 
+std::optional<uint64_t> StreamVolumeAnalysis::loopedVolume(
+    Operation *program, function_ref<uint64_t(DMABDOp)> bytesOf) const {
+  // AIE1 locks hold a state rather than count tokens.
+  if (getTargetModel(device).getTargetArch() == AIEArch::AIE1 ||
+      !visiting.insert(program).second)
+    return std::nullopt;
+  llvm::scope_exit done([&] { visiting.erase(program); });
+  std::optional<DmaChannelProgram> p = makeProgram(program, device);
+  if (!p)
+    return std::nullopt;
+  SmallVector<Block *> sequence = chainBlocks(*p);
+  if (sequence.empty())
+    return std::nullopt;
+  std::map<Operation *, uint64_t> tokens;
+  uint64_t bytes = 0;
+  for (int step = 0; step < maxBDSteps; step++) {
+    for (Operation &bdOp : *sequence[step % sequence.size()]) {
+      if (auto use = dyn_cast<UseLockOp>(bdOp)) {
+        auto lock = use.getLock().getDefiningOp<LockOp>();
+        std::optional<int64_t> n = lockAmount(use);
+        if (!n || *n < 0 || (!use.release() && !use.acquireGE()))
+          return std::nullopt;
+        auto it = tokens.find(lock);
+        if (it == tokens.end()) {
+          std::optional<uint64_t> others = tokensFromOthers(lock, program);
+          if (!others)
+            return std::nullopt;
+          it = tokens.emplace(lock, lock.getInit().value_or(0) + *others).first;
+        }
+        if (use.release())
+          it->second += *n;
+        else if (it->second < static_cast<uint64_t>(*n))
+          return bytes;
+        else
+          it->second -= *n;
+      } else if (auto bd = dyn_cast<DMABDOp>(bdOp)) {
+        bytes += bytesOf(bd);
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<uint64_t>
-StreamVolumeAnalysis::receiveCapacity(const StreamEndpoint &endpoint) const {
-  if (endpoint.port.bundle != WireBundle::DMA)
-    return 0;
-  auto it = programs.find(
-      channelKey(endpoint.tile, DMAChannelDir::S2MM, endpoint.port.channel));
-  if (it == programs.end())
-    return 0;
-  Operation *op = it->second.front();
+StreamVolumeAnalysis::tokensFromOthers(LockOp lock, Operation *self) const {
+  llvm::SetVector<Operation *> releasers;
+  for (Operation *user : lock->getUsers()) {
+    auto use = dyn_cast<UseLockOp>(user);
+    if (!use)
+      return std::nullopt;
+    if (!use.release())
+      continue;
+    auto owner = lockUseProgram.find(use);
+    if (owner == lockUseProgram.end())
+      return std::nullopt;
+    if (owner->second != self)
+      releasers.insert(owner->second);
+  }
+  uint64_t tokens = 0;
+  for (Operation *program : releasers) {
+    std::optional<uint64_t> n = releasesOver(program, lock);
+    if (!n)
+      return std::nullopt;
+    tokens += *n;
+  }
+  return tokens;
+}
+
+std::optional<uint64_t> StreamVolumeAnalysis::releasesOver(Operation *program,
+                                                           LockOp lock) const {
+  std::optional<DmaChannelProgram> p = makeProgram(program, device);
+  if (!p || !isa<DMAStartOp, DMAOp>(program))
+    return std::nullopt;
+  SmallVector<Block *> sequence = chainBlocks(*p);
+  if (!p->loops) {
+    uint64_t passes = 1;
+    if (auto start = dyn_cast<DMAStartOp>(program))
+      passes += start.getRepeatCount();
+    else
+      passes += cast<DMAOp>(program).getRepeatCount();
+    uint64_t perPass = 0;
+    for (Block *b : sequence)
+      for (auto use : b->getOps<UseLockOp>())
+        if (use.release() && use.getLock().getDefiningOp() == lock) {
+          std::optional<int64_t> n = lockAmount(use);
+          if (!n || *n < 0)
+            return std::nullopt;
+          perPass += *n;
+        }
+    return perPass * passes;
+  }
+  // A looping receiver finishes only the BDs what it is sent fills.
+  if (p->dir != DMAChannelDir::S2MM || sequence.empty())
+    return std::nullopt;
+  StreamEndpoint endpoint{p->tile, {WireBundle::DMA, p->channel}};
+  uint64_t received = 0;
+  for (const RoutedStream &s : streams) {
+    if (s.dst.tile != endpoint.tile || s.dst.port != endpoint.port)
+      continue;
+    std::optional<uint64_t> bytes = sendVolume(s);
+    if (!bytes)
+      return std::nullopt;
+    received += *bytes;
+  }
+  uint64_t filled = 0, tokens = 0;
+  for (int step = 0; step < maxBDSteps; step++) {
+    for (Operation &bdOp : *sequence[step % sequence.size()]) {
+      if (auto bd = dyn_cast<DMABDOp>(bdOp)) {
+        if (filled + bd.getLenInBytes() > received)
+          return tokens;
+        filled += bd.getLenInBytes();
+      } else if (auto use = dyn_cast<UseLockOp>(bdOp)) {
+        if (!use.release() || use.getLock().getDefiningOp() != lock)
+          continue;
+        std::optional<int64_t> n = lockAmount(use);
+        if (!n || *n < 0)
+          return std::nullopt;
+        tokens += *n;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+static std::optional<uint64_t> programCapacity(Operation *op, DeviceOp device) {
   std::optional<DmaChannelProgram> p = makeProgram(op, device);
   if (!p || !isa<DMAStartOp, DMAOp>(op))
     return 0;
@@ -516,18 +666,15 @@ StreamVolumeAnalysis::receiveCapacity(const StreamEndpoint &endpoint) const {
     passes += cast<DMAOp>(op).getRepeatCount();
 
   // Run the BD chain from its initial lock values until an acquire blocks.
-  SmallVector<Block *> sequence(p->bds);
-  for (Region *r : p->regions)
-    sequence.push_back(&r->front());
+  SmallVector<Block *> sequence = chainBlocks(*p);
   if (sequence.empty())
     return 0;
   // AIE1 locks hold a state an acquire waits to equal and a release sets; later
-  // locks count.
+  // locks count, and an acquire waiting for an exact count is taken to block.
   bool stateLocks = getTargetModel(device).getTargetArch() == AIEArch::AIE1;
   std::map<Operation *, int64_t> lockValues;
   uint64_t bytes = 0;
-  constexpr int maxBDs = 1024;
-  for (int step = 0; step < maxBDs; step++) {
+  for (int step = 0; step < maxBDSteps; step++) {
     size_t i = step % sequence.size();
     if (!p->loops && static_cast<uint64_t>(step) >= passes * sequence.size())
       return bytes;
@@ -547,7 +694,7 @@ StreamVolumeAnalysis::receiveCapacity(const StreamEndpoint &endpoint) const {
             return bytes;
         } else if (use.release()) {
           value->second += n;
-        } else if (value->second < n) {
+        } else if (!use.acquireGE() || value->second < n) {
           return bytes;
         } else {
           value->second -= n;
@@ -558,6 +705,21 @@ StreamVolumeAnalysis::receiveCapacity(const StreamEndpoint &endpoint) const {
     }
   }
   return std::nullopt;
+}
+
+std::optional<uint64_t>
+StreamVolumeAnalysis::receiveCapacity(const StreamEndpoint &endpoint) const {
+  if (endpoint.port.bundle != WireBundle::DMA)
+    return 0;
+  auto it = programs.find(
+      channelKey(endpoint.tile, DMAChannelDir::S2MM, endpoint.port.channel));
+  if (it == programs.end())
+    return 0;
+  std::optional<uint64_t> capacity;
+  for (Operation *op : it->second)
+    if (std::optional<uint64_t> c = programCapacity(op, device))
+      capacity = std::min(*c, capacity.value_or(*c));
+  return capacity;
 }
 
 bool StreamVolumeAnalysis::canFill(const StreamEndpoint &endpoint,
@@ -798,7 +960,7 @@ std::string StreamWaitGraph::describe(unsigned id) const {
 
 StreamDeadlockAnalysis::StreamDeadlockAnalysis(
     DeviceOp device, std::vector<RoutedStream> streams)
-    : streams(std::move(streams)), volumes(device),
+    : streams(std::move(streams)), volumes(device, this->streams),
       graph(device, this->streams, volumes) {}
 
 bool StreamDeadlockAnalysis::canStall(size_t f) const {

@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -96,11 +97,12 @@ std::string describeStream(const RoutedStream &stream);
 /// counts, lock initial values and runtime transfers.
 class StreamVolumeAnalysis {
 public:
-  explicit StreamVolumeAnalysis(DeviceOp device);
+  StreamVolumeAnalysis(DeviceOp device, llvm::ArrayRef<RoutedStream> streams);
 
   /// Bytes the stream's source sends with the stream's packet id, headers
   /// included where the receiver keeps them, or nullopt when that is
-  /// unbounded or unknown.
+  /// unbounded or unknown. A BD chain that loops sends only what the lock
+  /// tokens other agents can ever release to it let it.
   std::optional<uint64_t> sendVolume(const RoutedStream &stream) const;
 
   /// Bytes the receiver at `endpoint` accepts before it waits on another
@@ -113,10 +115,25 @@ public:
                llvm::ArrayRef<RoutedStream> streams) const;
 
 private:
+  /// Bytes the looping BD chain `program` sends before an acquire runs out of
+  /// tokens, counting each BD as `bytesOf` says.
+  std::optional<uint64_t>
+  loopedVolume(mlir::Operation *program,
+               llvm::function_ref<uint64_t(DMABDOp)> bytesOf) const;
+  /// Tokens every agent but `self` can release to `lock` over a run.
+  std::optional<uint64_t> tokensFromOthers(LockOp lock,
+                                           mlir::Operation *self) const;
+  std::optional<uint64_t> releasesOver(mlir::Operation *program,
+                                       LockOp lock) const;
+
   mutable DeviceOp device;
+  llvm::ArrayRef<RoutedStream> streams;
   std::map<std::tuple<int, int, DMAChannelDir, int>,
            llvm::SmallVector<mlir::Operation *, 2>>
       programs;
+  /// The channel program each use_lock in a BD chain belongs to.
+  llvm::DenseMap<mlir::Operation *, mlir::Operation *> lockUseProgram;
+  mutable llvm::DenseSet<mlir::Operation *> visiting;
 };
 
 /// Which agent waits on which. An agent is a core or one DMA channel. P waits

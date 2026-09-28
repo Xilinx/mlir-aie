@@ -7,12 +7,14 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 | FileCheck %s
 // RUN: sed 's/repeat_count = 0/repeat_count = 1/' %s | not aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" 2>&1 | FileCheck %s --check-prefix=STALL
-// RUN: sed 's/loop = false/loop = true/' %s | not aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" 2>&1 | FileCheck %s --check-prefix=STALL
+// RUN: sed 's/loop = false/loop = true/' %s | aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" 2>&1 | FileCheck %s
+// RUN: sed -e 's/loop = false/loop = true/' -e 's/sd\([0-5]\), Release/sl\1, Release/' %s | not aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" 2>&1 | FileCheck %s --check-prefix=STALL
 
 // arbiter_keep_pkt_header_receive.mlir written with aie.dma instead of
 // aie.dma_start. Each receiver takes 64 bytes before its lock blocks. Sent
 // once, every packet fits and the seven master ports at (0,1) share six
-// arbiters; sent twice, or forever, each receiver fills and they cannot.
+// arbiters; sent twice, or forever, each receiver fills and they cannot. A
+// looping sender whose lock nothing refills still sends once.
 
 // CHECK-NOT:   error
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)

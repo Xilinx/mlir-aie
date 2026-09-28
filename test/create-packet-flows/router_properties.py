@@ -66,7 +66,7 @@ PARAMS = dict(
     # AIETargetModel::getNumSlaveSlots, getMaxPacketId
     rule_slots=4,
     max_id=31,
-    # pktHeaderBytes, maxBDs: AIEStreamDependencyAnalysis.cpp
+    # pktHeaderBytes, maxBDSteps: AIEStreamDependencyAnalysis.cpp
     header_bytes=4,
     max_bd_steps=1024,
     # stepBudget in planArbiters and unroutableArbiters, budget in
@@ -1263,8 +1263,10 @@ def trace_routed_streams(d):
 class Volumes:
     """StreamVolumeAnalysis."""
 
-    def __init__(self, d):
+    def __init__(self, d, streams):
         self.d = d
+        self.streams = streams
+        self.visiting = set()
         self.programs = defaultdict(list)
         for p in d.programs:
             self.programs[d.program_key(p)].append(p)
@@ -1292,7 +1294,13 @@ class Volumes:
             if not bds:
                 continue
             if p["loops"]:
-                return None
+                looped = self.looped_volume(
+                    p, lambda op: op[1] + header(op[2]) if carries(op[2]) else 0
+                )
+                if looped is None:
+                    return None
+                total += looped
+                continue
             nbytes = sum(op[1] + header(op[2]) for op in bds)
             if p["kind"] == "start":
                 runs = p["repeat"] + 1
@@ -1319,13 +1327,106 @@ class Volumes:
             total += nbytes + header(pkt)
         return total if known else None
 
+    def looped_volume(self, p, bytes_of):
+        """StreamVolumeAnalysis::loopedVolume."""
+        if id(p) in self.visiting or not p["seq"]:
+            return None
+        self.visiting.add(id(p))
+        try:
+            tokens, nbytes, seq = {}, 0, p["seq"]
+            for step in range(PARAMS["max_bd_steps"]):
+                for op in seq[step % len(seq)]:
+                    if op[0] != "lock":
+                        nbytes += bytes_of(op)
+                        continue
+                    _, action, lock, n = op
+                    if lock is None or n is None or n < 0 or action == 0:
+                        return None
+                    if lock not in tokens:
+                        others = self.tokens_from_others(lock, p)
+                        if others is None:
+                            return None
+                        tokens[lock] = self.d.locks[lock][3] + others
+                    if action == 1:
+                        tokens[lock] += n
+                    elif tokens[lock] < n:
+                        return nbytes
+                    else:
+                        tokens[lock] -= n
+            return None
+        finally:
+            self.visiting.discard(id(p))
+
+    def tokens_from_others(self, lock, me):
+        """StreamVolumeAnalysis::tokensFromOthers."""
+        if any(
+            a == 1 and l == lock for uses in self.d.cores.values() for a, l, _ in uses
+        ):
+            return None
+        total = 0
+        for p in self.d.programs:
+            if p is me or not any(
+                op[0] == "lock" and op[1] == 1 and op[2] == lock
+                for op in program_ops(p)
+            ):
+                continue
+            n = self.releases_over(p, lock)
+            if n is None:
+                return None
+            total += n
+        return total
+
+    def releases_over(self, p, lock):
+        """StreamVolumeAnalysis::releasesOver."""
+        if p["kind"] != "start":
+            return None
+        seq = p["seq"]
+
+        def released(op):
+            if op[0] != "lock" or op[1] != 1 or op[2] != lock:
+                return 0
+            return op[3]
+
+        if not p["loops"]:
+            amounts = [released(op) for op in program_ops(p)]
+            if any(n is None or n < 0 for n in amounts):
+                return None
+            return sum(amounts) * (p["repeat"] + 1)
+        if p["dir"] != S2MM or not seq:
+            return None
+        ep = (*p["tile"], DMA, p["ch"])
+        received = 0
+        for s in self.streams:
+            if s.dst != ep:
+                continue
+            v = self.send_volume(s)
+            if v is None:
+                return None
+            received += v
+        filled = tokens = 0
+        for step in range(PARAMS["max_bd_steps"]):
+            for op in seq[step % len(seq)]:
+                if op[0] == "bd":
+                    if filled + op[1] > received:
+                        return tokens
+                    filled += op[1]
+                    continue
+                n = released(op)
+                if n is None or n < 0:
+                    return None
+                tokens += n
+        return None
+
     def receive_capacity(self, ep):
         if ep[2] != DMA:
             return 0
         progs = self.programs.get((ep[0], ep[1], S2MM, ep[3]))
         if not progs:
             return 0
-        p = progs[0]
+        caps = [c for c in map(self.program_capacity, progs) if c is not None]
+        return min(caps, default=None)
+
+    def program_capacity(self, p):
         if p["kind"] != "start":
             return 0
         passes = 1 + p["repeat"]
@@ -1346,7 +1447,7 @@ class Volumes:
                     v = values.setdefault(lock, self.d.locks[lock][3])
                     if action == 1:
                         values[lock] = v + n
-                    elif v < n:
+                    elif action == 0 or v < n:
                         return nbytes
                     else:
                         values[lock] = v - n
@@ -1560,7 +1661,7 @@ class Analysis:
     @property
     def graph(self):
         if self._graph is None:
-            self.volumes = Volumes(self.d)
+            self.volumes = Volumes(self.d, self.streams)
             self._graph = WaitGraph(self.d, self.streams, self.volumes)
         return self._graph
 
@@ -4579,6 +4680,37 @@ def check_model():
     g, f = 0, 1
     expect("relayed through core", (an.blocks(f, g), an.blocks(g, f)), (True, False))
     expect("relayed conflict", an.conflict(f, g), True)
+    # A channel takes no more than its least program does.
+    add_program(d, (0, 4), S2MM, 0, [bd_block(16)], False)
+    an = Analysis(d)
+    an.graph
+    expect("least program", an.volumes.receive_capacity((0, 4, DMA, 0)), 16)
+    # arbiter_looped_send_volume.mlir: a looping chain sends one pass per
+    # token of %go, so as many as its feeders ever release.
+    d = Design("npu1_1col")
+    d.add_packet_flow(1, [(0, 2, DMA, 0)], [(0, 3, DMA, 0)])
+    d.add_packet_flow(2, [(0, 2, DMA, 0)], [(0, 3, DMA, 1)])
+    go = d.lock((0, 2), 1)
+    send = add_program(d, (0, 2), MM2S, 0, [bd_block(32, 1, go), bd_block(64, 2)], True)
+
+    def looped(label, want):
+        an = Analysis(d)
+        an.graph
+        got = [an.volumes.send_volume(s) for s in an.streams if s.pid == 1]
+        expect(label, got, [want])
+
+    looped("looped, nothing refills", 32)
+    feed = add_program(d, (0, 2), S2MM, 0, [bd_block(32, None, None, go)], False)
+    looped("looped, one-shot feeder", 64)
+    feed.update(loops=True, seq=[bd_block(64, None, None, go)])
+    d.flows.append(((0, 4, DMA, 0), (0, 2, DMA, 0)))
+    add_program(d, (0, 4), MM2S, 0, [bd_block(32)], False)
+    looped("looped, feeder fills no BD", 32)
+    d.cores[(0, 2)] = [(1, go, 1)]
+    looped("looped, core refills", None)
+    del d.cores[(0, 2)]
+    send["seq"][0][0] = ("lock", 0, go, 1)
+    looped("looped, acquire-equal", None)
     # arbiter_hold_cycle_wormhole.mlir: no pair conflicts, but with every hop
     # packet switched the arbiters close a cycle.
     d = gen_wormhole(random.Random(0), "npu1_1col")
