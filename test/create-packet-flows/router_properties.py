@@ -48,6 +48,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections import Counter, defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
@@ -700,10 +701,19 @@ def _ops(block):
     return [x.operation for x in block.operations]
 
 
+_contexts = threading.local()
+
+
+def _context():
+    if not hasattr(_contexts, "ctx"):
+        _contexts.ctx = Context()
+    return _contexts.ctx
+
+
 def load_design(text):
     """Parse MLIR text (one aie.device) into a Design, runtime sequence
     included. Ops the model does not read are listed in design.unsupported."""
-    with Context(), Location.unknown():
+    with _context(), Location.unknown():
         module = Module.parse(text)
         device = None
         for op in module.body.operations:
@@ -4527,11 +4537,6 @@ def known_bug(d, problems):
     return next((label for label, test in KNOWN_BUGS if test(d, problems)), None)
 
 
-def run_cases(cases, route):
-    with ThreadPoolExecutor(max_workers=PARAMS["jobs"]) as pool:
-        return list(pool.map(route, cases))
-
-
 def main(argv=None):
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--device", default="npu2", help="npu1, npu2 or a device name")
@@ -4554,8 +4559,12 @@ def main(argv=None):
     t_start = time.monotonic()
     first = args.first_seed
 
+    regressions = []
+
     def report(label, ok, detail):
         print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
+        if not ok:
+            regressions.append(label)
 
     def save(case, what, text, stderr=""):
         if args.out:
@@ -4573,44 +4582,73 @@ def main(argv=None):
         print("WRONG VERIFIER:", line)
     report("verifier-validation", not problems, f"{len(problems)} problem(s)")
 
-    cases, gave_up = [], 0
-    for seed in range(first, first + PARAMS["routable"]):
-        case = routable_case(seed, args.device)
-        if case is None:
-            gave_up += 1
-        else:
-            cases.append(case)
-    shapes = Counter(c["shape"] for c in cases)
-    batches = [
-        (hops_on, cases[k : k + PARAMS["batch"]])
-        for hops_on in (True, False)
-        for k in range(0, len(cases), PARAMS["batch"])
-    ]
+    # Every aie-opt run goes to one pool as soon as its designs exist, so
+    # generating and checking designs overlaps routing them.
+    pool = ThreadPoolExecutor(max_workers=PARAMS["jobs"])
+    debug = debug_flags()
+    spaces = []
 
-    def route(job):
-        hops_on, group = job
+    def route_one(c):
+        p = aie_opt(c["design"].emit(), c["hops_on"], extra=debug)
+        spaces.append(
+            route_space(
+                c["design"], p.returncode, p.stdout, p.stderr, p.stderr, c["hops_on"]
+            )
+        )
+        return p
+
+    ucases = [
+        unroutable_case(s, args.device)
+        for s in range(first, first + PARAMS["unroutable"])
+    ]
+    kcases = [
+        unknown_case(s, args.device) for s in range(first, first + PARAMS["unknown"])
+    ]
+    upending = [pool.submit(route_one, c) for c in ucases]
+    kpending = [pool.submit(route_one, c) for c in kcases]
+
+    def route(hops_on, group):
         tagged = [(c["seed"], c["design"].emit(c["seed"])) for c in group]
         t0 = time.monotonic()
         outs, errs, _ = route_batch(tagged, hops_on)
         spent = time.monotonic() - t0
-        return outs, errs, route_batch(tagged, hops_on, debug_flags()), spent
+        return outs, errs, route_batch(tagged, hops_on, debug), spent
+
+    cases, gave_up, pending = [], 0, {}
+    size = PARAMS["batch"]
+
+    def submit(k):
+        for hops_on in (True, False):
+            pending[hops_on, k] = pool.submit(route, hops_on, cases[k : k + size])
+
+    for seed in range(first, first + PARAMS["routable"]):
+        case = routable_case(seed, args.device)
+        if case is None:
+            gave_up += 1
+            continue
+        cases.append(case)
+        if len(cases) % size == 0:
+            submit(len(cases) - size)
+    if len(cases) % size:
+        submit(len(cases) - len(cases) % size)
+    shapes = Counter(c["shape"] for c in cases)
 
     failed, illegal, nondet = [], [], 0
     inherent, inherent_wrong = Counter(), []
 
-    def check_inherent(tag, an, stderr):
-        want, got = unavoidable_warning(an), router_warning(stderr)
+    def check_inherent(tag, c, stderr, what="warning"):
+        want, got = unavoidable_warning(c["analysis"]), router_warning(stderr)
         inherent[want is not None] += 1
         if want != got:
             inherent_wrong.append(f"{tag}: router {got!r}, model {want!r}")
+            save(c, what, c["design"].emit(), stderr)
 
     known = Counter()
     totals = defaultdict(int)
     route_time = 0.0
-    spaces = []
-    for (hops_on, group), (outs, errs, again, spent) in zip(
-        batches, run_cases(batches, route)
-    ):
+    for hops_on, k in sorted(pending, key=lambda b: (not b[0], b[1])):
+        outs, errs, again, spent = pending[hops_on, k].result()
+        group = cases[k : k + size]
         route_time += spent
         mode = "" if hops_on else " hops-off"
         for c in group:
@@ -4635,7 +4673,9 @@ def main(argv=None):
             if outs[seed] != again[0].get(seed):
                 nondet += 1
             if seed in again[2]:
-                check_inherent(f"seed {seed}{mode}", c["analysis"], again[2][seed])
+                check_inherent(
+                    f"seed {seed}{mode}", c, again[2][seed], "warning" + mode.strip()
+                )
             problems, stats = verify(d, c["analysis"], outs[seed], hops_on)
             if problems and (label := known_bug(d, problems)):
                 known[label] += 1
@@ -4669,22 +4709,9 @@ def main(argv=None):
     )
     report("determinism", nondet == 0, f"{nondet} unstable")
 
-    ucases = [
-        unroutable_case(s, args.device)
-        for s in range(first, first + PARAMS["unroutable"])
-    ]
-
-    def route_one(c):
-        p = aie_opt(c["design"].emit(), c["hops_on"], extra=debug_flags())
-        spaces.append(
-            route_space(
-                c["design"], p.returncode, p.stdout, p.stderr, p.stderr, c["hops_on"]
-            )
-        )
-        return p
-
     wrong, exact, undecided = [], 0, 0
-    for c, p in zip(ucases, run_cases(ucases, route_one)):
+    for c, f in zip(ucases, upending):
+        p = f.result()
         want = c["truth"]["expect"]
         tag = f"seed {c['seed']} {c['shape']} ({c['design'].dev})"
         if want is None:
@@ -4714,16 +4741,14 @@ def main(argv=None):
         f"exact message), {undecided} left to the model",
     )
 
-    kcases = [
-        unknown_case(s, args.device) for s in range(first, first + PARAMS["unknown"])
-    ]
     outcomes = defaultdict(lambda: [0, 0])
     unknown_illegal = []
-    for c, p in zip(kcases, run_cases(kcases, route_one)):
+    for c, f in zip(kcases, kpending):
+        p = f.result()
         outcomes[c["shape"]][p.returncode != 0] += 1
         tag = f"seed {c['seed']} ({c['shape']})"
         if p.returncode >= 0:
-            check_inherent(tag, c["analysis"], p.stderr)
+            check_inherent(tag, c, p.stderr)
         if p.returncode < 0:
             unknown_illegal.append(f"{tag}: crashed: {first_error(p.stderr)[:300]}")
             save(c, "crash", c["design"].emit(), p.stderr)
@@ -4735,6 +4760,7 @@ def main(argv=None):
             elif problems:
                 unknown_illegal.append(f"{tag}: {problems[0]}")
                 save(c, "illegal", c["design"].emit())
+    pool.shutdown()
     for line in unknown_illegal[:10]:
         print("ILLEGAL:", line)
     print(
@@ -4792,7 +4818,7 @@ def main(argv=None):
         f"{sum(h for h, _ in dims.values())}/{sum(n for _, n in dims.values())} "
         f"values over {len(dims)} dimensions, {ph}/{pn} pairs over "
         f"{'/'.join(PAIRWISE)}"
-        + ("" if debug_flags() else ", no router internals (no debug build)")
+        + ("" if debug else ", no router internals (no debug build)")
         + (f"; below floor: {', '.join(low)}" if low else ""),
     )
     if args.space_out:
@@ -4812,7 +4838,7 @@ def main(argv=None):
         f"{per_design:.1f} ms per design (max {PARAMS['max_ms_per_design']})",
     )
     print(f"total: {time.monotonic() - t_start:.1f}s")
-    return 0
+    return 1 if regressions else 0
 
 
 # Every property must report OK; any REGRESSION fails the test.
