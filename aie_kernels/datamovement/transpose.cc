@@ -156,12 +156,13 @@ struct Shuffles<4, 16> {
   static inline void transpose(const U *__restrict in, U *__restrict out) {
     v32uint16 x[2][2], y[2][2], z[2][2], w[2][2];
     AIE_LOOP_UNROLL_FULL
-    for (unsigned h = 0; h < 2; ++h)
+    for (unsigned h = 0; h < 2; ++h) {
       AIE_LOOP_UNROLL_FULL
       for (unsigned j = 0; j < 2; ++j)
         x[h][j] =
             aie::concat(aie::load_v<W / 2>(in + j * DIM_m + h * W / 2),
                         aie::load_v<W / 2>(in + (j + 2) * DIM_m + h * W / 2));
+    }
     AIE_LOOP_UNROLL_FULL
     for (unsigned j = 0; j < 2; ++j) {
       y[0][j] = ::shuffle(x[0][j], x[1][j], T16_16x4_lo);
