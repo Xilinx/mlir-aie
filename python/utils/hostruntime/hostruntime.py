@@ -37,6 +37,14 @@ class KernelHandle(ABC):
     def __init__(self, *, needs_dispatch_insts: bool = False):
         self.needs_dispatch_insts = needs_dispatch_insts
 
+    @property
+    def is_loaded(self) -> bool:
+        """Whether the kernel is still loaded, so the handle can run. A
+        runtime that evicts a kernel (to make room for another) reports it
+        here; a holder of the handle then loads the kernel again.
+        """
+        return True
+
 
 class KernelResult(ABC):
     """A wrapper around data produced as the result of running a kernel."""

@@ -476,6 +476,10 @@ class CachedXRTKernelHandle(XRTKernelHandle):
         )
         self._is_valid = True
 
+    @property
+    def is_loaded(self) -> bool:
+        return self._is_valid
+
     def invalidate(self):
         """Invalidate the handle and release resources in dependency order."""
         self._is_valid = False
@@ -682,12 +686,8 @@ class CachedXRTRuntime(XRTHostRuntime):
         Raises:
             HostRuntimeError: If arguments are invalid, kernel execution fails, or kernel is not loaded (if only_if_loaded=True).
         """
-        if only_if_loaded:
-            if (
-                isinstance(kernel_handle, CachedXRTKernelHandle)
-                and not kernel_handle._is_valid
-            ):
-                raise HostRuntimeError("Kernel not loaded (evicted from cache)")
+        if only_if_loaded and not kernel_handle.is_loaded:
+            raise HostRuntimeError("Kernel not loaded (evicted from cache)")
 
         return super().run(
             kernel_handle,

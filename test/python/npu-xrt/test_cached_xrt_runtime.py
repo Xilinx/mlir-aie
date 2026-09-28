@@ -346,13 +346,13 @@ def test_runtime_handle_invalidation(runtime):
         handle = runtime.load(npu_kernel)
 
         assert handle is not None
-        assert handle._is_valid
+        assert handle.is_loaded
 
         # Load second kernel to force eviction
         transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
 
         # Verify handle is invalidated
-        assert not handle._is_valid
+        assert not handle.is_loaded
 
     finally:
         runtime._cache_size = original_size
@@ -388,13 +388,13 @@ def test_runtime_cleanup(runtime):
     handle = runtime.load(npu_kernel)
 
     assert handle is not None
-    assert handle._is_valid
+    assert handle.is_loaded
 
     # Cleanup
     runtime.cleanup()
 
     assert len(runtime._context_cache) == 0
-    assert not handle._is_valid
+    assert not handle.is_loaded
 
 
 def test_base_runtime_load_run(runtime):
@@ -526,14 +526,14 @@ def test_runtime_run_only_if_loaded(runtime):
     # Load
     handle = runtime.load(npu_kernel)
     assert handle is not None
-    assert handle._is_valid
+    assert handle.is_loaded
 
     # Run with only_if_loaded=True (should succeed)
     runtime.run(handle, [input_tensor, input_tensor], only_if_loaded=True)
 
     # Invalidate handle (simulate eviction)
     handle.invalidate()
-    assert not handle._is_valid
+    assert not handle.is_loaded
 
     # Run with only_if_loaded=True (should fail)
     from aie.utils.hostruntime.hostruntime import HostRuntimeError
@@ -898,7 +898,7 @@ def test_load_exception_preserves_cached_context_with_live_handle(
     # First: a successful load that returns a handle we hold strongly.
     good_kernel = NPUKernel(xclbin_path, insts_path, kernel_name="MLIR_AIE")
     handle = runtime.load(good_kernel)
-    assert handle is not None and handle._is_valid
+    assert handle is not None and handle.is_loaded
 
     assert len(runtime._context_cache) == 1
     context_key = list(runtime._context_cache.keys())[0]
@@ -915,4 +915,4 @@ def test_load_exception_preserves_cached_context_with_live_handle(
         "handle was still referencing it."
     )
     assert context_key in runtime._context_cache
-    assert handle._is_valid, "Live handle was invalidated by a failed load()"
+    assert handle.is_loaded, "Live handle was invalidated by a failed load()"
