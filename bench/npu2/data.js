@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790490569910,
+  "lastUpdate": 1790577365871,
   "repoUrl": "https://github.com/Xilinx/mlir-aie",
   "entries": {
     "aie_kernels (npu2, default)": [
@@ -15156,6 +15156,3800 @@ window.BENCHMARK_DATA = {
           {
             "name": "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256/compile_s",
             "value": 2.84,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256/xclbin_bytes",
+            "value": 11513,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256/core_elf_bytes",
+            "value": 5972,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Erika Hunhoff",
+            "username": "hunhoffe",
+            "email": "erika.hunhoff@amd.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a82bb55c19869f1bdaeb1ca44e61f362349c5e0f",
+          "message": "[trace] trace_to_json: one file per trace-buffer slice; parser raises instead of exiting (#3805)\n\nCo-authored-by: Claude <noreply@anthropic.com>\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-09-25T19:02:08Z",
+          "url": "https://github.com/Xilinx/mlir-aie/commit/a82bb55c19869f1bdaeb1ca44e61f362349c5e0f"
+        },
+        "date": 1790577363145,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "passthrough/2048x16/int32/cycles",
+            "value": 138,
+            "unit": "cycles",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/cycles_per_kop",
+            "value": 67.383,
+            "unit": "cycles/1k-ops",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/npu_us",
+            "value": 105.5,
+            "range": "min 90.3 max 124.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/e2e_us",
+            "value": 216.49,
+            "range": "min 200.3 max 239.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/compile_s",
+            "value": 2.1,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/xclbin_bytes",
+            "value": 9304,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x16/int32/core_elf_bytes",
+            "value": 4024,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/cycles",
+            "value": 138,
+            "unit": "cycles",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/cycles_per_kop",
+            "value": 67.383,
+            "unit": "cycles/1k-ops",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/npu_us",
+            "value": 269.01,
+            "range": "min 262.3 max 323.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/e2e_us",
+            "value": 411.34,
+            "range": "min 402.4 max 505.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/compile_s",
+            "value": 2.05,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/xclbin_bytes",
+            "value": 8839,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/2048x256/int32/core_elf_bytes",
+            "value": 3116,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/cycles",
+            "value": 138,
+            "unit": "cycles",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/cycles_per_kop",
+            "value": 33.691,
+            "unit": "cycles/1k-ops",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/npu_us",
+            "value": 103.2,
+            "range": "min 94.5 max 115.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/e2e_us",
+            "value": 206.75,
+            "range": "min 197.5 max 222.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/compile_s",
+            "value": 2.05,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/xclbin_bytes",
+            "value": 9304,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/int16/core_elf_bytes",
+            "value": 4024,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/cycles",
+            "value": 74,
+            "unit": "cycles",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/cycles_per_kop",
+            "value": 18.066,
+            "unit": "cycles/1k-ops",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/npu_us",
+            "value": 101.77,
+            "range": "min 84.6 max 116.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/e2e_us",
+            "value": 204.02,
+            "range": "min 183.1 max 216.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/compile_s",
+            "value": 2.07,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/xclbin_bytes",
+            "value": 9304,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "passthrough/4096x16/uint8/core_elf_bytes",
+            "value": 4024,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/npu_us",
+            "value": 98.98,
+            "range": "min 82.9 max 104.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/e2e_us",
+            "value": 203.61,
+            "range": "min 189.2 max 215.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/compile_s",
+            "value": 2.12,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/xclbin_bytes",
+            "value": 9368,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int16/core_elf_bytes",
+            "value": 4168,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/npu_us",
+            "value": 135.1,
+            "range": "min 118.6 max 141.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/e2e_us",
+            "value": 245.85,
+            "range": "min 229.2 max 253.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/compile_s",
+            "value": 2.12,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/xclbin_bytes",
+            "value": 8903,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x256/int16/core_elf_bytes",
+            "value": 3116,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/npu_us",
+            "value": 104.56,
+            "range": "min 87.0 max 125.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/e2e_us",
+            "value": 214.06,
+            "range": "min 195.5 max 284.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/compile_s",
+            "value": 2.09,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/xclbin_bytes",
+            "value": 9416,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "scale/1024x16/int32/core_elf_bytes",
+            "value": 4216,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/npu_us",
+            "value": 103.64,
+            "range": "min 95.8 max 109.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/e2e_us",
+            "value": 203.48,
+            "range": "min 194.1 max 215.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/compile_s",
+            "value": 2.19,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/xclbin_bytes",
+            "value": 8855,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x16/bfloat16/core_elf_bytes",
+            "value": 3000,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/npu_us",
+            "value": 194.09,
+            "range": "min 183.3 max 200.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/e2e_us",
+            "value": 309.74,
+            "range": "min 298.9 max 319.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/compile_s",
+            "value": 2.21,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/xclbin_bytes",
+            "value": 8855,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add/1024x256/bfloat16/core_elf_bytes",
+            "value": 3000,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/npu_us",
+            "value": 100.83,
+            "range": "min 86.5 max 123.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/e2e_us",
+            "value": 202.35,
+            "range": "min 190.6 max 326.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/compile_s",
+            "value": 2.17,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/xclbin_bytes",
+            "value": 8855,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x16/bfloat16/core_elf_bytes",
+            "value": 3000,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/npu_us",
+            "value": 208.88,
+            "range": "min 198.3 max 253.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/e2e_us",
+            "value": 320.88,
+            "range": "min 311.0 max 364.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/compile_s",
+            "value": 2.18,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/xclbin_bytes",
+            "value": 8855,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul/1024x256/bfloat16/core_elf_bytes",
+            "value": 3000,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/npu_us",
+            "value": 111.7,
+            "range": "min 91.6 max 192.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/e2e_us",
+            "value": 310.41,
+            "range": "min 257.8 max 656.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/compile_s",
+            "value": 2.08,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/xclbin_bytes",
+            "value": 9287,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x16/bfloat16/core_elf_bytes",
+            "value": 3872,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/npu_us",
+            "value": 138.3,
+            "range": "min 125.6 max 143.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/e2e_us",
+            "value": 248.6,
+            "range": "min 233.6 max 257.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/compile_s",
+            "value": 2.08,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/xclbin_bytes",
+            "value": 8807,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "relu/1024x256/bfloat16/core_elf_bytes",
+            "value": 2948,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/npu_us",
+            "value": 111.76,
+            "range": "min 86.2 max 165.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/e2e_us",
+            "value": 314.2,
+            "range": "min 204.0 max 576.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/compile_s",
+            "value": 2.09,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/xclbin_bytes",
+            "value": 9336,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x16/int32/core_elf_bytes",
+            "value": 3936,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/npu_us",
+            "value": 173.01,
+            "range": "min 153.4 max 177.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/e2e_us",
+            "value": 285.01,
+            "range": "min 265.2 max 292.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/compile_s",
+            "value": 2.07,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/xclbin_bytes",
+            "value": 8871,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_add/1024x256/int32/core_elf_bytes",
+            "value": 3028,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/npu_us",
+            "value": 107.57,
+            "range": "min 93.4 max 127.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/e2e_us",
+            "value": 210.51,
+            "range": "min 195.8 max 271.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/compile_s",
+            "value": 2.09,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/xclbin_bytes",
+            "value": 9336,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x16/int32/core_elf_bytes",
+            "value": 3936,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/npu_us",
+            "value": 168.63,
+            "range": "min 159.4 max 184.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/e2e_us",
+            "value": 282.36,
+            "range": "min 273.2 max 297.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/compile_s",
+            "value": 2.07,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/xclbin_bytes",
+            "value": 8871,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_min/1024x256/int32/core_elf_bytes",
+            "value": 3028,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/npu_us",
+            "value": 111.56,
+            "range": "min 98.0 max 123.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/e2e_us",
+            "value": 310.51,
+            "range": "min 297.2 max 338.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/compile_s",
+            "value": 2.13,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/xclbin_bytes",
+            "value": 9368,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/int32/core_elf_bytes",
+            "value": 3968,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/npu_us",
+            "value": 177.63,
+            "range": "min 153.3 max 232.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/e2e_us",
+            "value": 396.77,
+            "range": "min 268.2 max 781.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/compile_s",
+            "value": 2.12,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/xclbin_bytes",
+            "value": 8903,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/int32/core_elf_bytes",
+            "value": 3060,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/npu_us",
+            "value": 99.61,
+            "range": "min 81.6 max 108.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/e2e_us",
+            "value": 198.5,
+            "range": "min 181.8 max 211.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/compile_s",
+            "value": 2.14,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/xclbin_bytes",
+            "value": 9336,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x16/bfloat16/core_elf_bytes",
+            "value": 3944,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/npu_us",
+            "value": 172.44,
+            "range": "min 151.9 max 197.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/e2e_us",
+            "value": 384.13,
+            "range": "min 265.6 max 515.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/compile_s",
+            "value": 2.11,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/xclbin_bytes",
+            "value": 8871,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "reduce_max/1024x256/bfloat16/core_elf_bytes",
+            "value": 3036,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/npu_us",
+            "value": 108.72,
+            "range": "min 95.2 max 159.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/e2e_us",
+            "value": 208.59,
+            "range": "min 192.8 max 554.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/compile_s",
+            "value": 4.16,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/xclbin_bytes",
+            "value": 9352,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x16/bfloat16/core_elf_bytes",
+            "value": 3932,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/npu_us",
+            "value": 187.91,
+            "range": "min 179.5 max 192.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/e2e_us",
+            "value": 299.39,
+            "range": "min 289.2 max 315.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/compile_s",
+            "value": 4.16,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/xclbin_bytes",
+            "value": 8855,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gelu/1024x256/bfloat16/core_elf_bytes",
+            "value": 2992,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/npu_us",
+            "value": 109.78,
+            "range": "min 96.7 max 206.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/e2e_us",
+            "value": 209.93,
+            "range": "min 198.8 max 800.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/compile_s",
+            "value": 4.16,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/xclbin_bytes",
+            "value": 9271,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/core_elf_bytes",
+            "value": 3852,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/use_lut=True/lut/npu_us",
+            "value": 128.22,
+            "range": "min 115.3 max 132.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/use_lut=True/lut/e2e_us",
+            "value": 225.51,
+            "range": "min 213.5 max 238.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/use_lut=True/lut/compile_s",
+            "value": 4.36,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/use_lut=True/lut/xclbin_bytes",
+            "value": 14825,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/use_lut=True/lut/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x16/bfloat16/use_lut=True/lut/core_elf_bytes",
+            "value": 9928,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/npu_us",
+            "value": 279.05,
+            "range": "min 267.7 max 283.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/e2e_us",
+            "value": 390.72,
+            "range": "min 380.4 max 396.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/compile_s",
+            "value": 4.19,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/xclbin_bytes",
+            "value": 8775,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "silu/1024x256/bfloat16/core_elf_bytes",
+            "value": 2912,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/npu_us",
+            "value": 387.91,
+            "range": "min 379.9 max 394.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/e2e_us",
+            "value": 491.99,
+            "range": "min 481.1 max 502.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/compile_s",
+            "value": 4.53,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/xclbin_bytes",
+            "value": 11033,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x16/bfloat16/core_elf_bytes",
+            "value": 5684,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/npu_us",
+            "value": 5025.67,
+            "range": "min 4752.2 max 5939.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/e2e_us",
+            "value": 5886.22,
+            "range": "min 4927.9 max 6891.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/compile_s",
+            "value": 4.51,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/xclbin_bytes",
+            "value": 10537,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bf16_exp/1024x256/bfloat16/core_elf_bytes",
+            "value": 4744,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/npu_us",
+            "value": 99.36,
+            "range": "min 92.0 max 150.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/e2e_us",
+            "value": 200.61,
+            "range": "min 191.6 max 252.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/compile_s",
+            "value": 4.09,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/xclbin_bytes",
+            "value": 9304,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/core_elf_bytes",
+            "value": 3884,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/npu_us",
+            "value": 147.5,
+            "range": "min 137.7 max 158.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/e2e_us",
+            "value": 294.96,
+            "range": "min 277.3 max 323.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/compile_s",
+            "value": 4.07,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/xclbin_bytes",
+            "value": 8839,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x256/bfloat16/core_elf_bytes",
+            "value": 2976,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/use_lut=True/lut/npu_us",
+            "value": 113.22,
+            "range": "min 111.2 max 120.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/use_lut=True/lut/e2e_us",
+            "value": 211.82,
+            "range": "min 207.0 max 228.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/use_lut=True/lut/compile_s",
+            "value": 4.37,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/use_lut=True/lut/xclbin_bytes",
+            "value": 14953,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/use_lut=True/lut/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "tanh/1024x16/bfloat16/use_lut=True/lut/core_elf_bytes",
+            "value": 10180,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/npu_us",
+            "value": 109.73,
+            "range": "min 84.9 max 115.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/e2e_us",
+            "value": 208.68,
+            "range": "min 184.3 max 220.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/compile_s",
+            "value": 4.18,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/xclbin_bytes",
+            "value": 9384,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/core_elf_bytes",
+            "value": 3972,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/use_lut=True/lut/npu_us",
+            "value": 119.61,
+            "range": "min 107.0 max 147.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/use_lut=True/lut/e2e_us",
+            "value": 253.47,
+            "range": "min 215.3 max 356.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/use_lut=True/lut/compile_s",
+            "value": 4.33,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/use_lut=True/lut/xclbin_bytes",
+            "value": 14793,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/use_lut=True/lut/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x16/bfloat16/use_lut=True/lut/core_elf_bytes",
+            "value": 9868,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/npu_us",
+            "value": 175.64,
+            "range": "min 164.3 max 193.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/e2e_us",
+            "value": 286.09,
+            "range": "min 275.2 max 300.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/compile_s",
+            "value": 4.16,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/xclbin_bytes",
+            "value": 8919,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "sigmoid/1024x256/bfloat16/core_elf_bytes",
+            "value": 3064,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/npu_us",
+            "value": 115.28,
+            "range": "min 101.7 max 148.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/e2e_us",
+            "value": 211.38,
+            "range": "min 200.2 max 351.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/compile_s",
+            "value": 4.18,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/xclbin_bytes",
+            "value": 9864,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x16/bfloat16/core_elf_bytes",
+            "value": 4656,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/npu_us",
+            "value": 310.94,
+            "range": "min 293.6 max 317.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/e2e_us",
+            "value": 418.47,
+            "range": "min 399.6 max 428.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/compile_s",
+            "value": 4.17,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/xclbin_bytes",
+            "value": 9400,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "softmax/1024x256/bfloat16/core_elf_bytes",
+            "value": 3748,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/npu_us",
+            "value": 98.69,
+            "range": "min 87.3 max 108.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/e2e_us",
+            "value": 198.95,
+            "range": "min 189.0 max 212.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/compile_s",
+            "value": 2.24,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/xclbin_bytes",
+            "value": 9271,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x16/bfloat16/core_elf_bytes",
+            "value": 3864,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/npu_us",
+            "value": 145,
+            "range": "min 133.6 max 151.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/e2e_us",
+            "value": 250.76,
+            "range": "min 240.4 max 257.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/compile_s",
+            "value": 2.16,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/xclbin_bytes",
+            "value": 8807,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "leaky_relu/1024x256/bfloat16/core_elf_bytes",
+            "value": 2956,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x16/float32/npu_us",
+            "value": 392.98,
+            "range": "min 382.0 max 432.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x16/float32/e2e_us",
+            "value": 589.25,
+            "range": "min 527.1 max 861.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x16/float32/compile_s",
+            "value": 2.35,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x16/float32/xclbin_bytes",
+            "value": 10921,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x16/float32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x16/float32/core_elf_bytes",
+            "value": 5620,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x256/float32/npu_us",
+            "value": 4644.17,
+            "range": "min 4606.4 max 5229.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x256/float32/e2e_us",
+            "value": 5167.21,
+            "range": "min 4805.5 max 5805.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x256/float32/compile_s",
+            "value": 2.35,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x256/float32/xclbin_bytes",
+            "value": 10457,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x256/float32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "exp2f_vec/1024x256/float32/core_elf_bytes",
+            "value": 4712,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/npu_us",
+            "value": 109.06,
+            "range": "min 96.7 max 114.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/e2e_us",
+            "value": 209.19,
+            "range": "min 200.9 max 222.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/compile_s",
+            "value": 2.21,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/xclbin_bytes",
+            "value": 8935,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x16/bfloat16/core_elf_bytes",
+            "value": 3064,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/npu_us",
+            "value": 185.16,
+            "range": "min 170.6 max 198.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/e2e_us",
+            "value": 298.25,
+            "range": "min 286.2 max 316.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/compile_s",
+            "value": 2.22,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/xclbin_bytes",
+            "value": 8935,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "axpy/1024x256/bfloat16/core_elf_bytes",
+            "value": 3064,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x16/float32_bfloat16/npu_us",
+            "value": 102.96,
+            "range": "min 90.2 max 154.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x16/float32_bfloat16/e2e_us",
+            "value": 205.52,
+            "range": "min 193.8 max 258.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x16/float32_bfloat16/compile_s",
+            "value": 2.09,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x16/float32_bfloat16/xclbin_bytes",
+            "value": 9287,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x16/float32_bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x16/float32_bfloat16/core_elf_bytes",
+            "value": 3924,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x256/float32_bfloat16/npu_us",
+            "value": 195.34,
+            "range": "min 181.3 max 203.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x256/float32_bfloat16/e2e_us",
+            "value": 309.06,
+            "range": "min 295.3 max 322.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x256/float32_bfloat16/compile_s",
+            "value": 2.08,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x256/float32_bfloat16/xclbin_bytes",
+            "value": 8823,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x256/float32_bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "convert_copy/1024x256/float32_bfloat16/core_elf_bytes",
+            "value": 3016,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/npu_us",
+            "value": 109.63,
+            "range": "min 95.2 max 112.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/e2e_us",
+            "value": 211.3,
+            "range": "min 196.7 max 223.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/compile_s",
+            "value": 2.13,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/xclbin_bytes",
+            "value": 9239,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x16/uint8_bfloat16/core_elf_bytes",
+            "value": 3840,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/npu_us",
+            "value": 229.39,
+            "range": "min 205.1 max 271.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/e2e_us",
+            "value": 376.85,
+            "range": "min 316.3 max 696.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/compile_s",
+            "value": 2.11,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/xclbin_bytes",
+            "value": 8759,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "expand/576x256/uint8_bfloat16/core_elf_bytes",
+            "value": 2916,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/npu_us",
+            "value": 127.67,
+            "range": "min 105.7 max 139.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/e2e_us",
+            "value": 227.98,
+            "range": "min 207.5 max 303.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/compile_s",
+            "value": 2.14,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/xclbin_bytes",
+            "value": 9512,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=4/core_elf_bytes",
+            "value": 4324,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/npu_us",
+            "value": 190,
+            "range": "min 176.4 max 196.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/e2e_us",
+            "value": 293.23,
+            "range": "min 280.4 max 303.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/compile_s",
+            "value": 2.15,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/xclbin_bytes",
+            "value": 10120,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/bfloat16/subtile=8/core_elf_bytes",
+            "value": 5428,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/npu_us",
+            "value": 115.76,
+            "range": "min 98.8 max 157.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/e2e_us",
+            "value": 319.99,
+            "range": "min 207.7 max 595.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/compile_s",
+            "value": 2.14,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/xclbin_bytes",
+            "value": 9464,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint8/subtile=4/core_elf_bytes",
+            "value": 4236,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/npu_us",
+            "value": 207.1,
+            "range": "min 195.4 max 256.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/e2e_us",
+            "value": 311.42,
+            "range": "min 299.5 max 684.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/compile_s",
+            "value": 2.13,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/xclbin_bytes",
+            "value": 9896,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "transpose/1024x16/uint32/subtile=8/core_elf_bytes",
+            "value": 5220,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/npu_us",
+            "value": 158.51,
+            "range": "min 144.7 max 175.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/e2e_us",
+            "value": 267.03,
+            "range": "min 250.7 max 286.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/compile_s",
+            "value": 2.23,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/xclbin_bytes",
+            "value": 10088,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/bfloat16_float32/core_elf_bytes",
+            "value": 4524,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/npu_us",
+            "value": 1097.92,
+            "range": "min 1085.1 max 1216.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/e2e_us",
+            "value": 1295.52,
+            "range": "min 1250.3 max 1384.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/compile_s",
+            "value": 2.24,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/xclbin_bytes",
+            "value": 10088,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x256/bfloat16_float32/core_elf_bytes",
+            "value": 4524,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/npu_us",
+            "value": 133.41,
+            "range": "min 126.7 max 159.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/e2e_us",
+            "value": 246.47,
+            "range": "min 237.6 max 265.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/compile_s",
+            "value": 2.21,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/xclbin_bytes",
+            "value": 9640,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int16_int32/core_elf_bytes",
+            "value": 4076,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/npu_us",
+            "value": 117.58,
+            "range": "min 101.7 max 122.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/e2e_us",
+            "value": 226.18,
+            "range": "min 214.1 max 238.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/compile_s",
+            "value": 2.25,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/xclbin_bytes",
+            "value": 9688,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm/64x32x64x16/int8_int32/core_elf_bytes",
+            "value": 4120,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/npu_us",
+            "value": 113.59,
+            "range": "min 93.6 max 127.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/e2e_us",
+            "value": 319.27,
+            "range": "min 256.8 max 376.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/compile_s",
+            "value": 4.1,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/xclbin_bytes",
+            "value": 10233,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "fused_mm/32x32x16x4/bfloat16/core_elf_bytes",
+            "value": 4692,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfp16ebs8/npu_us",
+            "value": 152.73,
+            "range": "min 140.2 max 205.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfp16ebs8/e2e_us",
+            "value": 253.01,
+            "range": "min 244.8 max 510.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfp16ebs8/compile_s",
+            "value": 2.38,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfp16ebs8/xclbin_bytes",
+            "value": 9976,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfp16ebs8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfp16ebs8/core_elf_bytes",
+            "value": 4420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp_shuffle/512x4/bfp16ebs8/npu_us",
+            "value": 224.56,
+            "range": "min 199.3 max 231.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp_shuffle/512x4/bfp16ebs8/e2e_us",
+            "value": 434.61,
+            "range": "min 309.3 max 446.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp_shuffle/512x4/bfp16ebs8/compile_s",
+            "value": 2.1,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp_shuffle/512x4/bfp16ebs8/xclbin_bytes",
+            "value": 11081,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp_shuffle/512x4/bfp16ebs8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp_shuffle/512x4/bfp16ebs8/core_elf_bytes",
+            "value": 6296,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "q4nx_dequant/5120x4/uint8/npu_us",
+            "value": 109.54,
+            "range": "min 100.0 max 116.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "q4nx_dequant/5120x4/uint8/e2e_us",
+            "value": 212.04,
+            "range": "min 201.4 max 222.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "q4nx_dequant/5120x4/uint8/compile_s",
+            "value": 2.87,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "q4nx_dequant/5120x4/uint8/xclbin_bytes",
+            "value": 8967,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "q4nx_dequant/5120x4/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "q4nx_dequant/5120x4/uint8/core_elf_bytes",
+            "value": 3208,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfloat16/mixed=True/npu_us",
+            "value": 109.44,
+            "range": "min 99.8 max 123.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfloat16/mixed=True/e2e_us",
+            "value": 218.59,
+            "range": "min 204.6 max 228.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfloat16/mixed=True/compile_s",
+            "value": 2.34,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfloat16/mixed=True/xclbin_bytes",
+            "value": 10008,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfloat16/mixed=True/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_bfp/64x64x64x16/bfloat16/mixed=True/core_elf_bytes",
+            "value": 4340,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/npu_us",
+            "value": 103.3,
+            "range": "min 90.0 max 115.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/e2e_us",
+            "value": 212.09,
+            "range": "min 196.7 max 224.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/compile_s",
+            "value": 2.25,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/xclbin_bytes",
+            "value": 9624,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mv/32x32x16/int16_int32/core_elf_bytes",
+            "value": 3832,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/npu_us",
+            "value": 104.91,
+            "range": "min 85.5 max 108.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/e2e_us",
+            "value": 205.99,
+            "range": "min 187.9 max 216.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/compile_s",
+            "value": 2.1,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/xclbin_bytes",
+            "value": 8743,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/1x16/int32/core_elf_bytes",
+            "value": 2808,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/npu_us",
+            "value": 103.79,
+            "range": "min 92.3 max 108.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/e2e_us",
+            "value": 201.79,
+            "range": "min 188.9 max 211.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/compile_s",
+            "value": 2.12,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/xclbin_bytes",
+            "value": 8759,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "compute_max/2x16/bfloat16/core_elf_bytes",
+            "value": 2832,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/npu_us",
+            "value": 130.93,
+            "range": "min 114.6 max 228.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/e2e_us",
+            "value": 229.08,
+            "range": "min 211.1 max 768.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/compile_s",
+            "value": 4.17,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/xclbin_bytes",
+            "value": 8887,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/core_elf_bytes",
+            "value": 3580,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/use_lut=True/lut/npu_us",
+            "value": 157.17,
+            "range": "min 145.6 max 177.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/use_lut=True/lut/e2e_us",
+            "value": 254.72,
+            "range": "min 249.3 max 401.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/use_lut=True/lut/compile_s",
+            "value": 4.27,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/use_lut=True/lut/xclbin_bytes",
+            "value": 14329,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/use_lut=True/lut/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x16/bfloat16/use_lut=True/lut/core_elf_bytes",
+            "value": 9540,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/npu_us",
+            "value": 648.2,
+            "range": "min 635.6 max 657.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/e2e_us",
+            "value": 770.83,
+            "range": "min 750.8 max 780.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/compile_s",
+            "value": 4.15,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/xclbin_bytes",
+            "value": 8887,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "swiglu/1024x256/bfloat16/core_elf_bytes",
+            "value": 3580,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/npu_us",
+            "value": 110.11,
+            "range": "min 98.4 max 116.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/e2e_us",
+            "value": 210.99,
+            "range": "min 201.3 max 220.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/compile_s",
+            "value": 2.14,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/xclbin_bytes",
+            "value": 9400,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "gray2rgba/1920x16/uint8/core_elf_bytes",
+            "value": 4104,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/npu_us",
+            "value": 128.38,
+            "range": "min 112.5 max 174.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/e2e_us",
+            "value": 332.7,
+            "range": "min 290.4 max 568.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/compile_s",
+            "value": 2.17,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/xclbin_bytes",
+            "value": 9432,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2gray/7680x16/uint8/core_elf_bytes",
+            "value": 4168,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/npu_us",
+            "value": 106.05,
+            "range": "min 81.0 max 167.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/e2e_us",
+            "value": 277.8,
+            "range": "min 186.2 max 585.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/compile_s",
+            "value": 2.15,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/xclbin_bytes",
+            "value": 9832,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "threshold/1920x16/uint8/core_elf_bytes",
+            "value": 4868,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/npu_us",
+            "value": 103.58,
+            "range": "min 89.9 max 107.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/e2e_us",
+            "value": 208.9,
+            "range": "min 199.9 max 222.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/compile_s",
+            "value": 2.08,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/xclbin_bytes",
+            "value": 8919,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_or/1920x16/uint8/core_elf_bytes",
+            "value": 3064,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/npu_us",
+            "value": 101.95,
+            "range": "min 87.4 max 107.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/e2e_us",
+            "value": 204.8,
+            "range": "min 189.4 max 212.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/compile_s",
+            "value": 2.07,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/xclbin_bytes",
+            "value": 8919,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "bitwise_and/1920x16/uint8/core_elf_bytes",
+            "value": 3068,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/npu_us",
+            "value": 122.57,
+            "range": "min 100.9 max 129.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/e2e_us",
+            "value": 226.27,
+            "range": "min 209.5 max 340.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/compile_s",
+            "value": 2.13,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/xclbin_bytes",
+            "value": 9127,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "add_weighted/1920x16/uint8/core_elf_bytes",
+            "value": 3352,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/npu_us",
+            "value": 146.41,
+            "range": "min 133.9 max 153.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/e2e_us",
+            "value": 250.85,
+            "range": "min 241.7 max 257.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/compile_s",
+            "value": 2.22,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/xclbin_bytes",
+            "value": 10665,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "filter2d/1920x16/uint8/core_elf_bytes",
+            "value": 6096,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/npu_us",
+            "value": 1706.43,
+            "range": "min 1652.2 max 1782.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/e2e_us",
+            "value": 2170.24,
+            "range": "min 1766.9 max 2323.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/compile_s",
+            "value": 4.27,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/xclbin_bytes",
+            "value": 9576,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rgba2hue/7680x16/uint8/core_elf_bytes",
+            "value": 4264,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/npu_us",
+            "value": 169.3,
+            "range": "min 157.3 max 178.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/e2e_us",
+            "value": 289.47,
+            "range": "min 271.7 max 307.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/compile_s",
+            "value": 2.11,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/xclbin_bytes",
+            "value": 13737,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/int8_uint8/core_elf_bytes",
+            "value": 4264,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/npu_us",
+            "value": 142.13,
+            "range": "min 129.6 max 148.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/e2e_us",
+            "value": 256.75,
+            "range": "min 247.1 max 268.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/compile_s",
+            "value": 2.12,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/xclbin_bytes",
+            "value": 13673,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_i8/2048x8/int8/core_elf_bytes",
+            "value": 4204,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/npu_us",
+            "value": 209.91,
+            "range": "min 195.9 max 217.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/e2e_us",
+            "value": 331.61,
+            "range": "min 317.2 max 347.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/compile_s",
+            "value": 2.14,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/xclbin_bytes",
+            "value": 18025,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip/2048x8/uint8/input_channels=128/output_channels=64/core_elf_bytes",
+            "value": 4888,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/npu_us",
+            "value": 189.68,
+            "range": "min 172.5 max 195.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/e2e_us",
+            "value": 307.47,
+            "range": "min 289.5 max 321.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/compile_s",
+            "value": 2.15,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/xclbin_bytes",
+            "value": 17785,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/core_elf_bytes",
+            "value": 7264,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/npu_us",
+            "value": 194.02,
+            "range": "min 177.8 max 212.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/e2e_us",
+            "value": 334.52,
+            "range": "min 301.9 max 405.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/compile_s",
+            "value": 2.2,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/xclbin_bytes",
+            "value": 18601,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1_skip_init/1024x8/uint8/input_channels=64/skip_input_channels=32/int8_skip/core_elf_bytes",
+            "value": 7628,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk14/12544x4/uint8_int8/npu_us",
+            "value": 103.89,
+            "range": "min 83.2 max 116.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk14/12544x4/uint8_int8/e2e_us",
+            "value": 227.68,
+            "range": "min 206.6 max 248.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk14/12544x4/uint8_int8/compile_s",
+            "value": 2.09,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk14/12544x4/uint8_int8/xclbin_bytes",
+            "value": 21225,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk14/12544x4/uint8_int8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk14/12544x4/uint8_int8/core_elf_bytes",
+            "value": 2932,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/npu_us",
+            "value": 174.25,
+            "range": "min 150.8 max 178.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/e2e_us",
+            "value": 284.52,
+            "range": "min 257.6 max 295.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/compile_s",
+            "value": 2.11,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/xclbin_bytes",
+            "value": 13737,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk1/2048x8/uint8/core_elf_bytes",
+            "value": 4264,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/npu_us",
+            "value": 537.82,
+            "range": "min 528.9 max 547.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/e2e_us",
+            "value": 715.24,
+            "range": "min 706.8 max 732.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/compile_s",
+            "value": 2.15,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/xclbin_bytes",
+            "value": 48441,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/int8_uint8/core_elf_bytes",
+            "value": 7612,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/npu_us",
+            "value": 276.85,
+            "range": "min 264.3 max 288.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/e2e_us",
+            "value": 453.61,
+            "range": "min 443.3 max 467.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/compile_s",
+            "value": 2.18,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/xclbin_bytes",
+            "value": 48809,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "conv2dk3/2048x8/uint8/core_elf_bytes",
+            "value": 7832,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/npu_us",
+            "value": 112.24,
+            "range": "min 104.6 max 122.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/e2e_us",
+            "value": 307.62,
+            "range": "min 295.9 max 344.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/compile_s",
+            "value": 2.13,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/xclbin_bytes",
+            "value": 9063,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/core_elf_bytes",
+            "value": 3372,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/npu_us",
+            "value": 111.71,
+            "range": "min 98.6 max 116.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/e2e_us",
+            "value": 209.36,
+            "range": "min 196.8 max 215.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/compile_s",
+            "value": 2.12,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/xclbin_bytes",
+            "value": 9063,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mul_add/1024x16/bfloat16/add/core_elf_bytes",
+            "value": 3372,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rms_norm/1024x16/bfloat16/cols=1024/npu_us",
+            "value": 114.1,
+            "range": "min 103.3 max 127.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rms_norm/1024x16/bfloat16/cols=1024/e2e_us",
+            "value": 213.57,
+            "range": "min 200.2 max 226.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rms_norm/1024x16/bfloat16/cols=1024/compile_s",
+            "value": 2.3,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rms_norm/1024x16/bfloat16/cols=1024/xclbin_bytes",
+            "value": 12377,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rms_norm/1024x16/bfloat16/cols=1024/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rms_norm/1024x16/bfloat16/cols=1024/core_elf_bytes",
+            "value": 8564,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm/1024x16/bfloat16/cols=1024/npu_us",
+            "value": 128.62,
+            "range": "min 112.6 max 185.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm/1024x16/bfloat16/cols=1024/e2e_us",
+            "value": 261.93,
+            "range": "min 219.2 max 556.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm/1024x16/bfloat16/cols=1024/compile_s",
+            "value": 2.25,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm/1024x16/bfloat16/cols=1024/xclbin_bytes",
+            "value": 12425,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm/1024x16/bfloat16/cols=1024/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm/1024x16/bfloat16/cols=1024/core_elf_bytes",
+            "value": 8640,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_f32/1024x16/float32/cols=1024/npu_us",
+            "value": 212.8,
+            "range": "min 200.0 max 244.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_f32/1024x16/float32/cols=1024/e2e_us",
+            "value": 317.81,
+            "range": "min 300.2 max 558.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_f32/1024x16/float32/cols=1024/compile_s",
+            "value": 2.23,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_f32/1024x16/float32/cols=1024/xclbin_bytes",
+            "value": 11977,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_f32/1024x16/float32/cols=1024/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_f32/1024x16/float32/cols=1024/core_elf_bytes",
+            "value": 7612,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024/npu_us",
+            "value": 221.41,
+            "range": "min 208.5 max 226.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024/e2e_us",
+            "value": 458.56,
+            "range": "min 443.0 max 482.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024/compile_s",
+            "value": 2.25,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024/xclbin_bytes",
+            "value": 20233,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "layer_norm_affine_cast/1024x16/float32_bfloat16/cols=1024/core_elf_bytes",
+            "value": 7952,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rope/1024x16/bfloat16/cols=1024/npu_us",
+            "value": 120.29,
+            "range": "min 109.4 max 127.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rope/1024x16/bfloat16/cols=1024/e2e_us",
+            "value": 219.31,
+            "range": "min 207.4 max 239.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rope/1024x16/bfloat16/cols=1024/compile_s",
+            "value": 2.33,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rope/1024x16/bfloat16/cols=1024/xclbin_bytes",
+            "value": 8967,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rope/1024x16/bfloat16/cols=1024/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "rope/1024x16/bfloat16/cols=1024/core_elf_bytes",
+            "value": 3132,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/identity/npu_us",
+            "value": 101.87,
+            "range": "min 78.6 max 106.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/identity/e2e_us",
+            "value": 206.27,
+            "range": "min 181.9 max 223.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/identity/compile_s",
+            "value": 2.25,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/identity/xclbin_bytes",
+            "value": 10345,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/identity/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/identity/core_elf_bytes",
+            "value": 5324,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/silu/npu_us",
+            "value": 187.64,
+            "range": "min 178.6 max 199.6 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/silu/e2e_us",
+            "value": 401.55,
+            "range": "min 382.6 max 423.2 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/silu/compile_s",
+            "value": 2.27,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/silu/xclbin_bytes",
+            "value": 10345,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/silu/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/silu/core_elf_bytes",
+            "value": 5324,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/gelu/npu_us",
+            "value": 141.41,
+            "range": "min 125.8 max 154.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/gelu/e2e_us",
+            "value": 241.88,
+            "range": "min 227.9 max 257.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/gelu/compile_s",
+            "value": 2.24,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/gelu/xclbin_bytes",
+            "value": 10345,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/gelu/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/gelu/core_elf_bytes",
+            "value": 5324,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/relu/npu_us",
+            "value": 110.88,
+            "range": "min 97.2 max 128.5 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/relu/e2e_us",
+            "value": 213.21,
+            "range": "min 203.6 max 230.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/relu/compile_s",
+            "value": 2.26,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/relu/xclbin_bytes",
+            "value": 10345,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/relu/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "mm_activation_epilogue/1024x16/float32/relu/core_elf_bytes",
+            "value": 5324,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024/npu_us",
+            "value": 121.46,
+            "range": "min 104.5 max 130.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024/e2e_us",
+            "value": 224.31,
+            "range": "min 205.8 max 232.4 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024/compile_s",
+            "value": 2.17,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024/xclbin_bytes",
+            "value": 9592,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d/1040x16/bfloat16/kernel_size=9/seq_len=1024/core_elf_bytes",
+            "value": 3744,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024/npu_us",
+            "value": 122.5,
+            "range": "min 109.9 max 151.7 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024/e2e_us",
+            "value": 224.35,
+            "range": "min 214.3 max 369.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024/compile_s",
+            "value": 2.18,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024/xclbin_bytes",
+            "value": 9592,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_first/1040x16/bfloat16/kernel_size=9/seq_len=1024/core_elf_bytes",
+            "value": 3744,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_last/256x16/bfloat16/channels=256/npu_us",
+            "value": 107.9,
+            "range": "min 94.0 max 129.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_last/256x16/bfloat16/channels=256/e2e_us",
+            "value": 206.94,
+            "range": "min 194.3 max 283.3 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_last/256x16/bfloat16/channels=256/compile_s",
+            "value": 2.23,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_last/256x16/bfloat16/channels=256/xclbin_bytes",
+            "value": 10633,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_last/256x16/bfloat16/channels=256/insts_bytes",
+            "value": 300,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "dwconv1d_channels_last/256x16/bfloat16/channels=256/core_elf_bytes",
+            "value": 7380,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512/npu_us",
+            "value": 103.84,
+            "range": "min 90.9 max 113.9 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512/e2e_us",
+            "value": 213.97,
+            "range": "min 197.3 max 226.0 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512/compile_s",
+            "value": 2.79,
+            "unit": "s",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512/xclbin_bytes",
+            "value": 9592,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512/insts_bytes",
+            "value": 420,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/8x8x512x4/bfloat16_float32/head_dim=512/core_elf_bytes",
+            "value": 4052,
+            "unit": "bytes",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256/npu_us",
+            "value": 119.72,
+            "range": "min 96.3 max 122.8 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256/e2e_us",
+            "value": 222.56,
+            "range": "min 199.0 max 230.1 n=50",
+            "unit": "us",
+            "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
+          },
+          {
+            "name": "prefill_fv/16x16x256x4/bfloat16_float32/head_dim=256/compile_s",
+            "value": 2.81,
             "unit": "s",
             "extra": "commit a82bb55c19 | peano 22.0.0.2026092101+0006955e | device NPU Krackan 1 | pmode default"
           },
