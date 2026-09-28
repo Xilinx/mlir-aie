@@ -17,6 +17,7 @@
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "mlir/Target/Cpp/CppEmitter.h"
 
 using namespace mlir;
@@ -26,6 +27,12 @@ LogicalResult xilinx::AIE::AIETranslateNpuToCpp(ModuleOp module,
                                                 bool foldDDRAddrOffset,
                                                 bool emitDispatchShim) {
   PassManager pm(module.getContext());
+  // A staged sequence repeats the same guard arithmetic at every use of a
+  // scalar (each tap re-derives and re-checks its shape). CSE merges the
+  // duplicated conditions and canonicalization then drops the repeated
+  // requires, so the builder checks each constraint once.
+  pm.addPass(createCSEPass());
+  pm.addPass(createCanonicalizerPass());
   pm.addPass(xilinx::createConvertAIEXToEmitCPass(foldDDRAddrOffset,
                                                   emitDispatchShim));
   if (failed(pm.run(module)))

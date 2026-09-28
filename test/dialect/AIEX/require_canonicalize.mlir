@@ -15,6 +15,8 @@
 // CHECK-NOT: aiex.npu.require(%true)
 // CHECK: %[[OK:.*]] = arith.cmpi sgt, %[[N]]
 // CHECK-NEXT: aiex.npu.require(%[[OK]]) {message = "n must be positive"} : i1
+// A repeat of the same condition in the block is dropped, whatever its text.
+// CHECK-NOT: aiex.npu.require
 module {
   aie.device(npu1) {
     aie.runtime_sequence @seq(%buf : memref<32xi32>, %n : i32) {
@@ -23,6 +25,7 @@ module {
       %c0 = arith.constant 0 : i32
       %ok = arith.cmpi sgt, %n, %c0 : i32
       aiex.npu.require(%ok) {message = "n must be positive"} : i1
+      aiex.npu.require(%ok) {message = "n must be positive (again)"} : i1
     }
   }
 }
