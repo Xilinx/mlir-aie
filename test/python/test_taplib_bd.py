@@ -109,6 +109,10 @@ def test_fits_agrees_with_the_compiler(shim, sizes, strides, elements):
     assert shim.fits(tap, np.dtype("bfloat16")) == lowers(tap), tap
 
 
+def test_a_pattern_of_tuples_lowers():
+    assert lowers(TensorAccessPattern((64,), 0, (8, 8), (8, 1)))
+
+
 def test_an_unaligned_offset_does_not_fit(shim):
     tap = TensorAccessPattern([1024], 1, [64], [1])
     assert not shim.fits(tap, np.int16)

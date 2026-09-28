@@ -176,8 +176,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
                 "NpuDmaMemcpyNd can take either a TileAccessPattern OR (sizes and/or strides and/or offsets), but not both."
             )
         if tap:
-            sizes = tap.sizes.copy()
-            strides = tap.strides.copy()
+            sizes = list(tap.sizes)
+            strides = list(tap.strides)
             # For some reason, the type checking of offsets does not mesh well with offset being a property
             # so here we make sure it is evaluated and properly is seen as an integer.
             offsets = [0] * 3 + [int(tap.offset)]
@@ -345,8 +345,8 @@ def shim_dma_bd(
         )
 
     if tap:
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
+        sizes = list(tap.sizes)
+        strides = list(tap.strides)
         # For some reason, the type checking of offsets does not mesh well with offset being a property
         # so here we make sure it is evaluated and properly is seen as an integer.
         offset = int(tap.offset)
@@ -422,8 +422,8 @@ def shim_dma_single_bd_task(
         )
 
     if tap:
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
+        sizes = list(tap.sizes)
+        strides = list(tap.strides)
         # For some reason, the type checking of offsets does not mesh well with offset being a property
         # so here we make sure it is evaluated and properly is seen as an integer.
         offset = int(tap.offset)
