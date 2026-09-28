@@ -62,7 +62,9 @@ def AIEDecomposeLargeDmaBd
     holds, if they are all constant. Every one past the innermost three is an
     iteration dimension, and a pass over the pattern runs the descriptor once
     per index of them all, outermost slowest. An iteration dimension that
-    continues the one inside it merges with it, and a unit one drops. If more
+    continues the one inside it merges with it, and a unit one drops. Outermost
+    iteration dimensions of stride 0 only repeat the pattern, so they drop
+    too, and the pieces are restarted once per repeat. If more
     than one is left, the ones past the fourth are split off into a piece per
     index, each at its own offset and each a task of its own, and every piece
     is then decomposed like any other descriptor. Where that is not possible
