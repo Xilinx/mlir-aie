@@ -1,0 +1,1107 @@
+{
+ "npu": "npu1",
+ "arch": "aie2",
+ "commit": "d53582d3e0f9f8a2b77695bbf4abbd7766d5584a",
+ "date": "2026-09-28T21:40:52.533746+00:00",
+ "swept": true,
+ "kernels": [
+  {
+   "factory": "set_rounding",
+   "family": "core",
+   "summary": "Set the core's rounding mode using always-inline, merge-linked LLVM IR.",
+   "sources": [
+    "core/set_rounding.cc"
+   ],
+   "builds": [
+    "set_rounding"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "zero",
+   "family": "zero",
+   "summary": "Fill one tile with zeros, independently of any compute kernel.",
+   "sources": [
+    "zero/zero.cc"
+   ],
+   "builds": [
+    "zero",
+    "zero/dtype=int8",
+    "zero/dtype=uint8",
+    "zero/dtype=int16",
+    "zero/dtype=uint16",
+    "zero/dtype=uint32",
+    "zero/dtype=float32",
+    "zero/dtype=bfloat16"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "passthrough",
+   "family": "eltwise",
+   "summary": "Element-wise passthrough kernel: copies input tile to output tile.",
+   "sources": [
+    "eltwise/passThrough.cc"
+   ],
+   "builds": [
+    "passthrough"
+   ],
+   "passed": 10,
+   "failed": [],
+   "timed": 5
+  },
+  {
+   "factory": "scale",
+   "family": "eltwise",
+   "summary": "Scalar-multiply kernel: multiplies each element of an input tile by a factor.",
+   "sources": [
+    "eltwise/scale.cc"
+   ],
+   "builds": [
+    "scale",
+    "scale/dtype=int16"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 3
+  },
+  {
+   "factory": "add",
+   "family": "eltwise",
+   "summary": "Element-wise bf16 addition (tile_size must be 1024, hard-coded in C++).",
+   "sources": [
+    "eltwise/add.cc"
+   ],
+   "builds": [
+    "add"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "add_sized",
+   "family": "eltwise",
+   "summary": "Element-wise bf16 addition, with a compiled-in element count.",
+   "sources": [
+    "eltwise/add.cc"
+   ],
+   "builds": [
+    "add_sized"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "mul",
+   "family": "eltwise",
+   "summary": "Element-wise bf16 multiplication (tile_size must be 1024, hard-coded in C++).",
+   "sources": [
+    "eltwise/mul.cc"
+   ],
+   "builds": [
+    "mul"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "mul_sized",
+   "family": "eltwise",
+   "summary": "Element-wise bf16 multiplication, with a compiled-in element count.",
+   "sources": [
+    "eltwise/mul.cc"
+   ],
+   "builds": [
+    "mul_sized"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 4
+  },
+  {
+   "factory": "mul_add",
+   "family": "eltwise",
+   "summary": "c = a * b or c = a + b on bf16 tiles, chosen per call by is_mul.",
+   "sources": [
+    "eltwise/scale_shift.cc"
+   ],
+   "builds": [
+    "mul_add"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "rms_norm",
+   "family": "norm",
+   "summary": "RMS-norm a bf16 row on aie2/aie2p; (in, out, cols), eps=1e-5.",
+   "sources": [
+    "norm/rms_norm.cc"
+   ],
+   "builds": [
+    "rms_norm"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "q4nx_dequant",
+   "family": "quant",
+   "summary": "AIE2P-only q4nx dequantization into GEMM B-operand BFP storage.",
+   "sources": [],
+   "builds": [],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "layer_norm",
+   "family": "norm",
+   "summary": "Layer-norm a bf16 row; (in, out, cols), gamma=1, beta=0, eps=1e-5.",
+   "sources": [
+    "norm/layer_norm.cc"
+   ],
+   "builds": [
+    "layer_norm"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "layer_norm_f32",
+   "family": "transformer",
+   "summary": "Row-wise LayerNorm on float32 in and out (gamma = 1, beta = 0, eps 1e-5).",
+   "sources": [
+    "transformer/layer_norm_f32.cc"
+   ],
+   "builds": [
+    "layer_norm_f32"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "layer_norm_affine_cast",
+   "family": "transformer",
+   "summary": "Row-wise LayerNorm, f32 in, per-column gamma/beta, bf16 out.",
+   "sources": [
+    "transformer/layer_norm_f32.cc"
+   ],
+   "builds": [
+    "layer_norm_affine_cast"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "rope",
+   "family": "datamovement",
+   "summary": "RoPE positional rotation over bf16 tiles; dims read at runtime.",
+   "sources": [
+    "datamovement/rope.cc"
+   ],
+   "builds": [
+    "rope"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "mm_activation_epilogue",
+   "family": "transformer",
+   "summary": "GEMM epilogue on float32 rows: identity (0), SiLU (1), tanh-GELU (2) or ReLU (3) by mode.",
+   "sources": [
+    "transformer/mm_activation_epilogue.cc"
+   ],
+   "builds": [
+    "mm_activation_epilogue"
+   ],
+   "passed": 18,
+   "failed": [],
+   "timed": 4
+  },
+  {
+   "factory": "reduce_add",
+   "family": "reduce",
+   "summary": "Reduction kernel: sums all elements of a tile to a scalar.",
+   "sources": [
+    "reduce/reduce_add.cc"
+   ],
+   "builds": [
+    "reduce_add"
+   ],
+   "passed": 5,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "reduce_min",
+   "family": "reduce",
+   "summary": "Reduction kernel: finds the minimum element of a tile.",
+   "sources": [
+    "reduce/reduce_min.cc"
+   ],
+   "builds": [
+    "reduce_min"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "reduce_max",
+   "family": "reduce",
+   "summary": "Reduction kernel: finds the maximum element of a tile (int32 or bfloat16).",
+   "sources": [
+    "reduce/reduce_max.cc"
+   ],
+   "builds": [
+    "reduce_max",
+    "reduce_max/dtype=bfloat16"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 4
+  },
+  {
+   "factory": "compute_max",
+   "family": "reduce",
+   "summary": "Pairwise scalar max \u2014 companion to [`reduce_max`][iron.kernels.reduce.reduce_max].",
+   "sources": [
+    "reduce/reduce_max.cc"
+   ],
+   "builds": [
+    "compute_max"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "relu",
+   "family": "eltwise",
+   "summary": "Element-wise bf16 ReLU (tile_size must be 1024, hard-coded in C++).",
+   "sources": [
+    "eltwise/relu.cc"
+   ],
+   "builds": [
+    "relu"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "relu_sized",
+   "family": "eltwise",
+   "summary": "Element-wise bf16 ReLU, with a compiled-in element count.",
+   "sources": [
+    "eltwise/relu.cc"
+   ],
+   "builds": [
+    "relu_sized"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "rgba2hue",
+   "family": "vision",
+   "summary": "Convert a line of RGBA pixels to hue values (full-range, 0..255).",
+   "sources": [
+    "vision/rgba2hue.cc"
+   ],
+   "builds": [
+    "rgba2hue"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "threshold",
+   "family": "vision",
+   "summary": "Apply a threshold operation to a line of pixels.",
+   "sources": [
+    "vision/threshold.cc"
+   ],
+   "builds": [
+    "threshold",
+    "threshold/dtype=int16",
+    "threshold/dtype=int32"
+   ],
+   "passed": 9,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "bitwise_or",
+   "family": "vision",
+   "summary": "Element-wise bitwise OR of two lines.",
+   "sources": [
+    "vision/bitwiseOR.cc"
+   ],
+   "builds": [
+    "bitwise_or",
+    "bitwise_or/dtype=int16",
+    "bitwise_or/dtype=int32"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "bitwise_and",
+   "family": "vision",
+   "summary": "Element-wise bitwise AND of two lines.",
+   "sources": [
+    "vision/bitwiseAND.cc"
+   ],
+   "builds": [
+    "bitwise_and",
+    "bitwise_and/dtype=int16",
+    "bitwise_and/dtype=int32"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "gray2rgba",
+   "family": "vision",
+   "summary": "Convert a grayscale line to RGBA.",
+   "sources": [
+    "vision/gray2rgba.cc"
+   ],
+   "builds": [
+    "gray2rgba"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "rgba2gray",
+   "family": "vision",
+   "summary": "Convert an RGBA line to grayscale.",
+   "sources": [
+    "vision/rgba2gray.cc"
+   ],
+   "builds": [
+    "rgba2gray"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "filter2d",
+   "family": "vision",
+   "summary": "Apply a 3x3 2D convolution filter across three input lines.",
+   "sources": [
+    "vision/filter2d.cc"
+   ],
+   "builds": [
+    "filter2d"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "add_weighted",
+   "family": "vision",
+   "summary": "Weighted addition of two lines with a gamma offset.",
+   "sources": [
+    "vision/addWeighted.cc"
+   ],
+   "builds": [
+    "add_weighted",
+    "add_weighted/dtype=int16"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "softmax",
+   "family": "activation",
+   "summary": "Softmax activation kernel for bf16 tiles.",
+   "sources": [
+    "activation/softmax.cc"
+   ],
+   "builds": [
+    "softmax"
+   ],
+   "passed": 5,
+   "failed": [],
+   "timed": 3
+  },
+  {
+   "factory": "gelu",
+   "family": "activation",
+   "summary": "GELU activation kernel (tanh approximation) for bf16 tiles (must be 1024).",
+   "sources": [
+    "activation/gelu.cc"
+   ],
+   "builds": [
+    "gelu"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "gelu_sized",
+   "family": "activation",
+   "summary": "GELU (tanh approx) for bf16 tiles, with a compiled-in element count.",
+   "sources": [
+    "activation/gelu.cc"
+   ],
+   "builds": [
+    "gelu_sized"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "silu",
+   "family": "activation",
+   "summary": "SiLU (Swish) activation kernel for bf16 tiles (must be 1024).",
+   "sources": [
+    "activation/silu.cc"
+   ],
+   "builds": [
+    "silu"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "silu_sized",
+   "family": "activation",
+   "summary": "SiLU (Swish) for bf16 tiles, with a compiled-in element count.",
+   "sources": [
+    "activation/silu.cc"
+   ],
+   "builds": [
+    "silu_sized"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "swiglu",
+   "family": "activation",
+   "summary": "SwiGLU gated activation kernel for bf16 tiles (must be 1024).",
+   "sources": [
+    "activation/swiglu.cc"
+   ],
+   "builds": [
+    "swiglu"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "bf16_exp",
+   "family": "activation",
+   "summary": "Element-wise exponential kernel for bf16 tiles (must be 1024).",
+   "sources": [
+    "activation/bf16_exp.cc"
+   ],
+   "builds": [
+    "bf16_exp"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "exp2f_vec",
+   "family": "activation",
+   "summary": "Software f32 2**x kernel: a degree-5 minimax poly, not a LUT.",
+   "sources": [
+    "activation/exp2f_vec.cc"
+   ],
+   "builds": [
+    "exp2f_vec"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "tanh",
+   "family": "activation",
+   "summary": "Tanh for bf16 tiles of a positive multiple of 32 elements.",
+   "sources": [
+    "activation/tanh.cc"
+   ],
+   "builds": [
+    "tanh"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "sigmoid",
+   "family": "activation",
+   "summary": "Sigmoid for bf16 tiles of a positive multiple of 32 elements.",
+   "sources": [
+    "activation/sigmoid.cc"
+   ],
+   "builds": [
+    "sigmoid"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "leaky_relu",
+   "family": "activation",
+   "summary": "Leaky ReLU for bf16 tiles of at least 64 elements, in multiples of 32.",
+   "sources": [
+    "activation/leaky_relu.cc"
+   ],
+   "builds": [
+    "leaky_relu"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "axpy",
+   "family": "datamovement",
+   "summary": "SAXPY kernel: z = a * x + y over bf16 tiles.",
+   "sources": [
+    "datamovement/axpy.cc"
+   ],
+   "builds": [
+    "axpy"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "convert_copy",
+   "family": "datamovement",
+   "summary": "Convert-copy kernel: element-preserving float32 -> bfloat16.",
+   "sources": [
+    "datamovement/cast_f32_bf16.cc"
+   ],
+   "builds": [
+    "convert_copy"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "expand",
+   "family": "datamovement",
+   "summary": "Dequantize kernel: uint4 -> bfloat16 with per-group scale factors.",
+   "sources": [
+    "datamovement/expand.cc"
+   ],
+   "builds": [
+    "expand"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "transpose",
+   "family": "datamovement",
+   "summary": "Blocked transpose through aie::transpose.",
+   "sources": [
+    "datamovement/transpose.cc"
+   ],
+   "builds": [
+    "transpose",
+    "transpose/dtype=uint8",
+    "transpose/dtype=uint16",
+    "transpose/dtype=uint32"
+   ],
+   "passed": 5,
+   "failed": [],
+   "timed": 5
+  },
+  {
+   "factory": "rms_norm_eps",
+   "family": "norm",
+   "summary": "RMS-norm a bf16 row (gamma=1); design passes (in, out, cols, epsilon).",
+   "sources": [
+    "norm/rms_norm.cc"
+   ],
+   "builds": [
+    "rms_norm_eps"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "mm",
+   "family": "linalg",
+   "summary": "Matrix-multiply kernel: C += A * B.",
+   "sources": [
+    "linalg/mm.cc"
+   ],
+   "builds": [
+    "mm",
+    "mm/input_dtype=int8/output_dtype=int8",
+    "mm/input_dtype=int8/output_dtype=int16",
+    "mm/input_dtype=int8/output_dtype=int32",
+    "mm/input_dtype=int16/output_dtype=int32",
+    "mm/input_dtype=bfloat16/output_dtype=bfloat16",
+    "mm/input_dtype=bfloat16/output_dtype=float32"
+   ],
+   "passed": 14,
+   "failed": [],
+   "timed": 5
+  },
+  {
+   "factory": "fused_mm",
+   "family": "fused",
+   "summary": "Compute one bf16 A @ B tile, with an f32 reduction and fused epilogue.",
+   "sources": [
+    "fused/fused_mm_tile.cc"
+   ],
+   "builds": [
+    "fused_mm"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "mha",
+   "family": "linalg",
+   "summary": "Flash-attention toolkit from aie_kernels/linalg/mha.cc.",
+   "sources": [
+    "linalg/mha.cc"
+   ],
+   "builds": [
+    "mha"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "mha_softmax",
+   "family": "linalg",
+   "summary": "One 64x64 block of mha.cc's online softmax, partial_softmax.",
+   "sources": [
+    "linalg/mha.cc"
+   ],
+   "builds": [
+    "mha_softmax"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "prefill_fv",
+   "family": "linalg",
+   "summary": "Flash-attention prefill toolkit from aie_kernels/linalg/flash_attn_prefill.cc.",
+   "sources": [
+    "linalg/flash_attn_prefill.cc"
+   ],
+   "builds": [
+    "prefill_fv"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "mm_bfp",
+   "family": "linalg",
+   "summary": "Block-floating-point matmul C += A @ B on bfp16ebs8 blocks (aie2p only).",
+   "sources": [],
+   "builds": [],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "mm_bfp_shuffle",
+   "family": "linalg",
+   "summary": "Scalar shuffle of a bfp16ebs8 tile into (or out of) the mmul block layout (aie2p).",
+   "sources": [],
+   "builds": [],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "mv",
+   "family": "linalg",
+   "summary": "Matrix-vector multiply kernel: c += A * b.",
+   "sources": [
+    "linalg/mv_bf16.cc",
+    "linalg/mv_i16.cc"
+   ],
+   "builds": [
+    "mv",
+    "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16"
+   ],
+   "passed": 12,
+   "failed": [],
+   "timed": 5
+  },
+  {
+   "factory": "cascade_mm",
+   "family": "linalg",
+   "summary": "Build the GET half of a cascade matrix multiply: C += A * B + cascade.",
+   "sources": [
+    "linalg/cascade_mm.cc"
+   ],
+   "builds": [
+    "cascade_mm"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "cascade_mm_put",
+   "family": "linalg",
+   "summary": "Build the PUT half of [`cascade_mm`][iron.kernels.linalg.cascade_mm]: A * B onto the cascade stream.",
+   "sources": [
+    "linalg/cascade_mm.cc"
+   ],
+   "builds": [
+    "cascade_mm_put"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "conv2dk1",
+   "family": "conv",
+   "summary": "1x1 convolution kernel.",
+   "sources": [
+    "conv/conv2dk1.cc"
+   ],
+   "builds": [
+    "conv2dk1",
+    "conv2dk1/act_dtype=uint8"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "conv2dk3",
+   "family": "conv",
+   "summary": "3x3 convolution kernel.",
+   "sources": [
+    "conv/conv2dk3.cc"
+   ],
+   "builds": [
+    "conv2dk3",
+    "conv2dk3/act_dtype=uint8"
+   ],
+   "passed": 8,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "dwconv1d",
+   "family": "conv",
+   "summary": "Compatibility alias for [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first].",
+   "sources": [
+    "conv/dwconv1d_channels_first.cc"
+   ],
+   "builds": [
+    "dwconv1d"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "dwconv1d_channels_first",
+   "family": "conv",
+   "summary": "Depthwise 1-D cross-correlation on one bf16 channel.",
+   "sources": [
+    "conv/dwconv1d_channels_first.cc"
+   ],
+   "builds": [
+    "dwconv1d_channels_first"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "dwconv1d_channels_last",
+   "family": "conv",
+   "summary": "Depthwise 1-D conv over a channels-last layout, 5 taps.",
+   "sources": [
+    "conv/dwconv1d_channels_last.cc"
+   ],
+   "builds": [
+    "dwconv1d_channels_last"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "conv2dk1_skip",
+   "family": "conv",
+   "summary": "1x1 convolution kernel with skip (residual) connection.",
+   "sources": [
+    "conv/conv2dk1_skip.cc"
+   ],
+   "builds": [
+    "conv2dk1_skip",
+    "conv2dk1_skip/act_dtype=uint8"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "conv2dk1_i8",
+   "family": "conv",
+   "summary": "1x1 convolution kernel with int8 activations/weights/output.",
+   "sources": [
+    "conv/conv2dk1_i8.cc"
+   ],
+   "builds": [
+    "conv2dk1_i8"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "conv2dk14",
+   "family": "conv",
+   "summary": "14x14 convolution kernel.",
+   "sources": [
+    "conv/conv2dk14.cc"
+   ],
+   "builds": [
+    "conv2dk14"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "conv2dk1_skip_init",
+   "family": "conv",
+   "summary": "1x1 convolution kernel with skip-init connection.",
+   "sources": [
+    "conv/conv2dk1_skip_init.cc"
+   ],
+   "builds": [
+    "conv2dk1_skip_init",
+    "conv2dk1_skip_init/act_dtype=uint8"
+   ],
+   "passed": 3,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "bn_conv2dk1_relu",
+   "family": "conv",
+   "summary": "Bottleneck 1x1 conv + ReLU kernel (int8 in, uint8 out).",
+   "sources": [
+    "conv/bn_conv2dk1_relu.cc"
+   ],
+   "builds": [
+    "bn_conv2dk1_relu"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 4
+  },
+  {
+   "factory": "bn_conv2dk3",
+   "family": "conv",
+   "summary": "Bottleneck 3x3 conv with stride-2 kernel (int8 in, uint8 out).",
+   "sources": [
+    "conv/bn_conv2dk3.cc"
+   ],
+   "builds": [
+    "bn_conv2dk3"
+   ],
+   "passed": 8,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "bn_conv2dk1_i8",
+   "family": "conv",
+   "summary": "Bottleneck 1x1 conv kernel (uint8 in, int8 out).",
+   "sources": [
+    "conv/bn_conv2dk1_i8.cc"
+   ],
+   "builds": [
+    "bn_conv2dk1_i8"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 4
+  },
+  {
+   "factory": "bn_conv2dk1_skip",
+   "family": "conv",
+   "summary": "Bottleneck 1x1 conv with skip connection (uint8 in).",
+   "sources": [
+    "conv/bn_conv2dk1_skip.cc"
+   ],
+   "builds": [
+    "bn_conv2dk1_skip",
+    "bn_conv2dk1_skip/skip_dtype=int8"
+   ],
+   "passed": 5,
+   "failed": [],
+   "timed": 5
+  },
+  {
+   "factory": "bn_conv2dk3_dw",
+   "family": "conv",
+   "summary": "Bottleneck depthwise 3x3 conv + ReLU kernel (uint8 in/out).",
+   "sources": [
+    "conv/bn_conv2dk3_dw.cc"
+   ],
+   "builds": [
+    "bn_conv2dk3_dw"
+   ],
+   "passed": 6,
+   "failed": [],
+   "timed": 4
+  },
+  {
+   "factory": "bn_conv2dk1_relu_xy_pool_padded",
+   "family": "conv",
+   "summary": "Fused 1x1 conv + ReLU + xy-pool with channel padding (int8 in, uint16 out).",
+   "sources": [
+    "conv/bn_conv2dk1_relu.cc"
+   ],
+   "builds": [
+    "bn_conv2dk1_relu_xy_pool_padded"
+   ],
+   "passed": 4,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "bn_fc_relu_ui16_pad",
+   "family": "conv",
+   "summary": "Fully-connected layer (1x1 conv on (1,1,C)) + ReLU, uint16 in/out, with padding.",
+   "sources": [
+    "conv/bn_conv2dk1_relu.cc"
+   ],
+   "builds": [
+    "bn_fc_relu_ui16_pad"
+   ],
+   "passed": 5,
+   "failed": [],
+   "timed": 2
+  },
+  {
+   "factory": "bn_conv2dk1_partial_put_i8",
+   "family": "conv",
+   "summary": "Cascade-PUT half of a width-split 1x1 conv on int8 activations.",
+   "sources": [
+    "conv/bn_conv2dk1_i8.cc"
+   ],
+   "builds": [
+    "bn_conv2dk1_partial_put_i8"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "bn_conv2dk1_partial_get_relu_i8",
+   "family": "conv",
+   "summary": "Cascade-GET half of a width-split 1x1 conv + ReLU on int8 activations.",
+   "sources": [
+    "conv/bn_conv2dk1_relu.cc"
+   ],
+   "builds": [
+    "bn_conv2dk1_partial_get_relu_i8"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "bn_conv2dk3_dw_out_split",
+   "family": "conv",
+   "summary": "Depthwise 3x3 stride-1 conv with split output stream (uint8 in/out).",
+   "sources": [
+    "conv/bn_conv2dk3_dw.cc"
+   ],
+   "builds": [
+    "bn_conv2dk3_dw_out_split"
+   ],
+   "passed": 1,
+   "failed": [],
+   "timed": 1
+  },
+  {
+   "factory": "bn_conv2dk1_input_split_partial_put_ui8",
+   "family": "conv",
+   "summary": "Input-split cascade-PUT half of a 1x1 conv on uint8 activations.",
+   "sources": [
+    "conv/bn_conv2dk1_i8.cc"
+   ],
+   "builds": [
+    "bn_conv2dk1_input_split_partial_put_ui8"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  },
+  {
+   "factory": "bn_conv2dk1_input_split_partial_skip_get",
+   "family": "conv",
+   "summary": "Input-split cascade-GET half of a 1x1 conv + skip-add (uint8 in, int8 out).",
+   "sources": [
+    "conv/bn_conv2dk1_skip.cc"
+   ],
+   "builds": [
+    "bn_conv2dk1_input_split_partial_skip_get"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0
+  }
+ ]
+}
