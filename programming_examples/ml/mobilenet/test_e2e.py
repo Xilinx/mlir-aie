@@ -19,6 +19,7 @@ Usage (from programming_examples/ml):
 """
 
 import argparse
+import functools
 import os
 import sys
 
@@ -135,7 +136,12 @@ def main():
     design, kwargs = _design(opts.mode, opts.target, fix)
     if opts.sa_effort is not None:
         design = design.specialize(aiecc_flags=sa_placer_flags(effort=opts.sa_effort))
-    bench = run_iters(design, *buffers, warmup=opts.warmup, iters=opts.iters, **kwargs)
+    bench = run_iters(
+        functools.partial(design, **kwargs),
+        *buffers,
+        warmup=opts.warmup,
+        iters=opts.iters,
+    )
 
     # HCWC8 -> CHW, compared against the brevitas golden.
     actual = ds.reorder_mat(

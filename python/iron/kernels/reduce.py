@@ -6,6 +6,7 @@
 """Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max."""
 
 import numpy as np
+import numpy.typing as npt
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
@@ -71,7 +72,9 @@ def reduce_max_ref(x):
 _REDUCE_REFS = {"add": reduce_add_ref, "min": reduce_min_ref, "max": reduce_max_ref}
 
 
-def _reduce_contract(op: str, tile_size: int, dtype=np.int32) -> KernelContract:
+def _reduce_contract(
+    op: str, tile_size: int, dtype: npt.DTypeLike = np.int32
+) -> KernelContract:
     # A reduction writes one value into a DMA-aligned output tile (the rest
     # is padding), so only element 0 of each output tile is compared. Every
     # reduction here is exact but a bf16 sum: integer arithmetic, or a

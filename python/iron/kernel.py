@@ -116,9 +116,9 @@ def _view_byte_offset(arg) -> tuple[int | None, str | None]:
     """
     offset = 0
     owner = getattr(arg, "owner", None)
-    while getattr(owner, "name", None) == "memref.view":
+    while owner is not None and getattr(owner, "name", None) == "memref.view":
         shift = getattr(owner.operands[1], "owner", None)
-        if getattr(shift, "name", None) != "arith.constant":
+        if shift is None or getattr(shift, "name", None) != "arith.constant":
             return None, None
         offset += ir.IntegerAttr(shift.attributes["value"]).value
         owner = getattr(owner.operands[0], "owner", None)
@@ -586,6 +586,8 @@ class ExternalFunction(Kernel):
     # different type. The class-level default covers a discovery binding,
     # which is created without running __init__.
     contract: Any = None
+    # The arch a kernels/ factory built this for, or None when unknown.
+    built_for_arch: str | None = None
 
     def _require_contract(self):
         if self.contract is None:

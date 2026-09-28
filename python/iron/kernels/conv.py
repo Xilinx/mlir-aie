@@ -56,7 +56,7 @@ def _vector_loads(*indices):
 
 def _vector_32b(*indices):
     """``alignments`` for arguments the tuned build accesses 32 bytes at a time."""
-    return tuple((i, 32) for i in indices) if _tuned_arch() else ()
+    return tuple((i, 32) for i in indices) if _tuned_arch() != "portable" else ()
 
 
 def _vector_args(*indices):
@@ -367,7 +367,7 @@ def dwconv1d_channels_first(
             stack_bytes=(
                 # At 17 taps
                 1888
-                if _detect_arch() == "aie2" and _tuned_arch() is None
+                if _detect_arch() == "aie2" and _tuned_arch() == "portable"
                 else None
             ),
         ),

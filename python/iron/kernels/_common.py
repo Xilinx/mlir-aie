@@ -394,15 +394,15 @@ def _portable() -> bool:
     return os.environ.get("AIE_KERNELS_PORTABLE") == "1"
 
 
-def _tuned_arch() -> str | None:
-    """Return the architecture whose ``AIE_TUNED_*`` code the sources build, or None.
+def _tuned_arch() -> str:
+    """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
     A factory choice that follows the code of one branch -- a stack size, a
     tolerance, a reference model -- keys on this rather than on
     ``_detect_arch``, so that it pairs with the branch built when
     ``_portable()`` holds.
     """
-    return None if _portable() else _detect_arch()
+    return "portable" if _portable() else _detect_arch()
 
 
 def _portable_flags() -> tuple[str, ...]:

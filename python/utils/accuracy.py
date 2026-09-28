@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass
 
 import ml_dtypes
 import numpy as np
+import numpy.typing as npt
 from ml_dtypes import bfloat16
 
 __all__ = [
@@ -56,7 +57,7 @@ def _from_ordinal(o, dtype) -> np.ndarray:
     return np.where(o < 0, sign - o, o).astype(_word(dt)).view(dt)
 
 
-def ulp_distance(a, b, dtype=bfloat16) -> np.ndarray:
+def ulp_distance(a, b, dtype: npt.DTypeLike = bfloat16) -> np.ndarray:
     """Element-wise distance between two arrays in ulps of ``dtype``.
 
     The values are cast to ``dtype`` and the distance is the number of

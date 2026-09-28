@@ -87,6 +87,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import get_args
@@ -1038,6 +1039,8 @@ def case_builds(
     sys.path.insert(0, directory)  # a cases file imports its sibling modules
     try:
         spec = importlib.util.spec_from_file_location("_remarks_cases", path)
+        if spec is None or spec.loader is None:
+            raise ValueError(f"cannot import {path} as a Python module")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     finally:
@@ -1155,7 +1158,7 @@ def _baseline(
     rows,
     locations=None,
     builds=kernel_builds,
-    skip=frozenset(),
+    skip: Collection[str] = frozenset(),
 ) -> dict:
     """Every row whose value differs when the kernels come from ``tree``.
 
@@ -1249,7 +1252,7 @@ def diff_rows(
         if base.get(name) != current.get(name)
     }
     before, after = _loops(base), _loops(current)
-    moved = {m.group(1, 2) for n in changed if (m := _LOOP_ROW.match(n))}
+    moved = {(m[1], m[2]) for n in changed if (m := _LOOP_ROW.match(n))}
     unmatched = collections.defaultdict(list)
     for key in sorted(moved & before.keys()):
         bucket = (
@@ -1376,28 +1379,29 @@ def _run(a: argparse.Namespace) -> int:
     workdir = Path(a.keep or tempfile.mkdtemp(prefix="aie-static-"))
     print(f"compiling into {workdir}")
     source_root = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
-    if a.baseline_sources:
-        current_sources, suspect = current_kernel_sources(a.baseline_sources)
-        if suspect:
-            print(f"warning: {suspect}", file=sys.stderr)
+    current_sources, suspect = (
+        current_kernel_sources(a.baseline_sources)
+        if a.baseline_sources
+        else (None, None)
+    )
+    if suspect:
+        print(f"warning: {suspect}", file=sys.stderr)
     rows: list[dict] = []
     locations: dict = {}
     failed: dict[str, str] = {}
     meta: dict = {"kernels": {}}
     annotated: set[tuple] = set()
 
-    sweep = kernel_builds
     coverage: collections.Counter = collections.Counter()
-    if a.build:
 
-        def sweep():
-            return spec_builds(a.build)
+    def spec_sweep():
+        return spec_builds(a.build)
 
-    if a.cases:
+    def case_sweep():
+        coverage.clear()
+        return case_builds(a.cases, generation, a.only, coverage)
 
-        def sweep():
-            coverage.clear()
-            return case_builds(a.cases, generation, a.only, coverage)
+    sweep = case_sweep if a.cases else spec_sweep if a.build else kernel_builds
 
     try:
         builds = _selected_builds(a.only, sweep)

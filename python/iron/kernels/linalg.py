@@ -1142,7 +1142,9 @@ def mha_softmax() -> ExternalFunction:
             # The untuned loop on aie2, where a whole 64-lane row spills; the
             # tuned one fits the default.
             stack_bytes=(
-                1376 if _detect_arch() == "aie2" and _tuned_arch() is None else None
+                1376
+                if _detect_arch() == "aie2" and _tuned_arch() == "portable"
+                else None
             ),
             # aie::exp2<bfloat16> interpolates 2**frac linearly, overshooting
             # by up to 6.15%, and two bf16 roundings bring it to 6.98%
