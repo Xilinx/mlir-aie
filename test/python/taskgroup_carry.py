@@ -13,9 +13,7 @@ No NPU: the test inspects the MLIR and the error paths.
 
 import aie.iron as iron
 import numpy as np
-from aie.extras.dialects import arith
 from aie.helpers.taplib import Layout
-from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
     DispatchTime,
     In,
@@ -60,8 +58,6 @@ def build(body, n_tiles):
 @iron.jit
 def pipelined(a: In, b: Out, *, n_tiles: DispatchTime[np.int32] = 4):
     def body(a, b, n, in_prod, out_cons, chunks):
-        i32 = np_dtype_to_mlir_type(np.int32)
-
         def issue(i):
             tg = TaskGroup()
             out_cons.drain(b, tap=chunks[i], wait=True, group=tg)
@@ -71,7 +67,7 @@ def pipelined(a: In, b: Out, *, n_tiles: DispatchTime[np.int32] = 4):
         prev = issue(0)
         last = prev
         for iv, prev, last in range_(1, n, iter_args=[prev], insert_yield=False):
-            current = issue(arith.index_cast(iv, to=i32))
+            current = issue(iv)
             prev.finish()
             yield_([current])
         last.finish()

@@ -86,11 +86,15 @@ def sym_any(values: Iterable[Any]) -> bool:
 def sint(value: Any) -> Any:
     """Normalise an integer-like: NumPy integers become ``int``; staged values pass through.
 
+    An ``index``-typed staged value (a ``range_`` induction variable) is cast
+    to ``i32``, the width dispatch-time scalars carry, so a loop counter can
+    index a tiler directly.
+
     Raises:
         TypeError: If ``value`` is neither an integer nor a staged value.
     """
     if is_sym(value):
-        return value
+        return _from_index(value)
     if isinstance(value, bool):
         raise TypeError("expected an integer, got a bool")
     if isinstance(value, (int, np.integer)):
@@ -98,6 +102,18 @@ def sint(value: Any) -> Any:
     raise TypeError(
         f"expected an integer or a staged value, got {type(value).__name__}"
     )
+
+
+def _from_index(value: Any) -> Any:
+    """Cast an ``index``-typed MLIR value to ``i32``; anything else passes through."""
+    if getattr(value, "type", None) is None or str(value.type) != "index":
+        return value
+    from aie.extras import types as T  # pyright: ignore[reportMissingImports]
+    from aie.extras.dialects.arith import (
+        index_cast,
+    )  # pyright: ignore[reportMissingImports]
+
+    return index_cast(value, to=T.i32())
 
 
 def _arith():

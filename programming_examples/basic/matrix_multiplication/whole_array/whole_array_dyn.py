@@ -36,11 +36,8 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.extras.dialects import arith
-from aie.helpers.dialects.scf import if_
 from aie.helpers.taplib import Layout
 from aie.helpers.taplib.symbolic import require
-from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -56,7 +53,7 @@ from aie.iron import (
     kernels,
     str_to_dtype,
 )
-from aie.iron.controlflow import range_, yield_
+from aie.iron.controlflow import if_, range_, yield_
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -225,8 +222,6 @@ def _build_design(
     C_conses = [f.cons() for f in C_l2l3_fifos]
 
     def sequence(A, B, C, M, K, N, A_hs, B_hs, C_hs):
-        i32 = np_dtype_to_mlir_type(np.int32)
-
         # The static design's asserts, as guards: a ValueError on a static
         # specialization, a refused dispatch (no stream) on the dynamic path.
         require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")
@@ -315,18 +310,18 @@ def _build_design(
         # is finished only after the next step's is issued. The in-flight group
         # rides the loop as an iter_arg, so the loop stays rolled over the
         # dispatch-time trip count.
-        with if_(n_full_steps > 0, hasElse=False):
+        with if_(n_full_steps > 0):
             prev = issue_step(0, tb_n_rows)
             last = prev
             for iv, prev, last in range_(
                 1, n_full_steps, iter_args=[prev], insert_yield=False
             ):
-                current = issue_step(arith.index_cast(iv, to=i32), tb_n_rows)
+                current = issue_step(iv, tb_n_rows)
                 prev.finish()
                 yield_([current])
             last.finish()
         if tb_n_rows > 1:
-            with if_(n_ragged_rows > 0, hasElse=False):
+            with if_(n_ragged_rows > 0):
                 issue_step(n_full_steps, 1).finish()
 
     rt = Runtime(sequence, [A_ty, B_ty, C_ty, M, K, N, A_prods, B_prods, C_conses])

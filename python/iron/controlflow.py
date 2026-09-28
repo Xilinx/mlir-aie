@@ -1,8 +1,17 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+from contextlib import contextmanager
+
+from aie.extras.dialects.arith import constant
 from aie.helpers.dialects.scf import (
     _for,
+)
+from aie.helpers.dialects.scf import (
+    else_ as _else_,
+)
+from aie.helpers.dialects.scf import (
+    if_ as _if_,
 )
 from aie.helpers.dialects.scf import (
     yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
@@ -116,3 +125,33 @@ def yield_(values):
         else:
             raw.append(_unwrap(v))
     _yield_(raw)
+
+
+@contextmanager
+def if_(cond, has_else: bool = False):
+    """Open an ``scf.if`` region in an IRON body as a ``with`` block.
+
+    ``cond`` is an ``i1`` value (a comparison on a staged scalar) or a plain
+    ``bool``. With ``has_else=True`` the op gets an else region, filled with
+    [`else_`][iron.controlflow.else_]:
+
+    ```python
+    with if_(n_ragged > 0):
+        ...
+    with if_(n_ragged > 0, has_else=True) as branch:
+        ...
+    with else_(branch):
+        ...
+    ```
+    """
+    if isinstance(cond, bool):
+        cond = constant(cond)
+    with _if_(cond, hasElse=has_else) as op:
+        yield op
+
+
+@contextmanager
+def else_(branch):
+    """Open the else region of a ``with if_(cond, has_else=True) as branch`` block."""
+    with _else_(branch):
+        yield

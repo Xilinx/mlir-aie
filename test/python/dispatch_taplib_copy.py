@@ -16,9 +16,7 @@ same generator. A dispatch that steps outside the buffer is refused by the
 
 import aie.iron as iron
 import numpy as np
-from aie.extras.dialects import arith
 from aie.helpers.taplib import Layout
-from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
     CompileTime,
     DispatchTime,
@@ -66,13 +64,11 @@ def tiled_copy(
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
     def seq(a_h, b_h, start, n, in_prod, out_cons):
-        i32 = np_dtype_to_mlir_type(np.int32)
-        i64 = np_dtype_to_mlir_type(np.int64)
         # The buffer as max_tiles equal chunks; the chunk index is staged
         # arithmetic (start + loop iv), so the tap's offset is too.
         chunks = Layout.full((1, max_tiles * tile_size)).partition(max_tiles)
-        for tile in range_(arith.extsi(i64, n)):
-            tap = chunks[start + arith.index_cast(tile, to=i32)]
+        for tile in range_(n):  # an index counter; the tiler casts it
+            tap = chunks[start + tile]
             tg = TaskGroup()
             out_cons.drain(b_h, tap=tap, wait=True, group=tg)
             in_prod.fill(a_h, tap=tap, group=tg)

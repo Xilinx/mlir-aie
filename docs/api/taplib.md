@@ -327,9 +327,8 @@ builder returns no stream and the host refuses the call.
 def sequence(A, B, C, M, K, N, A_hs, B_hs, C_hs):
     require(M % (m * n_aie_rows) == 0, "M must be a multiple of m * n_aie_rows")
     A_tiles = Layout.full((M, K)).tile((m * rows, k)).group((1, K // k))
-    for step in range_(M // m // rows):
-        idx = arith.index_cast(step, to=T.i32())
-        A_hs[0].fill(A, tap=A_tiles[idx], group=tg)   # offset is staged arithmetic
+    for step in range_(M // m // rows):        # an index counter; cast inside the tiler
+        A_hs[0].fill(A, tap=A_tiles[step], group=tg)   # offset is staged arithmetic
 ```
 
 The rules of thumb:
