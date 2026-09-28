@@ -731,16 +731,22 @@ class TileGrid:
 
     @property
     def layout(self) -> Layout:
-        """The underlying view, grid axes first, for an ungrouped grid."""
+        """The whole grid as one view: grid axes in step order, then the tile.
+
+        Only an ungrouped grid is a single strided view. With
+        ``order("col")`` the grid axes come column-major, so the view walks
+        down a column of tiles before moving to the next column.
+        """
         if self.is_grouped:
             raise ValueError(
                 "a grouped TileGrid is not a single strided view; index it instead"
             )
+        axes = [self._grid[p] for p in self._order]
         return Layout(
             self._tensor_dims,
             self._offset,
-            [a.tiles for a in self._grid] + self._tile_sizes,
-            [a.stride for a in self._grid] + self._tile_strides,
+            [a.tiles for a in axes] + self._tile_sizes,
+            [a.stride for a in axes] + self._tile_strides,
         )
 
     def __len__(self) -> int:

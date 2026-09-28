@@ -19,7 +19,7 @@ is decorated.
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import Layout, TensorAccessPattern
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     In,
@@ -94,16 +94,11 @@ def matrix_multiplication_single_core(
     )
 
     fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
-    # Inverse tiling that unpacks C from the kernel's r*t sub-tile layout
-    # back to row-major.
-    tap_C_L1L2 = TensorAccessPattern(
-        tensor_dims=(m, n),
-        offset=0,
-        sizes=[m // r, r, n // t, t],
-        strides=[r * n, t, r * t, 1],
-    )
+    # The kernel leaves C as (r, t) sub-tiles; reading them back row-major is
+    # the inverse of that tiling.
+    tap_C_L1L2 = Layout.full((m, n)).tile((r, t)).inverse()
     fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-        dims_to_stream=list(tap_C_L1L2.transformation_dims), name="C_L2L3"
+        dims_to_stream=list(tap_C_L1L2.stream_dims()), name="C_L2L3"
     )
 
     def core_fn(of_a, of_b, of_c, matmul):

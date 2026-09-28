@@ -6,7 +6,7 @@
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern
+from aie.helpers.taplib import Layout
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
@@ -457,29 +457,22 @@ def resnet_conv2_x(
     ):
         act1_prod.fill(inputFromL3)
 
-        tap = TensorAccessPattern(
-            (totalWeights_complete,),
-            offset=0,
-            sizes=[1, 1, 1, totalWeights_init],
-            strides=[0, 0, 0, 1],
+        # The weight buffer holds the first layer's weights, then one equal
+        # block for each of the two remaining layers.
+        weights = Layout.full((totalWeights_complete,))
+        wts0_prod.fill(weightsFromL3, weights[:totalWeights_init])
+        wts1_prod.fill(
+            weightsFromL3,
+            weights[totalWeights_init : totalWeights_init + totalWeights_rest],
         )
-        wts0_prod.fill(weightsFromL3, tap)
-
-        tap = TensorAccessPattern(
-            (totalWeights_complete,),
-            offset=totalWeights_init,
-            sizes=[1, 1, 1, totalWeights_rest],
-            strides=[0, 0, 0, 1],
+        wts2_prod.fill(
+            weightsFromL3,
+            weights[
+                totalWeights_init
+                + totalWeights_rest : totalWeights_init
+                + 2 * totalWeights_rest
+            ],
         )
-        wts1_prod.fill(weightsFromL3, tap)
-
-        tap = TensorAccessPattern(
-            (totalWeights_complete,),
-            offset=totalWeights_init + totalWeights_rest,
-            sizes=[1, 1, 1, totalWeights_rest],
-            strides=[0, 0, 0, 1],
-        )
-        wts2_prod.fill(weightsFromL3, tap)
         out_cons.drain(outputToL3, wait=True)
 
     rt = Runtime(

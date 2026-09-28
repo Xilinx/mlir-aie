@@ -140,14 +140,9 @@ fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
 )
 ```
 ```
-tap_C_L1L2 = TensorAccessPattern(
-    tensor_dims=(m, n),
-    offset=0,
-    sizes=[m // r, r, n // t, t],
-    strides=[r * n, t, r * t, 1]
-)
+tap_C_L1L2 = Layout.full((m, n)).tile((r, t)).inverse()
 fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-    dims_to_stream=tap_C_L1L2.transformation_dims, 
+    dims_to_stream=tap_C_L1L2.stream_dims(),
     name="C_L2L3"
 )
 ```

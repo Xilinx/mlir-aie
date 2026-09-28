@@ -30,7 +30,7 @@ import aie.iron.kernels as kernels
 import numpy as np
 import torch  # pyright: ignore[reportMissingImports]
 import torch.nn as nn  # pyright: ignore[reportMissingImports]
-from aie.helpers.taplib import TensorAccessPattern
+from aie.helpers.taplib import Layout
 from aie.iron import (
     CompileTime,
     In,
@@ -339,30 +339,17 @@ def conv2dk14_multi(
     )
 
     def sequence(inp, W, out, act_prods, wts_prods, out_conses):
-        row_chunk = tensor_in_size // n_rows
-        wts_chunk = tensor_wts_size // n_cols
-        out_chunk = tensor_out_size // n_cols
+        # Each row of workers reads its chunk of the activations act_repeat
+        # times; each column reads its chunk of the weights and writes its
+        # chunk of the output.
+        act_chunks = Layout.full((1, tensor_in_size)).partition(n_rows)
+        wts_chunks = Layout.full((1, tensor_wts_size)).partition(n_cols)
+        out_chunks = Layout.full((1, tensor_out_size)).partition(n_cols)
         for j in range(n_rows):
-            tap = TensorAccessPattern(
-                (1, tensor_in_size),
-                row_chunk * j,
-                [act_repeat, 1, 1, row_chunk],
-                [0, 0, 0, 1],
-            )
-            act_prods[j].fill(inp, tap)
+            act_prods[j].fill(inp, act_chunks[j].repeat(act_repeat))
         for i in range(n_cols):
-            wts_tap = TensorAccessPattern(
-                (1, tensor_wts_size),
-                wts_chunk * i,
-                [1, 1, 1, wts_chunk],
-                [0, 0, 0, 1],
-            )
-            out_tap = TensorAccessPattern(
-                (1, tensor_out_size),
-                out_chunk * i,
-                [1, 1, 1, out_chunk],
-                [0, 0, 0, 1],
-            )
+            wts_tap = wts_chunks[i]
+            out_tap = out_chunks[i]
             wts_prods[i].fill(W, wts_tap)
             out_conses[i].drain(out, out_tap, wait=True)
 
