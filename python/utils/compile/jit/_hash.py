@@ -108,10 +108,11 @@ def _code_identity(code: CodeType) -> bytes:
     and ``matmul_i8(a, b, c)`` compile to identical bytecode.
 
     Location is stripped first: it is not part of the design, and keying on it
-    would split the cache per checkout. Version 4 is pinned because
-    ``marshal.version`` is 4 through 3.13 and 5 from 3.14.
+    would split the cache per checkout. marshal writes the running Python's
+    format: bytecode already differs between versions, and 3.14 folds constant
+    slices into ``co_consts``, which only its format 5 can write.
     """
-    return marshal.dumps(_without_location(code), 4)
+    return marshal.dumps(_without_location(code))
 
 
 _PLAIN = (int, float, complex, str, bytes, bool, type(None))
