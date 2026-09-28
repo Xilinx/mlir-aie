@@ -22,8 +22,8 @@
 
 // CHECK-LABEL: aie.switchbox(%tile_0_2)
 // CHECK-DAG:     aie.masterset(DMA : 1, %[[DOWN:[0-9]+]])
-// CHECK-DAG:     aie.masterset(North : 1, %[[UP35:[0-9]+]], %[[UP4:[0-9]+]])
-// CHECK:         aie.packet_rules(North : 1) {
+// CHECK-DAG:     aie.masterset(North : [[N:[0-9]+]], %[[UP35:[0-9]+]], %[[UP4:[0-9]+]])
+// CHECK:         aie.packet_rules(North : [[N]]) {
 // CHECK-NEXT:      aie.rule(24, 0, %[[DOWN]])
 // CHECK:         aie.packet_rules(DMA : 0) {
 // CHECK-NEXT:      aie.rule(31, 4, %[[UP4]])
@@ -33,8 +33,8 @@
 // CHECK-NEXT:    }
 // CHECK-LABEL: aie.switchbox(%tile_0_3)
 // CHECK-DAG:     aie.masterset(DMA : 0, %[[DMA:[0-9]+]])
-// CHECK-DAG:     aie.masterset(South : 1, %[[BACK:[0-9]+]])
-// CHECK:         aie.packet_rules(South : 1) {
+// CHECK-DAG:     aie.masterset(South : [[S:[0-9]+]], %[[BACK:[0-9]+]])
+// CHECK:         aie.packet_rules(South : [[S]]) {
 // CHECK-NEXT:      aie.rule(31, 5, %[[DMA]])
 // CHECK-NEXT:      aie.rule(31, 4, %[[BACK]])
 // CHECK-NEXT:      aie.rule(31, 3, %[[BACK]])

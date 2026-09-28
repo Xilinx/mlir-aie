@@ -14,37 +14,74 @@
 // North<->South on a matching channel). Both used to fail, so pinning only one
 // would let a fix that over-fits its shape through.
 //
-// The router keys its graph on (tile, bundle, channel) with no direction, so a
+// The router keyed its graph on (tile, bundle, channel) with no direction, so a
 // single node stood for both a switchbox port's input side and its output side
 // and a path could take two crossbar hops in a row -- turning the stream around
-// inside one switchbox. Same-id fan-in is what surfaces it: same-id flows may
+// inside one switchbox. Same-id fan-in is what surfaced it: same-id flows could
 // not share a channel, so each extra source is pushed off the cheap direct
 // entry until the two-edge aliased detour looks cheaper. The route that came
 // back then dead-ended and a source was reported unroutable.
 //
-// Note the threshold is congestion-dependent, not monotonic: before the fix
-// four and five sources here failed but six routed. Four is pinned because it
-// is the narrowest failing case at this geometry.
-//
-// All four sources must arrive, each on its own input port, and merge onto the
-// single DMA : 0 endpoint through one amsel.
+// Same-id flows to the same destination now merge, so this design no longer
+// crowds the router at all: each shim folds its own DMA:0 into the stream
+// passing West, and one stream reaches the core. The test still pins that all
+// four sources arrive.
 
 // CHECK-LABEL: aie.device(npu2)
-// CHECK:      %[[tile_0_2:.*]] = aie.tile(0, 2)
-// CHECK:      aie.switchbox(%[[tile_0_2]]) {
+// CHECK-LABEL: aie.switchbox(%tile_0_2) {
 // CHECK-NEXT:   %[[a:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:   aie.masterset(DMA : 0, %[[a]]) {keep_pkt_header = true}
 // CHECK-NEXT:   aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:     aie.rule(31, 0, %[[a]])
 // CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[a]])
+// CHECK-NEXT: }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_2_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N2:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_2_0) {
+// CHECK-NEXT:   %[[S2:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S2]])
+// CHECK-NEXT:   aie.packet_rules(East : {{[0-9]+}}) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S2]])
 // CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[a]])
+// CHECK-NEXT:   aie.packet_rules(South : [[N2]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S2]])
 // CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[a]])
+// CHECK-NEXT: }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_3_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N3:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_3_0) {
+// CHECK-NEXT:   %[[S3:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S3]])
+// CHECK-NEXT:   aie.packet_rules(East : {{[0-9]+}}) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S3]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(South : [[N3]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S3]])
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_4_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N4:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_4_0) {
+// CHECK-NEXT:   %[[S4:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S4]])
+// CHECK-NEXT:   aie.packet_rules(East : {{[0-9]+}}) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S4]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(South : [[N4]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S4]])
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_5_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N5:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_5_0) {
+// CHECK-NEXT:   %[[S5:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S5]])
+// CHECK-NEXT:   aie.packet_rules(South : [[N5]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S5]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 

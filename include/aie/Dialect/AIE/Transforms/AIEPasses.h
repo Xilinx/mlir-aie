@@ -100,7 +100,7 @@ void registerAIEObjectFifoPipeline();
 /// Where a candidate routing would make packet flows that can deadlock share
 /// an arbiter, and why they can deadlock.
 struct RoutingHazards {
-  std::vector<std::pair<TileID, Connect>> connections;
+  RoutingFaults faults;
   std::string reason;
 };
 
@@ -123,10 +123,15 @@ struct AIEPathfinderPass
   mlir::LogicalResult runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
   /// Lowers the packet flows along `solution`. With `hazards` set, only plans
   /// the arbiters, leaving the IR alone, and collects where that fails.
-  mlir::LogicalResult runOnPacketFlow(
-      DeviceOp d, mlir::OpBuilder &builder, DynamicTileAnalysis &analyzer,
-      const std::map<PathEndPoint, SwitchSettings> &solution,
-      StreamConflicts &conflicts, RoutingHazards *hazards = nullptr);
+  mlir::LogicalResult
+  runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder,
+                  DynamicTileAnalysis &analyzer,
+                  const std::map<PathEndPoint, SwitchSettings> &solution,
+                  StreamConflicts &conflicts, bool circuitSwitchHops,
+                  RoutingHazards *hazards = nullptr);
+  /// Routes the flows in `d`, planning the arbiters on each routing found.
+  mlir::LogicalResult route(DeviceOp d, DynamicTileAnalysis &analyzer,
+                            StreamConflicts &conflicts, bool circuitSwitchHops);
 
   typedef std::pair<TileID, Port> PhysPort;
 

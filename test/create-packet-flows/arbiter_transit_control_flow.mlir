@@ -65,5 +65,5 @@ module {
 // CHECK-NEXT:      aie.rule(31, 4, %[[SHARED]])
 // CHECK:         aie.packet_rules(DMA : 0) {
 // CHECK-NEXT:      aie.rule(31, 0, %[[FIRST]])
-// CHECK:         aie.packet_rules(North : 2) {
+// CHECK:         aie.packet_rules(North : {{[0-9]}}) {
 // CHECK-NEXT:      aie.rule(31, 9, %[[TRANSIT]])

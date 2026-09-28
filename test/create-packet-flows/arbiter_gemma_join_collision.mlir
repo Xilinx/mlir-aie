@@ -37,8 +37,8 @@
 // CHECK-DAG:     aie.masterset(DMA : 1, %[[A5]])
 // CHECK-DAG:     aie.masterset(DMA : 2, %[[A4]])
 // CHECK-DAG:     aie.masterset(DMA : 3, %[[A3]])
-// CHECK-DAG:     aie.masterset(DMA : 4, %[[A1]])
-// CHECK-DAG:     aie.masterset(DMA : 5, %[[A0]])
+// CHECK-DAG:     aie.masterset(DMA : 4, %[[A0]])
+// CHECK-DAG:     aie.masterset(DMA : 5, %[[A1]])
 // CHECK-NOT:     aie.masterset
 // CHECK:       aie.switchbox(%tile_0_2)
 

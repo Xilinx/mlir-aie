@@ -14,18 +14,25 @@
 // the arbiter of each receiver's master port whatever the routing, and wait
 // on each other there already. Sharing another arbiter on the way adds no
 // wait. Counting it as a conflict kept them apart where they must meet, and
-// routing failed.
+// routing failed. Here they merge at (0, 3) and share one tree from there.
 
 // Nothing programs the DMAs, so the design itself may deadlock.
 // NOWARN: warning: Flows can deadlock however they are routed
 // NOWARN-NOT: {{warning|error}}
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK-DAG:     %[[A:[0-9]+]] = aie.amsel<[[ARB:[0-9]]]> ({{[0-9]}})
-// CHECK-DAG:     %[[B:[0-9]+]] = aie.amsel<[[ARB]]> ({{[0-9]}})
-// CHECK-DAG:     aie.masterset(DMA : 2, %[[A]], %[[B]])
-// CHECK-DAG:     aie.rule(31, 12, %[[A]])
-// CHECK-DAG:     aie.rule(31, 12, %[[B]])
+// CHECK:         %[[A:[0-9]+]] = aie.amsel<1> (0)
+// CHECK:         aie.masterset(DMA : 2, %[[A]])
+// CHECK-NEXT:    aie.masterset(South : {{[0-9]}}, %[[A]])
+// CHECK:         aie.rule(31, 12, %[[A]])
+
+// CHECK-LABEL: aie.switchbox(%tile_0_3)
+// CHECK:         %[[M:[0-9]+]] = aie.amsel<0> (0)
+// CHECK:         aie.masterset(South : {{[0-9]}}, %[[M]])
+// CHECK:         aie.packet_rules(DMA : 1) {
+// CHECK-NEXT:      aie.rule(31, 12, %[[M]])
+// CHECK:         aie.packet_rules(North : {{[0-9]}}) {
+// CHECK-NEXT:      aie.rule(31, 12, %[[M]])
 
 module {
   aie.device(npu2_1col) {

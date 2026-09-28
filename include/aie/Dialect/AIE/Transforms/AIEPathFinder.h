@@ -32,9 +32,13 @@ namespace xilinx::AIE {
 #define ROUTING_CHECK_PENALTY 5
 #define CONFLICT_SHARE_PENALTY 4
 // A multicast's next destination may branch off any hop its tree already
-// takes, starting at this fraction of that hop's cost from the source: enough
-// of a discount to share hops, not so much that a costly trunk never moves.
+// takes, starting at this cost per hop back to the source: enough of a
+// discount to share hops, while still preferring the shortest path to each
+// destination.
 #define TREE_SEED_FACTOR 0.9
+
+// A destination's branch is rerouted only when that saves more than this.
+#define REROUTE_MIN_SAVING 1e-6
 
 enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
 
@@ -238,14 +242,36 @@ using SwitchSetting = struct SwitchSetting {
 
 using SwitchSettings = std::map<TileID, SwitchSetting>;
 
+/// A hop of a packet flow's tree, from one port to the next; `joined` when the
+/// flow takes it by joining another flow's tree.
+struct TreeHop {
+  PathEndPoint from, to;
+  bool joined;
+};
+using PacketTrees = std::map<PathEndPoint, std::vector<TreeHop>>;
+
 /// Whether packet flows from the two sources can deadlock if they share an
 /// arbiter.
 using PacketConflict =
     std::function<bool(const PathEndPoint &, const PathEndPoint &)>;
 
-/// Checks a routing that fits the fabric. Returns the switchbox connections
-/// that make it unusable, empty when it is accepted.
-using RoutingCheck = std::function<std::vector<std::pair<TileID, Connect>>(
+/// Packets `src` sends with ids `a` and `b` share a master port they leave
+/// the slave port `at` by, which puts them on one arbiter.
+struct TreeSplit {
+  PathEndPoint src, at;
+  int a, b;
+};
+
+/// What makes a routing unusable: switchbox connections to move, and where a
+/// source's tree has to branch.
+struct RoutingFaults {
+  std::vector<std::pair<TileID, Connect>> connections;
+  std::vector<TreeSplit> splits;
+};
+
+/// Checks a routing that fits the fabric. Returns what makes it unusable,
+/// nothing when it is accepted.
+using RoutingCheck = std::function<RoutingFaults(
     const std::map<PathEndPoint, SwitchSettings> &)>;
 
 class Router {
@@ -264,13 +290,20 @@ public:
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
   /// Routings the check rejects count as illegal; the connections it names
-  /// are penalized like overused channels so later iterations avoid them.
+  /// are penalized like overused channels so later iterations avoid them, and
+  /// the trees it splits branch where it says from then on.
   virtual void setRoutingCheck(RoutingCheck check) {}
   /// Packet flows that conflict are steered off each other's master ports,
   /// where they would have to share an arbiter.
   virtual void setPacketConflict(PacketConflict conflict) {}
   /// Why the last findPaths found no routing, empty if it cannot say.
   virtual std::string getFailureReason() const { return {}; }
+  /// The packet flows' trees in the routing the last findPaths found, by
+  /// source.
+  virtual PacketTrees getPacketTrees() const { return {}; }
+  /// Packet flows from these sources take these trees instead of being
+  /// routed.
+  virtual void pinPacketTrees(PacketTrees trees) {}
 };
 
 class Pathfinder : public Router {
@@ -291,6 +324,10 @@ public:
     packetConflict = std::move(conflict);
   }
   std::string getFailureReason() const override { return failureReason; }
+  PacketTrees getPacketTrees() const override { return packetTrees; }
+  void pinPacketTrees(PacketTrees trees) override {
+    pinnedTrees = std::move(trees);
+  }
 
 private:
   // A directed edge in the dense routing graph: from some node to node `dst`,
@@ -324,20 +361,30 @@ private:
   // preserve identical routing output.
   void buildRoutingGraph();
 
+  // The cost of taking `e`, as dijkstraShortestPaths weighs it.
+  double edgeWeight(const Edge &e, std::optional<int> packetId,
+                    const llvm::BitVector *avoid,
+                    const llvm::BitVector *avoidBranch);
+
   // Dijkstra over the dense graph from the states in `seeds`, each starting at
   // its cost in `seedCosts`. Fills
   // `preds` (predecessor state id, or -1) and `predEdge` (the edge taken to
   // reach each state). Reuses the scratch buffers below. Master ports on an
   // arbiter with flows in `avoid` cost CONFLICT_SHARE_PENALTY more, and from a
   // state in `branchAvoid`, as much again for the flows it maps to. A channel
-  // a flow with the same `packetId` already shares costs as a full one.
+  // a flow with the same `packetId` already shares costs as a full one. States
+  // in `stops` are reached but not left.
   void dijkstraShortestPaths(
       llvm::ArrayRef<int> seeds, llvm::ArrayRef<double> seedCosts,
       std::optional<int> packetId, const llvm::BitVector *avoid = nullptr,
-      const llvm::DenseMap<int, llvm::BitVector> *branchAvoid = nullptr);
+      const llvm::DenseMap<int, llvm::BitVector> *branchAvoid = nullptr,
+      const llvm::DenseSet<int> *stops = nullptr);
 
   // Flows to be routed
   std::vector<Flow> flows;
+  // The packet ids each source sends each destination.
+  std::map<std::pair<PathEndPoint, PathEndPoint>, llvm::SmallVector<int, 2>>
+      packetIdsTo;
   // Represent all routable paths as a graph
   // The key is a pair of TileIDs representing the connectivity from srcTile to
   // dstTile If srcTile == dstTile, it represents connections inside the same
@@ -364,6 +411,7 @@ private:
   RoutingCheck routingCheck;
   PacketConflict packetConflict;
   std::string failureReason;
+  PacketTrees packetTrees, pinnedTrees;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

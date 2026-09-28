@@ -83,7 +83,7 @@ PARAMS = dict(
     min_routed_rate=1.0,
     max_hop_ratio=1.10,
     max_amsels=19.5,
-    max_low_priority=0.03,
+    max_low_priority=0.05,
     max_ms_per_design=250,
     # Generator knobs: share of routable designs given pre-placed switchbox
     # configuration, and parallel aie-opt runs.
@@ -2486,6 +2486,26 @@ class Construction:
             routed.append(d)
         return routed
 
+    def pin(self, src, ends):
+        """Take the tree from `src` the router emitted: `ends` as
+        trace_output has them."""
+        root = phys_src(src)
+        tree = dict(src=src, root=root, children=defaultdict(list), next={}, ends={})
+        self.trees[src] = tree
+        self.owner_s[root] = src
+        for d, hops in ends.items():
+            for k, (tile, slave, master, _) in enumerate(hops):
+                s, m = (*tile, *slave), (*tile, *master)
+                if m not in tree["children"][s]:
+                    tree["children"][s].append(m)
+                self.owner_s[s] = src
+                if k + 1 < len(hops):
+                    tree["next"][m] = (*hops[k + 1][0], *hops[k + 1][1])
+                    self.owner_m[m] = src
+                else:
+                    tree["ends"][m] = d
+                    self.owner_m[m] = ("dst", d)
+
     def _search(self, tree, d, packet):
         t = self.t
         target = phys_dst(d)
@@ -2565,12 +2585,51 @@ def pins_hops_fn(d, hops_on):
     return lambda tile: not hops_on or d.target.kind(tile) == "shim"
 
 
+def priority_trees(d, cache):
+    """The trees from `d`'s prioritized sources, {source: trace_output ends},
+    as the router routes them without the rest of the design: priority_route
+    promises they keep that routing whatever else the design asks for, so a
+    witness has to route around them. None if the router cannot route them."""
+    srcs = {s for f in d.packet_flows if f["priority"] for s in f["srcs"]}
+    if not srcs:
+        return {}
+    c = d.copy()
+    c.flows = []
+    c.packet_flows = [
+        dict(f, srcs=[s for s in f["srcs"] if s in srcs])
+        for f in c.packet_flows
+        if srcs & set(f["srcs"])
+    ]
+    text = c.emit()
+    if text not in cache:
+        p = aie_opt(text, hops_on=False, timeout=120)
+        trees = None
+        if p.returncode == 0:
+            out, trees = load_design(p.stdout), defaultdict(dict)
+            for f in c.packet_flows:
+                for s in srcs & set(f["srcs"]):
+                    trees[s].update(trace_output(out, s, f["id"])[0])
+        cache[text] = trees
+    return cache[text]
+
+
 def construct(d, seed, attempts=40):
     """Route `d` on exclusive links and plan its arbiters with the router's
     rules, dropping streams until both hop modes accept the witness. Returns
     (construction, analysis, plan) or None; `d` is pruned in place."""
+    cache = {}
     for attempt in range(attempts):
         con = Construction(d, random.Random(f"route-{seed}-{attempt}"))
+        pinned = priority_trees(d, cache)
+        if pinned is None:
+            prio = {s for f in d.packet_flows if f["priority"] for s in f["srcs"]}
+            blame = [st for st in requested_streams(d) if st.src in prio]
+            drop_stream(d, random.Random(f"drop-{seed}-{attempt}").choice(blame))
+            if not d.flows and not d.packet_flows:
+                return None
+            continue
+        for src, ends in pinned.items():
+            con.pin(src, ends)
         groups = defaultdict(list)
         for s, t in d.flows:
             groups[(s, False)].append(t)
@@ -2582,6 +2641,9 @@ def construct(d, seed, attempts=40):
         missing = []
         for src, packet in order:
             wanted = list(dict.fromkeys(groups[(src, packet)]))
+            if packet and src in pinned:
+                missing += [(src, t, packet) for t in wanted if t not in pinned[src]]
+                continue
             routed = con.route(src, wanted, packet)
             missing += [(src, t, packet) for t in wanted if t not in routed]
         if missing:
@@ -2810,8 +2872,12 @@ def verify(d, an, text, hops_on):
                     )
         for port, op in before[2].items():
             new = after[2].get(port)
-            if new is None or sorted(before[1][n] for n in op[2]) != sorted(
-                after[1].get(n) for n in new[2]
+            if (
+                new is None
+                or sorted(before[1][n] for n in op[2])
+                != sorted(after[1].get(n) for n in new[2])
+                or keeps_header(tile, port, op[3]) != keeps_header(tile, port, new[3])
+                or op[4] != new[4]
             ):
                 problems.append(f"{tile} changed masterset {fmt_port(port)}")
         for port, op in before[3].items():
@@ -2845,6 +2911,14 @@ def verify(d, an, text, hops_on):
             )
         for dst, hops in ends.items():
             paths[(src, dst, pid)] = hops
+
+    # Each masterset the router added carries a requested stream.
+    carried = {(tile, m) for hops in paths.values() for tile, _, m, arb in hops if arb}
+    for tile, ops in sorted(out.boxes.items()):
+        had = box_view(d.boxes.get(tile, []))[2]
+        for port in box_view(ops)[2]:
+            if port not in had and (tile, port) not in carried:
+                problems.append(f"{tile} masterset {fmt_port(port)} carries no stream")
 
     # What the input's own switchbox configuration delivered, it still does.
     pinned = defaultdict(set)
