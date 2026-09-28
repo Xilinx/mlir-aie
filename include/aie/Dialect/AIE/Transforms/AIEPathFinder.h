@@ -298,6 +298,9 @@ public:
   virtual void setPacketConflict(PacketConflict conflict) {}
   /// Why the last findPaths found no routing, empty if it cannot say.
   virtual std::string getFailureReason() const { return {}; }
+  /// The channel the last findPaths left overused, empty if none; the routing
+  /// check's reason, when it has one, says more.
+  virtual std::string getOveruseReason() const { return {}; }
   /// The packet flows' trees in the routing the last findPaths found, by
   /// source.
   virtual PacketTrees getPacketTrees() const { return {}; }
@@ -324,6 +327,7 @@ public:
     packetConflict = std::move(conflict);
   }
   std::string getFailureReason() const override { return failureReason; }
+  std::string getOveruseReason() const override { return overuseReason; }
   PacketTrees getPacketTrees() const override { return packetTrees; }
   void pinPacketTrees(PacketTrees trees) override {
     pinnedTrees = std::move(trees);
@@ -410,7 +414,7 @@ private:
 
   RoutingCheck routingCheck;
   PacketConflict packetConflict;
-  std::string failureReason;
+  std::string failureReason, overuseReason;
   PacketTrees packetTrees, pinnedTrees;
 };
 

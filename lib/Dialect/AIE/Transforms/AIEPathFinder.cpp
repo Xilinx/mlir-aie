@@ -113,6 +113,8 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     if (reason.empty())
       reason = routingFailureReason;
     if (reason.empty())
+      reason = pathfinder->getOveruseReason();
+    if (reason.empty())
       return device.emitError("Unable to find a legal routing");
     return device.emitError("Unable to find a legal routing: ") << reason;
   }
@@ -750,6 +752,7 @@ std::optional<std::map<PathEndPoint, SwitchSettings>>
 Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
   failureReason.clear();
+  overuseReason.clear();
   std::map<PathEndPoint, SwitchSettings> routingSolution;
   // Build the dense routing graph once; topology is invariant across
   // iterations.
@@ -882,6 +885,69 @@ Pathfinder::findPaths(const int maxIterations) {
           failureReason += (i ? ", " : " ") + link(*sb);
         failureReason += ".";
       }
+      if (!failureReason.empty())
+        return std::nullopt;
+      // Name the channel the last iteration overused that was overused in the
+      // most iterations, and the flows the last one routed through it.
+      const SwitchboxConnect *worst = nullptr;
+      int worstI = 0, worstJ = 0, worstCount = 0;
+      for (const auto &[_, sb] : graph)
+        for (size_t i = 0; i < sb.srcPorts.size(); i++)
+          for (size_t j = 0; j < sb.dstPorts.size(); j++)
+            if (sb.usedCapacity[i][j] > MAX_CIRCUIT_STREAM_CAPACITY &&
+                sb.overCapacity[i][j] > worstCount) {
+              worst = &sb;
+              worstI = i;
+              worstJ = j;
+              worstCount = sb.overCapacity[i][j];
+            }
+      if (!worst)
+        return std::nullopt;
+      bool crossbar = worst->srcCoords == worst->dstCoords;
+      std::vector<std::string> users;
+      for (const auto &[src, settings] : routingSolution) {
+        auto it = settings.find(worst->srcCoords);
+        if (it == settings.end())
+          continue;
+        const SwitchSetting &s = it->second;
+        bool uses = false;
+        for (size_t k = 0; k < s.dsts.size() && !uses; k++)
+          uses = crossbar ? k < s.srcs.size() &&
+                                s.srcs[k] == worst->srcPorts[worstI] &&
+                                s.dsts[k] == worst->dstPorts[worstJ]
+                          : llvm::is_contained(worst->srcPorts, s.dsts[k]);
+        if (uses)
+          users.push_back(endpointString(src));
+      }
+      std::string where =
+          crossbar
+              ? "the connection from " +
+                    stringifyWireBundle(worst->srcPorts[worstI].bundle).str() +
+                    ":" + std::to_string(worst->srcPorts[worstI].channel) +
+                    " to " +
+                    stringifyWireBundle(worst->dstPorts[worstJ].bundle).str() +
+                    ":" + std::to_string(worst->dstPorts[worstJ].channel) +
+                    " at tile (" + std::to_string(worst->srcCoords.col) + ", " +
+                    std::to_string(worst->srcCoords.row) + ")"
+              : "the links " + link(*worst);
+      if (users.empty()) {
+        overuseReason = "the router found no routing that fits " + where + ".";
+        return std::nullopt;
+      }
+      constexpr size_t shown = 4;
+      if (users.size() > shown) {
+        size_t more = users.size() - shown;
+        users.resize(shown);
+        users.push_back(std::to_string(more) + " more");
+      }
+      overuseReason = "the flows from ";
+      for (auto [k, user] : llvm::enumerate(users))
+        overuseReason += (k == 0                  ? ""
+                          : k + 1 == users.size() ? " and "
+                                                  : ", ") +
+                         user;
+      overuseReason += " need " + where +
+                       ", and the router found no routing that fits them.";
       return std::nullopt;
     }
 
