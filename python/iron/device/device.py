@@ -34,6 +34,18 @@ class Device(Resolvable):
         self._tm = get_target_model(device)
         self._resolved_tiles: dict[int, LogicalTileOp] = {}
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}()"
+
+    @property
+    def name(self) -> str:
+        """The device's name in the dialect: ``"npu2"``, ``"npu1_1col"``, ...
+
+        A name, not a family: a four-column NPU2 is ``"npu2_4col"``. Ask
+        :attr:`arch` which architecture a device is.
+        """
+        return self._device.name
+
     @property
     def cols(self) -> int:
         """Number of columns in the device tile array."""
@@ -80,6 +92,25 @@ class Device(Resolvable):
         """Output DMA channels available on a compute tile."""
         return self._tm.get_num_source_switchbox_connections(
             0, self.core_rows[0], WireBundle.DMA
+        )
+
+    @property
+    def shim_dma_channels_in(self) -> int:
+        """DMA channels the shim tiles feed the array through, summed over them:
+        how many streams from the host the device carries at once."""
+        return self._shim_dma(self._tm.get_num_source_shim_mux_connections)
+
+    @property
+    def shim_dma_channels_out(self) -> int:
+        """DMA channels the shim tiles drain the array through, summed over them."""
+        return self._shim_dma(self._tm.get_num_dest_shim_mux_connections)
+
+    def _shim_dma(self, connections) -> int:
+        return sum(
+            connections(col, row, WireBundle.DMA)
+            for col in range(self.cols)
+            for row in range(self.rows)
+            if self._tm.is_shim_noc_or_pl_tile(col, row)
         )
 
     def _validate_coordinates(self, col, row):
@@ -175,39 +206,45 @@ class Device(Resolvable):
         tile.op = op
 
 
-def create_class(class_name, device):
+class NamedDevice(Device):
+    """A device of one fixed type, constructed without arguments: ``NPU2()``.
 
-    def _device__init__(self) -> None:
-        super(globals()[class_name], self).__init__(device=device)
+    One subclass per :class:`AIEDevice` is generated below (``NPU1``,
+    ``NPU2Col4``, ``XCVC1902``, ...).
+    """
 
-    def _device_resolve(
+    aie_device: AIEDevice
+
+    def __init__(self) -> None:
+        super().__init__(device=self.aie_device)
+
+    def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        return device
-
-    globals()[class_name] = type(
-        class_name,
-        (Device,),
-        {
-            "__init__": _device__init__,
-            "resolve": _device_resolve,
-            "__doc__": f"A representation of a device that resolves to {device}",
-        },
-    )
+    ) -> AIEDevice:  # pyright: ignore[reportIncompatibleMethodOverride]
+        return self.aie_device
 
 
 for device in AIEDevice:
     class_name = re.sub(r"NPU(\d+)_(\d+)COL", r"NPU\1Col\2", device.name.upper())
-    create_class(class_name, device)
+    globals()[class_name] = type(
+        class_name,
+        (NamedDevice,),
+        {
+            "aie_device": device,
+            "__doc__": f"A representation of a device that resolves to {device}",
+            "__module__": __name__,
+        },
+    )
 
 
-def __getattr__(name: str) -> type[Device]:
+def __getattr__(name: str) -> type[NamedDevice]:
     # The per-device subclasses (NPU1, NPU2Col4, XCVC1902, ...) are generated
     # from the AIEDevice enum by the loop above and live in module globals, so
     # this fallback only fires for names that were never generated. Raising
     # keeps real typos failing at import time; the annotation lets a static
-    # type checker resolve the generated names as Device subclasses without a
-    # hand-maintained list that would drift as devices are added.
+    # type checker resolve the generated names as NamedDevice subclasses,
+    # constructed without arguments, without a hand-maintained list that
+    # would drift as devices are added.
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
