@@ -208,42 +208,15 @@ inline std::string generatePdiUUID() {
                        ((uint64_t)(data[2] & 0xFFFF) << 32) | data[3]);
 }
 
-/// Physical width of the array a (possibly virtualized) device is carved from.
-/// A virtualized device's own `columns()` is its PARTITION width, not the array
-/// width, so the set of legal start columns cannot be derived from it alone.
-inline int physicalColumns(xilinx::AIE::AIEDevice device) {
-  switch (device) {
-  case xilinx::AIE::AIEDevice::npu1:
-  case xilinx::AIE::AIEDevice::npu1_1col:
-  case xilinx::AIE::AIEDevice::npu1_2col:
-  case xilinx::AIE::AIEDevice::npu1_3col:
-    return 4;
-  case xilinx::AIE::AIEDevice::npu2:
-  case xilinx::AIE::AIEDevice::npu2_1col:
-  case xilinx::AIE::AIEDevice::npu2_2col:
-  case xilinx::AIE::AIEDevice::npu2_3col:
-  case xilinx::AIE::AIEDevice::npu2_4col:
-  case xilinx::AIE::AIEDevice::npu2_5col:
-  case xilinx::AIE::AIEDevice::npu2_6col:
-  case xilinx::AIE::AIEDevice::npu2_7col:
-    return 8;
-  default:
-    return 0; // not an NPU partition; emit no start columns
-  }
-}
-
 inline llvm::json::Value makePartitionJson(xilinx::AIE::DeviceOp devOp,
                                            llvm::StringRef pdiPath,
                                            llvm::StringRef kernelId) {
   using O = llvm::json::Object;
-  int numCols = devOp.getTargetModel().columns();
-  auto device = devOp.getDevice();
-  // Every offset at which a numCols-wide partition still fits on the array. The
-  // full-device cases fall out of this as the degenerate numCols == physCols.
+  const auto &targetModel = devOp.getTargetModel();
+  int numCols = targetModel.columns();
   llvm::json::Array startColumns;
-  int physCols = physicalColumns(device);
-  for (int i = 0; i + numCols <= physCols; ++i)
-    startColumns.push_back(i);
+  for (int c : targetModel.partitionStartColumns(numCols))
+    startColumns.push_back(c);
   return O{
       {"aie_partition",
        O{{"name", "QoS"},
