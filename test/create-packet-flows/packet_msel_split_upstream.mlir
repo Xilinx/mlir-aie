@@ -12,37 +12,38 @@
 // channels 0-2, and existing connections leave the memtile no way out. Entering
 // on one port, the ids would need all three master ports on one arbiter with
 // five msels, one more than an arbiter has. The shim sends the ids bound for
-// S2MM 2 up a second link instead, so that channel takes an arbiter of its own
+// S2MM 0 up a second link instead, so that channel takes an arbiter of its own
 // and the other two need three msels.
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0)
 // CHECK:         %[[BOTH:.*]] = aie.amsel<0> (0)
-// CHECK:         %[[DMA01:.*]] = aie.amsel<0> (1)
-// CHECK:         %[[DMA2:.*]] = aie.amsel<0> (2)
-// CHECK:         aie.masterset(North : 0, %[[BOTH]], %[[DMA2]])
-// CHECK:         aie.masterset(North : 5, %[[BOTH]], %[[DMA01]])
+// CHECK:         %[[UP2:.*]] = aie.amsel<0> (1)
+// CHECK:         %[[UP1:.*]] = aie.amsel<0> (2)
+// CHECK:         aie.masterset(North : 1, %[[BOTH]], %[[UP1]])
+// CHECK:         aie.masterset(North : 2, %[[BOTH]], %[[UP2]])
 // CHECK:         aie.packet_rules(South : 7) {
-// CHECK-NEXT:      aie.rule(31, 5, %[[DMA2]])
+// CHECK-NEXT:      aie.rule(31, 5, %[[UP1]])
 // CHECK:         aie.packet_rules(South : 3) {
-// CHECK-NEXT:      aie.rule(26, 0, %[[BOTH]])
-// CHECK-NEXT:      aie.rule(31, 2, %[[BOTH]])
-// CHECK-NEXT:      aie.rule(31, 3, %[[DMA01]])
+// CHECK-NEXT:      aie.rule(29, 1, %[[BOTH]])
+// CHECK-NEXT:      aie.rule(31, 4, %[[BOTH]])
+// CHECK-NEXT:      aie.rule(31, 2, %[[UP2]])
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK:         %[[D0:.*]] = aie.amsel<0> (0)
-// CHECK:         %[[D2:.*]] = aie.amsel<1> (0)
-// CHECK:         %[[D1:.*]] = aie.amsel<0> (1)
-// CHECK:         %[[D01:.*]] = aie.amsel<0> (2)
-// CHECK:         aie.masterset(DMA : 0, %[[D0]], %[[D01]])
-// CHECK:         aie.masterset(DMA : 1, %[[D1]], %[[D01]])
-// CHECK:         aie.masterset(DMA : 2, %[[D2]])
-// CHECK:         aie.packet_rules(South : 0) {
-// CHECK-NEXT:      aie.rule(24, 0, %[[D2]])
-// CHECK:         aie.packet_rules(South : 5) {
-// CHECK-NEXT:      aie.rule(31, 3, %[[D01]])
-// CHECK-NEXT:      aie.rule(31, 4, %[[D01]])
-// CHECK-NEXT:      aie.rule(31, 2, %[[D1]])
-// CHECK-NEXT:      aie.rule(31, 1, %[[D0]])
+// CHECK:         %[[D2:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[D0:.*]] = aie.amsel<1> (0)
+// CHECK:         %[[D12:.*]] = aie.amsel<0> (1)
+// CHECK:         %[[D1:.*]] = aie.amsel<0> (2)
+// CHECK:         aie.masterset(DMA : 0, %[[D0]])
+// CHECK:         aie.masterset(DMA : 1, %[[D12]], %[[D1]])
+// CHECK:         aie.masterset(DMA : 2, %[[D2]], %[[D12]])
+// CHECK:         aie.packet_rules(South : 1) {
+// CHECK-NEXT:      aie.rule(31, 5, %[[D2]])
+// CHECK-NEXT:      aie.rule(29, 1, %[[D0]])
+// CHECK-NEXT:      aie.rule(31, 4, %[[D0]])
+// CHECK:         aie.packet_rules(South : 2) {
+// CHECK-NEXT:      aie.rule(25, 0, %[[D12]])
+// CHECK-NEXT:      aie.rule(31, 3, %[[D1]])
+// CHECK-NEXT:      aie.rule(31, 1, %[[D2]])
 
 module {
   aie.device(npu1_1col) {

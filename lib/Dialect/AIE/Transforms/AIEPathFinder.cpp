@@ -821,9 +821,11 @@ Pathfinder::findPaths(const int maxIterations) {
   // it joined. A join the routing check faults is not made again.
   std::vector<SmallVector<std::pair<int, Edge>, 8>> joinedHops(flows.size());
   std::set<std::pair<int, int>> noJoin;
-  // Where the routing check split each flow's tree: the state of the slave
-  // port it branches at, and the ids to branch apart there.
-  std::vector<std::set<std::tuple<int, int, int>>> splitsOf(flows.size());
+  // Where the routing check split each flow's tree: the tile it branches at,
+  // the ids to branch apart there, and the state of the destination that
+  // reaches the tile apart, or -1.
+  std::vector<std::set<std::tuple<TileID, int, int, int>>> splitsOf(
+      flows.size());
 
   int iterationCount = -1;
   int illegalEdges = 0;
@@ -1088,6 +1090,7 @@ Pathfinder::findPaths(const int maxIterations) {
         auto search = [&](const llvm::DenseSet<int> &drop,
                           const llvm::DenseSet<int> &off = {}) {
           branchAvoid.clear();
+          llvm::DenseMap<int, llvm::BitVector> onArbiter;
           if (avoid)
             for (const auto &[state, hop] : planned) {
               const auto &[from, e] = hop;
@@ -1096,12 +1099,20 @@ Pathfinder::findPaths(const int maxIterations) {
               llvm::BitVector &avoid =
                   branchAvoid.try_emplace(from, conflicting.size())
                       .first->second;
-              for (int other : e.sb->unitPacketFlows[e.sb->unitOf(e.j)])
+              llvm::BitVector &on =
+                  onArbiter.try_emplace(from, conflicting.size()).first->second;
+              for (int other : e.sb->unitPacketFlows[e.sb->unitOf(e.j)]) {
+                on.set(other);
                 if (other != flow)
                   avoid |= conflicting[other];
-              // A flow sharing an arbiter with itself is no conflict.
-              avoid.reset(flow);
+              }
             }
+          // A flow sharing an arbiter with itself is no conflict, and flows
+          // already on those arbiters share them whatever the branch does.
+          for (auto &[from, avoid] : branchAvoid) {
+            avoid.reset(onArbiter.find(from)->second);
+            avoid.reset(flow);
+          }
           seeds.clear();
           seedCosts.clear();
           for (auto [state, hops] : llvm::zip_equal(tree, treeHops))
@@ -1141,28 +1152,41 @@ Pathfinder::findPaths(const int maxIterations) {
         };
         SmallVector<int, 4> reached;
         // The path to `dst` stays off the hops another destination's path
-        // takes below where the check split the two apart.
+        // takes below where the check split the two apart, and off the
+        // slave port it takes there too if one of them has to reach the tile
+        // on its own.
         auto splitOff = [&](int dst) {
           llvm::DenseSet<int> off;
           auto carries = [&](int d, int id) {
             return llvm::is_contained(idsTo(flow, d), id);
           };
-          for (auto [at, a, b] : splitsOf[flow])
+          auto only = [&](int d, int id, int other) {
+            return carries(d, id) && !carries(d, other);
+          };
+          for (auto [at, a, b, apart] : splitsOf[flow])
             for (int other : reached) {
-              if (!(carries(dst, a) && !carries(dst, b) && carries(other, b) &&
-                    !carries(other, a)) &&
-                  !(carries(dst, b) && !carries(dst, a) && carries(other, a) &&
-                    !carries(other, b)))
+              if (apart < 0 ? !(only(dst, a, b) && only(other, b, a)) &&
+                                  !(only(dst, b, a) && only(other, a, b))
+                            : !(only(dst, a, b) && other == apart) &&
+                                  !(dst == apart && only(other, a, b)))
                 continue;
               SmallVector<int, 8> below;
               int s = other;
-              for (auto hop = planned.find(s); s != at && hop != planned.end();
+              auto entersAt = [&, tile = at](int state) {
+                return (state & 1) == In &&
+                       nodes[stateNode(state)].coords == tile;
+              };
+              for (auto hop = planned.find(s);
+                   !entersAt(s) && hop != planned.end();
                    hop = planned.find(s)) {
                 below.push_back(s);
                 s = hop->second.first;
               }
-              if (s == at)
-                off.insert(below.begin(), below.end());
+              if (!entersAt(s))
+                continue;
+              off.insert(below.begin(), below.end());
+              if (apart >= 0)
+                off.insert(s);
             }
           return off;
         };
@@ -1294,15 +1318,19 @@ Pathfinder::findPaths(const int maxIterations) {
           sb.isPriority[i][j] = isPriority;
           // Packet flows in the same group may share a channel, but only if
           // their ids differ, so two same-id flows never merge onto a channel
-          // and then fan back out to separate destinations.
+          // and then fan back out to separate destinations. The flow's own
+          // tree branching at a port never merges back.
           // packetGroupId only becomes >= 0 when packetId has a value (see
           // Pathfinder::addFlow), so the dereferences below are safe; the
           // checker just can't correlate the two across this loop's back edge.
           // NOLINTBEGIN(bugprone-unchecked-optional-access)
-          bool sameGroupUnseen = packetGroupId >= 0 && packetId.has_value() &&
-                                 (sb.packetGroupId[i][j] == -1 ||
-                                  sb.packetGroupId[i][j] == packetGroupId) &&
-                                 sb.packetIds[i][j].count(*packetId) == 0;
+          auto seen = packetId ? sb.packetIds[i][j].find(*packetId)
+                               : sb.packetIds[i][j].end();
+          bool sameGroupUnseen =
+              packetGroupId >= 0 && packetId.has_value() &&
+              (sb.packetGroupId[i][j] == -1 ||
+               sb.packetGroupId[i][j] == packetGroupId) &&
+              (seen == sb.packetIds[i][j].end() || seen->second == flow);
           if (sameGroupUnseen) {
             int packetIdValue = *packetId;
             // NOLINTEND(bugprone-unchecked-optional-access)
@@ -1311,7 +1339,7 @@ Pathfinder::findPaths(const int maxIterations) {
                 if (k == static_cast<size_t>(i) ||
                     l == static_cast<size_t>(j)) {
                   sb.packetGroupId[k][l] = packetGroupId;
-                  sb.packetIds[k][l].insert(packetIdValue);
+                  sb.packetIds[k][l].try_emplace(packetIdValue, flow);
                 }
               }
             }
@@ -1431,10 +1459,16 @@ Pathfinder::findPaths(const int maxIterations) {
       RoutingFaults faults = routingCheck(routingSolution);
       for (const TreeSplit &split : faults.splits) {
         auto flow = flowIndex.find(split.src);
-        auto at = nodeIds.find(split.at);
-        if (flow != flowIndex.end() && at != nodeIds.end() &&
+        int apart = -1;
+        if (split.apart) {
+          auto it = nodeIds.find(*split.apart);
+          if (it == nodeIds.end())
+            continue;
+          apart = stateId(it->second, Out);
+        }
+        if (flow != flowIndex.end() &&
             splitsOf[flow->second]
-                .insert({stateId(at->second, In), split.a, split.b})
+                .insert({split.at, split.a, split.b, apart})
                 .second)
           illegalEdges++;
       }

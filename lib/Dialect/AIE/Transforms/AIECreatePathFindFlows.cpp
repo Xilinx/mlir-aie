@@ -1422,8 +1422,11 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   // Flows from one source that leave a slave port by a common master port
   // share its arbiter, which the source's tree branching there avoids. `key`
   // branches from those of them that tie it to one of `partners`, where
-  // nothing else does.
-  std::set<std::tuple<PathEndPoint, PathEndPoint, int, int>> hazardSplits;
+  // nothing else does. The next routing may reach the tile by another slave
+  // port, so the split holds for the tile.
+  std::set<
+      std::tuple<PathEndPoint, TileID, int, int, std::optional<PathEndPoint>>>
+      hazardSplits;
   auto splitFlow = [&](TileID tileId, FlowKey key, ArrayRef<FlowKey> partners) {
     auto flows = tileSlaveFlows.find(tileId);
     if (flows == tileSlaveFlows.end())
@@ -1469,10 +1472,12 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       }
       return unit;
     };
-    auto split = [&](FlowKey other) {
-      hazardSplits.insert({*src, PathEndPoint{tileId, key.first},
-                           std::min(key.second, other.second),
-                           std::max(key.second, other.second)});
+    auto split = [&](FlowKey other,
+                     std::optional<PathEndPoint> apart = std::nullopt) {
+      int a = key.second, b = other.second;
+      if (!apart && a > b)
+        std::swap(a, b);
+      hazardSplits.insert({*src, tileId, a, b, apart});
     };
     for (FlowKey partner : partners) {
       if (partner == key || !flows->second.count(partner))
@@ -1481,12 +1486,32 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
         split(partner);
         continue;
       }
-      if (sharesMaster(self->second, tied(partner, true)))
+      std::set<Port> partnerUnit = tied(partner, true);
+      if (sharesMaster(self->second, partnerUnit))
         continue;
       std::set<Port> unit = tied(partner, false);
-      for (FlowKey other : siblings)
-        if (sharesMaster(flows->second.find(other)->second, unit))
+      for (FlowKey other : siblings) {
+        const SlaveFlow &f = flows->second.find(other)->second;
+        if (!sharesMaster(f, unit))
+          continue;
+        // Where the sibling only ties `key` to the partner's arbiter by
+        // destinations on this tile, those can reach it by a slave port of
+        // their own, and `key` keeps sharing the rest of the tree.
+        SmallVector<PathEndPoint, 2> apart;
+        for (Port m : f.masters)
+          if (partnerUnit.count(m))
+            apart.push_back({tileId, m});
+        if (PathEndPoint{tileId, key.first} == *src || apart.empty() ||
+            !llvm::all_of(apart, [&](const PathEndPoint &p) {
+              return packetStreamIndex.count(
+                  {src->coords, src->port, p.coords, p.port, other.second});
+            })) {
           split(other);
+          continue;
+        }
+        for (const PathEndPoint &p : apart)
+          split(other, p);
+      }
     }
   };
   auto fail = [&](std::string reason) -> LogicalResult {
@@ -1494,8 +1519,8 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       return device.emitError("Unable to find a legal routing: ") << reason;
     hazards->faults.connections.assign(hazardConnections.begin(),
                                        hazardConnections.end());
-    for (const auto &[src, at, a, b] : hazardSplits)
-      hazards->faults.splits.push_back({src, at, a, b});
+    for (const auto &[src, at, a, b, apart] : hazardSplits)
+      hazards->faults.splits.push_back({src, at, a, b, apart});
     hazards->reason = std::move(reason);
     return success();
   };
@@ -1542,15 +1567,85 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
         stringifyWireBundle(slavePort.second.bundle), slavePort.second.channel);
   }
   for (const auto &[tileId, byFlow] : tileSlaveFlows) {
-    std::map<Port, std::map<SmallVector<Port, 4>, RuleGroup>> ports;
-    for (const auto &[key, f] : byFlow) {
-      RuleGroup &group = ports[f.slave][f.masters];
-      auto mask = pinnedMasks.find({{tileId, f.slave}, f.id});
-      if (mask == pinnedMasks.end() || mask->second == idMask)
-        group.derived.push_back(f.id);
-      else if (!llvm::is_contained(group.stated, std::pair{mask->second, f.id}))
-        group.stated.push_back({mask->second, f.id});
-    }
+    // The packet rules the flows entering on `slave` need, without the packets
+    // `without` sends to a master port if set.
+    auto rulesNeeded =
+        [&, tileId = tileId, &byFlow = byFlow](
+            Port slave,
+            std::optional<std::pair<PathEndPoint, Port>> without = {}) {
+          std::map<SmallVector<Port, 4>, RuleGroup> groups;
+          for (const auto &[key, f] : byFlow) {
+            if (f.slave != slave)
+              continue;
+            SmallVector<Port, 4> masters = f.masters;
+            auto sources = slaveFlowSources.find({{tileId, slave}, f.id});
+            if (without && sources != slaveFlowSources.end()) {
+              std::set<Port> kept;
+              for (const auto &[src, ports] : sources->second)
+                for (Port m : ports)
+                  if (!(src == without->first) || m != without->second)
+                    kept.insert(m);
+              masters.assign(kept.begin(), kept.end());
+            }
+            if (masters.empty())
+              continue;
+            RuleGroup &group = groups[masters];
+            auto mask = pinnedMasks.find({{tileId, f.slave}, f.id});
+            if (mask == pinnedMasks.end() || mask->second == idMask)
+              group.derived.push_back(f.id);
+            else if (!llvm::is_contained(group.stated,
+                                         std::pair{mask->second, f.id}))
+              group.stated.push_back({mask->second, f.id});
+          }
+          SmallVector<std::pair<int, int>> existing =
+              existingCubes[{tileId, slave}];
+          SmallVector<GroupClaims> claims;
+          for (const auto &[masters, group] : groups)
+            claims.push_back({group.stated, group.derived});
+          return existing.size() + portRules(claims, existing, idBits,
+                                             targetModel.getNumSlaveSlots())
+                                       .size();
+        };
+    // Packets for a destination on the tile that reach it by a slave port of
+    // their own take their rules with them. The source's tree splits apart the
+    // destination that frees the most rules on `slave`.
+    auto splitRules = [&, tileId = tileId, &byFlow = byFlow](Port slave) {
+      std::map<PathEndPoint, std::map<PathEndPoint, std::set<int>>> dstIds;
+      for (const auto &[key, f] : byFlow) {
+        if (f.slave != slave)
+          continue;
+        auto streams = slaveFlowStreams.find({{tileId, slave}, f.id});
+        if (streams == slaveFlowStreams.end())
+          continue;
+        for (size_t i : streams->second) {
+          const RoutedStream &s = conflicts.getStreams()[i];
+          dstIds[{s.src.tile, s.src.port}][{s.dst.tile, s.dst.port}].insert(
+              f.id);
+        }
+      }
+      std::optional<std::pair<PathEndPoint, PathEndPoint>> best;
+      size_t fewest = rulesNeeded(slave);
+      for (const auto &[src, dsts] : dstIds)
+        for (const auto &[dst, ids] : dsts)
+          if (dst.coords == tileId && dsts.size() > 1)
+            if (size_t n = rulesNeeded(slave, {{src, dst.port}}); n < fewest) {
+              fewest = n;
+              best = {src, dst};
+            }
+      if (!best)
+        return;
+      const auto &[src, apart] = *best;
+      const std::set<int> &apartIds = dstIds[src][apart];
+      for (const auto &[dst, ids] : dstIds[src]) {
+        auto carries = [&, &dst = dst](int id) {
+          return packetStreamIndex.count(
+                     {src.coords, src.port, dst.coords, dst.port, id}) > 0;
+        };
+        auto b = llvm::find_if_not(apartIds, carries);
+        if (!(dst == apart) && b != apartIds.end())
+          hazardSplits.insert({src, tileId, *ids.begin(), *b, apart});
+      }
+    };
     // Flows on one slave port that leave by different master ports must not
     // claim a common id, and a mask written on an aie.packet_flow claims every
     // id it matches.
@@ -1580,21 +1675,17 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
             fa.slave.channel, own.first, own.second, other.first, other.second,
             witness);
       }
-    for (const auto &[slave, groups] : ports) {
-      SmallVector<std::pair<int, int>> existing =
-          existingCubes[{tileId, slave}];
-      SmallVector<GroupClaims> claims;
-      for (const auto &[masters, group] : groups)
-        claims.push_back({group.stated, group.derived});
-      size_t needed =
-          existing.size() +
-          portRules(claims, existing, idBits, targetModel.getNumSlaveSlots())
-              .size();
+    std::set<Port> slaves;
+    for (const auto &[key, f] : byFlow)
+      slaves.insert(f.slave);
+    for (Port slave : slaves) {
+      size_t needed = rulesNeeded(slave);
       if (needed <= targetModel.getNumSlaveSlots())
         continue;
       for (const auto &[key, f] : byFlow)
         if (f.slave == slave)
           moveFlow(tileId, key);
+      splitRules(slave);
       if (planFailure)
         continue;
       planFailure = llvm::formatv(

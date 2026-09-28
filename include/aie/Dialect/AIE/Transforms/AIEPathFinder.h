@@ -64,8 +64,9 @@ using SwitchboxConnect = struct SwitchboxConnect {
   // only sharing the channel with the same packet group id
   std::vector<std::vector<int>> packetGroupId;
   // packet ids currently routed through each channel (and its crossbar
-  // row/column); a channel may be shared only among distinct ids.
-  std::vector<std::vector<std::set<int>>> packetIds;
+  // row/column), by the flow routing each; a channel may be shared only among
+  // distinct ids.
+  std::vector<std::vector<std::map<int, int>>> packetIds;
   // dst ports a packet flow branches to from one src port share an arbiter;
   // each dst port links to such a unit, and a unit's root lists the packet
   // flows (indices into the router's flows) leaving by any of its ports
@@ -89,7 +90,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
                            std::vector<int>(dstPorts.size(), 0));
     packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     packetIds.resize(srcPorts.size(),
-                     std::vector<std::set<int>>(dstPorts.size()));
+                     std::vector<std::map<int, int>>(dstPorts.size()));
     isPriority.resize(srcPorts.size(),
                       std::vector<bool>(dstPorts.size(), false));
     packetOnlySrc.resize(srcPorts.size(), false);
@@ -256,10 +257,14 @@ using PacketConflict =
     std::function<bool(const PathEndPoint &, const PathEndPoint &)>;
 
 /// Packets `src` sends with ids `a` and `b` share a master port they leave
-/// the slave port `at` by, which puts them on one arbiter.
+/// tile `at` by, which puts them on one arbiter. If `apart` is set, the
+/// packets with id `b` for that destination on the tile reach it by a slave
+/// port of their own instead.
 struct TreeSplit {
-  PathEndPoint src, at;
+  PathEndPoint src;
+  TileID at;
   int a, b;
+  std::optional<PathEndPoint> apart;
 };
 
 /// What makes a routing unusable: switchbox connections to move, and where a
