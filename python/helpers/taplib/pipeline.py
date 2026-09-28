@@ -78,10 +78,11 @@ class Hop:
         shape (Sequence[int]): The object the walk indexes: the host tensor for a
             shim hop, the memtile pool object for memtile hops, the core's
             object for a core hop.
-        dims (Sequence[tuple[int, int]] | None): ``(size, stride)`` pairs,
-            outermost first, in elements, as ``dims_to_stream``/
-            ``dims_from_stream`` take them; ``None`` walks the object (or the
-            segment) linearly. A shim hop may instead be given a
+        dims (Layout | PaddedLayout | Sequence[tuple[int, int]] | None): the
+            walk, as ``dims_to_stream``/``dims_from_stream`` take it: a
+            ``Layout`` (a ``PaddedLayout`` also sets ``pad``) or ``(size,
+            stride)`` pairs, outermost first, in elements; ``None`` walks the
+            object (or the segment) linearly. A shim hop may instead be given a
             :class:`Layout` or :class:`TensorAccessPattern` via
             :meth:`Hop.shim`.
         offset (int): Element offset of the walk's origin within the object

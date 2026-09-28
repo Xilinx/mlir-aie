@@ -297,16 +297,17 @@ print("transposes chain: every tile arrives block-transposed")
 
 A memtile MM2S channel can pad the stream it emits (`ObjectFifo`'s
 `pad_dimensions` / `pad_value`). `Layout.pad([(before, after), ...])` attaches
-that padding to a walk: its `stream_dims()` and `pad_dims()` are the two fifo
-arguments, `padded_sizes` is what the consuming object must hold, and
-`materialize()` shows where the constants land. A `memtile_out` hop accepts the
-`PaddedLayout` directly and `compose()` delivers padded positions as host
-index `-1`, so the composed core object is exactly `np.pad` of the tile.
+that padding to a walk: passed as `dims_to_stream`, the `PaddedLayout` sets
+both the walk and `pad_dimensions` (`stream_dims()` and `pad_dims()` give the
+two lists if you need them), `padded_sizes` is what the consuming object must
+hold, and `materialize()` shows where the constants land. A `memtile_out` hop
+accepts the `PaddedLayout` the same way and `compose()` delivers padded
+positions as host index `-1`, so the composed core object is exactly `np.pad`
+of the tile.
 
 ```python
 padded = Layout.full((rows, N))[:, :cols].pad([(1, 1), (2, 2)])
-of_out = ObjectFifo(padded_ty, dims_to_stream=padded.stream_dims(),
-                    pad_dimensions=padded.pad_dims(), pad_value=0)
+of_out = ObjectFifo(padded_ty, dims_to_stream=padded, pad_value=0)
 Pipeline().shim(...).memtile_in((rows, N)).memtile_out((rows, N), padded).core_in(padded.padded_sizes)
 ```
 
