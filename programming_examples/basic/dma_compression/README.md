@@ -117,10 +117,10 @@ CT(0,3) S2MM, so the inter-tile wire carries fewer bytes than the
 consumer would normally expect. To avoid the consumer DMA stalling,
 the CT(0,3) BDs are hand-sized to `RATIOED_PER_LINE = 736` ints/BD.
 A forwarded `ObjectFifo` sizes both ends with the same `line_ty`, so
-`_build_multi_cmp_only()` instead describes each tile's DMA with an
-explicit `TileDma`: ping-pong `Bd`s over `Buffer`s sized per side,
+`build_multi_cmp_only()` instead gives each tile a `PingPongDma`: an
+explicit `TileDma` of ping-pong `Bd`s over `Buffer`s sized per side,
 `Lock`s, and channel-pinned `Flow`s, with `bd_id`s pinned so the
-compression maskwrites hit the MM2S BDs. The
+`CompressionRegs` maskwrites hit the MM2S BDs. The
 asymmetric output pattern (1024 / 1920 / 1152, matching single-tile
 `cmp_only`) proves DMA compression actually engages on the inter-CT
 link.
