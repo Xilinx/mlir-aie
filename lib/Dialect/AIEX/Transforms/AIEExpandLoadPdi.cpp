@@ -30,7 +30,10 @@
 
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <map>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEEXPANDLOADPDI
@@ -78,6 +81,94 @@ static AIE::DeviceOp getOrCreateCtrlPktOverlayCopy(ModuleOp moduleOp,
   auto clonedDev = cast<AIE::DeviceOp>(cloned);
   clonedDev.setSymName(kCtrlPktOverlayCopyName);
   return clonedDev;
+}
+
+// A stream-switch port: column, row, whether it is a master, bundle, channel.
+using SwitchPort = std::tuple<int, int, bool, int, int>;
+
+static std::string describe(const SwitchPort &port) {
+  auto [col, row, master, bundle, channel] = port;
+  return llvm::formatv(
+      "tile ({0}, {1}) {2} {3} : {4}", col, row, master ? "master" : "slave",
+      AIE::stringifyWireBundle(AIE::WireBundle(bundle)), channel);
+}
+
+// The ports `op` sets and what it sets them to.
+static SmallVector<std::pair<SwitchPort, std::string>>
+portSettings(Operation &op, AIE::SwitchboxOp sb) {
+  auto key = [&](bool master, AIE::Port port) {
+    return SwitchPort{sb.colIndex(), sb.rowIndex(), master,
+                      static_cast<int>(port.bundle), port.channel};
+  };
+  auto amsel = [](Value v) {
+    auto a = v.getDefiningOp<AIE::AMSelOp>();
+    return llvm::formatv("{0}.{1}", a.arbiterIndex(), a.getMselValue()).str();
+  };
+  SmallVector<std::pair<SwitchPort, std::string>> settings;
+  if (auto connect = dyn_cast<AIE::ConnectOp>(op)) {
+    AIE::Port src = connect.sourcePort();
+    settings.push_back(
+        {key(true, connect.destPort()),
+         llvm::formatv("circuit {0}{1}", static_cast<int>(src.bundle),
+                       src.channel)});
+    settings.push_back({key(false, src), "circuit"});
+  } else if (auto masterSet = dyn_cast<AIE::MasterSetOp>(op)) {
+    std::string value = "packet";
+    for (Value v : masterSet.getAmsels())
+      value += " " + amsel(v);
+    if (auto keep = masterSet.getKeepPktHeader())
+      value += *keep ? " keep" : " drop";
+    settings.push_back({key(true, masterSet.destPort()), value});
+  } else if (auto rules = dyn_cast<AIE::PacketRulesOp>(op)) {
+    std::string value = "rules";
+    for (auto rule : rules.getRules().front().getOps<AIE::PacketRuleOp>())
+      value += llvm::formatv(" {0}/{1}>{2}", rule.valueInt(), rule.maskInt(),
+                             amsel(rule.getAmsel()));
+    settings.push_back({key(false, rules.sourcePort()), value});
+  }
+  return settings;
+}
+
+// A control-packet reload streams `device`'s configuration over the routes
+// `overlay` set up, skipping the switchbox ops marked is_ctrl_pkt_overlay. So
+// the overlay must already set every port a skipped op sets, the same way,
+// and no op the reload writes may set a port the overlay sets.
+static LogicalResult verifyReloadKeepsOverlay(AIE::DeviceOp device,
+                                              AIE::DeviceOp overlay) {
+  std::map<SwitchPort, std::string> overlaySettings;
+  overlay.walk([&](AIE::SwitchboxOp sb) {
+    for (Operation &op : sb.getConnections().front())
+      for (auto &[port, value] : portSettings(op, sb))
+        overlaySettings[port] = value;
+  });
+  WalkResult result = device.walk([&](AIE::SwitchboxOp sb) {
+    for (Operation &op : sb.getConnections().front()) {
+      bool skipped = op.hasAttr("is_ctrl_pkt_overlay");
+      for (auto &[port, value] : portSettings(op, sb)) {
+        auto it = overlaySettings.find(port);
+        if (skipped && it == overlaySettings.end()) {
+          op.emitError() << "a control-packet reload skips this op, but @"
+                         << kCtrlPktOverlayName << " does not set "
+                         << describe(port);
+          return WalkResult::interrupt();
+        }
+        if (skipped && it->second != value) {
+          op.emitError() << "a control-packet reload skips this op, but @"
+                         << kCtrlPktOverlayName << " sets " << describe(port)
+                         << " differently";
+          return WalkResult::interrupt();
+        }
+        if (!skipped && it != overlaySettings.end()) {
+          op.emitError() << "a control-packet reload rewrites "
+                         << describe(port) << ", which the control packets of @"
+                         << kCtrlPktOverlayName << " route through";
+          return WalkResult::interrupt();
+        }
+      }
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
 }
 
 // The empty device whose PDI load makes the firmware reset the array. `parity`
@@ -146,6 +237,10 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
           << kCtrlPktOverlayName << "` device in the module";
       return failure();
     }
+    if (failed(verifyReloadKeepsOverlay(
+            referencedDevice,
+            moduleOp.lookupSymbol<AIE::DeviceOp>(kCtrlPktOverlayName))))
+      return failure();
     preloadRef = FlatSymbolRefAttr::get(builder.getContext(), overlayName);
   } else {
     // Empty device PDI (triggers firmware reset)
