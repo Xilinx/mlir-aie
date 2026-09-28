@@ -68,3 +68,14 @@ def test_data_from_an_untraced_tile_raises(tmp_path):
     # that wrote the data. That used to exit the interpreter.
     with pytest.raises(ValueError, match="does not trace"):
         parse_trace(WORDS, MLIR.read_text(), colshift=2)
+
+
+def test_configs_constructed_alike_are_equal():
+    """Equality and hashing follow the constructor, as repr does, and not
+    the state a run leaves behind."""
+    a = TraceConfig(8192, trace_file="t.txt")
+    b = TraceConfig(8192, trace_file="t.txt")
+    b.physical_mlir_path = "lowered.mlir"
+    assert a == b and hash(a) == hash(b) and eval(repr(a)) == a
+    assert a != TraceConfig(4096, trace_file="t.txt")
+    assert a != TraceConfig(8192, trace_file="t.txt", reuse_output_buffer=True)

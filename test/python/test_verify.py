@@ -369,6 +369,18 @@ def test_mismatch_budget():
     assert compare(a, r, Tolerance.bf16_ulps(1, max_mismatch_frac=1e-4)).ok
 
 
+def test_mismatches_lists_every_bad_element_pass_or_fail():
+    r = np.zeros(10_000, np.float32)
+    a = r.astype(bfloat16)
+    a[[3, 7]] = 1.0
+    a[9] = np.nan
+    r[11] = a[11] = np.nan  # a NaN the reference shares is not one
+    assert compare(a, r, Tolerance.bf16_ulps(1)).mismatches.tolist() == [3, 7, 9]
+    within = compare(a[:9], r[:9], Tolerance.bf16_ulps(1, max_mismatch_frac=0.5))
+    assert within.ok and within.mismatches.tolist() == [3, 7]
+    assert compare(r, r, Tolerance.exact()).mismatches.size == 0
+
+
 def test_shape_mismatch_fails_with_detail():
     v = compare(np.zeros(3, np.int32), np.zeros(4, np.int64), Tolerance.exact())
     assert not v.ok and "shape mismatch" in v.detail

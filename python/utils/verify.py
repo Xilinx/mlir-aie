@@ -18,7 +18,7 @@ gelu, silu, swiglu, ...).
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 import numpy as np
@@ -417,6 +417,12 @@ class Verdict:
     max_ulp_err: int | None
     first_bad_index: int | None
     detail: str
+    # The flat indices of every element outside the tolerance, including a
+    # non-finite value the reference does not share: what a caller lists or
+    # masks. A passing comparison may have some, within max_mismatch_frac.
+    mismatches: np.ndarray = field(
+        default_factory=lambda: np.empty(0, np.int64), repr=False
+    )
 
     def __bool__(self) -> bool:
         return self.ok
@@ -651,4 +657,4 @@ def _verdict(
             detail += f"; worst abs_err/bound={float(ratio.max()):.4g}"
         if tol.note:
             detail += f" [{tol.kind}: {tol.note}]"
-    return Verdict(ok, n, n_bad, max_err, max_ulp, first, detail)
+    return Verdict(ok, n, n_bad, max_err, max_ulp, first, detail, np.flatnonzero(bad))

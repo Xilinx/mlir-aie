@@ -839,10 +839,11 @@ class ExternalFunction(Kernel):
             )
         if not multiple:
             return verdicts[0]
-        first_bad, offset = None, 0
+        first_bad, offset, offsets = None, 0, []
         for result in verdicts:
             if first_bad is None and result.first_bad_index is not None:
                 first_bad = offset + result.first_bad_index
+            offsets.append(offset)
             offset += result.n_checked
         ulps = [v.max_ulp_err for v in verdicts if v.max_ulp_err is not None]
         return Verdict(
@@ -852,6 +853,9 @@ class ExternalFunction(Kernel):
             max_abs_err=max(v.max_abs_err for v in verdicts),
             max_ulp_err=max(ulps) if ulps else None,
             first_bad_index=first_bad,
+            mismatches=np.concatenate(
+                [v.mismatches + offset for v, offset in zip(verdicts, offsets)]
+            ),
             detail="; ".join(
                 f"output {i} (argument {arg}): {v.detail}"
                 for i, (arg, v) in enumerate(zip(c.out_indices, verdicts))

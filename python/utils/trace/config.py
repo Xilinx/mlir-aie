@@ -51,6 +51,25 @@ class TraceConfig:
             bits.append("enable_ctrl_pkts=True")
         return f"TraceConfig({', '.join(bits)})"
 
+    def _declared(self) -> tuple:
+        return (
+            self.trace_size,
+            self.trace_file,
+            self.reuse_output_buffer,
+            self.enable_ctrl_pkts,
+        )
+
+    def __eq__(self, other) -> bool:
+        # Equal when constructed alike, as the repr says, so a config can be
+        # a field of a compared declaration (a design's compile key, a
+        # dataclass). Post-run state is not compared.
+        if not isinstance(other, TraceConfig):
+            return NotImplemented
+        return self._declared() == other._declared()
+
+    def __hash__(self) -> int:
+        return hash(self._declared())
+
     def __str__(self) -> str:
         # Human-readable: starts with the eval-faithful repr, then appends
         # any post-run state someone debugging a trace would actually want
