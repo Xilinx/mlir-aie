@@ -338,9 +338,9 @@ specialization that takes the ordinary static path. `test/python/dispatch_taplib
 compares the dispatch-time builder's DMA events against such specializations
 and against `whole_array.py` with `aie.utils.txn_trace`, which is also how to
 debug a dispatch-time sequence: `python -m aie.utils.txn_trace insts.bin`.
-It keeps two time-block halves in flight throughout: a step's transfers are
-carried to the next loop iteration as `range_` iter_args and finished only
-after the next step's have been issued. It issues exactly the transfers
+It keeps two time-block halves in flight throughout: a step's `TaskGroup` is
+carried to the next loop iteration as a `range_` iter_arg and finished only
+after the next step's has been issued. It issues exactly the transfers
 `whole_array.py` issues, in the same order; `whole_array.py` overlaps only
 its first two halves and then awaits each half before issuing the next, so
 from three halves on the dynamic design's waits come later (up to two
