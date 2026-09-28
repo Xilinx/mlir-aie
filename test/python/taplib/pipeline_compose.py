@@ -140,9 +140,14 @@ def legality_and_coverage():
         assert False
     except ValueError:
         pass
-    # A shim repeat larger than the queue allows.
-    h = Hop.shim(Layout.full((1, 16)).repeat(65))
-    assert any("repeat 65" in msg for msg in h.issues())
+    # A pure repeat is bounded by the 8-bit queue repeat count; one that steps
+    # (a stride on the outermost dimension) also by the 6-bit iteration wrap.
+    assert Hop.shim(Layout.full((1, 16)).repeat(100)).issues() == []
+    assert any(
+        "repeat 257" in m for m in Hop.shim(Layout.full((1, 16)).repeat(257)).issues()
+    )
+    stepped = Hop.shim(Layout.full((100, 16)).tile((1, 16)).layout)
+    assert any("iteration wrap 64" in m for m in stepped.issues())
     # A legal 4-byte transpose is fine.
     assert Hop.shim(Layout.full((8, 8)).permute((1, 0))).issues() == []
 

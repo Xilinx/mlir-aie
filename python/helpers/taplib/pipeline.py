@@ -45,13 +45,20 @@ KINDS = ("shim", "memtile_in", "memtile_out", "core_in")
 
 #: Per tile type: addressing dimensions a BD supports, the largest wrap
 #: (size) an addressing dimension can hold, the largest step (stride), and
-#: for the shim the largest queue repeat. The shim's outermost tap dimension is
-#: the repeat, not an addressing dimension. Address generation is in 32-bit
-#: words on every tile.
+#: for the shim the largest outermost tap dimension: it becomes the queue
+#: repeat count (8 bits, so 256 executions) and, when it steps, also the BD
+#: iteration wrap (6 bits, so 64). Address generation is in 32-bit words on
+#: every tile.
 LIMITS = {
-    "shim": dict(max_dims=3, max_wrap=1023, max_stride=1 << 20, max_repeat=64),
-    "memtile": dict(max_dims=4, max_wrap=1023, max_stride=1 << 17, max_repeat=None),
-    "core": dict(max_dims=3, max_wrap=255, max_stride=1 << 13, max_repeat=None),
+    "shim": dict(
+        max_dims=3, max_wrap=1023, max_stride=1 << 20, max_repeat=256, max_iter=64
+    ),
+    "memtile": dict(
+        max_dims=4, max_wrap=1023, max_stride=1 << 17, max_repeat=None, max_iter=None
+    ),
+    "core": dict(
+        max_dims=3, max_wrap=255, max_stride=1 << 13, max_repeat=None, max_iter=None
+    ),
 }
 _TILE_OF_KIND = {
     "shim": "shim",
@@ -179,10 +186,14 @@ class Hop:
         sizes, strides = list(lay.sizes), list(lay.strides)
         # The shim's outermost tap slot is the queue repeat.
         if self.kind == "shim" and len(sizes) == 4:
-            rep = sizes[0]
+            rep, rep_stride = sizes[0], strides[0]
             sizes, strides = sizes[1:], strides[1:]
             if lim["max_repeat"] and rep > lim["max_repeat"]:
                 out.append(f"{self.label}: repeat {rep} exceeds {lim['max_repeat']}")
+            elif rep_stride and lim["max_iter"] and rep > lim["max_iter"]:
+                out.append(
+                    f"{self.label}: stepped repeat {rep} exceeds the iteration wrap {lim['max_iter']}"
+                )
         real = [(s, t) for s, t in zip(sizes, strides) if s != 1]
         if len(real) > lim["max_dims"]:
             out.append(
