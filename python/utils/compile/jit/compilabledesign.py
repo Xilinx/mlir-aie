@@ -513,7 +513,7 @@ class CompilableDesign:
             kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
             lock_file_path = kernel_dir / ".lock"
         else:
-            cache_hash = self._compute_cache_hash()
+            cache_hash = self._compute_cache_hash(include_mlir=True)
             kernel_dir = NPU_CACHE_HOME / cache_hash
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
@@ -747,7 +747,7 @@ class CompilableDesign:
             elf_path = Path(full_elf_path).resolve()
             kernel_dir = elf_path.parent / f"{elf_path.stem}.prj"
         else:
-            cache_hash = self._compute_cache_hash()
+            cache_hash = self._compute_cache_hash(include_mlir=True)
             kernel_dir = NPU_CACHE_HOME / cache_hash
             elf_path = kernel_dir / "design.elf"
         lock_file_path = kernel_dir / ".lock"
@@ -877,7 +877,7 @@ class CompilableDesign:
             inst_path = Path(inst_path).resolve()
             kernel_dir = inst_path.parent / f"{inst_path.stem}.prj"
         else:
-            cache_hash = self._compute_cache_hash()
+            cache_hash = self._compute_cache_hash(include_mlir=True)
             kernel_dir = NPU_CACHE_HOME / cache_hash
             inst_path = kernel_dir / "insts.bin"
         lock_file_path = kernel_dir / ".lock"
@@ -1427,7 +1427,19 @@ class CompilableDesign:
         full_elf: bool | None = None,
         emit_elf: bool = False,
         work_dir: Path | None = None,
+        include_mlir: bool = False,
     ) -> str:
+        # With include_mlir the generated design is part of the key: the
+        # recipe hash covers the generator's code, not the helpers it calls,
+        # so without it an edit to a helper served the previous artifact.
+        # Generation is cached per design and needed by every compile, so
+        # keying the artifact directory on it costs a hit nothing; __hash__
+        # (identity, no generation) leaves it out.
+        mlir_text = None
+        if include_mlir:
+            mlir_text, _ = self._generated_for(
+                full_elf=self.full_elf if full_elf is None else full_elf
+            )
         return _compute_hash(
             self.mlir_generator,
             self.compile_kwargs,
@@ -1442,6 +1454,7 @@ class CompilableDesign:
             self.insts_only,
             emit_elf,
             work_dir,
+            mlir_text,
         )
 
     def _explicit_build_key(
@@ -1453,10 +1466,9 @@ class CompilableDesign:
     ) -> str:
         """Identify an explicit-path build by everything it reads but its recorded inputs.
 
-        The cache hash names the recipe and tools but not what the generator
-        calls, so the generated MLIR is keyed too: an edit to a helper the
-        generator imports changes the design only through it. Each kernel's
-        recipe covers what the MLIR only names, such as its compile flags.
+        The cache hash (which already keys the generated MLIR) names the
+        recipe and tools; each kernel's recipe covers what the MLIR only
+        names, such as its compile flags.
         """
         mlir_text, kernels = self._generated_for(full_elf=full_elf)
         h = hashlib.sha256()
