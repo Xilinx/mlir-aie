@@ -482,7 +482,7 @@ def _default_source_path(filename: str, subdir: str | None = None) -> Path:
 
 
 def _arg_type_key(t):
-    """Hashable key for one entry of ``arg_types`` (used by ``_EXTERN_CACHE``)."""
+    """Hashable key for one entry of ``arg_types`` (part of a kernel's identity)."""
     if hasattr(t, "__args__"):
         # np.ndarray[(shape,), np.dtype[T]]
         shape = t.__args__[0]
@@ -492,17 +492,6 @@ def _arg_type_key(t):
     return repr(t)
 
 
-# Cache keyed on the full input parameter tuple.  Identical helper calls
-# (kernels.mm(...) twice with same kwargs) should return the SAME
-# ExternalFunction instance — otherwise both end up in
-# ExternalFunction._instances, both get JIT-compiled, and (because they
-# share the default ``<name>.o`` output filename) the second compilation
-# overwrites the first's object file with whichever just-rebuilt copy
-# wins the race.  The whole_array port hit exactly this footgun: a
-# default-flag kernels.mm() call (just to fetch .mac_dims) and a
-# c_col_maj=True kernels.mm() call for the actual binding produced two
-# differently-flagged ExternalFunctions whose .o files collided on disk.
-_EXTERN_CACHE: dict = {}
 _KernelT = TypeVar("_KernelT", bound=ExternalFunction)
 
 
@@ -547,7 +536,7 @@ def _make_extern(
     contract: KernelContract | None = None,
     cls: type[ExternalFunction] = ExternalFunction,
 ) -> ExternalFunction:
-    """Construct (or reuse) an ExternalFunction with the standard include_dirs.
+    """Construct an ExternalFunction with the standard include_dirs.
 
     ``contract`` (a :class:`KernelContract`) is what harnesses and tests read
     to build, run and judge the kernel generically; every factory passes
@@ -558,13 +547,10 @@ def _make_extern(
     factories must use distinct C++ symbol names for distinct variants because
     LLVM IR cannot use the object-file symbol-prefix mechanism.
 
-    Memoized on (func_name, source_path, arg_types, compile_flags,
-    use_chess) so repeated calls with identical parameters return the
-    SAME ExternalFunction instance (see ``_EXTERN_CACHE`` for rationale).
-
-    Different parameterizations get distinct instances AND distinct
+    Equal parameters give equal kernels, which share one object and one
+    declaration. Different parameterizations get distinct
     ``object_file_name``s — the latter is auto-suffixed with a short
-    digest of the cache key so per-parameterization .o files don't
+    digest of the identity so per-parameterization .o files don't
     overwrite each other on disk.  The default ``<name>.o`` is preserved
     when ``compile_flags`` is empty AND ``use_chess`` is False (no
     parameterization to disambiguate).
@@ -577,7 +563,7 @@ def _make_extern(
     time).
 
     ``object_file_name`` names the output explicitly instead of deriving it
-    from the cache key. Two factories that bind different symbols of the
+    from the identity. Two factories that bind different symbols of the
     same translation unit with identical compile flags can name the same
     object, and ``ExternalFunction``
     then gives both one ``KernelObject``: one compile, one link artifact,
@@ -586,17 +572,14 @@ def _make_extern(
     """
     flags_tuple = tuple(compile_flags or [])
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
-    cache_key = (func_name, str(source_path), arg_keys, flags_tuple, use_chess)
+    identity = (func_name, str(source_path), arg_keys, flags_tuple, use_chess)
     if inline:
         if use_chess:
             raise ValueError("inline kernels require Peano, not Chess")
         # Keep existing object artifact identities unchanged.
-        cache_key += ("inline",)
-    cached = _EXTERN_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
+        identity += ("inline",)
 
-    # The object_file_name suffix must distinguish every distinct cache_key,
+    # The object_file_name suffix must distinguish every distinct identity,
     # not just compile_flags — otherwise two helper calls with the same
     # name + flags but different source / arg_types would generate
     # ExternalFunctions with identical .o filenames and trip the collision
@@ -609,9 +592,9 @@ def _make_extern(
         digest = None
     elif flags_tuple or arg_keys or str(source_path):
         # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
-        # wide enough that the chance of two distinct cache_keys colliding
+        # wide enough that the chance of two distinct identities colliding
         # is vanishingly small (~2^-32).
-        digest = hashlib.sha256(repr(cache_key).encode()).hexdigest()[:8]
+        digest = hashlib.sha256(repr(identity).encode()).hexdigest()[:8]
         object_file_name = f"{func_name}_{digest}{'.ll' if inline else '.o'}"
     else:
         digest = None
@@ -632,7 +615,7 @@ def _make_extern(
     # registered?", the full-model ``make objs`` cache and a per-block design
     # would disagree (one emits the unprefixed name, the other the prefixed
     # one), breaking .o reuse — undefined symbol at link, or a missing-file
-    # copy.  ``digest`` is a pure function of ``cache_key``, so prefixing every
+    # copy.  ``digest`` is a pure function of ``identity``, so prefixing every
     # parameterized variant unconditionally keeps the symbol and the
     # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
     # When ``digest`` is None (unparameterized default-name kernel, or an
@@ -642,33 +625,12 @@ def _make_extern(
     # ``llvm-objcopy --redefine-sym`` (see compile_external_kernel), which only
     # understands ELF — it corrupts xchesscc-produced objects ("Invalid section
     # index ... when converting EOL-table").  So a chess kernel must NOT carry a
-    # symbol_prefix; it keeps the bare symbol baked into its .cc.  That is safe
-    # only while at most one variant of a given chess kernel name exists in a
-    # design (two would export the same bare symbol and collide at link).  Guard
-    # that invariant loudly here rather than letting it surface as an opaque
-    # duplicate-symbol link error.  The .o *filename* stays the deterministic
-    # suffix form regardless — only the symbol rename is skipped.
-    if use_chess:
-        # ``cache_key`` layout: (func_name, source_path, arg_keys, flags, chess).
-        # A prior chess entry with the same func_name but any other field
-        # different is a genuine second variant that we cannot disambiguate.
-        for other_key in _EXTERN_CACHE:
-            if (
-                other_key[0] == func_name
-                and other_key[4] is True
-                and other_key != cache_key
-            ):
-                raise ValueError(
-                    f"Chess kernel '{func_name}' already has a different "
-                    f"parameterization registered.  Chess (.o) objects cannot "
-                    f"be symbol-renamed (llvm-objcopy corrupts them), so two "
-                    f"variants of the same chess kernel name would export the "
-                    f"same symbol and collide at link.  Give one a distinct "
-                    f"`name=` (or build it with Peano)."
-                )
-        symbol_prefix = None
-    else:
-        symbol_prefix = None if inline else digest
+    # symbol_prefix; it keeps the bare symbol baked into its .cc, so two
+    # variants of one chess kernel cannot share a design: resolving the second
+    # finds the first's declaration with a different object and raises.  The .o
+    # *filename* stays the deterministic suffix form regardless -- only the
+    # symbol rename is skipped.
+    symbol_prefix = None if use_chess or inline else digest
 
     extern = cls(
         func_name,
@@ -684,5 +646,4 @@ def _make_extern(
     )
     if contract is not None:
         contract.validate_types(extern.arg_types())
-    _EXTERN_CACHE[cache_key] = extern
     return extern

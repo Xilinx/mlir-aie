@@ -549,10 +549,11 @@ def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("generator_kind", ["callable", "path"])
 @pytest.mark.parametrize("tool", ["aiecc", "peano_cxx", "host_cxx"])
 @pytest.mark.parametrize("change", ["mtime", "size", "path"])
 def test_artifact_hash_tracks_active_compilers(
-    monkeypatch, tmp_path, dynamic, tool, change
+    monkeypatch, tmp_path, dynamic, generator_kind, tool, change
 ):
     import os
 
@@ -562,7 +563,11 @@ def test_artifact_hash_tracks_active_compilers(
     compiler = tmp_path / tool
     compiler.write_text("compiler")
     monkeypatch.setattr(config, f"{tool}_path", lambda: str(compiler))
-    generator = _gemm_gen()
+    generator = (
+        _gemm_gen() if generator_kind == "callable" else tmp_path / "design.mlir"
+    )
+    if isinstance(generator, Path):
+        generator.write_text("module {}")
 
     before = _compute_artifact_hash(generator, [], [], True, dynamic)
     stat = compiler.stat()
@@ -579,13 +584,42 @@ def test_artifact_hash_tracks_active_compilers(
         compiler = replacement
     after = _compute_artifact_hash(generator, [], [], True, dynamic)
 
-    assert (before != after) == (tool != "host_cxx" or dynamic)
+    assert (before != after) == (
+        tool != "host_cxx" or (dynamic and generator_kind == "callable")
+    )
 
 
 def test_hash_for_path_generator_uses_path_string():
     d1 = CompilableDesign(Path("/a/design.mlir"))
     d2 = CompilableDesign(Path("/b/design.mlir"))
     assert hash(d1) != hash(d2)
+
+
+@pytest.mark.parametrize("use_cache", [False, True])
+@pytest.mark.parametrize("current_outputs", [False, True])
+def test_explicit_outputs_discard_objects_when_cache_disabled(
+    tmp_path, use_cache, current_outputs
+):
+    from aie.utils.compile.jit import _manifest
+
+    kernel_dir = tmp_path / "work"
+    kernel_dir.mkdir()
+    obj = kernel_dir / "kernel.o"
+    obj.write_bytes(b"previous compilation")
+    output = tmp_path / "design.xclbin"
+    output.write_bytes(b"previous output")
+    _manifest.record(kernel_dir, [], [])
+    if current_outputs:
+        _manifest.record_outputs(kernel_dir, "build-key", [output])
+    assert _manifest.is_valid(kernel_dir)
+
+    design = CompilableDesign(_gemm_gen()).specialize(use_cache=use_cache)
+    reused = design._reuse_explicit_outputs(
+        kernel_dir, "build-key", {"xclbin": output}, shared=False
+    )
+
+    assert reused == (use_cache and current_outputs)
+    assert obj.exists() == use_cache
 
 
 def test_hash_for_existing_source_file_tracks_content(tmp_path):
@@ -1666,7 +1700,12 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
     calls = []
 
     def fake_compile_external_kernels(
-        funcs, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+        funcs,
+        kernel_dir,
+        target_arch,
+        include_dirs=None,
+        embed_bitcode=False,
+        object_cache=None,
     ):
         assert not embed_bitcode
         calls.append((list(funcs), include_dirs))

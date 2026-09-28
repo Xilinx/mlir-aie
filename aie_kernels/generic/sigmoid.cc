@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
+#include "activations.h" // tanh_bf16_v16
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -15,8 +16,10 @@ using namespace aie;
 #define SIGMOID_ELEMS vector_size
 #endif
 
-// sigmoid(x) = 0.5 * (1 + tanh(x/2)), 32 bf16 elements per iteration.  The
-// native tanh works on 16 float lanes, so tanh(x/2) is computed on two halves.
+// sigmoid(x) = 0.5 * (1 + tanh(x/2)), 32 bf16 elements per iteration, with
+// tanh(x/2) on the two 16-lane halves both tanh paths work in. Passing the
+// multiply's accumulator straight in keeps x/2 in f32 on AIE2P; AIE2's LUT
+// narrows it, which is the accuracy difference between the two architectures.
 void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
                               bfloat16 *restrict output_vector,
                               const int32_t vector_size) {
@@ -34,11 +37,8 @@ void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
   for (int i = 0; i < num_elems; i += 32) {
     auto input = *it_in++;
 
-    // tanh(x/2) computed on two 16-wide halves, then recombined.
-    auto half_x_lo = aie::mul(input.extract<16>(0), register_0_5);
-    auto half_x_hi = aie::mul(input.extract<16>(1), register_0_5);
-    auto tanh_lo = aie::tanh<bfloat16>(half_x_lo.to_vector<float>());
-    auto tanh_hi = aie::tanh<bfloat16>(half_x_hi.to_vector<float>());
+    auto tanh_lo = tanh_bf16_v16(aie::mul(input.extract<16>(0), register_0_5));
+    auto tanh_hi = tanh_bf16_v16(aie::mul(input.extract<16>(1), register_0_5));
     aie::vector<bfloat16, 32> tanh_half_x = aie::concat(tanh_lo, tanh_hi);
 
     auto one_plus = aie::add(tanh_half_x, register_1);

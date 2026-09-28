@@ -28,8 +28,8 @@ def device(request):
 def test_fused_variants_have_distinct_symbols_and_reuse_bindings(device):
     plain = fused_mm()
     activated = fused_mm(epilogue="silu")
-    assert fused_mm() is plain
-    assert fused_mm(epilogue="silu") is activated
+    assert fused_mm() == plain
+    assert fused_mm(epilogue="silu") == activated
     assert plain.name != activated.name
     assert plain.object_file_name != activated.object_file_name
     assert plain._symbol_prefix and activated._symbol_prefix
@@ -56,9 +56,9 @@ def test_fused_architectures_have_distinct_symbols():
         aie2p = fused_mm()
         assert aie2.name != aie2p.name
         assert aie2.object_file_name != aie2p.object_file_name
-        assert fused_mm() is aie2p
+        assert fused_mm() == aie2p
         set_current_device(NPU1Col1())
-        assert fused_mm() is aie2
+        assert fused_mm() == aie2
     finally:
         set_current_device(None)
 

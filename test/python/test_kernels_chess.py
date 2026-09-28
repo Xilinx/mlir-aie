@@ -22,6 +22,8 @@ import numpy as np
 import pytest
 from ml_dtypes import bfloat16
 
+from aie.dialects.aie import AIEDevice, device
+from aie.extras.context import mlir_mod_ctx
 from aie.iron import kernels
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit.compilabledesign import _compute_hash
@@ -146,21 +148,21 @@ def test_kernels_mm_chess_distinct_object_file_from_peano():
     assert ef_chess.object_file_name != ef_peano.object_file_name
 
 
-def test_kernels_mm_chess_and_peano_get_distinct_instances():
-    """Memoization keys on use_chess: chess and peano variants of the same
-    shape/dtype return distinct ExternalFunctions (not aliased)."""
+def test_kernels_mm_chess_and_peano_are_different_kernels():
+    """A kernel's identity includes use_chess: chess and peano variants of the
+    same shape/dtype are distinct ExternalFunctions (not aliased)."""
     ef_chess = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
     ef_peano = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
-    assert ef_chess is not ef_peano
+    assert ef_chess != ef_peano
 
 
-def test_kernels_mm_chess_memoized_same_params():
-    """Two identical kernels.mm(use_chess=True) calls return the same instance
-    (the memoization layer must include use_chess in its cache key but not
-    treat each call as new)."""
+def test_kernels_mm_chess_same_params_share_one_object():
+    """Two identical kernels.mm(use_chess=True) calls return equal kernels that
+    share one object."""
     ef1 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
     ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
-    assert ef1 is ef2
+    assert ef1 == ef2
+    assert ef1.object_file is ef2.object_file
 
 
 def test_kernels_mm_chess_kernel_keeps_bare_symbol():
@@ -175,13 +177,33 @@ def test_kernels_mm_chess_kernel_keeps_bare_symbol():
     assert "matmul_i16_i16" in ef.object_file_name
 
 
-def test_kernels_mm_two_chess_variants_raise():
+def test_kernels_mm_two_chess_variants_in_one_design_raise():
     """Two different parameterizations of the same chess kernel name cannot be
-    disambiguated (chess .o can't be symbol-renamed), so the second raises a
-    loud error rather than silently colliding on the same exported symbol."""
-    kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False, use_chess=True)
-    with pytest.raises(ValueError, match="Chess kernel 'matmul_i16_i16'"):
-        kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True, use_chess=True)
+    disambiguated (chess .o can't be symbol-renamed), so declaring both in one
+    design raises rather than silently colliding on the same exported symbol."""
+    row_major, col_major = (
+        kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=c_col_maj, use_chess=True)
+        for c_col_maj in (False, True)
+    )
+
+    def body():
+        row_major.resolve()
+        col_major.resolve()
+
+    with mlir_mod_ctx():
+        with pytest.raises(ValueError, match="'matmul_i16_i16' conflicts.*link_with"):
+            device(AIEDevice.npu2_1col)(body)
+
+
+def test_kernels_mm_two_chess_variants_in_separate_designs_are_fine():
+    """The conflict is per design: each variant alone declares cleanly."""
+    for c_col_maj in (False, True):
+        kernel = kernels.mm(
+            dim_m=64, dim_k=64, dim_n=32, c_col_maj=c_col_maj, use_chess=True
+        )
+        with mlir_mod_ctx() as ctx:
+            device(AIEDevice.npu2_1col)(lambda: kernel.resolve())
+        assert "@matmul_i16_i16" in str(ctx.module)
 
 
 @pytest.mark.parametrize(
@@ -333,5 +355,5 @@ def test_kernels_mm_emulated_bf16_distinct_cache_from_default(npu2_device):
         output_dtype=bfloat16,
         emulate_bf16_mmul_with_bfp16=True,
     )
-    assert ef_default is not ef_emulated
+    assert ef_default != ef_emulated
     assert ef_default.object_file_name != ef_emulated.object_file_name

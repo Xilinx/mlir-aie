@@ -2,10 +2,7 @@ diff --git a/driver/src/common/xaie_txn.c b/driver/src/common/xaie_txn.c
 index 4f2be11c..7bc5baaf 100644
 --- a/driver/src/common/xaie_txn.c
 +++ b/driver/src/common/xaie_txn.c
-@@ -706,22 +706,6 @@ static inline void _XAie_AppendMaskPollBusy32(XAie_DevInst *DevInst,
- 	Hdr->OpHdr.Op = (u8)XAIE_IO_MASKPOLL_BUSY;
- }
- 
+@@ -709,19 +709,3 @@ static inline void _XAie_AppendMaskPollBusy32(XAie_DevInst *DevInst,
 -static inline void _XAie_AppendBlockWrite32(XAie_DevInst *DevInst,
 -		XAie_TxnCmd *Cmd, u8 *TxnPtr)
 -{

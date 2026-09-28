@@ -220,6 +220,6 @@ def preflight() -> Preflight:
     return Preflight(
         npu="npu2" if arch == "aie2p" else "npu1",
         arch=arch,
-        device=str(device),
+        device=runtime.device_name() or type(device).__name__,
         pmode=runtime.power_mode(),
     )

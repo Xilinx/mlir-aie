@@ -5,7 +5,7 @@
 #
 
 # RUN: %pytest %s
-"""Memoization, collision protection, independent zero, and auto-prefix
+"""Equal-kernel sharing, collision protection, independent zero, and auto-prefix
 on symbol collision for the aie.iron.kernels factory functions.
 
 Sibling files:
@@ -29,10 +29,10 @@ from aie.iron.kernel import ExternalFunction, Kernel
 # The wrong-flag kernel won the race, producing wrong hardware output.
 #
 # These tests pin down the two defenses:
-#   (A) _make_extern memoizes on the full input parameter set, so identical
-#       helper calls return the SAME instance.  Different parameterizations
-#       get distinct instances AND distinct object_file_names (auto-suffixed
-#       with a digest of compile_flags).
+#   (A) _make_extern derives a kernel's identity from the full input
+#       parameter set, so identical helper calls return equal kernels that
+#       share one object.  Different parameterizations get distinct
+#       object_file_names (auto-suffixed with a digest of compile_flags).
 #   (B) ExternalFunction.__init__ refuses to register two instances with
 #       the same (name, object_file_name) but a different content digest —
 #       a backstop for code that bypasses the helper (constructs
@@ -40,22 +40,23 @@ from aie.iron.kernel import ExternalFunction, Kernel
 # ---------------------------------------------------------------------------
 
 
-def test_kernels_mm_memoized_same_params_returns_same_instance():
-    """Defense A: identical kernels.mm() calls return the exact same instance."""
+def test_kernels_mm_same_params_share_one_object():
+    """Defense A: identical kernels.mm() calls return equal kernels, one object."""
     ef1 = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
     ef2 = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
-    assert ef1 is ef2
+    assert ef1 == ef2
+    assert ef1.object_file is ef2.object_file
 
 
-def test_kernels_mm_different_params_returns_different_instances():
-    """Defense A: different params get distinct instances (no spurious sharing)."""
+def test_kernels_mm_different_params_are_different_kernels():
+    """Defense A: different params get distinct kernels (no spurious sharing)."""
     ef_plain = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
     ef_ccm = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
-    assert ef_plain is not ef_ccm
+    assert ef_plain != ef_ccm
 
 
 def test_kernels_mm_different_params_have_distinct_object_files():
@@ -217,14 +218,14 @@ def test_mm_zero_initializer_is_independent_kernel():
     )
     zero = ef.contract.initializers[0][1](ef)
     assert isinstance(zero, Kernel)
-    assert zero is kernels.zero(64 * 32, np.int16)
+    assert zero == kernels.zero(64 * 32, np.int16)
     assert zero.object_file is not ef.object_file
 
 
 def test_zero_initializer_reused_across_matmul_reduction_sizes():
     first = kernels.mm(dim_m=64, dim_k=64, dim_n=32)
     second = kernels.mm(dim_m=64, dim_k=32, dim_n=32)
-    assert first.contract.initializers[0][1](first) is second.contract.initializers[0][
+    assert first.contract.initializers[0][1](first) == second.contract.initializers[0][
         1
     ](second)
 
@@ -244,7 +245,7 @@ def test_zero_scalar_variant():
 def test_mv_zero_initializer_is_independent_kernel():
     ef = kernels.mv(dim_m=32, dim_k=32, vectorized=False)
     zero = ef.contract.initializers[0][1](ef)
-    assert zero is kernels.zero(32, np.int32)
+    assert zero == kernels.zero(32, np.int32)
     assert zero.object_file is not ef.object_file
 
 

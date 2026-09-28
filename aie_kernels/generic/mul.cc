@@ -1,9 +1,11 @@
-//===- scale.cc -------------------------------------------------*- C++ -*-===//
+//===- mul.cc -------------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2023 Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+
+#define NOCPP
 
 #include <stdint.h>
 #include <stdio.h>
@@ -17,6 +19,13 @@
 #define MUL_ELEMS size
 #endif
 
+// See add.cc: one bf16 vector register, 512 bits on AIE2P and 256 on AIE2.
+#if __AIE_ARCH__ >= 21
+#define MUL_VEC_FACTOR 32
+#else
+#define MUL_VEC_FACTOR 16
+#endif
+
 template <typename T_in, typename T_out, const int N>
 void eltwise_mul(T_in *a, T_in *b, T_out *c) {
   for (int i = 0; i < N; i++) {
@@ -27,7 +36,7 @@ void eltwise_mul(T_in *a, T_in *b, T_out *c) {
 template <typename T_in, typename T_out, const int N>
 void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
 
-  constexpr int vec_factor = 16;
+  constexpr int vec_factor = MUL_VEC_FACTOR;
   event0();
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;
@@ -40,17 +49,22 @@ void eltwise_vmul(T_in *a, T_in *b, T_out *c) {
     pA1 += vec_factor;
     aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
     pB1 += vec_factor;
-    aie::vector<T_out, vec_factor> cout = aie::mul(A0, B0);
+    // aie::mul on bf16 yields an accumulator (fp32 products); convert back to
+    // T_out explicitly.  Assigning the accumulator straight into a
+    // vector<T_out> produces garbage at the 32-wide AIE2P width.
+    aie::vector<T_out, vec_factor> cout =
+        aie::mul(A0, B0).template to_vector<T_out>();
     aie::store_v(pC1, cout);
     pC1 += vec_factor;
   }
   event1();
 }
 
-// Runtime size with a scalar tail.
+// Runtime size (need not divide vec_factor); scalar tail avoids the full-width
+// load_v/store_v reading/writing past the buffer on a short final vector.
 template <typename T_in, typename T_out>
 void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
-  constexpr int vec_factor = 16;
+  constexpr int vec_factor = MUL_VEC_FACTOR;
   event0();
   T_in *__restrict pA1 = a;
   T_in *__restrict pB1 = b;
@@ -62,11 +76,13 @@ void eltwise_vmul_size(T_in *a, T_in *b, T_out *c, int size) {
     pA1 += vec_factor;
     aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
     pB1 += vec_factor;
-    aie::vector<T_out, vec_factor> cout = aie::mul(A0, B0);
+    aie::vector<T_out, vec_factor> cout =
+        aie::mul(A0, B0).template to_vector<T_out>();
     aie::store_v(pC1, cout);
     pC1 += vec_factor;
   }
-  const int tail = MUL_ELEMS - F * vec_factor;
+  const int tail =
+      MUL_ELEMS - F * vec_factor; // pA1/pB1/pC1 point past vector body
   for (int i = 0; i < tail; i++) {
     pC1[i] = pA1[i] * pB1[i];
   }

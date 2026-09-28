@@ -1,0 +1,8 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# REQUIRES: peano, system-linux
+# RUN: rm -rf %t.d && mkdir -p %t.d
+# RUN: cp %S/device_cache.mlir %t.d/design.mlir
+# RUN: clang++ --target=aie2p-none-unknown-elf -O2 -DBUMP=1 -c %S/device_cache_kernel.cc -o %t.d/device_cache_kernel.o
+# RUN: %PYTHON %S/Inputs/device_cache_concurrent.py %t.d %t.d/design.mlir llc aiecc

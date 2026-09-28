@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
-#include "lut_based_ops.h"
+#include "activations.h" // tanh_bf16_v16
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
@@ -16,21 +16,23 @@ using namespace aie;
 #define TANH_ELEMS vector_size
 #endif
 
-// LUT-based tanh (aie2 has no native tanh intrinsic), 32 bf16 elems/iter.
+// 32 bf16 elements per iteration, split into the two 16-lane halves both tanh
+// paths work in and re-concatenated.
 void tanh_bf16_vectorized(bfloat16 *restrict input_vector,
                           bfloat16 *restrict output_vector,
                           const int32_t vector_size) {
   event0();
 
+  const int num_elems = TANH_ELEMS;
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);
 
   AIE_PREPARE_FOR_PIPELINING
-  for (int i = 0; i < TANH_ELEMS; i += 32) {
+  for (int i = 0; i < num_elems; i += 32) {
     auto input = *it_in++;
 
-    aie::vector<bfloat16, 16> tanh_lo = getTanhBf16(input.extract<16>(0));
-    aie::vector<bfloat16, 16> tanh_hi = getTanhBf16(input.extract<16>(1));
+    auto tanh_lo = tanh_bf16_v16(input.extract<16>(0));
+    auto tanh_hi = tanh_bf16_v16(input.extract<16>(1));
 
     *it_out++ = aie::concat(tanh_lo, tanh_hi);
   }

@@ -1,9 +1,14 @@
-//===- mv.cc ----------------------------------------------000---*- C++ -*-===//
+//===- mv_i16.cc ------------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2023 Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+//
+// int16 x int16 -> int32 matrix-vector multiply; the vectorized path reads A
+// word-transposed. mv_bf16.cc is the bf16 counterpart, IRON's GEMV, with a
+// row-major A and a different signature. They shared the name mv.cc, in two
+// directories, which said nothing about which was which.
 
 #define NOCPP
 

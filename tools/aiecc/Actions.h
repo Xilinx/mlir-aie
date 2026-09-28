@@ -22,6 +22,7 @@
 #include "Utils.h"
 
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallString.h"
@@ -84,6 +85,28 @@ inline mlir::OwningOpRef<mlir::ModuleOp> asModule(const Item<File> &in,
   return parseModuleFromFile(in.asFile(), ctx);
 }
 
+// Run `pm` on `op` and verify what it produced. MLIR verifies the whole op
+// after every pass by default, which on a large design costs more than the
+// passes themselves; verifying the result once still keeps invalid IR from
+// reaching a later step, a translation, the device cache or a `--get` dump.
+// `verifyEachPass` (--verify-each) restores the per-pass verification, which
+// names the pass that broke the IR.
+inline bool verifyEachPass = false;
+
+inline mlir::LogicalResult runPasses(mlir::PassManager &pm,
+                                     mlir::Operation *op) {
+  pm.enableVerifier(verifyEachPass);
+  if (mlir::failed(pm.run(op))) {
+    return mlir::failure();
+  }
+  if (!verifyEachPass && mlir::failed(mlir::verify(op))) {
+    llvm::errs() << "aiecc: a pass produced invalid IR; rerun with "
+                    "--verify-each to find which\n";
+    return mlir::failure();
+  }
+  return mlir::success();
+}
+
 // PassPipeline — execute an MLIR pass-pipeline on a clone of the input.
 // Accepts any payload the asModule overloads accept (ModRef / OpInModule /
 // File); any other payload type fails to compile.
@@ -126,7 +149,7 @@ struct PassPipeline {
       }
       pm = built.get();
     }
-    if (mlir::failed(pm->run(*mod))) {
+    if (mlir::failed(runPasses(*pm, *mod))) {
       return mlir::failure();
     }
     out.value = std::move(mod);

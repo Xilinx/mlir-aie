@@ -33,6 +33,8 @@ import hashlib
 import json
 import logging
 import marshal
+import os
+from functools import partial
 from pathlib import Path
 from types import CodeType
 from typing import Any, Callable, Mapping
@@ -202,15 +204,34 @@ def _compute_recipe_hash(
     return h.hexdigest()
 
 
-def _tool_identity(name: str, resolve: Callable[[], str | Path]) -> str:
-    """Identify a resolved compiler component without probing an executable."""
+def _tool_identity(
+    name: str, resolve: Callable[[], str | Path], *, expected: bool = True
+) -> str:
+    """Identify a resolved compiler component without probing an executable.
+
+    A tool that is not ``expected`` may legitimately be missing, so its absence
+    is hashed without a warning.
+    """
     try:
         path = Path(resolve()).resolve()
         stat = path.stat()
         return f"{path}:{stat.st_mtime_ns}:{stat.st_size}"
     except (ImportError, AttributeError, OSError, RuntimeError) as exc:
-        logger.warning("_compute_artifact_hash: %s absent (%s)", name, exc)
+        if expected:
+            logger.warning("_compute_artifact_hash: %s absent (%s)", name, exc)
         return "absent"
+
+
+def _aiecc_option(flags: list[str] | tuple[str, ...], name: str) -> str | None:
+    """Return the value of a string-valued aiecc option."""
+    options = (f"--{name}", f"-{name}")
+    for index, flag in enumerate(flags):
+        for option in options:
+            if flag.startswith(f"{option}="):
+                return flag.split("=", 1)[1]
+            if flag == option and index + 1 < len(flags):
+                return flags[index + 1]
+    return None
 
 
 def _compute_artifact_hash(
@@ -219,6 +240,11 @@ def _compute_artifact_hash(
     object_files: list[Path] | tuple[Path, ...],
     fold_ddr_addr_offset: bool,
     has_dispatch_params: bool = False,
+    full_elf: bool = False,
+    insts_only: bool = False,
+    aiecc_flags: list[str] | tuple[str, ...] = (),
+    emit_elf: bool = False,
+    work_dir: Path | None = None,
 ) -> str:
     """Hash of the "artifacts": source/object content + tool mtimes + device.
 
@@ -234,8 +260,22 @@ def _compute_artifact_hash(
     ``has_dispatch_params`` additionally hashes the host C++ compiler used to
     build the dispatch library. Its generated source is covered by aiecc's
     identity above; Python does not run a separate translation pipeline.
+
+    Every tool that packages a requested image is hashed too: ``aiebu-asm`` for
+    an ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
+    alone. Both images embed a PDI, so they also hash the ``bootgen`` aiecc
+    would run. aiecc may link bootgen in instead, which Python cannot tell, so
+    a missing ``bootgen`` is not an error.
     """
+    from aie.utils import config as _config
+
     h = hashlib.sha256()
+    tools = {
+        "peano": _config.peano_cxx_path,
+        "aiecc": _config.aiecc_path,
+        "nm": _config.nm_path,
+        "objcopy": _config.objcopy_path,
+    }
 
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
@@ -266,16 +306,40 @@ def _compute_artifact_hash(
             target_device = ("unknown", "", "", "")
 
         h.update(f"target_arch={target_arch}|target_device={target_device!r}".encode())
-        from aie.utils import config as _config
-
-        tools = {
-            "peano": _config.peano_cxx_path,
-            "aiecc": _config.aiecc_path,
-        }
         if has_dispatch_params:
             tools["host_cxx"] = _config.host_cxx_path
-        for name, resolve in tools.items():
-            h.update(f"{name}={_tool_identity(name, resolve)}".encode())
+    optional = set()
+    if full_elf or not insts_only:
+        tools["bootgen"] = partial(_config.aiecc_tool_path, "bootgen")
+        optional.add("bootgen")
+    if full_elf:
+        tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
+    elif not insts_only:
+        xclbinutil_override = _aiecc_option(aiecc_flags, "xclbinutil-path")
+        if not xclbinutil_override:
+            xclbinutil_override = os.environ.get("AIE_XCLBINUTIL")
+        if (
+            xclbinutil_override
+            and not Path(xclbinutil_override).is_absolute()
+            and any(sep and sep in xclbinutil_override for sep in (os.sep, os.altsep))
+            and work_dir is None
+        ):
+            raise ValueError(
+                "A relative xclbinutil path requires an explicit output path so "
+                "it can be resolved from aie's work directory; use an absolute "
+                "path with the JIT cache."
+            )
+        tools["xclbinutil"] = partial(
+            _config.aiecc_tool_path,
+            "xclbinutil",
+            override=xclbinutil_override,
+            cwd=work_dir,
+        )
+        if emit_elf:
+            tools["aiebu-asm"] = partial(_config.aiecc_tool_path, "aiebu-asm")
+    for name, resolve in tools.items():
+        identity = _tool_identity(name, resolve, expected=name not in optional)
+        h.update(f"{name}={identity}".encode())
 
     return h.hexdigest()
 
@@ -292,6 +356,8 @@ def _compute_hash(
     has_dispatch_params: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
     insts_only: bool = False,
+    emit_elf: bool = False,
+    work_dir: Path | None = None,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
@@ -309,5 +375,10 @@ def _compute_hash(
         object_files,
         fold_ddr_addr_offset,
         has_dispatch_params,
+        full_elf,
+        insts_only,
+        aiecc_flags,
+        emit_elf,
+        work_dir,
     )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

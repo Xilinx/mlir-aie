@@ -277,25 +277,43 @@ def _block_layout(shape, *, axes=None, stream=None):
     return TensorLayout(shape, pack=pack, unpack=unpack, stream=stream, block=(8, 8))
 
 
-def _zero_output(fn):
-    shape, dtype = get_args(fn.arg_types()[2])
+def _zero_output(fn, *, index: int = 2):
+    """Build the independent ``zero`` that clears an accumulating output.
+
+    ``index`` is which argument accumulates: 2 for the C of a matmul, which is
+    every caller bar ``prefill_fv``, whose y comes first.
+    """
+    shape, dtype = get_args(fn.arg_types()[index])
     return zero(shape, get_args(dtype)[0], use_chess=fn.use_chess)
 
 
-# programming_examples/ml/block_datatypes/matrix_multiplication/{bfp,mixed}_test.cpp:
-# the bf16 matmul tolerances, with 3x the absolute term for a bfp16 C (its
-# 8-bit mantissas share one exponent per 8 values) and 2x the relative term
-# when the core converts a bf16 A itself.
+# The block_datatypes {bfp,mixed}_test.cpp harnesses state these as rtol/atol.
+# Both are a fraction of the output range here instead, because that is what a
+# bfp matmul's error is a fraction of: every output is a K-term dot product of
+# the same operands, so its absolute error comes from their quantization and
+# does not shrink for an output whose terms happened to cancel. An elementwise
+# relative bound calls such an output entirely wrong -- a 64x64x64 large tile
+# failed at rtol=0.1 on an element 2.8e-4 of the range from its reference --
+# and a fixed atol is dead or permissive by turns as the range moves between
+# 34 and 3.4e9. The unit below is one bfp16ebs8 mantissa half-step, 2^-8 of a
+# block's scale, its 8 bits being shared across the block of 8.
+_BFP_RANGE_UNIT = 2.0**-8
+# A bfp16 C quantizes its own output as well as A, so two half-steps of budget
+# rather than one. Measured worst case 1.86, over both block counts and both
+# data regimes, so 4 leaves headroom for the mechanism and not just the sample.
 _BFP_TOLERANCE = Tolerance.relative(
-    0.05, 1.5, note="bfp_test.cpp: bf16 rel_tol, 3x abs_tol for the bfp16 C"
+    0.0,
+    range_frac=4 * _BFP_RANGE_UNIT,
+    note="4 bfp16ebs8 half-steps of output range, A and C quantized; measured 1.86",
 )
-# The doubled relative term dates from a reference that did not model the
-# in-core conversion at all. It does now, under the conv_even the contract's
-# setup selects, which took a 64x64x64 large tile from 1369 mismatching
-# outputs to 10 -- so this is slack the reference no longer needs, and
-# tightening it is a separate measurement rather than an edit.
+# Only A is quantized here, so one half-step of budget; measured worst case
+# 1.14. rtol is 0 in both: at these floors the relative term cleared nothing
+# the floor had not, in all eight configurations measured, while the rtol=0.1
+# this replaces admitted 20% error at the top of the range -- 25x looser.
 _BFP_MIXED_TOLERANCE = Tolerance.relative(
-    0.1, 0.5, note="mixed_test.cpp: 2x bf16 rel_tol for the in-core bf16->bfp16 A"
+    0.0,
+    range_frac=2 * _BFP_RANGE_UNIT,
+    note="2 bfp16ebs8 half-steps of output range, in-core bf16->bfp16 A; measured 1.14",
 )
 
 
@@ -615,12 +633,12 @@ def mv(
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
-    ``(np.int16, np.int32)`` builds ``aie_kernels/<arch>/mv.cc``; its
+    ``(np.int16, np.int32)`` builds ``aie_kernels/generic/mv_i16.cc``; its
     vectorized path reads A word-transposed, which A's layout carries
     (``contract.layouts[0].stream``). Its ``.zero`` companion initializes C
     with the independent ``kernels.zero(dim_m, output_dtype)``.
     ``(bfloat16, bfloat16)`` builds
-    ``aie_kernels/generic/mv.cc``, IRON's ``GEMV`` kernel, whose signature
+    ``aie_kernels/generic/mv_bf16.cc``, IRON's ``GEMV`` kernel, whose signature
     is ``(m, row_offset, A, b, c)``: ``row_offset`` shifts the write into
     ``c`` so one core can fill several output blocks; A is row-major.
 
@@ -654,7 +672,7 @@ def mv(
     b_ty = np.ndarray[(dim_k,), np.dtype[np.int16]]
     c_ty = np.ndarray[(dim_m,), np.dtype[np.int32]]
     # The vectorized kernel reads A in a "32-bit-word transposed" layout (see
-    # aie_kernels/aie2/mv.cc): 2-byte elements are packed two per word, rows
+    # aie_kernels/generic/mv_i16.cc): 2-byte elements are packed two per word, rows
     # of each 2-column word slowly, m rows then the next 2-col word. A design
     # applies this as dims_from_stream on the hop into the core, reading it
     # from the layout (programming_examples/basic/matrix_multiplication/
@@ -664,7 +682,7 @@ def mv(
     )
     return _make_extern(
         f"{prefix}_i16_i32",
-        _default_source_path("mv.cc"),
+        _default_source_path("mv_i16.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
         use_chess=use_chess,
@@ -687,7 +705,7 @@ def mv(
 
 
 def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
-    """bf16 matvec from ``aie_kernels/generic/mv.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
+    """bf16 matvec from ``aie_kernels/generic/mv_bf16.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
         raise ValueError(
             f"mv(): dim_k ({dim_k}) must be a positive multiple of vec_size ({vec_size})"
@@ -698,7 +716,7 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
     c_ty = np.ndarray[(dim_m,), np.dtype[bfloat16]]
     return _make_extern(
         f"{prefix}_bf16_bf16",
-        _default_source_path("mv.cc", subdir="generic"),
+        _default_source_path("mv_bf16.cc", subdir="generic"),
         [np.int32, np.int32, a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"],
         use_chess=use_chess,
@@ -967,6 +985,122 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> MatrixKernel:
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
     )
+
+
+# head_dim -> (LQ, LK, stack_bytes) for flash_attn_prefill.h's PrefillGeom
+# specializations: 512 is global attention, 256 sliding-window. The stack is
+# aiecc's measured_stack_size. The sliding-window geometry wants six times the
+# global one's because its 2x2 decomposition keeps four MMUL accumulators and
+# four S vectors live at once, which spills.
+_PREFILL_GEOM = {512: (8, 8, 960), 256: (16, 16, 5824)}
+
+
+def prefill_fv(head_dim: int = 512) -> ExternalFunction:
+    """Flash-attention prefill toolkit from ``aie_kernels/aie2p/flash_attn_prefill.cc`` (aie2p only).
+
+    One translation unit per geometry, exporting the five steps an attention
+    prefill dataflow composes over one query chunk. The returned kernel is the
+    ``y += S*V`` step, ``mm.cc``-style bf16 products on the native 8x8x8
+    micro-tile accumulating into a float32 y, so it is sampled and judged like
+    [`mm`][iron.kernels.linalg.mm]. Its key-chunk index ``j`` is bound to 0.
+
+    Bind the others from the same object with
+    ``fn.object_file.bind(symbol, arg_types)``: ``prefill_round_begin``,
+    ``prefill_qk_step``, ``prefill_block_mid``, ``prefill_epilogue``.
+
+    One reference serves both geometries even though they decompose
+    differently, because ``PrefillGeom<256>::reorder_s`` deinterleaves its 2x2
+    ``attn_qk`` output into the same block order the 1x1 geometry produces
+    directly, and ``block_mid`` runs it before this step sees S. The
+    geometries differ only in operand *storage* order, which the layouts carry.
+
+    ``head_dim`` picks the geometry, and two instantiations coexist in one
+    design: differing ``-DPREFILL_HEAD_DIM`` gives each its own object and its
+    own symbol prefix.
+
+    Args:
+        head_dim: 512 for global attention, 256 for sliding-window.
+    """
+    if _detect_arch() != "aie2p":
+        raise NotImplementedError(
+            "prefill_fv: flash_attn_prefill.cc is an AIE2P kernel; select an NPU2 device"
+        )
+    if head_dim not in _PREFILL_GEOM:
+        raise ValueError(f"prefill_fv: head_dim must be 512 or 256, got {head_dim}")
+    lq, lk, stack_bytes = _PREFILL_GEOM[head_dim]
+    # flash_attn_prefill.h's MMUL is aie::mmul<8, 8, 8, bf16, bf16>, the native
+    # bf16 micro-tile, not the (4, 8, 8) _MM_MAC_DIMS records for mm.cc.
+    r = s = t = 8
+    y_ty = np.ndarray[(lq * head_dim,), np.dtype[np.float32]]
+    s_ty = np.ndarray[(lq * lk,), np.dtype[bfloat16]]
+    v_ty = np.ndarray[(lk * head_dim,), np.dtype[bfloat16]]
+    streams = mm_stream_dims(lq, lk, head_dim, (r, s, t))
+    # attn_fv walks V n-block-outer, k-block-inner -- the transpose of mm.cc's
+    # B block order, so this comes off _blocked rather than streams.B. At
+    # head_dim 512 LK is 8, making the k term degenerate, so only the 256
+    # geometry can tell the two orders apart.
+    k_blocks, n_blocks, *within = _blocked(lk, head_dim, s, t)
+    v_dims = [n_blocks, k_blocks, *within]
+    return _make_extern(
+        "prefill_fv_step",
+        _default_source_path("flash_attn_prefill.cc", subdir="aie2p"),
+        [y_ty, s_ty, v_ty, np.int32],
+        compile_flags=[f"-DPREFILL_HEAD_DIM={head_dim}"],
+        cls=_ZeroInitializedKernel,
+        contract=KernelContract(
+            setup=conv_even,
+            layouts=(
+                _tile_layout((lq, head_dim), streams.C, inverse=True, block=(r, t)),
+                _tile_layout((lq, lk), streams.A, block=(r, s)),
+                _tile_layout((lk, head_dim), v_dims, block=(s, t)),
+                None,
+            ),
+            roles=(InOut, In, In, Param),
+            parameter_bindings=((3, 0),),
+            initializers=((0, partial(_zero_output, index=0)),),
+            reference=partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
+            acc_dtype=np.float32,
+            reduction=lk,
+            stack_bytes=stack_bytes,  # aiecc measured_stack_size
+            # Derived, not inherited: _linalg_tolerance(bfloat16)'s 0.05/0.5 is
+            # for a kernel that narrows C back to bf16, and y here is float32.
+            # bf16 mantissas are 8 bits, so every product is exact in f32
+            # (8 + 8 < 24) and the only error against a float64 reference is
+            # f32 summation order over lk terms, bounded by lk * 2**-24 ~ 1e-6.
+            # The margin below that is ~10x, not the ~50000x inheriting would
+            # have given, which would hide nearly any real bug.
+            tolerance=Tolerance.relative(
+                1e-5,
+                1e-5,
+                note="f32 accumulation order over lk<=16 exact bf16 products: "
+                "lk * 2**-24 ~ 1e-6; verified on npu2 at this bound",
+            ),
+            ops_per_call=2 * lq * lk * head_dim,
+        ),
+    )
+
+
+def prefill_fv_ref(s, v, *, dim_m: int, dim_k: int, dim_n: int):
+    """Numpy reference for [`prefill_fv`][iron.kernels.linalg.prefill_fv]: one ``y += S @ V`` key chunk.
+
+    ``y`` is not an argument: it is ``InOut``, so the contract's initializer
+    zeroes it before each independent call and the reference computes the
+    whole product.
+
+    Accumulated in **float32**, not the float64 of
+    [`mm_tile_ref`][iron.kernels.linalg.mm_tile_ref]. The kernel's y is
+    float32 and its MMUL accumulates there, so a float64 reference is more
+    precise than the kernel is defined to be and the comparison measures that
+    gap rather than correctness. The difference is invisible when the product
+    narrows back to bf16, as every other matmul here does, and decisive when
+    it does not: on inputs near 1e4 the eight products reach 1e8 and cancel,
+    leaving a result near zero whose float64 and float32 sums differ by a
+    whole float32 ULP of the intermediate. Products themselves are exact
+    either way -- bf16 carries 8 mantissa bits and 8 + 8 < 24.
+    """
+    s = np.asarray(s).reshape(-1, dim_m, dim_k).astype(np.float32)
+    v = np.asarray(v).reshape(-1, dim_k, dim_n).astype(np.float32)
+    return (s @ v).reshape(len(s), dim_m * dim_n)
 
 
 def mm_bfp_shuffle_ref(tile, tile_width, tile_height, unshuffle):

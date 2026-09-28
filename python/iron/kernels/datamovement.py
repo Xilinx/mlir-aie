@@ -29,11 +29,13 @@ from ._common import (
 from .core import conv_even
 from .norm import _row_size
 
-_BF16_ROUNDTRIP = Tolerance.relative(
-    0.03,
-    0.05,
-    max_mismatch_frac=0.02,
-    note="fp32 compute, one bf16 rounding; tolerance measured by test_kernels_e2e",
+# One bf16 ulp with a subnormal floor; see eltwise._BF16_ROUNDTRIP for how the
+# two numbers are derived.
+_BF16_ROUNDTRIP = Tolerance.bf16_ulps(
+    1,
+    atol=2.0**-126,
+    note="fp32 compute, one bf16 rounding on the store; atol is the smallest "
+    "normal bf16, for the device's subnormal flush to zero",
 )
 
 

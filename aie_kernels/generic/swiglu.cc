@@ -7,15 +7,15 @@
 //===-------------------------------------------------- --------===//
 
 #include "../aie_kernel_utils.h"
+#include "activations.h" // tanh_bf16_v16
 #include <aie_api/aie.hpp>
+#include <stdint.h>
+
+using namespace aie;
 
 #ifndef SWIGLU_ELEMS
 #define SWIGLU_ELEMS vector_size
 #endif
-#include <lut_based_ops.h>
-#include <stdint.h>
-
-using namespace aie;
 
 void swiglu_tanh_approx_bf16(bfloat16 *restrict input_vector,
                              bfloat16 *restrict weight_vector_1,
@@ -50,9 +50,8 @@ void swiglu_tanh_approx_bf16(bfloat16 *restrict input_vector,
     aie::vector<bfloat16, 16> mul_input_weight_2 = aie::mul(input, weight_2);
 
     // Compute tanh approximation
-    aie::vector<bfloat16, 16> half_x =
-        aie::mul(mul_input_weight_2, register_0_5);
-    aie::vector<bfloat16, 16> tanh_half_x = getTanhBf16(half_x);
+    auto tanh_half_x =
+        tanh_bf16_v16(aie::mul(mul_input_weight_2, register_0_5));
     auto tanh_half_x_approx = aie::add(tanh_half_x, register_1);
     aie::vector<bfloat16, 16> sigmoid_approx =
         aie::mul(tanh_half_x_approx, register_0_5);

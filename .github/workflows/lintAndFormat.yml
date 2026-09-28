@@ -398,7 +398,7 @@ jobs:
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
+        uses: reviewdog/action-suggester@4553543bea739d9d503379d786148cfd561de5fa  # v1.25.0
         with:
           tool_name: clang-format
           level: error
@@ -421,7 +421,7 @@ jobs:
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
+        uses: reviewdog/action-suggester@4553543bea739d9d503379d786148cfd561de5fa  # v1.25.0
         with:
           tool_name: black
           level: error

@@ -11,6 +11,8 @@ remain in the ABI and must match the factory dimensions; scales, region checks
 and channel offsets remain runtime values.
 """
 
+from functools import partial
+
 import numpy as np
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, Out
@@ -26,6 +28,7 @@ from ._common import (
     _make_extern,
     dtypes,
 )
+from .core import conv_even
 
 
 def _i32s(n: int) -> list:
@@ -277,12 +280,12 @@ def conv2dk14_ref(
     return _requant(acc, scale, -128, 127, np.int8).reshape(*lead, OC * T)
 
 
-# dwconv1d.cc reads 16 elements past the last tap (aligned vector loads), so a
-# padded input row carries this much slack after the halo.
+# dwconv1d_channels_first.cc reads 16 elements past the last tap (aligned vector
+# loads), so a padded input row carries this much slack after the halo.
 DWCONV1D_TAIL = 16
 
 
-def dwconv1d(
+def dwconv1d_channels_first(
     seq_len: int = 1024, kernel_size: int = 9, bias: bool = True
 ) -> ExternalFunction:
     """Depthwise 1-D cross-correlation on one bf16 channel (aie2p only).
@@ -294,6 +297,12 @@ def dwconv1d(
     weight row holds ``kernel_size`` taps followed by the bias, whether or
     not ``bias`` is enabled.
 
+    One channel per call with time contiguous, vectorized along time with
+    scalar taps. See
+    [`dwconv1d_channels_last`][iron.kernels.conv.dwconv1d_channels_last] for
+    the transposed layout, and the "Choosing a depthwise conv1d" section of
+    ``aie_kernels/README.md`` for which to reach for.
+
     Args:
         seq_len: Outputs per call (multiple of 16).
         kernel_size: Taps, 1 to 17.
@@ -301,25 +310,32 @@ def dwconv1d(
     """
     if _detect_arch() != "aie2p":
         raise NotImplementedError(
-            "dwconv1d: aie_kernels/aie2p/dwconv1d.cc has no aie2 port; select an NPU2 device"
+            "dwconv1d_channels_first: aie_kernels/aie2p/dwconv1d_channels_first.cc "
+            "has no aie2 port; select an NPU2 device"
         )
     if not 1 <= kernel_size <= 17:
-        raise ValueError(f"dwconv1d: kernel_size must be 1..17, got {kernel_size}")
+        raise ValueError(
+            f"dwconv1d_channels_first: kernel_size must be 1..17, got {kernel_size}"
+        )
     if seq_len <= 0 or seq_len % 16:
         raise ValueError(
-            f"dwconv1d: seq_len must be a positive multiple of 16, got {seq_len}"
+            "dwconv1d_channels_first: seq_len must be a positive multiple of 16, "
+            f"got {seq_len}"
         )
     in_ty = np.ndarray[(seq_len + DWCONV1D_TAIL,), np.dtype[bfloat16]]
     w_ty = np.ndarray[(kernel_size + 1,), np.dtype[bfloat16]]
     out_ty = np.ndarray[(seq_len,), np.dtype[bfloat16]]
     return _make_extern(
-        "dwconv1d_bf16",
-        _default_source_path("dwconv1d.cc", subdir="aie2p"),
+        "dwconv1d_channels_first_bf16",
+        _default_source_path("dwconv1d_channels_first.cc", subdir="aie2p"),
         [in_ty, w_ty, out_ty, np.int32],
-        compile_flags=[f"-DDWCONV_K={kernel_size}", f"-DDWCONV_BIAS={int(bias)}"],
+        compile_flags=[
+            f"-DDWCONV1D_CF_K={kernel_size}",
+            f"-DDWCONV1D_CF_BIAS={int(bias)}",
+        ],
         contract=KernelContract(
             roles=(In, In, Out, Param),
-            reference=lambda x, w, n: dwconv1d_ref(
+            reference=lambda x, w, n: dwconv1d_channels_first_ref(
                 x, w, n, kernel_size=kernel_size, bias=bias
             ),
             acc_dtype=np.float32,
@@ -332,8 +348,8 @@ def dwconv1d(
     )
 
 
-def dwconv1d_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
-    """Numpy reference for [`dwconv1d`][iron.kernels.conv.dwconv1d] on the padded row(s).
+def dwconv1d_channels_first_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
+    """Numpy reference for [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first] on the padded row(s).
 
     ``x_pad`` is ``(..., seq_len + DWCONV1D_TAIL)``; ``w`` is ``(..., kernel_size + 1)``.
     """
@@ -346,6 +362,128 @@ def dwconv1d_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
     if bias:
         out += w32[..., kernel_size : kernel_size + 1]
     return out.astype(np.asarray(x_pad).dtype)
+
+
+def dwconv1d(
+    seq_len: int = 1024, kernel_size: int = 9, bias: bool = True
+) -> ExternalFunction:
+    """Compatibility alias for [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first]."""
+    return dwconv1d_channels_first(seq_len, kernel_size, bias)
+
+
+def dwconv1d_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
+    """Compatibility alias for [`dwconv1d_channels_first_ref`][iron.kernels.conv.dwconv1d_channels_first_ref]."""
+    return dwconv1d_channels_first_ref(
+        x_pad, w, seq_len, kernel_size=kernel_size, bias=bias
+    )
+
+
+# The clamp bounds dwconv1d_channels_last is judged against. Wide enough that a
+# bf16 5-tap product only reaches it on the 'large' data case, so the clamped
+# and unclamped paths are both exercised.
+_CLAMP_LIMIT = 6.0
+
+
+def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalFunction:
+    """Depthwise 1-D conv over a channels-last layout, 5 taps (aie2p only).
+
+    ``y[c] = clamp(sum_{t=0..4} w_t[c] * x_t[c], lo, hi)`` for ``c < channels``:
+    one output timestep across every channel, with per-channel taps. The five
+    taps arrive as five separate base pointers, oldest first, so a depth-5
+    ObjectFifo is itself the sliding window.
+
+    Counterpart to
+    [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first];
+    layout picks the vectorization axis, so neither subsumes the other. See
+    the "Choosing a depthwise conv1d" section of ``aie_kernels/README.md``.
+
+    The five weight planes are five independent arguments, like the taps, so
+    where they live is the design's business: they need not be one buffer, or
+    evenly spaced.
+
+    ``lo``/``hi`` are runtime buffers the design writes, bound here to
+    ``+/-_CLAMP_LIMIT`` so the kernel is judged against a reference clamping to
+    the same pair.
+
+    Args:
+        channels: Channels per call (multiple of 32).
+        clamp: Clamp the result to the runtime ``lo``/``hi`` buffers.
+    """
+    if _detect_arch() != "aie2p":
+        raise NotImplementedError(
+            "dwconv1d_channels_last: aie_kernels/aie2p/dwconv1d_channels_last.cc "
+            "has no aie2 port; select an NPU2 device"
+        )
+    if channels <= 0 or channels % 32:
+        raise ValueError(
+            "dwconv1d_channels_last: channels must be a positive multiple of the "
+            f"32-lane store, got {channels}"
+        )
+    _TAPS = 5
+    plane_ty = np.ndarray[(channels,), np.dtype[bfloat16]]
+    lim_ty = np.ndarray[(1,), np.dtype[np.float32]]
+    return _make_extern(
+        "dwconv1d_channels_last_k5_bf16",
+        _default_source_path("dwconv1d_channels_last.cc", subdir="aie2p"),
+        [*([plane_ty] * 2 * _TAPS), plane_ty, lim_ty, lim_ty],
+        compile_flags=[
+            f"-DDWCONV1D_CL_C={channels}",
+            f"-DDWCONV1D_CL_CLAMP={int(clamp)}",
+        ],
+        contract=KernelContract(
+            stack_bytes=1280,  # aiecc measured_stack_size
+            setup=conv_even,
+            # lo/hi are buffers the design writes, so they are Param like
+            # mha's idx gate: bound here rather than sampled, which also keeps
+            # lo <= hi (aie::clamp does not define the inverted pair).
+            roles=(*((In,) * 2 * _TAPS), Out, Param, Param),
+            parameter_bindings=(
+                (11, np.array([-_CLAMP_LIMIT], np.float32)),
+                (12, np.array([_CLAMP_LIMIT], np.float32)),
+            ),
+            reference=partial(
+                dwconv1d_channels_last_ref,
+                lo=-_CLAMP_LIMIT,
+                hi=_CLAMP_LIMIT,
+                clamp=clamp,
+            ),
+            acc_dtype=np.float32,
+            reduction=_TAPS,
+            # Derived: the five products are exact in f32 (bf16 carries 8
+            # mantissa bits, 8 + 8 < 24) and the sum rounds at most 5 * 2**-24
+            # before one bf16 narrowing on store, which is 2**-9 relative. The
+            # narrowing dominates by four orders of magnitude, so the bound is
+            # one bf16 ulp with no room to spare for a real error.
+            tolerance=Tolerance.relative(
+                2**-8,
+                0.0,
+                note="one bf16 ulp from the single narrowing store; the f32 "
+                "5-term sum contributes 5 * 2**-24. Verified on npu2",
+            ),
+            ops_per_call=2 * _TAPS * channels,
+        ),
+    )
+
+
+def dwconv1d_channels_last_ref(
+    w_0, w_1, w_2, w_3, w_4, x_0, x_1, x_2, x_3, x_4, *, lo, hi, clamp: bool
+):
+    """Numpy reference for [`dwconv1d_channels_last`][iron.kernels.conv.dwconv1d_channels_last]: one timestep over all channels.
+
+    Each tap is an independent plane, so this is a plain ``sum_t w_t * x_t``.
+    Accumulated in float32, which is what the kernel's ``accfloat`` is, then
+    narrowed once on store; ``clamp`` applies after the narrowing, as the
+    kernel's ``aie::clamp`` does on the already-bf16 vector.
+    """
+    ws = [np.asarray(v).astype(np.float32) for v in (w_0, w_1, w_2, w_3, w_4)]
+    xs = [np.asarray(v).astype(np.float32) for v in (x_0, x_1, x_2, x_3, x_4)]
+    acc = np.zeros(xs[0].shape, dtype=np.float32)
+    for wt, xt in zip(ws, xs):
+        acc += wt * xt
+    out = acc.astype(np.asarray(x_0).dtype)
+    if clamp:
+        out = np.clip(out, np.asarray(lo, out.dtype), np.asarray(hi, out.dtype))
+    return out
 
 
 @dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
