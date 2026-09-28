@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # A fill with a 6-dimension access pattern, more than a BD's 4, run for two
-# passes. Its three iteration dimensions do not merge, so the compiler splits
-# off the outer two into 6 pieces of [4, 2, 8, 16], one task each: more than
-# the channel queues (4), so it has to wait for queue space as it pushes them,
-# and each piece is started once per pass. The drain copies what the fill
+# passes by a seventh, outermost dimension of stride 0. The compiler drops that
+# one into the repeat count. The other three iteration dimensions do not merge,
+# so it splits off the outer two into 6 pieces of [4, 2, 8, 16], one task each:
+# more than the channel queues (4), so it has to wait for queue space as it
+# pushes them, and each piece is started once per pass. The drain copies what the fill
 # gathers, in the order it gathers it, into a contiguous buffer: a wrong piece
 # offset, a wrong per-piece repeat count, a piece out of order or a pass that
 # does not start from the first index shows up as a mismatch.
@@ -13,7 +14,7 @@
 # REQUIRES: ryzen_ai_npu2, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: aie-opt --aie-objectFifo-stateful-transform \
+# RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform \
 # RUN:   --aie-substitute-shim-dma-allocations \
 # RUN:   --aie-decompose-large-dma-bd ./aie2.mlir \
 # RUN:   | FileCheck %s --check-prefix=MLIR
@@ -36,10 +37,9 @@
 # MLIR-NEXT:     aiex.dma_await_task
 
 import numpy as np
-
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
+from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron.device import NPU2, Tile
 
 LEN = 32768
 SIZES = [2, 3, 4, 2, 8, 16]
@@ -50,41 +50,25 @@ CHUNK = int(np.prod(SIZES[-3:]))
 
 
 def design():
-    with mlir_mod_ctx() as ctx:
+    buff_ty = np.ndarray[(LEN,), np.dtype[np.int32]]
+    chunk_ty = np.ndarray[(CHUNK,), np.dtype[np.int32]]
 
-        @device(AIEDevice.npu2)
-        def device_body():
-            buff_ty = np.ndarray[(LEN,), np.dtype[np.int32]]
-            obj_ty = np.ndarray[(CHUNK,), np.dtype[np.int32]]
+    shim = Tile(0, 0)
+    of_in = ObjectFifo(chunk_ty, depth=2, name="in")
+    of_out = of_in.cons().forward(tile=Tile(0, 1), name="out")
+    gather = TensorAccessPattern((LEN,), 0, [PASSES, *SIZES], [0, *STRIDES])
+    gathered = PASSES * EXECUTIONS * CHUNK
+    contiguous = TensorAccessPattern((LEN,), 0, [1, 1, 1, gathered], [0, 0, 0, 1])
 
-            shim = tile(0, 0)
-            mem = tile(0, 1)
+    def sequence(a, b, into, out):
+        into.fill(a, tap=gather)
+        out.drain(b, tap=contiguous, wait=True)
 
-            of_in = object_fifo("in", shim, mem, 2, obj_ty)
-            of_out = object_fifo("out", mem, shim, 2, obj_ty)
-            object_fifo_link(of_in, of_out)
-
-            @runtime_sequence(buff_ty, buff_ty)
-            def sequence(A, B):
-                fill = dma_configure_task_for(
-                    of_in, repeat_count=PASSES * EXECUTIONS - 1
-                )
-                with bds(fill) as bd:
-                    with bd[0]:
-                        shim_dma_bd(A, sizes=SIZES, strides=STRIDES)
-                        EndOp()
-                dma_start_task(fill)
-                drain = shim_dma_single_bd_task(
-                    of_out,
-                    B,
-                    sizes=[1, 1, 1, PASSES * EXECUTIONS * CHUNK],
-                    issue_token=True,
-                )
-                dma_start_task(drain)
-                dma_await_task(drain)
-                dma_free_task(fill)
-
-    print(ctx.module)
+    rt = Runtime(
+        sequence,
+        [buff_ty, buff_ty, of_in.prod(tile=shim), of_out.cons(tile=shim)],
+    )
+    return Program(NPU2(), rt).resolve_program()
 
 
-design()
+print(design())

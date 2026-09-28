@@ -162,6 +162,47 @@ module {
 
 // -----
 
+// The same 6 pieces under an outermost dimension of stride 0, which re-reads
+// the pattern twice as a second pass would. It drops, so the 6 pieces are
+// configured once and each started once per pass. The token stays off all
+// but the last start of the last piece.
+// CHECK-LABEL: @repeat_6d
+// CHECK:         %[[P0:.*]] = aiex.dma_configure_task_for @a
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 16 len = 256 sizes = [2, 2, 8, 16] strides = [1000, 256, 32, 1])
+// CHECK:         } {repeat_count = 1 : i32}
+// CHECK-COUNT-4: aiex.dma_configure_task_for @a
+// CHECK:         %[[P5:.*]] = aiex.dma_configure_task_for @a
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 47016 len = 256
+// CHECK:         } {issue_token = true, repeat_count = 1 : i32}
+// CHECK-NEXT:    aiex.dma_start_task(%[[P5]]) {no_token}
+// CHECK-NEXT:    aiex.dma_start_task(%[[P0]])
+// CHECK-COUNT-4: aiex.dma_start_task
+// CHECK-NEXT:    aiex.dma_start_task(%[[P5]])
+// CHECK-NEXT:    aiex.dma_await_task(%[[P5]])
+// CHECK-NOT:     aiex.dma_configure_task_for
+// CHECK:         }
+// LOWERED-LABEL: @repeat_6d
+// LOWERED-COUNT-6: aiex.npu.writebd
+// LOWERED-NOT:     aiex.npu.writebd
+// LOWERED:         aiex.npu.sync
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @repeat_6d(%in: memref<65536xi32>) {
+      %0 = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<65536xi32> offset = 16 len = 256 sizes = [2, 3, 2, 2, 2, 8, 16] strides = [0, 20000, 7000, 1000, 256, 32, 1])
+        aie.end
+      } {issue_token = true, repeat_count = 23 : i32}
+      aiex.dma_start_task(%0)
+      aiex.dma_await_task(%0)
+      aiex.dma_free_task(%0)
+    }
+  }
+}
+
+// -----
+
 // The unit dimension drops, which leaves 4: [2 x 2] iterations of [1031 x 2]
 // at stride 3, which a descriptor cannot hold and cannot factor. Each index of
 // the iterations is sliced into 1023 + 8, in order.

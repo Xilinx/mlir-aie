@@ -747,15 +747,16 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       return failure();
 
     // Outer iteration dimensions that re-read the same data only repeat what
-    // is inside them, as the task's repeat count does. Where dropping them is
-    // all the pattern needs, they go, and a pass shrinks to what they repeat.
+    // is inside them, as the task's repeat count does. They go, and a pass
+    // shrinks to what they repeat: where that is all the pattern needs it
+    // lowers as it is, and otherwise the pieces it splits into are restarted
+    // rather than configured once per repeat.
     NdDmaPattern unrepeated = pattern;
     for (unsigned d = unrepeated.sizes.size();
          d-- > 3 && (unrepeated.sizes[d] == 1 || unrepeated.strides[d] == 0);)
       unrepeated.sizes[d] = 1;
     bool dropRepeats = lowerable(unrepeated);
-    if (dropRepeats)
-      pattern = unrepeated;
+    pattern = unrepeated;
     // One pass over the pattern, in executions of the descriptor.
     int64_t iterations = iterationCount(pattern);
 

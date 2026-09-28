@@ -68,6 +68,7 @@ def restart(into, out, load, store, a, c):
 # CHECK-NOT: aiex.dma_configure_task_for @flow0_dst
 # CHECK: aiex.dma_start_task(%[[LOAD]])
 # CHECK: aiex.dma_await_task(%[[LOAD]])
+
 # CHECK: %[[STORE:.*]] = aiex.dma_configure_task_for @flow1_src {
 # CHECK: aie.dma_bd(%resident : memref<256xi32> len = 128)
 # CHECK: aie.next_bd

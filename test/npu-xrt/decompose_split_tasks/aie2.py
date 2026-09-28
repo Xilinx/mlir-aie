@@ -14,7 +14,7 @@
 # REQUIRES: ryzen_ai_npu2, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: aie-opt --aie-objectFifo-stateful-transform \
+# RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform \
 # RUN:   --aie-substitute-shim-dma-allocations \
 # RUN:   --aie-decompose-large-dma-bd \
 # RUN:   --aie-assign-runtime-sequence-bd-ids ./aie2.mlir \
@@ -30,10 +30,9 @@
 # MLIR:          {bd_id = 0 : i32}
 
 import numpy as np
-
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
+from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron.device import NPU2, Tile
 
 PAIRS = 17393
 STRIDE = 3
@@ -41,38 +40,23 @@ LEN = 65536
 
 
 def design():
-    with mlir_mod_ctx() as ctx:
+    buff_ty = np.ndarray[(LEN,), np.dtype[np.int32]]
+    pair_ty = np.ndarray[(2,), np.dtype[np.int32]]
 
-        @device(AIEDevice.npu2)
-        def device_body():
-            buff_ty = np.ndarray[(LEN,), np.dtype[np.int32]]
-            obj_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    shim = Tile(0, 0)
+    of_in = ObjectFifo(pair_ty, depth=2, name="in")
+    of_out = of_in.cons().forward(tile=Tile(0, 1), name="out")
+    pairs = TensorAccessPattern((LEN,), 0, [1, 1, PAIRS, 2], [0, 0, STRIDE, 1])
 
-            shim = tile(0, 0)
-            mem = tile(0, 1)
+    def sequence(a, b, into, out):
+        into.fill(a, tap=pairs)
+        out.drain(b, tap=pairs, wait=True)
 
-            of_in = object_fifo("in", shim, mem, 2, obj_ty)
-            of_out = object_fifo("out", mem, shim, 2, obj_ty)
-            object_fifo_link(of_in, of_out)
-
-            @runtime_sequence(buff_ty, buff_ty)
-            def sequence(A, B):
-                pattern = dict(sizes=[1, 1, PAIRS, 2], strides=[0, 0, STRIDE, 1])
-                fill = dma_configure_task_for(of_in)
-                with bds(fill) as bd:
-                    with bd[0]:
-                        shim_dma_bd(A, **pattern)
-                        EndOp()
-                dma_start_task(fill)
-                drain = dma_configure_task_for(of_out, issue_token=True)
-                with bds(drain) as bd:
-                    with bd[0]:
-                        shim_dma_bd(B, **pattern)
-                        EndOp()
-                dma_start_task(drain)
-                dma_await_task(drain)
-
-    print(ctx.module)
+    rt = Runtime(
+        sequence,
+        [buff_ty, buff_ty, of_in.prod(tile=shim), of_out.cons(tile=shim)],
+    )
+    return Program(NPU2(), rt).resolve_program()
 
 
-design()
+print(design())
