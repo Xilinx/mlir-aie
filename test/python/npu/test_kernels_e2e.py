@@ -69,14 +69,21 @@ def _run_case(case, data_case: str, seed: int):
         getattr(kernels, case.factory),
         **case.harness_opts(),
         params=fn.param_values(inputs),
+        guard=True,
         **case.kwargs,
     )
     ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kd.output_size(fn, calls=case.calls)
+    out_n = kd.output_size(fn, calls=case.calls, guard=True)
     out_dt = fn.output_dtype()
     # The output is poisoned so a kernel that writes nothing cannot pass.
-    got = _run(design, fn, inputs, out_n, out_dt)
-    verdict = fn.judge(got, ref, calls=case.calls)
+    got, overrun = kd.strip_guard(
+        fn, _run(design, fn, inputs, out_n, out_dt), calls=case.calls
+    )
+    assert not any(np.atleast_1d(overrun)), (
+        f"{case.name} [{data_case}, seed {seed}]: changed {overrun} guard byte(s) past its output "
+        f"({kd.GUARD_BYTES} after each tile)"
+    )
+    verdict = fn.judge(got, ref, calls=case.calls, inputs=inputs, scalars=case.scalars)
     assert verdict, f"{case.name} [{data_case}, seed {seed}]: {verdict.detail}"
 
 
@@ -222,6 +229,97 @@ def test_softmax_wide_dynamic_range():
     assert verdict, verdict.detail
     # The peak must dominate: a wrapped index used to bury it at ~1e-14.
     assert got.astype(np.float32)[0] > 0.9
+
+
+# AIE2's getTanhBf16 multiplied its flat end segments' slope of 0 by x, so
+# +-inf gave NaN, and every kernel built on it followed: gelu's tanh argument,
+# x * (c + d * x^2), overflows to inf from |x| = 2.13e13. Silu multiplied -inf
+# by its sigmoid of 0, swiglu an overflowed x * w1 by a silu of 0, and the
+# matmul epilogue's silu split an f32 x past bf16's range into inf and -inf.
+_HUGE = np.array([8, 9, 1e4, 2e13, 2.2e13, 1e20, 1e30, 3e38, np.inf], np.float32)
+_HUGE = np.concatenate([_HUGE, -_HUGE])
+
+
+def _huge_tile(dtype, values=_HUGE):
+    tile = np.zeros(1024, dtype=np.float32)
+    tile[: len(values)] = values
+    return tile.astype(dtype).reshape(1, 1024)
+
+
+def _relu(x):
+    return np.where(x > 0, x, 0)
+
+
+def _step(x):
+    return np.where(x > 0, 1, 0)
+
+
+def _assert_gelu_saturates(got, tile):
+    edge = tile.ravel()[: len(_HUGE)].astype(bfloat16).astype(np.float32)
+    np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), _relu(edge))
+
+
+@pytest.mark.supported_devices("npu1")
+@pytest.mark.parametrize(
+    "factory,limit",
+    [
+        ("tanh", np.sign),
+        ("sigmoid", _step),
+        ("silu", _relu),
+        ("silu_sized", _relu),
+        ("gelu", _relu),
+        ("gelu_sized", _relu),
+    ],
+)
+def test_activation_saturates_for_huge_inputs(factory, limit):
+    """Each activation takes its limit for large and infinite inputs."""
+    fn = getattr(kernels, factory)()
+    tile = _huge_tile(bfloat16)
+    design = kd.design(getattr(kernels, factory), calls=1)
+    got = _run(design, fn, [tile], 1024, np.dtype(bfloat16))
+    edge = tile.ravel()[: len(_HUGE)].astype(np.float32)
+    np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), limit(edge))
+
+
+@pytest.mark.supported_devices("npu1")
+def test_swiglu_zero_gate_hides_overflow():
+    """x * w1 overflowing to inf, times a silu of exactly 0, gives 0, not NaN."""
+    fn = kernels.swiglu()
+    x = _huge_tile(bfloat16, [1e20, 1e20, 1e20, 2, 1, 1])
+    w1 = _huge_tile(bfloat16, [1e20, 1e20, -1e20, np.inf, 1, 1])
+    w2 = _huge_tile(bfloat16, [-1e20, 1e20, 1e20, -8, np.inf, -np.inf])
+    design = kd.design(kernels.swiglu, calls=1)
+    got = _run(design, fn, [x, w1, w2], 1024, np.dtype(bfloat16))
+    np.testing.assert_array_equal(
+        got[:6].astype(np.float32), [0, np.inf, -np.inf, 0, np.inf, 0]
+    )
+    verdict = fn.judge(got, fn.expected([x, w1, w2]), calls=1)
+    assert verdict, verdict.detail
+
+
+@pytest.mark.supported_devices("npu1")
+def test_epilogue_gelu_saturates_for_huge_inputs():
+    """The matmul epilogue's gelu, which narrows its f32 input to bf16 first."""
+    fn = kernels.mm_activation_epilogue()
+    tile = _huge_tile(np.float32)
+    design = kd.design(kernels.mm_activation_epilogue, calls=1, scalars=(2,))
+    got = _run(design, fn, [tile], 1024, np.dtype(np.float32))
+    _assert_gelu_saturates(got, tile)
+    verdict = fn.judge(got, fn.expected([tile], scalars=(2,)), calls=1)
+    assert verdict, verdict.detail
+
+
+@pytest.mark.supported_devices("npu1")
+def test_epilogue_silu_saturates_for_huge_inputs():
+    """The epilogue's silu keeps f32 inputs past bf16's range finite."""
+    fn = kernels.mm_activation_epilogue()
+    finite = np.concatenate([_HUGE[np.isfinite(_HUGE)], [3.4e38, -3.4e38]])
+    tile = _huge_tile(np.float32, finite)
+    design = kd.design(kernels.mm_activation_epilogue, calls=1, scalars=(1,))
+    got = _run(design, fn, [tile], 1024, np.dtype(np.float32))
+    np.testing.assert_allclose(got[: len(finite)], _relu(finite), rtol=2**-16)
+    verdict = fn.judge(got, fn.expected([tile], scalars=(1,)), calls=1)
+    assert verdict, verdict.detail
 
 
 def _bf16_from_bits(u):

@@ -241,6 +241,7 @@ nav:
       - "4a: Timers": programming_guide/section-4/section-4a/README.md
       - "4b: Tracing": programming_guide/section-4/section-4b/README.md
       - "4c: Vectorization": programming_guide/section-4/section-4c/README.md
+      - "4d: Kernel Optimization": programming_guide/section-4/section-4d/README.md
     - "Section 5: Example Designs": programming_guide/section-5/README.md
     - "Section 6: ML Examples": programming_guide/section-6/README.md
     - Extra References:

@@ -18,6 +18,12 @@ from aie.utils import get_current_device
 from ._pipeline import Stage, kernel_params, pipeline
 
 
+def _stack_size(func):
+    """Return the core stack a library kernel's contract asks for, or None."""
+    contract = getattr(func, "contract", None)
+    return contract.stack_bytes if contract is not None else None
+
+
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
     """General tiled transform to apply a function on inputs and obtain a single output.
 
@@ -97,6 +103,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         held=kparams.fifos,
         constants=[func],
         iterations=N_div_n,
+        stack_size=_stack_size(func),
         trace=trace_size > 0,
     )
     # Host buffers: inputs, output, then the tensor params.
@@ -318,6 +325,7 @@ def _transform_parallel_gen(
             + [of.cons() for of in param_of_list]
             + [of_outs[col][chan].prod()]
             + [func],
+            stack_size=_stack_size(func),
             trace=(1 if trace_size > 0 else 0),
         )
         for col in range(num_columns)

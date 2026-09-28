@@ -14,7 +14,7 @@ The example uses the IRON high-level builders (`Worker` / `Runtime` / `Program`)
 ## Source Files
 
 1. [`passthrough_kernel.py`](passthrough_kernel.py) — IRON structural design plus the host-side test driver. Decorated with `@iron.jit`; on first call it compiles the design and runs it on the NPU, then verifies the result against the input.
-1. [`passThrough.cc`](../../../aie_kernels/generic/passThrough.cc) — vectorized memcpy implementation for the AIE core. The C++ wrappers `passThroughLine` / `passThroughTile` are templated on `BIT_WIDTH` (set to `8` here for `uint8_t`). The IRON design references this kernel through the `kernels.passthrough(...)` helper rather than naming the `.cc.o` directly, so there is no manual `aiecc` step to bind the object.
+1. [`passThrough.cc`](../../../aie_kernels/eltwise/passThrough.cc) — vectorized memcpy implementation for the AIE core. The C++ wrappers `passThroughLine` / `passThroughTile` are templated on `BIT_WIDTH` (set to `8` here for `uint8_t`). The IRON design references this kernel through the `kernels.passthrough(...)` helper rather than naming the `.cc.o` directly, so there is no manual `aiecc` step to bind the object.
 
 ## Design Overview
 

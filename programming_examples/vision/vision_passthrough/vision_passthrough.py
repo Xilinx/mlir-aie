@@ -7,7 +7,7 @@
 
 A single AIE core copies a ``width x height`` 8-bit image one line at a
 time via ``passThroughLine`` (``-DBIT_WIDTH=8`` from
-``aie_kernels/generic/passThrough.cc``).
+``aie_kernels/eltwise/passThrough.cc``).
 """
 
 import argparse

@@ -11,6 +11,7 @@ Tests that exercise compile() or end-to-end kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
+import dataclasses
 import json
 import os
 import subprocess
@@ -23,9 +24,12 @@ import pytest
 
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
+from aie.iron import kernels
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+from aie.utils.compile.jit._hash import _compute_artifact_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
@@ -587,6 +591,53 @@ def test_artifact_hash_tracks_active_compilers(
     assert (before != after) == (
         tool != "host_cxx" or (dynamic and generator_kind == "callable")
     )
+
+
+def test_artifact_hash_names_the_kernel_source_tree(monkeypatch):
+    # A before/after run compiles one design against two kernel trees in one
+    # process; the factories read the tree only once the generator runs.
+    generator = _gemm_gen()
+    monkeypatch.delenv("MLIR_AIE_KERNEL_SOURCES", raising=False)
+    installed = _compute_artifact_hash(generator, [], [], True)
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", "/trees/base")
+    base = _compute_artifact_hash(generator, [], [], True)
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", "/trees/change")
+    change = _compute_artifact_hash(generator, [], [], True)
+    assert len({installed, base, change}) == 3
+
+
+def test_artifact_hash_reads_the_kernel_source_tree(monkeypatch, tmp_path):
+    # A candidate edited in place under one tree must not reuse its old build.
+    generator = _gemm_gen()
+    source = tmp_path / "aie_kernels" / "k.cc"
+    source.parent.mkdir()
+    source.write_text("int k;")
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(tmp_path))
+    before = _compute_artifact_hash(generator, [], [], True)
+    source.write_text("int k2;")
+    assert _compute_artifact_hash(generator, [], [], True) != before
+
+
+_ADD_STACK = {"bytes": 1024}
+
+
+def _add_with_table_stack():
+    fn = kernels.add()
+    fn.contract = dataclasses.replace(fn.contract, stack_bytes=_ADD_STACK["bytes"])
+    return fn
+
+
+def test_a_library_design_is_keyed_by_its_kernels_stack(monkeypatch):
+    # The stack can come from a table outside the factory's code, which is all
+    # the key reads of the factory; a stale key reuses a core with the old stack.
+    set_current_device(NPU2Col1())
+    try:
+        before = kd.design(_add_with_table_stack).compilable._compute_cache_hash()
+        monkeypatch.setitem(_ADD_STACK, "bytes", 2048)
+        after = kd.design(_add_with_table_stack).compilable._compute_cache_hash()
+    finally:
+        set_current_device(None)
+    assert before != after
 
 
 def test_hash_for_path_generator_uses_path_string():

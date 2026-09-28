@@ -58,7 +58,11 @@ def vector_exp(
             c_out.release(1)
 
     workers = [
-        Worker(core_fn, fn_args=[a_fifos[i].cons(), c_fifos[i].prod(), exp_fn])
+        Worker(
+            core_fn,
+            fn_args=[a_fifos[i].cons(), c_fifos[i].prod(), exp_fn],
+            stack_size=exp_fn.contract.stack_bytes,
+        )
         for i in range(n_cores)
     ]
 

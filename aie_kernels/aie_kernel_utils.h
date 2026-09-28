@@ -7,6 +7,8 @@ Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 #ifndef _AIE_KERNEL_UTILS_
 #define _AIE_KERNEL_UTILS_
 
+#include "aie_arch.h"
+
 #if defined(__chess__)
 #define AIE_LOOP_UNROLL(x) [[chess::unroll_loop(x)]]
 #define AIE_LOOP_UNROLL_FULL [[chess::unroll_loop()]]

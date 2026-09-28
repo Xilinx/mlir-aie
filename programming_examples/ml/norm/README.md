@@ -7,7 +7,7 @@
 
 # Row-wise Norm (RMS | Layer)
 
-This design implements a row-wise norm (**RMSNorm** or **LayerNorm**) across an 8-core sequence. The op is selected at compile time via the `op` parameter; the structural design and host harness are shared for the same-dtype ops. NPU2-only (the underlying kernels live under `aie_kernels/aie2p/`).
+This design implements a row-wise norm (**RMSNorm** or **LayerNorm**) across an 8-core sequence. The op is selected at compile time via the `op` parameter; the structural design and host harness are shared for the same-dtype ops. Runs on NPU1 and NPU2, except `op=layer_affine_cast`, which is NPU2-only: its design feeds every core a row stream and a gamma/beta stream from the shim, 16 shim-to-tile DMA channels, and NPU1's four shim tiles have 8.
 
 Per row:
 
@@ -20,11 +20,11 @@ Per row:
 
 ## Source Files Overview
 
-1. `norm.py`: IRON design. `op` is a `CompileTime[str]` parameter that selects the kernel symbol and source (all four live in `layer_norm.cc` except `rms`, which is `rms_norm.cc`) and the tensor dtype. `norm` handles the three same-dtype ops (bf16 for `rms`/`layer`, f32 for `layer_f32`); `norm_affine` handles `layer_affine_cast`'s f32-in/bf16-out/gamma-beta-tensor shape, mirroring `ml/cast_f32_bf16`'s dtype-split `ObjectFifo`/`Worker`/`Runtime` wiring plus a third, per-core-constant parameter tensor (acquired once before the row loop, not per row). Per-op reference and tolerance live in a small dispatch table shared by both designs.
+1. `norm.py`: IRON design. `op` is a `CompileTime[str]` parameter that selects the kernel symbol and source (`rms` lives in `rms_norm.cc`, `layer` in `layer_norm.cc`, and the two f32 ops in `layer_norm_f32.cc`) and the tensor dtype. `norm` handles the three same-dtype ops (bf16 for `rms`/`layer`, f32 for `layer_f32`); `norm_affine` handles `layer_affine_cast`'s f32-in/bf16-out/gamma-beta-tensor shape, mirroring `ml/cast_f32_bf16`'s dtype-split `ObjectFifo`/`Worker`/`Runtime` wiring plus a third, per-core-constant parameter tensor (acquired once before the row loop, not per row). Per-op reference and tolerance live in a small dispatch table shared by both designs.
 
-1. `rms_norm.cc` / `layer_norm.cc`: AIE2P kernels pulled from [`aie_kernels/aie2p/`](../../../aie_kernels/aie2p/). `layer_norm.cc` holds `layer_norm` (bf16), `layer_norm_f32` (gamma=1/beta=0 identity affine), and `layer_norm_affine_cast` (real affine + cast) as one templated core (`layer_norm_f32_impl<TIn, TOut, N, kAffine>`) instantiated three ways.
+1. `rms_norm.cc` / `layer_norm.cc` / `layer_norm_f32.cc`: library kernels. `rms` and `layer` build from [`aie_kernels/norm/`](../../../aie_kernels/norm/), which includes `rms_norm_aie2.h`/`layer_norm_aie2.h` on NPU1 and the `_aie2p.h` headers on NPU2. `layer_f32` and `layer_affine_cast` build from [`aie_kernels/transformer/layer_norm_f32.cc`](../../../aie_kernels/transformer/layer_norm_f32.cc) on both: on AIE2P it instantiates one templated core (`layer_norm_f32_impl<TIn, TOut, N, kAffine>`) two ways, `layer_norm_f32` (gamma=1/beta=0 identity affine) and `layer_norm_affine_cast` (real affine + cast); on AIE2 (no f32 vector multiply) it compiles a separate `layer_norm_f32_aie2` for them.
 
-1. `test.cpp`: C++ testbench for the bf16 ops (`rms`, `layer`). It loads the compiled XCLBIN + `insts.bin` via `setup_and_run_aie`, computes the per-row reference, and reports pass/fail with a per-op tolerance. The op is selected via the `NORM_OP` env var (set by the Makefile's `run` target). The f32 ops (`layer_f32`, `layer_affine_cast`) are verified through the standalone Python path instead (`norm.py`'s dispatch table, driven by `run_strix.lit`), against an f64/f32 gold reference.
+1. `test.cpp`: C++ testbench for the bf16 ops (`rms`, `layer`). It loads the compiled XCLBIN + `insts.bin` via `setup_and_run_aie`, computes the per-row reference, and reports pass/fail with a per-op tolerance. The op is selected via the `NORM_OP` env var (set by the Makefile's `run` target). The f32 ops (`layer_f32`, `layer_affine_cast`) are verified through the standalone Python path instead (`norm.py`'s dispatch table, driven by `run.lit` on NPU1 and `run_strix.lit` on NPU2), against an f64/f32 gold reference.
 
 
 ## Usage
@@ -37,6 +37,8 @@ python3 norm.py --dev npu2 --op layer
 python3 norm.py --dev npu2 --op layer_f32 --embedding_dim 2048
 python3 norm.py --dev npu2 --op layer_affine_cast --embedding_dim 1024
 ```
+
+On NPU1, pass `--dev npu` to the first three.
 
 `layer_f32` and `layer_affine_cast` default to a smaller `embedding_dim` than `rms`/`layer` because an f32 row is twice the bytes of a bf16 row (plus, for `layer_affine_cast`, a `[2 * embedding_dim]` f32 gamma/beta buffer), and a 4096-wide row does not fit the tile's local memory double-buffered.
 

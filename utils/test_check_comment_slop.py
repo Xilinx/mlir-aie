@@ -38,6 +38,64 @@ class CollectTests(unittest.TestCase):
         blocks, _ = slop.collect(diff(("a.cpp", 1, ["// one", "int x = 1;", "// two"])))
         self.assertEqual(len(blocks), 2)
 
+    def test_comments_moved_from_another_file_are_not_blocks(self):
+        moved = [f"// line {i}" for i in range(20)]
+        d = "\n".join(
+            [
+                "--- a/old/k.cc",
+                "+++ /dev/null",
+                f"@@ -1,{len(moved)} +0,0 @@",
+                *[f"-{line}" for line in moved],
+                diff(("new/k.cc", 1, moved + ["// written here", "int x = 1;"])),
+            ]
+        )
+        blocks, code = slop.collect(d)
+        self.assertEqual([b.lines for b in blocks], [["written here"]])
+        self.assertEqual(code, 1)
+
+    def test_a_moved_comment_excuses_one_copy_only(self):
+        d = "\n".join(
+            [
+                "--- a/old/k.cc",
+                "+++ /dev/null",
+                "@@ -1,1 +0,0 @@",
+                "-// explanation",
+                diff(("new/k.cc", 1, ["// explanation", "int x = 1;"])),
+                diff(("new/j.cc", 1, ["// explanation", "int y = 1;"])),
+            ]
+        )
+        blocks, _ = slop.collect(d)
+        self.assertEqual(
+            [(b.path, b.lines) for b in blocks], [("new/j.cc", ["explanation"])]
+        )
+
+    def test_a_moved_block_comment_body_is_not_a_block(self):
+        moved = ["/*", "moved prose", "*/"]
+        d = "\n".join(
+            [
+                "--- a/old/k.cc",
+                "+++ /dev/null",
+                f"@@ -1,{len(moved)} +0,0 @@",
+                *[f"-{line}" for line in moved],
+                diff(("new/k.cc", 1, moved + ["int x = 1;"])),
+            ]
+        )
+        blocks, _ = slop.collect(d)
+        self.assertEqual(blocks, [])
+
+    def test_a_removed_code_line_does_not_excuse_a_comment(self):
+        d = "\n".join(
+            [
+                "--- a/k.py",
+                "+++ b/k.py",
+                "@@ -1,1 +1,1 @@",
+                "-x = 1",
+                "+# x = 1",
+            ]
+        )
+        blocks, _ = slop.collect(d)
+        self.assertEqual([b.lines for b in blocks], [["x = 1"]])
+
     def test_non_source_files_are_ignored(self):
         blocks, code = slop.collect(diff(("README.md", 1, ["# heading", "text"])))
         self.assertEqual(blocks, [])

@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 
 # A concept re-explained at N sites is the dominant failure: the model restates it at
@@ -202,13 +203,49 @@ HUNK_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 def added_lines(diff):
-    """Yield (path, lineno, text, is_comment) for every added line.
+    """Yield (path, lineno, text, is_comment) for every added line."""
+    for sign, path, lineno, text in _body_lines(diff):
+        if sign == "+" and path:
+            yield path, lineno, text, is_comment_line(path, text)
 
+
+def moved_comments(diff):
+    """Count every removed comment line's text, comment markers stripped.
+
+    A comment removed at one site and added at another was moved, not written.
+    Moving a file that changed too much to be diffed as a rename otherwise
+    reads as writing all of its comments anew. Each removal excuses one
+    addition, so a comment moved once and then copied is still caught.
+    """
+    moved = Counter()
+    in_block, expected = False, None
+    for sign, path, lineno, text in _body_lines(diff):
+        if sign != "-" or not path:
+            continue
+        # As in collect(), a /* */ body is read across contiguous lines only. A
+        # removed line does not advance the new line number, so a run of them
+        # shares one, and any line kept or added between two breaks the run.
+        if expected != (path, lineno):
+            in_block = False
+        expected = (path, lineno)
+        is_comment = is_comment_line(path, text)
+        if not path.endswith((".py", ".pyi")):
+            in_block, has_code = _scan_line(text, in_block)
+            is_comment = not has_code
+        if is_comment:
+            moved[strip_comment_markers(text)] += 1
+    return moved
+
+
+def _body_lines(diff):
+    """Yield (sign, path, new lineno, text) for every added or removed line.
+
+    The path is the new one for an added line and the old one for a removed line.
     The @@ header declares how many lines the hunk body holds, and we consume exactly
     that many. Telling body from header by prefix instead cannot be made correct: an
     added `++iter;` arrives as `+++iter;` and a removed `-- x` as `--- x`.
     """
-    path, lineno, old_left, new_left = None, 0, 0, 0
+    path, old_path, lineno, old_left, new_left = None, None, 0, 0, 0
     for raw in diff.splitlines():
         # Every body line carries a +/-/space/\ prefix, so a bare @@ or `diff --git` can
         # only be a header. Resyncing on one bounds the damage of a hunk whose declared
@@ -218,7 +255,9 @@ def added_lines(diff):
             old_left = new_left = 0
 
         if old_left <= 0 and new_left <= 0:
-            if raw.startswith("+++ b/"):
+            if raw.startswith("--- a/"):
+                old_path = raw[6:]
+            elif raw.startswith("+++ b/"):
                 path = raw[6:]
             elif m := HUNK_RE.match(raw):
                 old_left = int(m.group(1) or 1)
@@ -229,12 +268,11 @@ def added_lines(diff):
         if raw.startswith("\\"):  # "\ No newline at end of file"
             continue
         if raw.startswith("+"):
-            body = raw[1:]
-            if path:
-                yield path, lineno, body, is_comment_line(path, body)
+            yield "+", path, lineno, raw[1:]
             lineno += 1
             new_left -= 1
         elif raw.startswith("-"):
+            yield "-", old_path, lineno, raw[1:]
             old_left -= 1
         else:  # context
             lineno += 1
@@ -292,6 +330,7 @@ def collect(diff):
     """Group added comment lines into contiguous blocks; count added code lines."""
     blocks, current, code = [], None, 0
     in_block, expected = False, None
+    moved = moved_comments(diff)
     for path, lineno, text, is_comment in added_lines(diff):
         if not path.endswith(SOURCE_SUFFIXES):
             continue
@@ -309,6 +348,10 @@ def collect(diff):
 
         if is_comment:
             stripped = strip_comment_markers(text)
+            if stripped and moved[stripped]:
+                moved[stripped] -= 1
+                current = None
+                continue
             if LICENSE_RE.match(stripped):
                 current = None
                 continue

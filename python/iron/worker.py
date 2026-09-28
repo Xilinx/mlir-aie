@@ -214,15 +214,19 @@ class Worker(ObjectFifoEndpoint):
     ) -> list[list["Worker"]]:
         """Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.
 
-        Replaces the common pattern::
+        Replaces the common pattern:
 
-            ws = [Worker(...) for i in range(R) for j in range(C)]
-            ws[i * C + j]  # 1-D index arithmetic
+        ```python
+        ws = [Worker(...) for i in range(R) for j in range(C)]
+        ws[i * C + j]  # 1-D index arithmetic
+        ```
 
-        with::
+        with:
 
-            ws = Worker.grid(R, C, lambda r, c: Worker(...))
-            ws[i][j]       # natural 2-D access
+        ```python
+        ws = Worker.grid(R, C, lambda r, c: Worker(...))
+        ws[i][j]       # natural 2-D access
+        ```
 
         Args:
             rows: Outer-dimension count (e.g. column index).

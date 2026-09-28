@@ -18,9 +18,9 @@
 #include <cstdint>
 #include <type_traits>
 
-// Copy `aie_kernels/aie_kernel_utils.h` from the mlir-aie repo next to this
-// file (or adjust the path below to wherever it ends up relative to your
-// kernel source).
+// Copy `aie_kernels/aie_kernel_utils.h` and the `aie_arch.h` it includes from
+// the mlir-aie repo next to this file (or adjust the path below to wherever
+// they end up relative to your kernel source).
 #include "aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 

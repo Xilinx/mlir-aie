@@ -1,0 +1,10 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, peano
+//
+// RUN: %run_on_npu1% %python %S/dwconv1d.py -d npu -n 4
+// RUN: %run_on_npu1% %python %S/dwconv1d.py -d npu -n 4 --no_bias
+// RUN: %run_on_npu1% %python %S/dwconv1d.py -d npu -n 4 -k 1
+// RUN: %run_on_npu1% %python %S/dwconv1d.py -d npu -n 4 -k 17
+// RUN: %run_on_npu1% %python %S/dwconv1d.py -d npu -n 4 -k 5 --no_bias

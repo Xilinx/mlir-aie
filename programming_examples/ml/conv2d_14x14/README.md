@@ -14,7 +14,7 @@ This optimized design is currently targeting a single AIE core and uses memtile 
 ## Data Layout and Sizes
 The data layout at each stage of the design is as follows:
 
-### <u>Sub-kernel ([conv2dk14.cc](../../../aie_kernels/aie2p/conv2dk14.cc))</u>
+### <u>Sub-kernel ([conv2dk14.cc](../../../aie_kernels/conv/conv2dk14.cc))</u>
 For each vector multiply (vmul) on a strix device for uint8/int8 datatypes, we perform a 8x8x8 matrix multiplication. The format of the data for each vmul is as follows:
 * Inputs/Activations - {T8}{P2}
 * Weights - {P2}{C8}
@@ -25,7 +25,7 @@ Definitions
 * T8 - 8 tiles. Tiles are a sequential notation we're using to number each of the 14x14 pixel blocks we're iterating over. So in our 896 x 896 pixel image, we have 64 x 64 tiles. The first row of tiles are then indexed as t0 .. t63. The first tile in the second row is then t64, etc.
 * C8 - 8 channels. This corresponds to output channels. We do technically have 4 input channels but we're grouping all 4 of them into a single pixel in this notation
 
-Then, within our sub-kernel ([conv2dk14.cc](../../../aie_kernels/aie2p/conv2dk14.cc)) we loop over the following inputs, weights and outputs:
+Then, within our sub-kernel ([conv2dk14.cc](../../../aie_kernels/conv/conv2dk14.cc)) we loop over the following inputs, weights and outputs:
 * Inputs - {T/8}{P/P2}{T8}{P2} - 12,544 bytes
 * Weights - {C/8}{P/P2}{P2}{C8} - 12,544 bytes
 * Outputs - {C/8}{T/8}{T8}{C8} - 256 bytes
@@ -68,7 +68,7 @@ make clean; make multi=1 run_py
 
 ## Multi-core Design Example (32-cores)
 
-The multi-core implementation uses the same underlying convolution kernel ([conv2dk14.cc](../../../aie_kernels/aie2p/conv2dk14.cc)) but distributes the compute over the entire AIE tile array on a Strix device (4 x 8 = 32). Input/activations are broadcasted along the rows and Weights are broadcastd along the columns. The output layout is still organized as CYX{C16}. We distribute the compute such that all tiles are working in parallel. Output channels (1152) are divided by columns such that each column computes 1/8 of all output channels (1152/8 = 144). Since each kernel processes 16 output channels at a time, the columns need to be executed 9 times to compute the results for all the output channels (144/ 16 = 9). Within each column, we divide the compute of the output into quarters such that row 0 (row index 2) computes the first 1/4 of the output (16 x 64), row 1 (row index 3) computes the second 1/4, row 3 (row index 4) the third 1/4, and row 4 (row index 5) the last 1/4. As a result, within each core tile, we loop over our conv kernel first by 4 (to compute the entire input image row), and then by 16 to compute 1/4 of the output. The measured default host code wall clock time is then improved from ~20ms for the single-core variant to ~5ms in the 32-core variant.
+The multi-core implementation uses the same underlying convolution kernel ([conv2dk14.cc](../../../aie_kernels/conv/conv2dk14.cc)) but distributes the compute over the entire AIE tile array on a Strix device (4 x 8 = 32). Input/activations are broadcasted along the rows and Weights are broadcastd along the columns. The output layout is still organized as CYX{C16}. We distribute the compute such that all tiles are working in parallel. Output channels (1152) are divided by columns such that each column computes 1/8 of all output channels (1152/8 = 144). Since each kernel processes 16 output channels at a time, the columns need to be executed 9 times to compute the results for all the output channels (144/ 16 = 9). Within each column, we divide the compute of the output into quarters such that row 0 (row index 2) computes the first 1/4 of the output (16 x 64), row 1 (row index 3) computes the second 1/4, row 3 (row index 4) the third 1/4, and row 4 (row index 5) the last 1/4. As a result, within each core tile, we loop over our conv kernel first by 4 (to compute the entire input image row), and then by 16 to compute 1/4 of the output. The measured default host code wall clock time is then improved from ~20ms for the single-core variant to ~5ms in the 32-core variant.
 
 
 ## Configure design

@@ -283,7 +283,7 @@ def test_compile_external_kernel_skip_is_per_kernel_dir(npu_target_arch, monkeyp
 def test_compile_external_kernel_serves_two_directories(npu_target_arch):
     """One kernel built into two directories has to land in both.
 
-    A design built twice in one process -- the benchmark driver times a cold
+    A design built twice in one process -- the performance checks time a cold
     build and then dispatches the cached one -- used to get its object in the
     first directory only, and the second build failed to link against a file
     that was never written.

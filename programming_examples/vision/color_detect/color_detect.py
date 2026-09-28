@@ -243,7 +243,7 @@ def _design_for(opts):
 
 def _color_detect_ref(rgba_uint8):
     """End-to-end pipeline reference matching the @iron.jit design."""
-    # threshold mode 4 is TOZERO_INV, 0 is BINARY (aie_kernels/aie2/threshold.cc).
+    # threshold mode 4 is TOZERO_INV, 0 is BINARY (aie_kernels/vision/threshold.cc).
     hue = kernels.rgba2hue_ref(rgba_uint8.reshape(-1))
     t1b = kernels.threshold_ref(kernels.threshold_ref(hue, 40, 255, 4), 30, 255, 0)
     t2b = kernels.threshold_ref(kernels.threshold_ref(hue, 160, 255, 4), 90, 255, 0)

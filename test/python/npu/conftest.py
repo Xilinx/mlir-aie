@@ -45,11 +45,10 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "benchmark: times a kernel and records benchmark-action rows; select "
-        "with -m benchmark",
+        "perf: times a kernel and records benchmark-action rows; select with -m perf",
     )
-    config._bench_rows = []
-    config._bench_meta = {}
+    config._perf_rows = []
+    config._perf_meta = {}
 
 
 def _running_on_hrx() -> bool:
@@ -72,12 +71,12 @@ def pytest_addoption(parser):
         help="random seeds per case in the extensive kernel sweep",
     )
     parser.addoption(
-        "--bench-out",
+        "--perf-out",
         default=None,
         help="write benchmark-action rows here, if the NPU checks pass",
     )
     parser.addoption(
-        "--bench-meta", default=None, help="write run provenance and any failures here"
+        "--perf-meta", default=None, help="write run provenance and any failures here"
     )
     parser.addoption(
         "--correctness-results",
@@ -95,16 +94,21 @@ def pytest_addoption(parser):
         "--no-cycles", action="store_true", help="skip the traced cycle-count run"
     )
     parser.addoption(
-        "--no-compile", action="store_true", help="skip the cold-rebuild measurement"
+        "--baseline-sources",
+        metavar="DIR",
+        default=None,
+        help="also measure every case with its kernels from DIR (a checkout root, "
+        "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words; the pair "
+        "goes to --perf-meta and the terminal summary, the rows stay this tree's",
     )
 
 
 @pytest.fixture
-def benchmark(request):
+def record_perf(request):
     """Record the benchmark-action rows a timed test produces.
 
     The row name is ``<case>/<metric>``, which is the series key
-    ``benchmark-action`` charts on gh-pages; ``test_benchmark_series_names.py``
+    ``benchmark-action`` charts on gh-pages; ``test_perf_series_names.py``
     pins the whole set, so a renamed case restarts a chart and has to say so.
     """
     config = request.config
@@ -115,11 +119,11 @@ def benchmark(request):
             "unit": unit,
             "value": value,
             # Read now, not at fixture setup: preflight fills this in.
-            "extra": config._bench_meta.get("provenance", ""),
+            "extra": config._perf_meta.get("provenance", ""),
         }
         if span:
             row["range"] = span
-        config._bench_rows.append(row)
+        config._perf_rows.append(row)
 
     return record
 
@@ -145,7 +149,7 @@ def _checked_cases(path):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Write the benchmark rows once the NPU checks have passed.
+    """Write the performance rows once the NPU checks have passed.
 
     A kernel that returns the wrong answer records nothing -- its test raises
     before timing. When given the extensive correctness report, also exclude
@@ -160,8 +164,8 @@ def pytest_sessionfinish(session, exitstatus):
     from pathlib import Path
 
     config = session.config
-    rows = getattr(config, "_bench_rows", [])
-    meta = getattr(config, "_bench_meta", {})
+    rows = getattr(config, "_perf_rows", [])
+    meta = getattr(config, "_perf_meta", {})
     reporter = config.pluginmanager.get_plugin("terminalreporter")
     stats = reporter.stats if reporter else {}
     failed = sorted({r.nodeid for k in ("failed", "error") for r in stats.get(k, [])})
@@ -174,7 +178,7 @@ def pytest_sessionfinish(session, exitstatus):
             meta["correctness_error"] = str(exc)
             rows = []
 
-    if meta_path := config.getoption("--bench-meta"):
+    if meta_path := config.getoption("--perf-meta"):
         meta["exitstatus"] = int(exitstatus)
         meta["n_rows"] = len(rows)
         meta["failed"] = failed
@@ -182,13 +186,29 @@ def pytest_sessionfinish(session, exitstatus):
 
     npu_ok = "preflight" in meta and meta.get("measurement_sane") is True
     completed = exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED)
-    if out := config.getoption("--bench-out"):
+    if out := config.getoption("--perf-out"):
         if npu_ok and completed and rows:
             Path(out).write_text(json.dumps(rows, indent=1))
 
 
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Print the ``--baseline-sources`` comparison, one line per case."""
+    baseline = getattr(config, "_perf_meta", {}).get("baseline")
+    if not baseline:
+        return
+    tr = terminalreporter
+    tr.section(f"baseline {baseline['sources']} -> this tree")
+    tr.write_line(f"{'case':<48} {'cycles':>17} {'npu_us min':>19}  words")
+    for name, c in baseline["cases"].items():
+        cycles = "{} -> {}".format(*c["cycles"])
+        npu = "{} -> {}".format(*c["npu_us_min"])
+        words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
+        tr.write_line(f"{name:<48} {cycles:>17} {npu:>19}  {words}")
+
+
 def _device_generation() -> str | None:
     """``"npu1"`` / ``"npu2"`` for the device the tests will run on, or None."""
+    from aie.iron.kernels._common import ARCH_TRAITS
     from aie.utils import get_current_device
     from aie.utils.compile.utils import resolve_target_arch
 
@@ -203,7 +223,7 @@ def _device_generation() -> str | None:
         arch = resolve_target_arch(device)
     except Exception:  # noqa: BLE001 - unrecognized device: nothing to skip on
         return None
-    return "npu2" if arch == "aie2p" else "npu1"
+    return ARCH_TRAITS[arch].device
 
 
 def pytest_collection_modifyitems(config, items):

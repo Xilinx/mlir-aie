@@ -40,35 +40,6 @@ def test_repr_contains_callable_design():
     assert "CallableDesign" in repr(cd)
 
 
-@pytest.mark.parametrize("has_image", [False, True])
-@pytest.mark.parametrize("has_insts", [False, True])
-def test_measure_compile_artifact_sizes(tmp_path, monkeypatch, has_image, has_insts):
-    def gen():
-        pass
-
-    cd = CallableDesign(gen)
-
-    def compile_artifacts(design, *, xclbin_path, inst_path):
-        assert design.compilable.use_cache is False
-        assert xclbin_path == tmp_path / "compile" / "final.xclbin"
-        assert inst_path == tmp_path / "compile" / "insts.bin"
-        xclbin_path.write_bytes(b"image")
-        inst_path.write_bytes(b"insts")
-        core = xclbin_path.with_suffix(".prj") / "elfs_0"
-        core.mkdir(parents=True)
-        (core / "elfs_0.elf").write_bytes(b"elf")
-        return (xclbin_path if has_image else None, inst_path if has_insts else None)
-
-    monkeypatch.setattr(CallableDesign, "compile", compile_artifacts)
-    if not has_image:
-        with pytest.raises(RuntimeError, match="compilation returned no image"):
-            cd.measure_compile(tmp_path)
-    else:
-        seconds, image_bytes, insts_bytes, elf_bytes = cd.measure_compile(tmp_path)
-        assert seconds >= 0
-        assert (image_bytes, insts_bytes, elf_bytes) == (5, 5 if has_insts else 0, 3)
-
-
 def test_jit_explicit_dispatch_specialization():
     def gen(a: In, *, M: DispatchTime[np.int32] = 8):
         pass

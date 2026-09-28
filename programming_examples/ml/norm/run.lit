@@ -1,0 +1,8 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, peano
+//
+// RUN: %run_on_npu1% %python %S/norm.py -d npu -o rms
+// RUN: %run_on_npu1% %python %S/norm.py -d npu -o layer
+// RUN: %run_on_npu1% %python %S/norm.py -d npu -o layer_f32 -e 2048

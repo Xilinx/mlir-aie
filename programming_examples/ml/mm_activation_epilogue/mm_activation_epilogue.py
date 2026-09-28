@@ -6,8 +6,9 @@
 """One resident program, four RTP-selected GEMM-epilogue modes -- IRON API +
 ``@iron.jit``.
 
-NPU2-only: the underlying ``mm_activation_epilogue_row`` kernel lives under
-``aie_kernels/aie2p/`` and has no aie2 counterpart.
+Runs on NPU1 and NPU2. The ``mm_activation_epilogue_row`` kernel lives under
+``aie_kernels/transformer/``; on aie2, which has no tanh instruction, SiLU and GELU
+take tanh from the ``getTanhBf16`` lookup table instead.
 
 ``float32`` in, ``float32`` out, per-element:
 
@@ -99,7 +100,7 @@ def mm_activation_epilogue(
             names=[f"{name}{i}" for i in range(n_cores)],
         )
 
-    # One input, one output ObjectFifo per core -- the AIE2P compute tile's
+    # One input, one output ObjectFifo per core -- the compute tile's
     # DMA channel budget (2 in / 2 out) does not stretch to a separate
     # output per mode, and the real epilogue this mirrors only ever has one
     # input and one output tile anyway (the C accumulator in, the
