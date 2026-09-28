@@ -20,6 +20,7 @@ import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from .device import acquire_device, xrt_smi_path
+from .parameter_scratchpad import ParameterScratchpad
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
@@ -68,6 +69,27 @@ class XRTKernelHandle(KernelHandle):
         self.insts_bo = insts_bo
         self.name = name
         self.is_full_elf = is_full_elf
+        self._run = None
+
+    @property
+    def run(self):
+        """The full ELF's ``pyxrt.run``, made once and reused by every call.
+
+        One run for the handle's life keeps its control scratchpad, and any
+        :meth:`parameter_scratchpad` written into it, valid from call to call.
+        """
+        if not self.is_full_elf:
+            raise HostRuntimeError(f"{self.name}: only a full ELF keeps a run")
+        if self._run is None:
+            self._run = pyxrt.run(self.kernel)
+        return self._run
+
+    def parameter_scratchpad(self, params_path: str | Path) -> ParameterScratchpad:
+        """The named runtime parameters of a full ELF, by the ``params.txt``
+        aiecc wrote with ``--get-scratchpad-parameters``; what is written and
+        synced there is read by every later run of this handle.
+        """
+        return ParameterScratchpad(self.run, params_path)
 
 
 class XRTKernelResult(KernelResult):
@@ -382,9 +404,9 @@ class XRTHostRuntime(HostRuntime):
         Full-ELF kernels carry their own control code in the ELF, so there is
         no instruction buffer to pass: each host buffer (including any trace
         buffer the trace lowering appended) is bound positionally with
-        ``set_arg``.
+        ``set_arg`` on the handle's persistent run.
         """
-        run = pyxrt.run(kernel_handle.kernel)
+        run = kernel_handle.run
         for i, buf in enumerate(buffers):
             run.set_arg(i, buf)
 
@@ -457,8 +479,9 @@ class CachedXRTKernelHandle(XRTKernelHandle):
     def invalidate(self):
         """Invalidate the handle and release resources in dependency order."""
         self._is_valid = False
-        # Instruction BOs and kernels depend on the hardware context. Those must
-        # be released before dropping the handle's context reference.
+        # Runs, instruction BOs and kernels depend on the hardware context.
+        # Those must be released before dropping the handle's context reference.
+        self._run = None
         if hasattr(self, "insts_bo"):
             del self.insts_bo
         if hasattr(self, "kernel"):

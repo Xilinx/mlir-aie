@@ -12,38 +12,32 @@
 # This is the Python equivalent of the C++ test in ../scratchpad_params/.
 # It exercises the full flow:
 #   1. aiecc compiles aie.mlir → aie.elf + params.txt
-#   2. This script loads the ELF, creates a ParameterScratchpad from params.txt,
-#      writes bf16 parameters, and verifies the core computes foo * bar.
+#   2. This script loads the ELF through the host runtime, takes the handle's
+#      ParameterScratchpad from params.txt, writes bf16 parameters, and
+#      verifies the core computes foo * bar.
 #   3. A second parametrized case with different values tests parameter re-use
 #      across runs.
 
 import pytest
-import pyxrt
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.utils.hostruntime.xrtruntime.hostruntime import XRTHostRuntime
-from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
-    ParameterScratchpad,
-)
+from aie.utils.npukernel import NPUKernel
 
 
 @pytest.fixture(scope="module")
 def kernel_setup():
     runtime = XRTHostRuntime()
-    device = runtime._device
-    elf = pyxrt.elf("aie.elf")
-    context = pyxrt.hw_context(device, elf)
-    kernel = pyxrt.ext.kernel(context, "test:sequence")
+    handle = runtime.load(NPUKernel(elf_path="aie.elf", kernel_name="test:sequence"))
 
     # Output buffer: 2 x bf16 (only the first element is written by the core)
     out_tensor = iron.tensor((2,), dtype=bfloat16, device="cpu")
 
-    run = pyxrt.run(kernel)
-    run.set_arg(0, out_tensor.buffer_object())
-
-    params = ParameterScratchpad(run, "params.txt")
-    return run, params, out_tensor
+    # Bound to the handle's one run, so what is written here reaches every
+    # later runtime.run() of the handle.
+    params = handle.parameter_scratchpad("params.txt")
+    return runtime, handle, params, out_tensor
 
 
 @pytest.mark.parametrize(
@@ -54,17 +48,15 @@ def kernel_setup():
     ],
 )
 def test_scratchpad_param_multiply(kernel_setup, foo, bar):
-    run, params, out_tensor = kernel_setup
+    runtime, handle, params, out_tensor = kernel_setup
 
     out_tensor.data.fill(0)
-    out_tensor.to("npu")
 
     params.write("foo", foo)
     params.write("bar", bar)
     params.sync()
 
-    run.start()
-    run.wait2()
+    runtime.run(handle, [out_tensor])
 
     out_tensor.to("cpu")
     result = float(out_tensor.numpy()[0])
