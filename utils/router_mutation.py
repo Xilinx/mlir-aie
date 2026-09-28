@@ -1163,8 +1163,6 @@ def k_masterset(rng, out, ctx):
         keep = not rp.keeps_header(tile, op[1], op[3])
         out.boxes[tile][i] = (op[0], op[1], op[2], keep, op[4])
         return f"keep_pkt_header on {rp.fmt_port(op[1])} at {tile} -> {keep}"
-    if not op[4] and not ctx["priority_at"].get((tile, op[1])):
-        return None
     out.boxes[tile][i] = (op[0], op[1], op[2], op[3], not op[4])
     return f"is_ctrl_pkt_overlay on {rp.fmt_port(op[1])} at {tile} -> {not op[4]}"
 
@@ -1240,14 +1238,13 @@ KILLERS = {
 def kill_context(d, an, routed):
     """Where the routing's streams go, to aim corruptions that are wrong."""
     out = rp.load_design(routed)
-    ids_at, priority_at = defaultdict(set), {}
+    ids_at = defaultdict(set)
     hops_of = {}
     reach, via = defaultdict(set), defaultdict(set)
     names = {
         tile: {(op[2], op[3]): op[1] for op in ops if op[0] == "amsel"}
         for tile, ops in out.boxes.items()
     }
-    prio = {f["id"]: f["priority"] for f in d.packet_flows}
     for i, s in enumerate(an.streams[: an.num_requested]):
         ends, _ = rp.trace_output(out, s.src, s.pid)
         hops = ends.get(s.dst, [])
@@ -1255,8 +1252,6 @@ def kill_context(d, an, routed):
         for tile, slave, m, arb in hops:
             if s.pid is not None:
                 ids_at[(tile, slave)].add(s.pid)
-                if prio.get(s.pid):
-                    priority_at[(tile, m)] = True
             if arb:
                 reach[(tile, names[tile][arb], s.pid)].add(s.dst)
                 via[(tile, slave, s.pid)].add(s.dst)
@@ -1277,7 +1272,6 @@ def kill_context(d, an, routed):
     }
     return dict(
         ids_at=ids_at,
-        priority_at=priority_at,
         conflict_sites=conflict_sites,
         amsels=amsels,
         reach=reach,

@@ -2112,6 +2112,9 @@ def unroutable_arbiters(d, an, pins_hops):
     """unroutableArbiters: the reason no routing can plan its arbiters, found
     before routing, or None."""
     target = d.target
+    prioritized = {
+        (src, f["id"]) for f in d.packet_flows if f["priority"] for src in f["srcs"]
+    }
     pinned = defaultdict(list)
     for i, s in enumerate(an.streams[: an.num_requested]):
         if s.pid is None:
@@ -2119,10 +2122,11 @@ def unroutable_arbiters(d, an, pins_hops):
         pinned[s.dst[:2]].append(i)
         if s.src[:2] == s.dst[:2]:
             continue
-        if pins_hops(s.src[:2]):
+        circuitless = (s.src, s.pid) in prioritized
+        if circuitless or pins_hops(s.src[:2]):
             pinned[s.src[:2]].append(i)
         for t in cut_tiles(target, s.src[:2], s.dst[:2]):
-            if pins_hops(t):
+            if circuitless or pins_hops(t):
                 pinned[t].append(i)
     reserved = reserved_amsels(d)
     for tile in sorted(pinned):
@@ -2236,7 +2240,9 @@ def plan_routing(d, an, solution, hops_on):
                             switchboxes[tile].append(((s, t), pid))
                         if k is not None and k not in slave_streams[((tile, s), pid)]:
                             slave_streams[((tile, s), pid)].append(k)
-                        ctrl_flows[((tile, t), pid)] = bool(f["priority"])
+                        ctrl_flows[((tile, t), pid)] = ctrl_flows.get(
+                            ((tile, t), pid), False
+                        ) or bool(f["priority"])
                 if not src_routed:
                     return fail(
                         f"packet flow source ({src[0]}, {src[1]}) {BUNDLES[src[2]]}{src[3]}"
@@ -3000,7 +3006,11 @@ def verify(d, an, text, hops_on):
         problems.append("hold cycle: " + an.explain_cycle(cycle))
 
     keeps = last_keep(d)
-    mixed_ctrl, low_priority = set(), set()
+    mixed_ctrl, low_priority, ctrl_used = set(), set(), set()
+    # A source's packets with a priority flow's id route as that flow does.
+    prio_sent = {
+        (src, f["id"]) for f in d.packet_flows if f["priority"] for src in f["srcs"]
+    }
     for f in d.packet_flows:
         for dst in f["dsts"]:
             for src in f["srcs"]:
@@ -3023,6 +3033,8 @@ def verify(d, an, text, hops_on):
                         problems.append(
                             f"id {f['id']} loses its header at {tile} {fmt_port(m)}"
                         )
+                    if f["priority"] or (src, f["id"]) in prio_sent:
+                        ctrl_used.add((tile, m))
                     if not f["priority"]:
                         if ctrl:
                             mixed_ctrl.add((tile, m))
@@ -3039,6 +3051,19 @@ def verify(d, an, text, hops_on):
                         if n in view[1]
                     ):
                         low_priority.add((tile, m))
+    # A reload that skips the control overlay skips a ctrl masterset, so one
+    # no priority flow takes leaves its flows unconfigured.
+    for tile, ops in out.boxes.items():
+        given = box_view(d.boxes.get(tile, []))[2]
+        for m, op in box_view(ops)[2].items():
+            if (
+                op[4]
+                and (tile, m) not in ctrl_used
+                and not (m in given and given[m][4])
+            ):
+                problems.append(
+                    f"ctrl masterset {fmt_port(m)} at {tile} carries no priority flow"
+                )
 
     groups, bound = defaultdict(set), defaultdict(int)
     for (src, dst, pid), hops in paths.items():
@@ -3883,6 +3908,7 @@ OUTCOMES = (
     ("fixed connections", r"Unable to add fixed connections"),
     ("no packet_source", r"packet_flow has no packet_source"),
     ("not in device", r"must be contained within a device"),
+    ("overused channel", r"the router found no routing that fits"),
     ("no legal routing", r"Unable to find a legal routing\s*$"),
 )
 INTERNALS = (
@@ -4608,16 +4634,7 @@ def check_verifier():
 
 # Router bugs reported and not yet fixed: (label, test on the design and the
 # verifier's problems). Matching cases are counted, not failed.
-KNOWN_BUGS = [
-    (
-        "unroutable same-id sources on one tile",
-        lambda d, problems: any(
-            len({s[:2] for s in f["srcs"]}) < len(f["srcs"]) for f in d.packet_flows
-        )
-        and len(problems) == 1
-        and problems[0].endswith("error: Unable to find a legal routing"),
-    ),
-]
+KNOWN_BUGS = []
 
 
 def known_bug(d, problems):
