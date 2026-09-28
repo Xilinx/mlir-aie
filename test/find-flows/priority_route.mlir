@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 // The router may merge flow 9 into the rules of priority flow 1 on the hops the
-// two share. Only the master set at a flow's destination says whether the flow
-// is a priority_route one, so flow 9 is lifted without it.
+// two share, and flow 5 meets flow 1 at the master set of their destination.
+// Only a flow marked both where it starts and where it ends is a
+// priority_route one, so flows 9 and 5 are lifted without it.
 
 // RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
 // RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
@@ -20,6 +21,10 @@
 // CHECK:     aie.packet_flow(9) {
 // CHECK-NEXT:  aie.packet_source<%{{.*}}, DMA : 1>
 // CHECK-NEXT:  aie.packet_dest<%{{.*}}tile_0_2, DMA : 1>
+// CHECK-NEXT: }{{$}}
+// CHECK:     aie.packet_flow(5) {
+// CHECK-NEXT:  aie.packet_source<%{{.*}}tile_0_2, DMA : 0>
+// CHECK-NEXT:  aie.packet_dest<%{{.*}}mem_tile_0_1, DMA : 0>
 // CHECK-NEXT: }{{$}}
 // CHECK-NOT: aie.switchbox
 
@@ -35,6 +40,10 @@ module {
     aie.packet_flow(9) {
       aie.packet_source<%t00, DMA : 1>
       aie.packet_dest<%t02, DMA : 1>
+    }
+    aie.packet_flow(5) {
+      aie.packet_source<%t02, DMA : 0>
+      aie.packet_dest<%t01, DMA : 0>
     }
   }
 }

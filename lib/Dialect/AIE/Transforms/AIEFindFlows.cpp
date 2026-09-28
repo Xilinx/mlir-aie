@@ -417,21 +417,29 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
           lifted.consumed.insert(op);
         }
       }
-      // The lowering stores keep_pkt_header, and the marker of a
-      // priority_route flow, on the master set that drives the destination.
-      // Carry them onto the recovered flow. Hops before it can be shared with
-      // other flows, so their markers say nothing about this one.
+      // The lowering stores keep_pkt_header on the master set that drives the
+      // destination. A priority_route flow marks that master set too, and the
+      // rule it starts by at its source. Either can be shared, the master set
+      // with other sources and the rule with the source's other ids, but a
+      // flow that has both is a priority_route one or comes from the same
+      // source as one, which routes the same.
       BoolAttr keepPktHeader, priorityRoute;
+      bool markedDest = false, markedSource = false;
       for (Operation *op : c.usedOps) {
         if (auto ms = dyn_cast_or_null<MasterSetOp>(op)) {
           if (ms.getDestBundle() == destPort.bundle &&
               ms.getDestChannel() == destPort.channel) {
             keepPktHeader = ms.getKeepPktHeaderAttr();
-            if (ms->hasAttr("is_ctrl_pkt_overlay")) {
-              priorityRoute = rewriter.getBoolAttr(true);
-            }
+            markedDest = ms->hasAttr("is_ctrl_pkt_overlay");
           }
         }
+        if (isa_and_nonnull<PacketRuleOp>(op) &&
+            op->hasAttr("priority_route")) {
+          markedSource = true;
+        }
+      }
+      if (markedDest && markedSource) {
+        priorityRoute = rewriter.getBoolAttr(true);
       }
       // The rules along the path accept every id that agrees with value on the
       // bits mask selects. Which of those a running design sends is not
