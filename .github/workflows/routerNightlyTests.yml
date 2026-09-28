@@ -1,12 +1,15 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# Mutation testing of the router and of the model that checks it. Designs are
-# changed in ways with a known answer (the router must route it, must reject
-# it, or must route it the same), and routed output is corrupted to measure how
-# often the model's verifier notices.
+# The router's model-based tests at scale. check-aie runs router_properties.py
+# on every PR over a fixed corpus sized to stay fast; this runs it over a corpus
+# that contains it and is many times larger. It also runs mutation testing of
+# the router and of the model that checks it. Designs are changed in ways with a
+# known answer (the router must route it, must reject it, or must route it the
+# same), and routed output is corrupted to measure how often the model's
+# verifier notices.
 
-name: Router mutation tests
+name: Router nightly tests
 
 permissions:
   contents: read
@@ -14,6 +17,9 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
+      router_seeds:
+        description: 'Routable designs per device (router_properties.py --seeds)'
+        default: '2000'
       seeds:
         description: 'Routable designs per device and hop setting (router_mutation.py --seeds)'
         default: '400'
@@ -29,18 +35,20 @@ defaults:
 
 env:
   DEBIAN_FRONTEND: noninteractive
+  ROUTER_SEEDS: ${{ inputs.router_seeds || '2000' }}
   SEEDS: ${{ inputs.seeds || '400' }}
   FIRST_SEED: ${{ inputs.first_seed || '0' }}
 
 concurrency:
-  group: router-mutation-tests-${{ github.ref }}
+  group: router-nightly-tests-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  router-mutation-tests:
-    name: Router mutation tests
+  router-nightly-tests:
+    name: Router model-based and mutation tests
 
     runs-on: ubuntu-24.04
+    timeout-minutes: 330
 
     steps:
       - name: Get the project repository
@@ -96,6 +104,8 @@ jobs:
           done
           unzip -q mlir-*.whl
 
+      # Assertions on, so the router test also reads the router's DEBUG_ONLY
+      # output and measures route-space coverage of its internals.
       - name: Build
         id: build
         run: |
@@ -123,11 +133,28 @@ jobs:
           echo "$PWD/bin" >> "$GITHUB_PATH"
           echo "PYTHONPATH=$PWD/python" >> "$GITHUB_ENV"
 
+      # Each script exits nonzero on any REGRESSION line. Failing designs are
+      # saved under failures/ for the artifact below.
+      - name: Router properties, npu1
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 30
+        run: |
+          python test/create-packet-flows/router_properties.py --device npu1 \
+            --seeds "$ROUTER_SEEDS" --out failures/router-npu1
+
+      - name: Router properties, npu2
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 30
+        run: |
+          python test/create-packet-flows/router_properties.py --device npu2 \
+            --seeds "$ROUTER_SEEDS" --out failures/router-npu2
+
       # Each run exits nonzero on a failed mutator or relation, or a corruption
       # the verifier misses. Failing designs are saved under failures/, with
       # shrunk repros of failed mutators under failures/*/repros.
       - name: Router, npu1, hops on
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 50
         run: |
           python utils/router_mutation.py --device npu1 \
             --seeds "$SEEDS" --first-seed "$FIRST_SEED" --jobs "$(nproc)" \
@@ -135,6 +162,7 @@ jobs:
 
       - name: Router, npu1, hops off
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 50
         run: |
           python utils/router_mutation.py --device npu1 --hops-off \
             --seeds "$SEEDS" --first-seed "$FIRST_SEED" --jobs "$(nproc)" \
@@ -142,6 +170,7 @@ jobs:
 
       - name: Router, npu2, hops on
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 90
         run: |
           python utils/router_mutation.py --device npu2 \
             --seeds "$SEEDS" --first-seed "$FIRST_SEED" --jobs "$(nproc)" \
@@ -149,6 +178,7 @@ jobs:
 
       - name: Router, npu2, hops off
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 90
         run: |
           python utils/router_mutation.py --device npu2 --hops-off \
             --seeds "$SEEDS" --first-seed "$FIRST_SEED" --jobs "$(nproc)" \
@@ -158,6 +188,6 @@ jobs:
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: router-mutation-test-failures
+          name: router-nightly-test-failures
           path: failures/
           if-no-files-found: ignore
