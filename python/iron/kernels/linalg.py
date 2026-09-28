@@ -611,20 +611,17 @@ def mm(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=layouts,
-            # aiecc measured_stack_size, tuned or not: at most 512 B on aie2
-            # and 192 B on aie2p, but for aie2p's int8 -> int32 kernel, whose
-            # fully unrolled K loop spills about 16 B per unit of K: with
-            # c_col_maj, 1088 B at K = 56 and 6208 B at K = 384, but no more
-            # than 1024 B up to K = 48. mm_aie2p.h rolls K up from K = 416
-            # (192 B), and a 16x16 tile does not spill (640 B). chess builds
-            # keep the matrix_multiplication examples' number.
-            # Fit only for aie2p, vectorized, int8 -> int32, 48 < dim_k < 416
-            # (787 scanned M/N/K/layout combos, see 0c60e6be3f2); every other
-            # case's None (1024 B default) is covered by the measurements
-            # above. Underestimating either is a loud aiecc build failure
-            # (checkStackSizeRequirements measures real .stack_sizes), not
-            # silent corruption -- except an unmeasurable core (e.g. Chess),
-            # which is why use_chess keeps its own fixed constant.
+            # Tuned or not: at most 512 B on aie2
+            # and 192 B on aie2p, except aie2p's int8 -> int32 kernel, whose
+            # fully unrolled K loop spills about 16 B per unit of K (c_col_maj:
+            # 1088 B at K = 56, 6208 B at K = 384, at most 1024 B up to K =
+            # 48). mm_aie2p.h rolls K from K = 416 (192 B), and a 16x16 tile
+            # does not spill (640 B). The fit covers only that kernel over 48 <
+            # dim_k < 416 (787 M/N/K/layout combos, see 0c60e6be3f2); the rest
+            # fit the 1024 B default. Too small a value fails the aiecc build
+            # loudly, as checkStackSizeRequirements reads the real
+            # .stack_sizes. A chess core cannot be measured, so use_chess keeps
+            # the matrix_multiplication examples' constant.
             stack_bytes=(
                 0xD00
                 if use_chess
@@ -1142,8 +1139,8 @@ def mha_softmax() -> ExternalFunction:
             parameter_bindings=((4, scale), (5, b), (6, b)),
             initializers=((2, _zero_output),),
             reference=partial(mha_softmax_ref, scale=scale),
-            # aiecc measured_stack_size of the untuned loop on aie2, where a
-            # whole 64-lane row spills; the tuned one fits the default.
+            # The untuned loop on aie2, where a whole 64-lane row spills; the
+            # tuned one fits the default.
             stack_bytes=(
                 1376 if _detect_arch() == "aie2" and _tuned_arch() is None else None
             ),
@@ -1272,7 +1269,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
             reference=partial(prefill_fv_ref, dim_m=lq, dim_k=lk, dim_n=head_dim),
             acc_dtype=np.float32,
             reduction=lk,
-            stack_bytes=stack_bytes,  # aiecc measured_stack_size
+            stack_bytes=stack_bytes,
             # Derived, not inherited: _linalg_tolerance(bfloat16)'s 0.05/0.5 is
             # for a kernel that narrows C back to bf16, and y here is float32.
             # bf16 mantissas are 8 bits, so every product is exact in f32

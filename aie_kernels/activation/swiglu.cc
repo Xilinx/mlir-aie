@@ -74,10 +74,10 @@ static inline void swiglu_impl(bfloat16 *restrict input_vector,
 }
 
 #if AIE_TUNED_AIE2
-// AIE2's table reads are ordered against every load and store, so the next
-// trip's inputs load before this trip's lookups. At K = 4 they overflow the
-// 1 KiB stack. silu(x * w2) is 0 from x * w2 = -8 down, so the output is 0
-// there rather than NaN where x * w1 overflowed.
+// lut_map_bf16's prefetch (see AIE2/lut_based_ops.h): the next trip's inputs
+// load before this trip's lookups. At K = 4 they overflow the 1 KiB stack.
+// silu(x * w2) is 0 from x * w2 = -8 down, so the output is 0 there rather than
+// NaN where x * w1 overflowed.
 static inline void swiglu_aie2(const bfloat16 *restrict x,
                                const bfloat16 *restrict w1,
                                const bfloat16 *restrict w2,
@@ -138,10 +138,8 @@ static inline void swiglu_aie2(const bfloat16 *restrict x,
 // x * w is recomputed rather than kept. The LUT build writes x * w2 to the
 // output and reads sigmoid.cc's table over it instead of the tanh. In one
 // loop the vtanh build takes 1670 cycles a tile to these passes' 396, and the
-// LUT build's last two passes pipeline at II 17; the
-// pipeline_initiation_interval hints keep the pre-RA pipeliner, which orders
-// each in-place loop's store before the next trip's load, from settling on II
-// 22 and leaving the post-RA pipeliner nothing to do.
+// LUT build's last two passes pipeline at II 17 with the II hints; see
+// tanh_lut_map in common/activations.h for why a pass needs them.
 static inline void swiglu_aie2p(bfloat16 *restrict input_vector,
                                 bfloat16 *restrict weight_vector_1,
                                 bfloat16 *restrict weight_vector_2,

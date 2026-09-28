@@ -132,8 +132,7 @@ void conv2dk3_i8_stride2_scalar(
 }
 
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-// AIE2P keeps these short loops rolled and their register arrays on the
-// stack unless told to unroll them; the AIE2 build is left as tuned.
+// See K1_UNROLL_CHUNKS in bn_conv2dk1_aie2.h.
 #if AIE_TUNED_AIE2P
 #define BN3_UNROLL_FULL AIE_LOOP_UNROLL_FULL
 #else
@@ -214,8 +213,8 @@ static inline void k3_chunks(const int8_t *const *lines, const int8_t *wts,
     aie::store_v(out + 32 * j, acc[j].template to_vector<uint8>(scale));
 }
 
-// input_channels == 8: one pass over the row per output channel block, each
-// row's odd pixels carried from chunk to chunk. A row dropped by `check` gets
+// input_channels == 8: one pass over the row per oc/8 group, each row's odd
+// pixels carried from one step to the next. A row dropped by `check` gets
 // zero weights.
 alignas(K3_LOAD_ALIGN) static const int8_t k3_zero_wts[3 * 64] = {};
 

@@ -143,7 +143,9 @@ class KernelContract:
             sets its own mode or narrows nothing. A Worker handed the kernel
             calls it before its loop.
         stack_bytes: Core stack a Worker calling this kernel needs, when
-            more than the target's default. Say where the number came from.
+            more than the target's default. Say where the number came from;
+            a note that gives only bytes per build means aiecc's
+            measured_stack_size.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
         layouts: A ``TensorLayout`` per argument; ``None`` is identity.

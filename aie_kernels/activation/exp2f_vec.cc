@@ -17,11 +17,9 @@
 // the result is finite but wrong-signed (k = 129 reads back as -0.0, k = -129
 // as -1.7e38), which isfinite() cannot catch. The add is exact, and on aie2p
 // the accuracy above holds down to -126. The clamp defaults to -111; move it
-// with -DEXP2F_VEC_MIN_X=<float>.
-//
-// At the top end 2^128 exceeds FLT_MAX, so +inf is copied in under a mask for
-// x >= 128, and [127.999, 128) is clamped onto one value at 7.8e-4 relative
-// error.
+// with -DEXP2F_VEC_MIN_X=<float>. 2^128 exceeds FLT_MAX, so x >= 128 gets +inf
+// under a mask, and [127.999, 128) clamps onto one value (7.8e-4 relative
+// error).
 //
 //===----------------------------------------------------------------------===//
 #include <aie_api/aie.hpp>
@@ -77,7 +75,7 @@ static inline void exp2f_vec(const float *in, float *out) {
   x = aie::select(x, aie::broadcast<float, EXP2F_VEC_LEN>(kMinX), below);
   x = aie::select(x, aie::broadcast<float, EXP2F_VEC_LEN>(127.999f), above);
 
-  // Adding 1.5 * 2^23 rounds x to an integer in the low mantissa bits.
+  // The 1.5 * 2^23 rounding: see common/exp2_poly.h.
   const auto magic = aie::broadcast<float, EXP2F_VEC_LEN>(12582912.0f);
   const aie::vector<float, EXP2F_VEC_LEN> xm = aie::add(x, magic);
   // The f32 add rounds x to the grid of an operand with a larger exponent,

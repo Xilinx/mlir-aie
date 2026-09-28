@@ -50,9 +50,8 @@
 // the pointers: a table pointer offset from the array loses the reads' memory
 // operands, and every load and store around them is then kept in order.
 //
-// Any table laid out as tanh_lut_ab/cd reads the same way; shift sets the
-// segment width, 2^(4 - shift), and so the range, [-2^(8 - shift), 2^(8 -
-// shift)). sigmoid.cc's table is the other one.
+// Any table laid out as tanh_lut_ab/cd reads the same way (sigmoid_lut.h's
+// too); shift sets the segment width 2^(4 - shift), range +-2^(8 - shift).
 template <int shift>
 __attribute__((always_inline)) inline aie::accum<accfloat, 16>
 lut_segments_acc(const float *ab, const float *cd,

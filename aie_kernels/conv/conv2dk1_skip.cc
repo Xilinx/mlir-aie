@@ -228,8 +228,8 @@ void conv2dk1_skip_ui8_scalar(uint8_t *input0, uint8_t *input1, int8_t *kernels,
 // conv2d 1x1 skip - vector
 // act: uint8, wts: int8, skip: int8 or uint8, out: uint8
 //
-// input_width must be a multiple of 32: each block of 32 pixels keeps 8
-// accumulators of 4 pixels.
+// input_width must be a multiple of 32; blocked as conv2dk1_vector, see
+// conv2dk1.cc.
 //*****************************************************************************
 template <typename TSKIP>
 static void conv2dk1_skip_vector(uint8_t *input0, uint8_t *input1,
@@ -316,8 +316,8 @@ static void conv2dk1_skip_vector(uint8_t *input0, uint8_t *input1,
 // conv2d 1x1 skip - vector
 // act: uint8, wts: int8, skip: int8 or uint8, out: uint8
 //
-// input_width must be a multiple of 32: each block of 32 pixels keeps 4
-// accumulators of 8 pixels, one native 8x8x8 mac each.
+// input_width must be a multiple of 32; blocked as conv2dk1_vector, see
+// conv2dk1.cc.
 //*****************************************************************************
 template <typename TSKIP>
 static void conv2dk1_skip_vector(uint8_t *input0, uint8_t *input1,
@@ -339,8 +339,7 @@ static void conv2dk1_skip_vector(uint8_t *input0, uint8_t *input1,
   constexpr int NUM_ACC = 4;
   const int iw = input_width;
   const int iw_32 = input_width / 32;
-  // input0 and input1 each hold half the input channels; the weights of
-  // input0's channels come first within each oc/8 group.
+  // Channel halves and weight order as in the AIE2 kernel above.
   const int ic_half = input_channels / 16;
 
   uint8_t *__restrict out_ptr = output;

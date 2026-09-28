@@ -380,8 +380,7 @@ conv2dk3_ui8_scalar(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
 #endif // Vector
 
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
-// AIE2P keeps these short loops rolled and their register arrays on the
-// stack unless told to unroll them; the AIE2 build is left as tuned.
+// See K1_UNROLL_CHUNKS in bn_conv2dk1_aie2.h.
 #if AIE_TUNED_AIE2P
 #define BN3_UNROLL_FULL AIE_LOOP_UNROLL_FULL
 #else
@@ -479,7 +478,8 @@ static void dw_s1_row_aligned(const uint8_t *line0, const uint8_t *line1,
 }
 
 // Stride 1, input_width >= 5: first chunk, 4-pixel middle chunks, and a last
-// chunk at input_width - 4 that may overlap the one before it.
+// chunk at input_width - 4, overlapping as bn_conv2dk1_aie2.h's rows do (see
+// k1_load there).
 static void dw_s1_row(const uint8_t *line0, const uint8_t *line1,
                       const uint8_t *line2, const dw_w *w,
                       uint8_t *__restrict out, const int32_t input_width,
@@ -732,8 +732,7 @@ dw8_stream(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
                       scale);
 }
 
-// Stride 1, input_width <= 32 only; returns how many channel blocks it
-// covered.
+// Stride 1, input_width <= 32 only.
 static int32_t dw8_blocks(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                           int8_t *wts, uint8_t *output1, uint8_t *output2,
                           const int32_t input_width, const int32_t channels,
@@ -904,7 +903,7 @@ static inline void dw8_s1_row(const uint8_t *__restrict line0,
 }
 
 // Stride 2 when dw8_s2_row applies, and stride 1 over rows wider than
-// dw8_blocks takes; returns how many channel blocks it covered.
+// dw8_blocks takes.
 static int32_t dw8_s2_blocks(const uint8_t *line0, const uint8_t *line1,
                              const uint8_t *line2, const int8_t *wts,
                              uint8_t *output1, uint8_t *output2,
@@ -1005,7 +1004,7 @@ static void dw8_s2_narrow_rows(const uint8_t *line0, const uint8_t *line1,
   }
 }
 
-// Returns how many channel blocks it covered.
+// Stride 2 rows dw8_s2_blocks does not take, even widths 10 to 32.
 static int32_t dw8_s2_narrow(const uint8_t *line0, const uint8_t *line1,
                              const uint8_t *line2, const int8_t *wts,
                              uint8_t *output1, uint8_t *output2,
@@ -1054,7 +1053,7 @@ static inline __attribute__((always_inline)) void dwg_for(F &&f) {
 
 // A group of NB channel blocks whose rows start and end 64-byte aligned,
 // taken as one run of NB * W pixels. Chunk k convolves words k and k + 1 into
-// pixels 8k+1..8k+8; chunk -1, over a zero word, gives pixel 0. A chunk sums
+// pixels 8k+1..8k+8; chunk -1, over a zero word, yields pixel 0. A chunk sums
 // once per block its outputs belong to, with the pixels across that block's
 // edges zeroed, and takes each lane from its own block. Stride 2 keeps the
 // even pixels.
@@ -1272,6 +1271,8 @@ static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                         (uintptr_t)output1 | (uintptr_t)output2) &
                        63) == 0 &&
                       input_width % 8 == 0;
+  // Each walker returns how many channel blocks it covered; the loop below
+  // takes the rest.
   const int32_t first =
       (stride == 2 && aligned) || (stride == 1 && rows64 && input_width > 32)
           ? dw8_s2_blocks(line0, line1, line2, wts, output1, output2,

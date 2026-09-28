@@ -257,9 +257,9 @@ static void conv2dk1_skip_init_vector(
   event1();
 }
 #elif AIE_TUNED_AIE2P
-// Each block of 32 pixels keeps 4 accumulators of 8 pixels, one native
-// 8x8x8 mac each. The activations are not __restrict: with it the compiler
-// parks every oc-invariant input vector on the stack.
+// Blocked as conv2dk1_vector, see conv2dk1.cc. The activations are not
+// __restrict: with it the compiler parks every oc-invariant input vector on
+// the stack.
 template <typename SkipT>
 static void conv2dk1_skip_init_vector(
     uint8_t *input0, uint8_t *input1, int8_t *kernels, uint8_t *output,
@@ -281,9 +281,7 @@ static void conv2dk1_skip_init_vector(
   constexpr int NUM_ACC = 4;
   const int iw = input_width;
   const int iw_32 = input_width / 32;
-  // input0 and input1 each hold half the input channels; the weights of
-  // input0's channels come first within each oc/8 group. The skip
-  // projection's weights follow all of the main conv's.
+  // Channel halves and weight order as in the AIE2 kernel above.
   const int ic_half = input_channels / 16;
   const int ic_skip = input_channels_skip / 8;
   int8_t *kernels_skip = kernels + output_channels * input_channels;

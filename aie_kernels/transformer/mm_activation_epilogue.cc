@@ -120,11 +120,10 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
 }
 
 #if AIE_TUNED_AIE2
-// aie2 reads tanh from getTanhBf16's table, and each store is ordered before
-// the next vector's table reads. A loop that loads, computes and stores one
-// vector per iteration does not pipeline. Storing each result one iteration
-// late puts the next vector's table reads ahead of the store, and with an II
-// hint that loop pipelines.
+// aie2's getTanhBf16 reads a table; see lut_map_bf16 in AIE2/lut_based_ops.h
+// for why a one-vector loop does not pipeline. Storing each result one
+// iteration late puts the next vector's table reads ahead of the store, and
+// with an II hint that loop pipelines.
 template <int II, typename F>
 static inline void mm_lut_rows(uint32_t n, const float *__restrict acc,
                                float *__restrict out, F f) {

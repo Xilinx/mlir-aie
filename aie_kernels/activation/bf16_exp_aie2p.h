@@ -42,7 +42,7 @@ exp_bf16_vec(aie::vector<bfloat16, VEC_LEN> x) {
   t = aie::mac(t, x, bf(0xbb2c));
   t = aie::mac(t, x, bf(0x3fb9));
 
-  // Adding 1.5 * 2^23 rounds t to an integer in the low mantissa bits.
+  // The 1.5 * 2^23 rounding: see common/exp2_poly.h.
   const auto magic = aie::broadcast<float, VEC_LEN>(12582912.0f);
   const aie::vector<float, VEC_LEN> tv = t.to_vector<float>();
   const aie::vector<float, VEC_LEN> tm = aie::add(tv, magic);
