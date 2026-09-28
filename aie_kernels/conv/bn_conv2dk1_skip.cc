@@ -24,7 +24,6 @@
 
 #if AIE_TUNED_AIE2P
 #define K1_DEEP_WALKER
-#define K1_NO_FIXED
 #include "bn_conv2dk1_aie2.h"
 #endif
 
@@ -565,16 +564,16 @@ k1_skip_vector(const uint8_t *input, const int8_t *kernels, int8_t *output,
   aie::set_saturation(aie::saturation_mode::saturate);
   aie::set_rounding(aie::rounding_mode::conv_even);
 #if defined(K1_WIDTH)
-  if constexpr (K1_DEEP) {
-    const aie::vector<int8, 64> ones = aie::broadcast<int8, 64>(1);
-    k1_rows_deep(
-        input, kernels, output,
-        [&](auto &acc, const aie::vector<TS, 64> &s) {
-          aie::accum<acc32, 64> t = aie::mul(s, ones);
-          t = aie::mac(t, acc.template to_vector<int8>(scale), ones);
-          return t.template to_vector<int8>(skip_scale);
-        },
-        skip);
+  const aie::vector<int8, 64> ones = aie::broadcast<int8, 64>(1);
+  const auto epi = [&](auto &acc, const aie::vector<TS, 64> &s) {
+    aie::accum<acc32, 64> t = aie::mul(s, ones);
+    t = aie::mac(t, acc.template to_vector<int8>(scale), ones);
+    return t.template to_vector<int8>(skip_scale);
+  };
+  if constexpr (K1_FIXED) {
+    k1_rows_fixed(input, kernels, output, epi, skip);
+  } else if constexpr (K1_DEEP) {
+    k1_rows_deep(input, kernels, output, epi, skip);
   } else {
     k1_skip_rows<K1_ALIGNED, K1_P>(input, kernels, skip, output, K1_WIDTH,
                                    input_channels, output_channels, scale,

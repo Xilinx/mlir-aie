@@ -80,14 +80,10 @@ constexpr bool K1_ALIGNED = K1_WIDTH % K1_P == 0;
 // the pipeliner does not take the reduction loop k1_chunks runs once per
 // group, nor a loop with k1_store's alignment branch. An even-width row puts
 // every chunk on a boundary of K1_FIXED_ALIGN bytes, the most a row's length
-// keeps. A kernel without k1_rows_fixed defines K1_NO_FIXED.
+// keeps.
 constexpr int K1_IC_BLOCKS = CONV_INPUT_CHANNELS / 8;
 constexpr int K1_OC_BLOCKS = CONV_OUTPUT_CHANNELS / 8;
-#ifdef K1_NO_FIXED
-constexpr bool K1_EVEN = false;
-#else
 constexpr bool K1_EVEN = K1_WIDTH >= 8 && K1_WIDTH % 2 == 0;
-#endif
 constexpr unsigned K1_FIXED_ALIGN = K1_WIDTH % 8 == 0   ? 64
                                     : K1_WIDTH % 4 == 0 ? 32
                                                         : 16;
@@ -267,10 +263,10 @@ static void k1_fixed_hold_wts(const TI *__restrict input,
   }
 }
 
-template <int GO, typename TI, typename TO, typename Epi>
-static void k1_fixed_hold_in(const TI *__restrict input,
-                             const int8_t *__restrict kernels,
-                             TO *__restrict output, Epi epi) {
+template <int GO, typename TI, typename TO, typename Epi, typename... S>
+static void
+k1_fixed_hold_in(const TI *__restrict input, const int8_t *__restrict kernels,
+                 TO *__restrict output, Epi epi, const S *__restrict... side) {
   constexpr int row = K1_WIDTH * 8;
   constexpr int last = row - 64;
   constexpr int chunks = (K1_WIDTH + 7) / 8;
@@ -302,7 +298,9 @@ static void k1_fixed_hold_in(const TI *__restrict input,
       }
       AIE_LOOP_UNROLL_FULL
       for (int o = 0; o < GO; o++)
-        k1_store_fixed(out + o * row, epi(acc[o]));
+        k1_store_fixed(
+            out + o * row,
+            epi(acc[o], k1_load_fixed(side + (out - output) + o * row)...));
       const int adv = back && k == groups - 2 ? GO - back : GO;
       wts += (adv - 1) * step;
       out += adv * row;
@@ -312,10 +310,10 @@ static void k1_fixed_hold_in(const TI *__restrict input,
 
 // A deeper reduction does not fit in registers, so the pipelined loop is the
 // input-channel loop, for one chunk of G output channel blocks.
-template <int G, typename TI, typename TO, typename Epi>
-static void k1_fixed_reduce(const TI *__restrict input,
-                            const int8_t *__restrict kernels,
-                            TO *__restrict output, Epi epi) {
+template <int G, typename TI, typename TO, typename Epi, typename... S>
+static void
+k1_fixed_reduce(const TI *__restrict input, const int8_t *__restrict kernels,
+                TO *__restrict output, Epi epi, const S *__restrict... side) {
   constexpr int row = K1_WIDTH * 8;
   constexpr int last = row - 64;
   constexpr int chunks = (K1_WIDTH + 7) / 8;
@@ -343,28 +341,34 @@ static void k1_fixed_reduce(const TI *__restrict input,
       TO *__restrict out = output + o * row + x;
       AIE_LOOP_UNROLL_FULL
       for (int g = 0; g < G; g++)
-        k1_store_fixed(out + g * row, epi(acc[g]));
+        k1_store_fixed(out + g * row,
+                       epi(acc[g], k1_load_fixed(side + (o + g) * row + x)...));
     }
   }
 }
 
-// n is the fewest cycles per mac measured for each shape.
-template <typename TI, typename TO, typename Epi>
-static void k1_rows_fixed(const TI *__restrict input,
-                          const int8_t *__restrict kernels,
-                          TO *__restrict output, Epi epi) {
+// n is the fewest cycles per mac measured for each shape. Side buffers share
+// the output's layout; loading one too, hold_wts runs out of registers, and
+// hold_in over three output blocks measured fastest.
+template <typename TI, typename TO, typename Epi, typename... S>
+static void
+k1_rows_fixed(const TI *__restrict input, const int8_t *__restrict kernels,
+              TO *__restrict output, Epi epi, const S *__restrict... side) {
   constexpr int n = K1_IC_BLOCKS > 10   ? 4
                     : K1_IC_BLOCKS <= 5 ? 1
                     : K1_OC_BLOCKS > 6  ? 3
                                         : 2;
   constexpr int g = n < K1_OC_BLOCKS ? n : K1_OC_BLOCKS;
   if constexpr (K1_IC_BLOCKS > 10)
-    k1_fixed_reduce<g>(input, kernels, output, epi);
+    k1_fixed_reduce<g>(input, kernels, output, epi, side...);
+  else if constexpr (sizeof...(S) > 0)
+    k1_fixed_hold_in<(K1_OC_BLOCKS < 3 ? K1_OC_BLOCKS : 3)>(
+        input, kernels, output, epi, side...);
   else if constexpr (K1_WIDTH % 8 == 0 && K1_WIDTH / 8 >= K1_OC_BLOCKS)
     k1_fixed_hold_wts<K1_IC_BLOCKS <= 2 && K1_OC_BLOCKS % 2 == 0 ? 2 : 1>(
         input, kernels, output, epi);
   else
-    k1_fixed_hold_in<g>(input, kernels, output, epi);
+    k1_fixed_hold_in<g>(input, kernels, output, epi, side...);
 }
 
 // As in k1_fixed_reduce, with accumulators for every 8-pixel chunk of a row
