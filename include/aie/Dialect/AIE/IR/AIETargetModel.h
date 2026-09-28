@@ -134,8 +134,8 @@ public:
   virtual int columns() const = 0;
 
   /// Width of the physical array this (possibly virtualized) device is carved
-  /// from. This defaults to columns(), which is correct for devices that are the
-  /// whole array.
+  /// from. This defaults to columns(), which is correct for devices that are
+  /// the whole array.
   virtual int physicalColumns() const { return columns(); }
 
   /// First physical column at which a partition may be anchored.
