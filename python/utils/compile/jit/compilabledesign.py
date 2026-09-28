@@ -28,6 +28,7 @@ current target.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import inspect
 import json
@@ -39,7 +40,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 import numpy as np
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
@@ -79,6 +80,9 @@ from ._introspect import (
 from ._object_cache import KernelObjectCache
 from ._serialization import _decode_kwarg, _encode_kwarg, _TensorPlaceholder
 from .context import compile_context
+
+if TYPE_CHECKING:
+    from aie.utils.npukernel import NPUKernel
 
 # A waiter on this lock is waiting out someone else's *compile*, not just an
 # acquisition, so the bound has to exceed a full build rather than a handshake.
@@ -136,10 +140,12 @@ class CompilableDesign:
     Args:
         mlir_generator: A callable that accepts ``CompileTime[T]`` kwargs and
             either returns an MLIR module (e.g., built inside an
-            ``mlir_mod_ctx()`` block) or returns ``None`` after building the
-            module into the active MLIR context (e.g., via
+            ``mlir_mod_ctx()`` block) or its text, or returns ``None`` after
+            building the module into the active MLIR context (e.g., via
             ``Program(...).resolve_program()``),
-            OR a ``pathlib.Path`` to a pre-written ``.mlir`` file.
+            OR a ``pathlib.Path`` to a pre-written ``.mlir`` file. A
+            ``functools.partial`` is keyed by its function's code and the
+            arguments it binds.
         use_cache: When ``True`` (default), a file-system cache keyed by the
             bytecode+kwargs hash is consulted before recompiling.
         compile_kwargs: Values for ``CompileTime[T]`` parameters or explicit integer
@@ -161,6 +167,10 @@ class CompilableDesign:
             "full" ELF (PDIs + TXN control code) instead of an
             ``xclbin`` + ``insts.bin`` pair.  The ELF is loaded standalone by
             ``XRTHostRuntime`` via ``pyxrt.hw_context(dev, pyxrt.elf(path))``.
+        key: What the generator builds from, when its code and
+            ``compile_kwargs`` do not spell it, hashed into the recipe: the
+            identity of the objects a partial binds (which then are not
+            hashed by their text) or a closure captures.
     """
 
     def __init__(
@@ -176,9 +186,11 @@ class CompilableDesign:
         object_files: list[str | Path] | None = None,
         full_elf: bool = False,
         insts_only: bool = False,
+        key: str | None = None,
     ):
         self.mlir_generator = mlir_generator
         self.use_cache = use_cache
+        self.key = key
         self.full_elf = full_elf
         self.insts_only = insts_only
         # Freeze all inputs so callers can't mutate config after construction
@@ -1061,6 +1073,46 @@ class CompilableDesign:
         """
         return self._dispatch_lib_path
 
+    def npu_kernel(
+        self,
+        *,
+        xclbin_path: Path | str | None = None,
+        kernel_name: str | None = None,
+        **kwargs,
+    ) -> NPUKernel:
+        """The kernel that runs what the last ``compile()`` built.
+
+        A full ELF is loaded by its ``"<device>:<sequence>"`` name. Otherwise
+        the kernel is the xclbin's, with the instruction stream or, for a
+        ``DispatchTime[T]`` design, the library that makes one per call.
+        ``xclbin_path`` names the image the stream runs against when it is
+        not this design's own (an ``insts_only`` design; a design linked
+        onto by later ones), and ``kernel_name`` its kernel there. The rest
+        is ``NPUKernel``'s (``trace_config``, ...).
+        """
+        # npukernel imports this package's dispatch bridge, so it is imported
+        # when a kernel is made rather than when this module is.
+        from aie.utils.npukernel import NPUKernel
+
+        if self._kernel_dir is None:
+            raise RuntimeError(f"{self!r} has not compiled")
+        sizes = self._expected_tensor_sizes
+        kwargs.setdefault("num_host_bos", len(sizes) if sizes is not None else None)
+        if self.full_elf:
+            return NPUKernel(
+                elf_path=self._elf_path,
+                kernel_name=kernel_name or self._full_elf_kernel_name,
+                **kwargs,
+            )
+        return NPUKernel(
+            xclbin_path or self._xclbin_path,
+            self._inst_path,
+            kernel_name=kernel_name or "MLIR_AIE",
+            dispatch_params=self.dispatch_params,
+            dispatch_lib_path=self._dispatch_lib_path,
+            **kwargs,
+        )
+
     def get_pdi_paths(self) -> list[Path]:
         """Return every cache-directory PDI aiecc emitted, sorted by name.
 
@@ -1321,6 +1373,7 @@ class CompilableDesign:
             "object_files": [of.as_posix() for of in self.object_files],
             "full_elf": self.full_elf,
             "insts_only": self.insts_only,
+            "key": self.key,
             "cache_hash": self._compute_cache_hash(),
         }
         return json.dumps(data)
@@ -1360,6 +1413,7 @@ class CompilableDesign:
             object_files=data.get("object_files", []),
             full_elf=data.get("full_elf", False),
             insts_only=data.get("insts_only", False),
+            key=data.get("key"),
         )
 
     # ------------------------------------------------------------------
@@ -1369,9 +1423,12 @@ class CompilableDesign:
     @property
     def generator_name(self) -> str:
         """Human-readable name for the generator (function name or .mlir path)."""
-        if isinstance(self.mlir_generator, Path):
-            return str(self.mlir_generator)
-        return getattr(self.mlir_generator, "__name__", repr(self.mlir_generator))
+        generator = self.mlir_generator
+        if isinstance(generator, Path):
+            return str(generator)
+        if isinstance(generator, functools.partial):
+            generator = generator.func
+        return getattr(generator, "__name__", repr(generator))
 
     @property
     def recipe_hash(self) -> str:
@@ -1388,6 +1445,7 @@ class CompilableDesign:
             self.full_elf,
             self.include_paths,
             self.insts_only,
+            self.key,
         )
 
     @staticmethod
@@ -1442,6 +1500,7 @@ class CompilableDesign:
             self.insts_only,
             emit_elf,
             work_dir,
+            self.key,
         )
 
     def _explicit_build_key(
@@ -1695,6 +1754,8 @@ class CompilableDesign:
                         "All DispatchTime parameters must belong to one Runtime sequence."
                     )
                 module = ctx.module if result is None else result
+                if isinstance(module, str):
+                    module = _Module.parse(module)
                 if not module.operation.verify():
                     raise RuntimeError(
                         f"MLIR verification failed for '{self.generator_name}'"

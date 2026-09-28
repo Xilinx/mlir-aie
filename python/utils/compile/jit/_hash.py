@@ -192,6 +192,39 @@ def _callees_identity(generator: Callable) -> bytes:
     return b"\0".join(sorted(records))
 
 
+def _value_repr(v):
+    """A ``compile_kwargs`` value as the recipe spells it: a function by its
+    code, closure and callees, anything else by its text.
+    """
+    if callable(v) and hasattr(v, "__code__"):
+        closure = (
+            tuple(c.cell_contents for c in v.__closure__) if v.__closure__ else None
+        )
+        try:
+            closure_repr = repr(closure)
+        except Exception:
+            closure_repr = "<unhashable closure>"
+        return (
+            "fn:",
+            _code_identity(v.__code__).hex(),
+            repr(getattr(v, "__defaults__", None)),
+            repr(getattr(v, "__kwdefaults__", None)),
+            closure_repr,
+            _callees_identity(v).hex(),
+        )
+    return str(v)
+
+
+def _values_json(values: Mapping) -> bytes:
+    """Named values, sorted by name, as the recipe hashes them."""
+    try:
+        return json.dumps(
+            {k: _value_repr(v) for k, v in sorted(values.items())}
+        ).encode()
+    except (TypeError, ValueError):
+        return repr(sorted(values.items())).encode()
+
+
 def _compute_recipe_hash(
     generator: Callable | Path,
     compile_kwargs: Mapping[str, Any],
@@ -200,11 +233,19 @@ def _compute_recipe_hash(
     full_elf: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
     insts_only: bool = False,
+    key: str | None = None,
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
     The bytecode includes the helpers the generator reaches in its own
-    package (``_callees_identity``).
+    package (``_callees_identity``). A ``functools.partial`` is its function's
+    code and the arguments it binds, each spelled as a ``compile_kwargs``
+    value is.
+
+    ``key`` is what a caller vouches the generator builds from when its code
+    and parameters do not spell it: a partial binding objects whose text is
+    not their identity, or a closure. Given, it stands for a partial's bound
+    arguments, which are then not hashed.
 
     Captures the target-independent generator and compile configuration. It
     omits device identity, so equal recipe hashes can produce different
@@ -226,13 +267,16 @@ def _compute_recipe_hash(
         h.update(str(generator).encode())
         h.update(_content_digest(generator).encode())
     else:
-        h.update(_code_identity(generator.__code__))
-        h.update(getattr(generator, "__qualname__", "").encode())
-        h.update(getattr(generator, "__module__", "").encode())
-        h.update(_callees_identity(generator))
+        function = generator.func if isinstance(generator, partial) else generator
+        h.update(_code_identity(function.__code__))
+        h.update(getattr(function, "__qualname__", "").encode())
+        h.update(getattr(function, "__module__", "").encode())
+        h.update(_callees_identity(function))
         hints, sig, (_, _, dispatch_params, _) = _introspect_generator(generator)
+        bound = generator.keywords if isinstance(generator, partial) else {}
         # Dispatch defaults are call-time values; explicitly bound defaults are
-        # unused. Neither changes the compiled program.
+        # unused, and a partial's are its bound arguments, hashed below. None
+        # of them changes the compiled program.
         h.update(
             repr(
                 [
@@ -240,7 +284,9 @@ def _compute_recipe_hash(
                         annotation=hints.get(name, param.annotation),
                         default=(
                             param.empty
-                            if name in dispatch_params or name in compile_kwargs
+                            if name in dispatch_params
+                            or name in compile_kwargs
+                            or name in bound
                             else param.default
                         ),
                     )
@@ -248,33 +294,13 @@ def _compute_recipe_hash(
                 ]
             ).encode()
         )
+        if key is None and isinstance(generator, partial):
+            h.update(repr([_value_repr(a) for a in generator.args]).encode())
+            h.update(_values_json(bound))
 
-    def _kwarg_repr(v):
-        if callable(v) and hasattr(v, "__code__"):
-            closure = (
-                tuple(c.cell_contents for c in v.__closure__) if v.__closure__ else None
-            )
-            try:
-                closure_repr = repr(closure)
-            except Exception:
-                closure_repr = "<unhashable closure>"
-            return (
-                "fn:",
-                _code_identity(v.__code__).hex(),
-                repr(getattr(v, "__defaults__", None)),
-                repr(getattr(v, "__kwdefaults__", None)),
-                closure_repr,
-                _callees_identity(v).hex(),
-            )
-        return str(v)
-
-    try:
-        kwargs_json = json.dumps(
-            {k: _kwarg_repr(v) for k, v in sorted(compile_kwargs.items())}
-        ).encode()
-    except (TypeError, ValueError):
-        kwargs_json = repr(sorted(compile_kwargs.items())).encode()
-    h.update(kwargs_json)
+    h.update(_values_json(compile_kwargs))
+    if key is not None:
+        h.update(f"key={key}".encode())
 
     h.update(repr(sorted(aiecc_flags)).encode())
     h.update(repr(sorted(compile_flags)).encode())
@@ -449,6 +475,7 @@ def _compute_hash(
     insts_only: bool = False,
     emit_elf: bool = False,
     work_dir: Path | None = None,
+    key: str | None = None,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
@@ -459,6 +486,7 @@ def _compute_hash(
         full_elf,
         include_paths,
         insts_only,
+        key,
     )
     artifact = _compute_artifact_hash(
         generator,

@@ -13,6 +13,7 @@ test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 
 import __future__
 import dataclasses
+import functools
 import inspect
 import json
 import os
@@ -274,6 +275,12 @@ def test_generator_name_lambda():
     assert "<lambda>" in d.generator_name
 
 
+def test_generator_name_partial_is_its_function():
+    gen = _gemm_gen()
+    d = CompilableDesign(functools.partial(gen, M=512))
+    assert d.generator_name == gen.__name__
+
+
 # ---------------------------------------------------------------------------
 # __repr__
 # ---------------------------------------------------------------------------
@@ -327,6 +334,55 @@ def test_hash_stable_regardless_of_kwargs_dict_insertion_order():
     d1 = CompilableDesign(gen, compile_kwargs={"M": 512, "K": 256})
     d2 = CompilableDesign(gen, compile_kwargs={"K": 256, "M": 512})
     assert hash(d1) == hash(d2)
+
+
+def _partial_design(value, **bound):
+    def design(*, config, N: CompileTime[int]):
+        pass
+
+    return functools.partial(design, config=value, **bound)
+
+
+def test_partial_is_keyed_by_its_function_and_bound_arguments():
+    same = CompilableDesign(_partial_design(1), compile_kwargs={"N": 8})
+    assert hash(same) == hash(
+        CompilableDesign(_partial_design(1), compile_kwargs={"N": 8})
+    )
+    assert hash(same) != hash(
+        CompilableDesign(_partial_design(2), compile_kwargs={"N": 8})
+    )
+    assert hash(same) != hash(
+        CompilableDesign(_partial_design(1), compile_kwargs={"N": 16})
+    )
+
+
+def test_partial_binding_a_compile_time_parameter_is_not_a_default():
+    """A name the partial binds is keyed by its value, bound or not."""
+    bound = CompilableDesign(_partial_design(1, N=8))
+    assert hash(bound) != hash(CompilableDesign(_partial_design(1, N=16)))
+
+
+def test_key_replaces_the_bound_arguments():
+    """With key=, an argument whose repr is not its identity is not hashed."""
+
+    class Opaque:
+        pass
+
+    a = CompilableDesign(_partial_design(Opaque()), key="k1", compile_kwargs={"N": 8})
+    b = CompilableDesign(_partial_design(Opaque()), key="k1", compile_kwargs={"N": 8})
+    c = CompilableDesign(_partial_design(Opaque()), key="k2", compile_kwargs={"N": 8})
+    assert hash(a) == hash(b)
+    assert hash(a) != hash(c)
+
+
+def test_key_still_follows_the_function_and_compile_kwargs():
+    a = CompilableDesign(_partial_design(1), key="k", compile_kwargs={"N": 8})
+    assert hash(a) != hash(
+        CompilableDesign(_partial_design(1), key="k", compile_kwargs={"N": 16})
+    )
+    assert hash(a) != hash(
+        CompilableDesign(_gemm_gen(), key="k", compile_kwargs={"N": 8})
+    )
 
 
 def test_hash_differs_for_different_aiecc_flags():
@@ -1270,6 +1326,7 @@ def test_to_json_contains_all_fields():
     assert "add.o" in data["object_files"][0]
     assert data["full_elf"] is False
     assert data["insts_only"] is True
+    assert data["key"] is None
     assert "generator_name" in data
     assert "cache_hash" in data
 
@@ -1292,6 +1349,14 @@ def test_from_json_requires_generator():
     d = CompilableDesign(gen, compile_kwargs={"M": 512})
     with pytest.raises(ValueError, match="generator must be supplied"):
         CompilableDesign.from_json(d.to_json(), generator=None)
+
+
+def test_from_json_restores_key():
+    gen = _gemm_gen()
+    d = CompilableDesign(gen, key="design-7")
+    d2 = CompilableDesign.from_json(d.to_json(), generator=gen)
+    assert d2.key == "design-7"
+    assert hash(d2) == hash(d)
 
 
 def test_from_json_restores_use_cache():
@@ -1428,6 +1493,24 @@ def test_generate_mlir_unplaced_style_uses_return_value():
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
     result = d._generate_mlir(ExternalFunction)
     assert str(result) == expected_text
+
+
+def test_generate_mlir_parses_a_returned_module_text():
+    """A generator may return the module's text; it is parsed and verified."""
+    with mlir_mod_ctx() as ctx:
+        pass
+    text = str(ctx.module)
+
+    def gen(*, M: CompileTime[int]):
+        return text
+
+    d = CompilableDesign(gen, compile_kwargs={"M": 1})
+    assert str(d._generate_mlir(ExternalFunction)) == text
+
+
+def test_npu_kernel_before_compile_raises():
+    with pytest.raises(RuntimeError, match="has not compiled"):
+        CompilableDesign(_gemm_gen()).npu_kernel()
 
 
 # ---------------------------------------------------------------------------
@@ -1966,6 +2049,7 @@ def test_config_param_names_matches_construction():
         "object_files",
         "full_elf",
         "insts_only",
+        "key",
     }
 
 

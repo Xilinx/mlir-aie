@@ -214,46 +214,12 @@ class CallableDesign:
         cache_key,
         trace_config,
     ) -> NPUKernel:
-        from aie.utils.npukernel import NPUKernel
-
-        xclbin_path, inst_path = compilable.compile()
+        compilable.compile()
         if trace_config is not None and compilable._kernel_dir is not None:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)
-        # The lowered runtime_sequence operand list is the true host-buffer
-        # contract (one operand per host BO, including any trace/ctrl-packet
-        # buffer the lowering appended). Its length is floor-independent, unlike
-        # the kernels.json boN slot count which aiecc floors to the firmware
-        # command-chain minimum -- so this is what host buffer counts are
-        # validated against.
-        expected_sizes = compilable._expected_tensor_sizes
-        num_host_bos = len(expected_sizes) if expected_sizes is not None else None
-        if compilable.full_elf:
-            # Full-ELF: compile() returns (elf_path, None). The kernel is loaded
-            # standalone from the ELF and addressed by its "<device>:<sequence>"
-            # name (there is no xclbin/insts pair). compile() always sets both
-            # of these on the full-ELF path.
-            assert (
-                compilable._elf_path is not None
-                and compilable._full_elf_kernel_name is not None
-            )
-            kernel = NPUKernel(
-                elf_path=compilable._elf_path,
-                kernel_name=compilable._full_elf_kernel_name,
-                trace_config=trace_config,
-                num_host_bos=num_host_bos,
-            )
-        else:
-            kernel = NPUKernel(
-                xclbin_path,
-                inst_path,
-                kernel_name="MLIR_AIE",
-                trace_config=trace_config,
-                num_host_bos=num_host_bos,
-                dispatch_params=compilable.dispatch_params,
-                dispatch_lib_path=compilable.get_dispatch_lib_path(),
-            )
+        kernel = compilable.npu_kernel(trace_config=trace_config)
         if compilable.use_cache:
             self._kernel_cache[cache_key] = kernel
         return kernel

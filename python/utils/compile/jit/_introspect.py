@@ -88,8 +88,12 @@ def _introspect_generator(generator: Callable):
     """
     try:
         # include_extras=True: without it, get_type_hints strips Annotated
-        # metadata and CompileTime[T] becomes indistinguishable from T.
-        hints = typing.get_type_hints(generator, include_extras=True)
+        # metadata and CompileTime[T] becomes indistinguishable from T. A
+        # partial's parameters are its function's, and so are their hints.
+        hints = typing.get_type_hints(
+            generator.func if isinstance(generator, functools.partial) else generator,
+            include_extras=True,
+        )
     except Exception as exc:
         logger.debug("get_type_hints failed for %r: %s", generator, exc)
         hints = {}
