@@ -6,37 +6,38 @@
 # RUN: %python %s --device npu1 | FileCheck %s
 # RUN: %python %s --device npu2 | FileCheck %s
 
-# Model-based property test for --aie-create-pathfinder-flows.
-#
-# The .mlir tests in this directory pin exact switchbox settings on a handful of
-# designs. This file checks what any routing must satisfy on many generated
-# ones, against a model of the fabric and of the router's deadlock rules:
-#
-#  * the fabric: port counts per tile from the TargetModel bindings, legal
-#    crossbar connections (AIE2TargetModel::isLegalTileConnection), six
-#    arbiters of four msels per switchbox, four packet rules per slave port;
-#  * which streams can deadlock (AIEStreamDependencyAnalysis, mirrored here
-#    line for line: stream volumes, receiver capacities, the waits-for graph
-#    of cores, DMA channels and the host, and the global hold-cycle search);
-#  * the router's own arbiter planning and pre-routing rejection
-#    (planArbiters, cutTiles, unroutableArbiters, the hold-cycle search), run
-#    on a routing the generator builds itself as a witness.
-#
-# Designs come in three tiers:
-#
-#  * routable: the generator routes every flow on exclusive links, plans its
-#    arbiters with the router's own rules, and emits only the flows, programs,
-#    runtime sequence and pre-placed switchbox configuration. The router has
-#    to succeed, and its output is checked hop by hop.
-#  * unroutable: more pairwise conflicting streams must take an arbiter at a
-#    tile than it has (the router's message is predicted exactly), more
-#    circuit flows must cross a port than it has channels, or conflicting
-#    streams must merge. The router has to fail.
-#  * unknown: recorded; whatever the router emits is still checked, with the
-#    hold-cycle rule applied to the output.
-#
-# The model is importable: Target, Design, load_design, generate, verdict and
-# verify.
+"""Model-based property test for --aie-create-pathfinder-flows.
+
+The .mlir tests in this directory pin exact switchbox settings on a handful of
+designs. This file checks what any routing must satisfy on many generated
+ones, against a model of the fabric and of the router's deadlock rules:
+
+ * the fabric: port counts per tile from the TargetModel bindings, legal
+   crossbar connections (AIE2TargetModel::isLegalTileConnection), six
+   arbiters of four msels per switchbox, four packet rules per slave port;
+ * which streams can deadlock (AIEStreamDependencyAnalysis, mirrored here
+   line for line: stream volumes, receiver capacities, the waits-for graph
+   of cores, DMA channels and the host, and the global hold-cycle search);
+ * the router's own arbiter planning and pre-routing rejection
+   (planArbiters, cutTiles, unroutableArbiters, the hold-cycle search), run
+   on a routing the generator builds itself as a witness.
+
+Designs come in three tiers:
+
+ * routable: the generator routes every flow on exclusive links, plans its
+   arbiters with the router's own rules, and emits only the flows, programs,
+   runtime sequence and pre-placed switchbox configuration. The router has
+   to succeed, and its output is checked hop by hop.
+ * unroutable: more pairwise conflicting streams must take an arbiter at a
+   tile than it has (the router's message is predicted exactly), more
+   circuit flows must cross a port than it has channels, or conflicting
+   streams must merge. The router has to fail.
+ * unknown: recorded; whatever the router emits is still checked, with the
+   hold-cycle rule applied to the output.
+
+The model is importable: Target, Design, load_design, generate, verdict and
+verify.
+"""
 
 import argparse
 import itertools
@@ -4945,9 +4946,9 @@ def main(argv=None):
     return 1 if regressions else 0
 
 
-# Every property must report OK; any REGRESSION fails the test.
 # CHECK: model-validation: {{.*}} : OK
 # CHECK: verifier-validation: {{.*}} : OK
+
 # CHECK: completeness: {{.*}} : OK
 # CHECK: legality: {{.*}} : OK
 # CHECK: determinism: {{.*}} : OK

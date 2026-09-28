@@ -489,9 +489,9 @@ computeSubcubeCover(const SmallVector<int, 4> &matchIds,
   return cover;
 }
 
-// The rules a group of flows entering one slave port takes: those its flows
-// state, then a cover of the ids they leave to the router, which avoids those
-// rules and whatever else claims ids on the port.
+// A group's rules (see GroupClaims): the stated ones, then a cover of the
+// derived ids that avoids them and `avoid`, whatever else claims ids on the
+// port.
 static SmallVector<std::pair<int, int>>
 groupRules(ArrayRef<std::pair<int, int>> stated, ArrayRef<int> derived,
            ArrayRef<std::pair<int, int>> avoid, int idBits) {
@@ -587,7 +587,7 @@ orderedRules(ArrayRef<GroupClaims> groups,
     });
     SmallVector<std::pair<uint64_t, size_t>> tried;
     for (auto [own, g] : moves) {
-      if (llvm::any_of(tried, [&](auto t) {
+      if (llvm::any_of(tried, [&, own = own, g = g](auto t) {
             return t.second == g && (t.first & own) == own;
           }))
         continue;
@@ -655,8 +655,8 @@ struct SlaveFlow {
   bool isCtrlPkt;
 };
 
-/// The amsel each slave flow of a switchbox takes, and the master ports each
-/// amsel selects.
+/// The amsel each slave flow takes, and the master ports each amsel selects
+/// (see planArbiters).
 struct ArbiterPlan {
   std::map<std::pair<Port, int>, int> slaveAmsels;
   std::map<int, SmallVector<Port, 4>> amselMasters;
@@ -913,9 +913,10 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
   for (const auto &[tileId, candidates] : pinned) {
     size_t free = 0;
     for (int a = 0; a < numArbiters; a++)
-      free += llvm::any_of(llvm::seq(numMselsPerArbiter), [&](int m) {
-        return !reserved.count({tileId, a + m * numArbiters});
-      });
+      free += llvm::any_of(
+          llvm::seq(numMselsPerArbiter), [&, tileId = tileId](int m) {
+            return !reserved.count({tileId, a + m * numArbiters});
+          });
     // Pairwise conflicting streams have distinct sources and destinations.
     std::set<std::pair<TileID, Port>> srcs, dsts;
     for (size_t s : candidates) {
@@ -1030,9 +1031,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       packetStreamIndex.try_emplace(
           {s.src.tile, s.src.port, s.dst.tile, s.dst.port, *s.packetID}, i);
   DenseMap<std::pair<PhysPort, int>, SmallVector<size_t, 2>> slaveFlowStreams;
-  // The master ports each source's packets leave a slave port by. A switchbox
-  // routes on the id alone, so sources sharing an id there go everywhere any
-  // of them does.
+  // Each source's part of a SlaveFlow (see SlaveFlow). A switchbox routes on
+  // the id alone, so sources sharing an id there go everywhere any of them
+  // does.
   std::map<std::pair<PhysPort, int>, std::map<PathEndPoint, std::set<Port>>>
       slaveFlowSources;
   // Every stream's hops, source first; the requested ones as this routing
@@ -1214,8 +1215,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   // ports it reaches, provided it alone feeds them and every packet goes to
   // all of them.
   std::map<TileID, SmallVector<Connect, 4>> circuitHops;
-  // Slave and master ports the input's own switchbox configuration drives,
-  // circuit or packet.
+  // Ports the input's own aie.switchbox ops already drive, circuit or packet.
   std::set<PhysPort> claimedSlaves, claimedMasters;
   for (auto swbox : device.getOps<SwitchboxOp>()) {
     TileID tileId = swbox.getTileOp().getTileID();
@@ -1272,14 +1272,14 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       bool exclusive =
           !claimedSlaves.count({tileId, slave}) &&
           llvm::all_of(reached,
-                       [&](Port m) {
+                       [&, tileId = tileId](Port m) {
                          return isDirectional(m.bundle) &&
                                 !claimedMasters.count({tileId, m});
                        }) &&
           llvm::all_of(
               reachedByID,
               [&](const auto &ids) { return ids.second == reached; }) &&
-          llvm::all_of(connects, [&](const auto &entry) {
+          llvm::all_of(connects, [&, tileId = tileId](const auto &entry) {
             const auto &[other, otherID] = entry;
             if (!reached.count(other.dst))
               return true;
@@ -1330,11 +1330,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   // master select.
   std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
 
-  // Each switchbox has its arbiters planned as a whole: no two flows that can
-  // deadlock enter on different slave ports and share one, and every master
-  // port a flow leaves by takes that flow's arbiter. Where that is impossible
-  // the routing is unusable, and the connections of the flows in the way are
-  // what the router has to move.
+  // Each switchbox has its arbiters planned as a whole (see planArbiters).
+  // Where that is impossible the routing is unusable, and the connections of
+  // the flows in the way are what the router has to move.
   using FlowKey = std::pair<Port, int>;
   std::map<TileID, std::map<FlowKey, SlaveFlow>> tileSlaveFlows;
   for (const auto *flows : {&ctrlPacketFlows, &packetFlows})
@@ -1399,8 +1397,8 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       if (hop.src == key.first)
         hazardConnections.insert({tileId, hop});
   };
-  // Flows branching to several master ports tie them to one arbiter, so a
-  // flow's arbiter is fixed by every such flow reaching its master ports too.
+  // Moves `key` with its whole unit (see planArbiters): a flow's arbiter is
+  // fixed by every flow reaching its master ports too.
   auto moveUnit = [&](TileID tileId, FlowKey key) {
     moveFlow(tileId, key);
     auto flows = tileSlaveFlows.find(tileId);
@@ -1424,9 +1422,8 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
         }
     }
   };
-  // Flows from one source that leave a slave port by a common master port
-  // share its arbiter, which the source's tree branching there avoids. `key`
-  // branches from those of them that tie it to one of `partners`, where
+  // The TreeSplits (see TreeSplit) the routing check asks for. `key` branches
+  // from the flows of its source that tie it to one of `partners`, where
   // nothing else does. The next routing may reach the tile by another slave
   // port, so the split holds for the tile.
   std::set<
@@ -1551,9 +1548,10 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   std::optional<std::string> planFailure;
   for (const auto &[slaveFlow, sources] : slaveFlowSources) {
     const auto &[first, firstMasters] = *sources.begin();
-    auto other = llvm::find_if(sources, [&](const auto &source) {
-      return source.second != firstMasters;
-    });
+    auto other = llvm::find_if(
+        sources, [&, &firstMasters = firstMasters](const auto &source) {
+          return source.second != firstMasters;
+        });
     if (other == sources.end())
       continue;
     const auto &[slavePort, id] = slaveFlow;
@@ -1644,7 +1642,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       const auto &[src, apart] = *best;
       const std::set<int> &apartIds = dstIds[src][apart];
       for (const auto &[dst, ids] : dstIds[src]) {
-        auto carries = [&, &dst = dst](int id) {
+        auto carries = [&, &src = src, &dst = dst](int id) {
           return packetStreamIndex.count(
                      {src.coords, src.port, dst.coords, dst.port, id}) > 0;
         };
@@ -1657,7 +1655,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     // Flows on one slave port that leave by different master ports must not
     // claim a common id, and a mask written on an aie.packet_flow claims every
     // id it matches.
-    auto claim = [&](const SlaveFlow &f) {
+    auto claim = [&, tileId = tileId](const SlaveFlow &f) {
       auto mask = pinnedMasks.find({{tileId, f.slave}, f.id});
       return std::pair{mask == pinnedMasks.end() ? idMask : mask->second, f.id};
     };
@@ -2157,7 +2155,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
             llvm::any_of(statedRules[gi], [&](std::pair<int, int> c) {
               return (id & c.first) == (c.second & c.first);
             });
-        [[maybe_unused]] auto first =
+        [[maybe_unused]] auto *first =
             llvm::find_if(plan.rules, [&](const PortRule &r) {
               return (id & r.mask) == r.value;
             });
@@ -2509,11 +2507,11 @@ void AIEPathfinderPass::runOnOperation() {
     analyzer.pathfinder->pinPacketTrees(std::move(trees));
     pinned = true;
   }
-  // Packet flows share channels only where they share a destination, unless
-  // the design routes no other way; then any may, where they do not conflict.
-  // Failing that, crowded tiles are capped (Router::capCrowdedFanOut). Failing
-  // that too, the routing starts over with ids one tree cannot split routed
-  // apart (Router::routeIdsApart). The error is the first attempt's.
+  // If grouped routing fails, packet flows may share channels with any flow
+  // they do not conflict with (see Router::setShareChannels). Failing that,
+  // crowded tiles are capped (Router::capCrowdedFanOut). Failing that too, the
+  // routing starts over with ids one tree cannot split routed apart
+  // (Router::routeIdsApart). The error is the first attempt's.
   std::optional<Location> failedAt;
   std::string reason;
   auto routeSharing = [&](DeviceOp dev, DynamicTileAnalysis &an,

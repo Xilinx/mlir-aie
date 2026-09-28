@@ -410,8 +410,8 @@ void Pathfinder::sortFlows() {
   for (auto &flow : flows)
     std::sort(flow.dsts.begin(), flow.dsts.end(), endpointLess);
 
-  // Packet flows that share a destination, directly or through others, form
-  // one group, whatever order they were added in. A source has one flow.
+  // The groups setShareChannels describes, whatever order the flows were
+  // added in. A source has one flow.
   std::vector<size_t> parent(flows.size());
   std::iota(parent.begin(), parent.end(), 0);
   auto root = [&](size_t a) {
@@ -1125,14 +1125,17 @@ Pathfinder::findPaths(const int maxIterations) {
 
     for (const auto &[_, group] : groupedFlows) {
       for (int flow : group) {
-        const auto &[packetGroupId, isPriority, src, dsts, packetId] =
-            parts[flow];
+        const Flow &part = parts[flow];
+        int packetGroupId = part.packetGroupId;
+        bool isPriority = part.isPriorityFlow;
+        const PathEndPoint &src = part.src;
+        const std::vector<PathEndPoint> &dsts = part.dsts;
+        const std::optional<int> &packetId = part.packetId;
         // Grow the flow's tree one destination at a time: Dijkstra, given the
         // current demand, from everything the tree reaches so far to the next
         // destination, whose path is then traced back to the tree. Growing
-        // from the tree rather than the source lets destinations share hops.
-        // A branch off a hop of the tree starts from TREE_SEED_FACTOR per hop
-        // back to the source; the demand of those hops is already paid.
+        // from the tree rather than the source lets destinations share hops;
+        // see TREE_SEED_FACTOR for what a branch off the tree costs.
         int srcId = nodeIds.at(src);
         SwitchSettings switchSettings;
         ++curStamp;
@@ -1151,9 +1154,9 @@ Pathfinder::findPaths(const int maxIterations) {
         // tree is final.
         llvm::MapVector<int, std::pair<int, Edge>> planned;
         llvm::DenseMap<int, int> children;
-        // A branch off a port the tree already crosses puts its master port on
-        // the arbiter of the ports the tree leaves by there, so it avoids the
-        // flows conflicting with any flow on those arbiters too.
+        // A branch off a port the tree already crosses joins that port's unit
+        // (see planArbiters), so it avoids the flows conflicting with any flow
+        // on those arbiters too.
         llvm::DenseMap<int, llvm::BitVector> branchAvoid;
         SmallVector<PathEndPoint, 4> pending;
         for (auto endPoint : dsts) {
@@ -1305,10 +1308,12 @@ Pathfinder::findPaths(const int maxIterations) {
           };
           for (auto [at, a, b, apart] : splitsOf[flow])
             for (int other : reached) {
-              if (apart < 0 ? !(only(dst, a, b) && only(other, b, a)) &&
-                                  !(only(dst, b, a) && only(other, a, b))
-                            : !(only(dst, a, b) && other == apart) &&
-                                  !(dst == apart && only(other, a, b)))
+              bool splits = apart < 0
+                                ? (only(dst, a, b) && only(other, b, a)) ||
+                                      (only(dst, b, a) && only(other, a, b))
+                                : (only(dst, a, b) && other == apart) ||
+                                      (dst == apart && only(other, a, b));
+              if (!splits)
                 continue;
               SmallVector<int, 8> below;
               int s = other;
@@ -1316,7 +1321,7 @@ Pathfinder::findPaths(const int maxIterations) {
                 return (state & 1) == In &&
                        nodes[stateNode(state)].coords == tile;
               };
-              for (auto hop = planned.find(s);
+              for (auto *hop = planned.find(s);
                    !entersAt(s) && hop != planned.end();
                    hop = planned.find(s)) {
                 below.push_back(s);
@@ -1366,7 +1371,7 @@ Pathfinder::findPaths(const int maxIterations) {
           search({});
           // The nearest destination joins the tree next, or the nearest join
           // brings every destination below it.
-          auto nearest = llvm::min_element(
+          auto *nearest = llvm::min_element(
               pending, [&](const PathEndPoint &a, const PathEndPoint &b) {
                 return distance[dstState(a)] < distance[dstState(b)];
               });

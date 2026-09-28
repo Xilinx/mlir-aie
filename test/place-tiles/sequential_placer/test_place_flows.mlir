@@ -223,9 +223,9 @@ module @flow_source_broadcast_dedup {
 
 // -----
 
-// Merge on the destination side: two flows from distinct sources land on the
-// same memtile S2MM channel. Hardware-wise this is one S2MM channel, so the
-// memtile's S2MM budget should account for 1 (not 2).
+// Merge on the destination side: two packet flows from distinct sources land
+// on the same memtile S2MM channel. Hardware-wise this is one S2MM channel, so
+// the memtile's S2MM budget should account for 1 (not 2).
 // CHECK-LABEL: @flow_dest_merge_dedup
 module @flow_dest_merge_dedup {
   aie.device(npu1) {
@@ -237,8 +237,14 @@ module @flow_dest_merge_dedup {
     %c2 = aie.logical_tile<CoreTile>(?, ?)
 
     // Both flows merge onto memtile S2MM channel 0 -> 1 S2MM consumed.
-    aie.flow(%c1, DMA : 0, %mem, DMA : 0)
-    aie.flow(%c2, DMA : 0, %mem, DMA : 0)
+    aie.packet_flow(0x1) {
+      aie.packet_source<%c1, DMA : 0>
+      aie.packet_dest<%mem, DMA : 0>
+    }
+    aie.packet_flow(0x2) {
+      aie.packet_source<%c2, DMA : 0>
+      aie.packet_dest<%mem, DMA : 0>
+    }
     // CHECK-NOT: aie.logical_tile
   }
 }

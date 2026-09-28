@@ -69,9 +69,10 @@ using SwitchboxConnect = struct SwitchboxConnect {
   // row/column), by the flow routing each; a channel may be shared only among
   // distinct ids.
   std::vector<std::vector<std::map<int, int>>> packetIds;
-  // dst ports a packet flow branches to from one src port share an arbiter;
-  // each dst port links to such a unit, and a unit's root lists the packet
-  // flows (indices into the router's flows) leaving by any of its ports
+  // Units of dst ports tied to one arbiter (see planArbiters in
+  // AIECreatePathFindFlows.cpp); each dst port links to its unit, and a unit's
+  // root lists the packet flows (indices into the router's flows) leaving by
+  // any of its ports
   std::vector<int> dstUnit;
   std::vector<llvm::SmallVector<int, 2>> unitPacketFlows;
   // flags indicating priority routings
@@ -257,7 +258,7 @@ struct TreeHop {
 using PacketTrees = std::map<PathEndPoint, std::vector<TreeHop>>;
 
 /// Whether packet flows from the two sources can deadlock if they share an
-/// arbiter.
+/// arbiter; see StreamConflicts::conflict.
 using PacketConflict =
     std::function<bool(const PathEndPoint &, const PathEndPoint &)>;
 
@@ -304,8 +305,8 @@ public:
   /// are penalized like overused channels so later iterations avoid them, and
   /// the trees it splits branch where it says from then on.
   virtual void setRoutingCheck(RoutingCheck check) {}
-  /// Packet flows that conflict are steered off each other's master ports,
-  /// where they would have to share an arbiter.
+  /// Packet flows that conflict are steered off each other's master ports; see
+  /// edgeWeight.
   virtual void setPacketConflict(PacketConflict conflict) {}
   /// Why the last findPaths found no routing, empty if it cannot say.
   virtual std::string getFailureReason() const { return {}; }
@@ -329,10 +330,11 @@ public:
   /// sets of master ports. Returns whether that caps any tile not capped
   /// before.
   virtual bool capCrowdedFanOut() { return false; }
-  /// Where the routing check splits the ids a source sends at a tile its tree
-  /// cannot branch at, since a destination takes both, the second id is routed
-  /// apart from the rest from now on, and flows share channels and tiles are
-  /// capped as at the start. Returns whether a source sends more than one id.
+  /// Routes the second id of each TreeSplit the routing check asked for at a
+  /// tile the tree cannot branch at apart from the rest from now on, and
+  /// resets channel sharing and tile caps as at the start (see
+  /// AIEPathfinderPass::route). Returns whether a source sends more than one
+  /// id.
   virtual bool routeIdsApart() { return false; }
   /// The switch settings of the packets `src` sends with id `id`, if the last
   /// findPaths routed them apart from others `src` sends; else null.

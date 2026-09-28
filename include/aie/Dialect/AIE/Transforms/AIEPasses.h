@@ -97,8 +97,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// that lower `aie.objectfifo`.
 void registerAIEObjectFifoPipeline();
 
-/// Where a candidate routing would make packet flows that can deadlock share
-/// an arbiter, and why they can deadlock.
+/// Where a candidate routing puts conflicting packet flows on one arbiter, and
+/// why they conflict; see AIEPathfinderPass::route.
 struct RoutingHazards {
   RoutingFaults faults;
   std::string reason;
