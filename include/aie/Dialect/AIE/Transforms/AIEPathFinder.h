@@ -312,6 +312,11 @@ public:
   /// Packet flows from these sources take these trees instead of being
   /// routed.
   virtual void pinPacketTrees(PacketTrees trees) {}
+  /// Packet flows share channels only with flows they share a destination
+  /// with, directly or through others, unless `share`; then with any other
+  /// packet flow. Returns whether that lets flows the last routing kept apart
+  /// share.
+  virtual bool setShareChannels(bool share) { return false; }
 };
 
 class Pathfinder : public Router {
@@ -337,6 +342,7 @@ public:
   void pinPacketTrees(PacketTrees trees) override {
     pinnedTrees = std::move(trees);
   }
+  bool setShareChannels(bool share) override;
 
 private:
   // A directed edge in the dense routing graph: from some node to node `dst`,
@@ -421,6 +427,7 @@ private:
   PacketConflict packetConflict;
   std::string failureReason, overuseReason;
   PacketTrees packetTrees, pinnedTrees;
+  bool shareChannels = false;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

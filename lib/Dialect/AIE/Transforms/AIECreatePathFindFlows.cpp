@@ -2399,6 +2399,7 @@ LogicalResult AIEPathfinderPass::route(DeviceOp d,
           return std::move(hazards.faults);
         });
   }
+  analyzer.routingFailureReason.clear();
   LogicalResult routed = analyzer.runAnalysis(d);
   analyzer.pathfinder->setPacketConflict({});
   analyzer.pathfinder->setRoutingCheck({});
@@ -2490,7 +2491,36 @@ void AIEPathfinderPass::runOnOperation() {
       it = prioritized.count(it->first) ? std::next(it) : trees.erase(it);
     analyzer.pathfinder->pinPacketTrees(std::move(trees));
   }
-  if (failed(route(d, analyzer, conflicts, clCircuitSwitchHops))) {
+  // Packet flows share channels only where they share a destination, unless
+  // the design routes no other way; then any may, where they do not conflict.
+  // The error is the first attempt's.
+  std::optional<Location> failedAt;
+  std::string reason;
+  auto routeSharing = [&](DeviceOp dev, DynamicTileAnalysis &an,
+                          StreamConflicts &c) {
+    ScopedDiagnosticHandler handler(&getContext(), [&](Diagnostic &diag) {
+      if (diag.getSeverity() != DiagnosticSeverity::Error)
+        return failure();
+      failedAt = diag.getLocation();
+      reason = diag.str();
+      return success();
+    });
+    if (succeeded(route(dev, an, c, clCircuitSwitchHops)))
+      return success();
+    if (!an.pathfinder->setShareChannels(true))
+      return failure();
+    std::optional<Location> firstAt = failedAt;
+    std::string first = reason;
+    if (succeeded(route(dev, an, c, clCircuitSwitchHops)))
+      return success();
+    failedAt = firstAt;
+    reason = std::move(first);
+    return failure();
+  };
+  if (failed(routeSharing(d, analyzer, conflicts))) {
+    Location loc = failedAt.value_or(d.getLoc());
+    emitError(loc) << (reason.empty() ? "Unable to find a legal routing"
+                                      : reason);
     signalPassFailure();
     return;
   }

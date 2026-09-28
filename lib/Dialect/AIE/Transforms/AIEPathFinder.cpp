@@ -369,6 +369,14 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
       std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}}, packetId});
 }
 
+bool Pathfinder::setShareChannels(bool share) {
+  bool apart = false;
+  for (const Flow &f : flows)
+    apart |= f.packetGroupId > 0;
+  shareChannels = share;
+  return share && apart;
+}
+
 // Sort flows to (1) get deterministic routing, and (2) perform routings on
 // prioritized flows before others, for routing consistency on those flows.
 void Pathfinder::sortFlows() {
@@ -407,7 +415,9 @@ void Pathfinder::sortFlows() {
   for (auto [k, flow] : llvm::enumerate(flows))
     if (flow.packetGroupId >= 0)
       flow.packetGroupId =
-          groupOf.try_emplace(root(k), groupOf.size()).first->second;
+          shareChannels
+              ? 0
+              : groupOf.try_emplace(root(k), groupOf.size()).first->second;
 
   auto flowRank = [](const Flow &flow) {
     if (flow.isPriorityFlow)
