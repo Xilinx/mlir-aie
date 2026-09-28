@@ -345,8 +345,7 @@ private:
                                           why,
                                       ValueRange{g.getValue(), g.getValue()});
           else
-            emitc::VerbatimOp::create(b, loc,
-                                      "if ({} % " + d + " != 0) " + why,
+            emitc::VerbatimOp::create(b, loc, "if ({} % " + d + " != 0) " + why,
                                       ValueRange{g.getValue()});
         })
         .Case<AIEX::NpuRequireOp>([&](auto g) {
