@@ -248,7 +248,7 @@ Two methods use the chain:
   objects)` turns those into host coordinates.
 
 `LIMITS` holds the per-tile limits (`max_dims`, `max_wrap`, `max_stride` and
-the shim's `max_repeat`) for the AIE2 family (NPU1 and NPU2).
+the shim's `max_repeat` and `max_iter`) for the AIE2 family (NPU1 and NPU2).
 
 The example below is the `transposes` design with `--strategy=combined`: the
 memtile block-shuffles each tile so the kernel only transposes `s x s`
