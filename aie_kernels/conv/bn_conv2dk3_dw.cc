@@ -1243,6 +1243,135 @@ static bool dwg_run(const uint8_t *line0, const uint8_t *line1,
     return true;
   }
 }
+
+// Stride 2 with W % 16 == 0: the C / 8 blocks are contiguous, so one pipelined
+// loop walks them all two words at a time. Step t convolves words 2t and
+// 2t + 1, and the head of word 2t + 2, into the even pixels 16t + 2..16t + 16
+// and stores pixels 16t..16t + 14. The weights are staged 64-byte aligned
+// first; each block's pixel 0, computed then, is patched in afterwards.
+template <int W>
+__attribute__((always_inline)) static inline void
+dws2_stage(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
+           const uint8_t *__restrict line2, const int8_t *__restrict wts,
+           const aie::mask<64> *keep, int8_t *__restrict wbuf,
+           uint8_t *__restrict pix, const int scale) {
+  const uint8_t *in[3] = {line0, line1, line2};
+  const dw8_v zero = aie::zeros<uint8, 64>();
+  aie::vector<int8, 64> v[9];
+  dwg_for<9>([&](auto k) __attribute__((always_inline)) {
+    v[k] = aie::load_v<64>(wts + 64 * k);
+  });
+  dw8_v first = zero;
+  dwg_for<8>([&](auto cd) __attribute__((always_inline)) {
+    aie::accum<acc32, 64> acc;
+    dwg_for<3>([&](auto r) __attribute__((always_inline)) {
+      constexpr int o = cd * 72 + r * 24, k = o / 64, s = o % 64;
+      aie::vector<int8, 64> row;
+      if constexpr (s == 0)
+        row = v[k];
+      else if constexpr (s + 24 <= 64)
+        row = aie::shuffle_down(v[k], s);
+      else
+        row = aie::shuffle_down_fill(v[k], v[k + 1], s);
+      const dw8_w w = aie::select(aie::zeros<int8, 64>(), row, keep[r]);
+      aie::store_v(wbuf + (cd * 3 + r) * 64, w);
+      const aie::vector<uint8, 128> d =
+          aie::concat(zero, aie::load_v<64>(in[r] + cd * W * 8));
+      acc = r == 0 ? dw8_conv::mul(w, 0, d, 0) : dw8_conv::mac(acc, w, 0, d, 0);
+    });
+    first = aie::select(
+        first,
+        aie::shuffle_up(aie::shuffle_down(dw8_out(acc, scale), 56), 8 * cd),
+        aie::mask<64>::from_uint64(0xffull << (8 * cd)));
+  });
+  aie::store_v(pix, first);
+}
+
+template <int W, int C>
+__attribute__((always_inline)) static inline void
+dws2_body(const uint8_t *__restrict line0, const uint8_t *__restrict line1,
+          const uint8_t *__restrict line2, const int8_t *__restrict wbuf,
+          uint8_t *__restrict output, const int scale) {
+  constexpr int NP = W / 16, NT = C / 8 * NP;
+  const uint8_t *in[3] = {line0, line1, line2};
+  dw8_v prev = aie::zeros<uint8, 64>();
+  const int8_t *wp = wbuf;
+  int p = 0;
+  AIE_LOOP_MIN_ITERATION_COUNT(NT)
+  for (int t = 0; t < NT; t++) {
+    const int32_t at = 128 * t;
+    const int32_t next = t + 1 < NT ? at + 128 : at + 64;
+    aie::accum<acc32, 64> acc0, acc1;
+    dwg_for<3>([&](auto r) __attribute__((always_inline)) {
+      const dw8_w w = aie::load_v<64>(wp + 64 * r);
+      const dw8_v a = aie::load_v<64>(in[r] + at);
+      const dw8_v b = aie::load_v<64>(in[r] + at + 64);
+      const dw8_v bh = b.template extract<32>(0).template grow<64>();
+      const dw8_v ch = aie::load_v<32>(in[r] + next).template grow<64>();
+      const aie::vector<uint8, 128> d0 = aie::concat(a, bh);
+      const aie::vector<uint8, 128> d1 = aie::concat(b, ch);
+      if constexpr (r == 0) {
+        acc0 = dw8_conv::mul(w, 0, d0, 0);
+        acc1 = dw8_conv::mul(w, 0, d1, 0);
+      } else {
+        acc0 = dw8_conv::mac(acc0, w, 0, d0, 0);
+        acc1 = dw8_conv::mac(acc1, w, 0, d1, 0);
+      }
+    });
+    const dw8_v cur = aie::filter_odd(
+        aie::concat(dw8_out(acc0, scale), dw8_out(acc1, scale)), 8);
+    aie::store_v(output + 64 * t, aie::shuffle_up_fill(cur, prev, 8));
+    prev = cur;
+    p++;
+    wp = p == NP ? wp + 192 : wp;
+    p = p == NP ? 0 : p;
+  }
+}
+
+template <int W>
+__attribute__((always_inline)) static inline void
+dws2_patch(const uint8_t *__restrict pix, uint8_t *__restrict output) {
+  const dw8_v first = aie::load_v<64>(pix);
+  dwg_for<8>([&](auto cd) __attribute__((always_inline)) {
+    uint8_t *o = output + cd * W * 4;
+    aie::store_v(
+        o, aie::select(aie::load_v<32>(o),
+                       aie::shuffle_down(first, 8 * cd).template extract<32>(0),
+                       aie::mask<32>::from_uint32(0xffu)));
+  });
+}
+
+template <int W, int C>
+static bool dws2_run(const uint8_t *line0, const uint8_t *line1,
+                     const uint8_t *line2, const int8_t *wts, uint8_t *output,
+                     const int32_t check, const int scale) {
+  if constexpr (W % 16 || C % 64)
+    return false;
+  else {
+    if ((((uintptr_t)line0 | (uintptr_t)line1 | (uintptr_t)line2 |
+          (uintptr_t)wts | (uintptr_t)output) &
+         63) != 0)
+      return false;
+    event0();
+    aie::set_saturation(aie::saturation_mode::saturate);
+    aie::set_rounding(aie::rounding_mode::conv_even);
+    const uint64_t taps = (1ull << 24) - 1;
+    const aie::mask<64> keep[3] = {
+        aie::mask<64>::from_uint64(check == top ? 0 : taps),
+        aie::mask<64>::from_uint64(taps),
+        aie::mask<64>::from_uint64(check == bottom ? 0 : taps)};
+    alignas(64) static int8_t wbuf[C / 8 * 3 * 64];
+    alignas(64) static uint8_t pix[C];
+    for (int g = 0; g < C / 64; g++)
+      dws2_stage<W>(line0 + g * W * 64, line1 + g * W * 64, line2 + g * W * 64,
+                    wts + g * 576, keep, wbuf + g * 1536, pix + g * 64, scale);
+    dws2_body<W, C>(line0, line1, line2, wbuf, output, scale);
+    for (int g = 0; g < C / 64; g++)
+      dws2_patch<W>(pix + g * 64, output + g * W * 32);
+    event1();
+    return true;
+  }
+}
 #endif
 
 static void dw_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
@@ -1325,6 +1454,9 @@ void conv2dk3_dw_stride2_relu_ui8_ui8(
 #ifdef DWG_ENABLED
   if (dwg_run<CONV_INPUT_WIDTH, CONV_OUTPUT_CHANNELS, 2>(
           line0, line1, line2, wts, output, check, scale))
+    return;
+  if (dws2_run<CONV_INPUT_WIDTH, CONV_OUTPUT_CHANNELS>(line0, line1, line2, wts,
+                                                       output, check, scale))
     return;
 #endif
 #if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
