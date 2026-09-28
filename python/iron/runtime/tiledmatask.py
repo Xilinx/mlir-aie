@@ -99,9 +99,9 @@ class TileDmaTask(Task):
 
     Construction checks the task and emits nothing, so a task can be declared
     next to its Flow, outside the sequence body. The first
-    [`start`][iron.TileDmaTask.start] configures it (writes its buffer
+    [`start`][iron.runtime.tiledmatask.TileDmaTask.start] configures it (writes its buffer
     descriptors) and every start pushes it onto the channel queue, so a
-    restart costs one queue push. [`configure`][iron.TileDmaTask.configure]
+    restart costs one queue push. [`configure`][iron.runtime.tiledmatask.TileDmaTask.configure]
     does the first half alone, e.g. to write the descriptors before a loop
     whose body starts the task. Access-pattern entries that are dispatch-time
     values must exist where the task is configured, so a task that uses them
@@ -124,8 +124,8 @@ class TileDmaTask(Task):
         [`Flow.task`][iron.dataflow.flow.Flow.task],
         [`Flow.chain`][iron.dataflow.flow.Flow.chain], their
         [`FlowEndpoint`][iron.FlowEndpoint] counterparts, and
-        [`of_buffer`][iron.TileDmaTask.of_buffer] /
-        [`of_bds`][iron.TileDmaTask.of_bds] check the task before building
+        [`of_buffer`][iron.runtime.tiledmatask.TileDmaTask.of_buffer] /
+        [`of_bds`][iron.runtime.tiledmatask.TileDmaTask.of_bds] check the task before building
         one.
         """
         super().__init__(None)

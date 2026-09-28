@@ -108,7 +108,7 @@ class FlowEndpoint:
     assigns. It stands in where a channel index would go, e.g. a
     [`DmaChannel`][iron.DmaChannel]'s ``channel``, and builds the
     runtime-sequence tasks that drive this end:
-    [`task`][iron.FlowEndpoint.task] and [`chain`][iron.FlowEndpoint.chain].
+    [`task`][iron.dataflow.flow.FlowEndpoint.task] and [`chain`][iron.dataflow.flow.FlowEndpoint.chain].
 
     It is not an [`ObjectFifo`][iron.ObjectFifo] endpoint: those are the
     Workers and runtime a fifo attaches to and places, whereas this names one
@@ -319,8 +319,8 @@ class Flow(Resolvable):
 
         Pass it as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build
         a runtime-sequence task on it with
-        [`FlowEndpoint.task`][iron.FlowEndpoint.task] or
-        [`FlowEndpoint.chain`][iron.FlowEndpoint.chain]. Its channel is the
+        [`FlowEndpoint.task`][iron.dataflow.flow.FlowEndpoint.task] or
+        [`FlowEndpoint.chain`][iron.dataflow.flow.FlowEndpoint.chain]. Its channel is the
         one given to the Flow, or else the one the compiler assigns.
         """
         ends = [i for i, t in enumerate(self.all_tiles()) if t == tile]
@@ -339,7 +339,7 @@ class Flow(Resolvable):
 
         The task runs on this Flow's end on ``buffer.tile``, so its direction
         and channel come from the route. See
-        [`FlowEndpoint.task`][iron.FlowEndpoint.task].
+        [`FlowEndpoint.task`][iron.dataflow.flow.FlowEndpoint.task].
         """
         return self.endpoint(buffer.tile).task(buffer, **kwargs)
 
@@ -347,7 +347,7 @@ class Flow(Resolvable):
         """Build a [`TileDmaTask`][iron.TileDmaTask] walking ``bds`` in order.
 
         The task runs on this Flow's end on the tile the ``Bd`` buffers live
-        on. See [`FlowEndpoint.chain`][iron.FlowEndpoint.chain].
+        on. See [`FlowEndpoint.chain`][iron.dataflow.flow.FlowEndpoint.chain].
         """
         if not bds:
             raise ValueError("Flow.chain needs at least one Bd")
