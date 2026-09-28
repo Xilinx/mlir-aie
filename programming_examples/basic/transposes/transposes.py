@@ -225,9 +225,9 @@ def _transpose_combined(
     tap_out_L1L3 = Layout.full((K, M)).tile((n, m)).order("col").layout
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
-    in_L2L1_fifo = in_L3L2_fifo.cons(
-        dims_from_stream=tap_in_L2L1.stream_dims()
-    ).forward(obj_type=tile_ty, name="in_L2L1_fifo")
+    in_L2L1_fifo = in_L3L2_fifo.cons(dims_from_stream=tap_in_L2L1).forward(
+        obj_type=tile_ty, name="in_L2L1_fifo"
+    )
     out_fifo = ObjectFifo(tile_ty, name="out_fifo")
 
     def core_fn(in_fifo, out_fifo, kernel_func):

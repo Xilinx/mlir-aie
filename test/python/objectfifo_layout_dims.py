@@ -1,0 +1,63 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: %python %s | FileCheck %s
+
+"""An ObjectFifo takes a taplib view where it takes a dims list.
+
+`dims_to_stream` / `dims_from_stream` accept a `Layout` (its `stream_dims()`),
+a `PaddedLayout` (which also supplies `pad_dimensions`) or a
+`TensorAccessPattern`, on the constructor, `cons()`, `forward()`, `split()`
+and `join()` alike.
+"""
+
+import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import Layout
+from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron.controlflow import range_
+from aie.iron.device import NPU2Col1
+
+iron.set_current_device(NPU2Col1())
+ROWS, COLS, PAD = 8, 16, 4
+tile_ty = np.ndarray[(ROWS, COLS), np.dtype[np.int32]]
+padded_ty = np.ndarray[((ROWS + 2 * PAD) * COLS,), np.dtype[np.int32]]
+
+transpose = Layout.full((COLS, ROWS)).permute((1, 0))
+padded = Layout.full((ROWS, COLS)).pad([(PAD, PAD), (0, 0)])
+
+of_in = ObjectFifo(tile_ty, name="in")
+of_in_l1 = of_in.cons().forward(name="in_l1", dims_to_stream=transpose)
+of_mid = ObjectFifo(tile_ty, name="mid")
+of_out = of_mid.cons(dims_from_stream=transpose).forward(
+    obj_type=padded_ty, name="out", dims_to_stream=padded, pad_value=0
+)
+
+
+def core_fn(a, b):
+    x = a.acquire(1)
+    y = b.acquire(1)
+    for i in range_(ROWS):
+        for j in range_(COLS):
+            y[i, j] = x[i, j]
+    a.release(1)
+    b.release(1)
+
+
+worker = Worker(core_fn, [of_in_l1.cons(), of_mid.prod()])
+
+
+def seq(a, c, in_h, out_h):
+    in_h.fill(a)
+    out_h.drain(c, wait=True)
+
+
+rt = Runtime(seq, [tile_ty, padded_ty, of_in.prod(), of_out.cons()])
+print(Program(iron.get_current_device(), rt, workers=[worker]).resolve_program())
+
+# The same [(size, stride), ...] lists the layouts stand for.
+# CHECK: aie.objectfifo @in_l1({{.*}}dimensionsToStream [<size = 8, stride = 1>, <size = 16, stride = 8>]
+# CHECK: aie.objectfifo @mid({{.*}}dimensionsFromStream [<size = 8, stride = 1>, <size = 16, stride = 8>]
+# A PaddedLayout carries the padding too.
+# CHECK: aie.objectfifo @out({{.*}}dimensionsToStream [<size = 8, stride = 16>, <size = 16, stride = 1>]
+# CHECK-SAME: padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 4, const_pad_after = 4>, <const_pad_before = 0, const_pad_after = 0>]>

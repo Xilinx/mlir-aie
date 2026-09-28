@@ -83,23 +83,17 @@ def matrix_multiplication_single_core(
     # programming_guide/section-2/section-2c/ for n-D layout transformations.
     fifo_A_L3L2 = ObjectFifo(a_ty, name="A_L3L2")
     tap_A_L2L1 = Layout.full((m, k)).tile((r, s)).group((m // r, k // s))[0]
-    fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
-        dims_to_stream=tap_A_L2L1.stream_dims(), name="A_L2L1"
-    )
+    fifo_A_L2L1 = fifo_A_L3L2.cons().forward(dims_to_stream=tap_A_L2L1, name="A_L2L1")
 
     fifo_B_L3L2 = ObjectFifo(b_ty, name="B_L3L2")
     tap_B_L2L1 = Layout.full((k, n)).tile((s, t)).group((k // s, n // t))[0]
-    fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
-        dims_to_stream=tap_B_L2L1.stream_dims(), name="B_L2L1"
-    )
+    fifo_B_L2L1 = fifo_B_L3L2.cons().forward(dims_to_stream=tap_B_L2L1, name="B_L2L1")
 
     fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
     # The kernel leaves C as (r, t) sub-tiles; reading them back row-major is
     # the inverse of that tiling.
     tap_C_L1L2 = Layout.full((m, n)).tile((r, t)).inverse()
-    fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-        dims_to_stream=list(tap_C_L1L2.stream_dims()), name="C_L2L3"
-    )
+    fifo_C_L2L3 = fifo_C_L1L2.cons().forward(dims_to_stream=tap_C_L1L2, name="C_L2L3")
 
     def core_fn(of_a, of_b, of_c, matmul):
         for _ in range_(M // m * N // n):

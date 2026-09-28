@@ -34,12 +34,10 @@ def to_stream(a_in: In, c_out: Out):
     of_in0 = ObjectFifo(data_ty, name="in0")
     of_in1 = of_in0.cons().forward(name="in1", obj_type=data_ty)
 
-    # Read the (3, 8) object out as its (8, 3) transpose: the same
-    # [(8, 1), (3, 8)] list, derived from the layout.
+    # Read the (3, 8) object out as its (8, 3) transpose; as a list this is
+    # dims_to_stream=[(8, 1), (3, 8)].
     of_out1 = ObjectFifo(
-        data_ty,
-        name="out1",
-        dims_to_stream=Layout.full((3, 8)).permute((1, 0)).stream_dims(),
+        data_ty, name="out1", dims_to_stream=Layout.full((3, 8)).permute((1, 0))
     )
     of_out0 = of_out1.cons().forward(name="out0", obj_type=data_ty)
 

@@ -36,8 +36,8 @@ def from_stream(a_in: In, c_out: Out):
         name="in1",
         obj_type=data_ty,
         # Write the incoming (3, 8) stream into the object as its (8, 3)
-        # transpose: the same [(3, 1), (8, 3)] list, derived from the layout.
-        dims_from_stream=Layout.full((8, 3)).permute((1, 0)).stream_dims(),
+        # transpose; as a list this is dims_from_stream=[(3, 1), (8, 3)].
+        dims_from_stream=Layout.full((8, 3)).permute((1, 0)),
     )
 
     of_out1 = ObjectFifo(data_ty, name="out1")

@@ -36,6 +36,8 @@ dynamic runtime sequence (see the `symbolic` helpers below).
 
 A `Layout` converts to the two forms the rest of IRON consumes:
 
+- `fill()`/`drain()` and an `ObjectFifo`'s `dims_to_stream`/`dims_from_stream`
+  take a `Layout` directly; a `PaddedLayout` also sets `pad_dimensions`.
 - `.tap()` returns the `TensorAccessPattern` shim form (four dimensions,
   left-padded with unit dimensions); `fill()` / `drain()` accept a `Layout`
   directly and call this for you.

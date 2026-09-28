@@ -113,6 +113,8 @@ class Hop:
         if isinstance(self.dims, PaddedLayout):
             object.__setattr__(self, "pad", self.dims.pad_dims())
             object.__setattr__(self, "dims", self.dims.stream_dims())
+        elif isinstance(self.dims, Layout):
+            object.__setattr__(self, "dims", self.dims.stream_dims())
         if self.dims is not None:
             object.__setattr__(
                 self, "dims", tuple((int(s), int(t)) for s, t in self.dims)

@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Sequence, TypeAlias
+from typing import Sequence, TypeAlias, Union
 
 import numpy as np
 
@@ -26,18 +26,38 @@ from ...helpers.npdtypes import (
     pack_pad_value,
     single_elem_or_list_to_list,
 )
+from ...helpers.taplib import Layout, PaddedLayout, TensorAccessPattern
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
 from .endpoint import ObjectFifoEndpoint
 
-# Named aliases for the (size, stride) pair-lists used by DMA stream
-# layout transforms and pad-then-stream descriptors. Both are list[(size,
-# stride)] from highest to lowest dimension; the names exist purely to
-# make signatures and docs self-documenting — they are not validated
-# types at runtime.
-StreamDims: TypeAlias = list[Sequence[int]]
+# A DMA stream layout transform: a list of (size, stride) pairs from highest
+# to lowest dimension, or a taplib view that describes the same walk (a
+# ``Layout``, a ``PaddedLayout`` that also carries the memtile padding, or a
+# ``TensorAccessPattern``). Pad descriptors are (before, after) pair lists.
+# The names exist to make signatures and docs self-documenting; every entry
+# point normalizes with ``_as_stream_dims``.
+StreamDims: TypeAlias = Union[
+    list[Sequence[int]], Layout, PaddedLayout, TensorAccessPattern
+]
 PadDims: TypeAlias = list[Sequence[int]]
+
+
+def _as_stream_dims(dims):
+    """Normalize a stream transform to the ``[(size, stride), ...]`` list.
+
+    Accepts the list itself, a :class:`~aie.helpers.taplib.Layout`, a
+    :class:`~aie.helpers.taplib.PaddedLayout` (its unpadded walk) or a
+    :class:`~aie.helpers.taplib.TensorAccessPattern`.
+    """
+    if dims is None or isinstance(dims, list):
+        return dims
+    if isinstance(dims, (Layout, PaddedLayout)):
+        return dims.stream_dims()
+    if isinstance(dims, TensorAccessPattern):
+        return list(dims.transformation_dims)
+    return list(dims)
 
 
 def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
@@ -97,7 +117,8 @@ class ObjectFifo(Resolvable):
             obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
-            dims_to_stream (StreamDims | None, optional): Data layout transformations applied
+            dims_to_stream (StreamDims | None, optional): A ``Layout`` (or ``PaddedLayout``,
+                which also sets ``pad_dimensions``) or ``[(size, stride), ...]`` list. Data layout transformations applied
                 when data is pushed onto the AXI stream, described as pairs of (size, stride)
                 from highest to lowest dimension. Defaults to None.
             dims_from_stream_per_cons (StreamDims | None, optional): List of data layout
@@ -166,8 +187,11 @@ class ObjectFifo(Resolvable):
                 f"Default ObjectFifo depth must be > 0, but got {self._depth}"
             )
         self._obj_type = obj_type
-        self._dims_to_stream = dims_to_stream
-        self._dims_from_stream_per_cons = dims_from_stream_per_cons
+        # A PaddedLayout carries the padding the memtile emits around the walk.
+        if isinstance(dims_to_stream, PaddedLayout) and pad_dimensions is None:
+            pad_dimensions = dims_to_stream.pad_dims()
+        self._dims_to_stream = _as_stream_dims(dims_to_stream)
+        self._dims_from_stream_per_cons = _as_stream_dims(dims_from_stream_per_cons)
         self._plio = plio
         self._pad_dimensions = pad_dimensions
         self._pad_value = pad_value
@@ -336,6 +360,7 @@ class ObjectFifo(Resolvable):
             else:
                 depth = self._depth
 
+        dims_from_stream = _as_stream_dims(dims_from_stream)
         if dims_from_stream is None:
             dims_from_stream = self._dims_from_stream_per_cons
         self._cons.append(
@@ -573,6 +598,7 @@ class ObjectFifoHandle(Resolvable):
         self._port: ObjectFifoPort = (
             ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
         )
+        dims_from_stream = _as_stream_dims(dims_from_stream)
         if is_prod and dims_from_stream:
             raise ValueError("Can only specify dims_from_stream for cons handles")
         elif not is_prod and not dims_from_stream:
@@ -1092,8 +1118,10 @@ class ObjectFifoHandle(Resolvable):
         obj_types = [obj_type] if obj_type else None
         depths = [depth] if depth else None
         names = [name] if name else [self._object_fifo.name + "_fwd"]
-        dims_to_stream_arg = [dims_to_stream] if dims_to_stream else None
-        dims_from_stream_arg = [dims_from_stream] if dims_from_stream else None
+        dims_to_stream_arg = [dims_to_stream] if dims_to_stream is not None else None
+        dims_from_stream_arg = (
+            [dims_from_stream] if dims_from_stream is not None else None
+        )
 
         forward_fifo = self.split(
             [0],
