@@ -63,7 +63,12 @@ CASES: list[Case] = [
     check("zero", dict(tile_size=64, dtype=bfloat16), smoke=True),
     check("zero", dict(tile_size=64, dtype=v8bfp16ebs8), smoke=True, devices=("npu2",)),
     check("zero", dict(tile_size=68, dtype=np.uint8), calls=3, tag="vector-tail"),
-    check("zero", dict(tile_size=34, dtype=np.int16, vectorized=False), calls=3),
+    check(
+        "zero",
+        dict(tile_size=34, dtype=np.int16, vectorized=False),
+        calls=3,
+        smoke=True,
+    ),
     check(
         "zero",
         dict(tile_size=12, dtype=v8bfp16ebs8),
