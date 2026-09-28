@@ -44,6 +44,11 @@ namespace xilinx::AIE {
 
 enum class Connectivity { INVALID = 0, AVAILABLE = 1 };
 
+// A shim's DMA, NOC and PLIO ports reach its switchbox through the shim mux,
+// on the South channel these return for a port that sends or receives.
+int shimMuxChannelFrom(Port src);
+int shimMuxChannelTo(Port dst);
+
 using SwitchboxConnect = struct SwitchboxConnect {
   SwitchboxConnect() = default;
   SwitchboxConnect(TileID coords) : srcCoords(coords), dstCoords(coords) {}

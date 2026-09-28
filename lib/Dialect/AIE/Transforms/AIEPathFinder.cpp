@@ -453,6 +453,24 @@ void Pathfinder::sortFlows() {
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm
 // will avoid using these.
+int xilinx::AIE::shimMuxChannelFrom(Port src) {
+  // DMA0 -> N3, DMA1 -> N7; NOC0/1 -> N2/3, NOC2/3 -> N6/7.
+  if (src.bundle == WireBundle::DMA)
+    return src.channel == 0 ? 3 : 7;
+  if (src.bundle == WireBundle::NOC)
+    return src.channel >= 2 ? src.channel + 4 : src.channel + 2;
+  return src.channel;
+}
+
+int xilinx::AIE::shimMuxChannelTo(Port dst) {
+  // N2 -> DMA0, N3 -> DMA1; N2-5 -> NOC0-3.
+  if (dst.bundle == WireBundle::DMA)
+    return dst.channel == 0 ? 2 : 3;
+  if (dst.bundle == WireBundle::NOC)
+    return dst.channel + 2;
+  return dst.channel;
+}
+
 bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   int col = switchboxOp.colIndex();
   int row = switchboxOp.rowIndex();
@@ -530,23 +548,9 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
       sb.connectivity[i][dstIdx] = Connectivity::INVALID;
     }
   }
-  // At a shim, the DMA, NOC and PLIO ports reach the switchbox through the shim
-  // mux on South channels, so a fixed op on such a channel claims them too.
+  // A fixed op on a shim's South channel claims the port the shim mux carries
+  // on it (see shimMuxChannelFrom).
   if (switchboxOp.getTileOp().isShimNOCorPLTile()) {
-    auto southDst = [](Port p) {
-      if (p.bundle == WireBundle::DMA)
-        return p.channel == 0 ? 2 : 3;
-      if (p.bundle == WireBundle::NOC)
-        return p.channel + 2;
-      return p.channel;
-    };
-    auto southSrc = [](Port p) {
-      if (p.bundle == WireBundle::DMA)
-        return p.channel == 0 ? 3 : 7;
-      if (p.bundle == WireBundle::NOC)
-        return p.channel >= 2 ? p.channel + 4 : p.channel + 2;
-      return p.channel;
-    };
     auto isMuxed = [](Port p) {
       return p.bundle == WireBundle::DMA || p.bundle == WireBundle::NOC ||
              p.bundle == WireBundle::PLIO;
@@ -559,11 +563,13 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
       if (sb.srcPorts[srcIdx].bundle == WireBundle::South)
         southSrcs.insert(sb.srcPorts[srcIdx].channel);
     for (size_t j = 0; j < sb.dstPorts.size(); j++)
-      if (isMuxed(sb.dstPorts[j]) && southDsts.count(southDst(sb.dstPorts[j])))
+      if (isMuxed(sb.dstPorts[j]) &&
+          southDsts.count(shimMuxChannelTo(sb.dstPorts[j])))
         for (size_t i = 0; i < sb.srcPorts.size(); i++)
           sb.connectivity[i][j] = Connectivity::INVALID;
     for (size_t i = 0; i < sb.srcPorts.size(); i++)
-      if (isMuxed(sb.srcPorts[i]) && southSrcs.count(southSrc(sb.srcPorts[i])))
+      if (isMuxed(sb.srcPorts[i]) &&
+          southSrcs.count(shimMuxChannelFrom(sb.srcPorts[i])))
         for (size_t j = 0; j < sb.dstPorts.size(); j++)
           sb.connectivity[i][j] = Connectivity::INVALID;
   }

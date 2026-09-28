@@ -126,16 +126,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       // TODO: must reserve N3, N7, S2, S3 for DMA connections
       if (isShim && tileId == srcSbId) {
 
-        // shim DMAs at start of flows
-        if (srcBundle == WireBundle::DMA)
-          // must be either DMA0 -> N3 or DMA1 -> N7
-          shimCh = srcChannel == 0 ? 3 : 7;
-        else if (srcBundle == WireBundle::NOC)
-          // must be NOC0/NOC1 -> N2/N3 or NOC2/NOC3 -> N6/N7
-          shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
-        else if (srcBundle == WireBundle::PLIO)
-          shimCh = srcChannel;
-
+        shimCh = shimMuxChannelFrom(srcPort);
         ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, col);
         addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
                       flowOp, srcBundle, srcChannel, WireBundle::North, shimCh);
@@ -145,20 +136,13 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         Port src = setting.srcs[i];
         Port dest = setting.dsts[i];
 
-        // A shim's own DMA, NOC and PLIO ports reach its switchbox through
-        // the shim mux, on South channels; a flow can start and end at one.
+        // A flow can start and end at one shim (see shimMuxChannelFrom).
         if (isShim && tileId == srcSbId && src == srcPort)
           src = {WireBundle::South, shimCh};
         if (isShim && (dest.bundle == WireBundle::DMA ||
                        dest.bundle == WireBundle::PLIO ||
                        dest.bundle == WireBundle::NOC)) {
-          int destCh = dest.channel;
-          if (dest.bundle == WireBundle::DMA)
-            // must be either N2 -> DMA0 or N3 -> DMA1
-            destCh = dest.channel == 0 ? 2 : 3;
-          else if (dest.bundle == WireBundle::NOC)
-            // must be either N2/3/4/5 -> NOC0/1/2/3
-            destCh = dest.channel + 2;
+          int destCh = shimMuxChannelTo(dest);
 
           ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, col);
           addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
