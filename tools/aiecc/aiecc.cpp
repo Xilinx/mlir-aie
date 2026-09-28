@@ -626,13 +626,14 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 
 // Assemble the full compilation artifact graph into `g` and return the list of
 // requested output edges. Edges named via `--cut` are appended to `cutEdges`
-// (and built) so a `--checkpoint` can capture them as its cut points. A
-// non-null `cache` is --device-cache, which the graph uses only when this
-// build's outputs allow it.
-static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
-                                              Graph &g,
-                                              std::vector<EdgeBase *> &cutEdges,
-                                              DeviceCache *cache) {
+// (and built) so a `--checkpoint` can capture them as its cut points. Edges
+// that must run but write nothing are appended to `checkEdges`. A non-null
+// `cache` is --device-cache, which the graph uses only when this build's
+// outputs allow it.
+static std::vector<EdgeBase *>
+buildMainGraph(mlir::MLIRContext &context, Graph &g,
+               std::vector<EdgeBase *> &cutEdges,
+               std::vector<EdgeBase *> &checkEdges, DeviceCache *cache) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -2139,12 +2140,12 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
       generateCtrlpkt || generateXclbin || generateFullElf || wantAiesim ||
       doCompileHost || !getOutputs.empty() || !cutOutputs.empty();
   // Every other artifact depends on the post-link checks through
-  // physicalWithElfs. A core-ELF build ends before that edge, so name the
-  // checks here.
+  // physicalWithElfs. A core-ELF build ends before that edge, so run the
+  // checks too, without writing the module they check.
   if (generateCoreElfs || !anySpecificOutput) {
     outputs.push_back(&compiledElfs);
     if (&physicalForElfs != &physical) {
-      outputs.push_back(&physicalForElfs);
+      checkEdges.push_back(&physicalForElfs);
     }
   }
 
@@ -2262,6 +2263,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
   if (!keepIntermediates.getValue()) {
     std::vector<EdgeBase *> roots = outputs;
     roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    roots.insert(roots.end(), checkEdges.begin(), checkEdges.end());
     llvm::DenseSet<EdgeBase *> needed =
         reachableEdges(roots, {&sequencePlacement});
     *sequenceCoresOnly = !needed.count(&perCore) && !needed.count(&physical);
@@ -2275,6 +2277,7 @@ static std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context,
   if (cache) {
     std::vector<EdgeBase *> roots = outputs;
     roots.insert(roots.end(), cutEdges.begin(), cutEdges.end());
+    roots.insert(roots.end(), checkEdges.begin(), checkEdges.end());
     llvm::DenseSet<EdgeBase *> needed =
         reachableEdges(roots, {&physical, &physicalWithElfs});
     cache->active = !keepIntermediates.getValue() && !keepLoc &&
@@ -2505,6 +2508,7 @@ int main(int argc, char **argv) {
   Graph g;
   std::vector<EdgeBase *>
       cutEdges; // the --cut points, captured by --checkpoint
+  std::vector<EdgeBase *> checkEdges;
   // Chess objects and a dry run's placeholders are nothing to reuse, and a
   // resume restores its own frontier.
   std::optional<DeviceCache> deviceCache;
@@ -2518,13 +2522,15 @@ int main(int argc, char **argv) {
                         verbose);
   }
   std::vector<EdgeBase *> outputs = buildMainGraph(
-      context, g, cutEdges, deviceCache ? &*deviceCache : nullptr);
+      context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr);
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
   // check below. A --cut/--checkpoint cut is marked in the output.
   if (emitDot) {
-    writeDotGraph(g, outputs, llvm::outs(), cutEdges);
+    std::vector<EdgeBase *> built = outputs;
+    built.insert(built.end(), checkEdges.begin(), checkEdges.end());
+    writeDotGraph(g, built, llvm::outs(), cutEdges);
     return 0;
   }
 
@@ -2598,8 +2604,10 @@ int main(int argc, char **argv) {
   const std::vector<EdgeBase *> noOutputs;
   const std::vector<EdgeBase *> &runOutputs =
       cutEdges.empty() ? outputs : noOutputs;
+  const std::vector<EdgeBase *> &buildAlso =
+      cutEdges.empty() ? checkEdges : cutEdges;
   if (mlir::failed(engine.run(g, runOutputs, satisfied,
-                              DeserializeContext{&context}, cutEdges))) {
+                              DeserializeContext{&context}, buildAlso))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.

@@ -20,3 +20,9 @@
 // RUN: sed 's/stack_size = 20480/stack_size = 16384/' %S/large_stack.mlir > %t.d/small.mlir
 // RUN: cd %t.d && not aiecc --get=measured_stack_sizes.mlir --output-dir=%t.small --tmpdir=%t.small.prj small.mlir 2>&1 | FileCheck %s --check-prefix=SMALL
 // SMALL: error: stack_size = 16384 is insufficient: this core needs {{[0-9]+}} bytes
+
+// A bare build writes the core ELFs, not the module the checks ran on.
+// RUN: rm -rf %t.bare && mkdir -p %t.bare && cp %t.d/large_stack_kernel.o %t.bare
+// RUN: cd %t.bare && aiecc --tmpdir=%t.bare.prj %S/large_stack.mlir
+// RUN: ls %t.bare | FileCheck %s --check-prefix=BARE --implicit-check-not=.mlir
+// BARE: elfs_main_core_0_2
