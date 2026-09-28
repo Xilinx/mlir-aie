@@ -17,7 +17,6 @@
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/Passes.h"
 #include "mlir/Target/Cpp/CppEmitter.h"
 #include "mlir/Transforms/Passes.h"
 
