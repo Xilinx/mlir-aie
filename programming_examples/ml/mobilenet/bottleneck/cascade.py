@@ -16,7 +16,8 @@ Architecture overview (cascade-split convolutions):
   Layer-3 GET tile:  reads cascade, runs 1x1-proj+skip on second split, writes output
 
 Weight delivery:
-  L1 and L3 split weights are streamed via ObjectFifos (Shim → MemTile → tiles).
+  L1 and L3 split weights are MemTile-resident ObjectFifos (baked at compile
+  time) that loop to their tiles every image; nothing is re-read from DDR.
   L2 DW weights are static Buffers (baked into the tile at compile time).
 """
 
@@ -24,6 +25,8 @@ import numpy as np
 from aie.iron import Buffer, ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.cascadeflow import CascadeFlow
+from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
+from aie.iron.device import AnyMemTile
 
 from ..network_spec import block as nsblock
 from ._common import layer_sf as _layer_sf
@@ -55,7 +58,7 @@ _l1_split_wts_sz = (_InC // _InputSplit) * (_L1_OutC // _OutputSplit)  # 40*480
 _l2_wts_sz = 3 * 3 * _L1_OutC * 1  # 8640
 _l3_split_wts_sz = (_L1_OutC // _InputSplit) * (_L3_OutC // _OutputSplit2)  # 19200
 
-# Full L1/L3 weight tensors (host → MemTile, then split into halves).
+# Full L1/L3 weight tensors (split into put/get halves on MemTiles).
 _l1_full_wts_sz = _InC * _L1_OutC  # 80*960 = 76800
 _l3_full_wts_sz = _L1_OutC * _L3_OutC  # 960*80 = 76800
 
@@ -70,8 +73,6 @@ _ty_l1_split_wts = np.ndarray[(_l1_split_wts_sz,), np.dtype[np.int8]]
 _ty_l2_wts = np.ndarray[(_l2_wts_sz,), np.dtype[np.int8]]
 _ty_l3_split_wts = np.ndarray[(_l3_split_wts_sz,), np.dtype[np.int8]]
 _ty_act_out = np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]]
-_ty_l1_full_wts = np.ndarray[(_l1_full_wts_sz,), np.dtype[np.int8]]
-_ty_l3_full_wts = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +85,20 @@ def _make_static_wts(data_dir, size, filename, name):
         initial_value=load_wts(data_dir, filename, size),
         name=name,
     )
+
+
+def _memtile_wts(name, data, chunk_ty):
+    """MemTile-resident weight half, looped to one core in `chunk_ty` chunks."""
+    of = ObjectFifo(
+        np.ndarray[(data.size,), np.dtype[np.int8]],
+        depth=1,
+        name=name,
+        consumer_obj_type=chunk_ty,
+        init_values=[data],
+        repeat_count=_InH,
+    )
+    of.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
+    return of
 
 
 # ---------------------------------------------------------------------------
@@ -269,16 +284,16 @@ def _l3_get_fn(
 
 
 # ---------------------------------------------------------------------------
-# build_cascade — one full cascade block (5 compute workers + 2 weight fifos)
+# build_cascade — one full cascade block (5 compute workers + 4 weight fifos)
 # ---------------------------------------------------------------------------
 def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
-    """One full cascade block (5 compute workers + 2 weight fifos).
+    """One full cascade block (5 compute workers + 4 MemTile weight fifos).
 
     blk:         Block from network_spec.NETWORK (bn13 or bn14).
     act_in:      activation input ObjectFifo (drives L1 PUT and L1 GET)
     skip_in:     ObjectFifo whose .cons() forwards a skip row to L3 GET
                  (often the same as act_in; for bn14 it's bn13's output)
-    Returns (out_fifo, wts_l1_full, wts_l3_full, [workers]).
+    Returns (out_fifo, [workers]).
     """
     name = blk.name
     # Module-level _InW/_InH/_InC/_L1_OutC/_L3_OutC are derived from bn13's
@@ -333,20 +348,21 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
         block_index=block_index,
     )
 
-    # Streaming weight fifos (Shim → MemTile → split → put/get tiles)
-    wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1)
-    wts_l1_put_h, wts_l1_get_h = wts_l1_full.cons().split(
-        offsets=[0, _l1_full_wts_sz // 2],
-        depths=[1, 1],
-        obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
-        repeat_counts=[_InH, _InH],
+    # L1/L3 weight halves live on MemTiles and loop to their cores (no DDR
+    # traffic); depth-2 core buffers hide each 19200 B chunk's reload.
+    l1_wts = load_wts(data_dir, f"{name}_1_chain.txt", _l1_full_wts_sz)
+    half = _l1_full_wts_sz // 2
+    wts_l1_put_h = _memtile_wts(f"{name}_l1_put_wts", l1_wts[:half], _ty_l1_split_wts)
+    wts_l1_get_h = _memtile_wts(f"{name}_l1_get_wts", l1_wts[half:], _ty_l1_split_wts)
+    wts_l3_put_h = _memtile_wts(
+        f"{name}_l3_put_wts",
+        load_wts(data_dir, f"{name}_3_put_chain.txt", _l3_full_wts_sz // 2),
+        _ty_l3_split_wts,
     )
-    wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1)
-    wts_l3_put_h, wts_l3_get_h = wts_l3_full.cons().split(
-        offsets=[0, _l3_full_wts_sz // 2],
-        depths=[1, 1],
-        obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
-        repeat_counts=[_InH, _InH],
+    wts_l3_get_h = _memtile_wts(
+        f"{name}_l3_get_wts",
+        load_wts(data_dir, f"{name}_3_get_chain.txt", _l3_full_wts_sz // 2),
+        _ty_l3_split_wts,
     )
 
     # L2 DW weights are static (compile-time bake-in)
@@ -384,7 +400,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
             _l1_put_fn,
             fn_args=[
                 l1_put_cons,
-                wts_l1_put_h.cons(),
+                wts_l1_put_h.cons(depth=2),
                 k_l1_put,
                 _InW,
                 _InC,
@@ -400,7 +416,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
             fn_args=[
                 l1_get_cons,
                 of_l1_l2.prod(),
-                wts_l1_get_h.cons(),
+                wts_l1_get_h.cons(depth=2),
                 k_l1_get,
                 _InW,
                 _InC,
@@ -428,7 +444,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
             _l3_put_fn,
             fn_args=[
                 of_l2_l3_first.cons(),
-                wts_l3_put_h.cons(),
+                wts_l3_put_h.cons(depth=2),
                 k_l3_put,
                 _InW,
                 _L1_OutC,
@@ -445,7 +461,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
                 of_l2_l3_second.cons(),
                 skip_fifo.cons(),
                 out_fifo.prod(),
-                wts_l3_get_h.cons(),
+                wts_l3_get_h.cons(depth=2),
                 k_l3_get,
                 _InW,
                 _L1_OutC,
@@ -461,7 +477,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
     # Cascade flows: L1 put→get and L3 put→get share streams between adjacent tiles.
     CascadeFlow(bws[0], bws[1])
     CascadeFlow(bws[3], bws[4])
-    return out_fifo, wts_l1_full, wts_l3_full, bws
+    return out_fifo, bws
 
 
 # ---------------------------------------------------------------------------
@@ -480,13 +496,12 @@ def cascade_bottlenecks(
     their source workers; they're picked up automatically by Program.resolve().
 
     Returns:
-        (workers, act_bn14_out, wts_fifos) where wts_fifos is the 4 full-weight
-        ObjectFifos the host DMA writes into (bn13_l1, bn13_l3, bn14_l1, bn14_l3).
+        (workers, act_bn14_out).
     """
     workers = []
 
     # bn13: cascade-split bottleneck (5 compute workers).
-    act_bn13_out, bn13_wts_l1_full, bn13_wts_l3_full, bn13_workers = build_cascade(
+    act_bn13_out, bn13_workers = build_cascade(
         nsblock("bn13"),
         act_in=act_in,
         skip_in=act_in,
@@ -496,7 +511,7 @@ def cascade_bottlenecks(
     workers += bn13_workers
 
     # bn14: cascade-split bottleneck (5 compute workers, skip = bn13 output).
-    act_bn14_out, bn14_wts_l1_full, bn14_wts_l3_full, bn14_workers = build_cascade(
+    act_bn14_out, bn14_workers = build_cascade(
         nsblock("bn14"),
         act_in=act_bn13_out,
         skip_in=act_bn13_out,
@@ -505,10 +520,4 @@ def cascade_bottlenecks(
     )
     workers += bn14_workers
 
-    wts_fifos = [
-        bn13_wts_l1_full,
-        bn13_wts_l3_full,
-        bn14_wts_l1_full,
-        bn14_wts_l3_full,
-    ]
-    return workers, act_bn14_out, wts_fifos
+    return workers, act_bn14_out

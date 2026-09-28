@@ -30,7 +30,6 @@ import json
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     InOut,
@@ -81,82 +80,27 @@ def _chain_iron(
     act_in = ObjectFifo(in_elem_ty((in_w, 1, in_c)), depth=2)
 
     if mode == "regular":
-        workers, act_out = regular_bottlenecks(
-            act_in,
-            sf,
-            data_dir=data_dir,
-        )
-        wts_fifos = []
+        workers, act_out = regular_bottlenecks(act_in, sf, data_dir=data_dir)
     elif mode == "pipeline":
-        workers, act_out = pipeline_bottlenecks(
-            act_in,
-            sf,
-            data_dir=data_dir,
-        )
-        wts_fifos = []
+        workers, act_out = pipeline_bottlenecks(act_in, sf, data_dir=data_dir)
     else:  # cascade
-        workers, act_out, wts_fifos = cascade_bottlenecks(
-            act_in,
-            sf,
-            data_dir=data_dir,
-        )
+        workers, act_out = cascade_bottlenecks(act_in, sf, data_dir=data_dir)
 
-    if wts_fifos:
-        # Cascade: input + ONE concatenated cascade weight buffer + output.
-        # All 4 weight chunks live in a single host tensor; TensorAccessPatterns
-        # slice it for each fifo. Mirrors aie2_mobilenet_iron.py main runtime.
-        BN_WTS_SZ = 80 * 960  # 76800 bytes per chunk
-        TOTAL_WTS_SZ_I32 = 4 * BN_WTS_SZ // 4  # 76800 i32 elements
-        wts_ty = np.ndarray[(TOTAL_WTS_SZ_I32,), np.dtype[np.int32]]
-        offsets_i32 = [
-            i * (BN_WTS_SZ // 4) for i in range(4)
-        ]  # [0, 19200, 38400, 57600]
-        size_i32 = BN_WTS_SZ // 4  # 19200
+    def sequence(inp, out, in_prod, out_cons):
+        tg = TaskGroup()
+        in_prod.fill(inp, group=tg)
+        out_cons.drain(out, wait=True, group=tg)
+        tg.finish()
 
-        def _wts_tap(byte_offset_i32):
-            return TensorAccessPattern(
-                (TOTAL_WTS_SZ_I32,),
-                offset=byte_offset_i32,
-                sizes=[1, 1, 1, size_i32],
-                strides=[0, 0, 0, 1],
-            )
-
-        def sequence_with_wts(inp, all_wts, out, in_prod, wts_prods, out_cons):
-            tg = TaskGroup()
-            in_prod.fill(inp, group=tg)
-            for wts_prod, off in zip(wts_prods, offsets_i32):
-                wts_prod.fill(all_wts, _wts_tap(off), group=tg)
-            out_cons.drain(out, wait=True, group=tg)
-            tg.finish()
-
-        rt = Runtime(
-            sequence_with_wts,
-            [
-                in_ty,
-                wts_ty,
-                out_ty,
-                act_in.prod(depth=1),
-                [fifo.prod() for fifo in wts_fifos],
-                act_out.cons(),
-            ],
-        )
-    else:
-
-        def sequence_no_wts(inp, out, in_prod, out_cons):
-            tg = TaskGroup()
-            in_prod.fill(inp, group=tg)
-            out_cons.drain(out, wait=True, group=tg)
-            tg.finish()
-
-        rt = Runtime(
-            sequence_no_wts,
-            [
-                in_ty,
-                out_ty,
-                act_in.prod(depth=1),
-                act_out.cons(),
-            ],
-        )
+    rt = Runtime(
+        sequence,
+        [
+            in_ty,
+            out_ty,
+            act_in.prod(depth=1),
+            act_out.cons(),
+        ],
+    )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 

@@ -11,7 +11,7 @@ against the matching brevitas golden fixture.
                       the per-bn fixtures and weights from bottleneck_A/data/.
   chain regular       bn0 -> bn9, fixtures from bottleneck_A/data/.
   chain pipeline      bn10 -> bn12, fixtures from bottleneck_B/data/.
-  chain cascade       bn13 -> bn14 (with cascade weight DMAs), bottleneck_C/data/.
+  chain cascade       bn13 -> bn14, fixtures from bottleneck_C/data/.
 
 Usage (from programming_examples/ml):
     python3 -m mobilenet.test_e2e block bn3
@@ -77,25 +77,6 @@ def _loadtxt_i8(path):
     )
 
 
-def _load_cascade_weights(fix):
-    """Concatenate the 4 cascade weight chunks (bn13_l1 | bn13_l3 | bn14_l1 | bn14_l3).
-
-    Mirrors aie2_iron_chain.py's cascade rt.sequence: ONE host buffer, sliced
-    by TensorAccessPatterns inside the runtime. Each chunk is 80*960=76800 B.
-    """
-    chunks = []
-    for bn in ("bn13", "bn14"):
-        chunks.append(
-            np.loadtxt(fix + f"{bn}_1_chain.txt", delimiter=",", dtype=np.int8)
-        )
-        put = np.loadtxt(fix + f"{bn}_3_put_chain.txt", delimiter=",", dtype=np.int8)
-        get = np.loadtxt(fix + f"{bn}_3_get_chain.txt", delimiter=",", dtype=np.int8)
-        chunks.append(np.concatenate([put, get]))
-    full = np.concatenate(chunks)
-    assert full.size == 4 * 80 * 960
-    return full
-
-
 def _design(mode, target, fix):
     if mode == "block":
         kwargs = dict(
@@ -148,10 +129,6 @@ def main():
             dtype=np.int32,
         )
     ]
-    if key == "chain:cascade":
-        buffers.append(
-            iron.tensor(_load_cascade_weights(fix).view(np.int32), dtype=np.int32)
-        )
     out = iron.zeros((out_w * out_h * out_c // 4,), dtype=np.int32)
     buffers.append(out)
 

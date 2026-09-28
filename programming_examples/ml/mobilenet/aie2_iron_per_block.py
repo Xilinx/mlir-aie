@@ -80,7 +80,7 @@ def _build_one(block_name, act_in):
             data_dir=_DATA_DIR,
             wts_tag=_WTS_TAG,
         )
-        return out_fifo, [w], []
+        return out_fifo, [w]
 
     if block_name in ("bn1", "bn2", "bn3", "bn6", "bn7", "bn8"):
         # bn8 isn't a standalone block in the main mobilenet (it lives in the
@@ -93,7 +93,7 @@ def _build_one(block_name, act_in):
             data_dir=_DATA_DIR,
             wts_tag=_WTS_TAG,
         )
-        return out_fifo, [w], []
+        return out_fifo, [w]
 
     if block_name in _FUSED_PAIRS:
         a, b = _FUSED_PAIRS[block_name]
@@ -106,7 +106,7 @@ def _build_one(block_name, act_in):
             _SCALES,
             data_dir=_DATA_DIR,
         )
-        return out_fifo, [w], []
+        return out_fifo, [w]
 
     if block_name == "bn10":
         out_fifo, ws = build_3tile_pipeline(
@@ -115,7 +115,7 @@ def _build_one(block_name, act_in):
             _SCALES,
             data_dir=_DATA_DIR,
         )
-        return out_fifo, ws, []
+        return out_fifo, ws
 
     if block_name == "bn11":
         # bn11 has a skip path forwarded through a memtile.
@@ -127,7 +127,7 @@ def _build_one(block_name, act_in):
             data_dir=_DATA_DIR,
             skip_in=skip_in,
         )
-        return out_fifo, ws, []
+        return out_fifo, ws
 
     if block_name == "bn12":
         out_fifo, ws = build_bn12_2tile(
@@ -136,17 +136,17 @@ def _build_one(block_name, act_in):
             _SCALES,
             data_dir=_DATA_DIR,
         )
-        return out_fifo, ws, []
+        return out_fifo, ws
 
     if block_name in CASCADE_NAMES:
-        out_fifo, wts_l1, wts_l3, ws = build_cascade(
+        out_fifo, ws = build_cascade(
             nsblock(block_name),
             act_in=act_in,
             skip_in=act_in,
             sf=_SCALES,
             data_dir=_DATA_DIR,
         )
-        return out_fifo, ws, [wts_l1, wts_l3]
+        return out_fifo, ws
 
     raise ValueError(
         f"unsupported block name: {block_name!r} "
@@ -196,53 +196,23 @@ def per_block_iron(
     in_elem_ty = _u8 if block_name == "bn0" else _i8
     act_in = ObjectFifo(in_elem_ty((in_w, 1, in_c)), depth=2)
 
-    out_fifo, workers, wts_fifos = _build_one(block_name, act_in)
+    out_fifo, workers = _build_one(block_name, act_in)
 
-    if wts_fifos:
-        # Cascade: input + 2 weight buffers + output.
-        BN_WTS_SZ = 80 * 960  # 76800 bytes per L1/L3 weight chunk for bn13/bn14
-        wts_ty = np.ndarray[(BN_WTS_SZ // 4,), np.dtype[np.int32]]
+    def sequence(inp, out, in_prod, out_cons):
+        tg = TaskGroup()
+        in_prod.fill(inp, group=tg)
+        out_cons.drain(out, wait=True, group=tg)
+        tg.finish()
 
-        def sequence_with_wts(
-            inp, wl1, wl3, out, in_prod, wl1_prod, wl3_prod, out_cons
-        ):
-            tg = TaskGroup()
-            in_prod.fill(inp, group=tg)
-            wl1_prod.fill(wl1, group=tg)
-            wl3_prod.fill(wl3, group=tg)
-            out_cons.drain(out, wait=True, group=tg)
-            tg.finish()
-
-        rt = Runtime(
-            sequence_with_wts,
-            [
-                in_ty,
-                wts_ty,
-                wts_ty,
-                out_ty,
-                act_in.prod(),
-                wts_fifos[0].prod(),
-                wts_fifos[1].prod(),
-                out_fifo.cons(),
-            ],
-        )
-    else:
-
-        def sequence_no_wts(inp, out, in_prod, out_cons):
-            tg = TaskGroup()
-            in_prod.fill(inp, group=tg)
-            out_cons.drain(out, wait=True, group=tg)
-            tg.finish()
-
-        rt = Runtime(
-            sequence_no_wts,
-            [
-                in_ty,
-                out_ty,
-                act_in.prod(),
-                out_fifo.cons(),
-            ],
-        )
+    rt = Runtime(
+        sequence,
+        [
+            in_ty,
+            out_ty,
+            act_in.prod(),
+            out_fifo.cons(),
+        ],
+    )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
