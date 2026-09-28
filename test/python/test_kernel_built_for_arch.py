@@ -15,6 +15,7 @@ ambiguous").
 """
 
 import os
+from pathlib import Path
 
 import pytest
 from aie.iron import kernels
@@ -50,6 +51,8 @@ def test_a_kernel_built_unbound_refuses_an_aie2p_compile(no_device, tmp_path):
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_kernel_built_bound_compiles_for_its_arch(npu2_device, tmp_path):
+    if not (Path(config.aie_runtime_lib_dir()) / "AIE2P").is_dir():
+        pytest.skip("this build has no aie_runtime_lib/AIE2P")
     exp = kernels.bf16_exp(tile_size=1024)
     assert exp.built_for_arch == "aie2p"
     compile_external_kernels([exp], str(tmp_path), "aie2p")

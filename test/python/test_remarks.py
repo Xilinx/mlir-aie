@@ -973,6 +973,8 @@ def test_diff_rows_needs_matching_locations_to_call_it_a_rename():
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
+    if not (Path(config.aie_runtime_lib_dir()) / "AIE2P").is_dir():
+        pytest.skip("this build has no aie_runtime_lib/AIE2P")
     # Only the LUT build compiles the extra loop.
     base = tmp_path / "base"
     shutil.copytree(config.aie_kernels_dir(), base / "aie_kernels")
