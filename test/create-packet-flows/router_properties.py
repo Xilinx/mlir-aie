@@ -1354,14 +1354,38 @@ class Volumes:
                     nbytes += op[1]
         return None
 
+    def can_fill(self, ep, streams):
+        cap = self.receive_capacity(ep)
+        if cap is None:
+            return False
+        sent = 0
+        for s in streams:
+            if s.dst != ep:
+                continue
+            v = self.send_volume(s)
+            if v is None:
+                return True
+            sent += v
+        return sent > cap
+
 
 class WaitGraph:
     """StreamWaitGraph. Agents are (col, row, is_core, dir, channel)."""
 
     LOCK, STREAM, HOST = range(3)
 
-    def __init__(self, d, streams):
+    def __init__(self, d, streams, volumes):
         self.agents, self.edges, self.ids, self.modeled = [], [], {}, set()
+        never_full = {
+            (*s.dst[:2], s.dst[3])
+            for s in streams
+            if s.dst[2] == DMA and not volumes.can_fill(s.dst, streams)
+        }
+
+        def waits_on_locks(a):
+            c, r, is_core, dr, ch = self.agents[a]
+            return is_core or dr != S2MM or (c, r, ch) not in never_full
+
         acquirers, releasers = {}, {}
 
         def note(use, agent):
@@ -1389,7 +1413,7 @@ class WaitGraph:
                 continue
             for p in acquirers[lock]:
                 for q in releasers[lock]:
-                    if p != q:
+                    if p != q and waits_on_locks(p):
                         self.add_edge(p, q, self.LOCK)
 
         def endpoint_agent(ep, sending):
@@ -1451,7 +1475,7 @@ class WaitGraph:
                     if agent is not None and agent not in waited:
                         waited.append(agent)
         for a in range(len(self.agents)):
-            if a in self.modeled:
+            if a in self.modeled or not waits_on_locks(a):
                 continue
             for b in range(len(self.agents)):
                 if b != a and self.agents[b][:2] == self.agents[a][:2]:
@@ -1537,29 +1561,13 @@ class Analysis:
     def graph(self):
         if self._graph is None:
             self.volumes = Volumes(self.d)
-            self._graph = WaitGraph(self.d, self.streams)
+            self._graph = WaitGraph(self.d, self.streams, self.volumes)
         return self._graph
 
     def can_stall(self, f):
-        if f in self._stalls:
-            return self._stalls[f]
-        dst = self.streams[f].dst
-        cap = self.volumes.receive_capacity(dst)
-        result = False
-        if cap is not None:
-            sent = 0
-            for s in self.streams:
-                if s.dst != dst:
-                    continue
-                v = self.volumes.send_volume(s)
-                if v is None:
-                    result = True
-                    break
-                sent += v
-            else:
-                result = sent > cap
-        self._stalls[f] = result
-        return result
+        if f not in self._stalls:
+            self._stalls[f] = self.volumes.can_fill(self.streams[f].dst, self.streams)
+        return self._stalls[f]
 
     def blocking_chain(self, f, g):
         g_ = self.graph
@@ -1608,6 +1616,11 @@ class Analysis:
                     "is assumed to overrun its receiver."
                 )
                 break
+        if fs.src == self.streams[g].src:
+            out.append(
+                f"Both come from {fmt_ep(fs.src)}, and the order it sends in is "
+                "not modeled."
+            )
         chain = self.blocking_chain(f, g)
         waiters = [self.graph.agent_at(fs.dst, False)] + chain[:-1]
         for i, a in enumerate(waiters):

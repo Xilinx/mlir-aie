@@ -107,6 +107,11 @@ public:
   /// agent, or nullopt when it never does.
   std::optional<uint64_t> receiveCapacity(const StreamEndpoint &endpoint) const;
 
+  /// Whether `streams` can send the receiver at `endpoint` more than it takes
+  /// in before it waits on another agent.
+  bool canFill(const StreamEndpoint &endpoint,
+               llvm::ArrayRef<RoutedStream> streams) const;
+
 private:
   mutable DeviceOp device;
   std::map<std::tuple<int, int, DMAChannelDir, int>,
@@ -118,7 +123,9 @@ private:
 /// on Q when P acquires a lock Q releases, when P sends a stream Q receives or
 /// the reverse, or when P is a runtime-issued channel the host issues only
 /// after waiting on Q. A channel with no program in the design may wait on
-/// anything on its tile. Program order within an agent is not modeled.
+/// anything on its tile. A receiving channel that takes in all it is sent
+/// before its locks run out waits on no lock. Program order within an agent
+/// is not modeled.
 class StreamWaitGraph {
 public:
   struct Agent {
@@ -128,7 +135,8 @@ public:
     int channel;
   };
 
-  StreamWaitGraph(DeviceOp device, llvm::ArrayRef<RoutedStream> streams);
+  StreamWaitGraph(DeviceOp device, llvm::ArrayRef<RoutedStream> streams,
+                  const StreamVolumeAnalysis &volumes);
 
   /// The agent pushing data into (`sending`) or pulling data out of the
   /// fabric at `endpoint`, if the endpoint has one.

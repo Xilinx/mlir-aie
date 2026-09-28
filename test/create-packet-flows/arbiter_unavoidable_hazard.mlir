@@ -10,7 +10,7 @@
 // Flows from one source that can deadlock there are reported, as no routing
 // can keep them apart, along with what the router assumed to find it.
 
-// CHECK: warning: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2). The volume packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) carries is unknown, so it is assumed to overrun its receiver. Nothing in the design programs (0, 3) S2MM 0, so it is assumed to wait on anything on its tile. So can 1 other pair of flows.
+// CHECK: warning: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2). The volume packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) carries is unknown, so it is assumed to overrun its receiver. Both come from (0, 2) DMA:0, and the order it sends in is not modeled. Nothing in the design programs (0, 3) S2MM 0, so it is assumed to wait on anything on its tile. So can 1 other pair of flows.
 
 module {
   aie.device(npu1_1col) {
@@ -26,7 +26,7 @@ module {
 // Core (0, 3) takes 8 of the 16 words of id 1 only once id 2 has arrived,
 // which (0, 2) sends after id 1.
 
-// CHECK: warning: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2).{{$}}
+// CHECK: warning: Flows can deadlock however they are routed: packet flow (0, 2) DMA:0 -> (0, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (0, 3) S2MM 1, which receives packet flow (0, 2) DMA:0 -> (0, 3) DMA:1 (id 2). Both come from (0, 2) DMA:0, and the order it sends in is not modeled.{{$}}
 
 module {
   aie.device(npu1_1col) {

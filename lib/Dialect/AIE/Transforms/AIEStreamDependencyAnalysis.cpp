@@ -552,8 +552,37 @@ StreamVolumeAnalysis::receiveCapacity(const StreamEndpoint &endpoint) const {
   return std::nullopt;
 }
 
+bool StreamVolumeAnalysis::canFill(const StreamEndpoint &endpoint,
+                                   ArrayRef<RoutedStream> streams) const {
+  std::optional<uint64_t> capacity = receiveCapacity(endpoint);
+  if (!capacity)
+    return false;
+  uint64_t sent = 0;
+  for (const RoutedStream &s : streams) {
+    if (s.dst.tile != endpoint.tile || s.dst.port != endpoint.port)
+      continue;
+    std::optional<uint64_t> bytes = sendVolume(s);
+    if (!bytes)
+      return true;
+    sent += *bytes;
+  }
+  return sent > *capacity;
+}
+
 StreamWaitGraph::StreamWaitGraph(DeviceOp device,
-                                 ArrayRef<RoutedStream> streams) {
+                                 ArrayRef<RoutedStream> streams,
+                                 const StreamVolumeAnalysis &volumes) {
+  std::set<std::tuple<int, int, int>> neverFull;
+  for (const RoutedStream &s : streams)
+    if (s.dst.port.bundle == WireBundle::DMA &&
+        !volumes.canFill(s.dst, streams))
+      neverFull.insert({s.dst.tile.col, s.dst.tile.row, s.dst.port.channel});
+  auto waitsOnLocks = [&](unsigned agent) {
+    const Agent &a = agents[agent];
+    return a.isCore || a.dir != DMAChannelDir::S2MM ||
+           !neverFull.count({a.tile.col, a.tile.row, a.channel});
+  };
+
   // Who acquires and who releases each lock.
   std::map<Operation *, llvm::SetVector<unsigned>> acquirers, releasers;
   auto noteLock = [&](UseLockOp use, unsigned agent) {
@@ -588,7 +617,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
       continue;
     for (unsigned p : waiting->second)
       for (unsigned q : it->second)
-        if (p != q)
+        if (p != q && waitsOnLocks(p))
           addEdge(p, q, EdgeKind::Lock);
   }
 
@@ -657,7 +686,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
   // A channel nothing programs here is programmed elsewhere, in ways this
   // cannot see, so it may wait on anything else on its tile.
   for (unsigned a = 0; a < agents.size(); a++) {
-    if (modeled.contains(a))
+    if (modeled.contains(a) || !waitsOnLocks(a))
       continue;
     for (unsigned b = 0; b < agents.size(); b++)
       if (b != a && agents[b].tile == agents[a].tile)
@@ -762,26 +791,13 @@ std::string StreamWaitGraph::describe(unsigned id) const {
 StreamDeadlockAnalysis::StreamDeadlockAnalysis(
     DeviceOp device, std::vector<RoutedStream> streams)
     : streams(std::move(streams)), volumes(device),
-      graph(device, this->streams) {}
+      graph(device, this->streams, volumes) {}
 
 bool StreamDeadlockAnalysis::canStall(size_t f) const {
   auto [it, inserted] = stalls.try_emplace(f, false);
-  if (!inserted)
-    return it->second;
-  const StreamEndpoint &dst = streams[f].dst;
-  std::optional<uint64_t> capacity = volumes.receiveCapacity(dst);
-  if (!capacity)
-    return false;
-  uint64_t sent = 0;
-  for (const RoutedStream &s : streams) {
-    if (s.dst.tile != dst.tile || s.dst.port != dst.port)
-      continue;
-    std::optional<uint64_t> bytes = volumes.sendVolume(s);
-    if (!bytes)
-      return stalls[f] = true;
-    sent += *bytes;
-  }
-  return stalls[f] = sent > *capacity;
+  if (inserted)
+    it->second = volumes.canFill(streams[f].dst, streams);
+  return it->second;
 }
 
 SmallVector<unsigned> StreamDeadlockAnalysis::blockingChain(size_t f,
@@ -840,7 +856,7 @@ std::string StreamDeadlockAnalysis::explainBlock(size_t f, size_t g) const {
 
 SmallVector<std::string> StreamDeadlockAnalysis::assumptions(size_t f,
                                                              size_t g) const {
-  const RoutedStream &fs = streams[f];
+  const RoutedStream &fs = streams[f], &gs = streams[g];
   SmallVector<std::string> assumed;
   for (const RoutedStream &other : streams)
     if (other.dst.tile == fs.dst.tile && other.dst.port == fs.dst.port &&
@@ -850,6 +866,12 @@ SmallVector<std::string> StreamDeadlockAnalysis::assumptions(size_t f,
                         "receiver.");
       break;
     }
+  if (fs.src.tile == gs.src.tile && fs.src.port == gs.src.port)
+    assumed.push_back("Both come from (" + std::to_string(fs.src.tile.col) +
+                      ", " + std::to_string(fs.src.tile.row) + ") " +
+                      stringifyWireBundle(fs.src.port.bundle).str() + ":" +
+                      std::to_string(fs.src.port.channel) +
+                      ", and the order it sends in is not modeled.");
   SmallVector<unsigned> chain = blockingChain(f, g);
   SmallVector<unsigned> waiters{*graph.agentAt(fs.dst, false)};
   waiters.append(chain.begin(), std::prev(chain.end()));
