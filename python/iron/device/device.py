@@ -18,6 +18,7 @@ from ...dialects.aie import (
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
+from ...helpers.taplib import BdLimits
 from ..resolvable import Resolvable
 from .tile import Tile
 
@@ -142,6 +143,16 @@ class Device(Resolvable):
         """Return the iteration (repeat) field width, in bits."""
         self._validate_coordinates(col, row)
         return self._tm.get_dma_bd_iter_bits(col, row)
+
+    def bd_limits(self, col, row) -> BdLimits:
+        """What one DMA buffer descriptor of the tile at ``(col, row)`` holds."""
+        return BdLimits(
+            wrap=(1 << self.get_dma_bd_wrap_bits(col, row)) - 1,
+            step=1 << self.get_dma_bd_step_bits(col, row),
+            iterations=1 << self.get_dma_bd_iter_bits(col, row),
+            granule_bytes=self.address_gen_granularity // 8,
+            linear=self.get_tile_type(col, row) is AIETileType.ShimNOCTile,
+        )
 
     @property
     def address_gen_granularity(self) -> int:

@@ -181,6 +181,39 @@ class TensorAccessPattern:
         """
         return list(zip(self._sizes, self._strides))
 
+    @property
+    def contiguous(self) -> bool:
+        """Whether the pattern is one dense run in row-major order.
+
+        Unit dimensions are ignored, since their stride is never applied: this
+        is the compiler's ``isContiguousTransfer``, over every dimension.
+
+        Returns:
+            bool: True if each stride is the product of the sizes inside it
+        """
+        inner = 1
+        for size, stride in reversed(self.transformation_dims):
+            if size == 1:
+                continue
+            if stride != inner:
+                return False
+            inner *= size
+        return True
+
+    def access_indices(self) -> np.ndarray:
+        """The indices into the flattened tensor this pattern accesses, in order.
+
+        What :meth:`access_generator` yields, computed at once.
+
+        Returns:
+            np.ndarray: One index per access, as int64
+        """
+        index = np.full(1, self._offset, dtype=np.int64)
+        for size, stride in zip(self._sizes, self._strides):
+            steps = np.arange(size, dtype=np.int64) * stride
+            index = (index[:, None] + steps).reshape(-1)
+        return index % int(np.prod(self._tensor_dims))
+
     def accesses(self) -> tuple[np.ndarray, np.ndarray]:
         """Return the access_order and access_count arrays.
 
@@ -347,16 +380,32 @@ class TensorAccessPattern:
     def __str__(self) -> str:
         return f"TensorAccessPattern({self.tensor_dims} offset={self._offset}, sizes={self._sizes}, strides={self._strides})"
 
+    def __repr__(self) -> str:
+        # Eval-faithful, so a pattern can be a field of a compared declaration.
+        return (
+            f"TensorAccessPattern(tensor_dims={list(self._tensor_dims)}, "
+            f"offset={self._offset}, sizes={list(self._sizes)}, "
+            f"strides={list(self._strides)})"
+        )
+
+    def _key(self) -> tuple:
+        # Tuples of ints, so a pattern built from a list and one built from a
+        # tuple (or numpy integers) compare and hash alike.
+        return (
+            tuple(int(d) for d in self._tensor_dims),
+            int(self._offset),
+            tuple(int(s) for s in self._sizes),
+            tuple(int(s) for s in self._strides),
+        )
+
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            return (
-                self._tensor_dims == other._tensor_dims
-                and self._offset == other._offset
-                and self._sizes == other._sizes
-                and self._strides == other._strides
-            )
+            return self._key() == other._key()
         else:
             return False
 
     def __ne__(self, other):
         return not self.__eq__(other)
+
+    def __hash__(self) -> int:
+        return hash(self._key())

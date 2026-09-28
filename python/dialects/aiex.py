@@ -46,7 +46,7 @@ from ..ir import (
 from ..extras import types as T
 from ..extras.dialects import arith
 from ..helpers.util import try_convert_np_type_to_mlir_type
-from ..helpers.taplib import TensorAccessPattern
+from ..helpers.taplib import BdLimits, TensorAccessPattern
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
@@ -287,7 +287,10 @@ def _task_dims(sizes, strides):
     Fewer than 4 dimensions are left-padded with unit dimensions. Without that,
     a 3-dim ``sizes[0] > 1`` would count both as an access dimension and as the
     repeat count, so the task would re-issue the whole transfer ``sizes[0]``
-    times and ``dma_await_task`` would never return.
+    times and ``dma_await_task`` would never return. The exception is a leading
+    re-read (``strides[0] == 0``, ``sizes[0] > 1``): a stride of 0 is only
+    encodable in the iteration dimension, so the padding goes after it and the
+    re-read becomes the repeat count.
 
     A BD holds 4 dimensions. ``aie-decompose-large-dma-bd`` splits the ones past
     that off into further descriptors, which it can only do for constant sizes
@@ -299,13 +302,7 @@ def _task_dims(sizes, strides):
     repeat_count_val = None
     if sizes is None:
         return sizes, strides, repeat_count, repeat_count_val
-    sizes = list(sizes)
-    if strides is not None:
-        strides = list(strides)
-    while len(sizes) < 4:
-        sizes = [1] + sizes
-        if strides is not None:
-            strides = [0] + strides
+    sizes, strides = BdLimits.slots(sizes, strides)
     # The BD block lowers only constants, so widen to the i64 operand type here.
     sizes = _as_bd_i64_dims(sizes, "sizes")
     strides = _as_bd_i64_dims(strides, "strides")

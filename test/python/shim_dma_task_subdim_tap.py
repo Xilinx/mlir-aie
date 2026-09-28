@@ -120,6 +120,19 @@ case("rank5_explicit", None, [2, 2, 2, 2, 2], [16, 8, 4, 2, 1], use_tap=False)
 # CHECK: repeat_count = 3
 case("rank5_no_strides", None, [2, 2, 1, 1, 16], None, use_tap=False)
 
+# rank 3, leading re-read (stride 0): a stride of 0 is only encodable in the
+# iteration dimension, so the padding goes after it and it becomes the repeat.
+# CHECK-LABEL: CASE rank3_reread
+# CHECK: aie.dma_bd(%{{.*}} : memref<2048xbf16> offset = {{.*}} len = 512 sizes = [4, 1, 8, 64] strides = [0, 0, 64, 1])
+# CHECK: repeat_count = 3
+case("rank3_reread", (8, 64), [4, 8, 64], [0, 64, 1])
+
+# rank 2, leading re-read, through the explicit form.
+# CHECK-LABEL: CASE rank2_reread_explicit
+# CHECK: aie.dma_bd(%{{.*}} : memref<256xbf16> offset = {{.*}} len = 64 sizes = [4, 1, 1, 64] strides = [0, 0, 0, 1])
+# CHECK: repeat_count = 3
+case("rank2_reread_explicit", None, [4, 64], [0, 1], use_tap=False)
+
 
 # rank 5 with a runtime size: the compiler cannot split it, so it must raise
 # rather than emit a BD it cannot lower.
