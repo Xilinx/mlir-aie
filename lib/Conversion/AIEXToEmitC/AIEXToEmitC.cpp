@@ -370,8 +370,8 @@ private:
                   bdPoolName(pop.getColumn(), pop.getRow()) + ", " + var +
                   ")) " +
                   refuse("no free buffer descriptor on tile (" +
-                         std::to_string(pop.getColumn()) + ", " +
-                         std::to_string(pop.getRow()) +
+                             std::to_string(pop.getColumn()) + ", " +
+                             std::to_string(pop.getRow()) +
                              "): the sequence keeps more transfers in flight "
                              "than the tile has descriptors",
                          /*inFormat=*/false));
