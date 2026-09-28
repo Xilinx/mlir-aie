@@ -74,6 +74,65 @@ module {
 
 // -----
 
+// The same on AIE1, whose locks hold a state: S2MM 0 takes 8 of the 16 words
+// of id 1, then waits for the core to set the lock back to 0, which it does
+// only once id 2 has arrived.
+
+// CHECK: warning: Flows can deadlock however they are routed: packet flow (1, 2) DMA:0 -> (1, 3) DMA:0 (id 1) can fill its receiver, and draining that waits on (1, 3) core, then (1, 3) S2MM 1, which receives packet flow (1, 2) DMA:0 -> (1, 3) DMA:1 (id 2). Both come from (1, 2) DMA:0, and the order it sends in is not modeled.{{$}}
+
+module {
+  aie.device(xcvc1902) {
+    %t12 = aie.tile(1, 2)
+    %t13 = aie.tile(1, 3)
+    aie.packet_flow(1) { aie.packet_source<%t12, DMA : 0> aie.packet_dest<%t13, DMA : 0> }
+    aie.packet_flow(2) { aie.packet_source<%t12, DMA : 0> aie.packet_dest<%t13, DMA : 1> }
+    %src = aie.buffer(%t12) : memref<16xi32>
+    aie.mem(%t12) {
+      %0 = aie.dma_start(MM2S, 0, ^first, ^end)
+    ^first:
+      aie.dma_bd(%src : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+      aie.next_bd ^second
+    ^second:
+      aie.dma_bd(%src : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+      aie.next_bd ^end
+    ^end:
+      aie.end
+    }
+    %slot = aie.lock(%t13, 0) {init = 0 : i32}
+    %ready = aie.lock(%t13, 1) {init = 0 : i32}
+    %a = aie.buffer(%t13) : memref<8xi32>
+    %b = aie.buffer(%t13) : memref<16xi32>
+    aie.core(%t13) {
+      %zero = arith.constant 0 : i32
+      %one = arith.constant 1 : i32
+      aie.use_lock(%ready, Acquire, %one)
+      aie.use_lock(%slot, Acquire, %one)
+      aie.use_lock(%slot, Release, %zero)
+      aie.end
+    }
+    aie.mem(%t13) {
+      %zero = arith.constant 0 : i32
+      %one = arith.constant 1 : i32
+      %0 = aie.dma_start(S2MM, 0, ^in0, ^ch1)
+    ^in0:
+      aie.use_lock(%slot, Acquire, %zero)
+      aie.dma_bd(%a : memref<8xi32> offset = 0 len = 8)
+      aie.use_lock(%slot, Release, %one)
+      aie.next_bd ^in0
+    ^ch1:
+      %1 = aie.dma_start(S2MM, 1, ^in1, ^end)
+    ^in1:
+      aie.dma_bd(%b : memref<16xi32> offset = 0 len = 16)
+      aie.use_lock(%ready, Release, %one)
+      aie.next_bd ^end
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
 // Once S2MM 0 takes all of id 1 without waiting on id 2, nothing can
 // deadlock.
 

@@ -521,6 +521,9 @@ StreamVolumeAnalysis::receiveCapacity(const StreamEndpoint &endpoint) const {
     sequence.push_back(&r->front());
   if (sequence.empty())
     return 0;
+  // AIE1 locks hold a state an acquire waits to equal and a release sets; later
+  // locks count.
+  bool stateLocks = getTargetModel(device).getTargetArch() == AIEArch::AIE1;
   std::map<Operation *, int64_t> lockValues;
   uint64_t bytes = 0;
   constexpr int maxBDs = 1024;
@@ -537,7 +540,12 @@ StreamVolumeAnalysis::receiveCapacity(const StreamEndpoint &endpoint) const {
         auto [value, inserted] =
             lockValues.try_emplace(lock, lock.getInit().value_or(0));
         int64_t n = amount.getSExtValue();
-        if (use.release()) {
+        if (stateLocks) {
+          if (use.release())
+            value->second = n;
+          else if (value->second != n)
+            return bytes;
+        } else if (use.release()) {
           value->second += n;
         } else if (value->second < n) {
           return bytes;
@@ -873,7 +881,9 @@ SmallVector<std::string> StreamDeadlockAnalysis::assumptions(size_t f,
                       std::to_string(fs.src.port.channel) +
                       ", and the order it sends in is not modeled.");
   SmallVector<unsigned> chain = blockingChain(f, g);
-  SmallVector<unsigned> waiters{*graph.agentAt(fs.dst, false)};
+  std::optional<unsigned> receiver = graph.agentAt(fs.dst, false);
+  assert(receiver && "a stream that can block has a receiver");
+  SmallVector<unsigned> waiters{*receiver};
   waiters.append(chain.begin(), std::prev(chain.end()));
   for (auto [i, a] : llvm::enumerate(waiters))
     if (!graph.isModeled(a) &&
@@ -1138,7 +1148,7 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
     index[n] = low[n] = counter++;
     stack.push_back(n);
     onStack[n] = true;
-    frames.push_back({n, 0});
+    frames.emplace_back(n, 0);
   };
   for (size_t root : roots) {
     if (index[root] >= 0)
