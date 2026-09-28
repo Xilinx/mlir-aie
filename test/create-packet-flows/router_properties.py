@@ -66,9 +66,11 @@ PARAMS = dict(
     # AIETargetModel::getNumSlaveSlots, getMaxPacketId
     rule_slots=4,
     max_id=31,
-    # pktHeaderBytes, maxBDSteps: AIEStreamDependencyAnalysis.cpp
+    # pktHeaderBytes, maxBDSteps, maxWalkSearches:
+    # AIEStreamDependencyAnalysis.cpp
     header_bytes=4,
     max_bd_steps=1024,
+    max_walk_searches=64,
     # stepBudget in planArbiters and unroutableArbiters, budget in
     # runOnPacketFlow's hold-cycle search: AIECreatePathFindFlows.cpp
     plan_budget=100000,
@@ -1979,25 +1981,77 @@ class Analysis:
                         break
                 ncomp += 1
 
+        def allowed(edge, fixed, excluded):
+            st = edge[1]
+            if st is None or st[0] != "arbiter":
+                return True
+            grant = (st[4], st[7])
+            if grant in fixed:
+                return fixed[grant] == st[3]
+            return st[3] not in excluded.get(grant, ())
+
+        def close_walk(x, e, fixed, excluded):
+            if not allowed(e, fixed, excluded):
+                return None
+            via = {e[0]: (e[0], None)}
+            work = deque([e[0]])
+            while x not in via:
+                if not work:
+                    return None
+                n = work.popleft()
+                for nxt in successors(n):
+                    if (
+                        comp[nxt[0]] == comp[x]
+                        and allowed(nxt, fixed, excluded)
+                        and nxt[0] not in via
+                    ):
+                        via[nxt[0]] = (n, nxt)
+                        work.append(nxt[0])
+            path = []
+            n = x
+            while n != e[0]:
+                path.append(via[n][1])
+                n = via[n][0]
+            path.append(e)
+            return list(reversed(path))
+
+        def steps_of(path):
+            return [edge[1] for edge in path if edge[1] is not None]
+
         for x in roots:
             for e in successors(x):
                 if not counts(e) or comp[e[0]] != comp[x]:
                     continue
-                via = {e[0]: (e[0], None)}
-                work = deque([e[0]])
-                while x not in via:
-                    n = work.popleft()
-                    for nxt in successors(n):
-                        if comp[nxt[0]] == comp[x] and nxt[0] not in via:
-                            via[nxt[0]] = (n, nxt)
-                            work.append(nxt[0])
-                path = []
-                n = x
-                while n != e[0]:
-                    path.append(via[n][1])
-                    n = via[n][0]
-                path.append(e)
-                return [edge[1] for edge in reversed(path) if edge[1] is not None]
+                first = None
+                pending = [({}, {})]
+                searches = 0
+                while pending and searches < PARAMS["max_walk_searches"]:
+                    searches += 1
+                    fixed, excluded = pending.pop()
+                    path = close_walk(x, e, fixed, excluded)
+                    if path is None:
+                        continue
+                    first = first or path
+                    held, clash = {}, None
+                    for st in steps_of(path):
+                        if st[0] != "arbiter":
+                            continue
+                        grant = (st[4], st[7])
+                        if held.setdefault(grant, st[3]) != st[3]:
+                            clash = (grant, held[grant])
+                            break
+                    if clash is None:
+                        return steps_of(path)
+                    grant, holder = clash
+                    pending.append(
+                        (
+                            fixed,
+                            {**excluded, grant: excluded.get(grant, ()) + (holder,)},
+                        )
+                    )
+                    pending.append(({**fixed, grant: holder}, excluded))
+                if pending:
+                    return steps_of(first)
         return None
 
     def explain_cycle(self, steps):
@@ -4711,6 +4765,34 @@ def check_model():
     del d.cores[(0, 2)]
     send["seq"][0][0] = ("lock", 0, go, 1)
     looped("looped, acquire-equal", None)
+    # arbiter_hold_cycle_one_holder.mlir: flows 0 and 3 share arbiter 0 at
+    # (0,1). The walk through it needs both to hold it at once, which a
+    # packet held until tlast rules out, but a single search takes it.
+    d = Design("npu1_1col")
+    for k in range(4):
+        core, ch = (0, 2 + k // 2), k % 2
+        d.add_packet_flow(k, [(0, 1, DMA, k)], [(*core, DMA, ch)])
+        add_program(d, (0, 1), MM2S, k, [bd_block(256, k)], False)
+    for r in (2, 3):
+        pa, ca, pb, cb = (d.lock((0, r), init) for init in (1, 0, 1, 0))
+        add_program(d, (0, r), S2MM, 0, [bd_block(64, None, pa, ca)], True)
+        add_program(d, (0, r), S2MM, 1, [bd_block(64, None, pb, cb)], True)
+        d.cores[(0, r)] = [(2, ca, 1), (2, cb, 1), (1, pa, 1), (1, pb, 1)]
+    an = Analysis(d)
+    an.graph
+
+    def cycles(*arbiters):
+        routes = [[((0, 1), (DMA, s.src[3]), arbiters[s.pid])] for s in an.streams]
+        return an.hold_cycle(routes) is not None
+
+    saved = PARAMS["max_walk_searches"]
+    for budget, want in ((64, False), (1, True)):
+        PARAMS["max_walk_searches"] = budget
+        try:
+            expect(f"one holder, {budget} searches", cycles(0, 1, 2, 0), want)
+        finally:
+            PARAMS["max_walk_searches"] = saved
+    expect("same-core sharers", cycles(0, 0, 1, 2), True)
     # arbiter_hold_cycle_wormhole.mlir: no pair conflicts, but with every hop
     # packet switched the arbiters close a cycle.
     d = gen_wormhole(random.Random(0), "npu1_1col")

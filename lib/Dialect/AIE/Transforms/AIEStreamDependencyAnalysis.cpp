@@ -1345,32 +1345,96 @@ StreamConflicts::holdCycle(ArrayRef<SmallVector<StreamHop, 8>> routes) {
     }
   }
 
-  // A counted wait within one component lies on a cycle; close it the
-  // shortest way back.
+  // A counted wait within one component lies on a closed walk. A packet holds
+  // its arbiter until its tail passes, so no state has two trees holding one
+  // arbiter, and a walk that needs that is no deadlock. The search fixes or
+  // rules out a holder per arbiter until the shortest walk left agrees; past
+  // its budget it keeps the first walk.
+  using Grant = std::pair<TileID, int>;
+  struct Holders {
+    std::optional<size_t> fixed;
+    SmallVector<size_t, 2> excluded;
+  };
+  using Constraints = std::map<Grant, Holders>;
+  auto allowed = [](const Edge &edge, const Constraints &c) {
+    if (!edge.step || edge.step->wait != HoldCycle::Wait::Arbiter)
+      return true;
+    auto it = c.find({edge.step->tile, edge.step->arbiter});
+    if (it == c.end())
+      return true;
+    size_t holder = edge.step->holding;
+    return it->second.fixed ? *it->second.fixed == holder
+                            : !llvm::is_contained(it->second.excluded, holder);
+  };
+  auto closeWalk =
+      [&](size_t x, const Edge &e,
+          const Constraints &c) -> std::optional<SmallVector<const Edge *>> {
+    if (!allowed(e, c))
+      return std::nullopt;
+    std::map<size_t, std::pair<size_t, const Edge *>> via;
+    via[e.to] = {e.to, nullptr};
+    std::deque<size_t> worklist{e.to};
+    while (!via.count(x)) {
+      if (worklist.empty())
+        return std::nullopt;
+      size_t n = worklist.front();
+      worklist.pop_front();
+      for (const Edge &next : successors(n))
+        if (component[next.to] == component[x] && allowed(next, c) &&
+            via.try_emplace(next.to, n, &next).second)
+          worklist.push_back(next.to);
+    }
+    SmallVector<const Edge *> path;
+    for (size_t n = x; n != e.to; n = via[n].first)
+      path.push_back(via[n].second);
+    path.push_back(&e);
+    std::reverse(path.begin(), path.end());
+    return path;
+  };
+  auto toCycle = [](ArrayRef<const Edge *> path) {
+    HoldCycle cycle;
+    for (const Edge *edge : path)
+      if (edge->step)
+        cycle.steps.push_back(*edge->step);
+    return cycle;
+  };
+  constexpr int maxWalkSearches = 64;
   for (size_t x : roots)
     for (const Edge &e : successors(x)) {
       if (!counts(e) || component[e.to] != component[x])
         continue;
-      std::map<size_t, std::pair<size_t, const Edge *>> via;
-      via[e.to] = {e.to, nullptr};
-      std::deque<size_t> worklist{e.to};
-      while (!via.count(x)) {
-        size_t n = worklist.front();
-        worklist.pop_front();
-        for (const Edge &next : successors(n))
-          if (component[next.to] == component[x] &&
-              via.try_emplace(next.to, n, &next).second)
-            worklist.push_back(next.to);
+      std::optional<SmallVector<const Edge *>> first;
+      SmallVector<Constraints> pending{{}};
+      for (int search = 0; !pending.empty() && search < maxWalkSearches;
+           search++) {
+        Constraints c = pending.pop_back_val();
+        std::optional<SmallVector<const Edge *>> path = closeWalk(x, e, c);
+        if (!path)
+          continue;
+        if (!first)
+          first = path;
+        std::map<Grant, size_t> held;
+        std::optional<std::pair<Grant, size_t>> clash;
+        for (const Edge *edge : *path) {
+          if (!edge->step || edge->step->wait != HoldCycle::Wait::Arbiter)
+            continue;
+          auto [it, inserted] = held.try_emplace(
+              {edge->step->tile, edge->step->arbiter}, edge->step->holding);
+          if (!inserted && it->second != edge->step->holding) {
+            clash = *it;
+            break;
+          }
+        }
+        if (!clash)
+          return toCycle(*path);
+        Constraints fix = c, exclude = c;
+        fix[clash->first].fixed = clash->second;
+        exclude[clash->first].excluded.push_back(clash->second);
+        pending.push_back(std::move(exclude));
+        pending.push_back(std::move(fix));
       }
-      SmallVector<const Edge *> path;
-      for (size_t n = x; n != e.to; n = via[n].first)
-        path.push_back(via[n].second);
-      path.push_back(&e);
-      HoldCycle cycle;
-      for (const Edge *edge : llvm::reverse(path))
-        if (edge->step)
-          cycle.steps.push_back(*edge->step);
-      return cycle;
+      if (!pending.empty())
+        return toCycle(*first);
     }
   return std::nullopt;
 }
