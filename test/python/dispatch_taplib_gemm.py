@@ -67,26 +67,20 @@ for M, K, N in (
     same = not compare(words, static)
     line = f"M={M} K={K} N={N}: {len(pushes(words))} pushes, matches static specialization={same}"
     # whole_array.py needs an even number of row blocks; where it can compile,
-    # the dynamic design must issue exactly its transfers. Up to two time-block
-    # halves the waits coincide too; beyond that whole_array.py awaits each
-    # half before issuing the next while this design keeps two in flight.
+    # the dynamic design must produce exactly its DMA events, waits included.
     if (M // TILE["m"] // 4) % 2 == 0:
         _, orig = static_design.whole_array.specialize(M=M, K=K, N=N, **TILE).compile()
         original = np.fromfile(orig, dtype=np.uint32)
-        line += (
-            f", same transfers as whole_array.py={pushes(words) == pushes(original)}"
-        )
-        if M // TILE["m"] // 4 <= 4:
-            line += f", same events={not compare(words, original)}"
+        line += f", same events as whole_array.py={not compare(words, original)}"
     print(line)
     for d in compare(words, static, names=("dynamic", "static")):
         print(d)
-# CHECK: M=256 K=128 N=128: 5 pushes, matches static specialization=True, same transfers as whole_array.py=True, same events=True
+# CHECK: M=256 K=128 N=128: 5 pushes, matches static specialization=True, same events as whole_array.py=True
 # CHECK: M=384 K=128 N=128: {{[0-9]+}} pushes, matches static specialization=True
 # CHECK: M=128 K=128 N=128: {{[0-9]+}} pushes, matches static specialization=True
-# CHECK: M=512 K=256 N=256: {{[0-9]+}} pushes, matches static specialization=True, same transfers as whole_array.py=True, same events=True
-# CHECK: M=256 K=64 N=32: {{[0-9]+}} pushes, matches static specialization=True, same transfers as whole_array.py=True, same events=True
-# CHECK: M=768 K=64 N=32: {{[0-9]+}} pushes, matches static specialization=True, same transfers as whole_array.py=True
+# CHECK: M=512 K=256 N=256: {{[0-9]+}} pushes, matches static specialization=True, same events as whole_array.py=True
+# CHECK: M=256 K=64 N=32: {{[0-9]+}} pushes, matches static specialization=True, same events as whole_array.py=True
+# CHECK: M=768 K=64 N=32: {{[0-9]+}} pushes, matches static specialization=True, same events as whole_array.py=True
 
 for bad, why in (
     ({"M": 100, "K": 128, "N": 128}, "M not a multiple of m*rows"),

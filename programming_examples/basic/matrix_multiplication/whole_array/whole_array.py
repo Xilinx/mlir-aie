@@ -271,11 +271,14 @@ def _build_design(
 
     def sequence(A, B, C, A_hs, B_hs, C_hs):
         c_index = 0
-        tg = TaskGroup()
+        # Two time-block halves in flight: each half's transfers form a
+        # group that is finished only after the next half's are issued.
+        prev = None
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
                 if c_index >= len(C_tiles):
                     break
+                tg = TaskGroup()
 
                 row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
                 current_tb_n_rows = min(
@@ -310,10 +313,11 @@ def _build_design(
                         A_taps.append(A_tiles[tile_offset].tap())
                         B_taps.append(B_tiles[col].tap())
 
-                if tb > 0 or (tb == 0 and pingpong > 0):
-                    tg.finish()
-                    tg = TaskGroup()
-        tg.finish()
+                if prev is not None:
+                    prev.finish()
+                prev = tg
+        if prev is not None:
+            prev.finish()
 
     rt = Runtime(
         sequence,

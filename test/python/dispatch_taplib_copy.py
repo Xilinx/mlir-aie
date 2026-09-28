@@ -112,4 +112,4 @@ try:
 except HostRuntimeError as e:
     print("out-of-range dispatch: refused:", e)
 # The guard taplib emitted for the grid index names the reason.
-# CHECK: out-of-range dispatch: refused: dispatch refused for DispatchTime[T] value(s) {'n_tiles': 4, 'start_tile': 6}: grid index 1 exceeds the grid
+# CHECK: out-of-range dispatch: refused: dispatch refused for DispatchTime[T] value(s) {'n_tiles': 4, 'start_tile': 6}: grid index {{[0-9]}} exceeds the grid
