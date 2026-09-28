@@ -89,6 +89,29 @@ find_package(MLIR REQUIRED CONFIG)
 message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
+# mlir-aie tracks a specific LLVM commit (utils/clone-llvm.sh) and uses MLIR
+# APIs that LLVM release branches do not have. Building against an older LLVM,
+# such as a distro package, otherwise fails part-way through the build with an
+# unrelated-looking tablegen or C++ error (e.g. "Variable not defined:
+# 'SymbolName'"), so reject it here. Newer versions are allowed, since they are
+# what an LLVM bump is tested against.
+set(AIE_CLONE_LLVM_SH "${CMAKE_CURRENT_SOURCE_DIR}/utils/clone-llvm.sh")
+if(EXISTS "${AIE_CLONE_LLVM_SH}")
+  file(STRINGS "${AIE_CLONE_LLVM_SH}" AIE_PINNED_LLVM_LINE REGEX "^WHEEL_VERSION=")
+  if(AIE_PINNED_LLVM_LINE MATCHES "^WHEEL_VERSION=([0-9]+)\\.")
+    set(AIE_PINNED_LLVM_VERSION_MAJOR ${CMAKE_MATCH_1})
+    if(LLVM_VERSION_MAJOR VERSION_LESS AIE_PINNED_LLVM_VERSION_MAJOR)
+      message(FATAL_ERROR
+        "Found LLVM/MLIR ${LLVM_PACKAGE_VERSION} (${LLVM_DIR}), but mlir-aie "
+        "requires the LLVM ${AIE_PINNED_LLVM_VERSION_MAJOR} development commit "
+        "pinned in utils/clone-llvm.sh; released LLVM versions are not supported. "
+        "Either run utils/build-mlir-aie-from-wheels.sh, which downloads the "
+        "matching prebuilt MLIR, or build that commit with utils/clone-llvm.sh "
+        "and utils/build-llvm-local.sh and pass -DMLIR_DIR=<llvm-install>/lib/cmake/mlir.")
+    endif()
+  endif()
+endif()
+
 # Reuse LLVM's build machinery, which requires setting these output dirs explicitly.
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
