@@ -12,7 +12,6 @@ from functools import partial
 from typing import Sequence
 
 import numpy as np
-
 from aie.helpers.npdtypes import ceildiv
 from aie.helpers.taplib.tas import TensorAccessSequence
 from aie.helpers.taplib.utils import (

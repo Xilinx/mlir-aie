@@ -5,13 +5,12 @@
 #
 
 import sys
-import numpy as np
-
-from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo
-from aie.iron.controlflow import range_
-from aie.helpers.taplib import Layout
 
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import Layout
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron.controlflow import range_
 
 
 @iron.jit

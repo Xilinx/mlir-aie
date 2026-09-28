@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import numpy as np
-from numpy.lib.stride_tricks import as_strided
-
-from aie.helpers.taplib import Layout, TensorAccessPattern
 from _legacy_tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import Layout, TensorAccessPattern
 from aie.helpers.taplib.symbolic import sceildiv, smin, sprod
+from numpy.lib.stride_tricks import as_strided
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -26,7 +25,7 @@ def visited(layout: Layout) -> np.ndarray:
 
 
 def tap_order(layout: Layout) -> np.ndarray:
-    """The same walk through TensorAccessPattern's generator, for cross-checking."""
+    """Return same walk through TensorAccessPattern's generator, for cross-checking."""
     return np.fromiter(layout.tap(None).access_generator(), dtype=np.int64)
 
 

@@ -11,8 +11,8 @@ CHECKed so a canonical-form change cannot pass silently.
 
 import itertools
 
-from aie.helpers.taplib import Layout, TensorAccessPattern
 from _legacy_tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import Layout, TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -142,7 +142,7 @@ def step_tilers():
 # CHECK-LABEL: whole_array_matmul
 @construct_test
 def whole_array_matmul():
-    """The whole-array GEMM's three tilers, over the sweep the design supports."""
+    """Build the whole-array GEMM's three tilers over the sweep the design supports."""
     total = exact = 0
     n_aie_rows = 4
     tb_n_rows = 2
