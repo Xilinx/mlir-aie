@@ -353,10 +353,9 @@ private:
           // Host-side shape guard: a violated user constraint yields no
           // stream (std::nullopt), the same contract as the BD-field guards,
           // and its message is what the host reports. Appends nothing.
-          emitc::VerbatimOp::create(b, loc,
-                                    "if (!({})) " +
-                                        refuse(g.getMessage(), /*inFormat=*/true),
-                                    ValueRange{g.getCond()});
+          emitc::VerbatimOp::create(
+              b, loc, "if (!({})) " + refuse(g.getMessage(), /*inFormat=*/true),
+              ValueRange{g.getCond()});
         })
         .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
           // Draw a BD id from the tile's runtime pool (declared in the
