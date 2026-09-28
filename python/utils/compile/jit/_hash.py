@@ -88,6 +88,8 @@ def _without_location(const):
     """
     if isinstance(const, tuple):
         return tuple(_without_location(c) for c in const)
+    if isinstance(const, slice):
+        return (Ellipsis, "slice", const.start, const.stop, const.step)
     if not isinstance(const, CodeType):
         return const
     return const.replace(
@@ -108,11 +110,13 @@ def _code_identity(code: CodeType) -> bytes:
     and ``matmul_i8(a, b, c)`` compile to identical bytecode.
 
     Location is stripped first: it is not part of the design, and keying on it
-    would split the cache per checkout. marshal writes the running Python's
-    format: bytecode already differs between versions, and 3.14 folds constant
-    slices into ``co_consts``, which only its format 5 can write.
+    would split the cache per checkout. Format 3 and up write an object a
+    second time as a back-reference only when its refcount is above one, so
+    before 3.12 made interned names immortal the bytes moved with whatever
+    else held a name. Format 2 has no references; it cannot write the
+    constant slices 3.14 folds into ``co_consts``, so those go in as tuples.
     """
-    return marshal.dumps(_without_location(code))
+    return marshal.dumps(_without_location(code), 2)
 
 
 _PLAIN = (int, float, complex, str, bytes, bool, type(None))
