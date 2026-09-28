@@ -35,6 +35,11 @@ const int32_t MAX = 127;
 const int32_t UMAX = 255;
 const int32_t MAX_VALUES = 16;
 
+// Output channel blocks a cascade call covers, from `oc` * K1_CAS_OC_BLOCKS.
+#ifndef K1_CAS_OC_BLOCKS
+#define K1_CAS_OC_BLOCKS 1
+#endif
+
 #if defined(BN13_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW) ||           \
     defined(BN14_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW)
 // 8 Pixels Width Processing Approach: Processes 8 spatial pixels (x_start to
@@ -782,7 +787,9 @@ static inline bool k1_cas_put_new(const TI *input, const int8_t *kernels,
     return false;
   event0();
   const int32_t blocks = k1_per_split(input_channels, input_split) / 8;
-  k1_cas_put(input, kernels + oc * blocks * 64, input_width * 8, blocks);
+  const int8_t *w = kernels + oc * K1_CAS_OC_BLOCKS * blocks * 64;
+  for (int j = 0; j < K1_CAS_OC_BLOCKS; j++, w += blocks * 64)
+    k1_cas_put(input, w, input_width * 8, blocks);
   event1();
   return true;
 #else
@@ -804,9 +811,10 @@ void bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new(
   if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
                      oc))
     return;
-  conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 
@@ -819,9 +827,10 @@ void bn14_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new(
   if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
                      oc))
     return;
-  conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_ui8_ui8_scalar_input_split_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 
@@ -910,9 +919,10 @@ void bn14_1_conv2dk1_i8_ui8_partial_width_put_new(
   if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
                      oc))
     return;
-  conv2dk1_i8_ui8_scalar_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 
 #endif
@@ -925,9 +935,10 @@ void bn13_1_conv2dk1_i8_ui8_partial_width_put_new(
   if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
                      oc))
     return;
-  conv2dk1_i8_ui8_scalar_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 
 #endif
@@ -940,9 +951,10 @@ void conv2dk1_i8_ui8_partial_width_put_new(
   if (k1_cas_put_new(input, kernels, input_width, input_channels, input_split,
                      oc))
     return;
-  conv2dk1_i8_ui8_scalar_partial_width_put_new(
-      input, kernels, input_width, input_channels, output_channels, input_split,
-      weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_put_new(
+        input, kernels, input_width, input_channels, output_channels,
+        input_split, weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 
 #endif

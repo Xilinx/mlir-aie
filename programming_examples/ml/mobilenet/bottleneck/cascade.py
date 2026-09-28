@@ -48,8 +48,8 @@ _InputSplit = 2  # cascade splits: each cascade tile handles half the channels
 _OutputSplit = 2
 _OutputSplit2 = 2
 _L1_SplitC = _L1_OutC // _InputSplit  # 480 channels per cascade tile
-_OC8 = _L1_OutC // (8 * _OutputSplit)  # inner loop count for L1 kernel  = 60
-_OC8_out = _L3_OutC // (8 * _OutputSplit2)  # inner loop count for L3 kernel = 5
+_OC8 = _L1_OutC // (8 * _OutputSplit)  # oc blocks per L1 kernel call = 60
+_OC8_out = _L3_OutC // (8 * _OutputSplit2)  # oc blocks per L3 kernel call = 5
 
 # ---------------------------------------------------------------------------
 # Weight sizes
@@ -104,8 +104,8 @@ def _memtile_wts(name, data, chunk_ty):
 # ---------------------------------------------------------------------------
 # Worker function bodies (shared between bn13 and bn14 — different kernels and tiles)
 # ---------------------------------------------------------------------------
-# L1 PUT: for each input row, loop over OutputSplit weight tiles and OC8 inner
-# iterations, putting partial 1x1 results onto the cascade stream.
+# L1 PUT: for each input row, loop over OutputSplit weight tiles, putting
+# partial 1x1 results for all of a tile's output channels onto the cascade.
 def _l1_put_fn(
     of_in,
     wts_fifo,
@@ -115,15 +115,13 @@ def _l1_put_fn(
     OutC,
     InputSplit,
     OutputSplit,
-    OC8,
     sf1,
 ):
     for _ in range_(_InH):
         row_in = of_in.acquire(1)
         for WeightIndex in range_(OutputSplit):
             row_wts = wts_fifo.acquire(1)
-            for oc in range_(OC8):
-                k(row_in, row_wts, InW, InC, OutC, InputSplit, WeightIndex, 0, oc)
+            k(row_in, row_wts, InW, InC, OutC, InputSplit, WeightIndex, 0, 0)
             wts_fifo.release(1)
         of_in.release(1)
 
@@ -139,7 +137,6 @@ def _l1_get_fn(
     OutC,
     InputSplit,
     OutputSplit,
-    OC8,
     sf1,
 ):
     for _ in range_(_InH):
@@ -147,21 +144,20 @@ def _l1_get_fn(
         row_out = of_out.acquire(1)
         for WeightIndex in range_(OutputSplit):
             row_wts = wts_fifo.acquire(1)
-            for oc in range_(OC8):
-                k(
-                    row_in,
-                    row_wts,
-                    row_out,
-                    InW,
-                    InC,
-                    OutC,
-                    sf1,
-                    InputSplit,
-                    OutputSplit,
-                    WeightIndex,
-                    0,
-                    oc,
-                )
+            k(
+                row_in,
+                row_wts,
+                row_out,
+                InW,
+                InC,
+                OutC,
+                sf1,
+                InputSplit,
+                OutputSplit,
+                WeightIndex,
+                0,
+                0,
+            )
             wts_fifo.release(1)
         of_in.release(1)
         of_out.release(1)
@@ -215,25 +211,23 @@ def _l3_put_fn(
     OutC3,
     InputSplit,
     OutputSplit2,
-    OC8_out,
     sf3,
 ):
     for _ in range_(_InH):
         row_in = of_in.acquire(1)
         for WeightIndex in range_(OutputSplit2):
             row_wts = wts_fifo.acquire(1)
-            for oc in range_(OC8_out):
-                k(
-                    row_in,
-                    row_wts,
-                    InW,
-                    OutC2,
-                    OutC3,
-                    InputSplit,
-                    WeightIndex,
-                    0,
-                    oc,
-                )
+            k(
+                row_in,
+                row_wts,
+                InW,
+                OutC2,
+                OutC3,
+                InputSplit,
+                WeightIndex,
+                0,
+                0,
+            )
             wts_fifo.release(1)
         of_in.release(1)
 
@@ -250,7 +244,6 @@ def _l3_get_fn(
     OutC3,
     InputSplit,
     OutputSplit2,
-    OC8_out,
     sf3,
     sfAdd,
 ):
@@ -260,23 +253,22 @@ def _l3_get_fn(
         skip_row = skip_in.acquire(1)
         for WeightIndex in range_(OutputSplit2):
             row_wts = wts_fifo.acquire(1)
-            for oc in range_(OC8_out):
-                k(
-                    row_in,
-                    row_wts,
-                    row_out,
-                    skip_row,
-                    InW,
-                    OutC2,
-                    OutC3,
-                    sf3,
-                    sfAdd,
-                    InputSplit,
-                    OutputSplit2,
-                    WeightIndex,
-                    0,
-                    oc,
-                )
+            k(
+                row_in,
+                row_wts,
+                row_out,
+                skip_row,
+                InW,
+                OutC2,
+                OutC3,
+                sf3,
+                sfAdd,
+                InputSplit,
+                OutputSplit2,
+                WeightIndex,
+                0,
+                0,
+            )
             wts_fifo.release(1)
         of_in.release(1)
         act_out.release(1)
@@ -320,6 +312,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
         input_channels=_InC,
         weight_count=_l1_split_wts_sz,
         block_index=block_index,
+        oc_blocks=_OC8,
     )
     k_l1_get = kernels.bn_conv2dk1_partial_get_relu_i8(
         input_width=_InW,
@@ -327,6 +320,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
         output_channels=_L1_OutC,
         weight_count=_l1_split_wts_sz,
         block_index=block_index,
+        oc_blocks=_OC8,
     )
     k_l2_dw = kernels.bn_conv2dk3_dw_out_split(
         input_width=_InW,
@@ -339,6 +333,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
         input_channels=_L1_SplitC,
         weight_count=_l3_split_wts_sz,
         block_index=block_index,
+        oc_blocks=_OC8_out,
     )
     k_l3_get = kernels.bn_conv2dk1_input_split_partial_skip_get(
         input_width=_InW,
@@ -346,6 +341,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
         output_channels=_L3_OutC,
         weight_count=_l3_split_wts_sz,
         block_index=block_index,
+        oc_blocks=_OC8_out,
     )
 
     # L1/L3 weight halves live on MemTiles and loop to their cores (no DDR
@@ -407,7 +403,6 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
                 _L1_OutC,
                 _InputSplit,
                 _OutputSplit,
-                _OC8,
                 s1,
             ],
         ),
@@ -423,7 +418,6 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
                 _L1_OutC,
                 _InputSplit,
                 _OutputSplit,
-                _OC8,
                 s1,
             ],
         ),
@@ -451,7 +445,6 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
                 _L3_OutC,
                 _InputSplit,
                 _OutputSplit2,
-                _OC8_out,
                 s3,
             ],
         ),
@@ -468,7 +461,6 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
                 _L3_OutC,
                 _InputSplit,
                 _OutputSplit2,
-                _OC8_out,
                 s3,
                 s_add,
             ],

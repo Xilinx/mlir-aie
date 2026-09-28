@@ -33,6 +33,10 @@ const int32_t MAX = 127;
 const int32_t UMAX = 255;
 const int32_t MAX_VALUES = 16;
 
+#ifndef K1_CAS_OC_BLOCKS
+#define K1_CAS_OC_BLOCKS 1
+#endif
+
 // #define INT8_MAX 127
 // #define INT8_MIN -128
 
@@ -52,16 +56,19 @@ k1_cas_skip_get_new(uint8_t *input, int8_t *kernels, int8_t *output,
   const int32_t blocks = k1_per_split(input_channels, input_split) / 8;
   const int32_t row = input_width * 8;
   const int32_t oc_out =
-      oc + k1_per_split(output_channels, output_split) / 8 * weight_index;
+      oc * K1_CAS_OC_BLOCKS +
+      k1_per_split(output_channels, output_split) / 8 * weight_index;
   const aie::vector<int8, 32> ones = aie::broadcast<int8, 32>(1);
-  k1_cas_get(
-      input, kernels + oc * blocks * 64, output + oc_out * row, row, blocks,
-      [=](auto &acc, const int8_t *s) {
-        aie::accum<acc32, 32> t = aie::mul(k1_load<false>(s), ones);
-        t = aie::mac(t, acc.template to_vector<int8>(scale), ones);
-        return t.template to_vector<int8>(skip_scale);
-      },
-      skip + oc_out * row);
+  const int8_t *w = kernels + oc * K1_CAS_OC_BLOCKS * blocks * 64;
+  for (int j = 0; j < K1_CAS_OC_BLOCKS; j++, w += blocks * 64)
+    k1_cas_get(
+        input, w, output + (oc_out + j) * row, row, blocks,
+        [=](auto &acc, const int8_t *s) {
+          aie::accum<acc32, 32> t = aie::mul(k1_load<false>(s), ones);
+          t = aie::mac(t, acc.template to_vector<int8>(scale), ones);
+          return t.template to_vector<int8>(skip_scale);
+        },
+        skip + (oc_out + j) * row);
   event1();
   return true;
 #else
@@ -602,10 +609,11 @@ void bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
                           input_channels, output_channels, scale, skip_scale,
                           input_split, output_split, weight_index, oc))
     return;
-  conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
-      input, kernels, output, skip, input_width, input_channels,
-      output_channels, scale, skip_scale, input_split, output_split,
-      weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
+        input, kernels, output, skip, input_width, input_channels,
+        output_channels, scale, skip_scale, input_split, output_split,
+        weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 #ifdef BN13_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW
@@ -621,10 +629,11 @@ void bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
                           input_channels, output_channels, scale, skip_scale,
                           input_split, output_split, weight_index, oc))
     return;
-  conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
-      input, kernels, output, skip, input_width, input_channels,
-      output_channels, scale, skip_scale, input_split, output_split,
-      weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
+        input, kernels, output, skip, input_width, input_channels,
+        output_channels, scale, skip_scale, input_split, output_split,
+        weight_index, x_start, oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 // ///////////////////

@@ -29,6 +29,10 @@
 const int32_t UMAX = 255;
 const int32_t MAX_VALUES = 16;
 
+#ifndef K1_CAS_OC_BLOCKS
+#define K1_CAS_OC_BLOCKS 1
+#endif
+
 #if defined(BN13_1_INPUT_SPLIT_PARTIAL_GET_UI8_UI8_CAS_WIDTH_NEW)
 // 8 Pixels Width Processing Approach: Processes 8 spatial pixels (x_start to
 // x_start + 8) simultaneously within each output channel (oc8 iteration).
@@ -236,10 +240,13 @@ k1_cas_get_new(int8_t *input, int8_t *kernels, uint8_t *output,
   const int32_t blocks = k1_per_split(input_channels, input_split) / 8;
   const int32_t row = input_width * 8;
   const int32_t oc_out =
-      oc + k1_per_split(output_channels, output_split) / 8 * weight_index;
-  k1_cas_get(input + blocks * row, kernels + oc * blocks * 64,
-             output + oc_out * row, row, blocks,
-             [=](auto &acc) { return acc.template to_vector<uint8>(scale); });
+      oc * K1_CAS_OC_BLOCKS +
+      k1_per_split(output_channels, output_split) / 8 * weight_index;
+  const int8_t *w = kernels + oc * K1_CAS_OC_BLOCKS * blocks * 64;
+  for (int j = 0; j < K1_CAS_OC_BLOCKS; j++, w += blocks * 64)
+    k1_cas_get(input + blocks * row, w, output + (oc_out + j) * row, row,
+               blocks,
+               [=](auto &acc) { return acc.template to_vector<uint8>(scale); });
   event1();
   return true;
 #else
@@ -2139,9 +2146,11 @@ void bn14_1_conv2dk1_i8_ui8_partial_width_get_new(
                      output_channels, scale, input_split, output_split,
                      weight_index, oc))
     return;
-  conv2dk1_i8_ui8_scalar_partial_width_get_new(
-      input, kernels, output, input_width, input_channels, output_channels,
-      scale, input_split, output_split, weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_get_new(
+        input, kernels, output, input_width, input_channels, output_channels,
+        scale, input_split, output_split, weight_index, x_start,
+        oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 
@@ -2156,9 +2165,11 @@ void bn13_1_conv2dk1_i8_ui8_partial_width_get_new(
                      output_channels, scale, input_split, output_split,
                      weight_index, oc))
     return;
-  conv2dk1_i8_ui8_scalar_partial_width_get_new(
-      input, kernels, output, input_width, input_channels, output_channels,
-      scale, input_split, output_split, weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_get_new(
+        input, kernels, output, input_width, input_channels, output_channels,
+        scale, input_split, output_split, weight_index, x_start,
+        oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 
@@ -2173,9 +2184,11 @@ void bn13_2_conv2dk1_i8_ui8_partial_width_get_new(
                      output_channels, scale, input_split, output_split,
                      weight_index, oc))
     return;
-  conv2dk1_i8_ui8_scalar_partial_width_get_new(
-      input, kernels, output, input_width, input_channels, output_channels,
-      scale, input_split, output_split, weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_get_new(
+        input, kernels, output, input_width, input_channels, output_channels,
+        scale, input_split, output_split, weight_index, x_start,
+        oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 
@@ -2191,9 +2204,11 @@ void conv2dk1_i8_ui8_partial_width_get_new(
                      output_channels, scale, input_split, output_split,
                      weight_index, oc))
     return;
-  conv2dk1_i8_ui8_scalar_partial_width_get_new(
-      input, kernels, output, input_width, input_channels, output_channels,
-      scale, input_split, output_split, weight_index, x_start, oc);
+  for (int32_t j = 0; j < K1_CAS_OC_BLOCKS; j++)
+    conv2dk1_i8_ui8_scalar_partial_width_get_new(
+        input, kernels, output, input_width, input_channels, output_channels,
+        scale, input_split, output_split, weight_index, x_start,
+        oc * K1_CAS_OC_BLOCKS + j);
 }
 #endif
 

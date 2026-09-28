@@ -24,9 +24,9 @@ and judges the rows against a numpy model of the whole conv.
   ``bn_conv2dk1_input_split_partial_skip_get``. Each reads its own uint8
   half row; the GET core adds a skip row as ``bn_conv2dk1_skip`` does.
 
-Each call covers one block of 8 output channels for the 7 pixels the
-kernels are written for. ``weight_index`` picks which of the
-``output_split`` weight chunks a call's block sits in.
+Each call covers ``oc_blocks`` consecutive blocks of 8 output channels for
+the 7 pixels the kernels are written for. ``weight_index`` picks which of
+the ``output_split`` weight chunks a call's blocks sit in.
 """
 
 import aie.iron as iron
@@ -54,13 +54,14 @@ _W = 7
 _INPUT_SPLIT = 2
 
 
-def _pair_kernels(kind, block, ic, oc, weight_count):
+def _pair_kernels(kind, block, ic, oc, weight_count, oc_blocks):
     if kind == "width":
         put = kernels.bn_conv2dk1_partial_put_i8(
             input_width=_W,
             input_channels=ic,
             weight_count=weight_count,
             block_index=block,
+            oc_blocks=oc_blocks,
         )
         get = kernels.bn_conv2dk1_partial_get_relu_i8(
             input_width=_W,
@@ -68,6 +69,7 @@ def _pair_kernels(kind, block, ic, oc, weight_count):
             output_channels=oc,
             weight_count=weight_count,
             block_index=block,
+            oc_blocks=oc_blocks,
         )
     else:
         put = kernels.bn_conv2dk1_input_split_partial_put_ui8(
@@ -75,6 +77,7 @@ def _pair_kernels(kind, block, ic, oc, weight_count):
             input_channels=ic // _INPUT_SPLIT,
             weight_count=weight_count,
             block_index=block,
+            oc_blocks=oc_blocks,
         )
         get = kernels.bn_conv2dk1_input_split_partial_skip_get(
             input_width=_W,
@@ -82,6 +85,7 @@ def _pair_kernels(kind, block, ic, oc, weight_count):
             output_channels=oc,
             weight_count=weight_count,
             block_index=block,
+            oc_blocks=oc_blocks,
         )
     return put, get
 
@@ -106,11 +110,12 @@ def _pair_design(
     rows: CompileTime[int],
     scale: CompileTime[int],
     skip_scale: CompileTime[int],
+    oc_blocks: CompileTime[int],
     seed: CompileTime[int],
 ):
-    oc8 = oc // (8 * output_split)
+    calls = oc // (8 * output_split * oc_blocks)
     weight_count = ic // _INPUT_SPLIT * oc // output_split
-    put, get = _pair_kernels(kind, block, ic, oc, weight_count)
+    put, get = _pair_kernels(kind, block, ic, oc, weight_count, oc_blocks)
     put_in_ty = put.arg_types()[0]
     get_in_ty, _, out_ty = get.arg_types()[:3]
     # Static weights leave the GET core's two input channels to the
@@ -132,7 +137,7 @@ def _pair_design(
         for _ in range_(rows):
             x = of_in.acquire(1)
             for wi in range(output_split):
-                for o in range_(oc8):
+                for o in range_(calls):
                     k(x, chunk(wts, wi), _W, ic, oc, _INPUT_SPLIT, wi, 0, o)
             of_in.release(1)
 
@@ -140,7 +145,7 @@ def _pair_design(
         for _ in range_(rows):
             x, y = of_in.acquire(1), of_out.acquire(1)
             for wi in range(output_split):
-                for o in range_(oc8):
+                for o in range_(calls):
                     w = chunk(wts, wi)
                     k(x, w, y, _W, ic, oc, scale, _INPUT_SPLIT, output_split, wi, 0, o)
             of_in.release(1)
@@ -150,7 +155,7 @@ def _pair_design(
         for _ in range_(rows):
             x, y, s = of_in.acquire(1), of_out.acquire(1), of_skip.acquire(1)
             for wi in range(output_split):
-                for o in range_(oc8):
+                for o in range_(calls):
                     w = chunk(wts, wi)
                     k(
                         *(x, w, y, s, _W, ic, oc, scale, skip_scale),
@@ -195,7 +200,9 @@ def _conv_half(x, wts, ic_half, oc):
     return np.einsum("rcpi,ocij->ropj", x[:, :, :_W].astype(np.int64), w)
 
 
-def _run_pair(kind, block, ic, oc, output_split, rows, scale, skip_scale, seed):
+def _run_pair(
+    kind, block, ic, oc, output_split, rows, scale, skip_scale, oc_blocks, seed
+):
     rng = np.random.default_rng(seed)
     half = ic // _INPUT_SPLIT
     wp, wg = _weights(seed, half * oc)
@@ -230,33 +237,43 @@ def _run_pair(kind, block, ic, oc, output_split, rows, scale, skip_scale, seed):
         rows=rows,
         scale=scale,
         skip_scale=skip_scale,
+        oc_blocks=oc_blocks,
         seed=seed,
     )
     return tensors[-1].numpy().copy(), expected.reshape(-1), conv
 
 
-# (kind, block, ic, oc, output_split, rows, scale, skip_scale): the bn13/bn14
-# shapes as cascade.py runs them (bn13 adds its skip unscaled), then small
-# ones with other chunk counts.
+# (kind, block, ic, oc, output_split, rows, scale, skip_scale, oc_blocks): the
+# bn13/bn14 shapes one block per call and, as cascade.py runs them, a whole
+# weight chunk per call (bn13 adds its skip unscaled), then small ones with
+# other chunk counts.
 _CASES = [
-    pytest.param("width", 13, 80, 960, 2, 7, 8, 1, id="width-bn13"),
-    pytest.param("input", 13, 960, 80, 2, 7, 11, 0, id="input-bn13"),
-    pytest.param("width", 14, 80, 960, 2, 7, 8, 1, id="width-bn14"),
-    pytest.param("input", 14, 960, 80, 2, 7, 11, 1, id="input-bn14"),
-    pytest.param("width", 13, 16, 32, 2, 2, 7, 1, id="width-ic16"),
-    pytest.param("width", 13, 48, 64, 1, 1, 7, 1, id="width-ic48-split1"),
-    pytest.param("input", 13, 32, 16, 2, 2, 8, 2, id="input-ic32"),
-    pytest.param("input", 13, 112, 48, 3, 1, 9, 1, id="input-ic112-split3"),
+    pytest.param("width", 13, 80, 960, 2, 7, 8, 1, 1, id="width-bn13"),
+    pytest.param("input", 13, 960, 80, 2, 7, 11, 0, 1, id="input-bn13"),
+    pytest.param("width", 14, 80, 960, 2, 7, 8, 1, 1, id="width-bn14"),
+    pytest.param("input", 14, 960, 80, 2, 7, 11, 1, 1, id="input-bn14"),
+    pytest.param("width", 13, 80, 960, 2, 7, 8, 1, 60, id="width-bn13-chunk"),
+    pytest.param("input", 13, 960, 80, 2, 7, 11, 0, 5, id="input-bn13-chunk"),
+    pytest.param("width", 14, 80, 960, 2, 7, 8, 1, 60, id="width-bn14-chunk"),
+    pytest.param("input", 14, 960, 80, 2, 7, 11, 1, 5, id="input-bn14-chunk"),
+    pytest.param("width", 13, 16, 32, 2, 2, 7, 1, 1, id="width-ic16"),
+    pytest.param("width", 13, 48, 64, 1, 1, 7, 1, 1, id="width-ic48-split1"),
+    pytest.param("width", 13, 48, 64, 1, 1, 7, 1, 4, id="width-ic48-blocks4"),
+    pytest.param("input", 13, 32, 16, 2, 2, 8, 2, 1, id="input-ic32"),
+    pytest.param("input", 13, 112, 48, 3, 1, 9, 1, 1, id="input-ic112-split3"),
+    pytest.param("input", 13, 112, 48, 3, 1, 9, 1, 2, id="input-ic112-blocks2"),
 ]
 
 
-@pytest.mark.parametrize("kind,block,ic,oc,output_split,rows,scale,skip_scale", _CASES)
+@pytest.mark.parametrize(
+    "kind,block,ic,oc,output_split,rows,scale,skip_scale,oc_blocks", _CASES
+)
 @pytest.mark.parametrize("seed", [0, 1])
 def test_bn_cascade_pair(
-    kind, block, ic, oc, output_split, rows, scale, skip_scale, seed
+    kind, block, ic, oc, output_split, rows, scale, skip_scale, oc_blocks, seed
 ):
     got, expected, conv = _run_pair(
-        kind, block, ic, oc, output_split, rows, scale, skip_scale, seed
+        kind, block, ic, oc, output_split, rows, scale, skip_scale, oc_blocks, seed
     )
     bad = got != expected
     assert not bad.any(), (

@@ -1446,12 +1446,19 @@ def _validate_bn_block_index(block_index: int, factory_name: str) -> None:
         )
 
 
+def _cas_oc_blocks_flags(oc_blocks: int) -> list[str]:
+    if oc_blocks < 1:
+        raise ValueError(f"oc_blocks must be >= 1, got {oc_blocks}.")
+    return [] if oc_blocks == 1 else [f"-DK1_CAS_OC_BLOCKS={oc_blocks}"]
+
+
 def bn_conv2dk1_partial_put_i8(
     input_width: int = 7,
     input_channels: int = 80,
     weight_count: int = 4800,
     *,
     block_index: int = 13,
+    oc_blocks: int = 1,
 ) -> ExternalFunction:
     """Cascade-PUT half of a width-split 1x1 conv on int8 activations.
 
@@ -1473,12 +1480,15 @@ def bn_conv2dk1_partial_put_i8(
             streams weights in chunks; full weight tensor is shared
             across multiple kernel invocations).
         block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+        oc_blocks: Consecutive 8-channel output blocks one call covers;
+            the ``oc`` argument then indexes groups of ``oc_blocks``.
 
     Returns:
         ExternalFunction configured for the PUT tile.
 
     Raises:
-        ValueError: When ``block_index`` is not 13 or 14.
+        ValueError: When ``block_index`` is not 13 or 14, or
+            ``oc_blocks`` < 1.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk1_partial_put_i8")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
@@ -1487,7 +1497,8 @@ def bn_conv2dk1_partial_put_i8(
         f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_put_new",
         _kernel_source("conv/bn_conv2dk1_i8.cc"),
         [in_ty, wt_ty, *_i32s(7)],
-        compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"],
+        compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"]
+        + _cas_oc_blocks_flags(oc_blocks),
     )
 
 
@@ -1498,6 +1509,7 @@ def bn_conv2dk1_partial_get_relu_i8(
     weight_count: int = 4800,
     *,
     block_index: int = 13,
+    oc_blocks: int = 1,
 ) -> ExternalFunction:
     """Cascade-GET half of a width-split 1x1 conv + ReLU on int8 activations.
 
@@ -1515,12 +1527,15 @@ def bn_conv2dk1_partial_get_relu_i8(
         output_channels: Number of output channels (full L1 output width).
         weight_count: Per-call weight chunk size in elements.
         block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+        oc_blocks: Consecutive 8-channel output blocks one call covers;
+            the ``oc`` argument then indexes groups of ``oc_blocks``.
 
     Returns:
         ExternalFunction configured for the GET tile.
 
     Raises:
-        ValueError: When ``block_index`` is not 13 or 14.
+        ValueError: When ``block_index`` is not 13 or 14, or
+            ``oc_blocks`` < 1.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk1_partial_get_relu_i8")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
@@ -1530,7 +1545,8 @@ def bn_conv2dk1_partial_get_relu_i8(
         f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_get_new",
         _kernel_source("conv/bn_conv2dk1_relu.cc"),
         [in_ty, wt_ty, out_ty, *_i32s(9)],
-        compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"],
+        compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"]
+        + _cas_oc_blocks_flags(oc_blocks),
     )
 
 
@@ -1607,6 +1623,7 @@ def bn_conv2dk1_input_split_partial_put_ui8(
     weight_count: int = 9600,
     *,
     block_index: int = 13,
+    oc_blocks: int = 1,
 ) -> ExternalFunction:
     """Input-split cascade-PUT half of a 1x1 conv on uint8 activations.
 
@@ -1620,12 +1637,15 @@ def bn_conv2dk1_input_split_partial_put_ui8(
             full input after split).
         weight_count: Per-call weight chunk size in elements.
         block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+        oc_blocks: Consecutive 8-channel output blocks one call covers;
+            the ``oc`` argument then indexes groups of ``oc_blocks``.
 
     Returns:
         ExternalFunction configured for the input-split PUT tile.
 
     Raises:
-        ValueError: When ``block_index`` is not 13 or 14.
+        ValueError: When ``block_index`` is not 13 or 14, or
+            ``oc_blocks`` < 1.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk1_input_split_partial_put_ui8")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
@@ -1636,7 +1656,8 @@ def bn_conv2dk1_input_split_partial_put_ui8(
         [in_ty, wt_ty, *_i32s(7)],
         compile_flags=[
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW"
-        ],
+        ]
+        + _cas_oc_blocks_flags(oc_blocks),
     )
 
 
@@ -1647,6 +1668,7 @@ def bn_conv2dk1_input_split_partial_skip_get(
     weight_count: int = 9600,
     *,
     block_index: int = 13,
+    oc_blocks: int = 1,
 ) -> ExternalFunction:
     """Input-split cascade-GET half of a 1x1 conv + skip-add (uint8 in, int8 out).
 
@@ -1661,12 +1683,15 @@ def bn_conv2dk1_input_split_partial_skip_get(
         output_channels: Final output channels.
         weight_count: Per-call weight chunk size in elements.
         block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+        oc_blocks: Consecutive 8-channel output blocks one call covers;
+            the ``oc`` argument then indexes groups of ``oc_blocks``.
 
     Returns:
         ExternalFunction configured for the input-split skip-GET tile.
 
     Raises:
-        ValueError: When ``block_index`` is not 13 or 14.
+        ValueError: When ``block_index`` is not 13 or 14, or
+            ``oc_blocks`` < 1.
     """
     _validate_bn_block_index(block_index, "bn_conv2dk1_input_split_partial_skip_get")
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
@@ -1679,7 +1704,8 @@ def bn_conv2dk1_input_split_partial_skip_get(
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(10)],
         compile_flags=[
             f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW"
-        ],
+        ]
+        + _cas_oc_blocks_flags(oc_blocks),
     )
 
 
