@@ -24,13 +24,21 @@ run.start()
 ```
 """
 
+import ctypes
 import struct
 from pathlib import Path
 
+import numpy as np
 import pyxrt  # pyright: ignore[reportMissingImports]
 from aie._mlir_libs._parameter_scratchpad import (  # pyright: ignore[reportMissingImports]
     ParameterScratchpad as _ParameterScratchpadImpl,
 )
+
+# PyCapsule_New(pointer, name, destructor): pyxrt.ext.bo takes a host pointer
+# only wrapped in a capsule.
+_pointer_capsule = ctypes.PYFUNCTYPE(
+    ctypes.py_object, ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p
+)(("PyCapsule_New", ctypes.pythonapi))
 
 
 def _to_bytes(value) -> bytes:
@@ -55,6 +63,7 @@ class ParameterScratchpad:
         self._bo = run.get_ctrl_scratchpad_bo()
         self._mv = self._bo.map()
         self._impl = _ParameterScratchpadImpl(self._mv, str(params_path))
+        self._alias = None
 
     def write(self, name: str, value) -> None:
         """Write a parameter value to the scratchpad.
@@ -70,6 +79,29 @@ class ParameterScratchpad:
         """Sync the scratchpad buffer to device."""
         self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
+    def sync_from_device(self) -> None:
+        """Sync the scratchpad buffer from the device: what a device transfer
+        into ``alias()`` wrote, for ``read()`` to see."""
+        self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
+
     def read(self, name: str) -> int:
         """Read back a parameter's current decoded value (for debugging)."""
         return self._impl.read(name)
+
+    def alias(self, device) -> "pyxrt.bo":
+        """A buffer object over this scratchpad's host mapping, on ``device``,
+        that a kernel argument can be bound to.
+
+        The scratchpad's own buffer object is on the device heap, at an
+        address the shim DMA does not reach: a transfer into it silently goes
+        nowhere. This user-pointer buffer is reached like any host buffer, so
+        another run can drain into it and set this run's parameters with no
+        host step between. The alias points into this scratchpad's mapping,
+        which this object keeps alive; keep it for as long as the alias.
+        """
+        if self._alias is None:
+            pointer = np.frombuffer(self._mv, dtype=np.uint8).ctypes.data
+            self._alias = pyxrt.ext.bo(
+                device, _pointer_capsule(pointer, None, None), self._bo.size()
+            )
+        return self._alias

@@ -76,7 +76,7 @@ class XRTKernelHandle(KernelHandle):
         """The full ELF's ``pyxrt.run``, made once and reused by every call.
 
         One run for the handle's life keeps its control scratchpad, and any
-        :meth:`parameter_scratchpad` written into it, valid from call to call.
+        ``parameter_scratchpad()`` written into it, valid from call to call.
         """
         if not self.is_full_elf:
             raise HostRuntimeError(f"{self.name}: only a full ELF keeps a run")
@@ -90,6 +90,17 @@ class XRTKernelHandle(KernelHandle):
         synced there is read by every later run of this handle.
         """
         return ParameterScratchpad(self.run, params_path)
+
+    def new_run(self):
+        """Another ``pyxrt.run`` of the full ELF, besides ``run``.
+
+        Each run has a control scratchpad of its own, so its own runtime
+        parameters: several runs can be started, each with its values, before
+        any is waited on. A run is only valid while the handle is loaded.
+        """
+        if not self.is_full_elf:
+            raise HostRuntimeError(f"{self.name}: only a full ELF keeps a run")
+        return pyxrt.run(self.kernel)
 
 
 class XRTKernelResult(KernelResult):
@@ -169,6 +180,11 @@ class XRTHostRuntime(HostRuntime):
 
     def device_name(self) -> str | None:
         return self._device_type_str
+
+    @property
+    def xrt_device(self) -> "pyxrt.device":
+        """The ``pyxrt.device`` every buffer and context of this runtime is on."""
+        return self._device
 
     @classmethod
     def read_insts(cls, insts_path: Path):
