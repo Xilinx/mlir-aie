@@ -1,0 +1,7 @@
+<map id="xilinx::AIEX::SubviewTraceResult" name="xilinx::AIEX::SubviewTraceResult">
+<area shape="rect" id="Node000001" title=" " alt="" coords="29,93,222,133"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,128,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="83,41,116,92,111,95,79,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="152,5,219,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="174,44,158,71,142,95,137,92,154,68,170,42"/>
+</map>
