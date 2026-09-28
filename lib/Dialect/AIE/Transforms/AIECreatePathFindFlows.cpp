@@ -870,16 +870,23 @@ SmallVector<TileID> cutTiles(const AIETargetModel &targetModel, TileID src,
 }
 
 /// Packet streams take an arbiter at the tile they end at whatever the
-/// routing, and where `pinsHops` says hops cannot be circuit switched, at the
-/// tile they start at and every tile each of their routes passes too. Two that
-/// conflict pass any tile on different slave ports -- sharing one means they
-/// merged, unsafely, upstream -- so a set of them conflicting pairwise needs
-/// an arbiter apiece. Says why no routing can work if some tile has such a set
-/// larger than its free arbiters.
+/// routing, and where `pinsHops` says hops cannot be circuit switched, or the
+/// stream is prioritized, at the tile they start at and every tile each of
+/// their routes passes too. Two that conflict pass any tile on different
+/// slave ports -- sharing one means they merged, unsafely, upstream -- so a set
+/// of them conflicting pairwise needs an arbiter apiece. Says why no routing
+/// can work if some tile has such a set larger than its free arbiters.
 std::optional<std::string>
 unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
                    llvm::function_ref<bool(TileID)> pinsHops) {
   const AIETargetModel &targetModel = device.getTargetModel();
+  std::set<std::tuple<TileID, Port, int>> prioritized;
+  for (PacketFlowOp flow : device.getOps<PacketFlowOp>())
+    if (flow.getPriorityRoute().value_or(false))
+      for (auto src : flow.getPorts().getOps<PacketSourceOp>())
+        prioritized.insert(
+            {cast<TileOp>(src.getTile().getDefiningOp()).getTileID(),
+             src.port(), flow.IDInt()});
   std::map<TileID, SmallVector<size_t, 8>> pinned;
   for (auto [i, s] : llvm::enumerate(conflicts.getRequestedStreams())) {
     if (!s.packetID)
@@ -887,10 +894,12 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
     pinned[s.dst.tile].push_back(i);
     if (s.src.tile == s.dst.tile)
       continue;
-    if (pinsHops(s.src.tile))
+    bool circuitless =
+        prioritized.count({s.src.tile, s.src.port, *s.packetID}) > 0;
+    if (circuitless || pinsHops(s.src.tile))
       pinned[s.src.tile].push_back(i);
     for (TileID t : cutTiles(targetModel, s.src.tile, s.dst.tile))
-      if (pinsHops(t))
+      if (circuitless || pinsHops(t))
         pinned[t].push_back(i);
   }
   std::set<std::pair<TileID, int>> reserved;
