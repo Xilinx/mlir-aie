@@ -1296,7 +1296,6 @@ def shared_pairs(d, routed):
 
 
 def run_seed(seed, args):
-    rng = random.Random(f"mutate-{seed}")
     rows = []
     hops_on = not args.hops_off
     try:
