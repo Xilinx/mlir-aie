@@ -22,11 +22,11 @@
 // The op-count is a runtime accumulator, not a compile-time literal.
 // CHECK: uint32_t __opcount = 0;
 // The prologue pops the initial id.
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return aie_runtime::txn_refused("{{.*}}");
 // The runtime-bound loop is a real C++ for-loop over the trip-count param.
 // CHECK: for (size_t
 // Inside the loop: pop, count, and push the previous id.
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return aie_runtime::txn_refused("{{.*}}");
 // CHECK: ++__opcount;
 // CHECK: aie_runtime::bd_pool_push(bd_pool_0_0,
 // The header reads the runtime count.

@@ -109,6 +109,7 @@ for start, n in ((0, 3), (1, 6), (2, 2), (0, MAX_TILES), (5, 3)):
 try:
     bridge.generate({"n_tiles": 4, "start_tile": 6})
     print("out-of-range dispatch: accepted")
-except HostRuntimeError:
-    print("out-of-range dispatch: refused")
-# CHECK: out-of-range dispatch: refused
+except HostRuntimeError as e:
+    print("out-of-range dispatch: refused:", e)
+# The guard taplib emitted for the grid index names the reason.
+# CHECK: out-of-range dispatch: refused: dispatch refused for DispatchTime[T] value(s) {'n_tiles': 4, 'start_tile': 6}: grid index 1 exceeds the grid

@@ -21,7 +21,7 @@
 // The pool is declared once, sized from the target model (shim = 16 BDs).
 // CHECK: aie_runtime::BdPool bd_pool_0_0 = aie_runtime::bd_pool_init(16);
 // A pop into a fresh variable, failing the build (nullopt) if the pool is empty.
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return aie_runtime::txn_refused("{{.*}}");
 // The BD register block is one block-write at the pool-derived runtime address.
 // CHECK: aie_runtime::txn_append_blockwrite
 // The id is returned to the pool.

@@ -8,10 +8,10 @@
 // RUN: aie-translate %s --aie-npu-to-cpp | FileCheck %s
 
 // A guard message that quotes a value's IR contains braces, which
-// emitc.verbatim would read as placeholders; they must reach the C++ comment
-// verbatim, and a line break must not end the comment early.
+// emitc.verbatim would read as placeholders; they must reach the C++ string
+// literal verbatim, and a line break must not break it.
 
-// CHECK: if (!({{v[0-9]+}})) return std::nullopt; // sizes must be >= 1, got [{v = 3 : i32}, 1] on one line
+// CHECK: if (!({{v[0-9]+}})) return aie_runtime::txn_refused("sizes must be >= 1, got [{v = 3 : i32}, 1] on one line");
 // CHECK: aie_runtime::txn_append_write32(txn,
 module {
   aie.device(npu1_1col) {

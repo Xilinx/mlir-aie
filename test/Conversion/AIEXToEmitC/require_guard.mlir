@@ -14,7 +14,7 @@
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t [[K:v[0-9]+]]) {
 // CHECK:   std::vector<uint32_t> txn;
 // CHECK:   aie_runtime::txn_init(txn);
-// CHECK:   if (!({{v[0-9]+}})) return std::nullopt; // K must be a multiple of 64
+// CHECK:   if (!({{v[0-9]+}})) return aie_runtime::txn_refused("K must be a multiple of 64");
 // CHECK:   aie_runtime::txn_append_write32(txn, {{v[0-9]+}}, [[K]]);
 // CHECK:   return std::move(txn);
 module {

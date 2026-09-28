@@ -26,7 +26,7 @@
 // CHECK: aie_runtime::BdPool bd_pool_0_0 = aie_runtime::bd_pool_init(16);
 // The static shim BD's id (0) is withheld right after the pool is seeded.
 // CHECK-NEXT: aie_runtime::bd_pool_reserve(bd_pool_0_0, 0);
-// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return std::nullopt;
+// CHECK: uint32_t bd_{{[0-9]+}}; if (!aie_runtime::bd_pool_pop(bd_pool_0_0, bd_{{[0-9]+}})) return aie_runtime::txn_refused("{{.*}}");
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)

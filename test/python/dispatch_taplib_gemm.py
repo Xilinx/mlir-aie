@@ -96,8 +96,9 @@ for bad, why in (
     try:
         bridge.generate(bad)
         print(f"{why}: accepted")
-    except HostRuntimeError:
-        print(f"{why}: refused")
-# CHECK: M not a multiple of m*rows: refused
-# CHECK: K not a multiple of k: refused
-# CHECK: over capacity: refused
+    except HostRuntimeError as e:
+        print(f"{why}: refused: {e}")
+# The refusal carries the message of the require() that failed.
+# CHECK: M not a multiple of m*rows: refused: {{.*}}: M must be a multiple of m * n_aie_rows
+# CHECK: K not a multiple of k: refused: {{.*}}: K must be a multiple of k
+# CHECK: over capacity: refused: {{.*}}: B exceeds the compiled capacity
