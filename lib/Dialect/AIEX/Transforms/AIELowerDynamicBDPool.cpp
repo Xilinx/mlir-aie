@@ -434,6 +434,21 @@ struct AIELowerDynamicBDPoolPass
       return op->emitOpError(
           "does not resolve to a task allocated from the runtime pool; cannot "
           "return its buffer descriptor ID");
+    // A start after the free, in the free's block or nested below it, pushes
+    // an id the pool may already have handed to another task.
+    for (Operation *user : task.getUsers()) {
+      if (!isa<DMAStartTaskOp>(user))
+        continue;
+      Operation *later = op->getBlock()->findAncestorOpInBlock(*user);
+      if (later && op->isBeforeInBlock(later)) {
+        auto diag = user->emitOpError(
+            "starts a task whose buffer descriptor ID was already returned "
+            "to the runtime pool; the pool may have handed it to another "
+            "task. Free the task after its last start instead.");
+        diag.attachNote(op->getLoc()) << "returned here";
+        return diag;
+      }
+    }
     auto tile = tileForTask.lookup(task);
     // The pool is per (tile, channel): the originating configure names the
     // channel this id came from, and it must go back to that same pool.

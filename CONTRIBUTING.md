@@ -215,8 +215,8 @@ disable rules.
   (or an mkdocstrings cross-reference) instead of `:class:`/`:meth:`/`:func:`
   roles, fenced ```` ```python ```` blocks at the docstring's text indent
   instead of `Example::` literal blocks, and a Google `Note:` section instead
-  of `.. note::`. `mkdocs build --strict` does not catch these; the
-  `no-rst-docstring-markup` pre-commit hook does.
+  of `.. note::`. `mkdocs build --strict` does not catch these, so check
+  them by eye.
 - **C++** — use Doxygen-style triple-slash comments (`///`, with `\brief`,
   `\param`, `\returns` as needed) on public declarations in headers. These feed
   the [C++ API reference](docs/api/cpp_doxygen.md).

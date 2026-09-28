@@ -793,6 +793,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             return WalkResult::interrupt();
         } else if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = start.getTaskOp()) {
+            // Only an explicit aiex.dma_free_task releases a task that is
+            // started again (an await or a reclaim keeps the ids of one that
+            // is), so this start would push ids that may already describe
+            // another task's transfer.
+            if (releasedTasks.contains(cfg)) {
+              start.emitOpError(
+                  "starts a task whose buffer descriptors an earlier "
+                  "aiex.dma_free_task released; their ids may already be "
+                  "reprogrammed for another task. Free the task after its "
+                  "last start instead.");
+              return WalkResult::interrupt();
+            }
             knownComplete.erase(cfg);
             pollProven.erase(cfg);
             notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg));

@@ -296,13 +296,12 @@ You will...
    ```
 
    > At the bottom of the output you should see:
-   >
-   > ```
-   > Devices present
-   > BDF             :  Name
+   >  ```
+   >  Devices present
+   >  BDF             :  Name
    > ------------------------------------
-   > [0000:66:00.1]  :  RyzenAI-npu1
-   > ```
+   >  [0000:66:00.1]  :  RyzenAI-npu1
+   >  ```
 
 ### Install MLIR-AIE Prerequisites
 

@@ -37,6 +37,7 @@ class Task:
 
     def __init__(self, handle):
         self._handle = handle
+        self._freed = False
 
     @property
     def handle(self):
@@ -50,11 +51,28 @@ class Task:
         one queue push rather than a reconfiguration. ``repeat_count`` replaces
         the task's configured count for this start only; a count beyond what
         one push carries is issued as several pushes by the compiler.
+
+        Raises:
+            RuntimeError: If this task was already freed, since its buffer
+                descriptors may since have been reprogrammed for another task.
         """
+        if self._freed:
+            raise RuntimeError(
+                "Task.start() after Task.free(): the freed buffer descriptors "
+                "may already describe another transfer. Free a task after its "
+                "last start."
+            )
         dma_start_task(self._handle, repeat_count=repeat_count)
 
     def free(self) -> None:
-        """Return this transfer's buffer descriptor to the pool (``dma_free_task``)."""
+        """Return this transfer's buffer descriptor to the pool (``dma_free_task``).
+
+        Raises:
+            RuntimeError: If this task was already freed.
+        """
+        if self._freed:
+            raise RuntimeError("Task.free() called twice on the same task.")
+        self._freed = True
         dma_free_task(self._handle)
 
     def await_(self) -> None:

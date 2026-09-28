@@ -24,9 +24,8 @@ namespace xilinx::AIEX {
 // SsaStridePolicy: arith-emitting mirror of ConstStridePolicy.
 //
 // Arithmetic is i32, matching the BD word fields. This agrees with
-// ConstStridePolicy's int64 because every value is bounded by a BD field or the
-// 32-bit buffer_length, so no intermediate product overflows (a stride big
-// enough to overflow exceeds a single shim BD's extent).
+// ConstStridePolicy's int64 because encodeBdCommon bounds every runtime operand
+// before it reaches the policy, so no intermediate product overflows.
 //===----------------------------------------------------------------------===//
 
 Value SsaStridePolicy::cst(int64_t c) const {
@@ -206,6 +205,30 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
   uint32_t gran = tm.getAddressGenGranularity();
   SmallVector<OpFoldResult, 4> sizesRev(llvm::reverse(mixedSizes));
   SmallVector<OpFoldResult, 4> stridesRev(llvm::reverse(mixedStrides));
+  // The encoding below is i32 arithmetic, and a RUNTIME operand that does not
+  // fit it wraps: an i64 is truncated (2^32 + 1 becomes 1), and d0's size and
+  // every stride are multiplied by elemWidth before they are scaled down to
+  // granules. A wrapped value can then pass the field guards further down, so
+  // bound each operand at its original width first. Only the d1..d3 sizes are
+  // used unscaled, and an i32 one needs no bound. Every BD field is far
+  // narrower than these bounds, so no valid value is rejected here.
+  int64_t scaledMax =
+      std::numeric_limits<int32_t>::max() / std::max<uint64_t>(elemWidth, 1);
+  auto guardOperand = [&](OpFoldResult in, bool scaled) {
+    if (getConstantIntValue(in))
+      return;
+    Value v = cast<Value>(in);
+    if (!scaled && v.getType().getIntOrFloatBitWidth() <= 32)
+      return;
+    NpuAssertBdFieldOp::create(
+        builder, loc, v,
+        builder.getI32IntegerAttr(
+            scaled ? scaledMax : std::numeric_limits<int32_t>::max()));
+  };
+  for (int i = 0; i < 4; i++) {
+    guardOperand(sizesRev[i], /*scaled=*/i == 0);
+    guardOperand(stridesRev[i], /*scaled=*/true);
+  }
   for (int i = 0; i < 4; i++) {
     out.inS[i] = getAsValue(builder, loc, sizesRev[i], i32ty);
     out.inT[i] = getAsValue(builder, loc, stridesRev[i], i32ty);
@@ -217,12 +240,44 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
   // buffer_length: the caller's runtime len if supplied (dma_task), else the
   // d0*d1*d2 hardware-unit size-product (dma_memcpy_nd). hwS[0] already carries
   // the elemWidth/gran scaling; d1/d2 are element counts.
+  uint64_t lenMax = tm.getDmaBdMaxLen(tileCol, tileRow);
+  bool lenGuarded = false;
   out.bufLen = bufLenOverride;
-  if (!out.bufLen)
-    out.bufLen = arith::MulIOp::create(
-        builder, loc,
-        arith::MulIOp::create(builder, loc, out.hwS[0], out.inS[1]),
-        out.inS[2]);
+  if (!out.bufLen) {
+    auto cst0 = [&](int i) { return getConstantIntValue(sizesRev[i]); };
+    bool unitOuter = [&] {
+      auto s1 = cst0(1), s2 = cst0(2);
+      return s1 && *s1 == 1 && s2 && *s2 == 1;
+    }();
+    if ((cst0(0) && cst0(1) && cst0(2)) || unitOuter) {
+      out.bufLen = arith::MulIOp::create(
+          builder, loc,
+          arith::MulIOp::create(builder, loc, out.hwS[0], out.inS[1]),
+          out.inS[2]);
+    } else {
+      // A runtime factor can make the i32 product wrap into a length that
+      // passes its guard, so multiply in i64 and bound each partial product.
+      // hwS[0] is below 2^31 once its operand guard holds, each d1/d2 size
+      // below 2^32 unsigned, and a partial product that passed its guard below
+      // 2^31, so no product wraps in i64 before the guard that rejects it.
+      auto i64ty = builder.getI64Type();
+      auto wide = [&](Value v) -> Value {
+        return arith::ExtUIOp::create(builder, loc, i64ty, v);
+      };
+      auto cap = (int64_t)std::min<uint64_t>(
+          lenMax, std::numeric_limits<int32_t>::max());
+      Value len = wide(out.hwS[0]);
+      for (int i = 1; i < 3; i++) {
+        if (auto c = cst0(i); c && *c == 1)
+          continue;
+        len = arith::MulIOp::create(builder, loc, len, wide(out.inS[i]));
+        NpuAssertBdFieldOp::create(builder, loc, len,
+                                   builder.getI32IntegerAttr(cap));
+      }
+      out.bufLen = arith::TruncIOp::create(builder, loc, i32ty, len);
+      lenGuarded = true;
+    }
+  }
 
   auto cst = [&](OpFoldResult v) { return getConstantIntValue(v); };
   auto constEq = [&](OpFoldResult v, int64_t c) {
@@ -296,9 +351,8 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
   guardField(stridesRev[3], out.hwT[3], stepMax);
 
   // Neither check fires on a shim NOC tile, whose buffer_length owns the whole
-  // 32-bit word -- leaving that stream untouched.
-  uint64_t lenMax = tm.getDmaBdMaxLen(tileCol, tileRow);
-  if (lenMax < std::numeric_limits<uint32_t>::max()) {
+  // 32-bit word, nor on a size-product the i64 path above already bounded.
+  if (!lenGuarded && lenMax < std::numeric_limits<uint32_t>::max()) {
     if (auto constLen = getConstantIntValue(out.bufLen)) {
       if (*constLen < 0 || (uint64_t)*constLen > lenMax)
         return emitError(loc)
