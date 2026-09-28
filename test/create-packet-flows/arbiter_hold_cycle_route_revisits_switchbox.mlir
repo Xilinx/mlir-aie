@@ -13,10 +13,12 @@
 // switchboxes. The router must follow every hop to see that the route then
 // holds arbiter 5 at (3,3), which prioritized flow 8 needs, while its
 // packets back into (3,5) wait on S2MM 0 there. Walks bounded by the number
-// of switchboxes stopped short of it and emitted that hold cycle. Reduced
-// from router_mutation.py seed 430.
+// of switchboxes stopped short of it and emitted that hold cycle. The design
+// routes if flow 8 may move, so the error names it. Reduced from
+// router_mutation.py seed 430.
 
-// CHECK: error: Unable to find a legal routing: packet flows can deadlock holding arbiters across switchboxes
+// CHECK: error: Unable to find a legal routing: packet flows from (3, 2) DMA:0 are prioritized (priority_route), so they keep the route they take alone, and the other flows route only if it moves.
+// CHECK-SAME: Around it, packet flows can deadlock holding arbiters across switchboxes
 // CHECK-SAME: packet flow (3, 5) DMA:1 -> (3, 3) DMA:0 (id 9) can hold arbiter 5 at tile (3, 3) that packet flow (3, 2) DMA:0 -> (3, 5) DMA:0 (id 8) needs.
 
 module {

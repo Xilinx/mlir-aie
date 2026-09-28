@@ -2318,6 +2318,16 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   return success();
 }
 
+// A copy of `d` in a module like its own, as the analyses look up through it.
+static DeviceOp cloneInScratch(DeviceOp d, OwningOpRef<ModuleOp> &scratch) {
+  scratch = ModuleOp::create(d.getLoc());
+  if (Operation *parent = d->getParentOp())
+    (*scratch)->setAttrs(parent->getAttrDictionary());
+  DeviceOp copy = d.clone();
+  scratch->push_back(copy);
+  return copy;
+}
+
 // The router names a shim DMA by its own port, and the end of
 // runOnPacketFlow moves it behind the shim mux onto a South channel. Rules and
 // master sets a previous run left there are moved back first, so new flows on
@@ -2440,18 +2450,15 @@ void AIEPathfinderPass::runOnOperation() {
     return prioritized.count(
         {cast<TileOp>(src.getTile().getDefiningOp()).getTileID(), src.port()});
   };
+  bool pinned = false;
   if (clRoutePacket && !prioritized.empty() &&
       (!d.getOps<FlowOp>().empty() ||
        !llvm::all_of(d.getOps<PacketFlowOp>(), [&](PacketFlowOp flow) {
          return llvm::all_of(flow.getPorts().getOps<PacketSourceOp>(),
                              isPrioritized);
        }))) {
-    // In a module like `d`'s, as the analyses look up through it.
-    OwningOpRef<ModuleOp> scratch = ModuleOp::create(d.getLoc());
-    if (Operation *parent = d->getParentOp())
-      (*scratch)->setAttrs(parent->getAttrDictionary());
-    DeviceOp alone = d.clone();
-    scratch->push_back(alone);
+    OwningOpRef<ModuleOp> scratch;
+    DeviceOp alone = cloneInScratch(d, scratch);
     for (FlowOp flow : llvm::make_early_inc_range(alone.getOps<FlowOp>()))
       flow.erase();
     for (PacketFlowOp flow :
@@ -2490,6 +2497,7 @@ void AIEPathfinderPass::runOnOperation() {
     for (auto it = trees.begin(); it != trees.end();)
       it = prioritized.count(it->first) ? std::next(it) : trees.erase(it);
     analyzer.pathfinder->pinPacketTrees(std::move(trees));
+    pinned = true;
   }
   // Packet flows share channels only where they share a destination, unless
   // the design routes no other way; then any may, where they do not conflict.
@@ -2519,8 +2527,35 @@ void AIEPathfinderPass::runOnOperation() {
   };
   if (failed(routeSharing(d, analyzer, conflicts))) {
     Location loc = failedAt.value_or(d.getLoc());
-    emitError(loc) << (reason.empty() ? "Unable to find a legal routing"
-                                      : reason);
+    std::string error =
+        reason.empty() ? "Unable to find a legal routing" : reason;
+    StringRef why = error;
+    if (pinned && !why.contains("(priority_route)") &&
+        why.consume_front("Unable to find a legal routing: ")) {
+      // Say whether the pinned trees are what stands in the way: the design
+      // routes if they may move.
+      OwningOpRef<ModuleOp> scratch;
+      DeviceOp free = cloneInScratch(d, scratch);
+      DynamicTileAnalysis freeAnalyzer;
+      StreamConflicts freeConflicts(free);
+      if (succeeded(routeSharing(free, freeAnalyzer, freeConflicts))) {
+        std::string sources;
+        for (auto [i, src] : llvm::enumerate(prioritized))
+          sources += (i == 0                        ? ""
+                      : i + 1 == prioritized.size() ? " and "
+                                                    : ", ") +
+                     llvm::formatv(
+                         "({0}, {1}) {2}:{3}", src.coords.col, src.coords.row,
+                         stringifyWireBundle(src.port.bundle), src.port.channel)
+                         .str();
+        error = "Unable to find a legal routing: packet flows from " + sources +
+                " are prioritized (priority_route), so they keep the route "
+                "they take alone, and the other flows route only if it moves. "
+                "Around it, " +
+                why.str();
+      }
+    }
+    emitError(loc) << error;
     signalPassFailure();
     return;
   }
