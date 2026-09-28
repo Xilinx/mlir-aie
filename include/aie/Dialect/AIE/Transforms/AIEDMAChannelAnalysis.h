@@ -53,7 +53,7 @@ public:
                                       int channel);
 
   /// Claim a raw stream port, reporting on `tile` when it is already taken.
-  void checkAIEStreamIndex(TileLike tile, DMAChannel chan);
+  mlir::LogicalResult checkAIEStreamIndex(TileLike tile, DMAChannel chan);
 };
 
 } // namespace xilinx::AIE

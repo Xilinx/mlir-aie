@@ -1,4 +1,6 @@
 // RUN: aie-opt --split-input-file --aie-objectfifo-allocate --verify-diagnostics %s -o /dev/null
+// RUN: not aie-opt --split-input-file --aie-objectfifo-allocate %s 2>&1 | FileCheck %s --implicit-check-not=aie.device
+// CHECK-COUNT-2: Core channels exceeded
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception

@@ -547,6 +547,23 @@ struct AIEObjectFifoAllocatePass
     }
   }
 
+  // No allocation can move a stream port the design names, so a clash fails
+  // the pass before the search rather than surfacing inside it.
+  LogicalResult checkStreamPorts() {
+    DMAChannelAnalysis channels(device);
+    bool clash = false;
+    for (auto endpoint : device.getOps<RouteEndpoint>()) {
+      if (endpoint.getRouteBundle() != WireBundle::Core)
+        continue;
+      std::optional<int> channel = endpoint.getRouteChannel();
+      if (!channel)
+        return endpoint->emitOpError("a stream port names its own channel");
+      clash |= failed(channels.checkAIEStreamIndex(
+          tileOf(endpoint), {endpoint.getRouteDirection(), *channel}));
+    }
+    return failure(clash);
+  }
+
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
                                bool diagnose = true) {
     channelAssignments.clear();
@@ -556,16 +573,9 @@ struct AIEObjectFifoAllocatePass
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
       // A core's stream port is named by the design, not drawn from the tile's
-      // DMA channels.
-      if (endpoint.getRouteBundle() == WireBundle::Core) {
-        if (!channel) {
-          if (!diagnose)
-            return failure();
-          return endpoint->emitOpError("a stream port names its own channel");
-        }
-        channels.checkAIEStreamIndex(tileOf(endpoint), {dir, *channel});
+      // DMA channels; checkStreamPorts has claimed it.
+      if (endpoint.getRouteBundle() == WireBundle::Core)
         continue;
-      }
 
       if (channel) {
         if (reachesAdjacentTile(endpoint) &&
@@ -1004,7 +1014,7 @@ struct AIEObjectFifoAllocatePass
     lockUsers.clear();
     lockPlacements.clear();
 
-    if (failed(collectFixedMemory()))
+    if (failed(collectFixedMemory()) || failed(checkStreamPorts()))
       return signalPassFailure();
 
     // Preserve successful largest-first allocations, including their locality
