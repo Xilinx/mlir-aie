@@ -1323,6 +1323,21 @@ static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
     return failure();
   }
 
+  // On npu2, the first word of the column-0 memtile reads back as 0x00CD0CD0
+  // on every dispatch after the first, though nothing in the design writes it.
+  // A buffer that DMA refills each dispatch is unaffected, but an initialized
+  // one is loaded only once and keeps the bad word, so leave that word free.
+  // A buffer the user pinned there keeps its address.
+  int64_t reservedUnit = tileAlignBitWidth / 8;
+  bool holdsInitialValue = llvm::any_of(buffersToAlloc, [](BufferOp buffer) {
+    return buffer.getInitialValue().has_value();
+  });
+  if (tile.isMemTile() && tile.getCol() == 0 &&
+      targetModel.hasProperty(AIETargetModel::IsNPU) && holdsInitialValue &&
+      occupancy.isRangeFree(0, reservedUnit)) {
+    occupancy.markOccupied(0, reservedUnit);
+  }
+
   // Buffers this pass placed (not the pre-allocated ones), for rollback and
   // diagnostics on failure.
   SmallVector<BufferOp> allocatedBuffers;
