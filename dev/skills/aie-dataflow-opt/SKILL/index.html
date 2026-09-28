@@ -1842,6 +1842,8 @@
       
         
       
+        
+      
     
     
     
@@ -1967,6 +1969,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -3719,6 +3749,9 @@ expensive in isolation or which one you assume is slow. Static analysis
 and paper cycle-counts are unreliable for this; a measured ablation isn't.</p>
 <p>A kernel contributing 4ms is not worth the same optimization effort as one
 contributing 99ms, even if the 4ms one looks the messier of the two.</p>
+<p>For the per-kernel form of the same idea (a cheap wrong op in place of one
+stage of a kernel), and for reading a kernel's trace interval counts, see
+<a href="../../aie-kernel-opt/SKILL/"><code>aie-kernel-opt</code></a> §Reading hardware rows.</p>
 <h2 id="2-if-the-model-spans-multiple-dispatches-treat-the-boundary-as-the-top-level-placement-decision">2. If the model spans multiple dispatches, treat the boundary as the top-level placement decision<a class="headerlink" href="#2-if-the-model-spans-multiple-dispatches-treat-the-boundary-as-the-top-level-placement-decision" title="Permanent link">&para;</a></h2>
 <p>A model too large to fit one dispatch (see <code>aie-model-baseline</code>) was
 already split there, but only for feasibility — that cut may not be the

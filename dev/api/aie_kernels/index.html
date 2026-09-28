@@ -1842,6 +1842,8 @@
       
         
       
+        
+      
     
     
     
@@ -1967,6 +1969,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../programming_guide/section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -3661,33 +3691,11 @@ available, <code>xchesscc</code>). They are a separate layer from the Python API
 handles placement and data movement, while the kernel handles the arithmetic.</p>
 <h2 id="where-they-live">Where they live<a class="headerlink" href="#where-they-live" title="Permanent link">&para;</a></h2>
 <p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels"><code>aie_kernels</code></a> directory holds a library of example
-kernels, organized by target:</p>
-<table>
-<thead>
-<tr>
-<th>Directory</th>
-<th>Target</th>
-<th>Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels/generic"><code>generic</code></a></td>
-<td>Any AIE</td>
-<td>Portable C — runs on any generation at varying performance.</td>
-</tr>
-<tr>
-<td><a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels/aie2"><code>aie2</code></a></td>
-<td>AIE2 / XDNA</td>
-<td>The largest set: eltwise, gemm, reduction, conv, vision.</td>
-</tr>
-<tr>
-<td><a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels/aie2p"><code>aie2p</code></a></td>
-<td>AIE2P / XDNA 2</td>
-<td>Kernels tuned for the newer architecture.</td>
-</tr>
-</tbody>
-</table>
+kernels, organized by family (<code>activation</code>, <code>conv</code>, <code>linalg</code>, <code>norm</code>, ...).
+Each family directory matches a module under <code>aie.iron.kernels</code>. One source
+serves AIE2 and AIE2P. Where the two architectures need different code, the
+family holds <code>X_aie2.h</code> and <code>X_aie2p.h</code> and a small <code>X.cc</code> that includes the
+right one. Helpers shared across families live in <code>common/</code>.</p>
 <p>See the <a href="https://github.com/Xilinx/mlir-aie/tree/main/aie_kernels"><code>aie_kernels</code> README</a> for the full per-kernel
 catalog (name, coding style, purpose, datatypes).</p>
 <h2 id="how-they-are-written">How they are written<a class="headerlink" href="#how-they-are-written" title="Permanent link">&para;</a></h2>
@@ -3700,7 +3708,7 @@ catalog (name, coding style, purpose, datatypes).</p>
 <li><strong>Low-level intrinsics</strong> — architecture-specific intrinsics used directly
   when the AIE API does not expose a needed operation.</li>
 <li><strong>Plain C</strong> — scalar code with no vectorization, portable across
-  generations (the <code>generic</code> kernels).</li>
+  generations.</li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;aie_api/aie.hpp&gt;</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>

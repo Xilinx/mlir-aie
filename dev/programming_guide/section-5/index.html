@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/programming_guide/section-5/">
       
       
-        <link rel="prev" href="../section-4/section-4c/">
+        <link rel="prev" href="../section-4/section-4d/">
       
       
         <link rel="next" href="../section-6/">
@@ -1850,6 +1850,8 @@
       
         
       
+        
+      
     
     
     
@@ -1978,6 +1980,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -3700,7 +3730,7 @@
 <h4 id="passthrough">Passthrough<a class="headerlink" href="#passthrough" title="Permanent link">&para;</a></h4>
 <p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/passthrough_kernel">passthrough</a> example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only two important source files here.
 1. <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/passthrough_kernel/passthrough_kernel.py"><code>passthrough_kernel.py</code></a> The IRON structural design plus the host-side test driver. Decorated with <code>@iron.jit</code> so the first call compiles the design and runs it on the NPU, then verifies the result against the input. Also shows a simple use of the ObjectFifos described in <a href="../section-2">section 2</a>.
-1. <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/generic/passThrough.cc"><code>passThrough.cc</code></a>  This is a C++ file which performs the vectorized copy operation.</p>
+1. <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/eltwise/passThrough.cc"><code>passThrough.cc</code></a>  This is a C++ file which performs the vectorized copy operation.</p>
 <p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/passthrough_dmas">passthrough DMAs</a> example shows an alternate method of performing a copy without involving the cores, and instead performing a loopback.</p>
 <h2 id="basic">Basic<a class="headerlink" href="#basic" title="Permanent link">&para;</a></h2>
 <table>
@@ -3882,7 +3912,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../section-4/section-4c/" class="md-footer__link md-footer__link--prev" aria-label="Previous: 4c: Vectorization">
+          <a href="../section-4/section-4d/" class="md-footer__link md-footer__link--prev" aria-label="Previous: 4d: Kernel Optimization">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3892,7 +3922,7 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                4c: Vectorization
+                4d: Kernel Optimization
               </div>
             </div>
           </a>

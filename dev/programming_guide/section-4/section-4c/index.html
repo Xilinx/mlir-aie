@@ -18,7 +18,7 @@
         <link rel="prev" href="../section-4b/">
       
       
-        <link rel="next" href="../../section-5/">
+        <link rel="next" href="../section-4d/">
       
       
         
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#section-4c---kernel-vectorization-and-optimization" class="md-skip">
+        <a href="#section-4c---kernel-vectorization" class="md-skip">
           Skip to content
         </a>
       
@@ -1852,6 +1852,8 @@
       
         
       
+        
+      
     
     
     
@@ -2032,6 +2034,28 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#before-you-start-make-sure-your-edits-are-compiled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start: make sure your edits are compiled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-scalar-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The scalar kernel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#aie-api" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2047,7 +2071,7 @@
   <a href="#vector-registers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Vector Registers
+        Vector registers
       
     </span>
   </a>
@@ -2058,7 +2082,7 @@
   <a href="#vector-load" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Vector Load
+        Vector load
       
     </span>
   </a>
@@ -2069,7 +2093,7 @@
   <a href="#vector-multiply-and-store" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Vector Multiply and Store
+        Vector multiply and store
       
     </span>
   </a>
@@ -2104,15 +2128,87 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#optimization---coding-for-the-architecture" class="md-nav__link">
+  <a href="#how-the-compiler-schedules-a-loop" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Optimization - Coding for the Architecture
+        How the Compiler Schedules a Loop
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Optimization - Coding for the Architecture">
+    <nav class="md-nav" aria-label="How the Compiler Schedules a Loop">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reading-the-schedule-static-remarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the schedule: static remarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reading-the-schedule-disassembly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the schedule: disassembly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schedule-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trip-counts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trip Counts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trip-count-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trip Count Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coding-for-the-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coding for the Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Coding for the Architecture">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2160,6 +2256,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#aie2-and-aie2p-differences-that-change-this-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIE2 and AIE2P differences that change this example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#multiplier-utilization-efficiency" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2186,7 +2293,7 @@
   <a href="#load-store-bandwidth-efficiency" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Load/ Store Bandwidth efficiency
+        Load/ Store bandwidth efficiency
       
     </span>
   </a>
@@ -2194,21 +2301,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#data-routing-efficiency" class="md-nav__link">
+  <a href="#data-movement-efficiency" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Data routing efficiency
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#hardware-efficiency-summary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hardware efficiency summary
+        Data movement efficiency
       
     </span>
   </a>
@@ -2226,10 +2322,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#optimization-exercises---part-1" class="md-nav__link">
+  <a href="#optimization-exercises" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Optimization Exercises - Part 1
+        Optimization Exercises
       
     </span>
   </a>
@@ -2237,21 +2333,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#diving-deep---examining-the-microcode" class="md-nav__link">
+  <a href="#loop-pragma-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Diving Deep - Examining the Microcode
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#optimization-exercises---part-2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Optimization Exercises - Part 2
+        Loop Pragma Reference
       
     </span>
   </a>
@@ -2262,6 +2347,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3727,6 +3840,28 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#before-you-start-make-sure-your-edits-are-compiled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start: make sure your edits are compiled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-scalar-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The scalar kernel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#aie-api" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3742,7 +3877,7 @@
   <a href="#vector-registers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Vector Registers
+        Vector registers
       
     </span>
   </a>
@@ -3753,7 +3888,7 @@
   <a href="#vector-load" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Vector Load
+        Vector load
       
     </span>
   </a>
@@ -3764,7 +3899,7 @@
   <a href="#vector-multiply-and-store" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Vector Multiply and Store
+        Vector multiply and store
       
     </span>
   </a>
@@ -3799,15 +3934,87 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#optimization---coding-for-the-architecture" class="md-nav__link">
+  <a href="#how-the-compiler-schedules-a-loop" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Optimization - Coding for the Architecture
+        How the Compiler Schedules a Loop
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Optimization - Coding for the Architecture">
+    <nav class="md-nav" aria-label="How the Compiler Schedules a Loop">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reading-the-schedule-static-remarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the schedule: static remarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reading-the-schedule-disassembly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the schedule: disassembly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schedule-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trip-counts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trip Counts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trip-count-exercises" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trip Count Exercises
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coding-for-the-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coding for the Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Coding for the Architecture">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3855,6 +4062,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#aie2-and-aie2p-differences-that-change-this-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AIE2 and AIE2P differences that change this example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#multiplier-utilization-efficiency" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3881,7 +4099,7 @@
   <a href="#load-store-bandwidth-efficiency" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Load/ Store Bandwidth efficiency
+        Load/ Store bandwidth efficiency
       
     </span>
   </a>
@@ -3889,21 +4107,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#data-routing-efficiency" class="md-nav__link">
+  <a href="#data-movement-efficiency" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Data routing efficiency
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#hardware-efficiency-summary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hardware efficiency summary
+        Data movement efficiency
       
     </span>
   </a>
@@ -3921,10 +4128,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#optimization-exercises---part-1" class="md-nav__link">
+  <a href="#optimization-exercises" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Optimization Exercises - Part 1
+        Optimization Exercises
       
     </span>
   </a>
@@ -3932,21 +4139,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#diving-deep---examining-the-microcode" class="md-nav__link">
+  <a href="#loop-pragma-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Diving Deep - Examining the Microcode
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#optimization-exercises---part-2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Optimization Exercises - Part 2
+        Loop Pragma Reference
       
     </span>
   </a>
@@ -4046,46 +4242,60 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-<h1 id="section-4c---kernel-vectorization-and-optimization">Section 4c - Kernel Vectorization and Optimization<a class="headerlink" href="#section-4c---kernel-vectorization-and-optimization" title="Permanent link">&para;</a></h1>
+<h1 id="section-4c---kernel-vectorization">Section 4c - Kernel Vectorization<a class="headerlink" href="#section-4c---kernel-vectorization" title="Permanent link">&para;</a></h1>
 <ul>
 <li><a href="../../section-4">Section 4 - Performance Measurement &amp; Vector Programming</a><ul>
 <li><a href="../section-4a">Section 4a - Timers</a></li>
 <li><a href="../section-4b">Section 4b - Trace</a></li>
-<li>Section 4c - Kernel Vectorization and Optimization</li>
+<li>Section 4c - Kernel Vectorization</li>
+<li><a href="../section-4d">Section 4d - Measure-First Kernel Optimization</a></li>
 </ul>
 </li>
 </ul>
 <hr />
-<p>Now that we are able to measure the total application time (<a href="../section-4a/">section-4a</a>) and have seen how we can look at kernel performance via tracing (<a href="../section-4b">section-4b</a>), we will take a closer look at kernel vectorization and compare performance using trace. We will now switch to using the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/vector_scalar_mul">vector-scalar multiply example</a> rather than a local copy of that same design to illustrate kernel vectorization concepts. Note that by default, that example design is working with 16-bit data (vs 32-bit in our previous section-4 examples) and has <code>vectorized=True</code>.</p>
-<p>Go ahead and read the design example summary for <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/vector_scalar_mul">vector-scalar multiply</a> first to get an idea of the different components of this example design. Then, let's take a closer look at the kernel source file (<a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie2/scale.cc">scale.cc</a>).</p>
-<p>In <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie2/scale.cc">scale.cc</a>, we see that the scalar code is relatively straight forward and similar to the scalar code we used in <a href="../section-4b">section-4b</a>:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">scale_scalar</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">factor</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">N</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="n">event0</span><span class="p">();</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">N</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">factor</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="n">event1</span><span class="p">();</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
-</code></pre></div></p>
-<p>Here, the code iterates over the input vector (<code>a</code>) and multiplies each element from the vector with a scalar value (<code>factor</code>) before storing the results in output vector (<code>c</code>). The simple C/C++ code for this consists of a for-loop, with a simple read and scalar multiply operation inside the loop.</p>
-<h3 id="aie-api"><u>AIE API</u><a class="headerlink" href="#aie-api" title="Permanent link">&para;</a></h3>
-<p>To vectorize this, we first need to familiarize ourselves with the AIE API which abstracts the underlying AIE processor and associated low-level intrinsics with a higher level C++ API. Documentation for AIE API (2023.2 Vitis tools) can be found <a href="https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__arithmetic.html#gafdca71673bdae6c6642b88dab9aee1fe">here</a>. To view details on the vector x scalar multiplier, on the left pane, navigate to <em>AI Engine API User Guide -&gt; API Reference -&gt; Arithmetic</em> and select the first <code>aie::mul</code> which shows a <code>Vec * E</code> where <code>E</code> is an elementary data type like a scalar int.</p>
-<p>To be able to use this AIE API function in our kernel code, we first need to include the AIE API headers in our kernel source.
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;aie_api/aie.hpp&gt;</span>
-</code></pre></div></p>
-<h4 id="vector-registers"><u>Vector Registers</u><a class="headerlink" href="#vector-registers" title="Permanent link">&para;</a></h4>
-<p>Then, we declare a vector as follows:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">my_vector</span>
+<p>In <a href="../section-4a">section-4a</a> we timed a whole application, and in <a href="../section-4b">section-4b</a> we used trace to count the cycles a kernel spends between <code>event0()</code> and <code>event1()</code>. This section uses those cycle counts to look at a kernel from the inside: how the scalar version turns into vector code, how the compiler schedules the vector loop, and how close that schedule gets to what the hardware can do.</p>
+<p>We switch from the local copy in section-4b to the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/vector_scalar_mul">vector-scalar multiply example</a>. By default it works on 16-bit data and uses the vectorized kernel. Read the example's summary first, then open its kernel source, <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/eltwise/scale.cc">scale.cc</a>. The same <code>scale.cc</code> is compiled for both AIE2 (npu1, Phoenix/Hawk Point) and AIE2P (npu2, Strix-class) devices.</p>
+<p>Unless a number says otherwise, the cycle counts in this section were measured on an npu2 (AIE2P) device with the default compiler, Peano (llvm-aie). Where the proprietary Chess compiler behaves differently, both numbers are shown. Each kernel call processes 1024 elements. Your counts may be off by a cycle or two, and will move more with a different compiler version.</p>
+<h3 id="before-you-start-make-sure-your-edits-are-compiled"><u>Before you start: make sure your edits are compiled</u><a class="headerlink" href="#before-you-start-make-sure-your-edits-are-compiled" title="Permanent link">&para;</a></h3>
+<p>The exercises below ask you to edit <code>scale.cc</code> and to switch the design between its scalar and vector kernels. Three settings control what actually gets built:</p>
+<ul>
+<li><strong>Which <code>aie_kernels/</code> is compiled.</strong> The kernel library compiles the <em>installed</em> copy of <code>aie_kernels/</code> (inside the wheel or the install tree), not the file in your clone. To compile the clone's sources instead, point <code>MLIR_AIE_KERNEL_SOURCES</code> at the checkout before you run <code>make</code> (see <a href="../../iron_configuration/#kernel-sources-mlir_aie_kernel_sources">Kernel sources</a>):
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">MLIR_AIE_KERNEL_SOURCES</span><span class="o">=</span>&lt;mlir-aie&gt;
 </code></pre></div>
-* T - data type, such as <code>int16_t</code>
-* vec_factor - vectorization factor or vector size, such as 32</p>
-<p>The size of the vector depends on the type. For example, the standard vector register in AIE2 is <strong>512 bits</strong>. For <code>int16_t</code>, that means we can store 32 of them in 1x 512b vector register. Extending this to the other supported data types, we have the following abbreviated table:</p>
+    Without it, edits to <code>&lt;mlir-aie&gt;/aie_kernels/eltwise/scale.cc</code> are silently ignored. The kernel's source bytes are part of the build cache key, so an edited kernel is always recompiled.</li>
+<li><strong>Scalar or vector.</strong> <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py">vector_scalar_mul.py</a> takes <code>vectorized: CompileTime[bool] = True</code>. There is no command-line flag for it: edit the default to <code>False</code> to build the scalar kernel.</li>
+<li><strong>Data type and compiler.</strong> <code>make int_bit_width=32 trace</code> builds the 32-bit version (the default is 16). <code>make CHESS=true trace</code> compiles the kernel with Chess instead of Peano, if you have the AIE tools installed.</li>
+</ul>
+<p>Run <code>make clean</code> between configurations.</p>
+<h3 id="the-scalar-kernel"><u>The scalar kernel</u><a class="headerlink" href="#the-scalar-kernel" title="Permanent link">&para;</a></h3>
+<p>The scalar code in <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/eltwise/scale.cc">scale.cc</a> is close to the code we traced in section-4b:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">scale_scalar</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">factor</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">N</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="n">event0</span><span class="p">();</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">SCALE_ELEMS</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">factor</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">a</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="n">event1</span><span class="p">();</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>The loop reads each element of <code>a</code>, multiplies it by the scalar <code>factor</code>, and stores it to <code>c</code>. <code>SCALE_ELEMS</code> is a macro: the kernel library passes <code>-DSCALE_ELEMS=&lt;tile_size&gt;</code> when it compiles the kernel, so the trip count is a compile-time constant (1024 here). The <code>N</code> argument is still passed at runtime, and if <code>SCALE_ELEMS</code> is not defined, the loop falls back to <code>N</code>. We come back to why this matters in <a href="#trip-counts">Trip counts</a>.</p>
+<h3 id="aie-api"><u>AIE API</u><a class="headerlink" href="#aie-api" title="Permanent link">&para;</a></h3>
+<p>To vectorize this loop we use the AIE API, a header-only C++ library that wraps the processor's low-level intrinsics in portable types and operations. The same source then compiles to efficient instructions for each AIE generation. The <a href="https://xilinx.github.io/aie_api/topics.html">AIE API documentation</a> covers every type and operation, with per-architecture tables. The vector-times-scalar multiply we need is the <code>aie::mul</code> overload taking a vector and a scalar, under <a href="https://xilinx.github.io/aie_api/group__group__arithmetic.html">Arithmetic</a>.</p>
+<p>Include the API header in the kernel source:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;aie_api/aie.hpp&gt;</span>
+</code></pre></div></p>
+<h4 id="vector-registers"><u>Vector registers</u><a class="headerlink" href="#vector-registers" title="Permanent link">&para;</a></h4>
+<p>A vector is declared as:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">my_vector</span>
+</code></pre></div>
+* <code>T</code> - the element type, such as <code>int16_t</code>
+* <code>vec_factor</code> - the number of elements, such as 32</p>
+<p>A native vector register is <strong>512 bits</strong> on both AIE2 and AIE2P, so it holds 32 <code>int16_t</code> values:</p>
 <table>
 <thead>
 <tr>
 <th>Data type</th>
-<th>Vector size</th>
+<th>Elements in 512 bits</th>
 </tr>
 </thead>
 <tbody>
@@ -4107,76 +4317,54 @@
 </tr>
 </tbody>
 </table>
-<p>A more complete table of supported vectors can be found in the AIE API User Guide <a href="https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html">here</a>. Note that if the listed data types * vector size ends up being larger than 512-bits, that just means it's stored in 2+ vector registers instead of just one.</p>
-<h4 id="vector-load"><u>Vector Load</u><a class="headerlink" href="#vector-load" title="Permanent link">&para;</a></h4>
-<p>We can load the vector register from local L1 memory with the <code>aie::load_v</code> function, defined as follows:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="w">      </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pA1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">A0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pA1</span><span class="p">);</span>
+<p>The full table of supported vectors is in the AIE API <a href="https://xilinx.github.io/aie_api/group__group__basic__types.html">basic types</a> page. A vector wider than 512 bits is legal; it is simply held in two or more registers.</p>
+<h4 id="vector-load"><u>Vector load</u><a class="headerlink" href="#vector-load" title="Permanent link">&para;</a></h4>
+<p><code>aie::load_v</code> loads a vector register from local L1 memory:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="w">      </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pA1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">A0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pA1</span><span class="p">);</span>
 </code></pre></div>
-Here, we use <code>__restict</code> to qualify the pointer to indicate that it's a restricted pointer which says that the pointer is the only thing that accesses the underlying object. It eliminates the potential for pointer aliasing, enabling better optimization by the compiler.</p>
-<p>The vector load has a template argument <code>vec_factor</code> to match the one used in the <code>aie::vector</code> declaration.</p>
-<h4 id="vector-multiply-and-store"><u>Vector Multiply and Store</u><a class="headerlink" href="#vector-multiply-and-store" title="Permanent link">&para;</a></h4>
-<p>Finally, we get to the <code>aie::mul</code> call which takes a vector and a scalar as arguments and stores the result in an accumulator register designated by:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">accum</span><span class="o">&lt;</span><span class="n">acc32</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cout</span>
+<code>__restrict</code> promises the compiler that <code>pA1</code> is the only pointer used to access this buffer. Without it, the compiler must assume that a store through the output pointer could change the input, and it cannot overlap one iteration's loads with the previous iteration's stores. The template argument <code>vec_factor</code> matches the one in the vector declaration.</p>
+<h4 id="vector-multiply-and-store"><u>Vector multiply and store</u><a class="headerlink" href="#vector-multiply-and-store" title="Permanent link">&para;</a></h4>
+<p><code>aie::mul</code> takes a vector and a scalar and returns its products in an accumulator register:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">accum</span><span class="o">&lt;</span><span class="n">acc32</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cout</span>
 </code></pre></div>
-The accumulator data type in this case is 32x 32-bit accumulator. We store the computed results from the accumulator back to local memory using the vector store function <code>aie::store_v</code>. Note that multiplication or addition with input arguments of <code>int32_t</code> datatypes will require a larger 64-bit accumulator (<code>acc64</code>) which only has 16 output lanes instead of 32.
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="w">      </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pC1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">store_v</span><span class="p">(</span><span class="n">pC1</span><span class="p">,</span><span class="w"> </span><span class="n">cout</span><span class="p">.</span><span class="k">template</span><span class="w"> </span><span class="n">to_vector</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+Accumulators are wider than the vector registers so that sums of products keep their precision. <code>acc32</code> holds 32-bit lanes. Multiplying two <code>int32_t</code> values needs a 64-bit accumulator (<code>acc64</code>), and a 512-bit register then only holds 16 lanes.</p>
+<p>The result goes back to memory with <code>aie::store_v</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="w">      </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pC1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">      </span><span class="n">aie</span><span class="o">::</span><span class="n">store_v</span><span class="p">(</span><span class="n">pC1</span><span class="p">,</span><span class="w"> </span><span class="n">cout</span><span class="p">.</span><span class="k">template</span><span class="w"> </span><span class="n">to_vector</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
 </code></pre></div>
-Here, the accumulator type can be shift-round-saturated back to a vector register with the <code>.template to_vector&lt;T&gt;(0)</code> call where <code>T</code> is the vector register type and the single integer argument <code>(0)</code> is the shift amount.</p>
-<p>The entire vector block is then:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">scale_vectorized</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">factor</span><span class="p">,</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">                      </span><span class="k">const</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">N</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="n">event0</span><span class="p">();</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">vec_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">;</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pA1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pC1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">F</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">N</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="n">fac</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">factor</span><span class="p">;</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">  </span><span class="n">AIE_PREPARE_FOR_PIPELINING</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">  </span><span class="nf">AIE_LOOP_MIN_ITERATION_COUNT</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">F</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">A0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pA1</span><span class="p">);</span>
-<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">    </span><span class="n">pA1</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
-<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">accum</span><span class="o">&lt;</span><span class="n">acc32</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">mul</span><span class="p">(</span><span class="n">A0</span><span class="p">,</span><span class="w"> </span><span class="n">fac</span><span class="p">);</span>
-<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">store_v</span><span class="p">(</span><span class="n">pC1</span><span class="p">,</span><span class="w"> </span><span class="n">cout</span><span class="p">.</span><span class="k">template</span><span class="w"> </span><span class="n">to_vector</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">    </span><span class="n">pC1</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
-<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">  </span><span class="n">event1</span><span class="p">();</span>
-<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="p">}</span>
-</code></pre></div></p>
-<p>Note that multiplication with <code>int32_t</code> inputs requires a larger 64-bit accumulator (<code>acc64</code>) which only has 16 output lanes. The <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie2/scale.cc">scale.cc</a> source file includes a template specialization for this case:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;&gt;</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">scale_vectorized</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;</span><span class="p">(</span><span class="kt">int32_t</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">c</span><span class="p">,</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">                               </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">factor</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">N</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<code>.template to_vector&lt;T&gt;(shift)</code> converts the accumulator back to a vector of <code>T</code>. On the way it shifts right by <code>shift</code> bits, rounds, and saturates (SRS). The rounding follows the core's rounding-mode register (<code>aie::set_rounding</code>).</p>
+<p>The whole vector kernel is then:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">scale_vectorized</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">c</span><span class="p">,</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">factor</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">                      </span><span class="k">const</span><span class="w"> </span><span class="kt">int32_t</span><span class="w"> </span><span class="n">N</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="n">event0</span><span class="p">();</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">vec_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">16</span><span class="p">;</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span><span class="kt">int32_t</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pA1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span><span class="kt">int32_t</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pC1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">F</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">N</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">  </span><span class="n">AIE_PREPARE_FOR_PIPELINING</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">  </span><span class="nf">AIE_LOOP_MIN_ITERATION_COUNT</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">vec_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">;</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pA1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="p">;</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">pC1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">F</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SCALE_ELEMS</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span><span class="n">T</span><span class="w"> </span><span class="n">fac</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">factor</span><span class="p">;</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">  </span><span class="n">AIE_PREPARE_FOR_PIPELINING</span>
 <a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">F</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">A0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pA1</span><span class="p">);</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">A0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pA1</span><span class="p">);</span>
 <a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">    </span><span class="n">pA1</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
-<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">accum</span><span class="o">&lt;</span><span class="n">acc64</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">mul</span><span class="p">(</span><span class="n">A0</span><span class="p">,</span><span class="w"> </span><span class="n">factor</span><span class="p">);</span>
-<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">store_v</span><span class="p">(</span><span class="n">pC1</span><span class="p">,</span><span class="w"> </span><span class="n">cout</span><span class="p">.</span><span class="k">template</span><span class="w"> </span><span class="n">to_vector</span><span class="o">&lt;</span><span class="kt">int32_t</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">accum</span><span class="o">&lt;</span><span class="n">acc32</span><span class="p">,</span><span class="w"> </span><span class="n">vec_factor</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">mul</span><span class="p">(</span><span class="n">A0</span><span class="p">,</span><span class="w"> </span><span class="n">fac</span><span class="p">);</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">    </span><span class="n">aie</span><span class="o">::</span><span class="n">store_v</span><span class="p">(</span><span class="n">pC1</span><span class="p">,</span><span class="w"> </span><span class="n">cout</span><span class="p">.</span><span class="k">template</span><span class="w"> </span><span class="n">to_vector</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
 <a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">    </span><span class="n">pC1</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">vec_factor</span><span class="p">;</span>
 <a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">  </span><span class="p">}</span>
 <a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="w">  </span><span class="n">event1</span><span class="p">();</span>
 <a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="p">}</span>
 </code></pre></div></p>
-<p>In this example, the vectorization strategy was relatively straight forward. Instead of iterating over a vector of values and doing a single scalar multiply, we load a vector of input values, iterate over a smaller loop (divided by the vectorization factor) to perform a vector*scalar operation using the AIE API functions, and then store the vector of results back to local memory.</p>
+<p><a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/eltwise/scale.cc">scale.cc</a> also has a specialization for <code>int32_t</code>. It is the same loop with <code>vec_factor = 16</code> and an <code>acc64</code> accumulator.</p>
+<p>Instead of one multiply per element, each iteration now loads 32 elements, multiplies them in one vector operation, and stores 32 results, so the loop runs <code>SCALE_ELEMS / 32</code> times. <code>AIE_PREPARE_FOR_PIPELINING</code> is a loop pragma from <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a>. What it does depends on the compiler, as we will see below.</p>
 <blockquote>
-<p><strong>NOTE</strong> - AIE API is a portable programming interface that is implemented as a C++ header-only library providing types and operations that get translated into generation specific efficient low-level intrinsics. AIE kernels can also be programmed directly in these low-level C++ intrinsics: <a href="https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html">AIE1 Intrinsics User Guide - v2023.2</a> and <a href="https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/index.html">AIE2 Intrinsics User Guide - v2023.2</a></p>
+<p><strong>NOTE</strong> - AIE kernels can also be written directly with the low-level intrinsics that the AIE API is built on. Intrinsics are specific to one AIE generation, while the AIE API is portable across them.</p>
 </blockquote>
 <h3 id="aie-api-quick-reference"><u>AIE API quick reference</u><a class="headerlink" href="#aie-api-quick-reference" title="Permanent link">&para;</a></h3>
-<p>The core AIE API vector operations used throughout kernel code:</p>
+<p>The operations used most often in kernel code:</p>
 <table>
 <thead>
 <tr>
@@ -4188,256 +4376,433 @@ Here, the accumulator type can be shift-round-saturated back to a vector registe
 <tbody>
 <tr>
 <td><code>aie::vector&lt;T, N&gt; v</code></td>
-<td>Declare a vector of <code>N</code> elements of type <code>T</code>.</td>
+<td>A vector of <code>N</code> elements of type <code>T</code>.</td>
 <td><code>aie::vector&lt;int16_t, 32&gt; v;</code></td>
 </tr>
 <tr>
 <td><code>aie::load_v&lt;N&gt;(ptr)</code></td>
-<td>Load <code>N</code> contiguous elements into a vector register.</td>
+<td>Load <code>N</code> contiguous elements into a vector.</td>
 <td><code>auto a = aie::load_v&lt;32&gt;(pA);</code></td>
 </tr>
 <tr>
 <td><code>aie::store_v(ptr, v)</code></td>
-<td>Store a vector register back to local memory.</td>
-<td><code>aie::store_v(pC, cout);</code></td>
+<td>Store a vector to local memory.</td>
+<td><code>aie::store_v(pC, v);</code></td>
 </tr>
 <tr>
 <td><code>aie::mul(a, b)</code> / <code>aie::mac(acc, a, b)</code></td>
-<td>Vector multiply / multiply-accumulate.</td>
-<td><code>auto acc = aie::mul(a, b);</code></td>
+<td>Vector multiply / multiply-accumulate into an accumulator. <code>b</code> may be a vector or a scalar.</td>
+<td><code>auto acc = aie::mul(a, fac);</code></td>
+</tr>
+<tr>
+<td><code>aie::accum&lt;AccT, N&gt; acc</code></td>
+<td>An accumulator of <code>N</code> lanes, such as <code>acc32</code>, <code>acc64</code> or <code>accfloat</code>.</td>
+<td><code>aie::accum&lt;acc32, 32&gt; acc;</code></td>
+</tr>
+<tr>
+<td><code>acc.to_vector&lt;T&gt;(shift)</code></td>
+<td>Shift, round and saturate an accumulator back to a vector.</td>
+<td><code>auto v = acc.to_vector&lt;int16_t&gt;(0);</code></td>
+</tr>
+<tr>
+<td><code>aie::begin_restrict_vector&lt;N&gt;(ptr)</code></td>
+<td>A vector iterator over a non-aliased buffer. <code>*it++</code> loads or stores one vector and advances.</td>
+<td><code>auto pC = aie::begin_restrict_vector&lt;32&gt;(c);</code></td>
+</tr>
+<tr>
+<td><code>aie::reduce_add(v)</code></td>
+<td>Sum the lanes of a vector to one scalar.</td>
+<td><code>int32_t s = aie::reduce_add(v);</code></td>
+</tr>
+<tr>
+<td><code>aie::max(a, b)</code> / <code>aie::inv(v)</code></td>
+<td>Lane-wise maximum; lane-wise reciprocal.</td>
+<td><code>auto r = aie::inv(v);</code></td>
 </tr>
 </tbody>
 </table>
-<p>For the full type-and-vector-size table, see the <a href="https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html">AIE API User Guide</a>.</p>
 <h2 id="vectorization-exercises"><u>Vectorization Exercises</u><a class="headerlink" href="#vectorization-exercises" title="Permanent link">&para;</a></h2>
 <ol>
 <li>
-<p>Let's take a look at the trace for our vector scalar design. First, let's edit our <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/vector_scalar_mul">vector_scalar_mul design</a> so that the <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py">vector_scalar_mul.py</a> source file has <code>vectorized=False</code>. In the <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py">vector_scalar_mul.py</a> source code, we now have selected the scalar version of the kernel function. We're also going to build the 32-bit integer version of the design by passing the environment variables <code>int_bit_width=32</code> to our <code>makefile</code> command, by running  <code>make int_bit_width=32 trace</code>. This makefile argument is defined in our makefile to customize datatypes and buffer sizes in our design code (<code>vector_scalar_mul.py</code>) and our host code (<code>test.cpp</code>). After the trace compilation is complete, open <code>trace_vector_scalar_mul.json</code> in https://ui.perfetto.dev and measure the delta between <code>event 0</code> and <code>event 1</code>. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure?
+<p>Let's trace the scalar kernel first. Set <code>vectorized: CompileTime[bool] = False</code> in <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py">vector_scalar_mul.py</a> and build the 32-bit version of the design with <code>make clean; make int_bit_width=32 trace</code>. The <code>int_bit_width</code> argument sets the data type and buffer sizes in both the design (<code>vector_scalar_mul.py</code>) and the host code (<code>test.cpp</code>). Open <code>trace_vector_scalar_mul.json</code> in https://ui.perfetto.dev and measure the time between <code>event 0</code> and <code>event 1</code>. In the Perfetto waveform, 1 us is one clock cycle. How many cycles did you measure?
     <details markdown="1"><summary>Show answer</summary>
-    ~12,297 cycles
+    10761 cycles with Peano (10245 with Chess). That is about 10.5 cycles per element.
     </details></p>
-<p>You may notice that in our <code>vector_scalar_mul</code> example, we call <code>python/utils/trace/get_trace_summary.py</code> to analyze the generated json file and measure the delta between <code>event 0</code> and <code>event 1</code> automatically, providing the number of kernel invocations, and the first/ min/ avg/ max number of cycles. This is a handy utility for summarizing kernel performance for single core designs.</p>
+<p>The <code>trace</code> target also runs <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/trace/get_trace_summary.py">get_trace_summary.py</a>, which pairs every <code>event 0</code> with the next <code>event 1</code> and prints the number of kernel invocations and the first/min/avg/max cycles. It is a handy summary for single-core designs like this one. <a href="../section-4d#cycles-you-can-trust">Section 4d</a> covers what it can and cannot tell you in larger designs.</p>
 </li>
 <li>
-<p>Now let's turn vectorization back on by changing <code>vectorized=True</code>. But we're also going to disable any pragma guided optimization first to see its effect. In the <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie2/scale.cc">scale.cc</a>, comment out the lines before the <code>for loop</code> that says <code>AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)</code>. <strong>NOTE</strong> Be sure to edit both the general template and the <code>int32_t</code> template specialization as we will be testing that case next. Then rerun the compilation (<code>make clean; make int_bit_width=32 trace</code>). Measure the delta between <code>event 0</code> and <code>event 1</code> again. What value do you see now?
+<p>Now set <code>vectorized</code> back to <code>True</code> and rebuild the 32-bit version (<code>make clean; make int_bit_width=32 trace</code>). How many cycles now?
     <details markdown="1"><summary>Show answer</summary>
-    ~1490 cycles
+    338 cycles with Peano (336 with Chess), about 32x faster than the scalar kernel.
     </details></p>
-<p>That's quite an improvement, ~8X reduction in compute latency. However, there's more optimization that can be had with vector code and that involves optimization pragmas.</p>
 </li>
 <li>
-<p>Go back to <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie2/scale.cc">scale.cc</a> and uncomment the lines with <code>AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)</code> to enable those pragmas. Then rerun the compilation (<code>make clean; make int_bit_width=32 trace</code>). Measure the delta between <code>event 0</code> and <code>event 1</code> again. What value do you see now?
+<p>Finally, build the default 16-bit version (<code>make clean; make trace</code>). How many cycles now, and why is it faster than the 32-bit vector kernel?
     <details markdown="1"><summary>Show answer</summary>
-    339 cycles
+    46 cycles with Peano (44 with Chess). The 16-bit scalar kernel takes the same 10761 cycles as the 32-bit one, so this is about 234x faster than scalar. Two things help. Each iteration handles 32 elements instead of 16, so there are half as many iterations. And a 16-bit multiply is a single native vector instruction, while a 32-bit multiply is built from several 16-bit partial products, which we will see in the disassembly below.
     </details></p>
-<p>Now, we're really seeing some savings (another factor ~4X savings or ~36X compared to the scalar version). The line we added helps guide the compiler to find optimal schedules. For kernel loops, <code>AIE_PREPARE_FOR_PIPELINING</code> and <code>AIE_LOOP_MIN_ITERATION_COUNT(16)</code> are particularly useful:
-* <code>AIE_PREPARE_FOR_PIPELINING</code> - Used in the innermost loop to tell the compiler to enable software pipelining. This is needed to enable subsequent loop optimization pragmas.
-* <code>AIE_LOOP_MIN_ITERATION_COUNT(MIN)</code> - An extremely helpful pragma. This tells the compiler the minimum iterations we expect this loop to have. If we want to specify both minimum and maximum iterations, we can used <code>, AIE_LOOP_RANGE(MIN,MAX)</code>. We often parameterize loop bounds based on size and even if the loop size is declared as a const, it's still a runtime computed value. Giving the MIN value in this pragma is particular helpful because it guides the scheduler to know how many iterations we have and can therefore properly schedule the loop instructions for that number rather than the worse case of 1.</p>
-</li>
-<li>
-<p>Finally, we're going to rerun the compilation on a 16-bit integer version of our design with vectorization still turned on our optimization pragmas enabled for our kernel code. This is the default configuration of the <code>vector_scalar_mul</code> design (<code>make clean; make trace</code>). Measure the delta between <code>event 0</code> and <code>event 1</code> again. What value do you now see?
-    <details markdown="1"><summary>Show answer</summary>
-    78 cycles
-    </details></p>
-<p>We see another 4X factor as we are able to process twice as much data per iteration as well as requiring less vector multiplies per iteration giving us a total improvement of ~157X from the scalar version.</p>
 </li>
 </ol>
-<h2 id="optimization---coding-for-the-architecture">Optimization - Coding for the Architecture<a class="headerlink" href="#optimization---coding-for-the-architecture" title="Permanent link">&para;</a></h2>
-<p>At this point, we've vectorized our code to better leverage the AIE hardware and saw significant performance gains, but is our design fully optimized? How do we know if we've used the powerful AIE hardware to its full potential? This requires a deeper understanding of the underlying AIE architecture and coding for performance with the hardware in mind. For this next section, we will focus on <strong>AIE2</strong> (aka AIE-ML) that's at the heart of the Ryzen™ AI NPU. AIE2 is optimized for ML workloads which means multiply-accumulate operations like matrix multiplication style compute would leverage the hardware the best. We will also start our exploration by continuing with the vector-scalar multiply example. While it does not expose a sufficient amount of compute to exploit every optimization, it still provides a good starting point in understanding what design considerations are needed to code optimal designs.</p>
-<h3 id="the-vector-unit---loads">The Vector Unit - Loads<a class="headerlink" href="#the-vector-unit---loads" title="Permanent link">&para;</a></h3>
-<p>The first step in optimizing our code even further is to have a picture of the AIE Vector Unit which can be found in the <a href="https://docs.amd.com/r/en-US/am020-versal-aie-ml/Fixed-Point-Vector-Unit">AIE-ML architecture manual (am020)</a>. Below is a diagram of the vector unit from the manual.</p>
-<p><img src="../../assets/aie-ml_vector_unit.png" title="AIE-ML Vector Unit." height=450></p>
-<p>As we can see, vector registers are loaded from 2 parallel Load Units, each capable of loading 256 bits per clock cycle from local L1 memory. We have 12 512-bit vector registers which feed into each Permute block and eventually, the Multiplier block. It is important then to always think in terms of 2x 256-bit parallel loads per clock cycle. If, for example, you try to load 2048-bits of data per clock in order to do your compute, it would be less efficient as that would require multiple cycles. Another important note is that the loads must come from different L1 memory banks or else a bank conflict will occur. The bank conflict penalty is 1 cycle but would reduce optimal performance.</p>
-<h3 id="the-vector-unit---multiply-and-add-mac">The Vector Unit - Multiply and Add (MAC)<a class="headerlink" href="#the-vector-unit---multiply-and-add-mac" title="Permanent link">&para;</a></h3>
-<p>Once data is loaded and permuted, it passes to the Multiplier block which supports a wide list of AIE data types. The multiply results then pass through an optional post-add step (very common for matrix multiply) before eventually being stored in the accumulator registers. There are 9x 512-bit accumulator registers. Accumulator registers are larger so data precision can be maintained. A well optimized piece of code would strive to schedule 1 vector MAC (VMAC) every cycle.</p>
-<h3 id="the-vector-unit---srs-and-stores">The Vector Unit - SRS and Stores<a class="headerlink" href="#the-vector-unit---srs-and-stores" title="Permanent link">&para;</a></h3>
-<p>Once data has been computed (either in 1 cycle or accumulated over a number of cycles), the results can then be written back out to local L1 memory via the Store Unit. This mirrors the 2 Load Units except there is a just 1 Store Unit. Bridging between the accumulator registers and vector registers or local L1 memory utilizes the SRS Unit (shift-round-saturate) which shifts, rounds and saturates with a number of configurable rounding and saturation modes.</p>
-<p><img src="../../assets/aie-ml_srs_ups.png" title="AIE-ML SRS UPS Unit." height=230></p>
-<p>The SRS path is on the right of the diagram above with the corollary path, the Upshift (UPS) path on the left. Upshift moves data from vector register to accumulator registers.</p>
-<h3 id="the-vector-unit---shift-shuffle-adder-path">The Vector Unit - Shift/ Shuffle/ Adder Path<a class="headerlink" href="#the-vector-unit---shift-shuffle-adder-path" title="Permanent link">&para;</a></h3>
-<p>Finally, we have an additional parallel processing path which performs shift, shuffle, simple addition, comparison and a number of other vector functions. This path runs in parallel with the main integer vector datapath and may be tasked to do the aforementioned functions without the need of the VMAC datapath.</p>
-<p><img src="../../assets/aie-ml_shift_adder_path.png" title="AIE-ML Shift Adder Unit." height=200></p>
-<p>It is very helpful to have in mind this processing datapath and the way in which data is loaded and stored to/from local memory. The next step then is to see how close we are to the ideal performance in our application and then examine the results in more detail to better understand where we might be able to improve.</p>
-<h3 id="multiplier-utilization-efficiency"><u>Multiplier Utilization Efficiency</u><a class="headerlink" href="#multiplier-utilization-efficiency" title="Permanent link">&para;</a></h3>
-<p>Now that we have a better understanding of the architecture, let's take a closer look at hardware efficiency. The following diagram shows the various AIE architecture blocks we talked about along with a table of generalized compute.</p>
-<p><img src="../../assets/aie_compute_details1.png" title="AIE Compute Details." height=450></p>
-<blockquote>
-<p><strong>NOTE</strong> - Matrix multiplication mode table is in the AIE API User Guide <a href="https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__mmul.html">here</a>. Another way to see the total number of MACs for different bit precisions is the <code>Table: Supported Precision Width of the Vector Data Path</code> in the <a href="https://docs.amd.com/r/en-US/am020-versal-aie-ml/Functional-Overview">AM020 spec</a>.</p>
-</blockquote>
-<p>This table tells us that for 16-bit x 16-bit compute, we have 64 MACs available per cycle. However, these MACs are targeting matrix multiplication (with its accompanying post-addition steps). In practice, we have 32 accumulator lanes available. That means for eltwise operations, we can only use 32 MACs per cycle.</p>
-<h4 id="mac-efficiency"><u>MAC efficiency</u><a class="headerlink" href="#mac-efficiency" title="Permanent link">&para;</a></h4>
-<p>Using this information and our Vector Scalar Multiply example, we know that each call to the kernel passes in an array of 1024 16-bit data. With 32 MACs available, our <code>vector_factor</code> is 32 and therefore, we would ideally need 1024 / 32 = 32 cycles to process this amount of data given our 32 MACs-per-clock eltwise vector MAC configuration. Our final optimized cycle count for the kernel was 72 cycles or roughly 2x the ideal number of cycles.</p>
-<p>Total MAC efficiency is a product of the (MAC schedule efficiency) x (per clock MAC utilization efficiency).
-* (MAC schedule efficiency or Ideal MAC cycles) / (Actual MAC cycles), e.g. 32/ 72 = 44%
-* (per clock MAC utilization efficiency or # of MACs used)/ (total # of MACs available), e.g. 32/ 64 = 50%.
-Therefore, the total MAC efficiency is 44% x 50% = 22%.</p>
-<p>Let's file that result away but look at our algorithm from load/store bandwidth perspective.</p>
-<h4 id="load-store-bandwidth-efficiency"><u>Load/ Store Bandwidth efficiency</u><a class="headerlink" href="#load-store-bandwidth-efficiency" title="Permanent link">&para;</a></h4>
-<p>To process a vector of 32 int16 values times a scalar, let's ignore the scalar load and focus only on the vector one. 32 int16 = 512-bits which would take 2x 256-bit loads or 2 cycles. It might be possible to do it in a single cycle if the data is interleaved across banks. We also need to store 2x 256-bits which will take 2 cycles since we only have 1 Store Unit. This means that even if we could do a VMAC every cycle, we need 2 cycles to load the inputs and 2 cycles to store the outputs. This explains why our optimized vector results was 72, since based on this 2 cycle requirement, our minimum cycles for our data size is 64 cycles. The remaining 6 cycles is loop preamble, loop postamble and function initialization and cleanup overhead.</p>
-<h4 id="data-routing-efficiency"><u>Data routing efficiency</u><a class="headerlink" href="#data-routing-efficiency" title="Permanent link">&para;</a></h4>
-<p>The load/store bandwidth is already a bottleneck in our 16-bit Vector Scalar Multiply example for the compute. But what about data movement via streams and DMAs. We need to process 1024 chunks of 16-bit data or 512 32-bit quantities. Because our stream switch moves data in 32-bit granularity, we need 512 cycles in order to load in the data to L1 and to move the data out of L1 to L2/L3.</p>
-<h4 id="hardware-efficiency-summary"><u>Hardware efficiency summary</u><a class="headerlink" href="#hardware-efficiency-summary" title="Permanent link">&para;</a></h4>
+<h2 id="how-the-compiler-schedules-a-loop"><u>How the Compiler Schedules a Loop</u><a class="headerlink" href="#how-the-compiler-schedules-a-loop" title="Permanent link">&para;</a></h2>
+<p>The cycle counts above are set almost entirely by how the compiler schedules the inner loop. Three ideas explain them.</p>
+<p><strong>VLIW bundles.</strong> The AIE core is a VLIW processor. Each instruction word, or <em>bundle</em>, has slots for several operations that issue in the same cycle: two loads, one store, scalar ALU work, a vector multiply, a move, and so on. A bundle takes one cycle whether its slots are full or empty (<code>nop</code>).</p>
+<p><strong>Software pipelining.</strong> A loop iteration is a chain: load, then multiply, then store. Each step waits several cycles for the one before it. Run iterations one after another and most bundles are empty. A software-pipelined loop overlaps them: while iteration <em>i</em> stores, <em>i+1</em> multiplies and <em>i+2</em> loads. Two numbers describe the result:
+* <strong>II (initiation interval)</strong> - the number of cycles between the starts of two iterations, which is also the number of bundles in the steady-state loop body. The loop costs about II cycles per iteration.
+* <strong>Stages</strong> - how many iterations are in flight at once. The compiler emits a <em>prologue</em> before the loop to fill the pipeline and an <em>epilogue</em> after it to drain it.</p>
+<p><strong>Zero-overhead loops (ZOL).</strong> The core has loop hardware (the loop start, loop end and loop count registers <code>ls</code>, <code>le</code>, <code>lc</code>) that jumps back from the last bundle of a loop body to the first at no cost. A loop that uses it spends no cycles on branch instructions.</p>
+<p>Together they give a rule of thumb:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>cycles ≈ II × trips + prologue/epilogue + function entry/exit
+</code></pre></div>
+<p>Predict the count before you measure. When the prediction and the trace disagree, one of them is not measuring what you think.</p>
+<h3 id="reading-the-schedule-static-remarks"><u>Reading the schedule: static remarks</u><a class="headerlink" href="#reading-the-schedule-static-remarks" title="Permanent link">&para;</a></h3>
+<p>You do not need hardware to see the schedule. <code>aie.utils.compile.remarks</code> compiles each kernel library build exactly as the JIT does and reports every loop's II, stages, bundle count and whether it is a zero-overhead loop. It honours <code>MLIR_AIE_KERNEL_SOURCES</code>, so with that exported as above it reads your edited sources; without it, it compiles the installed copy:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python<span class="w"> </span>-m<span class="w"> </span>aie.utils.compile.remarks<span class="w"> </span>--target<span class="w"> </span>aie2p<span class="w"> </span>--only<span class="w"> </span>scale<span class="w"> </span>--out<span class="w"> </span>scale.json<span class="w"> </span>--meta<span class="w"> </span>scale_meta.json
+</code></pre></div>
+<code>scale.json</code> is a list of rows in the benchmark-chart format. Each loop gets one row, whose <code>name</code> is <code>&lt;kernel&gt;/loop/&lt;function&gt;/&lt;block&gt;/II</code>, whose <code>value</code> is the II, and whose <code>range</code> holds the rest of the schedule:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;scale/loop/vector_scalar_mul_vector/for.body.i/II&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cycles&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w"> </span><span class="nt">&quot;range&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NS=5 pro=23 epi=20 zol=True via=postpipeliner at vector.hpp:1105&quot;</span><span class="p">}</span>
+</code></pre></div>
+Read it as: II 5, 5 stages, a 23-bundle prologue and a 20-bundle epilogue, a zero-overhead loop, placed by Peano's post-pass pipeliner, attributed to line 1105 of an AIE API header (the loop was inlined from there). Per-kernel rows follow the same pattern: <code>scale/unpipelined_loops</code>, <code>scale/non_zol_loops</code>, <code>scale/pm_bytes</code> (program memory) and <code>scale/pass_failed_warnings</code> (loop pragmas the compiler could not apply). <code>scale_meta.json</code> holds the same data as one record per loop, with <code>ii</code>, <code>ns</code>, <code>prologue_bundles</code>, <code>epilogue_bundles</code>, <code>zol</code>, <code>pipelined</code>, <code>bundle_count</code>, <code>file</code> and <code>line</code>, plus the scheduler's notes per kernel. Use <code>--target aie2</code> for AIE2. The tool builds the <code>scale</code> kernel for 32-bit data only. See <a href="../../kernels_library/#static-checks">kernels_library.md</a> for the rest of its output, and <a href="../section-4d#reading-the-static-report">section 4d</a> for how to use it when optimizing.</p>
+<h3 id="reading-the-schedule-disassembly"><u>Reading the schedule: disassembly</u><a class="headerlink" href="#reading-the-schedule-disassembly" title="Permanent link">&para;</a></h3>
+<p>The disassembly shows the exact bundles. The kernel object and the core's linked ELF are in the build's project directory, for the default 16-bit build:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>build/final_trace_8192.prj/vector_scalar_mul_vector_&lt;hash&gt;.o
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>build/final_trace_8192.prj/elfs_main_core_0_2/elfs_main_core_0_2.elf
+</code></pre></div>
+The 32-bit build uses <code>final_trace_16384.prj</code>. The two numbers in <code>core_0_2</code> are the core's column and row. A design with several cores has one ELF per core. Disassemble with the <code>llvm-objdump</code> that ships with Peano:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">$PEANO_INSTALL_DIR</span>/bin/llvm-objdump<span class="w"> </span>-d<span class="w"> </span>-z<span class="w"> </span>build/final_trace_8192.prj/vector_scalar_mul_vector_*.o<span class="w"> </span>&gt;<span class="w"> </span>disassembly.txt
+</code></pre></div>
+<code>-z</code> prints bundles that are entirely <code>nop</code>s; without it they are elided as <code>...</code> and you will miscount. Function symbols carry a short hash prefix, for example <code>&lt;1846b0bf_vector_scalar_mul_vector&gt;</code>. Each line is one bundle: an address, the encoded bundle, then the operations in its slots separated by <code>;</code>.</p>
 <table>
 <thead>
 <tr>
-<th>Component</th>
-<th># of Cycles</th>
-<th>Efficiency</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>MAC</td>
-<td>72</td>
-<td>22%</td>
-</tr>
-<tr>
-<td>Load/Store</td>
-<td>64</td>
-<td>50% / 100%</td>
-</tr>
-<tr>
-<td>DMA</td>
-<td>512</td>
-<td>100%</td>
-</tr>
-</tbody>
-</table>
-<p>Looking at this table, we quickly see that the data movement is the bottleneck for the overall kernel.</p>
-<h2 id="optimization-exercises---part-1"><u>Optimization Exercises - Part 1</u><a class="headerlink" href="#optimization-exercises---part-1" title="Permanent link">&para;</a></h2>
-<ol>
-<li>
-<p>Rerun the final optimized code and take a look at the resulting waveform.</p>
-<p><img src="../../assets/aie_vector_scalar_ml_opt1.png" title="AIE Compute Details." height=250></p>
-<p>Mouse over the blocks of PortRuning0 and PortRunning1, what is the measured number of cycles per chunk?
-<details markdown="1"><summary>Show answer</summary>
-512 cycles
-</details>
-This matches what we expected to see. But note how it's obvious from the waveform how dominant data movement is as compared to compute.</p>
-</li>
-<li>
-<p>We can already see that our design is imbalanced between data movement and compute where we have 72 cycles for compute and 512 cycles for data movement. Let's take a look at the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/matrix_multiplication/single_core">Matrix Multiply Example</a> and see if we can do better. In the description, it talks about how each iteration of the kernel is by default configured for MxKxN values of 64x64x64 giving us 262,144 MACs. Given that we're working with <code>int16_t</code> datatype which has 64 MACs per clock, how many cycles will the ideal case take?
-    <details markdown="1"><summary>Show answer</summary>
-    2048 cycles = 262,144/ 64
-    </details>
-   Given that the A and B matrix are each 64x64 x <code>int16_t</code> and our stream switch channels are 32-bits wide, how many cycles does it take to move data to the compute tile (bear in mind A and B can be moved in parallel via separate channels).
-    <details markdown="1"><summary>Show answer</summary>
-    2048 cycles = 64x64/2
-    </details></p>
-</li>
-<li>
-<p>So this example should be perfectly balanced between compute and data movement! Navigate to the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/matrix_multiplication/single_core">Matrix Multiply Example</a> and run the trace build (<code>make clean; make trace</code>). Then open the generated waveform json (<code>trace_mm.json</code>) and measure the delta between <code>event 0</code> and <code>event 1</code> in the first run. What value did you get and how close is it to ideal?
-    <details markdown="1"><summary>Show answer</summary>
-    ~2535 cycles which is 80% of 2048
-    </details>
-   You should now see that the compute cycles and the data movement cycles are much more closely matched!</p>
-</li>
-</ol>
-<h2 id="diving-deep---examining-the-microcode"><u>Diving Deep - Examining the Microcode</u><a class="headerlink" href="#diving-deep---examining-the-microcode" title="Permanent link">&para;</a></h2>
-<p>Let's take another look at the results of our <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/vector_scalar_mul">vector_scalar_mul design</a>. Let's also go back one step and comment out <code>AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)</code> and rerun the compilation (<code>make clean; make trace</code>).</p>
-<p>At this point, we can actually take a look at the disassembly code. The disassembly is the precise schedule of instructions that our AIE executes in order to run the kernel program. To obtain the disassembly, we can run the <code>llvm-objdump</code> on the generated object or elf file.
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>&lt;mlir-aie&gt;/ironenv/lib/python&lt;ver&gt;/site-packages/llvm-aie/bin/llvm-objdump<span class="w"> </span>-dr<span class="w"> </span>build/core_0_2.elf<span class="w"> </span>&gt;<span class="w"> </span>disassembly_0_2.txt
-</code></pre></div>
-For the elf file, the naming includes the <code>core</code> name where the two numbers for the core indicates its column and row position respectively. So if your design has multiple cores, then each core will have its own <code>.elf</code> file that you can disassemble. Once you generate the disassembly file and open it, you will see a lot of information. Comment lines will have a . in front of them. The other lines are the instructions and are structured as follows:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>Instruction Line Number ---- Encoded Instruction ---- 1 or more slots of ISA commands
-</code></pre></div>
-<table>
-<thead>
-<tr>
-<th>Example ISA commands</th>
+<th>Example operations</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>NOP ..</td>
-<td>No op</td>
+<td><code>nop</code>, <code>nopa</code>, <code>nopb</code>, <code>nopx</code>, ...</td>
+<td>An empty slot</td>
 </tr>
 <tr>
-<td>JL #XXX</td>
-<td>Jump and link to instruction line #</td>
+<td><code>mov</code>, <code>add</code>, <code>mul</code></td>
+<td>Scalar move and arithmetic</td>
 </tr>
 <tr>
-<td>MOV r1, r2</td>
-<td>Move register values from r2 to r1</td>
+<td><code>lda</code>, <code>st</code></td>
+<td>Scalar load / store</td>
 </tr>
 <tr>
-<td>LD ..</td>
-<td>Scalar load</td>
+<td><code>vlda</code>, <code>vldb</code></td>
+<td>Vector load on load unit A / B</td>
 </tr>
 <tr>
-<td>ST ..</td>
-<td>Scalar store</td>
+<td><code>vmul</code>, <code>vmac</code></td>
+<td>Vector multiply / multiply-accumulate</td>
 </tr>
 <tr>
-<td>VLDA</td>
-<td>Vector load unit A</td>
+<td><code>vst</code>, <code>vst.srs</code></td>
+<td>Vector store / store through the SRS path</td>
 </tr>
 <tr>
-<td>VLDB</td>
-<td>Vector load unit B</td>
-</tr>
-<tr>
-<td>VMUL ..</td>
-<td>Vector multiply</td>
-</tr>
-<tr>
-<td>VMAC ..</td>
-<td>Vector multiply and accumulate</td>
-</tr>
-<tr>
-<td>VST ..</td>
-<td>Vector store</td>
-</tr>
-<tr>
-<td>VSRS ..</td>
-<td>Vector SRS</td>
-</tr>
-<tr>
-<td>VSHUFFLE ..</td>
+<td><code>vshuffle</code></td>
 <td>Vector shuffle</td>
+</tr>
+<tr>
+<td><code>event</code></td>
+<td>The <code>event0()</code> / <code>event1()</code> markers</td>
 </tr>
 </tbody>
 </table>
-<p>Fully analyzing and understanding this microcode is beyond the scope of this programming guide but we will focus on key parts of this microcode, labeled by 3 types of comments in particular:</p>
-<p><code>&lt;8 digit number&gt; &lt;label&gt;</code> where <code>&lt;label&gt;</code> can be <code>&lt;main&gt;</code> or function name like `<vector_scalar_mul_vector> - The start of the function we're interested in.</p>
-<p><code>&lt;8 digit number&gt; &lt;.LBB?_?&gt;:</code> - The start of a zero-overhead loop.</p>
-<p><code>&lt;8 digit number&gt; &lt;.L_LEnd?&gt;</code> - The end of a zero-overhead loop.</p>
-<blockquote>
-<p><strong>NOTE</strong> The line after this label is the last line within the loop, not just the lines strictly between <code>&lt;.LBB?_?&gt;</code> and <code>.L_LEnd?</code>. In general, labels are for the line after the label.</p>
-</blockquote>
-<p>Let's examine this more closely in our example.</p>
-<h2 id="optimization-exercises---part-2"><u>Optimization Exercises - Part 2</u><a class="headerlink" href="#optimization-exercises---part-2" title="Permanent link">&para;</a></h2>
+<p>A zero-overhead loop is set up by writes to <code>ls</code>, <code>le</code> and <code>lc</code>, and its body is marked by two labels:
+* <code>&lt;.LBB?_?&gt;:</code> - the first bundle of the loop body.
+* <code>&lt;.L_LEnd?&gt;:</code> - the <strong>last</strong> bundle of the loop body. A label names the bundle on the line after it, so the loop body is everything from the <code>.LBB</code> label up to <em>and including</em> the bundle after <code>.L_LEnd</code>. When the loop is a single bundle, both labels point at the same address.</p>
+<h2 id="schedule-exercises"><u>Schedule Exercises</u><a class="headerlink" href="#schedule-exercises" title="Permanent link">&para;</a></h2>
 <ol>
 <li>
-<p>Go back and comment out the pragma lines (<code>AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)</code>) again and rerun the build (<code>make clean; make trace</code>). Run the disassembler and open <code>disassembly_0_2.txt</code> and take a look through the file.</p>
-<p>Search for <code>vector_scalar_mul_vector</code>. Then scroll down until you see the first <code>LBB</code> line after that. Count the number of lines until you reach the next <code>LBB or L_LEnd</code> line. If the next line is L_LEnd, be sure to add 1 to your total count. How many lines are in this inner loop?
-<details markdown="1"><summary>Show answer</summary>
-9 cycles
+<p>Run the remarks tool on the shipped <code>scale.cc</code>. What II does it report for the vector loop (<code>vector_scalar_mul_vector/for.body.i</code>) and for the scalar loop (<code>vector_scalar_mul_scalar/for.body.i</code>)?
+    <details markdown="1"><summary>Show answer</summary>
+    Vector: II 5 with 5 stages, pipelined, ZOL (<code>NS=5 ... zol=True via=postpipeliner</code>). Scalar: II 42, not software-pipelined (<code>NS=1 ... via=None</code>), ZOL. The compiler unrolled the scalar loop four times, so 42 cycles cover 4 elements.
+    </details></p>
+</li>
+<li>
+<p>Use the rule of thumb to predict the two 32-bit cycle counts from Exercises 1 and 2. How close are you?
+    <details markdown="1"><summary>Show answer</summary>
+    Vector: 1024 / 16 = 64 iterations × 5 = 320, plus about 18 cycles of fill, drain and function overhead = 338, exactly what the trace shows. Scalar: 1024 / 4 = 256 iterations × 42 = 10752, plus 9 = 10761.
+    </details></p>
+</li>
+<li>
+<p>Build the default 16-bit design and disassemble the kernel object. Find <code>vector_scalar_mul_vector</code> and its <code>.LBB</code> / <code>.L_LEnd</code> labels. How many bundles are in the loop body, and which vector operations are in it? How does that explain 46 cycles?
+    <details markdown="1"><summary>Show answer</summary>
+    One bundle: <code>vldb x4, [p0], #0x40</code> (a 64-byte load), <code>vst.srs.2x ... [p1], #0x40</code> (a 64-byte store through SRS) and <code>vmul</code>. It is II 1: the loop loads, multiplies and stores one full 32-element vector every cycle, so 1024 / 32 = 32 cycles, plus 14 of fill, drain and overhead = 46. The bundles before the loop are the prologue: the same <code>vldb</code>/<code>vmul</code> repeated while the pipeline fills.
+    </details></p>
+</li>
+<li>
+<p>Now look at the 32-bit specialization in the same file (the <code>scale_vectorized&lt;int32_t&gt;</code> symbol is emitted even in the 16-bit build). Its loop has 5 bundles. Which vector operations are in it?
+    <details markdown="1"><summary>Show answer</summary>
+    One <code>vmul</code> and three <code>vmac</code>, plus <code>vshuffle</code>s. AIE2P has no single 32-bit × 32-bit vector multiply, so the product is assembled from 16-bit partial products. That is why the 32-bit loop is II 5 on 16 lanes, and the 16-bit loop is II 1 on 32 lanes.
+    </details></p>
+</li>
+<li>
+<p>Compile the 16-bit design for AIE2. You do not need an npu1 device to compile: <code>make clean; make devicename=npu build/final_8192.xclbin</code>, then disassemble the kernel object in <code>build/final_8192.prj/</code>. How many bundles is the AIE2 loop?
+    <details markdown="1"><summary>Show answer</summary>
+    Two. On AIE2 each vector load moves 256 bits, so the 512-bit input takes a <code>vlda</code> plus a <code>vldb</code>, and the output takes two 256-bit <code>vst.srs</code> stores. With only one store unit, two stores need two cycles, so II 2 is the floor on AIE2. AIE2P moves 512 bits per load and per store here, so it reaches II 1. The 32-bit loop is II 8 on AIE2. On an npu1 the 16-bit kernel measured 78 cycles for 1024 elements: 32 iterations at II 2 plus 14 cycles of pipeline fill, drain and call.
+    </details></p>
+</li>
+</ol>
+<h2 id="trip-counts"><u>Trip Counts</u><a class="headerlink" href="#trip-counts" title="Permanent link">&para;</a></h2>
+<p>A software-pipelined loop needs enough iterations to fill its stages. If the compiler cannot prove that the loop runs at least that many times, it has to pick between a slower schedule that is correct for any count and a guarded fast path. So the compiler's knowledge of the trip count matters as much as the loop body.</p>
+<p>In the shipped <code>scale.cc</code> the trip count is <code>SCALE_ELEMS / 32</code>, a compile-time constant, so the compiler knows the loop runs exactly 32 times. Kernels whose size arrives as the runtime <code>N</code> argument do not get that for free. Two pragmas from <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a> tell the compiler what to expect:
+* <code>AIE_LOOP_MIN_ITERATION_COUNT(MIN)</code> - the loop always runs at least <code>MIN</code> times.
+* <code>AIE_LOOP_RANGE(MIN, MAX)</code> - the loop runs between <code>MIN</code> and <code>MAX</code> times. It is only a trip-count hint: it does not unroll anything.</p>
+<p>This is also where the two compilers differ most:
+* Under <strong>Chess</strong>, <code>AIE_PREPARE_FOR_PIPELINING</code> (<code>chess::prepare_for_pipelining</code>) is what enables software pipelining for the loop. Trip-count hints refine the schedule it picks.
+* Under <strong>Peano</strong>, <code>AIE_PREPARE_FOR_PIPELINING</code> expands to nothing. Peano tries to pipeline every innermost loop whose body is a single basic block (no <code>if</code> inside) on its own, so the trip count it can prove, from a constant or from a hint, decides the schedule.</p>
+<h2 id="trip-count-exercises"><u>Trip Count Exercises</u><a class="headerlink" href="#trip-count-exercises" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p>In your <code>MLIR_AIE_KERNEL_SOURCES</code> copy of <code>scale.cc</code>, change <code>const int F = SCALE_ELEMS / vec_factor;</code> to <code>const int F = N / vec_factor;</code> in both vector templates, so the trip count is only known at runtime. Rebuild and trace the 16-bit and the 32-bit designs. What changed?
+    <details markdown="1"><summary>Show answer</summary>
+    With Peano, 16-bit: 46 → 464 cycles; 32-bit: 338 → 1426. The data and the loop body are unchanged, but the 16-bit loop is now II 14 (14 × 32 + 16 = 464) and the 32-bit loop II 22 (22 × 64 + 18 = 1426). In the 16-bit disassembly the loop is still one <code>vldb</code>, one <code>vmul</code> and one <code>vst.srs</code>, now spread over 14 bundles that are mostly <code>nop</code>s, with a branch before it that skips the loop when <code>N</code> is below 32.</p>
+<p>With Chess, 16-bit: 62; 32-bit: 355. <code>AIE_PREPARE_FOR_PIPELINING</code> still lets Chess pipeline the loop.
 </details></p>
 </li>
 <li>
-<p>Now look at each line and count how many lines contain a <code>VMUL</code> or <code>VMAC</code> in them? What number do you get?
+<p>Now add <code>AIE_LOOP_MIN_ITERATION_COUNT(16)</code> on the line after <code>AIE_PREPARE_FOR_PIPELINING</code> in both templates. Rebuild and trace again.
     <details markdown="1"><summary>Show answer</summary>
-    Only 1 <code>VMUL</code>
+    Peano: back to 46 and 338 cycles, the same schedules as the compile-time constant. Chess: 44 and 335.
     </details></p>
 </li>
 <li>
-<p>The number you got gives us a rough idea of how optimized the innermost loop of our algorithm is. In this case, we have 1 VMAC out of 9 cycles or ~11% MAC utilization. If the inner loop take 11 cycles and we iterate 32 times, how many cycles should this version take and how close are we to the measured cycle count?
-    <details markdown="1"><summary>Show answer</summary>
-    11*32=352 cycles out of ~309 cycles measured. Pretty close. Overhead is ~15 cycles
-    </details></p>
+<p>Which pragma did the work? Remove <code>AIE_PREPARE_FOR_PIPELINING</code> but keep the hint, and build the 32-bit design with each compiler. Then remove both.
+    <details markdown="1"><summary>Show answer</summary></p>
+<table>
+<thead>
+<tr>
+<th>32-bit, runtime <code>N</code></th>
+<th>Peano</th>
+<th>Chess</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIE_PREPARE_FOR_PIPELINING</code> + <code>MIN_ITERATION_COUNT(16)</code></td>
+<td>338</td>
+<td>335</td>
+</tr>
+<tr>
+<td><code>MIN_ITERATION_COUNT(16)</code> only</td>
+<td>338</td>
+<td>1415</td>
+</tr>
+<tr>
+<td><code>AIE_PREPARE_FOR_PIPELINING</code> only</td>
+<td>1426</td>
+<td>355</td>
+</tr>
+<tr>
+<td>neither</td>
+<td>1426</td>
+<td>1426</td>
+</tr>
+</tbody>
+</table>
+<p>Under Peano the two builds with and without <code>AIE_PREPARE_FOR_PIPELINING</code> produce byte-identical code: the hint does all the work. Under Chess the hint alone does nothing and <code>AIE_PREPARE_FOR_PIPELINING</code> does most of it. Kernels that must build with both compilers use both pragmas, which is why they appear together throughout <code>aie_kernels/</code>.
+</details></p>
 </li>
 <li>
-<p>Now go back and uncomment the pragma lines again and rerun the build and cleanup script (<code>make clean; make trace; &lt;mlir-aie&gt;/ironenv/lib/python&lt;ver&gt;/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf &gt; disassembly_0_2.txt</code>). Search for <code>vector_scalar_mul_vector</code> again and count the number of inner loop lines, as well as <code>VMUL/VMAC</code> lines again. How many do you see?
+<p>Why 16? Try <code>AIE_LOOP_MIN_ITERATION_COUNT(4)</code> on the 16-bit build with Peano and count the loop bundles.
     <details markdown="1"><summary>Show answer</summary>
-    2 inner loop lines. 1 <code>VMUL</code>.
-    </details>
-   This matches with our hand calculation that the inner loop is limited to 2 because of the vector stores.</p>
+    Four bundles (II 4). In the compiler's output, Peano settles at II 7 for a minimum of 1 or 2, II 4 for 4, II 2 for 8 and II 1 for 16. (Only the 16 case was traced for this section, at 46 cycles.) The II 1 schedule has 14 stages, so the compiler needs to know at least that many iterations will run. The hint is a promise, not a request: the compiler may drop its short-loop path, so the count must be true for every caller. Give the smallest count that holds for all of them.
+    </details></p>
 </li>
 </ol>
+<h2 id="coding-for-the-architecture"><u>Coding for the Architecture</u><a class="headerlink" href="#coding-for-the-architecture" title="Permanent link">&para;</a></h2>
+<p>The vectorized kernel is 234x faster than scalar, but is it good? To answer that we compare it with what the hardware can do. The vector unit diagrams below are from the <a href="https://docs.amd.com/r/en-US/am020-versal-aie-ml/Fixed-Point-Vector-Unit">AIE-ML (AIE2) architecture manual (am020)</a>. AIE2P has the same overall structure, with the differences listed in the table after them.</p>
+<h3 id="the-vector-unit---loads">The Vector Unit - Loads<a class="headerlink" href="#the-vector-unit---loads" title="Permanent link">&para;</a></h3>
+<p><img src="../../assets/aie-ml_vector_unit.png" title="AIE-ML (AIE2) Vector Unit." height=450></p>
+<p>Vector registers are filled by two load units working in parallel from local L1 memory. They feed the permute blocks and then the multiplier. Not every load instruction exists on both units: in <a href="../section-4d#a-worked-example-add">section 4d</a>, a converting bf16 load that exists only on load unit A sets the pace of a loop.</p>
+<h3 id="the-vector-unit---multiply-and-add-mac">The Vector Unit - Multiply and Add (MAC)<a class="headerlink" href="#the-vector-unit---multiply-and-add-mac" title="Permanent link">&para;</a></h3>
+<p>The multiplier supports the AIE data types. An optional post-add step (heavily used by matrix multiplication) sums products before they land in the accumulator registers. The best-scheduled code issues one vector MAC every cycle.</p>
+<h3 id="the-vector-unit---srs-and-stores">The Vector Unit - SRS and Stores<a class="headerlink" href="#the-vector-unit---srs-and-stores" title="Permanent link">&para;</a></h3>
+<p>Results go back to L1 through a single store unit. The SRS (shift-round-saturate) path converts accumulators to vectors on the way out; the upshift (UPS) path goes the other way, from vectors to accumulators.</p>
+<p><img src="../../assets/aie-ml_srs_ups.png" title="AIE-ML (AIE2) SRS UPS Unit." height=230></p>
+<h3 id="the-vector-unit---shift-shuffle-adder-path">The Vector Unit - Shift/ Shuffle/ Adder Path<a class="headerlink" href="#the-vector-unit---shift-shuffle-adder-path" title="Permanent link">&para;</a></h3>
+<p>A parallel path performs shifts, shuffles, simple additions, comparisons and other vector functions without using the multiplier.</p>
+<p><img src="../../assets/aie-ml_shift_adder_path.png" title="AIE-ML (AIE2) Shift Adder Unit." height=200></p>
+<h3 id="aie2-and-aie2p-differences-that-change-this-example">AIE2 and AIE2P differences that change this example<a class="headerlink" href="#aie2-and-aie2p-differences-that-change-this-example" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>AIE2 (npu1)</th>
+<th>AIE2P (npu2)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Loads in the 16-bit <code>scale</code> loop</td>
+<td><code>vlda</code> + <code>vldb</code>, 256 bits each</td>
+<td>one <code>vldb</code>, 512 bits</td>
+</tr>
+<tr>
+<td>Stores in the 16-bit <code>scale</code> loop</td>
+<td>two 256-bit <code>vst.srs</code></td>
+<td>one 512-bit <code>vst.srs.2x</code></td>
+</tr>
+<tr>
+<td>16-bit <code>scale</code> loop</td>
+<td>II 2</td>
+<td>II 1</td>
+</tr>
+<tr>
+<td>32-bit <code>scale</code> loop</td>
+<td>II 8</td>
+<td>II 5 (32-bit multiply built from 16-bit partial products)</td>
+</tr>
+<tr>
+<td>int16 matrix-multiply instruction</td>
+<td>4x4x4, 64 MACs</td>
+<td>4x4x8, 128 MACs</td>
+</tr>
+<tr>
+<td><code>float</code> vector multiply</td>
+<td>no native instruction; emulated with several bf16 multiplies</td>
+<td>no native instruction; emulated with several bf16 multiplies</td>
+</tr>
+<tr>
+<td>Scalar <code>float</code> multiply and divide</td>
+<td>library calls (<code>__mulsf3</code>, <code>__divsf3</code>)</td>
+<td>library calls (<code>__mulsf3</code>, <code>__divsf3</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>The first four rows are Peano's output for this example. The matrix-multiply shapes are from the AIE API <a href="https://xilinx.github.io/aie_api/group__group__mmul.html">matrix multiplication</a> table. The last row applies to scalar <code>float</code> code with Peano on both architectures: every scalar <code>float</code> multiply or divide in a hot loop is a function call. <a href="../section-4d#reading-the-static-report">Section 4d</a> shows how to find them, and <a href="../section-4d#1-take-library-calls-and-emulated-float-math-out-of-the-loop">what removing them gained</a>.</p>
+<h3 id="multiplier-utilization-efficiency"><u>Multiplier Utilization Efficiency</u><a class="headerlink" href="#multiplier-utilization-efficiency" title="Permanent link">&para;</a></h3>
+<p><img src="../../assets/aie_compute_details1.png" title="AIE Compute Details." height=450></p>
+<p>The table in this diagram gives the number of MACs per cycle for each precision. Another source is <code>Table: Supported Precision Width of the Vector Data Path</code> in the <a href="https://docs.amd.com/r/en-US/am020-versal-aie-ml/Functional-Overview">AM020 spec</a> for AIE2. Those peak figures are for matrix multiplication, where the post-add step sums several products into each accumulator lane. An elementwise multiply produces one result per lane, so it uses at most one multiplier per accumulator lane: 32 lanes of 16-bit data per instruction.</p>
+<h4 id="mac-efficiency"><u>MAC efficiency</u><a class="headerlink" href="#mac-efficiency" title="Permanent link">&para;</a></h4>
+<p>Each kernel call multiplies 1024 16-bit values. At 32 per cycle the ideal is 1024 / 32 = <strong>32 cycles</strong>; on AIE2P we measured 46.</p>
+<p>Total MAC efficiency is the product of two ratios:
+* MAC schedule efficiency: ideal MAC cycles / actual cycles = 32 / 46 = 70%.
+* Per-clock MAC utilization: MACs used / MACs available = 32 / 128 = 25% on AIE2P (32 / 64 = 50% on AIE2).</p>
+<p>Total: 70% × 25% ≈ 17%. That sounds poor, but an elementwise multiply simply has no sums for the matrix hardware to do. The more useful question is what limits the schedule.</p>
+<h4 id="load-store-bandwidth-efficiency"><u>Load/ Store bandwidth efficiency</u><a class="headerlink" href="#load-store-bandwidth-efficiency" title="Permanent link">&para;</a></h4>
+<p>On AIE2P the loop issues one 512-bit load, one multiply and one 512-bit store every cycle. II 1 is the smallest II any loop can have, so the loop body is as fast as it can be; the remaining 14 cycles are filling and draining a 14-stage pipeline and entering and leaving the function. On AIE2 the two 256-bit stores per vector need two cycles through the single store unit, so the compiler's AIE2 schedule cannot beat 64 cycles for this kernel regardless of the multiplier; an npu1 measured 78.</p>
+<h4 id="data-movement-efficiency"><u>Data movement efficiency</u><a class="headerlink" href="#data-movement-efficiency" title="Permanent link">&para;</a></h4>
+<p>Compute is only half the picture. Each call's 1024 × 16-bit input has to arrive through a DMA and its output has to leave through one. The next exercise measures how long that takes.</p>
+<h2 id="optimization-exercises"><u>Optimization Exercises</u><a class="headerlink" href="#optimization-exercises" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p>Trace the default 16-bit design again and open the waveform. Hover over the blocks of <code>PortRunning0</code> (input DMA) and <code>PortRunning1</code> (output DMA). How many cycles does each 2 KiB chunk take?</p>
+<p><img src="../../assets/aie_vector_scalar_ml_opt1.png" title="Example PortRunning waveform (an older capture; your counts will differ)." height=250></p>
+<p><details markdown="1"><summary>Show answer</summary>
+About 256 cycles on npu2 (8 bytes per cycle). The 32-bit design moves 4 KiB per chunk in about 512 cycles. The kernel needs only 46 cycles per chunk, so this design is limited by data movement by a factor of about 5: the core waits for data most of the time. Making <code>scale</code> faster would not make the application faster.
+</details></p>
+</li>
+<li>
+<p>A kernel with more compute per byte balances this better. The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/matrix_multiplication/single_core">single-core matrix multiply</a> example by default multiplies 512x512x512 <code>int16_t</code> matrices in kernel calls of m×k×n = 32x32x32 (32,768 MACs per call). The AIE2P int16 kernel uses the 4x4x8 matrix-multiply instruction, 128 MACs. What is the ideal cycle count per call?
+    <details markdown="1"><summary>Show answer</summary>
+    32,768 / 128 = 256 cycles.
+    </details>
+    Each call reads a 32x32 <code>int16_t</code> tile of A and of B, 2 KiB each, on separate channels. At the rate you measured in the previous exercise, how long does moving them take?
+    <details markdown="1"><summary>Show answer</summary>
+    About 256 cycles for each tile, in parallel. On paper compute and data movement are balanced.
+    </details></p>
+</li>
+<li>
+<p>Navigate to the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/matrix_multiplication/single_core">single-core matrix multiply</a> example, run <code>make clean; make trace</code>, and look at the <code>get_trace_summary.py</code> output. What are the first and min cycle counts?
+    <details markdown="1"><summary>Show answer</summary>
+    First 537, min 70 (Peano, npu2). 537 is the matrix-multiply kernel: its inner loop is II 4 with four 4x4x8 MACs per iteration, one MAC instruction per cycle, and the whole call is predicted at 536 cycles including each block's prologue and epilogue. That is 48% of the 256-cycle ideal and well above the data movement time.</p>
+<p>The min of 70 is <em>not</em> a faster matmul call. The same core also runs a <code>zero</code> kernel that clears the output accumulator before each block, and it carries its own <code>event0()</code>/<code>event1()</code>. The summary pools both kernels into one list. The summary also counted fewer invocations than the design makes, because the trace buffer filled. <a href="../section-4d#cycles-you-can-trust">Section 4d</a> explains how to separate the two populations and why you should check before quoting any trace-summary number.
+</details></p>
+</li>
+</ol>
+<h2 id="loop-pragma-reference"><u>Loop Pragma Reference</u><a class="headerlink" href="#loop-pragma-reference" title="Permanent link">&para;</a></h2>
+<p>The macros in <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a> let one kernel source carry hints for both compilers. Put them on the line directly before the <code>for</code>. Each expands differently under each compiler, and several do nothing under Peano:</p>
+<table>
+<thead>
+<tr>
+<th>Macro</th>
+<th>Peano (<code>#pragma clang loop ...</code>)</th>
+<th>Chess</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIE_LOOP_MIN_ITERATION_COUNT(n)</code></td>
+<td><code>min_iteration_count(n)</code></td>
+<td><code>chess::min_loop_count(n)</code></td>
+<td>Must be true for every call. Measured: 1426 → 338 on the 32-bit <code>scale</code> with a runtime <code>N</code> (<a href="#trip-count-exercises">Trip Count Exercises</a>). On AIE2 it let <code>axpy</code>'s runtime-count loop overlap (269 → 87), with a plain loop kept for shorter rows. In two other kernels the compiler reported that it cost the zero-overhead loop, so check <code>zol</code> after adding it.</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_MAX_ITERATION_COUNT(n)</code></td>
+<td><code>max_iteration_count(n)</code></td>
+<td><code>chess::max_loop_count(n)</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_RANGE(a, b)</code></td>
+<td>min + max iteration count</td>
+<td>min + max loop count</td>
+<td>A trip-count hint only. It does not unroll.</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_UNROLL(n)</code></td>
+<td><code>unroll_count(n)</code></td>
+<td><code>chess::unroll_loop(n)</code></td>
+<td>Measured: ×4 on a latency-bound loop took <code>add</code> from 390 to 150 cycles (<a href="../section-4d#3-fill-the-empty-bundles">4d</a>).</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_UNROLL_FULL</code></td>
+<td><code>unroll(full)</code></td>
+<td><code>chess::unroll_loop()</code></td>
+<td>Needs a constant trip count. Measured: keeping an accumulator array in registers took <code>conv2dk1_i8</code> from 7623 to 504 cycles (<a href="../section-4d#2-keep-arrays-and-addresses-in-registers">4d</a>).</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_NO_UNROLL</code></td>
+<td><code>unroll(disable)</code></td>
+<td><code>chess::no_unroll</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>AIE_TRY_INITIATION_INTERVAL(n)</code></td>
+<td><code>pipeline_initiation_interval(n)</code></td>
+<td>nothing</td>
+<td>Asks Peano's pipeliner to try this II. Not measured in this guide.</td>
+</tr>
+<tr>
+<td><code>AIE_PREPARE_FOR_PIPELINING</code></td>
+<td><strong>nothing</strong></td>
+<td><code>chess::prepare_for_pipelining</code></td>
+<td>Enables pipelining under Chess. Under Peano the code is byte-identical with or without it.</td>
+</tr>
+<tr>
+<td><code>AIE_PREPARE_FOR_POSTPIPELINING</code></td>
+<td><strong><code>pipeline(disable)</code></strong></td>
+<td>nothing</td>
+<td>Under Peano this <em>turns pipelining off</em> for the loop.</td>
+</tr>
+<tr>
+<td><code>AIE_LOOP_HINT(key, value)</code> / <code>AIE_LOOP_GPR_REALLOC</code></td>
+<td><code>hint(key, value)</code> / <code>hint(aie-gpr-realloc, 1)</code></td>
+<td>nothing</td>
+<td>Peano back-end tuning hints.</td>
+</tr>
+<tr>
+<td><code>AIE_NO_PREPARE_FOR_PIPELINING</code>, <code>AIE_MODULO_SCHEDULING_BUDGET_RATIO(n)</code>, <code>AIE_KEEP_SW_LOOP</code>, <code>AIE_PEEL_PIPELINED_LOOP(n)</code>, <code>AIE_KEEP_FREE_FOR_PIPELINING(r)</code>, <code>AIE_ALLOCATE(r)</code>, <code>AIE_NO_HW_LOOP</code>, <code>AIE_LOOP_FLATTEN</code></td>
+<td><strong>nothing</strong></td>
+<td>the matching Chess attribute</td>
+<td>Chess-only scheduling controls.</td>
+</tr>
+</tbody>
+</table>
+<p>Two per-architecture definitions from <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie_arch.h">aie_arch.h</a> sit beside these pragmas in library kernels: <code>AIE_BF16_LANES</code> is the bf16 vector-multiply width (16 on AIE2, 32 on AIE2P), and <code>AIE2_RESTRICT</code> puts <code>__restrict</code> on a pointer parameter only on AIE2, whose pipeliner needs it to overlap a streaming loop.</p>
+<p>The Peano expansions are the ones active by default. Check <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a> for the exact spelling before relying on a macro. A pragma that expands to nothing leaves the compiled code byte-identical, so the quickest way to know whether a pragma did anything is to compare the II the remarks tool reports, or the disassembly, with and without it. Whether it made the kernel faster is a question for the hardware: <a href="../section-4d">section 4d</a> shows how to answer it with the kernel benchmark.</p>
+<p>Peano flags that are not pragmas can be passed to one kernel through the <code>compile_flags</code> of its <code>ExternalFunction</code>. <a href="../section-4d#3-fill-the-empty-bundles">Section 4d</a> has one measured example, a higher pipeliner stage limit.</p>
 <hr />
-<p><a href="../section-4b">Prev</a> &middot; <a href="../../section-4">Top</a> &middot; <a href="../../section-5">Next</a></p>
+<p><a href="../section-4b">Prev</a> &middot; <a href="../../section-4">Top</a> &middot; <a href="../section-4d">Next</a></p>
 
 
 
@@ -4492,13 +4857,13 @@ For the elf file, the naming includes the <code>core</code> name where the two n
         
         
           
-          <a href="../../section-5/" class="md-footer__link md-footer__link--next" aria-label="Next: Section 5: Example Designs">
+          <a href="../section-4d/" class="md-footer__link md-footer__link--next" aria-label="Next: 4d: Kernel Optimization">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Section 5: Example Designs
+                4d: Kernel Optimization
               </div>
             </div>
             <div class="md-footer__button md-icon">

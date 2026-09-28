@@ -1836,6 +1836,8 @@
       
         
       
+        
+      
     
     
     
@@ -1961,6 +1963,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -3680,7 +3710,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 <tr>
 <td><code>bfloat16</code></td>
 <td>16</td>
-<td>32</td>
+<td>32 (a multiply is 16 on AIE2: <code>AIE_BF16_LANES</code>)</td>
 <td><code>accfloat</code> (or <code>accauto</code> in MMUL)</td>
 </tr>
 <tr>
@@ -3795,7 +3825,7 @@ belongs in a design. (<code>kernels.cascade_mm</code> is a scalar kernel on both
 <tr>
 <td>Clock</td>
 <td>~1.0–1.3 GHz</td>
-<td>~1.5 GHz</td>
+<td>~1.5 GHz nominal; 1.76 GHz measured on Strix</td>
 </tr>
 </tbody>
 </table>

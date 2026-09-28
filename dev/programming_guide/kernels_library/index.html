@@ -1850,6 +1850,8 @@
       
         
       
+        
+      
     
     
     
@@ -1978,6 +1980,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -2463,15 +2493,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#testing-benchmarking-and-static-checks" class="md-nav__link">
+  <a href="#testing-performance-and-static-checks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Testing, benchmarking and static checks
+        Testing, performance and static checks
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Testing, benchmarking and static checks">
+    <nav class="md-nav" aria-label="Testing, performance and static checks">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2497,10 +2527,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-the-benchmark-records" class="md-nav__link">
+  <a href="#what-the-performance-checks-record" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What the benchmark records
+        What the performance checks record
       
     </span>
   </a>
@@ -3783,15 +3813,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#testing-benchmarking-and-static-checks" class="md-nav__link">
+  <a href="#testing-performance-and-static-checks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Testing, benchmarking and static checks
+        Testing, performance and static checks
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Testing, benchmarking and static checks">
+    <nav class="md-nav" aria-label="Testing, performance and static checks">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3817,10 +3847,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-the-benchmark-records" class="md-nav__link">
+  <a href="#what-the-performance-checks-record" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What the benchmark records
+        What the performance checks record
       
     </span>
   </a>
@@ -3965,7 +3995,7 @@ ready-to-bind <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/
 Each factory bundles three things that designs would otherwise repeat
 by hand:</p>
 <ul>
-<li>The source path (e.g. <code>aie_kernels/aie2/mm.cc</code>).</li>
+<li>The source path (e.g. <code>aie_kernels/linalg/mm.cc</code>).</li>
 <li>The compile flags (e.g. <code>-DDIM_M=64 -DDIM_K=64 -DDIM_N=64 -DBIT_WIDTH=16</code>).</li>
 <li>The typed argument list (e.g. <code>[a_ty, b_ty, c_ty]</code>).</li>
 </ul>
@@ -4165,6 +4195,11 @@ a kernel without a hand-written design:</p>
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">verdict</span> <span class="o">=</span> <span class="n">fn</span><span class="o">.</span><span class="n">judge</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">fn</span><span class="o">.</span><span class="n">expected</span><span class="p">(</span><span class="n">inputs</span><span class="p">),</span> <span class="n">calls</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>
 <a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="k">assert</span> <span class="n">verdict</span><span class="p">,</span> <span class="n">verdict</span><span class="o">.</span><span class="n">detail</span>
 </code></pre></div>
+<p><code>kd.design(..., guard=True)</code> also catches writes past an output. Each output
+tile gets <code>kd.GUARD_BYTES</code> of <code>0x55</code> after it, which the kernel never sees.
+Size the output with <code>kd.output_size(fn, calls=16, guard=True)</code> and split the
+result with <code>kd.strip_guard(fn, out.numpy(), calls=16)</code>, which returns the
+data and the number of changed guard bytes. bfp outputs are not guarded.</p>
 <p>Every design validates independent tile calls, including matrix kernels.
 <code>kd.design(kernels.mm, calls=16)</code> repeats sixteen tile products, initializing
 each output before its call. The factory's dimensions size a tile; <code>calls</code>
@@ -4267,7 +4302,7 @@ elsewhere.</p>
   they are baked into the design. A caller that only needs to size
   buffers reads this instead of running the sampler.</li>
 </ul>
-<p><code>kernels.mha()</code> compiles <code>aie_kernels/aie2p/mha.cc</code> once and binds its
+<p><code>kernels.mha()</code> compiles <code>aie_kernels/linalg/mha.cc</code> once and binds its
 selected entry point, the <code>QK^T</code> product: <code>mm.cc</code>'s bf16 tile matmul with
 its index gate bound open, validated by the generic builder like <code>mm</code>. The
 other symbols of the translation unit bind from the same object. The bf16
@@ -4302,26 +4337,36 @@ above picks it up.</p>
 <li><strong>Contract.</strong> Pass <code>contract=KernelContract(...)</code> to <code>_make_extern</code>
    with the argument roles (<code>In</code>, <code>Out</code>, <code>InOut</code>, or <code>Param</code>), a
    numpy reference exported as <code>&lt;name&gt;_ref</code>, <code>ops_per_call</code> for the
-   benchmark's throughput series, and a <code>Tolerance</code> with its evidence in
+   performance checks' throughput series, and a <code>Tolerance</code> with its evidence in
    <code>note</code> — or none, to get the dtype default. Reductions set <code>out_valid</code>
    to the number of meaningful output elements. Say what the kernel
    accumulates in (<code>acc_dtype</code>, <code>reduction</code>), and model overflow and
    rounding in the reference from the C++ rather than from a guess.
    A factory with more than one dtype lists them in a <code>.dtypes</code> table.
    Bind fixed parameters explicitly with <code>parameter_bindings</code>, publish nontrivial
-   storage with <code>layouts</code>, and initialize <code>InOut</code> tiles with <code>initializers</code>.</li>
+   storage with <code>layouts</code>, and initialize <code>InOut</code> tiles with <code>initializers</code>.
+   Declare what the kernel's trace markers measure with <code>trace=</code>:
+   <code>Trace.whole_call()</code> when one <code>event0()</code> before the work and one
+   <code>event1()</code> after it bracket every call of the entry symbol, or
+   <code>Trace.none(reason)</code> / <code>Trace.partial(reason)</code> when they do not. A
+   kernel the performance checks time must be <code>whole_call</code>.</li>
 <li><strong>Case.</strong> Add one <code>Case(...)</code> to
    <a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/npu/kernel_cases.py"><code>test/python/npu/kernel_cases.py</code></a>:
    the shape to run and, with <code>smoke=True</code>, that it is the kernel's
    representative shape for the per-PR device test. The same table drives
-   the nightly correctness sweep and the benchmark, so there is nothing
+   the nightly correctness sweep and the performance checks, so there is nothing
    else to register.</li>
 </ol>
 <p>The host test <a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/test_kernel_contracts.py"><code>test/python/test_kernel_contracts.py</code></a>
 then checks the roles against the real <code>arg_types()</code>, the reference's
 arity, that the generated design lowers to MLIR, and that <code>setup</code>
-agrees with the source.</p>
-<h2 id="testing-benchmarking-and-static-checks">Testing, benchmarking and static checks<a class="headerlink" href="#testing-benchmarking-and-static-checks" title="Permanent link">&para;</a></h2>
+agrees with the source.
+<a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/test_kernel_trace_markers.py"><code>test/python/test_kernel_trace_markers.py</code></a>
+compiles every build to optimized IR and checks the markers the entry
+symbol reaches against <code>trace=</code>. Markers in a sibling kernel of the same
+file, around an inner loop, or skipped by an early return do not count as
+<code>whole_call</code>.</p>
+<h2 id="testing-performance-and-static-checks">Testing, performance and static checks<a class="headerlink" href="#testing-performance-and-static-checks" title="Permanent link">&para;</a></h2>
 <p>Every tier below reads the contract and the case table; none restates
 what a kernel computes.</p>
 <table>
@@ -4338,6 +4383,12 @@ what a kernel computes.</p>
 <td>host</td>
 <td>contract vs. factory; design lowers to MLIR</td>
 <td><code>test/python/test_kernel_contracts.py</code></td>
+<td>every PR (lit)</td>
+</tr>
+<tr>
+<td>host, Peano</td>
+<td>trace markers vs. the contract's <code>trace</code></td>
+<td><code>test/python/test_kernel_trace_markers.py</code></td>
 <td>every PR (lit)</td>
 </tr>
 <tr>
@@ -4366,9 +4417,20 @@ architectures each PR, and the nightly builds every case's.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>pytest<span class="w"> </span>test/python/test_kernel_contracts.py<span class="w">                        </span><span class="c1"># host</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_e2e.py<span class="w"> </span>-k<span class="w"> </span>eltwise<span class="w">              </span><span class="c1"># NPU, smoke</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_e2e.py<span class="w"> </span>-m<span class="w"> </span>extensive<span class="w"> </span>--seeds<span class="w"> </span><span class="m">3</span><span class="w">  </span><span class="c1"># NPU, everything</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_bench.py<span class="w"> </span>-m<span class="w"> </span>benchmark<span class="w"> </span>-k<span class="w"> </span>mul<span class="w">   </span><span class="c1"># time one kernel</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_bench.py<span class="w"> </span>-m<span class="w"> </span>benchmark<span class="w"> </span>--bench-out<span class="w"> </span>bench.json
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_perf.py<span class="w"> </span>-m<span class="w"> </span>perf<span class="w"> </span>-k<span class="w"> </span>mul<span class="w">          </span><span class="c1"># time one kernel</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_perf.py<span class="w"> </span>-m<span class="w"> </span>perf<span class="w"> </span>--perf-out<span class="w"> </span>perf.json
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>python<span class="w"> </span>-m<span class="w"> </span>aie.utils.compile.remarks<span class="w"> </span>--target<span class="w"> </span>aie2p<span class="w"> </span>--out<span class="w"> </span>static.json
+</code></pre></div>
+<p>To measure a kernel change against the code before it, point
+<code>--baseline-sources</code> at a second checkout (any directory holding
+<code>aie_kernels/</code> and <code>aie_runtime_lib/</code>). The static checks then compile both
+and print each row that differs; the performance checks run each case from both,
+back to back, on the same inputs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>mkdir<span class="w"> </span>../base<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>archive<span class="w"> </span>HEAD<span class="w"> </span>aie_kernels<span class="w"> </span>aie_runtime_lib<span class="w"> </span><span class="p">|</span><span class="w"> </span>tar<span class="w"> </span>-x<span class="w"> </span>-C<span class="w"> </span>../base
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>python<span class="w"> </span>-m<span class="w"> </span>aie.utils.compile.remarks<span class="w"> </span>--target<span class="w"> </span>aie2p<span class="w"> </span>--only<span class="w"> </span><span class="s1">&#39;^gelu&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span>--out<span class="w"> </span>static.json<span class="w"> </span>--baseline-sources<span class="w"> </span>../base
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_perf.py<span class="w"> </span>-m<span class="w"> </span>perf<span class="w"> </span>-k<span class="w"> </span>gelu<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span>--baseline-sources<span class="w"> </span>../base<span class="w"> </span>--perf-meta<span class="w"> </span>meta.json
 </code></pre></div>
 <h3 id="data-policy">Data policy<a class="headerlink" href="#data-policy" title="Permanent link">&para;</a></h3>
 <p>Random data is bounded by <code>fn.input_limit(dtype)</code>, using the contract's
@@ -4402,29 +4464,46 @@ either owns its mode or assumes the caller set one), not the whole of it:
 <code>rms_norm</code>, <code>layer_norm</code> and <code>mv</code> still save and restore the register
 around their body, and nothing yet boots a core into <code>conv_even</code> by
 default. Both remain to do under that issue.</p>
-<h3 id="what-the-benchmark-records">What the benchmark records<a class="headerlink" href="#what-the-benchmark-records" title="Permanent link">&para;</a></h3>
-<p><code>test/python/npu/test_kernels_bench.py</code> measures a kernel only after it has
+<h3 id="what-the-performance-checks-record">What the performance checks record<a class="headerlink" href="#what-the-performance-checks-record" title="Permanent link">&para;</a></h3>
+<p><code>test/python/npu/test_kernels_perf.py</code> measures a kernel only after it has
 produced a correct result under its declared tolerance; a wrong result fails
-the test, and a failed session writes no <code>--bench-out</code> file at all. Per case it records core
-<code>cycles</code> (trace, median over the run's kernel calls) and
-<code>cycles_per_kop</code>, <code>npu_us</code> / <code>e2e_us</code> from <code>aie.utils.benchmark</code>, and
-<code>compile_s</code> with the <code>xclbin</code>, <code>insts</code> and core-ELF sizes of a forced
-rebuild. Preflight reads the device and its power mode through the host
-runtime (<code>HostRuntime.power_mode()</code>); the benchmark workflow tries to switch
-to <code>performance</code> first, but always records the active mode in the results. A
-bit-exact <code>passthrough</code> smoke test inside a cycle band guards
-the machine. Nightly data goes to <code>gh-pages:bench/&lt;npu&gt;/</code> and is graphed
-at <code>https://xilinx.github.io/mlir-aie/bench/npu2/</code> (and <code>npu1</code>); <code>cycles</code>
-and the sizes alert at 3 %, the wall times are advisory, and nothing
-gates a pull request. A Peano-bump PR is compared against the cached
-nightly baseline and gets one comment only if a hard-threshold series
-regressed.</p>
+the test, and a failed session writes no <code>--perf-out</code> file at all. Per case it records core
+<code>cycles</code> and <code>cycles_per_kop</code>, <code>npu_us</code> from <code>aie.utils.benchmark</code>, and
+the <code>xclbin</code>, <code>insts</code> and core-ELF sizes of the build it ran.</p>
+<p><code>cycles</code> is recorded only for a kernel whose contract declares
+<code>Trace.whole_call()</code>. The trace holds one interval per call of the kernel
+and one per call of each traced initializer (<code>zero</code> before <code>mm</code>), in the
+order the harness calls them, and <code>kd.cycles_per_call</code> splits it by that
+position. The row is the kernel's minimum. Every call does the same work,
+so anything above the minimum is the core waiting. The median, the maximum,
+each initializer's minimum and whether the trace buffer filled go in the
+row's <code>range</code>. The trace buffer is sized to the number of intervals the
+contract declares. Preflight reads the device and its power mode through the
+host runtime (<code>HostRuntime.power_mode()</code>); the nightly workflow tries to
+switch to <code>performance</code> first, but always records the active mode in the
+results. A bit-exact <code>passthrough</code> smoke test inside a cycle band guards
+the machine. Nightly data goes to <code>gh-pages:kernel-checks/&lt;npu&gt;/</code> and is
+graphed at <code>https://xilinx.github.io/mlir-aie/kernel-checks/</code>, whose kernels
+view lists every factory with the builds each NPU offers, how its cases fared that
+night and their latest numbers (<code>utils/kernel_checks/catalogue.py</code> writes the
+catalogue); nothing gates a pull request. A Peano-bump PR is compared against the
+cached nightly baseline by <code>utils/kernel_checks/pr_report.py</code>, which keeps one PR
+comment listing failing cases and <code>cycles</code> or core ELF size regressions of 2 % or more.</p>
 <h3 id="static-checks">Static checks<a class="headerlink" href="#static-checks" title="Permanent link">&para;</a></h3>
 <p><code>aie.utils.compile.remarks</code> compiles every factory build (defaults plus
 each <code>.dtypes</code> entry) exactly as the JIT does, with Peano's
 optimization-record flags, and turns the records into per-kernel series:
 each loop's II and whether it is a zero-overhead loop, program memory,
-missing-bank loads and dropped <code>#pragma</code>s. The record shapes and the
+missing-bank loads and dropped <code>#pragma</code>s. It then reads the object: the
+loop counts and program memory cover only the functions the entry symbol
+reaches, which are the ones the core link keeps, and <code>libcalls</code> names the
+runtime-library routines it calls (<code>__divsf3</code>, <code>__mulsf3</code>, <code>__floatsisf</code>:
+on AIE2P, scalar float divide, multiply and int-to-float are software
+routines). <code>stack_bytes</code> is the deepest call path's frames from the entry,
+without those routines' own; above the contract's <code>stack_bytes</code> (else the
+target default) it prints a warning, since an overflow corrupts the
+neighbouring memory silently. Each build prints its entry symbol and
+source file, and <code>--meta</code> names its object (kept with <code>--keep DIR</code>). The record shapes and the
 regression rules are documented on the module
 (<a href="../../api/kernels/#static-checks">API</a>). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
@@ -4432,8 +4511,8 @@ emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With
 <code>MLIR_AIE_KERNEL_SOURCES</code> set to a checkout, the checkout's
 <code>aie_kernels/</code> is compiled against an installed wheel. The separate
-<code>benchmarkKernels.yml</code> workflow runs hardware correctness and benchmarks
-nightly, on demand, and on Peano-pin pull requests; it does not run these
+<code>nightlyKernelChecks.yml</code> workflow runs the hardware correctness and
+performance checks nightly and on Peano-pin pull requests; it does not run these
 static checks.</p>
 <h3 id="kernels-the-generic-builder-cannot-run">Kernels the generic builder cannot run<a class="headerlink" href="#kernels-the-generic-builder-cannot-run" title="Permanent link">&para;</a></h3>
 <p>The builder runs one kernel on one Worker. A cascade pair is two: the PUT
@@ -4444,12 +4523,14 @@ builds the pair by hand and judges it against the two products.
 <code>set_rounding</code> has a contract but no data output: it is a setup operation,
 covered by the rounding-mode tests above.</p>
 <p>The MobileNet bottleneck kernels (<code>bn_*</code>) are exported for the
-<a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet"><code>mobilenet</code></a> examples but carry no
-contract yet: their sources take between four and ten trailing scalars in
-per-kernel orders, several write only part of their output buffer per call,
-and the cascade halves exist as one symbol per network block. They are
-validated through the composed MobileNet designs until the sources are
-regularized; the contract test lists them by name as not judged.</p>
+<a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/mobilenet"><code>mobilenet</code></a> examples. The single-core
+ones carry contracts with round-half-even integer references and run in the
+hardware sweeps at MobileNet V3 layer shapes; <code>bn_conv2dk1_relu_xy_pool_padded</code>
+accumulates into its output across calls, so its case zeroes that buffer
+first. The cascade halves (<code>bn_conv2dk1_partial_*</code> and
+<code>bn_conv2dk1_input_split_partial_*</code>) exist as one symbol per network block
+and are still validated only through the composed MobileNet designs; the
+contract test lists them by name as not judged.</p>
 <p><code>mm_bfp_shuffle</code> validates the forward permutation through declared plain-BFP
 input and blocked-BFP output codecs, comparing exactly the represented values.
 The default equal-sized buffers are supported; custom unequal buffer extents
@@ -4461,7 +4542,7 @@ the GEMM-ordered bfp16ebs8 byte stream. Both are exposed as byte buffers so
 the harness checks exponents, mantissas and ordering exactly, including the
 kernel's floor-rounded bf16 intermediate. The default block and two smaller
 geometries participate in the compile and extensive hardware sweeps; the
-default also runs as a hardware smoke test and benchmark.</p>
+default also runs as a hardware smoke test and performance check.</p>
 <h2 id="related-reading">Related reading<a class="headerlink" href="#related-reading" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../compilation_stages/"><code>compilation_stages.md</code></a> — how the factory

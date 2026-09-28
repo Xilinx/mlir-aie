@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Standalone guide to optimizing AIE / Peano-compiled kernels (INT8 conv, matmul, attention, elementwise). Covers the measure-first methodology (baseline, bit-exact gate, ablation, verify-in-.o) and the catalog of concrete levers in priority order — loop hints, compile-time constants, killing __divsi3, branch-splitting, vectorized epilogue, operand-layout pre-pack, explicit wide packing, wider mmul, DMA layout offload — each with the constraints to respect and a measured delta.">
+        <meta name="description" content="Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the in-repo aie.utils.compile.remarks report and its base-arm diff, the trace-marker audit, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the Peano traps. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).">
       
       
         <meta name="author" content="AMD Advanced Micro Devices">
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#aie-kernel-optimization-the-what-to-change-menu" class="md-skip">
+        <a href="#aie-kernel-optimization" class="md-skip">
           Skip to content
         </a>
       
@@ -1842,6 +1842,8 @@
       
         
       
+        
+      
     
     
     
@@ -1967,6 +1969,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -2586,10 +2616,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#architecture-names" class="md-nav__link">
+  <a href="#setup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Architecture names
+        Setup
       
     </span>
   </a>
@@ -2597,33 +2627,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#before-you-start-methodology--dont-skip" class="md-nav__link">
+  <a href="#workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Before you start (methodology — don't skip)
+        Workflow
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#priority-order" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Priority order
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Priority order">
+    <nav class="md-nav" aria-label="Workflow">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-loop-hints--cheapest-often-biggest" class="md-nav__link">
+  <a href="#1-resolve-what-runs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Loop hints — cheapest, often biggest
+        1. Resolve what runs
       
     </span>
   </a>
@@ -2631,10 +2650,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-make-shapes-and-trip-counts-compile-time-constants" class="md-nav__link">
+  <a href="#2-gate-and-prove-the-gate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Make shapes and trip counts compile-time constants
+        2. Gate, and prove the gate
       
     </span>
   </a>
@@ -2642,10 +2661,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-eliminate-__divsi3--signed-power-of-2-ops-on-the-hot-path" class="md-nav__link">
+  <a href="#3-build-the-base-arm" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Eliminate __divsi3 / signed power-of-2 ops on the hot path
+        3. Build the base arm
       
     </span>
   </a>
@@ -2653,10 +2672,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-no-branches-inside-the-inner-compute-loop" class="md-nav__link">
+  <a href="#4-read-the-static-report" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. No branches inside the inner compute loop
+        4. Read the static report
       
     </span>
   </a>
@@ -2664,10 +2683,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-vectorize-the-epilogue-bias--requantizesrs--clamp--activation" class="md-nav__link">
+  <a href="#5-diagnose-then-change-one-thing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Vectorize the epilogue (bias + requantize/SRS + clamp + activation)
+        5. Diagnose, then change one thing
       
     </span>
   </a>
@@ -2675,10 +2694,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6-pre-pack-operand-layout-to-kill-the-scalar-gather-feeding-mmul" class="md-nav__link">
+  <a href="#6-measure-both-arms-back-to-back" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. Pre-pack operand layout to kill the scalar gather feeding mmul
+        6. Measure both arms back to back
       
     </span>
   </a>
@@ -2686,32 +2705,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-pack-wide-copies-explicitly" class="md-nav__link">
+  <a href="#7-exactness-and-record" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Pack wide copies explicitly
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#8-wider-mmul-shape--only-where-it-amortizes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        8. Wider mmul shape — only where it amortizes
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#9-move-pure-data-movement-into-dma-free-a-whole-tile" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        9. Move pure data-movement into DMA (free a whole tile)
+        7. Exactness and record
       
     </span>
   </a>
@@ -2724,10 +2721,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#register-pressure--power-note" class="md-nav__link">
+  <a href="#reading-hardware-rows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Register-pressure / power note
+        Reading hardware rows
       
     </span>
   </a>
@@ -2735,10 +2732,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#verifying-any-change-took-effect" class="md-nav__link">
+  <a href="#levers-that-measured-faster" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Verifying any change took effect
+        Levers that measured faster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changes-that-measured-worse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changes that measured worse
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to stop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background
       
     </span>
   </a>
@@ -3649,10 +3690,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#architecture-names" class="md-nav__link">
+  <a href="#setup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Architecture names
+        Setup
       
     </span>
   </a>
@@ -3660,33 +3701,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#before-you-start-methodology--dont-skip" class="md-nav__link">
+  <a href="#workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Before you start (methodology — don't skip)
+        Workflow
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#priority-order" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Priority order
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Priority order">
+    <nav class="md-nav" aria-label="Workflow">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-loop-hints--cheapest-often-biggest" class="md-nav__link">
+  <a href="#1-resolve-what-runs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Loop hints — cheapest, often biggest
+        1. Resolve what runs
       
     </span>
   </a>
@@ -3694,10 +3724,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-make-shapes-and-trip-counts-compile-time-constants" class="md-nav__link">
+  <a href="#2-gate-and-prove-the-gate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Make shapes and trip counts compile-time constants
+        2. Gate, and prove the gate
       
     </span>
   </a>
@@ -3705,10 +3735,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-eliminate-__divsi3--signed-power-of-2-ops-on-the-hot-path" class="md-nav__link">
+  <a href="#3-build-the-base-arm" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Eliminate __divsi3 / signed power-of-2 ops on the hot path
+        3. Build the base arm
       
     </span>
   </a>
@@ -3716,10 +3746,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-no-branches-inside-the-inner-compute-loop" class="md-nav__link">
+  <a href="#4-read-the-static-report" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. No branches inside the inner compute loop
+        4. Read the static report
       
     </span>
   </a>
@@ -3727,10 +3757,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-vectorize-the-epilogue-bias--requantizesrs--clamp--activation" class="md-nav__link">
+  <a href="#5-diagnose-then-change-one-thing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Vectorize the epilogue (bias + requantize/SRS + clamp + activation)
+        5. Diagnose, then change one thing
       
     </span>
   </a>
@@ -3738,10 +3768,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6-pre-pack-operand-layout-to-kill-the-scalar-gather-feeding-mmul" class="md-nav__link">
+  <a href="#6-measure-both-arms-back-to-back" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. Pre-pack operand layout to kill the scalar gather feeding mmul
+        6. Measure both arms back to back
       
     </span>
   </a>
@@ -3749,32 +3779,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-pack-wide-copies-explicitly" class="md-nav__link">
+  <a href="#7-exactness-and-record" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Pack wide copies explicitly
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#8-wider-mmul-shape--only-where-it-amortizes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        8. Wider mmul shape — only where it amortizes
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#9-move-pure-data-movement-into-dma-free-a-whole-tile" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        9. Move pure data-movement into DMA (free a whole tile)
+        7. Exactness and record
       
     </span>
   </a>
@@ -3787,10 +3795,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#register-pressure--power-note" class="md-nav__link">
+  <a href="#reading-hardware-rows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Register-pressure / power note
+        Reading hardware rows
       
     </span>
   </a>
@@ -3798,10 +3806,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#verifying-any-change-took-effect" class="md-nav__link">
+  <a href="#levers-that-measured-faster" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Verifying any change took effect
+        Levers that measured faster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#traps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changes-that-measured-worse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changes that measured worse
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to stop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background
       
     </span>
   </a>
@@ -3881,392 +3933,494 @@ Copyright (C) 2026 Advanced Micro Devices, Inc.
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-<h1 id="aie-kernel-optimization-the-what-to-change-menu">AIE kernel optimization (the "what to change" menu)<a class="headerlink" href="#aie-kernel-optimization-the-what-to-change-menu" title="Permanent link">&para;</a></h1>
-<p>Fourth of four porting phases, alongside <code>aie-dataflow-opt</code> (see
-<code>aie-model-baseline</code> for the numeric oracle, <code>aie-dataflow-presim</code> for
-pre-hardware validation, <code>aie-hw-bringup</code> for getting to a correct
-baseline on real hardware — this skill assumes that baseline already
-exists and is correct). <strong>This skill is micro; <code>aie-dataflow-opt</code> is
-macro</strong> — this skill answers "how do I make this one compiled kernel
-faster"; <code>aie-dataflow-opt</code> answers "which op should run on which tile,
-how should data move between them, and is a kernel even the right thing
-to be optimizing." Use this once a kernel is confirmed to be on the
-critical path (see <code>aie-dataflow-opt</code> lever #1, NOOP ablation, if that
-hasn't been confirmed yet).</p>
-<p>This is a catalog of the levers that actually move AIE/Peano kernels —
-in rough priority order, each with the constraint to respect so it pays
-off. Use it once you've identified a specific kernel worth optimizing.</p>
-<p>The deltas cited are illustrative results from hand-optimizing example
-INT8 kernels (convs, 1x1 projections, depthwise, GEMM, softmax-style
-attention) — they show the headroom a given lever can unlock relative to a
-straightforward first implementation, not a benchmark of any shipping
-product. The <em>mechanisms</em> are general to AIE/Peano; the conv-shaped
-examples are just illustrations — read "inner reduction loop", "output
-loop", "epilogue" generically for your kernel. Concrete vector widths and
-<code>mmul&lt;...&gt;</code> shapes in the examples reflect one AIE generation (the numbers
-differ across AIE/AIE-ML/AIE2P); take them as worked examples and check the
-aie-api headers for your target's actual widths.</p>
-<h2 id="architecture-names">Architecture names<a class="headerlink" href="#architecture-names" title="Permanent link">&para;</a></h2>
-<p>The codebase, marketing material, and silicon teams use different names for
-the same architecture. The internal name (left column) is what you pass to
-the toolchain (<code>--target=aie2-none-unknown-elf</code>, <code>--dev npu2</code>, etc.) and
-what gates code in the aie-api headers.</p>
+<h1 id="aie-kernel-optimization">AIE kernel optimization<a class="headerlink" href="#aie-kernel-optimization" title="Permanent link">&para;</a></h1>
+<p>This skill makes <strong>one compiled kernel</strong> faster. It assumes the kernel is
+already correct on hardware (<code>aie-hw-bringup</code>) and worth the work
+(<code>aie-dataflow-opt</code> ranks kernels by ablation).</p>
+<p><strong>Evidence rule.</strong> The static report tells you what to try and predicts the
+result. Only two arms measured back to back on the NPU, as traced cycles per
+call of the kernel itself, show a speedup. Only a raw output-word diff shows
+bit-exactness. Without a device, report a static change as "candidate, HW
+unconfirmed", never as faster: an II33 → 18 change measured 594 → 594 (it
+edited a symbol no factory calls), and an II37 → 31 change measured slower.</p>
+<h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">source</span><span class="w"> </span>/opt/xilinx/xrt/setup.sh<span class="w">            </span><span class="c1"># XRT first, or pyxrt is missing</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">source</span><span class="w"> </span>&lt;venv&gt;/bin/activate
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">source</span><span class="w"> </span>utils/env_setup.sh<span class="w"> </span>install<span class="w">          </span><span class="c1"># from the repository root (docs/Building.md)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nv">W</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="nv">K</span><span class="o">=</span>&lt;factory&gt;<span class="p">;</span><span class="w"> </span><span class="nv">CASE</span><span class="o">=</span>&lt;<span class="k">case</span><span class="w"> </span>name<span class="w"> </span>from<span class="w"> </span>kernel_cases.py&gt;<span class="p">;</span><span class="w"> </span><span class="nv">CPUS</span><span class="o">=</span>&lt;fixed<span class="w"> </span>host<span class="w"> </span>CPU<span class="w"> </span>list&gt;
+</code></pre></div>
+<p>Remarks takes <code>--target aie2p</code> for npu2 (Strix, Krackan) or <code>--target aie2</code>
+for npu1 (Phoenix); <code>xrt-smi examine</code> shows which device you have. What an
+intrinsic lowers to is in <code>third_party/aie_api/include/aie_api/detail/&lt;arch&gt;/</code>.</p>
+<h2 id="workflow">Workflow<a class="headerlink" href="#workflow" title="Permanent link">&para;</a></h2>
+<h3 id="1-resolve-what-runs">1. Resolve what runs<a class="headerlink" href="#1-resolve-what-runs" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;def </span><span class="nv">$K</span><span class="s2">\b&quot;</span><span class="w"> </span>-A40<span class="w"> </span>python/iron/kernels/*.py<span class="w">      </span><span class="c1"># source, -D flags, extern &quot;C&quot; symbol, trace=</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;Case(\&quot;</span><span class="nv">$K</span><span class="s2">&quot;</span><span class="w"> </span>test/python/npu/kernel_cases.py<span class="w">     </span><span class="c1"># cases, calls=, kwargs</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>python<span class="w"> </span>-m<span class="w"> </span>aie.utils.compile.remarks<span class="w"> </span>--target<span class="w"> </span>aie2p<span class="w"> </span>--only<span class="w"> </span><span class="s2">&quot;^</span><span class="nv">$K</span><span class="s2">&quot;</span><span class="w"> </span>--out<span class="w"> </span><span class="nv">$W</span>/rows.json<span class="w"> </span>--meta<span class="w"> </span><span class="nv">$W</span>/meta.json
+</code></pre></div>
+<ul>
+<li>Remarks prints <code>[OK] &lt;build&gt;: &lt;symbol&gt; from &lt;source&gt;</code> per build. Follow
+  that symbol to the function it calls and edit only that. A <code>.cc</code> often
+  holds siblings no factory selects (in-place, <code>_scalar</code>, another dtype).</li>
+<li>Remarks builds each factory at its defaults and <code>.dtypes</code>; if a case sets
+  another <code>-D</code> flag, the rows describe the default build.</li>
+<li>Read the contract's <code>trace=</code>. Only <code>Trace.whole_call()</code> gets a cycles row.
+  <code>Trace.none(reason)</code> and <code>Trace.partial(reason)</code> leave you with wall clock.</li>
+</ul>
+<h3 id="2-gate-and-prove-the-gate">2. Gate, and prove the gate<a class="headerlink" href="#2-gate-and-prove-the-gate" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pytest<span class="w"> </span>test/python/test_kernel_contracts.py<span class="w"> </span>-k<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$K</span><span class="s2">&quot;</span><span class="w"> </span>-q<span class="w">           </span><span class="c1"># host only</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>pytest<span class="w"> </span>test/python/npu/test_kernels_e2e.py<span class="w"> </span>-m<span class="w"> </span>extensive<span class="w"> </span>-k<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CASE</span><span class="s2">&quot;</span><span class="w"> </span>--seeds<span class="w"> </span><span class="m">3</span>
+</code></pre></div>
+<ul>
+<li><code>-m extensive</code> runs every case, every data case (random plus the
+  contract's edge cases) and every seed. <code>-k</code> is a substring match (<code>-k add</code>
+  also runs <code>mul_add</code>); check the selection with <code>--collect-only -q</code>.</li>
+<li><strong>Mutation-prove it.</strong> Break the kernel on purpose (drop a term, skip the
+  tail, swap two loads), watch the gate fail, revert. Report a mutation
+  that survives, with the reason; don't swap in a louder one.</li>
+<li><strong>Derive every tolerance</strong> from the arithmetic, over the longest case
+  (one kernel's error was 0.07 at 4 calls and 0.25 at 256).</li>
+<li><strong>The reference must not replay the kernel.</strong> Write a single-pass fp32
+  reference, and judge against the mathematics (see the exp2 and tanh traps
+  below).</li>
+<li>Keep outputs poisoned (<code>kd.upload(..., poison=True)</code>) and guarded
+  (<code>kd.design(..., guard=True)</code>), so an unwritten output or a write past a
+  tile's end fails. Gate every entry point alone, and the composition once.</li>
+</ul>
+<h3 id="3-build-the-base-arm">3. Build the base arm<a class="headerlink" href="#3-build-the-base-arm" title="Permanent link">&para;</a></h3>
+<p>An arm is a directory holding <code>aie_kernels/</code> and <code>aie_runtime_lib/</code>.
+Remarks and the JIT compile from <code>MLIR_AIE_KERNEL_SOURCES=&lt;arm&gt;</code> when it is
+set, and both take <code>--baseline-sources &lt;arm&gt;</code> for the comparison.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nv">BASE</span><span class="o">=</span><span class="nv">$W</span>/base<span class="p">;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="nv">$BASE</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>archive<span class="w"> </span>HEAD<span class="w"> </span>aie_kernels<span class="w"> </span>aie_runtime_lib<span class="w"> </span><span class="p">|</span><span class="w"> </span>tar<span class="w"> </span>-x<span class="w"> </span>-C<span class="w"> </span><span class="nv">$BASE</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Shared tree, or your file includes a sibling (mha.cc includes mm, softmax, zero):</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>cp<span class="w"> </span>-r<span class="w"> </span>aie_kernels<span class="w"> </span>aie_runtime_lib<span class="w"> </span><span class="nv">$BASE</span>/<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>show<span class="w"> </span>&lt;rev&gt;:&lt;file&gt;<span class="w"> </span>&gt;<span class="w"> </span><span class="nv">$BASE</span>/&lt;file&gt;
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>diff<span class="w"> </span>-rq<span class="w"> </span>aie_kernels<span class="w"> </span><span class="nv">$BASE</span>/aie_kernels<span class="w">     </span><span class="c1"># must list only your files</span>
+</code></pre></div>
+<p>The factories, cases and <code>-D</code> flags come from the installed Python in both
+arms, so snapshot Python-side parameters (stack sizes, geometry tables) you
+change along with the arm.</p>
+<h3 id="4-read-the-static-report">4. Read the static report<a class="headerlink" href="#4-read-the-static-report" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python<span class="w"> </span>-m<span class="w"> </span>aie.utils.compile.remarks<span class="w"> </span>--target<span class="w"> </span>aie2p<span class="w"> </span>--only<span class="w"> </span><span class="s2">&quot;^</span><span class="nv">$K</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--out<span class="w"> </span><span class="nv">$W</span>/rows.json<span class="w"> </span>--meta<span class="w"> </span><span class="nv">$W</span>/meta.json<span class="w"> </span>--keep<span class="w"> </span><span class="nv">$W</span>/objs<span class="w"> </span>--baseline-sources<span class="w"> </span><span class="nv">$BASE</span>
+</code></pre></div>
+<ul>
+<li>Per build: <code>[OK]</code>, then any <code>dropped pragma:</code>, <code>calls the runtime
+  library: &lt;symbols&gt;</code>, and a <code>stack:</code> warning over the contract's budget.
+  It exits 3 if a build fails to compile; that is a finding.
+  With <code>--baseline-sources</code> it ends with <code>N rows differ</code> and one
+  <code>name: before -&gt; after</code> line per row: that is the static A/B.</li>
+<li>Rows: <code>unpipelined_loops</code>, <code>non_zol_loops</code>, <code>missing_bank_loads</code>,
+  <code>pass_failed_warnings</code>, <code>pm_bytes</code>, <code>libcalls</code>, <code>stack_bytes</code>, and per loop
+  <code>loop/&lt;fn&gt;/&lt;bb&gt;/II</code> and <code>not_zol</code>. They cover only functions the entry
+  symbol reaches.</li>
+<li>Meta per loop: <code>ii</code>, <code>ns</code> (stage count), <code>pipelined</code>, <code>zol</code>,
+  <code>bundle_count</code>, <code>byte_count</code>, <code>file</code>, <code>line</code>; per build <code>pass_failed</code> and
+  <code>schedule_notes</code> (<code>MII</code>, <code>SwpMaxMii</code>). Meta covers this tree only; for
+  the base arm's loops run again with <code>MLIR_AIE_KERNEL_SOURCES=$BASE</code>.</li>
+<li>Spills: <code>[sp, #</code> inside a loop body in the kept object.
+  <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">$PEANO_INSTALL_DIR</span>/bin/llvm-objdump<span class="w"> </span>-d<span class="w"> </span>--no-show-raw-insn<span class="w"> </span>&lt;object&gt;<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;\[sp, #&#39;</span>
+</code></pre></div></li>
+<li>Size: use <code>pm_bytes</code> / <code>pm_bytes_by_function</code>, not an object's <code>.text</code>,
+  which counts siblings the link drops.</li>
+<li>A <code>noinline</code> body reports its caller's II; count its bundles yourself.</li>
+</ul>
+<h3 id="5-diagnose-then-change-one-thing">5. Diagnose, then change one thing<a class="headerlink" href="#5-diagnose-then-change-one-thing" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>internal name(s)</th>
-<th>marketing name</th>
-<th>chips with this architecture</th>
+<th>Report or object shows</th>
+<th>Lever</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>aie</code></td>
-<td>AIE</td>
-<td>Versal VCK190</td>
+<td><code>libcalls</code> names a helper called in a loop</td>
+<td>L02; L11 for <code>__divsi3</code></td>
 </tr>
 <tr>
-<td><code>aie2</code> (== NPU1)</td>
-<td>AIE-ML (XDNA)</td>
-<td>Phoenix</td>
+<td><code>vector&lt;float&gt;</code> multiply, min or max in a loop</td>
+<td>L03; L04 on AIE2P</td>
 </tr>
 <tr>
-<td><code>aie2p</code> (== NPU2)</td>
-<td>XDNA2</td>
-<td>Strix Point, Strix Halo, Krackan</td>
+<td>Array of accumulators or vectors indexed by a loop counter; <code>[sp</code> traffic</td>
+<td>L01</td>
 </tr>
 <tr>
-<td><code>aie2ps</code></td>
-<td>AIE-MLv2</td>
-<td>Telluride</td>
+<td>The loop you care about isn't innermost or single-block; unpipelined parent</td>
+<td>L10</td>
+</tr>
+<tr>
+<td>Loop body branches on its counter</td>
+<td>L13</td>
+</tr>
+<tr>
+<td>Address arithmetic in the body; no <code>__restrict</code></td>
+<td>L06</td>
+</tr>
+<tr>
+<td>Pipelined, many empty bundles; <code>byte_count</code> flat from ×1 to ×4</td>
+<td>L07</td>
+</tr>
+<tr>
+<td>Stepping 16 lanes on 8/16-bit, or on bf16 on AIE2P</td>
+<td>L08</td>
+</tr>
+<tr>
+<td>One long mac chain, or broadcasts spilled per block</td>
+<td>L09</td>
+</tr>
+<tr>
+<td>Pipelined, <code>ns</code> 3, one long latency chain with no dominant step</td>
+<td>L17</td>
+</tr>
+<tr>
+<td>Several <code>mmul&lt;8,8,8&gt;</code> accumulators for Y += S·V; high II, big frame</td>
+<td>L18</td>
+</tr>
+<tr>
+<td>A <code>reduce_add</code>/<code>reduce_max</code> per row that the row loop never overlaps</td>
+<td>L20</td>
+</tr>
+<tr>
+<td>bfp16 stream state (<code>sfl/sfh</code>, FIFO) spilled around <code>vst.push</code>/<code>vldb.pop</code></td>
+<td>L19</td>
+</tr>
+<tr>
+<td><code>(tanh+1)/2</code>, or separate constant multiplies</td>
+<td>L05</td>
+</tr>
+<tr>
+<td><code>lda.s8</code>/<code>st.s8</code> byte loop</td>
+<td>L12</td>
+</tr>
+<tr>
+<td>Scalar int8 requantize tail</td>
+<td>L14</td>
+</tr>
+<tr>
+<td>Scalar gather building the mmul A operand</td>
+<td>L15</td>
+</tr>
+<tr>
+<td>Body is only a rearrangement</td>
+<td>L16</td>
+</tr>
+<tr>
+<td>II already at a resource or latency bound</td>
+<td>stop (§When to stop)</td>
 </tr>
 </tbody>
 </table>
-<h2 id="before-you-start-methodology--dont-skip">Before you start (methodology — don't skip)<a class="headerlink" href="#before-you-start-methodology--dont-skip" title="Permanent link">&para;</a></h2>
-<p><strong>Measure before modeling; verify before trusting.</strong> Static analysis of
-MLIR or kernel C is unreliable on AIE — paper-compute estimates have
-mispredicted real HW time by 5–300× depending on the kernel. Every claim
-about where time goes must be backed by an HW measurement or an ELF
-inspection, not a cycle count in your head.</p>
-<ol>
-<li><strong>Baseline first.</strong> Build clean, run on HW, record the median wall time
-   over ≥20 iterations. If the std-dev is &gt;1% of the mean, fix that
-   (background load, throttling, noisy runtime) before optimizing — you
-   can't measure a 5% win against 10% noise.</li>
-<li><strong>Establish a bit-exact gate from the start.</strong> Capture the exact
-   command that produces a PASS against a reference. Every change below
-   must keep it passing. Don't take wall-time numbers from a broken build
-   — wrong data computes in a different amount of time than correct data.</li>
-<li><strong>Confirm the kernel is on the critical path before optimizing it.</strong>
-   The cheapest reliable attribution is <em>ablation</em>: gate the kernel call
-   behind a flag (leave the locks/acquires/releases intact, just skip the
-   compute), re-time, and look at the delta. A kernel contributing 99 ms
-   is 20× more worth your time than one contributing 4 ms. HW packet
-   tracing is more difficult to interpret; prefer ablation for attribution.</li>
-<li><strong>One change at a time.</strong> If you edit the C source and the build flags
-   and the dataflow at once, you can't tell which moved the needle.</li>
-<li><strong>Verify the mechanism in the <code>.o</code> before believing your cycle-model.</strong>
-   In practice, <em>both</em> "obvious" explanations for a given regression
-   (register spill; doubled scalar gather) have turned out wrong on
-   objdump inspection. A regression you can't see in the codegen is one you don't
-   understand yet. Useful checks:</li>
-<li><code>llvm-nm --print-size build/X.o</code> — spill ≈ noticeably bigger function.</li>
-<li><code>llvm-objdump -d build/X.o | grep -coE '\bv(lda|ldb|mac|mul|st)\b'</code> —
-     confirm vector ops actually appear (scalar-only <code>mac</code>/<code>lda</code>/<code>st</code> means
-     the kernel didn't vectorize at all — fix that before anything else).</li>
-<li><code>llvm-nm build/X.o | grep __div</code> — should be empty (see lever #3).</li>
-</ol>
-<p><strong>Read the disassembly — for a compute-bound kernel it can replace HW
-   timing.</strong> AIE cores don't stall (no cache, no dynamic scheduling, no
-   branch misprediction), so the hot loop's instruction count ÷ core clock
-   ≈ its execution time. This is <em>not</em> the source-level paper-compute
-   modeling warned against above: that fails because you can't know what the
-   compiler emitted, whereas counting instructions in the emitted assembly
-   is counting exactly what runs. Disassemble with relocations (the <code>-r</code>
-   marks the start/end of the zero-overhead loop):
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">$PEANO_INSTALL_DIR</span>/bin/llvm-objdump<span class="w"> </span>-d<span class="w"> </span>-r<span class="w"> </span>build/X.o
-</code></pre></div>
-   Or compile straight to assembly, skipping the object file:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">$PEANO_INSTALL_DIR</span>/bin/clang++<span class="w"> </span>-O2<span class="w"> </span>-std<span class="o">=</span>c++20<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>-I<span class="nv">$MLIR_AIE_INSTALL_DIR</span>/include<span class="w"> </span>--target<span class="o">=</span>aie2-none-unknown-elf<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>-S<span class="w"> </span>my_kernel.cc<span class="w"> </span>-o<span class="w"> </span>kernel.s
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># (swap aie2 for aie2p/etc. per the architecture table above)</span>
-</code></pre></div>
-   In the <strong>zero-overhead loop</strong> body (a hardware loop whose bounds are
-   programmed once, so it repeats a fixed instruction block with no
-   per-iteration branch/counter overhead), count two things: total
-   instructions, and inserted <strong><code>nop</code>s</strong> — padding emitted when the compiler
-   can't fill a VLIW slot, i.e. visible evidence the loop isn't packed
-   tight. Fewer of each is directly faster.
-6. <strong>Don't trust "I cleaned the build."</strong> Make tracks file mtimes, not
-   flag changes, and <code>.prj/</code> dirs cache stale ELFs. Confirm the <code>.o</code>
-   actually rebuilt and contains your edit (see "Verifying any change took
-   effect" at the end).</p>
-<hr />
-<h2 id="priority-order">Priority order<a class="headerlink" href="#priority-order" title="Permanent link">&para;</a></h2>
-<p>Bigger, more reliable levers first. Don't jump to the wider-mmul lever
-before doing the loop-hint / branch / epilogue levers — the structural
-wins live there.</p>
-<h3 id="1-loop-hints--cheapest-often-biggest">1. Loop hints — cheapest, often biggest<a class="headerlink" href="#1-loop-hints--cheapest-often-biggest" title="Permanent link">&para;</a></h3>
-<p>Include <code>aie_kernel_utils.h</code>. Decorate every non-trivial for-loop. <strong>The
-macro goes before the <code>for</code> statement, never inside the parens</strong> (it's a
-clang pragma, not the chess attribute form).</p>
 <ul>
-<li><code>AIE_PREPARE_FOR_PIPELINING</code> on the loop you want software-pipelined
-  (usually the outermost loop over output elements/tiles). Its effect is
-  toolchain-dependent; leave it in for portability across toolchains, but
-  treat the other hints below as the ones doing the work.</li>
-<li><code>AIE_LOOP_RANGE(N, N)</code> on every fixed-trip-count loop. This is a
-  <strong>trip-count hint only</strong> — Peano still emits a runtime loop, it just
-  knows the bounds.</li>
-<li><code>AIE_LOOP_RANGE(lo, hi)</code> on bounded-but-variable loops (e.g. a reduction
-  whose count depends on a border/edge condition).</li>
-<li><strong><code>AIE_LOOP_UNROLL_FULL</code> on small fixed-count inner loops</strong> (trip count
-  is a small constant like 3) — <em>mandatory</em> if the loop body switches or
-  branches on the loop variable (a helper that does <code>switch(i)</code> on the
-  index, an index-dependent address calc). <code>AIE_LOOP_RANGE</code> alone leaves
-  the switch as a runtime branch and blocks VLIW pipelining of the body.
-  <strong>Verified on a 3x3 conv: changing the window loop from
-  <code>AIE_LOOP_RANGE(3,3)</code> to <code>AIE_LOOP_UNROLL_FULL</code> was a one-line diff for
-  −47% kernel time.</strong> RANGE alone was insufficient.</li>
+<li>One change per candidate. The lever's Check must move in the
+  <code>--baseline-sources</code> diff; if no static metric moved, revert.</li>
+<li>Before an unroll, screen it: two scratch arms that differ only in the
+  pragma, remarks on <code>x4</code> with <code>--baseline-sources $W/x1</code>. Loop
+  <code>byte_count</code> flat at ×4 means latency-bound: go. Roughly ×4, a new
+  <code>[sp, #</code>, or more <code>stack_bytes</code>: stop. Try 2 and 8 when 4 is borderline.</li>
+<li>If the change creates a path no case reaches (an unroll remainder, a
+  non-square shape, an odd block count), add a <code>Case</code> to
+  <code>test/python/npu/kernel_cases.py</code> and its name to
+  <code>test/python/npu/perf_series.txt</code> (<code>test_perf_series_names.py</code> checks).</li>
+<li>A change that hides work from LLVM (an opaque pointer bump, <code>volatile</code>, a
+  LICM blocker) to get a lower II has measured slower (prefill <code>fv</code>: static
+  II37 → 31, HW 1374-1576 against 1265).</li>
+<li>Write the per-call prediction before measuring:
+  <code>bundles_outside_loop + 5 + (trips - 1) × II</code>, per loop, trips from the
+  loop-count setup in the object. Compare II per unit of work (per row,
+  value or tile), not per loop: a raw II that rises can still win. Never
+  turn an II ratio into a speedup (prefill <code>fv</code>'s said -70%; HW gave -35%).</li>
+<li>Re-run <code>test_kernel_contracts.py</code> and the gate.</li>
 </ul>
-<h3 id="2-make-shapes-and-trip-counts-compile-time-constants">2. Make shapes and trip counts compile-time constants<a class="headerlink" href="#2-make-shapes-and-trip-counts-compile-time-constants" title="Permanent link">&para;</a></h3>
-<p>This is the lever that unlocks most of the others, so do it early. Peano
-optimizes far more aggressively when the bounds, strides, and shapes it
-needs are visible as constants at compile time rather than arriving as
-runtime kernel arguments. <code>constexpr</code> (not just <code>const</code>) is what guarantees
-that visibility: a <code>const int</code> initialized from a runtime argument is still
-a runtime value, whereas a <code>constexpr</code> — or a value threaded in through a
-template parameter or a <code>-D</code> compile definition — is a literal the
-optimizer can fold against.</p>
-<p>What you get when the shapes are <code>constexpr</code>:
-- <strong>Loop hints actually bind.</strong> The <code>AIE_LOOP_RANGE</code> / <code>AIE_LOOP_UNROLL_FULL</code>
-  hints from lever #1 only help when the trip count is a known constant;
-  fed a runtime bound, they have nothing to fold.
-- <strong>Address arithmetic folds to immediates.</strong> <code>ic_t * stride + x * 64</code> with
-  constant strides becomes immediate-offset loads instead of runtime
-  multiplies.
-- <strong>Power-of-2 divides and multiplies become shifts</strong> instead of <code>__divsi3</code>
-  software calls (see lever #3).</p>
-<p>How to apply: prefer template parameters or <code>constexpr</code> for per-call-site
-shapes. If the same kernel serves multiple shapes, pass them as <code>-D</code>
-compile definitions (one specialization per shape) with a runtime-argument
-fallback path, so the hot configurations get the constant-folded code and
-the rest still build. Compile-time shapes alone are typically a small
-direct win (~2%), but they are the precondition that makes levers #1, #3,
-and the addressing in #6 pay off.</p>
-<h3 id="3-eliminate-__divsi3--signed-power-of-2-ops-on-the-hot-path">3. Eliminate <code>__divsi3</code> / signed power-of-2 ops on the hot path<a class="headerlink" href="#3-eliminate-__divsi3--signed-power-of-2-ops-on-the-hot-path" title="Permanent link">&para;</a></h3>
-<p>A signed power-of-2 divide is not equivalent to a shift (<code>int32_t a / 8</code> ≠
-<code>a &gt;&gt; 3</code> — rounding toward zero differs for negatives), so it lowers to a
-<code>__divsi3</code> software call rather than a single shift. That external call
-also acts as a <strong>vectorization barrier</strong> for the whole enclosing function,
-so removing it can unlock much more than the divide itself.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">n_tiles</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">)</span><span class="n">channel_count</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">8u</span><span class="p">;</span><span class="w">  </span><span class="c1">// → shift, not __divsi3</span>
+<h3 id="6-measure-both-arms-back-to-back">6. Measure both arms back to back<a class="headerlink" href="#6-measure-both-arms-back-to-back" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>taskset<span class="w"> </span>-c<span class="w"> </span><span class="nv">$CPUS</span><span class="w"> </span>pytest<span class="w"> </span>test/python/npu/test_kernels_perf.py<span class="w"> </span>-m<span class="w"> </span>perf<span class="w"> </span>-k<span class="w"> </span><span class="s2">&quot;[</span><span class="nv">$CASE</span><span class="s2">] or [&lt;unchanged case&gt;]&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--baseline-sources<span class="w"> </span><span class="nv">$BASE</span><span class="w"> </span>--perf-out<span class="w"> </span><span class="nv">$W</span>/perf.json<span class="w"> </span>--perf-meta<span class="w"> </span><span class="nv">$W</span>/meta.json
 </code></pre></div>
-<p>The same applies to signed multiply by a power of 2 when the operand can be
-negative: <code>idx * STRIDE</code> where <code>idx</code> can be −1 (e.g. a left/top border
-offset) won't fold to a shift even with <code>STRIDE</code> a compile-time
-power-of-2 (negative-shift would be UB). Fix by <strong>peeling the borders</strong> out of the
-hot loop — handle the edge iterations separately so the interior path has
-a provably non-negative index and the address arithmetic folds to shifts.
-Verify with <code>llvm-nm build/X.o | grep __div</code> — the call should disappear.</p>
-<h3 id="4-no-branches-inside-the-inner-compute-loop">4. No branches inside the inner compute loop<a class="headerlink" href="#4-no-branches-inside-the-inner-compute-loop" title="Permanent link">&para;</a></h3>
-<p>A per-iteration <code>if</code>/<code>else</code>/ternary inside the VLIW inner loop blocks
-Peano's back-to-back <code>vld + vld + vmac</code> (or <code>vld + vop</code>) issue — <strong>even
-when the predicate is a compile-time-known constant array</strong> indexed by the
-loop variable.</p>
-<p>The common offender: a kernel that reduces over inputs from <strong>mixed
-sources</strong> (some operands in one memory layout, some in another) and
-selects per-iteration with <code>if (is_packed[i]) vec_load else scalar_pack</code>.
-Don't. Split into <strong>K straight-line per-source loops</strong>, each body uniform:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n_src0</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* pure vec_load + op */</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n_src1</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* pure scalar-pack + op */</span><span class="w"> </span><span class="p">}</span>
-</code></pre></div>
-<p><strong>Verified: branched → split was −7% on a 3-source reduction kernel, on
-top of staying bit-exact.</strong> A <code>(i &lt; n) ? a : b</code> ternary inside the loop
-counts as a branch too — split per-source even when both branches load.</p>
-<h3 id="5-vectorize-the-epilogue-bias--requantizesrs--clamp--activation">5. Vectorize the epilogue (bias + requantize/SRS + clamp + activation)<a class="headerlink" href="#5-vectorize-the-epilogue-bias--requantizesrs--clamp--activation" title="Permanent link">&para;</a></h3>
-<p>Once the inner loop is tight, the scalar tail becomes the bottleneck:
-processing the output elements one at a time (add bias, shift-round-
-saturate, clamp, activation lookup). In practice, <strong>vectorizing the
-epilogue was the single biggest per-kernel lever</strong> — roughly 20–25% per
-kernel even after loop hints (#1) and compile-time shapes (#2) were
-already in.
-<strong>In one measured case a pipeline stage went 27.75 → 15.99 ms (−42% /
-+74% fps) across three kernels, almost entirely from epilogue
-vectorization.</strong></p>
-<p>Pattern (for any kernel with a scalar
-<code>acc[i] + bias; round_shift; clamp; out[i] = lut[...]</code> tail):</p>
-<ol>
-<li><strong>Match the rounding mode to your reference.</strong> If the scalar reference
-   uses round-half-to-even (banker's rounding), set
-   <code>aie::set_rounding(aie::rounding_mode::conv_even)</code> so the vector
-   <code>acc.to_vector&lt;int8&gt;(shift)</code> is bit-identical. A mismatched mode
-   (e.g. <code>positive_inf</code>) produced ~0.2% element mismatch with max diff 3 —
-   small, but an activation LUT amplifies ±1 rounding diffs into larger
-   output errors, so it fails a bit-exact gate.</li>
-<li><strong>Bias-init / fold the add into a vector op.</strong> Load the bias values,
-   broadcast/<code>concat</code> them to the accumulator width, <code>aie::add</code> on the
-   int32 vector, then <code>acc.from_vector(sum); acc.to_vector&lt;int8&gt;(shift)</code>
-   to do shift-round-saturate in one shot. Replaces N scalar bias-adds +
-   N scalar SRS.</li>
-<li><strong>Keep the epilogue helper <code>always_inline</code> and pass the accumulator
-   by reference.</strong> A non-inline pass-by-ref of an <code>aie::mmul</code>/<code>aie::accum</code>
-   breaks the ABI. Only break it out of inline (and watch tile program
-   memory) if PM pressure forces it.</li>
-<li><strong>The activation-table lookup (<code>lut[...]</code>) stays scalar.</strong> Vectorize the
-   bias + SRS + clamp around it; the per-element table lookup and store
-   remain a scalar loop.</li>
-<li><strong>For a residual/skip add, use a wide-enough intermediate.</strong> Accumulate
-   into an <strong>int16</strong> vector and add non-saturating when the value range
-   fits, then <code>acc.to_vector&lt;int8&gt;(0)</code> for the saturating narrow. <code>aie::add</code>
-   on int8 vectors wraps rather than saturates, so the saturation has to
-   come from the narrowing step.</li>
-</ol>
-<h3 id="6-pre-pack-operand-layout-to-kill-the-scalar-gather-feeding-mmul">6. Pre-pack operand layout to kill the scalar gather feeding mmul<a class="headerlink" href="#6-pre-pack-operand-layout-to-kill-the-scalar-gather-feeding-mmul" title="Permanent link">&para;</a></h3>
-<p>The scalar operand-build that feeds a matmul — <code>for(p,k) a_buf[p*W+k] =
-src[...]; load_v&lt;...&gt;(a_buf)</code> into a stack scratch — is frequently the
-<strong>dominant cost</strong> of an mmul-based kernel: the per-mmul cost is several
-times what the same mmul achieves once the operand is delivered in
-mmul-ready layout. It's a non-issue in the canonical matmul example
-(<code>aie_kernels/aie*/mm.cc</code>) because there DMA delivers the operand already
-in mmul-ready layout; kernels that hand-assemble the operand from
-L1-shared buffers (not via DMA) pay the repack cost instead.</p>
-<p>Root cause: <code>aie::concat</code> has a minimum operand width (on current AIE it
-won't concat sub-128-bit vectors), so a wide operand vector can't be
-assembled from strided narrow loads — the scalar byte-copy fallback is the
-only option <em>when the source layout doesn't match the mmul's expected
-operand layout</em>.</p>
-<p><strong>Fix — requires controlling BOTH the producer and the consumer of the
-intermediate buffer:</strong>
-- <strong>Producer (free):</strong> an mmul result <code>acc.to_vector&lt;int8&gt;(shift)</code> is
-  <em>already</em> in the byte order the next mmul wants as its A operand. Have
-  the producer write it as one vector store into the intermediate buffer
-  in that layout. No transform on the producer side.
-- <strong>Consumer:</strong> reads the operand with a single aligned <code>vld</code>. If the next
-  kernel needs a shifted window of that data (e.g. a sliding conv window),
-  build the shifted vector with <code>concat</code> + <code>shuffle_down</code> + <code>extract</code>
-  rather than re-gathering scalar-wise:
-  <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">combined</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">concat</span><span class="p">(</span><span class="n">lo_block</span><span class="p">,</span><span class="w"> </span><span class="n">hi_block</span><span class="p">);</span><span class="w">   </span><span class="c1">// ≥128-bit</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">return</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">shuffle_down</span><span class="p">(</span><span class="n">combined</span><span class="p">,</span><span class="w"> </span><span class="n">shift_amt</span><span class="p">).</span><span class="k">template</span><span class="w"> </span><span class="n">extract</span><span class="o">&lt;</span><span class="n">N</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
-</code></pre></div>
-  Total bytes are identical to the naive layout; both ends must agree on
-  the stride.</p>
-<p><strong>Verified: a multi-kernel design went 14.97 → 11.44 ms (−23.6%)
-standalone; a standalone conv went 207 → 521 fps (+135%).</strong> The estimate (0.8–1.5 ms)
-badly undershot the actual (3.5 ms) because removing the scalar pack also
-let Peano schedule the surrounding loop more tightly — a secondary
-register-allocation effect invisible in any bytecount model. Only applies
-when both ends are in your code (not a library/external consumer that
-expects the naive layout).</p>
-<h3 id="7-pack-wide-copies-explicitly">7. Pack wide copies explicitly<a class="headerlink" href="#7-pack-wide-copies-explicitly" title="Permanent link">&para;</a></h3>
-<p>For a small fixed-size element copy, write the wide move explicitly rather
-than relying on a scalar byte loop to be widened for you — in deeply-nested
-or stack-allocated-buffer contexts the explicit form is what guarantees a
-single wide load/store:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="o">*</span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="w"> </span><span class="o">*&gt;</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="k">const</span><span class="w"> </span><span class="kt">uint64_t</span><span class="w"> </span><span class="o">*&gt;</span><span class="p">(</span><span class="n">src</span><span class="p">);</span><span class="w">  </span><span class="c1">// 8 bytes</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1">// 4 bytes → uint32_t; 16 → two uint64; 32 → four. alignas(N) both ends.</span>
-</code></pre></div>
-<p><strong>Verified: a per-row scratch pack went 3.44 → 2.95 ms (+14%) from this
-change alone.</strong> If the explicit form produces wrong output, check for a
-Worker stack overflow into an adjacent buffer — bump the worker's stack
-size (e.g. <code>Worker(stack_size=2048)</code>).</p>
-<h3 id="8-wider-mmul-shape--only-where-it-amortizes">8. Wider mmul shape — only where it amortizes<a class="headerlink" href="#8-wider-mmul-shape--only-where-it-amortizes" title="Permanent link">&para;</a></h3>
-<p>An int8 <code>mmul&lt;r, s, t&gt;</code> comes in several widths (the exact set is
-arch-dependent; check the aie-api headers for your target — e.g. AIE2P int8
-offers <code>mmul&lt;4,8,8&gt;</code>, <code>&lt;4,16,8&gt;</code>, <code>&lt;8,8,8&gt;</code>, <code>&lt;8,16,8&gt;</code>). A wider M (r)
-doubles output rows per call; a wider K (s=16) needs the weight operand
-re-laid-out (e.g. <code>...I8O8</code> → <code>...I16O8</code>), which isn't free.</p>
 <ul>
-<li><strong>When there's a deep inner reduction loop per output (e.g. 3x3+ conv
-  with a kx·ky·channels reduction): usually a direct win</strong> — halving the
-  outer call count cuts a large per-output workload, swamping any extra
-  operand-gather cost.</li>
-<li><strong>When the per-output work is tiny (1x1 conv / GEMV-ish) and the operand
-  is built by scalar gather: it can regress.</strong> <code>mmul&lt;M,8,8&gt;</code> does <code>M×8</code>
-  byte copies per reduction step; going M=4→8 doubles the gather while
-  only halving an already-small call count. <strong>Verified: a 1x1 kernel went
-  3.34 → 3.58 ms (+7%, reverted).</strong> Vectorize the operand gather (lever
-  #6) <em>first</em>; only then does the wider shape pay back.</li>
-<li><strong>Non-contiguous operands (strided/gathered inputs): tried + reverted.</strong>
-  The wider shape can't help if the operand can't be loaded contiguously.</li>
+<li>Each case runs from this tree, then from <code>$BASE</code>, with the same inputs.
+  The summary prints <code>cycles base -&gt; cur</code>, <code>npu_us min base -&gt; cur</code> and
+  <code>same</code> or <code>N differ</code> raw output words per case; <code>--perf-meta</code> holds the
+  same under <code>baseline.cases.&lt;case&gt;</code>.</li>
+<li><code>-k "[$CASE]"</code>, brackets included, selects exactly one case. <code>-k</code>
+  rejects <code>=</code>; select a prefix and check with <code>--collect-only -q</code>.</li>
+<li>To screen a candidate kept in its own copy, set
+  <code>MLIR_AIE_KERNEL_SOURCES=$W/cand-&lt;name&gt;</code>; the JIT cache key includes it,
+  so no cache wipe is needed.</li>
 </ul>
-<h3 id="9-move-pure-data-movement-into-dma-free-a-whole-tile">9. Move pure data-movement into DMA (free a whole tile)<a class="headerlink" href="#9-move-pure-data-movement-into-dma-free-a-whole-tile" title="Permanent link">&para;</a></h3>
-<p>If a kernel body is <em>only</em> a data rearrangement — a strided copy,
-transpose (<code>dst[a,b] = src[b,a]</code>), deinterleave, or gather, with <strong>no
-arithmetic</strong> — it's exactly what the memtile DMA <code>dims_to_stream</code> /
-<code>dims_from_stream</code> machinery was built for. Move it onto the upstream
-ObjectFifo (<code>cons().forward(dims_to_stream=…)</code>) instead of running a
-kernel. This drops an extern call + a <code>.o</code> and frees the consumer tile's
-program memory — <strong>worth doing even when the kernel isn't on the critical
-path</strong> (verified: pure-transpose packer kernels that ablation showed were
-off the critical path were still worth removing for the PM/tile savings).</p>
-<p><strong>Don't</strong> do this if the kernel also computes (mac, activation, requant) —
-the rearrangement is essentially free when overlaid on real compute, so
-leave it in the kernel.</p>
-<p>Related DMA layout wins:
-- <strong>Deinterleave a strided input</strong> so the kernel reads aligned vectors
-  instead of a strided scalar gather (e.g. split a stride-2 input into
-  even/odd halves per row). <strong>Verified +12% fps</strong> on a strided-input conv.
-- A layout transform can live on the <strong>shim tap</strong>, the <strong>compute
-  toStream/fromStream</strong>, or the <strong>memtile forward</strong> — pick the cheapest
-  for your dataflow, it's not memtile-only.</p>
-<p><strong>Constraints to respect when forwarding (otherwise expect wrong or zero
-data):</strong>
-- Aligned vector loads need their natural alignment (a load of an
-  N-byte vector wants N-byte alignment, e.g. <code>load_v&lt;int8,32&gt;</code> → 32-byte).
-  If a deinterleave lands data at an unaligned offset, do 2 aligned loads +
-  <code>shuffle_down</code> rather than one unaligned load.
-- In a multi-kernel chain, pin the forward to a specific column memtile
-  (<code>.forward(tile=Tile(col, 1))</code>) so the ObjectFifoLink has a shared tile;
-  a placement that works standalone can otherwise fail in the chain.</p>
-<p><strong>Decision rule: pure-DMA offload needs ≥4-byte elements.</strong> Shim DMA's
-minimum stride-1 access granularity is 4 bytes, so a pure-DMA
-rearrangement (no compute core) only works when the element size is ≥4
-bytes (int32/uint32); sub-4-byte types (int8/int16) can't be expressed as
-a DMA-only stride pattern and need a hybrid instead — a coarse DMA
-reshuffle plus a small kernel (e.g. <code>VSHUFFLE</code>) doing the fine-grained
-rearrangement in place. <code>programming_examples/basic/transposes/</code>
-(<code>--strategy dma</code> vs <code>--strategy combined</code>) is a worked example of both
-ends of this tradeoff.</p>
-<hr />
-<h2 id="register-pressure--power-note">Register-pressure / power note<a class="headerlink" href="#register-pressure--power-note" title="Permanent link">&para;</a></h2>
-<p>More compute isn't always the goal. On a kernel that was <em>off</em> the
-critical path, removing an explicit <code>AIE_LOOP_UNROLL(2)</code> from a 4-
-accumulator reduction loop cut in-loop register-spill traffic by ~87% and
-<code>.text</code> by ~8% at <strong>net-zero throughput</strong> — pure power savings, which can
-matter for deployment. When adding explicit unroll to a kernel with 4+
-simultaneous accumulators, count in-loop spill stores/loads (<code>vst</code>/<code>vld</code>
-of accumulator-state registers) in the disasm before adopting: spill
-inside a hot loop is a power tax even when wall time is flat.</p>
-<p>The same mechanism isn't always throughput-neutral, though: on a kernel
-that <em>is</em> on the critical path, adding unroll to a loop that already keeps
-several accumulators live can regress wall time directly — each unrolled
-iteration wants its own accumulator, and once the live set exceeds the
-register file the compiler spills, and the spilled <code>vst</code>/<code>vld</code> traffic
-lands inside the hot loop where every extra instruction is pure added
-latency, not just a power cost. Symptom: you add unroll expecting a
-speedup and measure a slowdown instead. Diagnosis is the same disasm check
-— compare spill-instruction counts with and without the unroll — before
-deciding whether to revert, reduce the unroll factor, or restructure to
-use fewer live accumulators.</p>
-<hr />
-<h2 id="verifying-any-change-took-effect">Verifying any change took effect<a class="headerlink" href="#verifying-any-change-took-effect" title="Permanent link">&para;</a></h2>
-<p>Make's incremental rebuild tracks file mtimes, not flag changes, and
-<code>.prj/</code> directories cache stale ELFs — a source edit may not reach the
-<code>.o</code>. After each change:
-1. Confirm the <code>.o</code> rebuilt (check mtime) and, when in doubt,
-   <code>make clean</code> / <code>rm -rf build/*.prj</code>.
-2. Confirm the change is <em>in</em> the binary: did the <code>vmac</code> count change, did
-   <code>__divsi3</code> disappear, did the function size move the way you expected?
-3. Only then trust the wall-time delta.</p>
-<p>The aie-api headers are the ground truth for what each intrinsic lowers to.
-In this repo they're vendored at <code>third_party/aie_api/include/aie_api/</code>
-(<code>aie.hpp</code> is the umbrella header; per-arch lowerings live under
-<code>detail/aie*/</code>); after a build they're also copied to
-<code>install/include/aie_api/</code>. The matmul programming example
-(<code>programming_examples/.../matrix_multiplication/</code>) is a good reference for
-DMA-delivered mmul-ready operand layouts.</p>
+<p>Verdict:</p>
+<table>
+<thead>
+<tr>
+<th>You see</th>
+<th>Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Candidate's max below base's min; the unchanged kernel reproduces to the cycle</td>
+<td>confirmed</td>
+</tr>
+<tr>
+<td>Ranges overlap, or the delta sits inside an unchanged kernel's spread</td>
+<td>no change: revert</td>
+</tr>
+<tr>
+<td>Candidate higher</td>
+<td>rejected: revert</td>
+</tr>
+<tr>
+<td>The unchanged kernel moved</td>
+<td>void: the arms differ in more than your change; fix and rerun</td>
+</tr>
+</tbody>
+</table>
+<p>Check the result against the prediction (<code>zero</code> predicted ~75 / ~130,
+measured 78 / 134); if they disagree, find out which is wrong first.</p>
+<h3 id="7-exactness-and-record">7. Exactness and record<a class="headerlink" href="#7-exactness-and-record" title="Permanent link">&para;</a></h3>
+<ul>
+<li>"Bit-identical" means every case reads <code>same</code> in step 6's run. A
+  tolerance pass isn't proof: <code>fused_mm</code> passed 27 of 27 cases with a
+  dropped term, and a mutation that changed 45,159 words passed rtol 0.04.
+  Mutation-prove the diff too: a broken candidate must show words that
+  differ. If the change reorders accumulation, say so and give the max |Δ|.</li>
+<li>One commit per kernel and change, with base → after cycles per case, n,
+  the arm sources and the gate line. List each rejected variant with the
+  number that killed it. NO-CHANGE with a measured bound is a valid result.</li>
+<li>Record provenance with every number: the row's <code>extra</code> (commit, Peano,
+  <code>kernels</code> digest), <code>git status --short</code> over the include closure, and
+  what <code>$BASE</code> came from. When two numbers conflict, compare digests first.</li>
+<li>Several agents on one NPU: wrap every hardware command in <code>flock</code> on one
+  shared lock file, and build base arms by copying the live tree.</li>
+<li>Keep every <code>extern "C"</code> name, signature and buffer layout. Leave
+  <code>*_scalar</code> variants alone.</li>
+</ul>
+<h2 id="reading-hardware-rows">Reading hardware rows<a class="headerlink" href="#reading-hardware-rows" title="Permanent link">&para;</a></h2>
+<p><code>&lt;case&gt;/cycles</code> is the <strong>min</strong> of the kernel's own intervals, split from its
+initializers' by position (<code>kd.cycles_per_call</code>). Its <code>range</code> gives
+<code>median X max Y n=N</code>, <code>init[i] min M</code> per initializer, and <code>truncated</code>.</p>
+<table>
+<thead>
+<tr>
+<th>You see</th>
+<th>Do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No <code>&lt;case&gt;/cycles</code> row</td>
+<td>The contract is <code>none</code>/<code>partial</code> (in the library, only <code>set_rounding</code>). Use wall clock and say so, or move one marker pair to bracket the whole call and declare <code>Trace.whole_call()</code></td>
+</tr>
+<tr>
+<td><code>expected E trace intervals, got M</code></td>
+<td>A marker the contract doesn't declare. <code>pytest test/python/test_kernel_trace_markers.py</code> names the build</td>
+</tr>
+<tr>
+<td><code>truncated</code>, or <code>none of the kernel's</code></td>
+<td>Compare <code>n=</code> with <code>calls</code>; flag n &lt; calls/2. Run the marker audit</td>
+</tr>
+<tr>
+<td>A row moved but its file didn't</td>
+<td>Something in its include closure changed: <code>git diff &lt;rev&gt; -- &lt;closure&gt;</code>. A 33% "matmul" gain was all <code>zero.cc</code></td>
+</tr>
+<tr>
+<td>A stream you traced yourself, K kernels per call</td>
+<td>Population j is <code>intervals[j::K]</code>. Never quote min or median over the mixed stream</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>A cycle row names the design, not the kernel. Before crediting a delta,
+  confirm the <code>[OK]</code> line names the entry you changed.</li>
+<li><code>core_fraction = cycles × calls ÷ 1.76e9 ÷ npu_seconds</code> (1.76 GHz
+  measured on AIE2P). Below 0.5 the case is dispatch-bound: a 16-call
+  dispatch costs 60-90 µs whatever the core does. Judge the kernel on
+  cycles; if production is dispatch-bound too, hand off to
+  <code>aie-dataflow-opt</code>.</li>
+<li>Wall clock, only when the kernel can't be traced: quote the pinned
+  <strong>min</strong> (<code>npu_us_min</code>), never the mean (it showed 7.5% between
+  byte-identical builds). For the per-call cost, difference two cases that
+  differ only in <code>calls</code>: <code>(t20 − t4) / 16</code>.</li>
+<li>Ablation prices a region: replace it with a cheap wrong computation and
+  trace. The bf16 GEMV went 1154 → 634, pricing its reduction at 520. A
+  price is where the time goes, not a bound: six local tweaks lost, then
+  restructuring the reduction (L20) won 1154 → 788.</li>
+</ul>
+<h2 id="levers-that-measured-faster">Levers that measured faster<a class="headerlink" href="#levers-that-measured-faster" title="Permanent link">&para;</a></h2>
+<p>Each gives the change, what must move in the static report where it isn't
+obvious, and one hardware result (cycles per call unless noted; "model"
+means wall clock in a model outside this repository).</p>
+<p><strong>L01 Fully unroll loops that index register arrays.</strong> A short loop
+indexes <code>acc[i]</code> or calls <code>insert</code>/<code>extract</code> with its counter; <code>[sp</code> around
+the accumulators. <code>AIE_LOOP_UNROLL_FULL</code> makes each index constant. Check:
+stack traffic gone, the enclosing loop gets an II. <code>conv2dk1_i8</code> 7623 → 504.</p>
+<p><strong>L02 No libcalls in hot loops.</strong> The <code>libcalls</code> row names a helper (see
+the traps). Use <code>aie::max</code>/<code>min</code> for compares, <code>aie::inv</code> times a multiply
+for divides, <code>aie::to_float</code> for int → float, integers for index math;
+reduce a per-chunk max element-wise and horizontally once at the end.
+Check: helper gone, loop gets an II. <code>rms_norm</code> 1597 → 438.</p>
+<p><strong>L03 Avoid the f32 vector multiply (AIE2P).</strong> Skip multiplies by a known 1
+or 0. If one operand is exact in bf16 (a tanh result, a chosen constant),
+split only the f32 operand into <strong>three</strong> bf16 limbs (residuals via
+<code>aie::msc</code>; two limbs change bits) and mac each against it. Clamp the
+rounded bf16 result against bounds rounded the same way instead of an f32
+min/max. Matmul silu epilogue 8098 → 3213, bit-identical.</p>
+<p><strong>L04 Run emulated f32 chains 32 lanes wide (AIE2P).</strong> A 16-lane emulated
+f32 multiply pays for 32 lanes. Step 32 lanes; replace a vector
+<code>to_fixed</code>/<code>to_float</code> floor with the magic-number floor <code>x + 1.5*2^23</code>.
+Check: bundles per element drop. <code>bf16_exp</code> 32482 → 15425 (with other
+changes).</p>
+<p><strong>L05 Fold constants into one mac.</strong> Write <code>(tanh+1)/2</code> as one mac into an
+accumulator preloaded with 0.5; fold constant scales together
+(power-of-two scaling is bit-exact). <code>sigmoid</code> 498 → 118.</p>
+<p><strong>L06 Walking <code>__restrict</code> cursors.</strong> Peano doesn't strength-reduce
+<code>base[i*stride]</code>. Advance a <code>T *__restrict</code> cursor, mark non-aliasing
+in/out pointers <code>__restrict</code> (not for in-place kernels), and use
+<code>add_2d_byte</code>/<code>add_3d_byte</code> for multi-dimensional walks
+(<code>aie_kernels/quant/q4nx_dequant.cc</code>). Check: II and body <code>[sp</code> drop.
+<code>zero&lt;float,4096&gt;</code> 519 → 262.</p>
+<p><strong>L07 <code>AIE_LOOP_UNROLL(4)</code> on latency-bound bodies</strong>, after the unroll
+screen passes. Not on load-, resource- or register-bound bodies. Check: II
+per element drops, no new <code>[sp</code>. <code>leaky_relu</code> 298 → 86, <code>add</code> 390 → 150.
+<code>UNROLL(2)</code> on <code>fused_mm</code>'s epilogue chunk loop: gelu 2582 → 1919.</p>
+<p><strong>L08 Full register width.</strong> Step 64 lanes on 8/16-bit data and
+<code>AIE_BF16_LANES</code> (<code>aie_kernels/aie_arch.h</code>) on bf16 arithmetic. Check: trip
+count halves at a similar II. <code>rope</code> 1932 → 298 (with L06).</p>
+<p><strong>L09 Split dependency chains.</strong> Two independent accumulators added at the
+end, or one broadcast feeding several row blocks; stop before spills.
+int16 <code>mv/32x32</code> 291 → 127.</p>
+<p><strong>L10 Make the hot loop innermost and single-block</strong>, the only loops Peano
+pipelines: fully unroll a short K reduction into its parent, fold nested
+tile loops into one counter, split a per-tile <code>if</code> into straight loops. Opt
+in per dtype. int8 <code>mm</code> 993 → 737. <code>UNROLL(2)</code> on an unpipelined outer loop
+overlaps two trips' loads and stores: <code>fused_mm</code> 1084.5 → 991.5.</p>
+<p><strong>L11 Unsigned counted trip.</strong> Compute the trip count up front as unsigned;
+a signed divide or shift by 2^k is <code>__divsi3</code>. <code>AIE_LOOP_MIN_ITERATION_COUNT</code>
+can help but can cost the zero-overhead loop, so re-check <code>non_zol_loops</code>.
+<code>axpy</code> 317 → 178.</p>
+<p><strong>L12 Wide stores, never byte loops.</strong> Peano won't pipeline an
+<code>lda.s8</code>/<code>st.s8</code> loop. Copy with <code>uint64_t</code>/<code>uint32_t</code> or 32 B vector
+stores, both ends aligned. bfp16 shuffle 10.4x per call.</p>
+<p><strong>L13 <code>UNROLL_FULL</code>, not <code>RANGE</code>, on a loop that switches on its counter.</strong>
+<code>AIE_LOOP_RANGE</code> is only a trip-count hint and leaves the branch. 5.31 →
+2.84 ms (model).</p>
+<p><strong>L14 Vector int8 epilogue (AIE2P).</strong> Add the bias on an int32 vector, then
+<code>acc.to_vector&lt;int8&gt;(shift)</code> under <code>aie::rounding_mode::conv_even</code>, which
+is bit-exact with scalar banker's-rounding SRS. -42% on one block (model).</p>
+<p><strong>L15 Producer writes mmul-A order (AIE2P).</strong> <code>aie::concat</code> won't join
+vectors under 128 bits, so a strided A operand becomes a scalar byte copy.
+When you own both ends, have the producer store <code>to_vector&lt;int8&gt;(shift)</code>
+(already mmul-A order) and the consumer do one aligned load, or
+<code>aie::shuffle_down(aie::concat(lo, hi), shift)</code> over two aligned blocks.
+-23.6% on one block (model).</p>
+<p><strong>L16 Pure rearrangement → DMA.</strong> A body that is only a deinterleave or
+transpose belongs in a memtile <code>dims_to_stream</code> transform (element ≥ 512 B;
+int8 vector loads need a 32 B-aligned start). Hand off to
+<code>aie-dataflow-opt</code>. <code>programming_examples/basic/transposes/transposes.py</code>
+shows <code>--strategy dma</code> and <code>--strategy combined</code>.</p>
+<p><strong>L17 Raise the pipeliner stage cap on one long chain.</strong> The loop is
+pipelined at <code>ns</code> 3 and no single step dominates. Add
+<code>["-mllvm", "--aie-pipeliner-max-stagecount=5"]</code> to that factory's
+<code>compile_flags</code> only (as <code>python/iron/kernels/quant.py</code> does). Check: <code>ns</code>
+rises; the final II may barely move, so measure anyway. <code>q4nx_dequant</code>
+2245 → 2115.</p>
+<p><strong>L18 Two 8x8 tiles on one 64-lane accumulator (AIE2P, bf16).</strong> For Y +=
+S·V, keep two neighbouring output tiles on one <code>accfloat</code> accumulator so
+one <code>vmac.f</code> advances both; build the S operand once per row block; load
+the next pair's y before this pair's store (clamp the last pointer to
+itself). Prefill <code>fv</code> 2034 →
+1265, bit-identical.</p>
+<p><strong>L19 One bfp16 stream per operand (AIE2P).</strong> Output streams share one <code>sf</code>
+register and inputs two <code>lf</code> FIFOs, so extra live streams spill every step.
+Write output through one contiguous stream; hop one A and one B stream
+between rows with <code>pop_seek</code>. <code>mm_bfp</code> 4243 → 951; <code>q4nx_dequant</code> 2.10x.</p>
+<p><strong>L20 Batch horizontal reductions.</strong> Mac four rows per load of b, pack the
+four accumulators so one <code>interleave_unzip</code> + <code>add</code> tree folds all rows,
+and finish group g's tree after group g+1's macs issue; keep the single-row
+code for the tail. Rows per group are bounded by the stack (8 overflowed
+1 KB in <code>mv</code>). bf16 <code>mv/32x256</code> 1154 → 788; <code>mha</code> <code>partial_softmax</code> 8171 →
+1696, both bit-identical.</p>
+<p><strong>AIE2 (npu1).</strong> Gate AIE2-only code with <code>AIE_TUNED_AIE2</code> or a capability
+from <code>aie_kernels/aie_arch.h</code>; the other target's <code>.text</code> must not change.</p>
+<ul>
+<li>The AIE2 pipeliner needs <code>__restrict</code> to overlap a streaming loop; library
+  kernels spell it <code>AIE2_RESTRICT</code> so AIE2P code stays as tuned.</li>
+<li>An unrolled body above MII 27 gets no overlap. One chain under
+  <code>AIE_LOOP_NO_UNROLL</code> with <code>__restrict</code> pipelined at II1: <code>add</code> 342 → 78.</li>
+<li><code>AIE_LOOP_MIN_ITERATION_COUNT(n)</code> on a runtime-count loop let it overlap,
+  with a plain loop kept for shorter rows: <code>axpy</code> 269 → 87.</li>
+<li>A LUT loop runs in series when its reads are ordered against its stores:
+  rotate it one vector ahead, or use <code>lut_map_bf16</code>.</li>
+<li>There is no native bf16 <code>sliding_mul</code>; use <code>mac_elem_16_2</code>.</li>
+<li>Replace <code>aie::transpose</code> in a loop with two-register <code>shuffle</code> stages.</li>
+</ul>
+<h2 id="traps">Traps<a class="headerlink" href="#traps" title="Permanent link">&para;</a></h2>
+<p>Code that compiles cleanly and then does nothing, runs slowly or produces
+wrong data. None of these is a compiler bug. A Peano crash or miscompile
+is: reduce it to a repro, file it against llvm-aie, and name the issue next
+to any workaround rather than recording it here.</p>
+<ul>
+<li><strong>Libcalls (AIE2 and AIE2P).</strong> The scalar unit has no float multiplier
+  or divider: <code>float * float</code> (<code>__mulsf3</code>), <code>float / float</code> (<code>__divsf3</code>),
+  <code>(float)int</code> (<code>__floatsisf</code>), float compares (<code>__ltsf2</code>) and any <code>double</code>
+  are runtime calls, as are 64-bit multiply and divide and any integer
+  divide or modulo that isn't by a power-of-two constant. A libcall in a
+  loop also blocks pipelining. Float add/sub and bf16 ↔ float casts are
+  native. The remarks report lists every libcall a kernel makes.</li>
+<li><strong>No f32 vector multiplier.</strong> <code>aie::mul</code>/<code>mac</code> on <code>vector&lt;float,N&gt;</code> is a
+  bf16 emulation (224 B of code where one bf16 mac is 4 B).</li>
+<li><strong>Pragmas.</strong> Under Peano <code>AIE_PREPARE_FOR_PIPELINING</code>, <code>AIE_LOOP_FLATTEN</code>
+  and the other Chess hints in <code>aie_kernels/aie_kernel_utils.h</code> expand to
+  nothing, and <code>AIE_PREPARE_FOR_POSTPIPELINING</code> disables pipelining. The
+  ones that act are <code>AIE_LOOP_UNROLL(n)</code>/<code>_FULL</code>/<code>NO_UNROLL</code> and the
+  trip-count hints (<code>AIE_LOOP_RANGE</code> is only a hint). Put each immediately
+  before the <code>for</code>; <code>pass_failed</code> lists any the compiler dropped.</li>
+<li><strong>Stack overflow is silent.</strong> It corrupts the neighbouring buffer:
+  suspect it when errors are small, scattered and row-local. The IRON
+  Worker default is 1024 B; aiecc errors with <code>this core needs N bytes</code>
+  when the declaration is short, and the remarks <code>stack_bytes</code> row warns
+  over the contract's <code>stack_bytes</code> (it leaves out libcall frames). Anything
+  that grows the frame (unroll, accumulators, markers) needs a new
+  declaration in the same change.</li>
+<li><strong><code>to_vector&lt;int32&gt;</code> is a raw accumulator dump</strong>; <code>to_vector&lt;int8&gt;(shift)</code>
+  applies the row-major permutation. Indexing one as the other got 61454 of
+  65536 values wrong.</li>
+<li><strong>Software pipelining stops at MII 27</strong> (<code>SwpMaxMii</code> in <code>schedule_notes</code>);
+  above it only the postpipeliner runs. A loop over the cap can still win
+  if it does more work per trip.</li>
+<li><strong><code>aie::exp2</code> (AIE2P) is an interpolant</strong> that overshoots true <code>exp2</code> by
+  up to 6.15%. Keep <code>np.exp2</code> in references with a derived envelope
+  (<code>test/python/npu/test_mha_e2e.py</code>).</li>
+<li><strong>Native <code>vtanh</code> returns x for |x| ≤ 0.5</strong>, and tanh wants its f32
+  argument (a bf16-rounded one raised silu's error 1.35x). The native build
+  is latency-bound, the LUT build (<code>-DACTIVATIONS_TANH_LUT=1</code>) load-bound:
+  gate unrolls on <code>ACTIVATIONS_NATIVE_TANH</code> and measure both.</li>
+</ul>
+<h2 id="changes-that-measured-worse">Changes that measured worse<a class="headerlink" href="#changes-that-measured-worse" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fewer lanes, 8 rows per group, or hoisting operands in bf16 <code>mv</code>: slower
+  or spilled (register pressure).</li>
+<li><code>UNROLL_FULL</code> on <code>fused_mm</code>'s i loop: accumulators spilled, k_step 216 →
+  287, and three builds failed their stack check.</li>
+<li><code>mmul&lt;8,8,8&gt;</code> fed by a scalar A gather in a 1x1 int8 conv: 3.34 → 3.58 ms
+  (model).</li>
+<li>An <code>if</code> or ternary inside a mac loop: 7% slower (model).</li>
+<li>Unrolling a load-, resource- or register-bound body (tanh stayed at II4;
+  swiglu ×2 doubled its stack), and <code>AIE_LOOP_MIN_ITERATION_COUNT</code> on AIE2P
+  loops that then lost their zero-overhead loop. The compiler reports
+  these before hardware does; trust it.</li>
+</ul>
+<h2 id="when-to-stop">When to stop<a class="headerlink" href="#when-to-stop" title="Permanent link">&para;</a></h2>
+<p>Report NO-CHANGE with the bound when the II equals a resource or latency
+bound. <code>mm_bfp_mixed</code>'s k loop sits at II6, the <code>vmac.f</code> acc → acc latency,
+with no fifth accumulator register for another chain. bf16 <code>mm</code>'s k loop
+needs 34 mv-slot ops per step, so II35 is 97% slot efficiency. Before
+calling a loop port-bound, count slot users per iteration in the object; if
+the II sits above that count, the bound is something else.</p>
+<h2 id="background">Background<a class="headerlink" href="#background" title="Permanent link">&para;</a></h2>
+<p><code>programming_guide/section-4/section-4c/README.md</code> (how Peano schedules a
+loop, the pragma reference) and <code>section-4d/README.md</code> (this workflow for
+humans, with a worked <code>add</code> example).</p>
 
 
 

@@ -1842,6 +1842,8 @@
       
         
       
+        
+      
     
     
     
@@ -1967,6 +1969,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../programming_guide/section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -10117,7 +10147,7 @@ to ensure the returned array reflects the current device state.</p>
     <div class="doc doc-contents ">
 
         <p>Return a NumPy view of this buffer's host memory without syncing from device.</p>
-<p>The write-path peer of :meth:<code>numpy</code>, which syncs from the NPU first.
+<p>The write-path peer of <code>numpy</code>, which syncs from the NPU first.
 This does not, and marks the buffer CPU-resident so that a later
 <code>.to("npu")</code> (or an NPU operator's implicit sync) pushes what was
 written. Use it where the caller is about to overwrite the contents
@@ -10164,7 +10194,7 @@ and reading the device's current bytes would be wasted work.</p>
 <span class="normal"><a href="#__codelineno-0-733">733</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="k">def</span><span class="w"> </span><span class="nf">numpy_view</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a NumPy view of this buffer&#39;s host memory without syncing from device.</span>
 <a id="__codelineno-0-722" name="__codelineno-0-722"></a>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">    The write-path peer of :meth:`numpy`, which syncs from the NPU first.</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">    The write-path peer of ``numpy``, which syncs from the NPU first.</span>
 <a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">    This does not, and marks the buffer CPU-resident so that a later</span>
 <a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">    ``.to(&quot;npu&quot;)`` (or an NPU operator&#39;s implicit sync) pushes what was</span>
 <a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">    written. Use it where the caller is about to overwrite the contents</span>
@@ -13814,7 +13844,7 @@ to ensure the returned array reflects the current device state.</p>
     <div class="doc doc-contents ">
 
         <p>Return a NumPy view of this buffer's host memory without syncing from device.</p>
-<p>The write-path peer of :meth:<code>numpy</code>, which syncs from the NPU first.
+<p>The write-path peer of <code>numpy</code>, which syncs from the NPU first.
 This does not, and marks the buffer CPU-resident so that a later
 <code>.to("npu")</code> (or an NPU operator's implicit sync) pushes what was
 written. Use it where the caller is about to overwrite the contents
@@ -13861,7 +13891,7 @@ and reading the device's current bytes would be wasted work.</p>
 <span class="normal"><a href="#__codelineno-0-733">733</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-720" name="__codelineno-0-720"></a><span class="k">def</span><span class="w"> </span><span class="nf">numpy_view</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <a id="__codelineno-0-721" name="__codelineno-0-721"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a NumPy view of this buffer&#39;s host memory without syncing from device.</span>
 <a id="__codelineno-0-722" name="__codelineno-0-722"></a>
-<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">    The write-path peer of :meth:`numpy`, which syncs from the NPU first.</span>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a><span class="sd">    The write-path peer of ``numpy``, which syncs from the NPU first.</span>
 <a id="__codelineno-0-724" name="__codelineno-0-724"></a><span class="sd">    This does not, and marks the buffer CPU-resident so that a later</span>
 <a id="__codelineno-0-725" name="__codelineno-0-725"></a><span class="sd">    ``.to(&quot;npu&quot;)`` (or an NPU operator&#39;s implicit sync) pushes what was</span>
 <a id="__codelineno-0-726" name="__codelineno-0-726"></a><span class="sd">    written. Use it where the caller is about to overwrite the contents</span>

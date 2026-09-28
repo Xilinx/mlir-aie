@@ -1836,6 +1836,8 @@
       
         
       
+        
+      
     
     
     
@@ -1961,6 +1963,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -3624,7 +3654,7 @@ This file is for the cases those don't cover.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="cp">#define NOCPP</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cstdint&gt;</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;type_traits&gt;</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;aie_kernel_utils.h&quot;</span><span class="c1">        // copy from aie_kernels/aie_kernel_utils.h, or adjust path</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;aie_kernel_utils.h&quot;</span><span class="c1">        // copy from aie_kernels/ with its aie_arch.h, or adjust path</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;aie_api/aie.hpp&gt;</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1">// Templated implementation</span>
@@ -3632,7 +3662,7 @@ This file is for the cases those don't cover.</p>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="k">static</span><span class="w"> </span><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">eltwise_add_impl</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">T_in</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">a</span><span class="p">,</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">                                    </span><span class="k">const</span><span class="w"> </span><span class="n">T_in</span><span class="w"> </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">b</span><span class="p">,</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">                                    </span><span class="n">T_out</span><span class="w">      </span><span class="o">*</span><span class="k">__restrict</span><span class="w"> </span><span class="n">c</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">VEC</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">;</span><span class="w">              </span><span class="c1">// natural bf16 width; see architecture.md</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">VEC</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">;</span><span class="w">              </span><span class="c1">// natural bf16 width; multiplies: AIE_BF16_LANES</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="k">static_assert</span><span class="p">(</span><span class="n">N</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">VEC</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;N must be divisible by VEC&quot;</span><span class="p">);</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="k">constexpr</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">F</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">N</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">VEC</span><span class="p">;</span>
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
@@ -3671,11 +3701,11 @@ This file is for the cases those don't cover.</p>
 <tbody>
 <tr>
 <td><code>AIE_PREPARE_FOR_PIPELINING</code></td>
-<td>Ask the modulo scheduler to make the loop body a single-cycle pipeline</td>
+<td>Pipelining hint for <strong>Chess only</strong>; expands to nothing under Peano</td>
 </tr>
 <tr>
 <td><code>AIE_LOOP_MIN_ITERATION_COUNT(n)</code></td>
-<td>Promise the loop runs at least <code>n</code> times — required for scheduling</td>
+<td>Promise the loop runs at least <code>n</code> times — a trip-count hint. On AIE2 it let runtime-count loops overlap (<code>axpy</code> 269 → 87); under Peano it can also cost the zero-overhead loop, so check <code>non_zol_loops</code> in the remarks report</td>
 </tr>
 <tr>
 <td><code>AIE_LOOP_MAX_ITERATION_COUNT(n)</code></td>
@@ -3707,11 +3737,11 @@ This file is for the cases those don't cover.</p>
 </tr>
 <tr>
 <td><code>AIE_NO_PREPARE_FOR_PIPELINING</code></td>
-<td>Block pipelining (rare; for setup loops)</td>
+<td>Block pipelining (<strong>Chess only</strong>; rare, for setup loops)</td>
 </tr>
 </tbody>
 </table>
-<p>Use the macros rather than backend-specific pragmas. Note they don't all map onto both backends: <code>AIE_LOOP_MIN_ITERATION_COUNT</code> / <code>AIE_LOOP_RANGE</code> / <code>AIE_LOOP_UNROLL*</code> become <code>clang loop</code> pragmas under Peano/AIECC and the equivalent under Chess, but <code>AIE_PREPARE_FOR_PIPELINING</code> and <code>AIE_LOOP_FLATTEN</code> map to <code>chess::</code> hints only — they are <strong>no-ops under Peano</strong>. All expand to nothing on host builds. Keep them in (free under Chess) but rely on <code>AIE_LOOP_MIN_ITERATION_COUNT</code> for pipelining on Peano.</p>
+<p>Use the macros rather than backend-specific pragmas. Note they don't all map onto both backends: <code>AIE_LOOP_MIN_ITERATION_COUNT</code> / <code>AIE_LOOP_RANGE</code> / <code>AIE_LOOP_UNROLL*</code> become <code>clang loop</code> pragmas under Peano/AIECC and the equivalent under Chess, but <code>AIE_PREPARE_FOR_PIPELINING</code> and <code>AIE_LOOP_FLATTEN</code> map to <code>chess::</code> hints only — they are <strong>no-ops under Peano</strong>. All expand to nothing on host builds. Peano pipelines inner loops without any hint, so none of these is needed to get a pipelined loop; for which hints have measurably helped, see the <code>aie-kernel-opt</code> skill.</p>
 <h2 id="vector-load--store">Vector load / store<a class="headerlink" href="#vector-load--store" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">aie</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="o">&gt;</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">aie</span><span class="o">::</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">N</span><span class="o">&gt;</span><span class="p">(</span><span class="n">ptr</span><span class="p">);</span><span class="w">   </span><span class="c1">// contiguous load of N elements</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">aie</span><span class="o">::</span><span class="n">store_v</span><span class="p">(</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">);</span><span class="w">                         </span><span class="c1">// contiguous store</span>
@@ -3766,7 +3796,7 @@ This file is for the cases those don't cover.</p>
 <a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="c1">// or: aie::store_v(pC, C00.template to_vector&lt;T_out&gt;(SHIFT));</span>
 </code></pre></div>
 <h3 id="outer-expansion-per-tile-macro-kernel">Outer expansion (per-tile macro-kernel)<a class="headerlink" href="#outer-expansion-per-tile-macro-kernel" title="Permanent link">&para;</a></h3>
-<p>For real GEMMs you unroll the MMUL across an outer block (e.g., 4×4 expansion: hold 16 MMUL accumulators in registers, share each loaded A across 4 Bs and vice versa). See <code>mlir-aie/aie_kernels/aie2/mm.cc</code> for canonical implementations.</p>
+<p>For real GEMMs you unroll the MMUL across an outer block (e.g., 4×4 expansion: hold 16 MMUL accumulators in registers, share each loaded A across 4 Bs and vice versa). See <code>mlir-aie/aie_kernels/linalg/mm_aie2.h</code> for canonical implementations.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1">// Sketch of 2x2 expansion</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">MMUL</span><span class="w"> </span><span class="nf">C00</span><span class="p">(</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">MMUL</span><span class="o">::</span><span class="n">size_C</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pC1</span><span class="p">));</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">MMUL</span><span class="w"> </span><span class="nf">C01</span><span class="p">(</span><span class="n">load_v</span><span class="o">&lt;</span><span class="n">MMUL</span><span class="o">::</span><span class="n">size_C</span><span class="o">&gt;</span><span class="p">(</span><span class="n">pC1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">MMUL</span><span class="o">::</span><span class="n">size_C</span><span class="p">));</span>
@@ -3806,7 +3836,7 @@ This file is for the cases those don't cover.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="o">::</span><span class="n">aie</span><span class="o">::</span><span class="n">set_saturation</span><span class="p">(</span><span class="n">aie</span><span class="o">::</span><span class="n">saturation_mode</span><span class="o">::</span><span class="n">saturate</span><span class="p">);</span><span class="w">    </span><span class="c1">// clamp on overflow (vs wrap)</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="o">::</span><span class="n">aie</span><span class="o">::</span><span class="n">set_rounding</span><span class="w">  </span><span class="p">(</span><span class="n">aie</span><span class="o">::</span><span class="n">rounding_mode</span><span class="o">::</span><span class="n">symmetric_inf</span><span class="p">);</span><span class="w"> </span><span class="c1">// shift rounding mode</span>
 </code></pre></div>
-<p>Call once at the top of the kernel (or in a wrapper) before any vector op that could overflow.</p>
+<p>Call once at the top of the kernel (or in a wrapper) before any vector op that could overflow, never inside the hot loop (see <code>pitfalls.md</code>). <code>aie::swap_rounding</code> returns the previous mode for restoring it.</p>
 <h2 id="accumulator-type-quick-pick">Accumulator type quick-pick<a class="headerlink" href="#accumulator-type-quick-pick" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

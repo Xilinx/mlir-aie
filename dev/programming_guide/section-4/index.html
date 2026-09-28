@@ -1852,6 +1852,8 @@
       
         
       
+        
+      
     
     
     
@@ -1980,6 +1982,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -3539,11 +3569,12 @@
 
 <h1 id="section-4---performance-measurement--vector-programming">Section 4 - Performance Measurement &amp; Vector Programming<a class="headerlink" href="#section-4---performance-measurement--vector-programming" title="Permanent link">&para;</a></h1>
 <p>Now that you've had a chance to walk through the components of compiling and running a program on the Ryzen™ AI hardware in <a href="../section-3">section-3</a>, we will start looking at how we measure performance and utilize vector programming techniques to fully leverage the power of the AI Engines for parallel compute.</p>
-<p>It is helpful to first examine performance measurement before we delve into vector programming in order to get a baseline for where our application performance is. There are many factors that contribute to performance including latency, throughput and power efficiency. Performance measurement is an active area of research to provide more powerful tools for users to measure the speedup of their application on AIEs. In <a href="./section-4a">section-4a</a> and <a href="./section-4b/">section-4b</a>, we look at performance from the perspective of timers and trace. Then in <a href="./section-4c">section-4c</a>, we look more closely at how to vectorize AIE kernel code.</p>
+<p>It is helpful to first examine performance measurement before we delve into vector programming in order to get a baseline for where our application performance is. There are many factors that contribute to performance including latency, throughput and power efficiency. Performance measurement is an active area of research to provide more powerful tools for users to measure the speedup of their application on AIEs. In <a href="./section-4a">section-4a</a> and <a href="./section-4b/">section-4b</a>, we look at performance from the perspective of timers and trace. Then in <a href="./section-4c">section-4c</a>, we look more closely at how to vectorize AIE kernel code, and in <a href="./section-4d">section-4d</a> we use the repository's benchmark and compiler-report tools to make an existing kernel faster and confirm the gain on hardware.</p>
 <ul>
 <li><a href="./section-4a">Section 4a - Timers</a></li>
 <li><a href="./section-4b">Section 4b - Trace</a></li>
-<li><a href="./section-4c">Section 4c - Kernel vectorization and optimization</a></li>
+<li><a href="./section-4c">Section 4c - Kernel Vectorization</a></li>
+<li><a href="./section-4d">Section 4d - Measure-First Kernel Optimization</a></li>
 </ul>
 <hr />
 <p><a href="../section-3/">Prev</a> &middot; <a href="..">Top</a> &middot; <a href="../section-5/">Next</a></p>

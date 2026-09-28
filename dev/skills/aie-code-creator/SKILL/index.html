@@ -1836,6 +1836,8 @@
       
         
       
+        
+      
     
     
     
@@ -1961,6 +1963,34 @@
     
   
     4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../programming_guide/section-4/section-4d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4d: Kernel Optimization
   
 
     
@@ -3641,7 +3671,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 <li><strong>Fixed-width integer types</strong>: <code>int8_t</code>, <code>int16_t</code>, <code>int32_t</code>, <code>uint8_t</code>, ... — never bare <code>int</code>.</li>
 <li><strong>Templated</strong> on data type and on size constants when reasonable; provide thin <code>extern "C"</code> wrappers with concrete types for MLIR linkage.</li>
 <li><strong>Vectorized</strong> via the AIE API (<code>aie::vector</code>, <code>aie::mmul</code>, <code>aie::add/mul/mac</code>), <strong>not</strong> compiler-specific intrinsics like <code>v32bfloat16</code> or <code>broadcast_to_v16int32</code> unless the AIE API has no equivalent.</li>
-<li><strong><code>__restrict</code> on every pointer</strong> passed into the hot loop. Without it, the modulo scheduler will refuse to pipeline.</li>
+<li><strong><code>__restrict</code> on every pointer</strong> passed into the hot loop, so loads can move ahead of stores. On AIE2 it was often the difference between a loop that pipelines and one that doesn't (<code>add_weighted</code> 1026 → 137 cycles on npu1). Library kernels spell it <code>AIE2_RESTRICT</code> from <code>aie_arch.h</code>, because their AIE2P code was tuned without it.</li>
+<li><strong>bf16 multiply width</strong>: 32 lanes on AIE2P, 16 on AIE2. Library kernels take it from <code>AIE_BF16_LANES</code> in <code>aie_arch.h</code>.</li>
 <li><strong>Loop annotations</strong> from <code>aie_kernel_utils.h</code> — <code>AIE_PREPARE_FOR_PIPELINING</code>, <code>AIE_LOOP_MIN_ITERATION_COUNT(n)</code>, <code>AIE_LOOP_RANGE(min, max)</code>, <code>AIE_LOOP_UNROLL(n)</code>, <code>AIE_LOOP_UNROLL_FULL</code>. Under the default Peano/AIECC flow, <code>AIE_PREPARE_FOR_PIPELINING</code> and <code>AIE_LOOP_FLATTEN</code> are <strong>no-ops</strong> — only Chess honors them. <code>AIE_LOOP_MIN_ITERATION_COUNT(n)</code>, <code>AIE_LOOP_RANGE(min, max)</code>, and <code>AIE_LOOP_UNROLL_FULL</code> are real under <strong>both</strong> backends. Keep all of them in (they cost nothing under Chess), but never rely on <code>AIE_PREPARE_FOR_PIPELINING</code> alone. For a small, fixed-trip-count inner loop that branches or switches on the loop index (e.g. a 3×3 window), reach for <code>AIE_LOOP_UNROLL_FULL</code> rather than <code>AIE_LOOP_RANGE</code> — a live branch on the loop variable can block the modulo scheduler regardless of iteration-count hints (see <code>references/pitfalls.md</code>).</li>
 <li><strong><code>event0()</code> / <code>event1()</code></strong> around the hot region for trace-based profiling.</li>
 <li><strong><code>constexpr</code></strong> for vector widths and loop trip-count math.</li>
@@ -3689,7 +3720,7 @@ re-derive their methodology here, point at it:</p>
 <tr>
 <td>Optimize (micro)</td>
 <td><code>aie-kernel-opt</code></td>
-<td>Make one compiled kernel faster — measure first, then the lever catalog</td>
+<td>Make one compiled kernel faster: the remarks report, then a back-to-back A/B on the NPU</td>
 </tr>
 <tr>
 <td>Optimize (macro)</td>
@@ -3757,7 +3788,7 @@ mechanism you haven't built before</strong> instead of debugging it inside the f
 </tr>
 <tr>
 <td>"Slow / not pipelining"</td>
-<td><a href="../references/pitfalls/"><code>pitfalls.md</code></a> §Missing __restrict + §Relying on AIE_PREPARE_FOR_PIPELINING alone</td>
+<td><a href="../references/pitfalls/"><code>pitfalls.md</code></a> §Missing __restrict, then the <code>aie-kernel-opt</code> skill</td>
 </tr>
 <tr>
 <td>"How do I run / test this?"</td>
