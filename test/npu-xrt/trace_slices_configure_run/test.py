@@ -22,6 +22,7 @@ The design is compiled from a pre-written .mlir file because IRON builds one
 device with one runtime sequence, and this needs three devices with five.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -121,6 +122,22 @@ def main():
             errors.append(f"{device}/{sequence} slice holds {mine} events, want {rtp}")
         if theirs:
             errors.append(f"{device} slice holds {theirs} {other}")
+
+    # trace_to_json writes each slice to its own file, named for its place in
+    # the buffer and the run that filled it.
+    json_path = Path.cwd() / "trace.json"
+    written = trace_config.trace_to_json(
+        trace_config.physical_mlir_path, str(json_path)
+    )
+    want_files = [
+        str(json_path.with_name(f"trace_{i}_{device}_{sequence}.json"))
+        for i, (device, sequence, _) in enumerate(RUNS)
+    ]
+    if written != want_files:
+        errors.append(f"trace_to_json wrote {written}, want {want_files}")
+    for path, (_, events) in zip(written, parsed):
+        if json.loads(Path(path).read_text()) != events:
+            errors.append(f"{path} does not hold its slice's events")
 
     for message in errors:
         print(f"ERROR: {message}")

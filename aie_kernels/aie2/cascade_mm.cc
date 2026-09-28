@@ -17,8 +17,6 @@
 
 #include <aie_api/aie.hpp>
 
-#include "zero.cc"
-
 template <typename T_in, typename T_out, int rowA, int colA, int colB>
 void matmul_scalar_cascade_put_only(T_in *a, T_in *b, T_out *c) {
   event0();
@@ -120,20 +118,7 @@ extern "C" {
         a_in, b_in, c_out);                                                    \
   }
 
-#define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \
-                               mlir_type_out, r, s, t)                         \
-  void zero_##mlir_type_out(ctype_out *c_out) {                                \
-    zero_vectorized<ctype_out, DIM_M, DIM_N>(c_out);                           \
-  }
-
-#define zero_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out,   \
-                           r, s, t)                                            \
-  void zero_scalar_##mlir_type_out(ctype_out *c_out) {                         \
-    zero_scalar<ctype_out, DIM_M, DIM_N>(c_out);                               \
-  }
-
 combos(matmul_scalar_cascade_get_only_c_func)
     combos(matmul_scalar_cascade_put_only_c_func)
         combos(matmul_scalar_cascade_put_get_c_func)
-            combos(zero_vectorized_c_func) combos(zero_scalar_c_func)
 } // extern "C"

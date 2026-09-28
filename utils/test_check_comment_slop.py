@@ -43,6 +43,89 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(blocks, [])
         self.assertEqual(code, 0)
 
+    def test_license_headers_are_not_blocks(self):
+        # The first line names its own file, so the three headers differ there
+        # and still have to be recognized by what follows.
+        def header(name):
+            return [
+                f"# {name}.py -*- Python -*-",
+                "#",
+                "# Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                # REUSE-IgnoreStart
+                "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                # REUSE-IgnoreEnd
+            ]
+
+        blocks, code = slop.collect(
+            diff(*[(f"{n}.py", 1, header(n) + ["x = 1"]) for n in "abc"])
+        )
+        self.assertEqual(blocks, [])
+        self.assertEqual(code, 3)
+
+    def test_llvm_style_cpp_headers_are_not_blocks(self):
+        # The banner's opening line names its own file, so the three headers
+        # differ there and still have to be recognized by what follows.
+        def header(name):
+            return [
+                f"//===- {name}.cc ------------------------------*- C++ -*-===//",
+                "//",
+                "// Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                # REUSE-IgnoreStart
+                "// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                # REUSE-IgnoreEnd
+                "//",
+                "//===----------------------------------------------------------------------===//",
+            ]
+
+        blocks, code = slop.collect(
+            diff(*[(f"{n}.cc", 1, header(n) + ["int x = 1;"]) for n in "abc"])
+        )
+        self.assertEqual(blocks, [])
+        self.assertEqual(code, 3)
+
+    def test_explanation_adjacent_to_header_is_still_a_block(self):
+        # No blank line between the SPDX line and the explanation that
+        # follows it, so both are one contiguous comment run; only the
+        # header lines should be exempt, not the explanation riding along.
+        blocks, _ = slop.collect(
+            diff(
+                (
+                    "a.py",
+                    1,
+                    [
+                        "# Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                        # REUSE-IgnoreStart
+                        "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                        # REUSE-IgnoreEnd
+                        "# This kernel assumes the caller already validated shapes.",
+                        "x = 1",
+                    ],
+                )
+            )
+        )
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].line, 3)
+        self.assertEqual(
+            blocks[0].lines,
+            ["This kernel assumes the caller already validated shapes."],
+        )
+
+    def test_unrelated_mention_of_copyright_is_not_a_header(self):
+        for suffix, marker in (("py", "#"), ("cc", "//")):
+            for text in (
+                "See the copyright notice in LICENSE.txt for the full text.",
+                "The Copyright holder is recorded in the generated metadata.",
+                "Preserve the SPDX-License-"
+                + "Identifier: field when copying headers.",
+            ):
+                with self.subTest(suffix=suffix, text=text):
+                    blocks, code = slop.collect(
+                        diff((f"a.{suffix}", 1, [f"{marker} {text}", "x = 1"]))
+                    )
+                    self.assertEqual(len(blocks), 1)
+                    self.assertEqual(blocks[0].lines, [text])
+                    self.assertEqual(code, 1)
+
 
 class TermTests(unittest.TestCase):
     def test_identifiers_are_split_into_words(self):
@@ -106,6 +189,34 @@ class DuplicateTests(unittest.TestCase):
         )
         blocks = self._blocks(banner, banner, banner)
         self.assertEqual(slop.find_duplicates(blocks), [])
+
+    def test_license_adjacent_explanations_are_checked_without_boilerplate(self):
+        for suffix, marker in (("py", "#"), ("cc", "//")):
+            for explanations, expected_groups in (
+                (["Kernel buffers require aligned contiguous storage."] * 3, 1),
+                (["Apples ripen.", "Bananas soften.", "Cherries darken."], 0),
+            ):
+                with self.subTest(suffix=suffix, explanations=explanations):
+                    blocks, _ = slop.collect(
+                        diff(
+                            *[
+                                (
+                                    f"{i}.{suffix}",
+                                    1,
+                                    [
+                                        f"{marker} Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                                        # REUSE-IgnoreStart
+                                        f"{marker} SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                                        # REUSE-IgnoreEnd
+                                        f"{marker} {text}",
+                                    ],
+                                )
+                                for i, text in enumerate(explanations)
+                            ]
+                        )
+                    )
+                    self.assertEqual([b.line for b in blocks], [3, 3, 3])
+                    self.assertEqual(len(slop.find_duplicates(blocks)), expected_groups)
 
     def test_test_files_may_restate_the_invariant(self):
         blocks = self._blocks(

@@ -145,6 +145,7 @@ def test_dispatch_time_scalar_repeated_same_value():
 def test_dynamic_copy_rejects_undersized_buffer_before_dispatch(undersized):
     design = dyn_copy.specialize()
     expected_size = MAX_TILES * TILE_SIZE
+    itemsize = np.dtype(np.int32).itemsize
     a_values = _random_tiles(seed=8)
     if undersized == "a":
         a_values = a_values[:-1]
@@ -153,8 +154,9 @@ def test_dynamic_copy_rejects_undersized_buffer_before_dispatch(undersized):
     with pytest.raises(
         RuntimeError,
         match=(
-            f"Tensor argument '{undersized}' has {expected_size - 1} elements "
-            f"but the kernel was compiled for {expected_size} elements"
+            f"Tensor argument '{undersized}' covers "
+            f"{(expected_size - 1) * itemsize} bytes but the kernel was "
+            f"compiled for {expected_size * itemsize}"
         ),
     ):
         design(a, b, n_tiles=1)

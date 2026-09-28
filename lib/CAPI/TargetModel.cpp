@@ -134,6 +134,10 @@ uint32_t aieTargetModelGetLocalMemorySize(AieTargetModel targetModel) {
   return unwrap(targetModel).getLocalMemorySize();
 }
 
+uint32_t aieTargetModelGetDefaultCoreStackSize(AieTargetModel targetModel) {
+  return unwrap(targetModel).getDefaultCoreStackSize();
+}
+
 uint32_t aieTargetModelGetNumLocks(AieTargetModel targetModel, int col,
                                    int row) {
   return unwrap(targetModel).getNumLocks(col, row);

@@ -18,14 +18,22 @@
 
 // RUN: rm -rf %t.d && mkdir -p %t.d
 
+// What is compared is BD register programming, so queue-depth enforcement is
+// off on both sides. It cannot be symmetric otherwise: the loop is
+// runtime-bound, so the compiler has to assume it runs long enough to fill the
+// queue and guards its push, while the n=2 oracle visibly pushes twice onto a
+// 4-deep queue and needs nothing. That difference is correct -- the rolled
+// form really can overflow and the unrolled one cannot -- and orthogonal to
+// the equivalence asserted here.
+
 // Rolled dynamic loop -> generated C++.
-// RUN: aie-opt --aie-lower-dynamic-bd-pool --canonicalize \
-// RUN:   --aie-dma-tasks-to-npu --aie-dma-to-npu %s -o %t.d/rolled.mlir
+// RUN: aie-opt --aie-lower-dynamic-bd-pool='enforce-queue-depth=false' --canonicalize \
+// RUN:   --aie-dma-tasks-to-npu --aie-dma-to-npu='enforce-queue-depth=false' %s -o %t.d/rolled.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.d/rolled.mlir > %t.d/gen_rolled.h
 
 // Static hand-unrolled n=2 oracle -> generated C++.
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
-// RUN:   --aie-dma-to-npu %S/Inputs/rolled_loop_static2.mlir -o %t.d/static2.mlir
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' --aie-dma-tasks-to-npu \
+// RUN:   --aie-dma-to-npu='enforce-queue-depth=false' %S/Inputs/rolled_loop_static2.mlir -o %t.d/static2.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.d/static2.mlir > %t.d/gen_static2.h
 
 // RUN: %host_clang -std=c++17 -I%S/../../../../include \

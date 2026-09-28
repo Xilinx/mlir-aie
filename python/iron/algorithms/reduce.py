@@ -20,11 +20,8 @@ Reductions differ from `transform` in two ways:
 import numpy as np
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
-from aie.iron.program import Program
-from aie.iron.runtime import Runtime
-from aie.iron.worker import Worker
-from aie.utils import get_current_device
 
+from ._pipeline import Stage, pipeline
 from ._transform import make_param_descriptor
 
 
@@ -58,37 +55,21 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
 
     of_in = ObjectFifo(in_ty, name="in")
     of_out = ObjectFifo(out_ty, name="out")
-
-    def core_body(of_in, of_out, kernel):
-        elem_out = of_out.acquire(1)
-        elem_in = of_in.acquire(1)
-        kernel(elem_in, elem_out, input_num_elements)
-        of_in.release(1)
-        of_out.release(1)
-
-    worker = Worker(
-        core_body,
-        fn_args=[of_in.cons(), of_out.prod(), func],
-        trace=(1 if trace_size > 0 else 0),
+    stage = Stage(
+        lambda ins, outs, held, constants, _: constants[0](
+            ins[0], outs[0], input_num_elements
+        ),
+        inputs=[(of_in, 1)],
+        outputs=[of_out],
+        constants=[func],
+        trace=trace_size > 0,
     )
-
-    def sequence(a_in, c_out, in_h, out_h):
-        in_h.fill(a_in)
-        out_h.drain(c_out, wait=True)
-
-    rt = Runtime(sequence, [in_ty, out_ty, of_in.prod(), of_out.cons()])
-
-    device = get_current_device()
-    if device is None:
-        raise RuntimeError(
-            "iron.algorithms.reduce requires an active NPU device. "
-            "Call iron.set_current_device() or ensure DefaultNPURuntime is "
-            "initialized before calling reduce functions."
-        )
-    prog = Program(device, rt, workers=[worker])
-    if trace_size > 0:
-        prog.enable_trace(trace_size)
-    return prog.resolve_program()
+    return pipeline(
+        [stage],
+        [in_ty, out_ty],
+        [(of_in, "fill", 0), (of_out, "drain", 1)],
+        trace_size=trace_size,
+    )
 
 
 def reduce(func, input_ty, output_ty, *, trace_size=0):

@@ -15,6 +15,17 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// Factory dimensions are constants; raw-source callers keep runtime bounds.
+#ifndef CONV_INPUT_WIDTH
+#define CONV_INPUT_WIDTH runtime_input_width
+#endif
+#ifndef CONV_INPUT_CHANNELS
+#define CONV_INPUT_CHANNELS runtime_input_channels
+#endif
+#ifndef CONV_OUTPUT_CHANNELS
+#define CONV_OUTPUT_CHANNELS runtime_output_channels
+#endif
+
 #define REL_WRITE 0
 #define REL_READ 1
 
@@ -29,8 +40,13 @@ const int32_t UMAX = 255;
 // act: int8, wts: int8, out: uint8
 //*****************************************************************************
 void conv2dk1_i8_scalar(int8_t *input, int8_t *kernels, uint8_t *output,
-                        const int32_t input_width, const int32_t input_channels,
-                        const int32_t output_channels, const int scale) {
+                        const int32_t runtime_input_width,
+                        const int32_t runtime_input_channels,
+                        const int32_t runtime_output_channels,
+                        const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   int x, ic, oc, ic8, oc8;
@@ -69,9 +85,13 @@ void conv2dk1_i8_scalar(int8_t *input, int8_t *kernels, uint8_t *output,
 // act: uint8, wts: int8, out: uint8
 //*****************************************************************************
 void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, uint8_t *output,
-                         const int32_t input_width,
-                         const int32_t input_channels,
-                         const int32_t output_channels, const int scale) {
+                         const int32_t runtime_input_width,
+                         const int32_t runtime_input_channels,
+                         const int32_t runtime_output_channels,
+                         const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   int x, ic, oc, ic8, oc8;
@@ -123,8 +143,13 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, uint8_t *output,
 // now, we do not.
 //*****************************************************************************
 void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
-                        const int32_t input_width, const int32_t input_channels,
-                        const int32_t output_channels, const int scale) {
+                        const int32_t runtime_input_width,
+                        const int32_t runtime_input_channels,
+                        const int32_t runtime_output_channels,
+                        const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
@@ -159,7 +184,6 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 8); ic++) {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
@@ -198,7 +222,6 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
 
     for (int oc = 0; oc < (ocs / 8); oc++) {
       AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (ics / 8); ic++) {
         aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
         kernels += 64; // wts ic0..7(oc0..7)
@@ -247,9 +270,13 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
 // now, we do not.
 //*****************************************************************************
 void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
-                         const int32_t input_width,
-                         const int32_t input_channels,
-                         const int32_t output_channels, const int scale) {
+                         const int32_t runtime_input_width,
+                         const int32_t runtime_input_channels,
+                         const int32_t runtime_output_channels,
+                         const int scale) {
+  const int32_t input_width = CONV_INPUT_WIDTH;
+  const int32_t input_channels = CONV_INPUT_CHANNELS;
+  const int32_t output_channels = CONV_OUTPUT_CHANNELS;
   event0();
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
@@ -284,7 +311,6 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
     for (int oc = 0; oc < (output_channels / 8); oc++) {
       for (int iw_32c = 0; iw_32c < iw_32; iw_32c++) {
         AIE_PREPARE_FOR_PIPELINING
-        AIE_LOOP_MIN_ITERATION_COUNT(2)
         for (int ic = 0; ic < (input_channels / 8); ic++) {
           aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
           kernels += 64; // wts ic0..7(oc0..7)
@@ -323,7 +349,6 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
 
     for (int oc = 0; oc < (ocs / 8); oc++) {
       AIE_PREPARE_FOR_PIPELINING
-      AIE_LOOP_MIN_ITERATION_COUNT(2)
       for (int ic = 0; ic < (ics / 8); ic++) {
         aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
         kernels += 64; // wts ic0..7(oc0..7)

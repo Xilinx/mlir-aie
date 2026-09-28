@@ -26,14 +26,17 @@ void rope_kernel(const T *restrict input, const T *restrict lut,
     ::aie::vector<T, N / 2> cos_val = ::aie::filter_even(cache, 1);
     ::aie::vector<T, N / 2> sin_val = ::aie::filter_odd(cache, 1);
 
-    // Perform ROPE calculations
-    ::aie::vector<T, N / 2> even_cos = ::aie::mul(x_even, cos_val);
-    ::aie::vector<T, N / 2> even_sin = ::aie::mul(x_even, sin_val);
-    ::aie::vector<T, N / 2> odd_cos = ::aie::mul(x_odd, cos_val);
-    ::aie::vector<T, N / 2> odd_sin = ::aie::mul(x_odd, sin_val);
-
-    ::aie::vector<T, N / 2> output_even = ::aie::sub(even_cos, odd_sin);
-    ::aie::vector<T, N / 2> output_odd = ::aie::add(even_sin, odd_cos);
+    // Each half stays in the accumulator until one rounding at the end.
+    // Rounding the products to bfloat16 first spends the result's significant
+    // bits on digits that then cancel: a rotation subtracts two products of
+    // similar size, and a pair cancelling to ~1e-4 from operands of order 1
+    // keeps almost none of them.
+    ::aie::vector<T, N / 2> output_even =
+        ::aie::msc(::aie::mul(x_even, cos_val), x_odd, sin_val)
+            .template to_vector<T>();
+    ::aie::vector<T, N / 2> output_odd =
+        ::aie::mac(::aie::mul(x_even, sin_val), x_odd, cos_val)
+            .template to_vector<T>();
 
     auto [low, high] = ::aie::interleave_zip(output_even, output_odd, 1);
     ::aie::vector<T, N> y = ::aie::concat(low, high);
@@ -52,31 +55,36 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
   event0();
 
   auto dims_half = dims / 2;
-  for (int v = 0, i = 0; v < dims_half; v += N, i += 2 * N) {
+  for (int v = 0, i = 0; v + N <= dims_half; v += N, i += 2 * N) {
     ::aie::vector<T, N> x1 = ::aie::load_v<N>(input + v);
-    ::aie::vector<T, N> x2 = ::aie::load_v<N>(input + v + dims_half);
+    // For dims = 96, the second half is only 32-byte aligned, not the
+    // 64-byte alignment required by AIE2P's 32-lane bf16 loads/stores.
+    ::aie::vector<T, N> x2 = ::aie::load_unaligned_v<N>(input + v + dims_half);
     ::aie::vector<T, 2 * N> cache = ::aie::load_v<2 * N>(lut + i);
 
     ::aie::vector<T, N> cos_val = ::aie::filter_even(cache, 1);
     ::aie::vector<T, N> sin_val = ::aie::filter_odd(cache, 1);
 
-    // First half: x1*cos - x2*sin
-    ::aie::vector<T, N> x1_cos = ::aie::mul(x1, cos_val);
-    ::aie::vector<T, N> x2_sin = ::aie::mul(x2, sin_val);
-    ::aie::vector<T, N> y_first_half = ::aie::sub(x1_cos, x2_sin);
+    // First half: x1*cos - x2*sin, accumulated then rounded once (see
+    // rope_kernel above for why the intermediate products must not round).
+    ::aie::vector<T, N> y_first_half =
+        ::aie::msc(::aie::mul(x1, cos_val), x2, sin_val)
+            .template to_vector<T>();
     ::aie::store_v(output + v, y_first_half);
 
     // Second half: x2*cos + x1*sin
-    ::aie::vector<T, N> x2_cos = ::aie::mul(x2, cos_val);
-    ::aie::vector<T, N> x1_sin = ::aie::mul(x1, sin_val);
-    ::aie::vector<T, N> y_second_half = ::aie::add(x2_cos, x1_sin);
-    ::aie::store_v(output + v + dims_half, y_second_half);
+    ::aie::vector<T, N> y_second_half =
+        ::aie::mac(::aie::mul(x2, cos_val), x1, sin_val)
+            .template to_vector<T>();
+    ::aie::store_unaligned_v(output + v + dims_half, y_second_half);
   }
   for (int v = (dims_half / N) * N, i = 2 * v; v < dims_half; v++, i += 2) {
-    const T c = lut[i], sn = lut[i + 1];
-    const T x1 = input[v], x2 = input[v + dims_half];
-    output[v] = x1 * c - x2 * sn;
-    output[v + dims_half] = x2 * c + x1 * sn;
+    const float c = static_cast<float>(lut[i]);
+    const float sn = static_cast<float>(lut[i + 1]);
+    const float x1 = static_cast<float>(input[v]);
+    const float x2 = static_cast<float>(input[v + dims_half]);
+    output[v] = static_cast<T>(x1 * c - x2 * sn);
+    output[v + dims_half] = static_cast<T>(x2 * c + x1 * sn);
   }
   event1();
 }

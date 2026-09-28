@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Software f32 2^x for exp-family ops needing more accuracy than the hardware
-// `aie::exp2<bfloat16>` LUT behind bf16_exp.cc. Measured on aie2p against a
+// `aie::exp2<bfloat16>` LUT. Measured on aie2p against a
 // float64 reference, the LUT's max relative error runs 6.1% on [-1, 0] to 49.1%
 // on [-100, 0], softmax's range, where this poly holds 8.9e-5. See
 // programming_examples/basic/vector_exp2f.
@@ -39,6 +39,8 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
+#include "exp2_poly.h"
+
 using namespace aie;
 
 // 512-bit vector register / 32-bit lanes.
@@ -61,29 +63,8 @@ exp2f_vec(aie::vector<float, EXP2F_VEC_LEN> x) {
   aie::mask<EXP2F_VEC_LEN> overflow =
       aie::ge(x, aie::broadcast<float, EXP2F_VEC_LEN>(128.0f));
   x = aie::min(x, aie::broadcast<float, EXP2F_VEC_LEN>(127.999f));
-  aie::vector<int32_t, EXP2F_VEC_LEN> ki =
-      aie::to_fixed<int32_t>(x); // round-to-nearest on aie2p
-  aie::vector<float, EXP2F_VEC_LEN> kf = aie::to_float<float>(ki);
-  // floor(x): to_fixed rounds, so step back the lanes it rounded up.
-  aie::vector<int32_t, EXP2F_VEC_LEN> one =
-      aie::broadcast<int32_t, EXP2F_VEC_LEN>(1);
-  aie::vector<int32_t, EXP2F_VEC_LEN> zero =
-      aie::broadcast<int32_t, EXP2F_VEC_LEN>(0);
-  ki = aie::sub(ki, aie::select(zero, one, aie::lt(x, kf)));
-  aie::vector<float, EXP2F_VEC_LEN> f =
-      aie::sub(x, aie::to_float<float>(ki)); // f in [0,1)
-  aie::vector<float, EXP2F_VEC_LEN> p =
-      aie::broadcast<float, EXP2F_VEC_LEN>(0.0013333558f);
-  p = aie::add(aie::mul(p, f).to_vector<float>(),
-               aie::broadcast<float, EXP2F_VEC_LEN>(0.0096181291f));
-  p = aie::add(aie::mul(p, f).to_vector<float>(),
-               aie::broadcast<float, EXP2F_VEC_LEN>(0.0555041087f));
-  p = aie::add(aie::mul(p, f).to_vector<float>(),
-               aie::broadcast<float, EXP2F_VEC_LEN>(0.2402265069f));
-  p = aie::add(aie::mul(p, f).to_vector<float>(),
-               aie::broadcast<float, EXP2F_VEC_LEN>(0.6931471805f));
-  p = aie::add(aie::mul(p, f).to_vector<float>(),
-               aie::broadcast<float, EXP2F_VEC_LEN>(1.0f));
+  aie::vector<int32_t, EXP2F_VEC_LEN> ki;
+  const auto p = exp2_poly(x, ki);
   aie::vector<int32_t, EXP2F_VEC_LEN> ebits = aie::upshift(
       aie::add(ki, aie::broadcast<int32_t, EXP2F_VEC_LEN>(127)), 23);
   aie::vector<float, EXP2F_VEC_LEN> p2k = ebits.cast_to<float>();

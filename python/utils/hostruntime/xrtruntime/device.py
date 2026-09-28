@@ -22,11 +22,11 @@ for the life of the process cannot be outlived by the buffers derived from it.
 import gc
 import logging
 import os
-import shutil
 import subprocess
 import time
 
 import pyxrt  # pyright: ignore[reportMissingImports]
+from aie.utils.probe import xrt_smi_path as xrt_smi_path
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +55,8 @@ def _log_device_state():
         else:
             logger.debug("/dev/accel/accel0 does not exist")
 
-        xrt_bin = shutil.which("xrt-smi")
-        if xrt_bin is None:
-            xrt_base = os.environ.get("XILINX_XRT", "/opt/xilinx/xrt")
-            xrt_bin = xrt_base + "/bin/xrt-smi"
-        if os.path.exists(xrt_bin):
+        xrt_bin = xrt_smi_path()
+        if xrt_bin is not None:
             logger.debug("Running %s examine", xrt_bin)
             result = subprocess.run(
                 [xrt_bin, "examine"],

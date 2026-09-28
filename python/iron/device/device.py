@@ -14,6 +14,7 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects.aie import (
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     LogicalTileOp,
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
@@ -47,6 +48,36 @@ class Device(Resolvable):
     def arch(self) -> AIEArch:
         """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
         return AIEArch(self._tm.get_target_arch())
+
+    @property
+    def core_memory_bytes(self) -> int:
+        """Data memory local to one compute tile."""
+        return self._tm.get_local_memory_size()
+
+    @property
+    def default_core_stack_bytes(self) -> int:
+        """Stack a Worker gets when nothing it calls declares a larger need."""
+        return self._tm.get_default_core_stack_size()
+
+    @property
+    def core_dma_channels_in(self) -> int:
+        """Input DMA channels a compute tile has, and so the most fifos one can be fed."""
+        row = next(
+            r
+            for r in range(self.rows)
+            if self.get_tile_type(0, r) is AIETileType.CoreTile
+        )
+        return self._tm.get_num_dest_switchbox_connections(0, row, WireBundle.DMA)
+
+    @property
+    def core_dma_channels_out(self) -> int:
+        """Output DMA channels available on a compute tile."""
+        row = next(
+            r
+            for r in range(self.rows)
+            if self.get_tile_type(0, r) is AIETileType.CoreTile
+        )
+        return self._tm.get_num_source_switchbox_connections(0, row, WireBundle.DMA)
 
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""

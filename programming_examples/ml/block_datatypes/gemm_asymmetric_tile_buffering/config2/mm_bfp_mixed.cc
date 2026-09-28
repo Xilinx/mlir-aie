@@ -55,16 +55,8 @@ static_assert(m == 192 && m % rho == 0 && m_a % (2 * r) == 0 && k == 128 &&
 
 extern "C" {
 
-// MATMUL_ONLY / ZERO_ONLY gates — distinct ExternalFunction .o builds of
-// this TU emit exactly one symbol. Without any macro, both are emitted.
-#if !defined(MATMUL_ONLY) && !defined(ZERO_ONLY)
-#define MATMUL_ONLY
-#define ZERO_ONLY
-#endif
-
 static int g_counter = 0;
 
-#ifdef MATMUL_ONLY
 void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA_in,
                              bfp16ebs8 *__restrict pB_in,
                              bfp16ebs8 *__restrict pC_in) {
@@ -172,15 +164,4 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA_in,
 
   event1();
 }
-#endif
-
-#ifdef ZERO_ONLY
-void zero_kernel(bfp16ebs8 *__restrict cOut) {
-  const aie::accum<accfloat, r * t> acc = aie::zeros<accfloat, r * t>();
-  OutBufStream<bfp16ebs8, r * t, aie_dm_resource::c> out_stream(cOut);
-  for (int i = 0; i < m * n / (r * t); i++) {
-    out_stream.push(acc.template to_vector<bfp16ebs8>());
-  }
-}
-#endif
 }

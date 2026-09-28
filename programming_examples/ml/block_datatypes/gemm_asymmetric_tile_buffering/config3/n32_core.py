@@ -70,24 +70,16 @@ def n32_core_gemm(
         f"-I{_AIE_KERNELS_INC}",
     ]
 
-    # mm_bfp_mixed.cc keeps a TU-local staging buffer that matmul and
-    # zero share, so we point both ExternalFunctions at the same .o
-    # (one compile, both symbols emitted, link picks each per call).
-    _SHARED_OBJ = "mm_bfp_mixed.o"
-    zero_kernel = ExternalFunction(
-        "zero_kernel",
-        object_file_name=_SHARED_OBJ,
-        source_file=str(_KERNEL_SRC),
-        arg_types=[C_l1_ty],
-        compile_flags=kernel_flags,
-    )
+    # This initializer also clears a TU-local bf16 staging buffer, not just C.
+    # It must bind the matmul's object rather than use the ordinary zero factory.
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
-        object_file_name=_SHARED_OBJ,
+        object_file_name="mm_bfp_mixed.o",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
         compile_flags=kernel_flags,
     )
+    zero_kernel = matmul_kernel.object_file.bind("zero_kernel", [C_l1_ty])
 
     A_l3l2_fifos: list[ObjectFifo] = []
     A_l2l1_fifos: list[ObjectFifo] = []

@@ -172,6 +172,39 @@ static AIE::DMABDOp createTaskBd(PatternRewriter &rewriter, Location loc,
   return bd;
 }
 
+// Each BD execution advances the fourth (iteration) dimension once. If
+// decomposition grows it, scale the task's execution count to match.
+static int32_t getTaskRepeatCount(Operation *taskOp) {
+  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp))
+    return cfg.getRepeatCount();
+  return cast<DMAConfigureTaskForOp>(taskOp).getRepeatCount();
+}
+
+static Value getTaskRepeatCountVal(Operation *taskOp) {
+  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp))
+    return cfg.getRepeatCountVal();
+  return cast<DMAConfigureTaskForOp>(taskOp).getRepeatCountVal();
+}
+
+static void setTaskRepeatCount(Operation *taskOp, int32_t value) {
+  if (auto cfg = dyn_cast<DMAConfigureTaskOp>(taskOp)) {
+    cfg.setRepeatCount(value);
+    return;
+  }
+  cast<DMAConfigureTaskForOp>(taskOp).setRepeatCount(value);
+}
+
+// The factor by which decomposition grew the fourth dimension, or nullopt if it
+// did not divide evenly (in which case the repeat count cannot express it).
+static std::optional<int64_t> iterationGrowth(const NdDmaPattern &before,
+                                              const NdDmaPattern &after) {
+  int64_t oldOuter = before.sizes[3];
+  int64_t newOuter = after.sizes[3];
+  if (oldOuter <= 0 || newOuter % oldOuter != 0)
+    return std::nullopt;
+  return newOuter / oldOuter;
+}
+
 static unsigned countTaskBds(Operation *taskOp) {
   unsigned n = 0;
   taskOp->walk([&](AIE::DMABDOp) { ++n; });
@@ -409,15 +442,43 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, sub);
       auto outerSizes = toOuter(sub.sizes);
       auto outerStrides = toOuter(sub.strides);
+      // len covers one BD invocation, so it tracks the innermost three
+      // dimensions only. Rewriting in place can move extent into the fourth
+      // (repeat) dimension -- e.g. an innermost run too long for the wrap
+      // field factors out an extra dimension and pushes the outermost one into
+      // the repeat slot -- so len has to be recomputed alongside the shape.
+      int32_t len = static_cast<int32_t>(lenFromInnermost3(sub.sizes));
+
+      std::optional<int64_t> growth = iterationGrowth(pattern, sub);
+      if (!growth)
+        return failure();
+      int64_t runs = 0;
+      if (*growth > 1) {
+        if (getTaskRepeatCountVal(taskOp))
+          return op.emitOpError()
+                 << "cannot decompose a buffer descriptor whose repeat count "
+                    "is a runtime value: decomposition needs to scale it by "
+                 << *growth;
+        // Widen before multiplying: the accessor returns int32_t, so the
+        // addition alone would overflow in int and wrap past any later check.
+        runs = (static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1) * *growth;
+        // Diagnose the scale factor here rather than failing at the queue push.
+        uint32_t maxRepeat = targetModel.getMaxRepeatCount();
+        if (runs - 1 > maxRepeat)
+          return op.emitOpError()
+                 << "decomposition scales the repeat count by " << *growth
+                 << " to " << (runs - 1) << ", beyond the [0:" << maxRepeat
+                 << "] a queue push can carry";
+      }
+
       rewriter.modifyOpInPlace(op, [&]() {
-        op.getOffsetMutable().clear();
-        op.setStaticOffset(static_cast<int32_t>(flatOffset));
-        op.getSizesMutable().clear();
-        op.getStridesMutable().clear();
-        op.setStaticSizes(DenseI64ArrayAttr::get(op.getContext(), outerSizes));
-        op.setStaticStrides(
-            DenseI64ArrayAttr::get(op.getContext(), outerStrides));
+        updateTaskBdInPlace(op, static_cast<int32_t>(flatOffset), len,
+                            outerSizes, outerStrides);
       });
+      if (*growth > 1)
+        rewriter.modifyOpInPlace(taskOp, [&]() {
+          setTaskRepeatCount(taskOp, static_cast<int32_t>(runs - 1));
+        });
       return success();
     }
 
@@ -426,6 +487,19 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     if (op.getOutOfOrderId().has_value())
       return op.emitOpError() << "splitting an out-of-order buffer descriptor "
                                  "into multiple descriptors is not implemented";
+
+    // Every member of a chain runs once per task execution, so the one
+    // queue-push repeat count is shared by all of them. A slice that also wants
+    // its own iteration factor would need a private repeat, which the hardware
+    // has nowhere to put.
+    for (const NdDmaPattern &subPattern : bds) {
+      std::optional<int64_t> growth = iterationGrowth(pattern, subPattern);
+      if (!growth || *growth > 1)
+        return op.emitOpError()
+               << "cannot split this buffer descriptor into a chain: its "
+                  "slices need per-descriptor repeat counts, which a chain "
+                  "shares";
+    }
 
     Region *body = getTaskBody(taskOp);
     if (!body || body->empty())

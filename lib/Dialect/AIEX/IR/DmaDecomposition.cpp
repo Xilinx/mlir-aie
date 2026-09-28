@@ -44,6 +44,21 @@ int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
   return (1LL << wrapBits) - 1;
 }
 
+/// Whether dimension `d`'s stride fits the BD's step field. The hardware
+/// stride is in address granules, biased by one as the field encodes it
+/// (getHardwareStridesWraps); the iteration slot (d == 3) shares the field
+/// width and additionally admits a zero stride, a re-read.
+bool strideFitsStepField(const AIE::AIETargetModel &tm, Operation *forOp,
+                         BaseMemRefType bufType, int col, int row,
+                         const NdDmaPattern &pattern, unsigned d) {
+  SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
+  SmallVector<int64_t, kNdDmaDims> hwStrides(kNdDmaDims);
+  getHardwareStridesWraps(tm, forOp, bufType, pattern.sizes, pattern.strides,
+                          hwSizes, hwStrides);
+  uint32_t stepBits = tm.getDmaBdStepBits(col, row);
+  return hwStrides[d] <= (1LL << stepBits) - 1;
+}
+
 /// Enumerate divisors b of n in descending order (largest inner factor first).
 void divisorsDescending(int64_t n, SmallVectorImpl<int64_t> &out) {
   out.clear();
@@ -95,8 +110,9 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   // (a, b*s) inserted at position d+1, shifting the higher dims outward. The
   // factored pair stays adjacent so the sub-traversal of dim d is contiguous
   // and its place in the overall nesting is unchanged => element order is
-  // preserved. Requires the outermost slot to be free so no dim is dropped.
-  if (pattern.sizes[3] == 1) {
+  // preserved. The outermost slot must be free and carry no base offset.
+  bool outerSlotHasOffset = pattern.offsets[3] != 0 && pattern.strides[3] != 0;
+  if (pattern.sizes[3] == 1 && !outerSlotHasOffset) {
     for (unsigned d = 0; d < 3; ++d) {
       int64_t n = pattern.sizes[d];
       if (n <= 1)
@@ -138,11 +154,30 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   // split into contiguous index ranges emitted in order. Slicing an inner
   // dimension would interleave the outer iterations and reorder the emitted
   // element stream, so it is not allowed.
+  //
+  // The chunk is the largest wrap the slot holds, or a single index when the
+  // dimension's stride is past the step field: a stride the BD cannot
+  // encode is carried in each slice's offset instead, which has no such
+  // limit (a column-major weight whose column-block stride is the whole
+  // matrix's height, for one). Same bytes, same order, one descriptor per
+  // index of that dimension.
   {
     unsigned d = static_cast<unsigned>(outermost);
     int64_t n = pattern.sizes[d];
     int64_t chunkSize =
         maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
+    // An offset-bearing singleton cannot be reused by factoring; slice instead.
+    if (pattern.sizes[3] == 1 && outerSlotHasOffset && n <= chunkSize)
+      chunkSize = 1;
+    bool oversizedStride =
+        !strideFitsStepField(tm, forOp, bufType, col, row, pattern, d);
+    // Peel outer dimensions until an oversized inner stride can be folded.
+    for (unsigned i = 0; i <= d; ++i)
+      if (pattern.sizes[i] > 1 && pattern.strides[i] > 0 &&
+          !strideFitsStepField(tm, forOp, bufType, col, row, pattern, i)) {
+        chunkSize = 1;
+        break;
+      }
     if (chunkSize > 0 && chunkSize < n) {
       int64_t numChunks = (n + chunkSize - 1) / chunkSize;
       SmallVector<NdDmaPattern> combined;
@@ -150,6 +185,13 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         NdDmaPattern slice = pattern;
         slice.sizes[d] = std::min(chunkSize, n - i * chunkSize);
         slice.offsets[d] = pattern.offsets[d] + i * chunkSize;
+        if (slice.sizes[d] == 1 && oversizedStride) {
+          int64_t stride = bdGranuleDivisor(elemWidth, gran);
+          if (pattern.strides[d] % stride != 0)
+            return failure();
+          slice.offsets[d] *= pattern.strides[d] / stride;
+          slice.strides[d] = stride; // keep the singleton granule-aligned
+        }
 
         auto sub = decomposeRecursive(forOp, bufType, tm, col, row, slice);
         // failed() above already guards this deref; the checker just doesn't

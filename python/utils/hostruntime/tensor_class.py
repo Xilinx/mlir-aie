@@ -57,13 +57,7 @@ def _as_shape(shape):
 
 
 def _unsupported_device_message(cls, device) -> str:
-    """Explain a device rejection, not just report it.
-
-    A class-attribute check can only see the string it rejected, so asking for
-    "npu" from a CPU-only tensor used to surface as a bare "Unsupported device"
-    -- indistinguishable from a typo. The reason the CPU-only class was selected
-    lives in aie.utils.probe; quote it here.
-    """
+    """Include the probe failure when the CPU-only backend rejects an NPU."""
     message = f"Unsupported device: {device}"
     if device != "npu" or "npu" in cls.DEVICES:
         return message
@@ -311,20 +305,24 @@ class NpuTensor(ABC):
         """
         return self._offset_bytes
 
-    def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
+    def __init__(self, shape_or_data, dtype: npt.DTypeLike | None = None, device="npu"):
         """Initialize the tensor.
 
         Args:
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
-            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            dtype (np.dtype, optional): Element type. Taken from the data when
+                that is a typed array and this is omitted; ``np.uint32`` when
+                the tensor is built from a shape.
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
         if device not in self.__class__.DEVICES:
             raise ValueError(_unsupported_device_message(self.__class__, device))
         self._initial_device = device
-        self.dtype = dtype
+        if dtype is None:
+            dtype = getattr(shape_or_data, "dtype", None)
+        self.dtype = np.uint32 if dtype is None else dtype
 
     @property
     @abstractmethod
@@ -719,6 +717,21 @@ class NpuTensor(ABC):
         """
         return _array_to_torch(self.numpy())
 
+    def numpy_view(self):
+        """Return a NumPy view of this buffer's host memory without syncing from device.
+
+        The write-path peer of :meth:`numpy`, which syncs from the NPU first.
+        This does not, and marks the buffer CPU-resident so that a later
+        ``.to("npu")`` (or an NPU operator's implicit sync) pushes what was
+        written. Use it where the caller is about to overwrite the contents
+        and reading the device's current bytes would be wasted work.
+
+        Returns:
+            np.ndarray: A zero-copy NumPy view of the host-side buffer.
+        """
+        self.device = "cpu"  # mark dirty so next to("npu") will actually sync
+        return self.data
+
     def torch_view(self):
         """Return a torch tensor sharing this buffer's host memory without syncing from device.
 
@@ -1049,21 +1062,22 @@ class CPUOnlyTensor(NpuTensor):
     DEVICES = ["cpu"]
     DEFAULT_DEVICE = "cpu"
 
-    def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="cpu"):
+    def __init__(self, shape_or_data, dtype: npt.DTypeLike | None = None, device="cpu"):
         """Initialize the CPUOnlyTensor.
 
         Args:
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
-            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            dtype (np.dtype, optional): Element type. Taken from the data when
+                that is a typed array and this is omitted.
             device (str, optional): Device string identifier. Defaults to 'cpu'.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
         if not isinstance(shape_or_data, tuple):
-            self._data = np.array(shape_or_data, dtype=dtype)
+            self._data = np.array(shape_or_data, dtype=self.dtype)
         else:
-            self._data = np.zeros(shape_or_data, dtype=dtype)
+            self._data = np.zeros(shape_or_data, dtype=self.dtype)
         self._shape = self._data.shape
         # Re-home the bytes in a buffer so views share one allocation and one
         # coherence map, then keep a typed view of the whole of it.

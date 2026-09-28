@@ -76,15 +76,19 @@ inline std::string formatMiB(uint64_t bytes) {
   return llvm::formatv("{0:F1}", bytes / (1024.0 * 1024.0)).str();
 }
 
-// Backward-reachable set of edges from the requested `outputs`
+// Backward-reachable set of edges from the requested `outputs`. A `leaves` edge
+// is included when reached, but what it reads is not.
 inline llvm::DenseSet<EdgeBase *>
-reachableEdges(const std::vector<EdgeBase *> &outputs) {
+reachableEdges(const std::vector<EdgeBase *> &outputs,
+               llvm::ArrayRef<EdgeBase *> leaves = {}) {
   llvm::DenseSet<EdgeBase *> reachable;
   std::vector<EdgeBase *> stack(outputs.begin(), outputs.end());
   while (!stack.empty()) {
     EdgeBase *e = stack.back();
     stack.pop_back();
     if (!e || !reachable.insert(e).second)
+      continue;
+    if (llvm::is_contained(leaves, e))
       continue;
     for (NodeBase *n : e->inputNodes())
       if (n && n->producer)

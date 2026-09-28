@@ -84,8 +84,8 @@ def test_shared_source_kernels_do_not_clobber_each_other(tmp_path, stub_compiler
     kernel_dir.mkdir()
     dest = kernel_dir / "shared.cc"
 
-    # The copy is named after the .cc but the grouping key is the kernel name,
-    # so these two are not ordered against each other despite sharing a path.
+    # Distinct objects still stage their source at the same basename. Each
+    # replacement must leave existing readers attached to their original file.
     put, get = (_stub_func(n, upstream) for n in ("kernel_put", "kernel_get"))
 
     compile_external_kernels([put], str(kernel_dir), "aie2p")

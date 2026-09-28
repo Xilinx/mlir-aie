@@ -28,9 +28,8 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 import aie.utils.config as config
+import pytest
 from aie.utils.compile.utils import compile_cxx_core_function
 
 _KERNEL_SOURCE = """
@@ -50,7 +49,7 @@ _FAKE = "config._find_llvm_tool('llvm-faketool', 'AIE_FAKETOOL_PATH')"
 
 @pytest.fixture(scope="module")
 def aie_object(tmp_path_factory):
-    """A real AIE object file exporting two known external symbols."""
+    """Compile a real AIE object file exporting two known external symbols."""
     tmp_dir = tmp_path_factory.mktemp("aie_object")
     source = tmp_dir / "add_one.cc"
     source.write_text(_KERNEL_SOURCE)

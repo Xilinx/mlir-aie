@@ -273,6 +273,24 @@ class HostRuntime(ABC):
         """
         pass
 
+    def power_mode(self) -> str | None:
+        """Return the NPU's power (performance) mode, or ``None`` if unknown.
+
+        Timing measurements depend on it: a core clocked in a power-saving
+        mode is not comparable to one in ``performance`` mode. Backends that
+        can read it override this; the base implementation cannot.
+        """
+        return None
+
+    def device_name(self) -> str | None:
+        """Return the NPU's model name (e.g. ``NPU Strix``), or ``None`` if unknown.
+
+        ``device()`` gives only the generation; benchmark provenance needs the
+        part, since hosts of one generation still differ. Backends that can
+        read it override this; the base implementation cannot.
+        """
+        return None
+
     # Read instruction stream from bin file and reformat it to be passed into the
     # instruction buffer for the xrt.kernel call
     @classmethod

@@ -4,7 +4,7 @@
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, AnyMemTile, Tile
-from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from util import construct_and_print_module
 
 # RUN: %python %s | FileCheck %s

@@ -17,7 +17,7 @@ import os
 
 import numpy as np
 
-from ..helpers.util import ceildiv as ceildiv
+from ..helpers.npdtypes import ceildiv as ceildiv
 from .hostruntime.tensor_class import NpuTensor
 
 _logger = logging.getLogger(__name__)

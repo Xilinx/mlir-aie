@@ -84,6 +84,19 @@ class Tile:
         )
 
     @property
+    def effective_tile_type(self) -> AIETileType | None:
+        """Return the explicit type or the type inferred by Device.resolve_tile().
+
+        DMA regions and shim routes need this when a Tile supplies only coordinates.
+        Return None if neither an explicit type nor a resolved op is available.
+        """
+        if self.tile_type is not None:
+            return self.tile_type
+        if self._op is None:
+            return None
+        return AIETileType(int(self._op.tile_type))
+
+    @property
     def op(self) -> LogicalTileOp:
         if not self._op:
             raise ValueError("Cannot get op before it is set.")

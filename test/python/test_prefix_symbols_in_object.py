@@ -27,10 +27,9 @@ import stat
 import subprocess
 from types import SimpleNamespace
 
-import pytest
-
 import aie.utils.compile.utils as compile_utils
 import aie.utils.config as config
+import pytest
 
 _KERNEL_SOURCE = """
 extern "C" void helper_fn(int *p) { *p += 1; }
@@ -59,7 +58,7 @@ def _compile(source_path, object_path):
 
 @pytest.fixture
 def kernel_object(tmp_path):
-    """A freshly compiled, real AIE object with two defined external symbols."""
+    """Compile a real AIE object with two defined external symbols."""
     source = tmp_path / "add_one.cc"
     source.write_text(_KERNEL_SOURCE)
     obj = tmp_path / "add_one.o"
@@ -70,7 +69,7 @@ def kernel_object(tmp_path):
 
 @pytest.fixture
 def func(tmp_path):
-    """An ExternalFunction-shaped stand-in carrying a real, compilable source."""
+    """Create an ExternalFunction-shaped stand-in with real, compilable source."""
     return SimpleNamespace(
         _name="op0_add_one",
         _original_name="add_one",
@@ -134,7 +133,7 @@ def test_gnu_objcopy_declines_to_autodetect_an_aie_object(kernel_object):
 
 @pytest.mark.parametrize("tool", ["nm", "ar"])
 def test_gnu_nm_and_ar_read_an_aie_object(tmp_path, kernel_object, tool):
-    """nm and ar tolerate the unknown architecture, so LLVM is only a preference.
+    """Check that GNU nm and ar tolerate the unknown architecture.
 
     Kept alongside the objcopy case so the asymmetry is recorded rather than
     rediscovered: only objcopy is a hard requirement.

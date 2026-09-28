@@ -878,6 +878,32 @@ AIE2TargetModel::getDmaControlAddress(int col, int row, int channel,
          offset;
 }
 
+std::optional<uint32_t>
+AIE2TargetModel::getDmaStatusAddress(int col, int row, int channel,
+                                     AIE::DMAChannelDir direction) const {
+  // Status registers sit one word apart per channel, unlike the task-queue
+  // control registers above, which are two words apart.
+  uint32_t offset = 0;
+  if (isShimNOCTile(col, row)) {
+    offset = 0x0001D220 + (channel * 0x4);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x8;
+  } else if (isMemTile(col, row)) {
+    offset = 0x000A0660 + (channel * 0x4);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x20;
+  } else if (isCoreTile(col, row)) {
+    offset = 0x0001DF00 + (channel * 0x4);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x10;
+  } else {
+    return std::nullopt;
+  }
+
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
 uint32_t
 AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
                                                 WireBundle bundle) const {
@@ -1647,6 +1673,18 @@ AIE2PSTargetModel::getDmaControlAddress(int col, int row, int channel,
   }
   // Memtile and core tile use same addresses as AIE2.
   return AIE2TargetModel::getDmaControlAddress(col, row, channel, direction);
+}
+
+std::optional<uint32_t>
+AIE2PSTargetModel::getDmaStatusAddress(int col, int row, int channel,
+                                       AIE::DMAChannelDir direction) const {
+  // The AIE2PS shim relocates its DMA registers (control is at 0x9300, not
+  // 0x1D200), and the status block has not been confirmed against a register
+  // spec. Report "unknown" rather than guess an address a maskpoll would then
+  // read garbage from; memtile and core tiles match AIE2.
+  if (isShimNOCTile(col, row))
+    return std::nullopt;
+  return AIE2TargetModel::getDmaStatusAddress(col, row, channel, direction);
 }
 
 // AIE2PS shim tiles have uC stream switch port for routing TCT to CERT uC.

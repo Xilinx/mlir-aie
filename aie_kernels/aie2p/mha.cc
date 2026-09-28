@@ -11,7 +11,8 @@
 // #include (there is no separate link step).  The col-major B variants are
 // compiled by passing -DB_COL_MAJ to the compiler; this flag is set in the
 // PeanoCompilationRule configuration for this file.
-// mm.cc provides: matmul_bf16_bf16, matmul_scalar_bf16_bf16, zero_bf16, etc.
+// mm.cc provides matmul_bf16_bf16 and matmul_scalar_bf16_bf16.
+#include "../generic/zero.cc"
 #include "mm.cc"
 
 #include <aie_api/aie.hpp>
@@ -29,10 +30,6 @@
 // mm.cc's templates are already available (included above); we instantiate
 // them here with b_row_maj=true and expose the results as extern "C" symbols.
 extern "C" {
-
-void zero_bf16_rowmaj(bfloat16 *c_out) {
-  zero_vectorized<bfloat16, DIM_M, DIM_N>(c_out);
-}
 
 void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
   ::aie::rounding_mode saved_rounding =
@@ -162,7 +159,7 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
 
   // Causal full mask: skip blocks strictly above diagonal
   if (kv_block_idx > q_block_idx) {
-    zero_bf16(P);
+    zero_vectorized<bfloat16, DIM_M, DIM_N>(P);
     ::aie::set_rounding(saved_rounding);
     return;
   }
@@ -182,7 +179,7 @@ void partial_softmax(bfloat16 *A, bfloat16 *P, bfloat16 *scale_buffer,
 
   // Fully padded block: contributes nothing
   if (valid_q_rows == 0 || valid_kv_cols == 0) {
-    zero_bf16(P);
+    zero_vectorized<bfloat16, DIM_M, DIM_N>(P);
     ::aie::set_rounding(saved_rounding);
     return;
   }

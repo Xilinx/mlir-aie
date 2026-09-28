@@ -15,18 +15,7 @@ from aie.iron.runtime import Runtime, TaskGroup
 from aie.iron.worker import Worker
 from aie.utils import get_current_device
 
-
-def _check_num_channels(num_channels: int) -> None:
-    # Validates the user-supplied ``num_channels=`` kwarg, not a device fact:
-    # AIE2 (Phoenix) and AIE2p (Strix) both have 2 shim DMA channels per
-    # direction per column.  The C++ target model (Device._tm) does not yet
-    # expose this; if a future arch breaks the 2-channels-per-direction
-    # invariant this check should read off the device model instead.
-    if num_channels not in (1, 2):
-        raise ValueError(
-            f"num_channels must be 1 or 2 (shim DMA has 2 channels per "
-            f"direction per column on AIE2 / AIE2p); got {num_channels}"
-        )
+from ._pipeline import Stage, kernel_params, pipeline
 
 
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
@@ -88,133 +77,40 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(n,), np.dtype[dtype]]
 
-    # Create inputs/output ObjectFifo
     of_inputs = [ObjectFifo(tile_ty, name=f"in{i}") for i in range(num_inputs)]
     of_out = ObjectFifo(tile_ty, name="out")
+    kparams = kernel_params(func, params, num_inputs + 1)
 
-    # Handle params for ExternalFunction
-    tensor_params = []  # params that need ObjectFifos
-    scalar_params = []  # params passed directly as MLIR constants
-    param_of_list = []
-    param_tensor_types = []
+    def body(ins, outs, held, constants, _):
+        if is_external_func:
+            constants[0](*ins, outs[0], *kparams.resolve(held), n)
+        else:
+            # Lambda/callable: apply element-wise. Without this explicit
+            # loop, only the first element of each tile would be processed.
+            for j in range_(n):
+                outs[0][j] = constants[0](*(elem[j] for elem in ins))
 
-    if is_external_func:
-        arg_types = func.arg_types()
-        # Skip input and output tile types (num_inputs + output)
-        param_arg_types = arg_types[num_inputs + 1 :]
-
-        for i, (param, arg_type) in enumerate(zip(params, param_arg_types)):
-            if isinstance(arg_type, type) and issubclass(arg_type, np.generic):
-                scalar_params.append((i, param))
-            else:
-                tensor_params.append((i, param))
-
-        # Create ObjectFifos only for tensor params
-        for i, param in tensor_params:
-            param_ty = np.ndarray[param.shape, np.dtype[param.dtype]]
-            param_tensor_types.append(param_ty)
-            param_of_list.append(ObjectFifo(param_ty, name=f"param{i}"))
-
-    def core_body(*of_args):
-        # of_args = [*of_inputs_cons, *param_of_cons, of_out_prod, func]
-        of_ins = of_args[:num_inputs]
-        func_to_apply = of_args[-1]  # Last element is func
-        of_output = of_args[-2]  # Second to last is output
-        of_params = of_args[num_inputs:-2]
-
-        # For ExternalFunction: acquire params once (constant for all iterations)
-        all_params = []
-        if is_external_func and params:
-            elem_tensor_params = [of_param.acquire(1) for of_param in of_params]
-
-            # Build the full param list in correct order
-            all_params = [None] * len(params)
-            for (orig_idx, _), elem in zip(tensor_params, elem_tensor_params):
-                all_params[orig_idx] = elem
-            for orig_idx, param in scalar_params:
-                all_params[orig_idx] = param
-
-        # Tile iteration loop
-        for _ in range_(N_div_n):
-            elem_ins = [of_in.acquire(1) for of_in in of_ins]
-            elem_out = of_output.acquire(1)
-
-            if is_external_func:
-                func_to_apply(*elem_ins, elem_out, *all_params, n)
-            else:
-                # Lambda/callable: apply element-wise
-                # Without this explicit loop, only the
-                # first element of each tile would be processed.
-                for j in range_(n):
-                    in_elems = [elem_in[j] for elem_in in elem_ins]
-                    elem_out[j] = func_to_apply(*in_elems)
-
-            # Release inputs and output
-            for of_in in of_ins:
-                of_in.release(1)
-            of_output.release(1)
-
-        # Release tensor params (ExternalFunction only)
-        for of_param in of_params:
-            of_param.release(1)
-
-    # Create worker with all ObjectFifos
-    worker_args = (
-        [of.cons() for of in of_inputs]
-        + [of.cons() for of in param_of_list]
-        + [of_out.prod()]
-        + [func]
+    stage = Stage(
+        body,
+        inputs=[(of, 1) for of in of_inputs],
+        outputs=[of_out],
+        held=kparams.fifos,
+        constants=[func],
+        iterations=N_div_n,
+        trace=trace_size > 0,
     )
-    worker = Worker(core_body, fn_args=worker_args, trace=(1 if trace_size > 0 else 0))
-
-    # Runtime operations to move data to/from the AIE-array
-    # Sequence order: [inputs, output, params]
-    all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
-    num_params = len(param_tensor_types)
-
-    def sequence(*args):
-        # args = *inputs, output, *params, *in_prods, out_cons, *param_prods
-        input_seq_args = args[:num_inputs]
-        output_seq_arg = args[num_inputs]
-        param_seq_args = args[num_inputs + 1 : num_inputs + 1 + num_params]
-        rest = args[num_inputs + 1 + num_params :]
-        in_prods = rest[:num_inputs]
-        out_cons = rest[num_inputs]
-        param_prods = rest[num_inputs + 1 :]
-
-        # Fill all input ObjectFifos
-        for in_prod, input_arg in zip(in_prods, input_seq_args):
-            in_prod.fill(input_arg)
-
-        # Fill tensor param ObjectFifos (ExternalFunction only)
-        for param_prod, param_arg in zip(param_prods, param_seq_args):
-            param_prod.fill(param_arg)
-
-        # Drain output ObjectFifo
-        out_cons.drain(output_seq_arg, wait=True)
-
-    rt = Runtime(
-        sequence,
-        [
-            *all_types,
-            *[of_in.prod() for of_in in of_inputs],
-            of_out.cons(),
-            *[p.prod() for p in param_of_list],
-        ],
+    # Host buffers: inputs, output, then the tensor params.
+    transfers = [(of, "fill", i) for i, of in enumerate(of_inputs)]
+    transfers += [
+        (of, "fill", num_inputs + 1 + i) for i, of in enumerate(kparams.fifos)
+    ]
+    transfers.append((of_out, "drain", num_inputs))
+    return pipeline(
+        [stage],
+        [tensor_ty] * (num_inputs + 1) + kparams.types,
+        transfers,
+        trace_size=trace_size,
     )
-
-    # Place program components and generate an MLIR module
-    device = get_current_device()
-    if device is None:
-        raise RuntimeError(
-            "iron.algorithms.transform requires an active NPU device. "
-            "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
-            "before calling transform functions."
-        )
-    prog = Program(device, rt, workers=[worker])
-    if trace_size > 0:
-        prog.enable_trace(trace_size)
-    return prog.resolve_program()
 
 
 def _transform_parallel_gen(
@@ -231,11 +127,8 @@ def _transform_parallel_gen(
 
     Distributes work across multiple AIE tiles for parallel execution.
 
-    With ``num_channels=2`` (and no extra ``*params``), the design also drives
-    both shim DMA channels per column — one worker per (column, channel) pair
-    — which is the right shape for DDR-bandwidth-bound element-wise kernels
-    like ReLU/GELU/SiLU/eltwise_add.  The single-channel default (``num_channels=1``)
-    reproduces the original one-worker-per-column behaviour bit-for-bit.
+    Creates one worker per (column, channel). The compiler validates DMA
+    channel availability against the target model during placement.
 
     Args:
         func: Function to apply, either a lambda/callable or ExternalFunction.
@@ -249,20 +142,19 @@ def _transform_parallel_gen(
         trace_size: When > 0, enable per-column-Worker core trace and a
             ``trace_size``-byte runtime trace buffer (default: 0).  Same
             event0()/event1() expectation as `_transform_gen`.
-        num_channels: Shim DMA channels per column to drive, 1 or 2 (default: 1).
-            With 2, two workers per column run in parallel on disjoint
-            sub-ranges, doubling DDR throughput.  Not compatible with shared
-            tensor ``*params`` (each per-(col, chan) worker would need its own
-            param OF) — use ``num_channels=1`` if you need ``*params``.
+        num_channels: Workers per column operating on disjoint sub-ranges
+            (default: 1). Values above 1 are not compatible with shared
+            ``*params``.
         pass_size_to_kernel: When True (default), the kernel receives an extra
             trailing ``int`` argument equal to ``tile_size``.  Set False for
             kernels whose signature is just ``(*in_tiles, out_tile)`` (e.g.
             ``iron.kernels.relu``, ``iron.kernels.add``).
     """
-    _check_num_channels(num_channels)
+    if num_channels < 1:
+        raise ValueError("num_channels must be positive")
     if num_channels > 1 and params:
         raise ValueError(
-            "num_channels=2 is not supported together with shared *params; "
+            "num_channels > 1 is not supported together with shared *params; "
             "use num_channels=1 instead."
         )
     is_external_func = isinstance(func, ExternalFunction)
@@ -695,10 +587,9 @@ def transform_parallel(
         trace_size (int, optional): When > 0, enable per-column Worker core
             trace and a ``trace_size``-byte runtime trace buffer.
             Defaults to 0 (off).
-        num_channels (int, optional): Shim DMA channels per column to drive,
-            1 or 2.  ``num_channels=2`` runs one worker per (column, channel),
-            doubling DDR throughput for bandwidth-bound element-wise kernels.
-            Not compatible with shared tensor ``*params``.  Defaults to 1.
+        num_channels (int, optional): Workers per column. The compiler checks
+            target DMA capacity. Values above 1 are not compatible with shared
+            ``*params``. Defaults to 1.
         pass_size_to_kernel (bool, optional): Append ``tile_size`` as a
             trailing ``int`` argument on every kernel call.  Defaults to True;
             set False for kernels with bare ``(in, out)`` signatures.
@@ -743,8 +634,8 @@ def transform_parallel_binary(
         trace_size (int, optional): When > 0, enable per-column Worker core
             trace and a ``trace_size``-byte runtime trace buffer.
             Defaults to 0 (off).
-        num_channels (int, optional): Shim DMA channels per column to drive,
-            1 or 2.  Defaults to 1.  See [`transform_parallel`][iron.algorithms._transform.transform_parallel].
+        num_channels (int, optional): Workers per column. The compiler checks
+            target DMA capacity. Defaults to 1.
         pass_size_to_kernel (bool, optional): Append ``tile_size`` as a
             trailing ``int`` argument on every kernel call.  Defaults to True.
 

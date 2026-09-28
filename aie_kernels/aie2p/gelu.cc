@@ -12,6 +12,10 @@
 
 using namespace aie;
 
+#ifndef GELU_ELEMS
+#define GELU_ELEMS vector_size
+#endif
+
 // GELU (tanh approximation):
 //   0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3))).
 // 32-wide with MAC fusion and s*beta precompute to shorten the dependency
@@ -54,8 +58,9 @@ void gelu_tanh_approx_bf16(bfloat16 *restrict input_vector,
   auto body = [&]() __attribute__((always_inline)) {
     *it_out++ = gelu_tanh_approx(*it_in++);
   };
-  VERSIONED_LOOP(2, (vector_size + 31) / 32, body,
-                 AIE_PREPARE_FOR_POSTPIPELINING);
+  AIE_PREPARE_FOR_POSTPIPELINING
+  for (int i = 0; i < GELU_ELEMS; i += 32)
+    body();
   event1();
 }
 

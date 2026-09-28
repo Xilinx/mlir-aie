@@ -12,7 +12,7 @@ import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import buffer
-from ..helpers.util import (
+from ..helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
@@ -134,7 +134,7 @@ class Buffer(Resolvable):
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """The per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._arr_type)
 

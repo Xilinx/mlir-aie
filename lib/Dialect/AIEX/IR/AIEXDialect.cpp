@@ -739,10 +739,12 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
+  uint32_t maxRepeat = targetModel.getMaxRepeatCount();
   if (std::optional<uint32_t> repeatCount =
           getConstantIntOperand(getRepeatCount());
-      repeatCount && *repeatCount > 255)
-    return emitOpError("Repeat count exceeds the [0:255] range.");
+      repeatCount && *repeatCount > maxRepeat)
+    return emitOpError("Repeat count exceeds the [0:")
+           << maxRepeat << "] range.";
   return success();
 }
 
@@ -1085,6 +1087,17 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+  std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
+  if (!addressOffset)
+    return std::nullopt;
+  return ::getAbsoluteAddress(this, *addressOffset);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuMaskPollOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuMaskPollOp::getAbsoluteAddress() {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
@@ -1535,7 +1548,7 @@ AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
       blockFormatsMap = {
           {"v8bfp16ebs8", {8, 8, 8, 0}},
           {"v16bfp16ebs16", {16, 8, 8, 0}},
-      };
+  };
 
   auto it = blockFormatsMap.find(blockType);
   if (it != blockFormatsMap.end()) {

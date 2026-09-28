@@ -40,7 +40,7 @@ module {
       // CHECK:  aie.dma_bd(%arg0 : memref<8xi16> offset = {{.*}} len = {{.*}}) {bd_id = 5 : i32}
         aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
         aie.end
-      }
+      } {issue_token = true}
 
       // The following is submitted to a different tile, so BD IDs should start from 0.
       %t4 = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
@@ -83,4 +83,3 @@ module {
     }
   }
 }
-

@@ -14,6 +14,11 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+// IRON specializes the bound; raw-source callers retain the runtime ABI.
+#ifndef PASSTHROUGH_ELEMS
+#define PASSTHROUGH_ELEMS (height * width)
+#endif
+
 template <typename T, int N>
 __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
                                                const int32_t height,
@@ -24,8 +29,7 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
   v64uint8 *restrict inPtr = (v64uint8 *)in;
 
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(6)
-  for (int j = 0; j < (height * width); j += N) // Nx samples per loop
+  for (int j = 0; j < PASSTHROUGH_ELEMS; j += N) // Nx samples per loop
   {
     *outPtr++ = *inPtr++;
   }

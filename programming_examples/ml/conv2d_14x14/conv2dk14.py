@@ -13,10 +13,8 @@ Two parallelism modes share the same conv2dk14 sub-kernel:
     across cols, weights col-broadcast across rows, output joined per
     column; ~5ms.
 
-The library's ``kernels.conv2dk14`` sizes per-call output as
-``output_channels * tiles * 8`` (acc-byte layout), but both designs here
-feed the kernel ``sub_tiles x sub_out_channels = 256`` bytes per call.
-Wired via ``ExternalFunction`` with the design's actual per-call sizing.
+Both designs feed ``kernels.conv2dk14`` ``sub_tiles x sub_out_channels``
+bytes of output per call (one int8 per output channel and tile).
 
 Compile-only entrypoint:
   ``python3 conv2dk14.py -d npu2 [--multi]
@@ -26,9 +24,9 @@ End-to-end verification lives in ``test.py``.
 
 import argparse
 import sys
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 import torch  # pyright: ignore[reportMissingImports]
 import torch.nn as nn  # pyright: ignore[reportMissingImports]
@@ -45,8 +43,6 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.ml import DataShaper
@@ -58,26 +54,18 @@ _KERNEL_SIZE = 14
 _IN_CHANNELS = 4
 _OUT_CHANNELS = 1152
 _X_BLOCKS = 4
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/conv2dk14.cc"
 
 
-def _conv2dk14_extern(act_in_ty, weights_ty, out_ty):
-    return ExternalFunction(
-        "conv2dk14_i8",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            act_in_ty,
-            weights_ty,
-            out_ty,
-            np.dtype(np.int32),
-            np.dtype(np.int32),
-            np.dtype(np.int32),
-            np.dtype(np.int32),
-            np.dtype(np.int32),
-        ],
-        include_dirs=[config.cxx_header_path()],
-        compile_flags=["-DUINT8_ACT"],
+def _conv2dk14_kernel(act_in_ty, weights_ty, out_ty):
+    """The library kernel, sized for ``_SUB_TILES`` tiles x ``_SUB_OUT_CHANNELS``."""
+    fn = kernels.conv2dk14(
+        input_width=_SUB_TILES * _KERNEL_SIZE,
+        input_channels=_IN_CHANNELS,
+        output_channels=_SUB_OUT_CHANNELS,
+        kernel_width=_KERNEL_SIZE,
     )
+    assert fn.arg_types()[:3] == [act_in_ty, weights_ty, out_ty]
+    return fn
 
 
 @iron.jit
@@ -119,7 +107,7 @@ def conv2dk14(
     tensor_wts_ty = np.ndarray[(tensor_wts_size,), np.dtype[np.int8]]
     tensor_out_ty = np.ndarray[(tensor_out_size,), np.dtype[np.int8]]
 
-    conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
+    conv_fn = _conv2dk14_kernel(act_in_ty, weights_ty, out_ty)
 
     of_act_l3l2 = ObjectFifo(
         buf_in_ty,
@@ -256,7 +244,7 @@ def conv2dk14_multi(
     tensor_wts_ty = np.ndarray[(tensor_wts_size,), np.dtype[np.int8]]
     tensor_out_ty = np.ndarray[(tensor_out_size,), np.dtype[np.int8]]
 
-    conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
+    conv_fn = _conv2dk14_kernel(act_in_ty, weights_ty, out_ty)
 
     # Activations: per-row shim -> per-row memtile -> broadcast to 8 cores
     of_act_l3l2: list[ObjectFifo] = []

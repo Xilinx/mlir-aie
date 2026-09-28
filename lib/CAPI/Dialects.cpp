@@ -48,6 +48,20 @@ MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string &blockType) {
 }
 
 //===---------------------------------------------------------------------===//
+// Data layout
+//===---------------------------------------------------------------------===//
+
+uint64_t aieTypeGetSizeInBits(MlirType type) {
+  mlir::Type t = unwrap(type);
+  // Restricted to what the default layout can answer for, so an unrelated type
+  // reports "no size" instead of tripping the DataLayout assertion.
+  if (!llvm::isa<mlir::IntegerType, mlir::FloatType, mlir::IndexType,
+                 mlir::DataLayoutTypeInterface>(t))
+    return 0;
+  return mlir::DataLayout().getTypeSizeInBits(t);
+}
+
+//===---------------------------------------------------------------------===//
 // TileLike Interface
 //===---------------------------------------------------------------------===//
 

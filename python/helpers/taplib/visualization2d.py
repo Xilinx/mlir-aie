@@ -9,7 +9,7 @@ import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..util import ceildiv
+from ..npdtypes import ceildiv
 
 
 def animate_from_accesses(

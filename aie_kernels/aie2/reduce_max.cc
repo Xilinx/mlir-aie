@@ -13,20 +13,21 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
+#ifndef REDUCE_MAX_ELEMS
+#define REDUCE_MAX_ELEMS input_size
+#endif
+
 template <typename T, typename V>
 void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
-  int32_t VECTOR_SIZE = V::size();
+  constexpr int32_t VECTOR_SIZE = V::size();
   V tiny = aie::broadcast<T>(std::numeric_limits<T>::lowest());
   V after_vector;
   V running_max = tiny;
 
-  assert(input_size / VECTOR_SIZE >= 8);
-
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(8)
-  for (int32_t i = 0; i < input_size; i += VECTOR_SIZE) {
+  for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i += VECTOR_SIZE) {
     V next = aie::load_v(in + i);
     V test = max(running_max, next);
     running_max = test;
@@ -55,7 +56,7 @@ void _reduce_max_scalar(T *restrict in, T *restrict out,
                         const int32_t input_size) {
   event0();
   T running_max = std::numeric_limits<T>::lowest();
-  for (int32_t i = 0; i < input_size; i++) {
+  for (int32_t i = 0; i < REDUCE_MAX_ELEMS; i++) {
     if (in[i] > running_max)
       running_max = in[i];
   }

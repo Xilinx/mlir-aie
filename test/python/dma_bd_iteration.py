@@ -34,7 +34,6 @@ def emit_iteration_bd():
                         sizes=[16, 16],
                         strides=[16, 1],
                         iteration=BdIteration(size=4, stride=16, current=2),
-                        next="self",
                     ),
                 ],
             ),

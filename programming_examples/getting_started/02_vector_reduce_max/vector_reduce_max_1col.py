@@ -5,7 +5,7 @@
 import aie.iron as iron
 import numpy as np
 from aie.helpers.dialects.scf import else_, if_
-from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,

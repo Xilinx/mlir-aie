@@ -130,7 +130,9 @@ def split_params(
     """Inspect *generator*; return ``(compile, tensor, dispatch, scalar)`` params.
 
     * ``compile_params``  — names with ``CompileTime[T]`` annotation
-    * ``tensor_params``   — names with ``In``/``Out``/``InOut`` annotation (in order)
+    * ``tensor_params``   — names with ``In``/``Out``/``InOut`` annotation (in
+      order); a ``*tensors: In`` entry stands for however many tensors a call
+      passes after the named ones
     * ``dispatch_params``  — names with ``DispatchTime[T]`` annotation (runtime
       scalars, one compiled artifact serves many values)
     * ``scalar_params``   — names with any other annotation (unclassified;
