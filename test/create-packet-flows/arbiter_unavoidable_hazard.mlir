@@ -180,3 +180,18 @@ module {
     }
   }
 }
+
+// -----
+
+// A circuit takes no arbiter, so a wait between two branches of a broadcast is
+// the design's own, whatever the routing.
+
+// CHECK-NOT: warning
+module {
+  aie.device(npu1_1col) {
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    aie.flow(%t02, DMA : 0, %t03, DMA : 0)
+    aie.flow(%t02, DMA : 0, %t03, DMA : 1)
+  }
+}

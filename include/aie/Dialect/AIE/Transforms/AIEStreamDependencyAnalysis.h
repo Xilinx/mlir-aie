@@ -247,7 +247,9 @@ public:
   std::string explain(size_t s, size_t t);
 
   /// The requested streams where the first can hold up the second however
-  /// they are routed, as one source or receiver already orders them.
+  /// they are routed, as one source or receiver already orders them. Only
+  /// pairs with a packet stream count: circuits take no arbiter, so a wait
+  /// between two of them is the design's, not a hazard of any routing.
   llvm::SmallVector<std::pair<size_t, size_t>> unavoidable();
 
   /// A cycle of waits the packet streams can deadlock in when routed along

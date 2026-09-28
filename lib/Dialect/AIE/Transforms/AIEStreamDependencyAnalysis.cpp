@@ -971,7 +971,8 @@ SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() {
   SmallVector<std::pair<size_t, size_t>> pairs;
   for (size_t s = 0; s < numRequested; s++)
     for (size_t t = 0; t < numRequested; t++)
-      if (s != t && related(s, t) && getAnalysis().canBlock(s, t))
+      if (s != t && (streams[s].packetID || streams[t].packetID) &&
+          related(s, t) && getAnalysis().canBlock(s, t))
         pairs.push_back({s, t});
   return pairs;
 }

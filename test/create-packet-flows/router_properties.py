@@ -1678,7 +1678,10 @@ class Analysis:
             (s, t)
             for s in range(n)
             for t in range(n)
-            if s != t and self.related(s, t) and self.can_block(s, t)
+            if s != t
+            and (self.streams[s].pid is not None or self.streams[t].pid is not None)
+            and self.related(s, t)
+            and self.can_block(s, t)
         ]
 
     def explain(self, s, t):
