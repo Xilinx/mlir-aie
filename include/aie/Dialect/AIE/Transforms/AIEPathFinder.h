@@ -31,6 +31,8 @@ namespace xilinx::AIE {
 #define MAX_PACKET_STREAM_CAPACITY 32
 #define ROUTING_CHECK_PENALTY 5
 #define CONFLICT_SHARE_PENALTY 4
+// See Router::capCrowdedFanOut.
+#define PACKET_FANOUT_CAP 2
 // A multicast's next destination may branch off any hop its tree already
 // takes, starting at this cost per hop back to the source: enough of a
 // discount to share hops, while still preferring the shortest path to each
@@ -77,6 +79,8 @@ using SwitchboxConnect = struct SwitchboxConnect {
   // source ports the design already gives packet rules, which circuit streams
   // cannot enter
   std::vector<bool> packetOnlySrc;
+  // dst ports packet streams may no longer take
+  std::vector<bool> circuitOnlyDst;
 
   // resize the matrices to the size of srcPorts and dstPorts
   void resize() {
@@ -94,6 +98,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
     isPriority.resize(srcPorts.size(),
                       std::vector<bool>(dstPorts.size(), false));
     packetOnlySrc.resize(srcPorts.size(), false);
+    circuitOnlyDst.resize(dstPorts.size(), false);
     unitPacketFlows.resize(dstPorts.size());
     resetUnits();
   }
@@ -268,10 +273,11 @@ struct TreeSplit {
 };
 
 /// What makes a routing unusable: switchbox connections to move, and where a
-/// source's tree has to branch.
+/// source's tree has to branch, and crowded tiles (see capCrowdedFanOut).
 struct RoutingFaults {
   std::vector<std::pair<TileID, Connect>> connections;
   std::vector<TreeSplit> splits;
+  std::vector<TileID> crowded;
 };
 
 /// Checks a routing that fits the fabric. Returns what makes it unusable,
@@ -317,6 +323,12 @@ public:
   /// packet flow. Returns whether that lets flows the last routing kept apart
   /// share.
   virtual bool setShareChannels(bool share) { return false; }
+  /// Tiles the routing check found out of packet rules or arbiter msels, with
+  /// no split to free any, during the last findPaths: packet streams leave
+  /// them by PACKET_FANOUT_CAP channels per direction from now on, so by fewer
+  /// sets of master ports. Returns whether that caps any tile not capped
+  /// before.
+  virtual bool capCrowdedFanOut() { return false; }
 };
 
 class Pathfinder : public Router {
@@ -343,6 +355,7 @@ public:
     pinnedTrees = std::move(trees);
   }
   bool setShareChannels(bool share) override;
+  bool capCrowdedFanOut() override;
 
 private:
   // A directed edge in the dense routing graph: from some node to node `dst`,
@@ -428,6 +441,7 @@ private:
   std::string failureReason, overuseReason;
   PacketTrees packetTrees, pinnedTrees;
   bool shareChannels = false;
+  std::set<TileID> crowdedTiles, cappedTiles;
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

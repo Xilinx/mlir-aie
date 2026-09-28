@@ -377,6 +377,12 @@ bool Pathfinder::setShareChannels(bool share) {
   return share && apart;
 }
 
+bool Pathfinder::capCrowdedFanOut() {
+  size_t capped = cappedTiles.size();
+  cappedTiles.insert(crowdedTiles.begin(), crowdedTiles.end());
+  return cappedTiles.size() > capped;
+}
+
 // Sort flows to (1) get deterministic routing, and (2) perform routings on
 // prioritized flows before others, for routing consistency on those flows.
 void Pathfinder::sortFlows() {
@@ -729,7 +735,8 @@ void Pathfinder::dijkstraShortestPaths(
     for (Edge &e : adjacency[stateNode(s)]) {
       const bool isIntra = e.sb->srcCoords == e.sb->dstCoords;
       if (sIsOut == isIntra ||
-          (isIntra && !packetId && e.sb->packetOnlySrc[e.i]))
+          (isIntra && !packetId && e.sb->packetOnlySrc[e.i]) ||
+          (isIntra && packetId && e.sb->circuitOnlyDst[e.j]))
         continue;
       int dst = stateId(e.dst, isIntra ? Out : In);
       double w = edgeWeight(e, packetId, avoid, avoidBranch);
@@ -771,8 +778,17 @@ Pathfinder::findPaths(const int maxIterations) {
   // Stamp-based "processed" set (avoids O(n) clears per flow).
   std::vector<uint32_t> processedStamp(2 * nodes.size(), 0);
   uint32_t curStamp = 0;
+  crowdedTiles.clear();
   // initialize all Channel histories to 0
   for (auto &[_, sb] : graph) {
+    if (sb.srcCoords == sb.dstCoords)
+      for (auto [j, port] : llvm::enumerate(sb.dstPorts))
+        sb.circuitOnlyDst[j] =
+            cappedTiles.count(sb.srcCoords) &&
+            port.channel >= PACKET_FANOUT_CAP &&
+            llvm::is_contained({WireBundle::North, WireBundle::South,
+                                WireBundle::East, WireBundle::West},
+                               port.bundle);
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
       for (size_t j = 0; j < sb.dstPorts.size(); j++) {
         sb.usedCapacity[i][j] = 0;
@@ -1516,6 +1532,7 @@ Pathfinder::findPaths(const int maxIterations) {
                 .second)
           illegalEdges++;
       }
+      crowdedTiles.insert(faults.crowded.begin(), faults.crowded.end());
       for (const auto &[tile, conn] : faults.connections) {
         illegalEdges++;
         auto it = graph.find({tile, tile});

@@ -1427,6 +1427,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   std::set<
       std::tuple<PathEndPoint, TileID, int, int, std::optional<PathEndPoint>>>
       hazardSplits;
+  std::set<TileID> crowdedTiles;
   auto splitFlow = [&](TileID tileId, FlowKey key, ArrayRef<FlowKey> partners) {
     auto flows = tileSlaveFlows.find(tileId);
     if (flows == tileSlaveFlows.end())
@@ -1521,6 +1522,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
                                        hazardConnections.end());
     for (const auto &[src, at, a, b, apart] : hazardSplits)
       hazards->faults.splits.push_back({src, at, a, b, apart});
+    hazards->faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
     hazards->reason = std::move(reason);
     return success();
   };
@@ -1608,7 +1610,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
         };
     // Packets for a destination on the tile that reach it by a slave port of
     // their own take their rules with them. The source's tree splits apart the
-    // destination that frees the most rules on `slave`.
+    // destination that frees the most rules on `slave`, if one frees any.
     auto splitRules = [&, tileId = tileId, &byFlow = byFlow](Port slave) {
       std::map<PathEndPoint, std::map<PathEndPoint, std::set<int>>> dstIds;
       for (const auto &[key, f] : byFlow) {
@@ -1633,7 +1635,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
               best = {src, dst};
             }
       if (!best)
-        return;
+        return false;
       const auto &[src, apart] = *best;
       const std::set<int> &apartIds = dstIds[src][apart];
       for (const auto &[dst, ids] : dstIds[src]) {
@@ -1645,6 +1647,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
         if (!(dst == apart) && b != apartIds.end())
           hazardSplits.insert({src, tileId, *ids.begin(), *b, apart});
       }
+      return true;
     };
     // Flows on one slave port that leave by different master ports must not
     // claim a common id, and a mask written on an aie.packet_flow claims every
@@ -1685,7 +1688,8 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       for (const auto &[key, f] : byFlow)
         if (f.slave == slave)
           moveFlow(tileId, key);
-      splitRules(slave);
+      if (!splitRules(slave))
+        crowdedTiles.insert(tileId);
       if (planFailure)
         continue;
       planFailure = llvm::formatv(
@@ -1722,6 +1726,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     if (blocking.empty()) {
       for (const SlaveFlow &f : flows)
         moveFlow(tileId, {f.slave, f.id});
+      crowdedTiles.insert(tileId);
       if (planFailure)
         continue;
       os << "at tile (" << tileId.col << ", " << tileId.row
@@ -2501,7 +2506,8 @@ void AIEPathfinderPass::runOnOperation() {
   }
   // Packet flows share channels only where they share a destination, unless
   // the design routes no other way; then any may, where they do not conflict.
-  // The error is the first attempt's.
+  // Failing that, crowded tiles are capped (Router::capCrowdedFanOut). The
+  // error is the first attempt's.
   std::optional<Location> failedAt;
   std::string reason;
   auto routeSharing = [&](DeviceOp dev, DynamicTileAnalysis &an,
@@ -2513,13 +2519,16 @@ void AIEPathfinderPass::runOnOperation() {
       reason = diag.str();
       return success();
     });
-    if (succeeded(route(dev, an, c, clCircuitSwitchHops)))
+    auto routed = [&] {
+      return succeeded(route(dev, an, c, clCircuitSwitchHops));
+    };
+    if (routed())
       return success();
-    if (!an.pathfinder->setShareChannels(true))
-      return failure();
     std::optional<Location> firstAt = failedAt;
     std::string first = reason;
-    if (succeeded(route(dev, an, c, clCircuitSwitchHops)))
+    if (an.pathfinder->setShareChannels(true) && routed())
+      return success();
+    if (an.pathfinder->capCrowdedFanOut() && routed())
       return success();
     failedAt = firstAt;
     reason = std::move(first);
