@@ -617,22 +617,4 @@ static inline bool k1_cas_fits(const int8_t *kernels, const int32_t in_split,
 #endif
 }
 
-template <typename TI>
-static inline bool k1_cas_put_new(const TI *input, const int8_t *kernels,
-                                  const int32_t input_width,
-                                  const int32_t input_channels,
-                                  const int32_t input_split, const int32_t oc) {
-#if AIE_TUNED_AIE2P
-  if (!k1_cas_fits(kernels, input_split, 1))
-    return false;
-  event0();
-  const int32_t blocks = k1_per_split(input_channels, input_split) / 8;
-  k1_cas_put(input, kernels + oc * blocks * 64, input_width * 8, blocks);
-  event1();
-  return true;
-#else
-  return false;
-#endif
-}
-
 #endif
