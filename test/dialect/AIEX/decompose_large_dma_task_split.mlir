@@ -275,15 +275,23 @@ module {
 
 // -----
 
-// A lock set does end the round: the design may order it against the pushes
-// around it, so every slice stays ahead of it and the counterpart after it.
-// CHECK-LABEL: @behind_lock_set
+// Nor does a lock set: it never waits, so slices can follow it. The
+// counterpart moves up past it as it does past a parameter write.
+// CHECK-LABEL: @past_lock_set
 // CHECK:         %[[A0:.*]] = aiex.dma_configure_task_for @a
-// CHECK:         aiex.dma_start_task(%[[A0]])
-// CHECK-COUNT-4: aiex.dma_start_task
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 0 len
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    }{{$}}
+// CHECK-NEXT:    aiex.dma_start_task(%[[A0]])
 // CHECK-NEXT:    aiex.set_lock
 // CHECK-NEXT:    %[[C:.*]] = aiex.dma_configure_task_for @c
-// CHECK:         aiex.dma_start_task(%[[C]])
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 0 len
+// CHECK-NEXT:      aie.end
+// CHECK-NEXT:    } {issue_token = true}
+// CHECK-NEXT:    aiex.dma_start_task(%[[C]])
+// CHECK-NEXT:    %[[A1:.*]] = aiex.dma_configure_task_for @a
+// CHECK-NEXT:      aie.dma_bd({{.*}} offset = 3069 len
+// CHECK-COUNT-4: aiex.dma_start_task
 // CHECK-NEXT:    aiex.dma_await_task(%[[C]])
 module {
   aie.device(npu2_1col) {
@@ -292,7 +300,7 @@ module {
     %lock = aie.lock(%core, 0) {init = 0 : i32}
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.shim_dma_allocation @c (%t, S2MM, 0)
-    aie.runtime_sequence @behind_lock_set(%in: memref<32768xi32>, %out: memref<32768xi32>) {
+    aie.runtime_sequence @past_lock_set(%in: memref<32768xi32>, %out: memref<32768xi32>) {
       %a = aiex.dma_configure_task_for @a {
         aie.dma_bd(%in : memref<32768xi32> offset = 0 len = 8198 sizes = [1, 1, 4099, 2] strides = [0, 0, 3, 1])
         aie.end
@@ -311,7 +319,8 @@ module {
 
 // -----
 
-// So does a register write.
+// A register write does end the round, since it may itself be a push: every
+// slice stays ahead of it and the counterpart after it.
 // CHECK-LABEL: @behind_write32
 // CHECK:         %[[A0:.*]] = aiex.dma_configure_task_for @a
 // CHECK:         aiex.dma_start_task(%[[A0]])

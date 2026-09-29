@@ -509,10 +509,10 @@ static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
 // A round runs from one start up to the next start on a channel it already
 // used. Each start's first slice keeps its place; later ones follow the
 // round's last start, ordered by index / size, ties in program order. Slices
-// move past configures and RTP writes, which only delay a push. A round ends
-// at anything else with an effect: an await, sync, poll, untracked push, free
-// of an unplaced slice, and a write32, blockwrite or lock set, whose order
-// against a push the design may rely on.
+// move past configures, RTP writes and lock sets, which never wait, so a push
+// that lands after them is only later. A round ends at anything else with an
+// effect: an await, sync, poll, untracked push, free of an unplaced slice, and
+// a write32 or blockwrite, which may itself be a push.
 static void orderSlices(Block &block, Slices &state) {
   struct Pending {
     DMAStartTaskOp start;
@@ -580,7 +580,8 @@ static void orderSlices(Block &block, Slices &state) {
         flush();
       continue;
     }
-    if (isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, NpuWriteRTPOp>(op) ||
+    if (isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, NpuWriteRTPOp,
+            SetLockOp>(op) ||
         isMemoryEffectFree(&op))
       continue;
     flush();
