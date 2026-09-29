@@ -474,12 +474,23 @@ measure in any other mode (`--pmode performance`), so a runner that cannot
 set the mode fails the timing loudly instead of charting numbers taken at
 another clock. A dispatched or pull-request run records whatever mode it
 finds, and the publisher charts only `performance` runs. A bit-exact `passthrough` smoke test inside a cycle band guards
-the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/` and is
-graphed at `https://xilinx.github.io/mlir-aie/kernel-checks/`, whose kernels
-view lists every factory with the builds each NPU offers, how its cases fared that
-night (passed, failed the sweep, failed in the timing run, or checked for
-correctness only) and their latest numbers (`utils/kernel_checks/catalogue.py`
-writes the catalogue from `correctness.xml`, `perf.json` and `meta.json`);
+the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/`: the
+series (`data.js`), the catalogue (`catalogue.json`, written by
+`utils/kernel_checks/catalogue.py` from `correctness.xml`, `perf.json` and
+`meta.json`) and a record of every run (`runs.json` and the latest
+`meta.json` as `latest.json`, written by `utils/kernel_checks/runs_index.py`:
+the Actions run, power mode, host, sanity result and failures). The page at
+`https://xilinx.github.io/mlir-aie/kernel-checks/` opens on a dashboard of
+the latest run per NPU, with warnings when its numbers are less comparable
+(another power mode, a failed sanity check, truncated traces, a host or
+driver change) and the series that moved past their threshold since the
+previous nightly. Its kernels view lists every factory with the builds each
+NPU offers and how its cases fared that night (passed, failed the sweep,
+failed in the timing run, or checked for correctness only); a kernel's own
+page has every case's latest numbers, links to its sources, factory and
+case table, and its charts; the charts view has one chart per case and
+metric, by date, with a dashed line where Peano, the host or the driver
+changed;
 nothing gates a pull request. A Peano-bump PR is compared against the
 cached nightly baseline by `utils/kernel_checks/pr_report.py`, which keeps one PR
 comment listing failing cases and `cycles` or core ELF size regressions of 2 % or more.

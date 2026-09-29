@@ -358,7 +358,8 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
     assert "pull-requests" not in config["permissions"]
     report = config["jobs"]["report"]
     assert report["needs"] == "checks"
-    assert "github.event_name != 'schedule'" in report["if"]
+    # The nightly gets the report in its job summary too.
+    assert "'schedule'" not in report["if"]
     assert "needs.checks.result != 'skipped'" in report["if"]
     assert report["permissions"] == {"contents": "read", "pull-requests": "write"}
     steps = report["steps"]
@@ -459,23 +460,51 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
     git("switch", "-q", "main")
 
     run = page["run"].replace("$RUNNER_TEMP", str(tmp_path / "tmp"))
+    assert page["env"]["RUN_URL"].endswith("/actions/runs/${{ github.run_id }}")
     (tmp_path / "tmp").mkdir()
     (tmp_path / "results/npu1").mkdir(parents=True)
-    (tmp_path / "results/npu1/catalogue.json").write_text('{"npu": "npu1"}')
-    for _ in range(2):  # The second run finds nothing to change.
+    (tmp_path / "results/npu1/catalogue.json").write_text(
+        '{"npu": "npu1", "kernels": [{"builds": ["add"], "passed": 2, "failed": [], "timed": 1}]}'
+    )
+    meta = tmp_path / "results/npu1/meta.json"
+    meta.write_text(
+        '{"preflight": {"pmode": "performance"}, "provenance": "commit abc | host h1",'
+        ' "measurement_sane": true, "n_rows": 3, "failed": []}'
+    )
+    env = {k: v for k, v in os.environ.items() if k != "BRANCH"}
+    env.update(
+        GITHUB_RUN_ID="42", RUN_URL="https://example.com/runs/42", GITHUB_SHA="abc"
+    )
+    for first in (True, False):
         subprocess.run(
             ["bash", "-eo", "pipefail", "-c", run],
             cwd=tmp_path,
-            env={k: v for k, v in os.environ.items() if k != "BRANCH"},
+            env=env,
             check=True,
         )
         assert git("branch", "--show-current") == "main"
+        # A leg that wrote no meta keeps its recorded runs: the second pass
+        # finds nothing to change.
+        if first:
+            meta.unlink()
     assert (
         git("show", "gh-pages:kernel-checks/index.html") == source.read_text().strip()
     )
-    assert (
-        git("show", "gh-pages:kernel-checks/npu1/catalogue.json") == '{"npu": "npu1"}'
+    assert git("show", "gh-pages:kernel-checks/npu1/catalogue.json").startswith(
+        '{"npu": "npu1"'
     )
+    runs = json.loads(git("show", "gh-pages:kernel-checks/npu1/runs.json"))
+    (entry,) = runs["runs"]
+    assert (entry["id"], entry["url"], entry["commit"]) == (
+        "42",
+        "https://example.com/runs/42",
+        "abc",
+    )
+    assert entry["published"] is True and entry["pmode"] == "performance"
+    assert entry["provenance"]["host"] == "h1"
+    assert entry["cases"]["passed"] == 2 and entry["kernels"]["offered"] == 1
+    latest = json.loads(git("show", "gh-pages:kernel-checks/npu1/latest.json"))
+    assert latest["id"] == "42" and latest["n_rows"] == 3
     assert git("ls-tree", "-r", "--name-only", "gh-pages", "kernel-checks/npu2") == ""
     assert git("rev-list", "--count", "gh-pages") == "2"
 

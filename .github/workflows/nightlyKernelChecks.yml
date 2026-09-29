@@ -231,8 +231,10 @@ jobs:
 
   report:
     needs: checks
-    # The nightly publishes instead; the page is its report.
-    if: ${{ !cancelled() && needs.checks.result != 'skipped' && github.event_name != 'schedule' }}
+    # Every run gets the report in its job summary; the nightly's dashboard
+    # on the page says the same against the previous nightly, but the
+    # summary is what a red run's notification links to.
+    if: ${{ !cancelled() && needs.checks.result != 'skipped' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
