@@ -273,7 +273,7 @@ const { last, cases } = latestCases(db, 'npu1');
 assert.equal(last.mode, 'turbo');
 const big = cases.get('softmax/1024/bfloat16');
 assert.ok(big.current);
-assert.deepEqual(big.metrics.get('cycles'), { value: 110, unit: 'cycles', change: 0.1, range: 'median 112 max 130 n=16' });
+assert.deepEqual(big.metrics.get('cycles'), { value: 110, unit: 'cycles', change: 0.1, cls: 'worse', range: 'median 112 max 130 n=16' });
 assert.equal(big.metrics.get('core_elf_bytes').change, null);
 assert.ok(!cases.get('softmax/64/bfloat16').current);
 assert.equal(latestCases(db, 'npu2').cases.size, 0);
@@ -535,7 +535,8 @@ assert.deepEqual(links, [
   'https://github.com/Xilinx/mlir-aie/blob/abcdef123456/python/iron/kernels/activation.py',
   'https://github.com/Xilinx/mlir-aie/blob/abcdef123456/test/python/npu/kernel_cases.py',
 ]);
-assert.equal(head.children[3].children[1].text, '2 builds · 3 cases pass · 1 timing failed · charts');
+assert.equal(head.children[3].tag, 'ul');
+assert.equal(head.children[3].children[0].text, 'npu1: 2 builds · 3 cases pass · 1 timing failed · charts');
 assert.deepEqual($('kernel-cases-head').children.map(c => c.text), ['npu1']);
 const rows = $('kernel-cases').children;
 assert.deepEqual(rows.map(r => r.children[0].text), ['relu/1024/bf16', 'relu/2048/bf16', 'relu/64/bf16']);
@@ -577,4 +578,90 @@ assert.equal($('status').hidden, true);
 location.hash = '#view=charts&metric=cycles';
 assert.equal(applyView(), 'charts');
 assert.equal($('status').hidden, false);
+""")
+
+
+def test_npu_us_moves_only_past_its_noise(page):
+    page("""
+const us = (value, mad) => ({ value, unit: 'us', ...(mad === undefined ? {} : { range: `± ${mad}; min 1 max 2 n=50` }) });
+// 20% moves: past 3x a 1 us MAD; not past 3x 10 us (either run's); no MAD, the percentage alone.
+assert.equal(verdict('npu_us', us(100, 1), us(120, 1)), 'worse');
+assert.equal(verdict('npu_us', us(100, 10), us(120, 1)), '');
+assert.equal(verdict('npu_us', us(100, 1), us(120, 7)), '');
+assert.equal(verdict('npu_us', us(100), us(120)), 'worse');
+assert.equal(verdict('npu_us', us(120, 1), us(100, 1)), 'better');
+// Many MADs but under 10%.
+assert.equal(verdict('npu_us', us(100, 0.1), us(105, 0.1)), '');
+// Other metrics ignore the range.
+assert.equal(verdict('cycles', { value: 100, range: '± 50' }, { value: 103 }), 'worse');
+
+db = fromRecords({ npu1: [
+  rec('1', 1000, 'performance', { 'noisy/1/bf16/npu_us': ['us', 100, '± 10.0; min 1 max 2 n=50'],
+                                   'steady/1/bf16/npu_us': ['us', 100, '± 1.0; min 1 max 2 n=50'] }),
+  rec('2', 2000, 'performance', { 'noisy/1/bf16/npu_us': ['us', 125, '± 10.0; min 1 max 2 n=50'],
+                                  'steady/1/bf16/npu_us': ['us', 125, '± 1.0; min 1 max 2 n=50'] }),
+]});
+assert.deepEqual(movedSeries(db, 'npu1').regressed.map(x => x.series.kase), ['steady/1/bf16']);
+const { cases } = latestCases(db, 'npu1');
+assert.equal(cases.get('noisy/1/bf16').metrics.get('npu_us').cls, '');
+assert.equal(cases.get('steady/1/bf16').metrics.get('npu_us').cls, 'worse');
+const move = latestMove(db.series.find(s => s.kase === 'noisy/1/bf16'), ['performance']);
+assert.deepEqual(move, { change: 0.25, cls: '' });
+""")
+
+
+def test_the_charts_view_groups_charts_by_factory(page):
+    page("""
+db = fromRecords({ npu1: [
+  rec('1', 1000, 'performance', { 'relu/1/bf16/cycles': ['cycles', 100], 'relu/2/bf16/cycles': ['cycles', 100],
+                                   'gelu/1/bf16/cycles': ['cycles', 100], 'mm/1/i8/cycles': ['cycles', 100] }),
+  rec('2', 2000, 'performance', { 'relu/1/bf16/cycles': ['cycles', 100], 'relu/2/bf16/cycles': ['cycles', 100],
+                                  'gelu/1/bf16/cycles': ['cycles', 110], 'mm/1/i8/cycles': ['cycles', 90] }),
+]});
+const container = document.createElement('div');
+// Sorted worst first, as the charts view would: gelu, relu, relu, mm.
+const order = ['gelu/1/bf16', 'relu/1/bf16', 'relu/2/bf16', 'mm/1/i8'];
+const shown = order.map(k => db.series.find(s => s.kase === k));
+assert.deepEqual(groupByFactory(shown).map(g => [g.factory, g.series.length]), [['gelu', 1], ['relu', 2], ['mm', 1]]);
+placeCharts(container, shown, ['performance'], true);
+const sections = container.children;
+assert.deepEqual(sections.map(d => d.tag), ['details', 'details', 'details']);
+assert.deepEqual(sections.map(d => d.children[0].text),
+  ['gelu · 1 chart · 1 worse · kernel page', 'relu · 2 charts · kernel page', 'mm · 1 chart · 1 better · kernel page']);
+// Three sections are few enough to open.
+assert.ok(sections.every(d => d.open));
+assert.equal(sections[1].children[1].children.length, 2);
+assert.equal(sections[0].children[0].children.find(c => c.tag === 'a').href, '#view=kernel&kernel=gelu');
+// More than three: only those with a flagged move open.
+const more = ['a', 'b', 'c'].map(f => ({ ...shown[1], key: `x|${f}`, factory: f, kase: `${f}/1/bf16` }));
+placeCharts(container, [...shown, ...more], ['performance'], true);
+assert.deepEqual(container.children.map(d => [d.children[0].children[0].text, d.open]),
+  [['gelu', true], ['relu', false], ['mm', true], ['a', false], ['b', false], ['c', false]]);
+// Ungrouped, as on a kernel page, the boxes go straight in.
+placeCharts(container, shown, ['performance']);
+assert.deepEqual(container.children.map(d => d.className), ['chart', 'chart', 'chart', 'chart']);
+""")
+
+
+def test_a_newer_format_is_set_aside_and_said_so(page):
+    page(MOVED + RUNS + """
+assert.deepEqual(readable({ schema: 1 }), { schema: 1 });
+assert.ok(readable({}));
+assert.equal(readable({ schema: 2 }), null);
+assert.equal(readable(null), null);
+const run = latestRun('npu1', { ...index, schema: 2 }, db, catalogue);
+assert.equal(run.newer, true);
+assert.equal(run.recorded, false);
+assert.equal(warningsFor('npu1', run, 3600 * 1000)[0].text,
+  'the results were published by a newer version of this page: reload it');
+""")
+
+
+def test_the_card_names_the_part_and_keeps_the_raw_name(page):
+    page(MOVED + RUNS + """
+const index1 = { runs: [{ ...index.runs[1], device: 'Phoenix', device_raw: 'RyzenAI-npu1' }] };
+renderDashboard(['npu1'], db, new Map([['npu1', { ...catalogue, kernels: [] }]]), new Map([['npu1', index1]]), 3600 * 1000);
+const h2 = $('cards').children[0].children[0];
+assert.equal(h2.text, 'npu1 · aie2 · Phoenix');
+assert.equal(h2.children[2].title, 'reported as RyzenAI-npu1');
 """)

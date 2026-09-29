@@ -54,6 +54,24 @@ def _sources(ef) -> list[str]:
     return [_library_path(ef.source_file)] if ef.source_file else []
 
 
+def why_uncased(ef) -> str | None:
+    """Return why the generic builder has no case for ``ef``, from its contract.
+
+    The contract's ``unsupported`` reason (a cascade PUT half has no output
+    to judge), else the reason its trace is ``none`` (``set_rounding`` runs
+    once before the calls), else None.
+    """
+    contract = getattr(ef, "contract", None)
+    if contract is None:
+        return None
+    if getattr(contract, "unsupported", None):
+        return str(contract.unsupported)
+    trace = getattr(contract, "trace", None)
+    if trace is not None and getattr(trace, "shape", None) == "none":
+        return getattr(trace, "reason", None) or None
+    return None
+
+
 def _by_factory(case_names) -> dict[str, set[str]]:
     grouped = defaultdict(set)
     for case in case_names:
@@ -107,11 +125,14 @@ def rows(
     """Assemble the catalogue rows from what the run produced.
 
     ``factories`` carries each factory's ``factory``, ``family``,
-    ``summary``, ``sources`` and ``builds``; ``declared`` maps a factory to
-    its cases on this NPU and whether each is timed (``perf``).
+    ``summary``, ``sources`` and ``builds``, and ``why`` when its contract
+    says why the builder cannot run it; ``declared`` maps a factory to its
+    cases on this NPU and whether each is timed (``perf``).
     """
     out = []
     for f in factories:
+        f = dict(f)
+        why = f.pop("why", None)
         name = f["factory"]
         cases = declared.get(name, {})
         ok = passed.get(name, set())
@@ -124,7 +145,7 @@ def rows(
             "untimed": sorted(c for c in ok if cases.get(c) is False),
         }
         if f["builds"] and not cases:
-            row["reason"] = NO_CASE
+            row["reason"] = why or NO_CASE
         out.append(row)
     return out
 
@@ -166,10 +187,13 @@ def catalogue(
     try:
         builds = defaultdict(list)
         sources = defaultdict(set)
+        why: dict[str, str] = {}
         for name, ef in kernel_builds():
             factory = name.split("/", 1)[0]
             builds[factory].append(name)
             sources[factory].update(_sources(ef))
+            if factory not in why and (reason := why_uncased(ef)):
+                why[factory] = reason
         declared = _declared(npu, cases_dir)
     finally:
         set_current_device(previous)
@@ -183,6 +207,7 @@ def catalogue(
             .replace("``", ""),
             "sources": sorted(sources[factory]),
             "builds": builds[factory],
+            **({"why": why[factory]} if factory in why else {}),
         }
         for factory in kernels.factories()
     ]

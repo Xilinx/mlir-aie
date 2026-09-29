@@ -44,7 +44,13 @@ def test_parallel_compute_has_one_main_only_publisher():
         assert not step.get("uses", "").startswith("actions/cache/save@")
         assert not step.get("uses", "").startswith("benchmark-action/")
     publisher = config["jobs"]["publish"]
-    assert publisher["needs"] == "checks"
+    # After the report, which restores the baseline this publish would cache.
+    assert publisher["needs"] == ["checks", "report"]
+    assert publisher["if"].startswith("${{ !cancelled() && ")
+    write = next(
+        s for s in config["jobs"]["report"]["steps"] if s.get("name") == "Write report"
+    )
+    assert '--run-id "$GITHUB_RUN_ID"' in write["run"]
     assert "github.ref == 'refs/heads/main'" in publisher["if"]
     assert "github.event_name != 'pull_request'" in publisher["if"]
     assert publisher["if"].endswith("&& !inputs.only && !inputs.peano }}")

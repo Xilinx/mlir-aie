@@ -17,7 +17,12 @@ from types import SimpleNamespace
 import aie.utils.benchmark as benchmark
 import aie.utils.probe as probe
 import pytest
-from aie.utils.benchmark import parse_xrt_examine, provenance, xrt_versions
+from aie.utils.benchmark import (
+    parse_xrt_examine,
+    provenance,
+    xrt_unparsed,
+    xrt_versions,
+)
 
 EXAMINE = """\
 System Configuration
@@ -87,3 +92,21 @@ def test_without_xrt_or_a_runner_nothing_is_claimed(monkeypatch):
     assert xrt_versions() == {}
     keys = [f.split(" ", 1)[0] for f in provenance().split(" | ")]
     assert "xrt" not in keys and "xdna" not in keys and "host" not in keys
+
+
+def test_an_unreadable_report_is_kept_for_the_meta(monkeypatch):
+    monkeypatch.setattr(probe, "xrt_smi_path", lambda: "xrt-smi")
+    report = "XRT\n  Build Version : 9.9\n" + "x" * 5000
+
+    def run(argv, **kwargs):
+        return SimpleNamespace(stdout=report)
+
+    monkeypatch.setattr(benchmark.subprocess, "run", run)
+    assert xrt_versions() == {}
+    assert xrt_unparsed() == report[:4096]
+    monkeypatch.setattr(
+        benchmark.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=EXAMINE)
+    )
+    assert xrt_unparsed() is None
+    monkeypatch.setattr(probe, "xrt_smi_path", lambda: None)
+    assert xrt_unparsed() is None

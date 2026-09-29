@@ -6,6 +6,7 @@
 """Build the PR report from a run's artifacts and the published baselines on disk."""
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -17,10 +18,15 @@ EXTRA = "commit 41dcf3cd6a | peano {} | kernels c86c05864e | pmode performance"
 
 
 def _rows(values, peano):
-    return [
-        {"name": name, "unit": unit, "value": value, "extra": EXTRA.format(peano)}
-        for name, (unit, value) in values.items()
-    ]
+    """Return perf.json rows; a value may be ``(value, range)``."""
+    rows = []
+    for name, (unit, value) in values.items():
+        value, span = value if isinstance(value, tuple) else (value, None)
+        row = {"name": name, "unit": unit, "value": value, "extra": EXTRA.format(peano)}
+        if span:
+            row["range"] = span
+        rows.append(row)
+    return rows
 
 
 def _record(values, peano="22.0.0+old", target="npu2"):
@@ -28,7 +34,11 @@ def _record(values, peano="22.0.0+old", target="npu2"):
     rows = {}
     for name, (unit, value) in values.items():
         case, metric = name.rsplit("/", 1)
-        rows.setdefault(case, {})[metric] = {"value": value, "unit": unit}
+        value, span = value if isinstance(value, tuple) else (value, None)
+        cell = {"value": value, "unit": unit}
+        if span:
+            cell["range"] = span
+        rows.setdefault(case, {})[metric] = cell
     return {
         "target": target,
         "id": "77",
@@ -50,7 +60,9 @@ def _junit(cases):
 
 @pytest.fixture
 def report(tmp_path):
-    def run(results, baselines=None):
+    def run(results, baselines=None, run_id="7"):
+        for old in ("results", "baselines"):
+            shutil.rmtree(tmp_path / old, ignore_errors=True)
         for leg, files in results.items():
             d = tmp_path / "results" / leg
             d.mkdir(parents=True)
@@ -66,7 +78,7 @@ def report(tmp_path):
         subprocess.run(
             [sys.executable, SCRIPT, "--results", tmp_path / "results"]
             + ["--baselines", tmp_path / "baselines", "--out", out]
-            + ["--run-url", "https://example.com/run/1"],
+            + ["--run-url", "https://example.com/run/1", "--run-id", run_id],
             check=True,
         )
         return out.read_text()
@@ -166,3 +178,50 @@ def test_a_baseline_without_rows_is_no_baseline(report):
 
 def test_no_results(report):
     assert "## Kernel checks: no NPU produced results" in report({})
+
+
+def test_npu_us_counts_only_past_its_noise(report):
+    mad = "\u00b1 {}; min 1 max 2 n=50"
+    nightly = {
+        # 20% moves: steady, then noisy (MAD 10 us of 100), then noisy only now.
+        "steady/1/bf16/npu_us": ("us", (100, mad.format(1.0))),
+        "noisy/1/bf16/npu_us": ("us", (100, mad.format(10.0))),
+        "newly_noisy/1/bf16/npu_us": ("us", (100, mad.format(1.0))),
+        "no_spread/1/bf16/npu_us": ("us", 100),
+        "small/1/bf16/npu_us": ("us", (100, mad.format(0.1))),
+    }
+    run = {
+        "steady/1/bf16/npu_us": ("us", (120, mad.format(1.0))),
+        "noisy/1/bf16/npu_us": ("us", (120, mad.format(1.0))),
+        "newly_noisy/1/bf16/npu_us": ("us", (120, mad.format(7.0))),
+        "no_spread/1/bf16/npu_us": ("us", 120),
+        # Many MADs, but under 10%.
+        "small/1/bf16/npu_us": ("us", (105, mad.format(0.1))),
+    }
+    text = report(
+        {"npu2": {"meta.json": META, "perf.json": _rows(run, "a")}},
+        {"npu2": _record(nightly, peano="a")},
+    )
+    assert "`npu_us` 10% and 3\u00d7 its MAD" in text
+    listed = [line.split("`")[1] for line in text.splitlines() if "| npu_us |" in line]
+    # 20 us is past 3x a 1 us MAD, not past 3x 10 us or 3x 7 us.
+    assert sorted(listed) == ["no_spread/1/bf16", "steady/1/bf16"]
+
+
+def test_a_baseline_from_this_run_or_a_newer_format_is_ignored(report):
+    values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
+    run = {"relu/1024/bf16/cycles": ("cycles", 1500)}
+    rows = _rows(run, "a")
+    own = dict(_record(values), id="7")
+    text = report({"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": own})
+    assert "| npu2 | a | none cached | 1 | 0 | \u2014 | \u2014 |" in text
+    newer = dict(_record(values), schema=2)
+    text = report(
+        {"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": newer}, run_id="8"
+    )
+    assert "none cached" in text
+    older = _record(values)
+    text = report(
+        {"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": older}, run_id="8"
+    )
+    assert "1 regressed" in text

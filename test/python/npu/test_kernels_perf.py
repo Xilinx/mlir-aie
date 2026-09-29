@@ -38,7 +38,7 @@ import numpy as np
 import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
-from aie.utils.benchmark import preflight, provenance, run_iters
+from aie.utils.benchmark import preflight, provenance, run_iters, xrt_unparsed
 from cases import Case, inputs_for
 from kernel_cases import CASES
 
@@ -48,8 +48,11 @@ TRACE_SIZE = 16384
 TRACE_BYTES_PER_INTERVAL = 512
 # A long kernel costs more trace bytes per interval than that (swiglu/256
 # filled 128 KB after 84 calls), so a filled buffer is regrown from what it
-# held and the traced run repeated, this many times at most.
+# held and the traced run repeated, this many times at most, and never past
+# TRACE_MAX_BYTES: a trace still full there is kept, and marked truncated,
+# rather than risk a host buffer the runtime cannot allocate.
 TRACE_RETRIES = 3
+TRACE_MAX_BYTES = 4 << 20
 
 # A kernel whose cost is known well enough to catch a broken measurement:
 # 8 KB copied, identical across its calls and across nightlies (264 cycles
@@ -132,7 +135,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
             # Every kernel checked here is timed; one that is not would chart
             # only wall clock and still pass.
             assert not traced.untimed, f"{case.name}: untimed, {traced.untimed}"
-            if not traced.truncated:
+            if not traced.truncated or trace_size >= TRACE_MAX_BYTES:
                 break
             # The buffer filled: the min is over a prefix of the calls. Ask
             # for every interval at the cost this run measured.
@@ -141,7 +144,9 @@ def _measure(case: Case, config, workdir: Path) -> dict:
                 + len(traced.kernel)
                 + sum(len(v) for v in traced.initializers.values())
             )
-            trace_size = kd.grow_trace_size(trace_size, seen=seen, expected=intervals)
+            trace_size = kd.grow_trace_size(
+                trace_size, seen=seen, expected=intervals, limit=TRACE_MAX_BYTES
+            )
         measured["cycles"] = traced
         measured["trace_size"] = trace_size
     return measured
@@ -255,6 +260,8 @@ def _preflight(request):
         )
     config._perf_meta["preflight"] = dict(vars(pre))
     config._perf_meta["provenance"] = provenance(device=pre.device, pmode=pre.pmode)
+    if unparsed := xrt_unparsed():
+        config._perf_meta["xrt_unparsed"] = unparsed
     return pre
 
 

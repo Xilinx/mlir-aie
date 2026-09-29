@@ -45,9 +45,13 @@ OTHER = {
     if m not in GATED and m not in DERIVED
 }
 DEFAULT_THRESHOLD = 0.10  # a metric thresholds.json does not name
+# A change must also exceed this many MADs, per metric (npu_us).
+MAD = {m: s["mad"] for m, s in THRESHOLDS.items() if s.get("mad")}
+SCHEMA = 1  # the newest publish.py record format this reads
 MAX_ROWS = 50
 
 _EXTENSIVE = re.compile(r"test_kernel_extensive\[(.+)/([^/]+/s\d+)\]")
+_MAD = re.compile(r"^\u00b1 ([\d.]+)")
 _BRACKETED = re.compile(r"\[(.+)\]$")
 _PEANO = re.compile(r"\bpeano (\S+)")
 
@@ -147,12 +151,43 @@ def failures(directory: Path) -> tuple[list[Failure], set[str]]:
     )
 
 
-def baseline(path: Path) -> dict | None:
-    """Return the last nightly's record (``latest.json``), or None without rows."""
+def baseline(path: Path, run_id: str = "") -> dict | None:
+    """Return the last nightly's record (``latest.json``), or None.
+
+    None without rows, in a newer format than this reads, or from this very
+    run: the publish job of a nightly can cache its record before a re-run
+    of the report restores it, and a run compared with itself shows nothing.
+    """
     if not path.exists():
         return None
     record = json.loads(path.read_text())
+    if record.get("schema", 1) > SCHEMA:
+        return None
+    if run_id and str(record.get("id", "")) == str(run_id):
+        return None
     return record if record.get("rows") else None
+
+
+def _mad(cell: dict) -> float | None:
+    match = _MAD.match(cell.get("range") or "")
+    return float(match[1]) if match else None
+
+
+def moved(metric: str, threshold: float, before: dict, after: dict) -> bool:
+    """Whether a change from ``before`` to ``after`` counts for ``metric``.
+
+    At least ``threshold`` of the old value, and for a metric with a MAD
+    factor, more than that many of the larger of the two rows' MADs too.
+    """
+    change = abs(after["value"] - before["value"])
+    if change < threshold * abs(before["value"]):
+        return False
+    factor = MAD.get(metric)
+    if factor:
+        spread = [m for m in (_mad(before), _mad(after)) if m is not None]
+        if spread and change <= factor * max(spread):
+            return False
+    return True
 
 
 def _split(name: str) -> tuple[str, str]:
@@ -168,7 +203,7 @@ def _peano(rows, fallback: str = "") -> str:
     return match[1] if match else ""
 
 
-def read_leg(npu: str, directory: Path, latest: Path) -> Leg:
+def read_leg(npu: str, directory: Path, latest: Path, run_id: str = "") -> Leg:
     meta_path = directory / "meta.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
     perf_path = directory / "perf.json"
@@ -180,7 +215,7 @@ def read_leg(npu: str, directory: Path, latest: Path) -> Leg:
     measured = {_split(row["name"])[0] for row in rows}
     result.cases = len(measured | swept)
 
-    record = baseline(latest)
+    record = baseline(latest, run_id)
     if not record or not rows:
         return result
     result.baseline_commit = record.get("commit") or None
@@ -201,7 +236,7 @@ def read_leg(npu: str, directory: Path, latest: Path) -> Leg:
                 result.regressed.append(change)
             elif change.ratio <= -GATED[metric]:
                 result.improved.append(change)
-        elif abs(change.ratio) >= OTHER.get(metric, DEFAULT_THRESHOLD):
+        elif moved(metric, OTHER.get(metric, DEFAULT_THRESHOLD), old, row):
             result.other.append(change)
     for changes in (result.regressed, result.other):
         changes.sort(key=lambda c: -c.ratio)
@@ -325,7 +360,11 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     if rows := _changes(legs, "improved"):
         out += [""] + _details(f"Improved ({len(rows)})", _table(header, rows))
     if rows := _changes(legs, "other"):
-        thresholds = ", ".join(f"`{m}` {100 * t:g}%" for m, t in OTHER.items())
+        thresholds = ", ".join(
+            f"`{m}` {100 * t:g}%"
+            + (f" and {MAD[m]:g}\u00d7 its MAD" if m in MAD else "")
+            for m, t in OTHER.items()
+        )
         note = (
             f"Listed past {thresholds}. `npu_us` is timed on the host and "
             "moves with the machine; the byte counts do not."
@@ -354,11 +393,14 @@ def main(argv=None) -> int:
     parser.add_argument("--results", required=True, type=Path)
     parser.add_argument("--baselines", required=True, type=Path)
     parser.add_argument("--run-url", default="")
+    parser.add_argument(
+        "--run-id", default="", help="ignore a baseline this run published itself"
+    )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     legs = (
         [
-            read_leg(d.name, d, args.baselines / d.name / "latest.json")
+            read_leg(d.name, d, args.baselines / d.name / "latest.json", args.run_id)
             for d in sorted(args.results.iterdir())
             if d.is_dir()
         ]

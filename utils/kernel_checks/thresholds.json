@@ -4,15 +4,18 @@
     "(the THRESHOLDS constant in index.html, which test_kernel_checks_page.py",
     "keeps equal to this file) and pr_report.py. A change of at least `pct`",
     "percent of the previous value counts: the page colors it, the report lists",
-    "it. `gated` metrics are the regressions a report leads with; a `derived`",
-    "metric repeats another and is not compared. The numbers come from two",
-    "nightlies of one commit: cycles and the byte sizes moved by well under 1%",
-    "or not at all, npu_us by 17% at the 90th percentile on npu1."
+    "it. With `mad`, it must also exceed that many times the larger of the two",
+    "runs' median absolute deviations (the \u00b1 at the start of a row's range),",
+    "so a noisy case does not flag its own jitter. `gated` metrics are the",
+    "regressions a report leads with; a `derived` metric repeats another and is",
+    "not compared. The numbers come from two nightlies of one commit: cycles and",
+    "the byte sizes moved by well under 1% or not at all, npu_us by 17% at the",
+    "90th percentile on npu1, where one case's MAD was 21% of its median."
   ],
   "cycles": {"pct": 2, "gated": true},
   "cycles_per_kop": {"pct": 2, "derived": "cycles"},
   "core_elf_bytes": {"pct": 2, "gated": true},
   "insts_bytes": {"pct": 2},
   "xclbin_bytes": {"pct": 2},
-  "npu_us": {"pct": 10}
+  "npu_us": {"pct": 10, "mad": 3}
 }

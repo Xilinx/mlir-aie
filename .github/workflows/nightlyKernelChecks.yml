@@ -275,7 +275,7 @@ jobs:
       - name: Write report
         run: |
           python3 utils/kernel_checks/pr_report.py --results results \
-            --baselines baselines --out report.md \
+            --baselines baselines --out report.md --run-id "$GITHUB_RUN_ID" \
             --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           cat report.md >> "$GITHUB_STEP_SUMMARY"
 
@@ -299,7 +299,10 @@ jobs:
           fi
 
   publish:
-    needs: checks
+    # After the report: publishing caches tonight's record as the baseline the
+    # report restores, so running first would compare the night with itself.
+    # `!cancelled()` still publishes when the report job fails.
+    needs: [checks, report]
     # Publish whichever NPUs produced results, even if the other leg failed.
     # A filtered or re-pinned dispatch would chart a subset or another
     # compiler into the series, so it never publishes.

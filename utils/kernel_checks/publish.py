@@ -44,10 +44,47 @@ from pathlib import Path
 
 KEEP_DAYS = 90
 MAX_RUNS = 400
+# The format of every file this writes. A reader that knows an older one
+# refuses the file rather than misreading it; bump it with any change a
+# reader of the old format would get wrong.
+SCHEMA = 1
 REPO = "https://github.com/Xilinx/mlir-aie"
 TARGETS = ("npu1", "npu2")
 # Provenance fields worth a column in the history (the rest stay in the record).
 HISTORY_PROVENANCE = ("peano", "host", "xrt", "xdna", "kernels", "device")
+# The part a runtime's device name means, first match wins. XRT names the
+# same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
+# raw name stays in the record as ``device_raw``.
+PARTS = (
+    ("Strix Halo", ("strix halo", "npu5")),
+    ("Strix", ("strix", "npu4")),
+    ("Krackan", ("krackan", "npu6")),
+    ("Gorgon Point", ("gorgon point",)),
+    ("Phoenix", ("phoenix", "npu1")),
+)
+
+
+def device_part(raw: str | None) -> str | None:
+    """Return the NPU part a runtime's device name means, or the name itself."""
+    if not raw:
+        return raw
+    lowered = raw.lower()
+    for part, needles in PARTS:
+        if any(n in lowered for n in needles):
+            return part
+    return raw
+
+
+class NewerSchema(Exception):
+    """A file on the branch was written by a newer publish.py."""
+
+
+def _check_schema(data: dict, where: Path) -> dict:
+    if data.get("schema", 1) > SCHEMA:
+        raise NewerSchema(
+            f"{where} is schema {data['schema']}; this publish.py writes {SCHEMA}"
+        )
+    return data
 
 
 def now_utc() -> datetime.datetime:
@@ -138,10 +175,12 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
     preflight = meta.get("preflight") or {}
     cases = meta.get("cases") or {}
     record = {
+        "schema": SCHEMA,
         "target": target,
         **run,
         "pmode": preflight.get("pmode"),
-        "device": preflight.get("device"),
+        "device": device_part(preflight.get("device")),
+        "device_raw": preflight.get("device"),
         "provenance": provenance_fields(meta.get("provenance", "")),
         "sane": meta.get("measurement_sane") is True,
         "published": meta.get("measurement_sane") is True and bool(rows),
@@ -192,7 +231,13 @@ def migrate(out: Path) -> int:
                 entry["date"] / 1000, datetime.timezone.utc
             )
             run_id = f"bench-{entry['date']}"
+            raw = (
+                provenance_fields(benches[0].get("extra", "")).get("device")
+                if benches
+                else None
+            )
             record = {
+                "schema": SCHEMA,
                 "target": target,
                 "id": run_id,
                 "url": "",
@@ -204,11 +249,8 @@ def migrate(out: Path) -> int:
                     "timestamp": commit.get("timestamp", ""),
                 },
                 "pmode": mode[1] if mode else None,
-                "device": (
-                    provenance_fields(benches[0].get("extra", "")).get("device")
-                    if benches
-                    else None
-                ),
+                "device": device_part(raw),
+                "device_raw": raw,
                 "provenance": (
                     provenance_fields(benches[0].get("extra", "")) if benches else {}
                 ),
@@ -262,7 +304,9 @@ def rebuild(
     now = now or now_utc()
     runs_dir = out / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
-    records = [json.loads(p.read_text()) for p in runs_dir.glob("*.json")]
+    records = [
+        _check_schema(json.loads(p.read_text()), p) for p in runs_dir.glob("*.json")
+    ]
     if drop_pmode:
         for r in records:
             if r.get("pmode") == drop_pmode:
@@ -275,7 +319,10 @@ def rebuild(
             (runs_dir / f"{r['id']}.json").unlink(missing_ok=True)
     target = kept[-1]["target"] if kept else out.name
     (out / "runs.json").write_text(
-        json.dumps({"target": target, "runs": [summary(r) for r in kept]}, indent=1)
+        json.dumps(
+            {"schema": SCHEMA, "target": target, "runs": [summary(r) for r in kept]},
+            indent=1,
+        )
     )
     published = [r for r in kept if r.get("published") and r.get("rows")]
     latest = out / "latest.json"
@@ -326,6 +373,7 @@ def rebuild(
         (history_dir / f"{metric}.json").write_text(
             json.dumps(
                 {
+                    "schema": SCHEMA,
                     "target": target,
                     "metric": metric,
                     "unit": h["unit"],
@@ -340,6 +388,9 @@ def rebuild(
 
 def publish(out: Path, results: Path, *, target: str, run: dict, now=None) -> dict:
     """Migrate, record one run, rebuild; return the record."""
+    index = out / "runs.json"
+    if index.exists():
+        _check_schema(json.loads(index.read_text()), index)
     migrate(out)
     record = record_perf(results, target=target, run=run)
     (out / "runs").mkdir(parents=True, exist_ok=True)

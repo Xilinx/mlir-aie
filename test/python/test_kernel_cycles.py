@@ -126,6 +126,12 @@ def test_a_filled_buffer_grows_to_its_measured_cost(size, seen, expected, grown)
     assert grown % 4096 == 0
 
 
+def test_growth_stops_at_the_limit():
+    assert kd.grow_trace_size(131072, seen=84, expected=256, limit=1 << 20) == 602112
+    assert kd.grow_trace_size(1 << 20, seen=84, expected=4096, limit=1 << 22) == 1 << 22
+    assert kd.grow_trace_size(1 << 22, seen=1, expected=2, limit=1 << 22) == 1 << 22
+
+
 def test_more_intervals_than_declared_is_an_error():
     with pytest.raises(RuntimeError, match="does not declare"):
         kd.split_intervals([1, 17, 1, 19], calls=2, per_call=1)

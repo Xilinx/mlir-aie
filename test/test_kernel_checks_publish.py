@@ -156,7 +156,8 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
         "message": "Fix add",
         "timestamp": "2026-09-28T20:24:43+00:00",
     }
-    assert record["pmode"] == "performance" and record["device"] == "RyzenAI-npu1"
+    assert record["pmode"] == "performance" and record["device"] == "Phoenix"
+    assert record["device_raw"] == "RyzenAI-npu1" and record["schema"] == 1
     assert record["provenance"]["host"] == "bench-1"
     assert record["sane"] and record["published"] and record["n_rows"] == 4
     assert record["failed"] == META["failed"]
@@ -356,7 +357,8 @@ def test_migration_turns_every_entry_into_a_run_and_removes_the_old_files(
     ]
     first = json.loads((out / "runs/bench-1790632656742.json").read_text())
     assert first["date"] == "2026-09-28T21:57:36+00:00"
-    assert first["pmode"] == "default" and first["device"] == "RyzenAI-npu1"
+    assert first["pmode"] == "default" and first["device"] == "Phoenix"
+    assert first["device_raw"] == "RyzenAI-npu1" and first["schema"] == 1
     assert first["provenance"]["peano"] == "22.0.0+0006955e"
     assert first["commit"]["id"].startswith("d53582d3e0f9")
     assert first["commit"]["message"].startswith("Single-core")
@@ -476,3 +478,73 @@ def test_a_retired_power_mode_is_dropped_on_request(publish, tmp_path):
     cycles = json.loads((out / "history/cycles.json").read_text())
     assert [r["id"] for r in cycles["runs"]] == ["5"]
     assert "passthrough/2048x16/int32" not in cycles["series"]
+
+
+@pytest.mark.parametrize(
+    "raw,part",
+    [
+        ("RyzenAI-npu1", "Phoenix"),
+        ("NPU Phoenix", "Phoenix"),
+        ("NPU Strix", "Strix"),
+        ("RyzenAI-npu4", "Strix"),
+        ("NPU Strix Halo", "Strix Halo"),
+        ("RyzenAI-npu5", "Strix Halo"),
+        ("NPU Krackan 1", "Krackan"),
+        ("NPU Gorgon Point", "Gorgon Point"),
+        ("Something New", "Something New"),
+        (None, None),
+    ],
+)
+def test_device_names_become_parts(publish, raw, part):
+    assert publish.device_part(raw) == part
+
+
+def test_every_file_carries_the_schema_and_a_newer_one_is_refused(publish, tmp_path):
+    out = tmp_path / "npu1"
+    run_cli(
+        [
+            "perf",
+            "--target",
+            "npu1",
+            "--results",
+            results_dir(tmp_path),
+            "--run-id",
+            "1",
+            "--out",
+            out,
+            "--date",
+            "2026-09-29T06:00:00+00:00",
+        ]
+    )
+    files = [out / "runs.json", out / "latest.json", out / "runs/1.json"]
+    files += list((out / "history").glob("*.json"))
+    assert all(json.loads(f.read_text())["schema"] == publish.SCHEMA for f in files)
+    index = json.loads((out / "runs.json").read_text())
+    (out / "runs.json").write_text(json.dumps(dict(index, schema=publish.SCHEMA + 1)))
+    result = subprocess.run(
+        [
+            sys.executable,
+            SCRIPT,
+            "perf",
+            "--target",
+            "npu1",
+            "--results",
+            str(results_dir(tmp_path)),
+            "--run-id",
+            "2",
+            "--out",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0 and "NewerSchema" in result.stderr
+    assert not (out / "runs/2.json").exists()
+    # A newer record among the runs stops a rebuild too.
+    (out / "runs.json").write_text(json.dumps(index))
+    record = json.loads((out / "runs/1.json").read_text())
+    (out / "runs/1.json").write_text(
+        json.dumps(dict(record, schema=publish.SCHEMA + 1))
+    )
+    with pytest.raises(publish.NewerSchema):
+        publish.rebuild(out)

@@ -174,3 +174,29 @@ def test_timing_failures_ignore_the_sweep_and_the_sanity_test(catalogue, tmp_pat
     }
     meta.write_text("{}")
     assert catalogue.timing_failed(meta) == {}
+
+
+def test_a_factory_without_a_case_says_why_from_its_contract(catalogue):
+    from types import SimpleNamespace as NS
+
+    put = NS(
+        contract=NS(unsupported="its result leaves on the cascade stream", trace=None)
+    )
+    rounding = NS(
+        contract=NS(unsupported=None, trace=NS(shape="none", reason="runs once"))
+    )
+    timed = NS(contract=NS(unsupported=None, trace=NS(shape="whole_call", reason=None)))
+    assert catalogue.why_uncased(put) == "its result leaves on the cascade stream"
+    assert catalogue.why_uncased(rounding) == "runs once"
+    assert catalogue.why_uncased(timed) is None
+    assert catalogue.why_uncased(NS(contract=None)) is None
+    assert catalogue.why_uncased(object()) is None
+
+    factories = [
+        dict(FACTORIES[2], why="its result leaves on the cascade stream"),
+        dict(FACTORIES[1], why="ignored: it has cases"),
+    ]
+    rows = catalogue.rows(factories, {}, {}, {}, {}, {"zero": {"zero/64/int32": False}})
+    assert rows[0]["reason"] == "its result leaves on the cascade stream"
+    assert "reason" not in rows[1]
+    assert all("why" not in row for row in rows)

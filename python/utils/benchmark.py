@@ -237,6 +237,25 @@ def parse_xrt_examine(text: str) -> dict[str, str]:
     return found
 
 
+def xrt_examine() -> str | None:
+    """Return what ``xrt-smi examine`` prints, or None without it or when it fails."""
+    from aie.utils.probe import xrt_smi_path
+
+    xrt_smi = xrt_smi_path()
+    if xrt_smi is None:
+        return None
+    try:
+        return subprocess.run(
+            [xrt_smi, "examine"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def xrt_versions() -> dict[str, str]:
     """Return the XRT and amdxdna driver versions ``xrt-smi examine`` reports.
 
@@ -245,22 +264,23 @@ def xrt_versions() -> dict[str, str]:
     measurement (``npu_us``): a driver update moves it and a kernel change
     does not. Best effort, as the power mode is.
     """
-    from aie.utils.probe import xrt_smi_path
+    out = xrt_examine()
+    return parse_xrt_examine(out) if out else {}
 
-    xrt_smi = xrt_smi_path()
-    if xrt_smi is None:
-        return {}
-    try:
-        out = subprocess.run(
-            [xrt_smi, "examine"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        return {}
-    return parse_xrt_examine(out)
+
+def xrt_unparsed() -> str | None:
+    """Return ``xrt-smi examine``'s output when it names no version this reads.
+
+    The parser follows the report's layout as documented, not a captured
+    one; a run whose report reads otherwise keeps the text (at most 4 KB)
+    in its meta, so the mismatch shows in the first run's artifacts rather
+    than as a provenance that silently lacks the versions. None when the
+    versions were read, or there is no report at all.
+    """
+    out = xrt_examine()
+    if not out or parse_xrt_examine(out):
+        return None
+    return out[:4096]
 
 
 def provenance(**extra: str | None) -> str:

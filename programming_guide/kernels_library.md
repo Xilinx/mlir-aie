@@ -498,8 +498,11 @@ nothing gates a pull request. A Peano-bump PR is compared against the
 cached nightly baseline by `utils/kernel_checks/pr_report.py`, which keeps one PR
 comment listing failing cases and `cycles` or core ELF size regressions of 2 % or more.
 The page colors a change by the same per-metric thresholds
-(`utils/kernel_checks/thresholds.json`: 2 % for cycles and the byte sizes,
-10 % for `npu_us`, which moves with the host).
+(`utils/kernel_checks/thresholds.json`: 2 % for cycles and the byte sizes;
+for `npu_us`, which moves with the host, 10 % and more than three times the
+larger median absolute deviation of the two runs). Every published file
+carries a `schema` number, and the page and the report set aside a file
+newer than they read rather than misreading it.
 
 ### Static checks
 
