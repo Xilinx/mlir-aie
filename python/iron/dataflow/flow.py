@@ -22,7 +22,7 @@ lower-level "just declare the route" primitives, paired with explicit
 
 import itertools
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -59,6 +59,13 @@ class _Route(Resolvable):
     """
 
     _broadcast = False
+    _src: Tile
+    _dsts: list[Tile]
+    _name: str
+    _op: Any
+    _shim_symbol: str | None
+    _shim_used: bool
+    _channels: list[int | None]
 
     def all_tiles(self):
         """Return the tiles this route touches — Program uses this to resolve them."""
@@ -136,8 +143,10 @@ class _Route(Resolvable):
                 f"{kind} whose one dst is a shim tile; this one's dst is {dsts}. "
                 "To send data in, use fill()."
             )
+        end = self._shim_end()
+        assert end is not None
         self._shim_used = True
-        return emit_shim_transfer(self._end_symbol(self._shim_end()), rt_data, **kwargs)
+        return emit_shim_transfer(self._end_symbol(end), rt_data, **kwargs)
 
     def drain(self, dest, **kwargs):
         """Receive data from this route into the ``dest`` runtime buffer.

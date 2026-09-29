@@ -166,7 +166,7 @@ class DmaEndpoint:
     [`task`][iron.dataflow.tile_dma.DmaEndpoint.task].
     """
 
-    def __init__(self, tile: Tile, direction: DMAChannelDir, channel: int):
+    def __init__(self, tile: Tile, direction: DMAChannelDir, channel: int | None):
         self._tile = tile
         self._direction = direction
         self._channel = channel
@@ -398,7 +398,7 @@ def _with_runtime_bd_fields(bd: Bd) -> Bd:
     A runtime descriptor's block lowers only constants, so the casts, and the
     length a runtime access pattern needs, are emitted here, ahead of the task.
     """
-    sizes = [_as_bd_i64(v) for v in bd.sizes]
+    sizes: list[Any] = [_as_bd_i64(v) for v in bd.sizes]
     strides = [_as_bd_i64(v) for v in bd.strides]
     length = bd.length
     runtime = any(_is_value(v) for v in (*bd.sizes, *bd.strides, bd.offset))

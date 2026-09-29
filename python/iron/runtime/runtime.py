@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Callable, Sequence, get_origin
+from typing import TYPE_CHECKING, Callable, Sequence, get_origin
 
 import numpy as np
 
@@ -49,6 +49,9 @@ from .data import RuntimeData
 from .dmatask import DMATask
 from .endpoint import RuntimeEndpoint
 from .taskgroup import TaskGroup
+
+if TYPE_CHECKING:
+    from ..device import Device
 
 logger = logging.getLogger(__name__)
 
@@ -393,7 +396,7 @@ class Runtime(Resolvable):
         reuse_output_buffer: bool = False,
         egress_shim_col: int = 0,
         load_pdi_device_ref: str | None = None,
-        device=None,
+        device: Device | None = None,
     ) -> None:
         """Build the ``runtime_sequence`` op and run the sequence body inside it.
 
