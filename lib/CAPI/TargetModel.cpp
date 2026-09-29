@@ -134,6 +134,10 @@ uint32_t aieTargetModelGetLocalMemorySize(AieTargetModel targetModel) {
   return unwrap(targetModel).getLocalMemorySize();
 }
 
+uint32_t aieTargetModelGetDefaultCoreStackSize(AieTargetModel targetModel) {
+  return unwrap(targetModel).getDefaultCoreStackSize();
+}
+
 uint32_t aieTargetModelGetNumLocks(AieTargetModel targetModel, int col,
                                    int row) {
   return unwrap(targetModel).getNumLocks(col, row);
@@ -141,6 +145,21 @@ uint32_t aieTargetModelGetNumLocks(AieTargetModel targetModel, int col,
 
 uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel, int col, int row) {
   return unwrap(targetModel).getNumBDs(col, row);
+}
+
+uint32_t aieTargetModelGetDmaBdWrapBits(AieTargetModel targetModel, int col,
+                                        int row) {
+  return unwrap(targetModel).getDmaBdWrapBits(col, row);
+}
+
+uint32_t aieTargetModelGetDmaBdStepBits(AieTargetModel targetModel, int col,
+                                        int row) {
+  return unwrap(targetModel).getDmaBdStepBits(col, row);
+}
+
+uint32_t aieTargetModelGetDmaBdIterBits(AieTargetModel targetModel, int col,
+                                        int row) {
+  return unwrap(targetModel).getDmaBdIterBits(col, row);
 }
 
 uint32_t aieTargetModelGetNumMemTileRows(AieTargetModel targetModel) {

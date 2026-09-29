@@ -31,6 +31,9 @@ module {
       // CHECK: aiex.cert.maskwrite32(8192, 42, 255)
       aiex.cert.maskwrite32(0x2000, 42, 0xFF)
 
+      // CHECK: aiex.cert.maskpoll32(119328, 16777216, 0)
+      aiex.cert.maskpoll32(0x1d220, 0x1000000, 0)
+
       // CHECK: aiex.cert.apply_offset_57(@dma_data_0, 1, -1)
       aiex.cert.apply_offset_57(@dma_data_0, 1, 0xffff)
       // CHECK: aiex.cert.apply_offset_57(@dma_data_1, 1, 2)

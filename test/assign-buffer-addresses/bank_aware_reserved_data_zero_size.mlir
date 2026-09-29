@@ -9,7 +9,7 @@
 // region it sits inside. The space above the stack is one 64512-byte run, and
 // a reservation of that size fits.
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
 // CHECK-LABEL: module @zero_size_buffer_does_not_fragment_reserved_data
 // CHECK: %mid = aie.buffer(%tile_0_2) {address = 30016 : i32, mem_bank = 1 : i32, sym_name = "mid"} : memref<0xi32>

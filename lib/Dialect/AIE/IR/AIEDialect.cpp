@@ -24,6 +24,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <map>
 #include <optional>
@@ -147,12 +148,44 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
   return getShimBurstLength(tm, burstLength).first;
 }
 
+Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
+                                        StringAttr name) {
+  if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
+      symbolTableOp->getRegion(0).empty()) {
+    return nullptr;
+  }
+  // One walk finds both kinds: a symbol op's name is its `sym_name`, and
+  // `getAttr` reads it whether it is inherent or discardable.
+  for (Operation &op : symbolTableOp->getRegion(0).front()) {
+    if (op.getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()) ==
+        name) {
+      return &op;
+    }
+  }
+  return nullptr;
+}
+
+Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
+                                        StringRef name) {
+  return lookupNamedOpIn(symbolTableOp,
+                         StringAttr::get(symbolTableOp->getContext(), name));
+}
+
+Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringAttr name) {
+  Operation *symbolTableOp = mlir::SymbolTable::getNearestSymbolTable(from);
+  return symbolTableOp ? lookupNamedOpIn(symbolTableOp, name) : nullptr;
+}
+
+Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringRef name) {
+  return lookupNamedOp(from, StringAttr::get(from->getContext(), name));
+}
+
 std::string xilinx::AIE::generateUniqueSymbolName(
     mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();
-  } while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name));
+  } while (lookupNamedOpIn(symbolTableOp, llvm::StringRef(name)));
   return name;
 }
 
@@ -632,8 +665,8 @@ SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
   SmallVector<OpTy> ops;
   if (names) {
     for (auto name : names->getAsRange<FlatSymbolRefAttr>()) {
-      if (auto op = dyn_cast_or_null<OpTy>(
-              SymbolTable::lookupNearestSymbolFrom(from, name.getAttr()))) {
+      if (auto op =
+              dyn_cast_or_null<OpTy>(lookupNamedOp(from, name.getAttr()))) {
         ops.push_back(op);
       }
     }
@@ -714,7 +747,7 @@ int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
   MemRefType elemType = getElemType();
   DataLayout layout = DataLayout::closest(*this);
   return elemType.getNumElements() *
-         layout.getTypeSizeInBits(elemType.getElementType()) / 8;
+         layout.getTypeSize(elemType.getElementType());
 }
 
 std::vector<ObjectFifoSegmentOp> ObjectFifoPoolOp::getSegmentOps() {
@@ -738,8 +771,7 @@ SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
     for (std::optional<FlatSymbolRefAttr> name :
          {segment.getProduceLockAttr(), segment.getConsumeLockAttr()}) {
       if (name && *name) {
-        if (auto lock = mlir::SymbolTable::lookupNearestSymbolFrom<LockOp>(
-                device, *name)) {
+        if (auto lock = lookupNamedOp<LockOp>(device, name->getAttr())) {
           locks.push_back(lock);
         }
       }
@@ -1982,12 +2014,13 @@ LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
 }
 
 // Rejects two aie.packet_flow ops that carry the same ID between the same set
-// of sources and destinations. Declaring the flow twice makes the routing
-// problem look more congested than it is and gives the two copies conflicting
-// keep_pkt_header/priority_route settings when their attributes disagree.
+// of sources and destinations under the same mask. Declaring the flow twice
+// makes the routing problem look more congested than it is and gives the two
+// copies conflicting keep_pkt_header/priority_route settings when their
+// attributes disagree.
 LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   using PacketFlowKey =
-      std::tuple<int, std::vector<PortKey>, std::vector<PortKey>>;
+      std::tuple<int, int, std::vector<PortKey>, std::vector<PortKey>>;
   std::map<PacketFlowKey, PacketFlowOp> packetFlowSeen;
   WalkResult result = device.walk([&](PacketFlowOp packetFlow) {
     Region &body = packetFlow.getPorts();
@@ -2019,12 +2052,17 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
       return WalkResult::advance();
     llvm::sort(sources);
     llvm::sort(dests);
+    int idBits =
+        llvm::Log2_32_Ceil(device.getTargetModel().getMaxPacketId() + 1);
+    int mask = packetFlow.getMask().value_or((1 << idBits) - 1);
     auto [it, inserted] = packetFlowSeen.try_emplace(
-        {packetFlow.IDInt(), std::move(sources), std::move(dests)}, packetFlow);
+        {packetFlow.IDInt(), mask, std::move(sources), std::move(dests)},
+        packetFlow);
     if (!inserted) {
       InFlightDiagnostic diag =
           packetFlow.emitOpError()
           << "duplicates an earlier packet flow; ID " << packetFlow.IDInt()
+          << " under mask 0x" << llvm::utohexstr(mask)
           << " is already declared between the same sources and destinations";
       diag.attachNote(it->second.getLoc()) << "the other packet flow is here";
       return WalkResult::interrupt();
@@ -2032,6 +2070,40 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
     return WalkResult::advance();
   });
   return failure(result.wasInterrupted());
+}
+
+// `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
+// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` name themselves
+// with `sym_name` but define an SSA value, so they are not `Symbol` ops and
+// their names escape that check. `lookupNamedOpIn` resolves them by name, so a
+// repeated name would bind every reference to whichever op comes first.
+LogicalResult verifyNoDuplicateNames(Operation *symbolTableOp) {
+  if (symbolTableOp->getNumRegions() == 0 ||
+      symbolTableOp->getRegion(0).empty()) {
+    return success();
+  }
+  DenseMap<StringAttr, Operation *> nameSeen;
+  for (Operation &op : symbolTableOp->getRegion(0).front()) {
+    auto name = op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    if (!name) {
+      continue;
+    }
+    auto [it, inserted] = nameSeen.try_emplace(name, &op);
+    if (inserted) {
+      continue;
+    }
+    // Leave a pair of `Symbol` ops to `verifySymbolTable`, which runs after the
+    // body and so lets the body ops report about themselves first.
+    if (isa<SymbolOpInterface>(op) && isa<SymbolOpInterface>(it->second)) {
+      continue;
+    }
+    InFlightDiagnostic diag = op.emitError() << "redefinition of symbol named '"
+                                             << name.getValue() << "'";
+    diag.attachNote(it->second->getLoc())
+        << "see existing symbol definition here";
+    return failure();
+  }
+  return success();
 }
 
 } // namespace
@@ -2073,6 +2145,10 @@ LogicalResult DeviceOp::verify() {
     return failure();
   if (failed(verifyNoDuplicatePacketFlows(*this)))
     return failure();
+
+  if (failed(verifyNoDuplicateNames(*this))) {
+    return failure();
+  }
 
   return success();
 }
@@ -2175,9 +2251,6 @@ LogicalResult LogicalTileOp::verify() {
       }
     }
   }
-
-  if (isShimNOCorPLTile() && getAllocationScheme())
-    return emitOpError("Shim tiles cannot have an allocation scheme");
 
   return success();
 }
@@ -2365,9 +2438,6 @@ LogicalResult TileOp::verify() {
     }
   }
 
-  if (isShimNOCorPLTile() && getAllocationScheme())
-    return emitOpError("Shim tiles cannot have an allocation scheme");
-
   return success();
 }
 
@@ -2432,7 +2502,7 @@ static bool isLegalTileConnection(TileOp tile,
 }
 
 TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
-                           int row) {
+                           int row, std::optional<mlir::Location> loc) {
   TileOp tile = nullptr;
   // Find matching predefined tile at device top level, ...
   for (auto t : device.getOps<AIE::TileOp>()) {
@@ -2446,8 +2516,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = TileOp::create(builder, device.getLoc(), builder.getIndexType(), col,
-                          row);
+    tile = TileOp::create(builder, loc.value_or(device.getLoc()),
+                          builder.getIndexType(), col, row);
   }
   return tile;
 }
@@ -2554,6 +2624,17 @@ LogicalResult PacketFlowOp::verify() {
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
 
+  // A slave port accepts a packet when `incoming & mask == ID`, so a bit set
+  // in ID and clear in the mask rejects every packet.
+  if (std::optional<uint8_t> mask = getMask()) {
+    uint8_t id = getID();
+    if ((id & *mask) != id) {
+      return emitOpError("has ID 0x")
+             << llvm::utohexstr(id) << " outside mask 0x"
+             << llvm::utohexstr(*mask) << ", which no packet can match";
+    }
+  }
+
   return success();
 }
 
@@ -2597,20 +2678,79 @@ LogicalResult CoreOp::verify() {
                     "artifact must be either merged or linked, not both";
     }
   // The core's own sections live in a `core_data` aie.buffer, so the buffer
-  // verifier covers their placement. Only the size belongs here.
+  // verifier covers their placement. Size and measured alignment belong here.
   if (auto measured = getMeasuredDataSize())
     if (auto declared = getDataSize(); declared && *declared < *measured)
       return emitOpError("data_size ")
              << *declared << " is smaller than the " << *measured
              << " bytes this core's linked sections occupy";
-  // Checked last so it does not pre-empt the diagnostics above on an op with
-  // more than one defect.
-  if (uint32_t stackSize = getEffectiveStackSize(),
-      localMem = getTargetModel(*this).getLocalMemorySize();
-      stackSize >= localMem)
+  // Where the stack sits. A pin the allocator could never honor is a user
+  // constraint, so it is rejected here rather than at placement.
+  const auto &targetModel = getTargetModel(*this);
+  int64_t localMem = targetModel.getLocalMemorySize();
+  auto validAlignment = [localMem](int64_t alignment) {
+    return alignment > 0 && alignment <= localMem &&
+           llvm::isPowerOf2_64(alignment);
+  };
+  if (auto alignment = getMeasuredDataAlignment();
+      alignment && !validAlignment(*alignment))
+    return emitOpError("measured_data_alignment must be a power of two between "
+                       "1 and ")
+           << localMem << " bytes";
+  if (auto alignments = getMeasuredBankAlignments())
+    if (!llvm::all_of(*alignments, validAlignment))
+      return emitOpError("measured_bank_alignments must contain only powers of "
+                         "two between 1 and ")
+             << localMem << " bytes";
+  MemoryRun stackRun = getStackRun();
+  auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  int64_t numBanks =
+      tile ? targetModel.getNumBanks(tile.getCol(), tile.getRow()) : 0;
+  int64_t bankSize =
+      numBanks > 0 ? targetModel.getLocalMemorySize() / numBanks : 0;
+  if (auto bank = getStackBank()) {
+    if (tile && *bank >= numBanks)
+      return emitOpError("stack_bank ")
+             << *bank << " does not exist; this tile has " << numBanks
+             << " banks";
+    // Bank-specific stack accesses must stay inside the selected bank.
+    if (bankSize > 0 && stackRun.size > bankSize)
+      return emitOpError("stack_bank pins a ")
+             << stackRun.size << "-byte stack to bank " << *bank
+             << ", which holds " << bankSize
+             << " bytes; omit stack_bank and stack_address for legacy "
+                "placement";
+    if (getStackAddress() && bankSize > 0 && stackRun.start / bankSize != *bank)
+      return emitOpError("stack_address 0x")
+             << llvm::utohexstr(stackRun.start) << " lies in bank "
+             << stackRun.start / bankSize << ", but stack_bank requests bank "
+             << *bank;
+    if (getStackAddress() && bankSize > 0 &&
+        stackRun.end() > (*bank + 1) * bankSize)
+      return emitOpError("a ")
+             << stackRun.size << "-byte stack at 0x"
+             << llvm::utohexstr(stackRun.start) << " runs past stack_bank "
+             << *bank << " (ending at 0x"
+             << llvm::utohexstr((*bank + 1) * bankSize) << ")";
+  }
+  // Checked last so they do not pre-empt the diagnostics above on an op with
+  // more than one defect. Size and placement are separate faults: a stack can
+  // fit the tile yet be placed so it runs off the end.
+  if (stackRun.size >= localMem)
     return emitOpError("stack_size ")
-           << stackSize << " leaves no local memory for this tile's buffers ("
-           << localMem << " bytes total)";
+           << stackRun.size
+           << " leaves no local memory for this tile's buffers (" << localMem
+           << " bytes total)";
+  if (stackRun.end() > localMem)
+    return emitOpError("a ") << stackRun.size << "-byte stack at 0x"
+                             << llvm::utohexstr(stackRun.start)
+                             << " runs past this tile's local memory ("
+                             << localMem << " bytes total)";
+  if (getStackAddress() &&
+      stackRun.start % targetModel.getCoreStackAlignment() != 0)
+    return emitOpError("stack_address must be aligned to ")
+           << targetModel.getCoreStackAlignment()
+           << " bytes for this target's stack ABI";
   return success();
 }
 
@@ -2628,6 +2768,10 @@ TileOp CoreOp::getTileOp() {
 uint32_t CoreOp::getEffectiveStackSize() {
   return getStackSize().value_or(
       getTargetModel(*this).getDefaultCoreStackSize());
+}
+
+MemoryRun CoreOp::getStackRun() {
+  return {getStackAddress().value_or(0), getEffectiveStackSize()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -3197,8 +3341,8 @@ llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
 
 LogicalResult DMABDOp::verify() {
   if (getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) {
-    uint64_t elemBitWidth =
-        llvm::cast<BaseMemRefType>(getBuffer().getType()).getElementTypeBitWidth();
+    uint64_t elemBitWidth = llvm::cast<BaseMemRefType>(getBuffer().getType())
+                                .getElementTypeBitWidth();
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
   }
@@ -4478,6 +4622,11 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
       auto walkResult = attr.walk([&](SymbolRefAttr symbolRef) {
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
+        if (!symbolDefOp) {
+          if (auto flat = dyn_cast<FlatSymbolRefAttr>(symbolRef)) {
+            symbolDefOp = lookupNamedOp(*this, flat.getAttr());
+          }
+        }
         if (symbolDefOp) {
           if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
               !llvm::isa<DeviceOp>(symbolDefOp) &&

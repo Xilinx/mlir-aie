@@ -152,10 +152,10 @@ struct AIEObjectFifoLowerDMAsPass
         action = LockAction::Acquire;
       }
     } else if (descriptor.acquireLock) {
-      acquireLock = SymbolTable::lookupNearestSymbolFrom<LockOp>(
-          device, descriptor.acquireLock);
-      releaseLock = SymbolTable::lookupNearestSymbolFrom<LockOp>(
-          device, descriptor.releaseLock);
+      acquireLock =
+          lookupNamedOp<LockOp>(device, descriptor.acquireLock.getAttr());
+      releaseLock =
+          lookupNamedOp<LockOp>(device, descriptor.releaseLock.getAttr());
     }
 
     if (acquireLock) {

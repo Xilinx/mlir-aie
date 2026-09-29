@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include <stdexcept>
+#include <vector>
 
 using namespace xilinx;
 
@@ -20,6 +21,17 @@ static void checkControllerTopology(AIE::AIEDevice device, uint32_t perColumn,
     throw std::runtime_error("Failed microcontroller topology check for " +
                              stringifyAIEDevice(device).str());
   }
+}
+
+static void checkPartitionStarts(AIE::AIEDevice device, int physicalColumns,
+                                 std::vector<int> expectedStarts) {
+  const auto &model = AIE::getTargetModel(device);
+  if (model.physicalColumns() != physicalColumns)
+    throw std::runtime_error("Failed physicalColumns for " +
+                             stringifyAIEDevice(device).str());
+  if (model.partitionStartColumns(model.columns()) != expectedStarts)
+    throw std::runtime_error("Failed partitionStartColumns for " +
+                             stringifyAIEDevice(device).str());
 }
 
 void test() {
@@ -52,6 +64,19 @@ void test() {
     throw std::runtime_error("Failed xcvc1902 rows");
   }
   checkControllerTopology(AIE::AIEDevice::xcvc1902, 0, 0);
+  if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902).getMaxRepeatCount() != 0) {
+    throw std::runtime_error("Failed xcvc1902 getMaxRepeatCount");
+  }
+
+  for (auto dev : {AIE::AIEDevice::xcve2302, AIE::AIEDevice::xcve2802,
+                   AIE::AIEDevice::xcve3858, AIE::AIEDevice::npu1,
+                   AIE::AIEDevice::npu1_1col, AIE::AIEDevice::npu2,
+                   AIE::AIEDevice::npu2_1col}) {
+    if (AIE::getTargetModel(dev).getMaxRepeatCount() != 255) {
+      throw std::runtime_error("Failed getMaxRepeatCount for " +
+                               stringifyAIEDevice(dev).str());
+    }
+  }
 
   // AIEDevice::xcve2302
   if (!AIE::getTargetModel(AIE::AIEDevice::xcve2302)
@@ -143,6 +168,10 @@ void test() {
     if (AIE::getTargetModel(dev).rows() != 6) {
       throw std::runtime_error("Failed npu1_ncol rows");
     }
+    std::vector<int> expectedStarts;
+    for (int c = 0; c + cols <= 4; ++c)
+      expectedStarts.push_back(c);
+    checkPartitionStarts(dev, 4, expectedStarts);
     checkControllerTopology(dev, 0, 0);
   }
 
@@ -173,6 +202,7 @@ void test() {
   if (AIE::getTargetModel(AIE::AIEDevice::npu2).rows() != 6) {
     throw std::runtime_error("Failed npu2 rows");
   }
+  checkPartitionStarts(AIE::AIEDevice::npu2, 8, {0});
   checkControllerTopology(AIE::AIEDevice::npu2, 0, 0);
 
   // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_5col,
@@ -211,6 +241,10 @@ void test() {
     if (AIE::getTargetModel(dev).rows() != 6) {
       throw std::runtime_error("Failed npu2_ncol rows");
     }
+    std::vector<int> expectedStarts;
+    for (int c = 0; c + cols <= 8; ++c)
+      expectedStarts.push_back(c);
+    checkPartitionStarts(dev, 8, expectedStarts);
     checkControllerTopology(dev, 0, 0);
   }
 
@@ -283,6 +317,39 @@ void test() {
   }
   if (ve3858.getNumBDs(0, 3) != 16) {
     throw std::runtime_error("Failed xcve3858 getNumBDs core");
+  }
+  // DMA task-queue depth: flat 4 across tile types and architectures, matching
+  // aie-rt's XAIE_DMA_MAX_QUEUE_SIZE. Unlike getNumBDs just above, this does
+  // NOT vary by tile type, which is why it is a flat accessor.
+  if (ve3858.getDmaTaskQueueDepth() != 4) {
+    throw std::runtime_error("Failed xcve3858 getDmaTaskQueueDepth");
+  }
+  // The per-channel overload must agree with the flat one on every tile type
+  // and both directions, since no shipping target differentiates them.
+  for (int row : {0, 1, 3}) {
+    for (auto dir : {AIE::DMAChannelDir::MM2S, AIE::DMAChannelDir::S2MM}) {
+      for (int chan = 0; chan < 2; ++chan) {
+        if (ve3858.getDmaTaskQueueDepth(0, row, chan, dir) !=
+            ve3858.getDmaTaskQueueDepth()) {
+          throw std::runtime_error("Failed xcve3858 getDmaTaskQueueDepth "
+                                   "per-channel overload disagrees with flat");
+        }
+      }
+    }
+  }
+  // AIE2-based NPU targets inherit the same depth.
+  for (auto dev : {AIE::AIEDevice::npu1, AIE::AIEDevice::npu2}) {
+    if (AIE::getTargetModel(dev).getDmaTaskQueueDepth() != 4) {
+      throw std::runtime_error("Failed getDmaTaskQueueDepth for " +
+                               stringifyAIEDevice(dev).str());
+    }
+  }
+  // AIE1 has no queued DMA-task model, so it reports 0 ("unsupported"), the
+  // same convention getMaxRepeatCount uses.
+  if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902).getDmaTaskQueueDepth() !=
+      0) {
+    throw std::runtime_error("Failed xcvc1902 getDmaTaskQueueDepth "
+                             "(expected 0, AIE1 has no task queue)");
   }
   // Burst encodings: AIE2PS supports 512B (4 encodings, not 3)
   auto bursts = ve3858.getShimBurstEncodingsAndLengths();

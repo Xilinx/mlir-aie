@@ -4,4 +4,6 @@
 // REQUIRES: ryzen_ai_npu1, peano
 //
 // RUN: %run_on_npu1% %python %S/vector_scalar_mul.py -d npu
-// RUN: %run_on_npu1% %python %S/vector_scalar_mul.py -d npu --trace_size 8192
+// RUN: %python -c "from pathlib import Path; p = Path(r'%t'); p.mkdir(exist_ok=True); (p / 'trace.txt').unlink(missing_ok=True)"
+// RUN: cd %t && %run_on_npu1% %python %S/vector_scalar_mul.py -d npu --trace_size 8192
+// RUN: %python -c "from pathlib import Path; assert (Path(r'%t') / 'trace.txt').stat().st_size > 0"

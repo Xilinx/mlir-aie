@@ -9,27 +9,13 @@
 // reject it). One compiled xclbin serves any n: the instruction stream is built
 // at runtime by the generated C++ TXN builder called with n.
 //
-// aiecc builds the xclbin (device structure). The instruction builder is
-// generated separately via aie-translate --aie-npu-to-cpp from aiecc's lowered
-// intermediate (the runtime sequence lowers to a runtime-addressed C++ builder,
-// not a static insts.bin). The host #includes that header and calls it per n.
+// aiecc builds both the xclbin and the parameterized instruction builder.
+// The host #includes the generated header and calls it per n.
 //
 // RUN: mkdir -p %t.prj
-// RUN: %aiecc --get-xclbin \
-// RUN:   --get-input-with-addresses --output-dir=%t.prj \
+// RUN: %aiecc --get-xclbin --get-npu-cpp --npu-cpp-name=%t.gen.h \
+// RUN:   --output-dir=%t.prj \
 // RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
-//
-// Generate the C++ TXN builder from aiecc's lowered intermediate, mirroring the
-// NPU lowering pipeline (input_with_addresses.mlir is lowered for addresses
-// only; the npu ops are produced here).
-// RUN: aie-opt \
-// RUN:   --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
-// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
-// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
-// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
-// RUN:   %t.prj/input_with_addresses.mlir -o %t.lowered.mlir
-// RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
 // RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \

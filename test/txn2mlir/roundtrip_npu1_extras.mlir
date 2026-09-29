@@ -8,15 +8,19 @@
 // RUN: aie-translate -aie-npu-to-binary %s -o %t.cfg
 // RUN: %python txn2mlir.py -f %t.cfg | FileCheck %s
 
+// The emitter creates one constant per distinct value, in operand order, so
+// the write32's value operand is the constant the sync's channel introduced.
 // CHECK: aie.device(npu1_1col)
 // CHECK: memref.global "private" constant @config_blockwrite_data
-// CHECK: aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
+// CHECK: %[[SYNC_COL:.*]] = arith.constant 0 : i32
+// CHECK: %[[SYNC_DIR:.*]] = arith.constant 1 : i32
+// CHECK: %[[W_VAL:.*]] = arith.constant 2 : i32
+// CHECK: aiex.npu.sync(%[[SYNC_COL]], %[[SYNC_COL]], %[[SYNC_DIR]], %[[W_VAL]], %[[SYNC_DIR]], %[[SYNC_DIR]]) : i32, i32, i32, i32, i32, i32
 // CHECK: aiex.npu.load_pdi {address = 305419896 : ui64, id = 7 : i32, size = 4096 : i32}
 // CHECK: %[[AP:.*]] = arith.constant 4 : i32
 // CHECK: aiex.npu.address_patch(%[[AP]] : i32) {addr = 123456 : ui32, arg_idx = 3 : i32}
 // CHECK: aiex.npu.preempt {level = 2 : ui8}
-// CHECK-DAG: %[[W_VAL:.*]] = arith.constant 2 : i32
-// CHECK-DAG: %[[W_ADDR:.*]] = arith.constant 2224128 : i32
+// CHECK: %[[W_ADDR:.*]] = arith.constant 2224128 : i32
 // CHECK: aiex.npu.write32(%[[W_ADDR]], %[[W_VAL]]) : i32, i32
 // CHECK: aiex.npu.blockwrite
 module {

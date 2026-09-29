@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows=remove-lifted=false %s -o %t.opt
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
 // RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
@@ -16,9 +16,8 @@
 // CHECK1:    %[[TILE_0_4:.*]] = aie.tile(0, 4)
 // CHECK1:    %[[TILE_0_5:.*]] = aie.tile(0, 5)
 // CHECK1:    %[[TILE_1_0:.*]] = aie.tile(1, 0)
-// The flows below are the ones --aie-find-flows recovers from the routing, in
-// the order it walks the tiles; the flows this file declares up front are
-// replaced by them rather than kept alongside.
+// The pathfinder now removes the lowered flows; --aie-find-flows re-derives
+// them from the switchbox routing, emitting circuit flows before packet flows.
 // CHECK1:    aie.flow(%[[TILE_0_1]], DMA : 0, %[[TILE_0_0]], DMA : 0)
 // CHECK1:    aie.flow(%[[TILE_0_2]], DMA : 0, %[[TILE_0_1]], DMA : 0)
 // CHECK1:    aie.flow(%[[TILE_0_3]], DMA : 0, %[[TILE_0_1]], DMA : 1)

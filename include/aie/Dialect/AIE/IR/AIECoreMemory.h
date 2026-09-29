@@ -49,13 +49,13 @@ struct MemoryRun {
 // an unaligned start loses the difference to padding. A reservation of the
 // exact size then overflows the region.
 inline MemoryRun
-largestFreeRun(int64_t memSize,
-               llvm::SmallVector<std::pair<int64_t, int64_t>> occupied,
-               int64_t alignBytes = 1) {
+largestFreeRunIn(MemoryRun window,
+                 llvm::SmallVector<std::pair<int64_t, int64_t>> occupied,
+                 int64_t alignBytes = 1) {
   assert(alignBytes > 0 && "alignBytes must be positive");
   llvm::sort(occupied);
   MemoryRun best;
-  int64_t cursor = 0;
+  int64_t cursor = window.start;
   auto consider = [&](int64_t start, int64_t end) {
     start = llvm::alignTo(start, alignBytes);
     if (start < end && end - start > best.size)
@@ -65,13 +65,24 @@ largestFreeRun(int64_t memSize,
     // A zero-length interval occupies no bytes, so it must not split a run.
     if (interval.first == interval.second)
       continue;
-    consider(cursor, std::min(interval.first, memSize));
-    cursor = std::max(cursor, interval.second);
-    if (cursor >= memSize)
+    int64_t lo = std::max(interval.first, window.start);
+    int64_t hi = std::min(interval.second, window.end());
+    if (lo >= hi)
+      continue; // falls outside the window
+    consider(cursor, lo);
+    cursor = std::max(cursor, hi);
+    if (cursor >= window.end())
       return best;
   }
-  consider(cursor, memSize);
+  consider(cursor, window.end());
   return best;
+}
+
+inline MemoryRun
+largestFreeRun(int64_t memSize,
+               llvm::SmallVector<std::pair<int64_t, int64_t>> occupied,
+               int64_t alignBytes = 1) {
+  return largestFreeRunIn({0, memSize}, std::move(occupied), alignBytes);
 }
 
 } // namespace xilinx::AIE

@@ -27,6 +27,8 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEBroadcastPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEDmaToNpuPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEDmaToNpuPass(const AIEDmaToNpuOptions &options);
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDecomposeLargeDmaBdPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIENpuToCertPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECertPagesPass();
@@ -44,11 +46,16 @@ createAIEResolveAddressPatchBuffersPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEAssignRuntimeSequenceBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEAssignRuntimeSequenceBDIDsPass(
+    const AIEAssignRuntimeSequenceBDIDsOptions &options);
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEReserveRuntimeBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEUnrollRuntimeSequenceLoopsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELowerDynamicBDPoolPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIELowerDynamicBDPoolPass(const AIELowerDynamicBDPoolOptions &options);
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDMATasksToNPUPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>

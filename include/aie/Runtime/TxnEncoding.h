@@ -20,6 +20,13 @@
 #include <cstdint>
 #include <vector>
 
+// Applied to the emitted entry points; see emitDispatchShimFuncs.
+#ifdef _WIN32
+#define AIE_DISPATCH_EXPORT __declspec(dllexport)
+#else
+#define AIE_DISPATCH_EXPORT
+#endif
+
 namespace aie_runtime {
 
 // Transaction opcodes for the firmware TXN format the compiler currently
@@ -136,6 +143,20 @@ struct TxnDeviceInfo {
   uint8_t numMemTileRows = 1;
 };
 
+// Build a TxnDeviceInfo from target-model values. Assigns by field name, so a
+// caller that can only emit an expression (the generated C++ builder) states
+// the field order in exactly one place: here.
+inline TxnDeviceInfo txn_device_info(uint8_t dev_gen, uint8_t num_rows,
+                                     uint8_t num_cols,
+                                     uint8_t num_memtile_rows) {
+  TxnDeviceInfo info;
+  info.devGen = dev_gen;
+  info.numRows = num_rows;
+  info.numCols = num_cols;
+  info.numMemTileRows = num_memtile_rows;
+  return info;
+}
+
 // Append a 6-word write32 instruction.
 inline void txn_append_write32(std::vector<uint32_t> &txn, uint32_t addr,
                                uint32_t val) {
@@ -155,6 +176,23 @@ inline void txn_append_maskwrite32(std::vector<uint32_t> &txn, uint32_t addr,
   size_t pos = txn.size();
   txn.resize(pos + 7, 0);
   txn[pos + 0] = TXN_OPC_MASKWRITE;
+  // txn[pos + 1] is reserved (0)
+  txn[pos + 2] = addr;
+  txn[pos + 3] = 0;
+  txn[pos + 4] = val;
+  txn[pos + 5] = mask;
+  txn[pos + 6] = 7 * sizeof(uint32_t); // operation size
+}
+
+// Append a 7-word maskpoll instruction: block until (reg & mask) == val.
+// Same word layout as maskwrite32 -- aie-rt's XAie_MaskPoll32Hdr and
+// XAie_MaskWrite32Hdr agree field for field, and the poll timeout is not
+// serialized (the firmware forces its own default; see xaie_txn.c).
+inline void txn_append_maskpoll32(std::vector<uint32_t> &txn, uint32_t addr,
+                                  uint32_t val, uint32_t mask) {
+  size_t pos = txn.size();
+  txn.resize(pos + 7, 0);
+  txn[pos + 0] = TXN_OPC_MASKPOLL;
   // txn[pos + 1] is reserved (0)
   txn[pos + 2] = addr;
   txn[pos + 3] = 0;
@@ -199,21 +237,47 @@ inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
     txn[pos + headerSize + i] = data[i];
 }
 
+// Under the xclbin + insts.bin runtime, NPU firmware adds kDDRAIEAddrOffset to
+// host buffer addresses for only the first kNumFirmwareTranslatedArgs args; a
+// DDR patch for a later arg must fold the offset into arg_plus itself. Full-ELF
+// and HRX translate every arg, so folding there would double-translate the 6th+
+// buffer: those pass fold = false.
+constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
+constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
+
 // Append a 12-word address_patch (DDR_PATCH) instruction.
+//
+// The consumer casts this byte range to aie-rt's `XAie_CustomOpHdr` followed by
+// `patch_op_t` (xaie_txn.h), so the layout is that struct pair's under natural
+// alignment: an 8-byte header at words 0-1, op_base and action at 2-5, then
+// regaddr, argidx and argplus as u64 word pairs at 6-7, 8-9 and 10-11, low half
+// first.
 inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
-                                     int32_t arg_idx, uint32_t arg_plus) {
+                                     int32_t arg_idx, uint64_t arg_plus) {
   size_t pos = txn.size();
   txn.resize(pos + 12, 0);
   txn[pos + 0] = TXN_OPC_DDR_PATCH;     // opcode
   txn[pos + 1] = 12 * sizeof(uint32_t); // operation size
   // pos+2..4 are reserved (zero)
-  txn[pos + 5] = 0;    // action (0 = patch)
+  txn[pos + 5] = 0;    // action; the struct puts it at word 4, inert while zero
   txn[pos + 6] = addr; // register address to patch
   // pos+7 is reserved (zero)
   txn[pos + 8] = static_cast<uint32_t>(arg_idx); // buffer argument index
   // pos+9 is reserved (zero)
-  txn[pos + 10] = arg_plus; // byte offset into buffer
-  // pos+11 is reserved (zero)
+  txn[pos + 10] = static_cast<uint32_t>(arg_plus & 0xFFFFFFFFull);
+  txn[pos + 11] = static_cast<uint32_t>(arg_plus >> 32);
+}
+
+// Append a DDR_PATCH for a host buffer argument, folding the aperture offset
+// when the target runtime needs it. Both the static binary emitter and the
+// generated C++ builder route through here, so the fold rule has one body.
+inline void txn_append_arg_patch(std::vector<uint32_t> &txn, uint32_t addr,
+                                 int32_t arg_idx, uint64_t arg_plus,
+                                 bool fold_ddr_addr_offset) {
+  if (fold_ddr_addr_offset &&
+      static_cast<uint32_t>(arg_idx) >= kNumFirmwareTranslatedArgs)
+    arg_plus += kDDRAIEAddrOffset;
+  txn_append_address_patch(txn, addr, arg_idx, arg_plus);
 }
 
 // Append a 4-word loadpdi instruction.

@@ -19,12 +19,14 @@
     "programming_examples/ml/eltwise",
     "programming_examples/ml/eltwise_unary",
     "programming_examples/ml/magika",
+    "programming_examples/ml/mm_activation_epilogue",
     "programming_examples/ml/norm",
     "programming_examples/ml/resnet",
     "programming_examples/ml/rope",
     "programming_examples/ml/scale_shift",
     "programming_examples/ml/softmax",
-    "programming_examples/ml/swiglu"
+    "programming_examples/ml/swiglu",
+    "utils/kernel_checks"
   ],
   "exclude": [
     "**/__pycache__",

@@ -24,12 +24,12 @@ module {
 // CHECK: [[ARITH_K:%.+]] = arith.constant 3 : index
 // CHECK: [[K:%.+]] = builtin.unrealized_conversion_cast [[ARITH_K]] : index to i64
 // CHECK: [[PTR:%.+]] = llvm.extractvalue [[STRUCT]][1] : !llvm.struct<(ptr, ptr, i64, array<3 x i64>, array<3 x i64>)>
-// CHECK: [[I_STRIDE:%.+]] = llvm.mlir.constant(2048 : index) : i64
+// CHECK: [[I_STRIDE:%.+]] = llvm.mlir.constant(2048 : i64) : i64
 // CHECK: [[I_OFF:%.+]] = llvm.mul [[I]], [[I_STRIDE]] : i64
-// CHECK: [[J_STRIDE:%.+]] = llvm.mlir.constant(64 : index) : i64
+// CHECK: [[J_STRIDE:%.+]] = llvm.mlir.constant(64 : i64) : i64
 // CHECK: [[J_OFF:%.+]] = llvm.mul [[J]], [[J_STRIDE]] : i64
 // CHECK: [[IJ_OFF:%.+]] = llvm.add [[I_OFF]], [[J_OFF]] : i64
 // CHECK: [[OFF:%.+]] = llvm.add [[IJ_OFF]], [[K]] : i64
 // CHECK: [[EPTR:%.+]] = llvm.getelementptr [[PTR]][[[OFF]]] : (!llvm.ptr, i64) -> !llvm.ptr, i16
 // CHECK: [[VPTR:%.+]] = llvm.bitcast [[EPTR]] : !llvm.ptr to !llvm.ptr
-// CHECK: {{.*}} = llvm.load [[VPTR]] {alignment = 1 : i64} : !llvm.ptr -> vector<16xi16>
+// CHECK: {{.*}} = llvm.load [[VPTR]] <alignment = 1> : !llvm.ptr -> vector<16xi16>

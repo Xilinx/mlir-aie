@@ -33,6 +33,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -67,11 +68,25 @@ template <typename T>
 constexpr bool IsFileLikeV =
     std::is_same_v<T, File> || std::is_same_v<T, Directory>;
 
-// A whole-module clone paired with a pointer to one op inside it. Lambdas
-// see the full surrounding context while `op` identifies the focus.
+// The design module a split's items share. READ-ONLY to its consumers: every
+// consumer that transforms it clones first.
+struct SharedModule {
+  std::shared_ptr<mlir::OwningOpRef<mlir::ModuleOp>> owner;
+
+  SharedModule() = default;
+  explicit SharedModule(mlir::OwningOpRef<mlir::ModuleOp> m)
+      : owner(
+            std::make_shared<mlir::OwningOpRef<mlir::ModuleOp>>(std::move(m))) {
+  }
+
+  mlir::ModuleOp get() const { return owner ? owner->get() : mlir::ModuleOp(); }
+};
+
+// A design module paired with a pointer to one op inside it. Lambdas see the
+// full surrounding context while `op` identifies the focus.
 template <typename KeyOp>
 struct OpInModule {
-  mlir::OwningOpRef<mlir::ModuleOp> module;
+  SharedModule module;
   KeyOp op;
 };
 

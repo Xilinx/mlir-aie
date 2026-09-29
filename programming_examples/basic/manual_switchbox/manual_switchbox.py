@@ -179,7 +179,6 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
                         buffer=in_buf,
                         acquires=[Acquire(in_prod, value=1)],
                         releases=[Release(in_cons, value=1)],
-                        next="self",
                     )
                 ],
             ),
@@ -191,7 +190,6 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
                         buffer=out_buf,
                         acquires=[Acquire(out_cons, value=1)],
                         releases=[Release(out_prod, value=1)],
-                        next="self",
                     )
                 ],
             ),
