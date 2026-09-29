@@ -308,6 +308,13 @@ def _compute_artifact_hash(
         h.update(f"target_arch={target_arch}|target_device={target_device!r}".encode())
         if has_dispatch_params:
             tools["host_cxx"] = _config.host_cxx_path
+        # Library factories pick their sources from this tree when the
+        # generator runs, after the key is taken, so the key names the tree
+        # and its contents, which a candidate edited in place changes.
+        if kernel_tree := os.environ.get("MLIR_AIE_KERNEL_SOURCES"):
+            from aie.utils.benchmark import kernel_tree_digest
+
+            h.update(f"kernel_sources={kernel_tree}|{kernel_tree_digest()}".encode())
     optional = set()
     if full_elf or not insts_only:
         tools["bootgen"] = partial(_config.aiecc_tool_path, "bootgen")

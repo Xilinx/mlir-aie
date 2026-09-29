@@ -1,0 +1,298 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Nightly Kernel Checks on Ryzen AI
+
+# Check aie_kernels on the NPU, record cycles / wall time / compile size via
+# the IRON JIT path, and publish graphs and a catalogue to the site. Never
+# gates PRs. Every run that does not publish gets a report of its failures
+# and of its changes against the last nightly (utils/kernel_checks/pr_report.py)
+# in the job summary; on a Peano PR, the same report is kept as one comment.
+#
+# Runs nightly from main, which publishes and records the baseline, on pull
+# requests that bump the Peano pin, and on demand. Only the nightly and an
+# unfiltered, pinned dispatch on main publish.
+#
+# A kernel that fails its checks costs only its own series a point: the
+# rest of the run still publishes, as long as the NPU checks (preflight and
+# the measurement sanity test) passed. The job still goes red.
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'regex on kernel names (e.g. linalg/)'
+        required: false
+        default: ''
+      peano:
+        description: 'Peano to use instead of the pin: a nightly version, its commit, or a wheel URL'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 6 * * *'          # after the 00:00 test nightly
+  pull_request:
+    paths:
+      - utils/peano-requirements.txt
+
+# A new push to a PR cancels that PR's older runs. Nightly and dispatched runs
+# never share a group, so none is cancelled; the job-level group below still
+# queues every run for the NPU.
+concurrency:
+  group: kernel-checks-run-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PERF_PMODE: performance
+
+jobs:
+  checks:
+    name: Kernel checks (${{ matrix.runner_type }})
+    # Only in-repo branches on self-hosted hardware.
+    if: github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+    # All three labels must be present on a runner for it to be picked, and
+    # any runner carrying them can be: this does not pin a machine, so nightly
+    # runs move between hosts of the same generation. `bench` selects the pool
+    # reserved for timing, and the concurrency group below is what stops two
+    # timing jobs sharing one NPU.
+    runs-on: [self-hosted, bench, "${{ matrix.runner_type }}"]
+    timeout-minutes: 120
+    # Never share an NPU; preserve queued runs (up to GitHub's 100-run limit).
+    concurrency:
+      group: kernel-checks-${{ matrix.runner_type }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner_type: aie2-4col
+            expected_npu: npu1
+          - runner_type: aie2p-8col
+            expected_npu: npu2
+    env:
+      AIE_EXPECTED_NPU: ${{ matrix.expected_npu }}
+      NPU_CACHE_HOME: ${{ github.workspace }}/kernel-checks-cache-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-kernel-checks-${{ github.run_id }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup virtual environment / prerequisites
+        run: source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: Install requested Peano
+        if: ${{ inputs.peano }}
+        env:
+          PEANO: ${{ inputs.peano }}
+          NIGHTLY: https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+        run: |
+          source aie-venv/bin/activate
+          if [[ $PEANO =~ ^https://[^[:space:]]+\.whl$ ]]; then
+            spec=$PEANO
+          elif [[ $PEANO =~ ^[0-9]+(\.[0-9]+)+\+[0-9a-f]+$ ]]; then
+            spec="llvm-aie==$PEANO"
+          elif [[ $PEANO =~ ^[0-9a-f]{7,40}$ ]]; then
+            # Each nightly rebuilds the last commit, so take its newest wheel.
+            versions=$(curl -fsSL "$NIGHTLY" |
+              { grep -oE "llvm_aie-[0-9.]+\+${PEANO:0:8}[0-9a-f]*" || true; } | sort -uV)
+            commits=$(sed 's/.*+//' <<< "$versions" | sort -u)
+            if [ "$(wc -w <<< "$commits")" != 1 ]; then
+              echo "::error::expected one llvm-aie commit matching $PEANO, found: ${commits:-none}"
+              exit 1
+            fi
+            spec="llvm-aie==$(tail -1 <<< "$versions" | sed 's/^llvm_aie-//')"
+          else
+            echo "::error::peano must be a nightly version, a commit, or an https wheel URL"
+            exit 1
+          fi
+          python -m pip install --force-reinstall --no-deps -f "$NIGHTLY" "$spec"
+          echo "Peano: $(python -m pip show llvm-aie | grep '^Version:')" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build from source
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) \
+            -DXRT_ROOT=/opt/xilinx/xrt -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON"
+          ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+
+      - name: NPU preflight and preferred performance mode
+        id: preflight
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          XRT_SMI=$(command -v xrt-smi || command -v xrt-smi.exe)
+          [ -n "$XRT_SMI" ]
+          EXAMINE=$("$XRT_SMI" examine)
+          printf '%s\n' "$EXAMINE"
+          BDF=$(printf '%s\n' "$EXAMINE" | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
+          [ -n "$BDF" ]
+          echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
+          # `performance` = max DPM, clock gating on. `turbo` is refused
+          # while any hwctx is open, so it is not used on shared hosts.
+          # Setting the mode needs root (amdxdna refuses the ioctl otherwise).
+          # Run the exact command in the condition so a denied sudo rule is
+          # non-fatal even when permissions are restricted by argument.
+          if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$PERF_PMODE"; then
+            :
+          else
+            echo "::warning::Cannot set --pmode $PERF_PMODE non-interactively with $XRT_SMI; the performance checks will continue and record the active mode"
+          fi
+          "$XRT_SMI" examine -d "$BDF" --report platform
+
+      - name: Run kernel correctness suite
+        id: correctness
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          source utils/env_setup.sh mlir_aie
+          export XRT_CONTEXT_CACHE_SIZE=2
+          rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
+          # Every case in test/python/npu/kernel_cases.py, under every edge-data
+          # case its contract admits, for three random seeds.
+          python -m pytest test/python/npu/test_kernels_e2e.py -m extensive -v \
+            --junitxml=correctness.xml --seeds 3 2>&1 | tee correctness.log
+
+      - name: Run kernel performance checks
+        id: perf
+        # Runs even if correctness failed, but publication excludes every case
+        # with a failure in the extensive sweep, not just the random re-check.
+        if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          source utils/env_setup.sh mlir_aie
+          export XRT_CONTEXT_CACHE_SIZE=2
+          python -m pytest test/python/npu/test_kernels_perf.py -m perf -v \
+            --perf-out perf.json --perf-meta meta.json --pmode any \
+            --correctness-results correctness.xml \
+            --warmup 10 --iters 50 \
+            ${ONLY:+-k "($ONLY) or test_measurement_is_sane"} 2>&1 | tee perf.log
+          # perf.json holds every kernel that passed, unless the NPU checks
+          # failed, in which case there is none and downstream steps skip.
+          # meta.json is written either way, and lists the failures.
+
+      - name: Write kernel catalogue
+        if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
+        run: |
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          source utils/env_setup.sh mlir_aie
+          args=()
+          [[ -f correctness.xml ]] && args+=(--correctness correctness.xml)
+          [[ -f perf.json ]] && args+=(--perf perf.json)
+          python utils/kernel_checks/catalogue.py --npu "$AIE_EXPECTED_NPU" \
+            "${args[@]}" --out catalogue.json
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: kernel-checks-${{ matrix.expected_npu }}-${{ github.run_id }}
+          path: |
+            perf.json
+            meta.json
+            catalogue.json
+            perf.log
+            correctness.log
+            correctness.xml
+          if-no-files-found: ignore
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf "$NPU_CACHE_HOME" "$PIP_CACHE_DIR"
+
+  report:
+    needs: checks
+    # The nightly publishes instead; the page is its report.
+    if: ${{ !cancelled() && needs.checks.result != 'skipped' && github.event_name != 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # the one report comment on a Peano PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # `pattern`, not `name`: an NPU whose leg produced nothing is reported
+      # as such rather than failing the report.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: kernel-checks-npu1-${{ github.run_id }}
+          path: results/npu1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: kernel-checks-npu2-${{ github.run_id }}
+          path: results/npu2
+      # publishKernelResults.yml saves each NPU's series under this path.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: baseline
+          key: kernel-checks-baseline-npu1-
+          restore-keys: kernel-checks-baseline-npu1-
+      - name: Keep npu1 baseline
+        run: |
+          mkdir -p baselines
+          if [[ -d baseline ]]; then mv baseline baselines/npu1; fi
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: baseline
+          key: kernel-checks-baseline-npu2-
+          restore-keys: kernel-checks-baseline-npu2-
+      - name: Keep npu2 baseline
+        run: |
+          if [[ -d baseline ]]; then mv baseline baselines/npu2; fi
+
+      - name: Write report
+        run: |
+          python3 utils/kernel_checks/pr_report.py --results results \
+            --baselines baselines --out report.md \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Edit the report comment in place, so a PR carries one, current report.
+      - name: Comment on the PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Paginated, --jq runs per page; keep the first match.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- kernel-checks-report -->")) | .id')
+          id=${id%%$'\n'*}
+          if [[ -n "$id" ]]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" \
+              -F body=@report.md > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+              -F body=@report.md > /dev/null
+          fi
+
+  publish:
+    needs: checks
+    # Publish whichever NPUs produced results, even if the other leg failed.
+    # A filtered or re-pinned dispatch would chart a subset or another
+    # compiler into the series, so it never publishes.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.only && !inputs.peano }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publishKernelResults.yml
+    with:
+      static: false

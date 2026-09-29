@@ -22,7 +22,7 @@ from ml_dtypes import bfloat16
 def test_zero_is_an_independent_output_only_kernel(dtype, vectorized):
     fn = kernels.zero((4, 16), dtype, vectorized=vectorized)
     assert Path(fn.source_file).name == "zero.cc"
-    assert Path(fn.source_file).parent.name == "generic"
+    assert Path(fn.source_file).parent.name == "zero"
     assert fn.source_string is None
     assert fn.contract.roles == (Out,)
     assert fn.arg_types() == [np.ndarray[(4, 16), np.dtype[dtype]]]
@@ -99,7 +99,7 @@ def test_zero_device_cases_cover_smoke_and_static_sweeps(monkeypatch, npu2_devic
     from kernel_cases import CASES
 
     cases = [case for case in CASES if case.factory == "zero"]
-    assert len([case for case in cases if case.smoke]) == 3
+    assert len([case for case in cases if case.smoke]) == 4
     names = [case.name for case in cases]
     assert len(names) == len(set(names))
     for case in cases:
