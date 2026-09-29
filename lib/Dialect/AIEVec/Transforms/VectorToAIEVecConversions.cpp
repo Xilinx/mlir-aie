@@ -5075,6 +5075,75 @@ struct ConvertSplatToAIEBroadcastAIE2p
   }
 };
 
+// Rewrite an elementwise op on an n-D vector into the same op on the rank-1
+// vector with the same lane count, between a pair of vector.shape_casts.
+//
+// The AIE2P legality predicates decide with getVectorLaneSize, which is the
+// product of all dimensions, but the patterns that implement them match rank-1
+// operands. Without this, an n-D vector whose lane count is native passes the
+// legality check, finds no pattern, and the conversion reports "failed to
+// legalize ... explicitly marked illegal" -- a promise the patterns do not
+// keep. Flattening first makes the two agree, and leaves the widths as they
+// were.
+//
+// Rank 1 is excluded so this cannot re-match its own output.
+template <typename OpTy>
+struct FlattenElementwiseVectorToRank1Pattern : OpConversionPattern<OpTy> {
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpAdaptor = typename OpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(OpTy op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType || resultType.getRank() == 1 || resultType.isScalable())
+      return failure();
+
+    auto flatResultType = getFlattenedVectorType(resultType);
+    Location loc = op.getLoc();
+
+    SmallVector<Value> flatOperands;
+    flatOperands.reserve(adaptor.getOperands().size());
+    for (Value operand : adaptor.getOperands()) {
+      auto operandType = dyn_cast<VectorType>(operand.getType());
+      if (!operandType) {
+        flatOperands.push_back(operand);
+        continue;
+      }
+      // Only shapes that agree with the result are elementwise; anything else
+      // (a broadcast of a differently shaped vector, say) is left to the
+      // patterns that understand it.
+      if (operandType.getShape() != resultType.getShape())
+        return failure();
+      auto flatOperandType = getFlattenedVectorType(operandType);
+      // A splat constant is rematerialised at the flat type rather than
+      // shape_cast. ConvertDivFToAIEVecInvOpPattern asks whether the dividend's
+      // defining op is an arith.constant of 1.0, and a vector.shape_cast in
+      // front of it would hide that and take the reciprocal out of the one
+      // pattern that can lower it.
+      if (auto cstOp = operand.template getDefiningOp<arith::ConstantOp>()) {
+        if (auto dense = dyn_cast<DenseElementsAttr>(cstOp.getValue())) {
+          if (dense.isSplat()) {
+            flatOperands.push_back(arith::ConstantOp::create(
+                rewriter, loc,
+                DenseElementsAttr::get(flatOperandType,
+                                       dense.getSplatValue<Attribute>())));
+            continue;
+          }
+        }
+      }
+      flatOperands.push_back(
+          vector::ShapeCastOp::create(rewriter, loc, flatOperandType, operand));
+    }
+
+    auto flatOp = OpTy::create(rewriter, loc, TypeRange{flatResultType},
+                               flatOperands, op->getAttrs());
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, resultType,
+                                                     flatOp->getResult(0));
+    return success();
+  }
+};
+
 static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
   populateAIEVecV2CommonConversionPatterns(patterns);
   patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2P>(
@@ -5087,6 +5156,27 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
   patterns
       .add<ConvertMathExpToAIEVecExpOpPattern, ConvertDivFToAIEVecInvOpPattern>(
           patterns.getContext());
+  // Ahead of the patterns above, which all match rank-1 operands while the
+  // legality predicates that select them count lanes across every dimension.
+  // arith.negf is here for a second reason. ComputeNegOpPattern does not
+  // check the rank, so it accepts an n-D operand and emits an n-D aievec.neg;
+  // NegOpAIE2pConversion then builds a 64-entry vector.shuffle mask over it,
+  // and vector.shuffle indexes only the leading dimension -- which is 1 --
+  // so the op fails to verify ("mask index #3 out of range") a whole pass
+  // later, naming neither the rank nor the negate.
+  patterns.add<FlattenElementwiseVectorToRank1Pattern<arith::MulFOp>,
+               FlattenElementwiseVectorToRank1Pattern<arith::DivFOp>,
+               FlattenElementwiseVectorToRank1Pattern<arith::AddFOp>,
+               FlattenElementwiseVectorToRank1Pattern<arith::SubFOp>,
+               FlattenElementwiseVectorToRank1Pattern<arith::NegFOp>,
+               FlattenElementwiseVectorToRank1Pattern<arith::TruncFOp>,
+               FlattenElementwiseVectorToRank1Pattern<arith::ExtFOp>,
+               FlattenElementwiseVectorToRank1Pattern<math::ExpOp>,
+               FlattenElementwiseVectorToRank1Pattern<math::TanhOp>>(
+      // 3 and not 2: the AIE2P-specific tanh and negf patterns below are at 2
+      // and would otherwise take an n-D op before it has been flattened, which
+      // for negf puts the rank straight back into `aievec.neg`.
+      patterns.getContext(), /*benefit=*/3);
   // Higher benefit to take priority over the AIE2 LUT-based tanh pattern
   // registered in the common patterns.
   patterns.add<ConvertMathTanhToAIEVecTanhOpPattern>(patterns.getContext(),
@@ -5698,6 +5788,37 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     // scoped to the rank the aievec patterns match, and leaves n-D negates
     // as they were before this branch.
     return laneSize != 32 || srcType.getRank() != 1;
+  });
+
+  // Narrow the FMA exemption to rank 1. This repeats the AIE2 predicate for
+  // arith.mulf, which AIE2P also runs, changing one thing: a multiply whose
+  // sole user is an add is declared legal there on the promise that
+  // ConvertMulAddFToAIEVecFMAElemOpPattern will fuse the pair. That pattern
+  // looks straight through the add's operand for an arith.mulf, and the add
+  // is rank-1 by the time it gets there, so at any higher rank the promise
+  // cannot be kept: the multiply stays legal, nothing converts it, and it
+  // reaches Peano, which has no bf16 vector fmul at all. Exempting it only at
+  // rank 1 lets FlattenElementwiseVectorToRank1Pattern take it first and hand
+  // the FMA pattern the shape it matches.
+  target.addDynamicallyLegalOp<arith::MulFOp>([](arith::MulFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    auto isAddOp = [](Operation *user) { return isa<arith::AddFOp>(user); };
+    if (resultType.getRank() == 1 && op->hasOneUse() &&
+        llvm::any_of(op->getUsers(), isAddOp))
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (laneSize == 16 && (resultElWidth == 16 || resultElWidth == 32))
+      return false; // illegal - will be converted
+    if (laneSize == 32 && resultElWidth == 16)
+      return false; // illegal - will be split into two v16bf16 ops
+
+    return true; // legal - not supported
   });
 
   // LowerVectorSIToFPI16BF16AIE2pPattern uses vector.shuffle to split
