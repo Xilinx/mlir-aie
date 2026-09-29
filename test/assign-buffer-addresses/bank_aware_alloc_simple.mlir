@@ -7,7 +7,7 @@
 
 // aie-prepare-buffers names the unnamed buffer below; addresses come from the
 // pass after it.
-// RUN: aie-opt --split-input-file --aie-prepare-buffers --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-prepare-buffers --aie-assign-buffer-addresses %s | FileCheck %s
 
 // No core reserves data memory here, so nothing constrains the free run and
 // round-robin gives each buffer its own bank.

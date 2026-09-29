@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // A large stack reservation pushes the first buffer into the bank that covers
 // the top of the stack. Round-robin then moves to the next bank.

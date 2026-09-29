@@ -18,9 +18,12 @@ gelu, silu, swiglu, ...).
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass, replace
+from typing import Callable
 
 import numpy as np
 from aie.utils.benchmark import print_benchmark
+from ml_dtypes import bfloat16
 
 _DEFAULT_RTOL = 0.128
 
@@ -144,6 +147,7 @@ def assert_close_with_benchmark(
     gflops_fmt: str = ".2f",
     float_rtol: float = 0.05,
     float_atol: float = 0.5,
+    tolerance: "Tolerance | None" = None,
     fail_msg: str | None = None,
     mismatch_indices: bool = False,
 ) -> None:
@@ -152,7 +156,9 @@ def assert_close_with_benchmark(
     Wraps the standard matmul/vector_scalar_mul tail in one call.  Picks
     the comparator based on ``expected``'s dtype: integer dtypes use the
     exact compare (``np.array_equal``), float dtypes use the tolerance
-    compare with ``rtol=float_rtol`` / ``atol=float_atol``.
+    compare with ``rtol=float_rtol`` / ``atol=float_atol``. A kernel's own
+    ``Tolerance`` (``fn.contract.tolerance``) can be passed instead and
+    is judged by ``compare``, whatever the dtype.
 
     Args:
         actual: Array-like produced by the kernel under test.
@@ -173,6 +179,8 @@ def assert_close_with_benchmark(
             Defaults match the C++ matmul harness's get_*_tol.
         fail_msg: Optional context appended to the ``FAIL!`` line on
             mismatch.
+        tolerance: The kernel's declared ``Tolerance``; when given it
+            replaces the dtype-selected comparator above.
         mismatch_indices: When True (and the integer branch detects a
             mismatch), append the first five mismatch ``np.argwhere``
             indices to the ``FAIL!`` line — useful for matmul-style
@@ -181,7 +189,12 @@ def assert_close_with_benchmark(
     Raises:
         SystemExit: On mismatch (via `assert_pass`).
     """
-    if np.issubdtype(np.asarray(expected).dtype, np.integer):
+    if tolerance is not None:
+        verdict = compare(np.asarray(actual), np.asarray(expected), tolerance)
+        if not verdict:
+            base = "output mismatch" if fail_msg is None else fail_msg
+            sys.exit(f"FAIL! {base}: {verdict.detail}")
+    elif np.issubdtype(np.asarray(expected).dtype, np.integer):
         if mismatch_indices and not bool(np.array_equal(actual, expected)):
             diffs = np.argwhere(np.asarray(actual) != np.asarray(expected))[:5]
             base = "output mismatch" if fail_msg is None else fail_msg
@@ -203,3 +216,436 @@ def assert_close_with_benchmark(
         gflops = ops / (1000 * bench.npu.avg_us)
         print(f"NPU GFLOPS                    : {gflops:{gflops_fmt}}")
     print("PASS!")
+
+
+# ---------------------------------------------------------------------------
+# Tolerance contracts and a dtype-aware comparator
+# ---------------------------------------------------------------------------
+#
+# ``nearly_equal`` / ``count_mismatches`` above are the canonical loose
+# comparators the examples use. Kernel regression testing needs the contract
+# to be an object a kernel can own -- "bit-exact", "within 1 bf16 ULP",
+# "rtol 0.128 as the LUT documents" -- so the same tolerance drives the
+# correctness suite, the benchmark gate and the e2e tests without each of
+# them choosing a number. ``Tolerance`` is that object; ``compare`` applies
+# it and reports what went wrong, not just whether.
+
+
+@dataclass(frozen=True)
+class Tolerance:
+    """How close a kernel's output must be to its reference.
+
+    Exactly one of four kinds, chosen by which fields are set:
+
+    * **exact** -- no field set: bit-equal after casting the reference to
+      the output dtype. Integers, selections (relu, max), lossless copies.
+    * **ulps** -- ``ulps`` set: bf16 outputs within ``ulps`` units in the
+      last place of the correctly rounded reference. ``atol`` may be set
+      alongside as a floor, admitting an element that meets *either* -- what a
+      kernel needs when the device flushes subnormals to zero, since a flushed
+      value is a full 100% relative and dozens of ulps from the reference but
+      absolutely negligible. ``rtol`` stays unset, or the kind is relative.
+    * **relative** -- ``rtol``/``atol`` set: the canonical
+      ``|a - b| < max(atol, rtol * (|a| + |b|))`` of ``nearly_equal``.
+      Integer outputs are compared with the same formula in exact integer
+      arithmetic, so ``lsb`` (``atol = n + 0.5``) admits an ``n``-LSB
+      slack for fixed-point pixel kernels whose rounding shift is not
+      modeled; under **exact** and **ulps** integers stay bit-equal.
+    * **bound** -- ``bound`` set: ``|a - b| <= bound(*args)`` element by
+      element, where ``args`` are the reference's own arguments. For a
+      floating-point kernel whose error is set by where its input falls
+      rather than by what it produced -- an approximation exact in one range
+      and a few ulps off in another -- so any one ``rtol``/``atol`` is either
+      loose everywhere or unsound somewhere. ``compare`` takes the
+      evaluated bound; ``ExternalFunction.judge`` evaluates it from the
+      inputs it is given.
+
+    Non-finite values are never skipped: NaN must meet NaN, and an infinity
+    must meet an infinity of the same sign, under every kind.
+
+    ``range_frac`` adds a floor scaled to the reference's own range: an element
+    also passes at ``|a - b| <= range_frac * max|b|``. It is for a kernel whose
+    error is set by the magnitudes it worked from rather than by the magnitude
+    it produced -- a dot product whose terms cancel to near zero is no less
+    accurate than its neighbours, but an elementwise relative bound reads it as
+    100% wrong. The scale comes from ``expected``, never from ``actual``, so a
+    kernel cannot widen its own tolerance by returning something large. Unlike
+    ``atol`` it follows the data: the same fraction holds whether the outputs
+    run to 34 or to 3.4e9, where a fixed floor would be either dead or
+    permissive. Set it from a measured worst case, and say so in ``note``.
+
+    ``max_mismatch_frac`` allows that fraction of elements to miss (LUT tails,
+    saturation edges). ``note`` records where the number came from -- a
+    docstring, a device run, a testbench default -- so a reviewer can tell an
+    evidenced tolerance from a guessed one.
+    """
+
+    rtol: float | None = None
+    atol: float | None = None
+    ulps: int | None = None
+    range_frac: float | None = None
+    max_mismatch_frac: float = 0.0
+    note: str = ""
+    bound: Callable | None = None
+
+    def __post_init__(self):
+        if self.bound is not None and (
+            self.rtol is not None
+            or self.atol is not None
+            or self.ulps is not None
+            or self.range_frac is not None
+        ):
+            raise ValueError(
+                "a bound tolerance is the whole comparison; fold any rtol, atol, "
+                "ulps or range_frac floor into the bound itself"
+            )
+        if self.range_frac is None:
+            return
+        if self.range_frac <= 0:
+            raise ValueError(f"range_frac must be positive, got {self.range_frac}")
+        if self.kind == "exact":
+            raise ValueError(
+                "range_frac needs a tolerance to be a floor under; set rtol, atol "
+                "or ulps as well, or drop it -- an exact comparison admits nothing"
+            )
+
+    @property
+    def kind(self) -> str:
+        if self.bound is not None:
+            return "bound"
+        if self.ulps is not None:
+            return "ulps"
+        if self.rtol is not None or self.atol is not None:
+            return "relative"
+        return "exact"
+
+    @classmethod
+    def exact(cls, *, note: str = "") -> "Tolerance":
+        return cls(note=note)
+
+    @classmethod
+    def bf16_ulps(
+        cls,
+        n: int = 1,
+        *,
+        atol: float | None = None,
+        max_mismatch_frac: float = 0.0,
+        note: str = "",
+    ) -> "Tolerance":
+        """bf16 outputs within ``n`` ulps of the correctly rounded reference.
+
+        ``atol`` is an optional strict bound (``error < atol``) an element may
+        meet instead of the ulp bound. Use it for the device's subnormal flush
+        to zero, set to the smallest normal bf16 so it admits the flushed
+        values and nothing above them.
+        """
+        return cls(ulps=n, atol=atol, max_mismatch_frac=max_mismatch_frac, note=note)
+
+    @classmethod
+    def relative(
+        cls,
+        rtol: float = _DEFAULT_RTOL,
+        atol: float | None = None,
+        *,
+        range_frac: float | None = None,
+        max_mismatch_frac: float = 0.0,
+        note: str = "",
+    ) -> "Tolerance":
+        return cls(
+            rtol=rtol,
+            atol=atol,
+            range_frac=range_frac,
+            max_mismatch_frac=max_mismatch_frac,
+            note=note,
+        )
+
+    @classmethod
+    def bounded(
+        cls, bound: Callable, *, max_mismatch_frac: float = 0.0, note: str = ""
+    ) -> "Tolerance":
+        """Each element within ``bound(*args)`` of the reference, absolutely.
+
+        ``bound`` takes the reference's arguments and returns one
+        non-negative bound per output element, shaped like the reference's
+        result (a tuple of them for several outputs). Derive it from the
+        kernel's arithmetic and say in ``note`` which parts were measured.
+        """
+        return cls(bound=bound, max_mismatch_frac=max_mismatch_frac, note=note)
+
+    @classmethod
+    def lsb(
+        cls, n: int = 1, *, max_mismatch_frac: float = 0.0, note: str = ""
+    ) -> "Tolerance":
+        """Integer outputs within ``n`` least-significant bits of the reference.
+
+        For fixed-point kernels whose final saturating shift may round or
+        truncate (the AIE ``srs`` rounding mode is a core setting the kernel
+        does not fix). ``rtol`` is zero: the slack is absolute.
+        """
+        return cls(
+            rtol=0.0, atol=n + 0.5, max_mismatch_frac=max_mismatch_frac, note=note
+        )
+
+    @classmethod
+    def default_for(cls, dtype) -> "Tolerance":
+        """Return the contract a kernel gets when it declares none.
+
+        Integer and boolean outputs are bit-exact. bfloat16 outputs get the
+        repository's canonical ``rtol=0.128``, the C++ testbench default that
+        the LUT-approximated kernels document; float32 outputs are held to
+        ``rtol=1e-4`` (a few float32 ULPs of accumulation-order slack, far
+        inside what a bf16 tolerance would hide) and float16 to ``1e-2``.
+        """
+        dt = np.dtype(dtype)
+        if np.issubdtype(dt, np.integer) or dt == np.bool_:
+            return cls.exact(note="default: integer output")
+        if dt == np.dtype(np.float32) or dt == np.dtype(np.float64):
+            return cls.relative(1e-4, note="default: float32 output")
+        if dt == np.dtype(np.float16):
+            return cls.relative(1e-2, note="default: float16 output")
+        return cls.relative(_DEFAULT_RTOL, note="default: canonical bf16/LUT rtol")
+
+
+@dataclass
+class Verdict:
+    """Outcome of ``compare``. Truthy when the comparison passed."""
+
+    ok: bool
+    n_checked: int
+    n_mismatch: int
+    max_abs_err: float
+    max_ulp_err: int | None
+    first_bad_index: int | None
+    detail: str
+
+    def __bool__(self) -> bool:
+        return self.ok
+
+
+def bf16_ulp_distance(a, b) -> np.ndarray:
+    """Element-wise distance between two bf16 arrays in units in the last place.
+
+    Bit patterns are mapped to a monotonic integer scale (sign-magnitude to
+    two's-complement style) so the distance is a plain subtraction. -0 and +0
+    map to the same point, so a kernel that produces the other zero is not
+    penalized.
+    """
+
+    def ordinal(x):
+        bits = np.asarray(x).astype(bfloat16).view(np.uint16).astype(np.int32)
+        return np.where(bits & 0x8000, 0x8000 - bits, bits)
+
+    return np.abs(ordinal(a) - ordinal(b))
+
+
+def poisoned(n: int, dtype) -> np.ndarray:
+    """Return an ``n``-element buffer filled with a value no kernel would write.
+
+    An output buffer left as zeros lets a kernel that never writes pass a
+    comparison against a reference that happens to be zeros. Filling it with
+    0x55 bytes first means silence fails.
+    """
+    return np.full(n * np.dtype(dtype).itemsize, 0x55, dtype=np.uint8).view(dtype)
+
+
+def compare(
+    actual,
+    expected,
+    tol: Tolerance | None = None,
+    *,
+    range_axis: int | None = None,
+    bound=None,
+) -> Verdict:
+    """Compare a kernel's ``actual`` output with a reference under ``tol``.
+
+    ``expected`` may be higher precision than ``actual`` (a float64 sum, an
+    int64 product); it is cast to ``actual.dtype``, so the kernel is held to
+    what a correctly rounded implementation would produce. With ``tol=None``
+    the output dtype's ``Tolerance.default_for`` applies.
+
+    ``range_axis`` selects the axis reduced to compute ``range_frac``'s
+    reference scale. For ``(calls, tile)`` arrays, use 1 to scale each call
+    independently. The default uses the whole reference array.
+
+    ``bound`` is a **bound** tolerance's per-element limit, already
+    evaluated on the inputs and broadcastable to ``expected``.
+
+    This measures; it does not model. What a kernel does on overflow, on a
+    narrowing store, or with subnormal inputs belongs in the reference that
+    produced ``expected`` -- a saturating kernel's reference clips, a
+    denormal-flushing kernel's reference flushes. A reference that leaves the
+    output range is reported as such when the comparison fails, since it
+    means the reference is under-specified rather than the kernel wrong.
+    """
+    actual = np.asarray(actual)
+    expected = np.asarray(expected)
+    if tol is None:
+        tol = Tolerance.default_for(actual.dtype)
+    if actual.shape != expected.shape:
+        return Verdict(
+            False,
+            0,
+            0,
+            float("inf"),
+            None,
+            None,
+            f"shape mismatch {actual.shape} vs {expected.shape}",
+        )
+    if tol.kind == "bound":
+        if bound is None:
+            raise ValueError(
+                "a bound tolerance needs its bound evaluated on the inputs; "
+                "pass bound=, or judge through the kernel with inputs="
+            )
+        if not np.issubdtype(actual.dtype, np.floating) and actual.dtype != bfloat16:
+            raise ValueError(
+                f"a bound tolerance is for floating-point outputs, got {actual.dtype}"
+            )
+    a, e, n = actual.ravel(), expected.ravel(), actual.size
+
+    def ref_scale(ref) -> float | np.ndarray:
+        """Return max|ref| over finite entries.
+
+        This is what ``range_frac`` is a fraction of, or zero when no range
+        floor is in play.
+        """
+        if tol.range_frac is None or not n:
+            return 0.0
+        mag = np.abs(np.asarray(ref, dtype=np.float64).reshape(expected.shape))
+        mag = np.where(np.isfinite(mag), mag, 0.0)
+        scale = mag.max(axis=range_axis, keepdims=True, initial=0.0)
+        if range_axis is None:
+            return float(scale.item())
+        return np.broadcast_to(scale, expected.shape).ravel()
+
+    # Integers: bit-exact under exact / ulps; under a relative tolerance the
+    # nearly_equal formula in int64 (Tolerance.lsb sets atol = n + 0.5).
+    if np.issubdtype(actual.dtype, np.integer) or actual.dtype == np.bool_:
+        n_over = 0
+        if actual.dtype != np.bool_ and np.issubdtype(e.dtype, np.integer):
+            info = np.iinfo(actual.dtype)
+            e_wide = e.astype(np.int64)
+            n_over = int(np.count_nonzero((e_wide < info.min) | (e_wide > info.max)))
+        e_cast = e.astype(actual.dtype)
+        a64, e64 = a.astype(np.int64), e_cast.astype(np.int64)
+        err = np.abs(a64 - e64)
+        scale = ref_scale(e64)
+        if tol.kind == "relative":
+            bound = np.maximum(
+                tol.atol or 0.0,
+                (tol.rtol or 0.0) * (np.abs(a64) + np.abs(e64)),
+            )
+            close = err < bound
+            if tol.range_frac is not None:
+                close |= err <= tol.range_frac * scale
+            bad = ~close
+        else:
+            bad = a != e_cast
+        v = _verdict(bad, err, None, tol, n, ref_range=scale)
+        if n_over and not v.ok:
+            # Not a policy, a diagnostic: the reference left the output range,
+            # so what the device did there says nothing about the kernel.
+            v = replace(
+                v,
+                detail=f"{v.detail}; the reference overflows "
+                f"{np.dtype(actual.dtype).name} in {n_over} of {n} elements, so "
+                "it does not model what the kernel does there (clip for a "
+                "saturating kernel, cast for a wrapping one)",
+            )
+        return v
+
+    a32, e32 = a.astype(np.float32), e.astype(np.float32)
+    a_nan, e_nan = np.isnan(a32), np.isnan(e32)
+    a_inf, e_inf = np.isinf(a32), np.isinf(e32)
+    nonfinite_bad = (a_nan != e_nan) | (a_inf != e_inf) | (a_inf & e_inf & (a32 != e32))
+    finite = ~(a_nan | e_nan | a_inf | e_inf)
+    err = np.zeros(n, np.float64)
+
+    if tol.kind == "ulps":
+        if actual.dtype != bfloat16:
+            raise ValueError(
+                f"Tolerance in ULPs is defined for bfloat16 outputs, got {actual.dtype}"
+            )
+        e_bf = e32.astype(bfloat16)
+        ulp = np.zeros(n, np.int64)
+        ulp[finite] = bf16_ulp_distance(a[finite], e_bf[finite])
+        err[finite] = np.abs(a32[finite] - e_bf[finite].astype(np.float32))
+        max_ulps = tol.ulps if tol.ulps is not None else 0
+        within = ulp <= max_ulps
+        scale = ref_scale(e_bf.astype(np.float32))
+        if tol.atol is not None:
+            within |= err < tol.atol
+        if tol.range_frac is not None:
+            within |= err <= tol.range_frac * scale
+        bad = nonfinite_bad | (finite & ~within)
+        return _verdict(bad, err, ulp, tol, n, nonfinite_bad, ref_range=scale)
+
+    if tol.kind == "bound":
+        limit = np.broadcast_to(np.asarray(bound, np.float64), expected.shape).ravel()
+        err[finite] = np.abs(a32[finite].astype(np.float64) - e32[finite])
+        bad = nonfinite_bad | (finite & ~(err <= limit))
+        return _verdict(bad, err, None, tol, n, nonfinite_bad, limit=limit)
+
+    if tol.kind == "exact":
+        e_cast = e32.astype(actual.dtype).astype(np.float32)
+        err[finite] = np.abs(a32[finite] - e_cast[finite])
+        bad = nonfinite_bad | (finite & (a32 != e_cast))
+        return _verdict(bad, err, None, tol, n, nonfinite_bad)
+
+    err[finite] = np.abs(a32[finite].astype(np.float64) - e32[finite])
+    scale = ref_scale(e32)
+    close = nearly_equal(a32, e32, rtol=tol.rtol or 0.0, atol=tol.atol)
+    if tol.range_frac is not None:
+        close |= err <= tol.range_frac * scale
+    bad = nonfinite_bad | (finite & ~close)
+    return _verdict(bad, err, None, tol, n, nonfinite_bad, ref_range=scale)
+
+
+def _verdict(
+    bad,
+    err,
+    ulp,
+    tol: Tolerance,
+    n: int,
+    nonfinite_bad=None,
+    ref_range: float | np.ndarray = 0.0,
+    limit: np.ndarray | None = None,
+) -> Verdict:
+    n_bad = int(np.count_nonzero(bad))
+    # A non-finite mismatch must fail regardless of max_mismatch_frac: that
+    # budget is for how close a finite value came, not for whether NaN/Inf
+    # values were reproduced at all.
+    n_nonfinite_bad = (
+        int(np.count_nonzero(nonfinite_bad)) if nonfinite_bad is not None else 0
+    )
+    ok = n_nonfinite_bad == 0 and n_bad <= int(np.floor(tol.max_mismatch_frac * n))
+    first = int(np.argmax(bad)) if n_bad else None
+    max_ulp = int(ulp.max()) if ulp is not None and n else None
+    max_err = float(err.max()) if n else 0.0
+    if ok:
+        detail = "ok"
+    else:
+        detail = f"{n_bad}/{n} mismatches; first at flat index {first}; max_abs_err={max_err:.4g}"
+        if max_ulp is not None:
+            detail += f"; max_ulp={max_ulp}"
+        if np.any(np.asarray(ref_range) > 0):
+            # The quantity range_frac is stated in, so a failure says directly
+            # whether the bound wants raising or the kernel is wrong.
+            fractions = np.divide(
+                err,
+                ref_range,
+                out=np.where(err == 0, 0.0, np.inf),
+                where=np.asarray(ref_range) > 0,
+            )
+            detail += (
+                f"; max_abs_err/max|expected|={float(fractions.max()):.4g}"
+                f" vs range_frac={tol.range_frac:.4g}"
+            )
+        if limit is not None and n:
+            ratio = np.divide(
+                err, limit, out=np.where(err == 0, 0.0, np.inf), where=limit > 0
+            )
+            detail += f"; worst abs_err/bound={float(ratio.max()):.4g}"
+        if tol.note:
+            detail += f" [{tol.kind}: {tol.note}]"
+    return Verdict(ok, n, n_bad, max_err, max_ulp, first, detail)

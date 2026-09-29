@@ -18,8 +18,8 @@ ruff
 # Static analysis for C++ (see .clang-tidy and docs/CONTRIBUTING.md's
 # clang-tidy section). Unlike clang-format, needs a real build
 # (compile_commands.json) to run -- see utils/run_clang_tidy.sh. Pin matches
-# clang-format's pinned version (aminya/setup-cpp in lintAndFormat.yml) so
-# this repo tracks one clang-tool version instead of two.
+# the clang-format version used in CI so this repo tracks one clang-tool
+# version instead of two where practical.
 clang-tidy==22.1.8
 # nanobind ABI-couples to the prebuilt mlir distro wheel (built against the
 # same version); a mismatch breaks Value-subclass recognition at runtime. Keep

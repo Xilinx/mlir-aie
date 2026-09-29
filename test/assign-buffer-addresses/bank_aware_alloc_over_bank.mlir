@@ -9,7 +9,7 @@
 // The spread is not a bound on how large a buffer may be, so a buffer that fits
 // in no single bank straddles bank boundaries.
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // A 512 kB memtile as 8 banks of 64 kB, completely empty. The 128 kB buffer is
 // larger than a bank and takes bank 0 onward.

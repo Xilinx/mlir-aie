@@ -14,6 +14,7 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects.aie import (
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     LogicalTileOp,
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
@@ -48,6 +49,36 @@ class Device(Resolvable):
         """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
         return AIEArch(self._tm.get_target_arch())
 
+    @property
+    def core_memory_bytes(self) -> int:
+        """Data memory local to one compute tile."""
+        return self._tm.get_local_memory_size()
+
+    @property
+    def default_core_stack_bytes(self) -> int:
+        """Stack a Worker gets when nothing it calls declares a larger need."""
+        return self._tm.get_default_core_stack_size()
+
+    @property
+    def core_dma_channels_in(self) -> int:
+        """Input DMA channels a compute tile has, and so the most fifos one can be fed."""
+        row = next(
+            r
+            for r in range(self.rows)
+            if self.get_tile_type(0, r) is AIETileType.CoreTile
+        )
+        return self._tm.get_num_dest_switchbox_connections(0, row, WireBundle.DMA)
+
+    @property
+    def core_dma_channels_out(self) -> int:
+        """Output DMA channels available on a compute tile."""
+        row = next(
+            r
+            for r in range(self.rows)
+            if self.get_tile_type(0, r) is AIETileType.CoreTile
+        )
+        return self._tm.get_num_source_switchbox_connections(0, row, WireBundle.DMA)
+
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""
         if col < 0 or col >= self._tm.columns() or row < 0 or row >= self._tm.rows():
@@ -60,6 +91,42 @@ class Device(Resolvable):
         """Return the AIETileType for the given device coordinates."""
         self._validate_coordinates(col, row)
         return AIETileType(self._tm.get_tile_type(col, row))
+
+    def get_dma_bd_wrap_bits(self, col, row) -> int:
+        """Wrap (size) field width, in bits."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_wrap_bits(col, row)
+
+    def get_dma_bd_step_bits(self, col, row) -> int:
+        """Step (stride) field width, in bits. The field counts address granules."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_step_bits(col, row)
+
+    def get_dma_bd_iter_bits(self, col, row) -> int:
+        """Return the iteration (repeat) field width, in bits."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_iter_bits(col, row)
+
+    @property
+    def address_gen_granularity(self) -> int:
+        """Address-generation granularity of the device, in bits."""
+        return self._tm.get_address_gen_granularity()
+
+    def get_num_bds(self, tile_type: AIETileType) -> int:
+        """Return how many DMA buffer descriptors (BDs) a tile of ``tile_type`` has.
+
+        The BD budget is per tile TYPE, not per coordinate, and it is not
+        uniform: on AIE2, a MemTile has 48 BDs while a CoreTile and a
+        ShimNOCTile both have 16 — the same count for two different roles.
+        Callers must name the tile type they mean rather than hardcode a
+        BD count, since "16" is only right for two of the three types and
+        silently wrong for the third.
+        """
+        for row in range(self.rows):
+            for col in range(self.cols):
+                if self.get_tile_type(col, row) == tile_type:
+                    return self._tm.get_num_bds(col, row)
+        raise ValueError(f"Device has no tile of type {tile_type!r}")
 
     def resolve_tile(
         self,
@@ -96,7 +163,6 @@ class Device(Resolvable):
             tile_type,
             col=tile.col,
             row=tile.row,
-            allocation_scheme=tile.allocation_scheme,
             loc=loc,
             ip=ip,
             packet_type=tile.packet_type,

@@ -409,6 +409,10 @@ jobs:
           # .xclbin matches this runner. Set before the loop so the retry sees them.
           export AIE_XCLBINUTIL="$PWD/install/bin/xclbinutil"
           export NPU2=1
+          # Per-process share of the device's hardware contexts, matching
+          # XRT_CONTEXT_CACHE_SIZE in the XRT jobs -- this box runs several of
+          # these concurrently against one 16-context pool.
+          export HRX_EXE_CACHE_SIZE=2
 
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
 

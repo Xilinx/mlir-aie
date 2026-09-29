@@ -13,7 +13,7 @@ repos:
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: 34b241d706d24e4ccb69e38f9f0fa190b5f486ec  # frozen: v23.1.0
+  rev: e2b496dc2bd8340c2524cb9a2d2a943cde1bb6df  # frozen: v23.1.1
   hooks:
     - id: clang-format
       # Keep this extension list in sync with lintAndFormat.yml's clang-format
@@ -53,7 +53,7 @@ repos:
         )$
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: 321478e58f4938179c6b86e4ddfa923d1547a49b  # frozen: v0.16.6
+  rev: e8f7d69b957a30acb2c875078d5fd012de24b64c  # frozen: v0.16.7
   hooks:
     - id: ruff-check
       stages: [pre-push]
@@ -69,7 +69,8 @@ repos:
           python/(iron|utils|helpers|compiler)/.*\.py|
           programming_examples/(algorithms|basic|getting_started|vision)/.*\.py|
           programming_examples/lit\.cfg\.py|
-          programming_examples/ml/(block_datatypes|mobilenet|bottleneck|conv2d|conv2d_14x14|eltwise|eltwise_unary|magika|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py
+          programming_examples/ml/(block_datatypes|mobilenet|bottleneck|cast_f32_bf16|conv2d|conv2d_14x14|dwconv1d|eltwise|eltwise_unary|magika|mm_activation_epilogue|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py|
+          utils/kernel_checks/.*\.py
         )$
 
 # Baseline hygiene: validators run on every commit, fixers gated to pre-push

@@ -1,0 +1,17 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Build+run via CMake + ctest (no make; works on Windows).
+// add_aie_run_test's ctest already wraps run_on_npu.py, so ctest runs directly.
+// Targets whichever NPU generation is actually present (npu1 or npu2).
+//
+// -DPython3_EXECUTABLE pins the JIT to the interpreter lit itself runs on, so
+// the design build cannot pick up a Python without `aie`/numpy -- on Windows
+// CMake otherwise resolves the interpreter from the registry.
+// --timeout bounds ctest itself; each test also carries its own TIMEOUT.
+//
+// REQUIRES: ryzen_ai, peano, cmake_examples
+//
+// RUN: cmake -G Ninja -S %S -B %t.cmake -DAIE_DEVICE=%aie_cmake_device% -DTARGET_NAME=vector_reduce_min -DPython3_EXECUTABLE=%python
+// RUN: cmake --build %t.cmake
+// RUN: ctest --test-dir %t.cmake --output-on-failure --no-tests=error --timeout 300

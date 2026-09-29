@@ -27,6 +27,20 @@ inline std::string coreFrameSymbolName(int col, int row) {
   return name;
 }
 
+// Section a kernel puts a static in to pin it to a memory bank, and the linker
+// script region that section lands in. A kernel writes the section name and the
+// script emitter writes the region, so both come from here.
+inline std::string bankSectionName(int bank) {
+  return ".aie.bank" + std::to_string(bank);
+}
+
+inline std::string bankRegionName(int bank) {
+  return "bank" + std::to_string(bank);
+}
+
+// The letter chess spells the same bank with, in `chess_storage(DM_bank<L>)`.
+inline char bankLetter(int bank) { return static_cast<char>('A' + bank); }
+
 } // namespace xilinx::AIE
 
 #endif // AIE_DIALECT_AIE_IR_AIECORESYMBOLS_H

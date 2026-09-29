@@ -35,7 +35,6 @@ def emit_strided_bd():
                         length=n,
                         sizes=[16, 16],
                         strides=[16, 1],
-                        next="self",
                     ),
                 ],
             ),

@@ -66,9 +66,11 @@ without needing each one attached at build time.
 Some `aie.iron.kernels` factories pick a different MMUL geometry per
 arch — `kernels.mm(int16, int16)` is `(r, s, t) = (4, 4, 4)` on AIE2
 (Phoenix) but `(4, 4, 8)` on AIE2P (Strix).  The chosen geometry is
-exposed on the returned `ExternalFunction` as `.mac_dims`, so designs
-can drive their DMA-layout transforms from the kernel itself instead
-of hardcoding for one arch:
+declared on the contract's operand layouts (`fn.contract.layouts[i].block`)
+and read back as `.mac_dims` on the returned `MatrixKernel`, with the
+matching DMA transforms as `.stream_dims`, so designs can drive their
+DMA-layout transforms from the kernel itself instead of hardcoding for one
+arch:
 
 ```python
 import aie.iron as iron
@@ -112,6 +114,35 @@ The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of t
 ```bash
 export XRT_CONTEXT_CACHE_SIZE=1
 ```
+
+## IRON HRX Runtime Cache Size
+
+`HRX_EXE_CACHE_SIZE` bounds the loaded-executable cache in `CachedHRXRuntime`.
+The default is 6 on NPU1 and 16 on NPU2. Each executable holds a hardware
+context, so concurrent processes should use a smaller per-process share:
+
+```bash
+export HRX_EXE_CACHE_SIZE=2
+```
+
+`0` disables caching. Eviction does not release executables held by live kernel
+handles. `DispatchTime` designs cache the xclbin image, not per-call executables.
+
+## Dispatch-time scalar compilation
+
+`DispatchTime[T]` requires a host C++17 compiler, including with wheel
+installations, to build the host library from
+[`aiecc`'s generated C++](../tools/aiecc/README.md#parameterized-c-transaction-builders).
+`CXX` selects the compiler executable; otherwise IRON searches for `c++`,
+`g++`, then `clang++`, excluding Peano's device-toolchain directory.
+
+```bash
+CXX=/usr/bin/clang++ python my_design.py
+```
+
+Runtime headers are resolved from the installation first, with a configured
+source-tree fallback for uninstalled builds. Each dispatch calls the compiled
+library in-process; it does not launch a compiler.
 
 ## Host-runtime backend selection (`NPU_RUNTIME`)
 
@@ -170,7 +201,7 @@ Python locates `libhrx` in this order (filesystem only — no `dlopen`). Explici
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `IRON_HRX_DEVICE` | auto-detect | Force the amdxdna device generation (`npu1` / `npu2`) instead of detecting it from sysfs PCI IDs. |
-| `HRX_EXE_CACHE_SIZE` | `32` | Max number of amdxdna executables the `CachedHRXRuntime` keeps (LRU). |
+| `HRX_EXE_CACHE_SIZE` | [Device-dependent](#iron-hrx-runtime-cache-size) | Max number of amdxdna executables the `CachedHRXRuntime` keeps (LRU). |
 | `IRON_HRX_TIMEOUT` | `0` (disabled) | Watchdog timeout, in seconds, bounding the wait in `hrx_stream_synchronize`. `0`, unset, or an invalid value disables the watchdog. On expiry a diagnosable error is raised (the underlying sync cannot be cancelled). |
 
 ```bash
@@ -235,6 +266,21 @@ only the versioned name.
 NPU_RUNTIME=hsa ROCM_PATH=/opt/rocm-7.0 IRON_HSA_DEVICE=npu2 \
   HSA_EXE_CACHE_SIZE=8 IRON_HSA_TIMEOUT=30 python my_script.py
 ```
+
+### HSA hardware tests
+
+On a provisioned HSA NPU host, `AIE_HSA_NPU=npu1` or `npu2` enables lit's
+`hsa_npu` feature without XRT discovery. It neither installs ROCm nor overrides
+HSA device detection; finding ROCm alone does not enable tests on GPU-only hosts.
+
+```bash
+AIE_HSA_NPU=npu2 llvm-lit -sv build/test/python/npu/test_dispatch_time_scalar.py \
+  build/test/python/npu/test_hsa_dispatch.py
+```
+
+The tests select `NPU_RUNTIME=hsa`; lit forwards `ROCM_PATH`, `IRON_HSA_DEVICE`,
+and `IRON_HSA_TIMEOUT`. Coverage includes real allocation/free calls and cleanup
+after both pre- and post-publication failures.
 
 ### Limitations
 
@@ -341,3 +387,36 @@ generator body.
 Prefer explicit `CompileTime[T]` parameters when you can; reserve
 `compile_context` for the cases where threading the value through every
 helper signature would obscure the design.
+
+## Kernel sources (`MLIR_AIE_KERNEL_SOURCES`)
+
+The kernel factories compile from the installed tree's `aie_kernels/` and
+`aie_runtime_lib/`. Point `MLIR_AIE_KERNEL_SOURCES` at a checkout to compile
+that checkout's kernel sources instead, against an otherwise-installed wheel:
+
+```bash
+MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python3 my_design.py
+```
+
+This is how `aie.utils.compile.remarks` reads a checkout's kernels without
+building the rest of it.
+
+## Kernel compile parallelism (`AIE_KERNEL_COMPILE_JOBS`)
+
+External kernels are compiled in parallel, one process per distinct kernel,
+defaulting to `os.cpu_count()`. Set `AIE_KERNEL_COMPILE_JOBS` to cap that — on
+a shared machine, or to serialize the build when a compiler error is easier to
+read one at a time. Values below 1 mean the default.
+
+## Peano location (`PEANO_INSTALL_DIR`)
+
+Where the Peano (`llvm-aie`) toolchain lives. Set at build time, and
+overridable here for a Peano built or installed somewhere else. When neither
+resolves to an existing directory, the install area's own copy is used.
+
+## Expected NPU for the test suite (`AIE_EXPECTED_NPU`)
+
+`npu1` or `npu2`. lit normally discovers the attached device; setting this
+asserts which one the suite is meant to run against, so a machine that comes
+up as the other generation fails loudly instead of silently skipping every
+device test.

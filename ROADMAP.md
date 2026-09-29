@@ -23,7 +23,7 @@ Things actively being worked on.
 ## Next
 Planned for the near future.
 
-- [ ] Consolidate reusable aie2p kernels — upstream generic transformer/conv kernels (transpose, depthwise conv, higher-precision activations, fused matmul epilogues) authored for an external inference engine into `aie_kernels/aie2p/` ([#3412](https://github.com/Xilinx/mlir-aie/discussions/3412))
+- [ ] Consolidate reusable aie2p kernels — upstream generic transformer/conv kernels (transpose, depthwise conv, higher-precision activations, fused matmul epilogues) authored for an external inference engine into `aie_kernels/` ([#3412](https://github.com/Xilinx/mlir-aie/discussions/3412))
 - [ ] Improve agentic workflows for IRON programming — mature the initial skill chain for porting models to AIE/NPU with an LLM coding agent (baseline → dataflow → kernel optimization → validation); still experimental and untested beyond single-dispatch designs ([#3426](https://github.com/Xilinx/mlir-aie/issues/3426))
 - [ ] Explore repo boundaries and ecosystem health from a cross-repo, contract-first perspective ([#3390](https://github.com/Xilinx/mlir-aie/discussions/3390))
 

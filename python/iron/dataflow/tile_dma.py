@@ -41,7 +41,7 @@ from ...dialects.aie import (
     shim_mem,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from ...helpers.util import pack_pad_value
+from ...helpers.npdtypes import pack_pad_value
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
@@ -100,12 +100,12 @@ class Bd:
     releases + an `aie.next_bd`. The `next` field selects what the
     `next_bd` points at:
 
-    - `"self"` (default) — the BD loops to itself (the common "keep
-      streaming" pattern).
+    - `None` (default) — follow the channel: the next entry in `bds`, and from
+      the last entry either back to the head or out of the chain, per
+      [`DmaChannel.loop`][iron.DmaChannel].
+    - `"self"` — the BD loops to itself, whatever the rest of the chain does.
     - an `int` `i` — point at the i-th BD in this channel's `bds`
       list (zero-based). Useful for explicit cycles in a multi-BD chain.
-    - `None` — emit no `next_bd` (rarely useful; this leaves the
-      basic block without a terminator).
 
     `next` is ignored on an out-of-order channel because those BDs are chained
     only for configuration and the hardware selects by header id (see
@@ -117,7 +117,7 @@ class Bd:
     length: int | None = None  # default: full buffer
     acquires: list[Acquire] = field(default_factory=list)
     releases: list[Release] = field(default_factory=list)
-    next: int | str | None = "self"
+    next: int | str | None = None
     # When set, stamps a packet header on every transfer this BD emits:
     # (pkt_type, pkt_id).  Pairs with a PacketFlow that uses
     # the same pkt_id so the routing fabric dispatches correctly.
@@ -152,7 +152,19 @@ class DmaChannel:
         bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
             (in-order) or n-way merge (out-of-order).
         repeat_count: extra repeats of the task (0 = run once), where the task
-            is the BD chain (in-order) or a merge round (out-of-order).
+            is the BD chain (in-order) or a merge round (out-of-order). Only
+            meaningful on a chain that ends -- see `loop`.
+        loop: whether the last BD chains back to the first (the default),
+            making the chain endless. An endless chain is one task that never
+            completes: it runs for as long as its locks let it, which is how
+            [`ObjectFifo`][iron.ObjectFifo] expresses the same thing, and
+            `repeat_count` has nothing to count and is ignored. `loop=False`
+            ends the chain after its last BD, making it a task that completes
+            and can be re-run -- which is what gives `repeat_count` meaning,
+            and what a design reproducing a specific descriptor layout wants.
+            Note a chain that ends runs exactly `repeat_count + 1` times, so a
+            `loop=False` channel expected to move more than one buffer needs a
+            matching count; left at 0 it moves one and stops.
         out_of_order: put the channel into out-of-order mode (S2MM only).
             Each BD receives the packet with `bd.bd_id == pkt.out_of_order_id`,
             and the BD chain (next bd) is ignored. Each BD receives its own
@@ -170,6 +182,10 @@ class DmaChannel:
     pad_value: int = 0
     repeat_count: int = 0
     out_of_order: bool = False
+    # Appended rather than grouped with the chain fields above: inserting a
+    # field ahead of the existing optional ones would silently rebind any
+    # positional caller's argument.
+    loop: bool = True
 
 
 def _channel_pad_word(ch: "DmaChannel") -> int | None:
@@ -230,12 +246,40 @@ class TileDma(Resolvable):
 
     def __init__(self, tile: Tile, channels: Iterable[DmaChannel]):
         self._tile = tile
-        self._channels: list[DmaChannel] = list(channels)
+        self._channels: list[DmaChannel] = []
+        self.add_channels(channels)
         self._resolved = False
 
     @property
     def tile(self):
         return self._tile
+
+    @property
+    def channels(self) -> list[DmaChannel]:
+        return list(self._channels)
+
+    def add_channel(self, channel: DmaChannel) -> None:
+        """Add a channel to this tile's DMA program.
+
+        A tile has one DMA program, so a helper that wires transfers one at a
+        time needs somewhere to put the second channel it wants on a tile it has
+        already reached.
+        """
+        self.add_channels([channel])
+
+    def add_channels(self, channels: Iterable[DmaChannel]) -> None:
+        """Add channels after checking all hardware channel keys."""
+        channels = list(channels)
+        keys = {(channel.direction, channel.channel) for channel in self._channels}
+        for channel in channels:
+            key = (channel.direction, channel.channel)
+            if key in keys:
+                raise ValueError(
+                    f"TileDma for {self._tile} already has "
+                    f"{channel.direction} channel {channel.channel}."
+                )
+            keys.add(key)
+        self._channels.extend(channels)
 
     def all_tiles(self):
         return [self._tile]
@@ -257,8 +301,13 @@ class TileDma(Resolvable):
         return seen_buffers, seen_locks
 
     def _region_decorator(self):
-        """Pick the right ``aie`` region-opening decorator for the tile type."""
-        tt = self._tile.tile_type
+        """Pick the right ``aie`` region-opening decorator for the tile type.
+
+        Asks the tile what kind it effectively is rather than reading its
+        ``tile_type`` hint, which may be unset: taking that at face value
+        quietly emits an ``aie.mem`` for a shim tile.
+        """
+        tt = self._tile.effective_tile_type
         if tt == AIETileType.MemTile:
             return memtile_dma(self._tile.op)
         if tt in (AIETileType.ShimNOCTile, AIETileType.ShimPLTile):
@@ -416,7 +465,17 @@ class TileDma(Resolvable):
                             nxt = (bd_pos + 1) % len(ch.bds)
                             next_bd(block[bd_block_idx[nxt]])
                         elif bd.next is None:
-                            pass  # caller's problem if the block has no terminator
+                            if bd_pos + 1 < len(ch.bds):
+                                next_bd(block[bd_block_idx[bd_pos + 1]])
+                            elif ch.loop:
+                                next_bd(block[bd_block_idx[0]])
+                            else:
+                                # The region's aie.end block. A next_bd landing
+                                # on it is how the dialect spells "chain ends
+                                # here" -- aie-assign-bd-ids reads that as no
+                                # next BD, so the task completes and
+                                # repeat_count can re-run it.
+                                next_bd(block[end_idx])
                         elif bd.next == "self":
                             next_bd(block[bd_block_idx[bd_pos]])
                         elif isinstance(bd.next, int):

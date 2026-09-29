@@ -14,7 +14,7 @@
 // bytes are free. Whether placement finds that packing depends on whether the
 // core declares the need.
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // Without a declared size there is no extent to place, so the buffers take
 // their addresses first and the core gets whatever run survives. Each buffer

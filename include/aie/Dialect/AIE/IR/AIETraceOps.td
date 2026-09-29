@@ -19,12 +19,11 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 // AIE_TraceOp - Top-Level Trace Configuration (Symbol)
 //===----------------------------------------------------------------------===//
 
-def AIE_TraceOp : AIE_Op<"trace", [
-    Symbol,
-    HasParent<"DeviceOp">,
-    SingleBlockImplicitTerminator<"EndOp">,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
-  ]> {
+def AIE_TraceOp
+    : AIE_Op<"trace", [AIESymbol, HasParent<"DeviceOp">,
+                       SingleBlockImplicitTerminator<"EndOp">,
+                       DeclareOpInterfaceMethods<
+                           OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Declare a named trace configuration for a tile";
 
   let description = [{
@@ -273,11 +272,9 @@ def AIE_TraceStopEventOp : AIE_Op<"trace.stop", [
 // AIE_TraceConfigOp - Configuration Container (Intermediate, Symbol)
 //===----------------------------------------------------------------------===//
 
-def AIE_TraceConfigOp : AIE_Op<"trace.config", [
-    Symbol,
-    HasParent<"DeviceOp">,
-    SingleBlockImplicitTerminator<"EndOp">
-  ]> {
+def AIE_TraceConfigOp
+    : AIE_Op<"trace.config", [AIESymbol, HasParent<"DeviceOp">,
+                              SingleBlockImplicitTerminator<"EndOp">]> {
   let summary = "Intermediate representation of lowered trace configuration";
 
   let description = [{
