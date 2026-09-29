@@ -8,9 +8,9 @@
 
 """Pin the performance series keys.
 
-``nightlyKernelChecks.yml`` feeds rows named ``<Case.name>/<metric>`` to
-benchmark-action, which keys each chart on that string and keeps its history
-under it. Renaming a case therefore does not rename a chart -- it abandons one
+``nightlyKernelChecks.yml`` publishes rows named ``<Case.name>/<metric>``,
+and ``utils/kernel_checks/publish.py`` keys each chart's history on that
+string. Renaming a case therefore does not rename a chart -- it abandons one
 and starts another, silently, and the loss is only visible on the published
 dashboard.
 

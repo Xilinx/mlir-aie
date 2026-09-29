@@ -109,6 +109,29 @@ def test_a_truncated_stream_keeps_its_labels():
     assert (zero, mm, truncated) == ((5, 6), (900,), True)
 
 
+@pytest.mark.parametrize(
+    "size,seen,expected,grown",
+    [
+        # 84 of 256 intervals fit 128 KiB: every interval at that cost, and
+        # half as much again, rounded up to 4 KiB.
+        (131072, 84, 256, 602112),
+        # A short kernel that nearly fit still gets at least double.
+        (16384, 15, 16, 32768),
+        # Nothing seen says nothing about the cost: double and try again.
+        (16384, 0, 16, 32768),
+    ],
+)
+def test_a_filled_buffer_grows_to_its_measured_cost(size, seen, expected, grown):
+    assert kd.grow_trace_size(size, seen=seen, expected=expected) == grown
+    assert grown % 4096 == 0
+
+
+def test_growth_stops_at_the_limit():
+    assert kd.grow_trace_size(131072, seen=84, expected=256, limit=1 << 20) == 602112
+    assert kd.grow_trace_size(1 << 20, seen=84, expected=4096, limit=1 << 22) == 1 << 22
+    assert kd.grow_trace_size(1 << 22, seen=1, expected=2, limit=1 << 22) == 1 << 22
+
+
 def test_more_intervals_than_declared_is_an_error():
     with pytest.raises(RuntimeError, match="does not declare"):
         kd.split_intervals([1, 17, 1, 19], calls=2, per_call=1)

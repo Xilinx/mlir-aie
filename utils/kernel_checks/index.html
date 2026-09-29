@@ -4,113 +4,240 @@
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 <!--
   The Nightly Kernel Checks page, installed as kernel-checks/index.html on the
-  publication branch by publishKernelResults.yml. It reads the data.js that
-  github-action-benchmark writes under kernel-checks/<npu>/, where each power
-  mode is its own suite, "aie_kernels (<npu>, <mode>)". One chart per NPU,
-  kernel case and metric, with a line per power mode. The kernels view
-  groups the latest nightly by factory, from the
-  kernel-checks/<npu>/catalogue.json that utils/kernel_checks/catalogue.py
-  writes and the same data.js.
+  publication branch by publishKernelResults.yml. Per NPU it reads, from
+  kernel-checks/<npu>/ (written by utils/kernel_checks/publish.py):
+
+    runs.json              one summary per run: the Actions run, commit, power
+                           mode, provenance, sanity result, failures
+    latest.json            the newest run that published rows, with its rows
+    runs/<id>.json         any one run's record; the dashboard reads the one
+                           before latest.json in the same power mode
+    history/<metric>.json  every published run's value of one metric per
+                           case; the charts read these, one metric at a time
+    catalogue.json         every factory, its builds and how its cases fared
+                           (utils/kernel_checks/catalogue.py)
+
+  Four views, all in the URL hash so a link reproduces one: the dashboard
+  (the latest run per NPU and what moved), the kernels table, one kernel's
+  detail, and the charts (one per NPU, case and metric, a line per power
+  mode). No build step: the page is one file plus Chart.js from a CDN.
+  test/test_kernel_checks_page.py runs the functions below under node with a
+  minimal DOM, so they use only append, textContent, className, title, href
+  and the like on elements.
 -->
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Nightly Kernel Checks</title>
   <style>
-    body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; color: #24292f; }
+    :root {
+      --bg: #ffffff; --fg: #24292f; --muted: #57606a; --border: #d0d7de; --panel: #f6f8fa;
+      --link: #1565d8; --accent: #e8710a; --good: #1a7f37; --bad: #cf222e; --dim: #8c959f;
+      --warn-bg: #fff8c5; --warn-fg: #7d4e00; --warn-border: #d4a72c;
+      --bar: #27282b; --bar-fg: #ffffff; --grid: rgba(0, 0, 0, 0.08); --band: 0.18;
+      --series-1: #0969da; --series-2: #cf222e; --series-3: #1a7f37; --series-4: #8250df; --series-5: #bf8700; --series-6: #57606a;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #1b1b1d; --fg: rgba(255, 255, 255, 0.87); --muted: rgba(255, 255, 255, 0.6); --border: rgba(255, 255, 255, 0.14);
+        --panel: #242528; --link: #5b9bff; --accent: #ff9d42; --good: #3fb950; --bad: #f85149; --dim: rgba(255, 255, 255, 0.4);
+        --warn-bg: #3a2e08; --warn-fg: #ffd479; --warn-border: #7d5c0b; --grid: rgba(255, 255, 255, 0.1); --band: 0.25;
+        --series-1: #58a6ff; --series-2: #ff7b72; --series-3: #3fb950; --series-4: #bc8cff; --series-5: #e3b341; --series-6: #8b949e;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #1b1b1d; --fg: rgba(255, 255, 255, 0.87); --muted: rgba(255, 255, 255, 0.6); --border: rgba(255, 255, 255, 0.14);
+      --panel: #242528; --link: #5b9bff; --accent: #ff9d42; --good: #3fb950; --bad: #f85149; --dim: rgba(255, 255, 255, 0.4);
+      --warn-bg: #3a2e08; --warn-fg: #ffd479; --warn-border: #7d5c0b; --grid: rgba(255, 255, 255, 0.1); --band: 0.25;
+      --series-1: #58a6ff; --series-2: #ff7b72; --series-3: #3fb950; --series-4: #bc8cff; --series-5: #e3b341; --series-6: #8b949e;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; color: var(--fg); background: var(--bg); font-size: 14px; line-height: 1.45; }
+    a { color: var(--link); }
     [hidden] { display: none !important; }
-    header { padding: 12px 20px; border-bottom: 1px solid #d0d7de; }
-    h1 { font-size: 20px; margin: 0 0 4px; }
-    #status { font-size: 13px; color: #57606a; }
-    #controls { position: sticky; top: 0; z-index: 1; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
-                padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; font-size: 14px; }
-    fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 10px; align-items: center; }
-    legend { float: left; font-weight: 600; margin-right: 6px; }
-    #charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 16px; padding: 16px 20px; }
-    .chart { border: 1px solid #d0d7de; border-radius: 6px; padding: 8px; min-height: 260px; }
-    .chart h2 { font-size: 13px; font-weight: 600; margin: 0 0 4px; overflow-wrap: anywhere; }
-    .chart .delta { font-weight: 400; color: #57606a; }
-    .chart .delta.worse { color: #cf222e; }
-    .chart .delta.better { color: #1a7f37; }
-    #empty { padding: 20px; color: #57606a; }
-    #views { font-size: 14px; margin: 4px 0; display: flex; gap: 12px; }
-    #kernels { padding: 10px 20px; font-size: 14px; }
-    #kernels p { color: #57606a; margin: 4px 0 10px; }
-    #kernels table { border-collapse: collapse; width: 100%; }
-    #kernels th, #kernels td { border-bottom: 1px solid #d0d7de; padding: 4px 8px; text-align: left; vertical-align: top; }
-    #kernels th { position: sticky; top: 0; background: #f6f8fa; }
-    #kernels tr.case td { font-size: 13px; background: #f6f8fa; border-bottom-color: #eaeef2; }
-    #kernels tr.case .name { padding-left: 24px; overflow-wrap: anywhere; }
-    #kernels button { font: inherit; border: 0; background: none; color: #0969da; cursor: pointer; padding: 0; }
-    .none, .stale { color: #8c959f; }
-    .pass, .better { color: #1a7f37; }
-    .fail, .worse { color: #cf222e; }
-    #key { font-size: 13px; margin: 4px 0; }
-    #key summary { cursor: pointer; color: #0969da; }
-    #key dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 6px 0; }
-    #key dt { font-family: ui-monospace, monospace; }
-    #key dd { margin: 0; }
-    #key ul { margin: 6px 0; padding-left: 20px; }
+    h1, h2, h3 { font-weight: 600; margin: 0; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+    .bar { background: var(--bar); color: var(--bar-fg); padding: 0 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 48px; }
+    .bar h1 { font-size: 17px; margin-right: 8px; }
+    .bar nav { display: flex; flex-wrap: wrap; gap: 2px; }
+    .bar nav a { color: var(--bar-fg); text-decoration: none; padding: 12px 10px; opacity: 0.8; border-bottom: 3px solid transparent; }
+    .bar nav a:hover { opacity: 1; }
+    .bar nav a.current { opacity: 1; border-bottom-color: var(--accent); }
+    .bar .links { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 13px; }
+    .bar .links a { color: var(--bar-fg); opacity: 0.85; }
+    .bar button { font: inherit; color: var(--bar-fg); background: transparent; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+    main { padding: 0 16px 32px; max-width: 1600px; margin: 0 auto; }
+    #status { font-size: 13px; color: var(--muted); padding: 8px 0; }
+    section > h2 { font-size: 16px; margin: 20px 0 8px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 16px; margin-top: 12px; }
+    .card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--panel); }
+    .card h2 { font-size: 16px; margin-bottom: 6px; }
+    .card h2 .device { font-weight: 400; color: var(--muted); }
+    .card dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 8px 0; font-size: 13px; }
+    .card dt { color: var(--muted); }
+    .card dd { margin: 0; overflow-wrap: anywhere; }
+    .card .counts { margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; }
+    .card .counts li { margin: 2px 0; }
+    ul.warnings { list-style: none; margin: 0 0 8px; padding: 0; }
+    ul.warnings li { border-left: 4px solid var(--warn-border); background: var(--warn-bg); color: var(--warn-fg); padding: 5px 8px; margin: 4px 0; border-radius: 0 4px 4px 0; font-size: 13px; }
+    ul.warnings li.info { border-left-color: var(--link); background: transparent; color: var(--muted); }
+    ul.warnings li.bad { border-left-color: var(--bad); }
+    .none, .stale, .dim { color: var(--dim); }
+    .pass, .better { color: var(--good); }
+    .fail, .worse { color: var(--bad); }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; background: var(--panel); z-index: 1; font-weight: 600; }
+    .scroll { overflow-x: auto; }
+    tr.case td { background: var(--panel); border-bottom-color: var(--border); }
+    tr.case .name { padding-left: 24px; overflow-wrap: anywhere; }
+    table button, .card button { font: inherit; border: 0; background: none; color: var(--link); cursor: pointer; padding: 0; }
+    #controls { position: sticky; top: 0; z-index: 2; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin: 12px 0;
+                padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: center; font-size: 13px; }
+    fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    legend { float: left; font-weight: 600; margin-right: 4px; }
+    input, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
+    input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+    .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(460px, 100%), 1fr)); gap: 16px; }
+    .chart { border: 1px solid var(--border); border-radius: 8px; padding: 8px; min-height: 260px; background: var(--bg); min-width: 0; }
+    details.group { margin: 0 0 12px; }
+    details.group > summary { cursor: pointer; padding: 6px 0; font-size: 14px; }
+    details.group > summary .factory { font-weight: 600; }
+    details.group > .charts { margin-top: 6px; }
+    .chart h3 { font-size: 13px; margin: 0 0 4px; overflow-wrap: anywhere; }
+    .chart h3 a { color: inherit; text-decoration: none; }
+    .chart h3 a:hover { text-decoration: underline; }
+    .chart .delta { font-weight: 400; color: var(--muted); }
+    .chart .canvas { position: relative; height: 220px; }
+    .empty { padding: 20px 0; color: var(--muted); }
+    details.key { font-size: 13px; margin: 8px 0; }
+    details.key summary { cursor: pointer; color: var(--link); }
+    details.key dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 6px 0; }
+    details.key dt { font-family: ui-monospace, monospace; }
+    details.key dd { margin: 0; }
+    details.key ul { margin: 6px 0; padding-left: 20px; }
+    #kernel-head { margin: 12px 0; }
+    #kernel-head p { margin: 4px 0; }
+    .tag { display: inline-block; border: 1px solid var(--border); border-radius: 10px; padding: 0 8px; font-size: 12px; color: var(--muted); margin-right: 4px; }
+    /* One metric's value and change never break apart. */
+    td > span[title] { white-space: nowrap; }
+    ul.builds { list-style: none; margin: 4px 0; padding: 0; }
+    ul.builds li { margin: 2px 0; }
+    @media (max-width: 600px) {
+      .bar { padding: 0 8px; } main { padding: 0 8px 24px; } .bar .links span { display: none; }
+      /* The kernels table keeps the kernel and its NPU columns; the rest is on the kernel's page. */
+      #kernels .wide { display: none; }
+      td > span[title] { white-space: normal; }
+    }
   </style>
 </head>
 <body>
-  <header>
+  <header class="bar">
     <h1>Nightly Kernel Checks</h1>
-    <div id="views">
-      <label><input type="radio" name="view" value="charts" checked> Charts</label>
-      <label><input type="radio" name="view" value="kernels"> Kernels</label>
+    <nav aria-label="views">
+      <a id="tab-dashboard" href="#view=dashboard">Dashboard</a>
+      <a id="tab-kernels" href="#view=kernels">Kernels</a>
+      <a id="tab-charts" href="#view=charts">Charts</a>
+      <a id="tab-kernel" href="#view=kernel" hidden>Kernel</a>
+    </nav>
+    <div class="links">
+      <a href="../latest/programming_guide/kernels_library/#testing-performance-and-static-checks"><span>Kernel library </span>guide</a>
+      <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/README.md">aie_kernels</a>
+      <button id="theme" type="button" aria-label="switch between light and dark theme" title="light / dark">theme</button>
     </div>
-    <details id="key">
-      <summary>Key</summary>
+  </header>
+  <main>
+    <div id="status">Loading&hellip;</div>
+    <details class="key" id="key">
+      <summary>Key: metrics, thresholds and colors</summary>
       <dl id="key-metrics"></dl>
-      Every metric is smaller-is-better.
       <ul>
-        <li>Charts: one per NPU, case and metric, a line per power mode, a point per nightly run.
-          Hover for the run's commit and the spread over its calls; click a point to open the commit.
-          The percentage beside a title is the change from the previous nightly, the worst of the modes shown:
-          <span class="worse">red</span> is more than 0.5% worse, <span class="better">green</span> more than 0.5% better.</li>
+        <li>Every metric is smaller-is-better. A change is colored <span class="worse">red</span> past its metric's threshold worse
+          and <span class="better">green</span> past it better; the thresholds above are shared with the pull-request report.
+          An <code>npu_us</code> change must also exceed three times the larger median absolute deviation of the two runs, so a noisy case does not flag its own jitter.</li>
+        <li>Dashboard: the latest run per NPU, its provenance, what it checked, and the series that moved past their threshold
+          since the previous nightly in the same power mode. Warnings name anything that makes the night's numbers less comparable.</li>
         <li>Kernels: one row per kernel factory, and per NPU the builds it offers and how its cases fared in the latest nightly:
           <span class="fail">failing</span> cases failed the correctness sweep and are not timed,
+          <span class="fail">timing failed</span> cases passed it but failed in the timing run (their series has a gap),
           <span class="pass">cases pass</span> passed it, <span class="none">not checked on hardware</span> has no case,
-          and <span class="none">&mdash;</span> is not offered on that NPU.
-          Expand a kernel for its cases' latest cycles, core ELF size and NPU time, colored as in the charts;
-          <span class="stale">gray</span> values are from an earlier nightly than the latest.</li>
+          and <span class="none">&mdash;</span> is not offered on that NPU. Expand a kernel for its cases' latest numbers;
+          <span class="none">passed, not timed</span> cases are checked for correctness only, and
+          <span class="stale">gray</span> values are from an earlier nightly than the latest.
+          Hover a cycle count for the median and slowest call behind it; <span class="fail">truncated</span> marks one whose
+          trace buffer filled before every call, so its min is over the calls it held.</li>
+        <li>Charts: one per NPU, case and metric, in a section per kernel (open when it has a flagged change), a line per power mode, a point per nightly run, by date. Hover for the run's
+          commit, spread and provenance; click a point to open the commit. Dashed lines mark a change of Peano, host or driver
+          between runs. The change sorts order charts by their latest change relative to the metric's threshold.</li>
       </ul>
     </details>
-    <div id="status">Loading&hellip;</div>
-  </header>
-  <form id="controls" onsubmit="return false">
-    <fieldset id="npus"><legend>NPU</legend></fieldset>
-    <fieldset id="modes"><legend>Power mode</legend></fieldset>
-    <label>Metric <select id="metric"></select> <span id="metric-about" class="none"></span></label>
-    <label>Kernel <input id="kernel" type="search" placeholder="substring, e.g. softmax or /bfloat16" size="28"></label>
-    <label>Sort <select id="sort">
-      <option value="name">name</option>
-      <option value="worse">latest change, worst first</option>
-      <option value="better">latest change, best first</option>
-    </select></label>
-  </form>
-  <div id="charts"></div>
-  <div id="empty" hidden>No series match these filters.</div>
-  <section id="kernels" hidden>
-    <p id="kernels-status">Loading&hellip;</p>
-    <label>Kernel <input id="kernels-filter" type="search" placeholder="factory, family, summary or case" size="28"></label>
-    <table>
-      <thead><tr id="kernels-head"><th>Family</th><th>Kernel</th><th>Summary</th><th>Source</th></tr></thead>
-      <tbody id="kernels-rows"></tbody>
-    </table>
-  </section>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.2/dist/Chart.min.js"></script>
+    <section id="dashboard">
+      <div id="cards" class="cards"></div>
+      <h2>Regressions since the previous nightly</h2>
+      <p class="dim" id="regressions-about"></p>
+      <div class="scroll"><table><thead><tr><th>NPU</th><th>Case</th><th>Metric</th><th>Previous</th><th>Latest</th><th>Change</th></tr></thead>
+        <tbody id="regressions"></tbody></table></div>
+      <details id="improvements-box"><summary id="improvements-summary">Improvements</summary>
+        <div class="scroll"><table><thead><tr><th>NPU</th><th>Case</th><th>Metric</th><th>Previous</th><th>Latest</th><th>Change</th></tr></thead>
+          <tbody id="improvements"></tbody></table></div></details>
+    </section>
+
+    <section id="kernels" hidden>
+      <p id="kernels-status" class="dim"></p>
+      <p><label>Filter <input id="kernels-filter" type="search" placeholder="factory, family, summary or case" size="32"></label></p>
+      <div class="scroll"><table>
+        <thead><tr id="kernels-head"><th class="wide">Family</th><th>Kernel</th><th class="wide">Summary</th><th class="wide">Source</th></tr></thead>
+        <tbody id="kernels-rows"></tbody>
+      </table></div>
+    </section>
+
+    <section id="kernel" hidden>
+      <div id="kernel-head"></div>
+      <div class="scroll"><table>
+        <thead><tr id="kernel-cases-head"><th>Case</th></tr></thead>
+        <tbody id="kernel-cases"></tbody>
+      </table></div>
+      <h2>History</h2>
+      <div id="kernel-charts" class="charts"></div>
+    </section>
+
+    <section id="charts-view" hidden>
+      <form id="controls" onsubmit="return false">
+        <fieldset id="npus"><legend>NPU</legend></fieldset>
+        <fieldset id="modes"><legend>Power mode</legend></fieldset>
+        <label>Metric <select id="metric"></select> <span id="metric-about" class="dim"></span></label>
+        <label>Kernel <input id="kernel-filter" type="search" placeholder="substring, e.g. softmax or /bfloat16" size="28"></label>
+        <label>Sort <select id="sort">
+          <option value="name">name</option>
+          <option value="worse">latest change, worst first</option>
+          <option value="better">latest change, best first</option>
+        </select></label>
+      </form>
+      <div id="charts"></div>
+      <div id="empty" class="empty" hidden>No series match these filters.</div>
+    </section>
+  </main>
+
+  <!-- The hash is of chart.umd.js in the chart.js 4.4.7 npm package, which the CDN
+       serves byte for byte; a changed file is refused rather than run. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js"
+          integrity="sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM" crossorigin="anonymous"></script>
   <script>
     'use strict';
     const NPUS = ['npu1', 'npu2'];
-    const SUITE = /^aie_kernels \((npu\d+), (.+)\)$/;
-    const PALETTE = ['#0969da', '#cf222e', '#1a7f37', '#8250df', '#bf8700', '#57606a'];
     const REPO = 'https://github.com/Xilinx/mlir-aie';
+    // The newest publish.py format this page reads; a newer file is set aside
+    // (and said so) rather than misread.
+    const SCHEMA = 1;
+    const readable = x => x && (x.schema || 1) <= SCHEMA ? x : null;
+    const EXPECTED_PMODE = 'performance';
+    const STALE_AFTER_MS = 36 * 3600 * 1000;
     // What test_kernels_perf.py records per case.
     const METRICS = {
-      cycles: 'core cycles per kernel call, the fastest traced call; deterministic',
+      cycles: 'core cycles per kernel call, the fastest traced call; stable to well under 1% run to run',
       cycles_per_kop: 'cycles per 1,000 of the kernel\'s operations, from cycles',
       npu_us: 'host time to submit a run and wait for it, median of 50, shaded ± its median absolute deviation; moves with the machine',
       xclbin_bytes: 'size of the xclbin',
@@ -118,58 +245,135 @@
       core_elf_bytes: 'size of the core ELF; deterministic',
     };
     const SHOWN = ['cycles', 'core_elf_bytes', 'npu_us'];
+    const ALL_METRICS = ['cycles', 'cycles_per_kop', 'npu_us', 'core_elf_bytes', 'insts_bytes', 'xclbin_bytes'];
+    // Per-metric change thresholds, in percent of the previous value; kept
+    // equal to thresholds.json (which pr_report.py reads) by the page test.
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "core_elf_bytes": {"pct": 2, "gated": true}, "insts_bytes": {"pct": 2}, "xclbin_bytes": {"pct": 2}, "npu_us": {"pct": 10, "mad": 3}};
+    const DEFAULT_THRESHOLD = 10;
+    const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
+    const threshold = metric => pct(metric) / 100;
+    const thresholdText = metric => `threshold ${pct(metric)}%` +
+      (THRESHOLDS[metric] && THRESHOLDS[metric].mad ? ` and ${THRESHOLDS[metric].mad}\u00d7 its MAD` : '');
+    const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
+    // Provenance fields whose change between runs is marked on the charts.
+    const MARKED = ['peano', 'host', 'xrt', 'xdna'];
 
-    // Every metric is smaller-is-better (customSmallerIsBetter).
-    async function load(npu) {
-      const res = await fetch(`${npu}/data.js`, { cache: 'no-cache' });
-      if (!res.ok) return null;
-      const text = await res.text();
-      return JSON.parse(text.replace(/^\s*window\.BENCHMARK_DATA\s*=\s*/, '').replace(/;\s*$/, ''));
+    // ------------------------------------------------------------------
+    // Data
+    // ------------------------------------------------------------------
+
+    async function fetchJson(url) {
+      try {
+        const res = await fetch(url, { cache: 'no-cache' });
+        return res.ok ? await res.json() : null;
+      } catch (e) { return null; }
     }
 
-    // series key "npu|case|metric" -> {npu, kase, metric, unit, byMode: mode -> [point]}
-    function collect(loaded) {
-      const series = new Map();
-      const observations = [];
-      for (const [npu, data] of loaded) {
-        for (const [suite, entries] of Object.entries(data.entries)) {
-          const m = SUITE.exec(suite);
-          const mode = m && m[1] === npu ? m[2] : suite;
-          for (const { commit, date, benches } of entries) {
-            const id = observations.length;
-            observations.push({ id, npu, mode, commit, date });
-            for (const row of benches) {
-              const cut = row.name.lastIndexOf('/');
-              const kase = row.name.slice(0, cut), metric = row.name.slice(cut + 1);
-              const key = `${npu}|${kase}|${metric}`;
-              let s = series.get(key);
-              if (!s) series.set(key, s = { key, npu, kase, metric, unit: row.unit, byMode: new Map() });
-              if (!s.byMode.has(mode)) s.byMode.set(mode, []);
-              s.byMode.get(mode).push({ id, date, row });
-            }
+    // One run record per rows: {case: {metric: {value, unit, range}}} ->
+    // the history-file shape collect() reads, one entry per metric.
+    function historiesOf(npu, records) {
+      const byMetric = new Map();
+      const runs = records.map(r => ({ id: r.id, date: r.date, commit: r.commit || {}, pmode: r.pmode, provenance: r.provenance || {} }));
+      records.forEach((r, i) => {
+        for (const [kase, cells] of Object.entries(r.rows || {})) {
+          for (const [metric, cell] of Object.entries(cells)) {
+            if (!byMetric.has(metric)) byMetric.set(metric, { target: npu, metric, unit: cell.unit, runs, series: {} });
+            const series = byMetric.get(metric).series;
+            if (!series[kase]) series[kase] = { values: new Array(records.length).fill(null), ranges: new Array(records.length).fill(null) };
+            series[kase].values[i] = cell.value;
+            if (cell.range) series[kase].ranges[i] = cell.range;
           }
+        }
+      });
+      return [...byMetric.values()];
+    }
+
+    // History files ({target, metric, unit, runs, series: {case: {values,
+    // ranges?}}}) -> series keyed "npu|case|metric", each {npu, kase,
+    // factory, metric, unit, byMode: mode -> [point]}, and `order`, every
+    // run of every NPU by date. A run shared by several files is one
+    // observation, so every metric's chart has the same x axis.
+    function collect(histories) {
+      const series = new Map();
+      const observations = new Map();
+      for (const h of histories) {
+        const npu = h.target;
+        const ids = h.runs.map(r => {
+          const id = `${npu}|${r.id}`;
+          if (!observations.has(id)) {
+            observations.set(id, { id, npu, run: r.id, mode: r.pmode || 'unknown', commit: r.commit || {},
+                                   date: Date.parse(r.date), provenance: r.provenance || {} });
+          }
+          return id;
+        });
+        for (const [kase, sv] of Object.entries(h.series)) {
+          const key = `${npu}|${kase}|${h.metric}`;
+          let s = series.get(key);
+          if (!s) series.set(key, s = { key, npu, kase, factory: kase.split('/')[0], metric: h.metric, unit: h.unit, byMode: new Map() });
+          sv.values.forEach((value, i) => {
+            if (value === null || value === undefined) return;
+            const o = observations.get(ids[i]);
+            if (!s.byMode.has(o.mode)) s.byMode.set(o.mode, []);
+            const range = sv.ranges && sv.ranges[i];
+            s.byMode.get(o.mode).push({ id: o.id, date: o.date, row: { value, unit: h.unit, ...(range ? { range } : {}) } });
+          });
         }
       }
       for (const s of series.values()) {
         for (const points of s.byMode.values()) points.sort((a, b) => a.date - b.date);
       }
-      const order = observations.sort((a, b) => a.date - b.date);
+      const order = [...observations.values()].sort((a, b) => a.date - b.date);
       return { series: [...series.values()], order };
+    }
+
+    // The published run before `latest` in the same power mode, from the
+    // run index, or null.
+    function previousPublished(index, latest) {
+      const runs = (index && index.runs) || [];
+      const at = runs.findIndex(r => r.id === latest.id);
+      for (let i = (at < 0 ? runs.length : at) - 1; i >= 0; i--) {
+        if (runs[i].published && runs[i].pmode === latest.pmode) return runs[i];
+      }
+      return null;
     }
 
     // Relative change between the last two points of each shown mode; the
     // largest one, so a regression in any mode sorts the chart up.
     function latestChange(s, modes) {
+      const move = latestMove(s, modes);
+      return move ? move.change : null;
+    }
+
+    // The same, with the verdict on it: {change, cls}, or null.
+    function latestMove(s, modes) {
       let worst = null;
       for (const mode of modes) {
         const pts = s.byMode.get(mode);
         if (!pts || pts.length < 2) continue;
-        const [a, b] = pts.slice(-2).map(p => p.row.value);
-        if (!a) continue;
-        const d = (b - a) / a;
-        if (worst === null || d > worst) worst = d;
+        const [a, b] = pts.slice(-2).map(p => p.row);
+        if (!a.value) continue;
+        const change = (b.value - a.value) / a.value;
+        if (worst === null || change > worst.change) worst = { change, cls: verdict(s.metric, a, b) };
       }
       return worst;
+    }
+
+    // The \u00b1 that starts a row's range (npu_us): its median absolute deviation.
+    function madOf(row) {
+      const m = /^\u00b1 ([\d.]+)/.exec((row && row.range) || '');
+      return m ? Number(m[1]) : null;
+    }
+
+    // 'worse', 'better' or '' for a move from row a to row b: past the
+    // metric's threshold and, for a metric with a MAD factor (npu_us), past
+    // that many of the larger of the two rows' MADs, so noise is not a move.
+    function verdict(metric, a, b) {
+      if (!a || !b || !a.value) return '';
+      const cls = changeClass((b.value - a.value) / a.value, metric);
+      const factor = THRESHOLDS[metric] && THRESHOLDS[metric].mad;
+      if (!cls || !factor) return cls;
+      const spread = [madOf(a), madOf(b)].filter(v => v !== null);
+      return spread.length && Math.abs(b.value - a.value) <= factor * Math.max(...spread) ? '' : cls;
     }
 
     // Per case on one NPU: each metric's last value in the power mode of the
@@ -187,13 +391,43 @@
         if (!cases.has(s.kase)) cases.set(s.kase, { current: false, metrics: new Map() });
         const c = cases.get(s.kase);
         c.current ||= p.id === last.id;
-        c.metrics.set(s.metric, { value: p.row.value, unit: s.unit, change: latestChange(s, [last.mode]) });
+        const move = latestMove(s, [last.mode]);
+        c.metrics.set(s.metric, { value: p.row.value, unit: s.unit, change: move ? move.change : null, cls: move ? move.cls : '',
+                                  ...(p.row.range ? { range: p.row.range } : {}) });
       }
       return { last, cases };
     }
 
-    function changeClass(d) {
-      return d > 0.005 ? 'worse' : d < -0.005 ? 'better' : '';
+    // The series of one NPU whose latest point is the latest nightly's and
+    // moved past the metric's threshold from the point before, in that
+    // nightly's mode: {regressed, improved} of {series, before, after, change}.
+    function movedSeries(db, npu) {
+      const { last } = latestCases(db, npu);
+      const regressed = [], improved = [];
+      if (!last) return { last, regressed, improved };
+      for (const s of db.series) {
+        if (s.npu !== npu || (THRESHOLDS[s.metric] && THRESHOLDS[s.metric].derived)) continue;
+        const pts = s.byMode.get(last.mode);
+        if (!pts || pts.length < 2 || pts[pts.length - 1].id !== last.id) continue;
+        const [a, b] = pts.slice(-2).map(p => p.row);
+        if (!a.value) continue;
+        const cls = verdict(s.metric, a, b);
+        const item = { series: s, before: a.value, after: b.value, change: (b.value - a.value) / a.value, cls };
+        if (cls === 'worse') regressed.push(item);
+        else if (cls === 'better') improved.push(item);
+      }
+      // Gated metrics first, then by change relative to the threshold.
+      const rank = x => (GATED.includes(x.series.metric) ? 0 : 1) - Math.abs(x.change) / threshold(x.series.metric) / 1000;
+      regressed.sort((x, y) => rank(x) - rank(y) || x.series.key.localeCompare(y.series.key));
+      improved.sort((x, y) => rank(x) - rank(y) || x.series.key.localeCompare(y.series.key));
+      return { last, regressed, improved };
+    }
+
+    // Colored only past the metric's threshold: a 3% move is a regression
+    // in cycles and noise in npu_us.
+    function changeClass(d, metric) {
+      const t = threshold(metric);
+      return d >= t ? 'worse' : d <= -t ? 'better' : '';
     }
 
     function formatValue(value, unit) {
@@ -201,87 +435,303 @@
       return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unit}`;
     }
 
-    const $ = id => document.getElementById(id);
-    let db, modeColor, observer, charts = [];
-
-    function checked(fieldset) {
-      return [...fieldset.querySelectorAll('input:checked')].map(i => i.value);
+    function formatChange(d) {
+      return `${d > 0 ? '+' : ''}${(100 * d).toFixed(1)}%`;
     }
 
-    function addBoxes(fieldset, values) {
-      for (const v of values) {
-        const label = document.createElement('label');
-        const box = Object.assign(document.createElement('input'), { type: 'checkbox', value: v });
-        label.append(box, ' ', v);
-        fieldset.append(label);
+    function formatDate(ms) {
+      if (!Number.isFinite(ms)) return '?';
+      return new Date(ms).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+    }
+
+    // A cycles row's range, "median M max X n=N[; ...][; truncated]": the
+    // calls behind the min, and whether the trace held all of them.
+    function cyclesSpread(range) {
+      const m = /^median (\d+) max (\d+) n=(\d+)/.exec(range || '');
+      if (!m) return null;
+      return { median: +m[1], max: +m[2], n: +m[3], truncated: /(^|; )truncated$/.test(range) };
+    }
+
+    // Where a marked provenance field changes between consecutive
+    // observations of one NPU: [{index, label}], index into `order`.
+    function markersFor(order) {
+      const out = [];
+      let previous = null;
+      order.forEach((o, index) => {
+        if (!Object.keys(o.provenance || {}).length) return;
+        if (previous) {
+          const changed = MARKED.filter(k => o.provenance[k] !== previous.provenance[k])
+            .map(k => `${k} ${o.provenance[k] || '?'}`);
+          if (changed.length) out.push({ index, label: changed.join(', ') });
+        }
+        previous = o;
+      });
+      return out;
+    }
+
+    // The latest run of one NPU: its runs.json entry, else what the series
+    // and catalogue say about it (a leg whose runs.json is not there yet).
+    function latestRun(npu, runsIndex, db, catalogue) {
+      const newer = Boolean(runsIndex) && !readable(runsIndex);
+      if (newer) runsIndex = null;
+      const runs = runsIndex && runsIndex.runs ? runsIndex.runs : [];
+      const recorded = runs.length ? runs[runs.length - 1] : null;
+      const previous = runs.length > 1 ? runs[runs.length - 2] : null;
+      const last = db ? latestCases(db, npu).last : null;
+      const run = {
+        recorded: Boolean(recorded),
+        id: recorded ? recorded.id : null,
+        url: recorded && recorded.url ? recorded.url : null,
+        date: recorded ? Date.parse(recorded.date) : last ? last.date : catalogue ? Date.parse(catalogue.date) : null,
+        commit: recorded && recorded.commit && recorded.commit.id ? recorded.commit.id
+          : last && last.commit.id ? last.commit.id : catalogue ? catalogue.commit : '',
+        commitUrl: recorded && recorded.commit && recorded.commit.url ? recorded.commit.url : last ? last.commit.url : null,
+        message: ((recorded && recorded.commit && recorded.commit.message) || (last && last.commit.message) || '').split('\n')[0],
+        pmode: recorded ? recorded.pmode : last ? last.mode : null,
+        provenance: recorded ? recorded.provenance : last ? last.provenance : {},
+        device: recorded ? recorded.device : last ? last.provenance.device : null,
+        deviceRaw: recorded ? recorded.device_raw : null,
+        newer,
+        sane: recorded ? recorded.sane : Boolean(last),
+        published: recorded ? recorded.published : Boolean(last),
+        failed: recorded ? recorded.failed : [],
+        truncated: recorded ? recorded.truncated : [],
+        correctnessError: recorded ? recorded.correctness_error : undefined,
+        previous,
+      };
+      if (!run.commitUrl && run.commit) run.commitUrl = `${REPO}/commit/${run.commit}`;
+      return run;
+    }
+
+    // What makes the night's numbers less comparable, or absent.
+    function warningsFor(npu, run, now) {
+      const out = [];
+      if (run.newer) out.push({ level: 'bad', text: 'the results were published by a newer version of this page: reload it' });
+      if (run.date === null) { out.push({ level: 'bad', text: `${npu}: no results have been published` }); return out; }
+      if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatDate(run.date)}` });
+      if (!run.sane) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
+      else if (!run.published) out.push({ level: 'bad', text: 'this run published no numbers' });
+      if (run.pmode && run.pmode !== EXPECTED_PMODE) out.push({ level: 'warn', text: `measured in power mode "${run.pmode}", not ${EXPECTED_PMODE}: not comparable with ${EXPECTED_PMODE} runs` });
+      if (run.correctnessError) out.push({ level: 'bad', text: `correctness report unreadable: ${run.correctnessError}` });
+      const failed = run.failed || [];
+      if (failed.length) out.push({ level: 'warn', text: `${failed.length} test${failed.length > 1 ? 's' : ''} failed in this run`, detail: failed.join('\n') });
+      const truncated = run.truncated || [];
+      if (truncated.length) out.push({ level: 'warn', text: `${truncated.length} case${truncated.length > 1 ? 's' : ''} with a truncated trace: the cycles min is over part of the calls`, detail: truncated.join('\n') });
+      const prev = run.previous;
+      if (prev && prev.provenance) {
+        for (const k of MARKED) {
+          const a = prev.provenance[k], b = (run.provenance || {})[k];
+          if (a !== b && (a || b)) out.push({ level: k === 'peano' ? 'info' : 'warn', text: `${k} changed since the previous run: ${a || '?'} → ${b || '?'}` });
+        }
       }
+      return out;
     }
+
+    // ------------------------------------------------------------------
+    // DOM helpers
+    // ------------------------------------------------------------------
+
+    const $ = id => document.getElementById(id);
+    const el = (tag, props, ...children) => {
+      const e = document.createElement(tag);
+      if (props) Object.assign(e, props);
+      e.append(...children);
+      return e;
+    };
+    const link = (href, text, props) => el('a', { href, ...(props || {}) }, text);
+    const plural = (n, word) => `${n} ${word}${n === 1 || word.endsWith('s') ? '' : 's'}`;
 
     function readHash() {
       return Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
     }
 
-    function currentView() {
-      return document.querySelector('input[name=view]:checked').value;
+    function hashFor(params) {
+      return '#' + new URLSearchParams(params);
     }
 
-    function applyView() {
-      // "catalogue" was the kernels view's first name; old links keep working.
-      const view = ['kernels', 'catalogue'].includes(readHash().view) ? 'kernels' : 'charts';
-      document.querySelector(`input[name=view][value=${view}]`).checked = true;
-      $('kernels').hidden = view !== 'kernels';
-      for (const id of ['controls', 'charts', 'status']) $(id).hidden = view === 'kernels';
-      if (view === 'kernels') $('empty').hidden = true;
+    const sourceUrl = (commit, src) => `${REPO}/blob/${commit || 'main'}/aie_kernels/${src}`;
+    const factoryUrl = (commit, family) => `${REPO}/blob/${commit || 'main'}/python/iron/kernels/${family}.py`;
+    const casesUrl = commit => `${REPO}/blob/${commit || 'main'}/test/python/npu/kernel_cases.py`;
+    const kernelLink = factory => hashFor({ view: 'kernel', kernel: factory });
+    const chartsLink = (npu, kernel, metric) => hashFor({ view: 'charts', npu, metric: metric || 'all', kernel });
+
+    function changeSpan(d, cls, current) {
+      return el('span', { className: current === false ? '' : cls, textContent: ` (${formatChange(d)})` });
     }
 
-    function chartsLink(npu, kernel, text) {
-      const a = document.createElement('a');
-      a.href = '#' + new URLSearchParams({ view: 'charts', npu, metric: 'all', kernel });
-      a.textContent = text;
-      return a;
+    // ------------------------------------------------------------------
+    // Dashboard
+    // ------------------------------------------------------------------
+
+    function runCard(npu, run, catalogue, moved, now) {
+      const card = el('article', { className: 'card' });
+      const device = run.device || (catalogue ? catalogue.arch : '');
+      card.append(el('h2', {}, `${npu}`, catalogue ? ` · ${catalogue.arch}` : '',
+        device ? el('span', { className: 'device', title: run.deviceRaw && run.deviceRaw !== device ? `reported as ${run.deviceRaw}` : '' }, ` · ${device}`) : ''));
+      const warnings = warningsFor(npu, run, now);
+      if (warnings.length) {
+        const ul = el('ul', { className: 'warnings' });
+        for (const w of warnings) ul.append(el('li', { className: w.level, title: w.detail || '', textContent: w.text }));
+        card.append(ul);
+      }
+      if (run.date === null) return card;
+      const dl = el('dl');
+      const row = (term, ...value) => dl.append(el('dt', {}, term), el('dd', {}, ...value));
+      row('Run', run.url ? link(run.url, formatDate(run.date)) : formatDate(run.date));
+      row('Commit', run.commitUrl ? link(run.commitUrl, run.commit.slice(0, 7)) : run.commit.slice(0, 7), run.message ? ` ${run.message}` : '');
+      row('Power mode', run.pmode || '?');
+      const p = run.provenance || {};
+      if (p.peano) row('Peano', p.peano);
+      if (p.xrt || p.xdna) row('XRT / driver', `${p.xrt || '?'} / ${p.xdna || '?'}`);
+      if (p.host) row('Host', p.host);
+      if (p.kernels) row('Kernel sources', el('code', {}, p.kernels));
+      card.append(dl);
+      const counts = el('ul', { className: 'counts' });
+      if (catalogue) {
+        const ks = catalogue.kernels;
+        const sum = f => ks.reduce((n, k) => n + f(k), 0);
+        const passed = sum(k => k.passed || 0), failing = sum(k => (k.failed || []).length), timed = sum(k => k.timed || 0);
+        const timingFailed = sum(k => (k.timing_failed || []).length), untimed = sum(k => (k.untimed || []).length);
+        const offered = ks.filter(k => k.builds && k.builds.length).length;
+        const checked = ks.filter(k => k.passed || (k.failed && k.failed.length)).length;
+        counts.append(el('li', {}, 'Cases: ',
+          el('span', { className: 'pass' }, `${passed} passed`), ' · ',
+          el('span', { className: failing ? 'fail' : '' }, `${failing} failing`), ' · ',
+          `${timed} timed`, ' · ',
+          el('span', { className: timingFailed ? 'fail' : '' }, `${timingFailed} timing failed`), ' · ',
+          `${untimed} correctness only`));
+        counts.append(el('li', {}, `Kernels: ${checked} of ${offered} offered checked on hardware · `, link(hashFor({ view: 'kernels' }), 'kernels')));
+      }
+      if (moved) {
+        const gated = moved.regressed.filter(x => GATED.includes(x.series.metric)).length;
+        const other = moved.regressed.length - gated;
+        counts.append(el('li', {},
+          'Since the previous nightly: ',
+          el('span', { className: gated ? 'fail' : '' }, `${plural(gated, 'regression')} in ${GATED.join(', ')}`),
+          other ? `, ${other} other series worse` : '', ', ',
+          el('span', { className: moved.improved.length ? 'pass' : '' }, `${moved.improved.length} improved`), ' · ',
+          link(hashFor({ view: 'charts', npu, metric: 'all', kernel: '', sort: 'worse' }), 'charts, worst first')));
+      }
+      card.append(counts);
+      return card;
     }
+
+    function movedRow(npu, x) {
+      const s = x.series;
+      return el('tr', {},
+        el('td', {}, npu),
+        el('td', {}, link(kernelLink(s.factory), s.factory), el('span', { className: 'dim' }, s.kase.slice(s.factory.length)),
+          ' ', link(chartsLink(npu, s.kase, s.metric), 'chart', { className: 'dim' })),
+        el('td', {}, s.metric),
+        el('td', {}, formatValue(x.before, s.unit)),
+        el('td', {}, formatValue(x.after, s.unit)),
+        el('td', { className: x.cls }, formatChange(x.change)));
+    }
+
+    function renderDashboard(npus, db, catalogues, runsIndexes, now) {
+      const cards = $('cards');
+      const regressions = $('regressions'), improvements = $('improvements');
+      let nRegressed = 0, nImproved = 0;
+      for (const npu of npus) {
+        const catalogue = catalogues.get(npu) || null;
+        const run = latestRun(npu, runsIndexes.get(npu) || null, db, catalogue);
+        const moved = db ? movedSeries(db, npu) : null;
+        cards.append(runCard(npu, run, catalogue, moved, now));
+        if (!moved) continue;
+        for (const x of moved.regressed) regressions.append(movedRow(npu, x));
+        for (const x of moved.improved) improvements.append(movedRow(npu, x));
+        nRegressed += moved.regressed.length;
+        nImproved += moved.improved.length;
+      }
+      $('regressions-about').textContent = nRegressed
+        ? `${plural(nRegressed, 'series')} moved past ${nRegressed === 1 ? 'its' : 'their'} threshold in the latest nightly's power mode; ${GATED.join(' and ')} first.`
+        : 'No series moved past its threshold since the previous nightly.';
+      $('improvements-summary').textContent = `Improvements (${nImproved})`;
+      $('improvements-box').hidden = nImproved === 0;
+    }
+
+    // ------------------------------------------------------------------
+    // Kernels table and one kernel's detail
+    // ------------------------------------------------------------------
 
     // One row per factory; per NPU, what it offers there and what the nightly
     // extensive sweep and performance checks made of it.
     function npuCell(npu, k) {
-      const td = document.createElement('td');
+      const td = el('td');
       if (!k || !k.builds.length) {
         td.className = 'none';
-        td.textContent = '\u2014';
+        td.textContent = '—';
         td.title = 'not offered on this NPU';
         return td;
       }
       td.title = k.builds.join('\n');
-      td.append(`${k.builds.length} build${k.builds.length > 1 ? 's' : ''}`);
-      const verdict = document.createElement('span');
+      td.append(`${plural(k.builds.length, 'build')}`);
+      const verdict = el('span');
       if (k.failed.length) {
         verdict.className = 'fail';
-        verdict.textContent = ` \u00b7 ${k.failed.length} failing`;
+        verdict.textContent = ` · ${k.failed.length} failing`;
         verdict.title = k.failed.join('\n');
       } else if (k.passed) {
         verdict.className = 'pass';
-        verdict.textContent = ` \u00b7 ${k.passed} case${k.passed > 1 ? 's' : ''} pass`;
+        verdict.textContent = ` · ${plural(k.passed, 'case')} pass`;
+        const untimed = (k.untimed || []).length;
+        if (untimed) verdict.title = `${plural(untimed, 'case')} not timed by design`;
       } else {
         verdict.className = 'none';
-        verdict.textContent = ' \u00b7 not checked on hardware';
+        verdict.textContent = ' · not checked on hardware';
+        verdict.title = k.reason || '';
       }
       td.append(verdict);
-      if (k.timed) td.append(' \u00b7 ', chartsLink(npu, `${k.factory}/`, 'charts'));
+      const broken = k.timing_failed || [];
+      if (broken.length) {
+        td.append(el('span', { className: 'fail', title: broken.join('\n'), textContent: ` · ${broken.length} timing failed` }));
+      }
+      if (k.timed) td.append(' · ', link(chartsLink(npu, `${k.factory}/`), 'charts'));
       return td;
     }
 
-    // One case on one NPU: failing, or its latest values of the SHOWN metrics.
-    function caseCell(failing, c) {
-      const td = document.createElement('td');
-      if (failing) {
+    // One metric's latest value with its change, and for cycles its spread.
+    function valueSpan(m, c) {
+      const { value, unit, change, cls, range } = c.metrics.get(m);
+      const span = el('span', { title: `${m}: ${METRICS[m] || ''}` });
+      span.append(formatValue(value, unit));
+      if (change !== null) span.append(changeSpan(change, cls || '', c.current));
+      const spread = m === 'cycles' ? cyclesSpread(range) : null;
+      if (spread) {
+        span.title += `\nmin ${value}, median ${spread.median}, max ${spread.max} over ${spread.n} calls`;
+        if (spread.truncated) {
+          span.append(el('span', { className: 'fail', textContent: ' truncated',
+            title: `the trace buffer filled after ${spread.n} calls; the min is over those` }));
+        }
+      }
+      return span;
+    }
+
+    // One case on one NPU: its verdict when it was not timed, else its latest
+    // values of `metrics`.
+    function caseCell(verdict, c, metrics) {
+      const td = el('td');
+      if (verdict === 'failing') {
         td.className = 'fail';
         td.textContent = 'failing';
         td.title = 'failed the correctness sweep, so not timed';
         return td;
       }
+      if (verdict === 'timing failed') {
+        td.className = 'fail';
+        td.textContent = 'timing failed';
+        td.title = 'passed the correctness sweep, then failed in the timing run; see the run\'s perf.log';
+        return td;
+      }
+      if (verdict === 'untimed' && !c) {
+        td.className = 'none';
+        td.textContent = 'passed, not timed';
+        td.title = 'passed the correctness sweep; not timed by design (perf=False)';
+        return td;
+      }
       if (!c) {
         td.className = 'none';
-        td.textContent = '\u2014';
+        td.textContent = '—';
         td.title = 'not timed on this NPU';
         return td;
       }
@@ -289,21 +739,37 @@
         td.className = 'stale';
         td.title = 'not measured in the latest nightly; these are from an earlier one';
       }
-      const parts = SHOWN.filter(m => c.metrics.has(m)).map(m => {
-        const { value, unit, change } = c.metrics.get(m);
-        const span = document.createElement('span');
-        span.title = `${m}: ${METRICS[m]}`;
-        span.append(formatValue(value, unit));
-        if (change !== null) {
-          const d = document.createElement('span');
-          d.className = c.current ? changeClass(change) : '';
-          d.textContent = ` (${change > 0 ? '+' : ''}${(100 * change).toFixed(1)}%)`;
-          span.append(d);
-        }
-        return span;
-      });
-      parts.forEach((p, i) => td.append(...(i ? [' \u00b7 ', p] : [p])));
+      const parts = (metrics || SHOWN).filter(m => c.metrics.has(m)).map(m => valueSpan(m, c));
+      parts.forEach((p, i) => td.append(...(i ? [' · ', p] : [p])));
       return td;
+    }
+
+    // Per NPU, each of a factory's cases and its verdict when it has no numbers.
+    function caseVerdicts(catalogues, byNpu, factory) {
+      return catalogues.map((c, i) => {
+        const entry = byNpu[i].get(factory);
+        const v = new Map();
+        for (const kase of entry?.untimed || []) v.set(kase, 'untimed');
+        for (const kase of entry?.timing_failed || []) v.set(kase, 'timing failed');
+        for (const kase of entry?.failed || []) v.set(kase, 'failing');
+        return v;
+      });
+    }
+
+    function caseNames(verdicts, latest, factory) {
+      const names = new Set(verdicts.flatMap(v => [...v.keys()]));
+      for (const { cases } of latest.values()) {
+        for (const kase of cases.keys()) if (kase.split('/')[0] === factory) names.add(kase);
+      }
+      return [...names].sort();
+    }
+
+    function kernelsStatus(catalogues, latest) {
+      return catalogues.map(c => {
+        const last = latest.get(c.npu).last;
+        const run = last ? `, ${last.mode} mode` : '';
+        return `${c.npu} (${c.arch}): ${c.commit ? c.commit.slice(0, 7) : 'unknown commit'}, ${formatDate(Date.parse(c.date))}${run}`;
+      }).join(' · ');
     }
 
     // One row per factory; expanding it lists the factory's cases: those the
@@ -315,16 +781,8 @@
         return;
       }
       const latest = new Map(catalogues.map(c => [c.npu, db ? latestCases(db, c.npu) : { cases: new Map() }]));
-      status.textContent = catalogues.map(c => {
-        const last = latest.get(c.npu).last;
-        const run = last ? `, ${last.mode} mode` : '';
-        return `${c.npu} (${c.arch}): ${c.commit ? c.commit.slice(0, 7) : 'unknown commit'}, ${new Date(c.date).toString()}${run}`;
-      }).join(' \u00b7 ');
-      for (const c of catalogues) {
-        const th = document.createElement('th');
-        th.textContent = c.npu;
-        $('kernels-head').append(th);
-      }
+      status.textContent = kernelsStatus(catalogues, latest);
+      for (const c of catalogues) $('kernels-head').append(el('th', {}, c.npu));
       const byNpu = catalogues.map(c => new Map(c.kernels.map(k => [k.factory, k])));
       const rows = new Map();
       for (const c of catalogues) for (const k of c.kernels) if (!rows.has(k.factory)) rows.set(k.factory, k);
@@ -332,48 +790,30 @@
         a.family.localeCompare(b.family) || a.factory.localeCompare(b.factory));
       const commit = catalogues.find(c => c.commit)?.commit || 'main';
       const groups = sorted.map(k => {
-        const failing = catalogues.map((c, i) => new Set(byNpu[i].get(k.factory)?.failed || []));
-        const names = new Set(failing.flatMap(f => [...f]));
-        for (const { cases } of latest.values()) {
-          for (const kase of cases.keys()) if (kase.split('/')[0] === k.factory) names.add(kase);
-        }
-        const cases = [...names].sort().map(kase => {
-          const tr = document.createElement('tr');
-          tr.className = 'case';
-          tr.hidden = true;
+        const verdicts = caseVerdicts(catalogues, byNpu, k.factory);
+        const cases = caseNames(verdicts, latest, k.factory).map(kase => {
+          const tr = el('tr', { className: 'case', hidden: true });
           tr.search = kase.toLowerCase();
-          const name = document.createElement('td');
-          name.className = 'name';
-          name.colSpan = 4;
-          name.append(chartsLink(catalogues.map(c => c.npu).join(','), kase, kase));
+          const name = el('td', { className: 'name', colSpan: 4 });
+          name.append(link(chartsLink(catalogues.map(c => c.npu).join(','), kase), kase));
           tr.append(name, ...catalogues.map((c, i) =>
-            caseCell(failing[i].has(kase), latest.get(c.npu).cases.get(kase))));
+            caseCell(verdicts[i].get(kase), latest.get(c.npu).cases.get(kase))));
           return tr;
         });
 
-        const tr = document.createElement('tr');
-        const source = document.createElement('td');
-        k.sources.forEach((src, i) => {
-          const a = document.createElement('a');
-          a.href = `${REPO}/blob/${commit}/aie_kernels/${src}`;
-          a.textContent = src;
-          source.append(...(i ? [', ', a] : [a]));
-        });
-        const [family, factory, summary] = [k.family, k.factory, k.summary].map(text => {
-          const td = document.createElement('td');
-          td.textContent = text;
-          return td;
-        });
+        const tr = el('tr');
+        const source = el('td', { className: 'wide' });
+        k.sources.forEach((src, i) => source.append(...(i ? [', '] : []), link(sourceUrl(commit, src), src)));
+        const family = el('td', { className: 'wide' }, k.family);
+        const factory = el('td', {}, link(kernelLink(k.factory), k.factory));
+        const summary = el('td', { className: 'wide' }, k.summary);
         if (cases.length) {
-          const toggle = document.createElement('button');
-          toggle.type = 'button';
-          toggle.textContent = `${cases.length} case${cases.length > 1 ? 's' : ''}`;
-          toggle.title = 'show or hide the cases';
+          const toggle = el('button', { type: 'button', textContent: plural(cases.length, 'case'), title: 'show or hide the cases' });
           toggle.addEventListener('click', () => {
             const open = cases.some(c => c.hidden);
             for (const c of cases) c.hidden = !open;
           });
-          factory.append(document.createElement('br'), toggle);
+          factory.append(el('br'), toggle);
         }
         tr.append(family, factory, summary, source,
           ...catalogues.map((c, i) => npuCell(c.npu, byNpu[i].get(k.factory))));
@@ -392,13 +832,81 @@
       });
     }
 
-    function writeHash() {
-      const p = new URLSearchParams({
-        view: currentView(),
-        npu: checked($('npus')).join(','), mode: checked($('modes')).join(','),
-        metric: $('metric').value, kernel: $('kernel').value, sort: $('sort').value,
+    // One factory: what it is, where it comes from, every case with every
+    // metric per NPU, and its charts.
+    function renderKernel(factory, catalogues, recent) {
+      const head = $('kernel-head');
+      const found = catalogues.map(c => c.kernels.find(k => k.factory === factory)).filter(Boolean);
+      const k = found[0];
+      if (!k) {
+        head.append(el('h2', {}, factory), el('p', { className: 'dim' }, 'No kernel of that name is in the catalogue.'));
+        return;
+      }
+      const commit = catalogues.find(c => c.commit)?.commit || 'main';
+      head.append(el('h2', {}, k.factory, ' ', el('span', { className: 'tag' }, k.family)));
+      head.append(el('p', {}, k.summary));
+      const sources = el('p', {}, 'Source: ');
+      k.sources.forEach((src, i) => sources.append(...(i ? [', '] : []), link(sourceUrl(commit, src), src)));
+      sources.append(' · factory ', link(factoryUrl(commit, k.family), `${k.family}.py`), ' · cases ', link(casesUrl(commit), 'kernel_cases.py'));
+      head.append(sources);
+      const byNpu = catalogues.map(c => new Map(c.kernels.map(x => [x.factory, x])));
+      // One line per NPU: the kernels table's cell, as a line rather than a td.
+      const builds = el('ul', { className: 'builds' });
+      catalogues.forEach((c, i) => {
+        const cell = npuCell(c.npu, byNpu[i].get(factory));
+        const parts = cell.childNodes ? [...cell.childNodes] : cell.children;
+        builds.append(el('li', {}, el('strong', {}, `${c.npu}: `),
+          el('span', { className: cell.className, title: cell.title }, ...parts)));
       });
-      history.replaceState(null, '', '#' + p);
+      head.append(builds);
+
+      const latest = new Map(catalogues.map(c => [c.npu, recent ? latestCases(recent, c.npu) : { cases: new Map() }]));
+      for (const c of catalogues) $('kernel-cases-head').append(el('th', {}, c.npu));
+      const verdicts = caseVerdicts(catalogues, byNpu, factory);
+      for (const kase of caseNames(verdicts, latest, factory)) {
+        const tr = el('tr');
+        tr.append(el('td', {}, link(chartsLink(catalogues.map(c => c.npu).join(','), kase), kase)));
+        tr.append(...catalogues.map((c, i) => caseCell(verdicts[i].get(kase), latest.get(c.npu).cases.get(kase), ALL_METRICS)));
+        $('kernel-cases').append(tr);
+      }
+    }
+
+    // One factory's charts, from the history files in `histories`.
+    function kernelCharts(factory, histories) {
+      const shown = histories.series.filter(s => s.factory === factory)
+        .sort((a, b) => a.kase.localeCompare(b.kase) || ALL_METRICS.indexOf(a.metric) - ALL_METRICS.indexOf(b.metric) || a.npu.localeCompare(b.npu));
+      const modes = [...new Set(shown.flatMap(s => [...s.byMode.keys()]))].sort();
+      placeCharts($('kernel-charts'), shown, modes);
+    }
+
+    // ------------------------------------------------------------------
+    // Charts
+    // ------------------------------------------------------------------
+
+    // db: what the charts on screen draw from (history files); recent: the
+    // latest and the previous run per NPU (run records), for the tables.
+    let db, recent, modeColor, observer, charts = [];
+    let applyHash = () => {};
+    let loadedCatalogues = [], metricList = ALL_METRICS, updated = '';
+    const historyCache = new Map();
+
+    // The history files of `metrics` on `npus`, fetched once each.
+    async function loadHistories(npus, metrics) {
+      const files = await Promise.all(npus.flatMap(n => metrics.map(m => {
+        const url = `${n}/history/${m}.json`;
+        if (!historyCache.has(url)) historyCache.set(url, fetchJson(url));
+        return historyCache.get(url);
+      })));
+      return collect(files.map(readable).filter(Boolean));
+    }
+
+    function cssVar(name, fallback) {
+      if (typeof getComputedStyle !== 'function' || !document.documentElement) return fallback;
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    }
+
+    function paletteFor(modes) {
+      return new Map(modes.map((m, i) => [m, cssVar(`--series-${(i % 6) + 1}`, ['#0969da', '#cf222e', '#1a7f37', '#8250df', '#bf8700', '#57606a'][i % 6])]));
     }
 
     // A row whose range starts "± d" (npu_us) is shaded value ± d; the lower
@@ -409,15 +917,41 @@
       const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16)).join(', ');
       const edge = sign => ({
         band: true, data: values.map((v, i) => dev[i] ? v + sign * Number(dev[i][1]) : null),
-        spanGaps: true, lineTension: 0, pointRadius: 0, borderWidth: 0,
-        backgroundColor: `rgba(${rgb}, 0.2)`,
+        spanGaps: true, tension: 0, pointRadius: 0, borderWidth: 0,
+        backgroundColor: `rgba(${rgb}, ${cssVar('--band', '0.2')})`,
       });
       return [{ ...edge(-1), fill: false }, { ...edge(1), fill: '-1' }];
     }
 
-    function draw(el, s, modes) {
+    // Dashed vertical lines where the provenance changed between runs.
+    const MARKERS = {
+      id: 'markers',
+      afterDatasetsDraw(chart, _args, opts) {
+        const at = opts && opts.at;
+        if (!at || !at.length) return;
+        const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = chart;
+        ctx.save();
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = ctx.fillStyle = opts.color || '#888';
+        ctx.font = '10px sans-serif';
+        for (const m of at) {
+          const px = x.getPixelForValue(m.index);
+          ctx.beginPath();
+          ctx.moveTo(px, top);
+          ctx.lineTo(px, bottom);
+          ctx.stroke();
+          // The label sits on whichever side has room.
+          const toRight = px < (left + right) / 2;
+          ctx.textAlign = toRight ? 'left' : 'right';
+          ctx.fillText(m.label, px + (toRight ? 3 : -3), top + 10);
+        }
+        ctx.restore();
+      },
+    };
+
+    function draw(target, s, modes) {
       const order = db.order.filter(c => c.npu === s.npu);
-      const labels = order.map(c => c.commit.id.slice(0, 7));
+      const labels = order.map(c => new Date(c.date).toISOString().slice(5, 10));
       const index = new Map(order.map((c, i) => [c.id, i]));
       const datasets = modes.filter(m => s.byMode.has(m)).flatMap(mode => {
         const values = new Array(labels.length).fill(null), rows = new Array(labels.length);
@@ -427,58 +961,173 @@
           rows[i] = p.row;
         }
         const color = modeColor.get(mode);
-        return [{ label: mode, data: values, rows, fill: false, spanGaps: true, lineTension: 0,
-                  borderColor: color, backgroundColor: color, pointRadius: 2 },
+        return [{ label: mode, data: values, rows, fill: false, spanGaps: true, tension: 0,
+                  borderColor: color, backgroundColor: color, pointRadius: 2.5, borderWidth: 1.5 },
                 ...band(values, rows, color)];
       });
-      charts.push(new Chart(el.querySelector('canvas'), {
+      const fg = cssVar('--muted', '#57606a'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+      charts.push(new Chart(target, {
         type: 'line',
         data: { labels, datasets },
         options: {
           animation: false,
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
           scales: {
-            xAxes: [{ scaleLabel: { display: true, labelString: 'nightly run (commit)' } }],
-            yAxes: [{ scaleLabel: { display: true, labelString: s.unit }, ticks: { beginAtZero: true } }],
+            x: { title: { display: true, text: 'nightly run', color: fg }, ticks: { color: fg, maxRotation: 0, autoSkip: true }, grid: { color: grid } },
+            y: { beginAtZero: true, title: { display: true, text: s.unit, color: fg }, ticks: { color: fg }, grid: { color: grid } },
           },
-          legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex].band } },
-          tooltips: {
-            mode: 'index', intersect: false,
-            filter: (item, data) => !data.datasets[item.datasetIndex].band,
-            callbacks: {
-              afterTitle: items => {
-                const c = order[items[0].index];
-                return `\n${c.commit.message.split('\n')[0]}\n${new Date(c.date).toString()}`;
-              },
-              label: (item, data) => {
-                const b = data.datasets[item.datasetIndex].rows[item.index];
-                return `${data.datasets[item.datasetIndex].label}: ${item.value} ${s.unit}` + (b && b.range ? ` (${b.range})` : '');
+          plugins: {
+            legend: { labels: { color: fg, boxWidth: 12, filter: (item, data) => !data.datasets[item.datasetIndex].band } },
+            markers: { at: markersFor(order), color: cssVar('--accent', '#e8710a') },
+            tooltip: {
+              filter: item => !item.dataset.band,
+              callbacks: {
+                title: items => items.length ? formatDate(order[items[0].dataIndex].date) : '',
+                afterTitle: items => {
+                  const c = order[items[0].dataIndex];
+                  return `${c.commit.id.slice(0, 7)} ${c.commit.message.split('\n')[0]}`;
+                },
+                label: item => {
+                  const b = item.dataset.rows[item.dataIndex];
+                  return `${item.dataset.label}: ${item.formattedValue} ${s.unit}` + (b && b.range ? ` (${b.range})` : '');
+                },
+                // The run's provenance (Peano, kernel sources, XRT, host)
+                // and power mode, one field per line.
+                footer: items => {
+                  if (!items.length) return '';
+                  const o = order[items[0].dataIndex];
+                  const fields = Object.entries(o.provenance || {}).map(([k, v]) => `${k} ${v}`);
+                  return fields.length ? [...fields, `pmode ${o.mode}`] : '';
+                },
               },
             },
           },
           onClick: (_e, active) => {
-            if (active.length) window.open(order[active[0]._index].commit.url, '_blank', 'noopener');
+            if (active.length) window.open(order[active[0].index].commit.url, '_blank', 'noopener');
           },
         },
+        plugins: [MARKERS],
       }));
     }
 
-    function render() {
-      writeHash();
+    // Chart boxes for `shown`, drawn as they scroll into view: a full sweep
+    // is thousands.
+    // The series in `shown` by factory, in the order of each factory's first
+    // series, so a sort by change puts the factory with the largest first.
+    function groupByFactory(shown) {
+      const groups = new Map();
+      for (const s of shown) {
+        if (!groups.has(s.factory)) groups.set(s.factory, []);
+        groups.get(s.factory).push(s);
+      }
+      return [...groups].map(([factory, series]) => ({ factory, series }));
+    }
+
+    // Chart boxes for `shown`, drawn as they scroll into view: a full sweep
+    // is thousands. `grouped` puts them in one collapsible section per
+    // factory, open when there are few sections or the factory has a
+    // flagged move; a closed section's charts are drawn when it is opened.
+    function placeCharts(container, shown, modes, grouped) {
       observer && observer.disconnect();
       charts.forEach(c => c.destroy());
       charts = [];
-      $('charts').replaceChildren();
+      container.replaceChildren();
+      modeColor = paletteFor(modes);
+      const moves = new Map(shown.map(s => [s.key, latestMove(s, modes)]));
+      observer = new IntersectionObserver(seen => {
+        for (const { isIntersecting, target } of seen) {
+          if (!isIntersecting) continue;
+          observer.unobserve(target);
+          draw(target.canvas, target.series, modes);
+        }
+      }, { rootMargin: '400px' });
+      const box = s => {
+        const div = el('div', { className: 'chart' });
+        const title = el('h3', {}, `${s.npu} · `, link(kernelLink(s.factory), s.factory), `${s.kase.slice(s.factory.length)} · ${s.metric} `);
+        const move = moves.get(s.key);
+        if (move) title.append(el('span', { className: `delta ${move.cls}`, textContent: formatChange(move.change) }));
+        const holder = el('div', { className: 'canvas' });
+        const canvas = el('canvas');
+        holder.append(canvas);
+        div.append(title, holder);
+        div.series = s;
+        div.canvas = canvas;
+        return div;
+      };
+      if (!grouped) {
+        for (const s of shown) {
+          const div = box(s);
+          container.append(div);
+          observer.observe(div);
+        }
+        return moves;
+      }
+      const groups = groupByFactory(shown);
+      for (const g of groups) {
+        const flagged = g.series.map(s => moves.get(s.key)).filter(m => m && m.cls);
+        const worse = flagged.filter(m => m.cls === 'worse').length, better = flagged.length - worse;
+        const summary = el('summary', {}, el('span', { className: 'factory' }, g.factory), ` \u00b7 ${plural(g.series.length, 'chart')}`);
+        if (worse) summary.append(' \u00b7 ', el('span', { className: 'worse' }, `${worse} worse`));
+        if (better) summary.append(' \u00b7 ', el('span', { className: 'better' }, `${better} better`));
+        summary.append(' \u00b7 ', link(kernelLink(g.factory), 'kernel page'));
+        const grid = el('div', { className: 'charts' });
+        const section = el('details', { className: 'group', open: groups.length <= 3 || flagged.length > 0 }, summary, grid);
+        for (const s of g.series) {
+          const div = box(s);
+          grid.append(div);
+          observer.observe(div);
+        }
+        container.append(section);
+      }
+      return moves;
+    }
+
+    function checked(fieldset) {
+      return [...fieldset.querySelectorAll('input:checked')].map(i => i.value);
+    }
+
+    function addBoxes(fieldset, values) {
+      for (const v of values) {
+        const box = el('input', { type: 'checkbox', value: v });
+        fieldset.append(el('label', {}, box, ' ', v));
+      }
+    }
+
+    function writeHash() {
+      const p = new URLSearchParams({
+        view: 'charts',
+        npu: checked($('npus')).join(','), mode: checked($('modes')).join(','),
+        metric: $('metric').value, kernel: $('kernel-filter').value, sort: $('sort').value,
+      });
+      history.replaceState(null, '', '#' + p);
+    }
+
+    let renderToken = 0;
+
+    async function render() {
+      writeHash();
+      const token = ++renderToken;
       const npus = checked($('npus')), modes = checked($('modes'));
-      const metric = $('metric').value, kernel = $('kernel').value.trim().toLowerCase();
-      $('metric-about').textContent = METRICS[metric] || '';
+      const metric = $('metric').value, kernel = $('kernel-filter').value.trim().toLowerCase();
+      $('metric-about').textContent = METRICS[metric] ? `${METRICS[metric]}; ${thresholdText(metric)}` : '';
+      $('status').textContent = 'Loading\u2026';
+      const data = await loadHistories(npus, metric === 'all' ? metricList : [metric]);
+      // A later change of the controls has already drawn its own.
+      if (token !== renderToken) return;
+      db = data;
       const shown = db.series.filter(s =>
         npus.includes(s.npu) && (metric === 'all' || s.metric === metric) &&
         s.kase.toLowerCase().includes(kernel) && modes.some(m => s.byMode.has(m)));
       const change = new Map(shown.map(s => [s.key, latestChange(s, modes)]));
       const sort = $('sort').value;
+      // Sorted by change relative to the metric's threshold, so a 4% move in
+      // cycles outranks a 6% one in npu_us.
+      const rank = s => change.get(s.key) === null ? null : change.get(s.key) / threshold(s.metric);
       shown.sort((a, b) => {
         if (sort !== 'name') {
-          const x = change.get(a.key), y = change.get(b.key);
+          const x = rank(a), y = rank(b);
           if (x !== y) {
             if (x === null) return 1;
             if (y === null) return -1;
@@ -487,77 +1136,135 @@
         }
         return a.key.localeCompare(b.key);
       });
-      $('empty').hidden = shown.length > 0 || currentView() === 'kernels';
-      // Charts draw as they scroll into view: a full sweep is thousands.
-      observer = new IntersectionObserver(seen => {
-        for (const { isIntersecting, target } of seen) {
-          if (!isIntersecting) continue;
-          observer.unobserve(target);
-          draw(target, target.series, modes);
-        }
-      }, { rootMargin: '400px' });
-      for (const s of shown) {
-        const el = document.createElement('div');
-        el.className = 'chart';
-        const title = document.createElement('h2');
-        title.textContent = `${s.npu} · ${s.kase} · ${s.metric} `;
-        const d = change.get(s.key);
-        if (d !== null) {
-          const span = document.createElement('span');
-          span.className = `delta ${changeClass(d)}`;
-          span.textContent = `${d > 0 ? '+' : ''}${(100 * d).toFixed(1)}%`;
-          title.append(span);
-        }
-        el.append(title, document.createElement('canvas'));
-        el.series = s;
-        $('charts').append(el);
-        observer.observe(el);
-      }
-      $('status').textContent = `${shown.length} of ${db.series.length} series · last update ${db.updated}`;
+      $('empty').hidden = shown.length > 0;
+      placeCharts($('charts'), shown, modes, true);
+      const factories = new Set(shown.map(s => s.factory)).size;
+      $('status').textContent = `${plural(shown.length, 'series')} in ${plural(factories, 'kernel')} · last update ${updated}`;
     }
 
-    (async () => {
-      for (const radio of document.querySelectorAll('input[name=view]')) {
-        radio.addEventListener('change', () => {
-          const p = new URLSearchParams(location.hash.slice(1));
-          p.set('view', radio.value);
-          location.hash = p;
-        });
-      }
-      window.addEventListener('hashchange', applyView);
-      applyView();
+    // ------------------------------------------------------------------
+    // Views and theme
+    // ------------------------------------------------------------------
+
+    const VIEWS = ['dashboard', 'kernels', 'kernel', 'charts'];
+
+    function currentView() {
+      const want = readHash().view;
+      // "catalogue" was the kernels view's first name; old links keep working.
+      if (want === 'catalogue') return 'kernels';
+      return VIEWS.includes(want) ? want : 'dashboard';
+    }
+
+    function applyView() {
+      const view = currentView();
+      $('dashboard').hidden = view !== 'dashboard';
+      $('kernels').hidden = view !== 'kernels';
+      $('kernel').hidden = view !== 'kernel';
+      $('charts-view').hidden = view !== 'charts';
+      $('status').hidden = view !== 'charts';
+      $('tab-kernel').hidden = view !== 'kernel';
+      for (const v of VIEWS) $(`tab-${v}`).className = v === view ? 'current' : '';
+      return view;
+    }
+
+    // One factory's detail, rebuilt when another is asked for (or the theme
+    // changes, since its charts read their colors when drawn).
+    let currentKernel = null;
+
+    function showKernel(factory) {
+      currentKernel = factory;
+      $('kernel-head').replaceChildren();
+      $('kernel-cases-head').replaceChildren(el('th', {}, 'Case'));
+      $('kernel-cases').replaceChildren();
+      $('kernel-charts').replaceChildren();
+      renderKernel(factory, loadedCatalogues, recent);
+      const npus = loadedCatalogues.map(c => c.npu);
+      loadHistories(npus, metricList).then(data => {
+        if (currentKernel !== factory || currentView() !== 'kernel') return;
+        db = data;
+        kernelCharts(factory, data);
+      });
+    }
+
+    function readTheme() {
+      try { return localStorage.getItem('kernel-checks-theme') || ''; } catch (e) { return ''; }
+    }
+
+    function isDark() {
+      const set = document.documentElement.getAttribute('data-theme');
+      if (set) return set === 'dark';
+      return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+
+    function applyTheme(theme) {
+      if (theme) document.documentElement.setAttribute('data-theme', theme);
+      else document.documentElement.removeAttribute('data-theme');
+      try { theme ? localStorage.setItem('kernel-checks-theme', theme) : localStorage.removeItem('kernel-checks-theme'); } catch (e) { /* private window */ }
+      $('theme').textContent = isDark() ? 'light theme' : 'dark theme';
+    }
+
+    // ------------------------------------------------------------------
+    // Start
+    // ------------------------------------------------------------------
+
+    function showView() {
+      const view = applyView();
+      if (view === 'charts' && recent) { applyHash(); render(); }
+      if (view === 'kernel' && recent) showKernel(readHash().kernel || '');
+      return view;
+    }
+
+    async function main() {
+      applyTheme(readTheme());
+      $('theme').addEventListener('click', () => {
+        applyTheme(isDark() ? 'light' : 'dark');
+        if (currentView() === 'charts' && recent) render();
+        if (currentView() === 'kernel') showKernel(readHash().kernel || '');
+      });
+      window.addEventListener('hashchange', showView);
+      const view = applyView();
       for (const [m, about] of Object.entries(METRICS)) {
-        const dt = document.createElement('dt'), dd = document.createElement('dd');
-        dt.textContent = m;
-        dd.textContent = about;
-        $('key-metrics').append(dt, dd);
+        $('key-metrics').append(el('dt', {}, m), el('dd', {}, `${about}; ${thresholdText(m)}`));
       }
-      const [catalogues, loaded] = await Promise.all([
-        Promise.all(NPUS.map(n => fetch(`${n}/catalogue.json`, { cache: 'no-cache' })
-          .then(r => r.ok ? r.json() : null).catch(() => null))),
-        Promise.all(NPUS.map(async n => [n, await load(n).catch(() => null)])),
-      ]).then(([c, l]) => [c.filter(x => x), l.filter(([, data]) => data)]);
-      const data = loaded.length ? collect(loaded) : null;
+      const [catalogues, indexes, latests] = await Promise.all([
+        Promise.all(NPUS.map(n => fetchJson(`${n}/catalogue.json`))),
+        Promise.all(NPUS.map(n => fetchJson(`${n}/runs.json`))),
+        Promise.all(NPUS.map(n => fetchJson(`${n}/latest.json`))),
+      ]).then(([c, r, l]) => [c.filter(Boolean), new Map(NPUS.map((n, i) => [n, r[i]])), l.map(readable)]);
+      // The run before each latest one, in its power mode, for what moved.
+      const previous = await Promise.all(NPUS.map((n, i) => {
+        const p = latests[i] && previousPublished(readable(indexes.get(n)), latests[i]);
+        return p ? fetchJson(`${n}/runs/${p.id}.json`).then(readable) : null;
+      }));
+      const published = NPUS.map((n, i) => [n, [previous[i], latests[i]].filter(Boolean)]).filter(([, r]) => r.length);
+      recent = collect(published.flatMap(([n, records]) => historiesOf(n, records)));
+      const data = published.length ? recent : null;
+      loadedCatalogues = catalogues;
+      const npus = NPUS.filter(n => catalogues.some(c => c.npu === n) || indexes.get(n));
+      renderDashboard(npus.length ? npus : NPUS, data, new Map(catalogues.map(c => [c.npu, c])), indexes, Date.now());
       renderKernels(catalogues, data);
-      if (!data) {
+      const found = [...new Set(recent.series.map(s => s.metric))];
+      metricList = found.length
+        ? ALL_METRICS.filter(m => found.includes(m)).concat(found.filter(m => !ALL_METRICS.includes(m)).sort())
+        : ALL_METRICS;
+      if (view === 'kernel') showKernel(readHash().kernel || '');
+      const runs = [...indexes.values()].map(readable).flatMap(i => (i && i.runs) || []);
+      if (!runs.some(r => r.published)) {
         $('status').textContent = 'No results have been published yet.';
         return;
       }
-      db = data;
-      db.updated = new Date(Math.max(...loaded.map(([, d]) => d.lastUpdate))).toString();
-      const modes = [...new Set(db.series.flatMap(s => [...s.byMode.keys()]))].sort();
-      const metrics = [...new Set(db.series.map(s => s.metric))].sort();
-      modeColor = new Map(modes.map((m, i) => [m, PALETTE[i % PALETTE.length]]));
-      addBoxes($('npus'), loaded.map(([n]) => n));
+      updated = formatDate(Math.max(...runs.map(r => Date.parse(r.date))));
+      const modes = [...new Set(runs.filter(r => r.published).map(r => r.pmode || 'unknown'))].sort();
+      const metrics = metricList;
+      addBoxes($('npus'), NPUS.filter(n => indexes.get(n)));
       addBoxes($('modes'), modes);
       for (const m of ['all', ...metrics]) {
         const option = new Option(m, m);
         option.title = METRICS[m] || '';
         $('metric').append(option);
       }
-
       // The hash holds the filters, so a link reproduces the view.
-      function applyHash() {
+      applyHash = () => {
         const want = readHash();
         for (const [key, id] of [['npu', 'npus'], ['mode', 'modes']]) {
           const on = want[key] !== undefined ? want[key].split(',') : null;
@@ -565,16 +1272,16 @@
         }
         $('metric').value = metrics.includes(want.metric) || want.metric === 'all' ? want.metric
           : metrics.includes('cycles') ? 'cycles' : 'all';
-        $('kernel').value = want.kernel || '';
+        $('kernel-filter').value = want.kernel || '';
         $('sort').value = ['name', 'worse', 'better'].includes(want.sort) ? want.sort : 'name';
-      }
-      applyHash();
-      window.addEventListener('hashchange', () => { applyHash(); render(); });
+      };
       $('controls').addEventListener('change', render);
       let typing;
-      $('kernel').addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(render, 200); });
-      render();
-    })();
+      $('kernel-filter').addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(render, 200); });
+      if (view === 'charts') { applyHash(); render(); }
+    }
+
+    if (typeof window !== 'undefined' && window.document && typeof window.addEventListener === 'function' && !window.KERNEL_CHECKS_TEST) main();
   </script>
 </body>
 </html>

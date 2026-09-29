@@ -21,55 +21,50 @@ def workflow(name):
     return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
 
 
-def record_steps(job):
-    return [
-        step
-        for step in job["steps"]
-        if step.get("uses", "").startswith("benchmark-action/")
-    ]
+TARGETS = ("npu1", "npu2")
 
 
-@pytest.mark.parametrize(
-    "filename,compute,static",
-    [
-        ("nightlyKernelChecks.yml", "checks", "false"),
-    ],
-)
-def test_parallel_compute_has_one_main_only_publisher(filename, compute, static):
-    config = workflow(filename)
+def artifact(npu):
+    return f"kernel-checks-{npu}-${{{{ github.run_id }}}}"
+
+
+def test_parallel_compute_has_one_main_only_publisher():
+    config = workflow("nightlyKernelChecks.yml")
     assert set(config["on"]) == {"workflow_dispatch", "schedule", "pull_request"}
-    # A change to the workflow that runs the checks must itself run them.
-    assert filename in " ".join(config["on"]["pull_request"]["paths"]) or (
-        filename == "nightlyKernelChecks.yml"
-    )
     assert config["permissions"]["contents"] == "read"
-    job = config["jobs"][compute]
+    assert set(config["jobs"]) == {"checks", "report", "publish"}
+    job = config["jobs"]["checks"]
     assert len(job["strategy"]["matrix"]["include"]) == 2
-    if "concurrency" in job:
-        assert "${{ matrix." in job["concurrency"]["group"]
-        assert job["concurrency"]["cancel-in-progress"] == "false"
-        assert job["concurrency"]["queue"] == "max"
+    assert "${{ matrix." in job["concurrency"]["group"]
+    assert job["concurrency"]["cancel-in-progress"] == "false"
+    assert job["concurrency"]["queue"] == "max"
     for step in job["steps"]:
         assert "git push" not in step.get("run", "")
         assert "git show" not in step.get("run", "")
         assert not step.get("uses", "").startswith("actions/cache/save@")
-    for step in record_steps(job):
-        assert step["with"]["save-data-file"] == "false"
-        assert "external-data-json-path" in step["with"]
+        assert not step.get("uses", "").startswith("benchmark-action/")
     publisher = config["jobs"]["publish"]
-    assert publisher["needs"] == compute
+    # After the report, which restores the baseline this publish would cache.
+    assert publisher["needs"] == ["checks", "report"]
+    assert publisher["if"].startswith("${{ !cancelled() && ")
+    write = next(
+        s for s in config["jobs"]["report"]["steps"] if s.get("name") == "Write report"
+    )
+    assert '--run-id "$GITHUB_RUN_ID"' in write["run"]
     assert "github.ref == 'refs/heads/main'" in publisher["if"]
     assert "github.event_name != 'pull_request'" in publisher["if"]
     assert publisher["if"].endswith("&& !inputs.only && !inputs.peano }}")
     assert publisher["uses"] == "./.github/workflows/publishKernelResults.yml"
-    assert publisher["with"]["static"] == static
+    assert "with" not in publisher
     assert "strategy" not in publisher
     assert "concurrency" not in publisher
     assert publisher["permissions"]["contents"] == "write"
 
 
 def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
-    publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
+    config = workflow("publishKernelResults.yml")
+    assert list(config["on"]) == ["workflow_call"]
+    publisher = config["jobs"]["publish"]
     docs = workflow("generateDocs.yml")
     assert (
         publisher["concurrency"]
@@ -83,33 +78,23 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
     assert "strategy" not in publisher
     assert "github.ref == 'refs/heads/main'" in publisher["if"]
     steps = publisher["steps"]
-    records = record_steps(publisher)
-    assert len(records) == 4
-    for step in records:
-        options = step["with"]
-        assert options["auto-push"] == "false"
-        assert options["skip-fetch-gh-pages"] == "true"
-        assert options["gh-pages-branch"] == "gh-pages"
-        assert options["comment-on-alert"] == "false"
-    # Each NPU records only if its leg produced results, so one failed leg
-    # cannot hold back the other's publication.
-    assert [step["if"] for step in records] == [
-        "hashFiles(format('results/npu1/{0}', env.RESULT_FILE)) != ''",
-        "hashFiles(format('results/npu2/{0}', env.RESULT_FILE)) != ''",
-        "inputs.static && hashFiles('results/npu1/static-pm.json') != ''",
-        "inputs.static && hashFiles('results/npu2/static-pm.json') != ''",
-    ]
+    assert not any(
+        step.get("uses", "").startswith("benchmark-action/") for step in steps
+    )
     pushes = [step for step in steps if "git push" in step.get("run", "")]
     assert len(pushes) == 1
     push_index = steps.index(pushes[0])
     fetch_index = next(
         i for i, step in enumerate(steps) if "git fetch" in step.get("run", "")
     )
-    assert all(fetch_index < steps.index(step) < push_index for step in records)
-    page = next(step for step in steps if step.get("name") == "Install results page")
-    assert fetch_index < steps.index(page) < push_index
-    assert "utils/kernel_checks/index.html" in page["run"]
-    assert (WORKFLOWS.parents[1] / "utils/kernel_checks/index.html").is_file()
+    publish = next(step for step in steps if step.get("name") == "Publish results")
+    assert fetch_index < steps.index(publish) < push_index
+    assert "utils/kernel_checks/index.html" in publish["run"]
+    assert "utils/kernel_checks/publish.py" in publish["run"]
+    assert (WORKFLOWS.parents[1] / "utils/kernel_checks/publish.py").is_file()
+    # Every NPU is migrated, whether or not it produced results tonight.
+    assert publish["run"].count('publish.py" migrate') == 1
+    assert 'publish.py" perf --target "$npu"' in publish["run"]
     baseline_index = next(
         i for i, step in enumerate(steps) if "git show" in step.get("run", "")
     )
@@ -117,7 +102,9 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
     caches = [
         step for step in steps if step.get("uses", "").startswith("actions/cache/save@")
     ]
-    assert len(caches) == 2
+    assert [step["with"]["key"] for step in caches] == [
+        f"kernel-checks-baseline-{t}-${{{{ github.run_id }}}}" for t in TARGETS
+    ]
     assert all(step["with"]["path"] == "baseline" for step in caches)
     assert all(steps.index(step) > baseline_index for step in caches)
     downloads = [
@@ -125,13 +112,11 @@ def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
         for step in steps
         if step.get("uses", "").startswith("actions/download-artifact@")
     ]
-    assert [step["with"]["path"] for step in downloads] == [
-        "results/npu1",
-        "results/npu2",
+    assert [(step["with"]["pattern"], step["with"]["path"]) for step in downloads] == [
+        (artifact(t), f"results/{t}") for t in TARGETS
     ]
     # `name` fails on a missing artifact; `pattern` skips it.
     assert all("name" not in step["with"] for step in downloads)
-    assert all("pattern" in step["with"] for step in downloads)
 
 
 def test_partial_results_are_timed_and_published():
@@ -165,7 +150,7 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
     result = subprocess.run(
         ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
         cwd=tmp_path,
-        env={**os.environ, "ONLY": only},
+        env={**os.environ, "ONLY": only, "REQUIRED_PMODE": "any"},
         capture_output=True,
         text=True,
         check=True,
@@ -175,6 +160,27 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
         assert args[-2:] == ["-k", f"({only}) or test_measurement_is_sane"]
     else:
         assert "-k" not in args
+
+
+def test_publishing_runs_require_the_performance_mode():
+    """A nightly in another power mode charts numbers nobody should compare."""
+    config = workflow("nightlyKernelChecks.yml")
+    step = next(
+        step for step in config["jobs"]["checks"]["steps"] if step.get("id") == "perf"
+    )
+    assert '--pmode "$REQUIRED_PMODE"' in step["run"]
+    assert "--pmode any" not in step["run"]
+    required = step["env"]["REQUIRED_PMODE"]
+    # Required exactly when the run would publish, else any mode is recorded.
+    publishes = config["jobs"]["publish"]["if"]
+    assert publishes.startswith("${{ !cancelled() && ")
+    condition = publishes[len("${{ !cancelled() && ") : -len(" }}")]
+    assert required == f"${{{{ ({condition}) && env.PERF_PMODE || 'any' }}}}"
+    assert config["env"]["PERF_PMODE"] == "performance"
+    # The publisher's own guard names the same mode.
+    publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
+    read = next(step for step in publisher["steps"] if step.get("id") == "pmode")
+    assert '"$pmode" != performance' in read["run"]
 
 
 NIGHTLY_PAGE = """
@@ -299,34 +305,30 @@ def write_meta(path, pmode):
     path.write_text(json.dumps({"preflight": {"npu": "npu1", "pmode": pmode}}))
 
 
-def test_each_power_mode_is_its_own_series(tmp_path):
+def test_only_performance_mode_is_published(tmp_path):
     checks = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]
-    steps = checks["steps"]
-    run = next(step["run"] for step in steps if step.get("id") == "perf")
-    assert "--pmode any" in run
-    assert '--pmode "$PERF_PMODE"' not in run
-    assert not record_steps(checks)
+    run = next(step["run"] for step in checks["steps"] if step.get("id") == "perf")
+    assert '--pmode "$REQUIRED_PMODE"' in run
 
     publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
     read = next(step for step in publisher["steps"] if step.get("id") == "pmode")
-    assert read["if"] == "${{ !inputs.static }}"
+    assert "if" not in read
     write_meta(tmp_path / "results/npu1/meta.json", "performance")
     write_meta(tmp_path / "results/npu2/meta.json", "turbo")
-    run = read["run"].replace("$RESULT_FILE", "perf.json")
+    run = read["run"]
     # A leg with meta but no results (its NPU checks failed) is skipped.
     assert run_step(run, tmp_path) == {}
     (tmp_path / "results/npu1/perf.json").write_text("[]")
     assert run_step(run, tmp_path) == {"npu1": "performance"}
+    # Another mode is refused, not recorded as its own series.
     (tmp_path / "results/npu2/perf.json").write_text("[]")
-    assert run_step(run, tmp_path) == {"npu1": "performance", "npu2": "turbo"}
+    with pytest.raises(subprocess.CalledProcessError):
+        run_step(run, tmp_path)
+    write_meta(tmp_path / "results/npu2/meta.json", "performance")
+    assert run_step(run, tmp_path) == {"npu1": "performance", "npu2": "performance"}
     write_meta(tmp_path / "results/npu2/meta.json", None)
     with pytest.raises(subprocess.CalledProcessError):
         run_step(run, tmp_path)
-    names = [step["with"]["name"] for step in record_steps(publisher)[:2]]
-    for npu, name in zip(["npu1", "npu2"], names):
-        assert (
-            f"format('aie_kernels ({npu}, {{0}})', steps.pmode.outputs.{npu})" in name
-        )
 
 
 def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
@@ -334,7 +336,8 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
     assert "pull-requests" not in config["permissions"]
     report = config["jobs"]["report"]
     assert report["needs"] == "checks"
-    assert "github.event_name != 'schedule'" in report["if"]
+    # The nightly gets the report in its job summary too.
+    assert "'schedule'" not in report["if"]
     assert "needs.checks.result != 'skipped'" in report["if"]
     assert report["permissions"] == {"contents": "read", "pull-requests": "write"}
     steps = report["steps"]
@@ -344,11 +347,7 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
         if step.get("uses", "").startswith("actions/download-artifact@")
     ]
     assert downloads == [
-        {
-            "pattern": f"kernel-checks-{npu}-${{{{ github.run_id }}}}",
-            "path": f"results/{npu}",
-        }
-        for npu in ("npu1", "npu2")
+        {"pattern": artifact(t), "path": f"results/{t}"} for t in TARGETS
     ]
     # Each restore reads what the publisher saved, under the path it saved.
     publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
@@ -362,14 +361,18 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
         for step in steps
         if step.get("uses", "").startswith("actions/cache/restore@")
     ]
-    for npu, save, restore in zip(("npu1", "npu2"), saved, restored):
+    assert len(saved) == len(restored) == len(TARGETS)
+    for target, save, restore in zip(TARGETS, saved, restored):
         assert save["path"] == restore["path"] == "baseline"
-        assert f"'kernel-checks-baseline-{npu}' }}}}-" in save["key"]
+        assert (
+            save["key"] == f"kernel-checks-baseline-{target}-${{{{ github.run_id }}}}"
+        )
         assert restore["key"] == restore["restore-keys"]
-        assert restore["key"] == f"kernel-checks-baseline-{npu}-"
+        assert restore["key"] == f"kernel-checks-baseline-{target}-"
 
     # Run the steps between the downloads and the comment, in order, on the
-    # artifacts an npu2-only run leaves.
+    # artifacts an npu2-only run leaves, with a cached npu2 baseline that
+    # published no rows.
     (tmp_path / "results/npu2").mkdir(parents=True)
     (tmp_path / "results/npu2/perf.json").write_text(
         json.dumps([{"name": "relu/1024/bf16/cycles", "unit": "cycles", "value": 9}])
@@ -387,7 +390,7 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
         if step.get("uses", "").startswith("actions/cache/restore@"):
             if step["with"]["key"].endswith("npu2-"):
                 (tmp_path / "baseline").mkdir()
-                (tmp_path / "baseline/series.json").write_text('{"entries": {}}')
+                (tmp_path / "baseline/latest.json").write_text('{"rows": {}}')
         elif "run" in step and "gh api" not in step["run"]:
             subprocess.run(
                 ["bash", "-eo", "pipefail", "-c", step["run"]],
@@ -395,7 +398,7 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
                 env=env,
                 check=True,
             )
-    assert (tmp_path / "baselines/npu2/series.json").is_file()
+    assert (tmp_path / "baselines/npu2/latest.json").is_file()
     assert not (tmp_path / "baselines/npu1").exists()
     text = summary.read_text()
     assert text == (tmp_path / "report.md").read_text()
@@ -408,11 +411,12 @@ def test_unpublished_runs_report_against_the_published_baseline(tmp_path):
     assert 'startswith("<!-- kernel-checks-report -->")' in comment["run"]
 
 
-def test_results_page_is_committed_to_the_publication_branch(tmp_path):
+def test_results_are_published_and_old_series_migrated(tmp_path):
     steps = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
-    page = next(step for step in steps if step.get("name") == "Install results page")
-    assert page["if"] == "${{ !inputs.static }}"
+    publish = next(step for step in steps if step.get("name") == "Publish results")
+    assert "if" not in publish
     source = WORKFLOWS.parents[1] / "utils/kernel_checks/index.html"
+    publisher = source.with_name("publish.py")
 
     def git(*args):
         return subprocess.run(
@@ -426,31 +430,78 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
     git("init", "-q", "-b", "main")
     (tmp_path / "utils/kernel_checks").mkdir(parents=True)
     (tmp_path / "utils/kernel_checks/index.html").write_bytes(source.read_bytes())
+    (tmp_path / "utils/kernel_checks/publish.py").write_bytes(publisher.read_bytes())
     git("add", ".")
     git("commit", "-q", "-m", "main")
+    # The publication branch still holds github-action-benchmark's npu2
+    # series and its generated page.
     git("switch", "-q", "--orphan", "gh-pages")
-    git("commit", "-q", "--allow-empty", "-m", "pages")
+    (tmp_path / "kernel-checks/npu2").mkdir(parents=True)
+    (tmp_path / "kernel-checks/npu2/data.js").write_text(
+        'window.BENCHMARK_DATA = {"entries": {"aie_kernels (npu2, default)": [{'
+        '"commit": {"id": "abc", "url": "u", "message": "m", "timestamp": "t"}, '
+        '"date": 1790632656742, "benches": [{"name": "add/1/bf16/cycles", "unit": '
+        '"cycles", "value": 5, "extra": "commit abc | pmode default"}]}]}};'
+    )
+    (tmp_path / "kernel-checks/npu2/index.html").write_text("BENCHMARK_DATA")
+    git("add", ".")
+    git("commit", "-q", "-m", "pages")
     git("switch", "-q", "main")
 
-    run = page["run"].replace("$RUNNER_TEMP", str(tmp_path / "tmp"))
+    run = publish["run"].replace("$RUNNER_TEMP", str(tmp_path / "tmp"))
     (tmp_path / "tmp").mkdir()
     (tmp_path / "results/npu1").mkdir(parents=True)
-    (tmp_path / "results/npu1/catalogue.json").write_text('{"npu": "npu1"}')
-    for _ in range(2):  # The second run finds nothing to change.
+    (tmp_path / "results/npu1/catalogue.json").write_text(
+        '{"npu": "npu1", "kernels": [{"builds": ["add"], "passed": 2, "failed": [], "timed": 1}]}'
+    )
+    meta = tmp_path / "results/npu1/meta.json"
+    meta.write_text(
+        '{"preflight": {"pmode": "performance"}, "provenance": "commit abc | host h1",'
+        ' "measurement_sane": true, "n_rows": 1, "failed": []}'
+    )
+    (tmp_path / "results/npu1/perf.json").write_text(
+        '[{"name": "add/1/bf16/cycles", "unit": "cycles", "value": 7, "extra": "x"}]'
+    )
+    env = {k: v for k, v in os.environ.items() if k != "BRANCH"}
+    env.update(
+        GITHUB_RUN_ID="42", RUN_URL="https://example.com/runs/42", GITHUB_SHA="abc"
+    )
+    for first in (True, False):
         subprocess.run(
             ["bash", "-eo", "pipefail", "-c", run],
             cwd=tmp_path,
-            env={k: v for k, v in os.environ.items() if k != "BRANCH"},
+            env=env,
             check=True,
         )
         assert git("branch", "--show-current") == "main"
+        # A leg that wrote nothing keeps its records: the second pass finds
+        # nothing to change.
+        if first:
+            meta.unlink()
     assert (
         git("show", "gh-pages:kernel-checks/index.html") == source.read_text().strip()
     )
-    assert (
-        git("show", "gh-pages:kernel-checks/npu1/catalogue.json") == '{"npu": "npu1"}'
+    assert git("show", "gh-pages:kernel-checks/npu1/catalogue.json").startswith(
+        '{"npu": "npu1"'
     )
-    assert git("ls-tree", "-r", "--name-only", "gh-pages", "kernel-checks/npu2") == ""
+    published = git("ls-tree", "-r", "--name-only", "gh-pages", "kernel-checks").split()
+    assert "kernel-checks/npu1/runs/42.json" in published
+    assert "kernel-checks/npu1/history/cycles.json" in published
+    assert "kernel-checks/npu2/runs/bench-1790632656742.json" in published
+    assert not any(p.endswith("data.js") for p in published)
+    assert not any(p.endswith("npu2/index.html") for p in published)
+    latest = json.loads(git("show", "gh-pages:kernel-checks/npu1/latest.json"))
+    assert (latest["id"], latest["url"], latest["commit"]["id"]) == (
+        "42",
+        "https://example.com/runs/42",
+        "abc",
+    )
+    assert latest["published"] is True and latest["pmode"] == "performance"
+    assert latest["provenance"]["host"] == "h1"
+    assert latest["cases"]["passed"] == 2 and latest["kernels"]["offered"] == 1
+    assert latest["rows"]["add/1/bf16"]["cycles"]["value"] == 7
+    migrated = json.loads(git("show", "gh-pages:kernel-checks/npu2/runs.json"))
+    assert [r["pmode"] for r in migrated["runs"]] == ["default"]
     assert git("rev-list", "--count", "gh-pages") == "2"
 
 
@@ -493,7 +544,7 @@ def test_docs_cleanup_preserves_kernel_checks_history():
         input=b"\0".join(
             [
                 b"kernel-checks/npu1/data.js",
-                b"kernel-checks/static/aie2/data.js",
+                b"kernel-checks/npu1/runs/42.json",
                 b"bench/npu1/index.html",
                 b"dev/index.html",
                 b"legacy.html",
@@ -503,4 +554,5 @@ def test_docs_cleanup_preserves_kernel_checks_history():
         capture_output=True,
         check=True,
     )
-    assert result.stdout == b"legacy.html\0"
+    # bench/ was the series' first home; it is legacy now, and goes.
+    assert result.stdout == b"bench/npu1/index.html\0legacy.html\0"

@@ -4,14 +4,17 @@
 name: Nightly Kernel Checks on Ryzen AI
 
 # Check aie_kernels on the NPU, record cycles / wall time / compile size via
-# the IRON JIT path, and publish graphs and a catalogue to the site. Never
+# the IRON JIT path, and publish the run, its history and a catalogue to the
+# site (utils/kernel_checks/publish.py). Never
 # gates PRs. Every run that does not publish gets a report of its failures
 # and of its changes against the last nightly (utils/kernel_checks/pr_report.py)
 # in the job summary; on a Peano PR, the same report is kept as one comment.
 #
 # Runs nightly from main, which publishes and records the baseline, on pull
 # requests that bump the Peano pin, and on demand. Only the nightly and an
-# unfiltered, pinned dispatch on main publish.
+# unfiltered, pinned dispatch on main publish, and only when the device is in
+# the performance power mode: in any other mode the timing step fails
+# rather than chart numbers taken at another clock.
 #
 # A kernel that fails its checks costs only its own series a point: the
 # rest of the run still publishes, as long as the NPU checks (preflight and
@@ -149,7 +152,7 @@ jobs:
           if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$PERF_PMODE"; then
             :
           else
-            echo "::warning::Cannot set --pmode $PERF_PMODE non-interactively with $XRT_SMI; the performance checks will continue and record the active mode"
+            echo "::warning::Cannot set --pmode $PERF_PMODE non-interactively with $XRT_SMI; a publishing run will refuse to time in another mode, any other run records the mode it finds"
           fi
           "$XRT_SMI" examine -d "$BDF" --report platform
 
@@ -174,6 +177,12 @@ jobs:
         if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
         env:
           ONLY: ${{ inputs.only }}
+          # A run that publishes must find the device in $PERF_PMODE: a
+          # nightly measured in another mode charts numbers nobody should
+          # compare, and the preflight above can only ask for the mode. Any
+          # other run records whatever mode it finds. The condition is the
+          # publish job's.
+          REQUIRED_PMODE: ${{ (github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.only && !inputs.peano) && env.PERF_PMODE || 'any' }}
         run: |
           sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
@@ -181,7 +190,7 @@ jobs:
           source utils/env_setup.sh mlir_aie
           export XRT_CONTEXT_CACHE_SIZE=2
           python -m pytest test/python/npu/test_kernels_perf.py -m perf -v \
-            --perf-out perf.json --perf-meta meta.json --pmode any \
+            --perf-out perf.json --perf-meta meta.json --pmode "$REQUIRED_PMODE" \
             --correctness-results correctness.xml \
             --warmup 10 --iters 50 \
             ${ONLY:+-k "($ONLY) or test_measurement_is_sane"} 2>&1 | tee perf.log
@@ -198,6 +207,7 @@ jobs:
           args=()
           [[ -f correctness.xml ]] && args+=(--correctness correctness.xml)
           [[ -f perf.json ]] && args+=(--perf perf.json)
+          [[ -f meta.json ]] && args+=(--meta meta.json)
           python utils/kernel_checks/catalogue.py --npu "$AIE_EXPECTED_NPU" \
             "${args[@]}" --out catalogue.json
 
@@ -222,8 +232,10 @@ jobs:
 
   report:
     needs: checks
-    # The nightly publishes instead; the page is its report.
-    if: ${{ !cancelled() && needs.checks.result != 'skipped' && github.event_name != 'schedule' }}
+    # Every run gets the report in its job summary; the nightly's dashboard
+    # on the page says the same against the previous nightly, but the
+    # summary is what a red run's notification links to.
+    if: ${{ !cancelled() && needs.checks.result != 'skipped' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -240,7 +252,8 @@ jobs:
         with:
           pattern: kernel-checks-npu2-${{ github.run_id }}
           path: results/npu2
-      # publishKernelResults.yml saves each NPU's series under this path.
+      # publishKernelResults.yml saves each NPU's latest published record
+      # (latest.json) under this path.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: baseline
@@ -262,7 +275,7 @@ jobs:
       - name: Write report
         run: |
           python3 utils/kernel_checks/pr_report.py --results results \
-            --baselines baselines --out report.md \
+            --baselines baselines --out report.md --run-id "$GITHUB_RUN_ID" \
             --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           cat report.md >> "$GITHUB_STEP_SUMMARY"
 
@@ -286,7 +299,10 @@ jobs:
           fi
 
   publish:
-    needs: checks
+    # After the report: publishing caches tonight's record as the baseline the
+    # report restores, so running first would compare the night with itself.
+    # `!cancelled()` still publishes when the report job fails.
+    needs: [checks, report]
     # Publish whichever NPUs produced results, even if the other leg failed.
     # A filtered or re-pinned dispatch would chart a subset or another
     # compiler into the series, so it never publishes.
@@ -294,5 +310,3 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/publishKernelResults.yml
-    with:
-      static: false

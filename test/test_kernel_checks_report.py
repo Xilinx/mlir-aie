@@ -3,30 +3,51 @@
 #
 # RUN: %pytest %s
 
-"""Build the PR report from a run's artifacts and a nightly series on disk."""
+"""Build the PR report from a run's artifacts and the published baselines on disk."""
 
 import json
-from pathlib import Path
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "utils/kernel_checks/pr_report.py"
-EXTRA = "commit 41dcf3cd6a | peano {} | kernels c86c05864e | pmode default"
+EXTRA = "commit 41dcf3cd6a | peano {} | kernels c86c05864e | pmode performance"
 
 
 def _rows(values, peano):
-    return [
-        {"name": name, "unit": unit, "value": value, "extra": EXTRA.format(peano)}
-        for name, (unit, value) in values.items()
-    ]
+    """Return perf.json rows; a value may be ``(value, range)``."""
+    rows = []
+    for name, (unit, value) in values.items():
+        value, span = value if isinstance(value, tuple) else (value, None)
+        row = {"name": name, "unit": unit, "value": value, "extra": EXTRA.format(peano)}
+        if span:
+            row["range"] = span
+        rows.append(row)
+    return rows
 
 
-def _series(values, peano="22.0.0+old", suite="aie_kernels (npu2, default)"):
-    commit = {"id": "0123456789ab", "url": "https://example.com/c/0123456"}
-    entry = {"commit": commit, "date": 1, "benches": _rows(values, peano)}
-    return {"entries": {suite: [entry]}}
+def _record(values, peano="22.0.0+old", target="npu2"):
+    """Return a publish.py record: the last nightly's rows, by case and metric."""
+    rows = {}
+    for name, (unit, value) in values.items():
+        case, metric = name.rsplit("/", 1)
+        value, span = value if isinstance(value, tuple) else (value, None)
+        cell = {"value": value, "unit": unit}
+        if span:
+            cell["range"] = span
+        rows.setdefault(case, {})[metric] = cell
+    return {
+        "target": target,
+        "id": "77",
+        "commit": {"id": "0123456789ab", "url": "https://example.com/c/0123456"},
+        "date": "2026-09-28T06:00:00+00:00",
+        "provenance": {"commit": "0123456789", "peano": peano},
+        "published": True,
+        "rows": rows,
+    }
 
 
 def _junit(cases):
@@ -39,23 +60,25 @@ def _junit(cases):
 
 @pytest.fixture
 def report(tmp_path):
-    def run(results, series=None):
-        for npu, files in results.items():
-            leg = tmp_path / "results" / npu
-            leg.mkdir(parents=True)
+    def run(results, baselines=None, run_id="7"):
+        for old in ("results", "baselines"):
+            shutil.rmtree(tmp_path / old, ignore_errors=True)
+        for leg, files in results.items():
+            d = tmp_path / "results" / leg
+            d.mkdir(parents=True)
             for name, content in files.items():
                 text = content if isinstance(content, str) else json.dumps(content)
-                (leg / name).write_text(text)
-        if series is not None:
-            base = tmp_path / "baselines/npu2"
+                (d / name).write_text(text)
+        for leg, record in (baselines or {}).items():
+            base = tmp_path / "baselines" / leg
             base.mkdir(parents=True)
-            (base / "series.json").write_text(json.dumps(series))
+            (base / "latest.json").write_text(json.dumps(record))
         (tmp_path / "results").mkdir(exist_ok=True)
         out = tmp_path / "report.md"
         subprocess.run(
             [sys.executable, SCRIPT, "--results", tmp_path / "results"]
             + ["--baselines", tmp_path / "baselines", "--out", out]
-            + ["--run-url", "https://example.com/run/1"],
+            + ["--run-url", "https://example.com/run/1", "--run-id", run_id],
             check=True,
         )
         return out.read_text()
@@ -63,7 +86,7 @@ def report(tmp_path):
     return run
 
 
-META = {"preflight": {"npu": "npu2", "pmode": "default"}, "failed": []}
+META = {"preflight": {"npu": "npu2", "pmode": "performance"}, "failed": []}
 
 
 def test_failures_regressions_and_coverage(report):
@@ -99,10 +122,11 @@ def test_failures_regressions_and_coverage(report):
                 "correctness.xml": junit,
             }
         },
-        _series(nightly),
+        {"npu2": _record(nightly)},
     )
     assert text.startswith("<!-- kernel-checks-report -->\n")
     assert "## Kernel checks: 2 failing, 1 regressed" in text
+    assert "Regressed: `cycles` 2% or `core_elf_bytes` 2% or more worse" in text
     assert "| npu2 | 22.0.0+new (nightly: 22.0.0+old) | [0123456]" in text
     assert "| `mm/64x64/i8` | 1 of 2 | bad |" in text
     assert "| `conv/8/i8` | timing run | failed in the timing run" in text
@@ -126,7 +150,7 @@ def test_clean_run_and_missing_leg(report):
             "npu1": {},
             "npu2": {"meta.json": META, "perf.json": _rows(values, "22.0.0+a")},
         },
-        _series(values, peano="22.0.0+a"),
+        {"npu2": _record(values, peano="22.0.0+a")},
     )
     assert "## Kernel checks: all passed, no regressions" in text
     assert "| npu1 | ? | — | no results |" in text
@@ -137,24 +161,67 @@ def test_clean_run_and_missing_leg(report):
     assert "### " not in text and "<details>" not in text
 
 
-def test_power_mode_suite_is_preferred(report):
-    values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
-    series = _series({"relu/1024/bf16/cycles": ("cycles", 500)})
-    series["entries"]["aie_kernels (npu2, turbo)"] = _series(values)["entries"][
-        "aie_kernels (npu2, default)"
-    ]
-    series["entries"]["aie_kernels (npu2, turbo)"][0]["date"] = 2
-    text = report(
-        {"npu2": {"meta.json": META, "perf.json": _rows(values, "a")}}, series
-    )
-    assert "1 regressed" in text
-
-
 def test_no_baseline(report):
     values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
     text = report({"npu2": {"meta.json": META, "perf.json": _rows(values, "a")}})
     assert "| npu2 | a | none cached | 1 | 0 | — | — |" in text
 
 
+def test_a_baseline_without_rows_is_no_baseline(report):
+    values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
+    empty = dict(_record({}), published=False)
+    text = report(
+        {"npu2": {"meta.json": META, "perf.json": _rows(values, "a")}}, {"npu2": empty}
+    )
+    assert "| npu2 | a | none cached | 1 | 0 | — | — |" in text
+
+
 def test_no_results(report):
     assert "## Kernel checks: no NPU produced results" in report({})
+
+
+def test_npu_us_counts_only_past_its_noise(report):
+    mad = "\u00b1 {}; min 1 max 2 n=50"
+    nightly = {
+        # 20% moves: steady, then noisy (MAD 10 us of 100), then noisy only now.
+        "steady/1/bf16/npu_us": ("us", (100, mad.format(1.0))),
+        "noisy/1/bf16/npu_us": ("us", (100, mad.format(10.0))),
+        "newly_noisy/1/bf16/npu_us": ("us", (100, mad.format(1.0))),
+        "no_spread/1/bf16/npu_us": ("us", 100),
+        "small/1/bf16/npu_us": ("us", (100, mad.format(0.1))),
+    }
+    run = {
+        "steady/1/bf16/npu_us": ("us", (120, mad.format(1.0))),
+        "noisy/1/bf16/npu_us": ("us", (120, mad.format(1.0))),
+        "newly_noisy/1/bf16/npu_us": ("us", (120, mad.format(7.0))),
+        "no_spread/1/bf16/npu_us": ("us", 120),
+        # Many MADs, but under 10%.
+        "small/1/bf16/npu_us": ("us", (105, mad.format(0.1))),
+    }
+    text = report(
+        {"npu2": {"meta.json": META, "perf.json": _rows(run, "a")}},
+        {"npu2": _record(nightly, peano="a")},
+    )
+    assert "`npu_us` 10% and 3\u00d7 its MAD" in text
+    listed = [line.split("`")[1] for line in text.splitlines() if "| npu_us |" in line]
+    # 20 us is past 3x a 1 us MAD, not past 3x 10 us or 3x 7 us.
+    assert sorted(listed) == ["no_spread/1/bf16", "steady/1/bf16"]
+
+
+def test_a_baseline_from_this_run_or_a_newer_format_is_ignored(report):
+    values = {"relu/1024/bf16/cycles": ("cycles", 1000)}
+    run = {"relu/1024/bf16/cycles": ("cycles", 1500)}
+    rows = _rows(run, "a")
+    own = dict(_record(values), id="7")
+    text = report({"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": own})
+    assert "| npu2 | a | none cached | 1 | 0 | \u2014 | \u2014 |" in text
+    newer = dict(_record(values), schema=2)
+    text = report(
+        {"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": newer}, run_id="8"
+    )
+    assert "none cached" in text
+    older = _record(values)
+    text = report(
+        {"npu2": {"meta.json": META, "perf.json": rows}}, {"npu2": older}, run_id="8"
+    )
+    assert "1 regressed" in text
