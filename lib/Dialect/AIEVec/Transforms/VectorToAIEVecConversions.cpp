@@ -4061,7 +4061,15 @@ struct ComputeFloorOpPattern : OpConversionPattern<math::FloorOp> {
 // Convert arith.negf to aievec.neg to negate the vector for v16bfloat16 and
 // v16float types.
 struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
-  using OpConversionPattern::OpConversionPattern;
+  // `maxLanes` is 16 for AIE1/AIE2 and 32 for AIE2P, whose
+  // NegOpAIE2pConversion widens the accumulator to ACC2048 and so takes both.
+  // The body below already handles either width; only this bound differs.
+  ComputeNegOpPattern(MLIRContext *context, unsigned maxLanes = 16,
+                      PatternBenefit benefit = 1)
+      : OpConversionPattern<arith::NegFOp>(context, benefit),
+        maxLanes(maxLanes) {}
+
+  unsigned maxLanes;
 
   LogicalResult
   matchAndRewrite(arith::NegFOp negOp, OpAdaptor adaptor,
@@ -4074,7 +4082,8 @@ struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
     if (!isa<FloatType>(scalarType))
       return failure();
 
-    if (unsigned laneSize = getVectorLaneSize(srcType); laneSize != 16)
+    unsigned laneSize = getVectorLaneSize(srcType);
+    if (laneSize != 16 && !(laneSize == 32 && maxLanes >= 32))
       return failure();
 
     Location loc = negOp.getLoc();
@@ -5077,6 +5086,9 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
   // registered in the common patterns.
   patterns.add<ConvertMathTanhToAIEVecTanhOpPattern>(patterns.getContext(),
                                                      /*benefit=*/2);
+  // Likewise over the common arith.negf pattern, which stops at 16 lanes.
+  patterns.add<ComputeNegOpPattern>(patterns.getContext(), /*maxLanes=*/32,
+                                    /*benefit=*/2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5657,6 +5669,22 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     // For other types, only laneSize==16 (same as AIE2)
     return laneSize != 16;
+  });
+
+  // arith.negf at 32 lanes as well as 16. The common predicate stops at 16,
+  // but NegOpAIE2pConversion handles both -- it widens to ACC2048 either way --
+  // so at 32 the op was declared legal, nothing converted it, and it reached
+  // Peano as `G_FNEG <32 x s32>`, which does not legalize. A sigmoid's
+  // `exp(-z)` on a v32 is the ordinary way to meet this.
+  target.addDynamicallyLegalOp<arith::NegFOp>([](arith::NegFOp negOp) {
+    auto srcType = dyn_cast<VectorType>(negOp.getOperand().getType());
+    if (!srcType)
+      return true;
+    if (Type scalarType = srcType.getElementType(); !isa<FloatType>(scalarType))
+      return true;
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    return laneSize != 16 && laneSize != 32;
   });
 
   // LowerVectorSIToFPI16BF16AIE2pPattern uses vector.shuffle to split
