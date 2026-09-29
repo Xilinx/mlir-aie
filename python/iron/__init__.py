@@ -74,6 +74,7 @@ from .dataflow import (
     BdIteration,
     CascadeFlow,
     DmaChannel,
+    DmaEndpoint,
     Flow,
     FlowEndpoint,
     ObjectFifo,
@@ -83,21 +84,14 @@ from .dataflow import (
     Release,
     StreamDims,
     TileDma,
+    TileDmaTask,
 )
+from .device import Device
 from .dtype import dtype_to_str, str_to_dtype
 from .kernel import ExternalFunction, Kernel, KernelObject, ObjectFile
 from .lock import Lock
 from .program import Program
-from .runtime import (
-    Runtime,
-    RuntimeData,
-    Task,
-    TaskGroup,
-    TileDmaTask,
-    sync_parameters,
-    tile_dma_chain,
-    tile_dma_task,
-)
+from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
 from .scratchpad_parameter import ScratchpadParameter
 from .worker import Worker, WorkerRuntimeBarrier
 
@@ -109,16 +103,14 @@ __all__ = [
     "KernelObject",
     "ObjectFile",
     "Program",
+    "Device",
     "Worker",
     "WorkerRuntimeBarrier",
     "Runtime",
     "TaskGroup",
     "RuntimeData",
     "Task",
-    "TileDmaTask",
     "sync_parameters",
-    "tile_dma_chain",
-    "tile_dma_task",
     "ObjectFifo",
     "PadDims",
     "StreamDims",
@@ -128,6 +120,7 @@ __all__ = [
     "BdIteration",
     "CascadeFlow",
     "DmaChannel",
+    "DmaEndpoint",
     "Flow",
     "FlowEndpoint",
     "Lock",
@@ -136,6 +129,7 @@ __all__ = [
     "PacketFlow",
     "Release",
     "TileDma",
+    "TileDmaTask",
     # Compile-time / JIT API
     "CompileTime",
     "DispatchTime",

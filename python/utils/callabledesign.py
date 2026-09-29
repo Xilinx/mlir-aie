@@ -53,7 +53,7 @@ class CallableDesign:
 
     Supports two ``CompileTime[T]`` binding patterns:
 
-    * **Pre-bound** — pass compile params at decoration time (Triton style):
+    * **Pre-bound** — pass compile params at decoration time:
 
       ```python
       @iron.jit(M=512, K=512, N=512)

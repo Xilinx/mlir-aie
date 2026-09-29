@@ -10,12 +10,14 @@ over a mem tile buffer uses it to re-arm the chain's producer locks."""
 import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType
-from aie.iron import Lock, Program, Runtime
+from aie.iron import Lock, Program, Runtime, Worker
 from aie.iron.device import NPU2Col1, Tile
+from aie.ir import MLIRError
+
+host_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
 
 def emit_rearm(value=4):
-    host_ty = np.ndarray[(16,), np.dtype[np.int32]]
     mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
     prod = Lock(mem_tile, init=2, name="prod")
 
@@ -25,6 +27,27 @@ def emit_rearm(value=4):
     rt = Runtime(sequence, [host_ty])
     rt.add_lock(prod)
     return Program(NPU2Col1(), rt).resolve_program()
+
+
+def emit_in_worker():
+    compute_tile = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
+    prod = Lock(compute_tile, init=0, name="prod")
+
+    def core_fn(lock):
+        lock.set(1)
+
+    worker = Worker(core_fn, [prod], tile=compute_tile, while_true=False)
+    rt = Runtime(lambda _host: None, [host_ty])
+    return Program(NPU2Col1(), rt, workers=[worker]).resolve_program()
+
+
+def expect_failure(emit, *args):
+    try:
+        emit(*args)
+    except MLIRError as e:
+        print(f"error: {e}")
+    else:
+        raise AssertionError(f"Expected {emit.__name__}{args} to fail verification")
 
 
 # CHECK: %prod = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "prod"}
@@ -37,29 +60,9 @@ print(emit_rearm(0))
 # CHECK: aiex.set_lock(%prod, 63)
 print(emit_rearm(63))
 
-
-# CHECK: error: Lock.set value must be non-negative.
-try:
-    emit_rearm(-1)
-except ValueError as e:
-    print(f"error: {e}")
-else:
-    raise AssertionError("Expected a negative lock value to fail")
-
-
-def emit_outside_sequence():
-    host_ty = np.ndarray[(16,), np.dtype[np.int32]]
-    mem_tile = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
-    prod = Lock(mem_tile, init=2, name="prod")
-    # Resolved, but set() after the sequence body has been emitted.
-    rt = Runtime(lambda _host: None, [host_ty])
-    rt.add_lock(prod)
-    Program(NPU2Col1(), rt).resolve_program()
-    prod.set(4)
-
-
-# CHECK: error: Lock.set on prod must be called from within the function passed to Runtime(seq_fn, fn_args); inside a Worker body use acquire()/release().
-try:
-    emit_outside_sequence()
-except RuntimeError as e:
-    print(f"error: {e}")
+# CHECK: error: {{.*}}Lock value must be non-negative
+expect_failure(emit_rearm, -1)
+# CHECK: error: {{.*}}Lock value exceeds the maximum value of 63
+expect_failure(emit_rearm, 64)
+# CHECK: error: {{.*}}expects ancestor op 'aie.runtime_sequence'
+expect_failure(emit_in_worker)

@@ -9,8 +9,8 @@
 
 """On-device test of a mem tile descriptor rebuilt per dispatch.
 
-The host stages MAX elements into a mem tile Buffer, then a tile_dma_task on
-the mem tile's MM2S reads back a window whose start and length are
+The host stages MAX elements into a mem tile Buffer, then a task on the mem
+tile's MM2S reads back a window whose start and length are
 DispatchTime values. One compiled design serves every window. A lock pair
 hands the buffer from the S2MM to the MM2S task, as a resident operand would be
 handed to a compute tile.
@@ -19,11 +19,12 @@ handed to a compute tile.
 import aie.iron as iron
 import numpy as np
 import pytest
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.dialects._aie_enum_gen import AIETileType
 from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import (
     Acquire,
+    Bd,
     Buffer,
     DispatchTime,
     Flow,
@@ -33,7 +34,6 @@ from aie.iron import (
     Program,
     Release,
     Runtime,
-    tile_dma_task,
 )
 from aie.iron.device import Tile
 
@@ -56,26 +56,19 @@ def _window(start, chunks, dtype, explicit_len):
         chunk = arith.constant(CHUNK, np_dtype_to_mlir_type(dtype))
         length = n * chunk if explicit_len else None
         into.fill(A)
-        tile_dma_task(
-            mem,
-            DMAChannelDir.S2MM,
-            into.endpoint(mem),
-            resident,
-            acquire=Acquire(empty),
-            release=Release(full),
-        )
-        tile_dma_task(
-            mem,
-            DMAChannelDir.MM2S,
-            out.endpoint(mem),
+        into.endpoint(mem).task(
+            Bd(resident, acquires=[Acquire(empty)], releases=[Release(full)])
+        ).start().free()
+        window = Bd(
             resident,
             sizes=[1, 1, n, CHUNK],
             strides=[0, 0, CHUNK, 1],
             offset=s * chunk,
-            transfer_len=length,
-            acquire=Acquire(full),
-            release=Release(empty),
+            length=length,
+            acquires=[Acquire(full)],
+            releases=[Release(empty)],
         )
+        out.endpoint(mem).task(window).start().free()
         out.drain(
             C,
             sizes=[1, 1, n, CHUNK],
@@ -87,9 +80,6 @@ def _window(start, chunks, dtype, explicit_len):
     rt = Runtime(seq, [host_ty, host_ty, start, chunks])
     rt.add_flow(into)
     rt.add_flow(out)
-    rt.add_lock(empty)
-    rt.add_lock(full)
-    rt.add_buffer(resident)
     return Program(iron.get_current_device(), rt).resolve_program()
 
 

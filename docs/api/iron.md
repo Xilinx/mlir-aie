@@ -150,16 +150,14 @@ into `iron` from `aie.utils`.
 | `iron.set_current_device` | Select the NPU device for subsequent allocations. |
 | `iron.ensure_current_device` | Raise if no device is currently selected. |
 
-The [`Device`][iron.device.device.Device] also reports the hardware limits a
-design is sized against, such as `max_lock_value`, `max_repeat_count`,
-`dma_task_queue_depth` and `get_num_bds(tile_type)`, so a design can read them
-instead of hardcoding them.
+The [`Device`][iron.Device] a `Program` targets also reports the hardware
+limits a design is sized against, such as `max_lock_value`,
+`max_repeat_count`, `dma_task_queue_depth` and `get_num_bds(tile_type)`, so a
+design can read them instead of hardcoding them.
 
-::: iron.device.device
+::: iron.Device
     options:
-      show_root_heading: false
-      members:
-        - Device
+      show_root_heading: true
 
 ---
 
@@ -185,11 +183,9 @@ Circuit-switched ([`Flow`][iron.Flow]) and packet-switched
 [`PacketDest`][iron.PacketDest] endpoint descriptor.  A `Flow` given no DMA
 channels lets the compiler assign them.  `flow.endpoint(tile)` returns the
 [`FlowEndpoint`][iron.FlowEndpoint] on `tile`, which a `DmaChannel` takes in
-place of a channel index.  `flow.task(buffer)` and `flow.chain(bds)` build a
-[`TileDmaTask`][iron.TileDmaTask] on the end where the buffer lives, taking its
-direction and channel from the route.  A `Flow` or `PacketFlow` with one shim
-end has `fill` / `drain`; `PacketFlow.fill` stamps the route's packet ID on the
-input.
+place of a channel index and which can run a runtime-sequence task.  A `Flow`
+or `PacketFlow` with one shim end has `fill` / `drain`; `PacketFlow.fill`
+stamps the packet header on the input.
 
 ::: iron.dataflow.flow
     options:
@@ -203,11 +199,15 @@ Directed cascade-stream connection between two adjacent Workers.
     options:
       show_root_heading: false
 
-### TileDma / DmaChannel / Bd
+### TileDma / DmaChannel / Bd / DmaEndpoint
 
 Explicit tile DMA programs: [`TileDma`][iron.TileDma],
 [`DmaChannel`][iron.DmaChannel], buffer descriptors ([`Bd`][iron.Bd]), and the
-[`Acquire`][iron.Acquire] / [`Release`][iron.Release] lock actions.
+[`Acquire`][iron.Acquire] / [`Release`][iron.Release] lock actions.  A
+[`DmaEndpoint`][iron.DmaEndpoint] names one channel of one tile;
+`endpoint.task(*bds)` configures a [`TileDmaTask`][iron.TileDmaTask] on a mem
+or core tile from the runtime sequence, so its descriptors can change per
+dispatch.
 
 ::: iron.dataflow.tile_dma
     options:
@@ -233,10 +233,6 @@ Lower-level runtime task types scheduled by the
       show_root_heading: false
 
 ::: iron.runtime.dmatask
-    options:
-      show_root_heading: false
-
-::: iron.runtime.tiledmatask
     options:
       show_root_heading: false
 

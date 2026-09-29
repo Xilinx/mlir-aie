@@ -6,9 +6,9 @@
 # RUN:   --aie-assign-buffer-addresses --aie-assign-runtime-sequence-bd-ids \
 # RUN:   --aie-dma-tasks-to-npu | FileCheck %s --check-prefix=LOWER
 
-"""tile_dma_chain(out_of_order=True) arms an out-of-order S2MM merge from the
+"""DmaEndpoint.task(out_of_order=True) arms an out-of-order S2MM merge from the
 runtime sequence: each Bd pins the bd_id that senders name in their packet
-headers, and repeat_count counts the packets the channel accepts."""
+headers, and runs counts the packets the channel accepts."""
 
 import numpy as np
 
@@ -16,12 +16,12 @@ from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 from aie.iron import (
     Bd,
     Buffer,
+    DmaEndpoint,
     Flow,
     Lock,
     Program,
     Release,
     Runtime,
-    tile_dma_chain,
 )
 from aie.iron.device import NPU2Col1, Tile
 
@@ -36,7 +36,7 @@ def emit_merge(bad=None):
         tile=mem_tile, type=np.ndarray[(SLOTS * SLOT,), np.dtype[np.int32]], name="m"
     )
     done = Lock(mem_tile, init=0, name="done")
-    into = Flow(core_tile, mem_tile)
+    into = Flow(core_tile, mem_tile, name="into")
 
     def slot_bds():
         bds = [
@@ -58,21 +58,17 @@ def emit_merge(bad=None):
 
     def sequence(_host):
         direction = DMAChannelDir.MM2S if bad == "direction" else DMAChannelDir.S2MM
-        channel = into.endpoint(mem_tile) if bad == "endpoint" else 0
-        tile_dma_chain(
-            mem_tile,
-            direction,
-            channel,
-            slot_bds(),
-            repeat_count=2 * SLOTS - 1,
-            out_of_order=True,
-        )
+        if bad == "endpoint":
+            end = into.endpoint(mem_tile)
+        else:
+            end = DmaEndpoint(mem_tile, direction, 0)
+        end.task(*slot_bds(), runs=2 * SLOTS, out_of_order=True).start()
 
     rt = Runtime(sequence, [np.ndarray[(SLOT,), np.dtype[np.int32]]])
     rt.add_flow(into)
-    rt.add_buffer(merged)
-    rt.add_lock(done)
-    return Program(NPU2Col1(), rt).resolve_program()
+    module = Program(NPU2Col1(), rt).resolve_program()
+    module.operation.verify()
+    return module
 
 
 # One pinned-id, packet-enabled BD per slot; out of order, the repeat count is
@@ -92,12 +88,16 @@ def emit_merge(bad=None):
 # LOWER: aiex.npu.writebd {bd_id = 9 : i32, {{.*}}enable_packet = 1
 print(emit_merge())
 
-for bad in ("bd_id", "packet", "direction", "endpoint"):
+# Printed as MLIR comments so the LOWER run still parses the module above.
+unpinned = str(emit_merge("bd_id")).splitlines()
+print("// bd_id:", next(line for line in unpinned if "offset = 16 " in line))
+for bad in ("packet", "direction", "endpoint"):
     try:
         emit_merge(bad)
-    except ValueError as e:
-        print(f"// {bad}: {e}")
-# CHECK: // bd_id: TileDmaTask out_of_order Bd 1 must set bd_id and packet; senders address it by its bd_id.
-# CHECK: // packet: TileDmaTask out_of_order Bd 2 must set bd_id and packet; senders address it by its bd_id.
-# CHECK: // direction: TileDmaTask out_of_order is only valid for S2MM, not {{.*}}MM2S
-# CHECK: // endpoint: TileDmaTask out_of_order needs a fixed channel, not the compiler-assigned Flow endpoint @flow0_dst.
+    except Exception as e:
+        print(f"// {bad}: {type(e).__name__}: {e}".replace("\n", " "))
+# A Bd left without a bd_id takes its position in the task, as on a DmaChannel.
+# CHECK: // bd_id: aie.dma_bd({{.*}} offset = 16 len = 16) {bd_id = 1 : i32
+# CHECK: // packet: MLIRError: {{.*}}out-of-order S2MM receive buffer descriptor must be packet-enabled
+# CHECK: // direction: MLIRError: {{.*}}out_of_order is only valid on an S2MM channel
+# CHECK: // endpoint: ValueError: An out-of-order task needs a channel given by index, not the compiler-assigned @into_dst.

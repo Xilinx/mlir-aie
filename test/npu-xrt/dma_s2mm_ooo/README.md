@@ -140,7 +140,7 @@ completion, egress drain, verifier).
   `DmaChannel(..., out_of_order=True)` on a `TileDma`. Lowers to
   `aie.dma_start {out_of_order}`.
 - **`runtime`**: armed from the host sequence with
-  `tile_dma_chain(receiver, S2MM, ch, recv_bds, out_of_order=True)`, which lowers
+  `DmaEndpoint(receiver, S2MM, ch).task(*recv_bds, out_of_order=True)`, which lowers
   to `aiex.dma_configure_task(receiver, S2MM, ch) {out_of_order}` followed by
   `dma_start_task`; only the drain MM2S stays static. Supports the
   full merge matrix (multi-packet, multi-channel, multi-round). Two runtime-only

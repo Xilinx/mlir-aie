@@ -6,8 +6,8 @@
 # RUN:   | FileCheck %s --check-prefix=ALLOC
 
 """A Flow whose channels are left out lowers to route endpoints the compiler
-assigns, and a DMA program -- static (TileDma) or runtime (tile_dma_chain) --
-names an end through Flow.endpoint instead of an index. No tile is pinned
+assigns, and a DMA program -- static (TileDma) or a runtime task -- names an
+end through Flow.endpoint instead of an index. No tile is pinned
 either: nothing in the design depends on where the ends land or which
 channels they get."""
 
@@ -15,14 +15,16 @@ import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.iron import (
+    Acquire,
     Bd,
     Buffer,
     DmaChannel,
     Flow,
+    Lock,
     Program,
+    Release,
     Runtime,
     TileDma,
-    tile_dma_chain,
 )
 from aie.iron.device import NPU2Col1, Tile
 
@@ -47,12 +49,25 @@ def build(bad=None):
         Buffer(tile=c, type=vec_ty, name=f"landed{i}") for i, c in enumerate(cores)
     ]
     side_in = Buffer(tile=mem, type=vec_ty, name="side_in")
+    # Found from the Bd that uses it; no rt.add_lock.
+    side_free = Lock(mem, init=1, name="side_free")
+    side_full = Lock(mem, init=0, name="side_full")
 
     mem_dma = TileDma(
         mem,
         [
             DmaChannel(DMAChannelDir.S2MM, into.endpoint(mem), [Bd(staged)]),
-            DmaChannel(DMAChannelDir.S2MM, side.endpoint(mem), [Bd(side_in)]),
+            DmaChannel(
+                DMAChannelDir.S2MM,
+                side.endpoint(mem),
+                [
+                    Bd(
+                        side_in,
+                        acquires=[Acquire(side_free)],
+                        releases=[Release(side_full)],
+                    )
+                ],
+            ),
         ],
     )
     core_dmas = [
@@ -81,9 +96,7 @@ def build(bad=None):
     def sequence(a, c):
         into.fill(a)
         # The broadcast's source is programmed from the sequence.
-        tile_dma_chain(
-            mem, DMAChannelDir.MM2S, spread.endpoint(mem), [Bd(staged)]
-        ).free()
+        spread.endpoint(mem).task(staged).start().free()
         out.drain(c, wait=True)
 
     rt = Runtime(sequence, [vec_ty, vec_ty])
@@ -91,13 +104,15 @@ def build(bad=None):
         rt.add_flow(fl)
     for td in (mem_dma, *core_dmas):
         rt.add_tile_dma(td)
-    rt.add_buffer(staged)
     return Program(NPU2Col1(), rt).resolve_program()
 
 
-# Ends are named after the Flow's registration order. The shim end carries
+# Ends are named after the Flow (flow{n} by default). The shim end carries
 # fifoName, which is what later gives the sequence a shim DMA allocation.
+
 # CHECK-DAG: aie.flow(%{{.*}}, DMA : 0, %{{.*}}, DMA : 3)
+# CHECK-DAG: %side_free = aie.lock(%{{.*}}) {init = 1 : i32, sym_name = "side_free"}
+# CHECK-DAG: %side_full = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "side_full"}
 # CHECK-DAG: aie.route_endpoint @flow0_src(%{{.*}}) DMA {fifoName = "flow0_src"}
 # CHECK-DAG: aie.route_endpoint @flow0_dst(%{{.*}}) DMA
 # CHECK-DAG: aie.route from @flow0_src to [@flow0_dst]
@@ -146,21 +161,36 @@ print(build())
 def expect_error(label, fn):
     try:
         fn()
-    except ValueError as e:
+    except (ValueError, RuntimeError) as e:
         print(f"// {label}: {e}")
 
 
-def unregistered():
-    fl = Flow(Tile(tile_type=AIETileType.MemTile), Tile(tile_type=AIETileType.CoreTile))
-    return fl.endpoint(fl.src).symbol
+def outside_sequence():
+    mem, core = Tile(tile_type=AIETileType.MemTile), Tile(
+        tile_type=AIETileType.CoreTile
+    )
+    Flow(mem, core).endpoint(mem).task(Buffer(tile=mem, type=vec_ty))
+
+
+def shim_task():
+    shim, mem = Tile(tile_type=AIETileType.ShimNOCTile), Tile(
+        tile_type=AIETileType.MemTile
+    )
+    fl = Flow(shim, mem, name="feed")
+
+    def sequence(a):
+        fl.endpoint(shim).task(Buffer(tile=shim, type=vec_ty))
+
+    rt = Runtime(sequence, [vec_ty])
+    rt.add_flow(fl)
+    Program(NPU2Col1(), rt).resolve_program()
 
 
 def wrong_tile():
     mem, core = Tile(tile_type=AIETileType.MemTile), Tile(
         tile_type=AIETileType.CoreTile
     )
-    fl = Flow(mem, core)
-    Runtime(lambda: None, []).add_flow(fl)
+    fl = Flow(mem, core, name="misplaced")
     TileDma(core, [DmaChannel(DMAChannelDir.MM2S, fl.endpoint(mem), [])])
 
 
@@ -168,8 +198,7 @@ def wrong_direction():
     mem, core = Tile(tile_type=AIETileType.MemTile), Tile(
         tile_type=AIETileType.CoreTile
     )
-    fl = Flow(mem, core)
-    Runtime(lambda: None, []).add_flow(fl)
+    fl = Flow(mem, core, name="backwards")
     TileDma(core, [DmaChannel(DMAChannelDir.MM2S, fl.endpoint(core), [])])
 
 
@@ -184,13 +213,15 @@ def core_port():
     Flow(Tile(0, 2), Tile(0, 3), src_port=WireBundle.Core)
 
 
-expect_error("unregistered", unregistered)
+expect_error("outside_sequence", outside_sequence)
+expect_error("shim_task", shim_task)
 expect_error("wrong_tile", wrong_tile)
 expect_error("wrong_direction", wrong_direction)
 expect_error("not_an_end", not_an_end)
 expect_error("core_port", core_port)
-# CHECK: // unregistered: Flow endpoints are named when the Flow is registered; call rt.add_flow(flow) first, or pass a shim_symbol.
-# CHECK: // wrong_tile: Flow endpoint @flow0_src is on {{.*}}, not {{.*}}; a DMA program can only run its own tile's channels.
-# CHECK: // wrong_direction: Flow endpoint @flow0_dst is S2MM (its Flow decides which way it points), not MM2S.
+# CHECK: // outside_sequence: No active runtime sequence: {{.*}}DmaEndpoint.task(){{.*}}
+# CHECK: // shim_task: @feed_src is a shim channel, which moves host memory; use the Flow's fill()/drain() for it.
+# CHECK: // wrong_tile: DMA endpoint @misplaced_src is on {{.*}}, not {{.*}}; a DMA program can only run its own tile's channels.
+# CHECK: // wrong_direction: DMA endpoint @backwards_dst is S2MM, not MM2S.
 # CHECK: // not_an_end: Tile{{.*}} is not an end of this Flow.
 # CHECK: // core_port: Flow src_port=Core needs an explicit src_channel; the compiler only assigns DMA channels.

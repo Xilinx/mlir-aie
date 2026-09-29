@@ -15,11 +15,16 @@ Used together with [`Flow`][iron.Flow] / [`PacketFlow`][iron.PacketFlow]
 (which describe the AXI-stream routes) and explicit [`Buffer`][iron.Buffer]
 + [`Lock`][iron.Lock] declarations, for designs where
 [`ObjectFifo`][iron.ObjectFifo] would hide too much to be useful.
+
+A [`DmaEndpoint`][iron.DmaEndpoint] names one DMA channel of a tile. It is what
+a [`DmaChannel`][iron.DmaChannel] runs on when the compiler assigns the channel,
+and it builds the runtime-sequence [`TileDmaTask`][iron.TileDmaTask]s that
+reprogram a mem or core tile's DMA from inside the sequence body.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Sequence
 
 import numpy as np
@@ -32,8 +37,10 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 )
 from ...dialects.aie import (
     EndOp,  # pyright: ignore[reportAttributeAccessIssue]
+    _as_bd_i32,
+    _as_bd_i64,
+    _as_i32,
     dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
-    dma_bd_packet,  # pyright: ignore[reportAttributeAccessIssue]
     dma_start,
     mem,
     memtile_dma,
@@ -41,12 +48,17 @@ from ...dialects.aie import (
     shim_mem,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...dialects.aie import bds as bd_blocks
+from ...dialects.aiex import dma_configure_task, dma_configure_task_for
 from ...helpers.npdtypes import pack_pad_value
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
 from ..resolvable import Resolvable
-from .flow import FlowEndpoint
+from ..runtime._context import active_sequence
+from ..runtime.dmataskhandle import Task
+
+_SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
 
 @dataclass
@@ -142,6 +154,193 @@ class Bd:
     out_of_order_id: int | None = None
 
 
+class DmaEndpoint:
+    """One DMA channel of a tile: its tile, direction and channel.
+
+    ``DmaEndpoint(tile, direction, channel)`` pins a channel by index. A
+    [`Flow`][iron.Flow]'s [`endpoint`][iron.dataflow.flow.Flow.endpoint] is one
+    too, whose channel the compiler may assign instead.
+
+    Pass one as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build a
+    runtime-sequence task on it with
+    [`task`][iron.dataflow.tile_dma.DmaEndpoint.task].
+    """
+
+    def __init__(self, tile: Tile, direction: DMAChannelDir, channel: int):
+        self._tile = tile
+        self._direction = direction
+        self._channel = channel
+
+    @property
+    def tile(self) -> Tile:
+        """The tile whose DMA owns this channel."""
+        return self._tile
+
+    @property
+    def direction(self) -> DMAChannelDir:
+        """``S2MM`` into the tile's memory, ``MM2S`` out of it."""
+        return self._direction
+
+    @property
+    def channel(self) -> int | None:
+        """The channel index, or None if the compiler assigns it."""
+        return self._channel
+
+    @property
+    def symbol(self) -> str | None:
+        """The ``aie.route_endpoint`` a compiler-assigned channel lowers to.
+
+        None when the channel is given by index.
+        """
+        return None
+
+    def _operand(self) -> int | str:
+        """What ``aie.dma_start`` and a runtime task name: an index, else the symbol."""
+        if self.channel is not None:
+            return self.channel
+        assert self.symbol is not None
+        return self.symbol
+
+    def _check_on(self, tile: Tile, direction: DMAChannelDir) -> None:
+        if self.tile != tile:
+            raise ValueError(
+                f"DMA endpoint {self} is on {self.tile}, not {tile}; a DMA "
+                "program can only run its own tile's channels."
+            )
+        if self.direction != direction:
+            raise ValueError(
+                f"DMA endpoint {self} is {self.direction}, not {direction}."
+            )
+
+    def task(
+        self,
+        *bds: "Bd | Buffer",
+        runs=1,
+        wait: bool = False,
+        out_of_order: bool = False,
+    ) -> "TileDmaTask":
+        """Configure a runtime-sequence task that walks ``bds`` on this channel.
+
+        Call from within a [`Runtime`][iron.Runtime] sequence body on a mem or
+        core tile's channel (a shim channel moves host memory: use
+        ``fill``/``drain``). The buffer descriptors are written here, at the
+        call; [`start`][iron.runtime.dmataskhandle.Task.start] pushes the task
+        onto the channel queue, as often as needed, and
+        [`free`][iron.runtime.dmataskhandle.Task.free] returns its descriptors
+        after the last start.
+
+        ```python
+        load = into.endpoint(mem).task(Bd(resident, sizes=[n], strides=[1]))
+        load.start()
+        ...
+        load.start()
+        load.free()
+        ```
+
+        Each [`Bd`][iron.Bd] is spelled as in a [`TileDma`][iron.TileDma], but
+        without ``next``, and its access pattern, offset and length may be
+        dispatch-time values. A runtime descriptor needs a length, so one left
+        unset defaults to the product of ``sizes`` (or the whole buffer). A
+        buffer that has no tile yet is placed on this one.
+
+        Args:
+            *bds: The descriptors, walked in order as one task; a bare
+                [`Buffer`][iron.Buffer] stands for ``Bd(buffer)``.
+            runs (int | Value): How many times the whole chain runs per start.
+                Defaults to 1.
+            wait: Issue a completion token, so the task can be awaited.
+            out_of_order: Run an S2MM channel in out-of-order mode, as
+                [`DmaChannel.out_of_order`][iron.DmaChannel] does: a Bd with
+                no ``bd_id`` takes its position in ``bds``, and ``runs`` counts
+                packets. Needs a channel given by index.
+
+        Returns:
+            The configured [`TileDmaTask`][iron.TileDmaTask].
+        """
+        active = active_sequence()
+        if self.tile.effective_tile_type in _SHIM_TILE_TYPES:
+            raise ValueError(
+                f"{self} is a shim channel, which moves host memory; use the "
+                "Flow's fill()/drain() for it."
+            )
+        if not bds:
+            raise ValueError(f"A task on {self} needs at least one Bd.")
+        bds = tuple(bd if isinstance(bd, Bd) else Bd(bd) for bd in bds)
+        for i, bd in enumerate(bds):
+            if bd.next is not None:
+                raise ValueError(
+                    f"Bd {i} of a task on {self} sets next={bd.next!r}; a task "
+                    "runs its Bds in order and ends after the last."
+                )
+            if bd.buffer.tile is None:
+                bd.buffer._tile = self.tile
+            elif bd.buffer.tile != self.tile:
+                raise ValueError(
+                    f"A task on {self} was given a buffer on {bd.buffer.tile}; a "
+                    "tile's DMA can only address buffers on that tile."
+                )
+            active.resolve_in_device(bd.buffer)
+            for use in (*bd.acquires, *bd.releases):
+                active.resolve_in_device(use.lock)
+        if out_of_order and self.channel is None:
+            raise ValueError(
+                f"An out-of-order task needs a channel given by index, not the "
+                f"compiler-assigned {self}."
+            )
+
+        bds = tuple(_with_runtime_bd_fields(bd) for bd in bds)
+        if isinstance(runs, (int, np.integer)):
+            repeat = dict(repeat_count=int(runs) - 1)
+        else:
+            repeat = dict(repeat_count_val=_as_bd_i32(runs) - _as_i32(1))
+        operand = self._operand()
+        if isinstance(operand, str):
+            op = dma_configure_task_for(operand, issue_token=wait, **repeat)
+        else:
+            op = dma_configure_task(
+                self.tile.op,
+                self.direction,
+                operand,
+                issue_token=wait,
+                out_of_order=out_of_order or None,
+                **repeat,
+            )
+        with bd_blocks(op) as block:
+            for i, bd in enumerate(bds):
+                with block[i]:
+                    _emit_bd(bd, i if out_of_order and bd.bd_id is None else bd.bd_id)
+                    if i + 1 < len(bds):
+                        next_bd(block[i + 1])
+                    else:
+                        EndOp()
+        return TileDmaTask(self, op.result)
+
+    def __str__(self) -> str:
+        if self.channel is not None:
+            return f"{self.direction} channel {self.channel} on {self.tile}"
+        return f"{self.direction} channel on {self.tile}"
+
+
+class TileDmaTask(Task):
+    """A runtime-sequence DMA task on one channel of a mem or core tile.
+
+    Built by [`DmaEndpoint.task`][iron.dataflow.tile_dma.DmaEndpoint.task],
+    already configured. It is a [`Task`][iron.runtime.dmataskhandle.Task]:
+    ``start()`` pushes it (again), ``await_()`` waits for it (needs
+    ``wait=True``), ``free()`` returns its descriptors, and it rides a
+    ``range_`` ``iter_args`` entry across loop iterations.
+    """
+
+    def __init__(self, endpoint: DmaEndpoint, handle):
+        super().__init__(handle)
+        self._endpoint = endpoint
+
+    @property
+    def endpoint(self) -> DmaEndpoint:
+        """The channel this task runs on."""
+        return self._endpoint
+
+
 @dataclass
 class DmaChannel:
     """One hardware DMA channel on a tile, with its BD chain.
@@ -149,10 +348,11 @@ class DmaChannel:
     Args:
         direction: `DMAChannelDir.S2MM` (host→tile) or `DMAChannelDir.MM2S`
             (tile→host).
-        channel: hardware channel index, or the
-            [`FlowEndpoint`][iron.FlowEndpoint] from
-            [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint] to run on whichever channel
-            the compiler assigns that end.
+        channel: hardware channel index, or a
+            [`DmaEndpoint`][iron.DmaEndpoint] such as
+            [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint]'s, to run on the
+            channel the compiler assigns that end. An endpoint must be on the
+            program's tile and point in ``direction``.
         bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
             (in-order) or n-way merge (out-of-order).
         repeat_count: extra repeats of the task (0 = run once), where the task
@@ -181,7 +381,7 @@ class DmaChannel:
     """
 
     direction: DMAChannelDir
-    channel: int | FlowEndpoint
+    channel: int | DmaEndpoint
     bds: list[Bd]
     pad_value: int = 0
     repeat_count: int = 0
@@ -192,18 +392,45 @@ class DmaChannel:
     loop: bool = True
 
 
-def _emit_bd(bd: "Bd", bd_id: int | None, packet_attr: bool = False) -> None:
-    """Emit one BD's acquires, packet header, ``aie.dma_bd`` and releases.
+def _with_runtime_bd_fields(bd: Bd) -> Bd:
+    """``bd`` with its runtime values cast to the BD's field widths.
 
-    They go at the current insertion point. The caller supplies the block and the
-    ``next_bd``/``aie.end`` that closes it, and the ``bd_id`` to stamp (which on
-    an out-of-order channel is not ``bd.bd_id``). ``packet_attr`` puts the packet
-    header on the ``aie.dma_bd`` itself, as a runtime-sequence BD needs.
+    A runtime descriptor's block lowers only constants, so the casts, and the
+    length a runtime access pattern needs, are emitted here, ahead of the task.
+    """
+    sizes = [_as_bd_i64(v) for v in bd.sizes]
+    strides = [_as_bd_i64(v) for v in bd.strides]
+    length = bd.length
+    runtime = any(_is_value(v) for v in (*bd.sizes, *bd.strides, bd.offset))
+    if length is None and runtime:
+        if sizes:
+            length = np.prod(sizes)
+        else:
+            length = int(np.prod(bd.buffer.shape))
+    return replace(
+        bd,
+        sizes=sizes,
+        strides=strides,
+        offset=_as_bd_i32(bd.offset),
+        length=_as_bd_i32(length),
+    )
+
+
+def _is_value(v) -> bool:
+    return v is not None and not isinstance(v, (int, np.integer))
+
+
+def _emit_bd(bd: Bd, bd_id: int | None) -> None:
+    """Emit one BD's acquires, ``aie.dma_bd`` and releases at the insertion point.
+
+    The caller supplies the block, the ``next_bd``/``aie.end`` that closes it,
+    and the ``bd_id`` to stamp, which on an out-of-order channel is not
+    ``bd.bd_id``.
     """
     for acq in bd.acquires:
         acq.emit()
     bd_kwargs: dict[str, Any] = dict(sizes=bd.sizes, strides=bd.strides)
-    if bd.offset:
+    if _is_value(bd.offset) or bd.offset:
         bd_kwargs["offset"] = bd.offset
     if bd.length is not None:
         bd_kwargs["transfer_len"] = bd.length
@@ -216,18 +443,24 @@ def _emit_bd(bd: "Bd", bd_id: int | None, packet_attr: bool = False) -> None:
         bd_kwargs["bd_id"] = bd_id
     if bd.out_of_order_id is not None:
         bd_kwargs["out_of_order_id"] = bd.out_of_order_id
-    # A packet header must be a distinct aie.dma_bd_packet op placed BEFORE the
-    # aie.dma_bd: the CDO/xclbin backends (AIERT / AIETargetXAIEV2) read the
-    # header only from that op, not from a `packet` attribute on the dma_bd.
-    # The runtime-sequence lowering is the reverse: it reads only the attribute.
-    if bd.packet is not None and packet_attr:
+    if bd.packet is not None:
         bd_kwargs["packet"] = bd.packet
-    elif bd.packet is not None:
-        pkt_type, pkt_id = bd.packet
-        dma_bd_packet(pkt_type, pkt_id)
     dma_bd(bd.buffer.op, **bd_kwargs)
     for rel in bd.releases:
         rel.emit()
+
+
+def _channel_key(channel: "int | DmaEndpoint"):
+    """Identify a channel before the compiler assigns it: an index, or the end."""
+    if isinstance(channel, DmaEndpoint):
+        return channel if channel.channel is None else channel.channel
+    return channel
+
+
+def _channel_operand(channel: "int | DmaEndpoint") -> int | str:
+    if isinstance(channel, DmaEndpoint):
+        return channel._operand()
+    return channel
 
 
 def _channel_pad_word(ch: "DmaChannel") -> int | None:
@@ -256,40 +489,6 @@ def _channel_pad_word(ch: "DmaChannel") -> int | None:
             f"but they have differing element sizes {sorted(elem_sizes)}."
         )
     return pack_pad_value(ch.pad_value, elem_sizes.pop())
-
-
-def check_flow_endpoint(tile: Tile, direction: DMAChannelDir, channel) -> None:
-    """Reject a [`FlowEndpoint`][iron.FlowEndpoint] on the wrong tile or direction.
-
-    This catches an endpoint used on another tile or against its route's
-    direction before the compiler would.
-    """
-    if not isinstance(channel, FlowEndpoint):
-        return
-    if channel.tile != tile:
-        raise ValueError(
-            f"Flow endpoint {channel} is on {channel.tile}, not {tile}; a DMA "
-            "program can only run its own tile's channels."
-        )
-    if channel.direction != direction:
-        raise ValueError(
-            f"Flow endpoint {channel} is {channel.direction} (its Flow decides "
-            f"which way it points), not {direction}."
-        )
-
-
-def _channel_key(channel: "int | FlowEndpoint") -> "int | FlowEndpoint":
-    """Identify a channel before the Flows are named: an index, or the end."""
-    if isinstance(channel, FlowEndpoint) and channel.channel is not None:
-        return channel.channel
-    return channel
-
-
-def _channel_operand(channel: "int | FlowEndpoint") -> int | str:
-    """Return what ``aie.dma_start`` names: an index, or the endpoint's symbol."""
-    if not isinstance(channel, FlowEndpoint):
-        return channel
-    return channel.symbol if channel.channel is None else channel.channel
 
 
 def _dma_start_repeat_count(ch: "DmaChannel") -> int:
@@ -351,7 +550,8 @@ class TileDma(Resolvable):
             for channel in self._channels
         }
         for channel in channels:
-            check_flow_endpoint(self._tile, channel.direction, channel.channel)
+            if isinstance(channel.channel, DmaEndpoint):
+                channel.channel._check_on(self._tile, channel.direction)
             key = (channel.direction, _channel_key(channel.channel))
             if key in keys:
                 raise ValueError(
@@ -419,7 +619,7 @@ class TileDma(Resolvable):
         def _ooo_slot_id(bd: Bd, pos: int) -> int:
             return bd.bd_id if bd.bd_id is not None else pos
 
-        pinned_bd_ids: dict[int, int | FlowEndpoint] = {}  # slot id -> channel
+        pinned_bd_ids: dict[int, int | DmaEndpoint] = {}  # slot id -> channel
         for ch in channels:
             if ch.out_of_order and ch.direction != DMAChannelDir.S2MM:
                 raise ValueError(

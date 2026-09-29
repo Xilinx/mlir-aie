@@ -17,8 +17,8 @@ assigns.
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
-from aie.iron import Buffer, Flow, In, Out, Program, Runtime, tile_dma_task
+from aie.dialects._aie_enum_gen import AIETileType
+from aie.iron import Buffer, Flow, In, Out, Program, Runtime
 from aie.iron.device import Tile
 
 N = 1024
@@ -35,16 +35,15 @@ def round_trip(a: In, c: Out):
 
     def seq(A, C):
         into.fill(A)
-        tile_dma_task(
-            mem, DMAChannelDir.S2MM, into.endpoint(mem), resident, wait=True
-        ).await_()
-        tile_dma_task(mem, DMAChannelDir.MM2S, out.endpoint(mem), resident)
+        load = into.endpoint(mem).task(resident, wait=True).start()
+        load.await_()
+        load.free()
+        out.endpoint(mem).task(resident).start().free()
         out.drain(C, wait=True)
 
     rt = Runtime(seq, [ty, ty])
     rt.add_flow(into)
     rt.add_flow(out)
-    rt.add_buffer(resident)
     return Program(iron.get_current_device(), rt).resolve_program()
 
 

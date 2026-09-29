@@ -116,21 +116,9 @@ class Lock(Resolvable):
         so pair it with a blocking op (an await, or a lock the core waits on)
         that makes it safe.
 
-        Only the host can assign a lock: a core's lock instructions add to or
-        subtract from its value, which is what `acquire`/`release` emit, so a
-        Worker body uses those instead. The upper bound depends on the target
-        (`Device.max_lock_value`) and is checked by the `aiex.set_lock`
-        verifier.
-
-        Raises:
-            RuntimeError: If called outside a runtime sequence body.
-            ValueError: If value is negative.
+        A core cannot assign a lock: its lock instructions only add to or
+        subtract from the value, which is what `acquire`/`release` emit. The
+        `aiex.set_lock` verifier rejects a call outside a runtime sequence and
+        a value outside `[0, Device.max_lock_value]`.
         """
-        from .runtime._context import require_sequence
-
-        require_sequence(
-            f"Lock.set on {self.name}", "inside a Worker body use acquire()/release()"
-        )
-        if value < 0:
-            raise ValueError("Lock.set value must be non-negative.")
         _set_lock_value(self.op, value)

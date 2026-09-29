@@ -11,14 +11,14 @@
 """Flow endpoints: DMA programs on channels the compiler picks, on tiles it places.
 
 No tile is pinned and no Flow names a channel. A DMA program, static
-(``TileDma``) or issued from the sequence (``tile_dma_chain``), runs on
+(``TileDma``) or issued from the sequence (``DmaEndpoint.task``), runs on
 ``flow.endpoint(tile)`` instead of an index, and ``--aie-objectfifo-allocate``
 gives every endpoint its channel.
 
 The mem tile carries five such endpoints: three S2MM and two MM2S.
 
 * A shim fill lands in ``staged`` through a static S2MM program.
-* The sequence broadcasts ``staged`` to two cores with a chain on the mem
+* The sequence broadcasts ``staged`` to two cores with a task on the mem
   tile's MM2S end of the broadcast.
 * Each core's static program sends its copy back to the mem tile. Core 1 sends
   it transposed, so the two paths land differently.
@@ -52,7 +52,6 @@ from aie.iron import (
     Release,
     Runtime,
     TileDma,
-    tile_dma_chain,
 )
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -63,7 +62,7 @@ SIDE = 32
 N = SIDE * SIDE  # int32 elements in one copy
 
 # After allocation every mem tile program names an index and the broadcast's
-# chain runs on the channel the broadcast's flows leave from.
+# task runs on the channel the broadcast's flows leave from.
 # ALLOC-LABEL: aie.memtile_dma
 # ALLOC-COUNT-3: aie.dma_start(S2MM, {{[0-9]}},
 # ALLOC: aie.dma_start(MM2S, {{[0-9]}},
@@ -188,35 +187,20 @@ def flow_endpoints(a_in: In, c_out: Out):
 
     def sequence(a, c):
         into.fill(a)
-        tile_dma_chain(
-            mem,
-            DMAChannelDir.MM2S,
-            spread.endpoint(mem),
-            [
-                Bd(
-                    staged,
-                    acquires=[take(staged_full)],
-                    releases=[Release(staged_free, value=1)],
-                )
-            ],
-        )
+        spread.endpoint(mem).task(
+            Bd(
+                staged,
+                acquires=[take(staged_full)],
+                releases=[Release(staged_free, value=1)],
+            )
+        ).start().free()
         out.drain(c, wait=True)
 
     rt = Runtime(sequence, [copy_ty, pair_ty])
     for fl in (into, spread, *gather, out):
         rt.add_flow(fl)
-    for lock in (
-        staged_free,
-        staged_full,
-        gathered_free,
-        gathered_full,
-        *landed_free,
-        *landed_full,
-    ):
-        rt.add_lock(lock)
     for td in (mem_dma, *core_dmas):
         rt.add_tile_dma(td)
-    rt.add_buffer(staged)
 
     return Program(iron.get_current_device(), rt).resolve_program()
 

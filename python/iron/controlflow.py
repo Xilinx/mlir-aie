@@ -25,24 +25,28 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
     See [`Task`][iron.runtime.dmataskhandle.Task].
     Identical to the low-level ``_for`` helper, except a ``Task`` passed as an
     ``iter_args`` entry is carried across iterations by its SSA handle: the loop
-    body and the loop results receive it re-wrapped as a ``Task`` (so ``.free()``/
-    ``.await_()`` work), and [`yield_`][iron.controlflow.yield_] accepts ``Task``
-    entries too. This is what a hand-rolled software-pipelined DMA loop needs.
+    body and the loop results receive it re-wrapped as a copy of the ``Task``
+    passed in (so ``.start()``/``.free()``/``.await_()`` work), and
+    [`yield_`][iron.controlflow.yield_] accepts ``Task`` entries too. This is
+    what a hand-rolled software-pipelined DMA loop needs.
     """
     wrapped = {}
     if iter_args is not None:
         raw = []
         for i, a in enumerate(iter_args):
             if isinstance(a, Task):
-                wrapped[i] = True
+                wrapped[i] = a
             raw.append(_unwrap(a))
         iter_args = raw
 
     def rewrap_args(a):
         # a is a single value, a tuple of iter_args, or absent (iv only).
         if isinstance(a, tuple):
-            return tuple(Task(v) if wrapped.get(i) else v for i, v in enumerate(a))
-        return Task(a) if wrapped.get(0) else a
+            return tuple(
+                wrapped[i]._with_handle(v) if i in wrapped else v
+                for i, v in enumerate(a)
+            )
+        return wrapped[0]._with_handle(a) if 0 in wrapped else a
 
     for vals in _for(*args, iter_args=iter_args, insert_yield=insert_yield, **kwargs):
         if not wrapped:

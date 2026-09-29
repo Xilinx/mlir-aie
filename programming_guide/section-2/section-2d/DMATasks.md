@@ -268,13 +268,47 @@ When a task needs more BDs than a tile has free, the compiler takes BDs back fro
 - If a poll already in the sequence proves the task finished, no new instruction is added. For example, a queue-depth poll that leaves at most 4 tasks unfinished on a channel proves every older task on it finished.
 - Otherwise the compiler inserts a poll just before the task that needs the BDs. It picks the oldest task that has other tasks queued behind it on its channel, and waits until the channel's queue is short enough that this task must have finished. Only if every candidate is the last task on its channel does it wait for that channel to go idle.
 
-A task that is started again later in the sequence keeps its BDs; the compiler never takes them. A `dma_free_task` of a task whose BDs were taken is a no-op, and a `dma_await_task` of it still waits for its completion token. Sequences that fit in the BD pool compile exactly as before; this only changes sequences that would otherwise fail with "Too many simultaneously active buffer descriptors".
+A task that is started again later in the sequence keeps its BDs; the compiler never takes them. A `dma_free_task` of a task whose BDs were taken is a no-op, and a `dma_await_task` of it still waits for its completion token. Sequences that fit in the BD pool compile exactly as before; this only changes sequences that would otherwise fail with "Too many simultaneously active buffer descriptors". Each poll the compiler inserts is reported as a remark naming the tile and the task it waits for.
 
 Every such poll waits for one specific task on one channel. The compiler can see the order of the pushes, but it cannot see what else a transfer depends on: a core, another tile, or data a later push brings in. So the rule for a design is that **a task the compiler may have to wait on must not depend on anything started after it.** If a fill can only finish once a drain issued later in the sequence makes room, and the compiler has to reuse that fill's BDs before the drain is issued, the poll waits forever. Issue the pushes a transfer depends on before the pushes queued behind it, as a fill-then-drain loop does. Or await the task yourself at the point that is safe.
 
-To get the error back instead, pass `reclaim-bds=false` to `aie-assign-runtime-sequence-bd-ids`. `test/npu-xrt/runtime_bd_reclaim` runs 80 tasks through one Shim Tile's 16 BDs, none freed.
+To get the error back instead, pass `reclaim-bds=false` to `aie-assign-runtime-sequence-bd-ids`. `test/npu-xrt/runtime_bd_reclaim` runs 160 tasks through one Shim Tile's 16 BDs, none freed.
 
-A transfer whose access pattern does not fit one BD is split by the compiler (`aie-decompose-large-dma-bd`). If it splits into more pieces than the channel's queue holds, each piece becomes a task of its own, so that the BDs of finished pieces can be taken back. Only the last piece issues the completion token, so a `dma_await_task` of the transfer still waits for all of it. The compiler interleaves the pieces with the transfers started alongside it, in proportion to how far through each is. That way a transfer started earlier in the sequence cannot use up the BDs its counterpart, started after it, needs to make progress. The pieces never move ahead of their own start, nor past a `dma_await_task`, a sync or a poll.
+A transfer whose access pattern does not fit one BD is split by the compiler (`aie-decompose-large-dma-bd`). If it splits into more pieces than the channel's queue holds, each piece becomes a task of its own, so that the BDs of finished pieces can be taken back. Only the last piece issues the completion token, so a `dma_await_task` of the transfer still waits for all of it. The compiler interleaves the pieces with the transfers started alongside it, in proportion to how far through each is. That way a transfer started earlier in the sequence cannot use up the BDs its counterpart, started after it, needs to make progress. The pieces only move past other tasks' configures and starts and past RTP writes. They never move ahead of their own start, nor past a `dma_await_task`, a sync, a poll, a register write or a lock set.
+
+A task whose repeat count is larger than one queue push carries (`dev.max_repeat_count`) is split into several pushes by `aie-split-long-repeats`, so a task can run any number of times.
+
+#### **Tasks on Mem and Compute Tiles**
+
+The tasks above move data between host memory and a Shim Tile. The same `dma_configure_task` / `dma_start_task` / `dma_await_task` / `dma_free_task` ops also drive the DMA of a mem or compute tile, which a `TileDma` (see [Section 2g](../section-2g/README.md)) otherwise configures once, when the design loads. Driven from the sequence, a descriptor can change from one call to the next, for example to re-read an operand held in a mem tile with a size only known at dispatch time.
+
+In IRON, a task lives on a `DmaEndpoint`: one DMA channel of one tile. `flow.endpoint(tile)` is the end of a `Flow` on `tile`, whose direction comes from the route and whose channel the compiler may assign. `DmaEndpoint(tile, direction, channel)` pins a channel by index.
+
+| Call | What it does |
+|------|--------------|
+| `end.task(*bds, runs=1, wait=False, out_of_order=False)` | Configures a `TileDmaTask` that walks the `Bd`s in order, `runs` times per start (`dma_configure_task`). A bare `Buffer` stands for `Bd(buffer)` |
+| `task.start(repeat_count=None)` | Pushes the task onto its channel queue (`dma_start_task`), optionally with a different repeat count. A task can be started again |
+| `task.await_()` | Waits for a task built with `wait=True` (`dma_await_task`) |
+| `task.free()` | Returns the task's BDs after its last start (`dma_free_task`) |
+| `lock.set(value)` | Overwrites a `Lock`'s value from the host (`aiex.set_lock`) |
+
+The `Bd`s are the class a `TileDma` uses, so locks, packet headers and access patterns are written the same way, and a `Bd`'s offset, length, sizes and strides may be dispatch-time values. Three things differ: a task runs its `Bd`s in order, so `next` is not allowed; `iteration` is taken from the outermost `sizes` / `strides` dimension instead; and a `Bd` takes both an acquire and a release or neither. With `out_of_order=True`, an S2MM channel is armed as `DmaChannel.out_of_order` arms it, a `Bd` with no `bd_id` takes its position, and `runs` counts packets.
+
+A task is configured where `task()` is called, and each start only pushes it, so building a task before a loop leaves the loop body only the pushes:
+
+```python
+def sequence(a, c):
+    load = into.endpoint(mem).task(
+        Bd(resident, acquires=[Acquire(empty)], releases=[Release(full)])
+    )
+    for _ in range_(4):
+        into.fill(a)
+        load.start()
+        ...
+    load.free()
+```
+
+With `wait=True`, a mem or compute tile reports completion over a route back to the shim that the compiler adds, so `await_()` works on any tile. A tile's DMA can only address buffers on that tile; only a Shim Tile reaches host memory, which is what `fill` / `drain` are for. [`test/npu-xrt/flow_endpoints`](../../../test/npu-xrt/flow_endpoints/flow_endpoints.py) and [`test/python/npu-xrt/test_tile_dma_task_dispatch.py`](../../../test/python/npu-xrt/test_tile_dma_task_dispatch.py) are hardware-tested designs that use them.
 
 Both the `npu_dma_memcpy_nd`/`dma_wait` interface and the `shim_dma_single_bd_task`/`dma_await_task`/`dma_free_task` interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 

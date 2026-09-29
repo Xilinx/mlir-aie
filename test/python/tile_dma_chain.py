@@ -2,14 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-# RUN: %python %s | aie-opt --aie-place-tiles --aie-assign-runtime-sequence-bd-ids \
+# RUN: %python %s | aie-opt --aie-place-tiles --aie-split-long-repeats \
 # RUN:   | FileCheck %s --check-prefix=SPLIT
 
-"""tile_dma_chain configures a chain of mem tile descriptors from inside the
-runtime sequence as one task, and Task.start pushes that chain again with a
-different pass count. Together they let a sequence program a ring buffer on a
-mem tile -- one descriptor per slot, handed to and from a compute tile through
-locks -- without reconfiguring it for every batch of passes."""
+"""DmaEndpoint.task configures a chain of mem tile descriptors from inside the
+runtime sequence as one task, and Task.start pushes that chain as often as
+needed, with a different pass count if asked. Together they let a sequence
+program a ring buffer on a mem tile -- one descriptor per slot, handed to and
+from a compute tile through locks -- without reconfiguring it for every batch
+of passes."""
 
 import numpy as np
 
@@ -19,11 +20,11 @@ from aie.iron import (
     Bd,
     BdIteration,
     Buffer,
+    DmaEndpoint,
     Lock,
     Program,
     Release,
     Runtime,
-    tile_dma_chain,
 )
 from aie.iron.device import NPU2Col1, Tile
 
@@ -66,20 +67,16 @@ def emit_ring(bad=None):
     def sequence(_host):
         # 600 passes over the ring: more than one queue push carries, so the
         # compiler issues the start as several pushes of the same task.
-        task = tile_dma_chain(
-            mem_tile, DMAChannelDir.S2MM, 0, slot_bds(), repeat_count=599
-        )
+        ring_in = DmaEndpoint(mem_tile, DMAChannelDir.S2MM, 0)
+        task = ring_in.task(*slot_bds(), runs=600).start()
         # Four more passes: the chain is already written, so this is one push.
         task.start(repeat_count=3)
         task.free()
 
     rt = Runtime(sequence, [host_ty])
-    rt.add_buffer(ring)
-    if bad == "tile":
-        rt.add_buffer(stray)
-    for lk in prod + cons:
-        rt.add_lock(lk)
-    return Program(NPU2Col1(), rt).resolve_program()
+    module = Program(NPU2Col1(), rt).resolve_program()
+    module.operation.verify()
+    return module
 
 
 # One task, one descriptor per slot, each taking and handing back its slot's
@@ -113,9 +110,9 @@ print(emit_ring())
 for bad in ("next", "iteration", "tile", "empty"):
     try:
         emit_ring(bad)
-    except ValueError as e:
-        print(f"// {bad}: {e}")
-# CHECK: // next: TileDmaTask Bd 0 sets next='self'; a runtime chain runs its Bds in list order and ends after the last.
-# CHECK: // iteration: TileDmaTask Bd 1 sets iteration; use the chain's repeat_count or one Bd per sub-buffer instead.
-# CHECK: // tile: TileDmaTask on {{.*}} was given a buffer on {{.*}} (Bd 2); a tile's DMA can only address buffers on that tile (only a shim BD reaches host memory).
-# CHECK: // empty: TileDmaTask needs at least one Bd
+    except Exception as e:
+        print(f"// {bad}: {type(e).__name__}: {e}".replace("\n", " "))
+# CHECK: // next: ValueError: Bd 0 of a task on S2MM channel 0 on {{.*}} sets next='self'; a task runs its Bds in order and ends after the last.
+# CHECK: // iteration: {{.*}}the iteration attribute is not supported on the runtime-sequence path
+# CHECK: // tile: ValueError: A task on S2MM channel 0 on {{.*}} was given a buffer on {{.*}}; a tile's DMA can only address buffers on that tile.
+# CHECK: // empty: ValueError: A task on S2MM channel 0 on {{.*}} needs at least one Bd.

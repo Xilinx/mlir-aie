@@ -98,8 +98,6 @@ def tile_dma_pad(a: In, c: Out):
     )
     for f in (flow_in, flow_out):
         rt.add_flow(f)
-    for lk in (p, cl):
-        rt.add_lock(lk)
     rt.add_tile_dma(mem_dma)
     return Program(iron.get_current_device(), rt).resolve_program()
 

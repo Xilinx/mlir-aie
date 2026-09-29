@@ -56,6 +56,7 @@ from aie.iron import (
     Buffer,
     CompileTime,
     DmaChannel,
+    DmaEndpoint,
     Flow,
     Lock,
     Out,
@@ -67,7 +68,6 @@ from aie.iron import (
     TaskGroup,
     TileDma,
     Worker,
-    tile_dma_chain,
 )
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -98,7 +98,7 @@ def _chan_base(kc, r, lo, M, rounds):
 
 
 def _slot_walk(m, tw, runtime):
-    # A slot spreads its m packets over m tw-word sub-buffers. A runtime chain
+    # A slot spreads its m packets over m tw-word sub-buffers. A runtime task
     # takes that iteration from the outermost sizes/strides dim, since it
     # rejects Bd.iteration; a one-packet slot stays linear.
     if not runtime:
@@ -615,17 +615,14 @@ def dma_s2mm_ooo(
 
     def sequence(c_h):
         # Runtime receiver path: arm each ooo S2MM merge channel from the host
-        # sequence. The chain only configures the BDs; hardware ignores
+        # sequence. The task only configures the BDs; hardware ignores
         # Use_Next_BD and places each packet by header id.
         for kc, ids in runtime_recv:
-            tile_dma_chain(
-                receiver,
-                DMAChannelDir.S2MM,
-                kc,
-                _recv_bds(bufs[kc], ids, off, ms, tw, cons[kc], runtime=True),
-                repeat_count=M * rounds - 1,
+            DmaEndpoint(receiver, DMAChannelDir.S2MM, kc).task(
+                *_recv_bds(bufs[kc], ids, off, ms, tw, cons[kc], runtime=True),
+                runs=M * rounds,
                 out_of_order=True,
-            )
+            ).start().free()
 
         # Drain each channel's merged buffer round-major; each drain self-gates
         # on-chip on the channel's ooo_cons count.

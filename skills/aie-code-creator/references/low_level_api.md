@@ -129,23 +129,25 @@ rt.add_flow(pf)
 
 Constructing a `Flow`/`PacketFlow` does not register it anywhere by itself — you must call `rt.add_flow(...)` on your `Runtime` instance (both share the same registration method). Without that call, `Program.resolve_program()` never sees the flow and it silently never resolves. Both resolve to `aie.flow`/packet-switching ops when the program is placed — they only declare the topology edge; you still own the `TileDma`/`Buffer`/`Lock` wiring on each end. Reach for `ObjectFifo` first; these are for the rare case where you need routing control without the full ObjectFifo abstraction.
 
-A `Flow` or `PacketFlow` with a shim end has `fill()`/`drain()` like an `ObjectFifoHandle` (`PacketFlow.fill` stamps its `pkt_id` on the shim descriptor; see `programming_examples/basic/packet_switch`). A route between the shim and a mem tile has a DMA at each end, and the runtime sequence drives both: `fill`/`drain` program the shim end, and a `TileDmaTask` programs the mem or core tile end, so its lengths, offsets and access patterns can change per dispatch rather than being fixed at load time as with `TileDma`. `flow.task(buffer, ...)` builds one BD over `buffer` and `flow.chain([Bd(...), ...])` a chain; both run on the end of `flow` on the buffer's tile, so the direction and channel come from the route. See `programming_guide/section-2/section-2g/README.md` and `test/python/npu-xrt/test_tile_dma_task_dispatch.py`:
+A `Flow` or `PacketFlow` with a shim end has `fill()`/`drain()` like an `ObjectFifoHandle` (`PacketFlow.fill` stamps the packet header on the shim descriptor; see `programming_examples/basic/packet_switch`). A route between the shim and a mem tile has a DMA at each end, and the runtime sequence can drive both: `fill`/`drain` program the shim end, and `flow.endpoint(mem).task(...)` programs the mem or core tile end, so its lengths, offsets and access patterns can change per dispatch rather than being fixed at load time as with `TileDma`. The endpoint supplies the tile, direction and channel; `DmaEndpoint(tile, direction, channel)` pins a channel by index instead. See `programming_guide/section-2/section-2d/DMATasks.md` and `test/python/npu-xrt/test_tile_dma_task_dispatch.py`:
 
 ```python
-from aie.iron import Acquire, Release
+from aie.iron import Acquire, Bd, Release
 
 into = Flow(shim, mem)   # host -> mem tile; compiler picks both channels
 out = Flow(mem, shim)    # mem tile -> host
 
 def sequence(A, C, n):
-    into.fill(A)                                    # shim end of `into` (MM2S)
-    into.task(buf, acquire=Acquire(empty),          # mem end of `into` (S2MM)
-              release=Release(full)).start()
-    out.task(buf, transfer_len=n, acquire=Acquire(full),   # mem end of `out` (MM2S)
-             release=Release(empty)).start()
-    out.drain(C, transfer_len=n, wait=True)         # shim end of `out` (S2MM)
+    into.fill(A)                                        # shim end of `into` (MM2S)
+    into.endpoint(mem).task(                            # mem end of `into` (S2MM)
+        Bd(buf, acquires=[Acquire(empty)], releases=[Release(full)])
+    ).start().free()
+    out.endpoint(mem).task(                             # mem end of `out` (MM2S)
+        Bd(buf, length=n, acquires=[Acquire(full)], releases=[Release(empty)])
+    ).start().free()
+    out.drain(C, transfer_len=n, wait=True)             # shim end of `out` (S2MM)
 ```
 
-Building a task emits nothing; `start()` writes its descriptors on the first call and pushes it on every call, so a task built once outside the sequence can be restarted cheaply. Give `acquire` and `release` together or neither (anything else raises `ValueError`). Register the flows, locks and buffer with `rt.add_flow`/`rt.add_lock`/`rt.add_buffer`. `wait=True` works on mem/core tile tasks too: the compiler routes their completion token back to the shim, so `task.await_()` returns (`test/python/npu-xrt/test_tile_dma_task_token.py`). `tile_dma_task`/`tile_dma_chain` build the same tasks with an explicit tile, direction and channel.
+`task(*bds, runs=1, wait=False)` writes the descriptors where it is called; `start()` pushes the task and may be called again, so a task built before a loop is restarted with one push per iteration. `free()` returns its BDs after the last start. A `Bd` in a task takes no `next`, and takes both an acquire and a release or neither. The buffers and locks a task or `TileDma` uses are found from its `Bd`s; register the flows with `rt.add_flow`. `wait=True` works on mem/core tile tasks too: the compiler routes their completion token back to the shim, so `task.await_()` returns (`test/python/npu-xrt/test_tile_dma_task_token.py`).
 
 Both `Flow` and `PacketFlow` (and `CascadeFlow`, documented in `python_api.md`) implement the `Resolvable` protocol (`aie.iron.resolvable.Resolvable`) — a structural `Protocol` requiring `resolve(loc, ip)` and `tiles()`. This is the advertised way to work with low-level primitives from an otherwise high-level design: implement `Resolvable` on your primitive and pass it to `rt.add_flow(...)` so `Program.resolve_program()` picks it up during placement/resolution, rather than dropping the whole design down to the `@device`/`@core` skeleton above. There's generally no reason to write a full design in low-level primitives — reach for `Resolvable` when you need one custom piece of topology, and keep everything else on `Worker`/`ObjectFifo`.

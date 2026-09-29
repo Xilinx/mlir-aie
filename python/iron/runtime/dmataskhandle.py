@@ -19,6 +19,8 @@ these verbs -- exactly what a hand-rolled ping-pong needs.
 
 from __future__ import annotations
 
+import copy
+
 from ...dialects.aiex import (  # pyright: ignore[reportMissingImports]
     dma_await_task,
     dma_free_task,
@@ -44,20 +46,25 @@ class Task:
         """The transfer's ``!index`` SSA value (the ``scf`` iter_arg payload)."""
         return self._handle
 
-    def start(self, repeat_count: int | None = None) -> "Task":
-        """Push this task onto its channel's queue again (``dma_start_task``).
+    def _with_handle(self, handle) -> "Task":
+        """This task carried to another SSA value, e.g. a loop's iter_arg."""
+        task = copy.copy(self)
+        task._handle = handle
+        return task
 
-        The task's buffer descriptors are already written, so a restart costs
-        one queue push rather than a reconfiguration. ``repeat_count`` replaces
-        the task's configured count for this start only; a count beyond what
-        one push carries is issued as several pushes by the compiler.
+    def start(self, repeat_count: int | None = None) -> "Task":
+        """Push this task onto its channel's queue (``dma_start_task``).
+
+        Its buffer descriptors are written when the task is configured, so each
+        start costs one queue push. ``repeat_count`` replaces the task's
+        configured count for this start only.
 
         Returns:
-            This task, so a start can be chained onto its construction.
+            This task.
 
         Raises:
             RuntimeError: If this task was already freed, since its buffer
-                descriptors may since have been reprogrammed for another task.
+                descriptors may since describe another transfer.
         """
         if self._freed:
             raise RuntimeError(
@@ -65,7 +72,7 @@ class Task:
                 "may already describe another transfer. Free a task after its "
                 "last start."
             )
-        dma_start_task(self.handle, repeat_count=repeat_count)
+        dma_start_task(self._handle, repeat_count=repeat_count)
         return self
 
     def free(self) -> None:
@@ -76,7 +83,7 @@ class Task:
         """
         if self._freed:
             raise RuntimeError("Task.free() called twice on the same task.")
-        dma_free_task(self.handle)
+        dma_free_task(self._handle)
         self._freed = True
 
     def await_(self) -> None:
@@ -85,4 +92,4 @@ class Task:
         The transfer must have been issued with ``wait=True`` so it carries a
         completion token.
         """
-        dma_await_task(self.handle)
+        dma_await_task(self._handle)
