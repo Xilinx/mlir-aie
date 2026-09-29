@@ -144,22 +144,36 @@ jobs:
           summary-always: true
           max-items-in-chart: 400
 
-      # The action writes a plain page per NPU. This one sits above them and
-      # filters every NPU and power mode by kernel and metric, and shows each
-      # NPU's catalogue: an NPU whose leg wrote none keeps its previous one.
+      # The action writes a plain page per NPU. This one sits above them: a
+      # dashboard of the latest run per NPU, each NPU's catalogue, and every
+      # series filtered by kernel and metric. Beside the series each NPU keeps
+      # the timing step's meta.json (latest.json) and a summary of every run
+      # (runs.json): which Actions run, in which mode, on which host, what
+      # failed. An NPU whose leg wrote nothing keeps its previous files.
       - name: Install results page
         if: ${{ !inputs.static }}
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           cp utils/kernel_checks/index.html "$RUNNER_TEMP/index.html"
+          cp utils/kernel_checks/runs_index.py "$RUNNER_TEMP/runs_index.py"
           git switch -q gh-pages
           mkdir -p kernel-checks
           cp "$RUNNER_TEMP/index.html" kernel-checks/index.html
           git add kernel-checks/index.html
           for npu in npu1 npu2; do
-            [[ -f "results/$npu/catalogue.json" ]] || continue
-            mkdir -p "kernel-checks/$npu"
-            cp "results/$npu/catalogue.json" "kernel-checks/$npu/catalogue.json"
-            git add "kernel-checks/$npu/catalogue.json"
+            if [[ -f "results/$npu/catalogue.json" ]]; then
+              mkdir -p "kernel-checks/$npu"
+              cp "results/$npu/catalogue.json" "kernel-checks/$npu/catalogue.json"
+              git add "kernel-checks/$npu/catalogue.json"
+            fi
+            if [[ -f "results/$npu/meta.json" ]]; then
+              args=(--npu "$npu" --meta "results/$npu/meta.json")
+              [[ -f "results/$npu/catalogue.json" ]] && args+=(--catalogue "results/$npu/catalogue.json")
+              python3 "$RUNNER_TEMP/runs_index.py" "${args[@]}" \
+                --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL" --out-dir "kernel-checks/$npu"
+              git add "kernel-checks/$npu/runs.json" "kernel-checks/$npu/latest.json"
+            fi
           done
           git diff --cached --quiet || git -c user.name=github-action-benchmark \
             -c user.email=github@users.noreply.github.com \

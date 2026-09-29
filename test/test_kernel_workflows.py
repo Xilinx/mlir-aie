@@ -450,6 +450,8 @@ def test_results_page_is_committed_to_the_publication_branch(tmp_path):
     git("init", "-q", "-b", "main")
     (tmp_path / "utils/kernel_checks").mkdir(parents=True)
     (tmp_path / "utils/kernel_checks/index.html").write_bytes(source.read_bytes())
+    recorder = source.with_name("runs_index.py")
+    (tmp_path / "utils/kernel_checks/runs_index.py").write_bytes(recorder.read_bytes())
     git("add", ".")
     git("commit", "-q", "-m", "main")
     git("switch", "-q", "--orphan", "gh-pages")
