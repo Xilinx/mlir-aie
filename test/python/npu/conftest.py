@@ -45,7 +45,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "perf: times a kernel and records benchmark-action rows; select with -m perf",
+        "perf: times a kernel and records performance rows; select with -m perf",
     )
     config._perf_rows = []
     config._perf_meta = {}
@@ -73,7 +73,7 @@ def pytest_addoption(parser):
     parser.addoption(
         "--perf-out",
         default=None,
-        help="write benchmark-action rows here, if the NPU checks pass",
+        help="write the performance rows here, if the NPU checks pass",
     )
     parser.addoption(
         "--perf-meta", default=None, help="write run provenance and any failures here"
@@ -105,11 +105,12 @@ def pytest_addoption(parser):
 
 @pytest.fixture
 def record_perf(request):
-    """Record the benchmark-action rows a timed test produces.
+    """Record the performance rows a timed test produces.
 
-    The row name is ``<case>/<metric>``, which is the series key
-    ``benchmark-action`` charts on gh-pages; ``test_perf_series_names.py``
-    pins the whole set, so a renamed case restarts a chart and has to say so.
+    The row name is ``<case>/<metric>``, which is the series key the published
+    history (``utils/kernel_checks/publish.py``) charts on gh-pages;
+    ``test_perf_series_names.py`` pins the whole set, so a renamed case
+    restarts a chart and has to say so.
     """
     config = request.config
 

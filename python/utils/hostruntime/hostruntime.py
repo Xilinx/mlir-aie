@@ -94,6 +94,16 @@ class KernelResult(ABC):
 class HostRuntime(ABC):
     """An abstract class for a generic host runtime."""
 
+    def provenance(self) -> dict[str, str]:
+        """Return runtime identity and any available driver version."""
+        from ..probe import amdxdna_version
+
+        fields = {"runtime": type(self).__name__}
+        driver = amdxdna_version()
+        if driver:
+            fields["xdna"] = driver
+        return fields
+
     def check_device_consistency(self):
         """Check if the overridden device is loadable on the runtime device.
 
