@@ -378,11 +378,12 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
   };
 
-  // Build the device symbol table ONCE + a per-global data cache, so
-  // block-write data resolution is O(1)+memoized instead of a per-op linear
-  // symbol scan (cachedBlockWriteData). ~47% of this function on a B=128
-  // sequence.
-  mlir::SymbolTable symTab(deviceOp.getOperation());
+  // Build and cache symbol tables via SymbolTableCollection ONCE + a per-global
+  // data cache, so block-write data resolution is O(1)+memoized instead of a
+  // per-op linear symbol scan (cachedBlockWriteData). ~47% of this function on
+  // a B=128 sequence.
+  mlir::SymbolTableCollection symbolTables;
+  mlir::SymbolTable &symTab = symbolTables.getSymbolTable(deviceOp.getOperation());
   llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> blockWriteDataCache;
 
   // Accumulates failure from the per-op append helpers (e.g. a non-constant

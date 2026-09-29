@@ -88,10 +88,12 @@ struct AIESubstituteShimDMAAllocationsPass
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
-    // Build the device symbol table ONCE (O(1) per-task allocation lookup
-    // instead of getForSymbol's per-task linear scan -> O(n^2)).
-    // Byte-identical.
-    mlir::SymbolTable symbolTable(device);
+    // Build and cache symbol tables via SymbolTableCollection ONCE (O(1)
+    // per-task allocation lookup instead of getForSymbol's per-task linear
+    // scan -> O(n^2)). Byte-identical.
+    mlir::SymbolTableCollection symbolTables;
+    mlir::SymbolTable &symbolTable =
+        symbolTables.getSymbolTable(device.getOperation());
 
     // Convert DMAConfigureTaskForOps that reference shim DMA allocations
     // to regular DMAConfigureTaskOps

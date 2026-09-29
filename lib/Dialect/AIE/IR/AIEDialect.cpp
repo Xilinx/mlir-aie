@@ -15,6 +15,7 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolInterfaces.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
@@ -94,6 +95,29 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
   }
 };
 
+template <typename OpTy>
+struct OptionalNamedOpSymbolModel
+    : public SymbolOpInterface::ExternalModel<OptionalNamedOpSymbolModel<OpTy>,
+                                              OpTy> {
+  StringAttr getNameAttr(Operation *op) const {
+    return op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+  }
+
+  void setSymbolName(Operation *op, StringAttr name) const {
+    op->setAttr(SymbolTable::getSymbolAttrName(), name);
+  }
+
+  SymbolTable::Visibility getVisibility(Operation *op) const {
+    return SymbolTable::getSymbolVisibility(op);
+  }
+
+  void setVisibility(Operation *op, SymbolTable::Visibility vis) const {
+    SymbolTable::setSymbolVisibility(op, vis);
+  }
+
+  bool isOptionalSymbol(Operation *op) const { return true; }
+};
+
 } // end anonymous namespace
 
 void AIEDialect::initialize() {
@@ -110,6 +134,15 @@ void AIEDialect::initialize() {
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
       >();
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
+
+  // These ops historically carried optional `sym_name` while also producing
+  // SSA values. Register SymbolOpInterface externally so named instances are
+  // discoverable through SymbolTable APIs.
+  LockOp::attachInterface<OptionalNamedOpSymbolModel<LockOp>>(*getContext());
+  BufferOp::attachInterface<OptionalNamedOpSymbolModel<BufferOp>>(*getContext());
+  ExternalBufferOp::attachInterface<
+      OptionalNamedOpSymbolModel<ExternalBufferOp>>(*getContext());
+  DMAOp::attachInterface<OptionalNamedOpSymbolModel<DMAOp>>(*getContext());
 }
 
 // Helper methods to retrieve the encoding associated to a burst length,
@@ -186,6 +219,15 @@ std::string xilinx::AIE::generateUniqueSymbolName(
   do {
     name = (prefix + llvm::Twine(counter++)).str();
   } while (lookupNamedOpIn(symbolTableOp, llvm::StringRef(name)));
+  return name;
+}
+
+std::string xilinx::AIE::generateUniqueSymbolNameFromBase(
+    mlir::Operation *symbolTableOp, llvm::StringRef baseName,
+    unsigned &counter) {
+  std::string name = baseName.str();
+  while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name))
+    name = (baseName + "_" + llvm::Twine(counter++)).str();
   return name;
 }
 
