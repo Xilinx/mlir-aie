@@ -97,6 +97,29 @@ def select_streams(slice_size: int, chunk: int) -> int:
     return 1 if chunk == slice_size else SELECT_PASSES
 
 
+def check_select(*, slice_size: int, chunk: int, k_max: int) -> None:
+    """Raise ``ValueError`` unless ``sample_select`` builds for these.
+
+    ``sample_select`` checks this itself; a caller that only asks whether it
+    would build calls this, which declares no kernel.
+    """
+    _check_slice("sample_select", slice_size, k_max)
+    _positive("sample_select", chunk=chunk)
+    if slice_size % chunk:
+        raise ValueError("sample_select: chunk must divide slice_size")
+    if chunk % 2:
+        raise ValueError("sample_select: chunk must be even (4-byte DMA)")
+
+
+def check_combine(*, columns: int, slice_size: int, k_max: int) -> None:
+    """Raise ``ValueError`` unless ``sample_combine`` builds for these; like
+    ``check_select``, it declares no kernel."""
+    _check_slice("sample_combine", slice_size, k_max)
+    _positive("sample_combine", columns=columns)
+    if columns * slice_size >= 1 << 31:
+        raise ValueError("sample_combine: a token must fit int32")
+
+
 def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction:
     """One column's half of sampling: its slice's summary, for ``sample_combine``.
 
@@ -108,12 +131,7 @@ def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction
     before the first call; the last call of a position leaves it ready for the
     next. ``summary`` is ``summary_words(slice_size, k_max)`` int32.
     """
-    _check_slice("sample_select", slice_size, k_max)
-    _positive("sample_select", chunk=chunk)
-    if slice_size % chunk:
-        raise ValueError("sample_select: chunk must divide slice_size")
-    if chunk % 2:
-        raise ValueError("sample_select: chunk must be even (4-byte DMA)")
+    check_select(slice_size=slice_size, chunk=chunk, k_max=k_max)
     return _make_extern(
         "sample_select",
         _kernel_source("sample/sample_select.cc"),
@@ -144,10 +162,7 @@ def sample_combine(*, columns=4, slice_size=32064, k_max=64) -> ExternalFunction
     of ``columns * slice_size``) to both one-word outputs, so a design can
     send it two places.
     """
-    _check_slice("sample_combine", slice_size, k_max)
-    _positive("sample_combine", columns=columns)
-    if columns * slice_size >= 1 << 31:
-        raise ValueError("sample_combine: a token must fit int32")
+    check_combine(columns=columns, slice_size=slice_size, k_max=k_max)
     return _make_extern(
         "sample_combine",
         _kernel_source("sample/sample_combine.cc"),
