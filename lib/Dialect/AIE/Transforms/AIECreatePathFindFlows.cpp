@@ -966,13 +966,163 @@ static void getOrCreateConnect(OpBuilder &builder, ShimMuxOp shimMux,
   ConnectOp::create(builder, loc, srcBundle, srcCh, destBundle, destCh);
 }
 
-LogicalResult AIEPathfinderPass::runOnPacketFlow(
-    DeviceOp device, OpBuilder &builder, DynamicTileAnalysis &analyzer,
-    const std::map<PathEndPoint, SwitchSettings> &solution,
-    StreamConflicts &conflicts, bool circuitSwitchHops,
-    RoutingHazards *hazards) {
+static PathEndPoint sourceOf(FlowOp flow) {
+  auto tile = cast<TileOp>(flow.getSource().getDefiningOp());
+  return PathEndPoint{tile.getTileID(),
+                      {flow.getSourceBundle(), flow.getSourceChannel()}};
+}
 
-  ConversionTarget target(getContext());
+// Add support for shimDMA
+// From shimDMA to BLI: 1) shimDMA 0 --> North 3
+//                      2) shimDMA 1 --> North 7
+// From BLI to shimDMA: 1) North   2 --> shimDMA 0
+//                      2) North   3 --> shimDMA 1
+static void lowerShimDMAPorts(DeviceOp device, OpBuilder &builder,
+                              DynamicTileAnalysis &analyzer) {
+  for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
+    auto retVal = switchbox->getOperand(0);
+    auto tileOp = retVal.getDefiningOp<TileOp>();
+
+    // Check if it is a shim Tile
+    if (!tileOp.isShimNOCTile())
+      continue;
+
+    // Check if the switchbox is empty
+    if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
+      continue;
+
+    Region &r = switchbox.getConnections();
+    Block &b = r.front();
+
+    // Find if the corresponding shimmux exsists or not
+    int shimExist = 0;
+    ShimMuxOp shimOp;
+    for (auto shimmux : device.getOps<ShimMuxOp>()) {
+      if (shimmux.getTile() == tileOp) {
+        shimExist = 1;
+        shimOp = shimmux;
+        break;
+      }
+    }
+
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktrules = dyn_cast<PacketRulesOp>(Op)) {
+
+        // check if there is MM2S DMA in the switchbox of the 0th row
+        if (pktrules.getSourceBundle() == WireBundle::DMA) {
+
+          // If there is, then it should be put into the corresponding shimmux
+          // If shimmux not defined then create shimmux
+          if (!shimExist) {
+            builder.setInsertionPointAfter(tileOp);
+            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
+            shimExist = 1;
+          }
+
+          Region &r0 = shimOp.getConnections();
+          Block &b0 = r0.front();
+          builder.setInsertionPointToStart(&b0);
+
+          pktrules.setSourceBundle(WireBundle::South);
+          if (pktrules.getSourceChannel() == 0) {
+            pktrules.setSourceChannel(3);
+            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
+                               WireBundle::DMA, 0, WireBundle::North, 3);
+          }
+          if (pktrules.getSourceChannel() == 1) {
+            pktrules.setSourceChannel(7);
+            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
+                               WireBundle::DMA, 1, WireBundle::North, 7);
+          }
+        }
+      }
+
+      if (auto mtset = dyn_cast<MasterSetOp>(Op)) {
+
+        // check if there is S2MM DMA in the switchbox of the 0th row
+        if (mtset.getDestBundle() == WireBundle::DMA) {
+
+          // If there is, then it should be put into the corresponding shimmux
+          // If shimmux not defined then create shimmux
+          if (!shimExist) {
+            builder.setInsertionPointAfter(tileOp);
+            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
+            shimExist = 1;
+          }
+
+          Region &r0 = shimOp.getConnections();
+          Block &b0 = r0.front();
+          builder.setInsertionPointToStart(&b0);
+
+          mtset.setDestBundle(WireBundle::South);
+          if (mtset.getDestChannel() == 0) {
+            mtset.setDestChannel(2);
+            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
+                               WireBundle::North, 2, WireBundle::DMA, 0);
+          }
+          if (mtset.getDestChannel() == 1) {
+            mtset.setDestChannel(3);
+            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
+                               WireBundle::North, 3, WireBundle::DMA, 1);
+          }
+        }
+      }
+    }
+  }
+}
+
+namespace {
+// What runOnPacketFlow learns about the packet flows, from the connections
+// the routing lays down to the arbiters planned for them.
+struct PacketFlowRouting {
+  using PhysPort = AIEPathfinderPass::PhysPort;
+  using FlowKey = std::pair<Port, int>;
+
+  PacketFlowRouting(AIEPathfinderPass &pass, DeviceOp device,
+                    OpBuilder &builder, DynamicTileAnalysis &analyzer,
+                    const std::map<PathEndPoint, SwitchSettings> &solution,
+                    StreamConflicts &conflicts, bool routeCircuit,
+                    bool circuitSwitchHops, RoutingHazards *hazards)
+      : pass(pass), device(device), builder(builder), analyzer(analyzer),
+        solution(solution), conflicts(conflicts), routeCircuit(routeCircuit),
+        circuitSwitchHops(circuitSwitchHops), hazards(hazards),
+        targetModel(device.getTargetModel()),
+        maxPacketId(targetModel.getMaxPacketId()),
+        idBits(llvm::Log2_32_Ceil(maxPacketId + 1)), idMask((1 << idBits) - 1) {
+  }
+
+  LogicalResult collectFlows();
+  void findCircuitHops();
+  void collectSlaveFlows();
+  void checkRules();
+  void planTiles();
+  std::optional<std::string> breakHoldCycles();
+  LogicalResult emit();
+  LogicalResult fail(std::string reason);
+
+  const SwitchSettings &settingsOf(const PathEndPoint &src,
+                                   std::optional<int> id = std::nullopt);
+  std::optional<std::pair<size_t, size_t>>
+  conflictingStreams(TileID tileId, const SlaveFlow &a, const SlaveFlow &b);
+  std::optional<ArbiterPlan>
+  planTile(TileID tileId, SmallVectorImpl<std::pair<size_t, size_t>> &blocking);
+  void moveFlow(TileID tileId, FlowKey key);
+  void moveUnit(TileID tileId, FlowKey key);
+  void splitFlow(TileID tileId, FlowKey key, ArrayRef<FlowKey> partners);
+
+  AIEPathfinderPass &pass;
+  DeviceOp device;
+  OpBuilder &builder;
+  DynamicTileAnalysis &analyzer;
+  const std::map<PathEndPoint, SwitchSettings> &solution;
+  StreamConflicts &conflicts;
+  bool routeCircuit;
+  bool circuitSwitchHops;
+  RoutingHazards *hazards;
+  const AIETargetModel &targetModel;
+  const uint32_t maxPacketId;
+  const int idBits;
+  const int idMask;
 
   std::map<TileID, mlir::Operation *> tiles;
 
@@ -980,7 +1130,6 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
   std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> ctrlPacketFlows;
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
-  DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
   // Flag to keep packet header at packet flow destination
   DenseMap<PhysPort, BoolAttr> keepPktHeaderAttr;
   // The slave ports and IDs that carry control packets. A switchbox routes on
@@ -998,22 +1147,10 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   // ID alone does not identify the claim.
   std::map<std::pair<PhysPort, int>, int> pinnedMasks;
 
-  for (auto tileOp : device.getOps<TileOp>()) {
-    int col = tileOp.colIndex();
-    int row = tileOp.rowIndex();
-    tiles[{col, row}] = tileOp;
-  }
-
-  const AIETargetModel &targetModel = device.getTargetModel();
-
   // The streams each slave flow carries, for asking whether two flows can
   // deadlock on an arbiter.
   std::map<std::tuple<TileID, Port, TileID, Port, int>, size_t>
       packetStreamIndex;
-  for (auto [i, s] : llvm::enumerate(conflicts.getStreams()))
-    if (s.packetID)
-      packetStreamIndex.try_emplace(
-          {s.src.tile, s.src.port, s.dst.tile, s.dst.port, *s.packetID}, i);
   DenseMap<std::pair<PhysPort, int>, SmallVector<size_t, 2>> slaveFlowStreams;
   // Each source's part of a SlaveFlow (see SlaveFlow). A switchbox routes on
   // the id alone, so sources sharing an id there go everywhere any of them
@@ -1023,35 +1160,70 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
   // Every stream's hops, source first; the requested ones as this routing
   // lays them, the rest as the design already does.
   std::vector<SmallVector<StreamHop, 8>> routes;
-  for (const RoutedStream &s : conflicts.getStreams())
-    routes.push_back(s.hops);
-
   // Sources routed as circuits, which runOnFlow lowers, or has lowered.
   std::set<PathEndPoint> circuitSources;
-  for (const auto &[point, processed] : analyzer.processedFlows)
-    if (processed)
-      circuitSources.insert(point);
-  auto sourceOf = [](FlowOp flow) {
-    auto tile = cast<TileOp>(flow.getSource().getDefiningOp());
-    return PathEndPoint{tile.getTileID(),
-                        {flow.getSourceBundle(), flow.getSourceChannel()}};
-  };
-  if (clRouteCircuit)
-    for (FlowOp flow : device.getOps<FlowOp>())
-      circuitSources.insert(sourceOf(flow));
   const SwitchSettings noSettings;
-  auto settingsOf = [&](const PathEndPoint &src,
-                        std::optional<int> id =
-                            std::nullopt) -> const SwitchSettings & {
-    if (const SwitchSettings *own =
-            id ? analyzer.pathfinder->getIdSettings(src, *id) : nullptr)
-      return *own;
-    auto it = solution.find(src);
-    return it == solution.end() ? noSettings : it->second;
-  };
 
   // The logical model of all the switchboxes.
   std::map<TileID, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
+  // <arbiter, msel> slots (per tile) that packet-switch configuration in the
+  // input IR already occupies. Kept apart from masterAMSels so the allocator
+  // run does not re-emit those ops.
+  std::map<TileID, std::set<int>> reservedAmsels;
+  // A switchbox with more packet master ports than free arbiters has to put
+  // two master ports on one arbiter, and an arbiter holds its grant until
+  // tlast, so one stalled packet then holds up an unrelated flow. A hop that
+  // alone uses both its ports needs no arbiter: a circuit connection passes the
+  // header and tlast through, and the next switchbox routes the packet as
+  // before. The last hop stays packet-switched, since it drops the header.
+  // A circuit may broadcast, so a slave port qualifies with all the master
+  // ports it reaches, provided it alone feeds them and every packet goes to
+  // all of them.
+  std::map<TileID, SmallVector<Connect, 4>> circuitHops;
+  // Each switchbox has its arbiters planned as a whole (see planArbiters).
+  // Where that is impossible the routing is unusable, and the connections of
+  // the flows in the way are what the router has to move.
+  std::map<TileID, std::map<FlowKey, SlaveFlow>> tileSlaveFlows;
+  std::map<TileID, SmallVector<SlaveFlow, 8>> tileFlows;
+  // What the search below learns: flows to keep on different arbiters, and
+  // flows to keep off an arbiter that flows already in the design take.
+  std::set<std::tuple<TileID, FlowKey, FlowKey>> apart;
+  std::set<std::tuple<TileID, FlowKey, int>> offArbiter;
+  std::set<std::pair<TileID, Connect>> hazardConnections;
+  // The TreeSplits (see TreeSplit) the routing check asks for. `key` branches
+  // from the flows of its source that tie it to one of `partners`, where
+  // nothing else does. The next routing may reach the tile by another slave
+  // port, so the split holds for the tile.
+  std::set<
+      std::tuple<PathEndPoint, TileID, int, int, std::optional<PathEndPoint>>>
+      hazardSplits;
+  std::set<TileID> crowdedTiles;
+  std::optional<std::string> planFailure;
+  std::map<TileID, ArbiterPlan> plans;
+};
+} // namespace
+
+LogicalResult PacketFlowRouting::collectFlows() {
+  for (auto tileOp : device.getOps<TileOp>()) {
+    int col = tileOp.colIndex();
+    int row = tileOp.rowIndex();
+    tiles[{col, row}] = tileOp;
+  }
+
+  for (auto [i, s] : llvm::enumerate(conflicts.getStreams()))
+    if (s.packetID)
+      packetStreamIndex.try_emplace(
+          {s.src.tile, s.src.port, s.dst.tile, s.dst.port, *s.packetID}, i);
+  for (const RoutedStream &s : conflicts.getStreams())
+    routes.push_back(s.hops);
+
+  for (const auto &[point, processed] : analyzer.processedFlows)
+    if (processed)
+      circuitSources.insert(point);
+  if (routeCircuit)
+    for (FlowOp flow : device.getOps<FlowOp>())
+      circuitSources.insert(sourceOf(flow));
+
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
@@ -1111,9 +1283,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
             for (auto [src, dest] :
                  llvm::zip(setting->second.srcs, setting->second.dsts))
               if (src == input && !(tile == destCoords && dest == destPort) &&
-                  findPathToDest(settings, tile, dest.bundle, dest.channel,
-                                 destCoords, destPort.bundle,
-                                 destPort.channel)) {
+                  pass.findPathToDest(settings, tile, dest.bundle, dest.channel,
+                                      destCoords, destPort.bundle,
+                                      destPort.channel)) {
                 at = linkedInput(tile, dest);
                 break;
               }
@@ -1129,8 +1301,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
             Port src = setting.srcs[i];
             Port dest = setting.dsts[i];
             // reject false broadcast
-            if (!findPathToDest(settings, currTile, dest.bundle, dest.channel,
-                                destCoords, destPort.bundle, destPort.channel))
+            if (!pass.findPathToDest(settings, currTile, dest.bundle,
+                                     dest.channel, destCoords, destPort.bundle,
+                                     destPort.channel))
               continue;
             if (currTile == srcSB && src.bundle == srcPort.bundle &&
                 src.channel == srcPort.channel)
@@ -1173,12 +1346,19 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       }
     }
   }
+  return success();
+}
 
-  // <arbiter, msel> slots (per tile) that packet-switch configuration in the
-  // input IR already occupies. Kept apart from masterAMSels so the allocator
-  // run does not re-emit those ops.
-  std::map<TileID, std::set<int>> reservedAmsels;
+const SwitchSettings &PacketFlowRouting::settingsOf(const PathEndPoint &src,
+                                                    std::optional<int> id) {
+  if (const SwitchSettings *own =
+          id ? analyzer.pathfinder->getIdSettings(src, *id) : nullptr)
+    return *own;
+  auto it = solution.find(src);
+  return it == solution.end() ? noSettings : it->second;
+}
 
+void PacketFlowRouting::findCircuitHops() {
   // Seed the reserved set from the packet-switch configuration the switchboxes
   // already carry, so this run allocates around it instead of over it.
   for (auto swboxOp : device.getOps<SwitchboxOp>()) {
@@ -1189,16 +1369,6 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
                                     amselOp.getMselValue() * numArbiters);
   }
 
-  // A switchbox with more packet master ports than free arbiters has to put
-  // two master ports on one arbiter, and an arbiter holds its grant until
-  // tlast, so one stalled packet then holds up an unrelated flow. A hop that
-  // alone uses both its ports needs no arbiter: a circuit connection passes the
-  // header and tlast through, and the next switchbox routes the packet as
-  // before. The last hop stays packet-switched, since it drops the header.
-  // A circuit may broadcast, so a slave port qualifies with all the master
-  // ports it reaches, provided it alone feeds them and every packet goes to
-  // all of them.
-  std::map<TileID, SmallVector<Connect, 4>> circuitHops;
   // Ports the input's own aie.switchbox ops already drive, circuit or packet.
   std::set<PhysPort> claimedSlaves, claimedMasters;
   for (auto swbox : device.getOps<SwitchboxOp>()) {
@@ -1214,7 +1384,7 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       claimedMasters.insert({tileId, masterSet.destPort()});
   }
   // Circuits not yet lowered claim their ports all the same.
-  if (clRouteCircuit)
+  if (routeCircuit)
     for (FlowOp flow : device.getOps<FlowOp>())
       for (const auto &[tileId, setting] : settingsOf(sourceOf(flow))) {
         for (Port p : setting.srcs)
@@ -1281,7 +1451,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       });
     }
   }
+}
 
+void PacketFlowRouting::collectSlaveFlows() {
   LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
 
   for (const auto &[tileId, connects] : switchboxes) {
@@ -1307,18 +1479,6 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     }
   }
 
-  // A master port can only be associated with one arbiter, and each arbiter
-  // has four msels, so a tile has 6 x 4 "logical" arbiters.
-
-  // A map from Tile and master selectValue to the ports targetted by that
-  // master select.
-  std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
-
-  // Each switchbox has its arbiters planned as a whole (see planArbiters).
-  // Where that is impossible the routing is unusable, and the connections of
-  // the flows in the way are what the router has to move.
-  using FlowKey = std::pair<Port, int>;
-  std::map<TileID, std::map<FlowKey, SlaveFlow>> tileSlaveFlows;
   for (const auto *flows : {&ctrlPacketFlows, &packetFlows})
     for (const auto &[flow, dests] : *flows) {
       auto [it, inserted] = tileSlaveFlows[flow.first.first].try_emplace(
@@ -1331,192 +1491,178 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
           f.masters.push_back(dest.second);
       llvm::sort(f.masters);
     }
-  std::map<TileID, SmallVector<SlaveFlow, 8>> tileFlows;
   for (const auto &[tileId, byFlow] : tileSlaveFlows)
     for (const auto &[key, f] : byFlow)
       tileFlows[tileId].push_back(f);
+}
 
-  auto conflictingStreams =
-      [&](TileID tileId, const SlaveFlow &a,
-          const SlaveFlow &b) -> std::optional<std::pair<size_t, size_t>> {
-    auto as = slaveFlowStreams.find({{tileId, a.slave}, a.id});
-    auto bs = slaveFlowStreams.find({{tileId, b.slave}, b.id});
-    if (as == slaveFlowStreams.end() || bs == slaveFlowStreams.end())
-      return std::nullopt;
-    for (size_t s : as->second)
-      for (size_t t : bs->second)
-        if (conflicts.conflict(s, t))
-          return std::pair{s, t};
+std::optional<std::pair<size_t, size_t>>
+PacketFlowRouting::conflictingStreams(TileID tileId, const SlaveFlow &a,
+                                      const SlaveFlow &b) {
+  auto as = slaveFlowStreams.find({{tileId, a.slave}, a.id});
+  auto bs = slaveFlowStreams.find({{tileId, b.slave}, b.id});
+  if (as == slaveFlowStreams.end() || bs == slaveFlowStreams.end())
     return std::nullopt;
-  };
-  // What the search below learns: flows to keep on different arbiters, and
-  // flows to keep off an arbiter that flows already in the design take.
-  std::set<std::tuple<TileID, FlowKey, FlowKey>> apart;
-  std::set<std::tuple<TileID, FlowKey, int>> offArbiter;
-  auto planTile = [&](TileID tileId,
-                      SmallVectorImpl<std::pair<size_t, size_t>> &blocking) {
-    ArrayRef<SlaveFlow> flows = tileFlows.at(tileId);
-    auto key = [&](size_t f) { return FlowKey{flows[f].slave, flows[f].id}; };
-    return planArbiters(
-        flows,
-        [&](size_t a, size_t b) {
-          return apart.count({tileId, std::min(key(a), key(b)),
-                              std::max(key(a), key(b))}) ||
-                 conflictingStreams(tileId, flows[a], flows[b]);
-        },
-        [&](size_t f, int arbiter) {
-          return offArbiter.count({tileId, key(f), arbiter}) > 0;
-        },
-        reservedAmsels[tileId], blocking);
-  };
+  for (size_t s : as->second)
+    for (size_t t : bs->second)
+      if (conflicts.conflict(s, t))
+        return std::pair{s, t};
+  return std::nullopt;
+}
 
-  std::set<std::pair<TileID, Connect>> hazardConnections;
-  auto moveFlow = [&](TileID tileId, FlowKey key) {
-    auto flows = tileSlaveFlows.find(tileId);
-    if (flows != tileSlaveFlows.end())
-      if (auto f = flows->second.find(key); f != flows->second.end())
-        for (Port m : f->second.masters)
-          hazardConnections.insert({tileId, {key.first, m}});
-    for (const Connect &hop : circuitHops[tileId])
-      if (hop.src == key.first)
-        hazardConnections.insert({tileId, hop});
+std::optional<ArbiterPlan> PacketFlowRouting::planTile(
+    TileID tileId, SmallVectorImpl<std::pair<size_t, size_t>> &blocking) {
+  ArrayRef<SlaveFlow> flows = tileFlows.at(tileId);
+  auto key = [&](size_t f) { return FlowKey{flows[f].slave, flows[f].id}; };
+  return planArbiters(
+      flows,
+      [&](size_t a, size_t b) {
+        return apart.count({tileId, std::min(key(a), key(b)),
+                            std::max(key(a), key(b))}) ||
+               conflictingStreams(tileId, flows[a], flows[b]);
+      },
+      [&](size_t f, int arbiter) {
+        return offArbiter.count({tileId, key(f), arbiter}) > 0;
+      },
+      reservedAmsels[tileId], blocking);
+}
+
+void PacketFlowRouting::moveFlow(TileID tileId, FlowKey key) {
+  auto flows = tileSlaveFlows.find(tileId);
+  if (flows != tileSlaveFlows.end())
+    if (auto f = flows->second.find(key); f != flows->second.end())
+      for (Port m : f->second.masters)
+        hazardConnections.insert({tileId, {key.first, m}});
+  for (const Connect &hop : circuitHops[tileId])
+    if (hop.src == key.first)
+      hazardConnections.insert({tileId, hop});
+}
+
+// Moves `key` with its whole unit (see planArbiters): a flow's arbiter is
+// fixed by every flow reaching its master ports too.
+void PacketFlowRouting::moveUnit(TileID tileId, FlowKey key) {
+  moveFlow(tileId, key);
+  auto flows = tileSlaveFlows.find(tileId);
+  if (flows == tileSlaveFlows.end())
+    return;
+  auto self = flows->second.find(key);
+  if (self == flows->second.end())
+    return;
+  std::set<Port> unit(self->second.masters.begin(), self->second.masters.end());
+  std::set<FlowKey> joined;
+  for (bool grew = true; grew;) {
+    grew = false;
+    for (const auto &[other, f] : flows->second)
+      if (f.masters.size() > 1 && !joined.count(other) &&
+          llvm::any_of(f.masters, [&](Port m) { return unit.count(m); })) {
+        joined.insert(other);
+        unit.insert(f.masters.begin(), f.masters.end());
+        moveFlow(tileId, other);
+        grew = true;
+      }
+  }
+}
+
+void PacketFlowRouting::splitFlow(TileID tileId, FlowKey key,
+                                  ArrayRef<FlowKey> partners) {
+  auto flows = tileSlaveFlows.find(tileId);
+  if (flows == tileSlaveFlows.end())
+    return;
+  auto self = flows->second.find(key);
+  if (self == flows->second.end())
+    return;
+  auto onlySource = [&](FlowKey k) -> std::optional<PathEndPoint> {
+    auto sources = slaveFlowSources.find({{tileId, k.first}, k.second});
+    if (sources == slaveFlowSources.end() || sources->second.size() != 1)
+      return std::nullopt;
+    return sources->second.begin()->first;
   };
-  // Moves `key` with its whole unit (see planArbiters): a flow's arbiter is
-  // fixed by every flow reaching its master ports too.
-  auto moveUnit = [&](TileID tileId, FlowKey key) {
-    moveFlow(tileId, key);
-    auto flows = tileSlaveFlows.find(tileId);
-    if (flows == tileSlaveFlows.end())
-      return;
-    auto self = flows->second.find(key);
-    if (self == flows->second.end())
-      return;
-    std::set<Port> unit(self->second.masters.begin(),
-                        self->second.masters.end());
-    std::set<FlowKey> joined;
+  std::optional<PathEndPoint> src = onlySource(key);
+  if (!src)
+    return;
+  auto sharesMaster = [&](const auto &f, const std::set<Port> &ports) {
+    return llvm::any_of(f.masters, [&](Port m) { return ports.count(m); });
+  };
+  std::set<Port> own(self->second.masters.begin(), self->second.masters.end());
+  std::set<FlowKey> siblings;
+  for (const auto &[other, f] : flows->second)
+    if (other != key && other.first == key.first && sharesMaster(f, own) &&
+        onlySource(other) == src)
+      siblings.insert(other);
+  // The master ports tied to `partner`'s arbiter through flows other than
+  // `key`, and other than its siblings if `skipSiblings`.
+  auto tied = [&](FlowKey partner, bool skipSiblings) {
+    auto p = flows->second.find(partner);
+    std::set<Port> unit(p->second.masters.begin(), p->second.masters.end());
+    std::set<FlowKey> joined{key};
     for (bool grew = true; grew;) {
       grew = false;
       for (const auto &[other, f] : flows->second)
         if (f.masters.size() > 1 && !joined.count(other) &&
-            llvm::any_of(f.masters, [&](Port m) { return unit.count(m); })) {
+            !(skipSiblings && siblings.count(other)) && sharesMaster(f, unit)) {
           joined.insert(other);
           unit.insert(f.masters.begin(), f.masters.end());
-          moveFlow(tileId, other);
           grew = true;
         }
     }
+    return unit;
   };
-  // The TreeSplits (see TreeSplit) the routing check asks for. `key` branches
-  // from the flows of its source that tie it to one of `partners`, where
-  // nothing else does. The next routing may reach the tile by another slave
-  // port, so the split holds for the tile.
-  std::set<
-      std::tuple<PathEndPoint, TileID, int, int, std::optional<PathEndPoint>>>
-      hazardSplits;
-  std::set<TileID> crowdedTiles;
-  auto splitFlow = [&](TileID tileId, FlowKey key, ArrayRef<FlowKey> partners) {
-    auto flows = tileSlaveFlows.find(tileId);
-    if (flows == tileSlaveFlows.end())
-      return;
-    auto self = flows->second.find(key);
-    if (self == flows->second.end())
-      return;
-    auto onlySource = [&](FlowKey k) -> std::optional<PathEndPoint> {
-      auto sources = slaveFlowSources.find({{tileId, k.first}, k.second});
-      if (sources == slaveFlowSources.end() || sources->second.size() != 1)
-        return std::nullopt;
-      return sources->second.begin()->first;
-    };
-    std::optional<PathEndPoint> src = onlySource(key);
-    if (!src)
-      return;
-    auto sharesMaster = [&](const auto &f, const std::set<Port> &ports) {
-      return llvm::any_of(f.masters, [&](Port m) { return ports.count(m); });
-    };
-    std::set<Port> own(self->second.masters.begin(),
-                       self->second.masters.end());
-    std::set<FlowKey> siblings;
-    for (const auto &[other, f] : flows->second)
-      if (other != key && other.first == key.first && sharesMaster(f, own) &&
-          onlySource(other) == src)
-        siblings.insert(other);
-    // The master ports tied to `partner`'s arbiter through flows other than
-    // `key`, and other than its siblings if `skipSiblings`.
-    auto tied = [&](FlowKey partner, bool skipSiblings) {
-      auto p = flows->second.find(partner);
-      std::set<Port> unit(p->second.masters.begin(), p->second.masters.end());
-      std::set<FlowKey> joined{key};
-      for (bool grew = true; grew;) {
-        grew = false;
-        for (const auto &[other, f] : flows->second)
-          if (f.masters.size() > 1 && !joined.count(other) &&
-              !(skipSiblings && siblings.count(other)) &&
-              sharesMaster(f, unit)) {
-            joined.insert(other);
-            unit.insert(f.masters.begin(), f.masters.end());
-            grew = true;
-          }
-      }
-      return unit;
-    };
-    auto split = [&](FlowKey other,
-                     std::optional<PathEndPoint> apart = std::nullopt) {
-      int a = key.second, b = other.second;
-      if (!apart && a > b)
-        std::swap(a, b);
-      hazardSplits.insert({*src, tileId, a, b, apart});
-    };
-    for (FlowKey partner : partners) {
-      if (partner == key || !flows->second.count(partner))
-        continue;
-      if (siblings.count(partner)) {
-        split(partner);
-        continue;
-      }
-      std::set<Port> partnerUnit = tied(partner, true);
-      if (sharesMaster(self->second, partnerUnit))
-        continue;
-      std::set<Port> unit = tied(partner, false);
-      for (FlowKey other : siblings) {
-        const SlaveFlow &f = flows->second.find(other)->second;
-        if (!sharesMaster(f, unit))
-          continue;
-        // Where the sibling only ties `key` to the partner's arbiter by
-        // destinations on this tile, those can reach it by a slave port of
-        // their own, and `key` keeps sharing the rest of the tree.
-        SmallVector<PathEndPoint, 2> apart;
-        for (Port m : f.masters)
-          if (partnerUnit.count(m))
-            apart.push_back({tileId, m});
-        if (PathEndPoint{tileId, key.first} == *src || apart.empty() ||
-            !llvm::all_of(apart, [&](const PathEndPoint &p) {
-              return packetStreamIndex.count(
-                  {src->coords, src->port, p.coords, p.port, other.second});
-            })) {
-          split(other);
-          continue;
-        }
-        for (const PathEndPoint &p : apart)
-          split(other, p);
-      }
+  auto split = [&](FlowKey other,
+                   std::optional<PathEndPoint> apart = std::nullopt) {
+    int a = key.second, b = other.second;
+    if (!apart && a > b)
+      std::swap(a, b);
+    hazardSplits.insert({*src, tileId, a, b, apart});
+  };
+  for (FlowKey partner : partners) {
+    if (partner == key || !flows->second.count(partner))
+      continue;
+    if (siblings.count(partner)) {
+      split(partner);
+      continue;
     }
-  };
-  auto fail = [&](std::string reason) -> LogicalResult {
-    if (!hazards)
-      return device.emitError("Unable to find a legal routing: ") << reason;
-    hazards->faults.connections.assign(hazardConnections.begin(),
-                                       hazardConnections.end());
-    for (const auto &[src, at, a, b, apart] : hazardSplits)
-      hazards->faults.splits.push_back({src, at, a, b, apart});
-    hazards->faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
-    hazards->reason = std::move(reason);
-    return success();
-  };
+    std::set<Port> partnerUnit = tied(partner, true);
+    if (sharesMaster(self->second, partnerUnit))
+      continue;
+    std::set<Port> unit = tied(partner, false);
+    for (FlowKey other : siblings) {
+      const SlaveFlow &f = flows->second.find(other)->second;
+      if (!sharesMaster(f, unit))
+        continue;
+      // Where the sibling only ties `key` to the partner's arbiter by
+      // destinations on this tile, those can reach it by a slave port of
+      // their own, and `key` keeps sharing the rest of the tree.
+      SmallVector<PathEndPoint, 2> apart;
+      for (Port m : f.masters)
+        if (partnerUnit.count(m))
+          apart.push_back({tileId, m});
+      if (PathEndPoint{tileId, key.first} == *src || apart.empty() ||
+          !llvm::all_of(apart, [&](const PathEndPoint &p) {
+            return packetStreamIndex.count(
+                {src->coords, src->port, p.coords, p.port, other.second});
+          })) {
+        split(other);
+        continue;
+      }
+      for (const PathEndPoint &p : apart)
+        split(other, p);
+    }
+  }
+}
 
-  const uint32_t maxPacketId = targetModel.getMaxPacketId();
-  const int idBits = llvm::Log2_32_Ceil(maxPacketId + 1);
-  const int idMask = (1 << idBits) - 1;
+LogicalResult PacketFlowRouting::fail(std::string reason) {
+  if (!hazards)
+    return device.emitError("Unable to find a legal routing: ") << reason;
+  hazards->faults.connections.assign(hazardConnections.begin(),
+                                     hazardConnections.end());
+  for (const auto &[src, at, a, b, apart] : hazardSplits)
+    hazards->faults.splits.push_back({src, at, a, b, apart});
+  hazards->faults.crowded.assign(crowdedTiles.begin(), crowdedTiles.end());
+  hazards->reason = std::move(reason);
+  return success();
+}
 
+void PacketFlowRouting::checkRules() {
   // A slave port holds a few packet rules, and how many its flows need depends
   // on which ids leave by the same master ports.
   std::map<PhysPort, SmallVector<std::pair<int, int>>> existingCubes;
@@ -1529,7 +1675,6 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
     SmallVector<std::pair<int, int>, 4> stated;
     SmallVector<int, 4> derived;
   };
-  std::optional<std::string> planFailure;
   for (const auto &[slaveFlow, sources] : slaveFlowSources) {
     const auto &[first, firstMasters] = *sources.begin();
     auto other = llvm::find_if(
@@ -1686,8 +1831,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
           slave.channel, needed, targetModel.getNumSlaveSlots());
     }
   }
+}
 
-  std::map<TileID, ArbiterPlan> plans;
+void PacketFlowRouting::planTiles() {
   for (const auto &[tileId, flows] : tileFlows) {
     SmallVector<std::pair<size_t, size_t>, 4> blocking;
     if (std::optional<ArbiterPlan> plan = planTile(tileId, blocking)) {
@@ -1744,9 +1890,9 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
        << tileId.col << ", " << tileId.row << ")). " << conflicts.explain(s, t);
     planFailure = std::move(reason);
   }
-  if (planFailure)
-    return fail(std::move(*planFailure));
+}
 
+std::optional<std::string> PacketFlowRouting::breakHoldCycles() {
   // A packet holds every arbiter it has taken until its tail passes, so waits
   // chain from switchbox to switchbox, and planning each alone can close a
   // cycle of them. Breaking any one shared arbiter of such a cycle breaks it,
@@ -1826,20 +1972,29 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
           for (auto [s, input] : {std::pair{step.waiting, step.sharerInput},
                                   std::pair{step.sharer, step.sharerInput},
                                   std::pair{step.holding, step.holderInput}})
-            if (s < numRequested)
-              keys.push_back({input, *streams[s].packetID});
+            if (std::optional<int> id = streams[s].packetID;
+                s < numRequested && id)
+              keys.push_back({input, *id});
           for (FlowKey key : keys) {
             moveUnit(step.tile, key);
             splitFlow(step.tile, key, keys);
           }
         }
-    return fail("packet flows can deadlock holding arbiters across "
-                "switchboxes, and no arbiter assignment found avoids it. " +
-                conflicts.explain(cycles.front()));
+    return "packet flows can deadlock holding arbiters across "
+           "switchboxes, and no arbiter assignment found avoids it. " +
+           conflicts.explain(cycles.front());
   }
-  if (hazards)
-    return success();
+  return std::nullopt;
+}
 
+LogicalResult PacketFlowRouting::emit() {
+  // A master port can only be associated with one arbiter, and each arbiter
+  // has four msels, so a tile has 6 x 4 "logical" arbiters.
+
+  // A map from Tile and master selectValue to the ports targetted by that
+  // master select.
+  std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
+  DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
   for (const auto &[tileId, plan] : plans) {
     for (const auto &[amsel, masters] : plan.amselMasters)
       masterAMSels[{tileId, amsel}].append(masters.begin(), masters.end());
@@ -2205,104 +2360,34 @@ LogicalResult AIEPathfinderPass::runOnPacketFlow(
       }
     }
   }
+  return success();
+}
 
-  // Add support for shimDMA
-  // From shimDMA to BLI: 1) shimDMA 0 --> North 3
-  //                      2) shimDMA 1 --> North 7
-  // From BLI to shimDMA: 1) North   2 --> shimDMA 0
-  //                      2) North   3 --> shimDMA 1
+LogicalResult AIEPathfinderPass::runOnPacketFlow(
+    DeviceOp device, OpBuilder &builder, DynamicTileAnalysis &analyzer,
+    const std::map<PathEndPoint, SwitchSettings> &solution,
+    StreamConflicts &conflicts, bool circuitSwitchHops,
+    RoutingHazards *hazards) {
+  PacketFlowRouting routing(*this, device, builder, analyzer, solution,
+                            conflicts, clRouteCircuit, circuitSwitchHops,
+                            hazards);
+  if (failed(routing.collectFlows()))
+    return failure();
+  routing.findCircuitHops();
+  routing.collectSlaveFlows();
+  routing.checkRules();
+  routing.planTiles();
+  if (routing.planFailure)
+    return routing.fail(std::move(*routing.planFailure));
+  if (std::optional<std::string> reason = routing.breakHoldCycles())
+    return routing.fail(std::move(*reason));
+  if (hazards)
+    return success();
+  if (failed(routing.emit()))
+    return failure();
+  lowerShimDMAPorts(device, builder, analyzer);
 
-  for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
-    auto retVal = switchbox->getOperand(0);
-    auto tileOp = retVal.getDefiningOp<TileOp>();
-
-    // Check if it is a shim Tile
-    if (!tileOp.isShimNOCTile())
-      continue;
-
-    // Check if the switchbox is empty
-    if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
-      continue;
-
-    Region &r = switchbox.getConnections();
-    Block &b = r.front();
-
-    // Find if the corresponding shimmux exsists or not
-    int shimExist = 0;
-    ShimMuxOp shimOp;
-    for (auto shimmux : device.getOps<ShimMuxOp>()) {
-      if (shimmux.getTile() == tileOp) {
-        shimExist = 1;
-        shimOp = shimmux;
-        break;
-      }
-    }
-
-    for (Operation &Op : b.getOperations()) {
-      if (auto pktrules = dyn_cast<PacketRulesOp>(Op)) {
-
-        // check if there is MM2S DMA in the switchbox of the 0th row
-        if (pktrules.getSourceBundle() == WireBundle::DMA) {
-
-          // If there is, then it should be put into the corresponding shimmux
-          // If shimmux not defined then create shimmux
-          if (!shimExist) {
-            builder.setInsertionPointAfter(tileOp);
-            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
-            shimExist = 1;
-          }
-
-          Region &r0 = shimOp.getConnections();
-          Block &b0 = r0.front();
-          builder.setInsertionPointToStart(&b0);
-
-          pktrules.setSourceBundle(WireBundle::South);
-          if (pktrules.getSourceChannel() == 0) {
-            pktrules.setSourceChannel(3);
-            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
-                               WireBundle::DMA, 0, WireBundle::North, 3);
-          }
-          if (pktrules.getSourceChannel() == 1) {
-            pktrules.setSourceChannel(7);
-            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
-                               WireBundle::DMA, 1, WireBundle::North, 7);
-          }
-        }
-      }
-
-      if (auto mtset = dyn_cast<MasterSetOp>(Op)) {
-
-        // check if there is S2MM DMA in the switchbox of the 0th row
-        if (mtset.getDestBundle() == WireBundle::DMA) {
-
-          // If there is, then it should be put into the corresponding shimmux
-          // If shimmux not defined then create shimmux
-          if (!shimExist) {
-            builder.setInsertionPointAfter(tileOp);
-            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());
-            shimExist = 1;
-          }
-
-          Region &r0 = shimOp.getConnections();
-          Block &b0 = r0.front();
-          builder.setInsertionPointToStart(&b0);
-
-          mtset.setDestBundle(WireBundle::South);
-          if (mtset.getDestChannel() == 0) {
-            mtset.setDestChannel(2);
-            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
-                               WireBundle::North, 2, WireBundle::DMA, 0);
-          }
-          if (mtset.getDestChannel() == 1) {
-            mtset.setDestChannel(3);
-            getOrCreateConnect(builder, shimOp, tileOp.getLoc(),
-                               WireBundle::North, 3, WireBundle::DMA, 1);
-          }
-        }
-      }
-    }
-  }
-
+  ConversionTarget target(getContext());
   target.addIllegalOp<PacketFlowOp>();
   RewritePatternSet patterns(&getContext());
   patterns.insert<AIEOpRemoval<PacketFlowOp>>(device.getContext());
