@@ -2097,6 +2097,8 @@
       
         
       
+        
+      
     
     
     
@@ -2325,6 +2327,34 @@
     
   
     Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Kernel Checks
   
 
     
@@ -30046,37 +30076,37 @@ guidelines). When given, <code>*args</code> must be empty.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/utils/benchmark.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-263">263</a></span>
-<span class="normal"><a href="#__codelineno-0-264">264</a></span>
-<span class="normal"><a href="#__codelineno-0-265">265</a></span>
-<span class="normal"><a href="#__codelineno-0-266">266</a></span>
-<span class="normal"><a href="#__codelineno-0-267">267</a></span>
-<span class="normal"><a href="#__codelineno-0-268">268</a></span>
-<span class="normal"><a href="#__codelineno-0-269">269</a></span>
-<span class="normal"><a href="#__codelineno-0-270">270</a></span>
-<span class="normal"><a href="#__codelineno-0-271">271</a></span>
-<span class="normal"><a href="#__codelineno-0-272">272</a></span>
-<span class="normal"><a href="#__codelineno-0-273">273</a></span>
-<span class="normal"><a href="#__codelineno-0-274">274</a></span>
-<span class="normal"><a href="#__codelineno-0-275">275</a></span>
-<span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span>
-<span class="normal"><a href="#__codelineno-0-278">278</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-263" name="__codelineno-0-263"></a><span class="k">def</span><span class="w"> </span><span class="nf">preflight</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Preflight</span><span class="p">:</span>
-<a id="__codelineno-0-264" name="__codelineno-0-264"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Describe the device through the host runtime (any backend).&quot;&quot;&quot;</span>
-<a id="__codelineno-0-265" name="__codelineno-0-265"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">aie.utils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">aie_utils</span>
-<a id="__codelineno-0-266" name="__codelineno-0-266"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">aie.utils.compile.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_target_arch</span>
-<a id="__codelineno-0-267" name="__codelineno-0-267"></a>
-<a id="__codelineno-0-268" name="__codelineno-0-268"></a>    <span class="n">runtime</span> <span class="o">=</span> <span class="n">aie_utils</span><span class="o">.</span><span class="n">DefaultNPURuntime</span>
-<a id="__codelineno-0-269" name="__codelineno-0-269"></a>    <span class="k">if</span> <span class="n">runtime</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-270" name="__codelineno-0-270"></a>        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;no NPU runtime is available (XRT, HRX or HSA)&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-271" name="__codelineno-0-271"></a>    <span class="n">device</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">device</span><span class="p">()</span>
-<a id="__codelineno-0-272" name="__codelineno-0-272"></a>    <span class="n">arch</span> <span class="o">=</span> <span class="n">resolve_target_arch</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-<a id="__codelineno-0-273" name="__codelineno-0-273"></a>    <span class="k">return</span> <span class="n">Preflight</span><span class="p">(</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a>        <span class="n">npu</span><span class="o">=</span><span class="s2">&quot;npu2&quot;</span> <span class="k">if</span> <span class="n">arch</span> <span class="o">==</span> <span class="s2">&quot;aie2p&quot;</span> <span class="k">else</span> <span class="s2">&quot;npu1&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>        <span class="n">arch</span><span class="o">=</span><span class="n">arch</span><span class="p">,</span>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a>        <span class="n">device</span><span class="o">=</span><span class="n">runtime</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span> <span class="ow">or</span> <span class="nb">type</span><span class="p">(</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a>        <span class="n">pmode</span><span class="o">=</span><span class="n">runtime</span><span class="o">.</span><span class="n">power_mode</span><span class="p">(),</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a>    <span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-277">277</a></span>
+<span class="normal"><a href="#__codelineno-0-278">278</a></span>
+<span class="normal"><a href="#__codelineno-0-279">279</a></span>
+<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+<span class="normal"><a href="#__codelineno-0-281">281</a></span>
+<span class="normal"><a href="#__codelineno-0-282">282</a></span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="k">def</span><span class="w"> </span><span class="nf">preflight</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Preflight</span><span class="p">:</span>
+<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Describe the device through the host runtime (any backend).&quot;&quot;&quot;</span>
+<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">aie.utils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">aie_utils</span>
+<a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">aie.utils.compile.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_target_arch</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>    <span class="n">runtime</span> <span class="o">=</span> <span class="n">aie_utils</span><span class="o">.</span><span class="n">DefaultNPURuntime</span>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="k">if</span> <span class="n">runtime</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a>        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;no NPU runtime is available (XRT, HRX or HSA)&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a>    <span class="n">device</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">device</span><span class="p">()</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a>    <span class="n">arch</span> <span class="o">=</span> <span class="n">resolve_target_arch</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>    <span class="k">return</span> <span class="n">Preflight</span><span class="p">(</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>        <span class="n">npu</span><span class="o">=</span><span class="s2">&quot;npu2&quot;</span> <span class="k">if</span> <span class="n">arch</span> <span class="o">==</span> <span class="s2">&quot;aie2p&quot;</span> <span class="k">else</span> <span class="s2">&quot;npu1&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>        <span class="n">arch</span><span class="o">=</span><span class="n">arch</span><span class="p">,</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>        <span class="n">device</span><span class="o">=</span><span class="n">runtime</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span> <span class="ow">or</span> <span class="nb">type</span><span class="p">(</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>        <span class="n">pmode</span><span class="o">=</span><span class="n">runtime</span><span class="o">.</span><span class="n">power_mode</span><span class="p">(),</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -30101,9 +30131,13 @@ guidelines). When given, <code>*args</code> must be empty.</p>
 compiles the kernels (<code>peano_version()</code>), the installed <code>mlir_aie</code>
 version, the kernel tree
 (<code>MLIR_AIE_KERNEL_SOURCES</code> when set, and <code>kernel_tree_digest()</code>),
-and any <code>extra</code> fields (<code>device="NPU Strix"</code>, <code>pmode="performance"</code>)
-as <code>key value</code> pairs. A benchmark row records it so a number can be
-traced to a toolchain and to the kernel sources.</p>
+the selected runtime's provenance, the runner the job ran
+on (<code>RUNNER_NAME</code>, under GitHub Actions: nightly runs move between
+hosts of a generation, and a host swap moves <code>npu_us</code> as a regression
+would), and any <code>extra</code> fields (<code>device="NPU Strix"</code>,
+<code>pmode="performance"</code>) as <code>key value</code> pairs. A benchmark row records
+it so a number can be traced to a toolchain, the kernel sources and
+the machine.</p>
 <p>A package that is not installed is left out rather than recorded as
 unknown. CI builds <code>mlir_aie</code> from source and puts it on <code>PYTHONPATH</code>,
 so there is no distribution to read a version from, and every published
@@ -30153,47 +30187,75 @@ commit already identifies that build.</p>
 <span class="normal"><a href="#__codelineno-0-247">247</a></span>
 <span class="normal"><a href="#__codelineno-0-248">248</a></span>
 <span class="normal"><a href="#__codelineno-0-249">249</a></span>
-<span class="normal"><a href="#__codelineno-0-250">250</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="k">def</span><span class="w"> </span><span class="nf">provenance</span><span class="p">(</span><span class="o">**</span><span class="n">extra</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-250">250</a></span>
+<span class="normal"><a href="#__codelineno-0-251">251</a></span>
+<span class="normal"><a href="#__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span>
+<span class="normal"><a href="#__codelineno-0-257">257</a></span>
+<span class="normal"><a href="#__codelineno-0-258">258</a></span>
+<span class="normal"><a href="#__codelineno-0-259">259</a></span>
+<span class="normal"><a href="#__codelineno-0-260">260</a></span>
+<span class="normal"><a href="#__codelineno-0-261">261</a></span>
+<span class="normal"><a href="#__codelineno-0-262">262</a></span>
+<span class="normal"><a href="#__codelineno-0-263">263</a></span>
+<span class="normal"><a href="#__codelineno-0-264">264</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="k">def</span><span class="w"> </span><span class="nf">provenance</span><span class="p">(</span><span class="o">**</span><span class="n">extra</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a one-line description of what produced a measurement.</span>
 <a id="__codelineno-0-212" name="__codelineno-0-212"></a>
 <a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">    The git commit (``GITHUB_SHA`` or ``git rev-parse HEAD``), the Peano that</span>
 <a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">    compiles the kernels (``peano_version()``), the installed ``mlir_aie``</span>
 <a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">    version, the kernel tree</span>
 <a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">    (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">    and any ``extra`` fields (``device=&quot;NPU Strix&quot;``, ``pmode=&quot;performance&quot;``)</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">    as ``key value`` pairs. A benchmark row records it so a number can be</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    traced to a toolchain and to the kernel sources.</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">    A package that is not installed is left out rather than recorded as</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">    unknown. CI builds ``mlir_aie`` from source and puts it on ``PYTHONPATH``,</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    so there is no distribution to read a version from, and every published</span>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">    row would otherwise carry a word that reads like a lookup failure. The</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    commit already identifies that build.</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">pkg</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>            <span class="k">return</span> <span class="n">_pkg_version</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>        <span class="k">except</span> <span class="n">PackageNotFoundError</span><span class="p">:</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>            <span class="k">return</span> <span class="kc">None</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>    <span class="n">commit</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GITHUB_SHA&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">commit</span><span class="p">:</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>            <span class="n">commit</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>                <span class="p">[</span><span class="s2">&quot;git&quot;</span><span class="p">,</span> <span class="s2">&quot;rev-parse&quot;</span><span class="p">,</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">],</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span>
-<a id="__codelineno-0-239" name="__codelineno-0-239"></a>            <span class="p">)</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
-<a id="__codelineno-0-240" name="__codelineno-0-240"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">):</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a>            <span class="n">commit</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>    <span class="n">fields</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-243" name="__codelineno-0-243"></a>        <span class="s2">&quot;commit&quot;</span><span class="p">:</span> <span class="n">commit</span><span class="p">[:</span><span class="mi">10</span><span class="p">],</span>
-<a id="__codelineno-0-244" name="__codelineno-0-244"></a>        <span class="s2">&quot;peano&quot;</span><span class="p">:</span> <span class="n">peano_version</span><span class="p">(),</span>
-<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="s2">&quot;mlir_aie&quot;</span><span class="p">:</span> <span class="n">pkg</span><span class="p">(</span><span class="s2">&quot;mlir_aie&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-246" name="__codelineno-0-246"></a>        <span class="s2">&quot;kernel_sources&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;MLIR_AIE_KERNEL_SOURCES&quot;</span><span class="p">),</span>
-<a id="__codelineno-0-247" name="__codelineno-0-247"></a>        <span class="s2">&quot;kernels&quot;</span><span class="p">:</span> <span class="n">kernel_tree_digest</span><span class="p">(),</span>
-<a id="__codelineno-0-248" name="__codelineno-0-248"></a>        <span class="o">**</span><span class="n">extra</span><span class="p">,</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>    <span class="p">}</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>    <span class="k">return</span> <span class="s2">&quot; | &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span><span class="p">)</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">    the selected runtime&#39;s provenance, the runner the job ran</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">    on (``RUNNER_NAME``, under GitHub Actions: nightly runs move between</span>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    hosts of a generation, and a host swap moves ``npu_us`` as a regression</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">    would), and any ``extra`` fields (``device=&quot;NPU Strix&quot;``,</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">    ``pmode=&quot;performance&quot;``) as ``key value`` pairs. A benchmark row records</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">    it so a number can be traced to a toolchain, the kernel sources and</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a><span class="sd">    the machine.</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">    A package that is not installed is left out rather than recorded as</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">    unknown. CI builds ``mlir_aie`` from source and puts it on ``PYTHONPATH``,</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">    so there is no distribution to read a version from, and every published</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="sd">    row would otherwise carry a word that reads like a lookup failure. The</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">    commit already identifies that build.</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">aie.utils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">aie_utils</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">pkg</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-234" name="__codelineno-0-234"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-235" name="__codelineno-0-235"></a>            <span class="k">return</span> <span class="n">_pkg_version</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>        <span class="k">except</span> <span class="n">PackageNotFoundError</span><span class="p">:</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>            <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="n">commit</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GITHUB_SHA&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">commit</span><span class="p">:</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>            <span class="n">commit</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>                <span class="p">[</span><span class="s2">&quot;git&quot;</span><span class="p">,</span> <span class="s2">&quot;rev-parse&quot;</span><span class="p">,</span> <span class="s2">&quot;HEAD&quot;</span><span class="p">],</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a>            <span class="p">)</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a>        <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">):</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>            <span class="n">commit</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span>
+<a id="__codelineno-0-247" name="__codelineno-0-247"></a>    <span class="n">runtime_fields</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-248" name="__codelineno-0-248"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-0-249" name="__codelineno-0-249"></a>        <span class="n">runtime</span> <span class="o">=</span> <span class="n">aie_utils</span><span class="o">.</span><span class="n">DefaultNPURuntime</span>
+<a id="__codelineno-0-250" name="__codelineno-0-250"></a>        <span class="k">if</span> <span class="n">runtime</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-251" name="__codelineno-0-251"></a>            <span class="n">runtime_fields</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">provenance</span><span class="p">()</span>
+<a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 - optional metadata must not fail a measurement</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a>        <span class="k">pass</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a>    <span class="n">fields</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>        <span class="s2">&quot;commit&quot;</span><span class="p">:</span> <span class="n">commit</span><span class="p">[:</span><span class="mi">10</span><span class="p">],</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>        <span class="s2">&quot;peano&quot;</span><span class="p">:</span> <span class="n">peano_version</span><span class="p">(),</span>
+<a id="__codelineno-0-257" name="__codelineno-0-257"></a>        <span class="s2">&quot;mlir_aie&quot;</span><span class="p">:</span> <span class="n">pkg</span><span class="p">(</span><span class="s2">&quot;mlir_aie&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-258" name="__codelineno-0-258"></a>        <span class="s2">&quot;kernel_sources&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;MLIR_AIE_KERNEL_SOURCES&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-259" name="__codelineno-0-259"></a>        <span class="s2">&quot;kernels&quot;</span><span class="p">:</span> <span class="n">kernel_tree_digest</span><span class="p">(),</span>
+<a id="__codelineno-0-260" name="__codelineno-0-260"></a>        <span class="o">**</span><span class="n">runtime_fields</span><span class="p">,</span>
+<a id="__codelineno-0-261" name="__codelineno-0-261"></a>        <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RUNNER_NAME&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-262" name="__codelineno-0-262"></a>        <span class="o">**</span><span class="n">extra</span><span class="p">,</span>
+<a id="__codelineno-0-263" name="__codelineno-0-263"></a>    <span class="p">}</span>
+<a id="__codelineno-0-264" name="__codelineno-0-264"></a>    <span class="k">return</span> <span class="s2">&quot; | &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

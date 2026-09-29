@@ -2110,6 +2110,8 @@
       
         
       
+        
+      
     
     
     
@@ -2579,6 +2581,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Kernel Checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -4465,30 +4495,35 @@ either owns its mode or assumes the caller set one), not the whole of it:
 around their body, and nothing yet boots a core into <code>conv_even</code> by
 default. Both remain to do under that issue.</p>
 <h3 id="what-the-performance-checks-record">What the performance checks record<a class="headerlink" href="#what-the-performance-checks-record" title="Permanent link">&para;</a></h3>
-<p><code>test/python/npu/test_kernels_perf.py</code> measures a kernel only after it has
-produced a correct result under its declared tolerance; a wrong result fails
-the test, and a failed session writes no <code>--perf-out</code> file at all. Per case it records core
-<code>cycles</code> and <code>cycles_per_kop</code>, <code>npu_us</code> from <code>aie.utils.benchmark</code>, and
-the <code>xclbin</code>, <code>insts</code> and core-ELF sizes of the build it ran.</p>
-<p><code>cycles</code> is recorded only for a kernel whose contract declares
-<code>Trace.whole_call()</code>. The trace holds one interval per call of the kernel
-and one per call of each traced initializer (<code>zero</code> before <code>mm</code>), in the
-order the harness calls them, and <code>kd.cycles_per_call</code> splits it by that
-position. The row is the kernel's minimum. Every call does the same work,
-so anything above the minimum is the core waiting. The median, the maximum,
-each initializer's minimum and whether the trace buffer filled go in the
-row's <code>range</code>. The trace buffer is sized to the number of intervals the
-contract declares. Preflight reads the device and its power mode through the
-host runtime (<code>HostRuntime.power_mode()</code>); the nightly workflow tries to
-switch to <code>performance</code> first, but always records the active mode in the
-results. A bit-exact <code>passthrough</code> smoke test inside a cycle band guards
-the machine. Nightly data goes to <code>gh-pages:kernel-checks/&lt;npu&gt;/</code> and is
-graphed at <code>https://xilinx.github.io/mlir-aie/kernel-checks/</code>, whose kernels
-view lists every factory with the builds each NPU offers, how its cases fared that
-night and their latest numbers (<code>utils/kernel_checks/catalogue.py</code> writes the
-catalogue); nothing gates a pull request. A Peano-bump PR is compared against the
-cached nightly baseline by <code>utils/kernel_checks/pr_report.py</code>, which keeps one PR
-comment listing failing cases and <code>cycles</code> or core ELF size regressions of 2 % or more.</p>
+<p><code>test/python/npu/test_kernels_perf.py</code> checks correctness before measuring.
+Failing cases publish no rows; a failed preflight or <code>passthrough</code> sanity
+check prevents publication for the whole run. Each passing case records:</p>
+<ul>
+<li><code>cycles</code>: minimum kernel-call cycles for <code>Trace.whole_call()</code> contracts,
+  excluding initializers; <code>cycles_per_kop</code> normalizes by work.</li>
+<li><code>npu_us</code>: median host-runtime timing, with median absolute deviation (MAD).</li>
+<li><code>kernel_object_bytes</code>: the tested kernel's compiled <code>.o</code> size, excluding
+  harness, initializer, instruction and runtime-container files. Inline-only
+  kernels have no object-size row. This starts a new series rather than
+  reusing the old whole-design <code>core_elf_bytes</code> measurements.</li>
+</ul>
+<p>Cycle spread, initializer timings and trace truncation are recorded in
+<code>range</code> and <code>--perf-meta</code>. Full trace buffers are enlarged and retried up to
+a limit; remaining truncation is flagged. Nightlies require <code>turbo</code>
+power mode, which the bench runners set at boot. PR and filtered dispatch
+runs may measure another mode, but comparisons require a known, matching
+mode.</p>
+<p>The <a href="https://xilinx.github.io/mlir-aie/kernel-checks/">Nightly Kernel Checks dashboard</a>
+shows run health, per-kernel correctness and timing, and metric histories,
+with warnings for truncated traces and toolchain, runtime or host changes.
+The dashboard and Peano-PR report share <code>utils/kernel_checks/thresholds.json</code>:
+2% for cycles and kernel object size; for <code>npu_us</code>, 10% and more than three
+times the larger MAD. Reports are informational, not PR gates.</p>
+<p><code>utils/kernel_checks/publish.py</code> writes <code>gh-pages:kernel-checks/&lt;npu&gt;/</code>:
+<code>runs/&lt;id&gt;.json</code>, <code>runs.json</code>, <code>latest.json</code> (the last published PR baseline),
+and <code>history/&lt;metric&gt;.json</code>; <code>catalogue.json</code> lists available kernels and
+case outcomes. Runs older than 90 days thin to weekly. Readers reject newer
+schema versions instead of interpreting them.</p>
 <h3 id="static-checks">Static checks<a class="headerlink" href="#static-checks" title="Permanent link">&para;</a></h3>
 <p><code>aie.utils.compile.remarks</code> compiles every factory build (defaults plus
 each <code>.dtypes</code> entry) exactly as the JIT does, with Peano's

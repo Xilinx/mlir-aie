@@ -2383,6 +2383,8 @@
       
         
       
+        
+      
     
     
     
@@ -2614,6 +2616,34 @@
     
   
     Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/kernel-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nightly Kernel Checks
   
 
     
@@ -4115,7 +4145,7 @@
 </tr>
 <tr>
 <td><a href="https://xilinx.github.io/mlir-aie/kernel-checks/">Nightly Kernel Checks</a></td>
-<td>The performance history, one chart per case and metric. Its <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels">kernels view</a> lists every kernel, its sources, which NPUs build it and passed it last night, and each case's latest numbers.</td>
+<td>Last night's run per NPU (power mode, host, Peano, what passed, what moved past its threshold, and warnings when the numbers are less comparable), then the history: the <a href="https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels">kernels view</a> lists every kernel, its sources, which NPUs build it and passed it last night; a kernel's own page (<code>#view=kernel&amp;kernel=&lt;factory&gt;</code>) has every case's latest numbers and charts; the charts view has one chart per case and metric.</td>
 </tr>
 </tbody>
 </table>
@@ -4141,7 +4171,7 @@
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span>-k<span class="w"> </span><span class="s2">&quot;[add/1024x16/bfloat16]&quot;</span><span class="w"> </span>--perf-out<span class="w"> </span>after.json<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span>--baseline-sources<span class="w"> </span>/tmp/before<span class="w"> </span>--perf-meta<span class="w"> </span>meta.json
 </code></pre></div>
-<p><code>--baseline-sources</code> measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and <code>meta.json</code> give both arms' <code>cycles</code> and minimum <code>npu_us</code>, and how many raw output words differ. The rows in <code>after.json</code> are the checkout's. Set <code>MLIR_AIE_KERNEL_SOURCES</code> for the checkout too. Without it, the tools compile the installed copy of <code>aie_kernels/</code>, so the "after" arm quietly measures whatever kernel was last installed. The brackets in <code>-k</code> match the whole case ID; without them, <code>mul_add/1024x16/bfloat16</code> would match too. <code>--pmode &lt;mode&gt;</code> makes the run refuse to start unless the device is in that power mode (the nightly uses <code>performance</code>); it checks the mode and does not set it.</p>
+<p><code>--baseline-sources</code> measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and <code>meta.json</code> give both arms' <code>cycles</code> and minimum <code>npu_us</code>, and how many raw output words differ. The rows in <code>after.json</code> are the checkout's. Set <code>MLIR_AIE_KERNEL_SOURCES</code> for the checkout too. Without it, the tools compile the installed copy of <code>aie_kernels/</code>, so the "after" arm quietly measures whatever kernel was last installed. The brackets in <code>-k</code> match the whole case ID; without them, <code>mul_add/1024x16/bfloat16</code> would match too. <code>--pmode &lt;mode&gt;</code> makes the run refuse to start unless the device is in that power mode (the nightly uses <code>turbo</code>); it checks the mode and does not set it.</p>
 <p>Each row in the JSON is <code>&lt;case&gt;/&lt;metric&gt;</code>:</p>
 <table>
 <thead>
@@ -4455,7 +4485,7 @@
 <li>Point <code>MLIR_AIE_KERNEL_SOURCES</code> at the tree you are editing. For the "before" version, extract a snapshot (<code>git archive &lt;commit&gt; aie_kernels aie_runtime_lib</code>), including every file the kernel includes: an attention kernel that includes <code>mm.cc</code> changes when <code>mm.cc</code> does. Snapshot any Python-side parameters the old kernel needs, too, such as its stack size.</li>
 <li>Run both versions back to back. Kernels you did not change must reproduce to the cycle; if they do not, the setup is the problem.</li>
 <li>Kernel source bytes, the <code>MLIR_AIE_KERNEL_SOURCES</code> path and the library harness's stack size are part of the JIT cache key, but not every Python-side design parameter is. Clear the cache (<code>NPU_CACHE_HOME</code>) before a run you intend to report. A run that finishes suspiciously fast probably compiled nothing.</li>
-<li>Record the kernel tree, its uncommitted changes and the time with each number. The performance check's provenance line records the commit, the Peano version, <code>MLIR_AIE_KERNEL_SOURCES</code> when it is set, and a digest of the kernel sources the factories compiled, uncommitted edits included. Two rows with the same digest ran the same kernel sources.</li>
+<li>Record the kernel tree, its uncommitted changes and the time with each number. The performance check's provenance line records the commit, the Peano version, <code>MLIR_AIE_KERNEL_SOURCES</code> when it is set, a digest of the kernel sources the factories compiled, uncommitted edits included, the XRT and driver versions, and under GitHub Actions the runner. Two rows with the same digest ran the same kernel sources; two rows from different hosts or drivers can differ in <code>npu_us</code> without any kernel change.</li>
 <li>Check the numbers in comments and commit messages against the object and the hardware before you rely on them.</li>
 <li>Change one thing at a time, and keep the rejected variants with the number that rejected them.</li>
 <li>Leave the <code>*_scalar</code> variants alone: they are the references the vector kernels are tested against.</li>
