@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 from aie.iron import kernels
+from aie.iron.kernel import ExternalFunction
 from aie.utils import config, get_current_device
 from aie.utils.compile.utils import compile_external_kernels
 from aie.utils.hostruntime import set_current_device
@@ -46,6 +47,24 @@ def test_a_kernel_built_unbound_refuses_an_aie2p_compile(no_device, tmp_path):
     assert exp.built_for_arch == "aie2"
     with pytest.raises(ValueError, match="built for aie2 but .* for aie2p.*or none"):
         compile_external_kernels([exp], str(tmp_path), "aie2p")
+    assert not list(tmp_path.iterdir())
+
+
+def test_a_sibling_binding_carries_the_factory_arch(no_device, tmp_path):
+    """JIT rediscovers ``object_file.bind(...)`` bindings; they keep the arch."""
+    exp = kernels.bf16_exp(tile_size=1024)
+    sibling = exp.object_file.bind("sibling", exp.arg_types())
+    saved = set(ExternalFunction._instances)
+    ExternalFunction._instances.clear()
+    try:
+        ExternalFunction._register_object(sibling)
+        (binding,) = ExternalFunction._instances
+        assert binding is not exp and binding.built_for_arch == "aie2"
+        with pytest.raises(ValueError, match="built for aie2 but .* for aie2p"):
+            compile_external_kernels([binding], str(tmp_path), "aie2p")
+    finally:
+        ExternalFunction._instances.clear()
+        ExternalFunction._instances.update(saved)
     assert not list(tmp_path.iterdir())
 
 

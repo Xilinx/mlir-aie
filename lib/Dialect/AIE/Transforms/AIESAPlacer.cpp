@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <numeric>
 
 using namespace mlir;
@@ -1629,12 +1630,18 @@ void SAPlacer::runSAMainLoop() {
 
   int greedyIters = config.greedyMultiplier * numMovable;
 
-  movesPerIter = std::max(1, static_cast<int>(movesPerIter * config.effort));
+  // A large effort saturates rather than overflowing the int conversion.
+  auto scaled = [&](int budget) {
+    double v = std::min(budget * config.effort,
+                        static_cast<double>(std::numeric_limits<int>::max()));
+    return std::max(1, static_cast<int>(v));
+  };
+  movesPerIter = scaled(movesPerIter);
   // Same floor as movesPerIter above: a small positive effort must still
   // scale the greedy stage down, but never to zero -- skipping it entirely
   // is what leaves violations unresolved (see finalizePlacement's legality
   // check).
-  greedyIters = std::max(1, static_cast<int>(greedyIters * config.effort));
+  greedyIters = scaled(greedyIters);
 
   int numSamples = std::max(10 * numMovable, 50);
   double estimatedT = estimateInitialTemperature(numSamples);

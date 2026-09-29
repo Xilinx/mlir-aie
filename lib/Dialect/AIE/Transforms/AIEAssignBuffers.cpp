@@ -1337,7 +1337,8 @@ static LogicalResult allocateTile(TileOp tile, int64_t budget,
     return buffer.getInitialValue().has_value();
   });
   if (tile.isMemTile() && tile.getCol() == 0 &&
-      targetModel.hasProperty(AIETargetModel::IsNPU) && holdsInitialValue &&
+      targetModel.hasProperty(AIETargetModel::IsNPU) &&
+      targetModel.getTargetArch() == AIEArch::AIE2p && holdsInitialValue &&
       occupancy.isRangeFree(0, reservedUnit)) {
     occupancy.markOccupied(0, reservedUnit);
   }

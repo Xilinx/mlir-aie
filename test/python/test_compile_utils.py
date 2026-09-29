@@ -231,3 +231,22 @@ def test_compile_mlir_module_ignores_stale_external_functions(
     )
 
     assert [f.name for f in captured["funcs"]] == ["referenced_kernel"]
+
+
+def test_declared_link_with_picks_among_kernels_sharing_a_symbol(compile_utils):
+    """The declaration's ``link_with`` picks among kernels sharing a symbol.
+
+    An inline kernel keeps its bare symbol on every arch. A symbol no instance
+    matches keeps them all, so the arch check can still report it.
+    """
+    aie2 = types.SimpleNamespace(name="setup", object_file_name="setup_aaaa.ll")
+    aie2p = types.SimpleNamespace(name="setup", object_file_name="setup_bbbb.ll")
+    other = types.SimpleNamespace(name="kernel", object_file_name="kernel.o")
+    text = (
+        'func.func private @setup() attributes {link_with = "setup_bbbb.ll"}\n'
+        "func.func private @kernel(%arg0: i32)\n"
+    )
+    select = compile_utils._select_declared_kernels
+    assert select([aie2, aie2p, other], text) == [aie2p, other]
+    stale = 'func.func private @setup() attributes {link_with = "setup_cccc.ll"}\n'
+    assert select([aie2, aie2p], stale) == [aie2, aie2p]

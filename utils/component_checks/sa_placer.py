@@ -5,8 +5,10 @@
 
 Runs ``aie-opt --aie-place-tiles`` over a fixed 4-core fixture (the same
 design test/place-tiles/sa_placer/test_sa_effort.mlir already exercises) for
-seeds 0..N-1, and records whether each seed placed, how long it took, its
-peak RSS, and the SA placer's final cost (from --mlir-pass-statistics).
+seeds 1..N, and records whether each seed placed, how long it took, its
+peak RSS, and the SA placer's final cost (from --mlir-pass-statistics). Seed 0
+is left out: the placer reads it as "seed from the clock", so its row could not
+be reproduced.
 nightlyComponentChecks.yml runs this nightly and publishes the aggregate to
 gh-pages; a real regression is still debuggable from the per-seed table this
 prints to stdout.
@@ -59,7 +61,7 @@ def run_seed(aie_opt: str, fixture: str, seed: int, effort: float) -> dict:
 
 
 def sweep(aie_opt: str, fixture: str, seeds: int, effort: float) -> list[dict]:
-    return [run_seed(aie_opt, fixture, seed, effort) for seed in range(seeds)]
+    return [run_seed(aie_opt, fixture, seed, effort) for seed in range(1, seeds + 1)]
 
 
 def aggregate(rows: list[dict]) -> list[dict]:
@@ -97,6 +99,13 @@ def print_table(rows: list[dict]) -> None:
             print(f"        {r['stderr'].strip()}")
 
 
+def _positive_int(text: str) -> int:
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {value}")
+    return value
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     parser.add_argument("--aie-opt", required=True, help="path to the aie-opt binary")
@@ -113,7 +122,9 @@ def main(argv=None) -> int:
         ),
         help="MLIR module to place (default: the sa-effort lit fixture)",
     )
-    parser.add_argument("--seeds", type=int, default=20, help="sweep seeds 0..N-1")
+    parser.add_argument(
+        "--seeds", type=_positive_int, default=20, help="sweep seeds 1..N"
+    )
     parser.add_argument("--effort", type=float, default=1.0)
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)

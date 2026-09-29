@@ -956,6 +956,35 @@ def test_hash_of_a_callable_compile_time_value_follows_its_callees():
     assert key(build(1)) != key(build(2))
 
 
+def test_hash_follows_a_generators_closure():
+    """A closure reaches its helper and constants through cells, not globals.
+
+    Both generators have identical bytecode and globals; only the captured
+    helper's body, or the captured constant, tells them apart.
+    """
+
+    def build(leaf, scale):
+        return _design(
+            "def make():\n"
+            "    def helper(x):\n"
+            f"        return x + {leaf}\n"
+            f"    scale = {scale}\n"
+            "    def design(a, b):\n"
+            "        return helper(a) * scale\n"
+            "    return design\n",
+            name="make",
+        )()
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    a, b, c = build(1, 2), build(2, 2), build(1, 3)
+    assert a.__code__.co_code == b.__code__.co_code == c.__code__.co_code
+    assert key(a) == key(build(1, 2))
+    assert key(a) != key(b)
+    assert key(a) != key(c)
+
+
 def test_hash_survives_a_move_of_the_design_file():
     """co_filename and line info are not part of the design."""
     src = "def design(a):\n    def core(x):\n        return x + 1\n    return core\n"

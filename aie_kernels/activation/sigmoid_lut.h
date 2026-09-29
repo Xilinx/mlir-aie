@@ -59,9 +59,11 @@
                   0.0f, 1.0f)                         \
 }
 // clang-format on
-AIE_BANK_A alignas(aie::vector_decl_align) float sigmoid_lut_ab[128] =
+// inline: sigmoid.cc, silu.cc and swiglu.cc each define the tables, so one
+// core linking two of them keeps a single copy rather than a duplicate symbol.
+AIE_BANK_A alignas(aie::vector_decl_align) inline float sigmoid_lut_ab[128] =
     SIGMOID_LUT_TABLE;
-AIE_BANK_B alignas(aie::vector_decl_align) float sigmoid_lut_cd[128] =
+AIE_BANK_B alignas(aie::vector_decl_align) inline float sigmoid_lut_cd[128] =
     SIGMOID_LUT_TABLE;
 #undef SIGMOID_LUT_TABLE
 #undef SIGMOID_LUT_ROW

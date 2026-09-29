@@ -13,6 +13,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include <cmath>
+
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEPLACETILES
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -82,8 +84,9 @@ struct AIEPlaceTilesPass
       break;
     }
     case PlacerType::SAPlacer: {
-      if (clSAEffort <= 0) {
-        device.emitError("sa-effort must be positive, got ") << clSAEffort;
+      if (!std::isfinite(clSAEffort) || clSAEffort <= 0) {
+        device.emitError("sa-effort must be positive and finite, got ")
+            << clSAEffort;
         return signalPassFailure();
       }
       SAConfig config;

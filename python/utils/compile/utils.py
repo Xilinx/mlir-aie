@@ -792,13 +792,14 @@ def compile_mlir_module(
         from aie.iron.kernel import ExternalFunction
 
         target_arch = resolve_target_arch(device)
+        referenced = [
+            f
+            for f in ExternalFunction._instances
+            if getattr(f, "_source_file", None)
+            and re.search(rf"@{re.escape(f.name)}\b", mlir_text)
+        ]
         compile_external_kernels(
-            [
-                f
-                for f in ExternalFunction._instances
-                if getattr(f, "_source_file", None)
-                and re.search(rf"@{re.escape(f.name)}\b", mlir_text)
-            ],
+            _select_declared_kernels(referenced, mlir_text),
             str(work_dir),
             target_arch,
             embed_bitcode=_check_lut_banks_enabled(options or []),
@@ -1112,6 +1113,32 @@ def _compiled_into(func, kernel_dir, embed_bitcode=False) -> bool:
     ):
         return False
     return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
+
+
+_FUNC_DECL_RE = re.compile(r"func\.func\s+private\s+@([^\s(]+)\(([^\n]*)")
+_LINK_WITH_RE = re.compile(r'link_with\s*=\s*"([^"]*)"')
+
+
+def _select_declared_kernels(funcs, mlir_text: str) -> list:
+    """Keep the kernels whose object is the one ``mlir_text`` links a symbol with.
+
+    Instances can share a symbol: an inline library kernel keeps its bare name
+    across archs, and each arch's factory gives it its own object. The
+    declaration's ``link_with`` picks the one this module uses. A symbol no
+    instance links as declared (or declared without ``link_with``) keeps every
+    instance, so one built for another arch still reports that.
+    """
+    link_with = {}
+    for decl in _FUNC_DECL_RE.finditer(mlir_text):
+        found = _LINK_WITH_RE.search(decl.group(2))
+        link_with[decl.group(1).strip('"')] = found.group(1) if found else None
+    chosen = [
+        f
+        for f in funcs
+        if link_with.get(f.name) is not None and link_with[f.name] == f.object_file_name
+    ]
+    matched = {f.name for f in chosen}
+    return chosen + [f for f in funcs if f.name not in matched]
 
 
 def compile_external_kernels(

@@ -185,11 +185,21 @@ def _callees_identity(generator: Callable) -> bytes:
             visit(obj.__defaults__, f"{name}.__defaults__")
             visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
         names = _names(obj.__code__)
-        scope = getattr(obj, "__globals__", {})
+        scope = dict(getattr(obj, "__globals__", {}))
+        where = {n: f"{obj.__module__}.{n}" for n in scope}
+        # A closure reaches its helpers and constants through cells rather
+        # than globals; those shadow a global of the same name.
+        for n, cell in zip(obj.__code__.co_freevars, obj.__closure__ or ()):
+            try:
+                scope[n] = cell.cell_contents
+            except ValueError:  # an empty cell
+                continue
+            where[n] = f"{name}.<closure>.{n}"
+            names.add(n)
         for n in names & scope.keys():
             value = scope[n]
             if not isinstance(value, ModuleType):
-                visit(value, f"{obj.__module__}.{n}")
+                visit(value, where[n])
             elif in_package(value.__name__):
                 members = vars(value)
                 for m in names & members.keys():

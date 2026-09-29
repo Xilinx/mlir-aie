@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <limits>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,6 +69,12 @@ void _reduce_min_scalar(int32_t *restrict in, int32_t *restrict out,
   return;
 }
 
+// The identity of a bf16 min is +inf, not the largest finite value, so an
+// all-+inf tile reduces to +inf.
+static inline bfloat16 bf16_min_identity() {
+  return static_cast<bfloat16>(std::numeric_limits<float>::infinity());
+}
+
 // bf16 min, as reduce_max.cc's bf16 max.
 static void _reduce_min_vector_bf16(bfloat16 *restrict in,
                                     bfloat16 *restrict out,
@@ -75,8 +82,7 @@ static void _reduce_min_vector_bf16(bfloat16 *restrict in,
   event0();
   constexpr int32_t vector_size = 32;
   aie::vector<bfloat16, vector_size> running_min =
-      aie::broadcast<bfloat16, vector_size>(
-          std::numeric_limits<bfloat16>::max());
+      aie::broadcast<bfloat16, vector_size>(bf16_min_identity());
   const bfloat16 *p = in;
   AIE_LOOP_NO_UNROLL
   for (int32_t i = 0; i < REDUCE_MIN_ELEMS; i += vector_size) {
@@ -91,7 +97,7 @@ static void _reduce_min_scalar_bf16(bfloat16 *restrict in,
                                     bfloat16 *restrict out,
                                     const int32_t input_size) {
   event0();
-  bfloat16 running_min = std::numeric_limits<bfloat16>::max();
+  bfloat16 running_min = bf16_min_identity();
   for (int32_t i = 0; i < REDUCE_MIN_ELEMS; i++) {
     if (in[i] < running_min)
       running_min = in[i];

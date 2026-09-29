@@ -210,8 +210,10 @@ struct AIEObjectFifoAllocatePass
   }
 
   /// The first layout tried is the greedy one. When a buffer fits nowhere,
-  /// an earlier buffer may have spilled to the one neighbor it could use, so
-  /// earlier spills are revisited, latest first, a bounded number of times.
+  /// an earlier buffer may have spilled to the one neighbor it could use, or
+  /// stayed home where a later buffer that only home can hold needed the
+  /// room, so earlier choices are revisited, latest first, a bounded number of
+  /// times.
   static constexpr int kSpillRetries = 256;
 
   bool placeBuffers(ArrayRef<ObjectFifoPoolOp> buffers, int &retries) {
@@ -219,18 +221,39 @@ struct AIEObjectFifoAllocatePass
       return true;
     ObjectFifoPoolOp pool = buffers.front();
     int64_t size = pool.getObjectSizeInBytes();
-    SmallVector<Value> candidates = placementsFor(pool, size);
+    Value homeTile = pool.getTileLike()->getResult(0);
+    bool fitsHome = canPlace(pool, homeTile, size);
+    SmallVector<Value> candidates;
+    if (fitsHome)
+      candidates.push_back(homeTile);
+    else
+      candidates = spillTargets(pool, size);
     if (candidates.empty() && !bufferFailure)
       bufferFailure = pool;
-    for (auto [index, tile] : llvm::enumerate(candidates)) {
-      if (index > 0 && retries-- <= 0)
-        break;
+    auto tryTile = [&](Value tile) {
       plannedMemory[tile].push_back(size);
       bufferPlacements[pool].push_back(tile);
       if (placeBuffers(buffers.drop_front(), retries))
         return true;
       plannedMemory[tile].pop_back();
       bufferPlacements[pool].pop_back();
+      return false;
+    };
+    for (auto [index, tile] : llvm::enumerate(candidates)) {
+      if (index > 0 && retries-- <= 0)
+        return false;
+      if (tryTile(tile))
+        return true;
+    }
+    if (!fitsHome)
+      return false;
+    // Spill targets are only looked up once home has failed, so a layout that
+    // keeps every buffer home creates no neighbor tiles.
+    for (Value tile : spillTargets(pool, size)) {
+      if (retries-- <= 0)
+        return false;
+      if (tryTile(tile))
+        return true;
     }
     return false;
   }
@@ -244,13 +267,9 @@ struct AIEObjectFifoAllocatePass
   /// by its DMAs, preferring the emptier one so adjacent MemTiles
   /// keep room for their own spills. Which tiles neighbor an unplaced one is
   /// not yet known, so its buffers stay at home.
-  SmallVector<Value> placementsFor(ObjectFifoPoolOp pool, int64_t sizeBytes) {
+  SmallVector<Value> spillTargets(ObjectFifoPoolOp pool, int64_t sizeBytes) {
     TileLike home = pool.getTileLike();
     auto &target = device.getTargetModel();
-    Value homeTile = home->getResult(0);
-    if (canPlace(pool, homeTile, sizeBytes)) {
-      return {homeTile};
-    }
     if (!home.isMemTile())
       return {};
 

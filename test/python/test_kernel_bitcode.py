@@ -258,6 +258,7 @@ $helper:
             _compile_flags=[],
             _compiled=False,
             object_file_name="kernel.o",
+            check_target_arch=lambda target_arch: None,
         )
 
         def fake_compile(**kwargs):

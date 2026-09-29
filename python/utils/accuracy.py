@@ -229,8 +229,10 @@ def error_stats(got, ref, dtype=None) -> ErrorStats:
     counts = np.unique(ulp[ordered], return_counts=True)
     worst = None
     if ordered.any():
-        # Most ulps first, then the larger exact error among ties.
-        worst = int(np.lexsort((exact, ulp))[-1])
+        # Most ulps first, then the larger exact error among ties; only among
+        # the ordered values, since NaNs are left out.
+        idx = np.flatnonzero(ordered)
+        worst = int(idx[np.lexsort((exact[idx], ulp[idx]))[-1]])
     return ErrorStats(
         dtype=dt.name,
         n=int(got.size),

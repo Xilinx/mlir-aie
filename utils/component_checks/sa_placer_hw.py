@@ -59,8 +59,14 @@ def run_seed(seed: int, warmup: int, iters: int) -> dict:
         shutil.rmtree(cache_dir, ignore_errors=True)
 
     out = proc.stdout + proc.stderr
-    passed = proc.returncode == 0 and _PASS_RE.search(out) is not None
     npu_match = _NPU_TIME_RE.search(out)
+    # Latency is what this check tracks, so a run that stops printing it (the
+    # output format drifted, say) fails rather than publishing nothing.
+    passed = (
+        proc.returncode == 0
+        and _PASS_RE.search(out) is not None
+        and npu_match is not None
+    )
     # min (group 2), not avg: a single busy neighbor call inflates the mean
     # far more than it moves the min (feedback_npu_latency_use_min_not_avg).
     min_latency_us = float(npu_match.group(2)) if npu_match else None
@@ -111,6 +117,8 @@ def main(argv=None) -> int:
         )
         print(f"seed {r['seed']:>3}: {status}  min_latency={lat}")
         if not r["passed"]:
+            if r["min_latency_us"] is None:
+                print("no 'NPU time (avg/min/max us)' line in the output")
             print(r["log"])
 
     with open(args.out, "w") as f:

@@ -19,6 +19,7 @@
 // RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=42 sa-effort=0.25' --mlir-pass-statistics %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=STATS
 
 // RUN: not aie-opt --aie-place-tiles='placer=sa_placer sa-effort=0' %s 2>&1 | FileCheck %s --check-prefix=ERR
+// RUN: not aie-opt --aie-place-tiles='placer=sa_placer sa-effort=nan' %s 2>&1 | FileCheck %s --check-prefix=NAN
 
 // CHECK-NOT: aie.logical_tile
 // CHECK: aie.cascade_flow
@@ -26,7 +27,8 @@
 // STATS: AIEPlaceTiles
 // STATS: (S) {{[0-9]+}} sa-final-cost
 
-// ERR: error: sa-effort must be positive, got 0
+// ERR: error: sa-effort must be positive and finite, got 0
+// NAN: error: sa-effort must be positive and finite, got
 
 module @effort_4core {
   aie.device(npu2) {

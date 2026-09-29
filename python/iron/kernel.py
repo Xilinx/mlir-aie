@@ -166,6 +166,10 @@ class KernelObject:
     _source: _KernelSource | None = field(default=None, repr=False)
     _compiled_dirs: set[str] = field(default_factory=set, repr=False)
     _symbol_prefix: str | None = field(default=None, repr=False, kw_only=True)
+    # The archs kernels/ factories built this artifact's recipe for. They live
+    # on the artifact so every binding of it, discovery ones included, sees
+    # them.
+    _built_for_archs: set[str] = field(default_factory=set, repr=False, kw_only=True)
 
     def __post_init__(self):
         if not self.name:
@@ -586,8 +590,22 @@ class ExternalFunction(Kernel):
     # different type. The class-level default covers a discovery binding,
     # which is created without running __init__.
     contract: Any = None
-    # The arch a kernels/ factory built this for, or None when unknown.
-    built_for_arch: str | None = None
+
+    @property
+    def built_for_arch(self) -> str | None:
+        """The arch a kernels/ factory built this for, or None when unknown.
+
+        Stored on the shared ``KernelObject``, so a sibling binding from
+        ``object_file.bind(...)`` carries it as well. An artifact that
+        factories built for more than one arch reads as unknown.
+        """
+        archs = self.object_file._built_for_archs
+        return next(iter(archs)) if len(archs) == 1 else None
+
+    @built_for_arch.setter
+    def built_for_arch(self, arch: str | None) -> None:
+        if arch is not None:
+            self.object_file._built_for_archs.add(arch)
 
     def check_target_arch(self, target_arch: str) -> None:
         """Raise unless this kernel may compile for ``target_arch``.

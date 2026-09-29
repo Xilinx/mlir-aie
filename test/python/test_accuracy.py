@@ -120,6 +120,13 @@ def test_error_stats_counts_and_locates_the_worst():
     assert "2 not correctly rounded" in s.summary()
 
 
+def test_error_stats_worst_skips_nan_mismatches():
+    # Every ordered value is correctly rounded; the trailing NaN mismatch is
+    # left out of the ulp stats, so it must not be reported as the worst.
+    s = error_stats(np.array([1.0, 2.0, np.nan], bfloat16), np.array([1.0, 2.0, 3.0]))
+    assert s.nan_mismatch == 1 and s.worst_index in (0, 1)
+
+
 def test_error_stats_nonfinite():
     ref = np.array([np.inf, 1e300, np.nan, 1.0, np.nan])
     got = np.array([np.inf, np.inf, np.nan, np.nan, 1.0], bfloat16)

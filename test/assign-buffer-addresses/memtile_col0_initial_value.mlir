@@ -5,7 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// An initialized buffer on an NPU column-0 memtile stays off the first word.
+// An initialized buffer on an npu2 column-0 memtile stays off the first word.
+// npu1 has no such defect, so its buffers keep address 0.
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 
@@ -43,6 +44,16 @@ module @test {
     %m0 = aie.tile(0, 1)
     %p = aie.buffer(%m0) {address = 0 : i32, sym_name = "p"} : memref<4xi32> = dense<[1, 2, 3, 4]>
     %q = aie.buffer(%m0) {sym_name = "q"} : memref<4xi32> = dense<[1, 2, 3, 4]>
+    aie.memtile_dma(%m0) {
+      aie.end
+    }
+  }
+
+  // CHECK-LABEL: aie.device(npu1) @npu1_col0
+  // CHECK:       %n = aie.buffer(%{{.*}}) {address = 0 : i32, {{.*}}sym_name = "n"}
+  aie.device(npu1) @npu1_col0 {
+    %m0 = aie.tile(0, 1)
+    %n = aie.buffer(%m0) {sym_name = "n"} : memref<4xi32> = dense<[1, 2, 3, 4]>
     aie.memtile_dma(%m0) {
       aie.end
     }
