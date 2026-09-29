@@ -139,7 +139,7 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
             "--out",
             out,
             "--commit-message",
-            "Fix add",
+            "Fix add\n\nThe body is not kept.",
             "--commit-date",
             "2026-09-28T20:24:43+00:00",
             "--date",
@@ -371,7 +371,10 @@ def test_migration_turns_every_entry_into_a_run_and_removes_the_old_files(
     assert first["device_raw"] == "RyzenAI-npu1" and first["schema"] == 1
     assert first["provenance"]["peano"] == "22.0.0+0006955e"
     assert first["commit"]["id"].startswith("d53582d3e0f9")
-    assert first["commit"]["message"].startswith("Single-core")
+    assert (
+        first["commit"]["message"]
+        == "Single-core Kernel Optimizations and Tooling (#3801)"
+    )
     assert first["migrated_from"] == "aie_kernels (npu1, default)"
     assert first["truncated"] == ["swiglu/1024x256/bfloat16"]
     assert first["published"] and first["url"] == ""

@@ -129,7 +129,11 @@ def _load(path: Path, default):
 
 
 def commit_info(sha: str, message: str = "", timestamp: str = "") -> dict:
-    """Return the commit as the page shows it; message and date from git when not given."""
+    """Return the commit as the page shows it: its subject line, and its date.
+
+    Both come from git when not given; the page shows only the subject, which
+    every history file repeats per run, so the body is not kept.
+    """
     if sha and not (message and timestamp):
         try:
             out = subprocess.run(
@@ -145,7 +149,7 @@ def commit_info(sha: str, message: str = "", timestamp: str = "") -> dict:
     return {
         "id": sha,
         "url": f"{REPO}/commit/{sha}" if sha else "",
-        "message": message,
+        "message": message.split("\n", 1)[0],
         "timestamp": timestamp,
     }
 
@@ -246,7 +250,7 @@ def migrate(out: Path) -> int:
                 "commit": {
                     "id": commit.get("id", ""),
                     "url": commit.get("url", ""),
-                    "message": commit.get("message", ""),
+                    "message": commit.get("message", "").split("\n", 1)[0],
                     "timestamp": commit.get("timestamp", ""),
                 },
                 "pmode": mode[1] if mode else None,
