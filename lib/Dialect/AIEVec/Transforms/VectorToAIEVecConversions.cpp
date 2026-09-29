@@ -4071,32 +4071,10 @@ struct ComputeFloorOpPattern : OpConversionPattern<math::FloorOp> {
   }
 };
 
-// The element types and lane counts AIE2P can negate. NegOpAIE2pConversion
-// only takes an f32 accumulator, which the pattern below builds from bf16 (via
-// UPS) and from f32 (via a cast); an f16 would take the same 16-bit UPS path
-// and be reinterpreted as bf16, so leave it to the backend. Both the pattern
-// and the AIE2P legality predicate ask this, so nothing is declared illegal
-// that no pattern will take.
-static bool isNegFOpSupportedOnAIE2P(VectorType srcType) {
-  Type scalarType = srcType.getElementType();
-  if (!scalarType.isBF16() && !scalarType.isF32())
-    return false;
-  unsigned laneSize = getVectorLaneSize(srcType);
-  return laneSize == 16 || laneSize == 32;
-}
-
 // Convert arith.negf to aievec.neg to negate the vector for v16bfloat16 and
-// v16float types, plus v32 of either on AIE2P.
+// v16float types, and for v32 of either on AIE2P.
 struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
-  // `maxLanes` is 16 for AIE1/AIE2 and 32 for AIE2P, whose
-  // NegOpAIE2pConversion widens the accumulator to ACC2048 and so takes both.
-  // The body below already handles either width; only this bound differs.
-  ComputeNegOpPattern(MLIRContext *context, unsigned maxLanes = 16,
-                      PatternBenefit benefit = 1)
-      : OpConversionPattern<arith::NegFOp>(context, benefit),
-        maxLanes(maxLanes) {}
-
-  unsigned maxLanes;
+  using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(arith::NegFOp negOp, OpAdaptor adaptor,
@@ -4110,10 +4088,7 @@ struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
       return failure();
 
     unsigned laneSize = getVectorLaneSize(srcType);
-    if (maxLanes >= 32) {
-      if (!isNegFOpSupportedOnAIE2P(srcType))
-        return failure();
-    } else if (laneSize != 16)
+    if (laneSize != 16 && laneSize != 32)
       return failure();
 
     Location loc = negOp.getLoc();
@@ -5116,9 +5091,6 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
   // registered in the common patterns.
   patterns.add<ConvertMathTanhToAIEVecTanhOpPattern>(patterns.getContext(),
                                                      /*benefit=*/2);
-  // Likewise over the common arith.negf pattern, which stops at 16 lanes.
-  patterns.add<ComputeNegOpPattern>(patterns.getContext(), /*maxLanes=*/32,
-                                    /*benefit=*/2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5701,18 +5673,27 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     return laneSize != 16;
   });
 
-  // arith.negf at 32 lanes as well as 16. The common predicate stops at 16,
-  // but NegOpAIE2pConversion handles both -- it widens to ACC2048 either way --
-  // so at 32 the op was declared legal, nothing converted it, and it reached
-  // Peano as `G_FNEG <32 x s32>`, which does not legalize. A sigmoid's
-  // `exp(-z)` on a v32 is the ordinary way to meet this. This replaces the
-  // AIE2 predicate installed above, so it also narrows the element types to
-  // the ones ComputeNegOpPattern actually lowers here.
+  // AIE2P-specific legalization: Override NegFOp to support laneSize==32 for
+  // bf16 and f32. NegOpAIE2pConversion widens the accumulator to ACC2048 for
+  // either width, so at 32 the AIE2 predicate left the op legal, nothing
+  // converted it, and it reached the backend as `G_FNEG <32 x s32>`, which
+  // does not legalize -- a sigmoid's `exp(-z)` on a v32 is the ordinary way
+  // to meet this.
   target.addDynamicallyLegalOp<arith::NegFOp>([](arith::NegFOp negOp) {
     auto srcType = dyn_cast<VectorType>(negOp.getOperand().getType());
     if (!srcType)
       return true;
-    return !isNegFOpSupportedOnAIE2P(srcType);
+
+    Type scalarType = srcType.getElementType();
+    unsigned laneSize = getVectorLaneSize(srcType);
+
+    // Only the accumulator types ComputeNegOpPattern can build an f32
+    // accumulator from. Other 16-bit floats (e.g. f16) would take the same
+    // UPS path as bf16 and be reinterpreted, so they stay legal.
+    if (scalarType.isBF16() || scalarType.isF32())
+      return laneSize != 16 && laneSize != 32;
+
+    return true;
   });
 
   // LowerVectorSIToFPI16BF16AIE2pPattern uses vector.shuffle to split
