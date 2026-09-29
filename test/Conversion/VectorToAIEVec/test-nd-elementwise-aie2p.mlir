@@ -5,11 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The AIE2P legality predicates select on lane COUNT -- `getVectorLaneSize` is
-// the product of every dimension -- while the patterns that implement them
-// match rank-1 operands. Each of these has a native lane count and a rank
-// above one, so before this they passed the legality check, found no pattern,
-// and failed the conversion outright.
+// Elementwise ops on n-D vectors with a native lane count, flattened to rank 1
+// so the patterns that lower them can match.
 
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p" | FileCheck %s
 
@@ -32,12 +29,10 @@ func.func @mul_2x8_f32(%a: vector<2x8xf32>,
   return %0 : vector<2x8xf32>
 }
 
-// The dividend must still reach `ConvertDivFToAIEVecInvOpPattern` as an
-// `arith.constant` of 1.0, so the splat is rematerialised at the flat type
-// rather than shape_cast -- a cast in front of it would hide the constant and
-// take the reciprocal out of the only pattern that lowers it. That pattern
-// consumes the constant, so what proves it matched is that no constant and no
-// divide are left.
+// The reciprocal lowering matches a dividend of 1.0, so the splat is
+// rematerialised at the flat type rather than shape_cast. It consumes the
+// constant, so what proves it matched is that no constant and no divide
+// are left.
 // CHECK-LABEL: func @inv_1x1x2x8_f32
 // CHECK-NOT: arith.divf
 // CHECK: vector.shape_cast %{{.*}} : vector<1x1x2x8xf32> to vector<16xf32>
@@ -49,10 +44,8 @@ func.func @inv_1x1x2x8_f32(%a: vector<1x1x2x8xf32>) -> vector<1x1x2x8xf32> {
   return %0 : vector<1x1x2x8xf32>
 }
 
-// arith.negf is the one case whose rank-1 pattern does not decline an n-D
-// operand -- ComputeNegOpPattern never checks the rank, so without this the
-// rank reaches aievec.neg and only fails in AIEVecToLLVM, where the shuffle
-// that widens the accumulator indexes the leading dimension.
+// arith.negf is the one case whose pattern does not check the rank, so
+// without flattening the rank reaches aievec.neg, which cannot be lowered.
 // CHECK-LABEL: func @neg_1x1x2x8_f32
 // CHECK: vector.shape_cast %{{.*}} : vector<1x1x2x8xf32> to vector<16xf32>
 // CHECK: aievec.neg {{.*}} : vector<16xf32>
@@ -62,10 +55,8 @@ func.func @neg_1x1x2x8_f32(%a: vector<1x1x2x8xf32>) -> vector<1x1x2x8xf32> {
   return %0 : vector<1x1x2x8xf32>
 }
 
-// A multiply feeding an add is exempted as "part of an FMA", but the pattern
-// that would fuse it matches the add's operand directly and only at rank 1.
-// At rank 4 the multiply has to be flattened along with the add, or it stays
-// legal and nothing ever lowers it.
+// A multiply feeding an add is exempted as part of an FMA, but only at
+// rank 1: above that it has to be flattened along with the add.
 // CHECK-LABEL: func @fma_1x1x2x8_bf16
 // CHECK-NOT: arith.mulf
 // CHECK: aievec
@@ -76,9 +67,7 @@ func.func @fma_1x1x2x8_bf16(%a: vector<1x1x2x8xbf16>, %b: vector<1x1x2x8xbf16>,
   return %1 : vector<1x1x2x8xbf16>
 }
 
-// 32 lanes as well as 16. NegOpAIE2pConversion widens to ACC2048 either way,
-// so stopping the predicate at 16 left this legal, unconverted, and impossible
-// for Peano.
+// Rank-1 at 32 lanes: unchanged by the flattening.
 // CHECK-LABEL: func @neg_32_f32
 // CHECK-NOT: arith.negf
 // CHECK: aievec.neg {{.*}} : vector<32xf32>
@@ -87,8 +76,7 @@ func.func @neg_32_f32(%a: vector<32xf32>) -> vector<32xf32> {
   return %0 : vector<32xf32>
 }
 
-// Already rank-1: untouched, and in particular not re-matched into an endless
-// chain of shape casts.
+// Already rank-1: untouched, and not re-matched into a chain of shape casts.
 // CHECK-LABEL: func @mul_16_bf16
 // CHECK-NOT: vector.shape_cast
 // CHECK: aievec.mul_elem
@@ -98,9 +86,8 @@ func.func @mul_16_bf16(%a: vector<16xbf16>,
   return %0 : vector<16xbf16>
 }
 
-// A lane count that is not native is still declined, by the same predicates as
-// before -- flattening changes the shape and never the width. The op stays
-// legal, so it is never handed to a pattern and keeps its original shape.
+// A lane count that is not native stays legal, so it is never handed to a
+// pattern and keeps its original shape.
 // CHECK-LABEL: func @mul_1x1x8x8_f32
 // CHECK-NOT: vector.shape_cast
 // CHECK: arith.mulf {{.*}} : vector<1x1x8x8xf32>
