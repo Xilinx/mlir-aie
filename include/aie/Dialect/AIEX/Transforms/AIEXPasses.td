@@ -384,9 +384,9 @@ def AIESplitLongRepeats : Pass<"aie-split-long-repeats", "AIE::DeviceOp"> {
     pushes is an error.
   }];
 
-  let options = [
-    Option<"maxPushes", "max-pushes", "unsigned", /*default=*/"1024",
-           "Most queue pushes one start may be split into">,
+  let options = [Option<"maxPushes", "max-pushes", "unsigned",
+                        /*default=*/"1024",
+                        "Most queue pushes one start may be split into">,
   ];
 
   let constructor = "xilinx::AIEX::createAIESplitLongRepeatsPass()";

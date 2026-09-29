@@ -52,7 +52,8 @@ struct AIESplitLongRepeatsPass
       if (pushes > static_cast<int64_t>(maxPushes)) {
         start.emitOpError("repeat count ")
             << *rc << " needs " << pushes
-            << " queue pushes, more than max-pushes (" << maxPushes << ")";
+            << " queue pushes, more than max-pushes (" << maxPushes.getValue()
+            << ")";
         return signalPassFailure();
       }
       // Leading starts withhold the token, so an await on the task still

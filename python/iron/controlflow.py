@@ -1,6 +1,8 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+from contextvars import ContextVar
+
 from aie.helpers.dialects.scf import (
     _for,
 )
@@ -10,8 +12,11 @@ from aie.helpers.dialects.scf import (
 from aie.iron.runtime.dmataskhandle import Task
 
 # One frame per active range_ loop with iter_args; yield_ records the Tasks
-# it yields into the innermost frame, by iter_args position.
-_yielded_tasks: list[dict[int, Task]] = []
+# it yields into the innermost frame, by iter_args position. A ContextVar, like
+# the active runtime sequence, so concurrent emitters never share frames.
+_yielded_tasks: ContextVar[tuple[dict[int, Task], ...]] = ContextVar(
+    "iron_yielded_tasks", default=()
+)
 
 
 def _unwrap(x):
@@ -57,11 +62,13 @@ def range_(*args, iter_args=None, insert_yield=True, **kwargs):
         if isinstance(vals, tuple) and len(vals) == 3:
             iv, a, results = vals
             results = rewrap_args(results)
-            _yielded_tasks.append({})
+            yielded: dict[int, Task] = {}
+            outer = _yielded_tasks.get()
+            _yielded_tasks.set(outer + (yielded,))
             try:
                 yield iv, rewrap_args(a), results
             finally:
-                yielded = _yielded_tasks.pop()
+                _yielded_tasks.set(outer)
             # A loop result is the Task the body yielded, so it inherits that
             # Task's lifetime (e.g. freed in the body), not the initial one's.
             result_tasks = results if isinstance(results, tuple) else (results,)
@@ -78,8 +85,7 @@ def yield_(values):
 
     See [`Task`][iron.runtime.dmataskhandle.Task].
     """
-    if _yielded_tasks:
-        _yielded_tasks[-1].update(
-            (i, v) for i, v in enumerate(values) if isinstance(v, Task)
-        )
+    frames = _yielded_tasks.get()
+    if frames:
+        frames[-1].update((i, v) for i, v in enumerate(values) if isinstance(v, Task))
     _yield_([_unwrap(v) for v in values])
