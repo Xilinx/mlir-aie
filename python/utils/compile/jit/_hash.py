@@ -353,8 +353,8 @@ def _compute_artifact_hash(
     Every tool that packages a requested image is hashed too: ``aiebu-asm`` for
     an ELF, ``xclbinutil`` for an xclbin, and nothing for an instruction stream
     alone. Both images embed a PDI, so they also hash the ``bootgen`` aiecc
-    would run. aiecc may link bootgen in instead, which Python cannot tell, so
-    a missing ``bootgen`` is not an error.
+    would run. aiecc may link bootgen and aiebu in instead, which Python cannot
+    tell, so a missing ``bootgen`` or ``aiebu-asm`` is not an error.
     """
     from aie.utils import config as _config
 
@@ -404,7 +404,7 @@ def _compute_artifact_hash(
             from aie.utils.benchmark import kernel_tree_digest
 
             h.update(f"kernel_sources={kernel_tree}|{kernel_tree_digest()}".encode())
-    optional = set()
+    optional = {"aiebu-asm"}
     if full_elf or not insts_only:
         tools["bootgen"] = partial(_config.aiecc_tool_path, "bootgen")
         optional.add("bootgen")

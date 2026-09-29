@@ -214,3 +214,18 @@ def test_missing_bootgen_is_not_a_warning(bin_dir, flow):
     )
     assert result.returncode == 0, result.stderr
     assert "bootgen" not in result.stderr
+
+
+@pytest.mark.parametrize("flow", ["full_elf", "xclbin+elf"])
+def test_missing_aiebu_asm_is_not_a_warning(bin_dir, flow):
+    # aiecc may link aiebu in, so no aiebu-asm executable is a normal install.
+    # aie's logger has a NullHandler; route warnings to stderr to see them.
+    log_to_stderr = "import logging; logging.basicConfig()\n"
+    result = subprocess.run(
+        [sys.executable, "-c", log_to_stderr + _KEY, flow, "path"],
+        env={**os.environ, "PATH": str(bin_dir)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "aiebu-asm" not in result.stderr
