@@ -5674,11 +5674,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
   });
 
   // AIE2P-specific legalization: Override NegFOp to support laneSize==32 for
-  // bf16 and f32. NegOpAIE2pConversion widens the accumulator to ACC2048 for
-  // either width, so at 32 the AIE2 predicate left the op legal, nothing
-  // converted it, and it reached the backend as `G_FNEG <32 x s32>`, which
-  // does not legalize -- a sigmoid's `exp(-z)` on a v32 is the ordinary way
-  // to meet this.
+  // bf16 and f32.
   target.addDynamicallyLegalOp<arith::NegFOp>([](arith::NegFOp negOp) {
     auto srcType = dyn_cast<VectorType>(negOp.getOperand().getType());
     if (!srcType)
@@ -5687,9 +5683,9 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     Type scalarType = srcType.getElementType();
     unsigned laneSize = getVectorLaneSize(srcType);
 
-    // Only the accumulator types ComputeNegOpPattern can build an f32
-    // accumulator from. Other 16-bit floats (e.g. f16) would take the same
-    // UPS path as bf16 and be reinterpreted, so they stay legal.
+    // bf16 and f32 only: the aievec lowering needs an f32 accumulator, and
+    // other 16-bit floats (e.g. f16) would take the bf16 UPS path and be
+    // reinterpreted.
     if (scalarType.isBF16() || scalarType.isF32())
       return laneSize != 16 && laneSize != 32;
 

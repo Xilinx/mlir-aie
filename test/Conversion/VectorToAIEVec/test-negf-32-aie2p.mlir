@@ -5,15 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// NegOpAIE2pConversion widens the accumulator to ACC2048 for 16 and 32 lanes
-// alike, but ComputeNegOpPattern stopped at 16 and the AIE2P legality
-// predicate agreed with it -- so a v32 negate was declared legal, nothing
-// converted it, and it reached the backend as `G_FNEG <32 x s32>`.
+// arith.negf on AIE2P, at 16 and 32 lanes.
 
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p" | FileCheck %s
 
-// The motivating case: a sigmoid's exp(-z) on a v32 of bf16, which takes the
-// UPS/neg/SRS branch.
+// 32-lane bf16 takes the UPS/neg/SRS branch.
 // CHECK-LABEL: func @neg_32_bf16
 // CHECK: %[[UPS:.*]] = aievec.ups
 // CHECK: %[[NEG:.*]] = aievec.neg %[[UPS]]
@@ -50,8 +46,7 @@ func.func @neg_16_f32(%arg0: vector<16xf32>) -> vector<16xf32> {
   return %0 : vector<16xf32>
 }
 
-// f16 is left alone: it would take the same 16-bit UPS path as bf16 and be
-// reinterpreted, so it stays legal and reaches the backend as arith.negf.
+// f16 stays legal: it would take the bf16 UPS path and be reinterpreted.
 // CHECK-LABEL: func @neg_32_f16
 // CHECK: arith.negf
 // CHECK-NOT: aievec.neg
