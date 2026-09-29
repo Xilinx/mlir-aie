@@ -3,20 +3,25 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Report a kernel checks run's failures and regressions against the last nightly.
 
-For each NPU that produced results: the cases that failed, and the cases
-whose cycles or core ELF size moved against the nightly baseline on main.
+For each leg that produced results (an NPU the hardware checks ran on, an
+architecture the static checks compiled for): the cases that failed, and
+the rows whose gated metrics moved against the nightly baseline on main.
 nightlyKernelChecks.yml writes it to the job summary and, on a Peano PR,
 keeps it as one comment. Standard library only, so it runs on any runner.
 
     pr_report.py --results results --baselines baselines --out report.md
 
-``results/<npu>/`` holds a leg's artifact (meta.json, perf.json,
-correctness.xml); ``baselines/<npu>/series.json`` is the nightly series the
-publish job caches.
+``results/<leg>/`` holds a leg's artifact: ``meta.json``, ``perf.json`` and
+``correctness.xml`` for ``npu1``/``npu2``; ``static.json``,
+``static-pm.json`` and ``static-meta.json`` for ``aie2``/``aie2p``.
+``baselines/<leg>/latest.json`` is the record publish.py wrote for the
+last nightly that published rows, which the publish job caches. The
+thresholds are ``thresholds.json``'s, shared with the results page.
 """
 
 import argparse
 import json
+import math
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -26,7 +31,6 @@ from pathlib import Path
 
 MARKER = "<!-- kernel-checks-report -->"
 PAGE = "https://xilinx.github.io/mlir-aie/kernel-checks/"
-# The page colors a change by the same thresholds; thresholds.json says why.
 THRESHOLDS = {
     metric: spec
     for metric, spec in json.loads(
@@ -44,8 +48,10 @@ OTHER = {
     for m, s in THRESHOLDS.items()
     if m not in GATED and m not in DERIVED
 }
+STATIC = {m for m, s in THRESHOLDS.items() if s.get("static")}
 DEFAULT_THRESHOLD = 0.10  # a metric thresholds.json does not name
 MAX_ROWS = 50
+PERF_LEGS = ("npu1", "npu2")
 
 _EXTENSIVE = re.compile(r"test_kernel_extensive\[(.+)/([^/]+/s\d+)\]")
 _BRACKETED = re.compile(r"\[(.+)\]$")
@@ -70,13 +76,16 @@ class Change:
 
     @property
     def ratio(self) -> float:
-        return (self.after - self.before) / self.before
+        if self.before:
+            return (self.after - self.before) / self.before
+        return math.inf if self.after > 0 else 0.0
 
 
 @dataclass
 class Leg:
     npu: str
     measured: bool
+    kind: str = "perf"
     peano: str = ""
     baseline_peano: str = ""
     baseline_commit: dict | None = None
@@ -87,6 +96,11 @@ class Leg:
     other: list[Change] = field(default_factory=list)
     unmeasured: list[str] = field(default_factory=list)
     new: list[str] = field(default_factory=list)
+
+
+def past(ratio: float, threshold: float) -> bool:
+    """Whether a relative change counts: any change at all when the threshold is 0."""
+    return abs(ratio) > 0 if threshold == 0 else abs(ratio) >= threshold
 
 
 def _reason(test) -> str:
@@ -147,14 +161,24 @@ def failures(directory: Path) -> tuple[list[Failure], set[str]]:
     )
 
 
-def baseline(path: Path, npu: str, pmode: str | None) -> dict | None:
-    """Return the newest nightly entry, in this power mode's suite if any."""
+def static_failures(directory: Path) -> list[Failure]:
+    """Return the builds the static checks could not compile (``static-meta.json``)."""
+    meta = directory / "static-meta.json"
+    if not meta.exists():
+        return []
+    out = []
+    for entry in json.loads(meta.read_text()).get("failed", []):
+        name, _, detail = str(entry).partition(": ")
+        out.append(Failure(name, ["compile"], 0, detail[:200] or "did not compile"))
+    return sorted(out, key=lambda f: f.case)
+
+
+def baseline(path: Path) -> dict | None:
+    """Return the last nightly's record (``latest.json``), or None."""
     if not path.exists():
         return None
-    entries = json.loads(path.read_text()).get("entries", {})
-    suite = entries.get(f"aie_kernels ({npu}, {pmode})")
-    candidates = [suite[-1]] if suite else [e[-1] for e in entries.values() if e]
-    return max(candidates, key=lambda e: e["date"], default=None)
+    record = json.loads(path.read_text())
+    return record if record.get("rows") else None
 
 
 def _split(name: str) -> tuple[str, str]:
@@ -162,43 +186,64 @@ def _split(name: str) -> tuple[str, str]:
     return case, metric
 
 
-def _peano(rows) -> str:
+def _peano(rows, fallback: str = "") -> str:
     for row in rows:
         if match := _PEANO.search(row.get("extra", "")):
             return match[1]
-    return ""
+    match = _PEANO.search(fallback)
+    return match[1] if match else ""
 
 
-def read_leg(npu: str, directory: Path, series: Path) -> Leg:
-    meta_path = directory / "meta.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-    perf_path = directory / "perf.json"
-    rows = json.loads(perf_path.read_text()) if perf_path.exists() else []
-    result = Leg(npu, measured=bool(rows))
-    result.failures, swept = failures(directory)
+def _load_rows(directory: Path, kind: str) -> list[dict]:
+    names = ("perf.json",) if kind == "perf" else ("static.json", "static-pm.json")
+    rows: list[dict] = []
+    for name in names:
+        path = directory / name
+        if path.exists():
+            rows += json.loads(path.read_text())
+    return rows
+
+
+def read_leg(npu: str, directory: Path, latest: Path) -> Leg:
+    kind = "perf" if npu in PERF_LEGS else "static"
+    rows = _load_rows(directory, kind)
+    result = Leg(npu, measured=bool(rows), kind=kind)
+    if kind == "perf":
+        meta_path = directory / "meta.json"
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        result.failures, swept = failures(directory)
+        result.peano = _peano(rows, meta.get("provenance", ""))
+    else:
+        meta_path = directory / "static-meta.json"
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        result.failures, swept = static_failures(directory), set()
+        result.peano = _peano(rows, meta.get("provenance", ""))
     failing = {f.case for f in result.failures}
-    result.peano = _peano(rows) or _peano([{"extra": meta.get("provenance", "")}])
     measured = {_split(row["name"])[0] for row in rows}
     result.cases = len(measured | swept)
 
-    entry = baseline(series, npu, meta.get("preflight", {}).get("pmode"))
-    if not entry or not rows:
+    record = baseline(latest)
+    if not record or not rows:
         return result
-    result.baseline_commit = entry["commit"]
-    result.baseline_peano = _peano(entry["benches"])
-    before = {row["name"]: row for row in entry["benches"]}
+    result.baseline_commit = record.get("commit") or None
+    result.baseline_peano = record.get("provenance", {}).get("peano", "")
+    before = {
+        f"{case}/{metric}": cell
+        for case, cells in record["rows"].items()
+        for metric, cell in cells.items()
+    }
     for row in rows:
         case, metric = _split(row["name"])
         old = before.get(row["name"])
-        if metric in DERIVED or not old or not old["value"]:
+        if metric in DERIVED or old is None:
             continue
         change = Change(case, metric, row["unit"], old["value"], row["value"])
         if metric in GATED:
-            if change.ratio >= GATED[metric]:
+            if change.ratio > 0 and past(change.ratio, GATED[metric]):
                 result.regressed.append(change)
-            elif change.ratio <= -GATED[metric]:
+            elif change.ratio < 0 and past(change.ratio, GATED[metric]):
                 result.improved.append(change)
-        elif abs(change.ratio) >= OTHER.get(metric, DEFAULT_THRESHOLD):
+        elif past(change.ratio, OTHER.get(metric, DEFAULT_THRESHOLD)):
             result.other.append(change)
     for changes in (result.regressed, result.other):
         changes.sort(key=lambda c: -c.ratio)
@@ -221,6 +266,12 @@ def _value(v: float, unit: str) -> str:
     return f"{v:,.2f} {unit}"
 
 
+def _ratio(c: Change) -> str:
+    if math.isinf(c.ratio):
+        return "from 0"
+    return f"{100 * c.ratio:+.1f}%"
+
+
 def _table(header: list[str], rows: list[list[str]]) -> list[str]:
     out = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     out += ["| " + " | ".join(_cell(c) for c in row) + " |" for row in rows[:MAX_ROWS]]
@@ -237,7 +288,7 @@ def _changes(legs: list[Leg], attr: str) -> list[list[str]]:
             c.metric,
             _value(c.before, c.unit),
             _value(c.after, c.unit),
-            f"{100 * c.ratio:+.1f}%",
+            _ratio(c),
         ]
         for leg in legs
         for c in getattr(leg, attr)
@@ -248,24 +299,43 @@ def _details(summary: str, body: list[str]) -> list[str]:
     return ["<details>", f"<summary>{summary}</summary>", "", *body, "", "</details>"]
 
 
+def _gates(kinds: set[str]) -> str:
+    parts = []
+    if "perf" in kinds:
+        perf = " or ".join(
+            f"`{m}` {100 * t:g}%" for m, t in GATED.items() if m not in STATIC
+        )
+        parts.append(
+            f"on hardware, {perf} or more worse (both stable run to run, so a move is the compiler's)"
+        )
+    if "static" in kinds:
+        exact = ", ".join(f"`{m}`" for m, t in GATED.items() if m in STATIC and t == 0)
+        slack = ", ".join(
+            f"`{m}` {100 * t:g}%" for m, t in GATED.items() if m in STATIC and t
+        )
+        parts.append(
+            f"in the static checks, any increase in {exact}, or {slack} or more"
+        )
+    return "; ".join(parts)
+
+
 def render(legs: list[Leg], run_url: str = "") -> str:
     failing = sum(len(leg.failures) for leg in legs)
     regressed = sum(len(leg.regressed) for leg in legs)
     if not legs:
-        title = "no NPU produced results"
+        title = "no leg produced results"
     elif failing or regressed:
         title = f"{failing} failing, {regressed} regressed"
     else:
         title = "all passed, no regressions"
-    gated = " or ".join(f"`{m}` {100 * t:g}%" for m, t in GATED.items())
+    kinds = {leg.kind for leg in legs} or {"perf"}
     links = [f"[run]({run_url})"] if run_url else []
     links.append(f"[nightly history]({PAGE})")
     out = [
         MARKER,
         f"## Kernel checks: {title}",
         "",
-        f"Compared with the last nightly on main. Regressed: {gated} or more "
-        "worse. Both are deterministic, so a move is the compiler's. "
+        f"Compared with the last nightly on main. Regressed: {_gates(kinds)}. "
         + " \u00b7 ".join(links),
         "",
     ]
@@ -281,8 +351,8 @@ def render(legs: list[Leg], run_url: str = "") -> str:
         if leg.baseline_peano and leg.baseline_peano != leg.peano:
             peano += f" (nightly: {leg.baseline_peano})"
         commit = leg.baseline_commit
-        if commit:
-            base = f"[{commit['id'][:7]}]({commit['url']})"
+        if commit and commit.get("id"):
+            base = f"[{commit['id'][:7]}]({commit.get('url', '')})"
         else:
             base = "none cached" if leg.measured else "\u2014"
         summary.append(
@@ -297,7 +367,7 @@ def render(legs: list[Leg], run_url: str = "") -> str:
             ]
         )
     out += _table(
-        ["NPU", "Peano", "Nightly", "Cases", "Failing", "Regressed", "Improved"],
+        ["Leg", "Peano", "Nightly", "Cases", "Failing", "Regressed", "Improved"],
         summary,
     )
 
@@ -313,9 +383,9 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     ]
     if rows:
         out += ["", "### Failing", ""]
-        out += _table(["NPU", "Case", "Inputs failed", "Reason"], rows)
+        out += _table(["Leg", "Case", "Inputs failed", "Reason"], rows)
 
-    header = ["NPU", "Case", "Metric", "Nightly", "This run", "Change"]
+    header = ["Leg", "Case", "Metric", "Nightly", "This run", "Change"]
     if rows := _changes(legs, "regressed"):
         out += ["", "### Regressed", ""]
         out += _table(header, rows)
@@ -335,13 +405,13 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     if unmeasured:
         out += [""] + _details(
             f"In the nightly but not measured here ({len(unmeasured)})",
-            _table(["NPU", "Case"], unmeasured),
+            _table(["Leg", "Case"], unmeasured),
         )
     new = [[leg.npu, f"`{case}`"] for leg in legs for case in leg.new]
     if new:
         out += [""] + _details(
             f"Measured here, not in the nightly ({len(new)})",
-            _table(["NPU", "Case"], new),
+            _table(["Leg", "Case"], new),
         )
     return "\n".join(out) + "\n"
 
@@ -355,7 +425,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     legs = (
         [
-            read_leg(d.name, d, args.baselines / d.name / "series.json")
+            read_leg(d.name, d, args.baselines / d.name / "latest.json")
             for d in sorted(args.results.iterdir())
             if d.is_dir()
         ]

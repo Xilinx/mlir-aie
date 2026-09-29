@@ -225,11 +225,13 @@
     const ALL_METRICS = ['cycles', 'cycles_per_kop', 'npu_us', 'core_elf_bytes', 'insts_bytes', 'xclbin_bytes'];
     // Per-metric change thresholds, in percent of the previous value; kept
     // equal to thresholds.json (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "core_elf_bytes": {"pct": 2, "gated": true}, "insts_bytes": {"pct": 2}, "xclbin_bytes": {"pct": 2}, "npu_us": {"pct": 10}};
+    const THRESHOLDS = {"cycles": {"pct": 2, "gated": true}, "cycles_per_kop": {"pct": 2, "derived": "cycles"}, "core_elf_bytes": {"pct": 2, "gated": true}, "insts_bytes": {"pct": 2}, "xclbin_bytes": {"pct": 2}, "npu_us": {"pct": 10}, "II": {"pct": 0, "gated": true, "static": true}, "not_zol": {"pct": 0, "gated": true, "static": true}, "unpipelined_loops": {"pct": 0, "gated": true, "static": true}, "non_zol_loops": {"pct": 0, "gated": true, "static": true}, "missing_bank_loads": {"pct": 0, "gated": true, "static": true}, "pass_failed_warnings": {"pct": 0, "gated": true, "static": true}, "libcalls": {"pct": 0, "gated": true, "static": true}, "stack_bytes": {"pct": 0, "static": true}, "pm_bytes": {"pct": 3, "gated": true, "static": true}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => pct(metric) / 100;
-    const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
+    // The hardware metrics a report leads with; the static ones are the kernel page's.
+    const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated && !THRESHOLDS[m].static);
+    const STATIC_GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated && THRESHOLDS[m].static);
     // Provenance fields whose change between runs is marked on the charts.
     const MARKED = ['peano', 'host', 'xrt', 'xdna'];
 
@@ -359,6 +361,7 @@
     // in cycles and noise in npu_us.
     function changeClass(d, metric) {
       const t = threshold(metric);
+      if (t === 0) return d > 0 ? 'worse' : d < 0 ? 'better' : '';
       return d >= t ? 'worse' : d <= -t ? 'better' : '';
     }
 
@@ -984,7 +987,7 @@
       const sort = $('sort').value;
       // Sorted by change relative to the metric's threshold, so a 4% move in
       // cycles outranks a 6% one in npu_us.
-      const rank = s => change.get(s.key) === null ? null : change.get(s.key) / threshold(s.metric);
+      const rank = s => change.get(s.key) === null ? null : change.get(s.key) / (threshold(s.metric) || 1e-6);
       shown.sort((a, b) => {
         if (sort !== 'name') {
           const x = rank(a), y = rank(b);
