@@ -434,6 +434,18 @@ private:
       const llvm::DenseSet<int> *stops = nullptr,
       llvm::ArrayRef<int> targets = {});
 
+  struct RouteState;
+  // Route `flow`'s tree around those routed before it this iteration. False,
+  // with failureReason set, if it reaches no path to a destination.
+  bool routePart(RouteState &st, int flow);
+  // Steer the next iteration away from what the routing check faulted.
+  // Returns the illegal edges the faults count as.
+  int applyRoutingFaults(RouteState &st, const RoutingFaults &faults);
+  // Set failureReason or overuseReason to why the last iteration's routing
+  // does not fit.
+  void explainNoRouting(const RouteState &st);
+  bool hasRoom(const SwitchboxConnect &sb) const;
+
   // Flows to be routed
   std::vector<Flow> flows;
   // The packet ids each source sends each destination.
