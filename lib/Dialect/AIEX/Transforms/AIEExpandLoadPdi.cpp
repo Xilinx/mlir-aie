@@ -122,8 +122,8 @@ portSettings(Operation &op, AIE::SwitchboxOp sb) {
     }
     bool keepHeader = masterSet.getKeepPktHeader().value_or(
         masterSet.getDestBundle() != AIE::WireBundle::DMA &&
-        !(sb.rowIndex() == 0 &&
-          masterSet.getDestBundle() == AIE::WireBundle::South));
+        (sb.rowIndex() != 0 ||
+         masterSet.getDestBundle() != AIE::WireBundle::South));
     std::string value = llvm::formatv("packet {0}/{1} {2}", arbiter, mask,
                                       keepHeader ? "keep" : "drop")
                             .str();
