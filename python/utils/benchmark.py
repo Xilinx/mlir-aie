@@ -214,9 +214,13 @@ def provenance(**extra: str | None) -> str:
     compiles the kernels (``peano_version()``), the installed ``mlir_aie``
     version, the kernel tree
     (``MLIR_AIE_KERNEL_SOURCES`` when set, and ``kernel_tree_digest()``),
-    and any ``extra`` fields (``device="NPU Strix"``, ``pmode="performance"``)
-    as ``key value`` pairs. A benchmark row records it so a number can be
-    traced to a toolchain and to the kernel sources.
+    the selected runtime's provenance, the runner the job ran
+    on (``RUNNER_NAME``, under GitHub Actions: nightly runs move between
+    hosts of a generation, and a host swap moves ``npu_us`` as a regression
+    would), and any ``extra`` fields (``device="NPU Strix"``,
+    ``pmode="performance"``) as ``key value`` pairs. A benchmark row records
+    it so a number can be traced to a toolchain, the kernel sources and
+    the machine.
 
     A package that is not installed is left out rather than recorded as
     unknown. CI builds ``mlir_aie`` from source and puts it on ``PYTHONPATH``,
@@ -224,6 +228,7 @@ def provenance(**extra: str | None) -> str:
     row would otherwise carry a word that reads like a lookup failure. The
     commit already identifies that build.
     """
+    import aie.utils as aie_utils
 
     def pkg(name: str) -> str | None:
         try:
@@ -239,12 +244,21 @@ def provenance(**extra: str | None) -> str:
             ).stdout.strip()
         except (OSError, subprocess.CalledProcessError):
             commit = "unknown"
+    runtime_fields = {}
+    try:
+        runtime = aie_utils.DefaultNPURuntime
+        if runtime is not None:
+            runtime_fields = runtime.provenance()
+    except Exception:  # noqa: BLE001 - optional metadata must not fail a measurement
+        pass
     fields = {
         "commit": commit[:10],
         "peano": peano_version(),
         "mlir_aie": pkg("mlir_aie"),
         "kernel_sources": os.environ.get("MLIR_AIE_KERNEL_SOURCES"),
         "kernels": kernel_tree_digest(),
+        **runtime_fields,
+        "host": os.environ.get("RUNNER_NAME"),
         **extra,
     }
     return " | ".join(f"{k} {v}" for k, v in fields.items() if v)
