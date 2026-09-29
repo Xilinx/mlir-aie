@@ -435,6 +435,14 @@ def test_reference_rejects_non_positive_top_k(top_k):
         sample.sample_ref(logits, 1.0, 4, 0, k_max=top_k)
 
 
+@pytest.mark.parametrize("n53", [-1, 1 << 53])
+def test_reference_rejects_n53_out_of_range(n53):
+    logits = np.zeros(8, dtype=bfloat16)
+    for temperature in (0.0, 1.0):
+        with pytest.raises(ValueError, match="n53 .* is not in"):
+            sample.sample_ref(logits, temperature, 4, n53)
+
+
 @pytest.mark.parametrize("k_max", [1, 8, 64])
 def test_reference_clamps_top_k_to_k_max(k_max):
     # Distinct logits falling in index order: the top k are the first k, so

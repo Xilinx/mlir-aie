@@ -409,6 +409,9 @@ def sample_ref(
     ``k_max`` clamp it; without, ``top_k`` is taken as it is.
     """
     _positive("sample_ref", top_k=top_k)
+    n53 = int(n53)
+    if not 0 <= n53 < 1 << 53:
+        raise ValueError(f"n53 {n53} is not in [0, 2**53)")
     if k_max is not None:
         _positive("sample_ref", k_max=k_max)
         top_k = min(top_k, k_max)
