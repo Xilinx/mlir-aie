@@ -527,4 +527,5 @@ def test_docs_cleanup_preserves_kernel_checks_history():
         capture_output=True,
         check=True,
     )
-    assert result.stdout == b"legacy.html\0"
+    # bench/ was the series' first home; it is legacy now, and goes.
+    assert result.stdout == b"bench/npu1/index.html\0legacy.html\0"
