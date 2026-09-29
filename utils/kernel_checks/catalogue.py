@@ -133,7 +133,8 @@ def _declared(npu: str, cases_dir: Path) -> dict[str, dict[str, bool]]:
     """Every case of ``kernel_cases.py`` this NPU supports: ``factory -> {name: perf}``."""
     sys.path.insert(0, str(cases_dir))
     try:
-        from kernel_cases import CASES
+        # test/python/npu is put on the path above, at run time.
+        from kernel_cases import CASES  # pyright: ignore[reportMissingImports]
     finally:
         sys.path.pop(0)
     declared: dict[str, dict[str, bool]] = defaultdict(dict)
