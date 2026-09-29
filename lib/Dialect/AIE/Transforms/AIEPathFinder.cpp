@@ -716,7 +716,7 @@ void Pathfinder::dijkstraShortestPaths(
     ArrayRef<int> seeds, ArrayRef<double> seedCosts,
     std::optional<int> packetId, const llvm::BitVector *avoid,
     const llvm::DenseMap<int, llvm::BitVector> *branchAvoid,
-    const llvm::DenseSet<int> *stops) {
+    const llvm::DenseSet<int> *stops, ArrayRef<int> targets) {
   llvm::fill(distance, INF);
   llvm::fill(colors, static_cast<int8_t>(WHITE));
   llvm::fill(preds, -1);
@@ -734,9 +734,16 @@ void Pathfinder::dijkstraShortestPaths(
     colors[seed] = GRAY;
     Q.push(seed);
   }
+  // A settled state's distance and predecessor never change again.
+  SmallVector<int, 8> unsettled(targets);
   while (!Q.empty()) {
     int s = Q.top();
     Q.pop();
+    if (llvm::is_contained(unsettled, s)) {
+      llvm::erase(unsettled, s);
+      if (unsettled.empty())
+        break;
+    }
     if (stops && stops->count(s)) {
       colors[s] = BLACK;
       continue;
@@ -1230,8 +1237,9 @@ Pathfinder::findPaths(const int maxIterations) {
           });
         };
         // Dijkstra from the tree, less the states in `drop`, and not through
-        // those in `off`.
+        // those in `off`, until the states in `targets` are settled.
         auto search = [&](const llvm::DenseSet<int> &drop,
+                          ArrayRef<int> targets,
                           const llvm::DenseSet<int> &off = {}) {
           branchAvoid.clear();
           llvm::DenseMap<int, llvm::BitVector> onArbiter;
@@ -1270,7 +1278,7 @@ Pathfinder::findPaths(const int maxIterations) {
             blocked.insert(off.begin(), off.end());
           }
           dijkstraShortestPaths(seeds, seedCosts, packetId, avoid, &branchAvoid,
-                                off.empty() ? &stops : &blocked);
+                                off.empty() ? &stops : &blocked, targets);
         };
         // Trace the path Dijkstra found to `currId` back to the tree.
         auto trace = [&](int currId) {
@@ -1374,7 +1382,13 @@ Pathfinder::findPaths(const int maxIterations) {
           pending.clear();
         }
         while (!pending.empty()) {
-          search({});
+          SmallVector<int, 8> targets;
+          for (const PathEndPoint &p : pending)
+            targets.push_back(dstState(p));
+          for (const auto &[at, dsts] : joins)
+            if (!unjoinable.count(at) && llvm::all_of(dsts, isPending))
+              targets.push_back(at);
+          search({}, targets);
           // The nearest destination joins the tree next, or the nearest join
           // brings every destination below it.
           auto *nearest = llvm::min_element(
@@ -1384,9 +1398,9 @@ Pathfinder::findPaths(const int maxIterations) {
           PathEndPoint endPoint = *nearest;
           int currId = dstState(endPoint);
           if (llvm::DenseSet<int> off = splitOff(currId); !off.empty()) {
-            search({}, off);
+            search({}, targets, off);
             if (distance[currId] == INF)
-              search({});
+              search({}, targets);
           }
           const SmallVector<int, 4> *joined = nullptr;
           for (const auto &[at, dsts] : joins)
@@ -1429,7 +1443,7 @@ Pathfinder::findPaths(const int maxIterations) {
             }
             if (branch.empty())
               continue;
-            search(branch, splitOff(dst));
+            search(branch, dst, splitOff(dst));
             double cost = TREE_SEED_FACTOR *
                           treeHops[llvm::find(tree, top) - tree.begin()];
             for (int s = dst; s != top;) {

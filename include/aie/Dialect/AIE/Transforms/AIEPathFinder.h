@@ -425,12 +425,14 @@ private:
   // arbiter with flows in `avoid` cost CONFLICT_SHARE_PENALTY more, and from a
   // state in `branchAvoid`, as much again for the flows it maps to. A channel
   // a flow with the same `packetId` already shares costs as a full one. States
-  // in `stops` are reached but not left.
+  // in `stops` are reached but not left. The search ends once every state in
+  // `targets` is settled; only their `distance` and paths are final then.
   void dijkstraShortestPaths(
       llvm::ArrayRef<int> seeds, llvm::ArrayRef<double> seedCosts,
       std::optional<int> packetId, const llvm::BitVector *avoid = nullptr,
       const llvm::DenseMap<int, llvm::BitVector> *branchAvoid = nullptr,
-      const llvm::DenseSet<int> *stops = nullptr);
+      const llvm::DenseSet<int> *stops = nullptr,
+      llvm::ArrayRef<int> targets = {});
 
   // Flows to be routed
   std::vector<Flow> flows;
