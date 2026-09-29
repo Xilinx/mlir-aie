@@ -270,7 +270,12 @@ public:
   /// so the same holds for any two streams of such trees.
   bool conflict(size_t s, size_t t);
 
-  /// Why `s` and `t` conflict. Requires conflict(s, t), or (s, t) from
+  /// Whether a routing that puts packet streams `s` and `t` on one arbiter
+  /// anywhere has a hold cycle: they conflict, or the tree of one, stuck at a
+  /// receiver, waits on the other through trees that each block the next.
+  bool mustSeparate(size_t s, size_t t);
+
+  /// Why `s` and `t` conflict. Requires mustSeparate(s, t), or (s, t) from
   /// unavoidable().
   std::string explain(size_t s, size_t t);
 
@@ -292,6 +297,10 @@ public:
 private:
   bool blocks(size_t s, size_t t);
   bool related(size_t s, size_t t) const;
+  /// The packet trees tree `a` waits on through trees that each block the
+  /// next, each with the pair of streams, the first of the tree before it,
+  /// that it was reached by.
+  const llvm::DenseMap<size_t, std::pair<size_t, size_t>> &waitsFrom(size_t a);
   StreamDeadlockAnalysis &getAnalysis();
 
   DeviceOp device;
@@ -300,6 +309,7 @@ private:
   /// The streams of each tree, and the tree of each stream.
   std::vector<llvm::SmallVector<size_t, 2>> treeMembers;
   std::vector<size_t> treeOf;
+  std::map<size_t, llvm::DenseMap<size_t, std::pair<size_t, size_t>>> waits;
   std::optional<StreamDeadlockAnalysis> analysis;
 };
 

@@ -1730,7 +1730,7 @@ class Analysis:
         self.num_requested = len(self.streams)
         self.streams += trace_routed_streams(d)
         self._graph = None
-        self._stalls, self._blocks, self._conflicts = {}, {}, {}
+        self._stalls, self._blocks, self._conflicts, self._waits = {}, {}, {}, {}
         tree_ids, self.tree_members, self.tree_of = {}, [], []
         for i, s in enumerate(self.streams):
             tree = len(self.tree_members)
@@ -1860,6 +1860,41 @@ class Analysis:
             )
         return self._conflicts[(s, t)]
 
+    def waits_from(self, a):
+        """StreamConflicts::waitsFrom."""
+        if a not in self._waits:
+            reached, work = {}, deque([a])
+            while work:
+                u = work.popleft()
+                for g, members in enumerate(self.tree_members):
+                    if g == a or g in reached or self.streams[members[0]].pid is None:
+                        continue
+                    by = next(
+                        (
+                            (x, m)
+                            for x in self.tree_members[u]
+                            for m in members
+                            if self.blocks(x, m)
+                        ),
+                        None,
+                    )
+                    if by is not None:
+                        reached[g] = by
+                        work.append(g)
+            self._waits[a] = reached
+        return self._waits[a]
+
+    def must_separate(self, s, t):
+        """StreamConflicts::mustSeparate."""
+        if self.related(s, t):
+            return False
+        return (
+            self.blocks(s, t)
+            or self.blocks(t, s)
+            or self.tree_of[t] in self.waits_from(self.tree_of[s])
+            or self.tree_of[s] in self.waits_from(self.tree_of[t])
+        )
+
     def unavoidable(self):
         """StreamConflicts::unavoidable."""
         n = self.num_requested
@@ -1875,11 +1910,18 @@ class Analysis:
 
     def explain(self, s, t):
         self.graph
-        return (
-            self.explain_block(s, t)
-            if self.can_block(s, t)
-            else self.explain_block(t, s)
-        )
+        if self.can_block(s, t):
+            return self.explain_block(s, t)
+        if self.can_block(t, s):
+            return self.explain_block(t, s)
+        if self.tree_of[t] not in self.waits_from(self.tree_of[s]):
+            s, t = t, s
+        steps, g = [], self.tree_of[t]
+        while g != self.tree_of[s]:
+            x, m = self.waits_from(self.tree_of[s])[g]
+            steps.append(self.explain_block(x, m))
+            g = self.tree_of[x]
+        return " ".join(reversed(steps))
 
     def hold_cycle(self, routes):
         """StreamConflicts::holdCycle. routes[i] is [(tile, input, arbiter)]
@@ -2393,7 +2435,7 @@ def unroutable_arbiters(d, an, pins_hops):
                     cs
                 ) - k <= len(best):
                     return
-                nxt = [t for t in cs[k + 1 :] if an.conflict(s, t)]
+                nxt = [t for t in cs[k + 1 :] if an.must_separate(s, t)]
                 clique.append(s)
                 grow(nxt)
                 clique.pop()
@@ -4045,16 +4087,11 @@ def unroutable_case(seed, device):
         shape = "arbiters"
     hops_on, expect = False, "Unable to find a legal routing"
     if shape == "arbiters":
-        # On AIE1's wide array an undecided design can take the router minutes
-        # of detours to give up on, so it tries for one the model decides.
-        for _ in range(8 if aie1 else 1):
-            d = gen_unroutable_arbiters(
-                rng, wide[seed // 4 % len(wide)], rng.random() < 0.5
-            )
-            an = Analysis(d)
-            reason = unroutable_arbiters(d, an, pins_hops_fn(d, False))
-            if reason:
-                break
+        d = gen_unroutable_arbiters(
+            rng, wide[seed // 4 % len(wide)], rng.random() < 0.5
+        )
+        an = Analysis(d)
+        reason = unroutable_arbiters(d, an, pins_hops_fn(d, False))
         routable = False if reason else None
         expect = reason
     else:

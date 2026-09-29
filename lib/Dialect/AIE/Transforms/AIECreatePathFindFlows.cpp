@@ -856,9 +856,10 @@ SmallVector<TileID> cutTiles(const AIETargetModel &targetModel, TileID src,
 /// Packet streams take an arbiter at the tile they end at whatever the
 /// routing, and where `pinsHops` says hops cannot be circuit switched, or the
 /// stream is prioritized, at the tile they start at and every tile each of
-/// their routes passes too. Two that conflict pass any tile on different
-/// slave ports -- sharing one means they merged, unsafely, upstream -- so a set
-/// of them conflicting pairwise needs an arbiter apiece. Says why no routing
+/// their routes passes too. Two that must be kept apart
+/// (StreamConflicts::mustSeparate) pass any tile on different slave ports --
+/// sharing one means they merged, unsafely, upstream -- so a set of them that
+/// must be kept apart pairwise needs an arbiter apiece. Says why no routing
 /// can work if some tile has such a set larger than its free arbiters.
 std::optional<std::string>
 unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
@@ -901,7 +902,7 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
           llvm::seq(numMselsPerArbiter), [&, tileId = tileId](int m) {
             return !reserved.count({tileId, a + m * numArbiters});
           });
-    // Pairwise conflicting streams have distinct sources and destinations.
+    // Streams that must be kept apart have distinct sources and destinations.
     std::set<std::pair<TileID, Port>> srcs, dsts;
     for (size_t s : candidates) {
       srcs.insert({streams[s].src.tile, streams[s].src.port});
@@ -922,7 +923,7 @@ unroutableArbiters(DeviceOp device, StreamConflicts &conflicts,
           return;
         SmallVector<size_t, 8> next;
         for (size_t t : cands.drop_front(k + 1))
-          if (conflicts.conflict(s, t))
+          if (conflicts.mustSeparate(s, t))
             next.push_back(t);
         clique.push_back(s);
         grow(next);

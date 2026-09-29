@@ -1203,9 +1203,62 @@ bool StreamConflicts::conflict(size_t s, size_t t) {
   return !related(s, t) && (blocks(s, t) || blocks(t, s));
 }
 
+// The chains holdCycle follows from a tree stuck at a receiver to the trees
+// it waits on, which hold for any routing.
+const DenseMap<size_t, std::pair<size_t, size_t>> &
+StreamConflicts::waitsFrom(size_t a) {
+  auto [it, inserted] = waits.try_emplace(a);
+  DenseMap<size_t, std::pair<size_t, size_t>> &reached = it->second;
+  if (!inserted)
+    return reached;
+  std::deque<size_t> work{a};
+  while (!work.empty()) {
+    size_t u = work.front();
+    work.pop_front();
+    for (size_t g = 0; g < treeMembers.size(); g++) {
+      if (g == a || reached.contains(g) ||
+          !streams[treeMembers[g].front()].packetID)
+        continue;
+      auto by = [&]() -> std::optional<std::pair<size_t, size_t>> {
+        for (size_t x : treeMembers[u])
+          for (size_t m : treeMembers[g])
+            if (blocks(x, m))
+              return std::pair{x, m};
+        return std::nullopt;
+      }();
+      if (!by)
+        continue;
+      reached[g] = *by;
+      work.push_back(g);
+    }
+  }
+  return reached;
+}
+
+bool StreamConflicts::mustSeparate(size_t s, size_t t) {
+  if (related(s, t))
+    return false;
+  return blocks(s, t) || blocks(t, s) ||
+         waitsFrom(treeOf[s]).contains(treeOf[t]) ||
+         waitsFrom(treeOf[t]).contains(treeOf[s]);
+}
+
 std::string StreamConflicts::explain(size_t s, size_t t) {
   StreamDeadlockAnalysis &a = getAnalysis();
-  return a.canBlock(s, t) ? a.explainBlock(s, t) : a.explainBlock(t, s);
+  if (a.canBlock(s, t))
+    return a.explainBlock(s, t);
+  if (a.canBlock(t, s))
+    return a.explainBlock(t, s);
+  if (!waitsFrom(treeOf[s]).contains(treeOf[t]))
+    std::swap(s, t);
+  SmallVector<std::string> steps;
+  for (size_t g = treeOf[t]; g != treeOf[s];) {
+    auto [x, m] = waitsFrom(treeOf[s]).at(g);
+    steps.push_back(a.explainBlock(x, m));
+    g = treeOf[x];
+  }
+  std::reverse(steps.begin(), steps.end());
+  return llvm::join(steps, " ");
 }
 
 SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() {
