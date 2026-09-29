@@ -11,6 +11,8 @@ import threading
 import weakref
 
 import pytest
+from aie.dialects.aie import AIEDevice, device
+from aie.extras.context import mlir_mod_ctx
 from aie.iron.kernel import ExternalFunction, Kernel, KernelObject
 from aie.utils.compile import utils
 
@@ -19,6 +21,11 @@ def _function(name, **kwargs):
     return ExternalFunction(
         name, source_string="void reduce_max() {} void compute_max() {}", **kwargs
     )
+
+
+def _resolve_in_device(kernel):
+    with mlir_mod_ctx():
+        device(AIEDevice.npu2_1col)(lambda: kernel.resolve())
 
 
 def test_exported_symbols_share_recipe_and_owner():
@@ -42,7 +49,6 @@ def test_sibling_alone_rediscovers_source_owner_after_registry_reset(
     gc.collect()
     assert original_ref() is None
 
-    monkeypatch.setattr("aie.iron.kernel.external_func", lambda *a, **k: object())
     calls = []
 
     def compile_stub(output_path, **kwargs):
@@ -50,7 +56,7 @@ def test_sibling_alone_rediscovers_source_owner_after_registry_reset(
         Path(output_path).write_text("complete")
 
     monkeypatch.setattr(utils, "compile_cxx_core_function", compile_stub)
-    sibling.resolve()
+    _resolve_in_device(sibling)
     discovered = list(ExternalFunction._instances)
     assert len(discovered) == 1
     assert discovered[0].object_file is sibling.object_file
@@ -59,7 +65,7 @@ def test_sibling_alone_rediscovers_source_owner_after_registry_reset(
     assert calls[0]["symbol_name"] == ("reduce_max" if inline else "compute_max")
 
     ExternalFunction._instances.clear()
-    sibling.resolve()
+    _resolve_in_device(sibling)
     assert len(ExternalFunction._instances) == 1
 
 
@@ -131,7 +137,10 @@ def test_recipe_copies_input_lists_and_preserves_flag_order():
     includes.reverse()
     second = _function("reduce_max", compile_flags=flags, include_dirs=includes)
     assert first.compile_flags == ["-DX=1", "-UX"]
-    assert first.include_dirs == ["first", "second"]
+    assert first.include_dirs == [
+        str(Path("first").absolute()),
+        str(Path("second").absolute()),
+    ]
     assert first.object_file_name != second.object_file_name
     assert hash(first) != hash(second)
 

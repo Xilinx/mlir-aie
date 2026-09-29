@@ -19,10 +19,10 @@ Programmatic:
     # intermediates["bn3"] is the (H,W,C) tensor after bn3.
 
 Kernel sources (translated into numpy below):
-    aie_kernels/aie2/bottleneck/bn_conv2dk1_relu.cc  (1x1 + ReLU, 1x1 + avgpool)
-    aie_kernels/aie2/bottleneck/bn_conv2dk1_skip.cc  (1x1 + skip add)
-    aie_kernels/aie2/bottleneck/bn_conv2dk3_dw.cc    (DW 3x3, ui8 -> ui8)
-    aie_kernels/aie2/bottleneck/bn_conv2dk3.cc       (init: 3x3 stride-2)
+    aie_kernels/conv/bn_conv2dk1_relu.cc  (1x1 + ReLU, 1x1 + avgpool)
+    aie_kernels/conv/bn_conv2dk1_skip.cc  (1x1 + skip add)
+    aie_kernels/conv/bn_conv2dk3_dw.cc    (DW 3x3, ui8 -> ui8)
+    aie_kernels/conv/bn_conv2dk3.cc       (init: 3x3 stride-2)
 
 STATUS — reference outputs to compare against:
 

@@ -63,11 +63,10 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 // }
 // PROVIDE(main = core_3_3);
 
-LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
-                                                  raw_ostream &output,
-                                                  int tileCol, int tileRow,
-                                                  llvm::StringRef deviceName,
-                                                  bool probe) {
+LogicalResult xilinx::AIE::AIETranslateToLdScript(
+    ModuleOp module, raw_ostream &output, int tileCol, int tileRow,
+    llvm::StringRef deviceName, bool probe,
+    llvm::function_ref<std::string(llvm::StringRef)> resolveLinkFile) {
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
@@ -320,7 +319,10 @@ SECTIONS
         if (auto filesAttr = coreOp.getLinkFiles()) {
           // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
-            output << "INPUT(" << f.getValue() << ")\n";
+            output << "INPUT("
+                   << (resolveLinkFile ? resolveLinkFile(f.getValue())
+                                       : f.getValue().str())
+                   << ")\n";
           }
         } else if (auto fileAttr = coreOp.getLinkWith()) {
           // Deprecated fallback: core-level link_with was not migrated by

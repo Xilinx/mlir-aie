@@ -17,8 +17,6 @@
 #ifndef AIECC_COMMANDLINEOPTIONS_H
 #define AIECC_COMMANDLINEOPTIONS_H
 
-#include "AIECCVersion.h"
-
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
 #include "llvm/ADT/SmallString.h"
@@ -69,6 +67,11 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     "no-enforce-dma-queue-depth",
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
+
+inline cl::opt<bool> verifyEach(
+    "verify-each",
+    cl::desc("Verify the IR after every pass, not once per pass pipeline "
+             "(slower; names the pass that produced invalid IR)"));
 
 inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
@@ -487,6 +490,13 @@ inline cl::opt<bool> progress(
 inline cl::opt<bool> noProgress(
     "no-progress",
     cl::desc("Disable the default single-line execution progress output"));
+// Reuse each aie.device's compiled cores across builds; see DeviceCache.h.
+inline cl::opt<std::string> deviceCacheDir(
+    "device-cache",
+    cl::desc("Reuse the placement and linked core ELFs of any aie.device an "
+             "earlier build stored in this dir, and store the ones this build "
+             "compiles (Peano only)"),
+    cl::value_desc("dir"), cl::init(""));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--cut` plus a `manifest.json` describing them into <dir> after a
 // successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds
@@ -564,12 +574,6 @@ inline bool resolveOptions() {
 //===----------------------------------------------------------------------===//
 // Helper functions
 //===----------------------------------------------------------------------===//
-
-inline void printVersion(llvm::raw_ostream &os) {
-  os << "aiecc (mlir-aie declarative driver)\n";
-  os << "  git SHA:  " << AIECC_GIT_SHA << "\n";
-  os << "  compiled: " << __DATE__ << " " << __TIME__ << "\n";
-}
 
 // A positional argument is a host source file when it has a C/C++ extension.
 inline bool isHostSourceFile(llvm::StringRef name) {

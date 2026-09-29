@@ -495,8 +495,9 @@ class CallableDesign:
         time on first invocation.
 
         With both ``xclbin_path`` and ``inst_path`` set, writes artifacts
-        directly to those paths and bypasses the cache — useful for build
-        systems (e.g. Makefiles) that manage their own dependency tracking.
+        directly to those paths instead of the cache, rebuilding them only
+        when they are out of date — useful for build systems (e.g. Makefiles)
+        that name their own outputs.
         Static designs require both paths or neither. Active ``DispatchTime[T]``
         designs accept ``xclbin_path`` alone, return ``(xclbin_path, None)``, and
         reject ``inst_path`` and ``elf_path`` (there is no static instruction
@@ -524,39 +525,6 @@ class CallableDesign:
             full_elf_path=full_elf_path,
             pdi_path=pdi_path,
         )
-
-    def measure_compile(self, workdir) -> tuple[float, int, int, int]:
-        """Force a rebuild into ``workdir``, time it, and size the artifacts.
-
-        ``compile`` with explicit ``xclbin_path`` and ``inst_path`` bypasses
-        the on-disk cache by contract and keeps its intermediates in
-        ``<stem>.prj/`` next to the xclbin, so nothing about the cache layout
-        has to be guessed or deleted; a cached build this design uses
-        elsewhere is untouched.
-
-        Returns ``(seconds, xclbin_bytes, insts_bytes, sum_core_elf_bytes)``.
-        """
-        import time
-
-        build = Path(workdir) / "compile"
-        build.mkdir(parents=True, exist_ok=True)
-        t0 = time.perf_counter()
-        xclbin, insts = self.compile(
-            xclbin_path=build / "final.xclbin", inst_path=build / "insts.bin"
-        )
-        if xclbin is None:
-            raise RuntimeError("measure_compile(): compilation returned no image")
-        secs = time.perf_counter() - t0
-        # With --get-core-elfs aiecc writes one ELF per core, each in its own
-        # directory: "elfs_<core>/elfs_<core>.elf".
-        prj = build / "final.prj"
-        elf = (
-            sum(p.stat().st_size for p in prj.glob("elfs_*/*.elf"))
-            if prj.is_dir()
-            else 0
-        )
-        insts_bytes = Path(insts).stat().st_size if insts else 0
-        return secs, Path(xclbin).stat().st_size, insts_bytes, elf
 
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
         """Return one cache-directory PDI, or ``None`` if none is present.

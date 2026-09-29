@@ -11,6 +11,7 @@ Tests that exercise compile() or end-to-end kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
+import dataclasses
 import json
 import os
 import subprocess
@@ -23,9 +24,12 @@ import pytest
 
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
+from aie.iron import kernels
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+from aie.utils.compile.jit._hash import _compute_artifact_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
@@ -549,10 +553,11 @@ def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("generator_kind", ["callable", "path"])
 @pytest.mark.parametrize("tool", ["aiecc", "peano_cxx", "host_cxx"])
 @pytest.mark.parametrize("change", ["mtime", "size", "path"])
 def test_artifact_hash_tracks_active_compilers(
-    monkeypatch, tmp_path, dynamic, tool, change
+    monkeypatch, tmp_path, dynamic, generator_kind, tool, change
 ):
     import os
 
@@ -562,7 +567,11 @@ def test_artifact_hash_tracks_active_compilers(
     compiler = tmp_path / tool
     compiler.write_text("compiler")
     monkeypatch.setattr(config, f"{tool}_path", lambda: str(compiler))
-    generator = _gemm_gen()
+    generator = (
+        _gemm_gen() if generator_kind == "callable" else tmp_path / "design.mlir"
+    )
+    if isinstance(generator, Path):
+        generator.write_text("module {}")
 
     before = _compute_artifact_hash(generator, [], [], True, dynamic)
     stat = compiler.stat()
@@ -579,13 +588,89 @@ def test_artifact_hash_tracks_active_compilers(
         compiler = replacement
     after = _compute_artifact_hash(generator, [], [], True, dynamic)
 
-    assert (before != after) == (tool != "host_cxx" or dynamic)
+    assert (before != after) == (
+        tool != "host_cxx" or (dynamic and generator_kind == "callable")
+    )
+
+
+def test_artifact_hash_names_the_kernel_source_tree(monkeypatch):
+    # A before/after run compiles one design against two kernel trees in one
+    # process; the factories read the tree only once the generator runs.
+    generator = _gemm_gen()
+    monkeypatch.delenv("MLIR_AIE_KERNEL_SOURCES", raising=False)
+    installed = _compute_artifact_hash(generator, [], [], True)
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", "/trees/base")
+    base = _compute_artifact_hash(generator, [], [], True)
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", "/trees/change")
+    change = _compute_artifact_hash(generator, [], [], True)
+    assert len({installed, base, change}) == 3
+
+
+def test_artifact_hash_reads_the_kernel_source_tree(monkeypatch, tmp_path):
+    # A candidate edited in place under one tree must not reuse its old build.
+    generator = _gemm_gen()
+    source = tmp_path / "aie_kernels" / "k.cc"
+    source.parent.mkdir()
+    source.write_text("int k;")
+    monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(tmp_path))
+    before = _compute_artifact_hash(generator, [], [], True)
+    source.write_text("int k2;")
+    assert _compute_artifact_hash(generator, [], [], True) != before
+
+
+_ADD_STACK = {"bytes": 1024}
+
+
+def _add_with_table_stack():
+    fn = kernels.add()
+    fn.contract = dataclasses.replace(fn.contract, stack_bytes=_ADD_STACK["bytes"])
+    return fn
+
+
+def test_a_library_design_is_keyed_by_its_kernels_stack(monkeypatch):
+    # The stack can come from a table outside the factory's code, which is all
+    # the key reads of the factory; a stale key reuses a core with the old stack.
+    set_current_device(NPU2Col1())
+    try:
+        before = kd.design(_add_with_table_stack).compilable._compute_cache_hash()
+        monkeypatch.setitem(_ADD_STACK, "bytes", 2048)
+        after = kd.design(_add_with_table_stack).compilable._compute_cache_hash()
+    finally:
+        set_current_device(None)
+    assert before != after
 
 
 def test_hash_for_path_generator_uses_path_string():
     d1 = CompilableDesign(Path("/a/design.mlir"))
     d2 = CompilableDesign(Path("/b/design.mlir"))
     assert hash(d1) != hash(d2)
+
+
+@pytest.mark.parametrize("use_cache", [False, True])
+@pytest.mark.parametrize("current_outputs", [False, True])
+def test_explicit_outputs_discard_objects_when_cache_disabled(
+    tmp_path, use_cache, current_outputs
+):
+    from aie.utils.compile.jit import _manifest
+
+    kernel_dir = tmp_path / "work"
+    kernel_dir.mkdir()
+    obj = kernel_dir / "kernel.o"
+    obj.write_bytes(b"previous compilation")
+    output = tmp_path / "design.xclbin"
+    output.write_bytes(b"previous output")
+    _manifest.record(kernel_dir, [], [])
+    if current_outputs:
+        _manifest.record_outputs(kernel_dir, "build-key", [output])
+    assert _manifest.is_valid(kernel_dir)
+
+    design = CompilableDesign(_gemm_gen()).specialize(use_cache=use_cache)
+    reused = design._reuse_explicit_outputs(
+        kernel_dir, "build-key", {"xclbin": output}, shared=False
+    )
+
+    assert reused == (use_cache and current_outputs)
+    assert obj.exists() == use_cache
 
 
 def test_hash_for_existing_source_file_tracks_content(tmp_path):
@@ -1666,7 +1751,12 @@ def test_mlir_path_compile_forwards_include_paths_and_stages_objects(
     calls = []
 
     def fake_compile_external_kernels(
-        funcs, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+        funcs,
+        kernel_dir,
+        target_arch,
+        include_dirs=None,
+        embed_bitcode=False,
+        object_cache=None,
     ):
         assert not embed_bitcode
         calls.append((list(funcs), include_dirs))

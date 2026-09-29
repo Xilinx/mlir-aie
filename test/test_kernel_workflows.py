@@ -3,8 +3,9 @@
 #
 # RUN: %pytest %s
 
-"""Host-only publication regression tests; no compiled aie package required."""
+"""Execute workflow shell behavior on synthetic inputs; no NPU required."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -20,197 +21,194 @@ def workflow(name):
     return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
 
 
-def benchmark_steps(job):
-    return [
-        step
-        for step in job["steps"]
-        if step.get("uses", "").startswith("benchmark-action/")
-    ]
-
-
-@pytest.mark.parametrize(
-    "filename,compute,static",
-    [
-        ("benchmarkKernels.yml", "bench", "false"),
-    ],
-)
-def test_parallel_compute_has_one_main_only_publisher(filename, compute, static):
-    config = workflow(filename)
-    assert set(config["on"]) == {"workflow_dispatch", "schedule", "pull_request"}
-    # A change to the workflow that runs the checks must itself run them.
-    assert filename in " ".join(config["on"]["pull_request"]["paths"]) or (
-        filename == "benchmarkKernels.yml"
-    )
-    assert config["permissions"]["contents"] == "read"
-    job = config["jobs"][compute]
-    assert len(job["strategy"]["matrix"]["include"]) == 2
-    if "concurrency" in job:
-        assert "${{ matrix." in job["concurrency"]["group"]
-        assert job["concurrency"]["cancel-in-progress"] == "false"
-        assert job["concurrency"]["queue"] == "max"
-    for step in job["steps"]:
-        assert "git push" not in step.get("run", "")
-        assert "git show" not in step.get("run", "")
-        assert not step.get("uses", "").startswith("actions/cache/save@")
-    for step in benchmark_steps(job):
-        assert step["with"]["save-data-file"] == "false"
-        assert "external-data-json-path" in step["with"]
-    publisher = config["jobs"]["publish"]
-    assert publisher["needs"] == compute
-    assert "github.ref == 'refs/heads/main'" in publisher["if"]
-    assert "github.event_name != 'pull_request'" in publisher["if"]
-    assert publisher["uses"] == "./.github/workflows/publishKernelResults.yml"
-    assert publisher["with"]["static"] == static
-    assert "strategy" not in publisher
-    assert "concurrency" not in publisher
-    assert publisher["permissions"]["contents"] == "write"
-
-
-def test_publishers_share_one_branch_lock_and_push_one_complete_batch():
-    publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
-    docs = workflow("generateDocs.yml")
-    assert (
-        publisher["concurrency"]
-        == docs["concurrency"]
-        == {
-            "group": "gh-pages-publish",
-            "cancel-in-progress": "false",
-            "queue": "max",
-        }
-    )
-    assert "strategy" not in publisher
-    assert "github.ref == 'refs/heads/main'" in publisher["if"]
-    steps = publisher["steps"]
-    records = benchmark_steps(publisher)
-    assert len(records) == 4
-    for step in records:
-        options = step["with"]
-        assert options["auto-push"] == "false"
-        assert options["skip-fetch-gh-pages"] == "true"
-        # Every record writes whichever branch the caller named, so a
-        # rehearsal cannot land half its series on the real one.
-        assert options["gh-pages-branch"] == "${{ inputs.branch }}"
-        assert options["comment-on-alert"] == "false"
-    assert [step["if"] for step in records[2:]] == ["inputs.static"] * 2
-    pushes = [step for step in steps if "git push" in step.get("run", "")]
-    assert len(pushes) == 1
-    push_index = steps.index(pushes[0])
-    fetch_index = next(
-        i for i, step in enumerate(steps) if "git fetch" in step.get("run", "")
-    )
-    assert all(fetch_index < steps.index(step) < push_index for step in records)
-    baseline_index = next(
-        i for i, step in enumerate(steps) if "git show" in step.get("run", "")
-    )
-    assert baseline_index > push_index
-    caches = [
-        step for step in steps if step.get("uses", "").startswith("actions/cache/save@")
-    ]
-    assert len(caches) == 2
-    assert all(step["with"]["path"] == "baseline" for step in caches)
-    assert all(steps.index(step) > baseline_index for step in caches)
-    downloads = [
-        step
-        for step in steps
-        if step.get("uses", "").startswith("actions/download-artifact@")
-    ]
-    assert [step["with"]["path"] for step in downloads] == [
-        "results/npu1",
-        "results/npu2",
-    ]
-
-
-def test_dispatch_filter_is_passed_as_data_not_shell_source():
-    job = workflow("benchmarkKernels.yml")["jobs"]["bench"]
-    step = next(step for step in job["steps"] if step.get("id") == "bench")
-    assert step["env"]["ONLY"] == "${{ github.event.inputs.only }}"
-    assert "${{ github.event.inputs.only }}" not in step["run"]
-    assert '${ONLY:+-k "$ONLY"}' in step["run"]
-
-
-def test_benchmark_preflight_sets_memlock_and_reuses_one_examine():
-    job = workflow("benchmarkKernels.yml")["jobs"]["bench"]
-    step = next(step for step in job["steps"] if step.get("id") == "preflight")
-    run = step["run"]
-    assert "sudo prlimit -lunlimited --pid $$" in run
-    assert run.index("sudo prlimit -lunlimited --pid $$") < run.index(
-        "XRT_SMI=$(command -v xrt-smi"
-    )
-    assert "XRT_SMI=$(command -v xrt-smi || command -v xrt-smi.exe)" in run
-    assert 'EXAMINE=$("$XRT_SMI" examine)' in run
-    assert "printf '%s\\n' \"$EXAMINE\"" in run
-    assert "BDF=$(printf '%s\\n' \"$EXAMINE\"" in run
-    assert 'sudo "$XRT_SMI" configure -d "$BDF" --pmode "$BENCH_PMODE"' in run
-    assert '"$XRT_SMI" examine -d "$BDF" --report platform' in run
-    assert "xrt-smi examine | grep -oE" not in run
-
-
-@pytest.mark.parametrize(
-    "filename,compute",
-    [("benchmarkKernels.yml", "bench")],
-)
-def test_source_builds_initialize_submodules(filename, compute):
-    steps = workflow(filename)["jobs"][compute]["steps"]
-    checkout = next(
-        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
-    )
-    assert checkout["with"]["submodules"] in ("true", "recursive")
-    build = next(
-        step for step in steps if "build-mlir-aie-from-wheels.sh" in step.get("run", "")
-    )
-    assert steps.index(checkout) < steps.index(build)
-
-
-@pytest.mark.parametrize("step_id", ["correctness", "bench"])
-def test_benchmark_uses_built_package(step_id):
-    steps = workflow("benchmarkKernels.yml")["jobs"]["bench"]["steps"]
-    run = next(step["run"] for step in steps if step.get("id") == step_id)
-    assert (
-        run.index("sudo prlimit -lunlimited --pid $$")
-        < run.index("source aie-venv/bin/activate")
-        < run.index("source utils/env_setup.sh mlir_aie")
-        < run.index("python -m pytest")
-    )
-
-
-def test_docs_cleanup_preserves_benchmark_history():
-    steps = workflow("generateDocs.yml")["jobs"]["build-docs"]["steps"]
-    cleanup = next(
-        step["run"] for step in steps if "git ls-files -z" in step.get("run", "")
-    )
-    filters = cleanup.split("git ls-files -z", 1)[1].split("| xargs", 1)[0]
-    result = subprocess.run(
-        ["bash", "-c", "cat " + filters.rstrip().rstrip("\\")],
-        input=b"bench/npu1/data.js\0bench/static/aie2/data.js\0dev/index.html\0legacy.html\0",
-        capture_output=True,
-        check=True,
-    )
-    assert result.stdout == b"legacy.html\0"
-
-
-def test_rehearsing_the_publish_cannot_touch_the_real_series():
-    """The branch override has to be inert everywhere but the branch itself.
-
-    A rehearsal publishes to a scratch branch to prove the path works. Two
-    things would let it reach past that: the baseline caches are restored by
-    key prefix, so a rehearsal writing one would hand its numbers to the next
-    PR comparison; and the lock is what keeps this workflow from pushing the
-    branch while the docs workflow is pushing it, so it has to stay a name
-    both can agree on rather than one derived from the input.
-    """
-    config = workflow("publishKernelResults.yml")
-    branch = config["on"]["workflow_call"]["inputs"]["branch"]
-    assert branch["default"] == "gh-pages"
-    assert branch["required"] == "false"
-
-    job = config["jobs"]["publish"]
-    assert job["concurrency"]["group"] == "gh-pages-publish"
-
-    saves = [
-        step
-        for step in job["steps"]
+def test_baseline_cache_key_is_unique_per_attempt_and_restorable():
+    publish = workflow("publishKernelResults.yml")["jobs"]["publish"]["steps"]
+    report = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
+    saved = [
+        step["with"]
+        for step in publish
         if step.get("uses", "").startswith("actions/cache/save@")
     ]
-    assert len(saves) == 2
-    for step in saves:
-        assert step["if"] == "inputs.branch == 'gh-pages'"
+    restored = [
+        step["with"]
+        for step in report
+        if step.get("uses", "").startswith("actions/cache/restore@")
+    ]
+    assert saved and restored
+    for save in saved:
+        assert "${{ github.run_id }}" in save["key"]
+        assert "${{ github.run_attempt }}" in save["key"]
+        assert any(
+            save["key"].startswith(prefix) and save["path"] == restore["path"]
+            for restore in restored
+            for prefix in restore["restore-keys"].splitlines()
+            if prefix
+        )
+
+
+@pytest.mark.parametrize("only", ["", "softmax", "softmax and not large", "$(false)"])
+def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path):
+    steps = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
+    run = next(step["run"] for step in steps if step.get("id") == "perf")
+    command = run[run.index("python -m pytest") :].split("2>&1", 1)[0]
+    result = subprocess.run(
+        ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
+        cwd=tmp_path,
+        env={**os.environ, "ONLY": only, "REQUIRED_PMODE": "any"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    args = result.stdout.splitlines()
+    if only:
+        assert args[-2:] == ["-k", f"({only}) or test_measurement_is_sane"]
+    else:
+        assert "-k" not in args
+    assert args[args.index("--pmode") + 1] == "any"
+
+
+# Synthetic release listing: duplicate platform wheels and a rebuilt commit.
+NIGHTLY_PAGE = """
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026010301+aaaaaaaa-py3-none-manylinux_2_28_x86_64.whl">
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026010301+aaaaaaaa-py3-none-win_amd64.whl">
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026010101+bbbbbbbb-py3-none-win_amd64.whl">
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026010201+bbbbbbbb-py3-none-win_amd64.whl">
+<a href="/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-22.0.0.2026010101+bbbbbbbc-py3-none-win_amd64.whl">
+"""
+PINNED = "llvm-aie==22.0.0.2026010301+aaaaaaaa"
+WHEEL = "https://example.com/llvm_aie-1.0-py3-none-any.whl"
+
+
+def run_peano_step(peano, tmp_path):
+    step = next(
+        step
+        for step in workflow("nightlyKernelChecks.yml")["jobs"]["checks"]["steps"]
+        if "PEANO" in step.get("env", {})
+    )
+    (tmp_path / "aie-venv/bin").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "aie-venv/bin/activate").write_text("")
+    (tmp_path / "page.html").write_text(NIGHTLY_PAGE)
+    stubs = (
+        "curl() { cat page.html; }\n"
+        'python() { if [ "$3" = show ]; then echo "Version: stub"; '
+        'else printf "%s\\n" "$@" > pip-args; fi; }\n'
+    )
+    result = subprocess.run(
+        ["bash", "-eo", "pipefail", "-c", stubs + step["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PEANO": peano,
+            "NIGHTLY": step["env"]["NIGHTLY"],
+            "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+        },
+        capture_output=True,
+        text=True,
+    )
+    args = tmp_path / "pip-args"
+    return result, args.read_text().splitlines() if args.exists() else None
+
+
+@pytest.mark.parametrize(
+    "peano,spec",
+    [
+        ("22.0.0.2026010301+aaaaaaaa", PINNED),
+        ("aaaaaaa", PINNED),
+        ("a" * 40, PINNED),
+        ("bbbbbbbb", "llvm-aie==22.0.0.2026010201+bbbbbbbb"),
+        (WHEEL, WHEEL),
+    ],
+)
+def test_dispatch_installs_the_requested_peano(peano, spec, tmp_path):
+    result, args = run_peano_step(peano, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert args[-1] == spec
+    assert "--force-reinstall" in args
+
+
+@pytest.mark.parametrize(
+    "peano",
+    ["deadbeef", "bbbbbbb", "$(false)", "1.0; true", "http://example.com/x.whl"],
+)
+def test_dispatch_rejects_an_unresolvable_peano(peano, tmp_path):
+    result, args = run_peano_step(peano, tmp_path)
+    assert result.returncode != 0
+    assert "::error::" in result.stdout
+    assert args is None
+
+
+def run_step(run, cwd):
+    output = cwd / "github_output"
+    output.write_text("")
+    subprocess.run(
+        ["bash", "-eo", "pipefail", "-c", run],
+        cwd=cwd,
+        env={**os.environ, "GITHUB_OUTPUT": str(output)},
+        check=True,
+    )
+    return dict(line.split("=", 1) for line in output.read_text().splitlines())
+
+
+def write_meta(path, pmode):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"preflight": {"pmode": pmode}}))
+
+
+def test_only_turbo_mode_is_published(tmp_path):
+    publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
+    run = next(step["run"] for step in publisher["steps"] if step.get("id") == "pmode")
+    write_meta(tmp_path / "results/npu1/meta.json", "turbo")
+    write_meta(tmp_path / "results/npu2/meta.json", "performance")
+    # Failed legs may have metadata but no measurements.
+    assert run_step(run, tmp_path) == {}
+    (tmp_path / "results/npu1/perf.json").write_text("[]")
+    assert run_step(run, tmp_path) == {"npu1": "turbo"}
+    (tmp_path / "results/npu2/perf.json").write_text("[]")
+    with pytest.raises(subprocess.CalledProcessError):
+        run_step(run, tmp_path)
+    write_meta(tmp_path / "results/npu2/meta.json", "turbo")
+    assert run_step(run, tmp_path) == {"npu1": "turbo", "npu2": "turbo"}
+    write_meta(tmp_path / "results/npu2/meta.json", None)
+    with pytest.raises(subprocess.CalledProcessError):
+        run_step(run, tmp_path)
+
+
+def test_report_uses_restored_baseline_and_updates_summary(tmp_path):
+    steps = workflow("nightlyKernelChecks.yml")["jobs"]["report"]["steps"]
+    results = tmp_path / "results/npu2"
+    results.mkdir(parents=True)
+    write_meta(results / "meta.json", "performance")
+    (results / "perf.json").write_text(
+        json.dumps([{"name": "synthetic/1/i8/cycles", "unit": "cycles", "value": 150}])
+    )
+    baseline = {
+        "id": "baseline-run",
+        "pmode": "performance",
+        "rows": {"synthetic/1/i8": {"cycles": {"unit": "cycles", "value": 100}}},
+    }
+    (tmp_path / "utils").symlink_to(WORKFLOWS.parents[1] / "utils")
+    summary = tmp_path / "summary.md"
+    env = {
+        **os.environ,
+        "GITHUB_STEP_SUMMARY": str(summary),
+        "GITHUB_SERVER_URL": "https://github.com",
+        "GITHUB_REPOSITORY": "example/synthetic",
+        "GITHUB_RUN_ID": "7",
+    }
+    for step in steps:
+        if step.get("uses", "").startswith("actions/cache/restore@"):
+            if "npu2-" in step["with"]["key"]:
+                (tmp_path / "baseline").mkdir()
+                (tmp_path / "baseline/latest.json").write_text(json.dumps(baseline))
+        elif "run" in step and "gh api" not in step["run"]:
+            subprocess.run(
+                ["bash", "-eo", "pipefail", "-c", step["run"]],
+                cwd=tmp_path,
+                env=env,
+                check=True,
+            )
+    text = summary.read_text()
+    assert text == (tmp_path / "report.md").read_text()
+    assert "1 regressed" in text
+    assert "synthetic/1/i8" in text
+    assert "https://github.com/example/synthetic/actions/runs/7" in text

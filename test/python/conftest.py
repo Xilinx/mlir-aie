@@ -13,20 +13,17 @@ own conftest.py).
 import pytest
 from aie.iron.device import NPU2Col1
 from aie.iron.kernel import ExternalFunction
-from aie.iron.kernels import _common as _kernels_common
 from aie.utils.hostruntime import set_current_device
 
 
 @pytest.fixture(autouse=True)
 def _isolate_extern_state():
-    """Reset process-wide ExternalFunction registry + _make_extern cache
-    between tests so cross-test pollution doesn't trip auto-prefix-on-
-    collision logic or _name assertions in name-variant tests."""
+    """Reset the process-wide ExternalFunction registry between tests so
+    cross-test pollution doesn't trip auto-prefix-on-collision logic or
+    _name assertions in name-variant tests."""
     ExternalFunction._instances.clear()
-    _kernels_common._EXTERN_CACHE.clear()
     yield
     ExternalFunction._instances.clear()
-    _kernels_common._EXTERN_CACHE.clear()
 
 
 @pytest.fixture

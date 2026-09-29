@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 from contextlib import contextmanager
+import re
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -43,11 +45,10 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "benchmark: times a kernel and records benchmark-action rows; select "
-        "with -m benchmark",
+        "perf: times a kernel and records performance rows; select with -m perf",
     )
-    config._bench_rows = []
-    config._bench_meta = {}
+    config._perf_rows = []
+    config._perf_meta = {}
 
 
 def _running_on_hrx() -> bool:
@@ -70,12 +71,17 @@ def pytest_addoption(parser):
         help="random seeds per case in the extensive kernel sweep",
     )
     parser.addoption(
-        "--bench-out",
+        "--perf-out",
         default=None,
-        help="write benchmark-action rows here, if the session passes",
+        help="write the performance rows here, if the NPU checks pass",
     )
     parser.addoption(
-        "--bench-meta", default=None, help="write run provenance and any failures here"
+        "--perf-meta", default=None, help="write run provenance and any failures here"
+    )
+    parser.addoption(
+        "--correctness-results",
+        default=None,
+        help="only publish cases checked without failures in this extensive JUnit report",
     )
     parser.addoption("--warmup", type=int, default=10, help="untimed iterations")
     parser.addoption("--iters", type=int, default=50, help="timed iterations")
@@ -88,17 +94,23 @@ def pytest_addoption(parser):
         "--no-cycles", action="store_true", help="skip the traced cycle-count run"
     )
     parser.addoption(
-        "--no-compile", action="store_true", help="skip the cold-rebuild measurement"
+        "--baseline-sources",
+        metavar="DIR",
+        default=None,
+        help="also measure every case with its kernels from DIR (a checkout root, "
+        "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words; the pair "
+        "goes to --perf-meta and the terminal summary, the rows stay this tree's",
     )
 
 
 @pytest.fixture
-def benchmark(request):
-    """Record the benchmark-action rows a timed test produces.
+def record_perf(request):
+    """Record the performance rows a timed test produces.
 
-    The row name is ``<case>/<metric>``, which is the series key
-    ``benchmark-action`` charts on gh-pages; ``test_benchmark_series_names.py``
-    pins the whole set, so a renamed case restarts a chart and has to say so.
+    The row name is ``<case>/<metric>``, which is the series key the published
+    history (``utils/kernel_checks/publish.py``) charts on gh-pages;
+    ``test_perf_series_names.py`` pins the whole set, so a renamed case
+    restarts a chart and has to say so.
     """
     config = request.config
 
@@ -108,43 +120,96 @@ def benchmark(request):
             "unit": unit,
             "value": value,
             # Read now, not at fixture setup: preflight fills this in.
-            "extra": config._bench_meta.get("provenance", ""),
+            "extra": config._perf_meta.get("provenance", ""),
         }
         if span:
             row["range"] = span
-        config._bench_rows.append(row)
+        config._perf_rows.append(row)
 
     return record
 
 
-def pytest_sessionfinish(session, exitstatus):
-    """Write the benchmark rows, but only from a session that passed.
+def _checked_cases(path):
+    """Read the extensive sweep, excluding a case if any input or seed failed."""
+    tests = list(ET.parse(path).iter("testcase"))
+    if not tests:
+        raise ValueError("correctness report contains no tests")
+    checked, rejected, failed = set(), set(), []
+    for test in tests:
+        name = test.get("name", "")
+        match = re.fullmatch(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]", name)
+        bad = test.find("failure") is not None or test.find("error") is not None
+        if bad:
+            if not match:
+                raise ValueError(f"unmapped correctness failure: {name}")
+            rejected.add(match[1])
+            failed.append(f"{test.get('classname', '')}::{name}")
+        elif match and test.find("skipped") is None:
+            checked.add(match[1])
+    return checked - rejected, failed
 
-    Timings from a run where some kernel returned the wrong answer are not
-    worth charting, and a partial file would silently drop series. pytest's
-    own exit status is the gate, so there is no second tally to keep in step
-    with it. Meta is written either way -- when nothing was measured, that
-    file is the only record of why.
+
+def pytest_sessionfinish(session, exitstatus):
+    """Write the performance rows once the NPU checks have passed.
+
+    A kernel that returns the wrong answer records nothing -- its test raises
+    before timing. When given the extensive correctness report, also exclude
+    cases that failed an edge input or were not checked there. A failed
+    kernel's series shows a gap for this run. What a partial file
+    cannot survive is a bad device: if preflight (power mode) or the
+    measurement sanity check failed, no number from the run is trustworthy
+    and nothing is written. Meta is written either way and lists the failed
+    tests, so a missing series or an empty run is explained.
     """
     import json
     from pathlib import Path
 
     config = session.config
-    rows = getattr(config, "_bench_rows", [])
-    meta = getattr(config, "_bench_meta", {})
+    rows = getattr(config, "_perf_rows", [])
+    meta = getattr(config, "_perf_meta", {})
+    reporter = config.pluginmanager.get_plugin("terminalreporter")
+    stats = reporter.stats if reporter else {}
+    failed = sorted({r.nodeid for k in ("failed", "error") for r in stats.get(k, [])})
+    if correctness := config.getoption("--correctness-results"):
+        try:
+            checked, correctness_failed = _checked_cases(correctness)
+            rows = [r for r in rows if r["name"].rsplit("/", 1)[0] in checked]
+            failed = sorted(set(failed) | set(correctness_failed))
+        except (OSError, ET.ParseError, ValueError) as exc:
+            meta["correctness_error"] = str(exc)
+            rows = []
 
-    if meta_path := config.getoption("--bench-meta"):
+    if meta_path := config.getoption("--perf-meta"):
         meta["exitstatus"] = int(exitstatus)
         meta["n_rows"] = len(rows)
+        meta["failed"] = failed
         Path(meta_path).write_text(json.dumps(meta, indent=1))
 
-    if out := config.getoption("--bench-out"):
-        if exitstatus == 0 and rows:
+    npu_ok = "preflight" in meta and meta.get("measurement_sane") is True
+    completed = exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED)
+    if out := config.getoption("--perf-out"):
+        if npu_ok and completed and rows:
             Path(out).write_text(json.dumps(rows, indent=1))
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Print the ``--baseline-sources`` comparison, one line per case."""
+    baseline = getattr(config, "_perf_meta", {}).get("baseline")
+    if not baseline:
+        return
+    tr = terminalreporter
+    tr.section(f"baseline {baseline['sources']} -> this tree")
+    tr.write_line(f"{'case':<48} {'cycles':>17} {'npu_us min':>19}  words")
+    for name, c in baseline["cases"].items():
+        cycles = "{} -> {}".format(*c["cycles"])
+        npu = "{} -> {}".format(*c["npu_us_min"])
+        words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
+        tr.write_line(f"{name:<48} {cycles:>17} {npu:>19}  {words}")
 
 
 def _device_generation() -> str | None:
     """``"npu1"`` / ``"npu2"`` for the device the tests will run on, or None."""
+    from aie.iron.kernels._common import ARCH_TRAITS
     from aie.utils import get_current_device
     from aie.utils.compile.utils import resolve_target_arch
 
@@ -159,7 +224,7 @@ def _device_generation() -> str | None:
         arch = resolve_target_arch(device)
     except Exception:  # noqa: BLE001 - unrecognized device: nothing to skip on
         return None
-    return "npu2" if arch == "aie2p" else "npu1"
+    return ARCH_TRAITS[arch].device
 
 
 def pytest_collection_modifyitems(config, items):

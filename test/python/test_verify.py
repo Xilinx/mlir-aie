@@ -9,7 +9,7 @@
 
 import numpy as np
 import pytest
-from aie.utils.verify import poisoned, count_mismatches, nearly_equal
+from aie.utils.verify import count_mismatches, nearly_equal, poisoned
 
 # ---------------------------------------------------------------------------
 # nearly_equal
@@ -170,6 +170,144 @@ def test_bf16_negative_ulp_direction():
     assert bf16_ulp_distance(*zeros)[0] == 0
 
 
+def test_ulps_atol_floor_admits_a_flushed_subnormal():
+    """A subnormal the device flushed to zero meets the floor, not the ulps."""
+    smallest_normal = 2.0**-126
+    ref = np.array([smallest_normal / 8, 1.0], np.float32)
+    got = np.array([0.0, 1.0], bfloat16)  # the subnormal came back flushed
+
+    assert not compare(got, ref, Tolerance.bf16_ulps(1)).ok
+    assert compare(got, ref, Tolerance.bf16_ulps(1, atol=smallest_normal)).ok
+    # The floor is not a blanket pass: a normal value still owes its ulp.
+    assert not compare(
+        np.array([0.0, 2.0], bfloat16),
+        ref,
+        Tolerance.bf16_ulps(1, atol=smallest_normal),
+    ).ok
+
+
+@pytest.mark.parametrize("sign", [-1, 1])
+@pytest.mark.parametrize("range_frac", [None, 2.0**-127])
+def test_ulps_atol_floor_excludes_the_smallest_normal(sign, range_frac):
+    smallest_normal = 2.0**-126
+    ref = np.array([sign * smallest_normal, 1.0], np.float32)
+    got = np.array([0.0, 1.0], bfloat16)
+    tol = Tolerance(ulps=1, atol=smallest_normal, range_frac=range_frac)
+    assert not compare(got, ref, tol).ok
+    ref[0] = sign * (smallest_normal - 2.0**-133)
+    assert compare(got, ref, tol).ok
+
+
+def test_ulps_range_floor_remains_inclusive_with_atol():
+    ref = np.array([256.0, 0.0], np.float32)
+    got = np.array([256.0, 1.0], bfloat16)
+    assert compare(got, ref, Tolerance(ulps=0, atol=1.0, range_frac=1 / 256)).ok
+    assert not compare(got, ref, Tolerance.bf16_ulps(0, atol=1.0)).ok
+
+
+def test_range_frac_admits_an_output_its_own_terms_cancelled():
+    """The case the floor exists for: a dot product that cancelled to near zero.
+
+    Its error is set by the operands, not by the sum, so an elementwise
+    relative bound reads it as entirely wrong while its neighbours pass.
+    """
+    ref = np.array([1000.0, -1000.0, 0.01], np.float32)
+    got = np.array([1000.0, -1000.0, 0.31], np.float32)  # 0.3 absolute, everywhere
+
+    assert not compare(got, ref, Tolerance.relative(0.05)).ok
+    # 0.3 is 3e-4 of the 1000 range -- the same absolute error the two large
+    # outputs carry and are forgiven for.
+    assert compare(got, ref, Tolerance.relative(0.05, range_frac=1e-3)).ok
+
+
+def test_range_frac_follows_the_range_where_a_fixed_atol_cannot():
+    """One fraction holds at both scales; one atol can only suit one of them."""
+    tol = Tolerance.relative(0.0, range_frac=1e-3)
+    for scale in (34.0, 3.4e9):
+        ref = np.array([scale, 0.0], np.float32)
+        assert compare(np.array([scale, 5e-4 * scale], np.float32), ref, tol).ok
+        assert not compare(np.array([scale, 2e-3 * scale], np.float32), ref, tol).ok
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.float32, bfloat16])
+def test_range_frac_scales_each_call_independently(dtype):
+    ref = np.array([[1024, 0], [4, 0], [0, 0]], dtype)
+    got = np.array([[1024, 1], [4, 1], [0, 1]], dtype)
+    tol = Tolerance(
+        ulps=0 if dtype == bfloat16 else None, rtol=0.0, range_frac=1 / 1024
+    )
+    assert compare(got, ref, tol).ok
+    verdict = compare(got, ref, tol, range_axis=1)
+    assert not verdict.ok
+    assert verdict.n_checked == 6
+    assert verdict.n_mismatch == 2
+    assert verdict.first_bad_index == 3
+    got[1:, 1] = 0
+    assert compare(got, ref, tol, range_axis=1).ok
+
+
+def test_range_frac_per_call_handles_nonfinite_and_empty_references():
+    tol = Tolerance.relative(0.0, range_frac=1 / 1024)
+    ref = np.array([[np.inf, np.nan], [4, 0]], np.float32)
+    assert compare(ref, ref, tol, range_axis=1).ok
+    got = ref.copy()
+    got[1, 1] = 1
+    verdict = compare(got, ref, tol, range_axis=1)
+    assert not verdict.ok
+    assert "max_abs_err/max|expected|=0.25" in verdict.detail
+    for shape in ((0, 2), (2, 0)):
+        empty = np.empty(shape, np.float32)
+        assert compare(empty, empty, tol, range_axis=1).ok
+
+
+def test_range_frac_scales_to_the_reference_not_the_output():
+    """A kernel returning something large must not thereby widen its own bound.
+
+    One wild element is inside the mismatch budget, so what decides the verdict
+    is the second: under a bound scaled to ``got`` its 0.5 would sit far below
+    the floor and the run would pass on the strength of the wild element alone.
+    """
+    ref = np.array([1.0, 1.0, 0.0], np.float32)
+    got = np.array([1e6, 1.0, 0.5], np.float32)
+    tol = Tolerance.relative(0.0, range_frac=1e-3, max_mismatch_frac=1 / 3)
+
+    assert compare(got[1:], ref[1:], tol).ok is False  # 0.5 misses on its own
+    assert not compare(got, ref, tol).ok
+
+
+def test_range_frac_reports_the_fraction_it_measured():
+    ref = np.array([100.0, 0.0], np.float32)
+    got = np.array([100.0, 5.0], np.float32)
+    detail = compare(got, ref, Tolerance.relative(0.0, range_frac=1e-3)).detail
+    assert "max_abs_err/max|expected|=0.05" in detail
+    assert "range_frac=0.001" in detail
+
+
+def test_range_frac_applies_to_ulps_and_integer_kinds():
+    ref = np.array([256.0, 0.0], np.float32)
+    got = np.array([256.0, 1.0], bfloat16)  # 1.0 is many ulps from 0
+    assert not compare(got, ref, Tolerance.bf16_ulps(1)).ok
+    assert compare(got, ref, Tolerance(ulps=1, range_frac=0.01)).ok
+
+    ints = (np.array([256, 2], np.int32), np.array([256, 0], np.int32))
+    assert not compare(*ints, Tolerance.relative(0.0, 1.0)).ok
+    assert compare(*ints, Tolerance.relative(0.0, range_frac=0.01)).ok
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.float32])
+def test_range_frac_is_inclusive_and_accepts_equal_zeros(dtype):
+    ref = np.array([1000, 0, 0], dtype)
+    got = np.array([1000, 1, 0], dtype)
+    assert compare(got, ref, Tolerance.relative(0.0, range_frac=0.001)).ok
+
+
+def test_range_frac_needs_a_tolerance_to_be_a_floor_under():
+    with pytest.raises(ValueError, match="admits nothing"):
+        Tolerance(range_frac=1e-3)
+    with pytest.raises(ValueError, match="must be positive"):
+        Tolerance(rtol=0.1, range_frac=0.0)
+
+
 def test_ulps_tolerance_rejects_non_bf16_output():
     with pytest.raises(ValueError, match="bfloat16"):
         compare(np.zeros(2, np.float32), np.zeros(2), Tolerance.bf16_ulps(1))
@@ -230,6 +368,36 @@ def test_verdict_detail_names_the_evidence():
     tol = Tolerance.relative(0.01, note="measured on npu2, 2026-09")
     v = compare(np.array([2.0], np.float32), np.array([1.0], np.float32), tol)
     assert not v.ok and "measured on npu2" in v.detail
+
+
+def test_a_bound_tolerance_holds_each_element_to_its_own_bound():
+    tol = Tolerance.bounded(lambda x: np.abs(x) / 8, note="half-width band")
+    assert tol.kind == "bound"
+    ref = np.array([1.0, 8.0, -4.0, np.inf], np.float32).astype(bfloat16)
+    x = np.array([0.0, 8.0, 16.0, 1.0])
+    bound = tol.bound(x)
+    got = np.array([1.0, 9.0, -6.0, np.inf], np.float32).astype(bfloat16)
+    assert compare(got[1:], ref[1:], tol, bound=bound[1:])
+    # The first element's input admits nothing; its neighbours' slack does
+    # not carry over.
+    v = compare(got + np.array([0.5, 0, 0, 0], np.float32), ref, tol, bound=bound)
+    assert not v and v.n_mismatch == 1 and "abs_err/bound=inf" in v.detail
+    v = compare(ref.copy(), ref, tol, bound=bound)
+    assert v
+    v = compare(got[:3] * 2, ref[:3], tol, bound=bound[:3])
+    assert not v and "half-width band" in v.detail
+    # Non-finite values still have to match, whatever the bound says.
+    assert not compare(np.zeros(1, bfloat16), ref[3:], tol, bound=np.array([np.inf]))
+
+
+def test_a_bound_tolerance_needs_its_bound_and_stands_alone():
+    tol = Tolerance.bounded(np.abs)
+    with pytest.raises(ValueError, match="bound evaluated"):
+        compare(np.zeros(2, np.float32), np.zeros(2, np.float32), tol)
+    with pytest.raises(ValueError, match="floating-point"):
+        compare(np.zeros(2, np.int32), np.zeros(2, np.int32), tol, bound=1)
+    with pytest.raises(ValueError, match="whole comparison"):
+        Tolerance(bound=np.abs, atol=1e-3)
 
 
 def test_integers_honor_an_lsb_slack_only_under_a_relative_tolerance():

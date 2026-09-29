@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import logging
+from pathlib import Path
 
 import numpy as np
 
-from .parse import parse_trace
+from .parse import DEFAULT_KERNEL, get_trace_slices, parse_trace_slices
+
+logger = logging.getLogger(__name__)
 
 
 class TraceConfig:
@@ -85,14 +89,64 @@ class TraceConfig:
             buf = np.pad(buf, (0, expected_words - len(buf)))
         return buf
 
-    def trace_to_json(self, mlir_file: str, output_name: str = "trace.json"):
-        """Wrap the parse_trace.py utility to write trace JSON."""
+    def trace_to_json(
+        self,
+        mlir_file: str,
+        output_name: str = "trace.json",
+        colshift=None,
+        kernel: str = DEFAULT_KERNEL,
+    ) -> list[str]:
+        """Write the trace in ``trace_file`` as trace-event JSON for Perfetto.
+
+        A sequence that runs several traced designs shares one buffer between
+        them (see ``get_trace_slices``). Each slice holding trace data is then
+        written to its own file beside ``output_name``, named
+        ``<stem>_<slice index>_<device>_<sequence><suffix>``; otherwise the
+        whole buffer is written to ``output_name``.
+
+        A slice whose last word holds data probably filled before tracing
+        stopped, so its trace is truncated; that is logged as a warning.
+
+        Args:
+            mlir_file: the lowered MLIR the design was built from, with the
+                trace configuration (``physical_mlir_path``).
+            output_name: the JSON file, or the name the per-slice files derive
+                from.
+            colshift: column shift for ``parse_trace``; None aligns the columns
+                automatically.
+            kernel: the ``"device:sequence"`` that was dispatched.
+
+        Returns:
+            The paths written, in buffer order.
+        """
         trace_buffer = self.read_trace()
 
         with open(mlir_file, "r") as f:
             mlir_module_str = f.read()
 
-        trace_events = parse_trace(trace_buffer, mlir_module_str)
-
-        with open(output_name, "w") as f:
-            json.dump(trace_events, f, indent=2)
+        output = Path(output_name)
+        index_at = {
+            s["offset"]: i
+            for i, s in enumerate(get_trace_slices(mlir_module_str, kernel))
+        }
+        written = []
+        for entry, trace_events in parse_trace_slices(
+            trace_buffer, mlir_module_str, colshift, kernel
+        ):
+            if entry is None:
+                start, size, target = 0, len(trace_buffer) * 4, output
+            else:
+                start, size = entry["offset"], entry["size"]
+                name = f"{index_at[start]}_{entry['device']}_{entry['sequence']}"
+                target = output.with_name(f"{output.stem}_{name}{output.suffix}")
+            if trace_buffer[(start + size) // 4 - 1]:
+                logger.warning(
+                    "%s: the trace filled all %d bytes of its buffer and is "
+                    "likely truncated; raise the trace size",
+                    target,
+                    size,
+                )
+            with open(target, "w") as f:
+                json.dump(trace_events, f, indent=2)
+            written.append(str(target))
+        return written

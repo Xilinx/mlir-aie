@@ -94,6 +94,16 @@ class KernelResult(ABC):
 class HostRuntime(ABC):
     """An abstract class for a generic host runtime."""
 
+    def provenance(self) -> dict[str, str]:
+        """Return runtime identity and any available driver version."""
+        from ..probe import amdxdna_version
+
+        fields = {"runtime": type(self).__name__}
+        driver = amdxdna_version()
+        if driver:
+            fields["xdna"] = driver
+        return fields
+
     def check_device_consistency(self):
         """Check if the overridden device is loadable on the runtime device.
 
@@ -279,6 +289,15 @@ class HostRuntime(ABC):
         Timing measurements depend on it: a core clocked in a power-saving
         mode is not comparable to one in ``performance`` mode. Backends that
         can read it override this; the base implementation cannot.
+        """
+        return None
+
+    def device_name(self) -> str | None:
+        """Return the NPU's model name (e.g. ``NPU Strix``), or ``None`` if unknown.
+
+        ``device()`` gives only the generation; benchmark provenance needs the
+        part, since hosts of one generation still differ. Backends that can
+        read it override this; the base implementation cannot.
         """
         return None
 
