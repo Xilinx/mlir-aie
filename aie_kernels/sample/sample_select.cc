@@ -6,17 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 // One column's half of top-k sampling, see sample_combine.cc. The slice
-// arrives SAMPLE_SELECT_PASSES times, SAMPLE_CHUNK logits per call; or, when
-// a chunk is the whole slice, once, and one call makes every pass over it.
-// The state (a worker-local buffer, zero before the first call) is back
-// where it started after the last call, so the next position needs no reset.
-//   pass 0: tau, the k-th largest key with multiplicity, and the largest key
-//   pass 1: keys > tau as (index, key), keys == tau as bitmap bits
-//
-// Pass 0 keeps a buffer of candidate keys and a threshold no larger than the
-// k-th largest key seen so far: a vector none of whose keys exceeds it costs
-// one compare, and the buffer is cut back to its k largest when it fills.
-// Keys are compared as int16 in their signed order, sample_key - 0x8000.
+// arrives SAMPLE_SELECT_PASSES times, SAMPLE_CHUNK logits per call, or, when
+// a chunk is the whole slice, once, and one call makes every pass. Pass 0
+// finds tau, the k-th largest key with multiplicity, and the largest key;
+// pass 1 writes keys > tau as (index, key) and keys == tau as bitmap bits.
+// The state (a worker-local buffer, zero before the first call) is back where
+// it started after the last call, so the next position needs no reset.
 
 #include <aie_api/aie.hpp>
 
@@ -132,6 +127,9 @@ void keep(select_state *s, keys_v keys, uint32_t bits) {
   maybe_cut(s);
 }
 
+// Pass 0. The buffer keeps candidate keys, and thr stays no larger than the
+// k-th largest key seen so far: a vector with no key above it costs one
+// compare, and the buffer is cut back to its k largest when it fills.
 void scan(select_state *s, const uint16_t *x) {
   constexpr int32_t vectors = SAMPLE_CHUNK / LANES;
   for (int32_t v = 0; v < vectors; ++v) {
