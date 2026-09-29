@@ -253,18 +253,15 @@ class external_func(FuncOp):
                     f"signed 32-bit integer (<= {2**31 - 1}), got "
                     f"{stack_size_override}."
                 )
-        if outputs is None:
-            outputs = []
-        for i, ty in enumerate(inputs):
-            new_type = try_convert_np_type_to_mlir_type(ty)
-            if new_type != ty:
-                inputs[i] = new_type
-        for i, ty in enumerate(outputs):
-            new_type = try_convert_np_type_to_mlir_type(ty)
-            if new_type != ty:
-                outputs[i] = new_type
+        # Convert into new lists rather than in place: `inputs` belongs to the
+        # caller, and a Kernel holds on to it as the declaration it was built
+        # with (see Kernel.arg_types).
+        mlir_inputs = [try_convert_np_type_to_mlir_type(ty) for ty in inputs]
+        mlir_outputs = [try_convert_np_type_to_mlir_type(ty) for ty in outputs or []]
         super().__init__(
-            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
+            name=name,
+            type=FunctionType.get(mlir_inputs, mlir_outputs),
+            visibility=visibility,
         )
         if link_with is not None:
             self.operation.attributes["link_with"] = StringAttr.get(link_with)
@@ -1280,8 +1277,21 @@ class TileOp(TileOp):
         return tile_like_is_shim_tile(self.operation)
 
 
-def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+def tile(
+    col,
+    row,
+    *,
+    loc=None,
+    ip=None,
+    packet_type=0,
+    packet_id=None,
+):
+    tile_op = TileOp(col=col, row=row, loc=loc, ip=ip)
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 @_cext.register_operation(_Dialect, replace=True)
@@ -1309,16 +1319,27 @@ class LogicalTileOp(LogicalTileOp):
 
 
 def logical_tile(
-    tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None
+    tile_type,
+    *,
+    col=None,
+    row=None,
+    loc=None,
+    ip=None,
+    packet_type=0,
+    packet_id=None,
 ):
-    return LogicalTileOp(
+    tile_op = LogicalTileOp(
         tile_type=tile_type,
         col=col,
         row=row,
-        allocation_scheme=allocation_scheme,
         loc=loc,
         ip=ip,
     )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 # BDChainOp

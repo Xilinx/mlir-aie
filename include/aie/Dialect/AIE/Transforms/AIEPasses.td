@@ -48,49 +48,55 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIEAssignCoreLinkFilesPass()";
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
   ];
 }
 
 def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
   let summary = "Place logical tiles onto physical AIE tiles";
   let description = [{
-    Sequential placer algorithm places core tiles in a
-    column-major order and places fifo-connected Shim/Mem tiles
-    near its core tiles. One or more aie.logical_tile operation is mapped
-    to one aie.tile.
+    The sequential placer maps cores column-major and FIFO-connected Shim/Mem
+    tiles nearby, allowing multiple logical tiles per physical tile.
+    It checks DMA demand; memory, locks and spill-dependent channel eligibility
+    are checked by `aie-objectfifo-allocate` after splitting. Allocation failures
+    do not trigger re-placement or undo merges.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
 
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 
-  let options = [
-    Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
-           /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
-           "Placement algorithm to use (default: sequential_placer)",
-           "llvm::cl::values("
-             "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
-                        "\"sequential_placer\", \"Sequential column-major placement\"), "
-             "clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "
-                        "\"sa_placer\", \"Simulated annealing placement\"))">,
-    Option<"clCoresPerCol", "cores-per-col", "int",
-           /*default=*/"-1",
-           "Limit number of cores per column (-1 = no limit). "
-           "Spreads cores across columns for better trace packet routing.">,
-    Option<"clMergeLogicalTiles", "merge-logical-tiles", "bool",
+  let options =
+      [Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
+              /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
+              "Placement algorithm to use (default: sequential_placer)",
+              "llvm::cl::values("
+              "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
+              "\"sequential_placer\", \"Sequential column-major placement\"), "
+              "clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "
+              "\"sa_placer\", \"Simulated annealing placement\"))">,
+       Option<"clCoresPerCol", "cores-per-col", "int",
+              /*default=*/"-1",
+              "Limit number of cores per column (-1 = no limit). "
+              "Spreads cores across columns for better trace packet routing.">,
+       Option<"clMergeLogicalTiles", "merge-logical-tiles", "bool",
+              /*default=*/"true",
+              "When true (default), allow multiple non-core (ShimNOCTile / "
+              "MemTile) aie.logical_tile ops to share one physical aie.tile "
+              "if combined DMA channel demand fits. When false, each non-core "
+              "aie.logical_tile is pinned to its own physical tile. CoreTile "
+              "placement is unaffected.">,
+       Option<
+           "clSpreadUnanchoredTiles", "spread-unanchored-tiles", "bool",
            /*default=*/"true",
-           "When true (default), allow multiple non-core (ShimNOCTile / "
-           "MemTile) aie.logical_tile ops to share one physical aie.tile "
-           "if combined DMA channel demand fits. When false, each non-core "
-           "aie.logical_tile is pinned to its own physical tile. CoreTile "
-           "placement is unaffected.">,
-    Option<"clSASeed", "sa-seed", "int",
-           /*default=*/"1",
-           "Random seed for SA placer (0 = non-deterministic).">
-  ];
+           "When true (default), a non-core aie.logical_tile with no CoreTile "
+           "peers to derive a routing centroid from is ranked by current DMA "
+           "load rather than by distance to column 0. Affects only designs "
+           "with no core anchors (e.g. pure DMA passthrough); CoreTile "
+           "placement and anchored non-core placement are unaffected.">,
+       Option<"clSASeed", "sa-seed", "int",
+              /*default=*/"1",
+              "Random seed for SA placer (0 = non-deterministic).">];
 }
 
 def AIEPrepareBuffers : Pass<"aie-prepare-buffers", "DeviceOp"> {
@@ -127,10 +133,29 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 
-  let options = [
-    Option<"clAllocScheme", "alloc-scheme", "std::string", /*default=*/"",
-           "Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.">,
+  // Placement is a bounded search. A change that degrades it without breaking
+  // it outright moves these rather than failing anything, so they are worth
+  // watching: see --mlir-pass-statistics.
+  let statistics =
+      [Statistic<"numTilesSearched", "tiles-needing-search",
+                 "Tiles where the first ranked placement did not work out">,
+       Statistic<"numBacktracks", "backtracks",
+                 "Placements undone and retried">,
+       Statistic<"numBudgetExhausted", "budget-exhausted",
+                 "Tiles abandoned at the placement budget">,
   ];
+}
+
+def AIENormalizeDmaBdDims : Pass<"aie-normalize-dma-bd-dims", "DeviceOp"> {
+  let summary = "Strip degenerate dimensions from DMA BD descriptors.";
+  let description = [{
+    Removes size-1 dimensions from `aie.dma_bd` ops whose strides never
+    take effect.  After stripping, if the remaining dimensions describe a
+    contiguous row-major access, the BD is flattened to a single linear
+    transfer.
+  }];
+
+  let constructor = "xilinx::AIE::createAIENormalizeDmaBdDimsPass()";
 }
 
 def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "DeviceOp"> {
@@ -166,19 +191,18 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
     Optionally, tileCol and tileRow can specify a single core to export
 
   }];
-  let options = [
-    Option<"deviceName", "device", "std::string", /*default=*/"\"\"", "Device to generate code for">,
-    Option<"tileCol", "tilecol", "unsigned",
-           /*default=*/"-1", "X coordinate of tile to generate code for">,
-    Option<"tileRow", "tilerow", "unsigned",
-           /*default=*/"-1", "Y coordinate of tile to generate code for">
-  ];
+  let options =
+      [Option<"deviceName", "device", "std::string", /*default=*/"\"\"",
+              "Device to generate code for">,
+       Option<"tileCol", "tilecol", "unsigned",
+              /*default=*/"-1", "X coordinate of tile to generate code for">,
+       Option<"tileRow", "tilerow", "unsigned",
+              /*default=*/"-1", "Y coordinate of tile to generate code for">];
 
   let constructor = "xilinx::AIE::createAIECoreToStandardPass()";
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "mlir::memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
   ];
 }
 
@@ -212,8 +236,9 @@ def AIEAssignBufferDescriptorIDs : Pass<"aie-assign-bd-ids", "DeviceOp"> {
 }
 
 def AIEObjectFifoLiveness : Pass<"aie-objectfifo-liveness", "DeviceOp"> {
-  let summary = "Flag a specific under-buffered coupled-multicast objectFIFO "
-                "class that hangs at runtime (not a general deadlock detector).";
+  let summary =
+      "Flag a specific under-buffered coupled-multicast objectFIFO "
+      "class that hangs at runtime (not a general deadlock detector).";
   let description = [{
     A coupled multicast (broadcast) objectFIFO whose consumers back-pressure the
     producer forms a dependency cycle. When the producer must re-acquire a slot
@@ -246,7 +271,8 @@ def AIEObjectFifoLiveness : Pass<"aie-objectfifo-liveness", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
-def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp"> {
+def AIENormalizeAddressSpaces
+    : Pass<"aie-normalize-address-spaces", "DeviceOp"> {
   let summary = "Remove non-default address spaces";
   let description = [{
     Early in the flow, it is convenient to represent multiple memories using different
@@ -257,32 +283,41 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp">
   }];
 
   let constructor = "xilinx::AIE::createAIENormalizeAddressSpacesPass()";
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "mlir::memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
   ];
 }
 
 def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
-  let summary = "Route aie.flow and aie.packetflow operations through switchboxes";
+  let summary =
+      "Route aie.flow and aie.packetflow operations through switchboxes";
   let description = [{
     Uses Pathfinder congestion-aware algorithm.
     Each aie.flow is replaced with aie.connect operation.
     Each aie.packetflow is replace with the set of aie.amsel, aie.masterset
     and aie.packet_rules operations.
+
+    An arbiter holds its grant until end of packet, so two slave ports sharing
+    one arbiter serialize even on different master ports. Where that can
+    deadlock, amsel allocation separates them; with no independent arbiter free
+    it keeps the sharing and warns. Only oversubscribed switchboxes are
+    affected.
+
+    This reads buffer descriptor lengths from the DMA bodies (aie.mem,
+    aie.memtile_dma, aie.shim_dma), so run the pass after those exist. Channels
+    with no body here (e.g. shim channels, once the runtime sequence is lowered
+    away) are simply left to the remaining rules.
   }];
 
   let constructor = "xilinx::AIE::createAIEPathfinderPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
 
-  let options = [
-    Option<"clRouteCircuit", "route-circuit", "bool", /*default=*/"true",
-            "Flag to enable aie.flow lowering.">,
-    Option<"clRoutePacket", "route-packet", "bool", /*default=*/"true",
-            "Flag to enable aie.packetflow lowering.">,
+  let options =
+      [Option<"clRouteCircuit", "route-circuit", "bool", /*default=*/"true",
+              "Flag to enable aie.flow lowering.">,
+       Option<"clRoutePacket", "route-packet", "bool", /*default=*/"true",
+              "Flag to enable aie.packetflow lowering.">,
   ];
 }
 
@@ -295,16 +330,30 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
     by aie.flow) or a packet-switched connection (represensted by
     aie.packetflow).  This pass is primarily used for testing automatic
     routing.
+
+    By default every configured connection is lifted, including partial flows
+    whose source or destination is a switchbox port other than a core or DMA.
+    Set `keep-partial-flows=false` to restrict recovery to flows
+    that begin at a core/DMA and end on a core/DMA.
   }];
 
   let constructor = "xilinx::AIE::createAIEFindFlowsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+
+  let options =
+      [Option<"clKeepPartialFlows", "keep-partial-flows", "bool",
+              /*default=*/"true",
+              "Also recover flows that do not start or end at a core or DMA.">,
+       Option<
+           "clRemoveLifted", "remove-lifted", "bool", /*default=*/"true",
+           "Remove the interconnect configuration (connects, packet rules, "
+           "mastersets, amsels, wires) that was lifted into recovered flows, "
+           "leaving only configuration that could not be lifted.">,
   ];
 }
 
-
-def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
+def AIEVectorTransferLowering
+    : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
   let summary = "Lower vector.transfer_read/write to vector.load/store for AIE";
   let description = [{
     This pass lowers vector.transfer_read operations to vector.load + vector.broadcast
@@ -315,14 +364,15 @@ def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp">
   }];
 
   let constructor = "xilinx::AIE::createAIEVectorTransferLoweringPass()";
-  let options = [
-    Option<"maxTransferRank", "max-transfer-rank", "unsigned",
-           /*default=*/"-1", "Maximum vector rank to lower. -1 means no limit.">,
+  let options = [Option<"maxTransferRank", "max-transfer-rank", "unsigned",
+                        /*default=*/"-1",
+                        "Maximum vector rank to lower. -1 means no limit.">,
   ];
 }
 
 def AIEVectorToPointerLoops : Pass<"aie-vector-to-pointer-loops", "DeviceOp"> {
-  let summary = "Transform vector load/store loops to use ptr dialect for explicit pointer arithmetic";
+  let summary = "Transform vector load/store loops to use ptr dialect for "
+                "explicit pointer arithmetic";
   let description = [{
     This pass transforms scf.for loops containing vector.load/store operations
     with loop-carried index arguments to use ptr dialect operations.
@@ -351,8 +401,10 @@ def AIEVectorToPointerLoops : Pass<"aie-vector-to-pointer-loops", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEVectorToPointerLoopsPass()";
 }
 
-def AIEHoistVectorTransferPointers : Pass<"aie-hoist-vector-transfer-pointers", "mlir::ModuleOp"> {
-  let summary = "Hoist vector transfer pointer computations out of scf.for loops in aie.core regions";
+def AIEHoistVectorTransferPointers
+    : Pass<"aie-hoist-vector-transfer-pointers", "mlir::ModuleOp"> {
+  let summary = "Hoist vector transfer pointer computations out of scf.for "
+                "loops in aie.core regions";
   let description = [{
     This pass optimizes vector transfer operations inside scf.for loops by hoisting
     pointer computations. It operates on aie.core regions within aie.device operations.
@@ -417,14 +469,33 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
 def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
   let summary = "Give pools and endpoints their buffers, locks and channels";
   let description = [{
-    Fill in the resources a pool and endpoint design leaves open: the buffers
-    holding a pool's objects, the locks guarding each segment, and the DMA
-    channel each endpoint drives. `aie.route` becomes `aie.flow`, and
-    a shim endpoint gains the `aie.shim_dma_allocation` the runtime resolves.
+    Allocate missing pool buffers, synchronization locks and endpoint channels;
+    lower routes to circuit/packet flows and emit shim runtime allocations.
+    Existing buffers, locks and pinned channels stay fixed.
 
-    Whatever is already written down is kept, so hand-placed buffers,
-    hand-written locks and pinned channels all survive; each is filled in only
-    where it is absent.
+    MemTile memory checks count each fixed buffer once (including aliased tile
+    coordinates), even without new allocations. Pool sizes use BufferOp's
+    DataLayout byte sizing, including BFP. Planning shares the basic sequential
+    address layout, including alignment and pinned ranges; bank constraints
+    remain with address assignment.
+
+    Buffers may spill to accessible neighboring MemTiles. Locks must be reachable
+    by their core and DMA users: per selected segment for counting pairs, per
+    pool for binary locks. Generated locks prefer their nominal tile but may move
+    to reachable tiles with capacity. DMA channel eligibility includes every
+    accessed buffer and lock.
+
+    Preserve successful largest-first plans. On channel exhaustion, retry with
+    selected pools' buffers and generated locks local to the accessing endpoint.
+    If that search fails, prioritize on-home-tile DMA demand within each MemTile,
+    choosing the largest eligible object across homes. Both orders check memory,
+    locks and channels, with at most 64 locality combinations per distinct order.
+
+    This is bounded allocation, not a placement-time ban on spilling or a proof
+    of infeasibility on failure; it does not undo tile-placement decisions.
+    Before placement, each access must have a reachable physical pair compatible
+    with known coordinates and tile types. These pairwise checks do not prove a
+    jointly feasible placement.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";
@@ -530,16 +601,15 @@ def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
 }
 
 def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
-  let summary = "Lower aie.cascade_flow operations through `aie.configure_cascade` operations";
+  let summary = "Lower aie.cascade_flow operations through "
+                "`aie.configure_cascade` operations";
   let description = [{
     Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade`
     operations.
   }];
 
   let constructor = "xilinx::AIE::createAIELowerCascadeFlowsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
 }
 
 def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
@@ -549,12 +619,11 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIEAssignTileCtrlIDsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
-  let options = [
-    Option<"clColumnWiseUniqueIDs", "column-wise-unique-ids", "bool", /*default=*/"true",
-            "Flag to generate controller ids only unique within each column. Otherwise globally unique.">,
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+  let options = [Option<"clColumnWiseUniqueIDs", "column-wise-unique-ids",
+                        "bool", /*default=*/"true",
+                        "Flag to generate controller ids only unique within "
+                        "each column. Otherwise globally unique.">,
   ];
 }
 
@@ -567,9 +636,7 @@ def AIEGenerateColumnControlOverlay
   }];
 
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
   let options =
       [Option<
            "clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string",
@@ -602,13 +669,12 @@ def AIETraceToConfig : Pass<"aie-trace-to-config", "DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIETraceToConfigPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
 }
 
 def AIETraceRegPackWrites : Pass<"aie-trace-pack-reg-writes", "DeviceOp"> {
-  let summary = "Pack multiple register field writes into single register writes";
+  let summary =
+      "Pack multiple register field writes into single register writes";
   let description = [{
     Packs multiple aie.trace.reg operations that write to the same register
     into a single aie.trace.reg operation with a combined mask and value.
@@ -632,9 +698,7 @@ def AIETraceRegPackWrites : Pass<"aie-trace-pack-reg-writes", "DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIETraceRegPackWritesPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
 }
 
 def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
@@ -665,28 +729,28 @@ def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIEInsertTraceFlowsPass()";
 
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 
-  let options = [
-    Option<"clShimChannel", "shim-channel", "int", "1",
-           "S2MM DMA channel to use for trace (default: 1)">,
-    Option<"clDefaultBdId", "default-bd-id", "int", "15",
-           "Buffer descriptor ID for trace (default: 15)">,
-    Option<"clPacketIdStart", "packet-id-start", "int", "1",
-           "Starting packet ID for trace flows (default: 1)">,
-    Option<"clTraceBurstLength", "burst-length", "int", "64",
-           "DMA burst length for trace transfers (default: 64 bytes)">,
-    Option<"clDistributeChannels", "distribute-channels", "bool", "false",
-           "Distribute traces across multiple S2MM channels per shim tile">,
-    Option<"clLateralRouting", "lateral-routing", "bool", "false",
+  let options =
+      [Option<"clShimChannel", "shim-channel", "int", "1",
+              "S2MM DMA channel to use for trace (default: 1)">,
+       Option<"clDefaultBdId", "default-bd-id", "int", "15",
+              "Buffer descriptor ID for trace (default: 15)">,
+       Option<"clPacketIdStart", "packet-id-start", "int", "1",
+              "Starting packet ID for trace flows (default: 1)">,
+       Option<"clTraceBurstLength", "burst-length", "int", "64",
+              "DMA burst length for trace transfers (default: 64 bytes)">,
+       Option<"clDistributeChannels", "distribute-channels", "bool", "false",
+              "Distribute traces across multiple S2MM channels per shim tile">,
+       Option<
+           "clLateralRouting", "lateral-routing", "bool", "false",
            "Route traces to spare columns to minimize data path perturbation">,
-    Option<"clLateralTargetCol", "lateral-target-col", "int", "-1",
-           "Force lateral routing target column (-1 = auto-detect nearest spare)">
-  ];
+       Option<"clLateralTargetCol", "lateral-target-col", "int", "-1",
+              "Force lateral routing target column (-1 = auto-detect nearest "
+              "spare)">];
 }
 
 #endif

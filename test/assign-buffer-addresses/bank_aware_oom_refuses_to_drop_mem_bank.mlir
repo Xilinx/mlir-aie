@@ -5,17 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-// "req"'s own bank pin is satisfiable. Bank-aware allocation fails here only
-// because f0-f5 do not all fit at once; their sizes force that outcome, while
-// still fitting under linear, bank-oblivious packing. Basic-sequential has no
-// notion of banks and would place "req" wherever its bump pointer landed, which
-// no downstream consumer of mem_bank (DMA routing, for instance) can detect.
-// mem_bank is a hard constraint, so the auto scheme reports a terminal error
-// here instead of retrying basic-sequential.
+// "req"'s own bank pin is satisfiable. Allocation fails here only because
+// f0-f5 do not all fit at once: with the stack they need exactly the whole
+// tile, so any padding at all makes them infeasible, while linear
+// bank-oblivious packing would fit them. A bank-oblivious pass would place
+// "req" wherever its bump pointer landed, which no downstream consumer of
+// mem_bank (DMA routing, for instance) can detect. mem_bank is a hard
+// constraint, so running out of room is reported rather than resolved by
+// moving "req".
+//
+// The search places everything but the last and smallest buffer, and the
+// diagnostic names that one: the bytes it needs exist, but not contiguously.
 
 // RUN: not aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 
-// CHECK: error: 'aie.tile' op bank-aware allocation failed; falling back to basic-sequential would silently drop the mem_bank pin on: "req"
+// CHECK: error: 'aie.buffer' op could not be placed: buffer "f5" needs 4000 bytes
+// CHECK-NOT: error: {{.*}}"req"
 
 module {
   aie.device(npu2) {

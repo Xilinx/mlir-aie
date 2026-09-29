@@ -77,19 +77,30 @@ These classes live under `aie.iron`:
 | `Flow(src, dst, *, src_port=DMA, src_channel, dst_port=DMA, dst_channel)` | `aie.flow` — one circuit-switched route | [`python/iron/dataflow/flow.py`](../../../python/iron/dataflow/flow.py) |
 | `PacketFlow(src, dsts: list[PacketDest], *, pkt_id, ...)` | `aie.packetflow` with explicit packet IDs | same file |
 | `TileDma(tile, channels=[DmaChannel(...)])` | `aie.mem` (compute), `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim) — picked by tile type | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
-| `DmaChannel(direction, channel, bds=[Bd(...)])` | One `@dma(dir, ch)` chain inside the TileDma's region | same |
-| `Bd(buffer, offset=0, length=None, acquires=[...], releases=[...], next="self"\|int\|None, packet=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd` | same |
+| `DmaChannel(direction, channel, bds=[Bd(...)], loop=True)` | One `@dma(dir, ch)` chain inside the TileDma's region | same |
+| `Bd(buffer, offset=0, length=None, sizes=[], strides=[], acquires=[...], releases=[...], next=None\|"self"\|int, packet=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd` | same |
 | `Acquire(lock, value=1, greater_equal=True)` | `aie.use_lock(..., AcquireGreaterEqual\|Acquire)` at BD start | same |
 | `Release(lock, value=1)` | `aie.use_lock(..., Release)` at BD end | same |
 
 `Bd.next` mirrors the dialect's `aie.next_bd` chain wiring:
 
-* `"self"` (default) — loop back to this BD (the common "keep streaming"
-  pattern).
+* `None` (default) — follow the channel.  The BD points at the next entry
+  in `bds`, and the last entry either loops back to the first or leaves the
+  chain, per `DmaChannel.loop`.  This is the common case, so most BDs say
+  nothing about `next` at all.
+* `"self"` — loop back to this BD regardless of what the channel says.
 * an `int` `i` — point at the i-th BD in this `DmaChannel`'s `bds` list
   (zero-based).  Useful for explicit cycles in multi-BD chains.
-* `None` — emit no `next_bd`.  Rarely useful; the basic block ends up
-  without a terminator and the caller takes responsibility.
+
+`DmaChannel.loop` decides what the end of the chain does:
+
+* `True` (default) — the last BD chains back to the first, so the channel
+  streams forever.  A single-BD channel therefore self-chains, which is the
+  "keep streaming" pattern.
+* `False` — the last BD chains to the region's `aie.end`, which the dialect
+  reads as "the chain ends here".  Only then is the chain a task the channel
+  can finish, which is what makes a queue-push `repeat_count` mean anything:
+  an endless chain never completes, so there is nothing to repeat.
 
 `Bd.packet = (pkt_type, pkt_id)` stamps a packet header on every
 transfer this BD emits — pair it with a `PacketFlow` carrying the same
@@ -170,7 +181,8 @@ a_to_b = Flow(
     dst_port=WireBundle.DMA, dst_channel=1,
 )
 
-# Per-tile DMA programs.  Each has one channel with one self-looping BD.
+# Per-tile DMA programs.  Each has one channel with one BD, which the
+# default loop=True chains back to itself so it keeps streaming.
 dma_a = TileDma(tile=tile_a, channels=[
     DmaChannel(
         direction=DMAChannelDir.MM2S, channel=0,
@@ -178,7 +190,6 @@ dma_a = TileDma(tile=tile_a, channels=[
             buffer=buff_a,
             acquires=[Acquire(cons_lock_a)],   # wait for "data ready"
             releases=[Release(prod_lock_a)],   # signal "buffer free"
-            next="self",
         )],
     ),
 ])
@@ -189,7 +200,6 @@ dma_b = TileDma(tile=tile_b, channels=[
             buffer=buff_b,
             acquires=[Acquire(prod_lock_b)],   # wait for "buffer free"
             releases=[Release(cons_lock_b)],   # signal "data ready"
-            next="self",
         )],
     ),
 ])
@@ -216,7 +226,7 @@ With `prod_a = 1` and `cons_a = 0`, `tile_a`'s DMA blocks on
 ### Multi-BD chains (ping-pong)
 
 Extending the channel above to a ping-pong pair is two BDs with two
-buffers, with `next="self"` on each so the BD repeats, plus a second
+buffers, chained to each other rather than to themselves, plus a second
 producer-lock token so both buffers can be in flight at once:
 
 ```python
@@ -245,6 +255,11 @@ ping_pong = TileDma(tile=tile_a, channels=[
 `Bd.next=1` points the first BD at the second; `next=0` on the second
 points back at the first.  The pair behaves the same way as the
 ObjectFifo lowering for a double-buffered fifo.
+
+Both are spelled out here to show the wiring, but this particular chain is
+what the defaults already do: leaving `next` off each BD walks `bds` in
+order, and `loop=True` closes the cycle.  Reach for explicit indices when
+the cycle is not simply "in order, then back to the start".
 
 <img src="../../assets/DMA_BDs.png" height=300 width="400">
 

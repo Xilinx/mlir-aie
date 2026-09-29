@@ -68,6 +68,14 @@ NB_MODULE(_aie, m) {
           "Get an instance of BlockFloat type with the specified subtype.",
           "self"_a, "subtype"_a, "ctx"_a = nb::none());
 
+  m.def(
+      "type_size_in_bits",
+      [](MlirType type) { return aieTypeGetSizeInBits(type); },
+      "Size of a type in bits under the default data layout, or 0 when the "
+      "type does not describe one. A block floating-point type reports the "
+      "bits one block occupies, not the bits of one value.",
+      "type"_a);
+
   auto stealCStr = [](MlirStringRef mlirString) {
     if (!mlirString.data || mlirString.length == 0)
       throw std::runtime_error("couldn't translate");
@@ -300,6 +308,10 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self) {
              return aieTargetModelGetLocalMemorySize(self.get());
            })
+      .def("get_default_core_stack_size",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetDefaultCoreStackSize(self.get());
+           })
       .def("get_num_locks",
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetNumLocks(self.get(), col, row);
@@ -307,6 +319,22 @@ NB_MODULE(_aie, m) {
       .def("get_num_bds",
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetNumBDs(self.get(), col, row);
+           })
+      .def("get_dma_bd_wrap_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdWrapBits(self.get(), col, row);
+           })
+      .def("get_dma_bd_step_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdStepBits(self.get(), col, row);
+           })
+      .def("get_dma_bd_iter_bits",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetDmaBdIterBits(self.get(), col, row);
+           })
+      .def("get_address_gen_granularity",
+           [](PyAieTargetModel &self) {
+             return aieGetTargetModelAddressGenGranularity(self.get());
            })
       .def("get_num_mem_tile_rows",
            [](PyAieTargetModel &self) {

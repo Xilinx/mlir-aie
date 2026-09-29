@@ -1,0 +1,15 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# REQUIRES: system-linux
+# RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -UNDEBUG -I%S/../../tools/aiecc -I%S/../../include %S/split_ir_sharing.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags) -Wl,--start-group -lMLIRParser -lMLIRAsmParser -lMLIRBytecodeReader -lMLIRBytecodeWriter -lMLIRIR -lMLIRSupport $(%LLVM_TOOLS_DIR/llvm-config --libs support --system-libs) -Wl,--end-group %host_link_flags -o %t.exe'
+# RUN: rm -rf %t.ckpt
+# RUN: %t.exe %t.ckpt | FileCheck %s
+# RUN: FileCheck %s --check-prefix=IR --input-file=%t.ckpt/module.mlir
+
+# CHECK: split sharing: all checks passed
+# IR: module @device_a
+# IR: module @seq_a attributes {test.target = @device_b::@seq_c}
+# IR: module @seq_b
+# IR: module @device_b
+# IR: module @seq_c

@@ -9,6 +9,7 @@
 
 // CHECK: START_JOB 42
 // CHECK:   WRITE_32               0x00001000, 0x0000002a
+// CHECK:   MASK_POLL_32           0x8001d220, 0xffffffff, 0x80000000
 // CHECK:   uC_DMA_WRITE_DES_SYNC  @dma_chain
 // CHECK:   WAIT_TCTS              1, 2, 3
 // CHECK: END_JOB
@@ -47,6 +48,8 @@ module {
     aiex.cert.job(42) {
       // Write a 32-bit value to a specific address
       aiex.cert.write32(0x1000, 42)
+
+      aiex.cert.maskpoll32(0x8001d220, 0xffffffff, 0x80000000)
 
       // Enqueue a uC DMA transfer
       aiex.cert.uc_dma_write_des_sync(@dma_chain)

@@ -9,7 +9,7 @@
 // bank-aware placement: the reservation takes the bottom of the tile and the
 // three 4 KB buffers are placed above it, each marked `_reserved DMb`.
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | aie-translate --aie-generate-bcf --tilecol=0 --tilerow=2 | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s | aie-translate --aie-generate-bcf --tilecol=0 --tilerow=2 | FileCheck %s
 
 // CHECK: _symbol a 0x7A040 4096
 // CHECK: _reserved DMb 0x7A040 4096

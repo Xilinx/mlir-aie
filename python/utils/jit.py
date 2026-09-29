@@ -73,7 +73,11 @@ def jit(
     Standard configuration kwargs (``use_cache``, ``source_files``,
     ``aiecc_flags``, ``compile_flags``, ``include_paths``, ``object_files``,
     ``trace_config``) are forwarded to ``CallableDesign``.  All other kwargs
-    become ``compile_kwargs`` (values for ``CompileTime[T]``-annotated parameters).
+    become ``compile_kwargs``: ``CompileTime[T]`` values or explicit constant
+    specializations of ``DispatchTime[T]`` parameters. A specialized dispatch
+    parameter is removed from the runtime signature; call ``specialize()`` to
+    change it. Unbound dispatch parameters, including defaults, remain dynamic.
+    ``DispatchTime[T]`` parameters must be keyword-only, even when prebound.
 
     Args:
         mlir_generator: The MLIR generator callable (supplied automatically
@@ -96,29 +100,26 @@ def jit(
     if callable(mlir_generator):
         from aie.utils.compile.jit._introspect import split_params
 
-        compile_params, _, scalar_params = split_params(mlir_generator)
+        compile_params, _, dispatch_params, scalar_params = split_params(mlir_generator)
 
         # Guard 1-A: reject any compile kwarg that doesn't match a CompileTime[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)
         # before they silently run a kernel with no value bound.
         if compile_kwargs:
-            unknown = set(compile_kwargs.keys()) - set(compile_params)
+            unknown = set(compile_kwargs) - set(compile_params) - set(dispatch_params)
             if unknown:
                 raise TypeError(
                     f"@iron.jit received keyword argument(s) that do not match any "
                     f"CompileTime[T]-annotated parameter of {mlir_generator.__name__!r}: "
                     f"{sorted(unknown)}.\n"
                     f"  Valid CompileTime[T] params: {compile_params}.\n"
+                    f"  Specializable DispatchTime[T] params: {dispatch_params}.\n"
                     f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}."
                 )
 
-        # Guard 1-C: reject unannotated non-tensor params with default values.
-        # The framework has no plumbing for runtime scalar args yet (RTPs are
-        # tracked as a follow-up — see project memory), so a default value
-        # gets baked into the compiled MLIR at decoration time and any per-
-        # call override is *silently* ignored.  That's the worst kind of bug:
-        # the kernel runs successfully but with the wrong value.  Force the
-        # author to be explicit instead.
+        # Guard 1-C: an unannotated scalar binds at generation time, so its
+        # default bakes into the MLIR and per-call overrides are *silently*
+        # ignored. DispatchTime[T] is exempt -- its stream is rebuilt per call.
         sig_for_defaults = _inspect.signature(mlir_generator)
         silent_default_scalars = [
             name
@@ -129,14 +130,17 @@ def jit(
             raise TypeError(
                 f"@iron.jit: parameter(s) {silent_default_scalars!r} of "
                 f"{mlir_generator.__name__!r} have default values but no "
-                f"In / Out / InOut / CompileTime[T] annotation.  The framework has "
-                f"no runtime-scalar plumbing yet, so the default would be "
+                f"In / Out / InOut / CompileTime[T] / DispatchTime[T] "
+                f"annotation.  An unannotated scalar is bound at generation "
+                f"time, so the default would be "
                 f"baked into the compiled kernel and per-call overrides "
                 f"silently ignored.\n"
                 f"  Fix options:\n"
                 f"    * Use CompileTime[T] = default to keep the default and "
                 f"recompile on per-call change.\n"
-                f"    * Annotate as In / Out / InOut if it's a tensor."
+                f"    * Annotate as In / Out / InOut if it's a tensor.\n"
+                f"    * Annotate as DispatchTime[T] if it's meant to vary per "
+                f"call without a recompile."
             )
 
         # Guard: CompileTime[T] params must be keyword-only (unless pre-bound or

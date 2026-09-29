@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 from contextlib import contextmanager
+import re
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -13,6 +15,9 @@ import pytest
 # runtime is HRX. Keyed by a substring of the pytest node id -> reason. These
 # are HRX backend gaps worth a follow-up, not test bugs.
 _HRX_UNSUPPORTED = {
+    "test_variadic_tensor_count_checked_before_dispatch[65536]": (
+        "HRX does not support trace capture; the untraced case still runs"
+    ),
     "test_trace_config_without_enable_trace_raises": (
         "HRX rejects any trace_config up front, before the host-buffer argument "
         "validation this test asserts on"
@@ -20,8 +25,34 @@ _HRX_UNSUPPORTED = {
 }
 
 
+def pytest_configure(config):
+    """Register the markers these tests use.
+
+    ``test/python/conftest.py`` registers them too, but the RUN lines invoke
+    pytest on a file in *this* directory, which makes this directory the
+    rootdir -- and pytest does not read a conftest.py above the rootdir.
+    Without this, every run of these tests warns about an unknown mark.
+    """
+    config.addinivalue_line(
+        "markers",
+        "extensive: the full sweep (every case x edge data x seed); deselect with "
+        '-m "not extensive"',
+    )
+    config.addinivalue_line(
+        "markers",
+        "supported_devices(*devices): the NPU generations a test's kernels exist "
+        'for ("npu1", "npu2"); skipped elsewhere',
+    )
+    config.addinivalue_line(
+        "markers",
+        "perf: times a kernel and records performance rows; select with -m perf",
+    )
+    config._perf_rows = []
+    config._perf_meta = {}
+
+
 def _running_on_hrx() -> bool:
-    """True when the process's active host runtime is the HRX backend.
+    """Return True when the process's active host runtime is the HRX backend.
 
     The runtime is selected at ``aie.utils`` import time from ``NPU_RUNTIME``;
     the HRX RUN line sets ``NPU_RUNTIME=hrx`` so the default tensor class is
@@ -32,8 +63,186 @@ def _running_on_hrx() -> bool:
     return getattr(aie_utils.DEFAULT_TENSOR_CLASS, "__name__", "") == "HRXTensor"
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--seeds",
+        type=int,
+        default=1,
+        help="random seeds per case in the extensive kernel sweep",
+    )
+    parser.addoption(
+        "--perf-out",
+        default=None,
+        help="write the performance rows here, if the NPU checks pass",
+    )
+    parser.addoption(
+        "--perf-meta", default=None, help="write run provenance and any failures here"
+    )
+    parser.addoption(
+        "--correctness-results",
+        default=None,
+        help="only publish cases checked without failures in this extensive JUnit report",
+    )
+    parser.addoption("--warmup", type=int, default=10, help="untimed iterations")
+    parser.addoption("--iters", type=int, default=50, help="timed iterations")
+    parser.addoption(
+        "--pmode",
+        default="any",
+        help="required device power mode; 'any' to accept whatever is set",
+    )
+    parser.addoption(
+        "--no-cycles", action="store_true", help="skip the traced cycle-count run"
+    )
+    parser.addoption(
+        "--baseline-sources",
+        metavar="DIR",
+        default=None,
+        help="also measure every case with its kernels from DIR (a checkout root, "
+        "as MLIR_AIE_KERNEL_SOURCES) and compare the raw output words; the pair "
+        "goes to --perf-meta and the terminal summary, the rows stay this tree's",
+    )
+
+
+@pytest.fixture
+def record_perf(request):
+    """Record the performance rows a timed test produces.
+
+    The row name is ``<case>/<metric>``, which is the series key the published
+    history (``utils/kernel_checks/publish.py``) charts on gh-pages;
+    ``test_perf_series_names.py`` pins the whole set, so a renamed case
+    restarts a chart and has to say so.
+    """
+    config = request.config
+
+    def record(case: str, metric: str, unit: str, value, span: str | None = None):
+        row = {
+            "name": f"{case}/{metric}",
+            "unit": unit,
+            "value": value,
+            # Read now, not at fixture setup: preflight fills this in.
+            "extra": config._perf_meta.get("provenance", ""),
+        }
+        if span:
+            row["range"] = span
+        config._perf_rows.append(row)
+
+    return record
+
+
+def _checked_cases(path):
+    """Read the extensive sweep, excluding a case if any input or seed failed."""
+    tests = list(ET.parse(path).iter("testcase"))
+    if not tests:
+        raise ValueError("correctness report contains no tests")
+    checked, rejected, failed = set(), set(), []
+    for test in tests:
+        name = test.get("name", "")
+        match = re.fullmatch(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]", name)
+        bad = test.find("failure") is not None or test.find("error") is not None
+        if bad:
+            if not match:
+                raise ValueError(f"unmapped correctness failure: {name}")
+            rejected.add(match[1])
+            failed.append(f"{test.get('classname', '')}::{name}")
+        elif match and test.find("skipped") is None:
+            checked.add(match[1])
+    return checked - rejected, failed
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Write the performance rows once the NPU checks have passed.
+
+    A kernel that returns the wrong answer records nothing -- its test raises
+    before timing. When given the extensive correctness report, also exclude
+    cases that failed an edge input or were not checked there. A failed
+    kernel's series shows a gap for this run. What a partial file
+    cannot survive is a bad device: if preflight (power mode) or the
+    measurement sanity check failed, no number from the run is trustworthy
+    and nothing is written. Meta is written either way and lists the failed
+    tests, so a missing series or an empty run is explained.
+    """
+    import json
+    from pathlib import Path
+
+    config = session.config
+    rows = getattr(config, "_perf_rows", [])
+    meta = getattr(config, "_perf_meta", {})
+    reporter = config.pluginmanager.get_plugin("terminalreporter")
+    stats = reporter.stats if reporter else {}
+    failed = sorted({r.nodeid for k in ("failed", "error") for r in stats.get(k, [])})
+    if correctness := config.getoption("--correctness-results"):
+        try:
+            checked, correctness_failed = _checked_cases(correctness)
+            rows = [r for r in rows if r["name"].rsplit("/", 1)[0] in checked]
+            failed = sorted(set(failed) | set(correctness_failed))
+        except (OSError, ET.ParseError, ValueError) as exc:
+            meta["correctness_error"] = str(exc)
+            rows = []
+
+    if meta_path := config.getoption("--perf-meta"):
+        meta["exitstatus"] = int(exitstatus)
+        meta["n_rows"] = len(rows)
+        meta["failed"] = failed
+        Path(meta_path).write_text(json.dumps(meta, indent=1))
+
+    npu_ok = "preflight" in meta and meta.get("measurement_sane") is True
+    completed = exitstatus in (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED)
+    if out := config.getoption("--perf-out"):
+        if npu_ok and completed and rows:
+            Path(out).write_text(json.dumps(rows, indent=1))
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Print the ``--baseline-sources`` comparison, one line per case."""
+    baseline = getattr(config, "_perf_meta", {}).get("baseline")
+    if not baseline:
+        return
+    tr = terminalreporter
+    tr.section(f"baseline {baseline['sources']} -> this tree")
+    tr.write_line(f"{'case':<48} {'cycles':>17} {'npu_us min':>19}  words")
+    for name, c in baseline["cases"].items():
+        cycles = "{} -> {}".format(*c["cycles"])
+        npu = "{} -> {}".format(*c["npu_us_min"])
+        words = "same" if not c["differing_words"] else f"{c['differing_words']} differ"
+        tr.write_line(f"{name:<48} {cycles:>17} {npu:>19}  {words}")
+
+
+def _device_generation() -> str | None:
+    """``"npu1"`` / ``"npu2"`` for the device the tests will run on, or None."""
+    from aie.iron.kernels._common import ARCH_TRAITS
+    from aie.utils import get_current_device
+    from aie.utils.compile.utils import resolve_target_arch
+
+    # ``resolve_target_arch(None)`` deliberately defaults to "aie2" for callers
+    # that don't care about device-specific codegen; here it would misclassify
+    # "no device" (e.g. a static-checks runner with no NPU attached) as npu1
+    # and skip every npu2-only case. Bail out before that default kicks in.
+    device = get_current_device()
+    if device is None:
+        return None
+    try:
+        arch = resolve_target_arch(device)
+    except Exception:  # noqa: BLE001 - unrecognized device: nothing to skip on
+        return None
+    return ARCH_TRAITS[arch].device
+
+
 def pytest_collection_modifyitems(config, items):
-    """Skip HRX-unsupported tests when running under the HRX backend."""
+    """Skip HRX-unsupported tests under HRX, and device-restricted tests elsewhere.
+
+    ``@pytest.mark.supported_devices("npu2")`` names the generations a
+    test's kernels exist for (IRON's marker of the same name); the test is
+    skipped on any other device.
+    """
+    generation = _device_generation()
+    for item in items:
+        marker = item.get_closest_marker("supported_devices")
+        if marker and generation and generation not in marker.args:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=f"kernel exists for {marker.args}, not {generation}"
+                )
+            )
     if not _running_on_hrx():
         return
     for item in items:
@@ -83,3 +292,24 @@ def reset_iron_state():
     ExternalFunction._instances.clear()
     yield
     ExternalFunction._instances.clear()
+
+
+@pytest.fixture(autouse=True)
+def bind_current_device():
+    """Bind the device before each test so arch guards can read it.
+
+    ``_detect_arch()`` reads the current device without probing, which is right
+    where kernel factories call it -- inside a generator, by which point
+    compilation has bound one. A test body runs before that, so an arch guard
+    at the top of one saw no device and read ``aie2``, silently skipping every
+    aie2p test on an aie2p board. Probing once here gives the guards the same
+    answer the generator would get.
+    """
+    from aie.utils import get_current_device, set_current_device
+
+    if get_current_device(probe_runtime=False) is None:
+        try:
+            set_current_device(get_current_device(probe_runtime=True))
+        except (RuntimeError, ValueError, AttributeError):
+            pass  # No device to probe; arch guards fall back as before.
+    yield
