@@ -66,7 +66,7 @@ MLIR_AIE_KERNEL_SOURCES=$PWD pytest test/python/npu/test_kernels_perf.py -m perf
     --baseline-sources /tmp/before --perf-meta meta.json
 ```
 
-`--baseline-sources` measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and `meta.json` give both arms' `cycles` and minimum `npu_us`, and how many raw output words differ. The rows in `after.json` are the checkout's. Set `MLIR_AIE_KERNEL_SOURCES` for the checkout too. Without it, the tools compile the installed copy of `aie_kernels/`, so the "after" arm quietly measures whatever kernel was last installed. The brackets in `-k` match the whole case ID; without them, `mul_add/1024x16/bfloat16` would match too. `--pmode <mode>` makes the run refuse to start unless the device is in that power mode (the nightly uses `performance`); it checks the mode and does not set it.
+`--baseline-sources` measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and `meta.json` give both arms' `cycles` and minimum `npu_us`, and how many raw output words differ. The rows in `after.json` are the checkout's. Set `MLIR_AIE_KERNEL_SOURCES` for the checkout too. Without it, the tools compile the installed copy of `aie_kernels/`, so the "after" arm quietly measures whatever kernel was last installed. The brackets in `-k` match the whole case ID; without them, `mul_add/1024x16/bfloat16` would match too. `--pmode <mode>` makes the run refuse to start unless the device is in that power mode (the nightly uses `turbo`); it checks the mode and does not set it.
 
 Each row in the JSON is `<case>/<metric>`:
 

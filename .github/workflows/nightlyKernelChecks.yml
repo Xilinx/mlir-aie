@@ -13,7 +13,7 @@ name: Nightly Kernel Checks on Ryzen AI
 # Runs nightly from main, which publishes and records the baseline, on pull
 # requests that bump the Peano pin, and on demand. Only the nightly and an
 # unfiltered, pinned dispatch on main publish, and only when the device is in
-# the performance power mode: in any other mode the timing step fails
+# the turbo power mode: in any other mode the timing step fails
 # rather than chart numbers taken at another clock.
 #
 # A kernel that fails its checks costs only its own series a point: the
@@ -53,7 +53,7 @@ defaults:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  PERF_PMODE: performance
+  PERF_PMODE: turbo
 
 jobs:
   checks:
@@ -132,7 +132,7 @@ jobs:
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON"
           ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
 
-      - name: NPU preflight and preferred performance mode
+      - name: NPU preflight and power mode
         id: preflight
         run: |
           sudo prlimit -lunlimited --pid $$
@@ -144,17 +144,21 @@ jobs:
           BDF=$(printf '%s\n' "$EXAMINE" | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
           [ -n "$BDF" ]
           echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
-          # `performance` = max DPM, clock gating on. `turbo` is refused
-          # while any hwctx is open, so it is not used on shared hosts.
-          # Setting the mode needs root (amdxdna refuses the ioctl otherwise).
-          # Run the exact command in the condition so a denied sudo rule is
-          # non-fatal even when permissions are restricted by argument.
-          if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$PERF_PMODE"; then
-            :
-          else
-            echo "::warning::Cannot set --pmode $PERF_PMODE non-interactively with $XRT_SMI; a publishing run will refuse to time in another mode, any other run records the mode it finds"
+          # The bench runners set `turbo` at boot (a oneshot systemd unit
+          # ordered before the runner): amdxdna refuses turbo while any hwctx
+          # is open, and setting any mode needs root. Only a runner found in
+          # another mode tries here. Run the exact command in the condition
+          # so a denied sudo rule is non-fatal even when permissions are
+          # restricted by argument.
+          PLATFORM=$("$XRT_SMI" examine -d "$BDF" --report platform)
+          if ! grep -qiE "mode[[:space:]]*:[[:space:]]*$PERF_PMODE\b" <<<"$PLATFORM"; then
+            if sudo -n "$XRT_SMI" configure -d "$BDF" --pmode "$PERF_PMODE"; then
+              PLATFORM=$("$XRT_SMI" examine -d "$BDF" --report platform)
+            else
+              echo "::warning::Device is not in --pmode $PERF_PMODE and cannot be set non-interactively with $XRT_SMI; a publishing run will refuse to time in another mode, any other run records the mode it finds"
+            fi
           fi
-          "$XRT_SMI" examine -d "$BDF" --report platform
+          printf '%s\n' "$PLATFORM"
 
       - name: Run kernel correctness suite
         id: correctness

@@ -464,8 +464,8 @@ check prevents publication for the whole run. Each passing case records:
 
 Cycle spread, initializer timings and trace truncation are recorded in
 `range` and `--perf-meta`. Full trace buffers are enlarged and retried up to
-a limit; remaining truncation is flagged. Nightlies require `performance`
-power mode. PR and filtered dispatch runs may measure another mode, but
+a limit; remaining truncation is flagged. Nightlies require `turbo`
+power mode, which the bench runners set at boot. PR and filtered dispatch runs may measure another mode, but
 comparisons require a known, matching mode.
 
 The [Nightly Kernel Checks dashboard](https://xilinx.github.io/mlir-aie/kernel-checks/)

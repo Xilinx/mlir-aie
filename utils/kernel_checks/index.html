@@ -168,7 +168,8 @@
           <span class="stale">gray</span> values are from an earlier nightly than the latest.
           Hover a cycle count for the median and slowest call behind it; <span class="fail">truncated</span> marks one whose
           trace buffer filled before every call, so its min is over the calls it held.</li>
-        <li>Charts: one per NPU, case and metric, in a section per kernel (open when it has a flagged change), a line per power mode, a point per nightly run, by date. Hover for the run's
+        <li>Charts: one per NPU, case and metric, in a section per kernel (open when it has a flagged change), a line per power mode, a point per nightly run, by date. The shading is the run's spread:
+          &plusmn; the median absolute deviation for <code>npu_us</code>, and the min to the median call for cycles. Hover for the run's
           commit, spread and provenance; click a point to open the commit. Dashed lines mark a change of Peano, host or driver
           between runs. The change sorts order charts by their latest change relative to the metric's threshold.</li>
       </ul>
@@ -233,7 +234,7 @@
     // (and said so) rather than misread.
     const SCHEMA = 1;
     const readable = x => x && (x.schema || 1) <= SCHEMA ? x : null;
-    const EXPECTED_PMODE = 'performance';
+    const EXPECTED_PMODE = 'turbo';
     const STALE_AFTER_MS = 36 * 3600 * 1000;
     // What test_kernels_perf.py records per case.
     const METRICS = {
@@ -490,7 +491,8 @@
         device: recorded ? recorded.device : last ? last.provenance.device : null,
         deviceRaw: recorded ? recorded.device_raw : null,
         newer,
-        sane: recorded ? recorded.sane : Boolean(last),
+        // Unknown (null) when only the catalogue says a run happened.
+        sane: recorded ? recorded.sane : last ? true : null,
         published: recorded ? recorded.published : Boolean(last),
         failed: recorded ? recorded.failed : [],
         truncated: recorded ? recorded.truncated : [],
@@ -507,8 +509,8 @@
       if (run.newer) out.push({ level: 'bad', text: 'the results were published by a newer version of this page: reload it' });
       if (run.date === null) { out.push({ level: 'bad', text: `${npu}: no results have been published` }); return out; }
       if (now - run.date > STALE_AFTER_MS) out.push({ level: 'bad', text: `no run since ${formatDate(run.date)}` });
-      if (!run.sane) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
-      else if (!run.published) out.push({ level: 'bad', text: 'this run published no numbers' });
+      if (run.sane === false) out.push({ level: 'bad', text: 'the measurement sanity check failed: no numbers were published from this run' });
+      else if (!run.published) out.push({ level: 'bad', text: run.recorded ? 'this run published no numbers' : 'no numbers have been published yet' });
       if (run.pmode && run.pmode !== EXPECTED_PMODE) out.push({ level: 'warn', text: `measured in power mode "${run.pmode}", not ${EXPECTED_PMODE}: not comparable with ${EXPECTED_PMODE} runs` });
       if (run.correctnessError) out.push({ level: 'bad', text: `correctness report unreadable: ${run.correctnessError}` });
       const failed = run.failed || [];
@@ -910,18 +912,28 @@
       return new Map(modes.map((m, i) => [m, cssVar(`--series-${(i % 6) + 1}`, ['#0969da', '#cf222e', '#1a7f37', '#8250df', '#bf8700', '#57606a'][i % 6])]));
     }
 
-    // A row whose range starts "± d" (npu_us) is shaded value ± d; the lower
-    // edge, then the upper filled down to it.
+    // The [low, high] shaded behind a row's point: value ± d for a range
+    // starting "± d" (npu_us), and min to median call for a cycles range.
+    // The max is left to the tooltip: one stalled call would dwarf the band.
+    function spreadOf(value, row) {
+      const range = (row && row.range) || '';
+      const dev = /^± ([\d.]+)/.exec(range);
+      if (dev) return [value - Number(dev[1]), value + Number(dev[1])];
+      const cycles = cyclesSpread(range);
+      return cycles ? [value, cycles.median] : null;
+    }
+
+    // The lower edge, then the upper filled down to it.
     function band(values, rows, color) {
-      const dev = rows.map(r => r && /^± ([\d.]+)/.exec(r.range || ''));
-      if (!dev.some(Boolean)) return [];
+      const spread = values.map((v, i) => v === null ? null : spreadOf(v, rows[i]));
+      if (!spread.some(Boolean)) return [];
       const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16)).join(', ');
-      const edge = sign => ({
-        band: true, data: values.map((v, i) => dev[i] ? v + sign * Number(dev[i][1]) : null),
+      const edge = side => ({
+        band: true, data: spread.map(s => s ? s[side] : null),
         spanGaps: true, tension: 0, pointRadius: 0, borderWidth: 0,
         backgroundColor: `rgba(${rgb}, ${cssVar('--band', '0.2')})`,
       });
-      return [{ ...edge(-1), fill: false }, { ...edge(1), fill: '-1' }];
+      return [{ ...edge(0), fill: false }, { ...edge(1), fill: '-1' }];
     }
 
     // Dashed vertical lines where the provenance changed between runs.

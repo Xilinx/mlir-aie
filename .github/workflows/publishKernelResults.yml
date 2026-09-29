@@ -43,7 +43,7 @@ jobs:
           pattern: kernel-checks-npu2-${{ github.run_id }}
           path: results/npu2
 
-      # Only `performance` (nightlyKernelChecks.yml's PERF_PMODE) is
+      # Only `turbo` (nightlyKernelChecks.yml's PERF_PMODE) is
       # published: the checks refuse to measure a publishing run in any
       # other mode, and this refuses to record one that slipped through.
       - name: Read power modes
@@ -53,8 +53,8 @@ jobs:
             [[ -f "results/$npu/perf.json" ]] || continue
             pmode=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["preflight"]["pmode"] or sys.exit("power mode is unreadable"))' \
               "results/$npu/meta.json")
-            if [[ "$pmode" != performance ]]; then
-              echo "::error::$npu was measured in power mode '$pmode', not performance; its series is not published"
+            if [[ "$pmode" != turbo ]]; then
+              echo "::error::$npu was measured in power mode '$pmode', not turbo; its series is not published"
               exit 1
             fi
             echo "$npu=$pmode" >> "$GITHUB_OUTPUT"

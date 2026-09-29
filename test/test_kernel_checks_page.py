@@ -235,6 +235,23 @@ assert.equal(chart.options.plugins.tooltip.callbacks.label({ dataset: line, data
 """)
 
 
+def test_cycles_spread_is_a_band_from_the_min_to_the_median(page):
+    page("""
+const cy = (v, range) => ({ 'softmax/1024x16/bfloat16/cycles': ['cycles', v, range] });
+db = fromRecords({ npu1: [
+  rec('1', 100000, 'turbo', cy(100)),
+  rec('2', 200000, 'turbo', cy(110, 'median 115 max 400 n=16; truncated')),
+  rec('3', 300000, 'turbo', cy(105, 'median 105 max 105 n=16')),
+]});
+draw(el0, db.series[0], ['turbo']);
+const [line, low, high] = chart.data.datasets;
+assert.deepEqual(line.data, [100, 110, 105]);
+assert.deepEqual(low.data, [null, 110, 105]);
+assert.deepEqual(high.data, [null, 115, 105]);
+assert.ok(low.band && high.band);
+""")
+
+
 def test_provenance_changes_are_marked_and_shown_in_the_footer(page):
     page("""
 const a = { commit: '111', peano: '22.0.0+aaaa', kernels: 'k1', host: 'bench-1' };
@@ -311,13 +328,13 @@ assert.equal(caseCell(undefined, undefined).text, '—');
 
 
 MOVED = """
-const r1 = rec('1', 1000, 'performance', {
+const r1 = rec('1', 1000, 'turbo', {
   'relu/1024/bf16/cycles': ['cycles', 1000], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10],
   'relu/1024/bf16/npu_us': ['us', 100], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
   'gelu/1024/bf16/cycles': ['cycles', 2000], 'gone/1/i8/cycles': ['cycles', 10],
   'flat/1/i8/cycles': ['cycles', 500],
 });
-const r2 = rec('2', 2000, 'performance', {
+const r2 = rec('2', 2000, 'turbo', {
   'relu/1024/bf16/cycles': ['cycles', 1030], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10.3],
   'relu/1024/bf16/npu_us': ['us', 150], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
   'gelu/1024/bf16/cycles': ['cycles', 1500], 'flat/1/i8/cycles': ['cycles', 505],
@@ -348,7 +365,7 @@ const summary = (id, date, pmode, provenance, extra) => ({
   provenance, sane: true, published: true, failed: [], truncated: [], ...(extra || {}),
 });
 const index = { target: 'npu1', runs: [
-  summary('1', '1970-01-01T00:00:01Z', 'performance', { peano: '22.0.0+aaaa', host: 'bench-1' }),
+  summary('1', '1970-01-01T00:00:01Z', 'turbo', { peano: '22.0.0+aaaa', host: 'bench-1' }),
   summary('2', '1970-01-01T00:00:02Z', 'default', { peano: '22.0.0+bbbb', host: 'bench-2', xrt: '2.20.0' },
           { failed: ['test_kernels_perf.py::test_kernel_perf[mm/64/i8]'], truncated: ['swiglu/1024x256/bfloat16'] }),
 ]};
@@ -369,7 +386,7 @@ assert.equal(run.device, 'NPU Strix');
 assert.equal(run.previous.id, '1');
 const now = 3600 * 1000;
 assert.deepEqual(warningsFor('npu1', run, now).map(w => [w.level, w.text.split(':')[0]]), [
-  ['warn', 'measured in power mode "default", not performance'],
+  ['warn', 'measured in power mode "default", not turbo'],
   ['warn', '1 test failed in this run'],
   ['warn', '1 case with a truncated trace'],
   ['info', 'peano changed since the previous run'],
@@ -389,10 +406,15 @@ assert.equal(fallback.recorded, false);
 assert.equal(fallback.url, null);
 assert.equal(fallback.date, 2000);
 assert.equal(fallback.commit, 'abcdef123456');
-assert.equal(fallback.pmode, 'performance');
+assert.equal(fallback.pmode, 'turbo');
 assert.deepEqual(warningsFor('npu1', fallback, now), []);
 assert.deepEqual(warningsFor('npu1', fallback, now + 48 * 3600 * 1000),
                  [{ level: 'bad', text: 'no run since 1970-01-01 00:00 UTC' }]);
+// Only the catalogue (every run dropped): nothing published, nothing failed.
+const empty = latestRun('npu1', { schema: 1, runs: [] }, fromRecords({}), catalogue);
+assert.equal(empty.sane, null);
+assert.deepEqual(warningsFor('npu1', empty, Date.parse(catalogue.date)).map(w => w.text),
+                 ['no numbers have been published yet']);
 // Nothing at all.
 const none = latestRun('npu2', null, db, null);
 assert.equal(none.date, null);
@@ -408,7 +430,7 @@ catalogue.kernels = [
   { factory: 'mm', family: 'linalg', summary: 'mm', sources: [], builds: ['mm'], passed: 0, failed: ['mm/64/i8'], timed: 0 },
   { factory: 'exp2f_vec', family: 'activation', summary: 'npu2 only', sources: [], builds: [], passed: 0, failed: [], timed: 0 },
 ];
-const clean = { target: 'npu1', runs: [summary('2', '1970-01-01T00:00:02Z', 'performance',
+const clean = { target: 'npu1', runs: [summary('2', '1970-01-01T00:00:02Z', 'turbo',
   { peano: '22.0.0+bbbb', host: 'bench-2', xrt: '2.20.0', xdna: '2.20.0_1', kernels: 'k9' })] };
 renderDashboard(['npu1', 'npu2'], db, new Map([['npu1', catalogue]]), new Map([['npu1', clean]]), 3600 * 1000);
 const [card1, card2] = $('cards').children;
@@ -417,7 +439,7 @@ const dl = card1.children.find(c => c.tag === 'dl');
 const terms = dl.children.filter((_, i) => i % 2 === 0).map(c => c.text);
 assert.deepEqual(terms, ['Run', 'Commit', 'Power mode', 'Peano', 'XRT / driver', 'Host', 'Kernel sources']);
 const values = dl.children.filter((_, i) => i % 2 === 1).map(c => c.text);
-assert.deepEqual(values, ['1970-01-01 00:00 UTC', 'abcdef1 same revision', 'performance', '22.0.0+bbbb', '2.20.0 / 2.20.0_1', 'bench-2', 'k9']);
+assert.deepEqual(values, ['1970-01-01 00:00 UTC', 'abcdef1 same revision', 'turbo', '22.0.0+bbbb', '2.20.0 / 2.20.0_1', 'bench-2', 'k9']);
 assert.equal(dl.children[1].children[0].href, 'https://example.com/runs/2');
 assert.equal(dl.children[3].children[0].href, commit.url);
 const counts = card1.children.find(c => c.className === 'counts');

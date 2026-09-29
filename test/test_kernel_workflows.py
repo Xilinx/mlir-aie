@@ -154,20 +154,20 @@ def write_meta(path, pmode):
     path.write_text(json.dumps({"preflight": {"pmode": pmode}}))
 
 
-def test_only_performance_mode_is_published(tmp_path):
+def test_only_turbo_mode_is_published(tmp_path):
     publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
     run = next(step["run"] for step in publisher["steps"] if step.get("id") == "pmode")
-    write_meta(tmp_path / "results/npu1/meta.json", "performance")
-    write_meta(tmp_path / "results/npu2/meta.json", "turbo")
+    write_meta(tmp_path / "results/npu1/meta.json", "turbo")
+    write_meta(tmp_path / "results/npu2/meta.json", "performance")
     # Failed legs may have metadata but no measurements.
     assert run_step(run, tmp_path) == {}
     (tmp_path / "results/npu1/perf.json").write_text("[]")
-    assert run_step(run, tmp_path) == {"npu1": "performance"}
+    assert run_step(run, tmp_path) == {"npu1": "turbo"}
     (tmp_path / "results/npu2/perf.json").write_text("[]")
     with pytest.raises(subprocess.CalledProcessError):
         run_step(run, tmp_path)
-    write_meta(tmp_path / "results/npu2/meta.json", "performance")
-    assert run_step(run, tmp_path) == {"npu1": "performance", "npu2": "performance"}
+    write_meta(tmp_path / "results/npu2/meta.json", "turbo")
+    assert run_step(run, tmp_path) == {"npu1": "turbo", "npu2": "turbo"}
     write_meta(tmp_path / "results/npu2/meta.json", None)
     with pytest.raises(subprocess.CalledProcessError):
         run_step(run, tmp_path)
