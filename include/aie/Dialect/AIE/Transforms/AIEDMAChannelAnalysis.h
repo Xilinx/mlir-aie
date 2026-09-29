@@ -26,7 +26,8 @@ class DMAChannelAnalysis {
   /// Keep the reserving operation so diagnostics retain its MLIR location.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
       usedChannels;
-  mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedStreams;
+  /// True for packet-only occupancy; circuit occupancy is exclusive.
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, bool> usedStreams;
 
 public:
   DMAChannelAnalysis(DeviceOp &device);
@@ -52,8 +53,9 @@ public:
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 
-  /// Claim a raw stream port, reporting on `tile` when it is already taken.
-  mlir::LogicalResult checkAIEStreamIndex(TileLike tile, DMAChannel chan);
+  /// Claim a raw stream port; packet users may share it with other packets.
+  mlir::LogicalResult checkAIEStreamIndex(TileLike tile, DMAChannel chan,
+                                          bool packet = false);
 };
 
 } // namespace xilinx::AIE

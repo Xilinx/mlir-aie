@@ -2528,9 +2528,7 @@ int main(int argc, char **argv) {
   // Needs no input file (the graph is static), so it runs before the input-file
   // check below. A --cut/--checkpoint cut is marked in the output.
   if (emitDot) {
-    std::vector<EdgeBase *> built = outputs;
-    built.insert(built.end(), checkEdges.begin(), checkEdges.end());
-    writeDotGraph(g, built, llvm::outs(), cutEdges);
+    writeDotGraph(g, outputs, llvm::outs(), cutEdges, checkEdges);
     return 0;
   }
 

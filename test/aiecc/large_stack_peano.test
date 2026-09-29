@@ -23,6 +23,11 @@
 
 // A bare build writes the core ELFs, not the module the checks ran on.
 // RUN: rm -rf %t.bare && mkdir -p %t.bare && cp %t.d/large_stack_kernel.o %t.bare
+// RUN: cd %t.bare && not aiecc --tmpdir=%t.bare.small.prj %t.d/small.mlir 2>&1 | FileCheck %s --check-prefix=SMALL
 // RUN: cd %t.bare && aiecc --tmpdir=%t.bare.prj %S/large_stack.mlir
 // RUN: ls %t.bare | FileCheck %s --check-prefix=BARE --implicit-check-not=.mlir
 // BARE: elfs_main_core_0_2
+
+// DOT keeps the post-link check reachable without marking it as an output.
+// RUN: aiecc --get-core-elfs --emit-dot | FileCheck %s --check-prefix=DOT
+// DOT: [label="checked_bank_placement.mlir"];

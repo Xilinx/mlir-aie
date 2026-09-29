@@ -551,6 +551,16 @@ struct AIEObjectFifoAllocatePass
   // the pass before the search rather than surfacing inside it.
   LogicalResult checkStreamPorts() {
     DMAChannelAnalysis channels(device);
+    DenseSet<Operation *> packetEndpoints;
+    DenseSet<Operation *> circuitEndpoints;
+    for (auto flow : device.getOps<RouteOp>()) {
+      auto &users = (flow.getPacket() || clPacketSwObjectFifos)
+                        ? packetEndpoints
+                        : circuitEndpoints;
+      users.insert(lookupEndpoint(flow.getSourceAttr()).getOperation());
+      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+        users.insert(lookupEndpoint(dest).getOperation());
+    }
     bool clash = false;
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       if (endpoint.getRouteBundle() != WireBundle::Core)
@@ -559,7 +569,9 @@ struct AIEObjectFifoAllocatePass
       if (!channel)
         return endpoint->emitOpError("a stream port names its own channel");
       clash |= failed(channels.checkAIEStreamIndex(
-          tileOf(endpoint), {endpoint.getRouteDirection(), *channel}));
+          tileOf(endpoint), {endpoint.getRouteDirection(), *channel},
+          packetEndpoints.contains(endpoint.getOperation()) &&
+              !circuitEndpoints.contains(endpoint.getOperation())));
     }
     return failure(clash);
   }

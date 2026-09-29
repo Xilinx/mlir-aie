@@ -35,13 +35,27 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
   for (auto flowOp : device.getOps<FlowOp>()) {
     if (flowOp.getSourceBundle() == WireBundle::Core) {
-      usedStreams.insert({getTileKey(flowOp.getSource()), DMAChannelDir::MM2S,
-                          flowOp.getSourceChannel()});
+      usedStreams[{getTileKey(flowOp.getSource()), DMAChannelDir::MM2S,
+                   flowOp.getSourceChannel()}] = false;
     }
     if (flowOp.getDestBundle() == WireBundle::Core) {
-      usedStreams.insert({getTileKey(flowOp.getDest()), DMAChannelDir::S2MM,
-                          flowOp.getDestChannel()});
+      usedStreams[{getTileKey(flowOp.getDest()), DMAChannelDir::S2MM,
+                   flowOp.getDestChannel()}] = false;
     }
+  }
+
+  for (auto flow : device.getOps<PacketFlowOp>()) {
+    Block &ports = flow.getPorts().front();
+    for (auto source : ports.getOps<PacketSourceOp>())
+      if (source.getBundle() == WireBundle::Core)
+        usedStreams.try_emplace({getTileKey(source.getTile()),
+                                 DMAChannelDir::MM2S, source.channelIndex()},
+                                true);
+    for (auto dest : ports.getOps<PacketDestOp>())
+      if (dest.getBundle() == WireBundle::Core)
+        usedStreams.try_emplace({getTileKey(dest.getTile()),
+                                 DMAChannelDir::S2MM, dest.channelIndex()},
+                                true);
   }
 
   // Shim allocations reserve channels outside the DMA bodies above.
@@ -123,11 +137,11 @@ Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
 }
 
 LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,
-                                                      DMAChannel chan) {
-  if (usedStreams
-          .insert(
-              {getTileKey(tile->getResult(0)), chan.direction, chan.channel})
-          .second) {
+                                                      DMAChannel chan,
+                                                      bool packet) {
+  auto [it, inserted] = usedStreams.try_emplace(
+      {getTileKey(tile->getResult(0)), chan.direction, chan.channel}, packet);
+  if (inserted || (packet && it->second)) {
     return success();
   }
   if (chan.direction == DMAChannelDir::MM2S)
