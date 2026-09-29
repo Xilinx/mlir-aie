@@ -463,9 +463,11 @@ struct AIEGenerateColumnControlOverlayPass
             connect.sourcePort() == Port{WireBundle::TileControl, 0} &&
             connect.destPort() == Port{WireBundle::South, 0})
           return true;
+      // Pathfinder marks a slave's packet_rules only from the first group it
+      // routes, so the marker on the rules is not reliable; the marked master
+      // and a rule matching the response ID are.
       for (auto rules : connections.getOps<AIE::PacketRulesOp>()) {
-        if (!rules->hasAttr("is_ctrl_pkt_overlay") ||
-            rules.sourcePort() != Port{WireBundle::TileControl, 0})
+        if (rules.sourcePort() != Port{WireBundle::TileControl, 0})
           continue;
         for (auto master : connections.getOps<AIE::MasterSetOp>()) {
           if (!master->hasAttr("is_ctrl_pkt_overlay") ||
