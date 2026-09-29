@@ -15,8 +15,37 @@
 // made crossing a second channel look as cheap. Reduced from
 // router_mutation.py seed 490.
 
-// CHECK-DAG: aie.masterset(DMA : 1,
-// CHECK-DAG: aie.masterset(DMA : 3,
+// Id 19 reaches (2,1) from the shim below, not across the cut at (2,2).
+// CHECK-LABEL: %switchbox_2_1 = aie.switchbox(%mem_tile_2_1)
+// CHECK:         %[[A21:.*]] = aie.amsel<{{[0-9]+}}> ({{[0-9]+}})
+// CHECK-NEXT:    aie.masterset(DMA : 3, %[[A21]])
+// CHECK-NEXT:    aie.packet_rules(South : {{[0-9]+}}) {
+// CHECK-NEXT:      aie.rule(31, 19, %[[A21]])
+// CHECK-LABEL: %switchbox_2_2 = aie.switchbox(%tile_2_2)
+// CHECK-NOT:     aie.rule(31, 19,
+// It crosses the cut once, at (3,2).
+// CHECK-LABEL: %switchbox_3_2 = aie.switchbox(%tile_3_2)
+// CHECK:         %[[A32:.*]] = aie.amsel<{{[0-9]+}}> ({{[0-9]+}})
+// CHECK-NEXT:    aie.masterset(South : {{[0-9]+}}, %[[A32]])
+// CHECK-NEXT:    aie.packet_rules(North : {{[0-9]+}}) {
+// CHECK-NEXT:      aie.rule(31, 19, %[[A32]])
+// CHECK-LABEL: %switchbox_2_0 = aie.switchbox(%shim_noc_tile_2_0)
+// CHECK:         %[[A20:.*]] = aie.amsel<{{[0-9]+}}> ({{[0-9]+}})
+// CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[A20]])
+// CHECK-NEXT:    aie.packet_rules(East : {{[0-9]+}}) {
+// CHECK-NEXT:      aie.rule(31, 19, %[[A20]])
+// CHECK-LABEL: %switchbox_3_0 = aie.switchbox(%shim_noc_tile_3_0)
+// CHECK:         %[[A30:.*]] = aie.amsel<{{[0-9]+}}> ({{[0-9]+}})
+// CHECK-NEXT:    aie.masterset(West : {{[0-9]+}}, %[[A30]])
+// CHECK-NEXT:    aie.packet_rules(North : {{[0-9]+}}) {
+// CHECK-NEXT:      aie.rule(31, 19, %[[A30]])
+// Below the cut it branches at (3,1): to its DMA and down to the shim.
+// CHECK-LABEL: %switchbox_3_1 = aie.switchbox(%mem_tile_3_1)
+// CHECK:         %[[A31:.*]] = aie.amsel<{{[0-9]+}}> ({{[0-9]+}})
+// CHECK-NEXT:    aie.masterset(DMA : 1, %[[A31]])
+// CHECK-NEXT:    aie.masterset(South : {{[0-9]+}}, %[[A31]])
+// CHECK-NEXT:    aie.packet_rules(North : {{[0-9]+}}) {
+// CHECK-NEXT:      aie.rule(31, 19, %[[A31]])
 
 module {
   aie.device(npu2_4col) {

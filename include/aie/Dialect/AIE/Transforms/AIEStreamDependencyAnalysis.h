@@ -41,12 +41,12 @@ struct StreamHop {
 struct RoutedStream {
   StreamEndpoint src;
   StreamEndpoint dst;
-  /// The packet id carried, or nullopt for a circuit-switched stream.
+  /// The packet id carried, if any.
   std::optional<int> packetID;
   /// The destination stores each packet's header along with its payload.
   bool keepsPktHeader = false;
   /// The switchboxes the stream passes, source first, where it is routed.
-  llvm::SmallVector<StreamHop, 8> hops;
+  llvm::SmallVector<StreamHop, 8> hops{};
 };
 
 /// A cycle of waits packet streams can deadlock in, given their routes. A

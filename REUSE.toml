@@ -38,6 +38,8 @@ path = [
     "**/*.lock",
     "**/*.patch",
     "**/*.gemspec",
+    # Hardware verdict fixtures: hw_verdicts.py reads their leading comments
+    "test/create-packet-flows/Inputs/hw_verdicts/*.mlir",
     # Build / project files without a usable comment header
     "**/Makefile",
     "**/Doxyfile",

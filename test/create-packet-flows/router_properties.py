@@ -1622,7 +1622,7 @@ class WaitGraph:
             return None if a is None else (*a["tile"], a["dir"], a["ch"])
 
         for events in d.sequences:
-            waited, issued = [], set()
+            waited = []
 
             def agent_of(key):
                 if key is None or key[2] is None:
@@ -1641,9 +1641,8 @@ class WaitGraph:
                     else:
                         key = chain_key(ev)
                     agent = agent_of(key)
-                    if agent is None or agent in issued:
+                    if agent is None:
                         continue
-                    issued.add(agent)
                     self.modeled.add(agent)
                     for w in waited:
                         if w != agent:

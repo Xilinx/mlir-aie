@@ -44,8 +44,8 @@ struct DmaChannelProgram {
   TileID tile;
   DMAChannelDir dir;
   int channel;
-  SmallVector<Block *> bds;
-  SmallVector<Region *> regions;
+  SmallVector<Block *> bds{};
+  SmallVector<Region *> regions{};
   // Whether the BD chain runs forever.
   bool loops = false;
 };
@@ -886,12 +886,11 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
     addEdge(*to, *from, EdgeKind::Stream);
   }
 
-  // The host issues a channel's first transfer only after every wait before
-  // it in the runtime sequence completes. Later issues repeat the pattern of
-  // earlier ones, so only the first is modeled.
+  // The host issues a channel's transfer only after every wait before it in
+  // the runtime sequence completes. Each issue is modeled: a later one can
+  // follow waits the first did not.
   for (auto sequence : device.getOps<RuntimeSequenceOp>()) {
     llvm::SetVector<unsigned> waited;
-    std::set<unsigned> issued;
     auto channelAgent =
         [&](std::optional<ChannelKey> key) -> std::optional<unsigned> {
       if (!key)
@@ -901,7 +900,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
     };
     auto issue = [&](std::optional<ChannelKey> key) {
       std::optional<unsigned> agent = channelAgent(key);
-      if (!agent || !issued.insert(*agent).second)
+      if (!agent)
         return;
       modeled.insert(*agent);
       for (unsigned w : waited)
