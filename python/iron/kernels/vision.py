@@ -76,11 +76,6 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
     _require_vector_alignment("rgba2hue", line_width, 32, param="line_width")
     # lut_inv.h pins its gather pair with AIE_BANK_A/AIE_BANK_B.
     flags = [f"-I{_runtime_lib_include()}"]
-    if not use_chess and _tuned_arch() == "aie2p":
-        # LICM hoists the three accumulator constants out of the loop, where
-        # they spill. Capping its MemorySSA walk at zero keeps them in the
-        # loop.
-        flags += ["-mllvm", "--licm-mssa-optimization-cap=0"]
     return _color_convert_kernel(
         "rgba2hueLine",
         "rgba2hue.cc",
