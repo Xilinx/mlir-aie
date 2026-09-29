@@ -488,6 +488,13 @@
                 const b = data.datasets[item.datasetIndex].rows[item.index];
                 return `${data.datasets[item.datasetIndex].label}: ${item.value} ${s.unit}` + (b && b.range ? ` (${b.range})` : '');
               },
+              // The run's provenance (Peano, kernel sources, XRT, host,
+              // power mode), one field per line; every row of a run
+              // carries the same, so the first shown point's serves.
+              footer: (items, data) => {
+                const b = items.map(i => data.datasets[i.datasetIndex].rows[i.index]).find(r => r && r.extra);
+                return b ? b.extra.split(' | ') : '';
+              },
             },
           },
           onClick: (_e, active) => {

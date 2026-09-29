@@ -139,6 +139,21 @@ assert.deepEqual([0, 1, 2].map(i => chart.options.tooltips.filter({ datasetIndex
 """)
 
 
+def test_tooltip_footer_is_the_points_provenance(page):
+    page("""
+const extra = 'commit abc | peano 22.0.0+0006955e | xrt 2.20.0 | host bench-3 | pmode performance';
+db = collect([['npu1', { entries: { 'aie_kernels (npu1, performance)': [
+  { commit, date: 100000, benches: [{ name: 'softmax/1024x16/bfloat16/cycles', unit: 'cycles', value: 5 }] },
+  { commit, date: 200000, benches: [{ name: 'softmax/1024x16/bfloat16/cycles', unit: 'cycles', value: 6, extra }] },
+]}}]]);
+modeColor = new Map([['performance', '#0969da']]);
+draw(el, db.series[0], ['performance']);
+const footer = chart.options.tooltips.callbacks.footer;
+assert.deepEqual(footer([{ datasetIndex: 0, index: 1 }], chart.data), extra.split(' | '));
+assert.equal(footer([{ datasetIndex: 0, index: 0 }], chart.data), '');
+""")
+
+
 def test_latest_cases_follow_the_latest_nightly(page):
     page("""
 const row = (name, unit, value) => ({ name, unit, value });
