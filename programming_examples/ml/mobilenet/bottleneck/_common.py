@@ -43,22 +43,32 @@ def wts_buffer(data_dir, filename, sz):
     return Buffer(i8((sz,)), initial_value=load_wts(data_dir, filename, sz))
 
 
-def packed_wts_buffer(data_dir, filename, sizes, align=64):
-    """Static Buffer holding the weight segments of `filename`, each starting at
-    a multiple of `align` bytes so the kernels' vector loads can read them.
+def wts_segments(data_dir, filename, sizes):
+    """The weights of `filename` split into segments of `sizes` bytes."""
+    data = load_wts(data_dir, filename, sum(sizes))
+    return np.split(data, np.cumsum(sizes)[:-1])
+
+
+def pack_wts(segments, align=64):
+    """Static Buffer holding the int8 `segments`, each starting at a multiple
+    of `align` bytes so the kernels' vector loads can read them.
 
     Returns the buffer and the byte offset of each segment.
     """
     offsets, end = [], 0
-    for sz in sizes:
+    for seg in segments:
         start = -(-end // align) * align
         offsets.append(start)
-        end = start + sz
-    data = load_wts(data_dir, filename, sum(sizes))
+        end = start + seg.size
     packed = np.zeros(end, np.int8)
-    for off, seg in zip(offsets, np.split(data, np.cumsum(sizes)[:-1])):
+    for off, seg in zip(offsets, segments):
         packed[off : off + seg.size] = seg
     return Buffer(i8((end,)), initial_value=packed), offsets
+
+
+def packed_wts_buffer(data_dir, filename, sizes, align=64):
+    """`pack_wts` of the weight segments of `filename`."""
+    return pack_wts(wts_segments(data_dir, filename, sizes), align)
 
 
 def sf_key(blk_name):
