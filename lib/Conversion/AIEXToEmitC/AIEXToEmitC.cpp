@@ -294,7 +294,6 @@ private:
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuCreateScratchpadOp>([&](auto cs) {
-          // The device address is a host value, see emitFunction.
           emitTxnCall(b, loc, "txn_append_create_scratchpad", txnVec,
                       {u32Literal(b, loc, cs.getUsageType()),
                        u32Literal(b, loc, cs.getSize()), scratchpadAddr});
@@ -746,9 +745,7 @@ private:
       if (!isa<BaseMemRefType>(arg.getType()))
         paramTypes.push_back(paramTypeFor(arg.getType()));
 
-    // create_scratchpad's device address becomes a trailing uint64_t
-    // parameter (see txn_append_create_scratchpad); other signatures are
-    // unchanged.
+    // See txn_append_create_scratchpad.
     bool hasScratchpad = false;
     seqOp.walk([&](AIEX::NpuCreateScratchpadOp) { hasScratchpad = true; });
     if (hasScratchpad)
