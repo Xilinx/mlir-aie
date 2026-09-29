@@ -44,8 +44,8 @@ func.func @inv_1x1x2x8_f32(%a: vector<1x1x2x8xf32>) -> vector<1x1x2x8xf32> {
   return %0 : vector<1x1x2x8xf32>
 }
 
-// arith.negf is the one case whose pattern does not check the rank, so
-// without flattening the rank reaches aievec.neg, which cannot be lowered.
+// arith.negf: its pattern does not check the rank, so flattening is what
+// keeps the rank out of aievec.neg.
 // CHECK-LABEL: func @neg_1x1x2x8_f32
 // CHECK: vector.shape_cast %{{.*}} : vector<1x1x2x8xf32> to vector<16xf32>
 // CHECK: aievec.neg {{.*}} : vector<16xf32>

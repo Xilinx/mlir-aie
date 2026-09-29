@@ -5151,9 +5151,7 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
       .add<ConvertMathExpToAIEVecExpOpPattern, ConvertDivFToAIEVecInvOpPattern>(
           patterns.getContext());
   // Higher benefit than the AIE2P-specific patterns below, which would
-  // otherwise take an n-D op before it has been flattened. arith.negf needs
-  // this most: its pattern does not check the rank, so an n-D operand reaches
-  // aievec.neg, whose lowering cannot index it.
+  // otherwise take an n-D op before it has been flattened.
   patterns.add<FlattenElementwiseVectorToRank1Pattern<arith::MulFOp>,
                FlattenElementwiseVectorToRank1Pattern<arith::DivFOp>,
                FlattenElementwiseVectorToRank1Pattern<arith::AddFOp>,
