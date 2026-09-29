@@ -85,9 +85,11 @@ class XRTKernelHandle(KernelHandle):
         return self._run
 
     def parameter_scratchpad(self, params_path: str | Path) -> ParameterScratchpad:
-        """The named runtime parameters of a full ELF, by the ``params.txt``
-        aiecc wrote with ``--get-scratchpad-parameters``; what is written and
-        synced there is read by every later run of this handle.
+        """Return the named runtime parameters of a full ELF.
+
+        They are named by the ``params.txt`` aiecc wrote with
+        ``--get-scratchpad-parameters``; what is written and synced there is
+        read by every later run of this handle.
         """
         return ParameterScratchpad(self.run, params_path)
 

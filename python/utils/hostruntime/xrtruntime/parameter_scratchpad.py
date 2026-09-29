@@ -80,8 +80,10 @@ class ParameterScratchpad:
         self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def sync_from_device(self) -> None:
-        """Sync the scratchpad buffer from the device: what a device transfer
-        into ``alias()`` wrote, for ``read()`` to see."""
+        """Sync the scratchpad buffer from the device.
+
+        What a device transfer into ``alias()`` wrote is then seen by ``read()``.
+        """
         self._bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def read(self, name: str) -> int:
@@ -89,9 +91,9 @@ class ParameterScratchpad:
         return self._impl.read(name)
 
     def alias(self, device) -> "pyxrt.bo":
-        """A buffer object over this scratchpad's host mapping, on ``device``,
-        that a kernel argument can be bound to.
+        """Return a buffer object over this scratchpad's host mapping.
 
+        It is on ``device``, and a kernel argument can be bound to it.
         The scratchpad's own buffer object is on the device heap, at an
         address the shim DMA does not reach: a transfer into it silently goes
         nowhere. This user-pointer buffer is reached like any host buffer, so
