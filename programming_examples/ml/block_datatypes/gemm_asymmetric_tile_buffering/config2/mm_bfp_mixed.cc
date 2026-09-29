@@ -43,10 +43,14 @@ constexpr int t = 8; // MAC columns (B/C)
 constexpr int nbc = n / (2 * t); // column blocks of 2t cols
 constexpr int nblk = (m_a / (2 * r)) * nbc;
 
-// Bytes per 64-value bfp16ebs8 block (8 exponent-sharing groups of 8
-// values at 9 bytes each); bfp16ebs8* arithmetic is byte arithmetic on
-// Peano (sizeof(bfp16ebs8) == 1).
+// Bytes per 64-value bfp16ebs8 block: 8 exponent-sharing groups of 8
+// values at 9 bytes each.
 constexpr int blk_bytes = r * s / 8 * 9; // = 72
+// Pointer steps count bfp16ebs8 units, whose size depends on the compiler:
+// Peano before 22.0.0.2026092401 declares the type empty (sizeof 1), later
+// Peano as one 9-byte group.
+constexpr int bytes_per_unit = sizeof(bfp16ebs8);
+static_assert(blk_bytes % bytes_per_unit == 0);
 
 static_assert(m == 192 && m % rho == 0 && m_a % (2 * r) == 0 && k == 128 &&
                   n == 96 && n % (2 * t) == 0 && rho == 6,
@@ -64,14 +68,13 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA_in,
   // Round-to-nearest-even (Peano defaults to floor on converts).
   aie::set_rounding(aie::rounding_mode::conv_even);
 
-  // sizeof(bfp16ebs8) == 1 on Peano: pointer arithmetic below is byte
-  // arithmetic (64-element block = 72 bytes; C stripe = m_a*n/8*9 bytes).
   const bfp16ebs8 __aie_dm_resource_a *__restrict pA =
       (const bfp16ebs8 __aie_dm_resource_a *)pA_in;
   const bfp16ebs8 __aie_dm_resource_b *__restrict pB =
       (const bfp16ebs8 __aie_dm_resource_b *)pB_in;
   bfp16ebs8 __aie_dm_resource_c *__restrict pC =
-      (bfp16ebs8 __aie_dm_resource_c *)pC_in + g_counter * (m_a * n / 8 * 9);
+      (bfp16ebs8 __aie_dm_resource_c *)pC_in +
+      g_counter * (m_a * n / 8 * 9 / bytes_per_unit);
   g_counter = (g_counter == rho - 1) ? 0 : g_counter + 1;
 
   using AStream = InBufStream<bfp16ebs8, r * s, aie_dm_resource::a>;
@@ -100,8 +103,8 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA_in,
   for (int blk = 0; blk < nblk; blk++) {
     // Fresh A/B streams per block at computed bases (no seek fifo ops).
     // One 2r-row A band (resp. 2t-col B band) holds 2*k/s stream blocks.
-    AStream a_stream(pA + br * (2 * k / s) * blk_bytes);
-    BStream b_stream(pB + bc * (2 * k / s) * blk_bytes);
+    AStream a_stream(pA + br * (2 * k / s) * (blk_bytes / bytes_per_unit));
+    BStream b_stream(pB + bc * (2 * k / s) * (blk_bytes / bytes_per_unit));
 
     MMUL acc0((aie::accum<accfloat, r * t>(c0)));
     MMUL acc1((aie::accum<accfloat, r * t>(c1)));

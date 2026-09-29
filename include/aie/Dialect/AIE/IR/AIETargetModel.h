@@ -16,6 +16,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace xilinx::AIE {
 
@@ -131,6 +132,22 @@ public:
 
   /// Return the number of columns in the device.
   virtual int columns() const = 0;
+
+  /// Width of the physical array this (possibly virtualized) device is carved
+  /// from. This defaults to columns(), which is correct for devices that are
+  /// the whole array.
+  virtual int physicalColumns() const { return columns(); }
+
+  /// First physical column at which a partition may be anchored.
+  virtual int firstPlaceableColumn() const { return 0; }
+
+  /// Every physical column offset at which a numCols-wide partition still fits.
+  std::vector<int> partitionStartColumns(int numCols) const {
+    std::vector<int> starts;
+    for (int c = firstPlaceableColumn(); c + numCols <= physicalColumns(); ++c)
+      starts.push_back(c);
+    return starts;
+  }
 
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
@@ -1094,6 +1111,8 @@ public:
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
   }
 
+  int physicalColumns() const override { return 4; }
+
   uint32_t getNumMemTileRows() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
@@ -1148,6 +1167,8 @@ public:
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
   }
+
+  int physicalColumns() const override { return 8; }
 
   AIETileType getTileType(int col, int row) const override {
     if (row == 0)

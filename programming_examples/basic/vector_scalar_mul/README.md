@@ -13,7 +13,7 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 
 1. `vector_scalar_mul.py`: An `@iron.jit` design that declares the AIE-array dataflow and kernel binding in one place. Standalone invocation runs the full compile + execute + verify cycle; `--xclbin-path` / `--insts-path` switches it into compile-only mode for the `Makefile` flow.
 
-1. `scale.cc`: A C++ implementation of scalar and vectorized vector scalar multiply operations for AIE cores. Found [here](../../../aie_kernels/aie2/scale.cc).
+1. `scale.cc`: A C++ implementation of scalar and vectorized vector scalar multiply operations for AIE cores. Found [here](../../../aie_kernels/eltwise/scale.cc).
 
 1. `test.cpp`: C++ testbench that loads the prebuilt XCLBIN/insts, configures the AIE module, supplies input data, executes on the NPU, and verifies against a CPU reference. Optionally outputs trace data.
 

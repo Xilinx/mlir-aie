@@ -38,7 +38,7 @@ from aie.utils.verify import assert_pass
 _TILE_M = _TILE_K = _TILE_N = 64
 # AIE kernel intrinsic (r, s, t) used to drive the DMA layout transforms
 # below (r*s / s*t / r*t sub-tiles) is read from `matmul_kernel.mac_dims`
-# inside the design — see aie_kernels/aie2{,p}/mm.cc for the per-arch
+# inside the design — see aie_kernels/linalg/mm_aie2{,p}.h for the per-arch
 # values (e.g. int16/int16 is 4x4x4 on AIE2 but 4x4x8 on AIE2P, so a
 # hardcoded `_R, _S, _T` would break on whichever arch you didn't pin to).
 

@@ -6,7 +6,7 @@
 """Shared helpers for the kernels submodules."""
 
 import hashlib
-import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
@@ -20,8 +20,6 @@ from aie.helpers.npdtypes import (
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.verify import Tolerance
-
-_log = logging.getLogger(__name__)
 
 
 class Param:
@@ -72,6 +70,41 @@ class TensorLayout:
 
 
 @dataclass(frozen=True)
+class Trace:
+    """How a kernel's ``event0()``/``event1()`` markers bracket one call.
+
+    ``Trace.whole_call()``: one pair brackets every call of the entry symbol
+    and nothing it calls emits another, so each trace interval is one call.
+    ``Trace.none(reason)``: a call emits no marker. ``Trace.partial(reason)``:
+    markers exist but do not bracket each call exactly once (around an inner
+    loop, or skipped on an early return), so intervals cannot be attributed
+    to calls. ``test_kernel_trace_markers.py`` checks the declaration against
+    the compiled IR of every library build.
+    """
+
+    shape: str
+    reason: str | None = None
+
+    def __post_init__(self):
+        if self.shape not in ("whole_call", "none", "partial"):
+            raise ValueError(f"unknown trace shape {self.shape!r}")
+        if (self.shape == "whole_call") != (self.reason is None):
+            raise ValueError("only an untimed trace shape carries a reason")
+
+    @classmethod
+    def whole_call(cls):
+        return cls("whole_call")
+
+    @classmethod
+    def none(cls, reason: str):
+        return cls("none", reason)
+
+    @classmethod
+    def partial(cls, reason: str):
+        return cls("partial", reason)
+
+
+@dataclass(frozen=True)
 class KernelContract:
     """What a kernel computes, declared next to the factory that builds it.
 
@@ -93,7 +126,7 @@ class KernelContract:
             output for all calls, a tuple for several outputs. ``None``
             builds the kernel but does not judge it.
         tolerance: How close the device must come; ``None`` is
-            :meth:`Tolerance.default_for` the output dtype.
+            ``Tolerance.default_for`` the output dtype.
         ops_per_call: Arithmetic operations per call; ``None`` means one
             per output element.
         out_valid: Meaningful leading elements of a DMA-padded output tile;
@@ -112,13 +145,20 @@ class KernelContract:
             more than the target's default. Say where the number came from.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
-        layouts: A :class:`TensorLayout` per argument; ``None`` is identity.
+        layouts: A ``TensorLayout`` per argument; ``None`` is identity.
         parameter_bindings: ``(index, value)`` pairs fixing ``Param``
             operands, counts included; the rest come from the caller.
         initializers: ``(index, factory)`` pairs for ``InOut`` arguments;
             ``factory(fn)`` returns the kernel that initializes the buffer.
-        trace_cycles: Whether one event0/event1 pair brackets a whole call
-            and nothing else does; False unless audited.
+        out_offset: ``(index, step)`` for a kernel that writes ``step``
+            elements of its one ``Out`` per call, at the offset it reads
+            from bound scalar ``Param`` ``index``. The builder then hands
+            every call the same output tile, passes ``call * step`` as the
+            offset and drains the tile once, so the calls must fill it
+            exactly. ``None``: each call writes a whole tile of its own.
+        trace: The ``Trace`` shape of the kernel's markers. Every
+            library factory declares one; ``None`` (undeclared) is only for
+            ad-hoc kernels, and ``cycles_per_call`` refuses it.
         uses_lut: Whether the kernel gathers through an ``aie::lut<4>`` table
             pair, so a build should verify the two tables land in different
             banks. Set it on the contract, not per source file: the LUT often
@@ -142,7 +182,8 @@ class KernelContract:
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
-    trace_cycles: bool = False
+    out_offset: tuple[int, int] | None = None
+    trace: Trace | None = None
     uses_lut: bool = False
 
     def __post_init__(self):
@@ -174,6 +215,14 @@ class KernelContract:
             for i in initialized
         ):
             raise ValueError("initializers must name distinct InOut arguments")
+        if self.out_offset is not None:
+            index, step = self.out_offset
+            if index not in bound or self.roles.count(Out) != 1 or InOut in self.roles:
+                raise ValueError(
+                    "out_offset needs a bound Param offset and exactly one Out"
+                )
+            if step < 1:
+                raise ValueError(f"out_offset step must be >= 1, got {step}")
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.stack_bytes is not None and self.stack_bytes < 1:
@@ -191,7 +240,7 @@ class KernelContract:
         """Position of the one output, written (``Out``) or accumulated into (``InOut``).
 
         Raises for a kernel with several outputs: code that must handle any
-        kernel reads :attr:`out_indices`.
+        kernel reads ``out_indices``.
         """
         if len(self.out_indices) > 1:
             raise ValueError("multiple outputs: use out_indices")
@@ -273,60 +322,97 @@ class KernelContract:
                 raise ValueError(f"argument {i}: expected scalar parameter")
 
 
-def _detect_arch() -> str:
-    """Return ``'aie2p'`` or ``'aie2'`` based on the active device.
+@dataclass(frozen=True)
+class ArchTraits:
+    """What the kernel sources assume of one architecture.
 
-    Falls back to ``'aie2'`` if no device is currently set.
+    One row of ``aie_kernels/aie_arch.h``, which the C++ side reads;
+    ``test_arch_traits.py`` compiles the two against each other.
+
+    Attributes:
+        name: The architecture, as ``resolve_target_arch`` names it.
+        aie_arch: The compiler's ``__AIE_ARCH__``.
+        device: The ``from_name`` device a factory models when none is bound.
+        bf16_lanes: bf16 lanes in one vector multiply, the width the sources
+            walk a buffer at. A tile has to be whole vectors of it.
+        native_tanh: Has a tanh instruction; otherwise tanh reads a LUT.
+        native_exp2: Has an exp2 instruction; otherwise exp2 is a polynomial.
+        bfp16: Has the bfp16ebs8 block type.
+        lut_16b_run: uint16 entries per bank run in an ``aie::lut`` table.
     """
-    try:
-        from aie.utils import get_current_device
-        from aie.utils.compile.utils import resolve_target_arch
 
-        device = get_current_device(probe_runtime=False)
-        return resolve_target_arch(device)
-    except (ImportError, RuntimeError, AttributeError, ValueError):
-        # ImportError: iron not built; RuntimeError: no explicit device set;
-        # AttributeError/ValueError: unrecognised device.  Anything else (e.g.
-        # OSError from a misconfigured install) bubbles up so the user sees it.
-        _log.warning(
-            "_detect_arch: no explicit device or unrecognised device; "
-            "falling back to 'aie2'",
-            exc_info=True,
-        )
-        return "aie2"
+    name: str
+    aie_arch: int
+    device: str
+    bf16_lanes: int
+    native_tanh: bool
+    native_exp2: bool
+    bfp16: bool
+    lut_16b_run: int
 
 
-def _kernel_source(arch: str, subdir: str, filename: str) -> Path:
+ARCH_TRAITS = {
+    t.name: t
+    for t in (
+        ArchTraits("aie2", 20, "npu1", 16, False, False, False, 8),
+        ArchTraits("aie2p", 21, "npu2", 32, True, True, True, 16),
+    )
+}
+
+
+def _detect_arch() -> str:
+    """Return the bound device's architecture, or ``'aie2'`` when none is bound.
+
+    Raises:
+        RuntimeError: When the bound device's architecture has no kernels.
+    """
+    from aie.utils import get_current_device
+    from aie.utils.compile.utils import resolve_target_arch
+
+    return resolve_target_arch(get_current_device(probe_runtime=False))
+
+
+def _arch_traits() -> ArchTraits:
+    """Return the traits of the architecture ``_detect_arch`` names."""
+    return ARCH_TRAITS[_detect_arch()]
+
+
+def _portable() -> bool:
+    """Whether ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch."""
+    return os.environ.get("AIE_KERNELS_PORTABLE") == "1"
+
+
+def _tuned_arch() -> str | None:
+    """Return the architecture whose ``AIE_TUNED_*`` code the sources build, or None.
+
+    A factory choice that follows the code of one branch -- a stack size, a
+    tolerance, a reference model -- keys on this rather than on
+    ``_detect_arch``, so that it pairs with the branch built when
+    ``_portable()`` holds.
+    """
+    return None if _portable() else _detect_arch()
+
+
+def _portable_flags() -> tuple[str, ...]:
+    """Return the compile flags that select the branch ``_tuned_arch`` names."""
+    return ("-DAIE_KERNELS_PORTABLE",) if _portable() else ()
+
+
+def _kernel_source(relpath: str) -> Path:
     """Return the absolute path to a kernel source file.
 
     Args:
-        arch: Target architecture string (``'aie2'`` or ``'aie2p'``).
-        subdir: Subdirectory under ``aie_kernels/`` (e.g. ``'aie2'``).
-        filename: Source file name (e.g. ``'scale.cc'``).
-
-    Returns:
-        Path to the source file.
+        relpath: Path under ``aie_kernels/``, e.g. ``'eltwise/scale.cc'``.
 
     Raises:
-        FileNotFoundError: When the source file cannot be found.
+        FileNotFoundError: When the source file does not exist.
     """
     from aie.utils import config
 
-    base = Path(config.aie_kernels_dir())
-    candidate = base / subdir / filename
-    if candidate.exists():
-        return candidate
-    if subdir != "aie2":
-        aie2_fallback = base / "aie2" / filename
-        if aie2_fallback.exists():
-            return aie2_fallback
-    generic = base / "generic" / filename
-    if generic.exists():
-        return generic
-    raise FileNotFoundError(
-        f"Kernel source '{filename}' not found under {base}/{subdir}/, "
-        f"{base}/aie2/, or {base}/generic/"
-    )
+    path = Path(config.aie_kernels_dir()) / relpath
+    if not path.exists():
+        raise FileNotFoundError(f"Kernel source {path} not found")
+    return path
 
 
 def _include_dirs() -> list[str]:
@@ -447,19 +533,8 @@ def _device():
 
     device = get_current_device(probe_runtime=False)
     if device is None:
-        device = from_name("npu2" if _detect_arch() == "aie2p" else "npu1")
+        device = from_name(_arch_traits().device)
     return device
-
-
-def _bf16_lanes() -> int:
-    """Elements per bf16 vector in this architecture's kernel sources.
-
-    ``aie::vector<bfloat16, 16>`` on aie2, ``<bfloat16, 32>`` on aie2p
-    (``silu.cc``, ``layer_norm.cc``, ...). A tile has to be whole vectors of
-    it. This is what the sources chose, not a target-model query: the
-    register is wider than the bf16 datapath on aie2.
-    """
-    return 32 if _detect_arch() == "aie2p" else 16
 
 
 def _min_dma_aligned_elems(dtype) -> int:
@@ -473,12 +548,6 @@ def _min_dma_aligned_elems(dtype) -> int:
     align = _device().address_gen_granularity // 8
     itemsize = np.dtype(dtype).itemsize
     return max(1, (align + itemsize - 1) // itemsize)
-
-
-def _default_source_path(filename: str, subdir: str | None = None) -> Path:
-    """Return ``_kernel_source(arch, subdir or arch, filename)`` using the active arch."""
-    arch = _detect_arch()
-    return _kernel_source(arch, subdir or arch, filename)
 
 
 def _arg_type_key(t):
@@ -507,6 +576,7 @@ def _make_extern(
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
     cls: type[_KernelT],
+    include_dirs: list[str] | None = None,
 ) -> _KernelT: ...
 
 
@@ -521,6 +591,7 @@ def _make_extern(
     inline: bool = False,
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
+    include_dirs: list[str] | None = None,
 ) -> ExternalFunction: ...
 
 
@@ -535,13 +606,15 @@ def _make_extern(
     object_file_name: str | None = None,
     contract: KernelContract | None = None,
     cls: type[ExternalFunction] = ExternalFunction,
+    include_dirs: list[str] | None = None,
 ) -> ExternalFunction:
     """Construct an ExternalFunction with the standard include_dirs.
 
-    ``contract`` (a :class:`KernelContract`) is what harnesses and tests read
+    ``contract`` (a ``KernelContract``) is what harnesses and tests read
     to build, run and judge the kernel generically; every factory passes
     one. ``cls`` is the class to construct, for factories whose kernels have
     more to say than a plain ``ExternalFunction`` (``linalg.MatrixKernel``).
+    ``include_dirs`` replaces the standard include path.
 
     ``inline`` uses Peano's always-inline LLVM IR and merge linking. Inline
     factories must use distinct C++ symbol names for distinct variants because
@@ -570,9 +643,17 @@ def _make_extern(
     where separate digest-named objects would each carry every symbol of
     the ``.cc`` and collide at link.
     """
-    flags_tuple = tuple(compile_flags or [])
+    flags_tuple = tuple(compile_flags or []) + _portable_flags()
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
-    identity = (func_name, str(source_path), arg_keys, flags_tuple, use_chess)
+    # One source serves every arch, so the arch is part of the kernel's identity.
+    identity = (
+        func_name,
+        str(source_path),
+        arg_keys,
+        flags_tuple,
+        use_chess,
+        _detect_arch(),
+    )
     if inline:
         if use_chess:
             raise ValueError("inline kernels require Peano, not Chess")
@@ -637,7 +718,7 @@ def _make_extern(
         object_file_name=object_file_name,
         source_file=str(source_path),
         arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        include_dirs=include_dirs or _include_dirs(),
         compile_flags=list(flags_tuple),
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,

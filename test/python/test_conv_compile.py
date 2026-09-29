@@ -28,6 +28,7 @@ _CASES = [
     ("aie2", "conv2dk3", np.uint8),
     ("aie2", "conv2dk1_i8", None),
     ("aie2p", "conv2dk1_i8", None),
+    ("aie2", "conv2dk14", None),
     ("aie2p", "conv2dk14", None),
 ]
 
