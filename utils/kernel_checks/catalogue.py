@@ -7,8 +7,23 @@ For every factory in ``aie.iron.kernels``: its family, summary and sources,
 the builds it offers on this NPU's architecture, and how its cases fared in
 the nightly extensive sweep and performance checks. nightlyKernelChecks.yml
 runs it on each NPU after timing, and publishKernelResults.yml installs the
-result as ``kernel-checks/<npu>/catalogue.json`` beside that NPU's
-``data.js``.
+result as ``kernel-checks/<npu>/catalogue.json`` beside that NPU's run
+records (``utils/kernel_checks/publish.py``).
+
+Per factory the column records, for this NPU:
+
+* ``passed`` / ``failed``: cases the extensive sweep passed (count) and
+  failed (names). A case failed if any input or seed failed.
+* ``timed``: cases the performance checks recorded rows for (count).
+* ``timing_failed``: cases that passed the sweep but failed in the timing
+  run (names, from ``meta.json``), so a series with a gap has a reason.
+* ``untimed``: cases that passed the sweep and are not timed by design
+  (``perf=False`` in ``kernel_cases.py``), so "N cases pass" and "M timed"
+  add up.
+* ``reason``: why a factory with builds has no case at all.
+
+The row assembly (:func:`rows`) needs only the standard library, so it is
+tested on any host; only :func:`catalogue` imports the ``aie`` package.
 """
 
 import argparse
@@ -19,16 +34,13 @@ import os
 import re
 import sys
 from collections import defaultdict
+from pathlib import Path
 
 import pr_report
-from aie.iron import kernels
-from aie.iron.device import from_name
-from aie.iron.kernels._common import ARCH_TRAITS
-from aie.utils import get_current_device
-from aie.utils.compile.remarks import kernel_builds
-from aie.utils.hostruntime import set_current_device
 
 _LUT_SOURCE = re.compile(r'-DAIE_LUT_KERNEL_SOURCE="(.+)"')
+_CASES_DIR = Path(__file__).resolve().parents[2] / "test/python/npu"
+NO_CASE = "no case in test/python/npu/kernel_cases.py"
 
 
 def _library_path(path: str) -> str:
@@ -42,6 +54,24 @@ def _sources(ef) -> list[str]:
     return [_library_path(ef.source_file)] if ef.source_file else []
 
 
+def why_uncased(ef) -> str | None:
+    """Return why the generic builder has no case for ``ef``, from its contract.
+
+    The contract's ``unsupported`` reason (a cascade PUT half has no output
+    to judge), else the reason its trace is ``none`` (``set_rounding`` runs
+    once before the calls), else None.
+    """
+    contract = getattr(ef, "contract", None)
+    if contract is None:
+        return None
+    if getattr(contract, "unsupported", None):
+        return str(contract.unsupported)
+    trace = getattr(contract, "trace", None)
+    if trace is not None and getattr(trace, "shape", None) == "none":
+        return getattr(trace, "reason", None) or None
+    return None
+
+
 def _by_factory(case_names) -> dict[str, set[str]]:
     grouped = defaultdict(set)
     for case in case_names:
@@ -49,7 +79,7 @@ def _by_factory(case_names) -> dict[str, set[str]]:
     return grouped
 
 
-def _swept(path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+def swept(path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     """Return the cases of the extensive sweep that passed and that failed, by factory.
 
     A case failed if any input or seed failed, as the performance checks exclude it.
@@ -60,66 +90,154 @@ def _swept(path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     return _by_factory(passed - failed), _by_factory(failed)
 
 
-def _timed(path) -> dict[str, set[str]]:
+def timed(path) -> dict[str, set[str]]:
     with open(path) as f:
-        rows = json.load(f)
-    return _by_factory(row["name"].rsplit("/", 1)[0] for row in rows)
+        rows_ = json.load(f)
+    return _by_factory(row["name"].rsplit("/", 1)[0] for row in rows_)
 
 
-def catalogue(npu: str, correctness=None, perf=None) -> dict:
+def timing_failed(path) -> dict[str, set[str]]:
+    """Return the cases ``meta.json`` lists as failed in the timing run, by factory.
+
+    The sweep's own failures reach the meta too; those are the correctness
+    report's to attribute, so only the timing tests count here.
+    """
+    with open(path) as f:
+        failed = json.load(f).get("failed", [])
+    cases = []
+    for nodeid in failed:
+        if "test_kernel_extensive[" in nodeid:
+            continue
+        match = pr_report._BRACKETED.search(nodeid)
+        if match:
+            cases.append(match[1])
+    return _by_factory(cases)
+
+
+def rows(
+    factories: list[dict],
+    passed: dict[str, set[str]],
+    failed: dict[str, set[str]],
+    timed_: dict[str, set[str]],
+    timing_failed_: dict[str, set[str]],
+    declared: dict[str, dict[str, bool]],
+) -> list[dict]:
+    """Assemble the catalogue rows from what the run produced.
+
+    ``factories`` carries each factory's ``factory``, ``family``,
+    ``summary``, ``sources`` and ``builds``, and ``why`` when its contract
+    says why the builder cannot run it; ``declared`` maps a factory to its
+    cases on this NPU and whether each is timed (``perf``).
+    """
+    out = []
+    for f in factories:
+        f = dict(f)
+        why = f.pop("why", None)
+        name = f["factory"]
+        cases = declared.get(name, {})
+        ok = passed.get(name, set())
+        row = {
+            **f,
+            "passed": len(ok),
+            "failed": sorted(failed.get(name, ())),
+            "timed": len(timed_.get(name, ())),
+            "timing_failed": sorted(timing_failed_.get(name, ())),
+            "untimed": sorted(c for c in ok if cases.get(c) is False),
+        }
+        if f["builds"] and not cases:
+            row["reason"] = why or NO_CASE
+        out.append(row)
+    return out
+
+
+def _declared(npu: str, cases_dir: Path) -> dict[str, dict[str, bool]]:
+    """Every case of ``kernel_cases.py`` this NPU supports: ``factory -> {name: perf}``."""
+    sys.path.insert(0, str(cases_dir))
+    try:
+        # test/python/npu is put on the path above, at run time.
+        from kernel_cases import CASES  # pyright: ignore[reportMissingImports]
+    finally:
+        sys.path.pop(0)
+    declared: dict[str, dict[str, bool]] = defaultdict(dict)
+    for case in CASES:
+        if not case.supported_on(npu):
+            continue
+        try:
+            name = case.name
+        except NotImplementedError:
+            continue  # the factory exists only for the other architecture
+        declared[case.factory][name] = bool(case.perf)
+    return declared
+
+
+def catalogue(
+    npu: str, correctness=None, perf=None, meta=None, cases_dir: Path = _CASES_DIR
+) -> dict:
     """Return ``npu``'s column: every factory, and what this NPU offers and verified of it."""
+    from aie.iron import kernels
+    from aie.iron.device import from_name
+    from aie.iron.kernels._common import ARCH_TRAITS
+    from aie.utils import get_current_device
+    from aie.utils.compile.remarks import kernel_builds
+    from aie.utils.hostruntime import set_current_device
+
     arch = next(t.name for t in ARCH_TRAITS.values() if t.device == npu)
     previous = get_current_device(probe_runtime=False)
     set_current_device(from_name(npu, n_cols=1))
     try:
         builds = defaultdict(list)
         sources = defaultdict(set)
+        why: dict[str, str] = {}
         for name, ef in kernel_builds():
             factory = name.split("/", 1)[0]
             builds[factory].append(name)
             sources[factory].update(_sources(ef))
+            if factory not in why and (reason := why_uncased(ef)):
+                why[factory] = reason
+        declared = _declared(npu, cases_dir)
     finally:
         set_current_device(previous)
 
-    passed, failed = _swept(correctness) if correctness else ({}, {})
-    timed = _timed(perf) if perf else {}
-    rows = []
-    for factory in kernels.factories():
-        f = getattr(kernels, factory)
-        rows.append(
-            {
-                "factory": factory,
-                "family": f.__module__.rsplit(".", 1)[-1],
-                "summary": (inspect.getdoc(f) or "")
-                .split("\n", 1)[0]
-                .replace("``", ""),
-                "sources": sorted(sources[factory]),
-                "builds": builds[factory],
-                "passed": len(passed.get(factory, ())),
-                "failed": sorted(failed.get(factory, ())),
-                "timed": len(timed.get(factory, ())),
-            }
-        )
+    factories = [
+        {
+            "factory": factory,
+            "family": getattr(kernels, factory).__module__.rsplit(".", 1)[-1],
+            "summary": (inspect.getdoc(getattr(kernels, factory)) or "")
+            .split("\n", 1)[0]
+            .replace("``", ""),
+            "sources": sorted(sources[factory]),
+            "builds": builds[factory],
+            **({"why": why[factory]} if factory in why else {}),
+        }
+        for factory in kernels.factories()
+    ]
+    passed, failed = swept(correctness) if correctness else ({}, {})
     return {
         "npu": npu,
         "arch": arch,
         "commit": os.environ.get("GITHUB_SHA", ""),
         "date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "swept": correctness is not None,
-        "kernels": rows,
+        "kernels": rows(
+            factories,
+            passed,
+            failed,
+            timed(perf) if perf else {},
+            timing_failed(meta) if meta else {},
+            declared,
+        ),
     }
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
-    parser.add_argument(
-        "--npu", required=True, choices=[t.device for t in ARCH_TRAITS.values()]
-    )
+    parser.add_argument("--npu", required=True, choices=["npu1", "npu2"])
     parser.add_argument("--correctness", help="junit XML of the extensive sweep")
     parser.add_argument("--perf", help="perf.json of the timed cases")
+    parser.add_argument("--meta", help="meta.json of the timing run, for its failures")
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
-    result = catalogue(args.npu, args.correctness, args.perf)
+    result = catalogue(args.npu, args.correctness, args.perf, args.meta)
     with open(args.out, "w") as f:
         json.dump(result, f, indent=1)
     return 0
