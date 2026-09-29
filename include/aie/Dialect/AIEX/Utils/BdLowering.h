@@ -14,11 +14,10 @@
 // descriptor. The constant path instantiates it with ConstStridePolicy (plain
 // integer math); the dynamic path uses SsaStridePolicy (emits arith ops).
 //
-// The same reasoning extends across TILE TYPES: the arithmetic is shared, and
-// only the register bit layout -- which genuinely differs between shim NOC,
-// mem tile and core tile BDs -- is written per tile, in packers that read
-// line-for-line against their static counterparts in AIEDmaToNpu.cpp's
-// WriteBdToBlockWritePattern.
+// The same reasoning extends across TILE TYPES: the register bit layout, which
+// genuinely differs between shim NOC, mem tile and core tile BDs, comes from
+// AIETargetModel::getDmaBdLayout, and both this packer and AIEDmaToNpu.cpp's
+// WriteBdToBlockWritePattern place fields through it.
 //
 //===----------------------------------------------------------------------===//
 
@@ -278,7 +277,7 @@ struct BdTemplateFields {
 // that is the caller's `getBdRegisterBase` + `npu.blockwrite_values` -- so one
 // routine serves both a pinned bd_id and one drawn from the runtime pool.
 //
-// The tile at (`tileCol`, `tileRow`) must be a shim NOC, mem or core tile; the
+// The tile at (`tileCol`, `tileRow`) must have a target-model DmaBdLayout; the
 // caller is responsible for rejecting anything else with a user-facing
 // diagnostic before calling.
 mlir::LogicalResult

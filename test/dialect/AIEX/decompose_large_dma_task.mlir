@@ -76,7 +76,7 @@ module {
 
 // Test 3: LOWER — end-to-end through BD-ID assignment and tasks-to-npu.
 //
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWER
 
 // LOWER-LABEL: @lower_task_bd
@@ -215,7 +215,7 @@ module {
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=REPEAT-LEN
-// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-substitute-shim-dma-allocations,aie-decompose-large-dma-bd,aie-split-long-repeats,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=REPEAT-LOWER
 
 // The 4096-element innermost run needs two dimensions, so the outermost 8 moves
@@ -280,8 +280,8 @@ module {
 // -----
 
 // Scaling 201 executions by 8 gives 1608 runs, past one push's 256. That is
-// no longer an error: the BD-ID pass issues it as six full pushes and a
-// 72-run remainder, and only the last push carries the token. A start that
+// no longer an error: aie-split-long-repeats issues it as six full pushes and
+// a 72-run remainder, and only the last push carries the token. A start that
 // overrides the count repeats the same BD, so decomposition scales it too:
 // 2 runs become 16.
 // REPEAT-LEN-LABEL: @split_repeat_task_bd

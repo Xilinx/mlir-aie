@@ -18,10 +18,9 @@
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/Builders.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/raw_ostream.h"
@@ -161,7 +160,7 @@ static void updateTaskBdInPlace(AIE::DMABDOp bd, int32_t offset, int32_t len,
   bd.setStaticStrides(DenseI64ArrayAttr::get(bd.getContext(), outerStrides));
 }
 
-static AIE::DMABDOp createTaskBd(PatternRewriter &rewriter, Location loc,
+static AIE::DMABDOp createTaskBd(RewriterBase &rewriter, Location loc,
                                  AIE::DMABDOp tmpl, int32_t offset, int32_t len,
                                  ArrayRef<int64_t> outerSizes,
                                  ArrayRef<int64_t> outerStrides) {
@@ -267,7 +266,7 @@ static std::optional<std::pair<AIE::TileOp, Operation *>>
 resolveTaskAndTile(AIE::DMABDOp op) {
   if (auto cfg = op->getParentOfType<DMAConfigureTaskOp>()) {
     // Decomposition is a shape rewrite, so an unplaced tile is not an error
-    // here: decline and let the pattern run again after placement.
+    // here: skip the descriptor until placement has run.
     AIE::TileOp tile = cfg.tryGetTileOp();
     if (!tile)
       return std::nullopt;
@@ -289,7 +288,7 @@ resolveTaskAndTile(AIE::DMABDOp op) {
   return std::nullopt;
 }
 
-static NpuDmaMemcpyNdOp createDecomposedOp(PatternRewriter &rewriter,
+static NpuDmaMemcpyNdOp createDecomposedOp(RewriterBase &rewriter,
                                            NpuDmaMemcpyNdOp op,
                                            const NdDmaPattern &pattern,
                                            int64_t id, bool issueToken) {
@@ -337,13 +336,18 @@ static void setTaskIssueToken(Operation *taskOp, bool token) {
   cast<DMAConfigureTaskForOp>(taskOp).setIssueToken(token);
 }
 
-// Marks the starts splitIntoTasks emits until orderSlices has placed them:
-// [group, index within the group, group size].
-static constexpr llvm::StringLiteral kSliceAttr = "aiex.decompose_slice";
-// Marks the configures of the slices after the first, which orderSlices moves
-// up to their first start.
-static constexpr llvm::StringLiteral kSliceTaskAttr =
-    "aiex.decompose_slice_task";
+// The starts splitIntoTasks emits, until orderSlices has placed them.
+struct Slices {
+  struct Start {
+    int64_t group, index, count;
+  };
+  llvm::DenseMap<Operation *, Start> starts;
+  // The configures of the slices after the first, which orderSlices moves up
+  // to their first start.
+  llvm::DenseSet<Operation *> lateTasks;
+  llvm::SetVector<Block *> blocks;
+  int64_t nextGroup = 0;
+};
 
 // Why the slices of `bd` cannot go out as one task each, or nullopt if they
 // can. Every use of the task has to be one splitIntoTasks rewrites, and every
@@ -389,15 +393,15 @@ whyNotSeparateTasks(AIE::DMABDOp bd, Operation *taskOp, int64_t iterations) {
 
 // Issue the slices of `bd` as one single-descriptor task each. The task
 // becomes the first slice and the others are configured right after it, until
-// orderSlices moves each up to its first start. Only
-// the last slice issues the task's token, so an await of the task becomes an
-// await of the last slice, and a free frees every slice. Each start becomes a
+// orderSlices moves each up to its first start. Only the last slice issues the
+// task's token, so an await of the task becomes an await of the last slice,
+// and a free frees every slice. Each start becomes a
 // group of consecutive starts, every slice once per pass, which orderSlices
 // then interleaves with the starts around it.
-static void splitIntoTasks(PatternRewriter &rewriter, AIE::DMABDOp bd,
+static void splitIntoTasks(RewriterBase &rewriter, AIE::DMABDOp bd,
                            Operation *taskOp, ArrayRef<NdDmaPattern> slices,
                            int64_t baseFlatOffset, int64_t iterations,
-                           int64_t &nextGroup) {
+                           Slices &state) {
   bool token = getTaskIssueToken(taskOp);
   int64_t taskRuns = static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1;
   SmallVector<Operation *> users(taskOp->getResult(0).getUsers());
@@ -406,8 +410,7 @@ static void splitIntoTasks(PatternRewriter &rewriter, AIE::DMABDOp bd,
   rewriter.setInsertionPointAfter(taskOp);
   for (size_t i = 1; i < slices.size(); ++i)
     tasks.push_back(rewriter.clone(*taskOp));
-  for (Operation *task : llvm::drop_begin(tasks))
-    task->setAttr(kSliceTaskAttr, rewriter.getUnitAttr());
+  state.lateTasks.insert(std::next(tasks.begin()), tasks.end());
 
   for (auto it : llvm::enumerate(slices)) {
     size_t i = it.index();
@@ -450,18 +453,16 @@ static void splitIntoTasks(PatternRewriter &rewriter, AIE::DMABDOp bd,
     std::optional<uint32_t> rc = start.getRepeatCount();
     int64_t runs = rc ? static_cast<int64_t>(*rc) + 1 : taskRuns;
     int64_t count = runs / iterations * static_cast<int64_t>(slices.size());
-    int64_t group = nextGroup++;
+    int64_t group = state.nextGroup++;
     // Only the last start of the last slice may issue the token: an earlier
     // pass's would complete an await before the transfer has.
     bool startToken = token && !start.getNoToken();
     auto mark = [&](DMAStartTaskOp s, int64_t index) {
-      s->setAttr(kSliceAttr,
-                 rewriter.getDenseI64ArrayAttr({group, index, count}));
+      state.starts[s] = {group, index, count};
     };
-    rewriter.modifyOpInPlace(start, [&]() {
-      start.removeRepeatCountAttr();
-      mark(start, 0);
-    });
+    rewriter.modifyOpInPlace(start, [&]() { start.removeRepeatCountAttr(); });
+    mark(start, 0);
+    state.blocks.insert(start->getBlock());
     rewriter.setInsertionPointAfter(start);
     for (int64_t k = 1; k < count; ++k) {
       size_t i = static_cast<size_t>(k) % slices.size();
@@ -507,11 +508,12 @@ static std::optional<ChannelKey> channelOf(DMAStartTaskOp start) {
 //
 // A round runs from one start up to the next start on a channel it already
 // used. Each start's first slice keeps its place; later ones follow the
-// round's last start, ordered by index / size, ties in program order. A round
-// ends at anything a push may not move past: an await, sync, poll, untracked
-// push, or free of an unplaced slice. Configures, write32, blockwrite, RTP
-// writes and lock sets only delay a push, so slices move past them.
-static void orderSlices(Block &block) {
+// round's last start, ordered by index / size, ties in program order. Slices
+// move past configures and RTP writes, which only delay a push. A round ends
+// at anything else with an effect: an await, sync, poll, untracked push, free
+// of an unplaced slice, and a write32, blockwrite or lock set, whose order
+// against a push the design may rely on.
+static void orderSlices(Block &block, Slices &state) {
   struct Pending {
     DMAStartTaskOp start;
     int64_t index, count, head;
@@ -537,10 +539,8 @@ static void orderSlices(Block &block) {
       // takes are not held while earlier slices wait: the BD-ID pass can take
       // descriptors back only from started tasks.
       Operation *task = p.start.getTask().getDefiningOp();
-      if (task && task->hasAttr(kSliceTaskAttr)) {
-        task->removeAttr(kSliceTaskAttr);
+      if (task && state.lateTasks.erase(task))
         task->moveBefore(p.start);
-      }
     }
     pending.clear();
     pendingTasks.clear();
@@ -552,11 +552,14 @@ static void orderSlices(Block &block) {
   for (Operation &op : llvm::make_early_inc_range(block)) {
     if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
       std::optional<ChannelKey> channel = channelOf(start);
-      auto slice = start->getAttrOfType<DenseI64ArrayAttr>(kSliceAttr);
-      if (channel && slice && slice[1] > 0) {
-        auto head = headOfGroup.find(slice[0]);
+      auto it = state.starts.find(start);
+      std::optional<Slices::Start> slice;
+      if (it != state.starts.end())
+        slice = it->second;
+      if (channel && slice && slice->index > 0) {
+        auto head = headOfGroup.find(slice->group);
         if (head != headOfGroup.end()) {
-          pending.push_back({start, slice[1], slice[2], head->second});
+          pending.push_back({start, slice->index, slice->count, head->second});
           pendingTasks.insert(start.getTask());
           continue;
         }
@@ -567,7 +570,7 @@ static void orderSlices(Block &block) {
         continue;
       round.insert(*channel);
       if (slice)
-        headOfGroup[slice[0]] = heads;
+        headOfGroup[slice->group] = heads;
       ++heads;
       anchor = &op;
       continue;
@@ -577,8 +580,7 @@ static void orderSlices(Block &block) {
         flush();
       continue;
     }
-    if (isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, NpuWrite32Op,
-            NpuBlockWriteOp, NpuWriteRTPOp, SetLockOp>(op) ||
+    if (isa<DMAConfigureTaskOp, DMAConfigureTaskForOp, NpuWriteRTPOp>(op) ||
         isMemoryEffectFree(&op))
       continue;
     flush();
@@ -586,401 +588,378 @@ static void orderSlices(Block &block) {
   flush();
 }
 
-struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
-  using OpRewritePattern::OpRewritePattern;
+static void decomposeMemcpy(RewriterBase &rewriter, NpuDmaMemcpyNdOp op) {
+  if (!allConstant(op))
+    return;
 
-  LogicalResult matchAndRewrite(NpuDmaMemcpyNdOp op,
-                                PatternRewriter &rewriter) const override {
-    if (!allConstant(op))
-      return failure();
+  NdDmaPattern pattern = patternFromOp(op);
+  if (isContiguousTransfer(pattern.sizes, pattern.strides))
+    return;
 
-    NdDmaPattern pattern = patternFromOp(op);
-    if (isContiguousTransfer(pattern.sizes, pattern.strides))
-      return failure();
+  AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
+  if (!dev)
+    return;
 
-    AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
-    if (!dev)
-      return failure();
+  auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+      dev, op.getMetadata().getRootReference());
+  if (!allocOp)
+    return;
 
-    auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
-        dev, op.getMetadata().getRootReference());
-    if (!allocOp)
-      return failure();
+  AIE::TileOp tile = allocOp.getTileOp();
+  if (!tile)
+    return;
 
-    AIE::TileOp tile = allocOp.getTileOp();
-    if (!tile)
-      return failure();
+  int col = tile.getCol();
+  int row = tile.getRow();
+  const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
+  auto bufferType = cast<BaseMemRefType>(op.getMemref().getType());
 
-    int col = tile.getCol();
-    int row = tile.getRow();
-    const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
-    auto bufferType = cast<BaseMemRefType>(op.getMemref().getType());
+  if (patternPassesVerification(op, bufferType, targetModel, col, row, pattern))
+    return;
 
-    if (patternPassesVerification(op, bufferType, targetModel, col, row,
-                                  pattern))
-      return failure();
+  auto decomposed =
+      decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
+  // failed() already guards both dereferences below via short-circuit /
+  // prior control flow; the checker just doesn't associate FailureOr's
+  // failed()/succeeded() idiom with the std::optional base it derives from.
+  if (failed(decomposed) ||
+      decomposed->empty()) // NOLINT(bugprone-unchecked-optional-access)
+    return;
+  // Bind a plain reference now that decomposed is known non-failed and
+  // non-empty, so nothing past this point looks like an optional access.
+  SmallVector<NdDmaPattern> &bds =
+      *decomposed; // NOLINT(bugprone-unchecked-optional-access)
+  if (bds.size() > targetModel.getNumBDs(col, row))
+    return;
 
-    auto decomposed =
-        decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
-    // failed() already guards both dereferences below via short-circuit /
-    // prior control flow; the checker just doesn't associate FailureOr's
-    // failed()/succeeded() idiom with the std::optional base it derives from.
-    if (failed(decomposed) ||
-        decomposed->empty()) // NOLINT(bugprone-unchecked-optional-access)
-      return failure();
-    // Bind a plain reference now that decomposed is known non-failed and
-    // non-empty, so nothing past this point looks like an optional access.
-    SmallVector<NdDmaPattern> &bds =
-        *decomposed; // NOLINT(bugprone-unchecked-optional-access)
-    if (bds.size() > targetModel.getNumBDs(col, row))
-      return failure();
+  rewriter.setInsertionPoint(op);
+  if (bds.size() == 1) {
+    rewriter.replaceOpWithNewOp<NpuDmaMemcpyNdOp>(
+        op, op.getMemref(), ValueRange{}, ValueRange{}, ValueRange{},
+        DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().offsets)),
+        DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().sizes)),
+        DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().strides)),
+        op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
+        op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
+        op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
+        op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+    return;
+  }
 
-    if (bds.size() == 1) {
-      rewriter.replaceOpWithNewOp<NpuDmaMemcpyNdOp>(
-          op, op.getMemref(), ValueRange{}, ValueRange{}, ValueRange{},
-          DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().offsets)),
-          DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().sizes)),
-          DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().strides)),
-          op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
-          op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
-          op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
-          op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-          op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-          op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
-      return success();
-    }
+  llvm::DenseSet<int64_t> usedIds;
+  if (auto seq = op->getParentOfType<AIE::RuntimeSequenceOp>()) {
+    seq.walk([&](NpuDmaMemcpyNdOp other) {
+      if (other == op)
+        return;
+      if (other.getMetadata() == op.getMetadata())
+        usedIds.insert(other.getId());
+    });
+  }
 
-    llvm::DenseSet<int64_t> usedIds;
-    if (auto seq = op->getParentOfType<AIE::RuntimeSequenceOp>()) {
-      seq.walk([&](NpuDmaMemcpyNdOp other) {
-        if (other == op)
-          return;
-        if (other.getMetadata() == op.getMetadata())
-          usedIds.insert(other.getId());
-      });
-    }
+  int64_t nextId = op.getId();
+  for (auto [idx, subPattern] : llvm::enumerate(bds)) {
+    bool last = idx + 1 == bds.size();
+    int64_t id = allocateNextId(op, nextId, usedIds);
+    nextId = id + 1;
+    createDecomposedOp(rewriter, op, subPattern, id,
+                       last && op.getIssueToken());
+  }
+  rewriter.eraseOp(op);
+}
 
-    int64_t nextId = op.getId();
-    rewriter.setInsertionPoint(op);
-    for (auto [idx, subPattern] : llvm::enumerate(bds)) {
-      bool last = idx + 1 == bds.size();
-      int64_t id = allocateNextId(op, nextId, usedIds);
-      nextId = id + 1;
-      createDecomposedOp(rewriter, op, subPattern, id,
-                         last && op.getIssueToken());
-    }
-    rewriter.eraseOp(op);
+// Rewrites a task's descriptor into legal ones. Fails only after reporting why
+// it cannot.
+static LogicalResult decomposeTaskBd(RewriterBase &rewriter, AIE::DMABDOp op,
+                                     Slices &slices) {
+  auto taskAndTile = resolveTaskAndTile(op);
+  if (!taskAndTile)
+    return success();
+
+  AIE::TileOp tile = taskAndTile->first;
+  Operation *taskOp = taskAndTile->second;
+
+  // A descriptor with more dimensions than a BD has cannot be lowered as it
+  // is, so where this pass cannot reduce it, it says why.
+  bool tooManyDims = op.getMixedSizes().size() > kNdDmaDims;
+  auto cannotReduce = [&]() {
+    return op.emitOpError()
+           << "has " << op.getMixedSizes().size()
+           << " dimensions, and a buffer descriptor holds " << kNdDmaDims
+           << "; the extra ones can only be split off ";
+  };
+  if (!allConstant(op)) {
+    if (tooManyDims)
+      return cannotReduce()
+             << "a descriptor whose offset, length, sizes and strides are "
+                "all constant and that has no padding";
     return success();
   }
-};
+  if (countTaskBds(taskOp) != 1) {
+    if (tooManyDims)
+      return cannotReduce() << "a task's only descriptor";
+    return success();
+  }
+  // A descriptor takes its locks once per execution, which decomposition
+  // regroups, and a slice of its own would take none.
+  bool takesLocks = false;
+  taskOp->walk([&](AIE::UseLockOp) { takesLocks = true; });
+  if (takesLocks) {
+    if (tooManyDims)
+      return cannotReduce() << "a descriptor that takes no locks";
+    return success();
+  }
 
-struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
-  DecomposeLargeDmaBdTaskPattern(MLIRContext *ctx, int64_t &nextGroup)
-      : OpRewritePattern(ctx), nextGroup(&nextGroup) {}
+  int col = tile.getCol();
+  int row = tile.getRow();
+  const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
+  auto bufferType = cast<BaseMemRefType>(op.getBuffer().getType());
+  // See contiguousAndFits for why only d3 can make one too long.
+  int64_t maxIterations = 1LL << targetModel.getDmaBdIterBits(col, row);
+  auto lowerable = [&](const NdDmaPattern &p) {
+    if (p.sizes.size() != kNdDmaDims)
+      return false;
+    if (isContiguousTransfer(p.sizes, p.strides))
+      return p.sizes[3] <= maxIterations;
+    return patternPassesVerification(op, bufferType, targetModel, col, row, p);
+  };
 
-  // Numbers the start groups splitIntoTasks emits, across the pass.
-  int64_t *nextGroup;
+  NdDmaPattern pattern = patternFromDmaBd(op);
+  if (lowerable(pattern))
+    return success();
 
-  LogicalResult matchAndRewrite(AIE::DMABDOp op,
-                                PatternRewriter &rewriter) const override {
-    if (op->getParentOfType<AIE::MemOp>() ||
-        op->getParentOfType<AIE::ShimDMAOp>() ||
-        op->getParentOfType<AIE::MemTileDMAOp>() ||
-        op->getParentOfType<AIE::DMAOp>())
-      return failure();
+  // Outer iteration dimensions that re-read the same data only repeat what
+  // is inside them, as the task's repeat count does. They go, and a pass
+  // shrinks to what they repeat: where that is all the pattern needs it
+  // lowers as it is, and otherwise the pieces it splits into are restarted
+  // rather than configured once per repeat.
+  NdDmaPattern unrepeated = pattern;
+  for (unsigned d = unrepeated.sizes.size();
+       d-- > 3 && (unrepeated.sizes[d] == 1 || unrepeated.strides[d] == 0);)
+    unrepeated.sizes[d] = 1;
+  bool dropRepeats = lowerable(unrepeated);
+  pattern = unrepeated;
+  // One pass over the pattern, in executions of the descriptor.
+  int64_t iterations = iterationCount(pattern);
 
-    auto taskAndTile = resolveTaskAndTile(op);
-    if (!taskAndTile)
-      return failure();
-
-    AIE::TileOp tile = taskAndTile->first;
-    Operation *taskOp = taskAndTile->second;
-
-    // A descriptor with more dimensions than a BD has cannot be lowered as it
-    // is, so where this pass cannot reduce it, it says why.
-    bool tooManyDims = op.getMixedSizes().size() > kNdDmaDims;
-    auto cannotReduce = [&]() {
+  auto decomposed = dropRepeats ? FailureOr<SmallVector<NdDmaPattern>>(
+                                      SmallVector<NdDmaPattern>{pattern})
+                                : decomposeNdDmaPattern(op, bufferType, pattern,
+                                                        targetModel, col, row);
+  // failed() already guards both dereferences below via short-circuit /
+  // prior control flow; the checker just doesn't associate FailureOr's
+  // failed()/succeeded() idiom with the std::optional base it derives from.
+  if (failed(decomposed) ||
+      decomposed->empty()) { // NOLINT(bugprone-unchecked-optional-access)
+    if (tooManyDims)
       return op.emitOpError()
              << "has " << op.getMixedSizes().size()
-             << " dimensions, and a buffer descriptor holds " << kNdDmaDims
-             << "; the extra ones can only be split off ";
-    };
-    if (!allConstant(op)) {
-      if (tooManyDims)
-        return cannotReduce()
-               << "a descriptor whose offset, length, sizes and strides are "
-                  "all constant and that has no padding";
-      return failure();
-    }
-    if (countTaskBds(taskOp) != 1) {
-      if (tooManyDims)
-        return cannotReduce() << "a task's only descriptor";
-      return failure();
-    }
-    // A descriptor takes its locks once per execution, which decomposition
-    // regroups, and a slice of its own would take none.
-    bool takesLocks = false;
-    taskOp->walk([&](AIE::UseLockOp) { takesLocks = true; });
-    if (takesLocks) {
-      if (tooManyDims)
-        return cannotReduce() << "a descriptor that takes no locks";
-      return failure();
-    }
+             << " dimensions, and no split into descriptors of " << kNdDmaDims
+             << " fits this tile";
+    return success();
+  }
+  // Bind a plain reference now that decomposed is known non-failed and
+  // non-empty, so nothing past this point looks like an optional access.
+  SmallVector<NdDmaPattern> &bds =
+      *decomposed; // NOLINT(bugprone-unchecked-optional-access)
 
-    int col = tile.getCol();
-    int row = tile.getRow();
-    const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
-    auto bufferType = cast<BaseMemRefType>(op.getBuffer().getType());
-    // See contiguousAndFits for why only d3 can make one too long.
-    int64_t maxIterations = 1LL << targetModel.getDmaBdIterBits(col, row);
-    auto lowerable = [&](const NdDmaPattern &p) {
-      if (p.sizes.size() != kNdDmaDims)
-        return false;
-      if (isContiguousTransfer(p.sizes, p.strides))
-        return p.sizes[3] <= maxIterations;
-      return patternPassesVerification(op, bufferType, targetModel, col, row,
-                                       p);
-    };
+  if (bds.size() > 1 && isUnderRuntimeControlFlow(op)) {
+    if (tooManyDims)
+      return cannotReduce() << "outside runtime control flow, since it "
+                               "splits into "
+                            << bds.size() << " descriptors";
+    op.emitRemark()
+        << "deferring multi-BD decomposition under runtime control flow "
+           "(dynamic BD pool supports single-BD tasks only)";
+    return success();
+  }
 
-    NdDmaPattern pattern = patternFromDmaBd(op);
-    if (lowerable(pattern))
-      return failure();
+  int64_t baseFlatOffset = op.getConstantOffset().value_or(0);
 
-    // Outer iteration dimensions that re-read the same data only repeat what
-    // is inside them, as the task's repeat count does. They go, and a pass
-    // shrinks to what they repeat: where that is all the pattern needs it
-    // lowers as it is, and otherwise the pieces it splits into are restarted
-    // rather than configured once per repeat.
-    NdDmaPattern unrepeated = pattern;
-    for (unsigned d = unrepeated.sizes.size();
-         d-- > 3 && (unrepeated.sizes[d] == 1 || unrepeated.strides[d] == 0);)
-      unrepeated.sizes[d] = 1;
-    bool dropRepeats = lowerable(unrepeated);
-    pattern = unrepeated;
-    // One pass over the pattern, in executions of the descriptor.
-    int64_t iterations = iterationCount(pattern);
+  if (bds.size() == 1) {
+    const NdDmaPattern &sub = bds.front();
+    int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, sub);
+    auto outerSizes = toOuter(sub.sizes);
+    auto outerStrides = toOuter(sub.strides);
+    // len covers one BD invocation, so it tracks the innermost three
+    // dimensions only. Rewriting in place can move extent into the fourth
+    // (repeat) dimension -- e.g. an innermost run too long for the wrap
+    // field factors out an extra dimension and pushes the outermost one into
+    // the repeat slot -- so len has to be recomputed alongside the shape.
+    int32_t len = static_cast<int32_t>(lenFromInnermost3(sub.sizes));
 
-    auto decomposed = dropRepeats
-                          ? FailureOr<SmallVector<NdDmaPattern>>(
-                                SmallVector<NdDmaPattern>{pattern})
-                          : decomposeNdDmaPattern(op, bufferType, pattern,
-                                                  targetModel, col, row);
-    // failed() already guards both dereferences below via short-circuit /
-    // prior control flow; the checker just doesn't associate FailureOr's
-    // failed()/succeeded() idiom with the std::optional base it derives from.
-    if (failed(decomposed) ||
-        decomposed->empty()) { // NOLINT(bugprone-unchecked-optional-access)
-      if (tooManyDims)
+    IterationScale scale = iterationScale(iterations, sub);
+    int64_t runs = 0;
+    if (!scale.isOne()) {
+      if (getTaskRepeatCountVal(taskOp))
         return op.emitOpError()
-               << "has " << op.getMixedSizes().size()
-               << " dimensions, and no split into descriptors of " << kNdDmaDims
-               << " fits this tile";
-      return failure();
+               << "cannot decompose a buffer descriptor whose repeat count "
+                  "is a runtime value: decomposition needs to scale it by "
+               << scale.str();
+      // A scaled count past what one queue push carries is fine: the BD-ID
+      // pass issues it as several starts. Only the attribute width limits
+      // it. Widen before multiplying: the accessor returns int32_t, so the
+      // addition alone would overflow in int and wrap past this check.
+      // Merged executions need every start to run whole ones.
+      auto check = [&](Operation *at, int64_t repeat, StringRef runner,
+                       StringRef count) -> LogicalResult {
+        int64_t before = repeat + 1;
+        if (!scale.divides(before))
+          return at->emitOpError()
+                 << "cannot decompose: it merges every " << scale.den
+                 << " executions of the buffer descriptor into " << scale.num
+                 << ", and " << runner << " runs it " << before << " times";
+        int64_t after = scale.apply(before);
+        if (after - 1 > std::numeric_limits<int32_t>::max())
+          return at->emitOpError()
+                 << "decomposition scales " << count << " by " << scale.str()
+                 << " to " << (after - 1) << ", beyond a 32-bit repeat_count";
+        return success();
+      };
+      runs = getTaskRepeatCount(taskOp) + int64_t{1};
+      if (failed(check(op, runs - 1, "the task", "the repeat count")))
+        return failure();
+      // A start that overrides the task's count repeats the same BD, so it
+      // scales by the same factor.
+      for (Operation *user : taskOp->getResult(0).getUsers())
+        if (auto start = dyn_cast<DMAStartTaskOp>(user))
+          if (IntegerAttr rc = start.getRepeatCountAttr())
+            if (failed(check(start, rc.getInt(), "this start",
+                             "this start's repeat count")))
+              return failure();
+      runs = scale.apply(runs);
     }
-    // Bind a plain reference now that decomposed is known non-failed and
-    // non-empty, so nothing past this point looks like an optional access.
-    SmallVector<NdDmaPattern> &bds =
-        *decomposed; // NOLINT(bugprone-unchecked-optional-access)
 
-    if (bds.size() > 1 && isUnderRuntimeControlFlow(op)) {
-      if (tooManyDims)
-        return cannotReduce() << "outside runtime control flow, since it "
-                                 "splits into "
-                              << bds.size() << " descriptors";
-      op.emitRemark()
-          << "deferring multi-BD decomposition under runtime control flow "
-             "(dynamic BD pool supports single-BD tasks only)";
-      return failure();
+    rewriter.modifyOpInPlace(op, [&]() {
+      updateTaskBdInPlace(op, static_cast<int32_t>(flatOffset), len, outerSizes,
+                          outerStrides);
+    });
+    if (!scale.isOne()) {
+      rewriter.modifyOpInPlace(taskOp, [&]() {
+        setTaskRepeatCount(taskOp, static_cast<int32_t>(runs - 1));
+      });
+      for (Operation *user : taskOp->getResult(0).getUsers())
+        if (auto start = dyn_cast<DMAStartTaskOp>(user))
+          if (IntegerAttr rc = start.getRepeatCountAttr())
+            rewriter.modifyOpInPlace(start, [&]() {
+              start.setRepeatCountAttr(
+                  rewriter.getI32IntegerAttr(scale.apply(rc.getInt() + 1) - 1));
+            });
     }
+    return success();
+  }
 
-    int64_t baseFlatOffset = op.getConstantOffset().value_or(0);
+  // A split would make every slice reuse the one out_of_order_id slot.
+  // TODO: BD iteration plus padding may enable this feature.
+  if (op.getOutOfOrderId().has_value())
+    return op.emitOpError() << "splitting an out-of-order buffer descriptor "
+                               "into multiple descriptors is not implemented";
 
-    if (bds.size() == 1) {
-      const NdDmaPattern &sub = bds.front();
-      int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, sub);
-      auto outerSizes = toOuter(sub.sizes);
-      auto outerStrides = toOuter(sub.strides);
-      // len covers one BD invocation, so it tracks the innermost three
-      // dimensions only. Rewriting in place can move extent into the fourth
-      // (repeat) dimension -- e.g. an innermost run too long for the wrap
-      // field factors out an extra dimension and pushes the outermost one into
-      // the repeat slot -- so len has to be recomputed alongside the shape.
-      int32_t len = static_cast<int32_t>(lenFromInnermost3(sub.sizes));
+  // Every member of a chain runs once per task execution, so the one
+  // queue-push repeat count is shared by all of them. A slice that also wants
+  // its own iteration factor needs a private repeat, which only a task of
+  // its own has. A chain also holds all of its descriptors until it
+  // finishes, so past the queue depth the slices go out as separate tasks,
+  // whose descriptors aie-assign-runtime-sequence-bd-ids can recycle one by
+  // one.
+  bool sharedRepeat = llvm::all_of(bds, [&](const NdDmaPattern &sub) {
+    return iterationScale(iterations, sub).isOne();
+  });
+  bool chainFits =
+      sharedRepeat && bds.size() <= targetModel.getNumBDs(col, row);
+  uint32_t depth = targetModel.getDmaTaskQueueDepth();
+  if (!chainFits || (depth > 0 && bds.size() > depth)) {
+    std::optional<std::string> why =
+        whyNotSeparateTasks(op, taskOp, iterations);
+    if (!why) {
+      splitIntoTasks(rewriter, op, taskOp, bds, baseFlatOffset, iterations,
+                     slices);
+      return success();
+    }
+    if (!sharedRepeat)
+      return op.emitOpError()
+             << "cannot split this buffer descriptor: its slices need "
+                "per-descriptor repeat counts, which a chain shares, and "
+                "they cannot be separate tasks because "
+             << *why;
+    if (!chainFits)
+      return op.emitOpError()
+             << "cannot split this buffer descriptor: its " << bds.size()
+             << " slices outnumber the tile's "
+             << targetModel.getNumBDs(col, row)
+             << " buffer descriptors, and they cannot be separate tasks "
+                "because "
+             << *why;
+  }
 
-      IterationScale scale = iterationScale(iterations, sub);
-      int64_t runs = 0;
-      if (!scale.isOne()) {
-        if (getTaskRepeatCountVal(taskOp))
-          return op.emitOpError()
-                 << "cannot decompose a buffer descriptor whose repeat count "
-                    "is a runtime value: decomposition needs to scale it by "
-                 << scale.str();
-        // A scaled count past what one queue push carries is fine: the BD-ID
-        // pass issues it as several starts. Only the attribute width limits
-        // it. Widen before multiplying: the accessor returns int32_t, so the
-        // addition alone would overflow in int and wrap past this check.
-        // Merged executions need every start to run whole ones.
-        auto check = [&](Operation *at, int64_t repeat, StringRef runner,
-                         StringRef count) -> LogicalResult {
-          int64_t before = repeat + 1;
-          if (!scale.divides(before))
-            return at->emitOpError()
-                   << "cannot decompose: it merges every " << scale.den
-                   << " executions of the buffer descriptor into " << scale.num
-                   << ", and " << runner << " runs it " << before << " times";
-          int64_t after = scale.apply(before);
-          if (after - 1 > std::numeric_limits<int32_t>::max())
-            return at->emitOpError()
-                   << "decomposition scales " << count << " by " << scale.str()
-                   << " to " << (after - 1) << ", beyond a 32-bit repeat_count";
-          return success();
-        };
-        runs = getTaskRepeatCount(taskOp) + int64_t{1};
-        if (failed(check(op, runs - 1, "the task", "the repeat count")))
-          return failure();
-        // A start that overrides the task's count repeats the same BD, so it
-        // scales by the same factor.
-        for (Operation *user : taskOp->getResult(0).getUsers())
-          if (auto start = dyn_cast<DMAStartTaskOp>(user))
-            if (IntegerAttr rc = start.getRepeatCountAttr())
-              if (failed(check(start, rc.getInt(), "this start",
-                               "this start's repeat count")))
-                return failure();
-        runs = scale.apply(runs);
-      }
+  Region *body = getTaskBody(taskOp);
+  if (!body || body->empty())
+    return success();
 
+  SmallVector<Block *> blocks;
+  blocks.push_back(op->getBlock());
+  for (unsigned i = 1; i < bds.size(); ++i)
+    blocks.push_back(rewriter.createBlock(body));
+
+  for (auto [idx, subPattern] : llvm::enumerate(bds)) {
+    Block *block = blocks[idx];
+    int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, subPattern);
+    auto outerSizes = toOuter(subPattern.sizes);
+    auto outerStrides = toOuter(subPattern.strides);
+    int32_t len = static_cast<int32_t>(lenFromInnermost3(subPattern.sizes));
+
+    if (idx == 0) {
       rewriter.modifyOpInPlace(op, [&]() {
         updateTaskBdInPlace(op, static_cast<int32_t>(flatOffset), len,
                             outerSizes, outerStrides);
       });
-      if (!scale.isOne()) {
-        rewriter.modifyOpInPlace(taskOp, [&]() {
-          setTaskRepeatCount(taskOp, static_cast<int32_t>(runs - 1));
-        });
-        for (Operation *user : taskOp->getResult(0).getUsers())
-          if (auto start = dyn_cast<DMAStartTaskOp>(user))
-            if (IntegerAttr rc = start.getRepeatCountAttr())
-              rewriter.modifyOpInPlace(start, [&]() {
-                start.setRepeatCountAttr(rewriter.getI32IntegerAttr(
-                    scale.apply(rc.getInt() + 1) - 1));
-              });
-      }
-      return success();
+      Operation *oldTerm = block->getTerminator();
+      rewriter.setInsertionPoint(oldTerm);
+      if (idx + 1 < bds.size())
+        AIE::NextBDOp::create(rewriter, op.getLoc(), blocks[idx + 1]);
+      else
+        AIE::EndOp::create(rewriter, op.getLoc());
+      rewriter.eraseOp(oldTerm);
+    } else {
+      rewriter.setInsertionPointToStart(block);
+      createTaskBd(rewriter, op.getLoc(), op, static_cast<int32_t>(flatOffset),
+                   len, outerSizes, outerStrides);
+      rewriter.setInsertionPointToEnd(block);
+      if (idx + 1 < bds.size())
+        AIE::NextBDOp::create(rewriter, op.getLoc(), blocks[idx + 1]);
+      else
+        AIE::EndOp::create(rewriter, op.getLoc());
     }
-
-    // A split would make every slice reuse the one out_of_order_id slot.
-    // TODO: BD iteration plus padding may enable this feature.
-    if (op.getOutOfOrderId().has_value())
-      return op.emitOpError() << "splitting an out-of-order buffer descriptor "
-                                 "into multiple descriptors is not implemented";
-
-    // Every member of a chain runs once per task execution, so the one
-    // queue-push repeat count is shared by all of them. A slice that also wants
-    // its own iteration factor needs a private repeat, which only a task of
-    // its own has. A chain also holds all of its descriptors until it
-    // finishes, so past the queue depth the slices go out as separate tasks,
-    // whose descriptors aie-assign-runtime-sequence-bd-ids can recycle one by
-    // one.
-    bool sharedRepeat = llvm::all_of(bds, [&](const NdDmaPattern &sub) {
-      return iterationScale(iterations, sub).isOne();
-    });
-    bool chainFits =
-        sharedRepeat && bds.size() <= targetModel.getNumBDs(col, row);
-    uint32_t depth = targetModel.getDmaTaskQueueDepth();
-    if (!chainFits || (depth > 0 && bds.size() > depth)) {
-      std::optional<std::string> why =
-          whyNotSeparateTasks(op, taskOp, iterations);
-      if (!why) {
-        splitIntoTasks(rewriter, op, taskOp, bds, baseFlatOffset, iterations,
-                       *nextGroup);
-        return success();
-      }
-      if (!sharedRepeat)
-        return op.emitOpError()
-               << "cannot split this buffer descriptor: its slices need "
-                  "per-descriptor repeat counts, which a chain shares, and "
-                  "they cannot be separate tasks because "
-               << *why;
-      if (!chainFits)
-        return op.emitOpError()
-               << "cannot split this buffer descriptor: its " << bds.size()
-               << " slices outnumber the tile's "
-               << targetModel.getNumBDs(col, row)
-               << " buffer descriptors, and they cannot be separate tasks "
-                  "because "
-               << *why;
-    }
-
-    Region *body = getTaskBody(taskOp);
-    if (!body || body->empty())
-      return failure();
-
-    SmallVector<Block *> blocks;
-    blocks.push_back(op->getBlock());
-    for (unsigned i = 1; i < bds.size(); ++i)
-      blocks.push_back(rewriter.createBlock(body));
-
-    for (auto [idx, subPattern] : llvm::enumerate(bds)) {
-      Block *block = blocks[idx];
-      int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, subPattern);
-      auto outerSizes = toOuter(subPattern.sizes);
-      auto outerStrides = toOuter(subPattern.strides);
-      int32_t len = static_cast<int32_t>(lenFromInnermost3(subPattern.sizes));
-
-      if (idx == 0) {
-        rewriter.modifyOpInPlace(op, [&]() {
-          updateTaskBdInPlace(op, static_cast<int32_t>(flatOffset), len,
-                              outerSizes, outerStrides);
-        });
-        Operation *oldTerm = block->getTerminator();
-        rewriter.setInsertionPoint(oldTerm);
-        if (idx + 1 < bds.size())
-          AIE::NextBDOp::create(rewriter, op.getLoc(), blocks[idx + 1]);
-        else
-          AIE::EndOp::create(rewriter, op.getLoc());
-        rewriter.eraseOp(oldTerm);
-      } else {
-        rewriter.setInsertionPointToStart(block);
-        createTaskBd(rewriter, op.getLoc(), op,
-                     static_cast<int32_t>(flatOffset), len, outerSizes,
-                     outerStrides);
-        rewriter.setInsertionPointToEnd(block);
-        if (idx + 1 < bds.size())
-          AIE::NextBDOp::create(rewriter, op.getLoc(), blocks[idx + 1]);
-        else
-          AIE::EndOp::create(rewriter, op.getLoc());
-      }
-    }
-
-    return success();
   }
-};
+
+  return success();
+}
 
 struct AIEDecomposeLargeDmaBdPass
     : xilinx::AIEX::impl::AIEDecomposeLargeDmaBdBase<
           AIEDecomposeLargeDmaBdPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
-    int64_t nextGroup = 0;
-    RewritePatternSet patterns(&getContext());
-    patterns.add<DecomposeLargeDmaBdPattern>(&getContext());
-    patterns.add<DecomposeLargeDmaBdTaskPattern>(&getContext(), nextGroup);
-    if (failed(applyPatternsGreedily(device, std::move(patterns)))) {
-      signalPassFailure();
-      return;
-    }
-
-    llvm::SetVector<Block *> blocks;
-    device.walk([&](DMAStartTaskOp start) {
-      if (start->hasAttr(kSliceAttr))
-        blocks.insert(start->getBlock());
-    });
-    for (Block *block : blocks)
-      orderSlices(*block);
+    IRRewriter rewriter(&getContext());
+    SmallVector<NpuDmaMemcpyNdOp> memcpys;
+    SmallVector<AIE::DMABDOp> bds;
     device.walk([&](Operation *op) {
-      op->removeAttr(kSliceAttr);
-      op->removeAttr(kSliceTaskAttr);
+      if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op))
+        memcpys.push_back(memcpy);
+      else if (auto bd = dyn_cast<AIE::DMABDOp>(op))
+        bds.push_back(bd);
     });
+    for (NpuDmaMemcpyNdOp memcpy : memcpys)
+      decomposeMemcpy(rewriter, memcpy);
+    Slices slices;
+    bool failed = false;
+    for (AIE::DMABDOp bd : bds)
+      failed |= mlir::failed(decomposeTaskBd(rewriter, bd, slices));
+    if (failed)
+      return signalPassFailure();
+    for (Block *block : slices.blocks)
+      orderSlices(*block, slices);
   }
 };
 

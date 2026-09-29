@@ -54,7 +54,7 @@ aie.device(npu2) {
   %core = aie.tile(0, 2)
   %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
   aie.mem(%core) {
-    // expected-error @+1 {{endpoint @b is not an aie.route_endpoint}}
+    // expected-error @+1 {{@b is not an aie.route_endpoint}}
     aie.dma_start(S2MM, @b, ^bd0, ^end)
   ^bd0:
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
@@ -71,7 +71,7 @@ aie.device(npu2) {
   %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
   aie.route_endpoint @port(%core) Core {channelIndex = 0 : i32}
   aie.mem(%core) {
-    // expected-error @+1 {{endpoint @port names a Core port, not a DMA channel}}
+    // expected-error @+1 {{@port names a Core port, not a DMA channel}}
     aie.dma_start(S2MM, @port, ^bd0, ^end)
   ^bd0:
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
@@ -89,7 +89,7 @@ aie.device(npu2) {
   %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
   aie.route_endpoint @elsewhere(%other) DMA
   aie.mem(%core) {
-    // expected-error @+1 {{endpoint @elsewhere is on a different tile than this DMA program}}
+    // expected-error @+1 {{@elsewhere is on a different tile than this DMA program}}
     aie.dma_start(S2MM, @elsewhere, ^bd0, ^end)
   ^bd0:
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
@@ -104,10 +104,9 @@ aie.device(npu2) {
 aie.device(npu2) {
   %core = aie.tile(0, 2)
   %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
-  aie.route_endpoint @ep(%core) DMA
   aie.mem(%core) {
-    // expected-error @+1 {{names its channel by exactly one of an index and an endpoint}}
-    aie.dma_start(S2MM, 0, ^bd0, ^end) {endpoint = @ep}
+    // expected-error @+1 {{attribute 'channel' failed to satisfy constraint}}
+    aie.dma_start(S2MM, -1, ^bd0, ^end)
   ^bd0:
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
     aie.next_bd ^bd0

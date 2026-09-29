@@ -1,0 +1,69 @@
+//===- AIESplitLongRepeats.cpp ----------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// A queue push carries its repeat count in a narrow field, but a task start may
+// ask for more. This pass issues such a start as several starts of the same
+// task, so that every start after it is exactly one push.
+//
+//===----------------------------------------------------------------------===//
+
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Pass/Pass.h"
+
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIESPLITLONGREPEATS
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+using namespace mlir;
+using namespace xilinx;
+using namespace xilinx::AIEX;
+
+namespace {
+
+struct AIESplitLongRepeatsPass
+    : xilinx::AIEX::impl::AIESplitLongRepeatsBase<AIESplitLongRepeatsPass> {
+  void runOnOperation() override {
+    AIE::DeviceOp device = getOperation();
+    uint32_t maxRepeat = device.getTargetModel().getMaxRepeatCount();
+    // A target without a repeat field has nothing to split into; its push
+    // verifier reports the count instead.
+    if (maxRepeat == 0)
+      return;
+    SmallVector<DMAStartTaskOp> starts;
+    device.walk([&](DMAStartTaskOp start) { starts.push_back(start); });
+    for (DMAStartTaskOp start : starts) {
+      DMAConfigureTaskOp cfg = start.getTaskOp();
+      if (!cfg)
+        continue;
+      std::optional<int64_t> rc =
+          getConstantIntValue(start.getPushRepeatCount(cfg));
+      if (!rc || *rc <= maxRepeat)
+        continue;
+      // Leading starts withhold the token, so an await on the task still
+      // returns only after the last pass.
+      OpBuilder b(start);
+      int64_t runs = *rc + 1;
+      for (; runs > maxRepeat + 1; runs -= maxRepeat + 1)
+        DMAStartTaskOp::create(b, start.getLoc(), start.getTask(),
+                               b.getI32IntegerAttr(maxRepeat),
+                               /*no_token=*/b.getUnitAttr());
+      start.setRepeatCountAttr(b.getI32IntegerAttr(runs - 1));
+    }
+  }
+};
+
+} // namespace
+
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+xilinx::AIEX::createAIESplitLongRepeatsPass() {
+  return std::make_unique<AIESplitLongRepeatsPass>();
+}

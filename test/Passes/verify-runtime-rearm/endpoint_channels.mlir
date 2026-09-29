@@ -4,10 +4,10 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Endpoint-backed starts require channel allocation, not an asserting accessor.
-// The same core and mem tile programs pass verification after allocation.
+// Endpoint-backed starts need a channel index, not an asserting accessor.
+// The same core and mem tile programs pass once allocation resolves them.
 
-// ERROR: error: 'aie.dma_start' op requires an allocated DMA channel; run --aie-objectfifo-allocate before --aie-verify-runtime-rearm
+// ERROR: error: 'aie.dma_start' op requires a DMA channel index; run --aie-objectfifo-allocate before --aie-verify-runtime-rearm
 // ALLOCATED-LABEL: module @core_endpoint
 // ALLOCATED: aie.dma_start(S2MM, 0,
 // ALLOCATED: aiex.dma_channel_reset
@@ -39,7 +39,7 @@ module @core_endpoint {
 
 // -----
 
-// ERROR: error: 'aie.dma_start' op requires an allocated DMA channel; run --aie-objectfifo-allocate before --aie-verify-runtime-rearm
+// ERROR: error: 'aie.dma_start' op requires a DMA channel index; run --aie-objectfifo-allocate before --aie-verify-runtime-rearm
 // ALLOCATED-LABEL: module @mem_endpoint
 // ALLOCATED: aie.dma_start(MM2S, 0,
 // ALLOCATED: aiex.dma_channel_reset

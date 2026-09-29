@@ -18,9 +18,7 @@
 // NPU instruction stream); such forms are rejected here for the dynamic EmitC
 // path (Phase 2).
 //
-// A start whose constant repeat count is past the hardware field is first
-// issued as several starts of the same task (see splitLongRepeats), so every
-// start below is exactly one queue push.
+// aie-split-long-repeats has already made every start exactly one queue push.
 //
 // Before allocating, the pass also checks the per-channel hardware resources a
 // sequence can exhaust (see verifyChannelUsage): task-completion-token (TCT)
@@ -30,7 +28,7 @@
 // allocator sees, both are single-pass per-channel counts.
 //
 // When a tile runs out of ids, the pass takes them back from a started task
-// that was never released (see reclaimFor) rather than failing: from one some
+// that was never released (see reclaimFor) rather than failing: from one a
 // status poll already proves finished, or else by inserting a poll that does.
 // Only allocations that would fail change, so a sequence that fits compiles to
 // the same instructions either way.
@@ -45,7 +43,6 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -169,10 +166,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // Queue counting differs from token counting in three ways: every push takes
   // a slot, not just issue_token ones; a non-token push is still retired
   // implicitly, since in-order execution means awaiting a token drains
-  // everything queued ahead of it too; and a repeat_count the hardware field
-  // holds does not multiply slots (splitLongRepeats has already made one start
-  // per push of a larger one). rejectRuntimeControlFlow has already run, so one
-  // program-order pass over straight-line IR is exact.
+  // everything queued ahead of it too; and a repeat_count does not multiply
+  // slots. rejectRuntimeControlFlow has already run, so one program-order pass
+  // over straight-line IR is exact.
   LogicalResult verifyChannelUsage(AIE::RuntimeSequenceOp seq) {
     using ChannelKey = DmaQueueModel::ChannelKey;
     auto keyOf = [](DMAConfigureTaskOp cfg) -> ChannelKey {
@@ -236,47 +232,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return failure(wr.wasInterrupted());
   }
 
-  // Issue each start whose constant repeat count does not fit the queue push's
-  // field as several starts of the same task: full-size ones first, then the
-  // remainder, which is the original op. Leading starts withhold the token, so
-  // an await on the task still returns only after the last pass. Splitting
-  // here, not at lowering, makes each push its own start, so the queue-depth
-  // guard below can poll between them. A runtime-valued count is left alone;
-  // aie-dma-to-npu guards it.
-  void splitLongRepeats(AIE::RuntimeSequenceOp seq) {
-    uint32_t maxRepeat = seq->getParentOfType<AIE::DeviceOp>()
-                             .getTargetModel()
-                             .getMaxRepeatCount();
-    // A target without a repeat field (maxRepeat 0) cannot be split into
-    // anything; its push verifier reports the count instead.
-    if (maxRepeat == 0)
-      return;
-    SmallVector<DMAStartTaskOp> starts;
-    seq.walk([&](DMAStartTaskOp start) { starts.push_back(start); });
-    for (DMAStartTaskOp start : starts) {
-      DMAConfigureTaskOp cfg = start.getTaskOp();
-      if (!cfg)
-        continue;
-      std::optional<int64_t> rc =
-          getConstantIntValue(start.getPushRepeatCount(cfg));
-      if (!rc || *rc <= maxRepeat)
-        continue;
-      OpBuilder b(start);
-      int64_t runs = *rc + 1;
-      for (; runs > maxRepeat + 1; runs -= maxRepeat + 1)
-        DMAStartTaskOp::create(b, start.getLoc(), start.getTask(),
-                               b.getI32IntegerAttr(maxRepeat),
-                               /*no_token=*/b.getUnitAttr());
-      start.setRepeatCountAttr(b.getI32IntegerAttr(runs - 1));
-    }
-  }
-
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
     // Reject runtime control flow first, so the token-balance pass below runs
     // on straight-line IR and needs no control-flow reasoning.
     if (failed(rejectRuntimeControlFlow(seq)))
       return failure();
-    splitLongRepeats(seq);
     if (failed(verifyChannelUsage(seq)))
       return failure();
     return success();
@@ -729,9 +689,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     Value maskValue = cst(mask);
     Value compareValue = cst(0);
     Value statusValue = cst(*status);
-    NpuMaskPollOp::create(b, op.getLoc(), statusValue, compareValue, maskValue,
-                          /*buffer=*/nullptr, /*column=*/nullptr,
-                          /*row=*/nullptr);
+    auto poll = NpuMaskPollOp::create(b, op.getLoc(), statusValue, compareValue,
+                                      maskValue,
+                                      /*buffer=*/nullptr, /*column=*/nullptr,
+                                      /*row=*/nullptr);
+    SmallVector<int32_t> ids;
+    victim.walk([&](AIE::DMABDOp bd) { ids.push_back(*bd.getBdId()); });
+    auto remark = poll.emitRemark()
+                  << "tile (" << tile.getCol() << "," << tile.getRow()
+                  << ") has no free buffer descriptor id, so this poll waits "
+                  << (victimQueuedBehind > 0
+                          ? "until the queue behind an earlier task is short "
+                            "enough to prove it finished"
+                          : "until the channel of an earlier task is idle")
+                  << " and takes back its ids ";
+    llvm::interleaveComma(ids, remark);
+    remark.attachNote(victim.getLoc()) << "the task it waits for";
     noteDrained(key, unfinished);
     take(victim);
     return success();

@@ -118,7 +118,7 @@ aie.device(npu1_2col) {
 
 // -----
 
-// controller_id attribute overriding packet header assignment in aie.packet_flow; 
+// controller_id attribute overriding packet header assignment in aie.packet_flow;
 // round-robin shim dma channel assignment to cover all 5 tiles in a column
 
 // CHECK-LABEL: module {

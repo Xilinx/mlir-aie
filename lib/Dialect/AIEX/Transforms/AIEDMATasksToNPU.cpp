@@ -226,38 +226,6 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  LogicalResult verifyOptionalLocksInBlock(Block &block, bool outOfOrder) {
-    auto lock_ops = block.getOps<AIE::UseLockOp>();
-    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-    // Out-of-order receive BDs may be release-only (lock-driven completion);
-    // matches AIERT.cpp configureLocksInBdBlock.
-    if (outOfOrder && n_lock_ops == 1) {
-      AIE::UseLockOp only = *lock_ops.begin();
-      if (!only.release()) {
-        only.emitOpError(
-            "out-of-order BD with a single lock must use_lock(release)");
-        return failure();
-      }
-      return success();
-    }
-    // Allow exactly 0 or 2 lock ops (acquire and release)
-    if (n_lock_ops != 0 && n_lock_ops != 2) {
-      AIE::UseLockOp lock_op = *lock_ops.begin();
-      lock_op.emitOpError(
-          "BD blocks must have either 0 or 2 lock operations (acquire and "
-          "release). Found ")
-          << n_lock_ops << " lock operations.";
-      return failure();
-    }
-    if (n_lock_ops == 2 && !getOptionalLockOpsForBlock(block, outOfOrder)) {
-      AIE::UseLockOp lock_op = *lock_ops.begin();
-      lock_op.emitOpError("BD block lock operations must be one acquire and "
-                          "one release.");
-      return failure();
-    }
-    return success();
-  }
-
   LogicalResult verifyNoUnsupportedOpsInBlock(Block &block) {
     WalkResult unsupported_ops = block.walk([&](Operation *inner_op) {
       return llvm::TypeSwitch<Operation *, WalkResult>(inner_op)
@@ -291,32 +259,6 @@ struct AIEDMATasksToNPUPass
     AIE::DMABDOp bd_op = *bd_ops.begin(); // Dereference first (and only, after
                                           // previous checks) bd op iterator
     return bd_op;
-  }
-
-  // Returns pair of (acquire_lock_op, release_lock_op) if present. Under
-  // out-of-order, a release-only block is valid (null acquire).
-  std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
-  getOptionalLockOpsForBlock(Block &block, bool outOfOrder) {
-    auto lock_ops = block.getOps<AIE::UseLockOp>();
-    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-
-    AIE::UseLockOp acquire_op = nullptr;
-    AIE::UseLockOp release_op = nullptr;
-    for (auto lock_op : lock_ops) {
-      if (lock_op.acquire() || lock_op.acquireGE())
-        acquire_op = lock_op;
-      else if (lock_op.release())
-        release_op = lock_op;
-    }
-
-    if (outOfOrder && n_lock_ops == 1 && release_op)
-      return std::make_pair(AIE::UseLockOp(nullptr), release_op);
-
-    if (n_lock_ops != 2)
-      return std::nullopt;
-    if (acquire_op && release_op)
-      return std::make_pair(acquire_op, release_op);
-    return std::nullopt;
   }
 
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
@@ -419,78 +361,72 @@ struct AIEDMATasksToNPUPass
           buf_addr += addrOffset.value();
       }
 
+      // The BD's address field, from the target model's layout. Shim NOC BDs
+      // address bytes; mem and core tile BDs address 32-bit words.
+      const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
+      if (!layout)
+        return bd_op->emitOpError(
+            "has no buffer descriptor layout on this tile");
+      const AIE::DmaBdField &addrBits = layout->bufferOffset;
+      uint64_t divisor = target_model.isShimNOCTile(col, row) ? 1 : 4;
+      uint64_t maxByteAddr = (uint64_t(addrBits.mask()) + 1) * divisor - 1;
+      if (buf_addr > maxByteAddr)
+        return bd_op->emitOpError("buffer address exceeds the tile's DMA "
+                                  "address field.");
+
       // getOffsetInBytes() folds a runtime offset to 0, so it may only be read
       // on the constant path; a runtime offset is added with arith instead.
       bool constOffset = !bd_op.getOffset() || bd_op.getConstantOffset();
-      Value runtimeByteAddr;
-      if (constOffset)
+      Location loc = bd_op.getLoc();
+      Value addrField;
+      if (constOffset) {
         buf_addr += bd_op.getOffsetInBytes();
-      else {
-        // Bound the element offset before i32 byte-address arithmetic can wrap.
-        uint64_t maxByteAddr = target_model.isCoreTile(col, row)  ? 0xffff
-                               : target_model.isMemTile(col, row) ? 0x1fffff
-                                                                  : 0xffffffff;
         if (buf_addr > maxByteAddr)
           return bd_op->emitOpError("buffer address exceeds the tile's DMA "
                                     "address field.");
+        addrField =
+            createConstantI32(builder, loc, addrBits.place(buf_addr / divisor));
+      } else {
+        // Bound the element offset before i32 byte-address arithmetic can wrap.
         NpuAssertBdFieldOp::create(
-            builder, bd_op.getLoc(), bd_op.getOffset(),
+            builder, loc, bd_op.getOffset(),
             builder.getI32IntegerAttr(
                 (maxByteAddr - buf_addr) /
                 bd_op.getBufferElementTypeWidthInBytes()));
-        runtimeByteAddr = buildArgPlusValue(
-            builder, bd_op.getLoc(), {OpFoldResult(bd_op.getOffset())},
+        addrField = buildArgPlusValue(
+            builder, loc, {OpFoldResult(bd_op.getOffset())},
             {OpFoldResult(builder.getI32IntegerAttr(1))},
             bd_op.getBufferElementTypeWidthInBytes(), (int64_t)buf_addr);
-      }
-
-      // The BD's address field, scaled and positioned per tile type. An
-      // all-constant address folds to the same literal the static path emits.
-      auto addrField = [&](uint64_t divisor, unsigned shl) -> Value {
-        Location loc = bd_op.getLoc();
-        if (constOffset)
-          return createConstantI32(
-              builder, loc, static_cast<uint32_t>((buf_addr / divisor) << shl));
-        Value v = runtimeByteAddr;
         if (divisor != 1) {
-          NpuAssertBdDivisibleOp::create(builder, loc, v, divisor,
+          NpuAssertBdDivisibleOp::create(builder, loc, addrField, divisor,
                                          /*allow_unit=*/false);
-          v = arith::DivUIOp::create(builder, loc, v,
+          addrField =
+              arith::DivUIOp::create(builder, loc, addrField,
                                      createConstantI32(builder, loc, divisor));
           NpuAssertBdFieldOp::create(
-              builder, loc, v,
-              builder.getI32IntegerAttr(
-                  target_model.isCoreTile(col, row) ? 0x3fff : 0x7ffff));
+              builder, loc, addrField,
+              builder.getI32IntegerAttr(addrBits.mask()));
         }
-        if (shl != 0)
-          v = arith::ShLIOp::create(builder, loc, v,
-                                    createConstantI32(builder, loc, shl));
-        return v;
-      };
+        if (addrBits.shift != 0)
+          addrField = arith::ShLIOp::create(
+              builder, loc, addrField,
+              createConstantI32(builder, loc, addrBits.shift));
+      }
       // The register holding the address word. A runtime bd_id makes it
       // runtime too; a pinned one folds to the literal the static path uses.
       Value regAddrVal =
           runtimeRegisterAddr
               ? runtimeRegisterAddr
-              : createConstantI32(builder, bd_op.getLoc(),
+              : createConstantI32(builder, loc,
                                   static_cast<uint32_t>(register_addr));
-      if (target_model.isCoreTile(col, row)) {
-        NpuMaskWrite32Op::create(
-            builder, bd_op.getLoc(), regAddrVal,
-            addrField(/*divisor=*/4, /*shl=*/14),
-            createConstantI32(builder, bd_op.getLoc(), 0x0fffc000), nullptr,
-            nullptr, nullptr);
-      } else if (target_model.isMemTile(col, row)) {
-        NpuMaskWrite32Op::create(
-            builder, bd_op.getLoc(), regAddrVal,
-            addrField(/*divisor=*/4, /*shl=*/0),
-            createConstantI32(builder, bd_op.getLoc(), 0x0007FFFF), nullptr,
-            nullptr, nullptr);
-      } else {
-        NpuWrite32Op::create(builder, bd_op.getLoc(), regAddrVal,
-                             addrField(/*divisor=*/1, /*shl=*/0), nullptr,
+      uint32_t addrMask = addrBits.place(0xFFFFFFFF);
+      if (addrMask == 0xFFFFFFFF)
+        NpuWrite32Op::create(builder, loc, regAddrVal, addrField, nullptr,
                              nullptr, nullptr);
-      }
+      else
+        NpuMaskWrite32Op::create(builder, loc, regAddrVal, addrField,
+                                 createConstantI32(builder, loc, addrMask),
+                                 nullptr, nullptr, nullptr);
     } else {
       return bd_op->emitOpError(
           "Buffer argument must be a constant aie.buffer, a runtime sequence "
@@ -539,9 +475,11 @@ struct AIEDMATasksToNPUPass
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
       f.out_of_order_id = *oooId;
 
-    auto lock_ops = getOptionalLockOpsForBlock(block, outOfOrder);
-    if (lock_ops) {
-      auto [acquire_op, release_op] = *lock_ops;
+    AIE::UseLockOp acquire_op, release_op;
+    if (failed(
+            AIE::verifyBdLockPair(block, outOfOrder, acquire_op, release_op)))
+      return failure();
+    if (release_op) {
       AIE::LockOp rel_lock = release_op.getLockOp();
 
       // Acquire is optional under out-of-order (release-only completion).
@@ -632,7 +570,9 @@ struct AIEDMATasksToNPUPass
     // Normalize sizes/strides to a 4-element outermost-first mixed list (the
     // shared emitter's contract, matching memcpy_nd's always-4D operands),
     // padding absent leading dims with size 1 / stride 0. dma_bd's mixed lists
-    // are outermost-first and variable-length (0..4 dims).
+    // are outermost-first and variable-length (0..4 dims). A BD with no dims is
+    // a contiguous scan, so its innermost stride is 1, which keeps it linear
+    // like the static path.
     SmallVector<OpFoldResult> sizes(bd_op.getMixedSizes());
     SmallVector<OpFoldResult> strides(bd_op.getMixedStrides());
     if (sizes.size() > 4 || strides.size() > 4)
@@ -642,6 +582,8 @@ struct AIEDMATasksToNPUPass
     OpFoldResult one = builder.getI64IntegerAttr(1);
     OpFoldResult zeroOfr = builder.getI64IntegerAttr(0);
     SmallVector<OpFoldResult, 4> sizes4(4, one), strides4(4, zeroOfr);
+    if (strides.empty())
+      strides4.back() = one;
     for (size_t i = 0; i < sizes.size(); i++) {
       sizes4[4 - sizes.size() + i] = sizes[i];
       strides4[4 - strides.size() + i] = strides[i];
@@ -1102,9 +1044,10 @@ struct AIEDMATasksToNPUPass
       if (failed(verifyBdInBlock(it))) {
         return failure();
       }
-      if (failed(verifyOptionalLocksInBlock(it, op.getOutOfOrder()))) {
+      AIE::UseLockOp acquire, release;
+      if (failed(
+              AIE::verifyBdLockPair(it, op.getOutOfOrder(), acquire, release)))
         return failure();
-      }
     }
 
     if (op.getOutOfOrder()) {

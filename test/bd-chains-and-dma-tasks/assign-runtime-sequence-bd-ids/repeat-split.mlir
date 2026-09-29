@@ -3,16 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=true' %s \
+// RUN: aie-opt --aie-split-long-repeats \
+// RUN:   --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=true' %s \
 // RUN:   | FileCheck %s
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=true' \
+// RUN: aie-opt --aie-split-long-repeats \
+// RUN:   --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=true' \
 // RUN:   --aie-dma-tasks-to-npu %s | FileCheck %s --check-prefix=PUSH
 
-// A queue push carries at most 255 repeats (256 runs of the chain). A start
-// asking for more is issued as several starts of the same task: full 256-run
-// ones first, then the remainder. Only the last keeps the token, so an await on
-// the task returns after every run. Each is its own queue push, so the fifth
-// on a 4-deep channel gets a queue-space poll like any other push.
+// A queue push carries at most 255 repeats (256 runs of the chain).
+// aie-split-long-repeats issues a start asking for more as several starts of
+// the same task: full 256-run ones first, then the remainder. Only the last
+// keeps the token, so an await on the task returns after every run. Each is its
+// own queue push, so the fifth on a 4-deep channel gets a queue-space poll like
+// any other push.
 
 // A count the field holds is left alone.
 // CHECK-LABEL: @at_max

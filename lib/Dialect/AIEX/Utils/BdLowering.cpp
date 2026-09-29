@@ -184,8 +184,7 @@ Value getBdRegisterBase(OpBuilder &builder, Location loc,
 
 namespace {
 
-// What the per-tile packers share, so that only the bit layout is written per
-// tile and never the arithmetic. Arrays are innermost-first [d0, d1, d2, iter].
+// Arrays are innermost-first: [d0, d1, d2, iter].
 struct EncodedBd {
   Value inS[4], inT[4];  // element counts, as given
   Value hwS[4], hwT[4];  // granule-scaled wraps and -1-biased steps
@@ -405,152 +404,69 @@ LogicalResult encodeBdCommon(OpBuilder &builder, Location loc,
   return success();
 }
 
-// The three packers below are the dynamic mirror of the per-tile packing in
-// AIEDmaToNpu.cpp's WriteBdToBlockWritePattern, laid out to be read side by
-// side against it. dynamic-matches-static-words.mlir enforces that they agree.
+// dynamic-matches-static-words.mlir holds this to WriteBdToBlockWritePattern.
+void packBdWords(OpBuilder &builder, Location loc,
+                 const AIE::AIETargetModel &tm, const AIE::DmaBdLayout &layout,
+                 const BdTemplateFields &f, const EncodedBd &e,
+                 uint32_t burstLength, uint32_t axcache,
+                 SmallVectorImpl<Value> &wordsOut) {
+  using Field = std::tuple<Value, uint32_t, uint32_t>;
+  SmallVector<uint32_t, 8> constWords(layout.numWords, 0);
+  SmallVector<SmallVector<Field, 3>, 8> runtimeWords(layout.numWords);
+  auto set = [&](const AIE::DmaBdField &field, uint64_t value) {
+    if (field.exists())
+      constWords[field.word] |= field.place(value);
+  };
+  auto add = [&](const AIE::DmaBdField &field, Value value) {
+    if (field.exists())
+      runtimeWords[field.word].push_back({value, field.mask(), field.shift});
+  };
 
-// Shim NOC BD: 8 registers.
-void packShimBdWords(OpBuilder &builder, Location loc,
-                     const AIE::AIETargetModel &tm, const BdTemplateFields &f,
-                     const EncodedBd &e, uint32_t burstLength, uint32_t axcache,
-                     SmallVectorImpl<Value> &wordsOut) {
-  wordsOut.assign(8, createConstantI32(builder, loc, 0));
-  // word[0] buffer_length [31:0].
-  wordsOut[0] = e.bufLen;
-  // word[1] buffer_offset stays 0 (the address patch supplies the pointer).
-  // word[2] enable_packet [30], out_of_order_id [29:24], packet_id [23:19],
-  // packet_type [18:16].
-  wordsOut[2] = createConstantI32(
-      builder, loc,
-      ((f.enable_packet & 0x1) << 30) | ((f.out_of_order_id & 0x3f) << 24) |
-          ((f.packet_id & 0x1f) << 19) | ((f.packet_type & 0x7) << 16));
-  // word[4] burst_length [31:30]; d1 fields overlaid below in ND mode.
-  wordsOut[4] = createConstantI32(
-      builder, loc,
-      (AIE::getShimBurstLengthEncoding(tm, burstLength) & 0x3) << 30);
-  // word[5] AXCache [27:24]; d2_stride overlaid below in ND mode.
-  wordsOut[5] = createConstantI32(builder, loc, (axcache & 0xf) << 24);
-  // word[7] next_bd [30:27], use_next_bd [26], valid_bd [25], lock fields.
-  wordsOut[7] = createConstantI32(
-      builder, loc,
-      ((f.next_bd_id & 0xf) << 27) | ((f.use_next_bd & 0x1) << 26) |
-          (1u << 25) | ((f.lock_rel_val & 0x7f) << 18) |
-          ((f.lock_rel_id & 0xf) << 13) | ((f.lock_acq_enable & 0x1) << 12) |
-          ((f.lock_acq_val & 0x7f) << 5) | (f.lock_acq_id & 0xf));
+  set(layout.enablePacket, f.enable_packet);
+  set(layout.packetType, f.packet_type);
+  set(layout.packetId, f.packet_id);
+  set(layout.outOfOrderId, f.out_of_order_id);
+  if (layout.burstLength.exists())
+    set(layout.burstLength, AIE::getShimBurstLengthEncoding(tm, burstLength));
+  set(layout.axcache, axcache);
+  set(layout.nextBd, f.next_bd_id);
+  set(layout.useNextBd, f.use_next_bd);
+  set(layout.validBd, 1);
+  set(layout.lockRelValue, f.lock_rel_val);
+  set(layout.lockRelId, f.lock_rel_id);
+  set(layout.lockAcqEnable, f.lock_acq_enable);
+  set(layout.lockAcqValue, f.lock_acq_val);
+  set(layout.lockAcqId, f.lock_acq_id);
 
-  // Linear mode needs only buffer_length + iteration, so the d0/d1/d2
-  // size/stride fields stay zero; words 4/5 OR onto the burst_length / AXCache
-  // bits set above.
+  add(layout.bufferLength, e.bufLen);
   if (!e.isLinear) {
-    // word[3]: d0_size [29:20], d0_stride [19:0].
-    wordsOut[3] = buildBdWord(builder, loc,
-                              {{e.hwS[0], 0x3FF, 20}, {e.hwT[0], 0xFFFFF, 0}});
-    // word[4]: d1_size [29:20], d1_stride [19:0].
-    wordsOut[4] = arith::OrIOp::create(
-        builder, loc, wordsOut[4],
-        buildBdWord(builder, loc,
-                    {{e.hwS[1], 0x3FF, 20}, {e.hwT[1], 0xFFFFF, 0}}));
-    // word[5]: d2_stride [19:0]. Shim d2_size is always 0, carried by bufLen.
-    wordsOut[5] = arith::OrIOp::create(
-        builder, loc, wordsOut[5],
-        buildBdWord(builder, loc, {{e.hwT[2], 0xFFFFF, 0}}));
+    add(layout.d0Size, e.hwS[0]);
+    add(layout.d0Stride, e.hwT[0]);
+    add(layout.d1Size, e.hwS[1]);
+    add(layout.d1Stride, e.hwT[1]);
+    add(layout.d2Stride, e.hwT[2]);
   }
-  // word[6]: iteration_size [25:20], iteration_stride [19:0].
-  wordsOut[6] = buildBdWord(
-      builder, loc, {{e.iterSizeField, 0x3F, 20}, {e.hwT[3], 0xFFFFF, 0}});
-}
+  add(layout.iterationSize, e.iterSizeField);
+  add(layout.iterationStride, e.hwT[3]);
 
-// Mem tile BD: 8 registers, a different layout from shim throughout.
-void packMemTileBdWords(OpBuilder &builder, Location loc,
-                        const BdTemplateFields &f, const EncodedBd &e,
-                        SmallVectorImpl<Value> &wordsOut) {
-  wordsOut.assign(8, createConstantI32(builder, loc, 0));
-  // word[0]: enable_packet [31], packet_type [30:28], packet_id [27:23],
-  // out_of_order_id [22:17], buffer_length [16:0]. Unlike shim, where
-  // buffer_length owns the whole word, here it shares word 0 with the packet
-  // header -- so the (possibly runtime) length is OR'd into a constant
-  // template. The 17-bit width is guarded in encodeBdCommon.
-  wordsOut[0] = arith::OrIOp::create(
-      builder, loc,
-      createConstantI32(builder, loc,
-                        ((f.enable_packet & 0x1) << 31) |
-                            ((f.packet_type & 0x7) << 28) |
-                            ((f.packet_id & 0x1f) << 23) |
-                            ((f.out_of_order_id & 0x3f) << 17)),
-      buildBdWord(builder, loc, {{e.bufLen, 0x1FFFF, 0}}));
-  // word[1]: d0_zero_before [31:26], next_bd [25:20], use_next_bd [19],
-  // buffer_offset [18:0]. buffer_offset stays 0 -- the buffer pointer is
-  // written separately by setAddressForSingleBD's masked write, exactly as on
-  // the static path. Padding is rejected on this path by the caller.
-  wordsOut[1] = createConstantI32(builder, loc,
-                                  ((f.next_bd_id & 0x3f) << 20) |
-                                      ((f.use_next_bd & 0x1) << 19));
-  if (!e.isLinear) {
-    // word[2]: d0_size [26:17], d0_stride [16:0].
-    wordsOut[2] = buildBdWord(builder, loc,
-                              {{e.hwS[0], 0x3FF, 17}, {e.hwT[0], 0x1FFFF, 0}});
-    // word[3]: d1_zero_before [31:27], d1_size [26:17], d1_stride [16:0].
-    wordsOut[3] = buildBdWord(builder, loc,
-                              {{e.hwS[1], 0x3FF, 17}, {e.hwT[1], 0x1FFFF, 0}});
-    // word[4]: d2_zero_before [30:27], d2_stride [16:0]. D2_Size is a dead
-    // field here: the static packing never writes it either (its `// TODO:
-    // D2Size`), the d2 repeat being carried entirely by buffer_length.
-    wordsOut[4] = buildBdWord(builder, loc, {{e.hwT[2], 0x1FFFF, 0}});
+  wordsOut.clear();
+  for (auto [constWord, fields] : llvm::zip(constWords, runtimeWords)) {
+    if (fields.empty()) {
+      wordsOut.push_back(createConstantI32(builder, loc, constWord));
+      continue;
+    }
+    auto [value, mask, shift] = fields.front();
+    if (constWord == 0 && fields.size() == 1 && mask == 0xFFFFFFFF &&
+        shift == 0) {
+      wordsOut.push_back(value);
+      continue;
+    }
+    Value word = buildBdWord(builder, loc, fields);
+    if (constWord != 0)
+      word = arith::OrIOp::create(
+          builder, loc, createConstantI32(builder, loc, constWord), word);
+    wordsOut.push_back(word);
   }
-  // word[5] holds only the zero-after pad fields, all zero here.
-  // word[6]: iteration_current [28:23], iteration_size [22:17],
-  // iteration_stride [16:0].
-  wordsOut[6] = buildBdWord(
-      builder, loc, {{e.iterSizeField, 0x3F, 17}, {e.hwT[3], 0x1FFFF, 0}});
-  // word[7]: valid_bd [31], lock_rel_val [30:24], lock_rel_id [23:16],
-  // lock_acq_enable [15], lock_acq_val [14:8], lock_acq_id [7:0]. Note the
-  // 8-bit lock ids against shim's 4: gatherBdTemplateFields adds the mem tile's
-  // getLockLocalBaseIndex offset, which does not fit in 4 bits.
-  wordsOut[7] = createConstantI32(
-      builder, loc,
-      (1u << 31) | ((f.lock_rel_val & 0x7f) << 24) |
-          ((f.lock_rel_id & 0xff) << 16) | ((f.lock_acq_enable & 0x1) << 15) |
-          ((f.lock_acq_val & 0x7f) << 8) | (f.lock_acq_id & 0xff));
-}
-
-// Core tile BD: 6 registers.
-void packCoreTileBdWords(OpBuilder &builder, Location loc,
-                         const BdTemplateFields &f, const EncodedBd &e,
-                         SmallVectorImpl<Value> &wordsOut) {
-  wordsOut.assign(6, createConstantI32(builder, loc, 0));
-  // word[0]: base_address [27:14], buffer_length [13:0]. The address bits stay
-  // zero here and are filled in by setAddressForSingleBD's masked write, which
-  // preserves the length bits. The 14-bit length is guarded in encodeBdCommon.
-  wordsOut[0] = buildBdWord(builder, loc, {{e.bufLen, 0x3FFF, 0}});
-  // word[1]: enable_compression [31], enable_packet [30],
-  // out_of_order_id [29:24], packet_id [23:19], packet_type [18:16].
-  wordsOut[1] = createConstantI32(
-      builder, loc,
-      ((f.enable_packet & 0x1) << 30) | ((f.out_of_order_id & 0x3f) << 24) |
-          ((f.packet_id & 0x1f) << 19) | ((f.packet_type & 0x7) << 16));
-  if (!e.isLinear) {
-    // word[2]: d1_stride [25:13], d0_stride [12:0].
-    wordsOut[2] = buildBdWord(builder, loc,
-                              {{e.hwT[1], 0x1FFF, 13}, {e.hwT[0], 0x1FFF, 0}});
-    // word[3]: d1_size [28:21], d0_size [20:13], d2_stride [12:0]. Note the
-    // 8-bit wraps, against 10 on shim and mem tiles.
-    wordsOut[3] = buildBdWord(
-        builder, loc,
-        {{e.hwS[1], 0xFF, 21}, {e.hwS[0], 0xFF, 13}, {e.hwT[2], 0x1FFF, 0}});
-  }
-  // word[4]: iteration_current [24:19], iteration_size [18:13],
-  // iteration_stride [12:0].
-  wordsOut[4] = buildBdWord(
-      builder, loc, {{e.iterSizeField, 0x3F, 13}, {e.hwT[3], 0x1FFF, 0}});
-  // word[5]: tlast_suppress [31], next_bd [30:27], use_next_bd [26],
-  // valid_bd [25], lock_rel_val [24:18], lock_rel_id [16:13],
-  // lock_acq_enable [12], lock_acq_val [11:5], lock_acq_id [3:0].
-  wordsOut[5] = createConstantI32(
-      builder, loc,
-      ((f.next_bd_id & 0xf) << 27) | ((f.use_next_bd & 0x1) << 26) |
-          (1u << 25) | ((f.lock_rel_val & 0x7f) << 18) |
-          ((f.lock_rel_id & 0xf) << 13) | ((f.lock_acq_enable & 0x1) << 12) |
-          ((f.lock_acq_val & 0x7f) << 5) | (f.lock_acq_id & 0xf));
 }
 
 } // namespace
@@ -569,16 +485,11 @@ buildBdWords(OpBuilder &builder, Location loc,
     return failure();
   repeatCountOut = e.repeatCount;
 
-  if (targetModel.isShimNOCTile(tileCol, tileRow))
-    packShimBdWords(builder, loc, targetModel, f, e, burstLength, axcache,
-                    wordsOut);
-  else if (targetModel.isMemTile(tileCol, tileRow))
-    packMemTileBdWords(builder, loc, f, e, wordsOut);
-  else if (targetModel.isCoreTile(tileCol, tileRow))
-    packCoreTileBdWords(builder, loc, f, e, wordsOut);
-  else
-    llvm_unreachable("buildBdWords called for a tile type with no DMA BD "
-                     "layout (rejected by the caller)");
+  const AIE::DmaBdLayout *layout = targetModel.getDmaBdLayout(tileCol, tileRow);
+  assert(layout && "buildBdWords called for a tile with no DMA BD layout "
+                   "(rejected by the caller)");
+  packBdWords(builder, loc, targetModel, *layout, f, e, burstLength, axcache,
+              wordsOut);
   return success();
 }
 

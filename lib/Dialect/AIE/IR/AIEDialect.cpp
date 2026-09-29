@@ -471,14 +471,12 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   for (auto &bodyOp : body.getOps()) {
     // check for duplicate DMA channels within the same ShimDMAOp
     if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
-      if (FlatSymbolRefAttr endpoint = dmaStart.getEndpointAttr()) {
+      if (FlatSymbolRefAttr endpoint = dmaStart.getEndpoint()) {
         namedChannels.insert({dmaStart.getChannelDir(), endpoint.getAttr()});
         continue;
       }
-      std::optional<int32_t> index = dmaStart.getChannelIndex();
-      if (!index)
-        continue;
-      DMAChannel dmaChan = {dmaStart.getChannelDir(), *index};
+      DMAChannel dmaChan = {dmaStart.getChannelDir(),
+                            dmaStart.getChannelIndex()};
       // check if number of input and output channels is more than available
       // hardware
       if (dmaChan.direction == DMAChannelDir::S2MM)
@@ -1158,27 +1156,25 @@ void xilinx::AIE::printObjectFifoProducerTile(OpAsmPrinter &printer,
 }
 
 ParseResult xilinx::AIE::parseDMAStartChannel(OpAsmParser &parser,
-                                              IntegerAttr &channelIndex,
-                                              FlatSymbolRefAttr &endpoint) {
+                                              Attribute &channel) {
   StringAttr name;
   if (succeeded(parser.parseOptionalSymbolName(name))) {
-    endpoint = FlatSymbolRefAttr::get(name);
+    channel = FlatSymbolRefAttr::get(name);
     return success();
   }
   int32_t index;
   if (parser.parseInteger(index))
     return failure();
-  channelIndex = parser.getBuilder().getI32IntegerAttr(index);
+  channel = parser.getBuilder().getI32IntegerAttr(index);
   return success();
 }
 
 void xilinx::AIE::printDMAStartChannel(OpAsmPrinter &printer, Operation *op,
-                                       IntegerAttr channelIndex,
-                                       FlatSymbolRefAttr endpoint) {
-  if (endpoint)
-    printer.printAttributeWithoutType(endpoint);
-  else if (channelIndex)
-    printer << channelIndex.getInt();
+                                       Attribute channel) {
+  if (auto index = dyn_cast<IntegerAttr>(channel))
+    printer << index.getInt();
+  else
+    printer.printAttributeWithoutType(channel);
 }
 
 ParseResult
@@ -2982,8 +2978,7 @@ LogicalResult MemTileDMAOp::verify() {
     if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
       // An endpoint's channel is not known yet; allocation keeps one whose
       // BDs reach another tile's memory off the local-only channels.
-      if (std::optional<int32_t> channel = startOp.getChannelIndex();
-          channel && *channel > 3) {
+      if (!startOp.getEndpoint() && startOp.getChannelIndex() > 3) {
         // Channels 4 and 5 in a memtile are restricted to only access local
         // buffers and locks.
 
@@ -3012,7 +3007,8 @@ LogicalResult MemTileDMAOp::verify() {
                 bufferOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   bd.emitOpError()
-                  << "is reachable from DMA channel " << *channel
+                  << "is reachable from DMA channel "
+                  << startOp.getChannelIndex()
                   << " and attempts to access a non-local buffer\n";
               err.attachNote(startOp->getLoc()) << "channel";
               err.attachNote(bufferOp->getLoc()) << "buffer";
@@ -3024,7 +3020,8 @@ LogicalResult MemTileDMAOp::verify() {
                 lockOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
-                  << "is reachable from DMA channel " << *channel
+                  << "is reachable from DMA channel "
+                  << startOp.getChannelIndex()
                   << " and attempts to access a non-local lock\n";
               err.attachNote(startOp->getLoc()) << "channel";
               err.attachNote(lockOp->getLoc()) << "lock";
@@ -3126,6 +3123,33 @@ xilinx::AIE::verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
                 "can deadlock");
         }
   return success();
+}
+
+LogicalResult xilinx::AIE::verifyBdLockPair(Block &block, bool outOfOrder,
+                                            UseLockOp &acquire,
+                                            UseLockOp &release) {
+  acquire = nullptr;
+  release = nullptr;
+  auto reject = [&](UseLockOp at) {
+    auto diag = at.emitOpError(
+        "does not fit its buffer descriptor, which has one lock-acquire field "
+        "and one lock-release field; a buffer descriptor block uses either no "
+        "lock or one use_lock(acquire) and one use_lock(release)");
+    if (outOfOrder)
+      diag << ", or a use_lock(release) alone when out-of-order";
+    return diag;
+  };
+  for (UseLockOp op : block.getOps<UseLockOp>()) {
+    UseLockOp &slot = op.release() ? release : acquire;
+    if (slot)
+      return reject(op);
+    slot = op;
+  }
+  if (!acquire && !release)
+    return success();
+  if (release && (acquire || outOfOrder))
+    return success();
+  return reject(acquire ? acquire : release);
 }
 
 LogicalResult DMAOp::verify() {
@@ -3808,7 +3832,7 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     if (!areEquivalentBDs(*patternIt, uniquePattern[idx]))
       return failure();
     patternIt++;
-    idx = (++idx) % uniquePattern.size();
+    idx = (idx + 1) % uniquePattern.size();
   }
 
   // Repeating BD chains detected. Erasing repetitions.
@@ -3965,46 +3989,41 @@ void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 RouteEndpointOp DMAStartOp::getEndpointOp() {
-  FlatSymbolRefAttr name = getEndpointAttr();
+  FlatSymbolRefAttr name = getEndpoint();
   if (!name)
     return nullptr;
-  return SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(*this,
-                                                               name.getAttr());
+  return SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(*this, name);
 }
 
 LogicalResult DMAStartOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-  FlatSymbolRefAttr name = getEndpointAttr();
+  FlatSymbolRefAttr name = getEndpoint();
   if (!name)
     return success();
   auto program = dyn_cast<DmaBody>((*this)->getParentOp());
   auto device = (*this)->getParentOfType<DeviceOp>();
   if (!program || !device)
-    return emitOpError("only a tile's DMA program may name its channel by an "
-                       "endpoint");
-  auto endpoint =
-      symbolTable.lookupSymbolIn<RouteEndpointOp>(device, name.getAttr());
+    return emitOpError("only a tile's DMA program may name its channel by a "
+                       "route endpoint");
+  auto endpoint = symbolTable.lookupSymbolIn<RouteEndpointOp>(device, name);
   if (!endpoint)
-    return emitOpError("endpoint ") << name << " is not an aie.route_endpoint";
+    return emitOpError() << name << " is not an aie.route_endpoint";
   if (endpoint.getBundle() != WireBundle::DMA)
-    return emitOpError("endpoint ")
-           << name << " names a " << stringifyWireBundle(endpoint.getBundle())
-           << " port, not a DMA channel";
+    return emitOpError() << name << " names a "
+                         << stringifyWireBundle(endpoint.getBundle())
+                         << " port, not a DMA channel";
   auto here = cast<TileLike>(program.getTile().getDefiningOp());
-  auto there = endpoint.getTileLike();
+  TileLike there = endpoint.getTileLike();
   bool sameTile = endpoint.getTile() == program.getTile() ||
                   (here.tryGetCol() && here.tryGetRow() &&
                    here.tryGetCol() == there.tryGetCol() &&
                    here.tryGetRow() == there.tryGetRow());
   if (!sameTile)
-    return emitOpError("endpoint ")
-           << name << " is on a different tile than this DMA program";
+    return emitOpError() << name
+                         << " is on a different tile than this DMA program";
   return success();
 }
 
 LogicalResult DMAStartOp::verify() {
-  if (getChannelIndex().has_value() == static_cast<bool>(getEndpointAttr()))
-    return emitOpError("names its channel by exactly one of an index and an "
-                       "endpoint");
   if (getPadValue() != 0) {
     if (!isa<MemTileDMAOp>(getOperation()->getParentOp()))
       return emitOpError("pad_value is only supported on memtile DMA channels");
@@ -4299,9 +4318,8 @@ LogicalResult UseLockOp::verify() {
     return success();
   }
   // Or it can be in a DMAConfigureTaskOp or DMAConfigureTaskForOp (for runtime
-  // DMA configuration; the latter names a mem or core tile's route_endpoint
-  // until allocation rewrites it). Check by operation name to avoid circular
-  // dependency with AIEX dialect
+  // DMA configuration). Check by operation name to avoid circular dependency
+  // with AIEX dialect
   {
     Operation *operation = (*this)->getParentOp();
     while (operation) {

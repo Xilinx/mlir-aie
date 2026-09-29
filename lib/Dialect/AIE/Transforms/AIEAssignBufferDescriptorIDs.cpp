@@ -83,7 +83,8 @@ static bool resolveResidentChannel(DeviceOp device, TileOp tile,
   auto scanRegion = [&](Region &region) -> bool {
     for (Block &block : region)
       for (DMAStartOp startOp : block.getOps<DMAStartOp>()) {
-        if (startOp.getChannelDir() != dir || startOp.getChannel() != channel)
+        if (startOp.getChannelDir() != dir ||
+            startOp.getChannelIndex() != channel)
           continue;
         Block *dest = startOp.getDest();
         if (!dest)
@@ -242,7 +243,7 @@ struct AIEAssignBufferDescriptorIDsPass
         // dma_start
         for (Block &block : memOp.getOperation()->getRegion(0))
           for (auto op : block.getOps<DMAStartOp>()) {
-            int chNum = op.getChannel();
+            int chNum = op.getChannelIndex();
             blockChannelMap[&block] = chNum;
             Block *dest = op.getDest();
             while (dest) {

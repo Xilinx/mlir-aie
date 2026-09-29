@@ -132,14 +132,14 @@ module {
 
 // -----
 
-// dma_configure_task_for whose alloc symbol does not resolve: the dimension
-// check is deferred (verifies clean) rather than crashing; a later pass that
-// substitutes the allocation performs the check on the concrete tile.
+// dma_configure_task_for whose alloc symbol does not resolve is rejected rather
+// than left for a later pass to trip over.
 module {
   aie.device(npu1) {
-    aie.runtime_sequence(%arg0: memref<64xi32>, %n: i64) {
+    aie.runtime_sequence(%arg0: memref<64xi32>) {
+      // expected-error @+1 {{@missing_alloc does not name a symbol}}
       %t = aiex.dma_configure_task_for @missing_alloc {
-        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [%n, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64 sizes = [1, 1, 1, 1, 1] strides = [0, 0, 0, 0, 1])
         aie.end
       }
     }

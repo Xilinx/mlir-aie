@@ -150,8 +150,8 @@ compiler allocates the BD ids for you.
 | `aiex.dma_free_task` | Tell the BD allocator the task's BD ids may be reused. Only safe once the task is known complete. | the task's tile/channel | `aiex.dma_free_task(%t)` |
 | `aiex.dma_start_bd_chain` | Materialize an abstract `aie.bd_chain` with concrete arguments as a task on `tile`/`direction`/`channel` and start it immediately. | any tile; `MM2S` / `S2MM` | `%t = aiex.dma_start_bd_chain @chain(%a) : (memref<32xi32>) on (%tile, MM2S, 0)` |
 | `aiex.dma_start_bd_chain_for` | As `dma_start_bd_chain`, but the endpoint is a referenced `aie.shim_dma_allocation` symbol. | shim (via allocation) | `%t = aiex.dma_start_bd_chain_for @chain(%a) : (memref<32xi32>) for @alloc` |
-| `aiex.dma_bd_pool_pop` *(compiler-emitted)* | Draw a free BD id from the per-tile runtime free-list pool and return it as an SSA value: the dynamic counterpart to the static BD-id allocator, inserted by the `aie-lower-dynamic-bd-pool` pass inside a runtime-bound `scf.for`. | any tile (dynamic-BD path) | `%bd = aiex.dma_bd_pool_pop(0, 0, 0) : i32` |
-| `aiex.dma_bd_pool_push` *(compiler-emitted)* | Return a BD id obtained from `dma_bd_pool_pop` to the per-tile pool for reuse: the dynamic counterpart to `dma_free_task`. | any tile (dynamic-BD path) | `aiex.dma_bd_pool_push(0, 0, 0) bd_id %bd : i32` |
+| `aiex.dma_bd_pool_pop` *(compiler-emitted)* | Draw a free BD id from a tile's runtime free-list pool for the ids `[bd_begin, bd_end)` and return it as an SSA value: the dynamic counterpart to the static BD-id allocator, inserted by the `aie-lower-dynamic-bd-pool` pass inside a runtime-bound `scf.for`. | any tile (dynamic-BD path) | `%bd = aiex.dma_bd_pool_pop(0, 1) partition [0, 24) : i32` |
+| `aiex.dma_bd_pool_push` *(compiler-emitted)* | Return a BD id obtained from `dma_bd_pool_pop` to its pool for reuse: the dynamic counterpart to `dma_free_task`. | any tile (dynamic-BD path) | `aiex.dma_bd_pool_push(0, 1) partition [0, 24) bd_id %bd : i32` |
 
 ### 4. Synchronization (wait on a task-complete token)
 
@@ -1293,7 +1293,7 @@ def AIE_DMAConfigureTaskOp
 
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
 
-    A buffer descriptor holds the tile's data layout dimensions plus, on a shim tile, the iteration dimension: 4 in all. A `aie.dma_bd` in a task may give more when its sizes and strides are all constant. Every dimension past the innermost three is then iterated, one execution of the descriptor per index, and `aie-decompose-large-dma-bd` splits the ones a descriptor cannot hold into separate tasks. With a runtime size or stride among them, more than 4 is an error.
+    A buffer descriptor holds the tile's data layout dimensions plus, on a shim tile, the iteration dimension: 4 in all. An `aie.dma_bd` in a task may give more when its sizes and strides are all constant. Every dimension past the innermost three is then iterated, one execution of the descriptor per index, and `aie-decompose-large-dma-bd` splits the ones a descriptor cannot hold into separate tasks. With a runtime size or stride among them, more than 4 is an error.
   }];
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
@@ -1362,7 +1362,7 @@ def AIE_DMAConfigureTaskForOp
                 "endpoint";
   let description = [{
     `alloc` names either an `aie.shim_dma_allocation` or an
-    `aie.route_endpoint` with a `DMA` bundle. An endpoint may be on any tile;
+    `aie.route_endpoint` with a `DMA` bundle. An endpoint may be on any tile:
     `--aie-objectfifo-allocate` picks its channel and rewrites this op to an
     `aiex.dma_configure_task` on that tile and channel. The direction is the
     one the endpoint's route gives it. A shim endpoint with a `fifoName` is
@@ -1447,11 +1447,11 @@ def AIE_DMAStartTaskOp
       would issue. It cannot add a token to a task that issues none.
 
     A constant repeat count beyond the target's maximum (255 on AIE2) is legal.
-    `aie-assign-runtime-sequence-bd-ids` issues such a start as several starts
-    of the same task: full-size ones first, then the remainder. Only the last
-    one keeps the token, so an await still completes after every pass. Each
-    of those starts takes its own queue slot. A runtime-valued repeat count
-    cannot be split and must fit the hardware field.
+    `aie-split-long-repeats` issues such a start as several starts of the same
+    task: full-size ones first, then the remainder. Only the last one keeps the
+    token, so an await still completes after every pass. Each of those starts
+    takes its own queue slot. A runtime-valued repeat count cannot be split and
+    must fit the hardware field.
   }];
 
   let arguments = (ins Index:$task, OptionalAttr<I32Attr>:$repeat_count,
@@ -1471,7 +1471,6 @@ def AIE_DMAStartTaskOp
     // The repeat count this push carries: the start's override if present,
     // else the task's (a runtime operand or the compile-time attribute).
     mlir::OpFoldResult getPushRepeatCount(DMAConfigureTaskOp task);
-    // Whether this push issues a completion token.
     bool getPushIssueToken(DMAConfigureTaskOp task) {
       return task.getIssueToken() && !getNoToken();
     }
@@ -1528,17 +1527,19 @@ def AIE_DMAAwaitTaskOp
 def AIE_DMABdPoolPopOp
     : AIEX_Op<"dma_bd_pool_pop", [HasAncestor<"AIE::RuntimeSequenceOp">]>,
       Results<(outs I32:$bd_id)> {
-  let summary = "Pop a free Buffer Descriptor ID from the runtime free-list "
-                "pool for a tile";
+  let summary = "Pop a free Buffer Descriptor ID from a runtime free-list "
+                "pool";
   let description = [{
-    Draws a buffer-descriptor ID from the runtime free-list pool for a tile's
-    channel and returns it as an SSA value. The pool is per (tile, channel)
-    rather than per tile because a mem tile partitions its BD table by channel
-    parity -- an even channel can only submit ids from the low half and an odd
-    channel from the high half -- so two channels of opposite parity on one
-    tile draw from disjoint sets. Channels that share a partition share a pool. This is the dynamic counterpart to the static
-    BD-ID allocator: inside a runtime-bound `scf.for` the ID is chosen at
-    runtime rather than baked at compile time.
+    Draws a buffer-descriptor ID from the runtime free-list pool that holds the
+    IDs `[bd_begin, bd_end)` of a tile and returns it as an SSA value. This is
+    the dynamic counterpart to the static BD-ID allocator: inside a
+    runtime-bound `scf.for` the ID is chosen at runtime rather than baked at
+    compile time.
+
+    The pool is named by its ID range rather than by its tile or channel,
+    because the range is what the channel can submit: a mem tile gives its even
+    channels the low half of its BD table and its odd channels the high half.
+    Every op naming the same tile and range shares one pool.
 
     Only meaningful on the dynamic EmitC lowering path (the static binary TXN
     stream has no runtime pool). The `aie-lower-dynamic-bd-pool` pass inserts
@@ -1547,35 +1548,40 @@ def AIE_DMABdPoolPopOp
     (`std::nullopt`).
   }];
 
-  let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$channel);
+  let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,
+      I32Attr:$bd_end);
 
   let assemblyFormat = [{
-    `(` $column `,` $row `,` $channel `)` attr-dict `:` type($bd_id)
+    `(` $column `,` $row `)` `partition` ` ` `[` $bd_begin `,` $bd_end `)`
+    attr-dict `:` type($bd_id)
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_DMABdPoolPushOp
     : AIEX_Op<"dma_bd_pool_push", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
-  let summary =
-      "Return a Buffer Descriptor ID to the runtime free-list pool for a tile";
+  let summary = "Return a Buffer Descriptor ID to a runtime free-list pool";
   let description = [{
     Returns a buffer-descriptor ID previously obtained from
-    `aiex.dma_bd_pool_pop` to the free-list pool for that tile's channel,
-    making it available for reuse. This is the dynamic counterpart to the static
-    allocator's free/await recycling.
+    `aiex.dma_bd_pool_pop` to the pool for IDs `[bd_begin, bd_end)` of a tile,
+    making it available for reuse. This is the dynamic counterpart to the
+    static allocator's free/await recycling.
 
     Only meaningful on the dynamic EmitC lowering path. The
     `aie-lower-dynamic-bd-pool` pass inserts this op in place of a
-    `dma_free_task` / the recycling half of a `dma_await_task`.
+    `dma_free_task`.
   }];
 
-  let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$channel,
-      I32:$bd_id);
+  let arguments = (ins I32Attr:$column, I32Attr:$row, I32Attr:$bd_begin,
+      I32Attr:$bd_end, I32:$bd_id);
 
   let assemblyFormat = [{
-    `(` $column `,` $row `,` $channel `)` `bd_id` $bd_id attr-dict `:`
-    type($bd_id)
+    `(` $column `,` $row `)` `partition` ` ` `[` $bd_begin `,` $bd_end `)`
+    `bd_id` $bd_id attr-dict `:` type($bd_id)
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_DMAStartBdChainOp

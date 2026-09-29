@@ -288,14 +288,12 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
-/// DMAStartOp's channel syntax; see its description in AIEOps.td.
+/// DMAStartOp's channel: a hardware index or a route endpoint symbol.
 mlir::ParseResult parseDMAStartChannel(mlir::OpAsmParser &parser,
-                                       mlir::IntegerAttr &channelIndex,
-                                       mlir::FlatSymbolRefAttr &endpoint);
+                                       mlir::Attribute &channel);
 
 void printDMAStartChannel(mlir::OpAsmPrinter &printer, mlir::Operation *op,
-                          mlir::IntegerAttr channelIndex,
-                          mlir::FlatSymbolRefAttr endpoint);
+                          mlir::Attribute channel);
 
 mlir::ParseResult
 parseObjectFifoAcquireObjects(mlir::OpAsmParser &parser,
@@ -362,6 +360,13 @@ mlir::LogicalResult
 verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
                         llvm::ArrayRef<DMABDOp> bds,
                         bool packetEnabledByContext = false);
+
+// Validate the use_locks of one BD block and return them. A BD has one acquire
+// field and one release field; by convention the block uses either no lock or
+// both, except that an out-of-order BD may release alone. Either result is
+// null when the block has no such lock.
+mlir::LogicalResult verifyBdLockPair(mlir::Block &block, bool outOfOrder,
+                                     UseLockOp &acquire, UseLockOp &release);
 
 // BD ids already assigned within a tile's static DMA program (the
 // aie.dma_bd chain(s) inside one DmaBody-implementing op: aie.mem,

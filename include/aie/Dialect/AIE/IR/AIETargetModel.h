@@ -53,6 +53,35 @@ using TileID = struct TileID {
   int col, row;
 };
 
+/// Bits [shift, shift + width) of register `word` in a buffer descriptor's
+/// register block. A field a tile type does not have has width 0.
+struct DmaBdField {
+  uint8_t word = 0, shift = 0, width = 0;
+
+  bool exists() const { return width != 0; }
+  uint32_t mask() const {
+    return width >= 32 ? 0xFFFFFFFFu : (1u << width) - 1;
+  }
+  uint32_t place(uint64_t value) const {
+    return exists() ? (static_cast<uint32_t>(value) & mask()) << shift : 0;
+  }
+};
+
+/// The register layout of one tile type's DMA buffer descriptor. The static
+/// and runtime BD lowerings both pack through it, so the two cannot disagree.
+struct DmaBdLayout {
+  uint8_t numWords = 0;
+  DmaBdField bufferLength, bufferOffset;
+  DmaBdField enablePacket, packetType, packetId, outOfOrderId;
+  DmaBdField d0Size, d0Stride, d1Size, d1Stride, d2Stride;
+  DmaBdField iterationCurrent, iterationSize, iterationStride;
+  DmaBdField d0ZeroBefore, d1ZeroBefore, d2ZeroBefore;
+  DmaBdField d0ZeroAfter, d1ZeroAfter, d2ZeroAfter;
+  DmaBdField burstLength, axcache;
+  DmaBdField nextBd, useNextBd, validBd;
+  DmaBdField lockRelValue, lockRelId, lockAcqEnable, lockAcqValue, lockAcqId;
+};
+
 class AIETargetModel {
 
 public:
@@ -465,10 +494,34 @@ public:
     return count;
   }
 
+  /// Return the half-open range [first, last) of buffer descriptor ids that
+  /// channel `channel` of the tile at (`col`, `row`) can submit.
+  std::pair<uint32_t, uint32_t> getBdIdRangeForChannel(int col, int row,
+                                                       int channel) const {
+    uint32_t numBds = getNumBDs(col, row);
+    uint32_t first = 0;
+    while (first < numBds && !isBdChannelAccessible(col, row, first, channel))
+      ++first;
+    uint32_t last = first;
+    while (last < numBds && isBdChannelAccessible(col, row, last, channel))
+      ++last;
+    return {first, last};
+  }
+
   /// Return true iff buffer descriptor `bd_id` on tile (`col`, `row`) can be
   /// submitted on channel `channel`.
   virtual bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                                      int channel) const = 0;
+
+  /// Return the register layout of a buffer descriptor on the given tile
+  /// type, or null if the target has none modeled for it.
+  virtual const DmaBdLayout *getDmaBdLayout(AIETileType tileType) const {
+    return nullptr;
+  }
+
+  const DmaBdLayout *getDmaBdLayout(int col, int row) const {
+    return getDmaBdLayout(getTileType(col, row));
+  }
 
   /// Return the array address of the dma buffer descriptor for the given
   /// col, row, buffer descriptor id, channel and direction. Not all
@@ -892,6 +945,9 @@ public:
       }
     }
   }
+
+  using AIETargetModel::getDmaBdLayout;
+  const DmaBdLayout *getDmaBdLayout(AIETileType tileType) const override;
 
   uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
                            AIE::DMAChannelDir direction) const override;

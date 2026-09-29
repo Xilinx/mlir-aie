@@ -1325,9 +1325,6 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
-// Only the sign is checked here. A count past the hardware field is split into
-// several pushes by aie-assign-runtime-sequence-bd-ids, and NpuPushQueueOp
-// rejects whatever reaches it unsplit.
 LogicalResult AIEX::DMAStartTaskOp::verify() {
   if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
     return emitOpError("repeat_count must be non-negative, got ")
@@ -1340,30 +1337,43 @@ LogicalResult AIEX::DMAStartTaskOp::verify() {
 // pass.
 LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
-  // Recover the shim tile through the referenced shim DMA allocation symbol so
-  // the per-BD dimension limit can be enforced on the runtime-sequence path
-  // before the allocation is substituted into a concrete DMAConfigureTaskOp.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
   Operation *target =
       symbolTable.lookupSymbolIn(dev, getAlloc().getRootReference());
+  if (!target)
+    return emitOpError() << getAlloc() << " does not name a symbol";
+  // The tile is known once the name is a shim DMA allocation or a route
+  // endpoint, so the per-BD dimension limit can be enforced before the task
+  // becomes a concrete dma_configure_task. Before the objectFIFO lowering
+  // the name is the fifo's own, and the check waits.
   Value tileValue;
-  if (auto allocOp = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(target)) {
-    tileValue = allocOp.getTile();
-  } else if (auto endpoint = dyn_cast_or_null<AIE::RouteEndpointOp>(target)) {
-    if (endpoint.getBundle() != AIE::WireBundle::DMA)
-      return emitOpError() << "'" << getAlloc() << "' names a "
-                           << stringifyWireBundle(endpoint.getBundle())
-                           << " port, not a DMA channel";
-    tileValue = endpoint.getTile();
-  }
-  if (!tileValue)
-    return success(); // symbol resolved during a later pass; defer the check
-  // Do not call allocOp.getTileOp(): it hard-asserts when the allocation is
-  // still bound to an unplaced (logical) tile. Resolve the concrete tile
-  // defensively and defer the check until placement substitutes a real tile.
-  auto tile = llvm::dyn_cast_or_null<AIE::TileOp>(tileValue.getDefiningOp());
+  LogicalResult named =
+      TypeSwitch<Operation *, LogicalResult>(target)
+          .Case([&](AIE::ShimDMAAllocationOp alloc) {
+            tileValue = alloc.getTile();
+            return success();
+          })
+          .Case([&](AIE::RouteEndpointOp endpoint) -> LogicalResult {
+            tileValue = endpoint.getTile();
+            if (endpoint.getBundle() == AIE::WireBundle::DMA)
+              return success();
+            return emitOpError() << getAlloc() << " names a "
+                                 << stringifyWireBundle(endpoint.getBundle())
+                                 << " port, not a DMA channel";
+          })
+          .Case([](AIE::ObjectFifoCreateOp) { return success(); })
+          .Default([&](Operation *) -> LogicalResult {
+            return emitOpError() << getAlloc()
+                                 << " must name an aie.shim_dma_allocation, an "
+                                    "aie.route_endpoint or an aie.objectfifo";
+          });
+  if (failed(named))
+    return failure();
+  // An allocation or endpoint on an unplaced (logical) tile waits for
+  // placement to substitute a real one.
+  auto tile = tileValue ? tileValue.getDefiningOp<AIE::TileOp>() : nullptr;
   if (!tile)
     return success();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
@@ -1460,6 +1470,31 @@ LogicalResult AIEX::SetLockOp::verify() {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DMABdPoolPopOp / DMABdPoolPushOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verifyBdPoolPartition(Operation *op, int col, int row,
+                                           uint32_t begin, uint32_t end) {
+  uint32_t numBds = AIE::getTargetModel(op).getNumBDs(col, row);
+  if (begin >= end || end > numBds)
+    return op->emitOpError()
+           << "partition [" << begin << ", " << end
+           << ") is not a nonempty range of the " << numBds
+           << " buffer descriptors on tile (" << col << ", " << row << ")";
+  return success();
+}
+
+LogicalResult AIEX::DMABdPoolPopOp::verify() {
+  return verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
+                               getBdEnd());
+}
+
+LogicalResult AIEX::DMABdPoolPushOp::verify() {
+  return verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
+                               getBdEnd());
 }
 
 //===----------------------------------------------------------------------===//

@@ -120,6 +120,11 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
     for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
+      if (auto packetInfo = op.getPacket()) {
+        foundBdPacket = true;
+        packetType = packetInfo->getPktType();
+        packetID = packetInfo->getPktId();
+      }
       if (!targetModel.isShimNOCTile(col, row)) {
         std::optional<int32_t> bufferAddr = op.getBufferOp().getAddress();
         assert(bufferAddr && "buffer must have address assigned");
@@ -325,7 +330,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     for (auto op : block->getOps<DMAStartOp>()) {
       int bdNum = blockMap[op.getDest()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
-      int chNum = op.getChannel();
+      int chNum = op.getChannelIndex();
       const auto &target_model = xilinx::AIE::getTargetModel(op);
       if (target_model.getTargetArch() == AIEArch::AIE1) {
         output << "__mlir_aie_try(XAie_DmaChannelPushBdToQueue("
@@ -575,7 +580,7 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
 
     for (auto &block : memOp.getBody()) {
       for (auto op : block.getOps<DMAStartOp>()) {
-        int chNum = op.getChannel();
+        int chNum = op.getChannelIndex();
         channelMap[&block] = chNum;
         auto *dest = op.getDest();
         while (dest) {

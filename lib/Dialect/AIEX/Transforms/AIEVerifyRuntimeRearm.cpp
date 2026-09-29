@@ -71,16 +71,15 @@ struct AIEVerifyRuntimeRearmPass
         tile = x.getTileOp();
       if (!tile)
         return WalkResult::advance();
-      auto channel = start.getChannelIndex();
-      if (!channel) {
-        start.emitOpError("requires an allocated DMA channel; run "
+      if (start.getEndpoint()) {
+        start.emitOpError("requires a DMA channel index; run "
                           "--aie-objectfifo-allocate before "
                           "--aie-verify-runtime-rearm");
         return WalkResult::interrupt();
       }
       ChannelKey key{tile.getCol(), tile.getRow(),
                      static_cast<int>(start.getChannelDir()),
-                     static_cast<int>(*channel)};
+                     start.getChannelIndex()};
       SmallVector<LockOp> &locks = m[key];
       // Walk the BD chain (dest, then next_bd successors); the last next_bd
       // loops back, so stop on a revisit.

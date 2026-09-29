@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids %s | FileCheck %s
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --verify-diagnostics %s \
+// RUN:   | FileCheck %s
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
 // RUN:   --aie-dma-to-npu %s | FileCheck %s --check-prefix=LOWERED
 
@@ -14,7 +15,8 @@
 // on its channel is finished once Task_Queue_Size (bits 22:20, not counting the
 // running task) is at most j-1, and a task last on its channel once the channel
 // is idle (queue size, Channel_Running bit 19 and the stall bits 5:2 all clear,
-// mask 0x78003C). Sequences that fit are untouched; see the other tests here.
+// mask 0x78003C). Each inserted poll is reported as a remark. Sequences that
+// fit are untouched; see the other tests here.
 //
 // npu2 shim DMA_MM2S_Status_0 is 0x1D228 (119336); mem tile (0,1)
 // DMA_MM2S_Status_0 is 0x1A0680 (1705600).
@@ -207,6 +209,7 @@ aie.device(npu2) @shim_dev {
     aiex.dma_start_task(%t16)
   }
   aie.runtime_sequence @j1(%arg0: memref<64xi32>) {
+    // expected-note@+1 {{the task it waits for}}
     %t0 = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -261,6 +264,7 @@ aie.device(npu2) @shim_dev {
       aie.end
     }
     aiex.dma_start_task(%big)
+    // expected-remark@+1 {{queue behind an earlier task is short enough to prove it finished and takes back its ids 0}}
     %new = aiex.dma_configure_task(%shim, S2MM, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -268,6 +272,7 @@ aie.device(npu2) @shim_dev {
     aiex.dma_start_task(%new)
   }
   aie.runtime_sequence @j2(%arg0: memref<64xi32>) {
+    // expected-note@+1 {{the task it waits for}}
     %t0 = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -324,6 +329,7 @@ aie.device(npu2) @shim_dev {
       aie.end
     }
     aiex.dma_start_task(%big)
+    // expected-remark@+1 {{queue behind an earlier task is short enough to prove it finished and takes back its ids 0}}
     %new = aiex.dma_configure_task(%shim, S2MM, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -331,6 +337,7 @@ aie.device(npu2) @shim_dev {
     aiex.dma_start_task(%new)
   }
   aie.runtime_sequence @j3(%arg0: memref<64xi32>) {
+    // expected-note@+1 {{the task it waits for}}
     %t0 = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -389,6 +396,7 @@ aie.device(npu2) @shim_dev {
       aie.end
     }
     aiex.dma_start_task(%big)
+    // expected-remark@+1 {{queue behind an earlier task is short enough to prove it finished and takes back its ids 0}}
     %new = aiex.dma_configure_task(%shim, S2MM, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -396,6 +404,7 @@ aie.device(npu2) @shim_dev {
     aiex.dma_start_task(%new)
   }
   aie.runtime_sequence @j4(%arg0: memref<64xi32>) {
+    // expected-note@+1 {{the task it waits for}}
     %t0 = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -456,6 +465,7 @@ aie.device(npu2) @shim_dev {
       aie.end
     }
     aiex.dma_start_task(%big)
+    // expected-remark@+1 {{queue behind an earlier task is short enough to prove it finished and takes back its ids 0}}
     %new = aiex.dma_configure_task(%shim, S2MM, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -463,6 +473,7 @@ aie.device(npu2) @shim_dev {
     aiex.dma_start_task(%new)
   }
   aie.runtime_sequence @idle(%arg0: memref<64xi32>) {
+    // expected-note@+1 {{the task it waits for}}
     %t0 = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd1
@@ -519,6 +530,7 @@ aie.device(npu2) @shim_dev {
       aie.end
     }
     aiex.dma_start_task(%t3)
+    // expected-remark@+1 {{channel of an earlier task is idle and takes back its ids 0, 1, 2, 3}}
     %new = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -531,6 +543,7 @@ aie.device(npu2) @shim_dev {
       aie.end
     }
     aiex.dma_start_task(%t0)
+    // expected-note@+1 {{the task it waits for}}
     %t1 = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -580,6 +593,7 @@ aie.device(npu2) @shim_dev {
       aie.end
     }
     aiex.dma_start_task(%big)
+    // expected-remark@+1 {{channel of an earlier task is idle and takes back its ids 1}}
     %new = aiex.dma_configure_task(%shim, S2MM, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -588,6 +602,7 @@ aie.device(npu2) @shim_dev {
     aiex.dma_start_task(%t0)
   }
   aie.runtime_sequence @free_await(%arg0: memref<64xi32>) {
+    // expected-note@+1 {{the task it waits for}}
     %t0 = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -642,6 +657,7 @@ aie.device(npu2) @shim_dev {
       aie.end
     }
     aiex.dma_start_task(%big)
+    // expected-remark@+1 {{queue behind an earlier task is short enough to prove it finished and takes back its ids 0}}
     %new = aiex.dma_configure_task(%shim, S2MM, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -666,6 +682,7 @@ aie.device(npu2) @mem_dev {
       aie.end
     }
     aiex.dma_start_task(%o1)
+    // expected-note@+1 {{the task it waits for}}
     %e0 = aiex.dma_configure_task(%mem, MM2S, 0) {
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
       aie.end
@@ -746,6 +763,7 @@ aie.device(npu2) @mem_dev {
       aie.end
     }
     aiex.dma_start_task(%e3)
+    // expected-remark@+1 {{queue behind an earlier task is short enough to prove it finished and takes back its ids 0}}
     %new = aiex.dma_configure_task(%mem, MM2S, 4) {
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
       aie.end

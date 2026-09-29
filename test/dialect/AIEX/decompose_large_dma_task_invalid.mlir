@@ -52,7 +52,7 @@ module {
 // -----
 
 // A scaled repeat count past the queue's 8-bit field is split into several
-// pushes later (dma_task_repeat_split.mlir), but it still has to fit the 32-bit
+// pushes later (aie-split-long-repeats), but it still has to fit the 32-bit
 // attribute. Saying so here names the factor that got us there.
 
 module {

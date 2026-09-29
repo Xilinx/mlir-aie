@@ -27,11 +27,11 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
     for (Block &block : program.getDmaBody()) {
       for (auto start : block.getOps<DMAStartOp>()) {
         // The route endpoint it names claims the channel; see assignChannels.
-        std::optional<int32_t> index = start.getChannelIndex();
-        if (!index)
+        if (start.getEndpoint())
           continue;
         usedChannels.try_emplace(std::make_tuple(getTileKey(program.getTile()),
-                                                 start.getChannelDir(), *index),
+                                                 start.getChannelDir(),
+                                                 start.getChannelIndex()),
                                  start.getOperation());
       }
     }

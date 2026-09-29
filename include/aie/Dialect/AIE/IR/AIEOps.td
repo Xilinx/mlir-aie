@@ -1344,8 +1344,8 @@ def AIE_DMAStartOp
     ```
 
     In place of the index, the channel may be named by an `aie.route_endpoint`
-    on the same tile with a `DMA` bundle. `--aie-objectfifo-allocate` then picks
-    the index, together with the route's other channels, and writes it here:
+    with a `DMA` bundle on the same tile. `--aie-objectfifo-allocate` picks the
+    index along with the route's other channels and writes it here:
     ```
       aie.route_endpoint @in(%tile) DMA
       aie.route from @src to [@in]
@@ -1367,11 +1367,9 @@ def AIE_DMAStartOp
     nonzero `pad_value` elsewhere.
   }];
 
-  // Exactly one of channel_index and endpoint is set; allocation replaces the
-  // endpoint with the index it assigns.
   let arguments = (ins DMAChannelDir:$channel_dir,
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$channel_index,
-      OptionalAttr<FlatSymbolRefAttr>:$endpoint,
+      AnyAttrOf<[ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>,
+                 FlatSymbolRefAttr]>:$channel,
       // repeat_count==0 means "do it once" and don't repeat
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
@@ -1379,7 +1377,7 @@ def AIE_DMAStartOp
       UnitAttr:$out_of_order);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $channel_dir `,` custom<DMAStartChannel>($channel_index, $endpoint) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
+    `(` $channel_dir `,` custom<DMAStartChannel>($channel) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
   }];
 
   let builders = [OpBuilder<(ins "DMAChannelDir":$channel_dir,
@@ -1388,22 +1386,25 @@ def AIE_DMAStartOp
                                 "mlir::Block *":$dest, "mlir::Block *":$chain),
                             [{
       build($_builder, $_state, channel_dir,
-            $_builder.getI32IntegerAttr(channel_index),
-            mlir::FlatSymbolRefAttr(), repeat_count, pad_value, out_of_order,
-            dest, chain);
+            $_builder.getI32IntegerAttr(channel_index), repeat_count,
+            pad_value, out_of_order, dest, chain);
     }]>];
 
   let extraClassDeclaration = [{
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
-    /// The channel index. Only valid once allocation has resolved an endpoint.
-    int getChannel() {
-      std::optional<int32_t> channel = getChannelIndex();
-      assert(channel && "dma_start still names an endpoint; run "
-                        "--aie-objectfifo-allocate");
-      return *channel;
+    /// The hardware channel index. A start naming a route endpoint has none
+    /// until `--aie-objectfifo-allocate` resolves it.
+    int getChannelIndex() {
+      auto index = llvm::dyn_cast<mlir::IntegerAttr>(getChannel());
+      assert(index && "dma_start still names a route endpoint; run "
+                      "--aie-objectfifo-allocate");
+      return index.getInt();
     }
-    /// The route endpoint this start names in place of an index, if any.
+    /// The route endpoint naming the channel in place of an index, if any.
+    mlir::FlatSymbolRefAttr getEndpoint() {
+      return llvm::dyn_cast<mlir::FlatSymbolRefAttr>(getChannel());
+    }
     RouteEndpointOp getEndpointOp();
   }];
 
@@ -2014,7 +2015,8 @@ def AIE_RouteEndpointOp
       `{fifoName}_shim_alloc`, and every use of this symbol is renamed to it.
     - On any tile, an `aie.dma_start` in the tile's DMA program, or an
       `aiex.dma_configure_task_for` in the runtime sequence, may name this
-      symbol in place of a channel index. Allocation resolves both.
+      symbol in place of a channel index. Allocation rewrites both to the
+      index it picked.
 
     A `Core` bundle names a core's stream port, which the core reads and writes
     directly and which needs no DMA. Setting `channelIndex` pins the channel

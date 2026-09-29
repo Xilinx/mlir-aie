@@ -96,6 +96,7 @@ aie.device(npu2) {
 aie.device(npu2) {
   %shim = aie.tile(0, 0)
   aie.runtime_sequence @reclaim_off(%arg0: memref<64xi32>) {
+    // expected-note@+1 {{the task it waits for}}
     %t0 = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd1
@@ -152,6 +153,7 @@ aie.device(npu2) {
       aie.end
     }
     aiex.dma_start_task(%t3)
+    // expected-remark@+1 {{channel of an earlier task is idle and takes back its ids 0, 1, 2, 3}}
     %new = aiex.dma_configure_task(%shim, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 8)
       aie.end

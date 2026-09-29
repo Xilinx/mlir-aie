@@ -15,7 +15,6 @@
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 
-#include <map>
 #include <set>
 
 using namespace mlir;
@@ -60,7 +59,7 @@ struct AIEObjectFifoAllocatePass
   /// BDs spoken for on each channel of a placed tile, by (col, row, channel):
   /// the chains DMA programs start on it by index, plus the largest task the
   /// runtime sequence configures on it by index.
-  std::map<std::tuple<int, int, int>, int64_t> fixedBDs;
+  DenseMap<std::tuple<int, int, int>, int64_t> fixedBDs;
   RouteEndpoint channelFailure;
   ObjectFifoPoolOp bufferFailure;
   Value lockFailure;
@@ -628,7 +627,7 @@ struct AIEObjectFifoAllocatePass
     endpointStarts.clear();
     endpointTasks.clear();
     fixedBDs.clear();
-    std::map<std::tuple<int, int, int>, int64_t> largestTask;
+    DenseMap<std::tuple<int, int, int>, int64_t> largestTask;
     auto key = [](Value tile,
                   int channel) -> std::optional<std::tuple<int, int, int>> {
       auto placed = cast<TileLike>(tile.getDefiningOp());
@@ -642,7 +641,8 @@ struct AIEObjectFifoAllocatePass
         for (auto start : block.getOps<DMAStartOp>()) {
           if (auto endpoint = start.getEndpointOp()) {
             endpointStarts[endpoint].push_back(start);
-          } else if (auto at = key(program.getTile(), start.getChannel())) {
+          } else if (auto at =
+                         key(program.getTile(), start.getChannelIndex())) {
             fixedBDs[*at] += countBDs(start);
           }
         }
@@ -668,7 +668,7 @@ struct AIEObjectFifoAllocatePass
   /// demand; ties, and tiles without such a split, go to the lowest index.
   /// Falls back to first-free where coordinates are unknown.
   int chooseChannel(DMAChannelAnalysis &channels, RouteEndpoint endpoint,
-                    const std::map<std::tuple<int, int, int>, int64_t> &demand,
+                    const DenseMap<std::tuple<int, int, int>, int64_t> &demand,
                     bool adjacent) {
     TileLike tile = tileOf(endpoint);
     DMAChannelDir dir = endpoint.getRouteDirection();
@@ -733,7 +733,7 @@ struct AIEObjectFifoAllocatePass
     SmallVector<RouteEndpoint> pending;
     // BDs per placed (col, row, channel) as channels are handed out, for
     // choosing among a tile's channels by the BD ids they can use.
-    std::map<std::tuple<int, int, int>, int64_t> demand = fixedBDs;
+    DenseMap<std::tuple<int, int, int>, int64_t> demand = fixedBDs;
     auto noteDemand = [&](RouteEndpoint endpoint, int channel) {
       TileLike tile = tileOf(endpoint);
       auto col = tile.tryGetCol(), row = tile.tryGetRow();
@@ -1022,53 +1022,6 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// Write each endpoint-named dma_start's channel into it, so every later
-  /// pass sees an index.
-  LogicalResult resolveStarts() {
-    for (auto endpoint : device.getOps<RouteEndpointOp>()) {
-      for (DMAStartOp start : endpointStarts.lookup(endpoint)) {
-        DMAChannelDir dir = endpoint.getRouteDirection();
-        if (start.getChannelDir() != dir)
-          return start.emitOpError("starts ")
-                 << stringifyDMAChannelDir(start.getChannelDir()) << " on @"
-                 << endpoint.getSymName() << ", but its route makes it "
-                 << stringifyDMAChannelDir(dir);
-        // Allocation stamps the header on runtime tasks only.
-        if (endpoint.getPacket())
-          return start.emitOpError("names @")
-                 << endpoint.getSymName()
-                 << ", the source of a packet-switched route; a DMA program's "
-                    "BDs would not carry its header";
-        start.setChannelIndex(channelOf(endpoint));
-        start.removeEndpointAttr();
-      }
-    }
-    return success();
-  }
-
-  /// A runtime task naming an endpoint that gets no shim allocation is
-  /// configured on the endpoint's tile and channel directly.
-  void rewriteTasks() {
-    for (auto endpoint : device.getOps<RouteEndpointOp>()) {
-      if (endpoint.getTileLike().isShimTile() && endpoint.getFifoName())
-        continue;
-      for (auto task : endpointTasks.lookup(endpoint)) {
-        builder.setInsertionPoint(task);
-        auto configured = AIEX::DMAConfigureTaskOp::create(
-            builder, task.getLoc(), builder.getIndexType(), endpoint.getTile(),
-            DMAChannelDirAttr::get(builder.getContext(),
-                                   endpoint.getRouteDirection()),
-            builder.getI32IntegerAttr(channelOf(endpoint)),
-            builder.getBoolAttr(task.getIssueToken()),
-            builder.getI32IntegerAttr(task.getRepeatCount()),
-            task.getRepeatCountVal(), endpoint.getPacketAttr());
-        task.getResult().replaceAllUsesWith(configured.getResult());
-        configured.getBody().takeBody(task.getBody());
-        task.erase();
-      }
-    }
-  }
-
   /// An `aiex.dma_channel_reset_for` outlives the fifo it names, so record the
   /// channels and locks it has to re-arm and point it at that record. Shim
   /// endpoints are left out: the host re-pushes those itself.
@@ -1149,6 +1102,65 @@ struct AIEObjectFifoAllocatePass
       for (Operation *user : users) {
         user->setAttr("objfifo", target);
       }
+    }
+    return success();
+  }
+
+  /// Give each dma_start naming an endpoint the channel it was assigned.
+  LogicalResult resolveStart(DMAStartOp start, RouteEndpointOp endpoint,
+                             int channel) {
+    DMAChannelDir dir = endpoint.getRouteDirection();
+    if (start.getChannelDir() != dir)
+      return start.emitOpError("starts ")
+             << stringifyDMAChannelDir(start.getChannelDir()) << " on "
+             << start.getEndpoint() << ", but its route makes it "
+             << stringifyDMAChannelDir(dir);
+    // Only a runtime task's BDs are given the packet header.
+    if (endpoint.getPacket())
+      return start.emitOpError("names ")
+             << start.getEndpoint()
+             << ", the source of a packet-switched route; a DMA program's "
+                "BDs would not carry its header";
+    start.setChannelAttr(builder.getI32IntegerAttr(channel));
+    return success();
+  }
+
+  /// A runtime task naming an endpoint is configured on the endpoint's tile
+  /// and channel directly.
+  void resolveTask(AIEX::DMAConfigureTaskForOp task, RouteEndpointOp endpoint,
+                   int channel) {
+    builder.setInsertionPoint(task);
+    auto configured = AIEX::DMAConfigureTaskOp::create(
+        builder, task.getLoc(), builder.getIndexType(), endpoint.getTile(),
+        DMAChannelDirAttr::get(builder.getContext(),
+                               endpoint.getRouteDirection()),
+        builder.getI32IntegerAttr(channel),
+        builder.getBoolAttr(task.getIssueToken()),
+        builder.getI32IntegerAttr(task.getRepeatCount()),
+        task.getRepeatCountVal(), endpoint.getPacketAttr());
+    task.getResult().replaceAllUsesWith(configured.getResult());
+    configured.getBody().takeBody(task.getBody());
+    task.erase();
+  }
+
+  /// Rewrite the programs and tasks naming an endpoint to its channel while
+  /// the route giving its direction is still there. A shim end with a fifo
+  /// name keeps its tasks, which emitShimAllocations points at the allocation.
+  LogicalResult resolveEndpointUses() {
+    for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+      auto starts = endpointStarts.lookup(endpoint);
+      auto tasks = endpointTasks.lookup(endpoint);
+      if (starts.empty() && tasks.empty())
+        continue;
+      std::optional<int> channel = endpoint.getRouteChannel();
+      assert(channel && "assignChannels gives every routed endpoint one");
+      for (DMAStartOp start : starts)
+        if (failed(resolveStart(start, endpoint, *channel)))
+          return failure();
+      if (endpoint.getTileLike().isShimTile() && endpoint.getFifoName())
+        continue;
+      for (auto task : tasks)
+        resolveTask(task, endpoint, *channel);
     }
     return success();
   }
@@ -1351,14 +1363,9 @@ struct AIEObjectFifoAllocatePass
     if (failed(bindRearmTargets())) {
       return signalPassFailure();
     }
-    if (failed(lowerFlows())) {
+    if (failed(lowerFlows()) || failed(resolveEndpointUses())) {
       return signalPassFailure();
     }
-    // After lowerFlows, which stamps a packet source's header.
-    if (failed(resolveStarts())) {
-      return signalPassFailure();
-    }
-    rewriteTasks();
     emitShimAllocations();
     for (Operation *flow : loweredFlows) {
       flow->erase();

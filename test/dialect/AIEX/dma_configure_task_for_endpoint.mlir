@@ -39,8 +39,39 @@ aie.device(npu2) {
   %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
   aie.route_endpoint @port(%core) Core {channelIndex = 0 : i32}
   aie.runtime_sequence() {
-    // expected-error @+1 {{'@port' names a Core port, not a DMA channel}}
+    // expected-error @+1 {{@port names a Core port, not a DMA channel}}
     %t = aiex.dma_configure_task_for @port {
+      aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
+      aie.end
+    }
+    aiex.dma_start_task(%t)
+  }
+}
+
+// -----
+
+aie.device(npu2) {
+  %core = aie.tile(0, 2)
+  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.runtime_sequence() {
+    // expected-error @+1 {{@missing does not name a symbol}}
+    %t = aiex.dma_configure_task_for @missing {
+      aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
+      aie.end
+    }
+    aiex.dma_start_task(%t)
+  }
+}
+
+// -----
+
+aie.device(npu2) {
+  %core = aie.tile(0, 2)
+  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  func.func private @kernel()
+  aie.runtime_sequence() {
+    // expected-error @+1 {{must name an aie.shim_dma_allocation, an aie.route_endpoint or an aie.objectfifo}}
+    %t = aiex.dma_configure_task_for @kernel {
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
       aie.end
     }
