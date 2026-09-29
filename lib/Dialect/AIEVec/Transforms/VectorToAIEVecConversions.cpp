@@ -5686,10 +5686,19 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     // bf16 and f32 only: the aievec lowering needs an f32 accumulator, and
     // other 16-bit floats (e.g. f16) would take the bf16 UPS path and be
     // reinterpreted.
-    if (scalarType.isBF16() || scalarType.isF32())
-      return laneSize != 16 && laneSize != 32;
+    if (!scalarType.isBF16() && !scalarType.isF32())
+      return true;
 
-    return true;
+    // 16 lanes as before, at whatever rank the common config already took.
+    if (laneSize == 16)
+      return false;
+
+    // 32 only at rank 1. `getVectorLaneSize` is the product of every
+    // dimension, so vector<2x16xf32> counts 32 as well -- but
+    // NegOpAIE2pConversion builds its vector.shuffle masks per scalar lane
+    // straight from the shaped operand, without flattening it, so the indices
+    // and result type it emits at any higher rank do not verify.
+    return !(laneSize == 32 && srcType.getRank() == 1);
   });
 
   // LowerVectorSIToFPI16BF16AIE2pPattern uses vector.shuffle to split
