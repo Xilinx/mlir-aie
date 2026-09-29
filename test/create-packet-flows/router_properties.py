@@ -5,6 +5,7 @@
 
 # RUN: %python %s --device npu1 | FileCheck %s
 # RUN: %python %s --device npu2 | FileCheck %s
+# RUN: %python %s --device xcvc1902 | FileCheck %s
 
 """Model-based property test for --aie-create-pathfinder-flows.
 
@@ -13,7 +14,7 @@ designs. This file checks what any routing must satisfy on many generated
 ones, against a model of the fabric and of the router's deadlock rules:
 
  * the fabric: port counts per tile from the TargetModel bindings, legal
-   crossbar connections (AIE2TargetModel::isLegalTileConnection), six
+   crossbar connections (isLegalTileConnection on AIE1 and AIE2), six
    arbiters of four msels per switchbox, four packet rules per slave port;
  * which streams can deadlock (AIEStreamDependencyAnalysis, mirrored here
    line for line: stream volumes, receiver capacities, the waits-for graph
@@ -84,7 +85,7 @@ PARAMS = dict(
     # Ratchets on the router's output.
     min_routed_rate=1.0,
     max_hop_ratio=1.10,
-    max_amsels=19.5,
+    max_amsels=dict(npu1=19.5, npu2=19.5, xcvc1902=21.0),
     max_low_priority=0.05,
     max_ms_per_design=250,
     # Generator knobs: share of routable designs given pre-placed switchbox
@@ -101,6 +102,7 @@ FAMILIES = {
     "npu2": ("npu2_1col", "npu2_3col", "npu2_4col", "npu2"),
 }
 DEVICE_IDS = {
+    1: "xcvc1902",
     4: "npu1",
     5: "npu1_1col",
     6: "npu1_2col",
@@ -154,7 +156,7 @@ def linked_input(tile, port):
 
 
 class Target:
-    """What the TargetModel says about a device, plus the AIE2 crossbar."""
+    """What the TargetModel says about a device, plus its crossbar."""
 
     _cache = {}
 
@@ -170,6 +172,7 @@ class Target:
         with Context():
             tm = get_target_model(getattr(AIEDevice, dev))
             self.cols, self.rows = tm.columns(), tm.rows()
+            self.aie1 = tm.get_target_arch() == 1
             wb = {i: getattr(WireBundle, n) for i, n in enumerate(BUNDLES)}
             self.kinds, self.masters, self.slaves = {}, {}, {}
             self.mux_masters, self.mux_slaves, self.num_locks = {}, {}, {}
@@ -211,11 +214,13 @@ class Target:
         return tile in self.kinds
 
     def legal(self, tile, sp, mp):
-        """AIE2TargetModel::isLegalTileConnection."""
+        """AIE1TargetModel and AIE2TargetModel::isLegalTileConnection."""
         (sb, si), (db, di) = sp, mp
         if si >= self.slaves[tile][sb] or di >= self.masters[tile][db]:
             return False
         kind = self.kinds[tile]
+        if self.aie1:
+            return sb != TRACE or db == SOUTH
         if kind == "mem":
             if sb == DMA:
                 if db == DMA:
@@ -400,9 +405,13 @@ class Design:
             name = f"b_{tile[0]}_{tile[1]}_{nbuf[0]}"
             nbuf[0] += 1
             elem, n = ("i32", nbytes // 4) if nbytes % 4 == 0 else ("i8", nbytes)
+            op = (
+                "aie.external_buffer"
+                if self.target.kind(tile) == "shim"
+                else f"aie.buffer(%t_{tile[0]}_{tile[1]})"
+            )
             out.append(
-                f"    %{name} = aie.buffer(%t_{tile[0]}_{tile[1]}) "
-                f'{{sym_name = "{name}"}} : memref<{n}x{elem}>'
+                f'    %{name} = {op} {{sym_name = "{name}"}} : memref<{n}x{elem}>'
             )
             return f"%{name} : memref<{n}x{elem}> offset = 0 len = {n}"
 
@@ -459,7 +468,9 @@ class Design:
                         body.append(f"      aie.next_bd ^p{n}b{p.get('loop_to', 0)}")
                     else:
                         body.append("      aie.next_bd ^end")
-            op = "aie.memtile_dma" if self.target.kind(tile) == "mem" else "aie.mem"
+            op = {"mem": "aie.memtile_dma", "shim": "aie.shim_dma"}.get(
+                self.target.kind(tile), "aie.mem"
+            )
             out.append(
                 f"    %dma_{tile[0]}_{tile[1]} = {op}(%t_{tile[0]}_{tile[1]}) {{"
             )
@@ -1073,7 +1084,13 @@ def load_design(text):
                 )
             elif name == "aie.runtime_sequence":
                 sequence(op)
-            elif name in ("aie.buffer", "aie.wire", "aie.end", "aie.bd_chain"):
+            elif name in (
+                "aie.buffer",
+                "aie.external_buffer",
+                "aie.wire",
+                "aie.end",
+                "aie.bd_chain",
+            ):
                 pass
             elif name == "arith.constant":
                 lock_ops(op, [])
@@ -1353,7 +1370,7 @@ class Volumes:
 
     def walk_loop(self, p, visit):
         """StreamVolumeAnalysis::walkLoop."""
-        if id(p) in self.visiting or not p["seq"]:
+        if self.d.target.aie1 or id(p) in self.visiting or not p["seq"]:
             return False
         self.visiting.add(id(p))
         try:
@@ -1506,7 +1523,12 @@ class Volumes:
                     if lock is None or n is None:
                         return 0
                     v = values.setdefault(lock, self.d.locks[lock][3])
-                    if action == 1:
+                    if self.d.target.aie1:
+                        if action == 1:
+                            values[lock] = n
+                        elif v != n:
+                            return nbytes
+                    elif action == 1:
                         values[lock] = v + n
                     elif action == 0 or v < n:
                         return nbytes
@@ -3412,13 +3434,19 @@ def assign_ids(rng, d, masks=True):
 def add_programs(rng, d, tiles):
     """DMA programs, locks and cores on `tiles` that make some receivers stall
     and some not, and chain some agents to others through locks. Returns the
-    lock-bounded receivers as (endpoint, program, lock it acquires)."""
+    lock-bounded receivers as (endpoint, program, lock whose initial tokens
+    bound it, None for a state lock)."""
     t = d.target
     srcs, dsts = flow_endpoints(d)
     ids_of = ids_by_source(d)
     bounded = []
     for tile in sorted(tiles):
         if t.kind(tile) == "shim":
+            if t.aie1:
+                add_shim_programs(rng, d, tile, srcs, dsts, ids_of)
+            continue
+        if t.aie1:
+            bounded += add_state_lock_programs(rng, d, tile, srcs, dsts, ids_of)
             continue
         gated_in, gated_out = [], []
         for ch in range(t.masters[tile][DMA]):
@@ -3474,11 +3502,85 @@ def add_programs(rng, d, tiles):
     return bounded
 
 
+def add_state_lock_programs(rng, d, tile, srcs, dsts, ids_of):
+    """add_programs on an AIE1 core tile, whose locks hold a state: 0 when
+    a buffer is empty, 1 when full. The core empties what S2MM fills and
+    fills what MM2S sends, or MM2S forwards what S2MM filled."""
+    t = d.target
+    bounded, gated_in, uses = [], [], []
+    for ch in range(t.masters[tile][DMA]):
+        ep = (*tile, DMA, ch)
+        if ep not in dsts and rng.random() >= 0.1:
+            continue
+        roll, n = rng.random(), rng.choice([32, 64, 128])
+        if roll < 0.3:
+            continue
+        if roll < 0.55:
+            add_program(d, tile, S2MM, ch, [bd_block(n)], True)
+            continue
+        full = d.lock(tile, 0)
+        block = [("lock", 0, full, 0), ("bd", n, None), ("lock", 1, full, 1)]
+        p = add_program(d, tile, S2MM, ch, [block], True)
+        gated_in.append(full)
+        bounded.append((ep, p, None))
+    for ch in range(t.slaves[tile][DMA]):
+        ep = (*tile, DMA, ch)
+        if ep not in srcs and rng.random() >= 0.1:
+            continue
+        ids = ids_of.get(ep, [])
+        blocks = [
+            bd_block(rng.choice([32, 64, 128]), rng.choice(ids * 3 + [None]))
+            for _ in range(rng.randint(1, 2))
+        ]
+        roll = rng.random()
+        if roll < 0.25:
+            continue
+        if roll < 0.45:
+            add_program(d, tile, MM2S, ch, blocks, True)
+            continue
+        if roll < 0.8:
+            add_program(d, tile, MM2S, ch, blocks, False)
+            continue
+        if gated_in and rng.random() < 0.4:
+            full = gated_in.pop()
+        else:
+            full = d.lock(tile, 0)
+            uses += [(0, full, 0), (1, full, 1)]
+        blocks[0] = [("lock", 0, full, 1)] + blocks[0]
+        blocks[-1] = blocks[-1] + [("lock", 1, full, 0)]
+        add_program(d, tile, MM2S, ch, blocks, rng.random() < 0.5)
+    for full in gated_in:
+        uses += [(0, full, 1), (1, full, 0)]
+    if uses:
+        rng.shuffle(uses)
+        d.cores[tile] = uses
+    return bounded
+
+
+def add_shim_programs(rng, d, tile, srcs, dsts, ids_of):
+    """AIE1 shim DMA programs, in place of a runtime sequence."""
+    for ep in d.target.endpoints(tile, False):
+        if ep in dsts:
+            n = rng.choice([64, 128, 256])
+            add_program(d, tile, S2MM, ep[3], [bd_block(n)], rng.random() < 0.5)
+    for ep in d.target.endpoints(tile, True):
+        if ep not in srcs:
+            continue
+        ids = ids_of.get(ep, [])
+        blocks = [
+            bd_block(rng.choice([64, 128, 256]), rng.choice(ids * 3 + [None]))
+            for _ in range(rng.randint(1, 2))
+        ]
+        add_program(d, tile, MM2S, ep[3], blocks, rng.random() < 0.3)
+
+
 def add_host(rng, d):
     """A runtime sequence driving the shim DMA endpoints: memcpys (some with
     packet ids, some in loops), configured tasks, bd chains, and waits after
-    them in varied orders."""
+    them in varied orders. AIE1 devices have no runtime sequence."""
     t = d.target
+    if t.aie1:
+        return
     srcs, dsts = flow_endpoints(d)
     ids_of = ids_by_source(d)
     events, waits = [], []
@@ -3576,8 +3678,9 @@ def size_receivers(rng, d, bounded):
         if mode == "header" and sum(v) == v0:
             mode = "exact"
         cap = {"exact": sum(v), "header": v0, "overrun": v0 // 2 // 4 * 4}[mode]
-        c, r, lid, _ = d.locks[prod]
-        d.locks[prod] = (c, r, lid, 1)
+        if prod is not None:
+            c, r, lid, _ = d.locks[prod]
+            d.locks[prod] = (c, r, lid, 1)
         p["seq"][0] = [
             op if op[0] != "bd" else ("bd", cap, op[2]) for op in p["seq"][0]
         ]
@@ -3750,8 +3853,9 @@ def routable_case(seed, device):
     )
 
 
-def memtile_row(t):
-    return next(r for r in range(t.rows) if t.kind((0, r)) == "mem")
+def hub_row(t):
+    """The memtile row, or the first core row on AIE1, which has no memtiles."""
+    return next(r for r in range(t.rows) if t.kind((0, r)) != "shim")
 
 
 def gen_unroutable_arbiters(rng, dev, programmed):
@@ -3760,24 +3864,27 @@ def gen_unroutable_arbiters(rng, dev, programmed):
     hops off, streams out of its MM2S channels. Unprogrammed, every pair
     conflicts; programmed, the model decides."""
     t = Target(dev)
-    row = memtile_row(t)
+    row = hub_row(t)
     tc, yc = rng.sample(range(t.cols), 2)
     d = Design(dev)
-    ins = rng.randint(1, 6)
-    outs = rng.randint(max(1, 7 - ins), 6)
+    recv, send = t.endpoints((tc, row), False), t.endpoints((tc, row), True)
+    ins = rng.randint(max(1, 7 - len(send)), len(recv))
+    outs = rng.randint(max(1, 7 - ins), len(send))
     others = [
         ep
         for tile in sorted(t.kinds)
         if tile not in ((tc, row), (yc, row))
         for ep in t.endpoints(tile, True)
     ]
-    for ch, src in zip(rng.sample(range(6), ins), rng.sample(others, ins)):
-        d.add_packet_flow(0, [src], [(tc, row, DMA, ch)])
-    for a, b in zip(rng.sample(range(6), outs), rng.sample(range(6), outs)):
+    for dst, src in zip(rng.sample(recv, ins), rng.sample(others, ins)):
+        d.add_packet_flow(0, [src], [dst])
+    for a, b in zip(
+        rng.sample(send, outs), rng.sample(t.endpoints((yc, row), False), outs)
+    ):
         d.add_packet_flow(
             0,
-            [(tc, row, DMA, a)],
-            [(yc, row, DMA, b)],
+            [a],
+            [b],
             priority=True if rng.random() < 0.1 else None,
         )
     assign_ids(rng, d, masks=False)
@@ -3795,7 +3902,7 @@ def gen_unroutable_ports(rng, dev):
     """More circuit flows from above a one-column memtile into its S2MM
     channels than its North inputs carry."""
     t = Target(dev)
-    row = memtile_row(t)
+    row = hub_row(t)
     d = Design(dev)
     k = rng.randint(5, 6)
     above = [ep for r in range(row + 1, t.rows) for ep in t.endpoints((0, r), True)]
@@ -3871,7 +3978,7 @@ def gen_chain(rng, dev):
     other's flow waits."""
     t = Target(dev)
     d = Design(dev)
-    row = memtile_row(t)
+    row = hub_row(t)
     x = (rng.randrange(t.cols), rng.randrange(row + 1, t.rows))
     near = [
         tile
@@ -3892,15 +3999,25 @@ def gen_chain(rng, dev):
     ids = rng.sample(range(32), k)
     locks = []
     for ch in range(2):
+        if t.aie1:
+            full = d.lock(x, 0)
+            block = [("lock", 0, full, 0), ("bd", 64, None), ("lock", 1, full, 1)]
+            add_program(d, x, S2MM, ch, [block], True)
+            locks.append(full)
+            continue
         prod, cons = d.lock(x, 1), d.lock(x, 0)
         add_program(d, x, S2MM, ch, [bd_block(64, None, prod, cons)], True)
         locks.append((prod, cons))
-    d.cores[x] = [
-        (2, locks[1][1], 1),
-        (2, locks[0][1], 1),
-        (1, locks[0][0], 1),
-        (1, locks[1][0], 1),
-    ]
+    if t.aie1:
+        d.cores[x] = [(0, locks[1], 1), (0, locks[0], 1)]
+        d.cores[x] += [(1, locks[0], 0), (1, locks[1], 0)]
+    else:
+        d.cores[x] = [
+            (2, locks[1][1], 1),
+            (2, locks[0][1], 1),
+            (1, locks[0][0], 1),
+            (1, locks[1][0], 1),
+        ]
     recv = [
         ep for tile in sorted(t.kinds) if tile != x for ep in t.endpoints(tile, False)
     ]
@@ -3921,13 +4038,23 @@ def unroutable_case(seed, device):
     rng = random.Random(f"unroutable-{seed}")
     wide = [x for x in devs if Target(x).cols > 1]
     shape = ("arbiters", "ports", "merge", "wormhole")[seed % 4]
+    aie1 = Target(devs[0]).aie1
+    if aie1:
+        # The ports and merge shapes need a memtile's six channels, and the
+        # wormhole shape a one-column device, where no detour breaks the cycle.
+        shape = "arbiters"
     hops_on, expect = False, "Unable to find a legal routing"
     if shape == "arbiters":
-        d = gen_unroutable_arbiters(
-            rng, wide[seed // 4 % len(wide)], rng.random() < 0.5
-        )
-        an = Analysis(d)
-        reason = unroutable_arbiters(d, an, pins_hops_fn(d, False))
+        # On AIE1's wide array an undecided design can take the router minutes
+        # of detours to give up on, so it tries for one the model decides.
+        for _ in range(8 if aie1 else 1):
+            d = gen_unroutable_arbiters(
+                rng, wide[seed // 4 % len(wide)], rng.random() < 0.5
+            )
+            an = Analysis(d)
+            reason = unroutable_arbiters(d, an, pins_hops_fn(d, False))
+            if reason:
+                break
         routable = False if reason else None
         expect = reason
     else:
@@ -3980,12 +4107,13 @@ def unknown_case(seed, device):
         )
     elif shape == "packet-fan-in":
         t = Target(dev)
-        row = memtile_row(t)
+        row = hub_row(t)
         d = Design(dev)
-        k = rng.randint(5, 6)
+        recv = t.endpoints((0, row), False)
+        k = rng.randint(min(5, len(recv)), min(6, len(recv)))
         above = [ep for r in range(row + 1, t.rows) for ep in t.endpoints((0, r), True)]
-        for ch, src in zip(rng.sample(range(6), k), rng.sample(above, k)):
-            d.add_packet_flow(0, [src], [(0, row, DMA, ch)])
+        for dst, src in zip(rng.sample(recv, k), rng.sample(above, k)):
+            d.add_packet_flow(0, [src], [dst])
         assign_ids(rng, d, masks=False)
         d = canonical(d)
     elif shape == "same-id-fan-in":
@@ -5181,11 +5309,12 @@ def main(argv=None):
         f"{totals['hops'] / max(totals['bound'], 1):.3f}x the Manhattan bound "
         f"(max {PARAMS['max_hop_ratio']}x constructed)",
     )
+    max_amsels = PARAMS["max_amsels"][args.device]
     report(
         "arbiters",
-        totals["amsels"] / n <= PARAMS["max_amsels"],
+        totals["amsels"] / n <= max_amsels,
         f"{totals['amsels'] / n:.2f} amsels on {totals['arbiters'] / n:.2f} arbiters per "
-        f"design, {totals['promoted']} hops circuit switched (max {PARAMS['max_amsels']} amsels)",
+        f"design, {totals['promoted']} hops circuit switched (max {max_amsels} amsels)",
     )
     report(
         "priority",

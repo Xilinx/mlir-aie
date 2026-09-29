@@ -149,6 +149,15 @@ jobs:
           python test/create-packet-flows/router_properties.py --device npu2 \
             --seeds "$ROUTER_SEEDS" --out failures/router-npu2
 
+      # A design on xcvc1902's 50 columns takes about ten times as long to
+      # route, so it runs a quarter of the seeds.
+      - name: Router properties, xcvc1902
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 30
+        run: |
+          python test/create-packet-flows/router_properties.py --device xcvc1902 \
+            --seeds "$((ROUTER_SEEDS / 4))" --out failures/router-xcvc1902
+
       # Each run exits nonzero on a failed mutator or relation, or a corruption
       # the verifier misses. Failing designs are saved under failures/, with
       # shrunk repros of failed mutators under failures/*/repros.
@@ -183,6 +192,22 @@ jobs:
           python utils/router_mutation.py --device npu2 --hops-off \
             --seeds "$SEEDS" --first-seed "$FIRST_SEED" --jobs "$(nproc)" \
             --out failures/npu2-hops-off --shrink --repros failures/npu2-hops-off/repros
+
+      - name: Router, xcvc1902, hops on
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 90
+        run: |
+          python utils/router_mutation.py --device xcvc1902 \
+            --seeds "$((SEEDS / 4))" --first-seed "$FIRST_SEED" --jobs "$(nproc)" \
+            --out failures/xcvc1902-hops-on --shrink --repros failures/xcvc1902-hops-on/repros
+
+      - name: Router, xcvc1902, hops off
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 90
+        run: |
+          python utils/router_mutation.py --device xcvc1902 --hops-off \
+            --seeds "$((SEEDS / 4))" --first-seed "$FIRST_SEED" --jobs "$(nproc)" \
+            --out failures/xcvc1902-hops-off --shrink --repros failures/xcvc1902-hops-off/repros
 
       - name: Upload failing designs
         if: ${{ failure() }}

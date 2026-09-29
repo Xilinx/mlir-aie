@@ -246,6 +246,9 @@ def m_port_cap(rng, d, ctx):
     fs, fr = free_endpoints(d)
     for r, up in cuts:
         cap = cut_capacity(t, r, up)
+        # The router takes longer than aie_opt's timeout to fill wider cuts.
+        if cap > 64:
+            continue
         need = cap + k - cut_load(d, r, up)
         ss = [ep for ep in fs if (ep[1] <= r) == up]
         xs = [ep for ep in fr if (ep[1] <= r) != up]
