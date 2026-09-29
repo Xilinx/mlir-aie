@@ -19,15 +19,10 @@ Scale factors are compile-time Python int constants loaded from
 scale_factors_final.json and passed directly in Worker fn_args — no RTP
 buffers or NpuWriteRTPOp calls are needed.
 
-The design pins no tiles; aiecc's SA placer places it (--sa-seed picks the
-seed, --sa-effort trades placement cost for compile time).
+The design pins no tiles; aiecc's SA placer places it.
 
-Usage (from programming_examples/ml):
-    python3 -m mobilenet.aie2_mobilenet_iron               # compile, run, verify
-    python3 -m mobilenet.aie2_mobilenet_iron --emit-mlir   # print the MLIR
-    python3 -m mobilenet.aie2_mobilenet_iron --sa-seed 7
-    python3 -m mobilenet.aie2_mobilenet_iron --sa-effort 0.25
-    python3 -m mobilenet.aie2_mobilenet_iron --batch 16   # 16 images/launch
+Run `python3 -m mobilenet.aie2_mobilenet_iron --help` from
+programming_examples/ml for the options.
 """
 
 import argparse
@@ -222,7 +217,19 @@ def mobilenet_iron(inp: In, scratch: InOut, out: Out, *, batch: CompileTime[int]
 
 
 def _make_argparser():
-    p = argparse.ArgumentParser(prog="MobileNet V3 — IRON API design")
+    p = argparse.ArgumentParser(
+        prog="python3 -m mobilenet.aie2_mobilenet_iron",
+        description="MobileNet V3 on the IRON API: compile, run and verify "
+        "against the golden output (run from programming_examples/ml). The "
+        "design pins no tiles; aiecc's SA placer places it.",
+        epilog="examples:\n"
+        "  %(prog)s                 # compile, run, verify\n"
+        "  %(prog)s --emit-mlir     # print the MLIR\n"
+        "  %(prog)s --sa-seed 7     # place with another SA seed\n"
+        "  %(prog)s --sa-effort 0.25\n"
+        "  %(prog)s --batch 16      # 16 images per launch",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     add_compile_args(p, default_dev="npu2", with_emit_mlir=True)
     p.add_argument("--sa-seed", type=int, help="SA placer seed (default: 3)")
     p.add_argument("--batch", type=int, default=1, help="images per launch")

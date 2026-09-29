@@ -1138,19 +1138,12 @@ def compile_external_kernels(
     work directories; see ``compile_external_kernel``.
 
     Raises:
-        ValueError: When a library kernel was built for another architecture,
-            which happens when its factory ran before the device was bound.
+        ValueError: When a library kernel was built for another architecture
+            (see ``ExternalFunction.check_target_arch``).
     """
+    funcs = list(funcs)
     for f in funcs:
-        built = getattr(f, "built_for_arch", None)
-        if built is not None and built != target_arch:
-            raise ValueError(
-                f"kernel {f.name} was built for {built} but this design compiles "
-                f"for {target_arch}: its factory ran with an {built} device bound "
-                "(or none, which reads as aie2). Call the factory inside the "
-                "design, or bind the device first "
-                "with iron.set_current_device()"
-            )
+        f.check_target_arch(target_arch)
     pending = []
     for f in funcs:
         # A checked compile can be replacing an already-owned object to add IR.

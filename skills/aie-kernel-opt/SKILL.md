@@ -1,6 +1,6 @@
 ---
 name: aie-kernel-opt
-description: Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the in-repo aie.utils.compile.remarks report and its base-arm diff, the trace-marker audit, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).
+description: Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the aie.utils.compile.remarks static report and its base-arm diff, the kernel_design contract gate and traced cycles per call, and, for library kernels, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).
 license: Apache-2.0 WITH LLVM-exception
 ---
 
@@ -37,6 +37,24 @@ W=$(mktemp -d); K=<factory>; CASE=<case name from kernel_cases.py>; CPUS=<fixed 
 Remarks takes `--target aie2p` for npu2 (Strix, Krackan) or `--target aie2`
 for npu1 (Phoenix); `xrt-smi examine` shows which device you have. What an
 intrinsic lowers to is in `third_party/aie_api/include/aie_api/detail/<arch>/`.
+
+### Your own kernel or design
+
+The commands below are written for a library kernel (an `aie.iron.kernels`
+factory with cases in `test/python/npu/kernel_cases.py`). The workflow is
+the same for a kernel in your own design; only the drivers change:
+
+| Step | Library kernel | Your own `ExternalFunction` |
+|---|---|---|
+| Static report (1, 4) | `python -m aie.utils.compile.remarks --cases ...` | `remarks.analyze(ef, "aie2p", Path(dir))` (`aie.utils.compile.remarks`) returns the same `StaticReport`: `loops` (`ii`, `ns`, `zol`, `trips`, `bundle_count`), `libcalls`, `kernel_stack_bytes`, `pass_failed`. `remarks.compile_command(ef, ...)` gives the exact clang++ line |
+| Arms (3) | `MLIR_AIE_KERNEL_SOURCES=$BASE`, `--baseline-sources $BASE` | Two copies of your `.cc`, one `ExternalFunction` per copy (`source_file=`); run `analyze` on each and compare the reports |
+| Gate (2) | `test_kernels_e2e.py -m extensive` | Attach a `KernelContract` (`aie.iron.kernels`: roles, a single-pass reference, tolerance, `trace=`) and drive it with `aie.iron.algorithms.kernel_design` (`kd.design(my_factory, calls=N, guard=True)` with `my_factory` a module-level function returning the kernel, `kd.sample_inputs`, `kd.upload(..., poison=True)`), or keep your design's own test with poisoned outputs |
+| Measure (6) | `test_kernels_perf.py --baseline-sources` | `kd.cycles_per_call` on each arm's design for a `Trace.whole_call()` contract, or `event0()`/`event1()` markers around the call in your design traced with `TraceConfig`; alternate the arms back to back |
+| Whole design | MobileNet in the examples below | Your design's own end-to-end timing, same rules (warm up, min, back to back) |
+
+Every rule and lever holds either way. The MobileNet, ResNet and llama
+numbers below are examples of a consumer design exercising a kernel, not
+requirements; the short hashes cite the mlir-aie commits that measured them.
 
 ## Workflow
 

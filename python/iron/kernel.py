@@ -589,6 +589,27 @@ class ExternalFunction(Kernel):
     # The arch a kernels/ factory built this for, or None when unknown.
     built_for_arch: str | None = None
 
+    def check_target_arch(self, target_arch: str) -> None:
+        """Raise unless this kernel may compile for ``target_arch``.
+
+        A kernels/ factory picks its source, flags and contract for the arch of
+        the device bound when it runs, so compiling the result for another arch
+        fails here rather than in Peano. A kernel no factory built accepts any.
+
+        Raises:
+            ValueError: When the kernel was built for another architecture,
+                which happens when its factory ran before the device was bound.
+        """
+        built = self.built_for_arch
+        if built is not None and built != target_arch:
+            raise ValueError(
+                f"kernel {self.name} was built for {built} but this design "
+                f"compiles for {target_arch}: its factory ran with an {built} "
+                "device bound (or none, which reads as aie2). Call the factory "
+                "inside the design, or bind the device first with "
+                "iron.set_current_device()"
+            )
+
     def _require_contract(self):
         if self.contract is None:
             raise ValueError(

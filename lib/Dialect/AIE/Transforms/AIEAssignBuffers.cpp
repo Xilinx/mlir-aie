@@ -1019,13 +1019,6 @@ struct PlacementStats {
 };
 } // namespace
 
-// How many placements the search may try per tile before giving up and
-// reporting the deepest failure it reached. Packing around fixed obstacles is
-// NP-hard, so the tree has no useful worst-case bound; this keeps a design the
-// search cannot solve to bounded compile time instead of exponential. A node
-// count rather than a time limit, so a build stays reproducible.
-static constexpr int64_t kPlacementBudget = 100000;
-
 // Depth-first placement over `order`, trying each buffer's addresses in rank
 // order and undoing a choice that leaves a later buffer nowhere to go.
 //
@@ -1041,7 +1034,13 @@ struct PlacementSearch {
   MemoryOccupancy &occupancy;
   SmallVectorImpl<BufferOp> &placed;
   PlacementStats &stats;
-  int64_t budget = kPlacementBudget;
+  // How many placements the search may still try on this tile before giving
+  // up and reporting the deepest failure it reached; the pass's
+  // placement-budget option. Packing around fixed obstacles is NP-hard, so the
+  // tree has no useful worst-case bound; this keeps a design the search cannot
+  // solve to bounded compile time instead of exponential. A node count rather
+  // than a time limit, so a build stays reproducible.
+  int64_t budget;
   // Set when the node budget ran out with candidates still untried, so the
   // caller can say "gave up" rather than "no such layout exists".
   bool exhausted = false;
@@ -1085,6 +1084,11 @@ struct PlacementSearch {
     }
     for (const Placement &candidate : candidates) {
       if (budget <= 0) {
+        // Out of budget before this buffer had an address: it is where the
+        // search stopped, so it is the one to report.
+        if (!deepest || index > deepestIndex) {
+          recordDeepest(index, buffer);
+        }
         exhausted = true;
         break;
       }
@@ -1142,18 +1146,17 @@ private:
 // Places every buffer in `buffersToAlloc`. Returns the buffer that could not be
 // placed, or nullptr when they all were; `placed` collects what was assigned so
 // a failed attempt can be rolled back.
-static BufferOp placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc,
-                                 const BankAwareContext &ctx,
-                                 const RequiredBanks &requiredBanks,
-                                 MemoryOccupancy &occupancy,
-                                 SmallVectorImpl<BufferOp> &placed,
-                                 bool &exhausted, PlacementStats &stats) {
+static BufferOp
+placeFreeBuffers(ArrayRef<BufferOp> buffersToAlloc, const BankAwareContext &ctx,
+                 const RequiredBanks &requiredBanks, MemoryOccupancy &occupancy,
+                 SmallVectorImpl<BufferOp> &placed, int64_t budget,
+                 bool &exhausted, PlacementStats &stats) {
   int64_t remaining = 0;
   for (auto buffer : buffersToAlloc) {
     remaining += buffer.getAllocationSize();
   }
-  PlacementSearch search{buffersToAlloc, ctx,    requiredBanks,
-                         occupancy,      placed, stats};
+  PlacementSearch search{buffersToAlloc, ctx,   requiredBanks, occupancy,
+                         placed,         stats, budget};
   int64_t before = stats.backtracks;
   bool solved = search.run(/*index=*/0, /*startBankIndex=*/0, remaining);
   if (stats.backtracks > before) {
@@ -1242,7 +1245,8 @@ placementOrder(ArrayRef<BufferOp> buffersToAlloc,
   return order;
 }
 
-static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
+static LogicalResult allocateTile(TileOp tile, int64_t budget,
+                                  PlacementStats &stats) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device) {
     return failure();
@@ -1351,12 +1355,13 @@ static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
   bool searchExhausted = false;
   BufferOp failedBuffer =
       placeFreeBuffers(order, ctx, requiredBanks, occupancy, allocatedBuffers,
-                       searchExhausted, stats);
+                       budget, searchExhausted, stats);
 
   if (BufferOp failed = failedBuffer) {
     // A buffer pinned to a bank that cannot hold it is a user constraint, not
-    // an out-of-room tile: give it its own error and no memory map.
-    if (requiredBanks.count(failed)) {
+    // an out-of-room tile: give it its own error and no memory map. Unless the
+    // search merely ran out of budget, in which case the bank may have room.
+    if (!searchExhausted && requiredBanks.count(failed)) {
       auto banks = requiredBanks.lookup(failed);
       if (banks.size() > 1) {
         failed.emitOpError("")
@@ -1390,9 +1395,10 @@ static LogicalResult allocateTile(TileOp tile, PlacementStats &stats) {
                               << failed.getAllocationSize()
                               << " bytes and this tile has no room left for it";
     if (searchExhausted) {
-      diag.attachNote() << "the search hit its " << kPlacementBudget
+      diag.attachNote() << "the search hit its " << budget
                         << "-placement budget with arrangements still untried, "
-                           "so a layout may exist that it did not reach";
+                           "so a layout may exist that it did not reach (raise "
+                           "it with placement-budget)";
     }
     // Print before rollback, while the addresses are still set.
     printMemMap(tile, allocatedBuffers, preAllocatedBuffers, ctx);
@@ -1434,6 +1440,11 @@ struct AIEAssignBufferAddressesPass
     : xilinx::AIE::impl::AIEAssignBufferAddressesBase<
           AIEAssignBufferAddressesPass> {
 
+  AIEAssignBufferAddressesPass() = default;
+
+  AIEAssignBufferAddressesPass(const AIEAssignBufferAddressesOptions &options)
+      : AIEAssignBufferAddressesBase(options) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<AIEDialect>();
@@ -1441,6 +1452,11 @@ struct AIEAssignBufferAddressesPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
+    int64_t budget = clPlacementBudget;
+    if (budget <= 0) {
+      device.emitError("placement-budget must be positive, got ") << budget;
+      return signalPassFailure();
+    }
     if (failed(applySignatureBankConstraints(device))) {
       return signalPassFailure();
     }
@@ -1455,7 +1471,7 @@ struct AIEAssignBufferAddressesPass
     // why it could not.
     PlacementStats stats;
     for (auto tile : device.getOps<TileOp>()) {
-      if (failed(allocateTile(tile, stats))) {
+      if (failed(allocateTile(tile, budget, stats))) {
         return signalPassFailure();
       }
     }
@@ -1504,4 +1520,10 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEPrepareBuffersPass() {
 std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEAssignBufferAddressesPass() {
   return std::make_unique<AIEAssignBufferAddressesPass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+AIE::createAIEAssignBufferAddressesPass(
+    const AIEAssignBufferAddressesOptions &options) {
+  return std::make_unique<AIEAssignBufferAddressesPass>(options);
 }

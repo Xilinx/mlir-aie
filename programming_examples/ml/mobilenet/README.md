@@ -26,7 +26,7 @@ Open in this order to grasp the design:
 | [`aie2_mobilenet_iron.py`](aie2_mobilenet_iron.py) | Full IRON design — orchestrates init + bottlenecks + post-processing; aiecc's SA placer picks the tiles |
 | [`bottleneck/{regular,pipeline,cascade}.py`](bottleneck/) | Three families of bottleneck builders, grouped by tile-mapping strategy |
 | [`aie2_iron_per_block.py`](aie2_iron_per_block.py) | Build any single bottleneck standalone (debugging / profiling) |
-| [`aie2_iron_chain.py`](aie2_iron_chain.py) | Build a chained subset (`pipeline` = bn10..12, `cascade` = bn13..14) |
+| [`aie2_iron_chain.py`](aie2_iron_chain.py) | Build one bottleneck family on its own (`regular` = bn0..9, `pipeline` = bn10..12, `cascade` = bn13..14), to check it against its per-chain golden data |
 
 ## Build + run end-to-end
 

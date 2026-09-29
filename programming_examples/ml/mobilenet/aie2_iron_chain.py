@@ -2,27 +2,23 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Build + emit MLIR for a chained subset of the IRON mobilenet design.
+"""One bottleneck family of the IRON mobilenet design, built on its own.
 
-Three preset chains are supported, mirroring the bottleneck_A / B / C brevitas
-reference designs:
+The full network (aie2_mobilenet_iron.py) is hard to debug when it disagrees
+with the golden output, since the error could come from any of 15 blocks. This
+builds just one family's consecutive blocks, fed and drained by the host, so
+each can be checked bit-exact against the brevitas reference for that family
+alone (the per-chain fixtures in bottleneck_{A,B,C}/data/):
 
-    regular    - bn0 -> bn9    (uses regular_bottlenecks; bn0 input is uint8)
-    pipeline   - bn10 -> bn12  (uses pipeline_bottlenecks)
-    cascade    - bn13 -> bn14  (uses cascade_bottlenecks)
+    regular    - bn0 -> bn9    (regular_bottlenecks; bn0 input is uint8)
+    pipeline   - bn10 -> bn12  (pipeline_bottlenecks)
+    cascade    - bn13 -> bn14  (cascade_bottlenecks)
 
-These match the per-chain golden fixtures in bottleneck_{A,B,C}/data/ so a
-hardware run can be compared bit-exact against brevitas.
-
-Usage:
-    python3 aie2_iron_chain.py regular   --data-dir bottleneck_A/data \\
-        --scales-json bottleneck_A/data/scale_factors_chain.json > chain.mlir
-    python3 aie2_iron_chain.py pipeline  --data-dir bottleneck_B/data \\
-        --scales-json bottleneck_B/data/scale_factors.json       > chain.mlir
-    python3 aie2_iron_chain.py cascade   --data-dir bottleneck_C/data \\
-        --scales-json bottleneck_C/data/scale_factors.json       > chain.mlir
-
-Pass --xclbin-path/--insts-path to compile instead, kernels included.
+It uses the same block builders as the full design, so it is a test harness
+for them rather than a design or a transform of its own. test_e2e.py runs it
+on hardware; this module's own entry point prints the MLIR, or compiles it
+given --xclbin-path/--insts-path. Run `python3 -m mobilenet.aie2_iron_chain
+--help` from programming_examples/ml for the options.
 """
 
 import argparse
@@ -50,10 +46,13 @@ from .bottleneck.regular import regular_bottlenecks
 from .network_spec import block as nsblock
 
 
-def _chain_iron(
+def build_chain(
     mode: CompileTime[str], data_dir: CompileTime[str], scales_json: CompileTime[str]
 ):
-    """Build a chained design (mode='pipeline' or 'cascade'). Returns MLIR."""
+    """The resolved MLIR module for one family's blocks, `mode` naming the
+    family ('regular', 'pipeline' or 'cascade'): a host-filled input
+    ObjectFifo, the family's workers, and a host-drained output ObjectFifo.
+    """
     if not data_dir.endswith("/"):
         data_dir = data_dir + "/"
     with open(scales_json) as f:
@@ -112,13 +111,33 @@ def chain_design(
     data_dir: CompileTime[str],
     scales_json: CompileTime[str],
 ):
-    return _chain_iron(mode, data_dir, scales_json)
+    return build_chain(mode, data_dir, scales_json)
 
 
 def _make_argparser():
-    p = argparse.ArgumentParser(description="Build a chained IRON mobilenet subset.")
+    p = argparse.ArgumentParser(
+        prog="python3 -m mobilenet.aie2_iron_chain",
+        description="Build one bottleneck family of the IRON mobilenet design "
+        "on its own and print its MLIR, or compile it with "
+        "--xclbin-path/--insts-path.",
+        epilog="examples (from programming_examples/ml):\n"
+        "  python3 -m mobilenet.aie2_iron_chain regular "
+        "--data-dir mobilenet/bottleneck_A/data \\\n"
+        "      --scales-json mobilenet/bottleneck_A/data/scale_factors_fused.json\n"
+        "  python3 -m mobilenet.aie2_iron_chain pipeline "
+        "--data-dir mobilenet/bottleneck_B/data \\\n"
+        "      --scales-json mobilenet/bottleneck_B/data/scale_factors.json\n"
+        "  python3 -m mobilenet.aie2_iron_chain cascade "
+        "--data-dir mobilenet/bottleneck_C/data \\\n"
+        "      --scales-json mobilenet/bottleneck_C/data/scale_factors.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     add_compile_args(p, default_dev="npu2")
-    p.add_argument("mode", choices=["regular", "pipeline", "cascade"])
+    p.add_argument(
+        "mode",
+        choices=["regular", "pipeline", "cascade"],
+        help="blocks to build: bn0-bn9, bn10-bn12 or bn13-bn14",
+    )
     p.add_argument("--data-dir", required=True, help="weights directory")
     p.add_argument("--scales-json", required=True, help="scale_factors JSON path")
     p.add_argument(
@@ -144,7 +163,7 @@ def main():
             xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
         )
     else:
-        print(_chain_iron(**compile_kwargs))
+        print(build_chain(**compile_kwargs))
 
 
 if __name__ == "__main__":

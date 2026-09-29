@@ -110,6 +110,11 @@ inline cl::opt<double> saEffort(
     cl::desc("Scale on the SA placer's search budget (1.0 = full; lower "
              "trades placement cost for compile time)"),
     cl::init(1.0));
+inline cl::opt<int64_t> placementBudget(
+    "placement-budget",
+    cl::desc("Buffer placements aie-assign-buffer-addresses may try per tile "
+             "before giving up"),
+    cl::init(100000));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));
