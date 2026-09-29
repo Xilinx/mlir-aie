@@ -112,8 +112,10 @@ def check_select(*, slice_size: int, chunk: int, k_max: int) -> None:
 
 
 def check_combine(*, columns: int, slice_size: int, k_max: int) -> None:
-    """Raise ``ValueError`` unless ``sample_combine`` builds for these; like
-    ``check_select``, it declares no kernel."""
+    """Raise ``ValueError`` unless ``sample_combine`` builds for these.
+
+    Like ``check_select``, it declares no kernel.
+    """
     _check_slice("sample_combine", slice_size, k_max)
     _positive("sample_combine", columns=columns)
     if columns * slice_size >= 1 << 31:
