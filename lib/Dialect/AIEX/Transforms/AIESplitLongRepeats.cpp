@@ -48,6 +48,13 @@ struct AIESplitLongRepeatsPass
           getConstantIntValue(start.getPushRepeatCount(cfg));
       if (!rc || *rc <= maxRepeat)
         continue;
+      int64_t pushes = (*rc + maxRepeat + 1) / (maxRepeat + 1);
+      if (pushes > static_cast<int64_t>(maxPushes)) {
+        start.emitOpError("repeat count ")
+            << *rc << " needs " << pushes
+            << " queue pushes, more than max-pushes (" << maxPushes << ")";
+        return signalPassFailure();
+      }
       // Leading starts withhold the token, so an await on the task still
       // returns only after the last pass.
       OpBuilder b(start);

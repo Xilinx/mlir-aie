@@ -118,6 +118,13 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     // Owning storage for the folded dims; must outlive `dims` (used far below).
     SmallVector<BDDimLayoutAttr> dimsStorage;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
+    // A legacy dma_bd_packet op is read first so that a packet attribute on
+    // the dma_bd overrides it, matching AIERT.
+    for (auto op : block->getOps<DMABDPACKETOp>()) {
+      foundBdPacket = true;
+      packetType = op.getPacketType();
+      packetID = op.getPacketID();
+    }
     for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
       if (auto packetInfo = op.getPacket()) {
@@ -221,12 +228,6 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         // unreachable for current targets
         return op.emitOpError("unsupported lock action");
       }
-    }
-
-    for (auto op : block->getOps<DMABDPACKETOp>()) {
-      foundBdPacket = true;
-      packetType = op.getPacketType();
-      packetID = op.getPacketID();
     }
 
     int bdNum = blockMap[block];

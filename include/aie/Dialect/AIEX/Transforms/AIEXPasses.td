@@ -380,8 +380,14 @@ def AIESplitLongRepeats : Pass<"aie-split-long-repeats", "AIE::DeviceOp"> {
     for `aie-dma-to-npu` to guard.
 
     Runs before `aie-assign-runtime-sequence-bd-ids`, which then counts one
-    queue slot per start.
+    queue slot per start. A start that would need more than `max-pushes`
+    pushes is an error.
   }];
+
+  let options = [
+    Option<"maxPushes", "max-pushes", "unsigned", /*default=*/"1024",
+           "Most queue pushes one start may be split into">,
+  ];
 
   let constructor = "xilinx::AIEX::createAIESplitLongRepeatsPass()";
   let dependentDialects = ["xilinx::AIEX::AIEXDialect"];
