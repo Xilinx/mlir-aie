@@ -5,7 +5,9 @@
 
 """Exercise the page's real collection and chart code without network access."""
 
+import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -73,6 +75,25 @@ const el = { querySelector: () => ({}) };
         subprocess.run([node, "-e", setup + script + data + checks], check=True)
 
     return run
+
+
+def test_thresholds_match_the_report_and_color_only_past_them(page):
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "utils/kernel_checks/index.html").read_text()
+    match = re.search(r"^\s*const THRESHOLDS = (\{.*\});$", html, re.MULTILINE)
+    assert match, "the page carries no THRESHOLDS constant"
+    shared = json.loads((root / "utils/kernel_checks/thresholds.json").read_text())
+    expected = {m: s for m, s in shared.items() if not m.startswith("_")}
+    assert json.loads(match[1]) == expected
+    page("""
+assert.equal(changeClass(0.019, 'cycles'), '');
+assert.equal(changeClass(0.02, 'cycles'), 'worse');
+assert.equal(changeClass(-0.02, 'core_elf_bytes'), 'better');
+assert.equal(changeClass(0.09, 'npu_us'), '');
+assert.equal(changeClass(0.1, 'npu_us'), 'worse');
+assert.equal(changeClass(0.05, 'compile_s'), '');
+assert.equal(changeClass(0.1, 'compile_s'), 'worse');
+""")
 
 
 def test_repeated_sha_observations_are_not_deduplicated(page):

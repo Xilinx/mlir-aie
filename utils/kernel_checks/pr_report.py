@@ -26,12 +26,25 @@ from pathlib import Path
 
 MARKER = "<!-- kernel-checks-report -->"
 PAGE = "https://xilinx.github.io/mlir-aie/kernel-checks/"
-# Deterministic, so any move is the compiler's: the regressions that count.
-GATED = {"cycles": 0.02, "core_elf_bytes": 0.02}
-# Host timing and compile time move with the machine; listed only past this.
-OTHER_THRESHOLD = 0.10
-# Derived from cycles, so it would repeat every cycles row.
-DERIVED = {"cycles_per_kop"}
+# The page colors a change by the same thresholds; thresholds.json says why.
+THRESHOLDS = {
+    metric: spec
+    for metric, spec in json.loads(
+        Path(__file__).with_name("thresholds.json").read_text()
+    ).items()
+    if not metric.startswith("_")
+}
+# Stable run to run, so a move is the compiler's: the regressions that count.
+GATED = {m: s["pct"] / 100 for m, s in THRESHOLDS.items() if s.get("gated")}
+# Derived from another metric, so it would repeat that metric's rows.
+DERIVED = {m for m, s in THRESHOLDS.items() if s.get("derived")}
+# Everything else (host timing moves with the machine) is listed past this.
+OTHER = {
+    m: s["pct"] / 100
+    for m, s in THRESHOLDS.items()
+    if m not in GATED and m not in DERIVED
+}
+DEFAULT_THRESHOLD = 0.10  # a metric thresholds.json does not name
 MAX_ROWS = 50
 
 _EXTENSIVE = re.compile(r"test_kernel_extensive\[(.+)/([^/]+/s\d+)\]")
@@ -185,7 +198,7 @@ def read_leg(npu: str, directory: Path, series: Path) -> Leg:
                 result.regressed.append(change)
             elif change.ratio <= -GATED[metric]:
                 result.improved.append(change)
-        elif abs(change.ratio) >= OTHER_THRESHOLD:
+        elif abs(change.ratio) >= OTHER.get(metric, DEFAULT_THRESHOLD):
             result.other.append(change)
     for changes in (result.regressed, result.other):
         changes.sort(key=lambda c: -c.ratio)
@@ -309,13 +322,13 @@ def render(legs: list[Leg], run_url: str = "") -> str:
     if rows := _changes(legs, "improved"):
         out += [""] + _details(f"Improved ({len(rows)})", _table(header, rows))
     if rows := _changes(legs, "other"):
+        thresholds = ", ".join(f"`{m}` {100 * t:g}%" for m, t in OTHER.items())
         note = (
-            "`npu_us` is timed on the host and moves with the machine; the "
-            "byte counts do not."
+            f"Listed past {thresholds}. `npu_us` is timed on the host and "
+            "moves with the machine; the byte counts do not."
         )
         out += [""] + _details(
-            f"Other metrics that moved {100 * OTHER_THRESHOLD:g}% or more "
-            f"({len(rows)})",
+            f"Other metrics that moved ({len(rows)})",
             [note, "", *_table(header, rows)],
         )
     unmeasured = [[leg.npu, f"`{case}`"] for leg in legs for case in leg.unmeasured]
