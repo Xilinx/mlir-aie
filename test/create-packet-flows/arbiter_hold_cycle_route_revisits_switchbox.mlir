@@ -14,12 +14,14 @@
 // holds arbiter 5 at (3,3), which prioritized flow 8 needs, while its
 // packets back into (3,5) wait on S2MM 0 there. Walks bounded by the number
 // of switchboxes stopped short of it and emitted that hold cycle. The design
-// routes if flow 8 may move, so the error names it. Reduced from
-// router_mutation.py seed 430.
+// routes if flow 8 may move. It may not, and the tree it keeps with flow 23
+// already puts flow 8 on the arbiter flow 9 takes into (3,3) DMA:0, so the
+// design is rejected before any routing. Reduced from router_mutation.py seed
+// 430.
 
-// CHECK: error: Unable to find a legal routing: packet flows from (3, 2) DMA:0 are prioritized (priority_route), so they keep the route they take alone, and the other flows route only if it moves.
-// CHECK-SAME: Around it, packet flows can deadlock holding arbiters across switchboxes
-// CHECK-SAME: packet flow (3, 5) DMA:1 -> (3, 3) DMA:0 (id 9) can hold arbiter 5 at tile (3, 3) that packet flow (3, 2) DMA:0 -> (3, 5) DMA:0 (id 8) needs.
+// CHECK: error: Unable to find a legal routing: at tile (3, 3), the routes prioritized flows (priority_route) keep put packet flow (3, 2) DMA:0 -> (3, 5) DMA:0 (id 8) and packet flow (3, 5) DMA:1 -> (3, 3) DMA:0 (id 9) on one arbiter:
+// CHECK-SAME: which takes one packet rule on South:5 with packet flow (3, 2) DMA:0 -> (3, 3) DMA:0 (id 23), which leaves by DMA:0 with packet flow (3, 5) DMA:1 -> (3, 3) DMA:0 (id 9)
+// CHECK-SAME: draining that waits on (3, 5) S2MM 0, which receives packet flow (3, 2) DMA:0 -> (3, 5) DMA:0 (id 8).
 
 module {
   aie.device(npu2_4col) {

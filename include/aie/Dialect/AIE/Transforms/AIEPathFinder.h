@@ -324,6 +324,7 @@ public:
   /// Packet flows from these sources take these trees instead of being
   /// routed.
   virtual void pinPacketTrees(PacketTrees trees) {}
+  virtual PacketTrees getPinnedTrees() const { return {}; }
   /// Packet flows share channels only with flows they share a destination
   /// with, directly or through others, unless `share`; then with any other
   /// packet flow. Returns whether that lets flows the last routing kept apart
@@ -372,6 +373,7 @@ public:
   void pinPacketTrees(PacketTrees trees) override {
     pinnedTrees = std::move(trees);
   }
+  PacketTrees getPinnedTrees() const override { return pinnedTrees; }
   bool setShareChannels(bool share) override;
   bool capCrowdedFanOut() override;
   bool routeIdsApart() override;
