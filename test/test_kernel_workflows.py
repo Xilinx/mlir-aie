@@ -165,7 +165,7 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
     result = subprocess.run(
         ["bash", "-eu", "-c", 'python() { printf "%s\\n" "$@"; }\n' + command],
         cwd=tmp_path,
-        env={**os.environ, "ONLY": only},
+        env={**os.environ, "ONLY": only, "REQUIRED_PMODE": "any"},
         capture_output=True,
         text=True,
         check=True,
@@ -175,6 +175,27 @@ def test_dispatch_filter_keeps_sanity_and_preserves_shell_quoting(only, tmp_path
         assert args[-2:] == ["-k", f"({only}) or test_measurement_is_sane"]
     else:
         assert "-k" not in args
+
+
+def test_publishing_runs_require_the_performance_mode():
+    """A nightly in another power mode charts numbers nobody should compare."""
+    config = workflow("nightlyKernelChecks.yml")
+    step = next(
+        step for step in config["jobs"]["checks"]["steps"] if step.get("id") == "perf"
+    )
+    assert '--pmode "$REQUIRED_PMODE"' in step["run"]
+    assert "--pmode any" not in step["run"]
+    required = step["env"]["REQUIRED_PMODE"]
+    # Required exactly when the run would publish, else any mode is recorded.
+    publishes = config["jobs"]["publish"]["if"]
+    assert publishes.startswith("${{ !cancelled() && ")
+    condition = publishes[len("${{ !cancelled() && ") : -len(" }}")]
+    assert required == f"${{{{ ({condition}) && env.PERF_PMODE || 'any' }}}}"
+    assert config["env"]["PERF_PMODE"] == "performance"
+    # The publisher's own guard names the same mode.
+    publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
+    read = next(step for step in publisher["steps"] if step.get("id") == "pmode")
+    assert '"$pmode" != performance' in read["run"]
 
 
 NIGHTLY_PAGE = """
@@ -303,8 +324,7 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     checks = workflow("nightlyKernelChecks.yml")["jobs"]["checks"]
     steps = checks["steps"]
     run = next(step["run"] for step in steps if step.get("id") == "perf")
-    assert "--pmode any" in run
-    assert '--pmode "$PERF_PMODE"' not in run
+    assert '--pmode "$REQUIRED_PMODE"' in run
     assert not record_steps(checks)
 
     publisher = workflow("publishKernelResults.yml")["jobs"]["publish"]
@@ -317,8 +337,12 @@ def test_each_power_mode_is_its_own_series(tmp_path):
     assert run_step(run, tmp_path) == {}
     (tmp_path / "results/npu1/perf.json").write_text("[]")
     assert run_step(run, tmp_path) == {"npu1": "performance"}
+    # Another mode is refused, not charted as its own suite.
     (tmp_path / "results/npu2/perf.json").write_text("[]")
-    assert run_step(run, tmp_path) == {"npu1": "performance", "npu2": "turbo"}
+    with pytest.raises(subprocess.CalledProcessError):
+        run_step(run, tmp_path)
+    write_meta(tmp_path / "results/npu2/meta.json", "performance")
+    assert run_step(run, tmp_path) == {"npu1": "performance", "npu2": "performance"}
     write_meta(tmp_path / "results/npu2/meta.json", None)
     with pytest.raises(subprocess.CalledProcessError):
         run_step(run, tmp_path)

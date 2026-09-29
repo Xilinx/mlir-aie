@@ -44,15 +44,23 @@ jobs:
           path: results/npu2
 
       # Each power mode is its own suite, and so its own section of the page:
-      # a chart never mixes modes, and alerts compare like with like.
+      # a chart never mixes modes, and alerts compare like with like. Only
+      # `performance` (nightlyKernelChecks.yml's PERF_PMODE) is published:
+      # the checks refuse to measure a publishing run in any other mode, and
+      # this refuses to chart one that slipped through.
       - name: Read power modes
         id: pmode
         if: ${{ !inputs.static }}
         run: |
           for npu in npu1 npu2; do
             [[ -f "results/$npu/$RESULT_FILE" ]] || continue
-            python3 -c 'import json, sys; print(sys.argv[1] + "=" + (json.load(open(sys.argv[2]))["preflight"]["pmode"] or sys.exit("power mode is unreadable")))' \
-              "$npu" "results/$npu/meta.json" >> "$GITHUB_OUTPUT"
+            pmode=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["preflight"]["pmode"] or sys.exit("power mode is unreadable"))' \
+              "results/$npu/meta.json")
+            if [[ "$pmode" != performance ]]; then
+              echo "::error::$npu was measured in power mode '$pmode', not performance; its series is not published"
+              exit 1
+            fi
+            echo "$npu=$pmode" >> "$GITHUB_OUTPUT"
           done
 
       - name: Fetch publication branch

@@ -466,8 +466,11 @@ each initializer's minimum and whether the trace buffer filled go in the
 row's `range`. The trace buffer is sized to the number of intervals the
 contract declares. Preflight reads the device and its power mode through the
 host runtime (`HostRuntime.power_mode()`); the nightly workflow tries to
-switch to `performance` first, but always records the active mode in the
-results. A bit-exact `passthrough` smoke test inside a cycle band guards
+switch to `performance` first, and a run that would publish refuses to
+measure in any other mode (`--pmode performance`), so a runner that cannot
+set the mode fails the timing loudly instead of charting numbers taken at
+another clock. A dispatched or pull-request run records whatever mode it
+finds, and the publisher charts only `performance` runs. A bit-exact `passthrough` smoke test inside a cycle band guards
 the machine. Nightly data goes to `gh-pages:kernel-checks/<npu>/` and is
 graphed at `https://xilinx.github.io/mlir-aie/kernel-checks/`, whose kernels
 view lists every factory with the builds each NPU offers, how its cases fared that
